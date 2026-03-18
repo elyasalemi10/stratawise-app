@@ -1,0 +1,111 @@
+/**
+ * Shared types for PDF template props.
+ */
+
+export interface ManagementCompany {
+  name: string;
+  logo_url?: string | null;
+}
+
+export interface Subdivision {
+  name: string;
+  address: string;
+  abn?: string | null;
+  plan_number: string;
+}
+
+export interface BaseDocumentProps {
+  managementCompany: ManagementCompany;
+  subdivision: Subdivision;
+  documentTitle: string;
+  referenceNumber: string;
+  date: Date;
+}
+
+// --- Levy Notice ---
+
+export interface LotOwner {
+  name: string;
+  lot_number: string;
+  address: string;
+}
+
+export interface LevyLineItem {
+  description: string;
+  amount: number;
+}
+
+export interface PaymentInstructions {
+  bpay?: {
+    biller_code: string;
+    reference: string;
+  } | null;
+  eft: {
+    bsb: string;
+    account_number: string;
+    account_name: string;
+    reference: string;
+  };
+}
+
+export interface OutstandingBalance {
+  reference: string;
+  period: string;
+  amount: number;
+}
+
+export interface LevyNoticeProps extends BaseDocumentProps {
+  lotOwner: LotOwner;
+  levyPeriod: { start: string; end: string };
+  lineItems: LevyLineItem[];
+  totalDue: number;
+  dueDate: string;
+  paymentInstructions: PaymentInstructions;
+  outstandingBalances?: OutstandingBalance[];
+  penaltyInterestRate?: number;
+}
+
+// --- Meeting Minutes ---
+
+export interface Attendee {
+  name: string;
+  lot_number?: string;
+  type: "present" | "proxy" | "apology";
+  proxy_for?: string;
+}
+
+export interface VoteTally {
+  for: number;
+  against: number;
+  abstain: number;
+}
+
+export interface AgendaItem {
+  number: string;
+  title: string;
+  motion?: string;
+  moved_by?: string;
+  seconded_by?: string;
+  vote?: VoteTally;
+  result?: "PASSED" | "FAILED";
+  notes?: string;
+}
+
+export interface ActionItem {
+  description: string;
+  assigned_to: string;
+  due_date?: string;
+}
+
+export interface MeetingMinutesProps extends BaseDocumentProps {
+  meetingType: "AGM" | "SGM" | "Committee";
+  meetingDate: string;
+  meetingTime: string;
+  location: string;
+  attendees: Attendee[];
+  quorumMet: boolean;
+  quorumDetails?: string;
+  agendaItems: AgendaItem[];
+  actionItems?: ActionItem[];
+  nextMeetingDate?: string;
+}
