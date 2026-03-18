@@ -29,12 +29,11 @@ export function StepCompany({ onNext }: { onNext: () => void }) {
   } = useForm<CompanyFormValues>({
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     resolver: zodResolver(companySchema) as any,
-    defaultValues: {},
   });
 
   async function onSubmit(data: CompanyFormValues) {
-    if (!phone || phone.trim().length < 6) {
-      toast.error("Phone number is required");
+    if (!phone || phone.replace(/\s/g, "").length < 6) {
+      toast.error("Please enter a valid phone number");
       return;
     }
 
@@ -67,19 +66,20 @@ export function StepCompany({ onNext }: { onNext: () => void }) {
         This information appears on all documents sent to lot owners.
       </p>
 
-      <form onSubmit={handleSubmit(onSubmit)} className="space-y-4">
+      <form onSubmit={handleSubmit(onSubmit)} autoComplete="off" className="space-y-4">
         <div className="space-y-1.5">
           <Label>Company logo</Label>
           <LogoUpload value={logoUrl} onChange={setLogoUrl} />
         </div>
 
         <div className="space-y-1.5">
-          <Label htmlFor="name">
+          <Label htmlFor="company-name">
             Company name <span className="text-destructive">*</span>
           </Label>
           <Input
-            id="name"
+            id="company-name"
             placeholder="ABC Strata Management"
+            autoComplete="off"
             aria-invalid={!!errors.name}
             {...register("name")}
           />
@@ -89,21 +89,23 @@ export function StepCompany({ onNext }: { onNext: () => void }) {
         </div>
 
         <div className="space-y-1.5">
-          <Label htmlFor="abn">ABN</Label>
+          <Label htmlFor="company-abn">ABN</Label>
           <Input
-            id="abn"
+            id="company-abn"
             placeholder="12 345 678 901"
+            autoComplete="off"
             {...register("abn")}
           />
         </div>
 
         <div className="space-y-1.5">
-          <Label htmlFor="address">
+          <Label htmlFor="company-address">
             Address <span className="text-destructive">*</span>
           </Label>
           <Input
-            id="address"
+            id="company-address"
             placeholder="123 Main Street, Melbourne VIC 3000"
+            autoComplete="off"
             aria-invalid={!!errors.address}
             {...register("address")}
           />
@@ -113,28 +115,14 @@ export function StepCompany({ onNext }: { onNext: () => void }) {
         </div>
 
         <div className="space-y-1.5">
-          <Label htmlFor="phone">
+          <Label htmlFor="company-phone">
             Phone <span className="text-destructive">*</span>
           </Label>
           <PhoneInput
-            id="phone"
+            id="company-phone"
             value={phone}
             onChange={setPhone}
           />
-        </div>
-
-        <div className="space-y-1.5">
-          <Label htmlFor="email">Email</Label>
-          <Input
-            id="email"
-            type="email"
-            value={clerkEmail}
-            disabled
-            className="bg-muted text-muted-foreground cursor-not-allowed"
-          />
-          <p className="text-xs text-muted-foreground">
-            Using your sign-up email. You can change this later in settings.
-          </p>
         </div>
 
         <div className="flex justify-end pt-2">

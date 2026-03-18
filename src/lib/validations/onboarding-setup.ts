@@ -12,7 +12,6 @@ export const subdivisionSchema = z.object({
   plan_number: z.string().min(1, "Plan number is required"),
   name: z.string().min(2, "Subdivision name is required"),
   street: z.string().min(3, "Street address is required"),
-  suburb: z.string().min(1, "Suburb is required"),
   total_lots: z.coerce.number().min(2, "Minimum 2 lots required"),
   state: z.string().default("VIC"),
 });

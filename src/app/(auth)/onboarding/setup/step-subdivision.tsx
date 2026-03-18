@@ -21,11 +21,11 @@ export function StepSubdivision({
 }) {
   const [pending, setPending] = useState(false);
   const [suburb, setSuburb] = useState("");
+  const [suburbError, setSuburbError] = useState("");
 
   const {
     register,
     handleSubmit,
-    setValue,
     formState: { errors },
   } = useForm<SubdivisionFormValues>({
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -34,6 +34,13 @@ export function StepSubdivision({
   });
 
   async function onSubmit(data: SubdivisionFormValues) {
+    // Validate suburb manually since it's controlled outside RHF
+    if (!suburb) {
+      setSuburbError("Please select a suburb");
+      return;
+    }
+    setSuburbError("");
+
     setPending(true);
     const address = `${data.street}, ${suburb}, VIC`;
     const result = await createSubdivision({
@@ -54,6 +61,25 @@ export function StepSubdivision({
     onNext();
   }
 
+  // Map Zod's generic messages to friendly ones
+  function fieldError(field: keyof typeof errors): string | undefined {
+    const err = errors[field];
+    if (!err?.message) return undefined;
+    const msg = err.message as string;
+    if (msg.includes("Invalid input") || msg.includes("expected")) {
+      // Return the custom message from our schema instead
+      const fallbacks: Record<string, string> = {
+        plan_number: "Plan number is required",
+        name: "Subdivision name is required",
+        street: "Street address is required",
+        total_lots: "Please enter a valid number of lots (minimum 2)",
+        suburb: "Please select a suburb",
+      };
+      return fallbacks[field] ?? "This field is required";
+    }
+    return msg;
+  }
+
   return (
     <div>
       <h2 className="text-lg font-semibold text-foreground">
@@ -63,78 +89,82 @@ export function StepSubdivision({
         You can add more subdivisions later from the dashboard.
       </p>
 
-      <form onSubmit={handleSubmit(onSubmit)} className="space-y-4">
+      <form onSubmit={handleSubmit(onSubmit)} autoComplete="off" className="space-y-4">
         <div className="space-y-1.5">
-          <Label htmlFor="plan_number">
+          <Label htmlFor="sub-plan">
             Plan number <span className="text-destructive">*</span>
           </Label>
           <Input
-            id="plan_number"
+            id="sub-plan"
             placeholder="PS123456A"
+            autoComplete="off"
             aria-invalid={!!errors.plan_number}
             {...register("plan_number")}
           />
           {errors.plan_number && (
-            <p className="text-xs text-destructive mt-1">{errors.plan_number.message}</p>
+            <p className="text-xs text-destructive mt-1">{fieldError("plan_number")}</p>
           )}
         </div>
 
         <div className="space-y-1.5">
-          <Label htmlFor="name">
+          <Label htmlFor="sub-name">
             Subdivision name <span className="text-destructive">*</span>
           </Label>
           <Input
-            id="name"
+            id="sub-name"
             placeholder="Riverside Townhouses"
+            autoComplete="off"
             aria-invalid={!!errors.name}
             {...register("name")}
           />
           {errors.name && (
-            <p className="text-xs text-destructive mt-1">{errors.name.message}</p>
+            <p className="text-xs text-destructive mt-1">{fieldError("name")}</p>
           )}
         </div>
 
         <div className="space-y-1.5">
-          <Label htmlFor="street">
+          <Label htmlFor="sub-street">
             Street address <span className="text-destructive">*</span>
           </Label>
           <Input
-            id="street"
+            id="sub-street"
             placeholder="1-12/45 Smith Street"
+            autoComplete="off"
             aria-invalid={!!errors.street}
             {...register("street")}
           />
           {errors.street && (
-            <p className="text-xs text-destructive mt-1">{errors.street.message}</p>
+            <p className="text-xs text-destructive mt-1">{fieldError("street")}</p>
           )}
         </div>
 
         <div className="space-y-1.5">
-          <Label htmlFor="suburb">
+          <Label htmlFor="sub-suburb">
             Suburb <span className="text-destructive">*</span>
           </Label>
           <SuburbSelect
-            id="suburb"
+            id="sub-suburb"
             value={suburb}
             onChange={(val) => {
               setSuburb(val);
-              setValue("suburb", val);
+              setSuburbError("");
             }}
-            error={!!errors.suburb}
+            error={!!suburbError}
           />
-          {errors.suburb && (
-            <p className="text-xs text-destructive mt-1">{errors.suburb.message}</p>
+          {suburbError && (
+            <p className="text-xs text-destructive mt-1">{suburbError}</p>
           )}
         </div>
 
         <div className="space-y-1.5">
-          <Label htmlFor="total_lots">
+          <Label htmlFor="sub-lots">
             Number of lots <span className="text-destructive">*</span>
           </Label>
           <Input
-            id="total_lots"
+            id="sub-lots"
             inputMode="numeric"
             placeholder="12"
+            autoComplete="off"
             aria-invalid={!!errors.total_lots}
             {...register("total_lots")}
             onKeyDown={(e) => {
@@ -149,14 +179,14 @@ export function StepSubdivision({
             }}
           />
           {errors.total_lots && (
-            <p className="text-xs text-destructive mt-1">{errors.total_lots.message}</p>
+            <p className="text-xs text-destructive mt-1">{fieldError("total_lots")}</p>
           )}
         </div>
 
         <div className="space-y-1.5">
-          <Label htmlFor="state">State</Label>
+          <Label htmlFor="sub-state">State</Label>
           <Input
-            id="state"
+            id="sub-state"
             value="VIC"
             disabled
             className="bg-muted text-muted-foreground cursor-not-allowed"
