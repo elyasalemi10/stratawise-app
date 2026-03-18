@@ -15,13 +15,16 @@ import { Checkbox } from "@/components/ui/checkbox";
 import { Spinner } from "@/components/ui/spinner";
 import { PhoneInput } from "@/components/shared/phone-input";
 import { LogoUpload } from "@/components/shared/logo-upload";
+import { AvatarUpload } from "@/components/shared/avatar-upload";
 
 export function StepCompany({ onNext }: { onNext: () => void }) {
   const { user } = useUser();
   const clerkEmail = user?.primaryEmailAddress?.emailAddress ?? "";
+  const userInitial = user?.firstName?.[0]?.toUpperCase() ?? "";
 
   const [pending, setPending] = useState(false);
   const [logoUrl, setLogoUrl] = useState("");
+  const [avatarUrl, setAvatarUrl] = useState("");
   const [phone, setPhone] = useState("+61 ");
   const [termsAccepted, setTermsAccepted] = useState(false);
   const [privacyAccepted, setPrivacyAccepted] = useState(false);
@@ -56,6 +59,7 @@ export function StepCompany({ onNext }: { onNext: () => void }) {
       phone: phone.trim(),
       email: clerkEmail,
       logo_url: logoUrl || undefined,
+      avatar_url: avatarUrl || undefined,
     });
     setPending(false);
 
@@ -77,6 +81,17 @@ export function StepCompany({ onNext }: { onNext: () => void }) {
       </p>
 
       <form onSubmit={handleSubmit(onSubmit)} autoComplete="off" className="space-y-4">
+        {/* Profile picture */}
+        <div className="space-y-1.5">
+          <Label>Your profile picture</Label>
+          <AvatarUpload
+            value={avatarUrl}
+            onChange={setAvatarUrl}
+            fallbackInitial={userInitial}
+          />
+        </div>
+
+        {/* Company logo */}
         <div className="space-y-1.5">
           <Label>Company logo</Label>
           <LogoUpload value={logoUrl} onChange={setLogoUrl} />

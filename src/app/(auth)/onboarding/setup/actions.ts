@@ -22,6 +22,7 @@ export async function createCompany(formData: {
   phone: string;
   email: string;
   logo_url?: string;
+  avatar_url?: string;
 }) {
   const { userId } = await auth();
   if (!userId) throw new Error("Not authenticated");
@@ -83,12 +84,13 @@ export async function createCompany(formData: {
     return { error: "Failed to create company. Please try again." };
   }
 
-  // Assign user to this company as strata_manager
+  // Assign user to this company as strata_manager + save avatar
   const { error: profileError } = await supabase
     .from("profiles")
     .update({
       management_company_id: company.id,
       role: "strata_manager",
+      ...(formData.avatar_url ? { avatar_url: formData.avatar_url } : {}),
     })
     .eq("clerk_id", userId);
 

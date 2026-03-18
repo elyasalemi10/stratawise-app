@@ -6,8 +6,7 @@ import { cn } from "@/lib/utils";
 const steps = [
   { number: 1, label: "Company" },
   { number: 2, label: "Subdivision" },
-  { number: 3, label: "Invite" },
-  { number: 4, label: "Done" },
+  { number: 3, label: "Done" },
 ];
 
 export function StepIndicator({ currentStep }: { currentStep: number }) {
@@ -16,7 +15,6 @@ export function StepIndicator({ currentStep }: { currentStep: number }) {
       <div className="flex items-center justify-between">
         {steps.map((step, i) => (
           <div key={step.number} className="flex items-center flex-1 last:flex-none">
-            {/* Circle */}
             <div
               className={cn(
                 "flex h-8 w-8 shrink-0 items-center justify-center rounded-full text-sm font-medium transition-colors",
@@ -34,7 +32,6 @@ export function StepIndicator({ currentStep }: { currentStep: number }) {
               )}
             </div>
 
-            {/* Connector line — dotted for upcoming, solid for completed */}
             {i < steps.length - 1 && (
               <div
                 className={cn(
@@ -49,7 +46,6 @@ export function StepIndicator({ currentStep }: { currentStep: number }) {
         ))}
       </div>
 
-      {/* Labels */}
       <div className="mt-2 flex justify-between">
         {steps.map((step) => (
           <p
