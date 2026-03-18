@@ -1,5 +1,8 @@
 # My Strata Management (MSM) — Claude Code Rules
 
+## Git
+- Always commit and push to origin after completing changes. Do not wait for the user to ask.
+
 ## Brand
 - Full name: "My Strata Management". Abbreviated: "MSM". Never "StrataOS".
 - Brand colours: Primary blue #2b7fff, Secondary green #00bd7d.

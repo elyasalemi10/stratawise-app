@@ -1,5 +1,5 @@
-import { SignOutButton } from "@clerk/nextjs";
-import { LogOut } from "lucide-react";
+import { Sidebar } from "@/components/layout/sidebar";
+import { Header } from "@/components/layout/header";
 
 export default function DashboardLayout({
   children,
@@ -7,19 +7,17 @@ export default function DashboardLayout({
   children: React.ReactNode;
 }) {
   return (
-    <div className="flex min-h-screen">
-      {/* Sidebar will be added in Phase 1 */}
-      <main className="flex-1 bg-background px-6 py-6">
-        <div className="flex justify-end mb-4">
-          <SignOutButton redirectUrl="/">
-            <button className="inline-flex items-center gap-2 rounded-md h-9 px-4 text-sm font-medium text-muted-foreground hover:bg-muted transition-colors duration-150">
-              <LogOut className="h-4 w-4" />
-              Sign out
-            </button>
-          </SignOutButton>
-        </div>
-        {children}
-      </main>
+    <div className="min-h-screen">
+      {/* Desktop sidebar — fixed left */}
+      <Sidebar />
+
+      {/* Main area — offset by sidebar width on desktop */}
+      <div className="lg:pl-64 flex flex-col min-h-screen">
+        <Header />
+        <main className="flex-1 overflow-y-auto bg-background p-6">
+          {children}
+        </main>
+      </div>
     </div>
   );
 }
