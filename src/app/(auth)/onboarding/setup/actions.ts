@@ -22,7 +22,6 @@ export async function createCompany(formData: {
   phone: string;
   email: string;
   logo_url?: string;
-  avatar_url?: string;
 }) {
   const { userId } = await auth();
   if (!userId) throw new Error("Not authenticated");
@@ -90,7 +89,6 @@ export async function createCompany(formData: {
     .update({
       management_company_id: company.id,
       role: "strata_manager",
-      ...(formData.avatar_url ? { avatar_url: formData.avatar_url } : {}),
     })
     .eq("clerk_id", userId);
 
