@@ -39,9 +39,9 @@ export async function createCompany(formData: {
       name: parsed.data.name,
       abn: parsed.data.abn || null,
       address: parsed.data.address,
-      phone: parsed.data.phone,
-      email: parsed.data.email,
-      logo_url: parsed.data.logo_url || null,
+      phone: formData.phone,
+      email: formData.email,
+      logo_url: formData.logo_url || null,
     })
     .select("id")
     .single();

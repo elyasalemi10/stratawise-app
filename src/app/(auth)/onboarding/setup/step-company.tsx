@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import { useUser } from "@clerk/nextjs";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { toast } from "sonner";
@@ -14,6 +15,9 @@ import { PhoneInput } from "@/components/shared/phone-input";
 import { LogoUpload } from "@/components/shared/logo-upload";
 
 export function StepCompany({ onNext }: { onNext: () => void }) {
+  const { user } = useUser();
+  const clerkEmail = user?.primaryEmailAddress?.emailAddress ?? "";
+
   const [pending, setPending] = useState(false);
   const [logoUrl, setLogoUrl] = useState("");
   const [phone, setPhone] = useState("+61 ");
@@ -25,13 +29,22 @@ export function StepCompany({ onNext }: { onNext: () => void }) {
   } = useForm<CompanyFormValues>({
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     resolver: zodResolver(companySchema) as any,
+    defaultValues: {},
   });
 
   async function onSubmit(data: CompanyFormValues) {
+    if (!phone || phone.trim().length < 6) {
+      toast.error("Phone number is required");
+      return;
+    }
+
     setPending(true);
     const result = await createCompany({
-      ...data,
-      phone,
+      name: data.name,
+      abn: data.abn,
+      address: data.address,
+      phone: phone.trim(),
+      email: clerkEmail,
       logo_url: logoUrl || undefined,
     });
     setPending(false);
@@ -107,27 +120,21 @@ export function StepCompany({ onNext }: { onNext: () => void }) {
             id="phone"
             value={phone}
             onChange={setPhone}
-            error={!!errors.phone}
           />
-          {errors.phone && (
-            <p className="text-xs text-destructive mt-1">{errors.phone.message}</p>
-          )}
         </div>
 
         <div className="space-y-1.5">
-          <Label htmlFor="email">
-            Email <span className="text-destructive">*</span>
-          </Label>
+          <Label htmlFor="email">Email</Label>
           <Input
             id="email"
             type="email"
-            placeholder="info@abcstrata.com.au"
-            aria-invalid={!!errors.email}
-            {...register("email")}
+            value={clerkEmail}
+            disabled
+            className="bg-muted text-muted-foreground cursor-not-allowed"
           />
-          {errors.email && (
-            <p className="text-xs text-destructive mt-1">{errors.email.message}</p>
-          )}
+          <p className="text-xs text-muted-foreground">
+            Using your sign-up email. You can change this later in settings.
+          </p>
         </div>
 
         <div className="flex justify-end pt-2">
