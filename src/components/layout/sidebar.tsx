@@ -1,10 +1,9 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { UserButton } from "@clerk/nextjs";
 import { SidebarNav } from "./sidebar-nav";
+import { UserMenu } from "./user-menu";
 import { getSidebarProfile, type SidebarProfile } from "@/lib/actions/profile";
-import { Skeleton } from "@/components/ui/skeleton";
 
 export function Sidebar() {
   const [profile, setProfile] = useState<SidebarProfile | null>(null);
@@ -42,35 +41,8 @@ export function Sidebar() {
       {/* Navigation */}
       <SidebarNav />
 
-      {/* User section */}
-      <div className="border-t border-white/10 p-4">
-        <div className="flex items-center gap-3">
-          <UserButton
-            appearance={{
-              elements: {
-                avatarBox: "h-8 w-8",
-              },
-            }}
-          />
-          <div className="flex-1 min-w-0">
-            {!loaded ? (
-              <>
-                <Skeleton className="h-3.5 w-24 bg-white/10" />
-                <Skeleton className="h-3 w-32 bg-white/10 mt-1.5" />
-              </>
-            ) : (
-              <>
-                <p className="text-sm font-medium text-white truncate">
-                  {profile?.companyName ?? profile?.userName ?? "My Company"}
-                </p>
-                <p className="text-xs text-[hsl(215,20%,75%)] truncate">
-                  {profile?.userEmail ?? ""}
-                </p>
-              </>
-            )}
-          </div>
-        </div>
-      </div>
+      {/* User menu */}
+      <UserMenu profile={profile} loaded={loaded} />
     </aside>
   );
 }

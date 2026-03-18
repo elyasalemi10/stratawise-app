@@ -1,11 +1,10 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { UserButton } from "@clerk/nextjs";
 import { Menu } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import { Skeleton } from "@/components/ui/skeleton";
 import { SidebarNav } from "./sidebar-nav";
+import { UserMenu } from "./user-menu";
 import { getSidebarProfile, type SidebarProfile } from "@/lib/actions/profile";
 
 export function MobileSidebar() {
@@ -62,33 +61,8 @@ export function MobileSidebar() {
               <SidebarNav />
             </div>
 
-            <div className="border-t border-white/10 p-4 mt-auto">
-              <div className="flex items-center gap-3">
-                <UserButton
-                  appearance={{
-                    elements: {
-                      avatarBox: "h-8 w-8",
-                    },
-                  }}
-                />
-                <div className="flex-1 min-w-0">
-                  {!loaded ? (
-                    <>
-                      <Skeleton className="h-3.5 w-24 bg-white/10" />
-                      <Skeleton className="h-3 w-32 bg-white/10 mt-1.5" />
-                    </>
-                  ) : (
-                    <>
-                      <p className="text-sm font-medium text-white truncate">
-                        {profile?.companyName ?? profile?.userName ?? "My Company"}
-                      </p>
-                      <p className="text-xs text-[hsl(215,20%,75%)] truncate">
-                        {profile?.userEmail ?? ""}
-                      </p>
-                    </>
-                  )}
-                </div>
-              </div>
+            <div className="mt-auto">
+              <UserMenu profile={profile} loaded={loaded} />
             </div>
           </div>
         </>

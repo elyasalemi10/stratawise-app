@@ -6,7 +6,8 @@ import { cn } from "@/lib/utils";
 const steps = [
   { number: 1, label: "Company" },
   { number: 2, label: "Subdivision" },
-  { number: 3, label: "Done" },
+  { number: 3, label: "Photo" },
+  { number: 4, label: "Done" },
 ];
 
 export function StepIndicator({ currentStep }: { currentStep: number }) {

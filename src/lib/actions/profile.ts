@@ -8,6 +8,9 @@ export interface SidebarProfile {
   companyLogoUrl: string | null;
   userName: string | null;
   userEmail: string | null;
+  userAvatarUrl: string | null;
+  userInitials: string;
+  userRole: string;
 }
 
 export async function getSidebarProfile(): Promise<SidebarProfile | null> {
@@ -18,7 +21,7 @@ export async function getSidebarProfile(): Promise<SidebarProfile | null> {
 
   const { data: profile } = await supabase
     .from("profiles")
-    .select("first_name, last_name, email, management_company_id")
+    .select("first_name, last_name, email, avatar_url, role, management_company_id")
     .eq("clerk_id", userId)
     .single();
 
@@ -38,12 +41,18 @@ export async function getSidebarProfile(): Promise<SidebarProfile | null> {
     companyLogoUrl = company?.logo_url ?? null;
   }
 
-  const userName = [profile.first_name, profile.last_name].filter(Boolean).join(" ") || null;
+  const firstName = profile.first_name ?? "";
+  const lastName = profile.last_name ?? "";
+  const userName = [firstName, lastName].filter(Boolean).join(" ") || null;
+  const userInitials = [firstName[0], lastName[0]].filter(Boolean).join("").toUpperCase() || "?";
 
   return {
     companyName,
     companyLogoUrl,
     userName,
     userEmail: profile.email,
+    userAvatarUrl: profile.avatar_url,
+    userInitials,
+    userRole: profile.role,
   };
 }

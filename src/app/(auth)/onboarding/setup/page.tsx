@@ -5,6 +5,7 @@ import { Suspense } from "react";
 import { StepIndicator } from "./step-indicator";
 import { StepCompany } from "./step-company";
 import { StepSubdivision } from "./step-subdivision";
+import { StepAvatar } from "./step-avatar";
 import { StepComplete } from "./step-complete";
 
 function SetupWizardContent() {
@@ -28,7 +29,13 @@ function SetupWizardContent() {
             onBack={() => goToStep(1)}
           />
         )}
-        {step === 3 && <StepComplete />}
+        {step === 3 && (
+          <StepAvatar
+            onNext={() => goToStep(4)}
+            onBack={() => goToStep(2)}
+          />
+        )}
+        {step === 4 && <StepComplete />}
       </div>
     </div>
   );

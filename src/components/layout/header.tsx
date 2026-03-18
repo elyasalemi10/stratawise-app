@@ -1,7 +1,6 @@
 "use client";
 
 import { usePathname } from "next/navigation";
-import { UserButton } from "@clerk/nextjs";
 import { Bell } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { MobileSidebar } from "./mobile-sidebar";
@@ -60,21 +59,13 @@ export function Header() {
         ))}
       </nav>
 
-      {/* Right side: notification bell + user */}
+      {/* Right side: notification bell */}
       <div className="flex items-center gap-2">
         <Button variant="ghost" size="icon" className="relative text-muted-foreground">
           <Bell className="h-4 w-4" />
-          {/* Unread dot — show conditionally when notifications exist */}
           <span className="absolute top-1.5 right-1.5 h-2 w-2 rounded-full bg-destructive" />
           <span className="sr-only">Notifications</span>
         </Button>
-        <UserButton
-          appearance={{
-            elements: {
-              avatarBox: "h-8 w-8",
-            },
-          }}
-        />
       </div>
     </header>
   );

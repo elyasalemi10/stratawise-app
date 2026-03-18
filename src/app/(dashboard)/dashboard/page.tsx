@@ -4,6 +4,7 @@ import { Building2, Plus } from "lucide-react";
 import { getCurrentProfile } from "@/lib/auth";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { UserAvatar } from "@/components/shared/user-avatar";
 
 const roleBadge: Record<string, { label: string; variant: "info" | "success" | "neutral" }> = {
   super_admin: { label: "Super admin", variant: "info" },
@@ -17,17 +18,26 @@ export default async function DashboardPage() {
 
   const firstName = profile.first_name ?? "there";
   const badge = roleBadge[profile.role] ?? roleBadge.lot_owner;
+  const initials = [profile.first_name?.[0], profile.last_name?.[0]]
+    .filter(Boolean)
+    .join("")
+    .toUpperCase() || "?";
 
   return (
     <div className="space-y-6">
       {/* Welcome card */}
       <div className="rounded-lg border border-border bg-card p-5 shadow-none">
-        <div className="flex items-start justify-between">
-          <div>
+        <div className="flex items-center gap-4">
+          <UserAvatar
+            src={profile.avatar_url}
+            initials={initials}
+            size="md"
+          />
+          <div className="flex-1 min-w-0">
             <p className="text-lg font-medium text-foreground">
               Welcome back, {firstName}
             </p>
-            <p className="text-sm text-muted-foreground mt-1">{profile.email}</p>
+            <p className="text-sm text-muted-foreground">{profile.email}</p>
           </div>
           <Badge variant={badge.variant}>{badge.label}</Badge>
         </div>
