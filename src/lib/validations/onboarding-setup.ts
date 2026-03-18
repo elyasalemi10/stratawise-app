@@ -3,7 +3,7 @@ import { z } from "zod";
 export const companySchema = z.object({
   name: z.string().min(2, "Company name is required"),
   abn: z.string().optional(),
-  address: z.string().min(5, "Address is required"),
+  address: z.string().optional(),
 });
 
 export type CompanyFormValues = z.infer<typeof companySchema>;

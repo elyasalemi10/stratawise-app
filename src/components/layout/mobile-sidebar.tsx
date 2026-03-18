@@ -1,14 +1,24 @@
 "use client";
 
-import { UserButton, useUser } from "@clerk/nextjs";
+import { useEffect, useState } from "react";
+import { UserButton } from "@clerk/nextjs";
 import { Menu } from "lucide-react";
-import { useState } from "react";
 import { Button } from "@/components/ui/button";
+import { Skeleton } from "@/components/ui/skeleton";
 import { SidebarNav } from "./sidebar-nav";
+import { getSidebarProfile, type SidebarProfile } from "@/lib/actions/profile";
 
 export function MobileSidebar() {
   const [open, setOpen] = useState(false);
-  const { user } = useUser();
+  const [profile, setProfile] = useState<SidebarProfile | null>(null);
+  const [loaded, setLoaded] = useState(false);
+
+  useEffect(() => {
+    getSidebarProfile().then((data) => {
+      setProfile(data);
+      setLoaded(true);
+    });
+  }, []);
 
   return (
     <div className="lg:hidden">
@@ -24,31 +34,34 @@ export function MobileSidebar() {
 
       {open && (
         <>
-          {/* Overlay */}
           <div
             className="fixed inset-0 z-40 bg-black/50 backdrop-blur-sm"
             onClick={() => setOpen(false)}
           />
 
-          {/* Sidebar panel */}
           <div className="fixed inset-y-0 left-0 z-50 w-64 bg-[hsl(220,26%,14%)] border-r border-white/10 flex flex-col">
-            {/* Logo */}
             <div className="flex h-14 items-center px-5 border-b border-white/10">
-              <span className="text-lg font-semibold text-white">MSM</span>
+              {loaded && profile?.companyLogoUrl ? (
+                // eslint-disable-next-line @next/next/no-img-element
+                <img
+                  src={profile.companyLogoUrl}
+                  alt={profile.companyName ?? "Company logo"}
+                  className="h-8 max-w-[140px] object-contain"
+                />
+              ) : (
+                <span className="text-lg font-semibold text-white">MSM</span>
+              )}
             </div>
 
-            {/* Subdivision switcher placeholder */}
             <div className="mx-3 mt-3 rounded-md border border-white/10 bg-white/5 px-3 py-2">
               <p className="text-xs text-[hsl(215,20%,75%)]/50 uppercase tracking-wide">Subdivision</p>
               <p className="text-sm text-[hsl(215,20%,75%)] truncate mt-0.5">No subdivision selected</p>
             </div>
 
-            {/* Navigation */}
             <div onClick={() => setOpen(false)}>
               <SidebarNav />
             </div>
 
-            {/* User section */}
             <div className="border-t border-white/10 p-4 mt-auto">
               <div className="flex items-center gap-3">
                 <UserButton
@@ -59,12 +72,21 @@ export function MobileSidebar() {
                   }}
                 />
                 <div className="flex-1 min-w-0">
-                  <p className="text-sm font-medium text-white truncate">
-                    {user?.fullName ?? "Loading..."}
-                  </p>
-                  <p className="text-xs text-[hsl(215,20%,75%)] truncate">
-                    {user?.primaryEmailAddress?.emailAddress ?? ""}
-                  </p>
+                  {!loaded ? (
+                    <>
+                      <Skeleton className="h-3.5 w-24 bg-white/10" />
+                      <Skeleton className="h-3 w-32 bg-white/10 mt-1.5" />
+                    </>
+                  ) : (
+                    <>
+                      <p className="text-sm font-medium text-white truncate">
+                        {profile?.companyName ?? profile?.userName ?? "My Company"}
+                      </p>
+                      <p className="text-xs text-[hsl(215,20%,75%)] truncate">
+                        {profile?.userEmail ?? ""}
+                      </p>
+                    </>
+                  )}
                 </div>
               </div>
             </div>

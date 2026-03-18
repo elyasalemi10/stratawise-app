@@ -3,9 +3,23 @@
 import { auth, currentUser } from "@clerk/nextjs/server";
 import { createServerClient } from "@/lib/supabase";
 
+const NOTIFICATION_TYPES = [
+  "levy_issued",
+  "payment_received",
+  "payment_overdue",
+  "meeting_notice",
+  "meeting_minutes",
+  "maintenance_update",
+  "announcement",
+  "complaint_update",
+  "escalation_step",
+  "document_uploaded",
+];
+
 /**
  * Ensures a profile row exists for the current Clerk user.
  * Creates one on-the-fly if missing (just-in-time provisioning).
+ * Also seeds default notification preferences if they don't exist.
  * Returns the profile id, or null if not authenticated.
  */
 export async function ensureProfile(): Promise<string | null> {
@@ -21,7 +35,11 @@ export async function ensureProfile(): Promise<string | null> {
     .eq("clerk_id", userId)
     .single();
 
-  if (existing) return existing.id;
+  if (existing) {
+    // Ensure notification preferences exist
+    await seedNotificationPreferences(supabase, existing.id);
+    return existing.id;
+  }
 
   // Profile doesn't exist — create it from Clerk user data
   const user = await currentUser();
@@ -35,7 +53,7 @@ export async function ensureProfile(): Promise<string | null> {
       first_name: user.firstName ?? null,
       last_name: user.lastName ?? null,
       avatar_url: user.imageUrl ?? null,
-      role: "lot_owner", // default, upgraded during onboarding
+      role: "lot_owner",
     })
     .select("id")
     .single();
@@ -45,15 +63,42 @@ export async function ensureProfile(): Promise<string | null> {
     return null;
   }
 
+  if (created) {
+    await seedNotificationPreferences(supabase, created.id);
+  }
+
   return created?.id ?? null;
 }
 
 /**
- * Check if the current user has completed onboarding:
- * 1. Profile exists
- * 2. Consent recorded (terms + privacy)
- * 3. Management company assigned
- *
+ * Seeds default notification preferences if none exist for the profile.
+ * Email + in_app enabled, sms + voice disabled.
+ */
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+async function seedNotificationPreferences(supabase: any, profileId: string) {
+  // Check if any prefs already exist
+  const { count } = await supabase
+    .from("notification_preferences")
+    .select("id", { count: "exact", head: true })
+    .eq("profile_id", profileId);
+
+  if (count && count > 0) return;
+
+  const preferences = NOTIFICATION_TYPES.flatMap((type) => [
+    { profile_id: profileId, notification_type: type, channel: "email", enabled: true },
+    { profile_id: profileId, notification_type: type, channel: "in_app", enabled: true },
+    { profile_id: profileId, notification_type: type, channel: "sms", enabled: false },
+    { profile_id: profileId, notification_type: type, channel: "voice", enabled: false },
+  ]);
+
+  await supabase
+    .from("notification_preferences")
+    .upsert(preferences, { onConflict: "profile_id,notification_type,channel" });
+}
+
+/**
+ * Check if the current user has completed onboarding.
+ * Since consent is now part of Step 1, we only check for a management company.
  * Returns the redirect path if onboarding is incomplete, or null if complete.
  */
 export async function getOnboardingRedirect(): Promise<string | null> {
@@ -70,19 +115,6 @@ export async function getOnboardingRedirect(): Promise<string | null> {
 
   // No profile — send to onboarding to create one
   if (!profile) return "/onboarding";
-
-  // Check consent
-  const { data: consents } = await supabase
-    .from("user_consents")
-    .select("consent_type")
-    .eq("profile_id", profile.id)
-    .in("consent_type", ["terms_of_service", "privacy_policy"]);
-
-  const consentTypes = consents?.map((c) => c.consent_type) ?? [];
-  const hasTerms = consentTypes.includes("terms_of_service");
-  const hasPrivacy = consentTypes.includes("privacy_policy");
-
-  if (!hasTerms || !hasPrivacy) return "/onboarding";
 
   // No company — send to setup wizard
   if (!profile.management_company_id) return "/onboarding/setup";

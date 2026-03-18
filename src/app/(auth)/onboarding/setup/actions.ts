@@ -1,8 +1,9 @@
 "use server";
 
 import { auth } from "@clerk/nextjs/server";
+import { headers } from "next/headers";
 import { createServerClient } from "@/lib/supabase";
-import { companySchema, subdivisionSchema, inviteRowSchema } from "@/lib/validations/onboarding-setup";
+import { companySchema, inviteRowSchema } from "@/lib/validations/onboarding-setup";
 
 async function getProfileId(clerkUserId: string) {
   const supabase = createServerClient();
@@ -17,7 +18,7 @@ async function getProfileId(clerkUserId: string) {
 export async function createCompany(formData: {
   name: string;
   abn?: string;
-  address: string;
+  address?: string;
   phone: string;
   email: string;
   logo_url?: string;
@@ -32,13 +33,44 @@ export async function createCompany(formData: {
 
   const supabase = createServerClient();
 
+  // Get profile ID for consent recording
+  const profile = await getProfileId(userId);
+  if (!profile) {
+    return { error: "Profile not found. Please refresh and try again." };
+  }
+
+  // Record T&Cs consent
+  const headersList = await headers();
+  const ipAddress =
+    headersList.get("x-forwarded-for")?.split(",")[0]?.trim() ??
+    headersList.get("x-real-ip") ??
+    "unknown";
+  const now = new Date().toISOString();
+
+  await supabase.from("user_consents").insert([
+    {
+      profile_id: profile.id,
+      consent_type: "terms_of_service",
+      version: "1.0",
+      accepted_at: now,
+      ip_address: ipAddress,
+    },
+    {
+      profile_id: profile.id,
+      consent_type: "privacy_policy",
+      version: "1.0",
+      accepted_at: now,
+      ip_address: ipAddress,
+    },
+  ]);
+
   // Create the management company
   const { data: company, error: companyError } = await supabase
     .from("management_companies")
     .insert({
       name: parsed.data.name,
       abn: parsed.data.abn || null,
-      address: parsed.data.address,
+      address: parsed.data.address || null,
       phone: formData.phone,
       email: formData.email,
       logo_url: formData.logo_url || null,

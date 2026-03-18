@@ -5,11 +5,13 @@ import { useUser } from "@clerk/nextjs";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { toast } from "sonner";
+import Link from "next/link";
 import { companySchema, type CompanyFormValues } from "@/lib/validations/onboarding-setup";
 import { createCompany } from "./actions";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { Checkbox } from "@/components/ui/checkbox";
 import { Spinner } from "@/components/ui/spinner";
 import { PhoneInput } from "@/components/shared/phone-input";
 import { LogoUpload } from "@/components/shared/logo-upload";
@@ -21,6 +23,9 @@ export function StepCompany({ onNext }: { onNext: () => void }) {
   const [pending, setPending] = useState(false);
   const [logoUrl, setLogoUrl] = useState("");
   const [phone, setPhone] = useState("+61 ");
+  const [termsAccepted, setTermsAccepted] = useState(false);
+  const [privacyAccepted, setPrivacyAccepted] = useState(false);
+  const [consentError, setConsentError] = useState("");
 
   const {
     register,
@@ -32,6 +37,12 @@ export function StepCompany({ onNext }: { onNext: () => void }) {
   });
 
   async function onSubmit(data: CompanyFormValues) {
+    if (!termsAccepted || !privacyAccepted) {
+      setConsentError("You must accept both the Terms of Service and Privacy Policy to continue.");
+      return;
+    }
+    setConsentError("");
+
     if (!phone || phone.replace(/\s/g, "").length < 6) {
       toast.error("Please enter a valid phone number");
       return;
@@ -53,7 +64,6 @@ export function StepCompany({ onNext }: { onNext: () => void }) {
       return;
     }
 
-    toast.success("Company created");
     onNext();
   }
 
@@ -99,19 +109,13 @@ export function StepCompany({ onNext }: { onNext: () => void }) {
         </div>
 
         <div className="space-y-1.5">
-          <Label htmlFor="company-address">
-            Address <span className="text-destructive">*</span>
-          </Label>
+          <Label htmlFor="company-address">Address</Label>
           <Input
             id="company-address"
             placeholder="123 Main Street, Melbourne VIC 3000"
             autoComplete="off"
-            aria-invalid={!!errors.address}
             {...register("address")}
           />
-          {errors.address && (
-            <p className="text-xs text-destructive mt-1">{errors.address.message}</p>
-          )}
         </div>
 
         <div className="space-y-1.5">
@@ -123,6 +127,47 @@ export function StepCompany({ onNext }: { onNext: () => void }) {
             value={phone}
             onChange={setPhone}
           />
+        </div>
+
+        {/* T&Cs consent */}
+        <div className="border-t border-border pt-4 mt-6 space-y-3">
+          <div className="flex items-start gap-3">
+            <Checkbox
+              id="terms"
+              checked={termsAccepted}
+              onCheckedChange={(checked) => {
+                setTermsAccepted(checked === true);
+                if (checked) setConsentError("");
+              }}
+            />
+            <label htmlFor="terms" className="text-sm text-foreground leading-snug cursor-pointer">
+              I have read and agree to the{" "}
+              <Link href="/legal/terms" target="_blank" className="text-primary hover:underline">
+                Terms of Service
+              </Link>
+            </label>
+          </div>
+
+          <div className="flex items-start gap-3">
+            <Checkbox
+              id="privacy"
+              checked={privacyAccepted}
+              onCheckedChange={(checked) => {
+                setPrivacyAccepted(checked === true);
+                if (checked) setConsentError("");
+              }}
+            />
+            <label htmlFor="privacy" className="text-sm text-foreground leading-snug cursor-pointer">
+              I have read and agree to the{" "}
+              <Link href="/legal/privacy" target="_blank" className="text-primary hover:underline">
+                Privacy Policy
+              </Link>
+            </label>
+          </div>
+
+          {consentError && (
+            <p className="text-xs text-destructive">{consentError}</p>
+          )}
         </div>
 
         <div className="flex justify-end pt-2">

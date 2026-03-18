@@ -40,7 +40,6 @@ export function LogoUpload({ value, onChange }: LogoUploadProps) {
       }
 
       onChange(data.url);
-      toast.success("Logo uploaded");
     } catch {
       toast.error("Upload failed. Please try again.");
     } finally {

@@ -57,7 +57,6 @@ export function StepSubdivision({
       return;
     }
 
-    toast.success("Subdivision created");
     onNext();
   }
 

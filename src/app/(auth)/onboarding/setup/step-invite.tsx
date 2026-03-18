@@ -55,7 +55,6 @@ export function StepInvite({
       return;
     }
 
-    toast.success(`${result.sent} invitation${result.sent === 1 ? "" : "s"} created`);
     onNext();
   }
 
