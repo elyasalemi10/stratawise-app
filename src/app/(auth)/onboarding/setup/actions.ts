@@ -16,10 +16,11 @@ async function getProfileId(clerkUserId: string) {
 
 export async function createCompany(formData: {
   name: string;
-  abn: string;
+  abn?: string;
   address: string;
   phone: string;
   email: string;
+  logo_url?: string;
 }) {
   const { userId } = await auth();
   if (!userId) throw new Error("Not authenticated");
@@ -36,10 +37,11 @@ export async function createCompany(formData: {
     .from("management_companies")
     .insert({
       name: parsed.data.name,
-      abn: parsed.data.abn,
+      abn: parsed.data.abn || null,
       address: parsed.data.address,
       phone: parsed.data.phone,
       email: parsed.data.email,
+      logo_url: parsed.data.logo_url || null,
     })
     .select("id")
     .single();
@@ -76,9 +78,8 @@ export async function createSubdivision(formData: {
   const { userId } = await auth();
   if (!userId) throw new Error("Not authenticated");
 
-  const parsed = subdivisionSchema.safeParse(formData);
-  if (!parsed.success) {
-    return { error: parsed.error.issues[0]?.message ?? "Invalid data" };
+  if (!formData.plan_number || !formData.name || !formData.address || formData.total_lots < 2) {
+    return { error: "All fields are required. Minimum 2 lots." };
   }
 
   const profile = await getProfileId(userId);
@@ -93,11 +94,11 @@ export async function createSubdivision(formData: {
     .from("subdivisions")
     .insert({
       management_company_id: profile.management_company_id,
-      name: parsed.data.name,
-      plan_number: parsed.data.plan_number,
-      address: parsed.data.address,
-      total_lots: parsed.data.total_lots,
-      state: parsed.data.state,
+      name: formData.name,
+      plan_number: formData.plan_number,
+      address: formData.address,
+      total_lots: formData.total_lots,
+      state: formData.state,
       created_by: profile.id,
     })
     .select("id")
@@ -109,7 +110,7 @@ export async function createSubdivision(formData: {
   }
 
   // Create lots
-  const lots = Array.from({ length: parsed.data.total_lots }, (_, i) => ({
+  const lots = Array.from({ length: formData.total_lots }, (_, i) => ({
     subdivision_id: subdivision.id,
     lot_number: i + 1,
     lot_entitlement: 0,

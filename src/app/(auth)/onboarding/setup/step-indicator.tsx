@@ -24,7 +24,7 @@ export function StepIndicator({ currentStep }: { currentStep: number }) {
                   ? "bg-[hsl(160,100%,37%)] text-white"
                   : step.number === currentStep
                     ? "bg-primary text-white"
-                    : "bg-muted text-muted-foreground"
+                    : "border-2 border-dashed border-border bg-background text-muted-foreground"
               )}
             >
               {step.number < currentStep ? (
@@ -34,12 +34,14 @@ export function StepIndicator({ currentStep }: { currentStep: number }) {
               )}
             </div>
 
-            {/* Connector line */}
+            {/* Connector line — dotted for upcoming, solid for completed */}
             {i < steps.length - 1 && (
               <div
                 className={cn(
-                  "mx-2 h-0.5 flex-1",
-                  step.number < currentStep ? "bg-[hsl(160,100%,37%)]" : "bg-muted"
+                  "mx-2 flex-1 border-t-2",
+                  step.number < currentStep
+                    ? "border-solid border-[hsl(160,100%,37%)]"
+                    : "border-dashed border-border"
                 )}
               />
             )}
@@ -56,7 +58,9 @@ export function StepIndicator({ currentStep }: { currentStep: number }) {
               "text-xs",
               step.number === currentStep
                 ? "font-medium text-foreground"
-                : "text-muted-foreground"
+                : step.number < currentStep
+                  ? "font-medium text-[hsl(160,100%,37%)]"
+                  : "text-muted-foreground"
             )}
           >
             {step.label}

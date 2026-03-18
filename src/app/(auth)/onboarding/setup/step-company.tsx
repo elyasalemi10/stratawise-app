@@ -9,9 +9,14 @@ import { createCompany } from "./actions";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { Spinner } from "@/components/ui/spinner";
+import { PhoneInput } from "@/components/shared/phone-input";
+import { LogoUpload } from "@/components/shared/logo-upload";
 
 export function StepCompany({ onNext }: { onNext: () => void }) {
   const [pending, setPending] = useState(false);
+  const [logoUrl, setLogoUrl] = useState("");
+  const [phone, setPhone] = useState("+61 ");
 
   const {
     register,
@@ -24,7 +29,11 @@ export function StepCompany({ onNext }: { onNext: () => void }) {
 
   async function onSubmit(data: CompanyFormValues) {
     setPending(true);
-    const result = await createCompany(data);
+    const result = await createCompany({
+      ...data,
+      phone,
+      logo_url: logoUrl || undefined,
+    });
     setPending(false);
 
     if (result.error) {
@@ -47,6 +56,11 @@ export function StepCompany({ onNext }: { onNext: () => void }) {
 
       <form onSubmit={handleSubmit(onSubmit)} className="space-y-4">
         <div className="space-y-1.5">
+          <Label>Company logo</Label>
+          <LogoUpload value={logoUrl} onChange={setLogoUrl} />
+        </div>
+
+        <div className="space-y-1.5">
           <Label htmlFor="name">
             Company name <span className="text-destructive">*</span>
           </Label>
@@ -62,18 +76,12 @@ export function StepCompany({ onNext }: { onNext: () => void }) {
         </div>
 
         <div className="space-y-1.5">
-          <Label htmlFor="abn">
-            ABN <span className="text-destructive">*</span>
-          </Label>
+          <Label htmlFor="abn">ABN</Label>
           <Input
             id="abn"
             placeholder="12 345 678 901"
-            aria-invalid={!!errors.abn}
             {...register("abn")}
           />
-          {errors.abn && (
-            <p className="text-xs text-destructive mt-1">{errors.abn.message}</p>
-          )}
         </div>
 
         <div className="space-y-1.5">
@@ -95,11 +103,11 @@ export function StepCompany({ onNext }: { onNext: () => void }) {
           <Label htmlFor="phone">
             Phone <span className="text-destructive">*</span>
           </Label>
-          <Input
+          <PhoneInput
             id="phone"
-            placeholder="03 1234 5678"
-            aria-invalid={!!errors.phone}
-            {...register("phone")}
+            value={phone}
+            onChange={setPhone}
+            error={!!errors.phone}
           />
           {errors.phone && (
             <p className="text-xs text-destructive mt-1">{errors.phone.message}</p>
@@ -124,7 +132,7 @@ export function StepCompany({ onNext }: { onNext: () => void }) {
 
         <div className="flex justify-end pt-2">
           <Button type="submit" disabled={pending}>
-            {pending ? "Creating..." : "Continue"}
+            {pending ? <><Spinner className="mr-2" /> Continue</> : "Continue"}
           </Button>
         </div>
       </form>

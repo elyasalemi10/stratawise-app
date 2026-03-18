@@ -9,6 +9,8 @@ import { createSubdivision } from "./actions";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { Spinner } from "@/components/ui/spinner";
+import { SuburbSelect } from "@/components/shared/suburb-select";
 
 export function StepSubdivision({
   onNext,
@@ -18,10 +20,12 @@ export function StepSubdivision({
   onBack: () => void;
 }) {
   const [pending, setPending] = useState(false);
+  const [suburb, setSuburb] = useState("");
 
   const {
     register,
     handleSubmit,
+    setValue,
     formState: { errors },
   } = useForm<SubdivisionFormValues>({
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -31,7 +35,14 @@ export function StepSubdivision({
 
   async function onSubmit(data: SubdivisionFormValues) {
     setPending(true);
-    const result = await createSubdivision(data);
+    const address = `${data.street}, ${suburb}, VIC`;
+    const result = await createSubdivision({
+      plan_number: data.plan_number,
+      name: data.name,
+      address,
+      total_lots: data.total_lots,
+      state: data.state,
+    });
     setPending(false);
 
     if (result.error) {
@@ -84,17 +95,35 @@ export function StepSubdivision({
         </div>
 
         <div className="space-y-1.5">
-          <Label htmlFor="address">
-            Address <span className="text-destructive">*</span>
+          <Label htmlFor="street">
+            Street address <span className="text-destructive">*</span>
           </Label>
           <Input
-            id="address"
-            placeholder="1-12/45 Smith Street, Richmond VIC 3121"
-            aria-invalid={!!errors.address}
-            {...register("address")}
+            id="street"
+            placeholder="1-12/45 Smith Street"
+            aria-invalid={!!errors.street}
+            {...register("street")}
           />
-          {errors.address && (
-            <p className="text-xs text-destructive mt-1">{errors.address.message}</p>
+          {errors.street && (
+            <p className="text-xs text-destructive mt-1">{errors.street.message}</p>
+          )}
+        </div>
+
+        <div className="space-y-1.5">
+          <Label htmlFor="suburb">
+            Suburb <span className="text-destructive">*</span>
+          </Label>
+          <SuburbSelect
+            id="suburb"
+            value={suburb}
+            onChange={(val) => {
+              setSuburb(val);
+              setValue("suburb", val);
+            }}
+            error={!!errors.suburb}
+          />
+          {errors.suburb && (
+            <p className="text-xs text-destructive mt-1">{errors.suburb.message}</p>
           )}
         </div>
 
@@ -104,11 +133,20 @@ export function StepSubdivision({
           </Label>
           <Input
             id="total_lots"
-            type="number"
-            min={2}
+            inputMode="numeric"
             placeholder="12"
             aria-invalid={!!errors.total_lots}
             {...register("total_lots")}
+            onKeyDown={(e) => {
+              if (["e", "E", "+", "-", "."].includes(e.key)) {
+                e.preventDefault();
+              }
+            }}
+            onChange={(e) => {
+              const val = e.target.value.replace(/[^0-9]/g, "");
+              e.target.value = val;
+              register("total_lots").onChange(e);
+            }}
           />
           {errors.total_lots && (
             <p className="text-xs text-destructive mt-1">{errors.total_lots.message}</p>
@@ -132,9 +170,14 @@ export function StepSubdivision({
           <Button type="button" variant="ghost" onClick={onBack}>
             &larr; Back
           </Button>
-          <Button type="submit" disabled={pending}>
-            {pending ? "Creating..." : "Continue"}
-          </Button>
+          <div className="flex items-center gap-2">
+            <Button type="button" variant="ghost" onClick={onNext}>
+              Skip for now
+            </Button>
+            <Button type="submit" disabled={pending}>
+              {pending ? <><Spinner className="mr-2" /> Continue</> : "Continue"}
+            </Button>
+          </div>
         </div>
       </form>
     </div>

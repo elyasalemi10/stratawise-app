@@ -7,6 +7,7 @@ import { sendInvitations } from "./actions";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { Spinner } from "@/components/ui/spinner";
 
 interface InviteRow {
   email: string;
@@ -120,7 +121,7 @@ export function StepInvite({
             Skip for now
           </Button>
           <Button onClick={handleSend} disabled={pending}>
-            {pending ? "Sending..." : "Send invitations"}
+            {pending ? <><Spinner className="mr-2" /> Send</> : "Send invitations"}
           </Button>
         </div>
       </div>
