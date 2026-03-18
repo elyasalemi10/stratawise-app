@@ -156,6 +156,50 @@ async function seedNotificationPreferences(supabase: any, profileId: string) {
     .upsert(preferences, { onConflict: "profile_id,notification_type,channel" });
 }
 
+// ─── requireSubdivisionAccess ───────────────────────────────────
+
+/**
+ * Validates the current user has access to a specific subdivision.
+ * Returns the profile if authorized, throws if not.
+ */
+export async function requireSubdivisionAccess(
+  subdivisionId: string
+): Promise<Profile> {
+  const profile = await getCurrentProfile();
+  if (!profile) throw new Error("Not authenticated");
+
+  // super_admin can access everything
+  if (profile.role === "super_admin") return profile;
+
+  const supabase = createServerClient();
+
+  if (profile.role === "strata_manager") {
+    // Must belong to the same management company
+    const { data: subdivision } = await supabase
+      .from("subdivisions")
+      .select("management_company_id")
+      .eq("id", subdivisionId)
+      .single();
+
+    if (!subdivision || subdivision.management_company_id !== profile.management_company_id) {
+      throw new Error("Access denied");
+    }
+    return profile;
+  }
+
+  // lot_owner — must be a member
+  const { data: membership } = await supabase
+    .from("subdivision_members")
+    .select("id")
+    .eq("subdivision_id", subdivisionId)
+    .eq("profile_id", profile.id)
+    .is("left_at", null)
+    .single();
+
+  if (!membership) throw new Error("Access denied");
+  return profile;
+}
+
 // ─── getOnboardingRedirect ──────────────────────────────────────
 
 /**
