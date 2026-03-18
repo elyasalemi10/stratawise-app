@@ -3,7 +3,6 @@
 import { usePathname } from "next/navigation";
 import { Bell } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import { MobileSidebar } from "./mobile-sidebar";
 
 const routeLabels: Record<string, string> = {
   "/dashboard": "Dashboard",
@@ -32,17 +31,9 @@ export function Header() {
   const breadcrumbs = getBreadcrumbs(pathname);
 
   return (
-    <header className="flex h-14 items-center border-b border-border bg-card px-6">
-      {/* Mobile: hamburger */}
-      <MobileSidebar />
-
-      {/* Mobile: centered title */}
-      <span className="flex-1 text-center text-sm font-semibold text-foreground lg:hidden">
-        MSM
-      </span>
-
-      {/* Desktop: breadcrumbs */}
-      <nav className="hidden lg:flex items-center text-sm flex-1">
+    <div className="flex items-center justify-between flex-1">
+      {/* Breadcrumbs */}
+      <nav className="flex items-center text-sm">
         {breadcrumbs.map((crumb, i) => (
           <span key={i} className="flex items-center">
             {i > 0 && <span className="mx-2 text-muted-foreground">/</span>}
@@ -59,14 +50,12 @@ export function Header() {
         ))}
       </nav>
 
-      {/* Right side: notification bell */}
-      <div className="flex items-center gap-2">
-        <Button variant="ghost" size="icon" className="relative text-muted-foreground">
-          <Bell className="h-4 w-4" />
-          <span className="absolute top-1.5 right-1.5 h-2 w-2 rounded-full bg-destructive" />
-          <span className="sr-only">Notifications</span>
-        </Button>
-      </div>
-    </header>
+      {/* Notification bell */}
+      <Button variant="ghost" size="icon" className="relative text-muted-foreground">
+        <Bell className="h-4 w-4" />
+        <span className="absolute top-1.5 right-1.5 h-2 w-2 rounded-full bg-destructive" />
+        <span className="sr-only">Notifications</span>
+      </Button>
+    </div>
   );
 }
