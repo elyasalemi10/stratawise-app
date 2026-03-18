@@ -16,6 +16,70 @@ const NOTIFICATION_TYPES = [
   "document_uploaded",
 ];
 
+// ─── Profile type ───────────────────────────────────────────────
+
+export interface Profile {
+  id: string;
+  clerk_id: string;
+  email: string;
+  first_name: string | null;
+  last_name: string | null;
+  phone: string | null;
+  postal_address: string | null;
+  avatar_url: string | null;
+  role: "super_admin" | "strata_manager" | "lot_owner";
+  management_company_id: string | null;
+  status: "active" | "deactivated" | "anonymised";
+  created_at: string;
+  updated_at: string;
+}
+
+// ─── getCurrentProfile ──────────────────────────────────────────
+
+/**
+ * Fetches the current user's full profile from Supabase.
+ * Returns null if not authenticated or profile doesn't exist.
+ */
+export async function getCurrentProfile(): Promise<Profile | null> {
+  const { userId } = await auth();
+  if (!userId) return null;
+
+  const supabase = createServerClient();
+
+  const { data } = await supabase
+    .from("profiles")
+    .select("*")
+    .eq("clerk_id", userId)
+    .single();
+
+  return (data as Profile) ?? null;
+}
+
+// ─── requireRole ────────────────────────────────────────────────
+
+/**
+ * Ensures the current user has one of the allowed roles.
+ * Throws an error if not authenticated or role doesn't match.
+ * Returns the profile for convenience.
+ */
+export async function requireRole(
+  allowedRoles: Array<"super_admin" | "strata_manager" | "lot_owner">
+): Promise<Profile> {
+  const profile = await getCurrentProfile();
+
+  if (!profile) {
+    throw new Error("Not authenticated");
+  }
+
+  if (!allowedRoles.includes(profile.role)) {
+    throw new Error(`Access denied. Required role: ${allowedRoles.join(" or ")}`);
+  }
+
+  return profile;
+}
+
+// ─── ensureProfile ──────────────────────────────────────────────
+
 /**
  * Ensures a profile row exists for the current Clerk user.
  * Creates one on-the-fly if missing (just-in-time provisioning).
@@ -36,7 +100,6 @@ export async function ensureProfile(): Promise<string | null> {
     .single();
 
   if (existing) {
-    // Ensure notification preferences exist
     await seedNotificationPreferences(supabase, existing.id);
     return existing.id;
   }
@@ -70,13 +133,10 @@ export async function ensureProfile(): Promise<string | null> {
   return created?.id ?? null;
 }
 
-/**
- * Seeds default notification preferences if none exist for the profile.
- * Email + in_app enabled, sms + voice disabled.
- */
+// ─── seedNotificationPreferences ────────────────────────────────
+
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 async function seedNotificationPreferences(supabase: any, profileId: string) {
-  // Check if any prefs already exist
   const { count } = await supabase
     .from("notification_preferences")
     .select("id", { count: "exact", head: true })
@@ -96,10 +156,11 @@ async function seedNotificationPreferences(supabase: any, profileId: string) {
     .upsert(preferences, { onConflict: "profile_id,notification_type,channel" });
 }
 
+// ─── getOnboardingRedirect ──────────────────────────────────────
+
 /**
  * Check if the current user has completed onboarding.
- * Since consent is now part of Step 1, we only check for a management company.
- * Returns the redirect path if onboarding is incomplete, or null if complete.
+ * Returns the redirect path if incomplete, or null if complete.
  */
 export async function getOnboardingRedirect(): Promise<string | null> {
   const { userId } = await auth();
@@ -113,12 +174,8 @@ export async function getOnboardingRedirect(): Promise<string | null> {
     .eq("clerk_id", userId)
     .single();
 
-  // No profile — send to onboarding to create one
   if (!profile) return "/onboarding";
-
-  // No company — send to setup wizard
   if (!profile.management_company_id) return "/onboarding/setup";
 
-  // All good
   return null;
 }

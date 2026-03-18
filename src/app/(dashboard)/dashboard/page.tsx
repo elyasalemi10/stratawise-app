@@ -1,18 +1,22 @@
-import { auth, currentUser } from "@clerk/nextjs/server";
 import { redirect } from "next/navigation";
 import Link from "next/link";
 import { Building2, Plus } from "lucide-react";
+import { getCurrentProfile } from "@/lib/auth";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 
+const roleBadge: Record<string, { label: string; variant: "info" | "success" | "neutral" }> = {
+  super_admin: { label: "Super admin", variant: "info" },
+  strata_manager: { label: "Strata manager", variant: "success" },
+  lot_owner: { label: "Lot owner", variant: "neutral" },
+};
+
 export default async function DashboardPage() {
-  const { userId } = await auth();
-  if (!userId) redirect("/sign-in");
+  const profile = await getCurrentProfile();
+  if (!profile) redirect("/sign-in");
 
-  const user = await currentUser();
-
-  const firstName = user?.firstName ?? "there";
-  const email = user?.primaryEmailAddress?.emailAddress ?? "";
+  const firstName = profile.first_name ?? "there";
+  const badge = roleBadge[profile.role] ?? roleBadge.lot_owner;
 
   return (
     <div className="space-y-6">
@@ -23,9 +27,9 @@ export default async function DashboardPage() {
             <p className="text-lg font-medium text-foreground">
               Welcome back, {firstName}
             </p>
-            <p className="text-sm text-muted-foreground mt-1">{email}</p>
+            <p className="text-sm text-muted-foreground mt-1">{profile.email}</p>
           </div>
-          <Badge variant="neutral">Role: User</Badge>
+          <Badge variant={badge.variant}>{badge.label}</Badge>
         </div>
       </div>
 
