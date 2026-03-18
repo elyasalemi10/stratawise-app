@@ -89,10 +89,14 @@ export function AppSidebar() {
   const [loaded, setLoaded] = useState(false);
 
   useEffect(() => {
-    getSidebarProfile().then((data) => {
-      setProfile(data);
-      setLoaded(true);
-    });
+    getSidebarProfile()
+      .then((data) => {
+        setProfile(data);
+        setLoaded(true);
+      })
+      .catch(() => {
+        setLoaded(true);
+      });
   }, []);
 
   return (
