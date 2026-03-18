@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from "react";
 import Link from "next/link";
-import { usePathname } from "next/navigation";
+import { usePathname, useRouter } from "next/navigation";
 import { useClerk } from "@clerk/nextjs";
 import {
   LayoutDashboard,
@@ -12,7 +12,6 @@ import {
   Settings,
   LogOut,
   ChevronsUpDown,
-  Check,
   PanelLeft,
 } from "lucide-react";
 
@@ -84,6 +83,7 @@ function SidebarToggle() {
 
 export function AppSidebar() {
   const pathname = usePathname();
+  const router = useRouter();
   const { signOut } = useClerk();
   const [profile, setProfile] = useState<SidebarProfile | null>(null);
   const [loaded, setLoaded] = useState(false);
@@ -96,31 +96,27 @@ export function AppSidebar() {
   }, []);
 
   return (
-    <Sidebar>
+    <Sidebar collapsible="icon">
       {/* Subdivision switcher */}
-      <SidebarHeader className="px-2 py-2">
-        <SidebarMenu>
-          <SidebarMenuItem>
-            <DropdownMenu>
-              <DropdownMenuTrigger className="w-full rounded-md outline-none focus-visible:ring-2 focus-visible:ring-primary/20">
-                <div className="flex items-center gap-2 rounded-md border border-border px-3 py-2 text-left hover:bg-muted transition-colors">
-                  <Building2 className="h-4 w-4 text-muted-foreground shrink-0" />
-                  <span className="flex-1 text-sm truncate text-foreground">
-                    No subdivision selected
-                  </span>
-                  <ChevronsUpDown className="h-3.5 w-3.5 text-muted-foreground shrink-0" />
-                </div>
-              </DropdownMenuTrigger>
-              <DropdownMenuContent align="start" className="w-56">
-                <DropdownMenuLabel>Subdivisions</DropdownMenuLabel>
-                <DropdownMenuSeparator />
-                <DropdownMenuItem>
-                  <span className="text-muted-foreground">No subdivisions yet</span>
-                </DropdownMenuItem>
-              </DropdownMenuContent>
-            </DropdownMenu>
-          </SidebarMenuItem>
-        </SidebarMenu>
+      <SidebarHeader className="p-2">
+        <DropdownMenu>
+          <DropdownMenuTrigger>
+            <div className="flex w-full items-center gap-2 rounded-md border border-border bg-background px-3 py-2 text-left text-sm hover:bg-muted transition-colors cursor-pointer">
+              <Building2 className="h-4 w-4 text-muted-foreground shrink-0" />
+              <span className="flex-1 truncate text-foreground group-data-[collapsible=icon]:hidden">
+                No subdivision selected
+              </span>
+              <ChevronsUpDown className="h-3.5 w-3.5 text-muted-foreground shrink-0 group-data-[collapsible=icon]:hidden" />
+            </div>
+          </DropdownMenuTrigger>
+          <DropdownMenuContent align="start" side="bottom" className="w-56">
+            <DropdownMenuLabel>Subdivisions</DropdownMenuLabel>
+            <DropdownMenuSeparator />
+            <DropdownMenuItem disabled>
+              No subdivisions yet
+            </DropdownMenuItem>
+          </DropdownMenuContent>
+        </DropdownMenu>
       </SidebarHeader>
 
       <SidebarSeparator />
@@ -163,12 +159,12 @@ export function AppSidebar() {
         <SidebarMenu>
           <SidebarMenuItem>
             <DropdownMenu>
-              <DropdownMenuTrigger className="w-full rounded-md outline-none focus-visible:ring-2 focus-visible:ring-primary/20">
-                <div className="flex items-center gap-2 px-1 py-1.5 text-left">
+              <DropdownMenuTrigger>
+                <SidebarMenuButton size="lg" className="w-full">
                   {!loaded ? (
                     <>
-                      <Skeleton className="h-8 w-8 rounded-full" />
-                      <div className="flex-1 min-w-0">
+                      <Skeleton className="h-8 w-8 rounded-full shrink-0" />
+                      <div className="flex-1 min-w-0 group-data-[collapsible=icon]:hidden">
                         <Skeleton className="h-3.5 w-24" />
                         <Skeleton className="h-3 w-32 mt-1" />
                       </div>
@@ -179,28 +175,42 @@ export function AppSidebar() {
                         src={profile?.userAvatarUrl}
                         initials={profile?.userInitials ?? "?"}
                       />
-                      <div className="flex-1 min-w-0 text-left">
-                        <p className="text-sm font-medium text-foreground truncate">
+                      <div className="grid flex-1 text-left text-sm leading-tight group-data-[collapsible=icon]:hidden">
+                        <span className="truncate font-medium">
                           {profile?.companyName ?? "My Company"}
-                        </p>
-                        <p className="text-xs text-muted-foreground truncate">
+                        </span>
+                        <span className="truncate text-xs text-muted-foreground">
                           {profile?.userEmail ?? ""}
-                        </p>
+                        </span>
                       </div>
-                      <ChevronsUpDown className="h-4 w-4 text-muted-foreground shrink-0" />
+                      <ChevronsUpDown className="ml-auto h-4 w-4 text-muted-foreground group-data-[collapsible=icon]:hidden" />
                     </>
                   )}
-                </div>
+                </SidebarMenuButton>
               </DropdownMenuTrigger>
-              <DropdownMenuContent side="top" align="start" className="w-56">
-                <DropdownMenuLabel className="font-normal">
-                  <div className="flex flex-col">
-                    <span className="text-sm font-medium">{profile?.companyName ?? "My Company"}</span>
-                    <span className="text-xs text-muted-foreground">{profile?.userEmail ?? ""}</span>
+              <DropdownMenuContent
+                side="top"
+                align="end"
+                className="w-56 rounded-lg"
+              >
+                <DropdownMenuLabel className="p-0 font-normal">
+                  <div className="flex items-center gap-2 px-2 py-1.5 text-left text-sm">
+                    <UserAvatar
+                      src={profile?.userAvatarUrl}
+                      initials={profile?.userInitials ?? "?"}
+                    />
+                    <div className="grid flex-1 text-left text-sm leading-tight">
+                      <span className="truncate font-medium">
+                        {profile?.companyName ?? "My Company"}
+                      </span>
+                      <span className="truncate text-xs text-muted-foreground">
+                        {profile?.userEmail ?? ""}
+                      </span>
+                    </div>
                   </div>
                 </DropdownMenuLabel>
                 <DropdownMenuSeparator />
-                <DropdownMenuItem onClick={() => window.location.href = "/settings"}>
+                <DropdownMenuItem onClick={() => router.push("/settings")}>
                   <Settings className="mr-2 h-4 w-4" />
                   Settings
                 </DropdownMenuItem>
