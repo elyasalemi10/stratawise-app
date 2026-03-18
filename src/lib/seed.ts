@@ -47,8 +47,14 @@ async function seed() {
     console.log(`  ${i + 1}. ${p.email} (${p.first_name ?? ""} ${p.last_name ?? ""}) — role: ${p.role}`);
   });
 
-  // Promote the first profile to super_admin
-  const target = profiles[0];
+  // Promote specific user to super_admin
+  const TARGET_EMAIL = "elyasalemi10@gmail.com";
+  const target = profiles.find((p) => p.email === TARGET_EMAIL);
+
+  if (!target) {
+    console.error(`\nProfile with email "${TARGET_EMAIL}" not found.`);
+    process.exit(1);
+  }
 
   if (target.role === "super_admin") {
     console.log(`\n${target.email} is already super_admin. Nothing to do.`);
