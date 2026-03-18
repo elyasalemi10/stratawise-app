@@ -81,6 +81,11 @@ function SidebarToggle() {
   );
 }
 
+// Styled like SidebarMenuButton size="lg" but a plain button to avoid
+// base-ui useRender conflicts when used inside DropdownMenuTrigger
+const triggerButtonClass =
+  "flex w-full items-center gap-2 rounded-md p-2 text-left text-sm outline-none transition-colors hover:bg-sidebar-accent hover:text-sidebar-accent-foreground focus-visible:ring-2 focus-visible:ring-sidebar-ring";
+
 export function AppSidebar() {
   const pathname = usePathname();
   const router = useRouter();
@@ -103,43 +108,34 @@ export function AppSidebar() {
     <Sidebar collapsible="icon">
       {/* Subdivision switcher */}
       <SidebarHeader className="p-2">
-        <SidebarMenu>
-          <SidebarMenuItem>
-            <DropdownMenu>
-              <DropdownMenuTrigger
-                render={
-                  <SidebarMenuButton
-                    size="lg"
-                    className="data-[state=open]:bg-sidebar-accent data-[state=open]:text-sidebar-accent-foreground"
-                  />
-                }
-              >
-                <div className="flex aspect-square size-8 items-center justify-center rounded-lg bg-primary/10 text-primary">
-                  <Building2 className="size-4" />
-                </div>
-                <div className="grid flex-1 text-left text-sm leading-tight">
-                  <span className="truncate font-medium">Subdivisions</span>
-                  <span className="truncate text-xs text-muted-foreground">
-                    No subdivision selected
-                  </span>
-                </div>
-                <ChevronsUpDown className="ml-auto size-4" />
-              </DropdownMenuTrigger>
-              <DropdownMenuContent
-                align="start"
-                side="bottom"
-                sideOffset={4}
-                className="w-[--radix-dropdown-menu-trigger-width] min-w-56 rounded-lg"
-              >
-                <DropdownMenuLabel>Subdivisions</DropdownMenuLabel>
-                <DropdownMenuSeparator />
-                <DropdownMenuItem disabled>
-                  No subdivisions yet
-                </DropdownMenuItem>
-              </DropdownMenuContent>
-            </DropdownMenu>
-          </SidebarMenuItem>
-        </SidebarMenu>
+        <DropdownMenu>
+          <DropdownMenuTrigger>
+            <button type="button" className={triggerButtonClass}>
+              <div className="flex aspect-square size-8 items-center justify-center rounded-lg bg-primary/10 text-primary shrink-0">
+                <Building2 className="size-4" />
+              </div>
+              <div className="grid flex-1 text-left text-sm leading-tight group-data-[collapsible=icon]:hidden">
+                <span className="truncate font-medium">Subdivisions</span>
+                <span className="truncate text-xs text-muted-foreground">
+                  No subdivision selected
+                </span>
+              </div>
+              <ChevronsUpDown className="ml-auto size-4 text-muted-foreground group-data-[collapsible=icon]:hidden" />
+            </button>
+          </DropdownMenuTrigger>
+          <DropdownMenuContent
+            align="start"
+            side="bottom"
+            sideOffset={4}
+            className="min-w-56 rounded-lg"
+          >
+            <DropdownMenuLabel>Subdivisions</DropdownMenuLabel>
+            <DropdownMenuSeparator />
+            <DropdownMenuItem disabled>
+              No subdivisions yet
+            </DropdownMenuItem>
+          </DropdownMenuContent>
+        </DropdownMenu>
       </SidebarHeader>
 
       <SidebarSeparator />
@@ -178,80 +174,71 @@ export function AppSidebar() {
       </SidebarContent>
 
       {/* Footer — User profile */}
-      <SidebarFooter>
-        <SidebarMenu>
-          <SidebarMenuItem>
-            <DropdownMenu>
-              <DropdownMenuTrigger
-                render={
-                  <SidebarMenuButton
-                    size="lg"
-                    className="data-[state=open]:bg-sidebar-accent data-[state=open]:text-sidebar-accent-foreground"
-                  />
-                }
-              >
-                {!loaded ? (
-                  <>
-                    <Skeleton className="h-8 w-8 rounded-full shrink-0" />
-                    <div className="grid flex-1 text-left text-sm leading-tight">
-                      <Skeleton className="h-3.5 w-24" />
-                      <Skeleton className="h-3 w-32 mt-1" />
-                    </div>
-                  </>
-                ) : (
-                  <>
-                    <UserAvatar
-                      src={profile?.userAvatarUrl}
-                      initials={profile?.userInitials ?? "?"}
-                    />
-                    <div className="grid flex-1 text-left text-sm leading-tight">
-                      <span className="truncate font-medium">
-                        {profile?.companyName ?? "My Company"}
-                      </span>
-                      <span className="truncate text-xs text-muted-foreground">
-                        {profile?.userEmail ?? ""}
-                      </span>
-                    </div>
-                    <ChevronsUpDown className="ml-auto size-4" />
-                  </>
-                )}
-              </DropdownMenuTrigger>
-              <DropdownMenuContent
-                side="top"
-                align="end"
-                sideOffset={4}
-                className="w-[--radix-dropdown-menu-trigger-width] min-w-56 rounded-lg"
-              >
-                <DropdownMenuLabel className="p-0 font-normal">
-                  <div className="flex items-center gap-2 px-1 py-1.5 text-left text-sm">
-                    <UserAvatar
-                      src={profile?.userAvatarUrl}
-                      initials={profile?.userInitials ?? "?"}
-                    />
-                    <div className="grid flex-1 text-left text-sm leading-tight">
-                      <span className="truncate font-medium">
-                        {profile?.companyName ?? "My Company"}
-                      </span>
-                      <span className="truncate text-xs text-muted-foreground">
-                        {profile?.userEmail ?? ""}
-                      </span>
-                    </div>
+      <SidebarFooter className="p-2">
+        <DropdownMenu>
+          <DropdownMenuTrigger>
+            <button type="button" className={triggerButtonClass}>
+              {!loaded ? (
+                <>
+                  <Skeleton className="h-8 w-8 rounded-full shrink-0" />
+                  <div className="grid flex-1 text-left text-sm leading-tight group-data-[collapsible=icon]:hidden">
+                    <Skeleton className="h-3.5 w-24" />
+                    <Skeleton className="h-3 w-32 mt-1" />
                   </div>
-                </DropdownMenuLabel>
-                <DropdownMenuSeparator />
-                <DropdownMenuItem onClick={() => router.push("/settings")}>
-                  <Settings className="mr-2 h-4 w-4" />
-                  Settings
-                </DropdownMenuItem>
-                <DropdownMenuSeparator />
-                <DropdownMenuItem onClick={() => signOut({ redirectUrl: "/" })}>
-                  <LogOut className="mr-2 h-4 w-4" />
-                  Sign out
-                </DropdownMenuItem>
-              </DropdownMenuContent>
-            </DropdownMenu>
-          </SidebarMenuItem>
-        </SidebarMenu>
+                </>
+              ) : (
+                <>
+                  <UserAvatar
+                    src={profile?.userAvatarUrl}
+                    initials={profile?.userInitials ?? "?"}
+                  />
+                  <div className="grid flex-1 text-left text-sm leading-tight group-data-[collapsible=icon]:hidden">
+                    <span className="truncate font-medium">
+                      {profile?.companyName ?? "My Company"}
+                    </span>
+                    <span className="truncate text-xs text-muted-foreground">
+                      {profile?.userEmail ?? ""}
+                    </span>
+                  </div>
+                  <ChevronsUpDown className="ml-auto size-4 text-muted-foreground group-data-[collapsible=icon]:hidden" />
+                </>
+              )}
+            </button>
+          </DropdownMenuTrigger>
+          <DropdownMenuContent
+            side="top"
+            align="end"
+            sideOffset={4}
+            className="min-w-56 rounded-lg"
+          >
+            <DropdownMenuLabel className="p-0 font-normal">
+              <div className="flex items-center gap-2 px-1 py-1.5 text-left text-sm">
+                <UserAvatar
+                  src={profile?.userAvatarUrl}
+                  initials={profile?.userInitials ?? "?"}
+                />
+                <div className="grid flex-1 text-left text-sm leading-tight">
+                  <span className="truncate font-medium">
+                    {profile?.companyName ?? "My Company"}
+                  </span>
+                  <span className="truncate text-xs text-muted-foreground">
+                    {profile?.userEmail ?? ""}
+                  </span>
+                </div>
+              </div>
+            </DropdownMenuLabel>
+            <DropdownMenuSeparator />
+            <DropdownMenuItem onClick={() => router.push("/settings")}>
+              <Settings className="mr-2 h-4 w-4" />
+              Settings
+            </DropdownMenuItem>
+            <DropdownMenuSeparator />
+            <DropdownMenuItem onClick={() => signOut({ redirectUrl: "/" })}>
+              <LogOut className="mr-2 h-4 w-4" />
+              Sign out
+            </DropdownMenuItem>
+          </DropdownMenuContent>
+        </DropdownMenu>
       </SidebarFooter>
     </Sidebar>
   );
