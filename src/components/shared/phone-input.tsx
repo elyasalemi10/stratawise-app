@@ -1,9 +1,17 @@
 "use client";
 
-import { useState, useRef, useEffect } from "react";
-import { ChevronDown } from "lucide-react";
+import { useState, useEffect } from "react";
+import { ChevronDown, Check } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { Input } from "@/components/ui/input";
+import { Button } from "@/components/ui/button";
+import {
+  DropdownMenu,
+  DropdownMenuTrigger,
+  DropdownMenuContent,
+  DropdownMenuItem,
+} from "@/components/ui/dropdown-menu";
+import { ScrollArea } from "@/components/ui/scroll-area";
 
 const countryCodes = [
   { code: "+61", country: "AU", flag: "🇦🇺", label: "Australia" },
@@ -31,14 +39,9 @@ interface PhoneInputProps {
 }
 
 export function PhoneInput({ value, onChange, error, id }: PhoneInputProps) {
-  const [open, setOpen] = useState(false);
-  const [search, setSearch] = useState("");
   const [selectedCode, setSelectedCode] = useState(countryCodes[0]);
   const [localNumber, setLocalNumber] = useState("");
-  const dropdownRef = useRef<HTMLDivElement>(null);
-  const searchRef = useRef<HTMLInputElement>(null);
 
-  // Parse initial value
   useEffect(() => {
     if (value) {
       const found = countryCodes.find((c) => value.startsWith(c.code));
@@ -51,29 +54,8 @@ export function PhoneInput({ value, onChange, error, id }: PhoneInputProps) {
     }
   }, []);
 
-  // Close dropdown on outside click
-  useEffect(() => {
-    function handleClick(e: MouseEvent) {
-      if (dropdownRef.current && !dropdownRef.current.contains(e.target as Node)) {
-        setOpen(false);
-        setSearch("");
-      }
-    }
-    document.addEventListener("mousedown", handleClick);
-    return () => document.removeEventListener("mousedown", handleClick);
-  }, []);
-
-  // Focus search when opened
-  useEffect(() => {
-    if (open && searchRef.current) {
-      searchRef.current.focus();
-    }
-  }, [open]);
-
   function handleSelect(country: typeof countryCodes[0]) {
     setSelectedCode(country);
-    setOpen(false);
-    setSearch("");
     onChange(`${country.code} ${localNumber}`);
   }
 
@@ -82,67 +64,38 @@ export function PhoneInput({ value, onChange, error, id }: PhoneInputProps) {
     onChange(`${selectedCode.code} ${num}`);
   }
 
-  const filtered = countryCodes.filter(
-    (c) =>
-      c.label.toLowerCase().includes(search.toLowerCase()) ||
-      c.code.includes(search) ||
-      c.country.toLowerCase().includes(search.toLowerCase())
-  );
-
   return (
-    <div className="flex gap-0" ref={dropdownRef}>
-      {/* Country code selector */}
-      <div className="relative">
-        <button
-          type="button"
-          onClick={() => setOpen(!open)}
+    <div className="flex gap-0">
+      <DropdownMenu>
+        <DropdownMenuTrigger
           className={cn(
-            "flex h-9 items-center gap-1.5 rounded-l-md border border-r-0 border-border bg-background px-2.5 text-sm transition-colors hover:bg-muted",
+            "flex h-9 items-center gap-1.5 rounded-l-md rounded-r-none border border-r-0 border-border bg-background px-2.5 text-sm transition-colors hover:bg-muted outline-none",
             error && "border-destructive"
           )}
         >
           <span className="text-base leading-none">{selectedCode.flag}</span>
           <span className="text-muted-foreground">{selectedCode.code}</span>
           <ChevronDown className="h-3 w-3 text-muted-foreground" />
-        </button>
+        </DropdownMenuTrigger>
+        <DropdownMenuContent align="start" className="w-64">
+          <ScrollArea className="h-64">
+            {countryCodes.map((country) => (
+              <DropdownMenuItem
+                key={country.code + country.country}
+                onClick={() => handleSelect(country)}
+              >
+                <span className="text-base leading-none mr-2">{country.flag}</span>
+                <span className="flex-1">{country.label}</span>
+                <span className="text-muted-foreground text-sm">{country.code}</span>
+                {selectedCode.code === country.code && (
+                  <Check className="ml-2 h-4 w-4 text-primary" />
+                )}
+              </DropdownMenuItem>
+            ))}
+          </ScrollArea>
+        </DropdownMenuContent>
+      </DropdownMenu>
 
-        {open && (
-          <div className="absolute left-0 top-full z-50 mt-1 w-64 rounded-md border border-border bg-card shadow-lg">
-            <div className="p-2">
-              <input
-                ref={searchRef}
-                type="text"
-                placeholder="Search country..."
-                value={search}
-                onChange={(e) => setSearch(e.target.value)}
-                className="h-8 w-full rounded-md border border-border bg-background px-2.5 text-sm outline-none placeholder:text-muted-foreground focus:border-primary focus:ring-2 focus:ring-primary/20"
-              />
-            </div>
-            <div className="max-h-48 overflow-y-auto">
-              {filtered.map((country) => (
-                <button
-                  key={country.code + country.country}
-                  type="button"
-                  onClick={() => handleSelect(country)}
-                  className={cn(
-                    "flex w-full items-center gap-2.5 px-3 py-2 text-sm hover:bg-muted transition-colors",
-                    selectedCode.code === country.code && "bg-primary/5 text-primary"
-                  )}
-                >
-                  <span className="text-base leading-none">{country.flag}</span>
-                  <span className="flex-1 text-left">{country.label}</span>
-                  <span className="text-muted-foreground">{country.code}</span>
-                </button>
-              ))}
-              {filtered.length === 0 && (
-                <p className="px-3 py-2 text-sm text-muted-foreground">No results</p>
-              )}
-            </div>
-          </div>
-        )}
-      </div>
-
-      {/* Phone number input */}
       <Input
         id={id}
         type="tel"

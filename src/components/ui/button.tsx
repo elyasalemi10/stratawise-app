@@ -19,12 +19,15 @@ const buttonVariants = cva(
         ghost:
           "bg-transparent text-muted-foreground rounded-md hover:bg-muted hover:text-foreground",
         link: "text-primary underline-offset-4 hover:underline",
+        outline:
+          "border border-border bg-background rounded-md hover:bg-muted hover:text-foreground",
       },
       size: {
         default: "h-9 px-4",
         sm: "h-8 px-3 text-xs",
         lg: "h-10 px-5",
         icon: "h-8 w-8",
+        "icon-sm": "h-7 w-7",
       },
     },
     defaultVariants: {

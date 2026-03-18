@@ -140,12 +140,12 @@ export function StepCompany({ onNext }: { onNext: () => void }) {
                 if (checked) setConsentError("");
               }}
             />
-            <label htmlFor="terms" className="text-sm text-foreground leading-snug cursor-pointer">
+            <Label htmlFor="terms" className="text-sm text-foreground leading-snug cursor-pointer font-normal">
               I have read and agree to the{" "}
               <Link href="/legal/terms" target="_blank" className="text-primary hover:underline">
                 Terms of Service
               </Link>
-            </label>
+            </Label>
           </div>
 
           <div className="flex items-start gap-3">
@@ -157,12 +157,12 @@ export function StepCompany({ onNext }: { onNext: () => void }) {
                 if (checked) setConsentError("");
               }}
             />
-            <label htmlFor="privacy" className="text-sm text-foreground leading-snug cursor-pointer">
+            <Label htmlFor="privacy" className="text-sm text-foreground leading-snug cursor-pointer font-normal">
               I have read and agree to the{" "}
               <Link href="/legal/privacy" target="_blank" className="text-primary hover:underline">
                 Privacy Policy
               </Link>
-            </label>
+            </Label>
           </div>
 
           {consentError && (

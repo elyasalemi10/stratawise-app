@@ -1,10 +1,12 @@
 "use client";
 
 import { useState, useRef, useEffect } from "react";
-import { ChevronDown } from "lucide-react";
+import { Check, ChevronDown } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { Input } from "@/components/ui/input";
+import { ScrollArea } from "@/components/ui/scroll-area";
 
-// Top Victorian suburbs/postcodes — comprehensive list
+// Top Victorian suburbs/postcodes
 const VIC_SUBURBS = [
   "Abbotsford 3067","Albert Park 3206","Alphington 3078","Altona 3018","Armadale 3143",
   "Ascot Vale 3032","Ashburton 3147","Ashwood 3147","Balwyn 3103","Balwyn North 3104",
@@ -67,7 +69,6 @@ const VIC_SUBURBS = [
   "West Footscray 3012","West Melbourne 3003","Wheelers Hill 3150",
   "Williamstown 3016","Windsor 3181","Wollert 3750",
   "Wyndham Vale 3024","Yarraville 3013",
-  // Regional centres
   "Ballarat 3350","Bendigo 3550","Geelong 3220","Geelong West 3218",
   "Lara 3212","Leopold 3224","Mildura 3500","Shepparton 3630",
   "Traralgon 3844","Wangaratta 3677","Warrnambool 3280","Wodonga 3690",
@@ -84,7 +85,6 @@ export function SuburbSelect({ value, onChange, error, id }: SuburbSelectProps) 
   const [open, setOpen] = useState(false);
   const [search, setSearch] = useState(value);
   const containerRef = useRef<HTMLDivElement>(null);
-  const inputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
     setSearch(value);
@@ -115,10 +115,8 @@ export function SuburbSelect({ value, onChange, error, id }: SuburbSelectProps) 
   return (
     <div className="relative" ref={containerRef}>
       <div className="relative">
-        <input
-          ref={inputRef}
+        <Input
           id={id}
-          type="text"
           placeholder="Search suburb or postcode..."
           value={search}
           onChange={(e) => {
@@ -127,31 +125,34 @@ export function SuburbSelect({ value, onChange, error, id }: SuburbSelectProps) 
             if (!e.target.value) onChange("");
           }}
           onFocus={() => setOpen(true)}
-          className={cn(
-            "h-9 w-full rounded-md border border-border bg-background px-3 pr-8 text-sm outline-none placeholder:text-muted-foreground focus:border-primary focus:ring-2 focus:ring-primary/20 transition-colors",
-            error && "border-destructive"
-          )}
+          className={cn("pr-8", error && "border-destructive")}
+          autoComplete="off"
         />
         <ChevronDown className="absolute right-2.5 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-muted-foreground pointer-events-none" />
       </div>
 
       {open && filtered.length > 0 && (
-        <div className="absolute left-0 top-full z-50 mt-1 w-full rounded-md border border-border bg-card shadow-lg">
-          <div className="max-h-48 overflow-y-auto">
-            {filtered.map((suburb) => (
-              <button
-                key={suburb}
-                type="button"
-                onClick={() => handleSelect(suburb)}
-                className={cn(
-                  "flex w-full items-center px-3 py-2 text-sm hover:bg-muted transition-colors text-left",
-                  value === suburb && "bg-primary/5 text-primary"
-                )}
-              >
-                {suburb}
-              </button>
-            ))}
-          </div>
+        <div className="absolute left-0 top-full z-50 mt-1 w-full rounded-md border border-border bg-popover shadow-md">
+          <ScrollArea className="h-48">
+            <div className="p-1">
+              {filtered.map((suburb) => (
+                <button
+                  key={suburb}
+                  type="button"
+                  onClick={() => handleSelect(suburb)}
+                  className={cn(
+                    "flex w-full items-center rounded-sm px-2 py-1.5 text-sm transition-colors hover:bg-muted text-left",
+                    value === suburb && "bg-primary/5 text-primary"
+                  )}
+                >
+                  {suburb}
+                  {value === suburb && (
+                    <Check className="ml-auto h-4 w-4 text-primary" />
+                  )}
+                </button>
+              ))}
+            </div>
+          </ScrollArea>
         </div>
       )}
     </div>

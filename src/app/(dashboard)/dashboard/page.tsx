@@ -40,7 +40,7 @@ export default async function DashboardPage() {
           <UserAvatar
             src={profile.avatar_url}
             initials={initials}
-            size="md"
+            size="lg"
           />
           <div className="flex-1 min-w-0">
             <p className="text-lg font-medium text-foreground">
