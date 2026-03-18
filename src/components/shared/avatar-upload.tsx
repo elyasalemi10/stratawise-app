@@ -97,9 +97,6 @@ export function AvatarUpload({ value, onChange, fallbackInitial }: AvatarUploadP
             </button>
           )}
         </div>
-        <p className="text-xs text-muted-foreground mt-0.5">
-          PNG, JPG, or WebP. Max 2MB.
-        </p>
       </div>
 
       <input

@@ -112,9 +112,6 @@ export function LogoUpload({ value, onChange }: LogoUploadProps) {
         }}
       />
 
-      <p className="text-xs text-muted-foreground">
-        PNG, JPG, SVG, or WebP. Max 2MB. Transparent PNG recommended.
-      </p>
     </div>
   );
 }

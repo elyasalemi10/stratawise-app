@@ -12,6 +12,8 @@ import {
   Settings,
   LogOut,
   ChevronsUpDown,
+  Check,
+  PanelLeft,
 } from "lucide-react";
 
 import {
@@ -25,6 +27,8 @@ import {
   SidebarMenu,
   SidebarMenuButton,
   SidebarMenuItem,
+  SidebarSeparator,
+  useSidebar,
 } from "@/components/ui/sidebar";
 import {
   DropdownMenu,
@@ -32,6 +36,7 @@ import {
   DropdownMenuContent,
   DropdownMenuItem,
   DropdownMenuSeparator,
+  DropdownMenuLabel,
 } from "@/components/ui/dropdown-menu";
 import { UserAvatar } from "@/components/shared/user-avatar";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -65,6 +70,18 @@ const navGroups = [
   },
 ];
 
+function SidebarToggle() {
+  const { toggleSidebar } = useSidebar();
+  return (
+    <SidebarMenuItem>
+      <SidebarMenuButton onClick={toggleSidebar}>
+        <PanelLeft />
+        <span>Collapse</span>
+      </SidebarMenuButton>
+    </SidebarMenuItem>
+  );
+}
+
 export function AppSidebar() {
   const pathname = usePathname();
   const { signOut } = useClerk();
@@ -80,21 +97,33 @@ export function AppSidebar() {
 
   return (
     <Sidebar>
-      {/* Header — Logo / Company */}
-      <SidebarHeader className="border-b border-border px-4 py-3">
-        <Link href="/dashboard" className="flex items-center gap-2">
-          {loaded && profile?.companyLogoUrl ? (
-            // eslint-disable-next-line @next/next/no-img-element
-            <img
-              src={profile.companyLogoUrl}
-              alt={profile.companyName ?? "Logo"}
-              className="h-7 max-w-[140px] object-contain"
-            />
-          ) : (
-            <span className="text-lg font-semibold text-foreground">MSM</span>
-          )}
-        </Link>
+      {/* Subdivision switcher */}
+      <SidebarHeader className="px-2 py-2">
+        <SidebarMenu>
+          <SidebarMenuItem>
+            <DropdownMenu>
+              <DropdownMenuTrigger className="w-full rounded-md outline-none focus-visible:ring-2 focus-visible:ring-primary/20">
+                <div className="flex items-center gap-2 rounded-md border border-border px-3 py-2 text-left hover:bg-muted transition-colors">
+                  <Building2 className="h-4 w-4 text-muted-foreground shrink-0" />
+                  <span className="flex-1 text-sm truncate text-foreground">
+                    No subdivision selected
+                  </span>
+                  <ChevronsUpDown className="h-3.5 w-3.5 text-muted-foreground shrink-0" />
+                </div>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="start" className="w-56">
+                <DropdownMenuLabel>Subdivisions</DropdownMenuLabel>
+                <DropdownMenuSeparator />
+                <DropdownMenuItem>
+                  <span className="text-muted-foreground">No subdivisions yet</span>
+                </DropdownMenuItem>
+              </DropdownMenuContent>
+            </DropdownMenu>
+          </SidebarMenuItem>
+        </SidebarMenu>
       </SidebarHeader>
+
+      <SidebarSeparator />
 
       {/* Navigation */}
       <SidebarContent>
@@ -118,15 +147,24 @@ export function AppSidebar() {
             </SidebarGroupContent>
           </SidebarGroup>
         ))}
+
+        {/* Collapse toggle inside sidebar */}
+        <SidebarGroup>
+          <SidebarGroupContent>
+            <SidebarMenu>
+              <SidebarToggle />
+            </SidebarMenu>
+          </SidebarGroupContent>
+        </SidebarGroup>
       </SidebarContent>
 
-      {/* Footer — User */}
+      {/* Footer — User profile card */}
       <SidebarFooter>
         <SidebarMenu>
           <SidebarMenuItem>
             <DropdownMenu>
               <DropdownMenuTrigger className="w-full rounded-md outline-none focus-visible:ring-2 focus-visible:ring-primary/20">
-                <div className="flex items-center gap-2 px-2 py-1.5">
+                <div className="flex items-center gap-2 px-1 py-1.5 text-left">
                   {!loaded ? (
                     <>
                       <Skeleton className="h-8 w-8 rounded-full" />
@@ -155,6 +193,13 @@ export function AppSidebar() {
                 </div>
               </DropdownMenuTrigger>
               <DropdownMenuContent side="top" align="start" className="w-56">
+                <DropdownMenuLabel className="font-normal">
+                  <div className="flex flex-col">
+                    <span className="text-sm font-medium">{profile?.companyName ?? "My Company"}</span>
+                    <span className="text-xs text-muted-foreground">{profile?.userEmail ?? ""}</span>
+                  </div>
+                </DropdownMenuLabel>
+                <DropdownMenuSeparator />
                 <DropdownMenuItem onClick={() => window.location.href = "/settings"}>
                   <Settings className="mr-2 h-4 w-4" />
                   Settings
