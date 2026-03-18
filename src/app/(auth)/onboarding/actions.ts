@@ -4,26 +4,11 @@ import { auth } from "@clerk/nextjs/server";
 import { redirect } from "next/navigation";
 import { headers } from "next/headers";
 import { createServerClient } from "@/lib/supabase";
+import { ensureProfile } from "@/lib/auth";
 import { consentSchema } from "@/lib/validations/onboarding";
 
 const TERMS_VERSION = "1.0";
 const PRIVACY_VERSION = "1.0";
-
-/**
- * Look up the profile UUID from the Clerk user ID.
- * Profiles are synced from Clerk via webhook — the profile must exist
- * before consent can be recorded.
- */
-async function getProfileId(clerkUserId: string): Promise<string | null> {
-  const supabase = createServerClient();
-  const { data } = await supabase
-    .from("profiles")
-    .select("id")
-    .eq("clerk_id", clerkUserId)
-    .single();
-
-  return data?.id ?? null;
-}
 
 export async function recordConsent(formData: FormData) {
   const { userId } = await auth();
@@ -40,9 +25,10 @@ export async function recordConsent(formData: FormData) {
     return { error: "You must accept both the Terms of Service and Privacy Policy." };
   }
 
-  const profileId = await getProfileId(userId);
+  // Ensure profile exists (creates it if missing)
+  const profileId = await ensureProfile();
   if (!profileId) {
-    return { error: "Your profile is still being set up. Please try again in a moment." };
+    return { error: "Failed to set up your profile. Please try again." };
   }
 
   const headersList = await headers();
@@ -77,8 +63,7 @@ export async function recordConsent(formData: FormData) {
   }
 
   // Route based on user state after consent
-  const supabase2 = createServerClient();
-  const { data: profile } = await supabase2
+  const { data: profile } = await supabase
     .from("profiles")
     .select("management_company_id")
     .eq("id", profileId)
@@ -95,7 +80,8 @@ export async function checkExistingConsent(): Promise<boolean> {
   const { userId } = await auth();
   if (!userId) return false;
 
-  const profileId = await getProfileId(userId);
+  // Ensure profile exists before checking consent
+  const profileId = await ensureProfile();
   if (!profileId) return false;
 
   const supabase = createServerClient();
