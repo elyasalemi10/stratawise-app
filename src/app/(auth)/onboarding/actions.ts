@@ -9,6 +9,22 @@ import { consentSchema } from "@/lib/validations/onboarding";
 const TERMS_VERSION = "1.0";
 const PRIVACY_VERSION = "1.0";
 
+/**
+ * Look up the profile UUID from the Clerk user ID.
+ * Profiles are synced from Clerk via webhook — the profile must exist
+ * before consent can be recorded.
+ */
+async function getProfileId(clerkUserId: string): Promise<string | null> {
+  const supabase = createServerClient();
+  const { data } = await supabase
+    .from("profiles")
+    .select("id")
+    .eq("clerk_id", clerkUserId)
+    .single();
+
+  return data?.id ?? null;
+}
+
 export async function recordConsent(formData: FormData) {
   const { userId } = await auth();
   if (!userId) {
@@ -24,6 +40,11 @@ export async function recordConsent(formData: FormData) {
     return { error: "You must accept both the Terms of Service and Privacy Policy." };
   }
 
+  const profileId = await getProfileId(userId);
+  if (!profileId) {
+    return { error: "Your profile is still being set up. Please try again in a moment." };
+  }
+
   const headersList = await headers();
   const ipAddress =
     headersList.get("x-forwarded-for")?.split(",")[0]?.trim() ??
@@ -35,14 +56,14 @@ export async function recordConsent(formData: FormData) {
 
   const { error } = await supabase.from("user_consents").insert([
     {
-      clerk_user_id: userId,
+      profile_id: profileId,
       consent_type: "terms_of_service",
       version: TERMS_VERSION,
       accepted_at: now,
       ip_address: ipAddress,
     },
     {
-      clerk_user_id: userId,
+      profile_id: profileId,
       consent_type: "privacy_policy",
       version: PRIVACY_VERSION,
       accepted_at: now,
@@ -62,12 +83,15 @@ export async function checkExistingConsent(): Promise<boolean> {
   const { userId } = await auth();
   if (!userId) return false;
 
+  const profileId = await getProfileId(userId);
+  if (!profileId) return false;
+
   const supabase = createServerClient();
 
   const { data } = await supabase
     .from("user_consents")
     .select("consent_type")
-    .eq("clerk_user_id", userId)
+    .eq("profile_id", profileId)
     .in("consent_type", ["terms_of_service", "privacy_policy"])
     .in("version", [TERMS_VERSION, PRIVACY_VERSION]);
 
