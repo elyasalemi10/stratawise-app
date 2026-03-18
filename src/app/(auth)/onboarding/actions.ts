@@ -76,6 +76,18 @@ export async function recordConsent(formData: FormData) {
     return { error: "Failed to record consent. Please try again." };
   }
 
+  // Route based on user state after consent
+  const supabase2 = createServerClient();
+  const { data: profile } = await supabase2
+    .from("profiles")
+    .select("management_company_id")
+    .eq("id", profileId)
+    .single();
+
+  if (!profile?.management_company_id) {
+    redirect("/onboarding/setup");
+  }
+
   redirect("/dashboard");
 }
 

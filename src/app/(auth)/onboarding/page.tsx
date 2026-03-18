@@ -1,4 +1,6 @@
 import { redirect } from "next/navigation";
+import { auth } from "@clerk/nextjs/server";
+import { createServerClient } from "@/lib/supabase";
 import { checkExistingConsent } from "./actions";
 import { ConsentForm } from "./consent-form";
 
@@ -8,6 +10,20 @@ export default async function OnboardingPage() {
   const hasConsent = await checkExistingConsent();
 
   if (hasConsent) {
+    // Check user state to decide where to route
+    const { userId } = await auth();
+    if (userId) {
+      const supabase = createServerClient();
+      const { data: profile } = await supabase
+        .from("profiles")
+        .select("management_company_id")
+        .eq("clerk_id", userId)
+        .single();
+
+      if (!profile?.management_company_id) {
+        redirect("/onboarding/setup");
+      }
+    }
     redirect("/dashboard");
   }
 
