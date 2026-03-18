@@ -6,7 +6,6 @@ import { createServerClient } from "@/lib/supabase";
 export interface SidebarProfile {
   companyName: string | null;
   companyLogoUrl: string | null;
-  userName: string | null;
   userEmail: string | null;
   userAvatarUrl: string | null;
   userInitials: string;
@@ -21,7 +20,7 @@ export async function getSidebarProfile(): Promise<SidebarProfile | null> {
 
   const { data: profile } = await supabase
     .from("profiles")
-    .select("first_name, last_name, email, avatar_url, role, management_company_id")
+    .select("email, avatar_url, role, management_company_id")
     .eq("clerk_id", userId)
     .single();
 
@@ -41,18 +40,14 @@ export async function getSidebarProfile(): Promise<SidebarProfile | null> {
     companyLogoUrl = company?.logo_url ?? null;
   }
 
-  const firstName = profile.first_name ?? "";
-  const lastName = profile.last_name ?? "";
-  const userName = [firstName, lastName].filter(Boolean).join(" ") || null;
-  const userInitials = [firstName[0], lastName[0]].filter(Boolean).join("").toUpperCase() || "?";
+  const initial = companyName?.[0]?.toUpperCase() ?? profile.email?.[0]?.toUpperCase() ?? "?";
 
   return {
     companyName,
     companyLogoUrl,
-    userName,
     userEmail: profile.email,
     userAvatarUrl: profile.avatar_url,
-    userInitials,
+    userInitials: initial,
     userRole: profile.role,
   };
 }

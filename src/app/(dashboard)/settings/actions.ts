@@ -1,12 +1,10 @@
 "use server";
 
-import { auth } from "@clerk/nextjs/server";
+import { auth, clerkClient } from "@clerk/nextjs/server";
 import { createServerClient } from "@/lib/supabase";
 import { profileSchema } from "@/lib/validations/settings";
 
 export async function updateProfile(formData: {
-  first_name: string;
-  last_name: string;
   phone?: string;
   postal_address?: string;
 }) {
@@ -23,8 +21,6 @@ export async function updateProfile(formData: {
   const { error } = await supabase
     .from("profiles")
     .update({
-      first_name: parsed.data.first_name,
-      last_name: parsed.data.last_name,
       phone: parsed.data.phone || null,
       postal_address: parsed.data.postal_address || null,
     })
@@ -55,4 +51,22 @@ export async function updateAvatar(avatarUrl: string) {
   }
 
   return { success: true };
+}
+
+export async function changePassword(currentPassword: string, newPassword: string) {
+  const { userId } = await auth();
+  if (!userId) throw new Error("Not authenticated");
+
+  try {
+    const client = await clerkClient();
+    await client.users.verifyPassword({ userId, password: currentPassword });
+    await client.users.updateUser(userId, { password: newPassword });
+    return { success: true };
+  } catch (err: unknown) {
+    const message = err instanceof Error ? err.message : "Failed to change password";
+    if (message.includes("password")) {
+      return { error: "Current password is incorrect." };
+    }
+    return { error: "Failed to change password. Please try again." };
+  }
 }

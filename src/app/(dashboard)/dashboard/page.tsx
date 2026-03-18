@@ -2,6 +2,7 @@ import { redirect } from "next/navigation";
 import Link from "next/link";
 import { Building2, Plus } from "lucide-react";
 import { getCurrentProfile } from "@/lib/auth";
+import { createServerClient } from "@/lib/supabase";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { UserAvatar } from "@/components/shared/user-avatar";
@@ -16,12 +17,20 @@ export default async function DashboardPage() {
   const profile = await getCurrentProfile();
   if (!profile) redirect("/sign-in");
 
-  const firstName = profile.first_name ?? "there";
+  // Get company name for greeting
+  let companyName: string | null = null;
+  if (profile.management_company_id) {
+    const supabase = createServerClient();
+    const { data: company } = await supabase
+      .from("management_companies")
+      .select("name")
+      .eq("id", profile.management_company_id)
+      .single();
+    companyName = company?.name ?? null;
+  }
+
   const badge = roleBadge[profile.role] ?? roleBadge.lot_owner;
-  const initials = [profile.first_name?.[0], profile.last_name?.[0]]
-    .filter(Boolean)
-    .join("")
-    .toUpperCase() || "?";
+  const initials = companyName?.[0]?.toUpperCase() ?? profile.email[0]?.toUpperCase() ?? "?";
 
   return (
     <div className="space-y-6">
@@ -35,7 +44,7 @@ export default async function DashboardPage() {
           />
           <div className="flex-1 min-w-0">
             <p className="text-lg font-medium text-foreground">
-              Welcome back, {firstName}
+              {companyName ?? "Welcome"}
             </p>
             <p className="text-sm text-muted-foreground">{profile.email}</p>
           </div>

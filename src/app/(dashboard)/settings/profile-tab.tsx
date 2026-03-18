@@ -17,16 +17,15 @@ export function ProfileTab({ profile }: { profile: Profile }) {
   const [pending, setPending] = useState(false);
   const [avatarUrl, setAvatarUrl] = useState(profile.avatar_url ?? "");
 
+  const companyInitial = profile.email?.[0]?.toUpperCase() ?? "?";
+
   const {
     register,
     handleSubmit,
-    formState: { errors },
   } = useForm<ProfileFormValues>({
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     resolver: zodResolver(profileSchema) as any,
     defaultValues: {
-      first_name: profile.first_name ?? "",
-      last_name: profile.last_name ?? "",
       phone: profile.phone ?? "",
       postal_address: profile.postal_address ?? "",
     },
@@ -53,11 +52,6 @@ export function ProfileTab({ profile }: { profile: Profile }) {
     }
   }
 
-  const initials = [profile.first_name?.[0], profile.last_name?.[0]]
-    .filter(Boolean)
-    .join("")
-    .toUpperCase() || "?";
-
   return (
     <div className="max-w-lg space-y-6">
       {/* Avatar */}
@@ -66,44 +60,23 @@ export function ProfileTab({ profile }: { profile: Profile }) {
         <AvatarUpload
           value={avatarUrl}
           onChange={handleAvatarChange}
-          fallbackInitial={initials}
+          fallbackInitial={companyInitial}
         />
       </div>
 
       {/* Profile form */}
       <form onSubmit={handleSubmit(onSubmit)} autoComplete="off" className="space-y-4">
-        <div className="grid grid-cols-2 gap-4">
-          <div className="space-y-1.5">
-            <Label htmlFor="settings-first-name">
-              First name <span className="text-destructive">*</span>
-            </Label>
-            <Input
-              id="settings-first-name"
-              placeholder="Jane"
-              autoComplete="off"
-              aria-invalid={!!errors.first_name}
-              {...register("first_name")}
-            />
-            {errors.first_name && (
-              <p className="text-xs text-destructive mt-1">{errors.first_name.message}</p>
-            )}
-          </div>
-
-          <div className="space-y-1.5">
-            <Label htmlFor="settings-last-name">
-              Last name <span className="text-destructive">*</span>
-            </Label>
-            <Input
-              id="settings-last-name"
-              placeholder="Smith"
-              autoComplete="off"
-              aria-invalid={!!errors.last_name}
-              {...register("last_name")}
-            />
-            {errors.last_name && (
-              <p className="text-xs text-destructive mt-1">{errors.last_name.message}</p>
-            )}
-          </div>
+        <div className="space-y-1.5">
+          <Label htmlFor="settings-email">Email</Label>
+          <Input
+            id="settings-email"
+            value={profile.email}
+            disabled
+            className="bg-muted text-muted-foreground cursor-not-allowed"
+          />
+          <p className="text-xs text-muted-foreground">
+            Managed by your authentication provider.
+          </p>
         </div>
 
         <div className="space-y-1.5">

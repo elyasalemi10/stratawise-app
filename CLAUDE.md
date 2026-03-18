@@ -3,6 +3,11 @@
 ## Git
 - Always commit and push to origin after completing changes. Do not wait for the user to ask.
 
+## UI Rules
+- Do NOT add page titles (PageHeader) inside page content. The header breadcrumb already shows the page name.
+- This is a company-focused platform, not user-focused. Show company name, not first/last name, in the UI.
+- Use our own settings page at /settings for profile/password management, NOT Clerk's UserButton or UserProfile popups.
+
 ## Brand
 - Full name: "My Strata Management". Abbreviated: "MSM". Never "StrataOS".
 - Brand colours: Primary blue #2b7fff, Secondary green #00bd7d.

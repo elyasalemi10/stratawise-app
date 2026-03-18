@@ -47,7 +47,7 @@ export function UserMenu({ profile, loaded }: UserMenuProps) {
           />
           <div className="flex-1 min-w-0 text-left">
             <p className="text-sm font-medium text-white truncate">
-              {profile?.userName ?? "User"}
+              {profile?.companyName ?? "My Company"}
             </p>
             <p className="text-xs text-[hsl(215,20%,75%)] truncate">
               {profile?.userEmail ?? ""}
