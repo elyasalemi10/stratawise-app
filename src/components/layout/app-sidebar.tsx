@@ -99,13 +99,11 @@ function SimpleDropdown({
   children,
   side = "bottom",
   matchWidth = false,
-  variant = "light",
 }: {
   trigger: React.ReactNode;
   children: React.ReactNode;
   side?: "bottom" | "top";
   matchWidth?: boolean;
-  variant?: "light" | "dark";
 }) {
   const [open, setOpen] = useState(false);
   const ref = useRef<HTMLDivElement>(null);
@@ -115,16 +113,12 @@ function SimpleDropdown({
     ? "bottom-full mb-1"
     : "top-full mt-1";
 
-  const bgClass = variant === "dark"
-    ? "bg-sidebar border-sidebar-border"
-    : "bg-popover border-border";
-
   return (
     <div ref={ref} className="relative">
       <div onClick={() => setOpen((o) => !o)}>{trigger}</div>
       {open && (
         <div
-          className={`absolute ${positionClass} left-0 z-50 rounded-lg border ${bgClass} p-1 shadow-md animate-in fade-in-0 zoom-in-95 duration-100 ${matchWidth ? "w-full" : "min-w-56"}`}
+          className={`absolute ${positionClass} left-0 z-50 rounded-lg border border-border bg-popover p-1 shadow-md animate-in fade-in-0 zoom-in-95 duration-100 ${matchWidth ? "w-full" : "min-w-56"}`}
           onClick={() => setOpen(false)}
         >
           {children}
@@ -137,39 +131,31 @@ function SimpleDropdown({
 function DropdownItem({
   children,
   onClick,
-  variant = "light",
 }: {
   children: React.ReactNode;
   onClick?: () => void;
-  variant?: "light" | "dark";
 }) {
-  const hoverClass = variant === "dark"
-    ? "hover:bg-white/10 text-sidebar-foreground"
-    : "hover:bg-accent hover:text-accent-foreground text-foreground";
-
   return (
     <button
       type="button"
       onClick={onClick}
-      className={`flex w-full cursor-pointer items-center gap-1.5 rounded-md px-2 py-1.5 text-sm outline-none ${hoverClass}`}
+      className="flex w-full cursor-pointer items-center gap-2 rounded-md px-2 py-1.5 text-sm text-foreground outline-none hover:bg-accent hover:text-accent-foreground"
     >
       {children}
     </button>
   );
 }
 
-function DropdownLabel({ children, variant = "light" }: { children: React.ReactNode; variant?: "light" | "dark" }) {
-  const colorClass = variant === "dark" ? "text-sidebar-foreground/50" : "text-muted-foreground";
+function DropdownLabel({ children }: { children: React.ReactNode }) {
   return (
-    <div className={`px-2 py-1 text-xs font-medium ${colorClass}`}>
+    <div className="px-2 py-1 text-xs font-medium text-muted-foreground">
       {children}
     </div>
   );
 }
 
-function DropdownSeparator({ variant = "light" }: { variant?: "light" | "dark" }) {
-  const borderClass = variant === "dark" ? "bg-white/10" : "bg-border";
-  return <div className={`-mx-1 my-1 h-px ${borderClass}`} />;
+function DropdownSeparator() {
+  return <div className="-mx-1 my-1 h-px bg-border" />;
 }
 
 // ─── Main component ─────────────────────────────────────────────
@@ -222,19 +208,21 @@ export function AppSidebar() {
   }
 
   return (
-    <Sidebar collapsible="icon">
-      {/* Subdivision switcher — bordered, no icon, dark dropdown */}
+    <Sidebar collapsible="offcanvas">
+      {/* Dashboard switcher — styled like shadcn TeamSwitcher */}
       <SidebarHeader className="p-2">
         <SidebarMenu>
           <SidebarMenuItem>
             <SimpleDropdown
               matchWidth
-              variant="dark"
               trigger={
                 <SidebarMenuButton
                   size="lg"
-                  className="border border-sidebar-border rounded-md"
+                  className="data-[state=open]:bg-sidebar-accent data-[state=open]:text-sidebar-accent-foreground"
                 >
+                  <div className="flex aspect-square size-8 items-center justify-center rounded-lg bg-sidebar-primary text-sidebar-primary-foreground shrink-0">
+                    <Building2 className="size-4" />
+                  </div>
                   <div className="grid flex-1 text-left text-sm leading-tight">
                     <span className="truncate font-medium">
                       {isInSubdivision
@@ -251,33 +239,40 @@ export function AppSidebar() {
                 </SidebarMenuButton>
               }
             >
-              <DropdownLabel variant="dark">Dashboards</DropdownLabel>
-              <DropdownSeparator variant="dark" />
+              <DropdownLabel>Dashboards</DropdownLabel>
+              <DropdownSeparator />
 
-              <DropdownItem variant="dark" onClick={() => switchSubdivision(null)}>
+              <DropdownItem onClick={() => switchSubdivision(null)}>
+                <div className="flex size-6 items-center justify-center rounded-md border border-border">
+                  <LayoutDashboard className="size-3.5 shrink-0" />
+                </div>
                 <span className="flex-1">Main dashboard</span>
-                {!isInSubdivision && <Check className="ml-2 h-4 w-4 text-primary" />}
+                {!isInSubdivision && <Check className="ml-auto h-4 w-4 text-primary" />}
               </DropdownItem>
 
-              {subdivisions.length > 0 && <DropdownSeparator variant="dark" />}
+              {subdivisions.length > 0 && <DropdownSeparator />}
 
               {subdivisions.map((sub) => (
                 <DropdownItem
                   key={sub.id}
-                  variant="dark"
                   onClick={() => switchSubdivision(sub.id)}
                 >
+                  <div className="flex size-6 items-center justify-center rounded-md border border-border">
+                    <Building2 className="size-3.5 shrink-0" />
+                  </div>
                   <span className="flex-1 truncate">{sub.name}</span>
                   {sub.id === currentSubdivisionId && (
-                    <Check className="ml-2 h-4 w-4 text-primary" />
+                    <Check className="ml-auto h-4 w-4 text-primary" />
                   )}
                 </DropdownItem>
               ))}
 
-              <DropdownSeparator variant="dark" />
-              <DropdownItem variant="dark" onClick={() => router.push("/subdivisions/new")}>
-                <Plus className="mr-2 h-4 w-4" />
-                Create subdivision
+              <DropdownSeparator />
+              <DropdownItem onClick={() => router.push("/subdivisions/new")}>
+                <div className="flex size-6 items-center justify-center rounded-md border border-border bg-transparent">
+                  <Plus className="size-4" />
+                </div>
+                <span className="text-muted-foreground font-medium">Create subdivision</span>
               </DropdownItem>
             </SimpleDropdown>
           </SidebarMenuItem>
@@ -361,12 +356,12 @@ export function AppSidebar() {
               </div>
               <DropdownSeparator />
               <DropdownItem onClick={() => router.push("/settings")}>
-                <Settings className="mr-2 h-4 w-4" />
+                <Settings className="h-4 w-4" />
                 Settings
               </DropdownItem>
               <DropdownSeparator />
               <DropdownItem onClick={() => signOut({ redirectUrl: "/" })}>
-                <LogOut className="mr-2 h-4 w-4" />
+                <LogOut className="h-4 w-4" />
                 Sign out
               </DropdownItem>
             </SimpleDropdown>

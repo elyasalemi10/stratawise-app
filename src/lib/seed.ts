@@ -1,5 +1,5 @@
 /**
- * Seed script — promotes the first user to super_admin.
+ * Seed script — promotes the first user to strata_manager.
  *
  * Usage:
  *   npx tsx src/lib/seed.ts
@@ -47,7 +47,7 @@ async function seed() {
     console.log(`  ${i + 1}. ${p.email} (${p.first_name ?? ""} ${p.last_name ?? ""}) — role: ${p.role}`);
   });
 
-  // Promote specific user to super_admin
+  // Promote specific user to strata_manager
   const TARGET_EMAIL = "elyasalemi10@gmail.com";
   const target = profiles.find((p) => p.email === TARGET_EMAIL);
 
@@ -56,14 +56,14 @@ async function seed() {
     process.exit(1);
   }
 
-  if (target.role === "super_admin") {
-    console.log(`\n${target.email} is already super_admin. Nothing to do.`);
+  if (target.role === "strata_manager") {
+    console.log(`\n${target.email} is already strata_manager. Nothing to do.`);
     process.exit(0);
   }
 
   const { error: updateError } = await supabase
     .from("profiles")
-    .update({ role: "super_admin" })
+    .update({ role: "strata_manager" })
     .eq("id", target.id);
 
   if (updateError) {
@@ -78,11 +78,11 @@ async function seed() {
     entity_type: "profile",
     entity_id: target.id,
     before_state: { role: target.role },
-    after_state: { role: "super_admin" },
+    after_state: { role: "strata_manager" },
     metadata: { source: "seed_script" },
   });
 
-  console.log(`\n✓ ${target.email} promoted to super_admin`);
+  console.log(`\n✓ ${target.email} promoted to strata_manager`);
 }
 
 seed();
