@@ -1,5 +1,6 @@
 "use server";
 
+import { cache } from "react";
 import { auth, currentUser } from "@clerk/nextjs/server";
 import { createServerClient } from "@/lib/supabase";
 
@@ -39,8 +40,10 @@ export interface Profile {
 /**
  * Fetches the current user's full profile from Supabase.
  * Returns null if not authenticated or profile doesn't exist.
+ * Wrapped with React cache() — deduplicated within a single request.
+ * Multiple calls in layout + page + server actions only hit DB once.
  */
-export async function getCurrentProfile(): Promise<Profile | null> {
+export const getCurrentProfile = cache(async (): Promise<Profile | null> => {
   const { userId } = await auth();
   if (!userId) return null;
 
@@ -53,7 +56,7 @@ export async function getCurrentProfile(): Promise<Profile | null> {
     .single();
 
   return (data as Profile) ?? null;
-}
+});
 
 // ─── requireRole ────────────────────────────────────────────────
 

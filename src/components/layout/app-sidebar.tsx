@@ -39,6 +39,12 @@ import {
   getSidebarSubdivisions,
   type SidebarSubdivision,
 } from "@/lib/actions/subdivision";
+import {
+  getCachedProfile,
+  setCachedProfile,
+  getCachedSubdivisions,
+  setCachedSubdivisions,
+} from "@/lib/sidebar-cache";
 
 // ─── Nav definitions ────────────────────────────────────────────
 
@@ -171,9 +177,10 @@ export function AppSidebar() {
   const pathname = usePathname();
   const router = useRouter();
   const { signOut } = useClerk();
-  const [profile, setProfile] = useState<SidebarProfile | null>(null);
-  const [subdivisions, setSubdivisions] = useState<SidebarSubdivision[]>([]);
-  const [loaded, setLoaded] = useState(false);
+  // Stale-while-revalidate: show cached data immediately, fetch fresh in background
+  const [profile, setProfile] = useState<SidebarProfile | null>(() => getCachedProfile());
+  const [subdivisions, setSubdivisions] = useState<SidebarSubdivision[]>(() => getCachedSubdivisions() ?? []);
+  const [loaded, setLoaded] = useState(() => getCachedProfile() !== null);
 
   useEffect(() => {
     Promise.all([getSidebarProfile(), getSidebarSubdivisions()])
@@ -181,6 +188,8 @@ export function AppSidebar() {
         setProfile(profileData);
         setSubdivisions(subdivisionData);
         setLoaded(true);
+        if (profileData) setCachedProfile(profileData);
+        setCachedSubdivisions(subdivisionData);
       })
       .catch(() => {
         setLoaded(true);
