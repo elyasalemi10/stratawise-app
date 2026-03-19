@@ -97,6 +97,34 @@ export async function getSubdivisionStats(subdivisionId: string) {
   };
 }
 
+export async function getSubdivisionManageStats(subdivisionId: string) {
+  const supabase = createServerClient();
+
+  const [lotsResult, ownersResult, membersResult] = await Promise.all([
+    supabase
+      .from("lots")
+      .select("id", { count: "exact", head: true })
+      .eq("subdivision_id", subdivisionId),
+    supabase
+      .from("lots")
+      .select("id", { count: "exact", head: true })
+      .eq("subdivision_id", subdivisionId)
+      .not("owner_name", "is", null)
+      .neq("owner_name", ""),
+    supabase
+      .from("subdivision_members")
+      .select("id", { count: "exact", head: true })
+      .eq("subdivision_id", subdivisionId)
+      .is("left_at", null),
+  ]);
+
+  return {
+    totalLots: lotsResult.count ?? 0,
+    ownersAssigned: ownersResult.count ?? 0,
+    totalMembers: membersResult.count ?? 0,
+  };
+}
+
 export async function getCompanySubdivisionSummary() {
   const profile = await getCurrentProfile();
   if (!profile?.management_company_id) return null;
