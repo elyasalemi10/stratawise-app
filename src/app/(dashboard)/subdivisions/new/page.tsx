@@ -1,203 +1,100 @@
 "use client";
 
-import { useState } from "react";
-import { useRouter } from "next/navigation";
-import { useForm } from "react-hook-form";
-import { zodResolver } from "@hookform/resolvers/zod";
-import { toast } from "sonner";
-import { subdivisionSchema, type SubdivisionFormValues } from "@/lib/validations/onboarding-setup";
-import { createSubdivision } from "@/app/(auth)/onboarding/setup/actions";
-import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
+import { useRouter, useSearchParams } from "next/navigation";
+import { Suspense } from "react";
 import { Card, CardContent } from "@/components/ui/card";
-import { Spinner } from "@/components/ui/spinner";
-import { SuburbSelect } from "@/components/shared/suburb-select";
+import { StepIndicator } from "./step-indicator";
+import { Step1General } from "./steps/step-1-general";
+import { Step2Settings } from "./steps/step-2-settings";
+import { Step3Banking } from "./steps/step-3-banking";
+import { Step4Lots } from "./steps/step-4-lots";
+import { Step5Balances } from "./steps/step-5-balances";
 
-export default function NewSubdivisionPage() {
+const STEP_TITLES: Record<number, { title: string; subtitle: string }> = {
+  1: { title: "Create new subdivision", subtitle: "Set up a new owners corporation" },
+  2: { title: "Advanced settings", subtitle: "Configure financial year and levy schedule" },
+  3: { title: "Banking details", subtitle: "Set up bank account for this subdivision" },
+  4: { title: "Strata membership", subtitle: "Add lots and assign owners" },
+  5: { title: "Opening balances", subtitle: "Enter current fund balances" },
+};
+
+function WizardContent() {
   const router = useRouter();
-  const [pending, setPending] = useState(false);
-  const [suburb, setSuburb] = useState("");
-  const [suburbError, setSuburbError] = useState("");
+  const searchParams = useSearchParams();
 
-  const {
-    register,
-    handleSubmit,
-    formState: { errors },
-  } = useForm<SubdivisionFormValues>({
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    resolver: zodResolver(subdivisionSchema) as any,
-    defaultValues: { state: "VIC" },
-  });
+  const step = parseInt(searchParams.get("step") ?? "1", 10);
+  const subdivisionId = searchParams.get("id") ?? "";
+  const currentStep = Math.max(1, Math.min(5, step));
 
-  async function onSubmit(data: SubdivisionFormValues) {
-    if (!suburb) {
-      setSuburbError("Please select a suburb");
-      return;
-    }
-    setSuburbError("");
+  const { title, subtitle } = STEP_TITLES[currentStep] ?? STEP_TITLES[1];
 
-    setPending(true);
-    const address = `${data.street}, ${suburb}, VIC`;
-    const result = await createSubdivision({
-      plan_number: data.plan_number,
-      name: data.name,
-      address,
-      total_lots: data.total_lots,
-      state: data.state,
-    });
-    setPending(false);
-
-    if (result.error) {
-      toast.error(result.error);
-      return;
-    }
-
-    if (result.subdivisionId) {
-      router.push(`/subdivisions/${result.subdivisionId}/dashboard`);
-    } else {
-      router.push("/subdivisions");
-    }
-  }
-
-  function fieldError(field: keyof typeof errors): string | undefined {
-    const err = errors[field];
-    if (!err?.message) return undefined;
-    const msg = err.message as string;
-    if (msg.includes("Invalid input") || msg.includes("expected")) {
-      const fallbacks: Record<string, string> = {
-        plan_number: "Plan number is required",
-        name: "Subdivision name is required",
-        street: "Street address is required",
-        total_lots: "Please enter a valid number of lots (minimum 2)",
-      };
-      return fallbacks[field] ?? "This field is required";
-    }
-    return msg;
+  function goToStep(s: number, id?: string) {
+    const sid = id ?? subdivisionId;
+    const params = new URLSearchParams();
+    params.set("step", String(s));
+    if (sid) params.set("id", sid);
+    window.history.replaceState(null, "", `/subdivisions/new?${params.toString()}`);
+    router.replace(`/subdivisions/new?${params.toString()}`);
   }
 
   return (
-    <div className="max-w-2xl">
+    <div className="max-w-2xl mx-auto">
+      <StepIndicator
+        currentStep={currentStep}
+        onStepClick={(s) => goToStep(s)}
+      />
+
+      <div className="mb-6">
+        <h2 className="text-lg font-semibold text-foreground">{title}</h2>
+        <p className="mt-1 text-sm text-muted-foreground">{subtitle}</p>
+      </div>
+
       <Card>
         <CardContent className="pt-5">
-          <form onSubmit={handleSubmit(onSubmit)} autoComplete="off" className="space-y-4">
-            <div className="space-y-1.5">
-              <Label htmlFor="plan">
-                Plan number <span className="text-destructive">*</span>
-              </Label>
-              <Input
-                id="plan"
-                placeholder="PS123456A"
-                autoComplete="off"
-                aria-invalid={!!errors.plan_number}
-                {...register("plan_number")}
-              />
-              {errors.plan_number && (
-                <p className="text-xs text-destructive mt-1">{fieldError("plan_number")}</p>
-              )}
-            </div>
-
-            <div className="space-y-1.5">
-              <Label htmlFor="name">
-                Subdivision name <span className="text-destructive">*</span>
-              </Label>
-              <Input
-                id="name"
-                placeholder="Riverside Townhouses"
-                autoComplete="off"
-                aria-invalid={!!errors.name}
-                {...register("name")}
-              />
-              {errors.name && (
-                <p className="text-xs text-destructive mt-1">{fieldError("name")}</p>
-              )}
-            </div>
-
-            <div className="space-y-1.5">
-              <Label htmlFor="street">
-                Street address <span className="text-destructive">*</span>
-              </Label>
-              <Input
-                id="street"
-                placeholder="1-12/45 Smith Street"
-                autoComplete="off"
-                aria-invalid={!!errors.street}
-                {...register("street")}
-              />
-              {errors.street && (
-                <p className="text-xs text-destructive mt-1">{fieldError("street")}</p>
-              )}
-            </div>
-
-            <div className="space-y-1.5">
-              <Label htmlFor="suburb">
-                Suburb <span className="text-destructive">*</span>
-              </Label>
-              <SuburbSelect
-                id="suburb"
-                value={suburb}
-                onChange={(val) => {
-                  setSuburb(val);
-                  setSuburbError("");
-                }}
-                error={!!suburbError}
-              />
-              {suburbError && (
-                <p className="text-xs text-destructive mt-1">{suburbError}</p>
-              )}
-            </div>
-
-            <div className="space-y-1.5">
-              <Label htmlFor="lots">
-                Number of lots <span className="text-destructive">*</span>
-              </Label>
-              <Input
-                id="lots"
-                inputMode="numeric"
-                placeholder="12"
-                autoComplete="off"
-                aria-invalid={!!errors.total_lots}
-                {...register("total_lots")}
-                onKeyDown={(e) => {
-                  if (["e", "E", "+", "-", "."].includes(e.key)) {
-                    e.preventDefault();
-                  }
-                }}
-                onChange={(e) => {
-                  const val = e.target.value.replace(/[^0-9]/g, "");
-                  e.target.value = val;
-                  register("total_lots").onChange(e);
-                }}
-              />
-              {errors.total_lots && (
-                <p className="text-xs text-destructive mt-1">{fieldError("total_lots")}</p>
-              )}
-            </div>
-
-            <div className="space-y-1.5">
-              <Label htmlFor="state">State</Label>
-              <Input
-                id="state"
-                value="VIC"
-                disabled
-                className="bg-muted text-muted-foreground cursor-not-allowed"
-                title="More states coming soon"
-                {...register("state")}
-              />
-              <p className="text-xs text-muted-foreground">More states coming soon</p>
-            </div>
-
-            <div className="flex justify-end gap-2 pt-2">
-              <Button type="button" variant="ghost" onClick={() => router.back()}>
-                Cancel
-              </Button>
-              <Button type="submit" disabled={pending}>
-                {pending ? <><Spinner className="mr-2" /> Creating</> : "Create subdivision"}
-              </Button>
-            </div>
-          </form>
+          {currentStep === 1 && (
+            <Step1General
+              onNext={(id) => goToStep(2, id)}
+              onCancel={() => router.push("/subdivisions")}
+            />
+          )}
+          {currentStep === 2 && subdivisionId && (
+            <Step2Settings
+              subdivisionId={subdivisionId}
+              onNext={() => goToStep(3)}
+              onBack={() => goToStep(1)}
+            />
+          )}
+          {currentStep === 3 && subdivisionId && (
+            <Step3Banking
+              subdivisionId={subdivisionId}
+              onNext={() => goToStep(4)}
+              onBack={() => goToStep(2)}
+            />
+          )}
+          {currentStep === 4 && subdivisionId && (
+            <Step4Lots
+              subdivisionId={subdivisionId}
+              onNext={() => goToStep(5)}
+              onBack={() => goToStep(3)}
+            />
+          )}
+          {currentStep === 5 && subdivisionId && (
+            <Step5Balances
+              subdivisionId={subdivisionId}
+              onComplete={() => router.push(`/subdivisions/${subdivisionId}/dashboard`)}
+              onBack={() => goToStep(4)}
+            />
+          )}
         </CardContent>
       </Card>
     </div>
+  );
+}
+
+export default function NewSubdivisionPage() {
+  return (
+    <Suspense>
+      <WizardContent />
+    </Suspense>
   );
 }
