@@ -217,11 +217,24 @@ export async function getOnboardingRedirect(): Promise<string | null> {
 
   const { data: profile } = await supabase
     .from("profiles")
-    .select("id, management_company_id")
+    .select("id, role, management_company_id")
     .eq("clerk_id", userId)
     .single();
 
   if (!profile) return "/onboarding";
+
+  // Lot owners don't need a management company — just need consent
+  if (profile.role === "lot_owner") {
+    const { count } = await supabase
+      .from("user_consents")
+      .select("id", { count: "exact", head: true })
+      .eq("profile_id", profile.id);
+
+    if (!count || count === 0) return "/onboarding/lot-owner";
+    return null; // lot owner with consent → allow dashboard
+  }
+
+  // Strata managers need a management company
   if (!profile.management_company_id) return "/onboarding/setup";
 
   return null;

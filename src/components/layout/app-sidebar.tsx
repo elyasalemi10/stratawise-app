@@ -48,7 +48,7 @@ import {
 
 // ─── Nav definitions ────────────────────────────────────────────
 
-const mainNavGroups = [
+const managerMainNavGroups = [
   {
     label: "Overview",
     items: [
@@ -59,6 +59,15 @@ const mainNavGroups = [
     label: "Management",
     items: [
       { href: "/subdivisions", label: "Subdivisions", icon: Building2 },
+    ],
+  },
+];
+
+const lotOwnerMainNavGroups = [
+  {
+    label: "Overview",
+    items: [
+      { href: "/dashboard", label: "Dashboard", icon: LayoutDashboard },
     ],
   },
 ];
@@ -204,7 +213,9 @@ export function AppSidebar() {
   // Find current subdivision name
   const currentSubdivision = subdivisions.find((s) => s.id === currentSubdivisionId);
 
-  // Pick nav items based on context
+  // Pick nav items based on context and role
+  const isLotOwner = profile?.userRole === "lot_owner";
+  const mainNavGroups = isLotOwner ? lotOwnerMainNavGroups : managerMainNavGroups;
   const navGroups = isInSubdivision && currentSubdivisionId
     ? getSubdivisionNavGroups(currentSubdivisionId)
     : mainNavGroups;
@@ -243,7 +254,7 @@ export function AppSidebar() {
                     <span className="truncate font-medium">
                       {isInSubdivision
                         ? (currentSubdivision?.name ?? "Subdivision")
-                        : "Main dashboard"}
+                        : isLotOwner ? "My subdivisions" : "Main dashboard"}
                     </span>
                     <span className="truncate text-xs text-sidebar-foreground/50">
                       {!loaded ? (
@@ -266,7 +277,7 @@ export function AppSidebar() {
                 <div className="flex size-6 items-center justify-center rounded-md border border-border">
                   <LayoutDashboard className="size-3.5 shrink-0" />
                 </div>
-                <span className="flex-1">Main dashboard</span>
+                <span className="flex-1">{isLotOwner ? "My subdivisions" : "Main dashboard"}</span>
                 {!isInSubdivision && <Check className="ml-auto h-4 w-4 text-primary" />}
               </DropdownItem>
 
@@ -287,13 +298,17 @@ export function AppSidebar() {
                 </DropdownItem>
               ))}
 
-              <DropdownSeparator />
-              <DropdownItem onClick={() => router.push("/subdivisions/new")}>
-                <div className="flex size-6 items-center justify-center rounded-md border border-border bg-transparent">
-                  <Plus className="size-4" />
-                </div>
-                <span className="text-muted-foreground font-medium">Create subdivision</span>
-              </DropdownItem>
+              {!isLotOwner && (
+                <>
+                  <DropdownSeparator />
+                  <DropdownItem onClick={() => router.push("/subdivisions/new")}>
+                    <div className="flex size-6 items-center justify-center rounded-md border border-border bg-transparent">
+                      <Plus className="size-4" />
+                    </div>
+                    <span className="text-muted-foreground font-medium">Create subdivision</span>
+                  </DropdownItem>
+                </>
+              )}
             </SimpleDropdown>
           </SidebarMenuItem>
         </SidebarMenu>

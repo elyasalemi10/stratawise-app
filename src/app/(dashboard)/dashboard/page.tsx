@@ -43,19 +43,62 @@ export default async function DashboardPage() {
   const profile = await getCurrentProfile();
   if (!profile) redirect("/sign-in");
 
-  // Lot owners get redirected to their subdivision
+  // Lot owners — redirect to their subdivision or show empty state
   if (profile.role === "lot_owner") {
     const supabase = createServerClient();
     const { data: memberships } = await supabase
       .from("subdivision_members")
       .select("subdivision_id")
       .eq("profile_id", profile.id)
-      .is("left_at", null)
-      .limit(1);
+      .is("left_at", null);
 
-    if (memberships && memberships.length > 0) {
+    if (memberships && memberships.length === 1) {
       redirect(`/subdivisions/${memberships[0].subdivision_id}/dashboard`);
     }
+
+    if (!memberships || memberships.length === 0) {
+      // Lot owner with no subdivisions
+      return (
+        <div className="flex flex-col items-center justify-center py-20 text-center">
+          <Building2 className="h-12 w-12 text-muted-foreground/30" />
+          <p className="mt-4 text-base font-medium text-foreground">
+            No subdivisions assigned
+          </p>
+          <p className="mt-1 text-sm text-muted-foreground max-w-sm">
+            Your strata manager hasn&apos;t assigned you to a subdivision yet.
+            Check your email for an invitation link, or contact your strata manager.
+          </p>
+        </div>
+      );
+    }
+
+    // Multiple subdivisions — show a list (rare but possible)
+    const { data: subs } = await supabase
+      .from("subdivisions")
+      .select("id, name, address, plan_number")
+      .in("id", memberships.map((m) => m.subdivision_id));
+
+    return (
+      <div className="space-y-6">
+        <h2 className="text-base font-semibold text-foreground">Your subdivisions</h2>
+        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+          {(subs ?? []).map((sub) => (
+            <Link key={sub.id} href={`/subdivisions/${sub.id}/dashboard`} className="block">
+              <Card className="transition-colors hover:border-primary/30 cursor-pointer">
+                <CardContent className="pt-5">
+                  <h3 className="text-sm font-semibold text-foreground">{sub.name}</h3>
+                  <p className="mt-1 text-xs text-muted-foreground">{sub.plan_number}</p>
+                  <div className="mt-2 flex items-center gap-1 text-xs text-muted-foreground">
+                    <MapPin className="h-3 w-3" />
+                    <span className="truncate">{sub.address}</span>
+                  </div>
+                </CardContent>
+              </Card>
+            </Link>
+          ))}
+        </div>
+      </div>
+    );
   }
 
   const summary = await getCompanySubdivisionSummary();

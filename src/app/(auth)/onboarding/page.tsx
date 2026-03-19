@@ -11,14 +11,27 @@ export default async function OnboardingPage() {
 
   await ensureProfile();
 
-  // If user already has a company, skip to dashboard
   const supabase = createServerClient();
   const { data: profile } = await supabase
     .from("profiles")
-    .select("management_company_id")
+    .select("id, role, management_company_id")
     .eq("clerk_id", userId)
     .single();
 
+  // Lot owners should go to the lot owner onboarding, not the company setup
+  if (profile?.role === "lot_owner") {
+    const { count } = await supabase
+      .from("user_consents")
+      .select("id", { count: "exact", head: true })
+      .eq("profile_id", profile.id);
+
+    if (count && count > 0) {
+      redirect("/dashboard");
+    }
+    redirect("/onboarding/lot-owner");
+  }
+
+  // If user already has a company, skip to dashboard
   if (profile?.management_company_id) {
     redirect("/dashboard");
   }
