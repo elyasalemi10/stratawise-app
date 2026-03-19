@@ -52,7 +52,7 @@ function buildBreadcrumbs(pathname: string): Crumb[] {
           href: `/subdivisions/${subdivisionId}/manage?tab=lots`,
           isLast: false,
         },
-        { label: "Lot details", href: null, isLast: true },
+        { label: "Owner details", href: null, isLast: true },
       ];
     }
 
