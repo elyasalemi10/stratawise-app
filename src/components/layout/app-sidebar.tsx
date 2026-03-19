@@ -2,7 +2,7 @@
 
 import { useEffect, useRef, useState } from "react";
 import Link from "next/link";
-import { usePathname, useRouter } from "next/navigation";
+import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { useClerk } from "@clerk/nextjs";
 import {
   LayoutDashboard,
@@ -84,12 +84,10 @@ function getSubdivisionNavGroups(subdivisionId: string) {
     {
       label: "Management",
       items: [
-        { href: `${base}/levies`, label: "Levies", icon: Receipt },
-        { href: `${base}/meetings`, label: "Meetings", icon: CalendarCheck },
-        { href: `${base}/lots`, label: "Lots", icon: Users },
-        { href: `${base}/documents`, label: "Documents", icon: FileText },
-        { href: `${base}/financials`, label: "Financials", icon: Wallet },
-        { href: `${base}/maintenance`, label: "Maintenance", icon: Wrench },
+        { href: `${base}/manage?tab=lots`, label: "Lots & Owners", icon: Users },
+        { href: `${base}/manage?tab=financials`, label: "Financials", icon: Wallet },
+        { href: `${base}/manage?tab=meetings`, label: "Meetings", icon: CalendarCheck },
+        { href: `${base}/manage?tab=documents`, label: "Documents", icon: FileText },
       ],
     },
     {
@@ -184,14 +182,27 @@ function DropdownSeparator() {
 
 export function AppSidebar() {
   const pathname = usePathname();
+  const searchParams = useSearchParams();
   const router = useRouter();
   const { signOut } = useClerk();
-  // Stale-while-revalidate: show cached data immediately, fetch fresh in background
-  const [profile, setProfile] = useState<SidebarProfile | null>(() => getCachedProfile());
-  const [subdivisions, setSubdivisions] = useState<SidebarSubdivision[]>(() => getCachedSubdivisions() ?? []);
-  const [loaded, setLoaded] = useState(() => getCachedProfile() !== null);
+  // Initialize as null to avoid hydration mismatch (localStorage only exists on client)
+  const [profile, setProfile] = useState<SidebarProfile | null>(null);
+  const [subdivisions, setSubdivisions] = useState<SidebarSubdivision[]>([]);
+  const [loaded, setLoaded] = useState(false);
 
   useEffect(() => {
+    // Show cached data immediately while fetching fresh
+    const cachedProfile = getCachedProfile();
+    const cachedSubs = getCachedSubdivisions();
+    if (cachedProfile) {
+      setProfile(cachedProfile);
+      setLoaded(true);
+    }
+    if (cachedSubs) {
+      setSubdivisions(cachedSubs);
+    }
+
+    // Fetch fresh data in background
     Promise.all([getSidebarProfile(), getSidebarSubdivisions()])
       .then(([profileData, subdivisionData]) => {
         setProfile(profileData);
@@ -322,7 +333,16 @@ export function AppSidebar() {
             <SidebarGroupContent>
               <SidebarMenu>
                 {group.items.map((item) => {
-                  const isActive = pathname === item.href || pathname.startsWith(item.href + "/");
+                  // Handle both path-only and path+query active detection
+                  const [itemPath, itemQuery] = item.href.split("?");
+                  let isActive = false;
+                  if (itemQuery) {
+                    // Tab-based: match path AND query param
+                    const tab = new URLSearchParams(itemQuery).get("tab");
+                    isActive = pathname === itemPath && searchParams.get("tab") === tab;
+                  } else {
+                    isActive = pathname === item.href || pathname.startsWith(item.href + "/");
+                  }
                   return (
                     <SidebarMenuItem key={item.href}>
                       <SidebarMenuButton isActive={isActive} render={<Link href={item.href} />}>
