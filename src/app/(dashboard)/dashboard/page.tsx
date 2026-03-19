@@ -1,6 +1,7 @@
 import { redirect } from "next/navigation";
 import Link from "next/link";
 import { Building2, DollarSign, Users, Plus, MapPin } from "lucide-react";
+import { InviteTeamButton } from "./_components/invite-team-button";
 import { getCurrentProfile } from "@/lib/auth";
 import { getCompanySubdivisionSummary } from "@/lib/actions/subdivision";
 import { createServerClient } from "@/lib/supabase";
@@ -95,12 +96,15 @@ export default async function DashboardPage() {
       {/* Subdivisions section */}
       <div className="flex items-center justify-between">
         <h2 className="text-base font-semibold text-foreground">Subdivisions</h2>
-        <Link href="/subdivisions/new">
-          <Button size="sm">
-            <Plus className="mr-2 h-4 w-4" />
-            Create subdivision
-          </Button>
-        </Link>
+        <div className="flex items-center gap-2">
+          <InviteTeamButton />
+          <Link href="/subdivisions/new">
+            <Button size="sm">
+              <Plus className="mr-2 h-4 w-4" />
+              Create subdivision
+            </Button>
+          </Link>
+        </div>
       </div>
 
       {subdivisions.length === 0 ? (

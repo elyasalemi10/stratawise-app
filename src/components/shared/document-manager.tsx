@@ -176,13 +176,20 @@ export function DocumentManager({ subdivisionId, lotId, initialDocuments }: Docu
     setPreviewDoc(doc);
   }
 
-  function downloadDocument(doc: DocWithUrl) {
-    const url = getDocUrl(doc);
-    const a = document.createElement("a");
-    a.href = url;
-    a.download = doc.file_name;
-    a.target = "_blank";
-    a.click();
+  async function downloadDocument(doc: DocWithUrl) {
+    try {
+      const url = getDocUrl(doc);
+      const res = await fetch(url);
+      const blob = await res.blob();
+      const blobUrl = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = blobUrl;
+      a.download = doc.file_name;
+      a.click();
+      URL.revokeObjectURL(blobUrl);
+    } catch {
+      toast.error("Failed to download file");
+    }
   }
 
   return (
