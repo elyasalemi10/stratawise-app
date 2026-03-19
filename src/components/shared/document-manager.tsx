@@ -11,6 +11,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import type { DocumentRecord } from "@/lib/validations/documents";
+import { ALLOWED_EXTENSIONS } from "@/lib/validations/documents";
 
 interface UploadProgress {
   id: string;
@@ -19,20 +20,26 @@ interface UploadProgress {
   error?: string;
 }
 
+// Extended to include public_url from upload response
+interface DocWithUrl extends DocumentRecord {
+  public_url?: string;
+}
+
 interface DocumentManagerProps {
   subdivisionId: string;
   lotId?: string;
   initialDocuments: DocumentRecord[];
 }
 
-function getFileIcon(mimeType: string | null) {
-  if (!mimeType) return <File className="h-4 w-4 text-muted-foreground" />;
-  if (mimeType.includes("pdf")) return <FileText className="h-4 w-4 text-red-500" />;
+function getFileIcon(mimeType: string | null, size: "sm" | "lg" = "sm") {
+  const cls = size === "lg" ? "h-8 w-8" : "h-4 w-4";
+  if (!mimeType) return <File className={`${cls} text-muted-foreground`} />;
+  if (mimeType.includes("pdf")) return <FileText className={`${cls} text-red-500`} />;
   if (mimeType.includes("spreadsheet") || mimeType.includes("excel") || mimeType.includes("csv"))
-    return <FileSpreadsheet className="h-4 w-4 text-green-600" />;
-  if (mimeType.startsWith("image/")) return <FileImage className="h-4 w-4 text-blue-500" />;
-  if (mimeType.includes("word")) return <FileText className="h-4 w-4 text-blue-600" />;
-  return <File className="h-4 w-4 text-muted-foreground" />;
+    return <FileSpreadsheet className={`${cls} text-green-600`} />;
+  if (mimeType.startsWith("image/")) return <FileImage className={`${cls} text-blue-500`} />;
+  if (mimeType.includes("word")) return <FileText className={`${cls} text-blue-600`} />;
+  return <File className={`${cls} text-muted-foreground`} />;
 }
 
 function formatFileSize(bytes: number | null): string {
@@ -56,19 +63,22 @@ function formatDate(dateStr: string): string {
   return d.toLocaleDateString("en-AU", { day: "numeric", month: "short", year: "numeric" });
 }
 
+// Build accept string for file input
+const ACCEPT_STRING = ALLOWED_EXTENSIONS.join(",");
+
 export function DocumentManager({ subdivisionId, lotId, initialDocuments }: DocumentManagerProps) {
-  const [documents, setDocuments] = useState<DocumentRecord[]>(initialDocuments);
+  const [documents, setDocuments] = useState<DocWithUrl[]>(initialDocuments);
   const [uploads, setUploads] = useState<UploadProgress[]>([]);
   const [dragging, setDragging] = useState(false);
-  const [renameDoc, setRenameDoc] = useState<DocumentRecord | null>(null);
+  const [renameDoc, setRenameDoc] = useState<DocWithUrl | null>(null);
   const [renameName, setRenameName] = useState("");
-  const [deleteDoc, setDeleteDoc] = useState<DocumentRecord | null>(null);
+  const [deleteDoc, setDeleteDoc] = useState<DocWithUrl | null>(null);
   const [deleting, setDeleting] = useState(false);
+  const [previewDoc, setPreviewDoc] = useState<DocWithUrl | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   const uploadFile = useCallback((file: File) => {
     const uploadId = crypto.randomUUID();
-
     setUploads((prev) => [...prev, { id: uploadId, fileName: file.name, progress: 0 }]);
 
     const xhr = new XMLHttpRequest();
@@ -92,11 +102,12 @@ export function DocumentManager({ subdivisionId, lotId, initialDocuments }: Docu
         setDocuments((prev) => [doc, ...prev]);
         setUploads((prev) => prev.filter((u) => u.id !== uploadId));
       } else {
-        const err = JSON.parse(xhr.responseText);
+        let errMsg = "Upload failed";
+        try { errMsg = JSON.parse(xhr.responseText).error || errMsg; } catch { /* ignore */ }
         setUploads((prev) =>
-          prev.map((u) => (u.id === uploadId ? { ...u, error: err.error || "Upload failed" } : u))
+          prev.map((u) => (u.id === uploadId ? { ...u, error: errMsg } : u))
         );
-        toast.error(err.error || "Upload failed");
+        toast.error(errMsg);
       }
     });
 
@@ -153,16 +164,24 @@ export function DocumentManager({ subdivisionId, lotId, initialDocuments }: Docu
     }
   }
 
-  function viewDocument(doc: DocumentRecord) {
-    const url = `${process.env.NEXT_PUBLIC_R2_PUBLIC_URL || ""}/${doc.file_path}`;
-    window.open(url, "_blank");
+  // Use the API route for view/download — it redirects to R2 public URL
+  function getDocUrl(doc: DocWithUrl): string {
+    // If we have a public_url from the upload response, use it
+    if (doc.public_url) return doc.public_url;
+    // Otherwise use the API route which redirects
+    return `/api/documents/${doc.id}`;
   }
 
-  function downloadDocument(doc: DocumentRecord) {
-    const url = `${process.env.NEXT_PUBLIC_R2_PUBLIC_URL || ""}/${doc.file_path}`;
+  function viewDocument(doc: DocWithUrl) {
+    setPreviewDoc(doc);
+  }
+
+  function downloadDocument(doc: DocWithUrl) {
+    const url = getDocUrl(doc);
     const a = document.createElement("a");
     a.href = url;
     a.download = doc.file_name;
+    a.target = "_blank";
     a.click();
   }
 
@@ -189,6 +208,7 @@ export function DocumentManager({ subdivisionId, lotId, initialDocuments }: Docu
           ref={fileInputRef}
           type="file"
           multiple
+          accept={ACCEPT_STRING}
           className="hidden"
           onChange={(e) => {
             if (e.target.files) handleFiles(e.target.files);
@@ -233,7 +253,7 @@ export function DocumentManager({ subdivisionId, lotId, initialDocuments }: Docu
         </div>
       )}
 
-      {/* Document list */}
+      {/* Document grid */}
       {documents.length === 0 && uploads.length === 0 ? (
         <Card>
           <CardContent className="flex flex-col items-center justify-center py-16 text-center">
@@ -245,76 +265,114 @@ export function DocumentManager({ subdivisionId, lotId, initialDocuments }: Docu
           </CardContent>
         </Card>
       ) : documents.length > 0 && (
-        <div className="overflow-x-auto rounded-lg border border-border">
-          <table className="w-full text-sm">
-            <thead>
-              <tr className="bg-muted/50 text-xs font-medium uppercase tracking-wider text-muted-foreground">
-                <th className="px-4 py-2.5 text-left">Name</th>
-                <th className="px-4 py-2.5 text-left">Size</th>
-                <th className="px-4 py-2.5 text-left">Uploaded</th>
-                <th className="px-4 py-2.5 text-right">Actions</th>
-              </tr>
-            </thead>
-            <tbody>
-              {documents.map((doc) => (
-                <tr key={doc.id} className="border-t border-border/50 h-12 hover:bg-muted/30 transition-colors">
-                  <td className="px-4">
-                    <div className="flex items-center gap-2">
-                      {getFileIcon(doc.mime_type)}
-                      <span className="text-foreground truncate max-w-[300px]">{doc.file_name}</span>
-                    </div>
-                  </td>
-                  <td className="px-4 text-muted-foreground tabular-nums">
-                    {formatFileSize(doc.file_size)}
-                  </td>
-                  <td className="px-4 text-muted-foreground">
-                    {formatDate(doc.created_at)}
-                  </td>
-                  <td className="px-4">
-                    <div className="flex items-center justify-end gap-1">
-                      <button
-                        type="button"
-                        onClick={() => viewDocument(doc)}
-                        className="flex h-7 w-7 items-center justify-center rounded-md text-muted-foreground hover:bg-muted hover:text-foreground"
-                        title="View"
-                      >
-                        <Eye className="h-3.5 w-3.5" />
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() => downloadDocument(doc)}
-                        className="flex h-7 w-7 items-center justify-center rounded-md text-muted-foreground hover:bg-muted hover:text-foreground"
-                        title="Download"
-                      >
-                        <Download className="h-3.5 w-3.5" />
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() => {
-                          setRenameDoc(doc);
-                          setRenameName(doc.file_name);
-                        }}
-                        className="flex h-7 w-7 items-center justify-center rounded-md text-muted-foreground hover:bg-muted hover:text-foreground"
-                        title="Rename"
-                      >
-                        <Pencil className="h-3.5 w-3.5" />
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() => setDeleteDoc(doc)}
-                        className="flex h-7 w-7 items-center justify-center rounded-md text-muted-foreground hover:bg-muted hover:text-destructive"
-                        title="Delete"
-                      >
-                        <Trash2 className="h-3.5 w-3.5" />
-                      </button>
-                    </div>
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
+        <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
+          {documents.map((doc) => {
+            const isImage = doc.mime_type?.startsWith("image/");
+            return (
+              <Card
+                key={doc.id}
+                className="group cursor-pointer transition-colors hover:border-primary/30"
+                onClick={() => viewDocument(doc)}
+              >
+                <CardContent className="p-3">
+                  {/* Preview area */}
+                  <div className="flex items-center justify-center h-24 rounded-md bg-muted/50 mb-3 overflow-hidden">
+                    {isImage && doc.public_url ? (
+                      // eslint-disable-next-line @next/next/no-img-element
+                      <img
+                        src={doc.public_url}
+                        alt={doc.file_name}
+                        className="h-full w-full object-cover rounded-md"
+                      />
+                    ) : (
+                      getFileIcon(doc.mime_type, "lg")
+                    )}
+                  </div>
+
+                  {/* File info */}
+                  <p className="text-sm font-medium text-foreground truncate" title={doc.file_name}>
+                    {doc.file_name}
+                  </p>
+                  <p className="text-xs text-muted-foreground mt-0.5">
+                    {formatFileSize(doc.file_size)} · {formatDate(doc.created_at)}
+                  </p>
+
+                  {/* Actions */}
+                  <div className="flex items-center gap-1 mt-2 opacity-0 group-hover:opacity-100 transition-opacity" onClick={(e) => e.stopPropagation()}>
+                    <button
+                      type="button"
+                      onClick={() => downloadDocument(doc)}
+                      className="flex h-7 w-7 items-center justify-center rounded-md text-muted-foreground hover:bg-muted hover:text-foreground"
+                      title="Download"
+                    >
+                      <Download className="h-3.5 w-3.5" />
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => { setRenameDoc(doc); setRenameName(doc.file_name); }}
+                      className="flex h-7 w-7 items-center justify-center rounded-md text-muted-foreground hover:bg-muted hover:text-foreground"
+                      title="Rename"
+                    >
+                      <Pencil className="h-3.5 w-3.5" />
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setDeleteDoc(doc)}
+                      className="flex h-7 w-7 items-center justify-center rounded-md text-muted-foreground hover:bg-muted hover:text-destructive"
+                      title="Delete"
+                    >
+                      <Trash2 className="h-3.5 w-3.5" />
+                    </button>
+                  </div>
+                </CardContent>
+              </Card>
+            );
+          })}
         </div>
       )}
+
+      {/* Preview dialog */}
+      <Dialog open={!!previewDoc} onOpenChange={() => setPreviewDoc(null)}>
+        <DialogContent className="max-w-3xl">
+          <DialogHeader>
+            <DialogTitle className="truncate">{previewDoc?.file_name}</DialogTitle>
+          </DialogHeader>
+          <div className="flex items-center justify-center min-h-[300px] max-h-[70vh] overflow-auto rounded-md bg-muted/30">
+            {previewDoc?.mime_type?.startsWith("image/") ? (
+              // eslint-disable-next-line @next/next/no-img-element
+              <img
+                src={getDocUrl(previewDoc)}
+                alt={previewDoc.file_name}
+                className="max-w-full max-h-[65vh] object-contain"
+              />
+            ) : previewDoc?.mime_type === "application/pdf" ? (
+              <iframe
+                src={getDocUrl(previewDoc)}
+                className="w-full h-[65vh] rounded-md"
+                title={previewDoc.file_name}
+              />
+            ) : (
+              <div className="flex flex-col items-center gap-3 py-12">
+                {getFileIcon(previewDoc?.mime_type ?? null, "lg")}
+                <p className="text-sm text-muted-foreground">
+                  Preview not available for this file type
+                </p>
+                <Button variant="secondary" size="sm" onClick={() => previewDoc && downloadDocument(previewDoc)}>
+                  <Download className="mr-2 h-3.5 w-3.5" />
+                  Download to view
+                </Button>
+              </div>
+            )}
+          </div>
+          <DialogFooter>
+            <Button variant="ghost" onClick={() => setPreviewDoc(null)}>Close</Button>
+            <Button onClick={() => previewDoc && downloadDocument(previewDoc)}>
+              <Download className="mr-2 h-3.5 w-3.5" />
+              Download
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
 
       {/* Rename dialog */}
       <Dialog open={!!renameDoc} onOpenChange={() => setRenameDoc(null)}>
