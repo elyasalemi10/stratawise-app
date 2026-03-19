@@ -230,9 +230,13 @@ export function AppSidebar() {
                         : "Main dashboard"}
                     </span>
                     <span className="truncate text-xs text-sidebar-foreground/50">
-                      {isInSubdivision
-                        ? (currentSubdivision?.plan_number ?? "")
-                        : `${subdivisions.length} subdivision${subdivisions.length !== 1 ? "s" : ""}`}
+                      {!loaded ? (
+                        <Skeleton className="h-3 w-20 mt-0.5" />
+                      ) : isInSubdivision ? (
+                        currentSubdivision?.plan_number ?? ""
+                      ) : (
+                        `${subdivisions.length} subdivision${subdivisions.length !== 1 ? "s" : ""}`
+                      )}
                     </span>
                   </div>
                   <ChevronsUpDown className="ml-auto size-4" />

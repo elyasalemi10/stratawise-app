@@ -1,11 +1,9 @@
 "use client";
 
-import { useEffect, useState } from "react";
 import { usePathname } from "next/navigation";
 import Link from "next/link";
 import { Bell } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import { getSidebarSubdivisions, type SidebarSubdivision } from "@/lib/actions/subdivision";
 
 const routeLabels: Record<string, string> = {
   dashboard: "Dashboard",
@@ -32,28 +30,28 @@ interface Crumb {
   isLast: boolean;
 }
 
-function buildBreadcrumbs(
-  pathname: string,
-  subdivisionMap: Map<string, string>
-): Crumb[] {
+function buildBreadcrumbs(pathname: string): Crumb[] {
   const segments = pathname.split("/").filter(Boolean);
-  const crumbs: Crumb[] = [];
 
+  // Inside a subdivision (/subdivisions/[uuid]/page) — just show the page name
+  if (
+    segments.length >= 3 &&
+    segments[0] === "subdivisions" &&
+    isUUID(segments[1])
+  ) {
+    const lastSegment = segments[segments.length - 1];
+    const label =
+      routeLabels[lastSegment] ??
+      lastSegment.replace(/-/g, " ").replace(/\b\w/g, (c) => c.toUpperCase());
+    return [{ label, href: null, isLast: true }];
+  }
+
+  // Normal pages — simple breadcrumbs
+  const crumbs: Crumb[] = [];
   let path = "";
   for (let i = 0; i < segments.length; i++) {
     const segment = segments[i];
     path += "/" + segment;
-
-    // Replace UUID with subdivision name
-    if (isUUID(segment) && i > 0 && segments[i - 1] === "subdivisions") {
-      const name = subdivisionMap.get(segment) ?? "Subdivision";
-      crumbs.push({
-        label: name,
-        href: i === segments.length - 1 ? null : `${path}/dashboard`,
-        isLast: i === segments.length - 1,
-      });
-      continue;
-    }
 
     const label =
       routeLabels[segment] ??
@@ -71,19 +69,7 @@ function buildBreadcrumbs(
 
 export function Header() {
   const pathname = usePathname();
-  const [subdivisionMap, setSubdivisionMap] = useState<Map<string, string>>(new Map());
-
-  useEffect(() => {
-    getSidebarSubdivisions()
-      .then((subs: SidebarSubdivision[]) => {
-        const map = new Map<string, string>();
-        subs.forEach((s) => map.set(s.id, s.name));
-        setSubdivisionMap(map);
-      })
-      .catch(() => {});
-  }, []);
-
-  const breadcrumbs = buildBreadcrumbs(pathname, subdivisionMap);
+  const breadcrumbs = buildBreadcrumbs(pathname);
 
   return (
     <div className="flex items-center justify-between flex-1">
