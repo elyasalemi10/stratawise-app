@@ -1,7 +1,6 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import Image from "next/image";
 import { ChevronDown } from "lucide-react";
 import {
   Command,
@@ -26,6 +25,16 @@ export function BankSelect({ value, onChange, error, id }: BankSelectProps) {
   const ref = useRef<HTMLDivElement>(null);
 
   const selectedBank = AUSTRALIAN_BANKS.find((b) => b.id === value);
+
+  // Preload all bank images on mount
+  useEffect(() => {
+    AUSTRALIAN_BANKS.forEach((bank) => {
+      if (bank.logo) {
+        const img = new Image();
+        img.src = bank.logo;
+      }
+    });
+  }, []);
 
   useEffect(() => {
     function handler(e: MouseEvent) {
@@ -53,7 +62,8 @@ export function BankSelect({ value, onChange, error, id }: BankSelectProps) {
           {selectedBank ? (
             <>
               {selectedBank.logo && (
-                <Image
+                // eslint-disable-next-line @next/next/no-img-element
+                <img
                   src={selectedBank.logo}
                   alt={selectedBank.name}
                   width={20}
@@ -88,18 +98,15 @@ export function BankSelect({ value, onChange, error, id }: BankSelectProps) {
                     }}
                   >
                     <span className="flex items-center gap-2">
-                      {bank.logo ? (
-                        <Image
+                      {bank.logo && (
+                        // eslint-disable-next-line @next/next/no-img-element
+                        <img
                           src={bank.logo}
                           alt={bank.name}
                           width={20}
                           height={20}
                           className="rounded"
                         />
-                      ) : (
-                        <span className="flex h-5 w-5 items-center justify-center rounded bg-muted text-[10px] font-medium text-muted-foreground">
-                          ?
-                        </span>
                       )}
                       {bank.name}
                     </span>

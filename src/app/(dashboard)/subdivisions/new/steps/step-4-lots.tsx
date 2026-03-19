@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useCallback } from "react";
 import { useForm, useFieldArray } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { toast } from "sonner";
@@ -10,17 +10,18 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Spinner } from "@/components/ui/spinner";
+import { cn } from "@/lib/utils";
 
-function createEmptyLots(count: number) {
-  return Array.from({ length: count }, (_, i) => ({
-    lot_number: String(i + 1),
+function createEmptyLot(index: number) {
+  return {
+    lot_number: String(index + 1),
     unit_number: "",
     owner_type: "individual" as const,
     owner_name: "",
     owner_email: "",
     owner_phone: "",
-    lot_entitlement: 0,
-  }));
+    lot_entitlement: "" as unknown as number,
+  };
 }
 
 export function Step4Lots({
@@ -51,26 +52,53 @@ export function Step4Lots({
     },
   });
 
-  const { fields, replace } = useFieldArray({ control, name: "lots" });
+  const { fields, append, remove } = useFieldArray({ control, name: "lots" });
   const lotsWatch = watch("lots");
 
-  // Dynamically generate table when lot count changes
-  useEffect(() => {
-    const count = parseInt(lotCount, 10);
-    if (!isNaN(count) && count >= 2) {
-      replace(createEmptyLots(count));
-      setValue("total_lots", count);
-    } else if (lotCount === "" || lotCount === "0" || lotCount === "1") {
-      replace([]);
-      setValue("total_lots", 0);
+  // Adjust lots when count changes — preserve existing data
+  const adjustLots = useCallback((newCount: number) => {
+    const currentCount = fields.length;
+    if (newCount > currentCount) {
+      // Append new rows
+      const toAdd = Array.from(
+        { length: newCount - currentCount },
+        (_, i) => createEmptyLot(currentCount + i)
+      );
+      append(toAdd);
+    } else if (newCount < currentCount && newCount >= 2) {
+      // Remove from the bottom
+      const toRemove = Array.from(
+        { length: currentCount - newCount },
+        (_, i) => currentCount - 1 - i
+      );
+      toRemove.forEach((idx) => remove(idx));
     }
-  }, [lotCount, replace, setValue]);
+    setValue("total_lots", newCount);
+  }, [fields.length, append, remove, setValue]);
+
+  // Handle lot count input
+  function handleLotCountChange(val: string) {
+    setLotCount(val);
+    const count = parseInt(val, 10);
+    if (!isNaN(count) && count >= 2) {
+      adjustLots(count);
+    }
+  }
 
   // Calculate total entitlement
   const totalEntitlement = lotsWatch?.reduce(
     (sum, lot) => sum + (Number(lot?.lot_entitlement) || 0),
     0
   ) ?? 0;
+
+  // Get field-level error
+  function lotFieldError(index: number, field: string): boolean {
+    const lotErrors = errors.lots;
+    if (!lotErrors || !Array.isArray(lotErrors)) return false;
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const rowErrors = lotErrors[index] as any;
+    return !!rowErrors?.[field];
+  }
 
   async function onSubmit(data: Step4Values) {
     setPending(true);
@@ -89,8 +117,7 @@ export function Step4Lots({
   }
 
   const selectClass =
-    "flex h-8 w-full rounded-md border border-border bg-background px-2 text-xs focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary";
-  const inputClass = "h-8 text-xs px-2";
+    "flex h-8 w-full rounded-md border bg-background px-2 text-xs focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary";
 
   return (
     <form onSubmit={handleSubmit(onSubmit)} autoComplete="off" className="space-y-4">
@@ -107,18 +134,18 @@ export function Step4Lots({
           className="max-w-[160px]"
           onChange={(e) => {
             const val = e.target.value.replace(/[^0-9]/g, "");
-            setLotCount(val);
+            handleLotCountChange(val);
           }}
           onKeyDown={(e) => {
             if (["e", "E", "+", "-", "."].includes(e.key)) e.preventDefault();
           }}
         />
-        {errors.total_lots && (
-          <p className="text-xs text-destructive mt-1">{errors.total_lots.message}</p>
+        {lotCount && parseInt(lotCount) < 2 && parseInt(lotCount) > 0 && (
+          <p className="text-xs text-destructive mt-1">Minimum 2 lots required</p>
         )}
       </div>
 
-      {/* Lots table — appears instantly when count >= 2 */}
+      {/* Lots table */}
       {fields.length >= 2 && (
         <div className="space-y-3">
           {/* Total entitlement */}
@@ -148,7 +175,7 @@ export function Step4Lots({
                   <tr key={field.id} className="border-t border-border/50">
                     <td className="px-2 py-1.5">
                       <select
-                        className={selectClass}
+                        className={cn(selectClass, "border-border")}
                         {...register(`lots.${index}.owner_type`)}
                       >
                         <option value="individual">Individual</option>
@@ -157,30 +184,39 @@ export function Step4Lots({
                     </td>
                     <td className="px-2 py-1.5">
                       <Input
-                        className={inputClass}
+                        className={cn(
+                          "h-8 text-xs px-2",
+                          lotFieldError(index, "owner_name") && "border-destructive"
+                        )}
                         placeholder="Full name"
                         {...register(`lots.${index}.owner_name`)}
                       />
                     </td>
                     <td className="px-2 py-1.5">
                       <Input
-                        className={inputClass}
+                        className={cn(
+                          "h-8 text-xs px-2",
+                          lotFieldError(index, "lot_number") && "border-destructive"
+                        )}
                         placeholder={String(index + 1)}
                         {...register(`lots.${index}.lot_number`)}
                       />
                     </td>
                     <td className="px-2 py-1.5">
                       <Input
-                        className={inputClass}
-                        placeholder="Unit"
+                        className="h-8 text-xs px-2"
+                        placeholder=""
                         {...register(`lots.${index}.unit_number`)}
                       />
                     </td>
                     <td className="px-2 py-1.5">
                       <Input
-                        className={inputClass}
+                        className={cn(
+                          "h-8 text-xs px-2",
+                          lotFieldError(index, "lot_entitlement") && "border-destructive"
+                        )}
                         inputMode="numeric"
-                        placeholder="0"
+                        placeholder=""
                         {...register(`lots.${index}.lot_entitlement`)}
                         onKeyDown={(e) => {
                           if (["e", "E", "+", "-"].includes(e.key)) e.preventDefault();
@@ -189,16 +225,19 @@ export function Step4Lots({
                     </td>
                     <td className="px-2 py-1.5">
                       <Input
-                        className={inputClass}
+                        className={cn(
+                          "h-8 text-xs px-2",
+                          lotFieldError(index, "owner_email") && "border-destructive"
+                        )}
                         type="email"
-                        placeholder="email@example.com"
+                        placeholder=""
                         {...register(`lots.${index}.owner_email`)}
                       />
                     </td>
                     <td className="px-2 py-1.5">
                       <Input
-                        className={inputClass}
-                        placeholder="0412 345 678"
+                        className="h-8 text-xs px-2"
+                        placeholder=""
                         {...register(`lots.${index}.owner_phone`)}
                       />
                     </td>
@@ -207,10 +246,6 @@ export function Step4Lots({
               </tbody>
             </table>
           </div>
-
-          {errors.lots && (
-            <p className="text-xs text-destructive">{typeof errors.lots === "object" && "message" in errors.lots ? errors.lots.message : "Please check lot details"}</p>
-          )}
         </div>
       )}
 

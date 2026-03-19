@@ -4,12 +4,14 @@ import { useState } from "react";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { toast } from "sonner";
+import { format } from "date-fns";
 import { step5Schema, type Step5Values } from "@/lib/validations/subdivision-wizard";
 import { completeSubdivisionSetup } from "../actions";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Spinner } from "@/components/ui/spinner";
+import { DatePicker } from "@/components/shared/date-picker";
 
 export function Step5Balances({
   subdivisionId,
@@ -21,6 +23,8 @@ export function Step5Balances({
   onBack: () => void;
 }) {
   const [pending, setPending] = useState(false);
+  const [balanceDate, setBalanceDate] = useState(format(new Date(), "yyyy-MM-dd"));
+  const [dateError, setDateError] = useState("");
 
   const {
     register,
@@ -30,15 +34,24 @@ export function Step5Balances({
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     resolver: zodResolver(step5Schema) as any,
     defaultValues: {
-      admin_opening_balance: 0,
-      capital_works_opening_balance: 0,
-      opening_balance_date: new Date().toISOString().split("T")[0],
+      admin_opening_balance: "" as unknown as number,
+      capital_works_opening_balance: "" as unknown as number,
+      opening_balance_date: format(new Date(), "yyyy-MM-dd"),
     },
   });
 
   async function onSubmit(data: Step5Values) {
+    if (!balanceDate) {
+      setDateError("Opening balance date is required");
+      return;
+    }
+    setDateError("");
+
     setPending(true);
-    const result = await completeSubdivisionSetup(subdivisionId, data);
+    const result = await completeSubdivisionSetup(subdivisionId, {
+      ...data,
+      opening_balance_date: balanceDate,
+    });
     setPending(false);
 
     if (result.error) {
@@ -67,7 +80,7 @@ export function Step5Balances({
             step="0.01"
             min="0"
             className="pl-7"
-            placeholder="0.00"
+            placeholder=""
             aria-invalid={!!errors.admin_opening_balance}
             {...register("admin_opening_balance")}
           />
@@ -92,7 +105,7 @@ export function Step5Balances({
             step="0.01"
             min="0"
             className="pl-7"
-            placeholder="0.00"
+            placeholder=""
             aria-invalid={!!errors.capital_works_opening_balance}
             {...register("capital_works_opening_balance")}
           />
@@ -102,19 +115,21 @@ export function Step5Balances({
         )}
       </div>
 
-      {/* Opening balance date */}
+      {/* Opening balance date — Calendar picker */}
       <div className="space-y-1.5">
-        <Label htmlFor="balance_date">
+        <Label>
           Opening balance date <span className="text-destructive">*</span>
         </Label>
-        <Input
-          id="balance_date"
-          type="date"
-          aria-invalid={!!errors.opening_balance_date}
-          {...register("opening_balance_date")}
+        <DatePicker
+          value={balanceDate}
+          onChange={(val) => {
+            setBalanceDate(val);
+            setDateError("");
+          }}
+          error={!!dateError}
         />
-        {errors.opening_balance_date && (
-          <p className="text-xs text-destructive mt-1">{errors.opening_balance_date.message}</p>
+        {dateError && (
+          <p className="text-xs text-destructive mt-1">{dateError}</p>
         )}
       </div>
 

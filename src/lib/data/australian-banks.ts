@@ -25,5 +25,4 @@ export const AUSTRALIAN_BANKS: BankOption[] = [
   { id: "cuscal", name: "Cuscal", logo: "/bank-logos/cuscal.svg" },
   { id: "teachersmutual", name: "Teachers Mutual", logo: "/bank-logos/teachersmutual.webp" },
   { id: "heritage", name: "Heritage Bank", logo: "/bank-logos/heritage.webp" },
-  { id: "other", name: "Other", logo: null },
 ];
