@@ -17,8 +17,8 @@ import { format } from "date-fns";
 
 const STATES = ["ACT", "NSW", "NT", "QLD", "SA", "TAS", "VIC", "WA"] as const;
 const TYPES = [
-  { value: "strata", label: "Strata" },
-  { value: "company", label: "Company" },
+  { value: "strata", label: "Strata Plan" },
+  { value: "company", label: "Company Plan" },
   { value: "neighbourhood_association", label: "Neighbourhood Association" },
 ] as const;
 
@@ -33,7 +33,7 @@ export function Step1General({
   initialData?: any;
 }) {
   const [pending, setPending] = useState(false);
-  const [selectedState, setSelectedState] = useState<string | null>(initialData?.state ?? null);
+  const [selectedState, setSelectedState] = useState<string | null>(initialData?.state ?? "VIC");
   const [suburb, setSuburb] = useState(initialData?.suburb ?? "");
   const [suburbError, setSuburbError] = useState("");
   const [startDate, setStartDate] = useState(initialData?.management_start_date ?? format(new Date(), "yyyy-MM-dd"));
@@ -54,7 +54,7 @@ export function Step1General({
       name: initialData?.name ?? "",
       street_number: initialData?.street_number ?? "",
       street_name: initialData?.street_name ?? "",
-      state: initialData?.state ?? undefined,
+      state: initialData?.state ?? "VIC",
       suburb: initialData?.suburb ?? "",
       common_property_description: initialData?.common_property_description ?? "",
       abn: initialData?.abn ?? "",
@@ -223,11 +223,11 @@ export function Step1General({
               setValue("suburb", "");
             },
           })}
-          defaultValue=""
         >
-          <option value="" disabled>Select state</option>
           {STATES.map((s) => (
-            <option key={s} value={s}>{s}</option>
+            <option key={s} value={s} disabled={s !== "VIC"}>
+              {s}{s !== "VIC" ? " (coming soon)" : ""}
+            </option>
           ))}
         </select>
         {errors.state && (

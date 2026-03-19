@@ -18,7 +18,7 @@ const routeLabels: Record<string, string> = {
   documents: "Documents",
   financials: "Financials",
   maintenance: "Maintenance",
-  manage: "Manage",
+  manage: "Manage subdivision",
 };
 
 function isUUID(s: string): boolean {

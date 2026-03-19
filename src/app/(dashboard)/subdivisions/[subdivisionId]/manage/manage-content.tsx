@@ -113,7 +113,11 @@ function OverviewTab({ subdivision }: { subdivision: ManageContentProps["subdivi
         <CardContent className="pt-5">
           <h3 className="text-sm font-semibold text-foreground mb-3">General details</h3>
           <InfoRow label="Plan number" value={subdivision.plan_number} />
-          <InfoRow label="Type" value={subdivision.subdivision_type ?? "Strata"} />
+          <InfoRow label="Type" value={
+            subdivision.subdivision_type === "company" ? "Company Plan" :
+            subdivision.subdivision_type === "neighbourhood_association" ? "Neighbourhood Association" :
+            "Strata Plan"
+          } />
           <InfoRow label="Address" value={subdivision.address} />
           <InfoRow label="OC Tier" value={subdivision.oc_tier ? `Tier ${subdivision.oc_tier}` : null} />
           <InfoRow label="Total lots" value={String(subdivision.total_lots)} />
