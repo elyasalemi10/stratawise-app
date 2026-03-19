@@ -265,7 +265,7 @@ export function AppSidebar() {
                     <span className="truncate font-medium">
                       {isInSubdivision
                         ? (currentSubdivision?.name ?? "Subdivision")
-                        : isLotOwner ? "My subdivisions" : "Main dashboard"}
+                        : "Main dashboard"}
                     </span>
                     <span className="truncate text-xs text-sidebar-foreground/50">
                       {!loaded ? (
@@ -288,7 +288,7 @@ export function AppSidebar() {
                 <div className="flex size-6 items-center justify-center rounded-md border border-border">
                   <LayoutDashboard className="size-3.5 shrink-0" />
                 </div>
-                <span className="flex-1">{isLotOwner ? "My subdivisions" : "Main dashboard"}</span>
+                <span className="flex-1">{"Main dashboard"}</span>
                 {!isInSubdivision && <Check className="ml-auto h-4 w-4 text-primary" />}
               </DropdownItem>
 

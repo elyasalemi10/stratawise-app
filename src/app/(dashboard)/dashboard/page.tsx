@@ -1,6 +1,6 @@
 import { redirect } from "next/navigation";
 import Link from "next/link";
-import { Building2, DollarSign, Users, Plus, MapPin } from "lucide-react";
+import { Building2, DollarSign, Users, Plus, MapPin, AlertTriangle, CheckCircle2, ArrowRight } from "lucide-react";
 import { InviteTeamButton } from "./_components/invite-team-button";
 import { getCurrentProfile } from "@/lib/auth";
 import { getCompanySubdivisionSummary } from "@/lib/actions/subdivision";
@@ -43,21 +43,16 @@ export default async function DashboardPage() {
   const profile = await getCurrentProfile();
   if (!profile) redirect("/sign-in");
 
-  // Lot owners — redirect to their subdivision or show empty state
+  // Lot owner main dashboard — unified view across all subdivisions
   if (profile.role === "lot_owner") {
     const supabase = createServerClient();
     const { data: memberships } = await supabase
       .from("subdivision_members")
-      .select("subdivision_id")
+      .select("subdivision_id, lot_id")
       .eq("profile_id", profile.id)
       .is("left_at", null);
 
-    if (memberships && memberships.length === 1) {
-      redirect(`/subdivisions/${memberships[0].subdivision_id}/dashboard`);
-    }
-
     if (!memberships || memberships.length === 0) {
-      // Lot owner with no subdivisions
       return (
         <div className="flex flex-col items-center justify-center py-20 text-center">
           <Building2 className="h-12 w-12 text-muted-foreground/30" />
@@ -72,30 +67,131 @@ export default async function DashboardPage() {
       );
     }
 
-    // Multiple subdivisions — show a list (rare but possible)
-    const { data: subs } = await supabase
-      .from("subdivisions")
-      .select("id, name, address, plan_number")
-      .in("id", memberships.map((m) => m.subdivision_id));
+    // Fetch subdivisions, lots, and financial data
+    const subIds = memberships.map((m) => m.subdivision_id);
+    const lotIds = memberships.map((m) => m.lot_id).filter(Boolean);
+
+    const [subsResult, lotsResult, leviesResult, paymentsResult] = await Promise.all([
+      supabase
+        .from("subdivisions")
+        .select("id, name, address, plan_number")
+        .in("id", subIds),
+      lotIds.length > 0
+        ? supabase
+            .from("lots")
+            .select("id, subdivision_id, lot_number, unit_number, lot_entitlement, owner_name")
+            .in("id", lotIds)
+        : Promise.resolve({ data: [] }),
+      lotIds.length > 0
+        ? supabase
+            .from("levy_notices")
+            .select("lot_id, amount, status, due_date")
+            .in("lot_id", lotIds)
+            .in("status", ["issued", "partially_paid", "overdue"])
+        : Promise.resolve({ data: [] }),
+      lotIds.length > 0
+        ? supabase
+            .from("payments")
+            .select("lot_id, amount")
+            .in("lot_id", lotIds)
+        : Promise.resolve({ data: [] }),
+    ]);
+
+    const subs = subsResult.data ?? [];
+    const lots = lotsResult.data ?? [];
+
+    // Calculate totals
+    const totalLevied = leviesResult.data?.reduce((sum, l) => sum + Number(l.amount), 0) ?? 0;
+    const totalPaid = paymentsResult.data?.reduce((sum, p) => sum + Number(p.amount), 0) ?? 0;
+    const totalOwing = totalLevied - totalPaid;
+    const overdueCount = leviesResult.data?.filter((l) => l.status === "overdue").length ?? 0;
+
+    const formatCurrency = (n: number) =>
+      new Intl.NumberFormat("en-AU", { style: "currency", currency: "AUD" }).format(n);
 
     return (
       <div className="space-y-6">
+        {/* KPIs */}
+        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
+          <KPICard
+            label="Subdivisions"
+            value={String(subs.length)}
+            description={subs.length === 1 ? "You are a member of 1 subdivision" : `You are a member of ${subs.length} subdivisions`}
+            icon={<Building2 className="h-5 w-5" />}
+          />
+          <KPICard
+            label="Your lots"
+            value={String(lots.length)}
+            description={lots.length === 1 ? "1 lot assigned to you" : `${lots.length} lots assigned to you`}
+            icon={<Users className="h-5 w-5" />}
+          />
+          <KPICard
+            label="Total owing"
+            value={formatCurrency(totalOwing)}
+            description={totalOwing === 0 ? "You're all paid up" : `${overdueCount} overdue`}
+            icon={totalOwing > 0 ? <AlertTriangle className="h-5 w-5" /> : <CheckCircle2 className="h-5 w-5" />}
+          />
+          <KPICard
+            label="Total paid"
+            value={formatCurrency(totalPaid)}
+            description="Payments made to date"
+            icon={<DollarSign className="h-5 w-5" />}
+          />
+        </div>
+
+        {/* Subdivisions */}
         <h2 className="text-base font-semibold text-foreground">Your subdivisions</h2>
-        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-          {(subs ?? []).map((sub) => (
-            <Link key={sub.id} href={`/subdivisions/${sub.id}/dashboard`} className="block">
-              <Card className="transition-colors hover:border-primary/30 cursor-pointer">
-                <CardContent className="pt-5">
-                  <h3 className="text-sm font-semibold text-foreground">{sub.name}</h3>
-                  <p className="mt-1 text-xs text-muted-foreground">{sub.plan_number}</p>
-                  <div className="mt-2 flex items-center gap-1 text-xs text-muted-foreground">
-                    <MapPin className="h-3 w-3" />
-                    <span className="truncate">{sub.address}</span>
-                  </div>
-                </CardContent>
-              </Card>
-            </Link>
-          ))}
+        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
+          {subs.map((sub) => {
+            const subLots = lots.filter((l) => l.subdivision_id === sub.id);
+            const subLevies = leviesResult.data?.filter((l) => subLots.some((sl) => sl.id === l.lot_id)) ?? [];
+            const subPayments = paymentsResult.data?.filter((p) => subLots.some((sl) => sl.id === p.lot_id)) ?? [];
+            const subOwing = subLevies.reduce((s, l) => s + Number(l.amount), 0) - subPayments.reduce((s, p) => s + Number(p.amount), 0);
+
+            return (
+              <Link key={sub.id} href={`/subdivisions/${sub.id}/dashboard`} className="block">
+                <Card className="transition-colors hover:border-primary/30 cursor-pointer">
+                  <CardContent className="pt-5">
+                    <div className="flex items-start justify-between">
+                      <div className="flex-1 min-w-0">
+                        <h3 className="text-sm font-semibold text-foreground truncate">
+                          {sub.name}
+                        </h3>
+                        <p className="mt-1 text-xs text-muted-foreground">{sub.plan_number}</p>
+                      </div>
+                      <Badge variant={subOwing > 0 ? "destructive" : "success"}>
+                        {subOwing > 0 ? formatCurrency(subOwing) + " owing" : "Paid"}
+                      </Badge>
+                    </div>
+
+                    <div className="mt-3 flex items-center gap-1 text-xs text-muted-foreground">
+                      <MapPin className="h-3 w-3" />
+                      <span className="truncate">{sub.address}</span>
+                    </div>
+
+                    {subLots.length > 0 && (
+                      <div className="mt-3 border-t border-border pt-3 space-y-1">
+                        {subLots.map((lot) => (
+                          <div key={lot.id} className="flex items-center justify-between text-xs">
+                            <span className="text-muted-foreground">
+                              Lot {lot.lot_number}{lot.unit_number ? ` (Unit ${lot.unit_number})` : ""}
+                            </span>
+                            <span className="text-foreground font-medium">
+                              {lot.lot_entitlement ? `${lot.lot_entitlement} UE` : ""}
+                            </span>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+
+                    <div className="mt-3 flex items-center justify-end text-xs text-primary">
+                      View details <ArrowRight className="ml-1 h-3 w-3" />
+                    </div>
+                  </CardContent>
+                </Card>
+              </Link>
+            );
+          })}
         </div>
       </div>
     );
