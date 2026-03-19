@@ -12,16 +12,20 @@ import { Input } from "@/components/ui/input";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { FileText } from "lucide-react";
 import { updateLotField } from "../../manage/actions";
+import { DocumentManager } from "@/components/shared/document-manager";
+import type { DocumentRecord } from "@/lib/validations/documents";
 
 interface LotDetailContentProps {
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   lot: any;
   subdivisionId: string;
   balance: number;
+  documents: DocumentRecord[];
 }
 
 const TABS = [
   { value: "general", label: "General" },
+  { value: "documents", label: "Documents" },
   { value: "payments", label: "Payments" },
   { value: "levies", label: "Levies" },
   { value: "communications", label: "Communications" },
@@ -129,7 +133,7 @@ function PlaceholderTab({ name }: { name: string }) {
 
 // ─── Main component ─────────────────────────────────────────────
 
-export function LotDetailContent({ lot: initialLot, subdivisionId, balance }: LotDetailContentProps) {
+export function LotDetailContent({ lot: initialLot, subdivisionId, balance, documents }: LotDetailContentProps) {
   const searchParams = useSearchParams();
   const initialTab = searchParams.get("tab") ?? "general";
   const [activeTab, setActiveTab] = useState(initialTab);
@@ -262,6 +266,29 @@ export function LotDetailContent({ lot: initialLot, subdivisionId, balance }: Lo
               <EditableInfoRow label="Unit number" value={lot.unit_number} field="unit_number" lotId={lot.id} subdivisionId={subdivisionId} isEditing={isEditing} onSaved={(v) => onFieldSaved("unit_number", v)} />
               <EditableInfoRow label="Entitlement" value={lot.lot_entitlement ? String(lot.lot_entitlement) : null} field="lot_entitlement" lotId={lot.id} subdivisionId={subdivisionId} isEditing={isEditing} onSaved={(v) => onFieldSaved("lot_entitlement", v)} />
               <EditableInfoRow label="Liability" value={lot.lot_liability ? String(lot.lot_liability) : null} field="lot_liability" lotId={lot.id} subdivisionId={subdivisionId} isEditing={isEditing} onSaved={(v) => onFieldSaved("lot_liability", v)} />
+              {/* Owner occupied toggle */}
+              <div className="flex items-center justify-between py-3 border-b border-border last:border-b-0">
+                <span className="text-sm text-muted-foreground">Owner occupied</span>
+                {isEditing ? (
+                  <button
+                    type="button"
+                    onClick={async () => {
+                      const newVal = !(lot.owner_occupied ?? true);
+                      const result = await updateLotField(subdivisionId, lot.id, "owner_occupied", newVal);
+                      if (!result.error) onFieldSaved("owner_occupied", String(newVal));
+                    }}
+                    className="cursor-pointer"
+                  >
+                    <Badge variant={(lot.owner_occupied ?? true) ? "success" : "neutral"}>
+                      {(lot.owner_occupied ?? true) ? "Yes" : "No"}
+                    </Badge>
+                  </button>
+                ) : (
+                  <Badge variant={(lot.owner_occupied ?? true) ? "success" : "neutral"}>
+                    {(lot.owner_occupied ?? true) ? "Yes" : "No"}
+                  </Badge>
+                )}
+              </div>
             </CardContent>
           </Card>
 
@@ -275,6 +302,10 @@ export function LotDetailContent({ lot: initialLot, subdivisionId, balance }: Lo
             </CardContent>
           </Card>
         </div>
+      </div>
+
+      <div className={activeTab === "documents" ? "" : "hidden"}>
+        <DocumentManager subdivisionId={subdivisionId} lotId={lot.id} initialDocuments={documents} />
       </div>
 
       <div className={activeTab === "payments" ? "" : "hidden"}>

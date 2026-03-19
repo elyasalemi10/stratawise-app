@@ -185,7 +185,27 @@ export function LotsTab({ lots, subdivisionId, isEditing, onLotUpdated, totalEnt
                   {lot.lot_number}
                 </td>
                 <td className="px-4">
-                  <Badge variant="success">Yes</Badge>
+                  {isEditing ? (
+                    <button
+                      type="button"
+                      onClick={async () => {
+                        const newVal = !lot.owner_occupied;
+                        const result = await updateLotField(subdivisionId, lot.id, "owner_occupied", newVal);
+                        if (!result.error) {
+                          onLotUpdated(lot.id, "owner_occupied", newVal as unknown as string | number | null);
+                        }
+                      }}
+                      className="cursor-pointer"
+                    >
+                      <Badge variant={lot.owner_occupied ? "success" : "neutral"}>
+                        {lot.owner_occupied ? "Yes" : "No"}
+                      </Badge>
+                    </button>
+                  ) : (
+                    <Badge variant={lot.owner_occupied ? "success" : "neutral"}>
+                      {lot.owner_occupied ? "Yes" : "No"}
+                    </Badge>
+                  )}
                 </td>
                 <td className="px-4 text-right tabular-nums">
                   {lot.balance === 0 ? (

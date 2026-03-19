@@ -1,5 +1,6 @@
 import { createServerClient } from "@/lib/supabase";
 import { LotDetailContent } from "./lot-detail-content";
+import type { DocumentRecord } from "@/lib/validations/documents";
 
 export default async function LotDetailPage({
   params,
@@ -24,8 +25,8 @@ export default async function LotDetailPage({
     );
   }
 
-  // Get financial data
-  const [leviesResult, paymentsResult] = await Promise.all([
+  // Get financial data + documents
+  const [leviesResult, paymentsResult, documentsResult] = await Promise.all([
     supabase
       .from("levy_notices")
       .select("amount")
@@ -35,17 +36,26 @@ export default async function LotDetailPage({
       .from("payments")
       .select("amount")
       .eq("lot_id", lotId),
+    supabase
+      .from("documents")
+      .select("*")
+      .eq("subdivision_id", subdivisionId)
+      .eq("lot_id", lotId)
+      .order("created_at", { ascending: false }),
   ]);
 
   const totalLevied = leviesResult.data?.reduce((sum, l) => sum + Number(l.amount), 0) ?? 0;
   const totalPaid = paymentsResult.data?.reduce((sum, p) => sum + Number(p.amount), 0) ?? 0;
   const balance = totalLevied - totalPaid;
 
+  const documents = (documentsResult.data as DocumentRecord[]) ?? [];
+
   return (
     <LotDetailContent
       lot={lot}
       subdivisionId={subdivisionId}
       balance={balance}
+      documents={documents}
     />
   );
 }

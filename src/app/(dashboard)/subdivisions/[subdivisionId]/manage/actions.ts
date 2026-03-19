@@ -12,7 +12,6 @@ export async function updateSubdivisionField(
   await requireRole(["strata_manager", "super_admin"]);
   await requireSubdivisionAccess(subdivisionId);
 
-  // Whitelist editable fields
   const allowedFields = [
     "name", "address", "plan_number", "common_property_description",
     "rules_type", "financial_year_start_month", "billing_cycle",
@@ -27,7 +26,6 @@ export async function updateSubdivisionField(
 
   const supabase = createServerClient();
 
-  // Get before state for audit
   const { data: before } = await supabase
     .from("subdivisions")
     .select(field)
@@ -41,7 +39,6 @@ export async function updateSubdivisionField(
 
   if (error) return { error: error.message };
 
-  // Audit log
   const profile = await requireRole(["strata_manager", "super_admin"]);
   await supabase.from("audit_log").insert({
     profile_id: profile.id,
@@ -61,7 +58,7 @@ export async function updateLotField(
   subdivisionId: string,
   lotId: string,
   field: string,
-  value: string | number | null
+  value: string | number | boolean | null
 ) {
   await requireRole(["strata_manager", "super_admin"]);
   await requireSubdivisionAccess(subdivisionId);
@@ -69,6 +66,7 @@ export async function updateLotField(
   const allowedFields = [
     "owner_name", "owner_email", "owner_phone", "owner_type",
     "lot_entitlement", "lot_liability", "unit_number", "lot_number",
+    "owner_occupied",
   ];
 
   if (!allowedFields.includes(field)) {
@@ -76,6 +74,21 @@ export async function updateLotField(
   }
 
   const supabase = createServerClient();
+
+  // Duplicate lot number check
+  if (field === "lot_number" && value !== null) {
+    const { data: existing } = await supabase
+      .from("lots")
+      .select("id")
+      .eq("subdivision_id", subdivisionId)
+      .eq("lot_number", Number(value))
+      .neq("id", lotId)
+      .single();
+
+    if (existing) {
+      return { error: `Lot number ${value} already exists in this subdivision` };
+    }
+  }
 
   const { data: before } = await supabase
     .from("lots")
@@ -103,5 +116,6 @@ export async function updateLotField(
   });
 
   revalidatePath(`/subdivisions/${subdivisionId}/manage`);
+  revalidatePath(`/subdivisions/${subdivisionId}/lots/${lotId}`);
   return { success: true };
 }

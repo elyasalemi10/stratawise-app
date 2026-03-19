@@ -24,10 +24,13 @@ import { Textarea } from "@/components/ui/textarea";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { LotsTab } from "./lots-tab";
 import { updateSubdivisionField } from "./actions";
+import { DocumentManager } from "@/components/shared/document-manager";
 import type { LotWithFinancials } from "@/lib/actions/subdivision";
+import type { DocumentRecord } from "@/lib/validations/documents";
 
 interface ManageContentProps {
   lots: LotWithFinancials[];
+  documents: DocumentRecord[];
   subdivision: {
     id: string;
     name: string;
@@ -340,7 +343,7 @@ function DropdownItem({ icon, label }: { icon: React.ReactNode; label: string })
 
 // ─── Main component ─────────────────────────────────────────────
 
-export function ManageContent({ subdivision: initialSub, stats, lots: initialLots }: ManageContentProps) {
+export function ManageContent({ subdivision: initialSub, stats, lots: initialLots, documents }: ManageContentProps) {
   const searchParams = useSearchParams();
   const router = useRouter();
   const initialTab = searchParams.get("tab") ?? "overview";
@@ -442,7 +445,9 @@ export function ManageContent({ subdivision: initialSub, stats, lots: initialLot
       </div>
       <div className={activeTab === "financials" ? "" : "hidden"}><PlaceholderTab name="Financials" /></div>
       <div className={activeTab === "meetings" ? "" : "hidden"}><PlaceholderTab name="Meetings" /></div>
-      <div className={activeTab === "documents" ? "" : "hidden"}><PlaceholderTab name="Documents" /></div>
+      <div className={activeTab === "documents" ? "" : "hidden"}>
+        <DocumentManager subdivisionId={subdivision.id} initialDocuments={documents} />
+      </div>
       <div className={activeTab === "compliance" ? "" : "hidden"}><PlaceholderTab name="Compliance" /></div>
       <div className={activeTab === "communications" ? "" : "hidden"}><PlaceholderTab name="Communications" /></div>
     </div>

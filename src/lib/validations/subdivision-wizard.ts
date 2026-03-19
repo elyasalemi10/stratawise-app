@@ -77,7 +77,13 @@ export const lotRowSchema = z.object({
 export const step4Schema = z.object({
   total_lots: z.coerce.number().min(2, "Minimum 2 lots required"),
   lots: z.array(lotRowSchema),
-});
+}).refine(
+  (data) => {
+    const numbers = data.lots.map((l) => l.lot_number).filter(Boolean);
+    return new Set(numbers).size === numbers.length;
+  },
+  { message: "Duplicate lot numbers found", path: ["lots"] }
+);
 
 // ─── Step 5: Opening Balances ───────────────────────────────────
 

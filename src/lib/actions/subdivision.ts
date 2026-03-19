@@ -107,6 +107,7 @@ export interface LotWithFinancials {
   owner_name: string | null;
   owner_email: string | null;
   owner_phone: string | null;
+  owner_occupied: boolean;
   balance: number;
   financial_status: "up_to_date" | "unassigned" | "behind";
 }
@@ -173,6 +174,7 @@ export async function getLotsWithFinancials(subdivisionId: string): Promise<LotW
       owner_name: lot.owner_name,
       owner_email: lot.owner_email,
       owner_phone: lot.owner_phone,
+      owner_occupied: lot.owner_occupied ?? true,
       balance,
       financial_status,
     };

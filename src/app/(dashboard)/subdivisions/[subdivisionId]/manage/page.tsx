@@ -1,4 +1,5 @@
 import { getSubdivision, getSubdivisionManageStats, getLotsWithFinancials } from "@/lib/actions/subdivision";
+import { getSubdivisionDocuments } from "./document-actions";
 import { ManageContent } from "./manage-content";
 
 export default async function ManageSubdivisionPage({
@@ -8,10 +9,11 @@ export default async function ManageSubdivisionPage({
 }) {
   const { subdivisionId } = await params;
 
-  const [subdivision, stats, lots] = await Promise.all([
+  const [subdivision, stats, lots, documents] = await Promise.all([
     getSubdivision(subdivisionId),
     getSubdivisionManageStats(subdivisionId),
     getLotsWithFinancials(subdivisionId),
+    getSubdivisionDocuments(subdivisionId),
   ]);
 
   if (!subdivision) return null;
@@ -21,6 +23,7 @@ export default async function ManageSubdivisionPage({
       subdivision={subdivision}
       stats={stats}
       lots={lots}
+      documents={documents}
     />
   );
 }
