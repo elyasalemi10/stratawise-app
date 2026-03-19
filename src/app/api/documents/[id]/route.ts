@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { auth } from "@clerk/nextjs/server";
-import { S3Client, DeleteObjectCommand } from "@aws-sdk/client-s3";
+import { S3Client, DeleteObjectCommand, GetObjectCommand } from "@aws-sdk/client-s3";
 import { createServerClient } from "@/lib/supabase";
 
 const R2 = new S3Client({
@@ -14,9 +14,10 @@ const R2 = new S3Client({
 
 const BUCKET = process.env.R2_BUCKET_NAME ?? "msm-company-logos";
 
-// GET — redirect to public URL for download/view
+// GET — proxy file from R2 (avoids CORS issues with redirects)
+// ?view=true returns inline (for preview), otherwise attachment (for download)
 export async function GET(
-  _request: NextRequest,
+  request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
   const { userId } = await auth();
@@ -29,7 +30,7 @@ export async function GET(
 
   const { data: doc } = await supabase
     .from("documents")
-    .select("file_path, file_name")
+    .select("file_path, file_name, mime_type")
     .eq("id", id)
     .single();
 
@@ -37,8 +38,29 @@ export async function GET(
     return NextResponse.json({ error: "Document not found" }, { status: 404 });
   }
 
-  const publicUrl = `${process.env.R2_PUBLIC_URL}/${doc.file_path}`;
-  return NextResponse.redirect(publicUrl);
+  // Fetch file from R2 directly via S3 API
+  const response = await R2.send(
+    new GetObjectCommand({
+      Bucket: BUCKET,
+      Key: doc.file_path,
+    })
+  );
+
+  if (!response.Body) {
+    return NextResponse.json({ error: "File not found in storage" }, { status: 404 });
+  }
+
+  const bytes = await response.Body.transformToByteArray();
+  const isView = request.nextUrl.searchParams.get("view") === "true";
+  const disposition = isView ? "inline" : `attachment; filename="${encodeURIComponent(doc.file_name)}"`;
+
+  return new NextResponse(Buffer.from(bytes), {
+    headers: {
+      "Content-Type": doc.mime_type || "application/octet-stream",
+      "Content-Disposition": disposition,
+      "Cache-Control": "private, max-age=3600",
+    },
+  });
 }
 
 // PATCH — rename document (DB only, R2 key unchanged)

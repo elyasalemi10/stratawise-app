@@ -164,12 +164,12 @@ export function DocumentManager({ subdivisionId, lotId, initialDocuments }: Docu
     }
   }
 
-  // Use the API route for view/download — it redirects to R2 public URL
-  function getDocUrl(doc: DocWithUrl): string {
-    // If we have a public_url from the upload response, use it
-    if (doc.public_url) return doc.public_url;
-    // Otherwise use the API route which redirects
+  function getDocDownloadUrl(doc: DocWithUrl): string {
     return `/api/documents/${doc.id}`;
+  }
+
+  function getDocViewUrl(doc: DocWithUrl): string {
+    return `/api/documents/${doc.id}?view=true`;
   }
 
   function viewDocument(doc: DocWithUrl) {
@@ -178,7 +178,7 @@ export function DocumentManager({ subdivisionId, lotId, initialDocuments }: Docu
 
   async function downloadDocument(doc: DocWithUrl) {
     try {
-      const url = getDocUrl(doc);
+      const url = getDocDownloadUrl(doc);
       const res = await fetch(url);
       const blob = await res.blob();
       const blobUrl = URL.createObjectURL(blob);
@@ -284,10 +284,10 @@ export function DocumentManager({ subdivisionId, lotId, initialDocuments }: Docu
                 <CardContent className="p-3">
                   {/* Preview area */}
                   <div className="flex items-center justify-center h-24 rounded-md bg-muted/50 mb-3 overflow-hidden">
-                    {isImage && doc.public_url ? (
+                    {isImage ? (
                       // eslint-disable-next-line @next/next/no-img-element
                       <img
-                        src={doc.public_url}
+                        src={getDocViewUrl(doc)}
                         alt={doc.file_name}
                         className="h-full w-full object-cover rounded-md"
                       />
@@ -348,13 +348,13 @@ export function DocumentManager({ subdivisionId, lotId, initialDocuments }: Docu
             {previewDoc?.mime_type?.startsWith("image/") ? (
               // eslint-disable-next-line @next/next/no-img-element
               <img
-                src={getDocUrl(previewDoc)}
+                src={getDocViewUrl(previewDoc)}
                 alt={previewDoc.file_name}
                 className="max-w-full max-h-[65vh] object-contain"
               />
             ) : previewDoc?.mime_type === "application/pdf" ? (
               <iframe
-                src={getDocUrl(previewDoc)}
+                src={getDocViewUrl(previewDoc)}
                 className="w-full h-[65vh] rounded-md"
                 title={previewDoc.file_name}
               />
