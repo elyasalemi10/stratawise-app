@@ -97,6 +97,88 @@ export async function getSubdivisionStats(subdivisionId: string) {
   };
 }
 
+export interface LotWithFinancials {
+  id: string;
+  lot_number: number;
+  lot_entitlement: number;
+  lot_liability: number;
+  unit_number: string | null;
+  owner_type: string | null;
+  owner_name: string | null;
+  owner_email: string | null;
+  owner_phone: string | null;
+  balance: number;
+  financial_status: "up_to_date" | "unassigned" | "behind";
+}
+
+export async function getLotsWithFinancials(subdivisionId: string): Promise<LotWithFinancials[]> {
+  const supabase = createServerClient();
+
+  const { data: lots } = await supabase
+    .from("lots")
+    .select("*")
+    .eq("subdivision_id", subdivisionId)
+    .order("lot_number");
+
+  if (!lots) return [];
+
+  // Get levy and payment totals per lot
+  const lotIds = lots.map((l) => l.id);
+
+  const [leviesResult, paymentsResult] = await Promise.all([
+    supabase
+      .from("levy_notices")
+      .select("lot_id, amount")
+      .in("lot_id", lotIds)
+      .in("status", ["issued", "partially_paid", "overdue"]),
+    supabase
+      .from("payments")
+      .select("lot_id, amount")
+      .in("lot_id", lotIds),
+  ]);
+
+  // Aggregate per lot
+  const leviesByLot = new Map<string, number>();
+  const paymentsByLot = new Map<string, number>();
+
+  leviesResult.data?.forEach((l) => {
+    leviesByLot.set(l.lot_id, (leviesByLot.get(l.lot_id) ?? 0) + Number(l.amount));
+  });
+  paymentsResult.data?.forEach((p) => {
+    paymentsByLot.set(p.lot_id, (paymentsByLot.get(p.lot_id) ?? 0) + Number(p.amount));
+  });
+
+  return lots.map((lot) => {
+    const totalLevied = leviesByLot.get(lot.id) ?? 0;
+    const totalPaid = paymentsByLot.get(lot.id) ?? 0;
+    const balance = totalLevied - totalPaid;
+    const hasOwner = !!lot.owner_name;
+
+    let financial_status: "up_to_date" | "unassigned" | "behind";
+    if (!hasOwner) {
+      financial_status = "unassigned";
+    } else if (balance > 0) {
+      financial_status = "behind";
+    } else {
+      financial_status = "up_to_date";
+    }
+
+    return {
+      id: lot.id,
+      lot_number: lot.lot_number,
+      lot_entitlement: Number(lot.lot_entitlement),
+      lot_liability: Number(lot.lot_liability),
+      unit_number: lot.unit_number,
+      owner_type: lot.owner_type,
+      owner_name: lot.owner_name,
+      owner_email: lot.owner_email,
+      owner_phone: lot.owner_phone,
+      balance,
+      financial_status,
+    };
+  });
+}
+
 export async function getSubdivisionManageStats(subdivisionId: string) {
   const supabase = createServerClient();
 

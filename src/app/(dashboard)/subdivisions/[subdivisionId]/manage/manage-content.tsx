@@ -17,8 +17,11 @@ import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { LotsTab } from "./lots-tab";
+import type { LotWithFinancials } from "@/lib/actions/subdivision";
 
 interface ManageContentProps {
+  lots: LotWithFinancials[];
   subdivision: {
     id: string;
     name: string;
@@ -161,7 +164,7 @@ function PlaceholderTab({ name }: { name: string }) {
   );
 }
 
-export function ManageContent({ subdivision, stats }: ManageContentProps) {
+export function ManageContent({ subdivision, stats, lots }: ManageContentProps) {
   const searchParams = useSearchParams();
   const initialTab = searchParams.get("tab") ?? "overview";
   const [activeTab, setActiveTab] = useState(initialTab);
@@ -251,7 +254,7 @@ export function ManageContent({ subdivision, stats }: ManageContentProps) {
         <OverviewTab subdivision={subdivision} />
       </div>
       <div className={activeTab === "lots" ? "" : "hidden"}>
-        <PlaceholderTab name="Lots & Owners" />
+        <LotsTab lots={lots} subdivisionId={subdivision.id} />
       </div>
       <div className={activeTab === "financials" ? "" : "hidden"}>
         <PlaceholderTab name="Financials" />

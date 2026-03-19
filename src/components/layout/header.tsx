@@ -34,13 +34,30 @@ interface Crumb {
 function buildBreadcrumbs(pathname: string): Crumb[] {
   const segments = pathname.split("/").filter(Boolean);
 
-  // Inside a subdivision (/subdivisions/[uuid]/page) — just show the page name
+  // Inside a subdivision (/subdivisions/[uuid]/...)
   if (
     segments.length >= 3 &&
     segments[0] === "subdivisions" &&
     isUUID(segments[1])
   ) {
-    const lastSegment = segments[segments.length - 1];
+    // Get the sub-page segments after the subdivision UUID
+    const subPages = segments.slice(2);
+
+    // If we're in /lots/[lotId], show "Lots" as a link
+    if (subPages.length === 2 && subPages[0] === "lots" && isUUID(subPages[1])) {
+      const subdivisionId = segments[1];
+      return [
+        {
+          label: "Lots",
+          href: `/subdivisions/${subdivisionId}/manage?tab=lots`,
+          isLast: false,
+        },
+        { label: "Lot details", href: null, isLast: true },
+      ];
+    }
+
+    // Otherwise just show the page name
+    const lastSegment = subPages[subPages.length - 1] ?? "Dashboard";
     const label =
       routeLabels[lastSegment] ??
       lastSegment.replace(/-/g, " ").replace(/\b\w/g, (c) => c.toUpperCase());
