@@ -10,7 +10,6 @@ import {
   Settings,
   LogOut,
   ChevronsUpDown,
-  PanelLeft,
   Receipt,
   Users,
   FileText,
@@ -19,7 +18,6 @@ import {
   CalendarCheck,
   Plus,
   Check,
-  Home,
 } from "lucide-react";
 
 import {
@@ -33,8 +31,6 @@ import {
   SidebarMenu,
   SidebarMenuButton,
   SidebarMenuItem,
-  SidebarSeparator,
-  useSidebar,
 } from "@/components/ui/sidebar";
 import { UserAvatar } from "@/components/shared/user-avatar";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -59,12 +55,6 @@ const mainNavGroups = [
       { href: "/subdivisions", label: "Subdivisions", icon: Building2 },
     ],
   },
-  {
-    label: "Account",
-    items: [
-      { href: "/settings", label: "Settings", icon: Settings },
-    ],
-  },
 ];
 
 function getSubdivisionNavGroups(subdivisionId: string) {
@@ -87,12 +77,6 @@ function getSubdivisionNavGroups(subdivisionId: string) {
         { href: `${base}/maintenance`, label: "Maintenance", icon: Wrench },
       ],
     },
-    {
-      label: "Account",
-      items: [
-        { href: `${base}/settings`, label: "Settings", icon: Settings },
-      ],
-    },
   ];
 }
 
@@ -113,13 +97,15 @@ function useClickOutside(ref: React.RefObject<HTMLElement | null>, onClose: () =
 function SimpleDropdown({
   trigger,
   children,
-  align = "start",
   side = "bottom",
+  matchWidth = false,
+  variant = "light",
 }: {
   trigger: React.ReactNode;
   children: React.ReactNode;
-  align?: "start" | "end";
   side?: "bottom" | "top";
+  matchWidth?: boolean;
+  variant?: "light" | "dark";
 }) {
   const [open, setOpen] = useState(false);
   const ref = useRef<HTMLDivElement>(null);
@@ -129,14 +115,16 @@ function SimpleDropdown({
     ? "bottom-full mb-1"
     : "top-full mt-1";
 
-  const alignClass = align === "end" ? "right-0" : "left-0";
+  const bgClass = variant === "dark"
+    ? "bg-sidebar border-sidebar-border"
+    : "bg-popover border-border";
 
   return (
     <div ref={ref} className="relative">
       <div onClick={() => setOpen((o) => !o)}>{trigger}</div>
       {open && (
         <div
-          className={`absolute ${positionClass} ${alignClass} z-50 min-w-56 rounded-lg border border-border bg-popover p-1 shadow-md animate-in fade-in-0 zoom-in-95 duration-100`}
+          className={`absolute ${positionClass} left-0 z-50 rounded-lg border ${bgClass} p-1 shadow-md animate-in fade-in-0 zoom-in-95 duration-100 ${matchWidth ? "w-full" : "min-w-56"}`}
           onClick={() => setOpen(false)}
         >
           {children}
@@ -149,47 +137,39 @@ function SimpleDropdown({
 function DropdownItem({
   children,
   onClick,
-  className = "",
+  variant = "light",
 }: {
   children: React.ReactNode;
   onClick?: () => void;
-  className?: string;
+  variant?: "light" | "dark";
 }) {
+  const hoverClass = variant === "dark"
+    ? "hover:bg-white/10 text-sidebar-foreground"
+    : "hover:bg-accent hover:text-accent-foreground text-foreground";
+
   return (
     <button
       type="button"
       onClick={onClick}
-      className={`flex w-full cursor-pointer items-center gap-1.5 rounded-md px-2 py-1.5 text-sm outline-none hover:bg-accent hover:text-accent-foreground ${className}`}
+      className={`flex w-full cursor-pointer items-center gap-1.5 rounded-md px-2 py-1.5 text-sm outline-none ${hoverClass}`}
     >
       {children}
     </button>
   );
 }
 
-function DropdownLabel({ children, className = "" }: { children: React.ReactNode; className?: string }) {
+function DropdownLabel({ children, variant = "light" }: { children: React.ReactNode; variant?: "light" | "dark" }) {
+  const colorClass = variant === "dark" ? "text-sidebar-foreground/50" : "text-muted-foreground";
   return (
-    <div className={`px-2 py-1 text-xs font-medium text-muted-foreground ${className}`}>
+    <div className={`px-2 py-1 text-xs font-medium ${colorClass}`}>
       {children}
     </div>
   );
 }
 
-function DropdownSeparator() {
-  return <div className="-mx-1 my-1 h-px bg-border" />;
-}
-
-// ─── Sidebar toggle ─────────────────────────────────────────────
-
-function SidebarToggle() {
-  const { toggleSidebar } = useSidebar();
-  return (
-    <SidebarMenuItem>
-      <SidebarMenuButton onClick={toggleSidebar}>
-        <PanelLeft />
-        <span>Collapse</span>
-      </SidebarMenuButton>
-    </SidebarMenuItem>
-  );
+function DropdownSeparator({ variant = "light" }: { variant?: "light" | "dark" }) {
+  const borderClass = variant === "dark" ? "bg-white/10" : "bg-border";
+  return <div className={`-mx-1 my-1 h-px ${borderClass}`} />;
 }
 
 // ─── Main component ─────────────────────────────────────────────
@@ -243,30 +223,25 @@ export function AppSidebar() {
 
   return (
     <Sidebar collapsible="icon">
-      {/* Subdivision switcher */}
+      {/* Subdivision switcher — bordered, no icon, dark dropdown */}
       <SidebarHeader className="p-2">
         <SidebarMenu>
           <SidebarMenuItem>
             <SimpleDropdown
+              matchWidth
+              variant="dark"
               trigger={
                 <SidebarMenuButton
                   size="lg"
-                  className="data-[state=open]:bg-sidebar-accent data-[state=open]:text-sidebar-accent-foreground"
+                  className="border border-sidebar-border rounded-md"
                 >
-                  <div className="flex aspect-square size-8 items-center justify-center rounded-lg bg-primary/10 text-primary shrink-0">
-                    {isInSubdivision ? (
-                      <Building2 className="size-4" />
-                    ) : (
-                      <Home className="size-4" />
-                    )}
-                  </div>
                   <div className="grid flex-1 text-left text-sm leading-tight">
                     <span className="truncate font-medium">
                       {isInSubdivision
                         ? (currentSubdivision?.name ?? "Subdivision")
-                        : "All subdivisions"}
+                        : "Main dashboard"}
                     </span>
-                    <span className="truncate text-xs text-muted-foreground">
+                    <span className="truncate text-xs text-sidebar-foreground/50">
                       {isInSubdivision
                         ? (currentSubdivision?.plan_number ?? "")
                         : `${subdivisions.length} subdivision${subdivisions.length !== 1 ? "s" : ""}`}
@@ -276,23 +251,22 @@ export function AppSidebar() {
                 </SidebarMenuButton>
               }
             >
-              <DropdownLabel>Switch view</DropdownLabel>
-              <DropdownSeparator />
+              <DropdownLabel variant="dark">Dashboards</DropdownLabel>
+              <DropdownSeparator variant="dark" />
 
-              <DropdownItem onClick={() => switchSubdivision(null)}>
-                <Home className="mr-2 h-4 w-4" />
-                <span className="flex-1">All subdivisions</span>
+              <DropdownItem variant="dark" onClick={() => switchSubdivision(null)}>
+                <span className="flex-1">Main dashboard</span>
                 {!isInSubdivision && <Check className="ml-2 h-4 w-4 text-primary" />}
               </DropdownItem>
 
-              {subdivisions.length > 0 && <DropdownSeparator />}
+              {subdivisions.length > 0 && <DropdownSeparator variant="dark" />}
 
               {subdivisions.map((sub) => (
                 <DropdownItem
                   key={sub.id}
+                  variant="dark"
                   onClick={() => switchSubdivision(sub.id)}
                 >
-                  <Building2 className="mr-2 h-4 w-4" />
                   <span className="flex-1 truncate">{sub.name}</span>
                   {sub.id === currentSubdivisionId && (
                     <Check className="ml-2 h-4 w-4 text-primary" />
@@ -300,8 +274,8 @@ export function AppSidebar() {
                 </DropdownItem>
               ))}
 
-              <DropdownSeparator />
-              <DropdownItem onClick={() => router.push("/subdivisions/new")}>
+              <DropdownSeparator variant="dark" />
+              <DropdownItem variant="dark" onClick={() => router.push("/subdivisions/new")}>
                 <Plus className="mr-2 h-4 w-4" />
                 Create subdivision
               </DropdownItem>
@@ -309,8 +283,6 @@ export function AppSidebar() {
           </SidebarMenuItem>
         </SidebarMenu>
       </SidebarHeader>
-
-      <SidebarSeparator />
 
       {/* Navigation */}
       <SidebarContent>
@@ -334,15 +306,6 @@ export function AppSidebar() {
             </SidebarGroupContent>
           </SidebarGroup>
         ))}
-
-        {/* Collapse toggle */}
-        <SidebarGroup>
-          <SidebarGroupContent>
-            <SidebarMenu>
-              <SidebarToggle />
-            </SidebarMenu>
-          </SidebarGroupContent>
-        </SidebarGroup>
       </SidebarContent>
 
       {/* Footer — User profile */}
@@ -351,7 +314,7 @@ export function AppSidebar() {
           <SidebarMenuItem>
             <SimpleDropdown
               side="top"
-              align="start"
+              matchWidth
               trigger={
                 <SidebarMenuButton size="lg">
                   {!loaded ? (
@@ -382,22 +345,20 @@ export function AppSidebar() {
                 </SidebarMenuButton>
               }
             >
-              <DropdownLabel className="p-0 pb-1">
-                <div className="flex items-center gap-2 px-1 py-1.5 text-left text-sm">
-                  <UserAvatar
-                    src={profile?.userAvatarUrl}
-                    initials={profile?.userInitials ?? "?"}
-                  />
-                  <div className="grid flex-1 text-left text-sm leading-tight">
-                    <span className="truncate font-medium text-foreground">
-                      {profile?.companyName ?? "My Company"}
-                    </span>
-                    <span className="truncate text-xs text-muted-foreground">
-                      {profile?.userEmail ?? ""}
-                    </span>
-                  </div>
+              <div className="flex items-center gap-2 px-2 py-1.5 text-sm">
+                <UserAvatar
+                  src={profile?.userAvatarUrl}
+                  initials={profile?.userInitials ?? "?"}
+                />
+                <div className="grid flex-1 text-left text-sm leading-tight">
+                  <span className="truncate font-medium text-foreground">
+                    {profile?.companyName ?? "My Company"}
+                  </span>
+                  <span className="truncate text-xs text-muted-foreground">
+                    {profile?.userEmail ?? ""}
+                  </span>
                 </div>
-              </DropdownLabel>
+              </div>
               <DropdownSeparator />
               <DropdownItem onClick={() => router.push("/settings")}>
                 <Settings className="mr-2 h-4 w-4" />

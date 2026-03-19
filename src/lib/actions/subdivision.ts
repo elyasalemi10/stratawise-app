@@ -17,16 +17,7 @@ export async function getSidebarSubdivisions(): Promise<SidebarSubdivision[]> {
 
   const supabase = createServerClient();
 
-  if (profile.role === "super_admin") {
-    const { data } = await supabase
-      .from("subdivisions")
-      .select("id, name, plan_number, total_lots, status")
-      .eq("status", "active")
-      .order("name");
-    return data ?? [];
-  }
-
-  if (profile.role === "strata_manager") {
+  if (profile.role === "super_admin" || profile.role === "strata_manager") {
     if (!profile.management_company_id) return [];
     const { data } = await supabase
       .from("subdivisions")
