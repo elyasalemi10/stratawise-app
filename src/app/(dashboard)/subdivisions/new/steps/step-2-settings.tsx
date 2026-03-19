@@ -33,14 +33,17 @@ const LEVY_FREQUENCIES = [
   { value: 12, label: "Monthly (12)" },
 ];
 
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
 export function Step2Settings({
   subdivisionId,
   onNext,
   onBack,
+  initialData,
 }: {
   subdivisionId: string;
   onNext: () => void;
   onBack: () => void;
+  initialData?: any;
 }) {
   const [pending, setPending] = useState(false);
 
@@ -52,9 +55,9 @@ export function Step2Settings({
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     resolver: zodResolver(step2Schema) as any,
     defaultValues: {
-      financial_year_start_month: 7,
-      levy_year_start_month: 7,
-      levies_per_year: 4,
+      financial_year_start_month: initialData?.financial_year_start_month ?? 7,
+      levy_year_start_month: initialData?.levy_year_start_month ?? 7,
+      levies_per_year: initialData?.levies_per_year ?? 4,
     },
   });
 

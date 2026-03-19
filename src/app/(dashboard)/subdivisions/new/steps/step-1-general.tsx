@@ -5,7 +5,7 @@ import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { toast } from "sonner";
 import { step1Schema, type Step1Values } from "@/lib/validations/subdivision-wizard";
-import { createSubdivisionStep1 } from "../actions";
+import { createSubdivisionStep1, updateSubdivisionStep1 } from "../actions";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -22,18 +22,21 @@ const TYPES = [
   { value: "neighbourhood_association", label: "Neighbourhood Association" },
 ] as const;
 
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
 export function Step1General({
   onNext,
   onCancel,
+  initialData,
 }: {
   onNext: (subdivisionId: string) => void;
   onCancel: () => void;
+  initialData?: any;
 }) {
   const [pending, setPending] = useState(false);
-  const [selectedState, setSelectedState] = useState<string | null>(null);
-  const [suburb, setSuburb] = useState("");
+  const [selectedState, setSelectedState] = useState<string | null>(initialData?.state ?? null);
+  const [suburb, setSuburb] = useState(initialData?.suburb ?? "");
   const [suburbError, setSuburbError] = useState("");
-  const [startDate, setStartDate] = useState(format(new Date(), "yyyy-MM-dd"));
+  const [startDate, setStartDate] = useState(initialData?.management_start_date ?? format(new Date(), "yyyy-MM-dd"));
   const [startDateError, setStartDateError] = useState("");
 
   const {
@@ -45,9 +48,17 @@ export function Step1General({
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     resolver: zodResolver(step1Schema) as any,
     defaultValues: {
-      subdivision_type: "strata",
-      management_start_date: format(new Date(), "yyyy-MM-dd"),
-      state: undefined,
+      subdivision_type: initialData?.subdivision_type ?? "strata",
+      plan_number: initialData?.plan_number ?? "",
+      management_start_date: initialData?.management_start_date ?? format(new Date(), "yyyy-MM-dd"),
+      name: initialData?.name ?? "",
+      street_number: initialData?.street_number ?? "",
+      street_name: initialData?.street_name ?? "",
+      state: initialData?.state ?? undefined,
+      suburb: initialData?.suburb ?? "",
+      common_property_description: initialData?.common_property_description ?? "",
+      abn: initialData?.abn ?? "",
+      tfn: initialData?.tfn ?? "",
     },
   });
 
@@ -66,7 +77,13 @@ export function Step1General({
     setStartDateError("");
 
     setPending(true);
-    const result = await createSubdivisionStep1({ ...data, suburb, management_start_date: startDate });
+    const formData = { ...data, suburb, management_start_date: startDate };
+
+    // If we have initialData (editing), update instead of create
+    const existingId = initialData?.id;
+    const result = existingId
+      ? await updateSubdivisionStep1(existingId, formData)
+      : await createSubdivisionStep1(formData);
     setPending(false);
 
     if (result.error) {

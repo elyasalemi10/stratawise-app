@@ -17,17 +17,21 @@ const CONNECTION_TYPES = [
   { value: "manual", label: "Manual statement upload" },
 ] as const;
 
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
 export function Step3Banking({
   subdivisionId,
   onNext,
   onBack,
+  initialData,
 }: {
   subdivisionId: string;
   onNext: () => void;
   onBack: () => void;
+  initialData?: any;
 }) {
   const [pending, setPending] = useState(false);
-  const [bank, setBank] = useState("");
+  const existingBank = initialData?.bankAccounts?.[0];
+  const [bank, setBank] = useState(existingBank?.bank_name ?? "");
   const [bankError, setBankError] = useState("");
 
   const {
@@ -39,7 +43,11 @@ export function Step3Banking({
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     resolver: zodResolver(step3Schema) as any,
     defaultValues: {
-      bank_connection_type: "manual",
+      bank_connection_type: initialData?.subdivision?.bank_connection_type ?? "manual",
+      bank_name: existingBank?.bank_name ?? "",
+      account_name: existingBank?.account_name ?? "",
+      bsb: existingBank?.bsb ?? "",
+      account_number: existingBank?.account_number ?? "",
     },
   });
 

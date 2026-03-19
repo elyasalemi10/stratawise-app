@@ -66,16 +66,12 @@ export const step3Schema = z.object({
 
 export const lotRowSchema = z.object({
   lot_number: z.string().min(1, "Lot number is required"),
-  unit_number: z.string().optional(),
+  unit_number: z.string().min(1, "Unit number is required"),
   owner_type: z.enum(["individual", "company"]),
   owner_name: z.string().min(1, "Owner name is required"),
-  owner_email: z
-    .string()
-    .email("Invalid email")
-    .optional()
-    .or(z.literal("")),
-  owner_phone: z.string().optional(),
-  lot_entitlement: z.coerce.number().min(0, "Must be 0 or more"),
+  owner_email: z.string().email("Invalid email").min(1, "Email is required"),
+  owner_phone: z.string().min(1, "Phone is required"),
+  lot_entitlement: z.coerce.number().min(1, "Entitlement is required"),
 });
 
 export const step4Schema = z.object({

@@ -13,17 +13,25 @@ import { Label } from "@/components/ui/label";
 import { Spinner } from "@/components/ui/spinner";
 import { DatePicker } from "@/components/shared/date-picker";
 
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
 export function Step5Balances({
   subdivisionId,
   onComplete,
   onBack,
+  initialData,
 }: {
   subdivisionId: string;
   onComplete: () => void;
   onBack: () => void;
+  initialData?: any[];
 }) {
+  const adminAccount = initialData?.find((a: any) => a.fund_type === "administrative");
+  const cwAccount = initialData?.find((a: any) => a.fund_type === "capital_works");
+
   const [pending, setPending] = useState(false);
-  const [balanceDate, setBalanceDate] = useState(format(new Date(), "yyyy-MM-dd"));
+  const [balanceDate, setBalanceDate] = useState(
+    adminAccount?.opening_balance_date ?? format(new Date(), "yyyy-MM-dd")
+  );
   const [dateError, setDateError] = useState("");
 
   const {
@@ -34,9 +42,9 @@ export function Step5Balances({
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     resolver: zodResolver(step5Schema) as any,
     defaultValues: {
-      admin_opening_balance: "" as unknown as number,
-      capital_works_opening_balance: "" as unknown as number,
-      opening_balance_date: format(new Date(), "yyyy-MM-dd"),
+      admin_opening_balance: adminAccount?.opening_balance ? Number(adminAccount.opening_balance) : ("" as unknown as number),
+      capital_works_opening_balance: cwAccount?.opening_balance ? Number(cwAccount.opening_balance) : ("" as unknown as number),
+      opening_balance_date: adminAccount?.opening_balance_date ?? format(new Date(), "yyyy-MM-dd"),
     },
   });
 

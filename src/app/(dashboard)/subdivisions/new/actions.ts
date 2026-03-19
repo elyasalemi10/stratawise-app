@@ -99,6 +99,58 @@ export async function createSubdivisionStep1(data: Step1Values) {
   }
 }
 
+// ─── Step 1: Update existing subdivision general details ────────
+
+export async function updateSubdivisionStep1(subdivisionId: string, data: Step1Values) {
+  try {
+    const profile = await requireRole(["strata_manager", "super_admin"]);
+    if (!profile.management_company_id) {
+      return { error: "No management company assigned" };
+    }
+
+    if (!(await verifySubdivisionOwnership(subdivisionId, profile.management_company_id))) {
+      return { error: "Access denied" };
+    }
+
+    const parsed = step1Schema.safeParse(data);
+    if (!parsed.success) {
+      return { error: parsed.error.issues[0]?.message ?? "Validation failed" };
+    }
+
+    const v = parsed.data;
+    const address = `${v.street_number} ${v.street_name}, ${v.suburb}, ${v.state}`;
+
+    const supabase = createServerClient();
+
+    const { error } = await supabase
+      .from("subdivisions")
+      .update({
+        subdivision_type: v.subdivision_type,
+        plan_number: v.plan_number,
+        management_start_date: v.management_start_date,
+        name: v.name,
+        street_number: v.street_number,
+        street_name: v.street_name,
+        suburb: v.suburb,
+        state: v.state,
+        address,
+        common_property_description: v.common_property_description || null,
+        abn: v.abn || null,
+        tfn: v.tfn || null,
+      })
+      .eq("id", subdivisionId);
+
+    if (error) {
+      console.error("Step 1 update error:", error);
+      return { error: "Failed to update subdivision" };
+    }
+
+    return { subdivisionId };
+  } catch (err) {
+    return { error: err instanceof Error ? err.message : "Unexpected error" };
+  }
+}
+
 // ─── Step 2: Update advanced settings ───────────────────────────
 
 export async function updateSubdivisionStep2(subdivisionId: string, data: Step2Values) {

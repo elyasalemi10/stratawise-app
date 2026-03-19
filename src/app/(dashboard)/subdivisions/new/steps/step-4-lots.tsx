@@ -24,17 +24,30 @@ function createEmptyLot(index: number) {
   };
 }
 
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
 export function Step4Lots({
   subdivisionId,
   onNext,
   onBack,
+  initialData,
 }: {
   subdivisionId: string;
   onNext: () => void;
   onBack: () => void;
+  initialData?: any[];
 }) {
+  const existingLots = initialData?.map((lot: any) => ({
+    lot_number: String(lot.lot_number),
+    unit_number: lot.unit_number ?? "",
+    owner_type: lot.owner_type ?? "individual",
+    owner_name: lot.owner_name ?? "",
+    owner_email: lot.owner_email ?? "",
+    owner_phone: lot.owner_phone ?? "",
+    lot_entitlement: lot.lot_entitlement || ("" as unknown as number),
+  })) ?? [];
+
   const [pending, setPending] = useState(false);
-  const [lotCount, setLotCount] = useState("");
+  const [lotCount, setLotCount] = useState(existingLots.length > 0 ? String(existingLots.length) : "");
 
   const {
     register,
@@ -47,8 +60,8 @@ export function Step4Lots({
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     resolver: zodResolver(step4Schema) as any,
     defaultValues: {
-      total_lots: 0,
-      lots: [],
+      total_lots: existingLots.length || 0,
+      lots: existingLots,
     },
   });
 
@@ -204,7 +217,10 @@ export function Step4Lots({
                     </td>
                     <td className="px-2 py-1.5">
                       <Input
-                        className="h-8 text-xs px-2"
+                        className={cn(
+                          "h-8 text-xs px-2",
+                          lotFieldError(index, "unit_number") && "border-destructive"
+                        )}
                         placeholder=""
                         {...register(`lots.${index}.unit_number`)}
                       />
@@ -236,7 +252,10 @@ export function Step4Lots({
                     </td>
                     <td className="px-2 py-1.5">
                       <Input
-                        className="h-8 text-xs px-2"
+                        className={cn(
+                          "h-8 text-xs px-2",
+                          lotFieldError(index, "owner_phone") && "border-destructive"
+                        )}
                         placeholder=""
                         {...register(`lots.${index}.owner_phone`)}
                       />

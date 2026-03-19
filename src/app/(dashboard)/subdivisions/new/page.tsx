@@ -1,14 +1,17 @@
 "use client";
 
+import { useEffect, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { Suspense } from "react";
 import { Card, CardContent } from "@/components/ui/card";
+import { Skeleton } from "@/components/ui/skeleton";
 import { StepIndicator } from "./step-indicator";
 import { Step1General } from "./steps/step-1-general";
 import { Step2Settings } from "./steps/step-2-settings";
 import { Step3Banking } from "./steps/step-3-banking";
 import { Step4Lots } from "./steps/step-4-lots";
 import { Step5Balances } from "./steps/step-5-balances";
+import { getSubdivisionWizardData } from "./actions";
 
 const STEP_TITLES: Record<number, { title: string; subtitle: string }> = {
   1: { title: "Create new subdivision", subtitle: "Set up a new owners corporation" },
@@ -18,6 +21,9 @@ const STEP_TITLES: Record<number, { title: string; subtitle: string }> = {
   5: { title: "Opening balances", subtitle: "Enter current fund balances" },
 };
 
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+type WizardData = Awaited<ReturnType<typeof getSubdivisionWizardData>>;
+
 function WizardContent() {
   const router = useRouter();
   const searchParams = useSearchParams();
@@ -26,6 +32,21 @@ function WizardContent() {
   const subdivisionId = searchParams.get("id") ?? "";
   const currentStep = Math.max(1, Math.min(5, step));
 
+  const [wizardData, setWizardData] = useState<WizardData>(null);
+  const [dataLoading, setDataLoading] = useState(false);
+
+  // Fetch existing subdivision data when we have an ID
+  useEffect(() => {
+    if (!subdivisionId) return;
+    setDataLoading(true);
+    getSubdivisionWizardData(subdivisionId)
+      .then((data) => {
+        setWizardData(data);
+        setDataLoading(false);
+      })
+      .catch(() => setDataLoading(false));
+  }, [subdivisionId]);
+
   const { title, subtitle } = STEP_TITLES[currentStep] ?? STEP_TITLES[1];
 
   function goToStep(s: number, id?: string) {
@@ -33,9 +54,21 @@ function WizardContent() {
     const params = new URLSearchParams();
     params.set("step", String(s));
     if (sid) params.set("id", sid);
+    // Refetch data when navigating between steps
+    if (sid) {
+      setDataLoading(true);
+      getSubdivisionWizardData(sid)
+        .then((data) => {
+          setWizardData(data);
+          setDataLoading(false);
+        })
+        .catch(() => setDataLoading(false));
+    }
     window.history.replaceState(null, "", `/subdivisions/new?${params.toString()}`);
     router.replace(`/subdivisions/new?${params.toString()}`);
   }
+
+  const showLoading = dataLoading && currentStep > 1;
 
   return (
     <div className="max-w-5xl">
@@ -51,39 +84,57 @@ function WizardContent() {
 
       <Card>
         <CardContent className="pt-5">
-          {currentStep === 1 && (
-            <Step1General
-              onNext={(id) => goToStep(2, id)}
-              onCancel={() => router.push("/subdivisions")}
-            />
-          )}
-          {currentStep === 2 && subdivisionId && (
-            <Step2Settings
-              subdivisionId={subdivisionId}
-              onNext={() => goToStep(3)}
-              onBack={() => goToStep(1)}
-            />
-          )}
-          {currentStep === 3 && subdivisionId && (
-            <Step3Banking
-              subdivisionId={subdivisionId}
-              onNext={() => goToStep(4)}
-              onBack={() => goToStep(2)}
-            />
-          )}
-          {currentStep === 4 && subdivisionId && (
-            <Step4Lots
-              subdivisionId={subdivisionId}
-              onNext={() => goToStep(5)}
-              onBack={() => goToStep(3)}
-            />
-          )}
-          {currentStep === 5 && subdivisionId && (
-            <Step5Balances
-              subdivisionId={subdivisionId}
-              onComplete={() => router.push(`/subdivisions/${subdivisionId}/dashboard`)}
-              onBack={() => goToStep(4)}
-            />
+          {showLoading ? (
+            <div className="space-y-4">
+              {Array.from({ length: 3 }).map((_, i) => (
+                <div key={i} className="space-y-1.5">
+                  <Skeleton className="h-3 w-24" />
+                  <Skeleton className="h-9 w-full rounded-md" />
+                </div>
+              ))}
+            </div>
+          ) : (
+            <>
+              {currentStep === 1 && (
+                <Step1General
+                  onNext={(id) => goToStep(2, id)}
+                  onCancel={() => router.push("/subdivisions")}
+                  initialData={wizardData?.subdivision}
+                />
+              )}
+              {currentStep === 2 && subdivisionId && (
+                <Step2Settings
+                  subdivisionId={subdivisionId}
+                  onNext={() => goToStep(3)}
+                  onBack={() => goToStep(1)}
+                  initialData={wizardData?.subdivision}
+                />
+              )}
+              {currentStep === 3 && subdivisionId && (
+                <Step3Banking
+                  subdivisionId={subdivisionId}
+                  onNext={() => goToStep(4)}
+                  onBack={() => goToStep(2)}
+                  initialData={wizardData}
+                />
+              )}
+              {currentStep === 4 && subdivisionId && (
+                <Step4Lots
+                  subdivisionId={subdivisionId}
+                  onNext={() => goToStep(5)}
+                  onBack={() => goToStep(3)}
+                  initialData={wizardData?.lots}
+                />
+              )}
+              {currentStep === 5 && subdivisionId && (
+                <Step5Balances
+                  subdivisionId={subdivisionId}
+                  onComplete={() => router.push(`/subdivisions/${subdivisionId}/dashboard`)}
+                  onBack={() => goToStep(4)}
+                  initialData={wizardData?.bankAccounts}
+                />
+              )}
+            </>
           )}
         </CardContent>
       </Card>
