@@ -12,6 +12,8 @@ import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Spinner } from "@/components/ui/spinner";
 import { StateSuburbSelect } from "@/components/shared/state-suburb-select";
+import { DatePicker } from "@/components/shared/date-picker";
+import { format } from "date-fns";
 
 const STATES = ["ACT", "NSW", "NT", "QLD", "SA", "TAS", "VIC", "WA"] as const;
 const TYPES = [
@@ -31,6 +33,8 @@ export function Step1General({
   const [selectedState, setSelectedState] = useState<string | null>(null);
   const [suburb, setSuburb] = useState("");
   const [suburbError, setSuburbError] = useState("");
+  const [startDate, setStartDate] = useState(format(new Date(), "yyyy-MM-dd"));
+  const [startDateError, setStartDateError] = useState("");
 
   const {
     register,
@@ -42,19 +46,27 @@ export function Step1General({
     resolver: zodResolver(step1Schema) as any,
     defaultValues: {
       subdivision_type: "strata",
+      management_start_date: format(new Date(), "yyyy-MM-dd"),
       state: undefined,
     },
   });
 
   async function onSubmit(data: Step1Values) {
+    let hasError = false;
     if (!suburb) {
       setSuburbError("Please select a suburb");
-      return;
+      hasError = true;
     }
+    if (!startDate) {
+      setStartDateError("Start date is required");
+      hasError = true;
+    }
+    if (hasError) return;
     setSuburbError("");
+    setStartDateError("");
 
     setPending(true);
-    const result = await createSubdivisionStep1({ ...data, suburb });
+    const result = await createSubdivisionStep1({ ...data, suburb, management_start_date: startDate });
     setPending(false);
 
     if (result.error) {
@@ -67,6 +79,9 @@ export function Step1General({
     }
   }
 
+  const selectClass =
+    "flex h-9 w-full rounded-md border border-border bg-background px-3 text-sm focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary";
+
   return (
     <form onSubmit={handleSubmit(onSubmit)} autoComplete="off" className="space-y-4">
       {/* Type */}
@@ -74,15 +89,9 @@ export function Step1General({
         <Label htmlFor="type">
           Type <span className="text-destructive">*</span>
         </Label>
-        <select
-          id="type"
-          className="flex h-9 w-full rounded-md border border-border bg-background px-3 text-sm focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary"
-          {...register("subdivision_type")}
-        >
+        <select id="type" className={selectClass} {...register("subdivision_type")}>
           {TYPES.map((t) => (
-            <option key={t.value} value={t.value}>
-              {t.label}
-            </option>
+            <option key={t.value} value={t.value}>{t.label}</option>
           ))}
         </select>
         {errors.subdivision_type && (
@@ -112,20 +121,22 @@ export function Step1General({
         )}
       </div>
 
-      {/* Start date */}
+      {/* Start date — shadcn Calendar picker */}
       <div className="space-y-1.5">
-        <Label htmlFor="start_date">
+        <Label>
           Management start date <span className="text-destructive">*</span>
         </Label>
-        <Input
-          id="start_date"
-          type="date"
-          autoComplete="off"
-          aria-invalid={!!errors.management_start_date}
-          {...register("management_start_date")}
+        <DatePicker
+          value={startDate}
+          onChange={(val) => {
+            setStartDate(val);
+            setValue("management_start_date", val);
+            setStartDateError("");
+          }}
+          error={!!startDateError}
         />
-        {errors.management_start_date && (
-          <p className="text-xs text-destructive mt-1">{errors.management_start_date.message}</p>
+        {startDateError && (
+          <p className="text-xs text-destructive mt-1">{startDateError}</p>
         )}
       </div>
 
@@ -187,7 +198,7 @@ export function Step1General({
         </Label>
         <select
           id="state"
-          className="flex h-9 w-full rounded-md border border-border bg-background px-3 text-sm focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary"
+          className={selectClass}
           {...register("state", {
             onChange: (e) => {
               setSelectedState(e.target.value || null);
@@ -197,13 +208,9 @@ export function Step1General({
           })}
           defaultValue=""
         >
-          <option value="" disabled>
-            Select state
-          </option>
+          <option value="" disabled>Select state</option>
           {STATES.map((s) => (
-            <option key={s} value={s}>
-              {s}
-            </option>
+            <option key={s} value={s}>{s}</option>
           ))}
         </select>
         {errors.state && (
@@ -228,9 +235,7 @@ export function Step1General({
           id="suburb"
         />
         {(suburbError || errors.suburb) && (
-          <p className="text-xs text-destructive mt-1">
-            {suburbError || errors.suburb?.message}
-          </p>
+          <p className="text-xs text-destructive mt-1">{suburbError || errors.suburb?.message}</p>
         )}
       </div>
 
@@ -249,29 +254,17 @@ export function Step1General({
       <div className="grid grid-cols-2 gap-4">
         <div className="space-y-1.5">
           <Label htmlFor="abn">ABN</Label>
-          <Input
-            id="abn"
-            placeholder="12 345 678 901"
-            autoComplete="off"
-            {...register("abn")}
-          />
+          <Input id="abn" placeholder="12 345 678 901" autoComplete="off" {...register("abn")} />
         </div>
         <div className="space-y-1.5">
           <Label htmlFor="tfn">TFN</Label>
-          <Input
-            id="tfn"
-            placeholder="123 456 789"
-            autoComplete="off"
-            {...register("tfn")}
-          />
+          <Input id="tfn" placeholder="123 456 789" autoComplete="off" {...register("tfn")} />
         </div>
       </div>
 
       {/* Actions */}
       <div className="flex justify-between pt-4">
-        <Button type="button" variant="ghost" onClick={onCancel}>
-          Cancel
-        </Button>
+        <Button type="button" variant="ghost" onClick={onCancel}>Cancel</Button>
         <Button type="submit" disabled={pending}>
           {pending ? <><Spinner className="mr-2" /> Continue</> : "Continue"}
         </Button>

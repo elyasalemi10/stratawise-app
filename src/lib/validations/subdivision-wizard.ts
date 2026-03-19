@@ -65,10 +65,10 @@ export const step3Schema = z.object({
 // ─── Step 4: Lots ───────────────────────────────────────────────
 
 export const lotRowSchema = z.object({
-  lot_number: z.coerce.number().min(1),
+  lot_number: z.string().min(1, "Lot number is required"),
   unit_number: z.string().optional(),
   owner_type: z.enum(["individual", "company"]),
-  owner_name: z.string().optional(),
+  owner_name: z.string().min(1, "Owner name is required"),
   owner_email: z
     .string()
     .email("Invalid email")
@@ -80,7 +80,7 @@ export const lotRowSchema = z.object({
 
 export const step4Schema = z.object({
   total_lots: z.coerce.number().min(2, "Minimum 2 lots required"),
-  lots: z.array(lotRowSchema).min(2, "At least 2 lots required"),
+  lots: z.array(lotRowSchema),
 });
 
 // ─── Step 5: Opening Balances ───────────────────────────────────

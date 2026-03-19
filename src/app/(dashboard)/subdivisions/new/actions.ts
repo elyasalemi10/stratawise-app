@@ -266,9 +266,9 @@ export async function updateSubdivisionStep4(subdivisionId: string, data: Step4V
       .eq("subdivision_id", subdivisionId);
 
     // Insert new lots
-    const lotsToInsert = v.lots.map((lot) => ({
+    const lotsToInsert = v.lots.map((lot, idx) => ({
       subdivision_id: subdivisionId,
-      lot_number: lot.lot_number,
+      lot_number: parseInt(lot.lot_number, 10) || (idx + 1),
       unit_number: lot.unit_number || null,
       owner_type: lot.owner_type,
       owner_name: lot.owner_name || null,

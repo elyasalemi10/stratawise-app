@@ -1,6 +1,8 @@
-import { Building2, DollarSign, AlertTriangle, Users } from "lucide-react";
+import Link from "next/link";
+import { Building2, DollarSign, AlertTriangle, Users, ArrowRight } from "lucide-react";
 import { Card, CardContent } from "@/components/ui/card";
-import { getSubdivisionStats } from "@/lib/actions/subdivision";
+import { Button } from "@/components/ui/button";
+import { getSubdivision, getSubdivisionStats } from "@/lib/actions/subdivision";
 
 interface KPICardProps {
   label: string;
@@ -38,6 +40,30 @@ export default async function SubdivisionDashboardPage({
   params: Promise<{ subdivisionId: string }>;
 }) {
   const { subdivisionId } = await params;
+  const subdivision = await getSubdivision(subdivisionId);
+
+  // If setup is incomplete, show continue setup prompt
+  if (subdivision && (subdivision.setup_step ?? 0) < 5) {
+    const step = (subdivision.setup_step ?? 0) + 1;
+    return (
+      <div className="flex flex-col items-center justify-center py-20 text-center">
+        <Building2 className="h-12 w-12 text-muted-foreground/30" />
+        <p className="mt-4 text-base font-medium text-foreground">
+          Setup incomplete
+        </p>
+        <p className="mt-1 text-sm text-muted-foreground max-w-sm">
+          This subdivision hasn&apos;t finished setup yet. Continue from where you left off.
+        </p>
+        <Link href={`/subdivisions/new?step=${step}&id=${subdivisionId}`}>
+          <Button className="mt-4">
+            Continue setup
+            <ArrowRight className="ml-2 h-4 w-4" />
+          </Button>
+        </Link>
+      </div>
+    );
+  }
+
   const stats = await getSubdivisionStats(subdivisionId);
 
   const formatCurrency = (n: number) =>
