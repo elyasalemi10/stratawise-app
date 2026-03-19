@@ -28,7 +28,8 @@ export default function LotOwnerOnboardingPage() {
       return;
     }
 
-    router.push("/dashboard");
+    // Force full reload to clear Next.js router cache
+    window.location.href = "/dashboard";
   }
 
   return (

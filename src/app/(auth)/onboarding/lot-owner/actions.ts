@@ -2,6 +2,7 @@
 
 import { auth } from "@clerk/nextjs/server";
 import { headers } from "next/headers";
+import { revalidatePath } from "next/cache";
 import { createServerClient } from "@/lib/supabase";
 import { ensureProfile } from "@/lib/auth";
 
@@ -30,7 +31,7 @@ export async function recordLotOwnerConsent() {
     "unknown";
   const now = new Date().toISOString();
 
-  await supabase.from("user_consents").insert([
+  const { error } = await supabase.from("user_consents").insert([
     {
       profile_id: profileId,
       consent_type: "terms_of_service",
@@ -46,6 +47,15 @@ export async function recordLotOwnerConsent() {
       ip_address: ipAddress,
     },
   ]);
+
+  if (error) {
+    console.error("Failed to record consent:", error);
+    return { error: "Failed to save consent. Please try again." };
+  }
+
+  // Clear any cached redirects
+  revalidatePath("/dashboard");
+  revalidatePath("/onboarding");
 
   return { success: true };
 }
