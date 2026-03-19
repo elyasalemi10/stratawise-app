@@ -77,6 +77,13 @@ function getSubdivisionNavGroups(subdivisionId: string) {
         { href: `${base}/maintenance`, label: "Maintenance", icon: Wrench },
       ],
     },
+    {
+      label: "Settings",
+      items: [
+        { href: `${base}/settings`, label: "Subdivision settings", icon: Settings },
+        { href: "/settings", label: "Account settings", icon: Users },
+      ],
+    },
   ];
 }
 

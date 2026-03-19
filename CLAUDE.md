@@ -64,22 +64,17 @@
 
 ## Loading States (Skeleton/Shimmer)
 - NEVER use spinners. Always skeleton loaders that mirror the layout being loaded.
-- Use shadcn Skeleton component with shimmer animation (animate-pulse OR custom shimmer gradient).
-- Every page/tab must have a loading skeleton that matches its loaded layout exactly.
-- Skeleton patterns by component:
-  - **Page:** PageHeader skeleton (wide bar + thin bar) + content skeletons below.
-  - **KPI cards:** grid of skeleton cards matching KPI grid (rounded-lg h-24 with 2 skeleton bars inside).
-  - **Table:** skeleton header row + 5-8 skeleton body rows with columns matching real table widths.
-  - **Card list:** grid of skeleton cards matching card grid layout.
-  - **Form:** skeleton labels + skeleton input bars in same layout as real form.
-  - **Chat:** 4-6 skeleton message bubbles alternating left/right.
-  - **Detail sheet:** skeleton bars matching the sheet's label:value layout.
-- Shimmer direction: left-to-right gradient sweep (bg-gradient-to-r from-muted via-muted/60 to-muted).
-- Skeleton colour: bg-muted (same as page background) with shimmer highlight at muted/60.
-- Duration: shimmer cycle 1.5s, ease-in-out, infinite.
-- Show skeleton immediately on navigation. Replace with real content when data loads. No flash of empty content.
-- Use React Suspense boundaries with skeleton fallbacks where possible.
-- For tabs: each tab has its own skeleton. Switching tabs shows the target tab's skeleton while loading.
+- Use shadcn Skeleton component with shimmer animation (animate-pulse).
+- Every page must have a loading.tsx that matches its loaded layout EXACTLY — same grid, same card structure, same spacing.
+- Keep as much static info visible as possible — only shimmer dynamic values:
+  - **KPI cards:** Keep the label text (e.g. "Total lots"), keep the icon. Only shimmer the value number and description.
+  - **Section headers:** Keep the heading text visible (e.g. "Subdivisions"). Shimmer the action button.
+  - **Card lists:** Match the exact card structure (title line, subtitle, address row, border-t footer). Shimmer text, keep structural elements like borders and "Lots" label.
+  - **Forms:** Keep field labels visible. Shimmer the input areas.
+  - **Tables:** Keep the header row with column names. Shimmer the body rows.
+- The skeleton must be structurally identical to the loaded page. A user should see the skeleton transform into the real page with zero layout shift.
+- Show skeleton immediately on navigation (via Next.js loading.tsx). No flash of empty content.
+- For tabs within a single page: render ALL tabs at once, hide inactive via CSS (`hidden` class). Use `window.history.replaceState` to sync URL without server round-trip. This makes tab switching truly instant.
 
 ## Typography
 - Page title: 24px/600/tracking-tight. Section: 18px/600. Card title: 14px/600/uppercase/tracking-wide.

@@ -1,7 +1,7 @@
 "use client";
 
-import { useRouter, useSearchParams } from "next/navigation";
-import { Suspense } from "react";
+import { useState, Suspense } from "react";
+import { useSearchParams } from "next/navigation";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { ProfileTab } from "./profile-tab";
 import { SecurityTab } from "./security-tab";
@@ -9,12 +9,14 @@ import { NotificationsTab } from "./notifications-tab";
 import type { Profile } from "@/lib/auth";
 
 function TabsInner({ profile }: { profile: Profile }) {
-  const router = useRouter();
   const searchParams = useSearchParams();
-  const activeTab = searchParams.get("tab") ?? "profile";
+  const initialTab = searchParams.get("tab") ?? "profile";
+  const [activeTab, setActiveTab] = useState(initialTab);
 
   function onTabChange(value: string) {
-    router.replace(`/settings?tab=${value}`, { scroll: false });
+    setActiveTab(value);
+    // Sync URL without triggering server navigation
+    window.history.replaceState(null, "", `/settings?tab=${value}`);
   }
 
   return (
@@ -27,7 +29,7 @@ function TabsInner({ profile }: { profile: Profile }) {
         </TabsList>
       </Tabs>
 
-      {/* All tabs rendered, hidden via CSS — no loading delay */}
+      {/* All tabs rendered, hidden via CSS — truly instant switching */}
       <div className="mt-6">
         <div className={activeTab === "profile" ? "" : "hidden"}>
           <ProfileTab profile={profile} />

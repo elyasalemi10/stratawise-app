@@ -1,44 +1,62 @@
+import { Building2, DollarSign, Users } from "lucide-react";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Card, CardContent } from "@/components/ui/card";
+
+function KPICardSkeleton({ label, icon }: { label: string; icon: React.ReactNode }) {
+  return (
+    <Card>
+      <CardContent className="pt-5">
+        <div className="flex items-start justify-between">
+          <div>
+            <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
+              {label}
+            </p>
+            <Skeleton className="mt-2 h-7 w-12" />
+          </div>
+          <div className="flex h-9 w-9 items-center justify-center rounded-md bg-primary/10 text-primary">
+            {icon}
+          </div>
+        </div>
+        <Skeleton className="mt-3 h-3 w-28" />
+      </CardContent>
+    </Card>
+  );
+}
 
 export default function DashboardLoading() {
   return (
     <div className="space-y-6">
-      {/* KPI cards skeleton */}
+      {/* KPI cards — labels + icons visible, values shimmer */}
       <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
-        {Array.from({ length: 4 }).map((_, i) => (
-          <Card key={i}>
-            <CardContent className="pt-5">
-              <div className="flex items-start justify-between">
-                <div>
-                  <Skeleton className="h-3 w-20" />
-                  <Skeleton className="mt-3 h-7 w-16" />
-                </div>
-                <Skeleton className="h-9 w-9 rounded-md" />
-              </div>
-              <Skeleton className="mt-4 h-3 w-28" />
-            </CardContent>
-          </Card>
-        ))}
+        <KPICardSkeleton label="Subdivisions" icon={<Building2 className="h-5 w-5" />} />
+        <KPICardSkeleton label="Total lots" icon={<Users className="h-5 w-5" />} />
+        <KPICardSkeleton label="Total levied" icon={<DollarSign className="h-5 w-5" />} />
+        <KPICardSkeleton label="Outstanding" icon={<DollarSign className="h-5 w-5" />} />
       </div>
 
-      {/* Section header skeleton */}
+      {/* Subdivisions section header */}
       <div className="flex items-center justify-between">
-        <Skeleton className="h-5 w-28" />
-        <Skeleton className="h-9 w-40 rounded-md" />
+        <h2 className="text-base font-semibold text-foreground">Subdivisions</h2>
+        <Skeleton className="h-8 w-40 rounded-md" />
       </div>
 
-      {/* Cards grid skeleton */}
+      {/* Subdivision cards skeleton */}
       <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
         {Array.from({ length: 3 }).map((_, i) => (
           <Card key={i}>
             <CardContent className="pt-5">
-              <Skeleton className="h-4 w-32" />
+              <div className="flex items-center gap-2">
+                <Skeleton className="h-4 w-32" />
+                <Skeleton className="h-5 w-14 rounded-full" />
+              </div>
               <Skeleton className="mt-2 h-3 w-20" />
-              <Skeleton className="mt-4 h-3 w-full" />
+              <div className="mt-4 flex items-center gap-1">
+                <Skeleton className="h-3 w-3" />
+                <Skeleton className="h-3 w-44" />
+              </div>
               <div className="mt-3 border-t border-border pt-3">
                 <Skeleton className="h-6 w-8" />
-                <Skeleton className="mt-1 h-3 w-12" />
+                <p className="mt-1 text-xs text-muted-foreground">Lots</p>
               </div>
             </CardContent>
           </Card>
