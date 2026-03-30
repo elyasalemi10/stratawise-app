@@ -1,6 +1,6 @@
 "use server";
 
-import { auth } from "@clerk/nextjs/server";
+import { auth, currentUser } from "@clerk/nextjs/server";
 import { headers } from "next/headers";
 import { createServerClient } from "@/lib/supabase";
 import { ensureProfile } from "@/lib/auth";
@@ -37,12 +37,33 @@ export async function createCompany(formData: {
   // Get profile ID for consent recording — ensure it exists first
   let profile = await getProfileId(userId);
   if (!profile) {
-    // Profile missing — create it on the fly
+    // Profile missing — try ensureProfile first
     await ensureProfile();
     profile = await getProfileId(userId);
-    if (!profile) {
-      return { error: "Profile not found. Please refresh and try again." };
+  }
+  if (!profile) {
+    // Still missing — create directly as last resort
+    const user = await currentUser();
+    if (!user) {
+      return { error: "Unable to verify your account. Please sign out and sign in again." };
     }
+    const { data: created, error: createErr } = await supabase
+      .from("profiles")
+      .upsert({
+        clerk_id: userId,
+        email: user.primaryEmailAddress?.emailAddress ?? "",
+        first_name: user.firstName ?? null,
+        last_name: user.lastName ?? null,
+        avatar_url: user.imageUrl ?? null,
+        role: "lot_owner",
+      }, { onConflict: "clerk_id" })
+      .select("id, management_company_id")
+      .single();
+    if (createErr || !created) {
+      console.error("Failed to create profile in createCompany:", createErr);
+      return { error: "Failed to create your profile. Please try again." };
+    }
+    profile = created;
   }
 
   // Record T&Cs consent
