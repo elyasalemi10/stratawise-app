@@ -2,21 +2,21 @@ import { Font } from "@react-pdf/renderer";
 
 /**
  * Register Nunito Sans for PDF documents.
- * Clean, modern sans-serif similar to Wave Accounting's style.
+ * Using static font files from fontsource CDN (react-pdf needs static .ttf, not variable fonts).
  */
 Font.register({
   family: "NunitoSans",
   fonts: [
     {
-      src: "https://fonts.gstatic.com/s/nunitosans/v15/pe0TMImSLYBIv1o4X1M8ce2xCx3yop4tQpF_MeTm0lfGWVpNn64CL7U8upHZIbMV51Q42ptCp5F5bxqqtQ1yiU4GVilntF9kA_Yh.ttf",
+      src: "https://cdn.jsdelivr.net/fontsource/fonts/nunito-sans@latest/latin-400-normal.ttf",
       fontWeight: 400,
     },
     {
-      src: "https://fonts.gstatic.com/s/nunitosans/v15/pe0TMImSLYBIv1o4X1M8ce2xCx3yop4tQpF_MeTm0lfGWVpNn64CL7U8upHZIbMV51Q42ptCp5F5bxqqtQ1yiU4G1ClntF9kA_Yh.ttf",
+      src: "https://cdn.jsdelivr.net/fontsource/fonts/nunito-sans@latest/latin-600-normal.ttf",
       fontWeight: 600,
     },
     {
-      src: "https://fonts.gstatic.com/s/nunitosans/v15/pe0TMImSLYBIv1o4X1M8ce2xCx3yop4tQpF_MeTm0lfGWVpNn64CL7U8upHZIbMV51Q42ptCp5F5bxqqtQ1yiU4G7SlntF9kA_Yh.ttf",
+      src: "https://cdn.jsdelivr.net/fontsource/fonts/nunito-sans@latest/latin-700-normal.ttf",
       fontWeight: 700,
     },
   ],
