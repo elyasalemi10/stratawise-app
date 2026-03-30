@@ -1,6 +1,6 @@
 "use server";
 
-import { auth, currentUser } from "@clerk/nextjs/server";
+import { auth } from "@clerk/nextjs/server";
 import { headers } from "next/headers";
 import { createServerClient } from "@/lib/supabase";
 import { ensureProfile } from "@/lib/auth";
@@ -8,11 +8,15 @@ import { companySchema, inviteRowSchema } from "@/lib/validations/onboarding-set
 
 async function getProfileId(clerkUserId: string) {
   const supabase = createServerClient();
-  const { data } = await supabase
+  const { data, error } = await supabase
     .from("profiles")
     .select("id, management_company_id")
     .eq("clerk_id", clerkUserId)
     .single();
+  if (error && error.code !== "PGRST116") {
+    // PGRST116 = "no rows returned" (expected if profile doesn't exist yet)
+    console.error("Database error fetching profile:", error.message);
+  }
   return data;
 }
 
@@ -34,36 +38,11 @@ export async function createCompany(formData: {
 
   const supabase = createServerClient();
 
-  // Get profile ID for consent recording — ensure it exists first
-  let profile = await getProfileId(userId);
+  // Ensure profile exists (created during onboarding page load)
+  await ensureProfile();
+  const profile = await getProfileId(userId);
   if (!profile) {
-    // Profile missing — try ensureProfile first
-    await ensureProfile();
-    profile = await getProfileId(userId);
-  }
-  if (!profile) {
-    // Still missing — create directly as last resort
-    const user = await currentUser();
-    if (!user) {
-      return { error: "Unable to verify your account. Please sign out and sign in again." };
-    }
-    const { data: created, error: createErr } = await supabase
-      .from("profiles")
-      .upsert({
-        clerk_id: userId,
-        email: user.primaryEmailAddress?.emailAddress ?? "",
-        first_name: user.firstName ?? null,
-        last_name: user.lastName ?? null,
-        avatar_url: user.imageUrl ?? null,
-        role: "lot_owner",
-      }, { onConflict: "clerk_id" })
-      .select("id, management_company_id")
-      .single();
-    if (createErr || !created) {
-      console.error("Failed to create profile in createCompany:", createErr);
-      return { error: "Failed to create your profile. Please try again." };
-    }
-    profile = created;
+    return { error: "Unable to connect to the database. Please check your connection and try again." };
   }
 
   // Record T&Cs consent

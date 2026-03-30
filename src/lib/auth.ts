@@ -125,8 +125,8 @@ export async function ensureProfile(): Promise<string | null> {
     .single();
 
   if (error) {
-    console.error("Failed to create profile:", error);
-    return null;
+    console.error("Failed to create profile:", error.message, error.code);
+    throw new Error(`Database error: ${error.message}`);
   }
 
   if (created) {
