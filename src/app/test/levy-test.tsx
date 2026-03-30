@@ -96,6 +96,8 @@ export default function LevyTestPage() {
   const [data, setData] = useState(DEFAULT_DATA);
   const [logoPreview, setLogoPreview] = useState<string | null>(null);
   const [refreshKey, setRefreshKey] = useState(0);
+  const [brandPrimary, setBrandPrimary] = useState("#2b7fff");
+  const [brandSecondary, setBrandSecondary] = useState("#00bd7d");
 
   // Helper to update nested fields
   const update = useCallback(
@@ -166,7 +168,7 @@ export default function LevyTestPage() {
   }
 
   async function downloadPDF() {
-    const blob = await pdf(<LevyNotice {...data} />).toBlob();
+    const blob = await pdf(<LevyNotice {...data} brandColors={{ primary: brandPrimary, secondary: brandSecondary }} />).toBlob();
     const url = URL.createObjectURL(blob);
     const a = document.createElement("a");
     a.href = url;
@@ -209,6 +211,46 @@ export default function LevyTestPage() {
                     )}
                     <div>
                       <input type="file" accept="image/*" onChange={handleLogoUpload} className="text-xs" />
+                    </div>
+                  </div>
+                </Section>
+              </CardContent>
+            </Card>
+
+            {/* Brand colours */}
+            <Card>
+              <CardContent className="pt-5 space-y-3">
+                <Section title="Brand colours">
+                  <div className="grid grid-cols-2 gap-3">
+                    <div className="space-y-1">
+                      <Label className="text-xs">Primary</Label>
+                      <div className="flex items-center gap-2">
+                        <input
+                          type="color"
+                          value={brandPrimary}
+                          onChange={(e) => {
+                            setBrandPrimary(e.target.value);
+                            setRefreshKey((k) => k + 1);
+                          }}
+                          className="h-8 w-10 cursor-pointer rounded border border-border"
+                        />
+                        <Input value={brandPrimary} onChange={(e) => { setBrandPrimary(e.target.value); setRefreshKey((k) => k + 1); }} className="h-8 text-xs font-mono" />
+                      </div>
+                    </div>
+                    <div className="space-y-1">
+                      <Label className="text-xs">Secondary</Label>
+                      <div className="flex items-center gap-2">
+                        <input
+                          type="color"
+                          value={brandSecondary}
+                          onChange={(e) => {
+                            setBrandSecondary(e.target.value);
+                            setRefreshKey((k) => k + 1);
+                          }}
+                          className="h-8 w-10 cursor-pointer rounded border border-border"
+                        />
+                        <Input value={brandSecondary} onChange={(e) => { setBrandSecondary(e.target.value); setRefreshKey((k) => k + 1); }} className="h-8 text-xs font-mono" />
+                      </div>
                     </div>
                   </div>
                 </Section>
@@ -360,19 +402,7 @@ export default function LevyTestPage() {
               </CardContent>
             </Card>
 
-            {/* Penalty interest */}
-            <Card>
-              <CardContent className="pt-5 space-y-3">
-                <Section title="Penalty interest">
-                  <Field
-                    label="Rate (% per month)"
-                    value={String(data.penaltyInterestRate ?? 0)}
-                    onChange={(v) => update("penaltyInterestRate", parseFloat(v) || 0)}
-                    type="number"
-                  />
-                </Section>
-              </CardContent>
-            </Card>
+            {/* (Penalty interest removed from template) */}
           </div>
 
           {/* Right panel — live PDF preview */}
@@ -386,7 +416,7 @@ export default function LevyTestPage() {
                   showToolbar={false}
                   style={{ border: "none" }}
                 >
-                  <LevyNotice {...data} />
+                  <LevyNotice {...data} brandColors={{ primary: brandPrimary, secondary: brandSecondary }} />
                 </PDFViewer>
               </CardContent>
             </Card>

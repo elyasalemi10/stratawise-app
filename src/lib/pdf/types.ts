@@ -54,6 +54,11 @@ export interface OutstandingBalance {
   amount: number;
 }
 
+export interface BrandColors {
+  primary: string;   // used for subtotal/GST row bg and due date text
+  secondary: string; // used for accents
+}
+
 export interface LevyNoticeProps extends BaseDocumentProps {
   lotOwner: LotOwner;
   levyPeriod: { start: string; end: string };
@@ -63,6 +68,7 @@ export interface LevyNoticeProps extends BaseDocumentProps {
   paymentInstructions: PaymentInstructions;
   outstandingBalances?: OutstandingBalance[];
   penaltyInterestRate?: number;
+  brandColors?: BrandColors;
 }
 
 // --- Meeting Minutes ---
