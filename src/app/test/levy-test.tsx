@@ -102,7 +102,7 @@ export default function LevyTestPage() {
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     (path: string, value: any) => {
       setData((prev) => {
-        const next = JSON.parse(JSON.stringify(prev)) as typeof prev;
+        const next = { ...JSON.parse(JSON.stringify(prev)), date: prev.date } as typeof prev;
         const keys = path.split(".");
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
         let obj: any = next;
