@@ -170,7 +170,7 @@ export function Step4Lots({
           </div>
 
           {/* Table */}
-          <div className="overflow-x-auto rounded-lg border border-border">
+          <div className="overflow-x-auto">
             <table className="w-full text-sm">
               <thead>
                 <tr className="bg-muted/50 text-xs font-medium uppercase tracking-wider text-muted-foreground">
@@ -231,11 +231,16 @@ export function Step4Lots({
                           "h-8 text-xs px-2",
                           lotFieldError(index, "lot_entitlement") && "border-destructive"
                         )}
-                        inputMode="numeric"
+                        inputMode="decimal"
                         placeholder=""
                         {...register(`lots.${index}.lot_entitlement`)}
                         onKeyDown={(e) => {
                           if (["e", "E", "+", "-"].includes(e.key)) e.preventDefault();
+                        }}
+                        onChange={(e) => {
+                          const val = e.target.value.replace(/[^0-9.]/g, "");
+                          e.target.value = val;
+                          register(`lots.${index}.lot_entitlement`).onChange(e);
                         }}
                       />
                     </td>

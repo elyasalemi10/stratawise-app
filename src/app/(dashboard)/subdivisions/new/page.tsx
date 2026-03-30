@@ -28,32 +28,40 @@ function WizardContent() {
   const router = useRouter();
   const searchParams = useSearchParams();
 
-  const step = parseInt(searchParams.get("step") ?? "1", 10);
-  const subdivisionId = searchParams.get("id") ?? "";
-  const currentStep = Math.max(1, Math.min(5, step));
+  // Use local state for step and ID — URL is synced but not the source of truth
+  const [currentStep, setCurrentStep] = useState(() =>
+    Math.max(1, Math.min(5, parseInt(searchParams.get("step") ?? "1", 10)))
+  );
+  const [subId, setSubId] = useState(() => searchParams.get("id") ?? "");
 
   const [wizardData, setWizardData] = useState<WizardData>(null);
   const [dataLoading, setDataLoading] = useState(false);
 
   // Fetch existing subdivision data when we have an ID
   useEffect(() => {
-    if (!subdivisionId) return;
+    if (!subId) return;
     setDataLoading(true);
-    getSubdivisionWizardData(subdivisionId)
+    getSubdivisionWizardData(subId)
       .then((data) => {
         setWizardData(data);
         setDataLoading(false);
       })
       .catch(() => setDataLoading(false));
-  }, [subdivisionId]);
+  }, [subId]);
 
   const { title, subtitle } = STEP_TITLES[currentStep] ?? STEP_TITLES[1];
 
   function goToStep(s: number, id?: string) {
-    const sid = id ?? subdivisionId;
+    const sid = id ?? subId;
+    if (id) setSubId(id);
+    setCurrentStep(s);
+
+    // Sync URL without triggering server navigation
     const params = new URLSearchParams();
     params.set("step", String(s));
     if (sid) params.set("id", sid);
+    window.history.replaceState(null, "", `/subdivisions/new?${params.toString()}`);
+
     // Refetch data when navigating between steps
     if (sid) {
       setDataLoading(true);
@@ -64,10 +72,9 @@ function WizardContent() {
         })
         .catch(() => setDataLoading(false));
     }
-    window.history.replaceState(null, "", `/subdivisions/new?${params.toString()}`);
-    router.replace(`/subdivisions/new?${params.toString()}`);
   }
 
+  const subdivisionId = subId;
   const showLoading = dataLoading && currentStep > 1;
 
   return (
