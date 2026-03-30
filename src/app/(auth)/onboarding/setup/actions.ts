@@ -3,6 +3,7 @@
 import { auth } from "@clerk/nextjs/server";
 import { headers } from "next/headers";
 import { createServerClient } from "@/lib/supabase";
+import { ensureProfile } from "@/lib/auth";
 import { companySchema, inviteRowSchema } from "@/lib/validations/onboarding-setup";
 
 async function getProfileId(clerkUserId: string) {
@@ -33,10 +34,15 @@ export async function createCompany(formData: {
 
   const supabase = createServerClient();
 
-  // Get profile ID for consent recording
-  const profile = await getProfileId(userId);
+  // Get profile ID for consent recording — ensure it exists first
+  let profile = await getProfileId(userId);
   if (!profile) {
-    return { error: "Profile not found. Please refresh and try again." };
+    // Profile missing — create it on the fly
+    await ensureProfile();
+    profile = await getProfileId(userId);
+    if (!profile) {
+      return { error: "Profile not found. Please refresh and try again." };
+    }
   }
 
   // Record T&Cs consent
