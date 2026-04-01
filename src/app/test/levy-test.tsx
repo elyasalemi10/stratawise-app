@@ -14,43 +14,42 @@ import { Switch } from "@/components/ui/switch";
 
 const DEFAULT_DATA: LevyNoticeProps = {
   managementCompany: {
-    name: "ABC Strata Management",
+    name: "MyOCM",
     logo_url: null,
   },
   subdivision: {
-    name: "Riverside Townhouses",
-    address: "1-12/45 Smith Street, Richmond VIC 3121",
-    abn: "12 345 678 901",
-    plan_number: "PS123456A",
+    name: "Grace Avenue Townhouses",
+    address: "12 - 14 Grace Avenue, Dandenong VIC 3175",
+    abn: null,
+    plan_number: "PS932352U",
   },
-  referenceNumber: "MSM-LEV-2026-000001",
+  referenceNumber: "LEV-0001",
   date: new Date(),
   documentTitle: "Tax invoice / Levy notice",
   lotOwner: {
-    name: "John Smith",
-    lot_number: "5",
-    address: "Unit 5, 45 Smith Street, Richmond VIC 3121",
+    name: "Mustafa Maqsudi",
+    lot_number: "1",
+    address: "12 - 14 Grace Avenue, Dandenong VIC 3175",
   },
   levyPeriod: {
-    start: "1 July 2026",
-    end: "30 September 2026",
+    start: "1 April 2026",
+    end: "30 June 2026",
   },
   lineItems: [
-    { description: "Quarterly levy — Administrative Fund", amount: 850.0 },
-    { description: "Quarterly levy — Capital Works Fund", amount: 350.0 },
+    { description: "Insurance - 1 Year", amount: 6000 },
+    { description: "Strata Management", amount: 1000 },
+    { description: "Disbursement", amount: 124 },
+    { description: "Emergency / Contingency Fund", amount: 125 },
   ],
-  totalDue: 1200.0,
-  dueDate: "28 July 2026",
+  totalDue: 7249,
+  dueDate: "8 April 2026",
   paymentInstructions: {
-    bpay: {
-      biller_code: "123456",
-      reference: "5001234567",
-    },
+    bpay: null,
     eft: {
       bsb: "063-123",
       account_number: "1234 5678",
       account_name: "Riverside Townhouses OC Fund",
-      reference: "MSM-LEV-2026-000001",
+      reference: "LEV-0001",
     },
   },
   outstandingBalances: [],
@@ -99,7 +98,8 @@ export default function LevyTestPage() {
   const [refreshKey, setRefreshKey] = useState(0);
   const [brandPrimary, setBrandPrimary] = useState("#2b7fff");
   const [brandSecondary, setBrandSecondary] = useState("#00bd7d");
-  const [includeBpay, setIncludeBpay] = useState(true);
+  const [includeBpay, setIncludeBpay] = useState(false);
+  const [includeGst, setIncludeGst] = useState(false);
 
   // Helper to update nested fields
   const update = useCallback(
@@ -175,6 +175,7 @@ export default function LevyTestPage() {
       ...data.paymentInstructions,
       bpay: includeBpay ? data.paymentInstructions.bpay : null,
     },
+    includeGst,
     brandColors: { primary: brandPrimary, secondary: brandSecondary },
   };
 
@@ -295,6 +296,16 @@ export default function LevyTestPage() {
                 <Section title="Document">
                   <Field label="Reference number" value={data.referenceNumber} onChange={(v) => update("referenceNumber", v)} />
                   <Field label="Due date" value={data.dueDate} onChange={(v) => update("dueDate", v)} />
+                  <div className="flex items-center justify-between">
+                    <Label className="text-xs">Include GST (10%)</Label>
+                    <Switch
+                      checked={includeGst}
+                      onCheckedChange={(checked) => {
+                        setIncludeGst(checked);
+                        setRefreshKey((k) => k + 1);
+                      }}
+                    />
+                  </div>
                 </Section>
               </CardContent>
             </Card>

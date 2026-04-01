@@ -47,10 +47,12 @@ export function LevyNotice({
   dueDate,
   paymentInstructions,
   outstandingBalances,
+  includeGst,
   brandColors,
 }: LevyNoticeProps) {
   const hasOutstanding = outstandingBalances && outstandingBalances.length > 0;
   const subtotal = lineItems.reduce((sum, item) => sum + item.amount, 0);
+  const gst = includeGst ? Math.round(subtotal * 0.1 * 100) / 100 : 0;
   const brand1 = brandColors?.primary ?? "#2b7fff";
   const brand2 = brandColors?.secondary ?? "#00bd7d";
 
@@ -269,12 +271,12 @@ export function LevyNotice({
               <Text style={s.totalValue}>{fmt(subtotal)}</Text>
             </View>
             <View style={s.totalRow}>
-              <Text style={s.totalLabel}>GST</Text>
-              <Text style={s.totalValue}>$0.00</Text>
+              <Text style={s.totalLabel}>GST (10%)</Text>
+              <Text style={s.totalValue}>{fmt(gst)}</Text>
             </View>
             <View style={s.totalDueRow}>
               <Text style={s.totalDueLabel}>Total amount due</Text>
-              <Text style={s.totalDueValue}>{fmt(totalDue)}</Text>
+              <Text style={s.totalDueValue}>{fmt(subtotal + gst)}</Text>
             </View>
           </View>
         </View>
@@ -357,7 +359,7 @@ export function LevyNotice({
             <View style={{ marginTop: 8, borderTopWidth: 0.5, borderTopColor: c.border, paddingTop: 6 }}>
               <View style={s.slipRow}>
                 <Text style={s.slipLabel}>Total payable:</Text>
-                <Text style={s.slipValue}>{fmt(totalDue)}</Text>
+                <Text style={s.slipValue}>{fmt(subtotal + gst)}</Text>
               </View>
               <View style={s.slipRow}>
                 <Text style={s.slipLabel}>Due date:</Text>
