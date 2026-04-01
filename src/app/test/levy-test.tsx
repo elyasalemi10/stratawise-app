@@ -10,6 +10,7 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Separator } from "@/components/ui/separator";
 import { Download, Plus, Trash2 } from "lucide-react";
+import { Switch } from "@/components/ui/switch";
 
 const DEFAULT_DATA: LevyNoticeProps = {
   managementCompany: {
@@ -98,6 +99,7 @@ export default function LevyTestPage() {
   const [refreshKey, setRefreshKey] = useState(0);
   const [brandPrimary, setBrandPrimary] = useState("#2b7fff");
   const [brandSecondary, setBrandSecondary] = useState("#00bd7d");
+  const [includeBpay, setIncludeBpay] = useState(true);
 
   // Helper to update nested fields
   const update = useCallback(
@@ -167,8 +169,17 @@ export default function LevyTestPage() {
     setRefreshKey((k) => k + 1);
   }
 
+  const pdfData = {
+    ...data,
+    paymentInstructions: {
+      ...data.paymentInstructions,
+      bpay: includeBpay ? data.paymentInstructions.bpay : null,
+    },
+    brandColors: { primary: brandPrimary, secondary: brandSecondary },
+  };
+
   async function downloadPDF() {
-    const blob = await pdf(<LevyNotice {...data} brandColors={{ primary: brandPrimary, secondary: brandSecondary }} />).toBlob();
+    const blob = await pdf(<LevyNotice {...pdfData} />).toBlob();
     const url = URL.createObjectURL(blob);
     const a = document.createElement("a");
     a.href = url;
@@ -355,16 +366,30 @@ export default function LevyTestPage() {
             <Card>
               <CardContent className="pt-5 space-y-3">
                 <Section title="Payment — BPAY">
-                  <Field
-                    label="Biller code"
-                    value={data.paymentInstructions.bpay?.biller_code ?? ""}
-                    onChange={(v) => update("paymentInstructions.bpay.biller_code", v)}
-                  />
-                  <Field
-                    label="Reference"
-                    value={data.paymentInstructions.bpay?.reference ?? ""}
-                    onChange={(v) => update("paymentInstructions.bpay.reference", v)}
-                  />
+                  <div className="flex items-center justify-between">
+                    <Label className="text-xs">Include BPAY</Label>
+                    <Switch
+                      checked={includeBpay}
+                      onCheckedChange={(checked) => {
+                        setIncludeBpay(checked);
+                        setRefreshKey((k) => k + 1);
+                      }}
+                    />
+                  </div>
+                  {includeBpay && (
+                    <>
+                      <Field
+                        label="Biller code"
+                        value={data.paymentInstructions.bpay?.biller_code ?? ""}
+                        onChange={(v) => update("paymentInstructions.bpay.biller_code", v)}
+                      />
+                      <Field
+                        label="Reference"
+                        value={data.paymentInstructions.bpay?.reference ?? ""}
+                        onChange={(v) => update("paymentInstructions.bpay.reference", v)}
+                      />
+                    </>
+                  )}
                 </Section>
                 <Separator />
                 <Section title="Payment — EFT">
@@ -416,7 +441,7 @@ export default function LevyTestPage() {
                   showToolbar={false}
                   style={{ border: "none" }}
                 >
-                  <LevyNotice {...data} brandColors={{ primary: brandPrimary, secondary: brandSecondary }} />
+                  <LevyNotice {...pdfData} />
                 </PDFViewer>
               </CardContent>
             </Card>

@@ -3,8 +3,7 @@ import { Page, View, Text, Image, Document } from "@react-pdf/renderer";
 import { StyleSheet } from "@react-pdf/renderer";
 import type { LevyNoticeProps } from "../types";
 import "../fonts"; // Register NunitoSans
-
-const BPAY_LOGO = "data:image/jpeg;base64,/9j/4AAQSkZJRgABAQAAAQABAAD/2wBDAAQDAwQDAwQEBAQFBQQFBwsHBwYGBw4KCggLEA4RERAOEA8SFBoWEhMYEw8QFh8XGBsbHR0dERYgIh8cIhocHRz/2wBDAQUFBQcGBw0HBw0cEhASHBwcHBwcHBwcHBwcHBwcHBwcHBwcHBwcHBwcHBwcHBwcHBwcHBwcHBwcHBwcHBwcHBz/wAARCABvAPQDAREAAhEBAxEB/8QAHQAAAgMAAwEBAAAAAAAAAAAAAAkBBwgCAwYFBP/EAFcQAAECBAIFBggJBwgHCQAAAAECAwAEBREGBwgSITFBGFFWYXHSEyI3dYGSlLMUFRYyntFFQVxhsoOUpfIXIzRicoLwJEJSVKOz0wlDRJWmo7HB1P/EABoBAQADAQEBAAAAAAAAAAAAAAABBQYEAwf/xAAyEQACAQMDAwIFAwQCAwAAAAAAAQIDBBEFEiExQVETImEyQlJxgRQjkaGxwQYz0fDx/9oADAMBAAIRAxEAPwCvs+9Kd/J/FrGHZPD7dSeVKpmXHnpgtJSFFRABH9E74taF9G3p70le5yV7SVaW1FdS5VfL7rF7/IuQ5v01fdjtWRwT/WxV1OPSE2HlniV3G+BaFiR6XTLOVWUbmEspWrVBBG0E7xFFXoO3rSpN3svBa0a26pRqJWeD07ySU3TYm24mwP8AGjxZ9mIpjT1rErNPtJwZIkNrKLmdXtsSP6MaCOR06bvtSVjlqZdJ+9P8jzOLcaY7xfl5TcW4qm8R1N5KJKXkmiGGm0JsgIAHOSSSSTcmK+V3K7ntVJqMfodcbaNvRjTc3Z9yidAHNeuYSxRJYQqU0qcw/VHBKttq3FhauDqDwI5wCDsULjYb2OAuKFJOcGv7OW4pOtVXuRt7SD0c8IaZsszUcN0uk/FuEHW3J+XYQlthR4PtAbD1jYYq8NkvpKt1cUmu3JZ4S/hUltiXFG3skdI2kZYaWmN/4GUIG/wCCvgH+8iryfLYf+Cn9WeD1SjP9/wD4GcVOqccddcUVuOKKlKJuVKJuST1kmNhFJJJdDNttvLPwPTUwt1ISl1Olx5ypUBfXPaA4hJuhQ4Eg/2hERO3p1Fd0oyR50Kjt6saieUfnUtaW1FKkkKBNwQbgiPNxa4LByT4OB4RKdwEB//Z";
+import { BPAY_LOGO } from "../bpay-logo";
 
 const c = {
   foreground: "#1a1f2e",
@@ -106,7 +105,7 @@ export function LevyNotice({
     infoLabel: { fontSize: 9, color: c.muted, width: 60 },
     infoValue: { fontSize: 10, fontFamily: FONT, color: c.foreground, flex: 1 },
     infoValueBold: { fontSize: 10, fontFamily: FONT_BOLD, fontWeight: 600, color: c.foreground, flex: 1 },
-    // Owner box: fixed width, independent of left content (#5), right-aligned text (#8)
+    // Owner box: fixed width, independent height, right-aligned text
     ownerBox: {
       width: 200,
       backgroundColor: c.lightBg,
@@ -115,10 +114,11 @@ export function LevyNotice({
       padding: 10,
       borderRadius: 2,
       alignItems: "flex-end" as const,
+      alignSelf: "flex-start" as const,
     },
     ownerName: { fontSize: 11, fontFamily: FONT_BOLD, fontWeight: 600, color: c.foreground, marginBottom: 2, textAlign: "right" as const },
     ownerDetail: { fontSize: 10, color: c.foreground, lineHeight: 1.4, textAlign: "right" as const },
-    // Table — header bleeds to edges (#7), taller rows (#2)
+    // Table header — bigger bolder text
     tableHeader: {
       flexDirection: "row",
       backgroundColor: brand1,
@@ -127,8 +127,8 @@ export function LevyNotice({
       paddingLeft: 32,
       paddingRight: 32,
     },
-    tableHeaderCell: { fontSize: 9, fontFamily: FONT_BOLD, fontWeight: 600, color: c.white },
-    // Rows bleed to edges but content indented (#3 no borders, #7 full-width colour)
+    tableHeaderCell: { fontSize: 11, fontFamily: FONT_BOLD, fontWeight: 700, color: c.white },
+    // Rows bleed to edges, no borders between items
     tableRow: {
       flexDirection: "row",
       paddingVertical: 10,
@@ -163,14 +163,14 @@ export function LevyNotice({
     },
     totalDueLabel: { fontSize: 11, fontFamily: FONT_BOLD, fontWeight: 700, color: c.foreground },
     totalDueValue: { fontSize: 11, fontFamily: FONT_BOLD, fontWeight: 700, color: c.foreground, textAlign: "right" as const },
-    // Due date — both label and value use brand colour (#10)
+    // Due date
     dueRow: { flexDirection: "row", justifyContent: "flex-end", alignItems: "center" as const, marginBottom: 14, gap: 12 },
     dueLabel: { fontSize: 12, fontFamily: FONT_BOLD, fontWeight: 600, color: brand2 },
     dueValue: { fontSize: 14, fontFamily: FONT_BOLD, fontWeight: 700, color: brand2 },
     // Tear line
     tearLine: { borderBottomWidth: 1, borderBottomColor: c.border, borderStyle: "dashed" as const, marginVertical: 14 },
-    // Payment slip — company info on the right (#1)
-    paymentSlip: { flexDirection: "row", gap: 20 },
+    // Payment slip
+    paymentSlip: { flexDirection: "row", gap: 20, alignItems: "flex-start" as const },
     paymentLeft: { flex: 1 },
     paymentRight: {
       width: 210,
@@ -179,9 +179,10 @@ export function LevyNotice({
       borderColor: c.border,
       padding: 10,
       borderRadius: 2,
+      alignSelf: "flex-start" as const,
     },
-    paymentTitle: { fontSize: 14, fontFamily: FONT_BOLD, fontWeight: 600, color: c.foreground, marginBottom: 10 },
-    // Bigger bank text (#9)
+    paymentTitle: { fontSize: 14, fontFamily: FONT_BOLD, fontWeight: 700, color: c.foreground, marginBottom: 10 },
+    // Bank text
     bankRow: { flexDirection: "row", marginBottom: 5 },
     bankLabel: { fontSize: 13, fontFamily: FONT_BOLD, fontWeight: 600, color: c.foreground, width: 110 },
     bankValue: { fontSize: 13, color: c.foreground },
@@ -217,7 +218,6 @@ export function LevyNotice({
           <View style={s.infoLeft}>
             <View style={s.infoLine}>
               <Text style={s.infoLabel}>Issued for</Text>
-              {/* #4: Remove brackets around plan number */}
               <Text style={s.infoValueBold}>{subdivision.name} {subdivision.plan_number}</Text>
             </View>
             <View style={s.infoLine}>
@@ -240,7 +240,6 @@ export function LevyNotice({
             </View>
           </View>
 
-          {/* #5: Fixed-width owner box, #8: right-aligned text */}
           <View style={s.ownerBox}>
             <Text style={s.ownerName}>{lotOwner.name}</Text>
             <Text style={s.ownerDetail}>{lotOwner.address}</Text>
@@ -248,7 +247,7 @@ export function LevyNotice({
           </View>
         </View>
 
-        {/* ── Line items (#2 taller, #3 no borders, #7 colours bleed to edges) ── */}
+        {/* ── Line items ── */}
         <View style={{ marginBottom: 4 }}>
           <View style={s.tableHeader}>
             <Text style={[s.tableHeaderCell, { flex: 4 }]}>Description</Text>
@@ -280,7 +279,7 @@ export function LevyNotice({
           </View>
         </View>
 
-        {/* ── Due date (#10 both label and value use brand colour) ── */}
+        {/* ── Due date ── */}
         <View style={s.dueRow}>
           <Text style={s.dueLabel}>Payment due</Text>
           <Text style={s.dueValue}>{dueDate}</Text>
@@ -310,7 +309,7 @@ export function LevyNotice({
         {/* ── Tear line ── */}
         <View style={s.tearLine} />
 
-        {/* ── Payment slip (#1 company info on right, #9 bigger text) ── */}
+        {/* ── Payment slip ── */}
         <View style={s.paymentSlip}>
           <View style={s.paymentLeft}>
             <Text style={s.paymentTitle}>Payment details</Text>
@@ -348,7 +347,6 @@ export function LevyNotice({
             ) : null}
           </View>
 
-          {/* #1: Company info moved to right side */}
           <View style={s.paymentRight}>
             <Text style={[s.ownerDetail, { fontFamily: FONT_BOLD, fontWeight: 600, textAlign: "left" as const }]}>
               {managementCompany.name}
