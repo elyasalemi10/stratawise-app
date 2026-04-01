@@ -187,7 +187,7 @@ export function LevyNotice({
     // Bank text
     bankRow: { flexDirection: "row", marginBottom: 5 },
     bankLabel: { fontSize: 13, fontFamily: FONT_BOLD, fontWeight: 600, color: c.foreground, width: 110 },
-    bankValue: { fontSize: 13, color: c.foreground },
+    bankValue: { fontSize: 13, color: c.foreground, flex: 1 },
     bankSectionLabel: { fontSize: 14, fontFamily: FONT_BOLD, fontWeight: 600, color: c.foreground, marginBottom: 8 },
     bpayLogo: { width: 64, height: 26, objectFit: "contain" as const, marginBottom: 8 },
     slipRow: { flexDirection: "row", justifyContent: "space-between", paddingVertical: 2 },
