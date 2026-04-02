@@ -184,8 +184,7 @@ export function LevyNotice({
     bankRow: { flexDirection: "row", marginBottom: 5 },
     bankLabel: { fontSize: 13, fontFamily: FONT_BOLD, fontWeight: 600, color: c.foreground, width: 110 },
     bankValue: { fontSize: 13, color: c.foreground, flex: 1 },
-    bankSectionLabel: { fontSize: 14, fontFamily: FONT_BOLD, fontWeight: 600, color: c.foreground, marginBottom: 8 },
-    bpayLogo: { width: 64, height: 26, objectFit: "contain" as const, marginBottom: 8 },
+    bpayLogo: { width: 90, height: 36, objectFit: "contain" as const },
     slipRow: { flexDirection: "row", justifyContent: "space-between", paddingVertical: 2 },
     slipLabel: { fontSize: 9, fontFamily: FONT_BOLD, fontWeight: 600, color: c.foreground },
     slipValue: { fontSize: 10, fontFamily: FONT_BOLD, fontWeight: 600, color: c.foreground, textAlign: "right" as const },
@@ -288,7 +287,6 @@ export function LevyNotice({
           <View style={s.paymentLeft}>
             <Text style={s.paymentTitle}>Payment details</Text>
 
-            <Text style={s.bankSectionLabel}>Bank transfer</Text>
             <View style={s.bankRow}>
               <Text style={s.bankLabel}>BSB:</Text>
               <Text style={s.bankValue}>{paymentInstructions.eft.bsb}</Text>
@@ -307,15 +305,17 @@ export function LevyNotice({
             </View>
 
             {paymentInstructions.bpay ? (
-              <View style={{ marginTop: 14 }}>
+              <View style={{ marginTop: 14, flexDirection: "row", alignItems: "center", gap: 14 }}>
                 <Image src={BPAY_LOGO} style={s.bpayLogo} />
-                <View style={s.bankRow}>
-                  <Text style={s.bankLabel}>Biller code:</Text>
-                  <Text style={s.bankValue}>{paymentInstructions.bpay.biller_code}</Text>
-                </View>
-                <View style={s.bankRow}>
-                  <Text style={s.bankLabel}>Reference:</Text>
-                  <Text style={s.bankValue}>{paymentInstructions.bpay.reference}</Text>
+                <View>
+                  <View style={s.bankRow}>
+                    <Text style={s.bankLabel}>Biller code:</Text>
+                    <Text style={s.bankValue}>{paymentInstructions.bpay.biller_code}</Text>
+                  </View>
+                  <View style={[s.bankRow, { marginBottom: 0 }]}>
+                    <Text style={s.bankLabel}>Reference:</Text>
+                    <Text style={s.bankValue}>{paymentInstructions.bpay.reference}</Text>
+                  </View>
                 </View>
               </View>
             ) : null}
