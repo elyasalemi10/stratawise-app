@@ -52,7 +52,6 @@ const DEFAULT_DATA: LevyNoticeProps = {
       reference: "LEV-0001",
     },
   },
-  outstandingBalances: [],
   penaltyInterestRate: 2.0,
 };
 
@@ -157,17 +156,6 @@ export default function LevyTestPage() {
     setRefreshKey((k) => k + 1);
   }
 
-  function addOutstandingBalance() {
-    const balances = [...(data.outstandingBalances ?? []), { reference: "MSM-LEV-2025-000001", period: "Q4 2025", amount: 500 }];
-    setData((prev) => ({ ...prev, outstandingBalances: balances }));
-    setRefreshKey((k) => k + 1);
-  }
-
-  function removeOutstandingBalance(index: number) {
-    const balances = (data.outstandingBalances ?? []).filter((_, i) => i !== index);
-    setData((prev) => ({ ...prev, outstandingBalances: balances }));
-    setRefreshKey((k) => k + 1);
-  }
 
   const pdfData = {
     ...data,
@@ -383,6 +371,15 @@ export default function LevyTestPage() {
                       checked={includeBpay}
                       onCheckedChange={(checked) => {
                         setIncludeBpay(checked);
+                        if (checked && !data.paymentInstructions.bpay) {
+                          setData((prev) => ({
+                            ...prev,
+                            paymentInstructions: {
+                              ...prev.paymentInstructions,
+                              bpay: { biller_code: "", reference: "" },
+                            },
+                          }));
+                        }
                         setRefreshKey((k) => k + 1);
                       }}
                     />
@@ -412,33 +409,6 @@ export default function LevyTestPage() {
               </CardContent>
             </Card>
 
-            {/* Outstanding balances */}
-            <Card>
-              <CardContent className="pt-5 space-y-3">
-                <Section title="Outstanding balances">
-                  {(data.outstandingBalances ?? []).map((bal, i) => (
-                    <div key={i} className="space-y-2 pb-3">
-                      <div className="flex items-center justify-between">
-                        <span className="text-xs text-muted-foreground">Balance {i + 1}</span>
-                        <button type="button" onClick={() => removeOutstandingBalance(i)} className="text-muted-foreground hover:text-destructive">
-                          <Trash2 className="h-3.5 w-3.5" />
-                        </button>
-                      </div>
-                      <Field label="Reference" value={bal.reference} onChange={(v) => update(`outstandingBalances.${i}.reference`, v)} />
-                      <Field label="Period" value={bal.period} onChange={(v) => update(`outstandingBalances.${i}.period`, v)} />
-                      <Field label="Amount" value={String(bal.amount)} onChange={(v) => update(`outstandingBalances.${i}.amount`, parseFloat(v) || 0)} type="number" />
-                      {i < (data.outstandingBalances?.length ?? 0) - 1 && <Separator />}
-                    </div>
-                  ))}
-                  <Button variant="outline" size="sm" onClick={addOutstandingBalance} className="w-full">
-                    <Plus className="mr-2 h-3.5 w-3.5" />
-                    Add outstanding balance
-                  </Button>
-                </Section>
-              </CardContent>
-            </Card>
-
-            {/* (Penalty interest removed from template) */}
           </div>
 
           {/* Right panel — live PDF preview */}

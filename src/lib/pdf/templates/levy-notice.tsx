@@ -1,4 +1,3 @@
-import React from "react";
 import { Page, View, Text, Image, Document } from "@react-pdf/renderer";
 import { StyleSheet } from "@react-pdf/renderer";
 import type { LevyNoticeProps } from "../types";
@@ -43,14 +42,11 @@ export function LevyNotice({
   lotOwner,
   levyPeriod,
   lineItems,
-  totalDue,
   dueDate,
   paymentInstructions,
-  outstandingBalances,
   includeGst,
   brandColors,
 }: LevyNoticeProps) {
-  const hasOutstanding = outstandingBalances && outstandingBalances.length > 0;
   const subtotal = lineItems.reduce((sum, item) => sum + item.amount, 0);
   const gst = includeGst ? Math.round(subtotal * 0.1 * 100) / 100 : 0;
   const brand1 = brandColors?.primary ?? "#2b7fff";
@@ -167,8 +163,8 @@ export function LevyNotice({
     totalDueValue: { fontSize: 11, fontFamily: FONT_BOLD, fontWeight: 700, color: c.foreground, textAlign: "right" as const },
     // Due date
     dueRow: { flexDirection: "row", justifyContent: "flex-end", alignItems: "center" as const, marginBottom: 14, gap: 12 },
-    dueLabel: { fontSize: 12, fontFamily: FONT_BOLD, fontWeight: 600, color: brand2 },
-    dueValue: { fontSize: 14, fontFamily: FONT_BOLD, fontWeight: 700, color: brand2 },
+    dueLabel: { fontSize: 15, fontFamily: FONT_BOLD, fontWeight: 700, color: brand2 },
+    dueValue: { fontSize: 12, fontFamily: FONT_BOLD, fontWeight: 600, color: brand2 },
     // Tear line
     tearLine: { borderBottomWidth: 1, borderBottomColor: c.border, borderStyle: "dashed" as const, marginVertical: 14 },
     // Payment slip
@@ -193,9 +189,6 @@ export function LevyNotice({
     slipRow: { flexDirection: "row", justifyContent: "space-between", paddingVertical: 2 },
     slipLabel: { fontSize: 9, fontFamily: FONT_BOLD, fontWeight: 600, color: c.foreground },
     slipValue: { fontSize: 10, fontFamily: FONT_BOLD, fontWeight: 600, color: c.foreground, textAlign: "right" as const },
-    // Outstanding
-    sectionTitle: { fontSize: 10, fontFamily: FONT_BOLD, fontWeight: 600, color: c.foreground, textTransform: "uppercase" as const, letterSpacing: 0.5, marginBottom: 6 },
-    outstandingSection: { marginBottom: 14 },
   });
 
   return (
@@ -286,27 +279,6 @@ export function LevyNotice({
           <Text style={s.dueLabel}>Payment due</Text>
           <Text style={s.dueValue}>{dueDate}</Text>
         </View>
-
-        {/* ── Outstanding balances ── */}
-        {hasOutstanding ? (
-          <View style={s.outstandingSection}>
-            <Text style={s.sectionTitle}>Outstanding balances</Text>
-            <View>
-              <View style={s.tableHeader}>
-                <Text style={[s.tableHeaderCell, { flex: 2 }]}>Reference</Text>
-                <Text style={[s.tableHeaderCell, { flex: 2 }]}>Period</Text>
-                <Text style={[s.tableHeaderCell, { flex: 1, textAlign: "right" as const }]}>Amount</Text>
-              </View>
-              {outstandingBalances.map((bal, i) => (
-                <View key={i} style={i % 2 === 0 ? s.tableRowStriped : s.tableRow}>
-                  <Text style={[s.tableCell, { flex: 2 }]}>{bal.reference}</Text>
-                  <Text style={[s.tableCell, { flex: 2 }]}>{bal.period}</Text>
-                  <Text style={[s.tableCellRight, { flex: 1, color: c.destructive }]}>{fmt(bal.amount)}</Text>
-                </View>
-              ))}
-            </View>
-          </View>
-        ) : null}
 
         {/* ── Tear line ── */}
         <View style={s.tearLine} />
