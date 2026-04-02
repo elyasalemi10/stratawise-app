@@ -68,6 +68,7 @@ export interface LevyNoticeProps extends BaseDocumentProps {
   paymentInstructions: PaymentInstructions;
   outstandingBalances?: OutstandingBalance[];
   includeGst?: boolean;
+  note?: string;
   penaltyInterestRate?: number;
   brandColors?: BrandColors;
 }

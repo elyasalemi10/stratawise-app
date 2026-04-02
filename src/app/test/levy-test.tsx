@@ -25,7 +25,7 @@ const DEFAULT_DATA: LevyNoticeProps = {
   },
   referenceNumber: "LEV-0001",
   date: new Date(),
-  documentTitle: "Tax invoice / Levy notice",
+  documentTitle: "Levy Notice",
   lotOwner: {
     name: "Mustafa Maqsudi",
     lot_number: "1",
@@ -282,6 +282,7 @@ export default function LevyTestPage() {
             <Card>
               <CardContent className="pt-5 space-y-3">
                 <Section title="Document">
+                  <Field label="Title" value={data.documentTitle} onChange={(v) => update("documentTitle", v)} placeholder="Levy Notice" />
                   <Field label="Reference number" value={data.referenceNumber} onChange={(v) => update("referenceNumber", v)} />
                   <Field label="Due date" value={data.dueDate} onChange={(v) => update("dueDate", v)} />
                   <div className="flex items-center justify-between">
@@ -315,6 +316,24 @@ export default function LevyTestPage() {
                 <Section title="Levy period">
                   <Field label="Start" value={data.levyPeriod.start} onChange={(v) => update("levyPeriod.start", v)} />
                   <Field label="End" value={data.levyPeriod.end} onChange={(v) => update("levyPeriod.end", v)} />
+                </Section>
+              </CardContent>
+            </Card>
+
+            {/* Note */}
+            <Card>
+              <CardContent className="pt-5 space-y-3">
+                <Section title="Note">
+                  <div className="space-y-1">
+                    <Label className="text-xs">Custom note (optional)</Label>
+                    <textarea
+                      value={data.note ?? ""}
+                      onChange={(e) => update("note", e.target.value || undefined)}
+                      placeholder="Add a note to the levy notice..."
+                      rows={3}
+                      className="w-full rounded-md border border-border bg-background px-3 py-2 text-sm"
+                    />
+                  </div>
                 </Section>
               </CardContent>
             </Card>

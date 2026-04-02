@@ -37,6 +37,7 @@ function fmtDate(date: Date): string {
 export function LevyNotice({
   managementCompany,
   subdivision,
+  documentTitle,
   referenceNumber,
   date,
   lotOwner,
@@ -45,6 +46,7 @@ export function LevyNotice({
   dueDate,
   paymentInstructions,
   includeGst,
+  note,
   brandColors,
 }: LevyNoticeProps) {
   const subtotal = lineItems.reduce((sum, item) => sum + item.amount, 0);
@@ -75,6 +77,7 @@ export function LevyNotice({
     },
     titleBlock: {
       alignItems: "flex-end" as const,
+      maxWidth: 280,
     },
     levyTitle: {
       fontSize: 22,
@@ -103,7 +106,7 @@ export function LevyNotice({
     infoLabel: { fontSize: 9, color: c.muted, width: 60 },
     infoValue: { fontSize: 10, fontFamily: FONT, color: c.foreground, flex: 1 },
     infoValueBold: { fontSize: 10, fontFamily: FONT_BOLD, fontWeight: 600, color: c.foreground, flex: 1 },
-    // Owner box: fixed width, independent height, right-aligned text
+    // Owner box
     ownerBox: {
       width: 200,
       backgroundColor: c.lightBg,
@@ -116,7 +119,10 @@ export function LevyNotice({
     },
     ownerName: { fontSize: 11, fontFamily: FONT_BOLD, fontWeight: 600, color: c.foreground, marginBottom: 2, textAlign: "right" as const },
     ownerDetail: { fontSize: 10, color: c.foreground, lineHeight: 1.4, textAlign: "right" as const },
-    // Table header — bigger bolder text
+    // Note
+    noteSection: { marginBottom: 14, paddingVertical: 8, paddingHorizontal: 10, backgroundColor: c.lightBg, borderRadius: 2 },
+    noteText: { fontSize: 9, color: c.foreground, lineHeight: 1.5 },
+    // Table header
     tableHeader: {
       flexDirection: "row",
       backgroundColor: brand1,
@@ -126,7 +132,7 @@ export function LevyNotice({
       paddingRight: 32,
     },
     tableHeaderCell: { fontSize: 11, fontFamily: FONT_BOLD, fontWeight: 700, color: c.white },
-    // Rows bleed to edges, no borders between items
+    // Rows — description flex:3, amount flex:1.5 for more gap (#5)
     tableRow: {
       flexDirection: "row",
       paddingVertical: 10,
@@ -184,7 +190,13 @@ export function LevyNotice({
     bankRow: { flexDirection: "row", marginBottom: 5 },
     bankLabel: { fontSize: 13, fontFamily: FONT_BOLD, fontWeight: 600, color: c.foreground, width: 110 },
     bankValue: { fontSize: 13, color: c.foreground, flex: 1 },
+    // BPAY — fixed-width logo, text wraps in its own column (#6)
+    bpaySection: { marginTop: 14, flexDirection: "row", alignItems: "flex-start" as const, gap: 14 },
     bpayLogo: { width: 90, height: 36, objectFit: "contain" as const },
+    bpayDetails: { flex: 1 },
+    bpayRow: { flexDirection: "row", marginBottom: 3 },
+    bpayLabel: { fontSize: 11, fontFamily: FONT_BOLD, fontWeight: 600, color: c.foreground, width: 80 },
+    bpayValue: { fontSize: 11, color: c.foreground, flex: 1 },
     slipRow: { flexDirection: "row", justifyContent: "space-between", paddingVertical: 2 },
     slipLabel: { fontSize: 9, fontFamily: FONT_BOLD, fontWeight: 600, color: c.foreground },
     slipValue: { fontSize: 10, fontFamily: FONT_BOLD, fontWeight: 600, color: c.foreground, textAlign: "right" as const },
@@ -200,8 +212,9 @@ export function LevyNotice({
               <Image src={managementCompany.logo_url} style={s.logo} />
             ) : null}
           </View>
+          {/* #3: customisable title, #4: maxWidth prevents overflow */}
           <View style={s.titleBlock}>
-            <Text style={s.levyTitle}>Levy Notice</Text>
+            <Text style={s.levyTitle}>{documentTitle || "Levy Notice"}</Text>
             <Text style={s.levySubtitle}>{referenceNumber}</Text>
             <Text style={s.levySubtitle}>{levyPeriod.start} — {levyPeriod.end}</Text>
           </View>
@@ -241,16 +254,23 @@ export function LevyNotice({
           </View>
         </View>
 
-        {/* ── Line items ── */}
+        {/* ── Custom note (#2) ── */}
+        {note ? (
+          <View style={s.noteSection}>
+            <Text style={s.noteText}>{note}</Text>
+          </View>
+        ) : null}
+
+        {/* ── Line items — #5: flex 3/1.5 for wider amount column ── */}
         <View style={{ marginBottom: 4 }}>
           <View style={s.tableHeader}>
-            <Text style={[s.tableHeaderCell, { flex: 4 }]}>Description</Text>
-            <Text style={[s.tableHeaderCell, { flex: 1, textAlign: "right" as const }]}>Amount</Text>
+            <Text style={[s.tableHeaderCell, { flex: 3 }]}>Description</Text>
+            <Text style={[s.tableHeaderCell, { flex: 1.5, textAlign: "right" as const }]}>Amount</Text>
           </View>
           {lineItems.map((item, i) => (
             <View key={i} style={i % 2 === 0 ? s.tableRowStriped : s.tableRow}>
-              <Text style={[s.tableCell, { flex: 4 }]}>{item.description}</Text>
-              <Text style={[s.tableCellRight, { flex: 1 }]}>{fmt(item.amount)}</Text>
+              <Text style={[s.tableCell, { flex: 3 }]}>{item.description}</Text>
+              <Text style={[s.tableCellRight, { flex: 1.5 }]}>{fmt(item.amount)}</Text>
             </View>
           ))}
         </View>
@@ -304,17 +324,18 @@ export function LevyNotice({
               <Text style={s.bankValue}>{paymentInstructions.eft.reference}</Text>
             </View>
 
+            {/* #1: BPAY at bottom-left, #6: fixed logo width, text wraps independently */}
             {paymentInstructions.bpay ? (
-              <View style={{ marginTop: 14, flexDirection: "row", alignItems: "center", gap: 14 }}>
+              <View style={s.bpaySection}>
                 <Image src={BPAY_LOGO} style={s.bpayLogo} />
-                <View>
-                  <View style={s.bankRow}>
-                    <Text style={s.bankLabel}>Biller code:</Text>
-                    <Text style={s.bankValue}>{paymentInstructions.bpay.biller_code}</Text>
+                <View style={s.bpayDetails}>
+                  <View style={s.bpayRow}>
+                    <Text style={s.bpayLabel}>Biller code:</Text>
+                    <Text style={s.bpayValue}>{paymentInstructions.bpay.biller_code}</Text>
                   </View>
-                  <View style={[s.bankRow, { marginBottom: 0 }]}>
-                    <Text style={s.bankLabel}>Reference:</Text>
-                    <Text style={s.bankValue}>{paymentInstructions.bpay.reference}</Text>
+                  <View style={[s.bpayRow, { marginBottom: 0 }]}>
+                    <Text style={s.bpayLabel}>Reference:</Text>
+                    <Text style={s.bpayValue}>{paymentInstructions.bpay.reference}</Text>
                   </View>
                 </View>
               </View>
