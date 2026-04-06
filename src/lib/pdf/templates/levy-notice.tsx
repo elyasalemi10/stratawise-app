@@ -283,7 +283,7 @@ export function LevyNotice({
               <Text style={s.totalValue}>{fmt(subtotal)}</Text>
             </View>
             <View style={s.totalRow}>
-              <Text style={s.totalLabel}>GST (10%)</Text>
+              <Text style={s.totalLabel}>GST</Text>
               <Text style={s.totalValue}>{fmt(gst)}</Text>
             </View>
             <View style={s.totalDueRow}>
