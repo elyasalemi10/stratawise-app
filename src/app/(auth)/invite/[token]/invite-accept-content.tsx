@@ -7,7 +7,6 @@ import { Building2, MapPin, AlertCircle, CheckCircle2, Clock } from "lucide-reac
 import { toast } from "sonner";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { Badge } from "@/components/ui/badge";
 import { acceptInvitation } from "@/lib/actions/invitations";
 
 interface InviteAcceptContentProps {
@@ -90,9 +89,6 @@ export function InviteAcceptContent({ invitation, token, isLoggedIn }: InviteAcc
     }
   }
 
-  const isLotOwner = invitation.role === "lot_owner";
-  const roleLabel = isLotOwner ? "Lot Owner" : "Strata Manager";
-
   return (
     <div className="max-w-md mx-auto py-12 px-4">
       <div className="text-center mb-6">
@@ -100,7 +96,7 @@ export function InviteAcceptContent({ invitation, token, isLoggedIn }: InviteAcc
           You&apos;ve been invited
         </h1>
         <p className="mt-1 text-sm text-muted-foreground">
-          {invitation.name ? `Hi ${invitation.name}, you` : "You"}&apos;ve been invited to join as a {roleLabel.toLowerCase()}.
+          {invitation.name ? `Hi ${invitation.name}, you` : "You"}&apos;ve been invited to join {invitation.subdivision?.name ?? "a subdivision"}.
         </p>
       </div>
 
@@ -133,10 +129,6 @@ export function InviteAcceptContent({ invitation, token, isLoggedIn }: InviteAcc
             </div>
           )}
 
-          <div className="flex items-center gap-2 border-t border-border pt-3">
-            <span className="text-sm text-muted-foreground">Role:</span>
-            <Badge variant="info">{roleLabel}</Badge>
-          </div>
         </CardContent>
       </Card>
 

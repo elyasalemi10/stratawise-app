@@ -3,6 +3,7 @@
 import { requireRole, requireSubdivisionAccess } from "@/lib/auth";
 import { createServerClient } from "@/lib/supabase";
 import { revalidatePath } from "next/cache";
+import { sendInvitationEmail } from "@/lib/email";
 
 export async function inviteLotOwner(
   subdivisionId: string,
@@ -64,6 +65,31 @@ export async function inviteLotOwner(
     entity_type: "invitation",
     entity_id: invitation.id,
     after_state: { email: data.email, name: data.name, lot_id: lotId },
+  });
+
+  // Send invitation email
+  const { data: sub } = await supabase
+    .from("subdivisions")
+    .select("name, address")
+    .eq("id", subdivisionId)
+    .single();
+
+  const { data: lot } = await supabase
+    .from("lots")
+    .select("lot_number")
+    .eq("id", lotId)
+    .single();
+
+  const baseUrl = process.env.NEXT_PUBLIC_APP_URL ?? "http://localhost:3000";
+  const inviteUrl = `${baseUrl}/invite/${invitation.token}`;
+  await sendInvitationEmail({
+    to: data.email,
+    inviteeName: data.name,
+    role: "lot_owner",
+    subdivisionName: sub?.name ?? "Your subdivision",
+    subdivisionAddress: sub?.address ?? "",
+    lotNumber: lot?.lot_number ?? null,
+    inviteUrl,
   });
 
   revalidatePath(`/subdivisions/${subdivisionId}/manage`);

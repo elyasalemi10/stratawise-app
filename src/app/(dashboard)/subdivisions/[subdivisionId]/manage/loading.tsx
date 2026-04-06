@@ -25,17 +25,17 @@ function KPICardSkeleton({ label, icon }: { label: string; icon: React.ReactNode
 export default function ManageLoading() {
   return (
     <div className="space-y-6">
-      {/* Header skeleton */}
+      {/* Header skeleton — matches manage-content header exactly */}
       <div className="flex items-start justify-between gap-4">
         <div>
           <div className="flex items-center gap-3">
-            <Skeleton className="h-7 w-48" />
-            <Skeleton className="h-5 w-16 rounded-full" />
+            <Skeleton className="h-8 w-40" />
+            <Skeleton className="h-5 w-14 rounded-full" />
           </div>
-          <Skeleton className="mt-2 h-4 w-64" />
+          <Skeleton className="mt-1 h-4 w-72" />
         </div>
-        <div className="flex items-center gap-2">
-          <Skeleton className="h-8 w-16 rounded-md" />
+        <div className="flex items-center gap-2 shrink-0">
+          <Skeleton className="h-8 w-[68px] rounded-md" />
           <Skeleton className="h-8 w-8 rounded-md" />
         </div>
       </div>

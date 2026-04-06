@@ -2,6 +2,7 @@
 
 import { requireRole, getCurrentProfile } from "@/lib/auth";
 import { createServerClient } from "@/lib/supabase";
+import { sendInvitationEmail } from "@/lib/email";
 
 export async function inviteStrataManager(data: { email: string; name: string }) {
   const profile = await requireRole(["strata_manager", "super_admin"]);
@@ -58,6 +59,18 @@ export async function inviteStrataManager(data: { email: string; name: string })
     entity_type: "invitation",
     entity_id: invitation.id,
     after_state: { email: data.email, name: data.name, role: "strata_manager" },
+  });
+
+  // Send invitation email
+  const baseUrl = process.env.NEXT_PUBLIC_APP_URL ?? "http://localhost:3000";
+  const inviteUrl = `${baseUrl}/invite/${invitation.token}`;
+  await sendInvitationEmail({
+    to: data.email,
+    inviteeName: data.name,
+    role: "strata_manager",
+    subdivisionName: "Your management company",
+    subdivisionAddress: "",
+    inviteUrl,
   });
 
   return { success: true, token: invitation.token };
