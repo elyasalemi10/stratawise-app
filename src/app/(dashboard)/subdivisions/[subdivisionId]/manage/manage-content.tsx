@@ -23,6 +23,7 @@ import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { LotsTab } from "./lots-tab";
+import { BudgetTab } from "./budget-tab";
 import { updateSubdivisionField } from "./actions";
 import { DocumentManager } from "@/components/shared/document-manager";
 import type { LotWithFinancials } from "@/lib/actions/subdivision";
@@ -450,7 +451,9 @@ export function ManageContent({ subdivision: initialSub, stats, lots: initialLot
           isLotOwner={isLotOwner}
         />
       </div>
-      <div className={activeTab === "financials" ? "" : "hidden"}><PlaceholderTab name="Financials" /></div>
+      <div className={activeTab === "financials" ? "" : "hidden"}>
+        <BudgetTab subdivisionId={subdivision.id} financialYearStartMonth={subdivision.financial_year_start_month} />
+      </div>
       <div className={activeTab === "meetings" ? "" : "hidden"}><PlaceholderTab name="Meetings" /></div>
       <div className={activeTab === "documents" ? "" : "hidden"}>
         <DocumentManager subdivisionId={subdivision.id} initialDocuments={documents} />

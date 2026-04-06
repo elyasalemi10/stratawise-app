@@ -117,7 +117,7 @@ function getSubdivisionNavGroups(subdivisionId: string, isLotOwner: boolean) {
     {
       label: "Settings",
       items: [
-        { href: `${base}/manage`, label: "Manage subdivision", icon: Settings },
+        { href: `${base}/settings`, label: "Subdivision settings", icon: Settings },
         { href: "/settings", label: "Account settings", icon: Users },
       ],
     },
