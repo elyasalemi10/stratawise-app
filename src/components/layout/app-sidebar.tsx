@@ -74,8 +74,30 @@ const lotOwnerMainNavGroups = [
   },
 ];
 
-function getSubdivisionNavGroups(subdivisionId: string) {
+function getSubdivisionNavGroups(subdivisionId: string, isLotOwner: boolean) {
   const base = `/subdivisions/${subdivisionId}`;
+
+  if (isLotOwner) {
+    return [
+      {
+        label: "Overview",
+        items: [
+          { href: `${base}/dashboard`, label: "Dashboard", icon: LayoutDashboard },
+          { href: `${base}/manage?tab=lots`, label: "My levies", icon: Receipt },
+        ],
+      },
+      {
+        label: "Subdivision",
+        items: [
+          { href: `${base}/manage?tab=overview`, label: "General", icon: Building2 },
+          { href: `${base}/manage?tab=lots`, label: "Lot owners", icon: Users },
+          { href: `${base}/manage?tab=meetings`, label: "Meetings", icon: CalendarCheck },
+          { href: `${base}/manage?tab=documents`, label: "Documents", icon: FileText },
+        ],
+      },
+    ];
+  }
+
   return [
     {
       label: "Overview",
@@ -230,7 +252,7 @@ export function AppSidebar() {
   const isLotOwner = profile?.userRole === "lot_owner";
   const mainNavGroups = isLotOwner ? lotOwnerMainNavGroups : managerMainNavGroups;
   const navGroups = isInSubdivision && currentSubdivisionId
-    ? getSubdivisionNavGroups(currentSubdivisionId)
+    ? getSubdivisionNavGroups(currentSubdivisionId, isLotOwner)
     : mainNavGroups;
 
   // Smart subdivision switching — preserve current sub-page
@@ -301,12 +323,22 @@ export function AppSidebar() {
                   key={sub.id}
                   onClick={() => switchSubdivision(sub.id)}
                 >
-                  <div className="flex size-6 items-center justify-center rounded-md border border-border">
+                  <div className="flex size-6 items-center justify-center rounded-md border border-border shrink-0">
                     <Building2 className="size-3.5 shrink-0" />
                   </div>
-                  <span className="flex-1 truncate">{sub.name}</span>
+                  <div className="flex-1 min-w-0">
+                    <span className="block truncate">{sub.name}</span>
+                    {isLotOwner && sub.lots && sub.lots.length > 0 && (
+                      <span className="block text-xs text-muted-foreground truncate">
+                        {sub.lots.map((l) => `Lot ${l.lot_number}${l.unit_number ? ` Unit ${l.unit_number}` : ""}`).join(", ")}
+                      </span>
+                    )}
+                    {isLotOwner && sub.address && (
+                      <span className="block text-xs text-muted-foreground/60 truncate">{sub.address}</span>
+                    )}
+                  </div>
                   {sub.id === currentSubdivisionId && (
-                    <Check className="ml-auto h-4 w-4 text-primary" />
+                    <Check className="ml-auto h-4 w-4 text-primary shrink-0" />
                   )}
                 </DropdownItem>
               ))}

@@ -62,7 +62,7 @@ export async function inviteStrataManager(data: { email: string; name: string })
   });
 
   // Send invitation email
-  const baseUrl = process.env.NEXT_PUBLIC_APP_URL ?? "http://localhost:3000";
+  const baseUrl = process.env.APP_URL ?? "http://localhost:3000";
   const inviteUrl = `${baseUrl}/invite/${invitation.token}`;
   await sendInvitationEmail({
     to: data.email,

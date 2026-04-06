@@ -79,8 +79,6 @@ const TABS = [
   { value: "financials", label: "Financials" },
   { value: "meetings", label: "Meetings" },
   { value: "documents", label: "Documents" },
-  { value: "compliance", label: "Compliance" },
-  { value: "communications", label: "Communications" },
 ];
 
 // ─── Inline editable field ──────────────────────────────────────
@@ -346,8 +344,13 @@ function DropdownItem({ icon, label }: { icon: React.ReactNode; label: string })
 export function ManageContent({ subdivision: initialSub, stats, lots: initialLots, documents }: ManageContentProps) {
   const searchParams = useSearchParams();
   const router = useRouter();
-  const initialTab = searchParams.get("tab") ?? "overview";
-  const [activeTab, setActiveTab] = useState(initialTab);
+  const currentTab = searchParams.get("tab") ?? "overview";
+  const [activeTab, setActiveTab] = useState(currentTab);
+
+  // Sync activeTab when URL searchParams change (e.g. sidebar nav clicks)
+  useEffect(() => {
+    setActiveTab(currentTab);
+  }, [currentTab]);
   const [isEditing, setIsEditing] = useState(false);
   const [subdivision, setSubdivision] = useState(initialSub);
   const [lots, setLots] = useState(initialLots);
@@ -448,8 +451,6 @@ export function ManageContent({ subdivision: initialSub, stats, lots: initialLot
       <div className={activeTab === "documents" ? "" : "hidden"}>
         <DocumentManager subdivisionId={subdivision.id} initialDocuments={documents} />
       </div>
-      <div className={activeTab === "compliance" ? "" : "hidden"}><PlaceholderTab name="Compliance" /></div>
-      <div className={activeTab === "communications" ? "" : "hidden"}><PlaceholderTab name="Communications" /></div>
     </div>
   );
 }

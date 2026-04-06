@@ -3,12 +3,19 @@
 import { getCurrentProfile } from "@/lib/auth";
 import { createServerClient } from "@/lib/supabase";
 
+export interface SidebarLot {
+  lot_number: number;
+  unit_number: string | null;
+}
+
 export interface SidebarSubdivision {
   id: string;
   name: string;
+  address: string;
   plan_number: string;
   total_lots: number;
   status: string;
+  lots?: SidebarLot[];
 }
 
 export async function getSidebarSubdivisions(): Promise<SidebarSubdivision[]> {
@@ -21,31 +28,49 @@ export async function getSidebarSubdivisions(): Promise<SidebarSubdivision[]> {
     if (!profile.management_company_id) return [];
     const { data } = await supabase
       .from("subdivisions")
-      .select("id, name, plan_number, total_lots, status")
+      .select("id, name, address, plan_number, total_lots, status")
       .eq("management_company_id", profile.management_company_id)
       .eq("status", "active")
       .order("name");
-    return data ?? [];
+    return (data ?? []).map((s) => ({ ...s, address: s.address ?? "" }));
   }
 
-  // lot_owner — only subdivisions they're a member of
+  // lot_owner — subdivisions they're a member of, with their lot info
   const { data: memberships } = await supabase
     .from("subdivision_members")
-    .select("subdivision_id")
+    .select("subdivision_id, lot_id")
     .eq("profile_id", profile.id)
     .is("left_at", null);
 
   if (!memberships || memberships.length === 0) return [];
 
-  const ids = memberships.map((m) => m.subdivision_id);
-  const { data } = await supabase
-    .from("subdivisions")
-    .select("id, name, plan_number, total_lots, status")
-    .in("id", ids)
-    .eq("status", "active")
-    .order("name");
+  const ids = [...new Set(memberships.map((m) => m.subdivision_id))];
+  const lotIds = memberships.map((m) => m.lot_id).filter(Boolean) as string[];
 
-  return data ?? [];
+  const [subsResult, lotsResult] = await Promise.all([
+    supabase
+      .from("subdivisions")
+      .select("id, name, address, plan_number, total_lots, status")
+      .in("id", ids)
+      .eq("status", "active")
+      .order("name"),
+    lotIds.length > 0
+      ? supabase.from("lots").select("id, subdivision_id, lot_number, unit_number").in("id", lotIds)
+      : Promise.resolve({ data: [] }),
+  ]);
+
+  const lotsMap = new Map<string, SidebarLot[]>();
+  (lotsResult.data ?? []).forEach((lot) => {
+    const existing = lotsMap.get(lot.subdivision_id) ?? [];
+    existing.push({ lot_number: lot.lot_number, unit_number: lot.unit_number });
+    lotsMap.set(lot.subdivision_id, existing);
+  });
+
+  return (subsResult.data ?? []).map((s) => ({
+    ...s,
+    address: s.address ?? "",
+    lots: lotsMap.get(s.id) ?? [],
+  }));
 }
 
 export async function getSubdivision(subdivisionId: string) {
