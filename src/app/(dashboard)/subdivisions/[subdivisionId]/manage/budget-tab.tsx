@@ -397,24 +397,14 @@ export function BudgetTab({ subdivisionId, financialYearStartMonth }: { subdivis
   return (
     <div className="space-y-4">
       {/* Header */}
-      <div className="flex items-center justify-between">
-        <div>
-          <h3 className="text-sm font-semibold text-foreground">Financial year {financialYear}</h3>
-          <p className="text-xs text-muted-foreground">
-            {hasAdmin && hasCapital
-              ? `Both funds budgeted · ${formatCurrency(totalBudgeted)} total`
-              : hasAdmin || hasCapital
-                ? `${hasAdmin ? "Administrative" : "Capital Works"} fund budgeted · ${formatCurrency(totalBudgeted)}`
-                : "No budgets created yet"}
-          </p>
-        </div>
-        {(!hasAdmin || !hasCapital) && (
+      {(!hasAdmin || !hasCapital) && (
+        <div className="flex justify-end">
           <Button size="sm" onClick={() => setShowCreate(true)}>
             <Plus className="mr-2 h-3.5 w-3.5" />
             Create budget
           </Button>
-        )}
-      </div>
+        </div>
+      )}
 
       {/* Budget cards */}
       {currentBudgets.length === 0 ? (
@@ -423,8 +413,7 @@ export function BudgetTab({ subdivisionId, financialYearStartMonth }: { subdivis
             <DollarSign className="h-12 w-12 text-muted-foreground/30" />
             <p className="mt-4 text-base font-medium text-foreground">No budgets yet</p>
             <p className="mt-1 text-sm text-muted-foreground max-w-sm">
-              Create an annual budget to start generating levy notices. Under Victorian legislation,
-              OCs must maintain separate Administrative and Capital Works funds.
+              Create an annual budget to start generating levy notices.
             </p>
             <Button className="mt-4" onClick={() => setShowCreate(true)}>
               <Plus className="mr-2 h-4 w-4" />

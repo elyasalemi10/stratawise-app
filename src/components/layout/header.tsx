@@ -9,16 +9,17 @@ const routeLabels: Record<string, string> = {
   dashboard: "Dashboard",
   subdivisions: "Subdivisions",
   messages: "Messages",
-  communications: "Communications",
   settings: "Settings",
   new: "New",
   levies: "Levies",
   meetings: "Meetings",
-  lots: "Lots",
+  lots: "Lots & owners",
   documents: "Documents",
-  financials: "Financials",
+  finance: "Finance",
+  budgets: "Budgets",
   maintenance: "Maintenance",
-  manage: "Manage subdivision",
+  "my-levies": "My levies",
+  "subdivision-settings": "Subdivision settings",
 };
 
 function isUUID(s: string): boolean {
@@ -48,8 +49,8 @@ function buildBreadcrumbs(pathname: string): Crumb[] {
       const subdivisionId = segments[1];
       return [
         {
-          label: "Lots",
-          href: `/subdivisions/${subdivisionId}/manage?tab=lots`,
+          label: "Lots & owners",
+          href: `/subdivisions/${subdivisionId}/lots`,
           isLast: false,
         },
         { label: "Owner details", href: null, isLast: true },

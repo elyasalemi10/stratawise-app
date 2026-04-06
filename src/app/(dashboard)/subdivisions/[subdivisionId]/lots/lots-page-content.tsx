@@ -3,7 +3,6 @@
 import { useState } from "react";
 import { Pencil, Check } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import { PageHeader } from "@/components/shared/page-header";
 import { LotsTab } from "../manage/lots-tab";
 import type { LotWithFinancials } from "@/lib/actions/subdivision";
 
@@ -34,25 +33,21 @@ export function LotsPageContent({
 
   return (
     <div className="space-y-6">
-      <PageHeader
-        title={isLotOwner ? "Lot owners" : "Lots & owners"}
-        subtitle={subdivisionName}
-        actions={
-          !isLotOwner ? (
-            isEditing ? (
-              <Button variant="secondary" size="sm" onClick={() => setIsEditing(false)}>
-                <Check className="mr-2 h-3.5 w-3.5" />
-                Done
-              </Button>
-            ) : (
-              <Button variant="secondary" size="sm" onClick={() => setIsEditing(true)}>
-                <Pencil className="mr-2 h-3.5 w-3.5" />
-                Edit
-              </Button>
-            )
-          ) : undefined
-        }
-      />
+      {!isLotOwner && (
+        <div className="flex justify-end">
+          {isEditing ? (
+            <Button variant="secondary" size="sm" onClick={() => setIsEditing(false)}>
+              <Check className="mr-2 h-3.5 w-3.5" />
+              Done
+            </Button>
+          ) : (
+            <Button variant="secondary" size="sm" onClick={() => setIsEditing(true)}>
+              <Pencil className="mr-2 h-3.5 w-3.5" />
+              Edit
+            </Button>
+          )}
+        </div>
+      )}
       <LotsTab
         lots={lots}
         subdivisionId={subdivisionId}

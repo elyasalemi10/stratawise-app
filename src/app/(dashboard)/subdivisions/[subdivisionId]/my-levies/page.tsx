@@ -4,7 +4,6 @@ import { getCurrentProfile } from "@/lib/auth";
 import { createServerClient } from "@/lib/supabase";
 import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
-import { PageHeader } from "@/components/shared/page-header";
 
 const formatCurrency = (n: number) =>
   new Intl.NumberFormat("en-AU", { style: "currency", currency: "AUD" }).format(n);
@@ -35,8 +34,7 @@ export default async function MyLeviesPage({
   if (lotIds.length === 0) {
     return (
       <div className="space-y-6">
-        <PageHeader title="My levies" subtitle="Your levy notices for this subdivision" />
-        <Card>
+<Card>
           <CardContent className="flex flex-col items-center justify-center py-16 text-center">
             <FileText className="h-12 w-12 text-muted-foreground/30" />
             <p className="mt-4 text-base font-medium text-foreground">No levies yet</p>
@@ -73,8 +71,6 @@ export default async function MyLeviesPage({
 
   return (
     <div className="space-y-6">
-      <PageHeader title="My levies" subtitle="Your levy notices for this subdivision" />
-
       {/* Summary cards */}
       <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
         <Card>

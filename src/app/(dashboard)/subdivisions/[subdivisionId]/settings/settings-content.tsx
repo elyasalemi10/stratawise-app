@@ -7,7 +7,6 @@ import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
-import { PageHeader } from "@/components/shared/page-header";
 import { updateSubdivisionField } from "../manage/actions";
 
 const MONTHS = [
@@ -171,23 +170,19 @@ export function SettingsContent({ subdivision: initial }: { subdivision: Subdivi
 
   return (
     <div className="space-y-6">
-      <PageHeader
-        title="Subdivision settings"
-        subtitle={subdivision.name}
-        actions={
-          isEditing ? (
-            <Button variant="secondary" size="sm" onClick={() => setIsEditing(false)}>
-              <Check className="mr-2 h-3.5 w-3.5" />
-              Done
-            </Button>
-          ) : (
-            <Button variant="secondary" size="sm" onClick={() => setIsEditing(true)}>
-              <Pencil className="mr-2 h-3.5 w-3.5" />
-              Edit
-            </Button>
-          )
-        }
-      />
+      <div className="flex justify-end">
+        {isEditing ? (
+          <Button variant="secondary" size="sm" onClick={() => setIsEditing(false)}>
+            <Check className="mr-2 h-3.5 w-3.5" />
+            Done
+          </Button>
+        ) : (
+          <Button variant="secondary" size="sm" onClick={() => setIsEditing(true)}>
+            <Pencil className="mr-2 h-3.5 w-3.5" />
+            Edit
+          </Button>
+        )}
+      </div>
 
       <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
         <Card>

@@ -1,9 +1,7 @@
-import { getSubdivision } from "@/lib/actions/subdivision";
 import { redirect } from "next/navigation";
-import { PageHeader } from "@/components/shared/page-header";
+import { getSubdivision } from "@/lib/actions/subdivision";
 import { DocumentManager } from "@/components/shared/document-manager";
 
-// Import document actions from manage folder (reuse existing)
 async function getSubdivisionDocuments(subdivisionId: string) {
   const { createServerClient } = await import("@/lib/supabase");
   const supabase = createServerClient();
@@ -28,10 +26,5 @@ export default async function DocumentsPage({
 
   if (!subdivision) redirect("/dashboard");
 
-  return (
-    <div className="space-y-6">
-      <PageHeader title="Documents" subtitle={subdivision.name} />
-      <DocumentManager subdivisionId={subdivisionId} initialDocuments={documents} />
-    </div>
-  );
+  return <DocumentManager subdivisionId={subdivisionId} initialDocuments={documents} />;
 }
