@@ -83,7 +83,7 @@ function getSubdivisionNavGroups(subdivisionId: string, isLotOwner: boolean) {
         label: "Overview",
         items: [
           { href: `${base}/dashboard`, label: "Dashboard", icon: LayoutDashboard },
-          { href: `${base}/manage?tab=lots`, label: "My levies", icon: Receipt },
+          { href: `${base}/my-levies`, label: "My levies", icon: Receipt },
         ],
       },
       {
@@ -332,9 +332,6 @@ export function AppSidebar() {
                       <span className="block text-xs text-muted-foreground truncate">
                         {sub.lots.map((l) => `Lot ${l.lot_number}${l.unit_number ? ` Unit ${l.unit_number}` : ""}`).join(", ")}
                       </span>
-                    )}
-                    {isLotOwner && sub.address && (
-                      <span className="block text-xs text-muted-foreground/60 truncate">{sub.address}</span>
                     )}
                   </div>
                   {sub.id === currentSubdivisionId && (

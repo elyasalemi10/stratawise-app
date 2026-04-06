@@ -53,6 +53,7 @@ interface ManageContentProps {
     ownersAssigned: number;
     totalMembers: number;
   };
+  isLotOwner?: boolean;
 }
 
 const MONTHS = [
@@ -341,7 +342,7 @@ function DropdownItem({ icon, label }: { icon: React.ReactNode; label: string })
 
 // ─── Main component ─────────────────────────────────────────────
 
-export function ManageContent({ subdivision: initialSub, stats, lots: initialLots, documents }: ManageContentProps) {
+export function ManageContent({ subdivision: initialSub, stats, lots: initialLots, documents, isLotOwner }: ManageContentProps) {
   const searchParams = useSearchParams();
   const router = useRouter();
   const currentTab = searchParams.get("tab") ?? "overview";
@@ -390,30 +391,32 @@ export function ManageContent({ subdivision: initialSub, stats, lots: initialLot
           </div>
           <p className="mt-1 text-sm text-muted-foreground">{subdivision.address}</p>
         </div>
-        <div className="flex items-center gap-2 shrink-0">
-          {isEditing ? (
-            <Button variant="secondary" size="sm" onClick={() => setIsEditing(false)}>
-              <Check className="mr-2 h-3.5 w-3.5" />
-              Done
-            </Button>
-          ) : (
-            <Button variant="secondary" size="sm" onClick={() => setIsEditing(true)}>
-              <Pencil className="mr-2 h-3.5 w-3.5" />
-              Edit
-            </Button>
-          )}
-          <SimpleDropdown
-            trigger={
-              <Button variant="secondary" size="icon" className="h-8 w-8">
-                <MoreHorizontal className="h-4 w-4" />
+        {!isLotOwner && (
+          <div className="flex items-center gap-2 shrink-0">
+            {isEditing ? (
+              <Button variant="secondary" size="sm" onClick={() => setIsEditing(false)}>
+                <Check className="mr-2 h-3.5 w-3.5" />
+                Done
               </Button>
-            }
-          >
-            <DropdownItem icon={<FileText className="h-4 w-4" />} label="View plan" />
-            <DropdownItem icon={<Shield className="h-4 w-4" />} label="Compliance" />
-            <DropdownItem icon={<Settings className="h-4 w-4" />} label="Settings" />
-          </SimpleDropdown>
-        </div>
+            ) : (
+              <Button variant="secondary" size="sm" onClick={() => setIsEditing(true)}>
+                <Pencil className="mr-2 h-3.5 w-3.5" />
+                Edit
+              </Button>
+            )}
+            <SimpleDropdown
+              trigger={
+                <Button variant="secondary" size="icon" className="h-8 w-8">
+                  <MoreHorizontal className="h-4 w-4" />
+                </Button>
+              }
+            >
+              <DropdownItem icon={<FileText className="h-4 w-4" />} label="View plan" />
+              <DropdownItem icon={<Shield className="h-4 w-4" />} label="Compliance" />
+              <DropdownItem icon={<Settings className="h-4 w-4" />} label="Settings" />
+            </SimpleDropdown>
+          </div>
+        )}
       </div>
 
       {/* KPI cards */}
@@ -427,7 +430,7 @@ export function ManageContent({ subdivision: initialSub, stats, lots: initialLot
       {/* Tabs */}
       <Tabs value={activeTab} onValueChange={onTabChange}>
         <TabsList variant="line">
-          {TABS.map((tab) => (
+          {TABS.filter((tab) => !isLotOwner || tab.value !== "financials").map((tab) => (
             <TabsTrigger key={tab.value} value={tab.value}>{tab.label}</TabsTrigger>
           ))}
         </TabsList>
@@ -444,6 +447,7 @@ export function ManageContent({ subdivision: initialSub, stats, lots: initialLot
           isEditing={isEditing}
           onLotUpdated={onLotUpdated}
           totalEntitlement={totalEntitlement}
+          isLotOwner={isLotOwner}
         />
       </div>
       <div className={activeTab === "financials" ? "" : "hidden"}><PlaceholderTab name="Financials" /></div>

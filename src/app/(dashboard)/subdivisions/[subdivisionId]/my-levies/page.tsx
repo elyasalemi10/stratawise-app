@@ -1,0 +1,152 @@
+import { redirect } from "next/navigation";
+import { FileText, DollarSign } from "lucide-react";
+import { getCurrentProfile } from "@/lib/auth";
+import { createServerClient } from "@/lib/supabase";
+import { Card, CardContent } from "@/components/ui/card";
+import { Badge } from "@/components/ui/badge";
+import { PageHeader } from "@/components/shared/page-header";
+
+const formatCurrency = (n: number) =>
+  new Intl.NumberFormat("en-AU", { style: "currency", currency: "AUD" }).format(n);
+
+export default async function MyLeviesPage({
+  params,
+}: {
+  params: Promise<{ subdivisionId: string }>;
+}) {
+  const { subdivisionId } = await params;
+  const profile = await getCurrentProfile();
+  if (!profile) redirect("/sign-in");
+  if (profile.role !== "lot_owner") redirect(`/subdivisions/${subdivisionId}/dashboard`);
+
+  const supabase = createServerClient();
+
+  // Get lot owner's lots in this subdivision
+  const { data: memberships } = await supabase
+    .from("subdivision_members")
+    .select("lot_id")
+    .eq("subdivision_id", subdivisionId)
+    .eq("profile_id", profile.id)
+    .eq("role", "lot_owner")
+    .is("left_at", null);
+
+  const lotIds = (memberships ?? []).map((m) => m.lot_id).filter(Boolean) as string[];
+
+  if (lotIds.length === 0) {
+    return (
+      <div className="space-y-6">
+        <PageHeader title="My levies" subtitle="Your levy notices for this subdivision" />
+        <Card>
+          <CardContent className="flex flex-col items-center justify-center py-16 text-center">
+            <FileText className="h-12 w-12 text-muted-foreground/30" />
+            <p className="mt-4 text-base font-medium text-foreground">No levies yet</p>
+            <p className="mt-1 text-sm text-muted-foreground max-w-sm">
+              You&apos;ll see your levy notices here once they&apos;ve been issued.
+            </p>
+          </CardContent>
+        </Card>
+      </div>
+    );
+  }
+
+  // Fetch levies and payments
+  const { data: levies } = await supabase
+    .from("levy_notices")
+    .select("id, lot_id, reference_number, period_start, period_end, total_amount, status, due_date")
+    .in("lot_id", lotIds)
+    .order("due_date", { ascending: false });
+
+  const levyIds = (levies ?? []).map((l) => l.id);
+  const { data: allPayments } = levyIds.length > 0
+    ? await supabase.from("payments").select("levy_notice_id, amount").in("levy_notice_id", levyIds)
+    : { data: [] };
+
+  // Payment totals per levy
+  const paymentsByLevy = new Map<string, number>();
+  (allPayments ?? []).forEach((p) => {
+    paymentsByLevy.set(p.levy_notice_id, (paymentsByLevy.get(p.levy_notice_id) ?? 0) + Number(p.amount));
+  });
+
+  const totalLevied = (levies ?? []).reduce((s, l) => s + (l.total_amount ?? 0), 0);
+  const totalPaid = Array.from(paymentsByLevy.values()).reduce((s, v) => s + v, 0);
+  const outstanding = totalLevied - totalPaid;
+
+  return (
+    <div className="space-y-6">
+      <PageHeader title="My levies" subtitle="Your levy notices for this subdivision" />
+
+      {/* Summary cards */}
+      <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
+        <Card>
+          <CardContent className="pt-5">
+            <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">Total levied</p>
+            <p className="mt-1 text-xl font-bold tabular-nums">{formatCurrency(totalLevied)}</p>
+          </CardContent>
+        </Card>
+        <Card>
+          <CardContent className="pt-5">
+            <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">Total paid</p>
+            <p className="mt-1 text-xl font-bold tabular-nums text-[hsl(160,100%,37%)]">{formatCurrency(totalPaid)}</p>
+          </CardContent>
+        </Card>
+        <Card>
+          <CardContent className="pt-5">
+            <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">Outstanding</p>
+            <p className="mt-1 text-xl font-bold tabular-nums">{formatCurrency(outstanding)}</p>
+          </CardContent>
+        </Card>
+      </div>
+
+      {/* Levies list */}
+      {(levies ?? []).length === 0 ? (
+        <Card>
+          <CardContent className="flex flex-col items-center justify-center py-16 text-center">
+            <FileText className="h-12 w-12 text-muted-foreground/30" />
+            <p className="mt-4 text-base font-medium text-foreground">No levies issued yet</p>
+            <p className="mt-1 text-sm text-muted-foreground">
+              Your levy notices will appear here once issued by your strata manager.
+            </p>
+          </CardContent>
+        </Card>
+      ) : (
+        <Card>
+          <CardContent className="pt-5">
+            <div className="space-y-0 divide-y divide-border">
+              {(levies ?? []).map((levy) => {
+                const paid = paymentsByLevy.get(levy.id) ?? 0;
+                const remaining = (levy.total_amount ?? 0) - paid;
+
+                return (
+                  <div key={levy.id} className="flex items-center justify-between py-4">
+                    <div className="flex items-center gap-3">
+                      <div className="flex h-9 w-9 items-center justify-center rounded-md bg-primary/10 text-primary">
+                        <FileText className="h-4 w-4" />
+                      </div>
+                      <div>
+                        <p className="text-sm font-medium text-foreground">{levy.reference_number}</p>
+                        <p className="text-xs text-muted-foreground">
+                          {levy.period_start} — {levy.period_end} · Due {levy.due_date}
+                        </p>
+                      </div>
+                    </div>
+                    <div className="flex items-center gap-4">
+                      <div className="text-right">
+                        <p className="text-sm font-semibold tabular-nums">{formatCurrency(levy.total_amount ?? 0)}</p>
+                        {remaining > 0 && (
+                          <p className="text-xs text-destructive tabular-nums">{formatCurrency(remaining)} remaining</p>
+                        )}
+                      </div>
+                      <Badge variant={levy.status === "paid" ? "success" : levy.status === "overdue" ? "destructive" : "info"}>
+                        {levy.status}
+                      </Badge>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          </CardContent>
+        </Card>
+      )}
+    </div>
+  );
+}

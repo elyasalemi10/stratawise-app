@@ -93,13 +93,7 @@ async function LotOwnerDashboard({ subdivisionId, profileId }: { subdivisionId: 
   return (
     <div className="space-y-6">
       {/* KPI cards */}
-      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
-        <KPICard
-          label="Your lots"
-          value={String(lots?.length ?? 0)}
-          description={lots?.map((l) => `Lot ${l.lot_number}`).join(", ") ?? ""}
-          icon={<Home className="h-5 w-5" />}
-        />
+      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
         <KPICard
           label="Total levied"
           value={formatCurrency(totalLevied)}
