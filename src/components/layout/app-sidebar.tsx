@@ -89,10 +89,9 @@ function getSubdivisionNavGroups(subdivisionId: string, isLotOwner: boolean) {
       {
         label: "Subdivision",
         items: [
-          { href: `${base}/manage?tab=overview`, label: "General", icon: Building2 },
-          { href: `${base}/manage?tab=lots`, label: "Lot owners", icon: Users },
-          { href: `${base}/manage?tab=meetings`, label: "Meetings", icon: CalendarCheck },
-          { href: `${base}/manage?tab=documents`, label: "Documents", icon: FileText },
+          { href: `${base}/lots`, label: "Lot owners", icon: Users },
+          { href: `${base}/meetings`, label: "Meetings", icon: CalendarCheck },
+          { href: `${base}/documents`, label: "Documents", icon: FileText },
         ],
       },
     ];
@@ -108,10 +107,10 @@ function getSubdivisionNavGroups(subdivisionId: string, isLotOwner: boolean) {
     {
       label: "Management",
       items: [
-        { href: `${base}/manage?tab=lots`, label: "Lots & Owners", icon: Users },
-        { href: `${base}/manage?tab=financials`, label: "Financials", icon: Wallet },
-        { href: `${base}/manage?tab=meetings`, label: "Meetings", icon: CalendarCheck },
-        { href: `${base}/manage?tab=documents`, label: "Documents", icon: FileText },
+        { href: `${base}/lots`, label: "Lots & owners", icon: Users },
+        { href: `${base}/finance`, label: "Finance", icon: Wallet },
+        { href: `${base}/meetings`, label: "Meetings", icon: CalendarCheck },
+        { href: `${base}/documents`, label: "Documents", icon: FileText },
       ],
     },
     {
