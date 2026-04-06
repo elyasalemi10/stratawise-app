@@ -2,230 +2,20 @@
 
 import { useState, useEffect } from "react";
 import { Plus, DollarSign, CheckCircle2 } from "lucide-react";
+import Link from "next/link";
 import { toast } from "sonner";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
 import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
-import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import {
-  getBudgetCategories,
   getSubdivisionBudgets,
-  createBudget,
   approveBudget,
-  type BudgetCategory,
   type BudgetWithItems,
 } from "@/lib/actions/budget";
 
 const formatCurrency = (n: number) =>
   new Intl.NumberFormat("en-AU", { style: "currency", currency: "AUD" }).format(n);
-
-// ─── Create Budget Dialog ──────────────────────────────────
-
-function CreateBudgetDialog({
-  open,
-  onClose,
-  subdivisionId,
-  categories,
-  financialYear,
-  onCreated,
-}: {
-  open: boolean;
-  onClose: () => void;
-  subdivisionId: string;
-  categories: BudgetCategory[];
-  financialYear: string;
-  onCreated: () => void;
-}) {
-  const [fundType, setFundType] = useState<"administrative" | "capital_works">("administrative");
-  const [items, setItems] = useState<{ category_id: string; description: string; amount: number }[]>([]);
-  const [pending, setPending] = useState(false);
-
-  const fundCategories = categories.filter((c) => c.fund_type === fundType);
-
-  // Reset items when fund type changes
-  useEffect(() => {
-    setItems(
-      fundCategories.map((c) => ({
-        category_id: c.id,
-        description: c.name,
-        amount: 0,
-      }))
-    );
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [fundType]);
-
-  const total = items.reduce((sum, item) => sum + item.amount, 0);
-
-  function updateItem(index: number, field: "description" | "amount", value: string | number) {
-    setItems((prev) =>
-      prev.map((item, i) =>
-        i === index ? { ...item, [field]: field === "amount" ? (Number(value) || 0) : value } : item
-      )
-    );
-  }
-
-  function addCustomItem() {
-    const otherCategory = fundCategories.find((c) => c.name.toLowerCase().includes("other"));
-    if (!otherCategory) return;
-    setItems((prev) => [...prev, { category_id: otherCategory.id, description: "", amount: 0 }]);
-  }
-
-  function removeItem(index: number) {
-    setItems((prev) => prev.filter((_, i) => i !== index));
-  }
-
-  async function handleSubmit() {
-    const nonZeroItems = items.filter((i) => i.amount > 0);
-    if (nonZeroItems.length === 0) {
-      toast.error("Add at least one budget item with an amount");
-      return;
-    }
-
-    setPending(true);
-    const result = await createBudget(subdivisionId, {
-      financial_year: financialYear,
-      fund_type: fundType,
-      items: nonZeroItems,
-    });
-    setPending(false);
-
-    if (result.error) {
-      toast.error(result.error);
-      return;
-    }
-
-    toast.success(`${fundType === "administrative" ? "Administrative Fund" : "Capital Works Fund"} budget created`);
-    onCreated();
-    onClose();
-  }
-
-  return (
-    <Dialog open={open} onOpenChange={onClose}>
-      <DialogContent className="max-w-2xl max-h-[85vh] overflow-y-auto">
-        <DialogHeader>
-          <DialogTitle>Create budget — {financialYear}</DialogTitle>
-        </DialogHeader>
-
-        <div className="space-y-4">
-          {/* Fund type selector */}
-          <div className="space-y-1.5">
-            <Label>Fund type</Label>
-            <div className="flex gap-2">
-              <Button
-                type="button"
-                variant={fundType === "administrative" ? "default" : "outline"}
-                size="sm"
-                onClick={() => setFundType("administrative")}
-              >
-                Administrative Fund
-              </Button>
-              <Button
-                type="button"
-                variant={fundType === "capital_works" ? "default" : "outline"}
-                size="sm"
-                onClick={() => setFundType("capital_works")}
-              >
-                Capital Works Fund
-              </Button>
-            </div>
-            <p className="text-xs text-muted-foreground">
-              {fundType === "administrative"
-                ? "Day-to-day operating expenses: insurance, management, cleaning, maintenance."
-                : "Long-term capital expenditure: painting, roofing, major repairs, equipment replacement."}
-            </p>
-          </div>
-
-          {/* Budget items */}
-          <div>
-            <Label className="mb-2 block">Budget items</Label>
-            <div className="rounded-lg border border-border overflow-hidden">
-              <table className="w-full text-sm">
-                <thead>
-                  <tr className="bg-muted/50 text-xs font-medium uppercase tracking-wider text-muted-foreground">
-                    <th className="px-4 py-2.5 text-left">Category / Description</th>
-                    <th className="px-4 py-2.5 text-right w-40">Annual amount</th>
-                    <th className="px-4 py-2.5 w-10"></th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {items.map((item, i) => {
-                    const isDefault = fundCategories.some((c) => c.id === item.category_id && c.name === item.description);
-                    return (
-                      <tr key={i} className="border-t border-border/50">
-                        <td className="px-4 py-2">
-                          {isDefault ? (
-                            <span className="text-sm text-foreground">{item.description}</span>
-                          ) : (
-                            <Input
-                              value={item.description}
-                              onChange={(e) => updateItem(i, "description", e.target.value)}
-                              placeholder="Item description"
-                              className="h-8 text-sm"
-                            />
-                          )}
-                        </td>
-                        <td className="px-4 py-2">
-                          <Input
-                            type="number"
-                            value={item.amount || ""}
-                            onChange={(e) => updateItem(i, "amount", e.target.value)}
-                            placeholder="0.00"
-                            className="h-8 text-sm text-right tabular-nums"
-                            min={0}
-                            step="0.01"
-                          />
-                        </td>
-                        <td className="px-4 py-2">
-                          {!isDefault && (
-                            <button
-                              type="button"
-                              onClick={() => removeItem(i)}
-                              className="text-muted-foreground hover:text-destructive text-xs"
-                            >
-                              ×
-                            </button>
-                          )}
-                        </td>
-                      </tr>
-                    );
-                  })}
-                </tbody>
-                <tfoot>
-                  <tr className="border-t-2 border-foreground/20">
-                    <td className="px-4 py-3 text-sm font-semibold text-foreground">Total annual</td>
-                    <td className="px-4 py-3 text-sm font-bold text-foreground text-right tabular-nums">{formatCurrency(total)}</td>
-                    <td></td>
-                  </tr>
-                </tfoot>
-              </table>
-            </div>
-
-            <Button type="button" variant="outline" size="sm" onClick={addCustomItem} className="mt-2">
-              <Plus className="mr-1 h-3 w-3" />
-              Add custom item
-            </Button>
-          </div>
-
-          {/* Summary info */}
-          <div className="bg-muted/50 rounded-lg p-3 text-xs text-muted-foreground space-y-1">
-            <p>Under the <strong>Owners Corporations Act 2006 (Vic)</strong>, the OC must prepare an annual budget split into Administrative and Capital Works funds.</p>
-            <p>Levies will be calculated per lot based on lot liability proportions and the subdivision&apos;s billing cycle.</p>
-          </div>
-        </div>
-
-        <DialogFooter>
-          <Button type="button" variant="ghost" onClick={onClose}>Cancel</Button>
-          <Button onClick={handleSubmit} disabled={pending || total === 0}>
-            {pending ? "Creating..." : "Create budget"}
-          </Button>
-        </DialogFooter>
-      </DialogContent>
-    </Dialog>
-  );
-}
 
 // ─── Budget Card ──────────────────────────────────────────
 
@@ -310,28 +100,22 @@ function BudgetCard({
   );
 }
 
-// ─── Main Financials Tab ───────────────────────────────────
+// ─── Main Budget Page ───────────────────────────────────
 
 export function BudgetTab({ subdivisionId, financialYearStartMonth }: { subdivisionId: string; financialYearStartMonth: number }) {
-  const [categories, setCategories] = useState<BudgetCategory[]>([]);
   const [budgets, setBudgets] = useState<BudgetWithItems[]>([]);
   const [loading, setLoading] = useState(true);
-  const [showCreate, setShowCreate] = useState(false);
 
   // Calculate current financial year
   const now = new Date();
-  const fyStartMonth = financialYearStartMonth ?? 7; // Default July
+  const fyStartMonth = financialYearStartMonth ?? 7;
   const currentYear = now.getFullYear();
   const fyStartYear = now.getMonth() + 1 >= fyStartMonth ? currentYear : currentYear - 1;
   const financialYear = `${fyStartYear}-${fyStartYear + 1}`;
 
   async function loadData() {
     setLoading(true);
-    const [cats, buds] = await Promise.all([
-      getBudgetCategories(),
-      getSubdivisionBudgets(subdivisionId),
-    ]);
-    setCategories(cats);
+    const buds = await getSubdivisionBudgets(subdivisionId);
     setBudgets(buds);
     setLoading(false);
   }
@@ -344,16 +128,10 @@ export function BudgetTab({ subdivisionId, financialYearStartMonth }: { subdivis
   if (loading) {
     return (
       <div className="space-y-4">
-        {/* Header skeleton */}
         <div className="flex items-center justify-between">
-          <div>
-            <Skeleton className="h-4 w-40" />
-            <Skeleton className="mt-1.5 h-3 w-56" />
-          </div>
+          <h1 className="text-lg font-semibold text-foreground">Budgets</h1>
           <Skeleton className="h-8 w-28 rounded-md" />
         </div>
-
-        {/* Budget card skeletons */}
         <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
           {[0, 1].map((i) => (
             <Card key={i}>
@@ -392,7 +170,6 @@ export function BudgetTab({ subdivisionId, financialYearStartMonth }: { subdivis
   const currentBudgets = budgets.filter((b) => b.financial_year === financialYear);
   const hasAdmin = currentBudgets.some((b) => b.fund_type === "administrative");
   const hasCapital = currentBudgets.some((b) => b.fund_type === "capital_works");
-  const totalBudgeted = currentBudgets.reduce((sum, b) => sum + Number(b.total_amount), 0);
 
   return (
     <div className="space-y-4">
@@ -400,10 +177,12 @@ export function BudgetTab({ subdivisionId, financialYearStartMonth }: { subdivis
       <div className="flex items-center justify-between">
         <h1 className="text-lg font-semibold text-foreground">Budgets</h1>
         {(!hasAdmin || !hasCapital) && (
-          <Button size="sm" onClick={() => setShowCreate(true)}>
-            <Plus className="mr-2 h-3.5 w-3.5" />
-            Create budget
-          </Button>
+          <Link href={`/subdivisions/${subdivisionId}/finance/budgets/create`}>
+            <Button size="sm">
+              <Plus className="mr-2 h-3.5 w-3.5" />
+              Create budget
+            </Button>
+          </Link>
         )}
       </div>
 
@@ -416,10 +195,12 @@ export function BudgetTab({ subdivisionId, financialYearStartMonth }: { subdivis
             <p className="mt-1 text-sm text-muted-foreground max-w-sm">
               Create an annual budget to start generating levy notices.
             </p>
-            <Button className="mt-4" onClick={() => setShowCreate(true)}>
-              <Plus className="mr-2 h-4 w-4" />
-              Create budget
-            </Button>
+            <Link href={`/subdivisions/${subdivisionId}/finance/budgets/create`}>
+              <Button className="mt-4">
+                <Plus className="mr-2 h-4 w-4" />
+                Create budget
+              </Button>
+            </Link>
           </CardContent>
         </Card>
       ) : (
@@ -452,18 +233,6 @@ export function BudgetTab({ subdivisionId, financialYearStartMonth }: { subdivis
               ))}
           </div>
         </div>
-      )}
-
-      {/* Create dialog */}
-      {showCreate && (
-        <CreateBudgetDialog
-          open={showCreate}
-          onClose={() => setShowCreate(false)}
-          subdivisionId={subdivisionId}
-          categories={categories}
-          financialYear={financialYear}
-          onCreated={loadData}
-        />
       )}
     </div>
   );
