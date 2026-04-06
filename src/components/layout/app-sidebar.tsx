@@ -108,16 +108,20 @@ function getSubdivisionNavGroups(subdivisionId: string, isLotOwner: boolean) {
       label: "Management",
       items: [
         { href: `${base}/lots`, label: "Lots & owners", icon: Users },
-        { href: `${base}/finance`, label: "Finance", icon: Wallet },
         { href: `${base}/meetings`, label: "Meetings", icon: CalendarCheck },
         { href: `${base}/documents`, label: "Documents", icon: FileText },
+      ],
+    },
+    {
+      label: "Finance",
+      items: [
+        { href: `${base}/finance/budgets`, label: "Budgets", icon: Wallet },
       ],
     },
     {
       label: "Settings",
       items: [
         { href: `${base}/settings`, label: "Subdivision settings", icon: Settings },
-        { href: "/settings", label: "Account settings", icon: Users },
       ],
     },
   ];

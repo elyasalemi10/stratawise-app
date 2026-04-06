@@ -1,4 +1,4 @@
-import { DollarSign, AlertTriangle } from "lucide-react";
+import { Building2, DollarSign, AlertTriangle, Users } from "lucide-react";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Card, CardContent } from "@/components/ui/card";
 
@@ -26,25 +26,16 @@ function KPICardSkeleton({ label, icon }: { label: string; icon: React.ReactNode
 export default function SubdivisionDashboardLoading() {
   return (
     <div className="space-y-6">
-      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
+        <KPICardSkeleton label="Total lots" icon={<Building2 className="h-5 w-5" />} />
+        <KPICardSkeleton label="Members" icon={<Users className="h-5 w-5" />} />
         <KPICardSkeleton label="Total levied" icon={<DollarSign className="h-5 w-5" />} />
         <KPICardSkeleton label="Outstanding" icon={<AlertTriangle className="h-5 w-5" />} />
       </div>
 
       <Card>
-        <CardContent className="pt-5 space-y-4">
-          {Array.from({ length: 3 }).map((_, i) => (
-            <div key={i} className="flex items-center justify-between py-3 border-t border-border first:border-t-0">
-              <div className="flex items-center gap-3">
-                <Skeleton className="h-9 w-9 rounded-md" />
-                <div>
-                  <Skeleton className="h-3.5 w-32" />
-                  <Skeleton className="mt-1 h-3 w-20" />
-                </div>
-              </div>
-              <Skeleton className="h-5 w-16 rounded-full" />
-            </div>
-          ))}
+        <CardContent className="flex items-center justify-center py-16">
+          <Skeleton className="h-4 w-72" />
         </CardContent>
       </Card>
     </div>
