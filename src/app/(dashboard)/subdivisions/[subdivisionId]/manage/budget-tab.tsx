@@ -397,14 +397,15 @@ export function BudgetTab({ subdivisionId, financialYearStartMonth }: { subdivis
   return (
     <div className="space-y-4">
       {/* Header */}
-      {(!hasAdmin || !hasCapital) && (
-        <div className="flex justify-end">
+      <div className="flex items-center justify-between">
+        <h1 className="text-lg font-semibold text-foreground">Budgets</h1>
+        {(!hasAdmin || !hasCapital) && (
           <Button size="sm" onClick={() => setShowCreate(true)}>
             <Plus className="mr-2 h-3.5 w-3.5" />
             Create budget
           </Button>
-        </div>
-      )}
+        )}
+      </div>
 
       {/* Budget cards */}
       {currentBudgets.length === 0 ? (

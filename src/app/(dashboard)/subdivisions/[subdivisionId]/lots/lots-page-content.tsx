@@ -33,9 +33,10 @@ export function LotsPageContent({
 
   return (
     <div className="space-y-6">
-      {!isLotOwner && (
-        <div className="flex justify-end">
-          {isEditing ? (
+      <div className="flex items-center justify-between">
+        <h1 className="text-lg font-semibold text-foreground">{isLotOwner ? "Lot owners" : "Lots & owners"}</h1>
+        {!isLotOwner && (
+          isEditing ? (
             <Button variant="secondary" size="sm" onClick={() => setIsEditing(false)}>
               <Check className="mr-2 h-3.5 w-3.5" />
               Done
@@ -45,9 +46,9 @@ export function LotsPageContent({
               <Pencil className="mr-2 h-3.5 w-3.5" />
               Edit
             </Button>
-          )}
-        </div>
-      )}
+          )
+        )}
+      </div>
       <LotsTab
         lots={lots}
         subdivisionId={subdivisionId}

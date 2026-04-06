@@ -34,7 +34,8 @@ export default async function MyLeviesPage({
   if (lotIds.length === 0) {
     return (
       <div className="space-y-6">
-<Card>
+        <h1 className="text-lg font-semibold text-foreground">My levies</h1>
+        <Card>
           <CardContent className="flex flex-col items-center justify-center py-16 text-center">
             <FileText className="h-12 w-12 text-muted-foreground/30" />
             <p className="mt-4 text-base font-medium text-foreground">No levies yet</p>
@@ -71,6 +72,7 @@ export default async function MyLeviesPage({
 
   return (
     <div className="space-y-6">
+      <h1 className="text-lg font-semibold text-foreground">My levies</h1>
       {/* Summary cards */}
       <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
         <Card>

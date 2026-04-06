@@ -26,5 +26,10 @@ export default async function DocumentsPage({
 
   if (!subdivision) redirect("/dashboard");
 
-  return <DocumentManager subdivisionId={subdivisionId} initialDocuments={documents} />;
+  return (
+    <div className="space-y-6">
+      <h1 className="text-lg font-semibold text-foreground">Documents</h1>
+      <DocumentManager subdivisionId={subdivisionId} initialDocuments={documents} />
+    </div>
+  );
 }
