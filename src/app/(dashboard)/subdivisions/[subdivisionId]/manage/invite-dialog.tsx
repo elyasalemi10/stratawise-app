@@ -61,18 +61,9 @@ export function InviteDialog({
       return;
     }
 
-    const inviteUrl = `${window.location.origin}/invite/${result.token}`;
-    toast.success("Invitation created", {
-      description: "Share the link with the lot owner.",
+    toast.success("Invitation sent", {
+      description: `An email has been sent to ${data.email}.`,
     });
-
-    // Copy invite URL to clipboard
-    try {
-      await navigator.clipboard.writeText(inviteUrl);
-      toast.success("Invite link copied to clipboard");
-    } catch {
-      // Clipboard not available
-    }
 
     reset();
     onClose();

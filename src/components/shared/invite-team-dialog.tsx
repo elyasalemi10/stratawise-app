@@ -39,14 +39,9 @@ export function InviteTeamDialog({ open, onClose }: InviteTeamDialogProps) {
       return;
     }
 
-    const inviteUrl = `${window.location.origin}/invite/${result.token}`;
-
-    try {
-      await navigator.clipboard.writeText(inviteUrl);
-      toast.success("Invitation created — link copied to clipboard");
-    } catch {
-      toast.success("Invitation created");
-    }
+    toast.success("Invitation sent", {
+      description: `An email has been sent to ${data.email}.`,
+    });
 
     reset();
     onClose();
