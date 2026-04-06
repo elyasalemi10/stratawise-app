@@ -2,7 +2,7 @@
 
 import { useState, useRef, useEffect, useCallback } from "react";
 import { useRouter } from "next/navigation";
-import { Plus, X } from "lucide-react";
+import { Plus, X, ArrowLeft } from "lucide-react";
 import { toast } from "sonner";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -19,10 +19,12 @@ function CategoryCombobox({
   categories,
   usedCategoryIds,
   onSelect,
+  onCancel,
 }: {
   categories: BudgetCategory[];
   usedCategoryIds: string[];
   onSelect: (category: { id: string; name: string; isCustom?: boolean }) => void;
+  onCancel: () => void;
 }) {
   const [query, setQuery] = useState("");
   const [open, setOpen] = useState(true);
@@ -36,12 +38,20 @@ function CategoryCombobox({
   useEffect(() => {
     function handleClickOutside(e: MouseEvent) {
       if (containerRef.current && !containerRef.current.contains(e.target as Node)) {
-        setOpen(false);
+        // If there's text typed, create it as custom
+        if (query.trim()) {
+          const otherCat = categories.find((c) => c.name.toLowerCase().includes("other"));
+          if (otherCat) {
+            onSelect({ id: otherCat.id, name: query.trim(), isCustom: true });
+            return;
+          }
+        }
+        onCancel();
       }
     }
     document.addEventListener("mousedown", handleClickOutside);
     return () => document.removeEventListener("mousedown", handleClickOutside);
-  }, []);
+  }, [query, categories, onSelect, onCancel]);
 
   const filtered = categories.filter(
     (c) =>
@@ -59,12 +69,15 @@ function CategoryCombobox({
   }
 
   function handleKeyDown(e: React.KeyboardEvent) {
+    if (e.key === "Escape") {
+      onCancel();
+      return;
+    }
     if (e.key === "Enter") {
       e.preventDefault();
       if (filtered.length === 1) {
         handleSelect({ id: filtered[0].id, name: filtered[0].name });
       } else if (query.trim() && !exactMatch) {
-        // Create custom
         const otherCat = categories.find((c) => c.name.toLowerCase().includes("other"));
         if (otherCat) {
           handleSelect({ id: otherCat.id, name: query.trim(), isCustom: true });
@@ -120,6 +133,46 @@ function CategoryCombobox({
   );
 }
 
+// ─── Amount Input (no spinner, max 2 decimals) ─────────────
+
+function AmountInput({
+  value,
+  onChange,
+}: {
+  value: number;
+  onChange: (v: number) => void;
+}) {
+  const [display, setDisplay] = useState(value ? String(value) : "");
+
+  function handleChange(e: React.ChangeEvent<HTMLInputElement>) {
+    const raw = e.target.value;
+    // Allow empty, digits, and up to 2 decimal places
+    if (raw === "" || /^\d*\.?\d{0,2}$/.test(raw)) {
+      setDisplay(raw);
+      onChange(Number(raw) || 0);
+    }
+  }
+
+  function handleBlur() {
+    // Format to 2 decimals on blur if there's a value
+    if (display && Number(display) > 0) {
+      setDisplay(Number(display).toFixed(2));
+    }
+  }
+
+  return (
+    <input
+      type="text"
+      inputMode="decimal"
+      value={display}
+      onChange={handleChange}
+      onBlur={handleBlur}
+      placeholder="0.00"
+      className="h-8 w-full rounded-md border border-border bg-background px-3 text-sm text-right tabular-nums transition-colors outline-none placeholder:text-muted-foreground focus:border-primary focus:ring-2 focus:ring-primary/20"
+    />
+  );
+}
+
 // ─── Main Form ─────────────────────────────────────────────
 
 interface BudgetItem {
@@ -165,10 +218,10 @@ export function CreateBudgetForm({
     setShowCombobox(false);
   }, []);
 
-  function updateAmount(index: number, value: string) {
+  function updateAmount(index: number, value: number) {
     setItems((prev) =>
       prev.map((item, i) =>
-        i === index ? { ...item, amount: Number(value) || 0 } : item
+        i === index ? { ...item, amount: value } : item
       )
     );
   }
@@ -204,7 +257,17 @@ export function CreateBudgetForm({
   return (
     <div className="space-y-6">
       <div className="flex items-center justify-between">
-        <h1 className="text-lg font-semibold text-foreground">Create budget</h1>
+        <div className="flex items-center gap-3">
+          <Button
+            variant="ghost"
+            size="icon"
+            className="h-8 w-8"
+            onClick={() => router.push(`/subdivisions/${subdivisionId}/finance/budgets`)}
+          >
+            <ArrowLeft className="h-4 w-4" />
+          </Button>
+          <h1 className="text-lg font-semibold text-foreground">Create budget</h1>
+        </div>
         <p className="text-sm text-muted-foreground">Financial year {financialYear}</p>
       </div>
 
@@ -258,14 +321,9 @@ export function CreateBudgetForm({
                       <span className="text-sm text-foreground">{item.description}</span>
                     </td>
                     <td className="px-4 py-2.5">
-                      <Input
-                        type="number"
-                        value={item.amount || ""}
-                        onChange={(e) => updateAmount(i, e.target.value)}
-                        placeholder="0.00"
-                        className="h-8 text-sm text-right tabular-nums"
-                        min={0}
-                        step="0.01"
+                      <AmountInput
+                        value={item.amount}
+                        onChange={(v) => updateAmount(i, v)}
                       />
                     </td>
                     <td className="px-4 py-2.5">
@@ -288,20 +346,20 @@ export function CreateBudgetForm({
                         categories={fundCategories}
                         usedCategoryIds={usedCategoryIds}
                         onSelect={addItem}
+                        onCancel={() => setShowCombobox(false)}
                       />
                     </td>
                   </tr>
                 ) : (
-                  <tr className="border-t border-border/50">
-                    <td className="px-4 py-2" colSpan={3}>
-                      <button
-                        type="button"
-                        onClick={() => setShowCombobox(true)}
-                        className="flex items-center gap-1.5 text-sm text-muted-foreground hover:text-foreground cursor-pointer py-1"
-                      >
+                  <tr
+                    className="border-t border-border/50 cursor-pointer hover:bg-muted/30 transition-colors"
+                    onClick={() => setShowCombobox(true)}
+                  >
+                    <td className="px-4 py-2.5" colSpan={3}>
+                      <span className="flex items-center gap-1.5 text-sm text-muted-foreground">
                         <Plus className="h-3.5 w-3.5" />
                         Add item
-                      </button>
+                      </span>
                     </td>
                   </tr>
                 )}
@@ -320,15 +378,8 @@ export function CreateBudgetForm({
         </CardContent>
       </Card>
 
-      {/* Actions */}
-      <div className="flex items-center justify-end gap-3">
-        <Button
-          type="button"
-          variant="ghost"
-          onClick={() => router.push(`/subdivisions/${subdivisionId}/finance/budgets`)}
-        >
-          Cancel
-        </Button>
+      {/* Submit */}
+      <div className="flex justify-end">
         <Button onClick={handleSubmit} disabled={pending || total === 0}>
           {pending ? "Creating..." : "Create budget"}
         </Button>
