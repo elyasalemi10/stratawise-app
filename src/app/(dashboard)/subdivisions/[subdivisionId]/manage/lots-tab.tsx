@@ -138,7 +138,7 @@ export function LotsTab({ lots, subdivisionId, isEditing, onLotUpdated, totalEnt
         <table className="w-full text-sm">
           <thead>
             <tr className="bg-muted/50 text-xs font-medium uppercase tracking-wider text-muted-foreground">
-              <th className="px-4 py-2.5 text-left">Owner name</th>
+              <th className={`px-4 py-2.5 text-left ${isLotOwner ? "w-[40%]" : ""}`}>Owner name</th>
               {!isLotOwner && <th className="px-4 py-2.5 text-left">Email</th>}
               <th className="px-4 py-2.5 text-left">Units of entitlement</th>
               <th className="px-4 py-2.5 text-left">Unit number</th>
