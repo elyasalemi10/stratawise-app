@@ -4,7 +4,7 @@ function getResend() {
   return new Resend(process.env.RESEND_API_KEY);
 }
 
-const FROM_EMAIL = "My Strata Management <noreply@myocm.com.au>";
+const FROM_EMAIL = process.env.RESEND_INVITES_FROM ?? "My Strata Management <noreply@myocm.com.au>";
 
 interface SendInvitationEmailParams {
   to: string;
