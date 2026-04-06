@@ -242,7 +242,7 @@ export function CreateBudgetForm({
       <Card>
         <CardContent className="pt-5">
           <Label className="mb-3 block">Budget items</Label>
-          <div className="rounded-lg border border-border overflow-hidden">
+          <div className="rounded-lg border border-border">
             <table className="w-full text-sm">
               <thead>
                 <tr className="bg-muted/50 text-xs font-medium uppercase tracking-wider text-muted-foreground">
