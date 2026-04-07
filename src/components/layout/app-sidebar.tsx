@@ -116,6 +116,8 @@ function getSubdivisionNavGroups(subdivisionId: string, isLotOwner: boolean) {
       label: "Finance",
       items: [
         { href: `${base}/finance/budgets`, label: "Budgets", icon: Wallet },
+        { href: `${base}/finance/levies`, label: "Levies", icon: Receipt },
+        { href: `${base}/finance/generate`, label: "Generate levies", icon: Plus },
       ],
     },
     {
