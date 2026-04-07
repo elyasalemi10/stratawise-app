@@ -3,6 +3,9 @@
 import { requireRole, requireSubdivisionAccess } from "@/lib/auth";
 import { createServerClient } from "@/lib/supabase";
 import { revalidatePath } from "next/cache";
+import { generateAndUploadLevyPDF, generateLevyPDFBuffer } from "@/lib/levy-pdf";
+import { sendLevyEmail } from "@/lib/email";
+import type { LevyNoticeProps } from "@/lib/pdf/types";
 
 // ─── Types ─────────────────────────────────────────────────
 
@@ -316,6 +319,34 @@ export async function createLevyBatch(
 
   if (batchError) return { error: batchError.message };
 
+  // Fetch subdivision + management company for PDF generation
+  const { data: subdivision } = await supabase
+    .from("subdivisions")
+    .select("name, address, abn, plan_number, bank_bsb, bank_account_number, bank_account_name, management_company_id")
+    .eq("id", subdivisionId)
+    .single();
+
+  let managementCompany = { name: "", logo_url: null as string | null };
+  if (subdivision?.management_company_id) {
+    const { data: mc } = await supabase
+      .from("management_companies")
+      .select("name, logo_url")
+      .eq("id", subdivision.management_company_id)
+      .single();
+    if (mc) managementCompany = mc;
+  }
+
+  // Fetch lot details for PDF
+  const lotIds = data.lots.map((l) => l.lot_id);
+  const { data: lotsData } = await supabase
+    .from("lots")
+    .select("id, lot_number, unit_number, owner_name, owner_email")
+    .in("id", lotIds);
+  const lotMap = new Map((lotsData ?? []).map((l) => [l.id, l]));
+
+  // Build payment instructions (EFT from subdivision, no BPAY if not configured)
+  const hasEft = subdivision?.bank_bsb && subdivision?.bank_account_number;
+
   // Create levy notices for each lot
   for (const lot of data.lots) {
     // Generate reference number
@@ -362,6 +393,59 @@ export async function createLevyBatch(
 
     if (itemInserts.length > 0) {
       await supabase.from("levy_notice_items").insert(itemInserts);
+    }
+
+    // Generate PDF and upload to R2
+    try {
+      const lotInfo = lotMap.get(lot.lot_id);
+      const pdfProps: LevyNoticeProps = {
+        managementCompany,
+        subdivision: {
+          name: subdivision?.name ?? "",
+          address: subdivision?.address ?? "",
+          abn: subdivision?.abn ?? null,
+          plan_number: subdivision?.plan_number ?? "",
+        },
+        documentTitle: "Levy Notice",
+        referenceNumber: refNum,
+        date: new Date(),
+        lotOwner: {
+          name: lotInfo?.owner_name ?? "Lot Owner",
+          lot_number: String(lotInfo?.lot_number ?? ""),
+          address: subdivision?.address ?? "",
+        },
+        levyPeriod: { start: data.period_start, end: data.period_end },
+        lineItems: lot.items
+          .filter((item) => item.amount !== 0)
+          .map((item) => ({ description: item.description, amount: item.amount })),
+        totalDue: lot.amount,
+        dueDate: data.due_date,
+        paymentInstructions: {
+          bpay: null, // No BPAY configured yet
+          eft: hasEft ? {
+            bsb: subdivision!.bank_bsb!,
+            account_number: subdivision!.bank_account_number!,
+            account_name: subdivision!.bank_account_name ?? subdivision!.name ?? "",
+            reference: refNum,
+          } : {
+            bsb: "",
+            account_number: "",
+            account_name: "",
+            reference: refNum,
+          },
+        },
+      };
+
+      const pdfUrl = await generateAndUploadLevyPDF(pdfProps, subdivisionId, refNum);
+
+      // Save PDF URL to levy notice
+      await supabase
+        .from("levy_notices")
+        .update({ pdf_url: pdfUrl })
+        .eq("id", levy.id);
+    } catch (pdfError) {
+      console.error("Failed to generate PDF for", refNum, pdfError);
+      // Don't fail the whole batch if PDF generation fails
     }
   }
 
@@ -549,4 +633,160 @@ export async function markLevySent(subdivisionId: string, levyId: string) {
 
   revalidatePath(`/subdivisions/${subdivisionId}/finance`);
   return { success: true };
+}
+
+// ─── Send batch emails ─────────────────────────────────────
+
+export async function sendBatchEmails(subdivisionId: string, batchId: string) {
+  const profile = await requireRole(["strata_manager", "super_admin"]);
+  await requireSubdivisionAccess(subdivisionId);
+  const supabase = createServerClient();
+
+  // Get batch info
+  const { data: batch } = await supabase
+    .from("levy_batches")
+    .select("period_label")
+    .eq("id", batchId)
+    .single();
+
+  // Get subdivision name
+  const { data: subdivision } = await supabase
+    .from("subdivisions")
+    .select("name, bank_bsb, bank_account_number, bank_account_name, plan_number, address, abn, management_company_id")
+    .eq("id", subdivisionId)
+    .single();
+
+  let managementCompany = { name: "", logo_url: null as string | null };
+  if (subdivision?.management_company_id) {
+    const { data: mc } = await supabase
+      .from("management_companies")
+      .select("name, logo_url")
+      .eq("id", subdivision.management_company_id)
+      .single();
+    if (mc) managementCompany = mc;
+  }
+
+  // Get draft levies with lot owner info
+  const { data: levies } = await supabase
+    .from("levy_notices")
+    .select("id, reference_number, amount, due_date, period_start, period_end, pdf_url, lots!inner(lot_number, owner_name, owner_email)")
+    .eq("batch_id", batchId)
+    .eq("status", "draft");
+
+  if (!levies || levies.length === 0) return { error: "No draft levies to send" };
+
+  const hasEft = subdivision?.bank_bsb && subdivision?.bank_account_number;
+
+  let sentCount = 0;
+  for (const levy of levies) {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const lot = (levy as any).lots;
+    const email = lot?.owner_email;
+
+    if (!email) continue;
+
+    try {
+      // Generate PDF buffer for email attachment
+      const pdfProps: LevyNoticeProps = {
+        managementCompany,
+        subdivision: {
+          name: subdivision?.name ?? "",
+          address: subdivision?.address ?? "",
+          abn: subdivision?.abn ?? null,
+          plan_number: subdivision?.plan_number ?? "",
+        },
+        documentTitle: "Levy Notice",
+        referenceNumber: levy.reference_number,
+        date: new Date(),
+        lotOwner: {
+          name: lot?.owner_name ?? "Lot Owner",
+          lot_number: String(lot?.lot_number ?? ""),
+          address: subdivision?.address ?? "",
+        },
+        levyPeriod: { start: levy.period_start, end: levy.period_end },
+        lineItems: [], // We'll fetch items
+        totalDue: Number(levy.amount),
+        dueDate: levy.due_date,
+        paymentInstructions: {
+          bpay: null,
+          eft: hasEft ? {
+            bsb: subdivision!.bank_bsb!,
+            account_number: subdivision!.bank_account_number!,
+            account_name: subdivision!.bank_account_name ?? subdivision!.name ?? "",
+            reference: levy.reference_number,
+          } : {
+            bsb: "",
+            account_number: "",
+            account_name: "",
+            reference: levy.reference_number,
+          },
+        },
+      };
+
+      // Fetch line items for this levy
+      const { data: items } = await supabase
+        .from("levy_notice_items")
+        .select("description, amount")
+        .eq("levy_notice_id", levy.id)
+        .order("sort_order");
+
+      pdfProps.lineItems = (items ?? []).map((i) => ({
+        description: i.description,
+        amount: Number(i.amount),
+      }));
+
+      const pdfBuffer = await generateLevyPDFBuffer(pdfProps);
+
+      const formatCurrency = (n: number) =>
+        new Intl.NumberFormat("en-AU", { style: "currency", currency: "AUD" }).format(n);
+
+      await sendLevyEmail({
+        to: email,
+        ownerName: lot?.owner_name ?? null,
+        subdivisionName: subdivision?.name ?? "",
+        referenceNumber: levy.reference_number,
+        dueDate: levy.due_date,
+        totalAmount: formatCurrency(Number(levy.amount)),
+        periodLabel: batch?.period_label ?? "",
+        pdfBuffer,
+        pdfFilename: `${levy.reference_number}.pdf`,
+      });
+
+      // Mark as issued
+      await supabase
+        .from("levy_notices")
+        .update({ status: "issued", issued_at: new Date().toISOString() })
+        .eq("id", levy.id);
+
+      sentCount++;
+    } catch (emailError) {
+      console.error("Failed to send levy email for", levy.reference_number, emailError);
+    }
+  }
+
+  // Update batch status
+  const { data: remaining } = await supabase
+    .from("levy_notices")
+    .select("id")
+    .eq("batch_id", batchId)
+    .eq("status", "draft");
+
+  const newStatus = (!remaining || remaining.length === 0) ? "sent" : "partially_sent";
+  await supabase
+    .from("levy_batches")
+    .update({ status: newStatus, ...(newStatus === "sent" ? { sent_at: new Date().toISOString() } : {}) })
+    .eq("id", batchId);
+
+  await supabase.from("audit_log").insert({
+    profile_id: profile.id,
+    subdivision_id: subdivisionId,
+    action: "send_emails",
+    entity_type: "levy_batch",
+    entity_id: batchId,
+    after_state: { sent_count: sentCount },
+  });
+
+  revalidatePath(`/subdivisions/${subdivisionId}/finance`);
+
+  return { success: true, sentCount };
 }

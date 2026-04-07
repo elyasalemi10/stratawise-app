@@ -1,0 +1,11 @@
+{
+  "mcpServers": {
+    "supabase": {
+      "command": "/opt/homebrew/bin/mcp-server-supabase",
+      "args": [
+        "--access-token",
+        "sbp_cce8837557c7bbf790dbace40e7ed23f276d56ac"
+      ]
+    }
+  }
+}

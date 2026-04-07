@@ -64,3 +64,75 @@ export async function sendInvitationEmail({
 
   return { success: true };
 }
+
+// ─── Levy Notice Email ─────────────────────────────────────
+
+interface SendLevyEmailParams {
+  to: string;
+  ownerName: string | null;
+  subdivisionName: string;
+  referenceNumber: string;
+  dueDate: string;
+  totalAmount: string;
+  periodLabel: string;
+  pdfBuffer: Buffer;
+  pdfFilename: string;
+}
+
+export async function sendLevyEmail({
+  to,
+  ownerName,
+  subdivisionName,
+  referenceNumber,
+  dueDate,
+  totalAmount,
+  periodLabel,
+  pdfBuffer,
+  pdfFilename,
+}: SendLevyEmailParams) {
+  const greeting = ownerName ? `Hi ${ownerName},` : "Hi,";
+
+  const { error } = await getResend().emails.send({
+    from: FROM_EMAIL,
+    to,
+    subject: `Levy Notice — ${subdivisionName} — ${periodLabel}`,
+    html: `
+      <div style="font-family:'Inter',system-ui,sans-serif;max-width:520px;margin:0 auto;padding:32px 0;">
+        <h2 style="margin:0 0 16px;font-size:20px;font-weight:600;color:#1a1f2e;">Levy Notice</h2>
+        <p style="margin:0 0 20px;color:#1a1f2e;font-size:14px;line-height:1.6;">
+          ${greeting} a new levy notice has been issued for <strong>${subdivisionName}</strong>.
+        </p>
+        <div style="background:#f8f9fb;border:1px solid #e2e5ea;border-radius:6px;padding:16px;margin:0 0 24px;">
+          <p style="margin:0 0 4px;font-size:13px;color:#6b7280;">Reference</p>
+          <p style="margin:0 0 12px;font-size:15px;font-weight:600;color:#1a1f2e;">${referenceNumber}</p>
+          <p style="margin:0 0 4px;font-size:13px;color:#6b7280;">Period</p>
+          <p style="margin:0 0 12px;font-size:14px;color:#1a1f2e;">${periodLabel}</p>
+          <p style="margin:0 0 4px;font-size:13px;color:#6b7280;">Amount due</p>
+          <p style="margin:0 0 12px;font-size:18px;font-weight:700;color:#1a1f2e;">${totalAmount}</p>
+          <p style="margin:0 0 4px;font-size:13px;color:#6b7280;">Due date</p>
+          <p style="margin:0;font-size:14px;font-weight:600;color:#00bd7d;">${dueDate}</p>
+        </div>
+        <p style="margin:0 0 8px;color:#1a1f2e;font-size:14px;">
+          Your levy notice is attached as a PDF. Please refer to the notice for payment details.
+        </p>
+        <p style="margin:24px 0 0;color:#6b7280;font-size:12px;line-height:1.5;">
+          This is an automated message from ${subdivisionName} via My Strata Management.
+        </p>
+      </div>
+    `,
+    attachments: [
+      {
+        filename: pdfFilename,
+        content: pdfBuffer,
+        contentType: "application/pdf",
+      },
+    ],
+  });
+
+  if (error) {
+    console.error("Failed to send levy email:", error);
+    return { error: error.message };
+  }
+
+  return { success: true };
+}

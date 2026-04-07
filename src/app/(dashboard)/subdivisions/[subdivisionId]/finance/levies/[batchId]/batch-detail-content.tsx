@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import { useRouter } from "next/navigation";
-import { ArrowLeft, Send, CheckCircle2, ChevronDown, Download } from "lucide-react";
+import { ArrowLeft, Send, CheckCircle2, ChevronDown, Download, Mail } from "lucide-react";
 import { toast } from "sonner";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -10,6 +10,7 @@ import { Badge } from "@/components/ui/badge";
 import {
   markBatchSent,
   markLevySent,
+  sendBatchEmails,
   type LevyBatchDetail,
 } from "@/lib/actions/levy";
 
@@ -26,6 +27,7 @@ export function BatchDetailContent({
   const router = useRouter();
   const [batch, setBatch] = useState(initialBatch);
   const [sendingAll, setSendingAll] = useState(false);
+  const [emailingAll, setEmailingAll] = useState(false);
   const [sendingIds, setSendingIds] = useState<Set<string>>(new Set());
   const [openLevyId, setOpenLevyId] = useState<string | null>(null);
 
@@ -40,6 +42,26 @@ export function BatchDetailContent({
         ...prev,
         status: "sent",
         levies: prev.levies.map((l) => ({ ...l, status: l.status === "draft" ? "issued" : l.status })),
+      }));
+    }
+  }
+
+  async function handleEmailAll() {
+    setEmailingAll(true);
+    const result = await sendBatchEmails(subdivisionId, batch.id);
+    setEmailingAll(false);
+
+    if (result.error) {
+      toast.error(result.error);
+    } else {
+      toast.success(`${result.sentCount} levy emails sent`);
+      setBatch((prev) => ({
+        ...prev,
+        status: "sent",
+        levies: prev.levies.map((l) => ({
+          ...l,
+          status: l.status === "draft" && l.owner_email ? "issued" : l.status,
+        })),
       }));
     }
   }
@@ -103,10 +125,16 @@ export function BatchDetailContent({
 
         <div className="flex items-center gap-2">
           {draftCount > 0 && (
-            <Button onClick={handleSendAll} disabled={sendingAll} size="sm">
-              <Send className="mr-2 h-3.5 w-3.5" />
-              {sendingAll ? "Sending..." : `Mark all as sent (${draftCount})`}
-            </Button>
+            <>
+              <Button onClick={handleEmailAll} disabled={emailingAll} size="sm">
+                <Mail className="mr-2 h-3.5 w-3.5" />
+                {emailingAll ? "Emailing..." : `Send by email (${draftCount})`}
+              </Button>
+              <Button onClick={handleSendAll} disabled={sendingAll} size="sm" variant="outline">
+                <CheckCircle2 className="mr-2 h-3.5 w-3.5" />
+                {sendingAll ? "Marking..." : "Mark all as sent"}
+              </Button>
+            </>
           )}
         </div>
       </div>
