@@ -6,16 +6,28 @@ import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { ProfileTab } from "./profile-tab";
 import { SecurityTab } from "./security-tab";
 import { NotificationsTab } from "./notifications-tab";
+import { CompanyTab } from "./company-tab";
 import type { Profile } from "@/lib/auth";
 
-function TabsInner({ profile }: { profile: Profile }) {
+interface CompanyData {
+  id: string;
+  name: string;
+  abn: string | null;
+  address: string | null;
+  phone: string | null;
+  email: string | null;
+  logo_url: string | null;
+}
+
+function TabsInner({ profile, company }: { profile: Profile; company: CompanyData | null }) {
   const searchParams = useSearchParams();
   const initialTab = searchParams.get("tab") ?? "profile";
   const [activeTab, setActiveTab] = useState(initialTab);
 
+  const isManager = profile.role === "strata_manager" || profile.role === "super_admin";
+
   function onTabChange(value: string) {
     setActiveTab(value);
-    // Sync URL without triggering server navigation
     window.history.replaceState(null, "", `/settings?tab=${value}`);
   }
 
@@ -24,16 +36,21 @@ function TabsInner({ profile }: { profile: Profile }) {
       <Tabs value={activeTab} onValueChange={onTabChange}>
         <TabsList variant="line">
           <TabsTrigger value="profile">Profile</TabsTrigger>
+          {isManager && <TabsTrigger value="company">Company</TabsTrigger>}
           <TabsTrigger value="security">Security</TabsTrigger>
           <TabsTrigger value="notifications">Notifications</TabsTrigger>
         </TabsList>
       </Tabs>
 
-      {/* All tabs rendered, hidden via CSS — truly instant switching */}
       <div className="mt-6">
         <div className={activeTab === "profile" ? "" : "hidden"}>
           <ProfileTab profile={profile} />
         </div>
+        {isManager && (
+          <div className={activeTab === "company" ? "" : "hidden"}>
+            <CompanyTab company={company} />
+          </div>
+        )}
         <div className={activeTab === "security" ? "" : "hidden"}>
           <SecurityTab />
         </div>
@@ -45,10 +62,10 @@ function TabsInner({ profile }: { profile: Profile }) {
   );
 }
 
-export function SettingsTabs({ profile }: { profile: Profile }) {
+export function SettingsTabs({ profile, company }: { profile: Profile; company: CompanyData | null }) {
   return (
     <Suspense>
-      <TabsInner profile={profile} />
+      <TabsInner profile={profile} company={company} />
     </Suspense>
   );
 }

@@ -1,7 +1,9 @@
 "use server";
 
 import { auth, clerkClient } from "@clerk/nextjs/server";
+import { S3Client, PutObjectCommand } from "@aws-sdk/client-s3";
 import { createServerClient } from "@/lib/supabase";
+import { getCurrentProfile } from "@/lib/auth";
 import { profileSchema } from "@/lib/validations/settings";
 
 export async function updateProfile(formData: {
@@ -69,4 +71,86 @@ export async function changePassword(currentPassword: string, newPassword: strin
     }
     return { error: "Failed to change password. Please try again." };
   }
+}
+
+// ─── Company settings ──────────────────────────────────────
+
+export async function getCompanyData() {
+  const profile = await getCurrentProfile();
+  if (!profile?.management_company_id) return null;
+
+  const supabase = createServerClient();
+  const { data } = await supabase
+    .from("management_companies")
+    .select("id, name, abn, address, phone, email, logo_url")
+    .eq("id", profile.management_company_id)
+    .single();
+
+  return data;
+}
+
+export async function updateCompanyField(companyId: string, field: string, value: string | null) {
+  const profile = await getCurrentProfile();
+  if (!profile?.management_company_id || profile.management_company_id !== companyId) {
+    return { error: "Unauthorized" };
+  }
+
+  const allowedFields = ["name", "abn", "address", "phone", "email"];
+  if (!allowedFields.includes(field)) {
+    return { error: "Invalid field" };
+  }
+
+  const supabase = createServerClient();
+  const { error } = await supabase
+    .from("management_companies")
+    .update({ [field]: value })
+    .eq("id", companyId);
+
+  if (error) return { error: error.message };
+  return { success: true };
+}
+
+export async function uploadCompanyLogo(formData: FormData): Promise<{ url?: string; error?: string }> {
+  const profile = await getCurrentProfile();
+  if (!profile?.management_company_id) return { error: "Unauthorized" };
+
+  const file = formData.get("file") as File | null;
+  const companyId = formData.get("company_id") as string | null;
+
+  if (!file || !companyId || companyId !== profile.management_company_id) {
+    return { error: "Invalid request" };
+  }
+
+  const buffer = Buffer.from(await file.arrayBuffer());
+  const ext = file.type === "image/png" ? "png" : "jpg";
+  const key = `logos/${companyId}/logo.${ext}`;
+
+  const r2 = new S3Client({
+    region: "auto",
+    endpoint: process.env.R2_ENDPOINT!,
+    credentials: {
+      accessKeyId: process.env.R2_ACCESS_KEY_ID!,
+      secretAccessKey: process.env.R2_SECRET_ACCESS_KEY!,
+    },
+  });
+
+  await r2.send(
+    new PutObjectCommand({
+      Bucket: process.env.R2_BUCKET_NAME ?? "msm-company-logos",
+      Key: key,
+      Body: buffer,
+      ContentType: file.type,
+    })
+  );
+
+  const publicUrl = `${process.env.R2_PUBLIC_URL}/${key}`;
+
+  // Update management company
+  const supabase = createServerClient();
+  await supabase
+    .from("management_companies")
+    .update({ logo_url: publicUrl })
+    .eq("id", companyId);
+
+  return { url: publicUrl };
 }

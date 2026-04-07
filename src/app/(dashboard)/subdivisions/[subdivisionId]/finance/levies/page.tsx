@@ -3,6 +3,7 @@ import Link from "next/link";
 import { FileText, Plus } from "lucide-react";
 import { getSubdivision } from "@/lib/actions/subdivision";
 import { getLevyBatches } from "@/lib/actions/levy";
+import { formatDateLong } from "@/lib/utils";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -73,7 +74,7 @@ export default async function LeviesPage({
                         </Badge>
                       </div>
                       <p className="mt-1 text-xs text-muted-foreground">
-                        {batch.period_start} — {batch.period_end} · Due {batch.due_date}
+                        {formatDateLong(batch.period_start)} — {formatDateLong(batch.period_end)} · Due {formatDateLong(batch.due_date)}
                       </p>
                     </div>
                     <div className="text-right">

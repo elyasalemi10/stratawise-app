@@ -3,6 +3,7 @@
 import { useState, useCallback } from "react";
 import { useRouter } from "next/navigation";
 import { ChevronDown, Plus, X, Loader2 } from "lucide-react";
+import { formatDateLong } from "@/lib/utils";
 import { toast } from "sonner";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -322,11 +323,11 @@ export function GenerateLeviesForm({
               </div>
               <div>
                 <Label className="text-xs text-muted-foreground">Date range</Label>
-                <p className="text-sm text-foreground mt-0.5">{preview.period_start} — {preview.period_end}</p>
+                <p className="text-sm text-foreground mt-0.5">{formatDateLong(preview.period_start)} — {formatDateLong(preview.period_end)}</p>
               </div>
               <div>
                 <Label className="text-xs text-muted-foreground">Due date</Label>
-                <p className="text-sm font-medium text-foreground mt-0.5">{preview.due_date}</p>
+                <p className="text-sm font-medium text-foreground mt-0.5">{formatDateLong(preview.due_date)}</p>
               </div>
             </div>
           )}

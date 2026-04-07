@@ -5,6 +5,7 @@ import { createServerClient } from "@/lib/supabase";
 import { revalidatePath } from "next/cache";
 import { generateAndUploadLevyPDF, generateLevyPDFBuffer } from "@/lib/levy-pdf";
 import { sendLevyEmail } from "@/lib/email";
+import { formatDateLong } from "@/lib/utils";
 import type { LevyNoticeProps } from "@/lib/pdf/types";
 
 // ─── Types ─────────────────────────────────────────────────
@@ -414,12 +415,12 @@ export async function createLevyBatch(
           lot_number: String(lotInfo?.lot_number ?? ""),
           address: subdivision?.address ?? "",
         },
-        levyPeriod: { start: data.period_start, end: data.period_end },
+        levyPeriod: { start: formatDateLong(data.period_start), end: formatDateLong(data.period_end) },
         lineItems: lot.items
           .filter((item) => item.amount !== 0)
           .map((item) => ({ description: item.description, amount: item.amount })),
         totalDue: lot.amount,
-        dueDate: data.due_date,
+        dueDate: formatDateLong(data.due_date),
         paymentInstructions: {
           bpay: null, // No BPAY configured yet
           eft: hasEft ? {
@@ -703,10 +704,10 @@ export async function sendBatchEmails(subdivisionId: string, batchId: string) {
           lot_number: String(lot?.lot_number ?? ""),
           address: subdivision?.address ?? "",
         },
-        levyPeriod: { start: levy.period_start, end: levy.period_end },
+        levyPeriod: { start: formatDateLong(levy.period_start), end: formatDateLong(levy.period_end) },
         lineItems: [], // We'll fetch items
         totalDue: Number(levy.amount),
-        dueDate: levy.due_date,
+        dueDate: formatDateLong(levy.due_date),
         paymentInstructions: {
           bpay: null,
           eft: hasEft ? {
@@ -745,7 +746,7 @@ export async function sendBatchEmails(subdivisionId: string, batchId: string) {
         ownerName: lot?.owner_name ?? null,
         subdivisionName: subdivision?.name ?? "",
         referenceNumber: levy.reference_number,
-        dueDate: levy.due_date,
+        dueDate: formatDateLong(levy.due_date),
         totalAmount: formatCurrency(Number(levy.amount)),
         periodLabel: batch?.period_label ?? "",
         pdfBuffer,

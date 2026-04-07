@@ -1,5 +1,6 @@
 import { redirect } from "next/navigation";
-import { FileText, DollarSign } from "lucide-react";
+import { FileText } from "lucide-react";
+import { formatDateLong } from "@/lib/utils";
 import { getCurrentProfile } from "@/lib/auth";
 import { createServerClient } from "@/lib/supabase";
 import { Card, CardContent } from "@/components/ui/card";
@@ -123,7 +124,7 @@ export default async function MyLeviesPage({
                       <div>
                         <p className="text-sm font-medium text-foreground">{levy.reference_number}</p>
                         <p className="text-xs text-muted-foreground">
-                          {levy.period_start} — {levy.period_end} · Due {levy.due_date}
+                          {formatDateLong(levy.period_start)} — {formatDateLong(levy.period_end)} · Due {formatDateLong(levy.due_date)}
                         </p>
                       </div>
                     </div>

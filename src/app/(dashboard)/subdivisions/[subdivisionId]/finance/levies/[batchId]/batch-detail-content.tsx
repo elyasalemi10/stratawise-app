@@ -2,7 +2,8 @@
 
 import { useState } from "react";
 import { useRouter } from "next/navigation";
-import { ArrowLeft, Send, CheckCircle2, ChevronDown, Download, Mail } from "lucide-react";
+import { ArrowLeft, CheckCircle2, ChevronDown, Download, Mail } from "lucide-react";
+import { formatDateLong } from "@/lib/utils";
 import { toast } from "sonner";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -118,7 +119,7 @@ export function BatchDetailContent({
               </Badge>
             </div>
             <p className="text-xs text-muted-foreground mt-0.5">
-              {batch.period_start} — {batch.period_end} · Due {batch.due_date}
+              {formatDateLong(batch.period_start)} — {formatDateLong(batch.period_end)} · Due {formatDateLong(batch.due_date)}
             </p>
           </div>
         </div>
