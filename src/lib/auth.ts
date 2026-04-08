@@ -97,7 +97,8 @@ export async function requireCompanyRole(
   // super_admin bypasses company role check
   if (profile.role === "super_admin") return profile;
 
-  if (!profile.company_role || !(allowedCompanyRoles as string[]).includes(profile.company_role)) {
+  // If company_role is null (migration not run yet), treat as admin
+  if (profile.company_role && !(allowedCompanyRoles as string[]).includes(profile.company_role)) {
     throw new Error("Access denied. Insufficient permissions.");
   }
 
