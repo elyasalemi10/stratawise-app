@@ -35,10 +35,10 @@ const s = StyleSheet.create({
     borderBottomWidth: 1,
     borderBottomColor: c.border,
   },
-  logo: { maxHeight: 40, maxWidth: 120, objectFit: "contain" as const },
-  headerRight: { alignItems: "flex-end" as const, maxWidth: 250 },
+  logo: { maxHeight: 60, maxWidth: 150, objectFit: "contain" as const },
+  headerRight: { alignItems: "flex-end" as const, maxWidth: 280 },
   title: { fontSize: 16, fontWeight: 700, color: c.foreground },
-  subtitle: { fontSize: 8, color: c.muted, marginTop: 2 },
+  subtitle: { fontSize: 8, color: c.muted, marginTop: 2, textAlign: "right" as const },
   // Info section
   infoSection: { flexDirection: "row", marginBottom: 14, gap: 20 },
   infoBlock: { flex: 1 },
@@ -148,8 +148,6 @@ export function LevyHistoryReport({ data, title, subtitle, logoUrl, lotOwnerName
   const info = [
     { label: "Subdivision", value: subtitle },
     ...(lotOwnerName ? [{ label: "Lot owner", value: lotOwnerName }] : []),
-    { label: "Total levies", value: String(data.length) },
-    { label: "Outstanding", value: fmt(total - totalPaid) },
   ];
 
   return (
@@ -158,22 +156,22 @@ export function LevyHistoryReport({ data, title, subtitle, logoUrl, lotOwnerName
         <ReportHeader title={title} logoUrl={logoUrl} info={info} />
         <View style={s.tableHeader}>
           <Text style={[s.th, { width: "8%" }]}>Lot</Text>
-          <Text style={[s.th, { width: "14%" }]}>Reference</Text>
+          <Text style={[s.th, { width: "13%" }]}>Reference</Text>
           <Text style={[s.th, { width: "22%" }]}>Period</Text>
           <Text style={[s.th, { width: "12%" }]}>Due date</Text>
-          <Text style={[s.th, { width: "14%", textAlign: "right" as const }]}>Amount</Text>
-          <Text style={[s.th, { width: "14%", textAlign: "right" as const }]}>Paid</Text>
-          <Text style={[s.th, { width: "16%", textAlign: "right" as const }]}>Status</Text>
+          <Text style={[s.th, { width: "13%" }]}>Status</Text>
+          <Text style={[s.th, { width: "16%", textAlign: "right" as const }]}>Amount</Text>
+          <Text style={[s.th, { width: "16%", textAlign: "right" as const }]}>Paid</Text>
         </View>
         {data.map((l, i) => (
           <View key={i} style={i % 2 === 0 ? s.rowStriped : s.row} wrap={false}>
             <Text style={[s.td, { width: "8%" }]}>{l.lot_number}</Text>
-            <Text style={[s.td, { width: "14%" }]}>{l.reference_number}</Text>
+            <Text style={[s.td, { width: "13%" }]}>{l.reference_number}</Text>
             <Text style={[s.tdMuted, { width: "22%" }]}>{fmtDate(l.period_start)} — {fmtDate(l.period_end)}</Text>
             <Text style={[s.td, { width: "12%" }]}>{fmtDate(l.due_date)}</Text>
-            <Text style={[s.tdRight, { width: "14%" }]}>{fmt(l.amount)}</Text>
-            <Text style={[s.tdGreen, { width: "14%" }]}>{fmt(l.amount_paid)}</Text>
-            <View style={{ width: "16%", alignItems: "flex-end" as const }}><StatusBadge status={l.status === "partially_paid" ? "partially paid" : l.status} /></View>
+            <View style={{ width: "13%" }}><StatusBadge status={l.status === "partially_paid" ? "partially paid" : l.status} /></View>
+            <Text style={[s.tdRight, { width: "16%" }]}>{fmt(l.amount)}</Text>
+            <Text style={[s.tdGreen, { width: "16%" }]}>{fmt(l.amount_paid)}</Text>
           </View>
         ))}
         <View style={s.summarySection}>
@@ -220,26 +218,24 @@ export function InsuranceStatusReport({ data, title, subtitle, logoUrl }: { data
 
   return (
     <Document>
-      <Page size="A4" style={s.page} orientation="landscape" wrap>
+      <Page size="A4" style={s.page} wrap>
         <ReportHeader title={title} logoUrl={logoUrl} info={info} />
         <View style={s.tableHeader}>
-          <Text style={[s.th, { width: "12%" }]}>Type</Text>
+          <Text style={[s.th, { width: "15%" }]}>Type</Text>
           <Text style={[s.th, { width: "15%" }]}>Provider</Text>
-          <Text style={[s.th, { width: "12%" }]}>Policy #</Text>
-          <Text style={[s.th, { width: "22%" }]}>Coverage period</Text>
-          <Text style={[s.th, { width: "14%", textAlign: "right" as const }]}>Sum insured</Text>
-          <Text style={[s.th, { width: "12%", textAlign: "right" as const }]}>Premium</Text>
-          <Text style={[s.th, { width: "13%", textAlign: "right" as const }]}>Status</Text>
+          <Text style={[s.th, { width: "24%" }]}>Coverage</Text>
+          <Text style={[s.th, { width: "16%", textAlign: "right" as const }]}>Sum insured</Text>
+          <Text style={[s.th, { width: "14%", textAlign: "right" as const }]}>Premium</Text>
+          <Text style={[s.th, { width: "16%", textAlign: "right" as const }]}>Status</Text>
         </View>
         {data.map((p, i) => (
           <View key={i} style={i % 2 === 0 ? s.rowStriped : s.row} wrap={false}>
-            <Text style={[s.td, { width: "12%" }]}>{POLICY_NAMES[p.policy_type] ?? p.policy_type}</Text>
+            <Text style={[s.td, { width: "15%" }]}>{POLICY_NAMES[p.policy_type] ?? p.policy_type}</Text>
             <Text style={[s.td, { width: "15%" }]}>{p.provider}</Text>
-            <Text style={[s.tdMuted, { width: "12%" }]}>{p.policy_number ?? "—"}</Text>
-            <Text style={[s.td, { width: "22%" }]}>{fmtDate(p.start_date)} — {fmtDate(p.end_date)}</Text>
-            <Text style={[s.tdRight, { width: "14%" }]}>{p.sum_insured ? fmt(p.sum_insured) : "—"}</Text>
-            <Text style={[s.tdRight, { width: "12%" }]}>{p.premium ? fmt(p.premium) : "—"}</Text>
-            <View style={{ width: "13%", alignItems: "flex-end" as const }}>
+            <Text style={[s.tdMuted, { width: "24%" }]}>{fmtDate(p.start_date)} — {fmtDate(p.end_date)}</Text>
+            <Text style={[s.tdRight, { width: "16%" }]}>{p.sum_insured ? fmt(p.sum_insured) : "—"}</Text>
+            <Text style={[s.tdRight, { width: "14%" }]}>{p.premium ? fmt(p.premium) : "—"}</Text>
+            <View style={{ width: "16%", alignItems: "flex-end" as const }}>
               <StatusBadge status={p.is_expired ? "expired" : p.is_expiring_soon ? "expiring soon" : "active"} />
             </View>
           </View>
