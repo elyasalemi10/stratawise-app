@@ -29,6 +29,7 @@ export interface Profile {
   postal_address: string | null;
   avatar_url: string | null;
   role: "super_admin" | "strata_manager" | "lot_owner";
+  company_role: "admin" | "manager" | "viewer" | null;
   management_company_id: string | null;
   status: "active" | "deactivated" | "anonymised";
   created_at: string;

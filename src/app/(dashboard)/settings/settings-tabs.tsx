@@ -7,7 +7,9 @@ import { ProfileTab } from "./profile-tab";
 import { SecurityTab } from "./security-tab";
 import { NotificationsTab } from "./notifications-tab";
 import { CompanyTab } from "./company-tab";
+import { TeamTab } from "./team-tab";
 import type { Profile } from "@/lib/auth";
+import type { TeamMember } from "@/lib/actions/team";
 
 interface CompanyData {
   id: string;
@@ -19,12 +21,21 @@ interface CompanyData {
   logo_url: string | null;
 }
 
-function TabsInner({ profile, company }: { profile: Profile; company: CompanyData | null }) {
+function TabsInner({
+  profile,
+  company,
+  teamMembers,
+}: {
+  profile: Profile;
+  company: CompanyData | null;
+  teamMembers: TeamMember[];
+}) {
   const searchParams = useSearchParams();
   const initialTab = searchParams.get("tab") ?? "profile";
   const [activeTab, setActiveTab] = useState(initialTab);
 
   const isManager = profile.role === "strata_manager" || profile.role === "super_admin";
+  const isAdmin = profile.company_role === "admin";
 
   function onTabChange(value: string) {
     setActiveTab(value);
@@ -37,6 +48,7 @@ function TabsInner({ profile, company }: { profile: Profile; company: CompanyDat
         <TabsList variant="line">
           <TabsTrigger value="profile">Profile</TabsTrigger>
           {isManager && <TabsTrigger value="company">Company</TabsTrigger>}
+          {isManager && <TabsTrigger value="team">Team</TabsTrigger>}
           <TabsTrigger value="security">Security</TabsTrigger>
           <TabsTrigger value="notifications">Notifications</TabsTrigger>
         </TabsList>
@@ -51,6 +63,15 @@ function TabsInner({ profile, company }: { profile: Profile; company: CompanyDat
             <CompanyTab company={company} />
           </div>
         )}
+        {isManager && (
+          <div className={activeTab === "team" ? "" : "hidden"}>
+            <TeamTab
+              members={teamMembers}
+              currentUserId={profile.id}
+              isAdmin={isAdmin}
+            />
+          </div>
+        )}
         <div className={activeTab === "security" ? "" : "hidden"}>
           <SecurityTab />
         </div>
@@ -62,10 +83,18 @@ function TabsInner({ profile, company }: { profile: Profile; company: CompanyDat
   );
 }
 
-export function SettingsTabs({ profile, company }: { profile: Profile; company: CompanyData | null }) {
+export function SettingsTabs({
+  profile,
+  company,
+  teamMembers,
+}: {
+  profile: Profile;
+  company: CompanyData | null;
+  teamMembers: TeamMember[];
+}) {
   return (
     <Suspense>
-      <TabsInner profile={profile} company={company} />
+      <TabsInner profile={profile} company={company} teamMembers={teamMembers} />
     </Suspense>
   );
 }

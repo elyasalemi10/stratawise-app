@@ -361,9 +361,24 @@ export function AppSidebar() {
         </SidebarMenu>
       </SidebarHeader>
 
-      {/* Navigation */}
+      {/* Navigation — show skeleton until role is known */}
       <SidebarContent>
-        {navGroups.map((group) => (
+        {!loaded ? (
+          <SidebarGroup>
+            <SidebarGroupContent>
+              <SidebarMenu>
+                {[1, 2, 3].map((i) => (
+                  <SidebarMenuItem key={i}>
+                    <div className="flex items-center gap-2 px-2 py-1.5">
+                      <Skeleton className="h-4 w-4 rounded" />
+                      <Skeleton className="h-3.5 w-24" />
+                    </div>
+                  </SidebarMenuItem>
+                ))}
+              </SidebarMenu>
+            </SidebarGroupContent>
+          </SidebarGroup>
+        ) : navGroups.map((group) => (
           <SidebarGroup key={group.label}>
             <SidebarGroupLabel>{group.label}</SidebarGroupLabel>
             <SidebarGroupContent>
