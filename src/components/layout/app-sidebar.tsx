@@ -11,6 +11,7 @@ import {
   LogOut,
   ChevronsUpDown,
   Receipt,
+  Inbox,
   Users,
   FileText,
   Wallet,
@@ -54,6 +55,7 @@ const managerMainNavGroups = [
     label: "Overview",
     items: [
       { href: "/dashboard", label: "Dashboard", icon: LayoutDashboard },
+      { href: "/inbox", label: "Inbox", icon: Inbox },
     ],
   },
   {
@@ -69,6 +71,7 @@ const lotOwnerMainNavGroups = [
     label: "Overview",
     items: [
       { href: "/dashboard", label: "Dashboard", icon: LayoutDashboard },
+      { href: "/inbox", label: "Inbox", icon: Inbox },
       { href: "/levies", label: "Levies", icon: Wallet },
       { href: "/meetings", label: "Meetings", icon: CalendarCheck },
     ],
