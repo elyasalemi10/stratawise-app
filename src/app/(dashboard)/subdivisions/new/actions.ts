@@ -425,8 +425,9 @@ export async function completeSubdivisionSetup(subdivisionId: string, data: Step
 
 export async function getSubdivisionWizardData(subdivisionId: string) {
   try {
-    const profile = await requireCompanyRole();
-    if (!profile.management_company_id) return null;
+    const { getCurrentProfile } = await import("@/lib/auth");
+    const profile = await getCurrentProfile();
+    if (!profile || !profile.management_company_id) return null;
 
     const supabase = createServerClient();
 

@@ -37,9 +37,11 @@ function WizardContent() {
   const [wizardData, setWizardData] = useState<WizardData>(null);
   const [dataLoading, setDataLoading] = useState(false);
 
-  // Fetch existing subdivision data when we have an ID
+  // Fetch existing subdivision data on mount if resuming (URL has id)
+  const [initialFetchDone, setInitialFetchDone] = useState(false);
   useEffect(() => {
-    if (!subId) return;
+    if (initialFetchDone || !subId) return;
+    setInitialFetchDone(true);
     setDataLoading(true);
     getSubdivisionWizardData(subId)
       .then((data) => {
@@ -47,7 +49,7 @@ function WizardContent() {
         setDataLoading(false);
       })
       .catch(() => setDataLoading(false));
-  }, [subId]);
+  }, [subId, initialFetchDone]);
 
   const { title, subtitle } = STEP_TITLES[currentStep] ?? STEP_TITLES[1];
 
