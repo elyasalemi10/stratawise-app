@@ -1,6 +1,6 @@
 "use server";
 
-import { requireRole } from "@/lib/auth";
+import { requireCompanyRole } from "@/lib/auth";
 import { createServerClient } from "@/lib/supabase";
 import {
   step1Schema,
@@ -32,7 +32,7 @@ async function verifySubdivisionOwnership(subdivisionId: string, managementCompa
 
 export async function createSubdivisionStep1(data: Step1Values) {
   try {
-    const profile = await requireRole(["strata_manager", "super_admin"]);
+    const profile = await requireCompanyRole();
     if (!profile.management_company_id) {
       return { error: "No management company assigned" };
     }
@@ -103,7 +103,7 @@ export async function createSubdivisionStep1(data: Step1Values) {
 
 export async function updateSubdivisionStep1(subdivisionId: string, data: Step1Values) {
   try {
-    const profile = await requireRole(["strata_manager", "super_admin"]);
+    const profile = await requireCompanyRole();
     if (!profile.management_company_id) {
       return { error: "No management company assigned" };
     }
@@ -155,7 +155,7 @@ export async function updateSubdivisionStep1(subdivisionId: string, data: Step1V
 
 export async function updateSubdivisionStep2(subdivisionId: string, data: Step2Values) {
   try {
-    const profile = await requireRole(["strata_manager", "super_admin"]);
+    const profile = await requireCompanyRole();
     if (!profile.management_company_id) {
       return { error: "No management company assigned" };
     }
@@ -197,7 +197,7 @@ export async function updateSubdivisionStep2(subdivisionId: string, data: Step2V
 
 export async function updateSubdivisionStep3(subdivisionId: string, data: Step3Values) {
   try {
-    const profile = await requireRole(["strata_manager", "super_admin"]);
+    const profile = await requireCompanyRole();
     if (!profile.management_company_id) {
       return { error: "No management company assigned" };
     }
@@ -294,7 +294,7 @@ export async function updateSubdivisionStep3(subdivisionId: string, data: Step3V
 
 export async function updateSubdivisionStep4(subdivisionId: string, data: Step4Values) {
   try {
-    const profile = await requireRole(["strata_manager", "super_admin"]);
+    const profile = await requireCompanyRole();
     if (!profile.management_company_id) {
       return { error: "No management company assigned" };
     }
@@ -358,7 +358,7 @@ export async function updateSubdivisionStep4(subdivisionId: string, data: Step4V
 
 export async function completeSubdivisionSetup(subdivisionId: string, data: Step5Values) {
   try {
-    const profile = await requireRole(["strata_manager", "super_admin"]);
+    const profile = await requireCompanyRole();
     if (!profile.management_company_id) {
       return { error: "No management company assigned" };
     }
@@ -425,7 +425,7 @@ export async function completeSubdivisionSetup(subdivisionId: string, data: Step
 
 export async function getSubdivisionWizardData(subdivisionId: string) {
   try {
-    const profile = await requireRole(["strata_manager", "super_admin"]);
+    const profile = await requireCompanyRole();
     if (!profile.management_company_id) return null;
 
     const supabase = createServerClient();

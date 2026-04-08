@@ -52,7 +52,7 @@ export default async function MyLeviesPage({
   // Only show issued levies (not drafts)
   const { data: levies } = await supabase
     .from("levy_notices")
-    .select("id, lot_id, reference_number, period_start, period_end, amount, status, due_date, pdf_url")
+    .select("id, lot_id, reference_number, period_start, period_end, amount, status, due_date, pdf_url, issued_at")
     .in("lot_id", lotIds)
     .in("status", ["issued", "partially_paid", "paid", "overdue"])
     .order("due_date", { ascending: false });
@@ -118,35 +118,49 @@ export default async function MyLeviesPage({
             return (
               <Card key={levy.id}>
                 <CardContent className="pt-5">
-                  <div className="flex items-start justify-between">
+                  {/* Top: amount + status */}
+                  <div className="flex items-start justify-between mb-4">
                     <div>
-                      <p className="text-sm font-semibold text-foreground">{levy.reference_number}</p>
-                      <p className="text-xs text-muted-foreground mt-1">
-                        {formatDateLong(levy.period_start)} — {formatDateLong(levy.period_end)}
-                      </p>
-                      <p className="text-xs text-muted-foreground mt-0.5">
-                        Due {formatDateLong(levy.due_date)}
-                      </p>
-                    </div>
-                    <div className="text-right">
-                      <p className="text-lg font-bold tabular-nums">{formatCurrency(levy.amount ?? 0)}</p>
+                      <p className="text-2xl font-bold tabular-nums text-foreground">{formatCurrency(levy.amount ?? 0)}</p>
                       {isPaid ? (
-                        <p className="text-xs font-medium text-[hsl(160,100%,37%)]">Paid</p>
+                        <p className="text-sm font-medium text-[hsl(160,100%,37%)] mt-0.5">Paid in full</p>
                       ) : paid > 0 ? (
-                        <p className="text-xs text-muted-foreground">{formatCurrency(remaining)} remaining</p>
-                      ) : null}
+                        <p className="text-sm text-destructive mt-0.5">{formatCurrency(remaining)} remaining</p>
+                      ) : (
+                        <p className="text-sm text-muted-foreground mt-0.5">Unpaid</p>
+                      )}
                     </div>
-                  </div>
-                  {levy.pdf_url && (
-                    <div className="mt-3 pt-3 border-t border-border">
+                    {levy.pdf_url && (
                       <a href={levy.pdf_url} target="_blank" rel="noopener noreferrer">
                         <Button variant="outline" size="sm">
                           <Download className="mr-2 h-3.5 w-3.5" />
-                          Download levy notice
+                          View PDF
                         </Button>
                       </a>
+                    )}
+                  </div>
+
+                  {/* Details grid */}
+                  <div className="grid grid-cols-2 gap-x-6 gap-y-2 pt-4 border-t border-border">
+                    <div>
+                      <p className="text-xs text-muted-foreground">Reference</p>
+                      <p className="text-sm font-medium text-foreground mt-0.5">{levy.reference_number}</p>
                     </div>
-                  )}
+                    <div>
+                      <p className="text-xs text-muted-foreground">Due date</p>
+                      <p className="text-sm font-medium text-foreground mt-0.5">{formatDateLong(levy.due_date)}</p>
+                    </div>
+                    <div>
+                      <p className="text-xs text-muted-foreground">Period</p>
+                      <p className="text-sm text-foreground mt-0.5">{formatDateLong(levy.period_start)} — {formatDateLong(levy.period_end)}</p>
+                    </div>
+                    {levy.issued_at && (
+                      <div>
+                        <p className="text-xs text-muted-foreground">Issued</p>
+                        <p className="text-sm text-foreground mt-0.5">{formatDateLong(levy.issued_at)}</p>
+                      </div>
+                    )}
+                  </div>
                 </CardContent>
               </Card>
             );

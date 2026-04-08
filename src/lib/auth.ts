@@ -82,6 +82,28 @@ export async function requireRole(
   return profile;
 }
 
+// ─── requireCompanyRole ────────────────────────────────────────
+
+/**
+ * Ensures the current user is a strata_manager/super_admin with
+ * the required company_role (admin or manager). Viewers are blocked.
+ * Use for all mutation actions (create, update, delete).
+ */
+export async function requireCompanyRole(
+  allowedCompanyRoles: Array<"admin" | "manager"> = ["admin", "manager"]
+): Promise<Profile> {
+  const profile = await requireRole(["strata_manager", "super_admin"]);
+
+  // super_admin bypasses company role check
+  if (profile.role === "super_admin") return profile;
+
+  if (!profile.company_role || !(allowedCompanyRoles as string[]).includes(profile.company_role)) {
+    throw new Error("Access denied. Insufficient permissions.");
+  }
+
+  return profile;
+}
+
 // ─── ensureProfile ──────────────────────────────────────────────
 
 /**

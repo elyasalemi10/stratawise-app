@@ -1,6 +1,6 @@
 "use server";
 
-import { requireRole, requireSubdivisionAccess } from "@/lib/auth";
+import { requireCompanyRole, requireSubdivisionAccess } from "@/lib/auth";
 import { createServerClient } from "@/lib/supabase";
 import { revalidatePath } from "next/cache";
 
@@ -88,7 +88,7 @@ export async function createBudget(
     items: BudgetItemData[];
   }
 ) {
-  const profile = await requireRole(["strata_manager", "super_admin"]);
+  const profile = await requireCompanyRole();
   await requireSubdivisionAccess(subdivisionId);
   const supabase = createServerClient();
 
@@ -154,7 +154,7 @@ export async function createBudget(
 }
 
 export async function approveBudget(subdivisionId: string, budgetId: string) {
-  const profile = await requireRole(["strata_manager", "super_admin"]);
+  const profile = await requireCompanyRole();
   await requireSubdivisionAccess(subdivisionId);
   const supabase = createServerClient();
 

@@ -1,6 +1,6 @@
 "use server";
 
-import { requireRole, requireSubdivisionAccess } from "@/lib/auth";
+import { requireCompanyRole, requireSubdivisionAccess } from "@/lib/auth";
 import { createServerClient } from "@/lib/supabase";
 import { revalidatePath } from "next/cache";
 import { sendInvitationEmail } from "@/lib/email";
@@ -10,7 +10,7 @@ export async function inviteLotOwner(
   lotId: string,
   data: { email: string; name: string; phone?: string }
 ) {
-  const profile = await requireRole(["strata_manager", "super_admin"]);
+  const profile = await requireCompanyRole();
   await requireSubdivisionAccess(subdivisionId);
 
   const supabase = createServerClient();

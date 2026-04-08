@@ -270,7 +270,7 @@ export function DocumentManager({ subdivisionId, lotId, initialDocuments, readOn
             <FileText className="h-10 w-10 text-muted-foreground/30" />
             <p className="mt-3 text-sm font-medium text-foreground">No documents yet</p>
             <p className="mt-1 text-xs text-muted-foreground">
-              Upload your first document using the area above.
+              {readOnly ? "Documents will appear here once uploaded by your strata manager." : "Upload your first document using the area above."}
             </p>
           </CardContent>
         </Card>
@@ -317,22 +317,26 @@ export function DocumentManager({ subdivisionId, lotId, initialDocuments, readOn
                     >
                       <Download className="h-3.5 w-3.5" />
                     </button>
-                    <button
-                      type="button"
-                      onClick={() => { setRenameDoc(doc); setRenameName(doc.file_name); }}
-                      className="flex h-7 w-7 items-center justify-center rounded-md text-muted-foreground hover:bg-muted hover:text-foreground"
-                      title="Rename"
-                    >
-                      <Pencil className="h-3.5 w-3.5" />
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => setDeleteDoc(doc)}
-                      className="flex h-7 w-7 items-center justify-center rounded-md text-muted-foreground hover:bg-muted hover:text-destructive"
-                      title="Delete"
-                    >
-                      <Trash2 className="h-3.5 w-3.5" />
-                    </button>
+                    {!readOnly && (
+                      <>
+                        <button
+                          type="button"
+                          onClick={() => { setRenameDoc(doc); setRenameName(doc.file_name); }}
+                          className="flex h-7 w-7 items-center justify-center rounded-md text-muted-foreground hover:bg-muted hover:text-foreground"
+                          title="Rename"
+                        >
+                          <Pencil className="h-3.5 w-3.5" />
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => setDeleteDoc(doc)}
+                          className="flex h-7 w-7 items-center justify-center rounded-md text-muted-foreground hover:bg-muted hover:text-destructive"
+                          title="Delete"
+                        >
+                          <Trash2 className="h-3.5 w-3.5" />
+                        </button>
+                      </>
+                    )}
                   </div>
                 </CardContent>
               </Card>

@@ -1,11 +1,11 @@
 "use server";
 
-import { requireRole, getCurrentProfile } from "@/lib/auth";
+import { requireCompanyRole, getCurrentProfile } from "@/lib/auth";
 import { createServerClient } from "@/lib/supabase";
 import { sendInvitationEmail } from "@/lib/email";
 
 export async function inviteStrataManager(data: { email: string; name: string }) {
-  const profile = await requireRole(["strata_manager", "super_admin"]);
+  const profile = await requireCompanyRole();
 
   if (!profile.management_company_id) {
     return { error: "No management company found" };

@@ -1,6 +1,6 @@
 "use server";
 
-import { requireRole, requireSubdivisionAccess } from "@/lib/auth";
+import { requireCompanyRole, requireSubdivisionAccess } from "@/lib/auth";
 import { createServerClient } from "@/lib/supabase";
 import { revalidatePath } from "next/cache";
 
@@ -9,7 +9,7 @@ export async function updateSubdivisionField(
   field: string,
   value: string | number | boolean | null
 ) {
-  await requireRole(["strata_manager", "super_admin"]);
+  await requireCompanyRole();
   await requireSubdivisionAccess(subdivisionId);
 
   const allowedFields = [
@@ -39,7 +39,7 @@ export async function updateSubdivisionField(
 
   if (error) return { error: error.message };
 
-  const profile = await requireRole(["strata_manager", "super_admin"]);
+  const profile = await requireCompanyRole();
   await supabase.from("audit_log").insert({
     profile_id: profile.id,
     subdivision_id: subdivisionId,
@@ -60,7 +60,7 @@ export async function updateLotField(
   field: string,
   value: string | number | boolean | null
 ) {
-  await requireRole(["strata_manager", "super_admin"]);
+  await requireCompanyRole();
   await requireSubdivisionAccess(subdivisionId);
 
   const allowedFields = [
@@ -104,7 +104,7 @@ export async function updateLotField(
 
   if (error) return { error: error.message };
 
-  const profile = await requireRole(["strata_manager", "super_admin"]);
+  const profile = await requireCompanyRole();
   await supabase.from("audit_log").insert({
     profile_id: profile.id,
     subdivision_id: subdivisionId,

@@ -1,6 +1,6 @@
 "use server";
 
-import { requireRole, requireSubdivisionAccess } from "@/lib/auth";
+import { requireCompanyRole, requireSubdivisionAccess } from "@/lib/auth";
 import { createServerClient } from "@/lib/supabase";
 import type { DocumentRecord } from "@/lib/validations/documents";
 
@@ -33,7 +33,7 @@ export async function getLotDocuments(subdivisionId: string, lotId: string): Pro
 }
 
 export async function renameDocument(documentId: string, newName: string) {
-  const profile = await requireRole(["strata_manager", "super_admin"]);
+  const profile = await requireCompanyRole();
   const supabase = createServerClient();
 
   const { data: doc } = await supabase
@@ -67,7 +67,7 @@ export async function renameDocument(documentId: string, newName: string) {
 }
 
 export async function deleteDocument(documentId: string) {
-  const profile = await requireRole(["strata_manager", "super_admin"]);
+  const profile = await requireCompanyRole();
   const supabase = createServerClient();
 
   const { data: doc } = await supabase

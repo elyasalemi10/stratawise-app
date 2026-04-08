@@ -1,6 +1,6 @@
 "use server";
 
-import { requireRole, requireSubdivisionAccess } from "@/lib/auth";
+import { requireCompanyRole, requireSubdivisionAccess } from "@/lib/auth";
 import { createServerClient } from "@/lib/supabase";
 import { revalidatePath } from "next/cache";
 import { generateAndUploadLevyPDF, generateLevyPDFBuffer } from "@/lib/levy-pdf";
@@ -292,7 +292,7 @@ export async function createLevyBatch(
     }[];
   },
 ): Promise<{ batchId?: string; error?: string }> {
-  const profile = await requireRole(["strata_manager", "super_admin"]);
+  const profile = await requireCompanyRole();
   await requireSubdivisionAccess(subdivisionId);
   const supabase = createServerClient();
 
@@ -553,7 +553,7 @@ export async function getLevyBatchDetail(subdivisionId: string, batchId: string)
 // ─── Mark batch as sent ────────────────────────────────────
 
 export async function markBatchSent(subdivisionId: string, batchId: string) {
-  const profile = await requireRole(["strata_manager", "super_admin"]);
+  const profile = await requireCompanyRole();
   await requireSubdivisionAccess(subdivisionId);
   const supabase = createServerClient();
 
@@ -586,7 +586,7 @@ export async function markBatchSent(subdivisionId: string, batchId: string) {
 // ─── Mark individual levy as sent ──────────────────────────
 
 export async function markLevySent(subdivisionId: string, levyId: string) {
-  await requireRole(["strata_manager", "super_admin"]);
+  await requireCompanyRole();
   await requireSubdivisionAccess(subdivisionId);
   const supabase = createServerClient();
 
@@ -629,7 +629,7 @@ export async function markLevySent(subdivisionId: string, levyId: string) {
 // ─── Send batch emails ─────────────────────────────────────
 
 export async function sendBatchEmails(subdivisionId: string, batchId: string) {
-  const profile = await requireRole(["strata_manager", "super_admin"]);
+  const profile = await requireCompanyRole();
   await requireSubdivisionAccess(subdivisionId);
   const supabase = createServerClient();
 
