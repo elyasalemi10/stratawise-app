@@ -22,7 +22,7 @@ const s = StyleSheet.create({
     fontSize: 9,
     color: c.foreground,
     paddingTop: 28,
-    paddingBottom: 40,
+    paddingBottom: 50,
     paddingHorizontal: 28,
   },
   // Header
@@ -36,26 +36,32 @@ const s = StyleSheet.create({
     borderBottomColor: c.border,
   },
   logo: { maxHeight: 40, maxWidth: 120, objectFit: "contain" as const },
-  headerRight: { alignItems: "flex-end" as const },
-  title: { fontSize: 16, fontWeight: 600, color: c.foreground },
-  subtitle: { fontSize: 9, color: c.muted, marginTop: 2 },
+  headerRight: { alignItems: "flex-end" as const, maxWidth: 250 },
+  title: { fontSize: 16, fontWeight: 700, color: c.foreground },
+  subtitle: { fontSize: 8, color: c.muted, marginTop: 2 },
+  // Info section
+  infoSection: { flexDirection: "row", marginBottom: 14, gap: 20 },
+  infoBlock: { flex: 1 },
+  infoLabel: { fontSize: 7, color: c.muted, textTransform: "uppercase" as const, letterSpacing: 0.5, marginBottom: 2 },
+  infoValue: { fontSize: 9, color: c.foreground, marginBottom: 6 },
   // Table
   tableHeader: {
     flexDirection: "row",
     backgroundColor: c.blue,
     paddingVertical: 6,
-    paddingHorizontal: 8,
+    marginHorizontal: -28,
+    paddingHorizontal: 36,
   },
-  th: { fontSize: 8, fontWeight: 700, color: c.white },
-  row: { flexDirection: "row", paddingVertical: 5, paddingHorizontal: 8, borderBottomWidth: 0.5, borderBottomColor: c.border },
-  rowStriped: { flexDirection: "row", paddingVertical: 5, paddingHorizontal: 8, borderBottomWidth: 0.5, borderBottomColor: c.border, backgroundColor: c.stripe },
+  th: { fontSize: 7, fontWeight: 700, color: c.white, textTransform: "uppercase" as const, letterSpacing: 0.3 },
+  row: { flexDirection: "row", paddingVertical: 5, paddingHorizontal: 8 },
+  rowStriped: { flexDirection: "row", paddingVertical: 5, paddingHorizontal: 8, backgroundColor: c.stripe },
   td: { fontSize: 8, color: c.foreground },
   tdRight: { fontSize: 8, color: c.foreground, textAlign: "right" as const },
   tdMuted: { fontSize: 8, color: c.muted },
-  tdGreen: { fontSize: 8, color: c.green, textAlign: "right" as const },
-  tdRed: { fontSize: 8, color: c.red },
+  tdGreen: { fontSize: 8, color: c.green, fontWeight: 600, textAlign: "right" as const },
+  tdRed: { fontSize: 8, color: c.red, fontWeight: 600 },
   // Badge
-  badge: { fontSize: 7, fontWeight: 600, paddingHorizontal: 4, paddingVertical: 1, borderRadius: 3 },
+  badge: { fontSize: 7, fontWeight: 600, paddingHorizontal: 5, paddingVertical: 2, borderRadius: 3 },
   badgeGreen: { backgroundColor: "#dcfce7", color: "#166534" },
   badgeRed: { backgroundColor: "#fee2e2", color: "#991b1b" },
   badgeBlue: { backgroundColor: "#dbeafe", color: "#1e40af" },
@@ -65,9 +71,10 @@ const s = StyleSheet.create({
   footer: { position: "absolute" as const, bottom: 20, left: 28, right: 28, flexDirection: "row", justifyContent: "space-between", borderTopWidth: 0.5, borderTopColor: c.border, paddingTop: 6 },
   footerText: { fontSize: 7, color: c.muted },
   // Summary
+  summarySection: { marginTop: 10, borderTopWidth: 1.5, borderTopColor: c.foreground, paddingTop: 8 },
   summaryRow: { flexDirection: "row", justifyContent: "space-between", paddingVertical: 3, paddingHorizontal: 8 },
   summaryLabel: { fontSize: 9, color: c.muted },
-  summaryValue: { fontSize: 9, fontWeight: 600, color: c.foreground },
+  summaryValue: { fontSize: 10, fontWeight: 700, color: c.foreground },
 });
 
 function fmt(n: number): string {
@@ -80,39 +87,53 @@ function fmtDate(date: string): string {
   return d.toLocaleDateString("en-AU", { day: "numeric", month: "short", year: "numeric" });
 }
 
+function capitalize(str: string): string {
+  return str.charAt(0).toUpperCase() + str.slice(1).replace(/_/g, " ");
+}
+
 function StatusBadge({ status }: { status: string }) {
   const style = status === "paid" ? s.badgeGreen
     : status === "overdue" ? s.badgeRed
     : status === "issued" ? s.badgeBlue
-    : status === "draft" ? s.badgeGrey
     : status === "active" ? s.badgeGreen
     : status === "expired" ? s.badgeRed
-    : status === "expiring_soon" ? s.badgeAmber
+    : status === "expiring soon" ? s.badgeAmber
+    : status === "partially paid" ? s.badgeAmber
     : s.badgeGrey;
-  return <Text style={[s.badge, style]}>{status}</Text>;
+  return <Text style={[s.badge, style]}>{capitalize(status)}</Text>;
 }
 
-// ─── Report Header (shared) ───────────────────────────────
-
-function ReportHeader({ title, subtitle, logoUrl, generatedDate }: { title: string; subtitle: string; logoUrl?: string | null; generatedDate: string }) {
+function ReportHeader({ title, logoUrl, info }: { title: string; logoUrl?: string | null; info: { label: string; value: string }[] }) {
   return (
-    <View style={s.header}>
-      <View>
-        {logoUrl ? <Image src={logoUrl} style={s.logo} /> : null}
-        <Text style={[s.subtitle, { marginTop: logoUrl ? 4 : 0 }]}>{subtitle}</Text>
+    <View fixed>
+      <View style={s.header}>
+        <View>
+          {logoUrl ? <Image src={logoUrl} style={s.logo} /> : null}
+        </View>
+        <View style={s.headerRight}>
+          <Text style={s.title}>{title}</Text>
+          <Text style={s.subtitle}>Generated {fmtDate(new Date().toISOString())}</Text>
+        </View>
       </View>
-      <View style={s.headerRight}>
-        <Text style={s.title}>{title}</Text>
-        <Text style={s.subtitle}>Generated {generatedDate}</Text>
-      </View>
+      {info.length > 0 && (
+        <View style={s.infoSection}>
+          {info.map((item, i) => (
+            <View key={i} style={s.infoBlock}>
+              <Text style={s.infoLabel}>{item.label}</Text>
+              <Text style={s.infoValue}>{item.value}</Text>
+            </View>
+          ))}
+        </View>
+      )}
     </View>
   );
 }
 
-function ReportFooter({ pageLabel }: { pageLabel: string }) {
+function ReportFooter({ label }: { label: string }) {
   return (
     <View style={s.footer} fixed>
-      <Text style={s.footerText}>{pageLabel}</Text>
+      <Text style={s.footerText}>{label}</Text>
+      <Text style={s.footerText}>Confidential</Text>
       <Text style={s.footerText} render={({ pageNumber, totalPages }) => `Page ${pageNumber} of ${totalPages}`} />
     </View>
   );
@@ -126,34 +147,41 @@ export interface LevyHistoryData {
   status: string; due_date: string;
 }
 
-export function LevyHistoryReport({ data, title, subtitle, logoUrl }: { data: LevyHistoryData[]; title: string; subtitle: string; logoUrl?: string | null }) {
+export function LevyHistoryReport({ data, title, subtitle, logoUrl, lotOwnerName }: { data: LevyHistoryData[]; title: string; subtitle: string; logoUrl?: string | null; lotOwnerName?: string }) {
   const total = data.reduce((sum, l) => sum + l.amount, 0);
   const totalPaid = data.reduce((sum, l) => sum + l.amount_paid, 0);
+  const info = [
+    { label: "Subdivision", value: subtitle },
+    ...(lotOwnerName ? [{ label: "Lot owner", value: lotOwnerName }] : []),
+    { label: "Total levies", value: String(data.length) },
+    { label: "Outstanding", value: fmt(total - totalPaid) },
+  ];
+
   return (
     <Document>
-      <Page size="A4" style={s.page}>
-        <ReportHeader title={title} subtitle={subtitle} logoUrl={logoUrl} generatedDate={fmtDate(new Date().toISOString())} />
+      <Page size="A4" style={s.page} wrap>
+        <ReportHeader title={title} logoUrl={logoUrl} info={info} />
         <View style={s.tableHeader}>
-          <Text style={[s.th, { width: "10%" }]}>Lot</Text>
-          <Text style={[s.th, { width: "15%" }]}>Reference</Text>
-          <Text style={[s.th, { width: "25%" }]}>Period</Text>
-          <Text style={[s.th, { width: "12%" }]}>Due</Text>
-          <Text style={[s.th, { width: "13%", textAlign: "right" as const }]}>Amount</Text>
-          <Text style={[s.th, { width: "13%", textAlign: "right" as const }]}>Paid</Text>
-          <Text style={[s.th, { width: "12%" }]}>Status</Text>
+          <Text style={[s.th, { width: "8%" }]}>Lot</Text>
+          <Text style={[s.th, { width: "14%" }]}>Reference</Text>
+          <Text style={[s.th, { width: "22%" }]}>Period</Text>
+          <Text style={[s.th, { width: "12%" }]}>Due date</Text>
+          <Text style={[s.th, { width: "14%", textAlign: "right" as const }]}>Amount</Text>
+          <Text style={[s.th, { width: "14%", textAlign: "right" as const }]}>Paid</Text>
+          <Text style={[s.th, { width: "16%", textAlign: "right" as const }]}>Status</Text>
         </View>
         {data.map((l, i) => (
-          <View key={i} style={i % 2 === 0 ? s.rowStriped : s.row}>
-            <Text style={[s.td, { width: "10%" }]}>Lot {l.lot_number}</Text>
-            <Text style={[s.td, { width: "15%" }]}>{l.reference_number}</Text>
-            <Text style={[s.tdMuted, { width: "25%" }]}>{fmtDate(l.period_start)} — {fmtDate(l.period_end)}</Text>
+          <View key={i} style={i % 2 === 0 ? s.rowStriped : s.row} wrap={false}>
+            <Text style={[s.td, { width: "8%" }]}>{l.lot_number}</Text>
+            <Text style={[s.td, { width: "14%" }]}>{l.reference_number}</Text>
+            <Text style={[s.tdMuted, { width: "22%" }]}>{fmtDate(l.period_start)} — {fmtDate(l.period_end)}</Text>
             <Text style={[s.td, { width: "12%" }]}>{fmtDate(l.due_date)}</Text>
-            <Text style={[s.tdRight, { width: "13%" }]}>{fmt(l.amount)}</Text>
-            <Text style={[s.tdGreen, { width: "13%" }]}>{fmt(l.amount_paid)}</Text>
-            <View style={{ width: "12%" }}><StatusBadge status={l.status} /></View>
+            <Text style={[s.tdRight, { width: "14%" }]}>{fmt(l.amount)}</Text>
+            <Text style={[s.tdGreen, { width: "14%" }]}>{fmt(l.amount_paid)}</Text>
+            <View style={{ width: "16%", alignItems: "flex-end" as const }}><StatusBadge status={l.status === "partially_paid" ? "partially paid" : l.status} /></View>
           </View>
         ))}
-        <View style={{ marginTop: 8, borderTopWidth: 1, borderTopColor: c.foreground, paddingTop: 6 }}>
+        <View style={s.summarySection}>
           <View style={s.summaryRow}>
             <Text style={s.summaryLabel}>Total levied</Text>
             <Text style={s.summaryValue}>{fmt(total)}</Text>
@@ -163,11 +191,11 @@ export function LevyHistoryReport({ data, title, subtitle, logoUrl }: { data: Le
             <Text style={[s.summaryValue, { color: c.green }]}>{fmt(totalPaid)}</Text>
           </View>
           <View style={s.summaryRow}>
-            <Text style={s.summaryLabel}>Outstanding</Text>
+            <Text style={s.summaryLabel}>Outstanding balance</Text>
             <Text style={[s.summaryValue, { color: total - totalPaid > 0 ? c.red : c.green }]}>{fmt(total - totalPaid)}</Text>
           </View>
         </View>
-        <ReportFooter pageLabel="Levy History Report" />
+        <ReportFooter label="Levy History Report" />
       </Page>
     </Document>
   );
@@ -187,33 +215,41 @@ const POLICY_NAMES: Record<string, string> = {
 };
 
 export function InsuranceStatusReport({ data, title, subtitle, logoUrl }: { data: InsuranceStatusData[]; title: string; subtitle: string; logoUrl?: string | null }) {
+  const activeCount = data.filter((p) => !p.is_expired).length;
+  const totalPremium = data.filter((p) => !p.is_expired).reduce((sum, p) => sum + (p.premium ?? 0), 0);
+  const info = [
+    { label: "Subdivision", value: subtitle },
+    { label: "Active policies", value: String(activeCount) },
+    { label: "Total premium", value: fmt(totalPremium) },
+  ];
+
   return (
     <Document>
-      <Page size="A4" style={s.page}>
-        <ReportHeader title={title} subtitle={subtitle} logoUrl={logoUrl} generatedDate={fmtDate(new Date().toISOString())} />
+      <Page size="A4" style={s.page} orientation="landscape" wrap>
+        <ReportHeader title={title} logoUrl={logoUrl} info={info} />
         <View style={s.tableHeader}>
-          <Text style={[s.th, { width: "15%" }]}>Type</Text>
-          <Text style={[s.th, { width: "18%" }]}>Provider</Text>
+          <Text style={[s.th, { width: "12%" }]}>Type</Text>
+          <Text style={[s.th, { width: "15%" }]}>Provider</Text>
           <Text style={[s.th, { width: "12%" }]}>Policy #</Text>
-          <Text style={[s.th, { width: "22%" }]}>Coverage</Text>
-          <Text style={[s.th, { width: "13%", textAlign: "right" as const }]}>Sum insured</Text>
-          <Text style={[s.th, { width: "10%", textAlign: "right" as const }]}>Premium</Text>
-          <Text style={[s.th, { width: "10%" }]}>Status</Text>
+          <Text style={[s.th, { width: "22%" }]}>Coverage period</Text>
+          <Text style={[s.th, { width: "14%", textAlign: "right" as const }]}>Sum insured</Text>
+          <Text style={[s.th, { width: "12%", textAlign: "right" as const }]}>Premium</Text>
+          <Text style={[s.th, { width: "13%", textAlign: "right" as const }]}>Status</Text>
         </View>
         {data.map((p, i) => (
-          <View key={i} style={i % 2 === 0 ? s.rowStriped : s.row}>
-            <Text style={[s.td, { width: "15%" }]}>{POLICY_NAMES[p.policy_type] ?? p.policy_type}</Text>
-            <Text style={[s.td, { width: "18%" }]}>{p.provider}</Text>
-            <Text style={[s.td, { width: "12%" }]}>{p.policy_number ?? "—"}</Text>
-            <Text style={[s.tdMuted, { width: "22%" }]}>{fmtDate(p.start_date)} — {fmtDate(p.end_date)}</Text>
-            <Text style={[s.tdRight, { width: "13%" }]}>{p.sum_insured ? fmt(p.sum_insured) : "—"}</Text>
-            <Text style={[s.tdRight, { width: "10%" }]}>{p.premium ? fmt(p.premium) : "—"}</Text>
-            <View style={{ width: "10%" }}>
-              <StatusBadge status={p.is_expired ? "expired" : p.is_expiring_soon ? "expiring_soon" : "active"} />
+          <View key={i} style={i % 2 === 0 ? s.rowStriped : s.row} wrap={false}>
+            <Text style={[s.td, { width: "12%" }]}>{POLICY_NAMES[p.policy_type] ?? p.policy_type}</Text>
+            <Text style={[s.td, { width: "15%" }]}>{p.provider}</Text>
+            <Text style={[s.tdMuted, { width: "12%" }]}>{p.policy_number ?? "—"}</Text>
+            <Text style={[s.td, { width: "22%" }]}>{fmtDate(p.start_date)} — {fmtDate(p.end_date)}</Text>
+            <Text style={[s.tdRight, { width: "14%" }]}>{p.sum_insured ? fmt(p.sum_insured) : "—"}</Text>
+            <Text style={[s.tdRight, { width: "12%" }]}>{p.premium ? fmt(p.premium) : "—"}</Text>
+            <View style={{ width: "13%", alignItems: "flex-end" as const }}>
+              <StatusBadge status={p.is_expired ? "expired" : p.is_expiring_soon ? "expiring soon" : "active"} />
             </View>
           </View>
         ))}
-        <ReportFooter pageLabel="Insurance Status Report" />
+        <ReportFooter label="Insurance Status Report" />
       </Page>
     </Document>
   );
@@ -228,31 +264,40 @@ export interface LotRegisterData {
 }
 
 export function LotRegisterReport({ data, title, subtitle, logoUrl, showContact }: { data: LotRegisterData[]; title: string; subtitle: string; logoUrl?: string | null; showContact: boolean }) {
+  const totalUE = data.reduce((sum, lot) => sum + (lot.lot_entitlement || 0), 0);
+  const assignedCount = data.filter((lot) => lot.owner_name).length;
+  const info = [
+    { label: "Subdivision", value: subtitle },
+    { label: "Total lots", value: String(data.length) },
+    { label: "Assigned", value: `${assignedCount} of ${data.length}` },
+    { label: "Total UE", value: String(totalUE) },
+  ];
+
   return (
     <Document>
-      <Page size="A4" style={s.page} orientation={showContact ? "landscape" : "portrait"}>
-        <ReportHeader title={title} subtitle={subtitle} logoUrl={logoUrl} generatedDate={fmtDate(new Date().toISOString())} />
+      <Page size="A4" style={s.page} orientation={showContact ? "landscape" : "portrait"} wrap>
+        <ReportHeader title={title} logoUrl={logoUrl} info={info} />
         <View style={s.tableHeader}>
-          <Text style={[s.th, { width: showContact ? "10%" : "15%" }]}>Lot</Text>
-          <Text style={[s.th, { width: showContact ? "15%" : "30%" }]}>Owner</Text>
+          <Text style={[s.th, { width: showContact ? "8%" : "12%" }]}>Lot</Text>
+          <Text style={[s.th, { width: showContact ? "14%" : "28%" }]}>Owner</Text>
           {showContact && <Text style={[s.th, { width: "20%" }]}>Email</Text>}
           {showContact && <Text style={[s.th, { width: "12%" }]}>Phone</Text>}
-          <Text style={[s.th, { width: showContact ? "10%" : "15%", textAlign: "right" as const }]}>UE</Text>
+          <Text style={[s.th, { width: showContact ? "10%" : "15%", textAlign: "right" as const }]}>Entitlement</Text>
           <Text style={[s.th, { width: showContact ? "10%" : "15%", textAlign: "right" as const }]}>Liability</Text>
-          {showContact && <Text style={[s.th, { width: "8%" }]}>Occupied</Text>}
+          {showContact && <Text style={[s.th, { width: "10%" }]}>Occupied</Text>}
         </View>
         {data.map((lot, i) => (
-          <View key={i} style={i % 2 === 0 ? s.rowStriped : s.row}>
-            <Text style={[s.td, { width: showContact ? "10%" : "15%" }]}>Lot {lot.lot_number}{lot.unit_number ? ` (${lot.unit_number})` : ""}</Text>
-            <Text style={[s.td, { width: showContact ? "15%" : "30%" }]}>{lot.owner_name ?? "Unassigned"}</Text>
+          <View key={i} style={i % 2 === 0 ? s.rowStriped : s.row} wrap={false}>
+            <Text style={[s.td, { width: showContact ? "8%" : "12%" }]}>Lot {lot.lot_number}{lot.unit_number ? ` (${lot.unit_number})` : ""}</Text>
+            <Text style={[s.td, { width: showContact ? "14%" : "28%" }]}>{lot.owner_name ?? "Unassigned"}</Text>
             {showContact && <Text style={[s.tdMuted, { width: "20%" }]}>{lot.owner_email ?? "—"}</Text>}
             {showContact && <Text style={[s.td, { width: "12%" }]}>{lot.owner_phone ?? "—"}</Text>}
             <Text style={[s.tdRight, { width: showContact ? "10%" : "15%" }]}>{lot.lot_entitlement || "—"}</Text>
             <Text style={[s.tdRight, { width: showContact ? "10%" : "15%" }]}>{lot.lot_liability || "—"}</Text>
-            {showContact && <Text style={[s.td, { width: "8%" }]}>{lot.owner_occupied === null ? "—" : lot.owner_occupied ? "Yes" : "No"}</Text>}
+            {showContact && <Text style={[s.td, { width: "10%" }]}>{lot.owner_occupied === null ? "—" : lot.owner_occupied ? "Yes" : "No"}</Text>}
           </View>
         ))}
-        <ReportFooter pageLabel="Lot Owner Register" />
+        <ReportFooter label="Lot Owner Register" />
       </Page>
     </Document>
   );
@@ -265,27 +310,31 @@ export interface CommLogData {
 }
 
 export function CommLogReport({ data, title, subtitle, logoUrl }: { data: CommLogData[]; title: string; subtitle: string; logoUrl?: string | null }) {
+  const info = [
+    { label: "Subdivision", value: subtitle },
+    { label: "Total entries", value: String(data.length) },
+  ];
   return (
     <Document>
-      <Page size="A4" style={s.page}>
-        <ReportHeader title={title} subtitle={subtitle} logoUrl={logoUrl} generatedDate={fmtDate(new Date().toISOString())} />
+      <Page size="A4" style={s.page} wrap>
+        <ReportHeader title={title} logoUrl={logoUrl} info={info} />
         <View style={s.tableHeader}>
-          <Text style={[s.th, { width: "15%" }]}>Date</Text>
+          <Text style={[s.th, { width: "14%" }]}>Date</Text>
           <Text style={[s.th, { width: "12%" }]}>Type</Text>
-          <Text style={[s.th, { width: "30%" }]}>Description</Text>
+          <Text style={[s.th, { width: "32%" }]}>Description</Text>
           <Text style={[s.th, { width: "30%" }]}>Detail</Text>
-          <Text style={[s.th, { width: "13%" }]}>Channel</Text>
+          <Text style={[s.th, { width: "12%" }]}>Channel</Text>
         </View>
         {data.map((entry, i) => (
-          <View key={i} style={i % 2 === 0 ? s.rowStriped : s.row}>
-            <Text style={[s.tdMuted, { width: "15%" }]}>{fmtDate(entry.date)}</Text>
-            <Text style={[s.td, { width: "12%" }]}>{entry.type}</Text>
-            <Text style={[s.td, { width: "30%" }]}>{entry.description}</Text>
+          <View key={i} style={i % 2 === 0 ? s.rowStriped : s.row} wrap={false}>
+            <Text style={[s.tdMuted, { width: "14%" }]}>{fmtDate(entry.date)}</Text>
+            <Text style={[s.td, { width: "12%" }]}>{capitalize(entry.type)}</Text>
+            <Text style={[s.td, { width: "32%" }]}>{entry.description}</Text>
             <Text style={[s.tdMuted, { width: "30%" }]}>{entry.detail}</Text>
-            <Text style={[s.td, { width: "13%" }]}>{entry.channel}</Text>
+            <Text style={[s.td, { width: "12%" }]}>{capitalize(entry.channel)}</Text>
           </View>
         ))}
-        <ReportFooter pageLabel="Communication Log" />
+        <ReportFooter label="Communication Log" />
       </Page>
     </Document>
   );
@@ -298,27 +347,31 @@ export interface AuditTrailData {
 }
 
 export function AuditTrailReport({ data, title, subtitle, logoUrl }: { data: AuditTrailData[]; title: string; subtitle: string; logoUrl?: string | null }) {
+  const info = [
+    { label: "Subdivision", value: subtitle },
+    { label: "Total entries", value: String(data.length) },
+  ];
   return (
     <Document>
-      <Page size="A4" style={s.page}>
-        <ReportHeader title={title} subtitle={subtitle} logoUrl={logoUrl} generatedDate={fmtDate(new Date().toISOString())} />
+      <Page size="A4" style={s.page} wrap>
+        <ReportHeader title={title} logoUrl={logoUrl} info={info} />
         <View style={s.tableHeader}>
-          <Text style={[s.th, { width: "15%" }]}>Date</Text>
-          <Text style={[s.th, { width: "20%" }]}>User</Text>
+          <Text style={[s.th, { width: "14%" }]}>Date</Text>
+          <Text style={[s.th, { width: "18%" }]}>User</Text>
           <Text style={[s.th, { width: "12%" }]}>Action</Text>
-          <Text style={[s.th, { width: "15%" }]}>Entity</Text>
-          <Text style={[s.th, { width: "38%" }]}>Changes</Text>
+          <Text style={[s.th, { width: "14%" }]}>Entity</Text>
+          <Text style={[s.th, { width: "42%" }]}>Changes</Text>
         </View>
         {data.map((entry, i) => (
-          <View key={i} style={i % 2 === 0 ? s.rowStriped : s.row}>
-            <Text style={[s.tdMuted, { width: "15%" }]}>{fmtDate(entry.date)}</Text>
-            <Text style={[s.td, { width: "20%" }]}>{entry.user_name}</Text>
-            <Text style={[s.td, { width: "12%" }]}>{entry.action}</Text>
-            <Text style={[s.td, { width: "15%" }]}>{entry.entity_type}</Text>
-            <Text style={[s.tdMuted, { width: "38%" }]}>{entry.after_state ? JSON.stringify(entry.after_state).slice(0, 80) : "—"}</Text>
+          <View key={i} style={i % 2 === 0 ? s.rowStriped : s.row} wrap={false}>
+            <Text style={[s.tdMuted, { width: "14%" }]}>{fmtDate(entry.date)}</Text>
+            <Text style={[s.td, { width: "18%" }]}>{entry.user_name}</Text>
+            <Text style={[s.td, { width: "12%" }]}>{capitalize(entry.action)}</Text>
+            <Text style={[s.td, { width: "14%" }]}>{capitalize(entry.entity_type)}</Text>
+            <Text style={[s.tdMuted, { width: "42%" }]}>{entry.after_state ? JSON.stringify(entry.after_state).slice(0, 100) : "—"}</Text>
           </View>
         ))}
-        <ReportFooter pageLabel="Audit Trail" />
+        <ReportFooter label="Audit Trail" />
       </Page>
     </Document>
   );

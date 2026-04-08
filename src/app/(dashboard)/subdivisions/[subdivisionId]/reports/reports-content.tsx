@@ -73,12 +73,14 @@ export function ReportsContent({
       switch (reportType) {
         case "levy_history": {
           const data = await getLevyHistory(subdivisionId, selectedLotId || undefined);
-          element = createElement(LevyHistoryReport, { data, title: "Levy History", subtitle, logoUrl });
+          const selectedLot = selectedLotId ? lots.find((l) => l.id === selectedLotId) : null;
+          const lotOwnerName = selectedLot?.owner_name ?? undefined;
+          element = createElement(LevyHistoryReport, { data, title: "Levy History Report", subtitle, logoUrl, lotOwnerName });
           break;
         }
         case "insurance_status": {
           const data = await getInsuranceStatus(subdivisionId);
-          element = createElement(InsuranceStatusReport, { data, title: "Insurance Status", subtitle, logoUrl });
+          element = createElement(InsuranceStatusReport, { data, title: "Insurance Status Report", subtitle, logoUrl });
           break;
         }
         case "lot_register": {
@@ -88,12 +90,12 @@ export function ReportsContent({
         }
         case "communication_log": {
           const data = await getCommunicationLog(subdivisionId);
-          element = createElement(CommLogReport, { data, title: "Communication Log", subtitle, logoUrl });
+          element = createElement(CommLogReport, { data, title: "Communication Log Report", subtitle, logoUrl });
           break;
         }
         case "audit_trail": {
           const data = await getAuditTrail(subdivisionId);
-          element = createElement(AuditTrailReport, { data, title: "Audit Trail", subtitle, logoUrl });
+          element = createElement(AuditTrailReport, { data, title: "Audit Trail Report", subtitle, logoUrl });
           break;
         }
       }
@@ -112,7 +114,16 @@ export function ReportsContent({
     if (!pdfUrl || !reportType) return;
     const a = document.createElement("a");
     a.href = pdfUrl;
-    a.download = `${reportType}-${subdivisionName.toLowerCase().replace(/\s+/g, "-")}.pdf`;
+    const reportNames: Record<string, string> = {
+      levy_history: "Levy-History-Report",
+      insurance_status: "Insurance-Status-Report",
+      lot_register: "Lot-Owner-Register",
+      communication_log: "Communication-Log",
+      audit_trail: "Audit-Trail",
+    };
+    const dateStr = new Date().toISOString().split("T")[0];
+    const subSlug = subdivisionName.replace(/\s+/g, "-");
+    a.download = `${reportNames[reportType] ?? reportType}-${subSlug}-${dateStr}.pdf`;
     a.click();
   }
 

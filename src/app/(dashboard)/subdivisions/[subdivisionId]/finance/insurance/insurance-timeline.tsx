@@ -168,8 +168,28 @@ function AddPolicyDialog({
   const [premium, setPremium] = useState("");
   const [startDate, setStartDate] = useState<Date | undefined>(undefined);
   const [endDate, setEndDate] = useState<Date | undefined>(undefined);
-  const [documentFile, setDocumentFile] = useState<File | null>(null);
+  const [documentUrl, setDocumentUrl] = useState<string | undefined>(undefined);
+  const [uploading, setUploading] = useState(false);
   const [pending, setPending] = useState(false);
+  const [startOpen, setStartOpen] = useState(false);
+  const [endOpen, setEndOpen] = useState(false);
+
+  async function handleFileUpload(file: File) {
+    setUploading(true);
+    const formData = new FormData();
+    formData.append("file", file);
+    formData.append("subdivision_id", subdivisionId);
+    formData.append("category", "insurance");
+    const res = await fetch("/api/documents", { method: "POST", body: formData });
+    if (res.ok) {
+      const data = await res.json();
+      setDocumentUrl(data.public_url);
+      toast.success("Document uploaded");
+    } else {
+      toast.error("Failed to upload document");
+    }
+    setUploading(false);
+  }
 
   async function handleSubmit() {
     if (!provider || !startDate || !endDate) {
@@ -180,20 +200,6 @@ function AddPolicyDialog({
     if (endDate <= startDate) {
       toast.error("End date must be after start date");
       return;
-    }
-
-    // Upload document if provided
-    let documentUrl: string | undefined;
-    if (documentFile) {
-      const formData = new FormData();
-      formData.append("file", documentFile);
-      formData.append("subdivision_id", subdivisionId);
-      formData.append("category", "insurance");
-      const uploadRes = await fetch("/api/documents", { method: "POST", body: formData });
-      if (uploadRes.ok) {
-        const uploadData = await uploadRes.json();
-        documentUrl = uploadData.public_url;
-      }
     }
 
     setPending(true);
@@ -252,7 +258,7 @@ function AddPolicyDialog({
           <div className="grid grid-cols-2 gap-3">
             <div className="space-y-1.5">
               <Label>Start date *</Label>
-              <Popover>
+              <Popover open={startOpen} onOpenChange={setStartOpen}>
                 <PopoverTrigger className="flex h-9 w-full items-center gap-2 rounded-md border border-border bg-background px-3 text-sm cursor-pointer">
                   <CalendarIcon className="h-3.5 w-3.5 text-muted-foreground" />
                   {startDate ? format(startDate, "d MMM yyyy") : "Select"}
@@ -264,6 +270,7 @@ function AddPolicyDialog({
                     onSelect={(d) => {
                       setStartDate(d);
                       if (d && endDate && endDate <= d) setEndDate(undefined);
+                      setStartOpen(false);
                     }}
                   />
                 </PopoverContent>
@@ -271,7 +278,7 @@ function AddPolicyDialog({
             </div>
             <div className="space-y-1.5">
               <Label>End date *</Label>
-              <Popover>
+              <Popover open={endOpen} onOpenChange={setEndOpen}>
                 <PopoverTrigger className="flex h-9 w-full items-center gap-2 rounded-md border border-border bg-background px-3 text-sm cursor-pointer">
                   <CalendarIcon className="h-3.5 w-3.5 text-muted-foreground" />
                   {endDate ? format(endDate, "d MMM yyyy") : "Select"}
@@ -280,7 +287,7 @@ function AddPolicyDialog({
                   <Calendar
                     mode="single"
                     selected={endDate}
-                    onSelect={setEndDate}
+                    onSelect={(d) => { setEndDate(d); setEndOpen(false); }}
                     disabled={startDate ? { before: new Date(startDate.getTime() + 86400000) } : undefined}
                   />
                 </PopoverContent>
@@ -301,13 +308,24 @@ function AddPolicyDialog({
 
           <div className="space-y-1.5">
             <Label>Policy document</Label>
-            <input
-              type="file"
-              accept=".pdf,.doc,.docx,.png,.jpg,.jpeg"
-              onChange={(e) => setDocumentFile(e.target.files?.[0] ?? null)}
-              className="w-full text-sm text-muted-foreground file:mr-3 file:rounded-md file:border file:border-border file:bg-background file:px-3 file:py-1.5 file:text-sm file:font-medium file:text-foreground file:cursor-pointer hover:file:bg-muted"
-            />
-            <p className="text-xs text-muted-foreground">PDF, DOC, or image. Upload the certificate of currency.</p>
+            {uploading ? (
+              <p className="text-sm text-primary py-2">Uploading document...</p>
+            ) : documentUrl ? (
+              <p className="text-sm text-[hsl(160,100%,37%)] py-2">Document uploaded</p>
+            ) : (
+              <>
+                <input
+                  type="file"
+                  accept=".pdf,.doc,.docx,.png,.jpg,.jpeg"
+                  onChange={(e) => {
+                    const file = e.target.files?.[0];
+                    if (file) handleFileUpload(file);
+                  }}
+                  className="w-full text-sm text-muted-foreground file:mr-3 file:rounded-md file:border file:border-border file:bg-background file:px-3 file:py-1.5 file:text-sm file:font-medium file:text-foreground file:cursor-pointer hover:file:bg-muted"
+                />
+                <p className="text-xs text-muted-foreground">PDF, DOC, or image. Upload the certificate of currency.</p>
+              </>
+            )}
           </div>
         </div>
 
