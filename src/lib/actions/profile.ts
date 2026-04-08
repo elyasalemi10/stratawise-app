@@ -20,7 +20,7 @@ export async function getSidebarProfile(): Promise<SidebarProfile | null> {
 
   const { data: profile } = await supabase
     .from("profiles")
-    .select("email, avatar_url, role, management_company_id")
+    .select("email, first_name, last_name, avatar_url, role, management_company_id")
     .eq("clerk_id", userId)
     .single();
 
@@ -40,10 +40,14 @@ export async function getSidebarProfile(): Promise<SidebarProfile | null> {
     companyLogoUrl = company?.logo_url ?? null;
   }
 
-  const initial = companyName?.[0]?.toUpperCase() ?? profile.email?.[0]?.toUpperCase() ?? "?";
+  // For lot owners, show their name instead of company name
+  const fullName = [profile.first_name, profile.last_name].filter(Boolean).join(" ");
+  const displayName = companyName || fullName || profile.email?.split("@")[0] || null;
+
+  const initial = displayName?.[0]?.toUpperCase() ?? profile.email?.[0]?.toUpperCase() ?? "?";
 
   return {
-    companyName,
+    companyName: displayName,
     companyLogoUrl,
     userEmail: profile.email,
     userAvatarUrl: profile.avatar_url,

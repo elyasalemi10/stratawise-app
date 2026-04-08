@@ -52,10 +52,15 @@ import {
 
 const managerMainNavGroups = [
   {
+    label: "",
+    items: [
+      { href: "/inbox", label: "Inbox", icon: Inbox },
+    ],
+  },
+  {
     label: "Overview",
     items: [
       { href: "/dashboard", label: "Dashboard", icon: LayoutDashboard },
-      { href: "/inbox", label: "Inbox", icon: Inbox },
     ],
   },
   {
@@ -68,10 +73,15 @@ const managerMainNavGroups = [
 
 const lotOwnerMainNavGroups = [
   {
+    label: "",
+    items: [
+      { href: "/inbox", label: "Inbox", icon: Inbox },
+    ],
+  },
+  {
     label: "Overview",
     items: [
       { href: "/dashboard", label: "Dashboard", icon: LayoutDashboard },
-      { href: "/inbox", label: "Inbox", icon: Inbox },
       { href: "/levies", label: "Levies", icon: Wallet },
       { href: "/meetings", label: "Meetings", icon: CalendarCheck },
     ],
@@ -384,8 +394,8 @@ export function AppSidebar() {
             </SidebarGroupContent>
           </SidebarGroup>
         ) : navGroups.map((group) => (
-          <SidebarGroup key={group.label}>
-            <SidebarGroupLabel>{group.label}</SidebarGroupLabel>
+          <SidebarGroup key={group.label || "_top"}>
+            {group.label && <SidebarGroupLabel>{group.label}</SidebarGroupLabel>}
             <SidebarGroupContent>
               <SidebarMenu>
                 {group.items.map((item) => {

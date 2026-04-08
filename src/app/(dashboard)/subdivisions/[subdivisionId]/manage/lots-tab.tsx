@@ -162,8 +162,8 @@ export function LotsTab({ lots, subdivisionId, isEditing, onLotUpdated, totalEnt
               return (
                 <tr
                   key={lot.id}
-                  onClick={!isEditing ? () => router.push(`/subdivisions/${subdivisionId}/lots/${lot.id}`) : undefined}
-                  className={`border-t border-border/50 h-12 transition-colors ${!isEditing ? "cursor-pointer hover:bg-muted/30" : ""}`}
+                  onClick={!isEditing && !isLotOwner ? () => router.push(`/subdivisions/${subdivisionId}/lots/${lot.id}`) : undefined}
+                  className={`border-t border-border/50 h-12 transition-colors ${!isEditing && !isLotOwner ? "cursor-pointer hover:bg-muted/30" : ""}`}
                 >
                   <td className="px-4">
                     {isEditing ? (

@@ -112,63 +112,50 @@ async function LotOwnerDashboard({ subdivisionId, profileId }: { subdivisionId: 
         />
       </div>
 
-      {/* Lot details */}
-      {(lots ?? []).map((lot) => {
-        const lotLevies = (levies ?? []).filter((l) => l.lot_id === lot.id);
-        return (
-          <Card key={lot.id}>
+      {/* Recent levies */}
+      {(() => {
+        const allLevies = (levies ?? []).slice(0, 5);
+        return allLevies.length > 0 ? (
+          <Card>
             <CardContent className="pt-5">
-              <div className="flex items-center justify-between mb-4">
-                <div>
-                  <h3 className="text-sm font-semibold text-foreground">
-                    Lot {lot.lot_number}
-                    {lot.unit_number ? ` (Unit ${lot.unit_number})` : ""}
-                  </h3>
-                  <p className="text-xs text-muted-foreground mt-1">
-                    Entitlement: {lot.lot_entitlement} · Liability: {lot.lot_liability}
-                  </p>
-                </div>
+              <div className="flex items-center justify-between mb-3">
+                <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">Recent levies</p>
+                <Link href={`/subdivisions/${subdivisionId}/my-levies`} className="text-xs text-primary hover:text-primary/80">
+                  View all
+                </Link>
               </div>
-
-              {lotLevies.length > 0 ? (
-                <div className="border-t border-border pt-3">
-                  <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground mb-3">Recent levies</p>
-                  <div className="space-y-2">
-                    {lotLevies.slice(0, 5).map((levy) => (
-                      <div key={levy.id} className="flex items-center justify-between py-2.5 text-sm border-b border-border/50 last:border-b-0">
-                        <div className="flex items-center gap-3">
-                          <FileText className="h-4 w-4 text-muted-foreground shrink-0" />
-                          <div>
-                            <p className="font-medium text-foreground">{levy.reference_number}</p>
-                            <p className="text-xs text-muted-foreground">Due {formatDateLong(levy.due_date)}</p>
-                          </div>
-                        </div>
-                        <div className="flex items-center gap-3">
-                          <span className="font-semibold tabular-nums">{formatCurrency(levy.amount ?? 0)}</span>
-                          {levy.pdf_url && (
-                            <a
-                              href={levy.pdf_url}
-                              target="_blank"
-                              rel="noopener noreferrer"
-                              className="flex h-7 w-7 items-center justify-center rounded-md text-muted-foreground hover:bg-muted hover:text-foreground"
-                            >
-                              <Download className="h-3.5 w-3.5" />
-                            </a>
-                          )}
-                        </div>
-                      </div>
+              <div className="rounded-lg border border-border overflow-hidden">
+                <table className="w-full text-sm">
+                  <thead>
+                    <tr className="bg-muted/50 text-xs font-medium uppercase tracking-wider text-muted-foreground">
+                      <th className="px-4 py-2 text-left">Period</th>
+                      <th className="px-4 py-2 text-left">Due date</th>
+                      <th className="px-4 py-2 text-right">Amount</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {allLevies.map((levy) => (
+                      <tr key={levy.id} className="border-t border-border/50">
+                        <td className="px-4 py-2.5 text-foreground">
+                          {formatDateLong(levy.period_start)} — {formatDateLong(levy.period_end)}
+                        </td>
+                        <td className="px-4 py-2.5 text-foreground">{formatDateLong(levy.due_date)}</td>
+                        <td className="px-4 py-2.5 text-right font-semibold tabular-nums">{formatCurrency(levy.amount ?? 0)}</td>
+                      </tr>
                     ))}
-                  </div>
-                </div>
-              ) : (
-                <div className="border-t border-border pt-4 text-center">
-                  <p className="text-sm text-muted-foreground">No levies issued yet</p>
-                </div>
-              )}
+                  </tbody>
+                </table>
+              </div>
+            </CardContent>
+          </Card>
+        ) : (
+          <Card>
+            <CardContent className="flex items-center justify-center py-8">
+              <p className="text-sm text-muted-foreground">No levies issued yet</p>
             </CardContent>
           </Card>
         );
-      })}
+      })()}
 
       {/* Placeholder for meetings */}
       <Card>

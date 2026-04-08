@@ -1,3 +1,5 @@
+import { redirect } from "next/navigation";
+import { getCurrentProfile } from "@/lib/auth";
 import { createServerClient } from "@/lib/supabase";
 import { LotDetailContent } from "./lot-detail-content";
 import type { DocumentRecord } from "@/lib/validations/documents";
@@ -8,6 +10,13 @@ export default async function LotDetailPage({
   params: Promise<{ subdivisionId: string; lotId: string }>;
 }) {
   const { subdivisionId, lotId } = await params;
+  const profile = await getCurrentProfile();
+
+  // Lot owners cannot view other lot owners' detail pages
+  if (profile?.role === "lot_owner") {
+    redirect(`/subdivisions/${subdivisionId}/lots`);
+  }
+
   const supabase = createServerClient();
 
   const { data: lot } = await supabase
