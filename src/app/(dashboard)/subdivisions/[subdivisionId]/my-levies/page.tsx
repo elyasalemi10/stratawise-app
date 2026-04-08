@@ -52,7 +52,7 @@ export default async function MyLeviesPage({
   // Fetch levies and payments
   const { data: levies } = await supabase
     .from("levy_notices")
-    .select("id, lot_id, reference_number, period_start, period_end, total_amount, status, due_date")
+    .select("id, lot_id, reference_number, period_start, period_end, amount, status, due_date")
     .in("lot_id", lotIds)
     .order("due_date", { ascending: false });
 
@@ -67,7 +67,7 @@ export default async function MyLeviesPage({
     paymentsByLevy.set(p.levy_notice_id, (paymentsByLevy.get(p.levy_notice_id) ?? 0) + Number(p.amount));
   });
 
-  const totalLevied = (levies ?? []).reduce((s, l) => s + (l.total_amount ?? 0), 0);
+  const totalLevied = (levies ?? []).reduce((s, l) => s + (l.amount ?? 0), 0);
   const totalPaid = Array.from(paymentsByLevy.values()).reduce((s, v) => s + v, 0);
   const outstanding = totalLevied - totalPaid;
 
@@ -113,7 +113,7 @@ export default async function MyLeviesPage({
             <div className="space-y-0 divide-y divide-border">
               {(levies ?? []).map((levy) => {
                 const paid = paymentsByLevy.get(levy.id) ?? 0;
-                const remaining = (levy.total_amount ?? 0) - paid;
+                const remaining = (levy.amount ?? 0) - paid;
 
                 return (
                   <div key={levy.id} className="flex items-center justify-between py-4">
@@ -130,7 +130,7 @@ export default async function MyLeviesPage({
                     </div>
                     <div className="flex items-center gap-4">
                       <div className="text-right">
-                        <p className="text-sm font-semibold tabular-nums">{formatCurrency(levy.total_amount ?? 0)}</p>
+                        <p className="text-sm font-semibold tabular-nums">{formatCurrency(levy.amount ?? 0)}</p>
                         {remaining > 0 && (
                           <p className="text-xs text-destructive tabular-nums">{formatCurrency(remaining)} remaining</p>
                         )}

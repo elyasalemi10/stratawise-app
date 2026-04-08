@@ -47,7 +47,7 @@ export default async function LeviesPage() {
   const [leviesResult, lotsResult, paymentsResult] = await Promise.all([
     supabase
       .from("levy_notices")
-      .select("id, lot_id, reference_number, period_start, period_end, total_amount, status, due_date, created_at")
+      .select("id, lot_id, reference_number, period_start, period_end, amount, status, due_date, created_at")
       .in("lot_id", lotIds)
       .order("due_date", { ascending: false }),
     supabase
@@ -81,7 +81,7 @@ export default async function LeviesPage() {
   // Lot lookup
   const lotMap = new Map(lots.map((l) => [l.id, l]));
 
-  const totalLevied = levies.reduce((s, l) => s + (l.total_amount ?? 0), 0);
+  const totalLevied = levies.reduce((s, l) => s + (l.amount ?? 0), 0);
   const totalPaid = Array.from(paymentsByLevy.values()).reduce((s, v) => s + v, 0);
   const outstanding = totalLevied - totalPaid;
 
@@ -129,7 +129,7 @@ export default async function LeviesPage() {
               {levies.map((levy) => {
                 const lot = lotMap.get(levy.lot_id);
                 const paid = paymentsByLevy.get(levy.id) ?? 0;
-                const remaining = (levy.total_amount ?? 0) - paid;
+                const remaining = (levy.amount ?? 0) - paid;
                 // eslint-disable-next-line @typescript-eslint/no-explicit-any
                 const subdivisionName = (lot as any)?.subdivisions?.name ?? "";
 
@@ -148,7 +148,7 @@ export default async function LeviesPage() {
                     </div>
                     <div className="flex items-center gap-4">
                       <div className="text-right">
-                        <p className="text-sm font-semibold tabular-nums">{formatCurrency(levy.total_amount ?? 0)}</p>
+                        <p className="text-sm font-semibold tabular-nums">{formatCurrency(levy.amount ?? 0)}</p>
                         {remaining > 0 && (
                           <p className="text-xs text-destructive tabular-nums">{formatCurrency(remaining)} remaining</p>
                         )}

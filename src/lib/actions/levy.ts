@@ -350,11 +350,12 @@ export async function createLevyBatch(
 
   // Create levy notices for each lot
   for (const lot of data.lots) {
-    // Generate reference number
-    const { data: seqResult } = await supabase.rpc("nextval", { seq_name: "msm_levy_seq" });
-    const seqNum = seqResult ?? Date.now();
-    const year = new Date().getFullYear();
-    const refNum = `LEV-${year}-${String(seqNum).padStart(6, "0")}`;
+    // Generate reference number via DB function
+    const { data: refNum } = await supabase.rpc("next_reference_number", { prefix: "LEV" });
+    if (!refNum) {
+      console.error("Failed to generate reference number");
+      continue;
+    }
 
     const { data: levy, error: levyError } = await supabase
       .from("levy_notices")

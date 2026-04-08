@@ -2,12 +2,15 @@
 
 import { useState, useCallback } from "react";
 import { useRouter } from "next/navigation";
-import { ChevronDown, Plus, X, Loader2 } from "lucide-react";
+import { ChevronDown, Plus, X, Loader2, CalendarIcon } from "lucide-react";
+import { format } from "date-fns";
 import { formatDateLong } from "@/lib/utils";
 import { toast } from "sonner";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { Calendar } from "@/components/ui/calendar";
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { Label } from "@/components/ui/label";
 import {
   generateLevyPreview,
@@ -164,6 +167,7 @@ export function GenerateLeviesForm({
   const [selectedBudgetId, setSelectedBudgetId] = useState<string>("");
   const [preview, setPreview] = useState<LevyPreviewData | null>(null);
   const [lots, setLots] = useState<AdjustedLot[]>([]);
+  const [dueDate, setDueDate] = useState<Date | undefined>(undefined);
   const [loading, setLoading] = useState(false);
   const [generating, setGenerating] = useState(false);
   const [openLotId, setOpenLotId] = useState<string | null>(null);
@@ -189,6 +193,7 @@ export function GenerateLeviesForm({
 
     if (result.data) {
       setPreview(result.data);
+      setDueDate(new Date(result.data.due_date + "T00:00:00"));
       setLots(result.data.lots.map((lot) => ({ ...lot, adjustments: [] })));
     }
   }
@@ -253,7 +258,7 @@ export function GenerateLeviesForm({
       period_label: preview.period_label,
       period_start: preview.period_start,
       period_end: preview.period_end,
-      due_date: preview.due_date,
+      due_date: dueDate ? format(dueDate, "yyyy-MM-dd") : preview.due_date,
       lots: lots.map((lot) => {
         const allItems = [
           ...lot.items.map((item) => ({ ...item, is_adjustment: false })),
@@ -327,7 +332,21 @@ export function GenerateLeviesForm({
               </div>
               <div>
                 <Label className="text-xs text-muted-foreground">Due date</Label>
-                <p className="text-sm font-medium text-foreground mt-0.5">{formatDateLong(preview.due_date)}</p>
+                <Popover>
+                  <PopoverTrigger
+                    className="mt-0.5 flex h-8 w-full items-center justify-start gap-2 rounded-md border border-border bg-background px-3 text-sm font-medium text-foreground hover:bg-accent cursor-pointer"
+                  >
+                    <CalendarIcon className="h-3.5 w-3.5 text-muted-foreground" />
+                    {dueDate ? format(dueDate, "d MMMM yyyy") : "Select date"}
+                  </PopoverTrigger>
+                  <PopoverContent className="w-auto p-2" align="start">
+                    <Calendar
+                      mode="single"
+                      selected={dueDate}
+                      onSelect={setDueDate}
+                    />
+                  </PopoverContent>
+                </Popover>
               </div>
             </div>
           )}

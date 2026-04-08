@@ -312,7 +312,7 @@ export function LevyNotice({
               <Text style={s.bankValue}>{paymentInstructions.eft.bsb}</Text>
             </View>
             <View style={s.bankRow}>
-              <Text style={s.bankLabel}>Account No.:</Text>
+              <Text style={s.bankLabel}>Account No:</Text>
               <Text style={s.bankValue}>{paymentInstructions.eft.account_number}</Text>
             </View>
             <View style={s.bankRow}>

@@ -76,7 +76,7 @@ async function LotOwnerDashboard({ subdivisionId, profileId }: { subdivisionId: 
   // Fetch levies for these lots
   const { data: levies } = await supabase
     .from("levy_notices")
-    .select("id, lot_id, reference_number, period_start, period_end, total_amount, status, due_date")
+    .select("id, lot_id, reference_number, period_start, period_end, amount, status, due_date")
     .in("lot_id", lotIds)
     .order("due_date", { ascending: false });
 
@@ -86,7 +86,7 @@ async function LotOwnerDashboard({ subdivisionId, profileId }: { subdivisionId: 
     .select("id, levy_notice_id, amount, payment_date, payment_method")
     .in("levy_notice_id", (levies ?? []).map((l) => l.id));
 
-  const totalLevied = (levies ?? []).reduce((s, l) => s + (l.total_amount ?? 0), 0);
+  const totalLevied = (levies ?? []).reduce((s, l) => s + (l.amount ?? 0), 0);
   const totalPaid = (payments ?? []).reduce((s, p) => s + (p.amount ?? 0), 0);
   const outstanding = totalLevied - totalPaid;
 
@@ -140,7 +140,7 @@ async function LotOwnerDashboard({ subdivisionId, profileId }: { subdivisionId: 
                           </div>
                         </div>
                         <div className="flex items-center gap-3">
-                          <span className="font-medium tabular-nums">{formatCurrency(levy.total_amount ?? 0)}</span>
+                          <span className="font-medium tabular-nums">{formatCurrency(levy.amount ?? 0)}</span>
                           <Badge variant={levy.status === "paid" ? "success" : levy.status === "overdue" ? "destructive" : "info"}>
                             {levy.status}
                           </Badge>
