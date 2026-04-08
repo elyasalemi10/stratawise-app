@@ -60,6 +60,8 @@ function buildBreadcrumbs(pathname: string): Crumb[] {
     for (let i = 0; i < subPages.length; i++) {
       const segment = subPages[i];
       if (isUUID(segment)) continue;
+      // Skip layout-only segments that aren't real pages
+      if (segment === "finance") continue;
       path += "/" + segment;
       const label =
         routeLabels[segment] ??

@@ -53,20 +53,23 @@ export async function createInsurancePolicy(
   await requireSubdivisionAccess(subdivisionId);
   const supabase = createServerClient();
 
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const insertData: Record<string, any> = {
+    subdivision_id: subdivisionId,
+    policy_type: data.policy_type,
+    provider: data.provider,
+    policy_number: data.policy_number || null,
+    sum_insured: data.sum_insured || null,
+    premium: data.premium || null,
+    start_date: data.start_date,
+    end_date: data.end_date,
+    status: new Date(data.end_date) < new Date() ? "expired" : "active",
+  };
+  if (data.document_url) insertData.document_url = data.document_url;
+
   const { error } = await supabase
     .from("insurance_policies")
-    .insert({
-      subdivision_id: subdivisionId,
-      policy_type: data.policy_type,
-      provider: data.provider,
-      policy_number: data.policy_number || null,
-      sum_insured: data.sum_insured || null,
-      premium: data.premium || null,
-      start_date: data.start_date,
-      end_date: data.end_date,
-      document_url: data.document_url || null,
-      status: new Date(data.end_date) < new Date() ? "expired" : "active",
-    });
+    .insert(insertData);
 
   if (error) return { error: error.message };
 

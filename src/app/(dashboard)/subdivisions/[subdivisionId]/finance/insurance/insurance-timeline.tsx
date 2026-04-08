@@ -131,6 +131,25 @@ function TimelineEntry({
 
 // ─── Add Policy Dialog ─────────────────────────────────────
 
+function AmountInput({ value, onChange, placeholder }: { value: string; onChange: (v: string) => void; placeholder?: string }) {
+  return (
+    <input
+      type="text"
+      inputMode="decimal"
+      value={value}
+      onChange={(e) => {
+        const raw = e.target.value;
+        if (raw === "" || /^\d*\.?\d{0,2}$/.test(raw)) {
+          onChange(raw);
+        }
+      }}
+      onKeyDown={(e) => { if (e.key === "e" || e.key === "E") e.preventDefault(); }}
+      placeholder={placeholder}
+      className="h-9 w-full rounded-md border border-border bg-background px-3 text-sm outline-none placeholder:text-muted-foreground focus:border-primary focus:ring-2 focus:ring-primary/20"
+    />
+  );
+}
+
 function AddPolicyDialog({
   open,
   onClose,
@@ -149,12 +168,32 @@ function AddPolicyDialog({
   const [premium, setPremium] = useState("");
   const [startDate, setStartDate] = useState<Date | undefined>(undefined);
   const [endDate, setEndDate] = useState<Date | undefined>(undefined);
+  const [documentFile, setDocumentFile] = useState<File | null>(null);
   const [pending, setPending] = useState(false);
 
   async function handleSubmit() {
     if (!provider || !startDate || !endDate) {
       toast.error("Please fill in all required fields");
       return;
+    }
+
+    if (endDate <= startDate) {
+      toast.error("End date must be after start date");
+      return;
+    }
+
+    // Upload document if provided
+    let documentUrl: string | undefined;
+    if (documentFile) {
+      const formData = new FormData();
+      formData.append("file", documentFile);
+      formData.append("subdivision_id", subdivisionId);
+      formData.append("category", "insurance");
+      const uploadRes = await fetch("/api/documents", { method: "POST", body: formData });
+      if (uploadRes.ok) {
+        const uploadData = await uploadRes.json();
+        documentUrl = uploadData.public_url;
+      }
     }
 
     setPending(true);
@@ -166,6 +205,7 @@ function AddPolicyDialog({
       premium: premium ? Number(premium) : undefined,
       start_date: format(startDate, "yyyy-MM-dd"),
       end_date: format(endDate, "yyyy-MM-dd"),
+      document_url: documentUrl,
     });
     setPending(false);
 
@@ -218,7 +258,14 @@ function AddPolicyDialog({
                   {startDate ? format(startDate, "d MMM yyyy") : "Select"}
                 </PopoverTrigger>
                 <PopoverContent className="w-auto p-2" align="start">
-                  <Calendar mode="single" selected={startDate} onSelect={setStartDate} />
+                  <Calendar
+                    mode="single"
+                    selected={startDate}
+                    onSelect={(d) => {
+                      setStartDate(d);
+                      if (d && endDate && endDate <= d) setEndDate(undefined);
+                    }}
+                  />
                 </PopoverContent>
               </Popover>
             </div>
@@ -230,7 +277,12 @@ function AddPolicyDialog({
                   {endDate ? format(endDate, "d MMM yyyy") : "Select"}
                 </PopoverTrigger>
                 <PopoverContent className="w-auto p-2" align="start">
-                  <Calendar mode="single" selected={endDate} onSelect={setEndDate} />
+                  <Calendar
+                    mode="single"
+                    selected={endDate}
+                    onSelect={setEndDate}
+                    disabled={startDate ? { before: new Date(startDate.getTime() + 86400000) } : undefined}
+                  />
                 </PopoverContent>
               </Popover>
             </div>
@@ -239,18 +291,29 @@ function AddPolicyDialog({
           <div className="grid grid-cols-2 gap-3">
             <div className="space-y-1.5">
               <Label>Sum insured</Label>
-              <Input type="number" value={sumInsured} onChange={(e) => setSumInsured(e.target.value)} placeholder="0.00" />
+              <AmountInput value={sumInsured} onChange={setSumInsured} placeholder="0.00" />
             </div>
             <div className="space-y-1.5">
               <Label>Premium</Label>
-              <Input type="number" value={premium} onChange={(e) => setPremium(e.target.value)} placeholder="0.00" />
+              <AmountInput value={premium} onChange={setPremium} placeholder="0.00" />
             </div>
+          </div>
+
+          <div className="space-y-1.5">
+            <Label>Policy document</Label>
+            <input
+              type="file"
+              accept=".pdf,.doc,.docx,.png,.jpg,.jpeg"
+              onChange={(e) => setDocumentFile(e.target.files?.[0] ?? null)}
+              className="w-full text-sm text-muted-foreground file:mr-3 file:rounded-md file:border file:border-border file:bg-background file:px-3 file:py-1.5 file:text-sm file:font-medium file:text-foreground file:cursor-pointer hover:file:bg-muted"
+            />
+            <p className="text-xs text-muted-foreground">PDF, DOC, or image. Upload the certificate of currency.</p>
           </div>
         </div>
 
         <DialogFooter>
-          <Button variant="ghost" onClick={onClose}>Cancel</Button>
-          <Button onClick={handleSubmit} disabled={pending || !provider || !startDate || !endDate}>
+          <Button variant="ghost" onClick={onClose} className="cursor-pointer">Cancel</Button>
+          <Button onClick={handleSubmit} disabled={pending || !provider || !startDate || !endDate} className="cursor-pointer">
             {pending ? "Adding..." : "Add policy"}
           </Button>
         </DialogFooter>
