@@ -146,10 +146,13 @@ async function LotOwnerDashboard({ subdivisionId, profileId }: { subdivisionId: 
                         <div className="flex items-center gap-3">
                           <span className="font-semibold tabular-nums">{formatCurrency(levy.amount ?? 0)}</span>
                           {levy.pdf_url && (
-                            <a href={levy.pdf_url} target="_blank" rel="noopener noreferrer" onClick={(e) => e.stopPropagation()}>
-                              <Button variant="ghost" size="icon" className="h-7 w-7">
-                                <Download className="h-3.5 w-3.5" />
-                              </Button>
+                            <a
+                              href={levy.pdf_url}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              className="flex h-7 w-7 items-center justify-center rounded-md text-muted-foreground hover:bg-muted hover:text-foreground"
+                            >
+                              <Download className="h-3.5 w-3.5" />
                             </a>
                           )}
                         </div>
