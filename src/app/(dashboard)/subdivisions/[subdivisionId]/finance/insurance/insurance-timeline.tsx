@@ -16,6 +16,7 @@ import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover
 import { formatDateLong } from "@/lib/utils";
 import {
   createInsurancePolicy,
+  getInsurancePolicies,
   type InsurancePolicy,
 } from "@/lib/actions/insurance";
 
@@ -195,7 +196,7 @@ function AddPolicyDialog({
 
   return (
     <Dialog open={open} onOpenChange={onClose}>
-      <DialogContent className="max-w-md max-h-[90vh] overflow-y-auto">
+      <DialogContent className="max-w-md overflow-visible">
         <DialogHeader>
           <DialogTitle>Add insurance policy</DialogTitle>
         </DialogHeader>
@@ -226,7 +227,7 @@ function AddPolicyDialog({
                   <CalendarIcon className="h-3.5 w-3.5 text-muted-foreground" />
                   {startDate ? format(startDate, "d MMM yyyy") : "Select"}
                 </PopoverTrigger>
-                <PopoverContent className="w-auto p-2" align="start" side="top">
+                <PopoverContent className="w-auto p-2" align="start" side="bottom">
                   <Calendar mode="single" selected={startDate} onSelect={(d) => { setStartDate(d); if (d && endDate && endDate <= d) setEndDate(undefined); setStartOpen(false); }} />
                 </PopoverContent>
               </Popover>
@@ -238,7 +239,7 @@ function AddPolicyDialog({
                   <CalendarIcon className="h-3.5 w-3.5 text-muted-foreground" />
                   {endDate ? format(endDate, "d MMM yyyy") : "Select"}
                 </PopoverTrigger>
-                <PopoverContent className="w-auto p-2" align="start" side="top">
+                <PopoverContent className="w-auto p-2" align="start" side="bottom">
                   <Calendar mode="single" selected={endDate} onSelect={(d) => { setEndDate(d); setEndOpen(false); }} disabled={startDate ? { before: new Date(startDate.getTime() + 86400000) } : undefined} />
                 </PopoverContent>
               </Popover>
@@ -440,7 +441,10 @@ export function InsuranceTimeline({
           open={showAdd}
           onClose={() => setShowAdd(false)}
           subdivisionId={subdivisionId}
-          onCreated={() => router.refresh()}
+          onCreated={async () => {
+            const updated = await getInsurancePolicies(subdivisionId);
+            setPolicies(updated);
+          }}
         />
       )}
 

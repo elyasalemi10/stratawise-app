@@ -63,11 +63,12 @@ export function ReportsContent({
 
   const availableReports = REPORTS.filter((r) => !r.managerOnly || !isLotOwner);
 
-  // Convert logo URL to data URL for client-side PDF rendering (avoids CORS)
+  // Proxy logo through API to avoid CORS, convert to data URL for react-pdf
   async function getLogoDataUrl(): Promise<string | null> {
     if (!logoUrl) return null;
     try {
-      const res = await fetch(logoUrl);
+      const res = await fetch(`/api/proxy-image?url=${encodeURIComponent(logoUrl)}`);
+      if (!res.ok) return null;
       const blob = await res.blob();
       return new Promise((resolve) => {
         const reader = new FileReader();

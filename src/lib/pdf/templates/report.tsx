@@ -113,18 +113,13 @@ function ReportHeader({ title, logoUrl, info }: { title: string; logoUrl?: strin
         <View style={s.headerRight}>
           <Text style={s.title}>{title}</Text>
           <Text style={s.subtitle}>Generated {fmtDate(new Date().toISOString())}</Text>
-        </View>
-      </View>
-      {info.length > 0 && (
-        <View style={s.infoSection}>
           {info.map((item, i) => (
-            <View key={i} style={s.infoBlock}>
-              <Text style={s.infoLabel}>{item.label}</Text>
-              <Text style={s.infoValue}>{item.value}</Text>
-            </View>
+            <Text key={i} style={[s.subtitle, { marginTop: i === 0 ? 6 : 1 }]}>
+              {item.label}: {item.value}
+            </Text>
           ))}
         </View>
-      )}
+      </View>
     </View>
   );
 }
