@@ -63,17 +63,6 @@ function WizardContent() {
     params.set("step", String(s));
     if (sid) params.set("id", sid);
     window.history.replaceState(null, "", `/subdivisions/new?${params.toString()}`);
-
-    // Refetch data when navigating between steps
-    if (sid) {
-      setDataLoading(true);
-      getSubdivisionWizardData(sid)
-        .then((data) => {
-          setWizardData(data);
-          setDataLoading(false);
-        })
-        .catch(() => setDataLoading(false));
-    }
   }
 
   const subdivisionId = subId;
