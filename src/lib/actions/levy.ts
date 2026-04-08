@@ -6,6 +6,7 @@ import { revalidatePath } from "next/cache";
 import { generateAndUploadLevyPDF, generateLevyPDFBuffer } from "@/lib/levy-pdf";
 import { sendLevyEmail } from "@/lib/email";
 import { formatDateLong } from "@/lib/utils";
+import { notifySubdivisionLotOwners } from "@/lib/actions/notifications";
 import type { LevyNoticeProps } from "@/lib/pdf/types";
 
 // ─── Types ─────────────────────────────────────────────────
@@ -776,6 +777,17 @@ export async function sendBatchEmails(subdivisionId: string, batchId: string) {
     entity_id: batchId,
     after_state: { sent_count: sentCount },
   });
+
+  // Notify lot owners
+  if (sentCount > 0) {
+    await notifySubdivisionLotOwners({
+      subdivisionId,
+      type: "levy_issued",
+      title: "New levy notice",
+      message: `A levy notice for ${batch?.period_label ?? "this period"} has been issued. Check your levies for details.`,
+      link: `/subdivisions/${subdivisionId}/my-levies`,
+    });
+  }
 
   revalidatePath(`/subdivisions/${subdivisionId}/finance`);
 

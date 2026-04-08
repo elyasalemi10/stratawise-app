@@ -2,8 +2,7 @@
 
 import { usePathname } from "next/navigation";
 import Link from "next/link";
-import { Bell } from "lucide-react";
-import { Button } from "@/components/ui/button";
+import { NotificationBell } from "./notification-bell";
 
 const routeLabels: Record<string, string> = {
   dashboard: "Dashboard",
@@ -19,6 +18,7 @@ const routeLabels: Record<string, string> = {
   create: "Create",
   generate: "Generate levies",
   insurance: "Insurance",
+  inbox: "Inbox",
   maintenance: "Maintenance",
   "my-levies": "My levies",
 };
@@ -128,12 +128,7 @@ export function Header() {
         ))}
       </nav>
 
-      {/* Notification bell */}
-      <Button variant="ghost" size="icon" className="relative text-muted-foreground">
-        <Bell className="h-4 w-4" />
-        <span className="absolute top-1.5 right-1.5 h-2 w-2 rounded-full bg-destructive" />
-        <span className="sr-only">Notifications</span>
-      </Button>
+      <NotificationBell />
     </div>
   );
 }

@@ -82,10 +82,13 @@ async function LotOwnerDashboard({ subdivisionId, profileId }: { subdivisionId: 
     .order("due_date", { ascending: false });
 
   // Fetch payments for these lots
-  const { data: payments } = await supabase
-    .from("payments")
-    .select("id, levy_notice_id, amount, payment_date, payment_method")
-    .in("levy_notice_id", (levies ?? []).map((l) => l.id));
+  const levyIds = (levies ?? []).map((l) => l.id);
+  const { data: payments } = levyIds.length > 0
+    ? await supabase
+        .from("payments")
+        .select("id, levy_notice_id, amount, payment_date, payment_method")
+        .in("levy_notice_id", levyIds)
+    : { data: [] };
 
   const totalLevied = (levies ?? []).reduce((s, l) => s + (l.amount ?? 0), 0);
   const totalPaid = (payments ?? []).reduce((s, p) => s + (p.amount ?? 0), 0);
