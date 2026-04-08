@@ -20,6 +20,7 @@ import {
   Plus,
   Check,
   Shield,
+  ClipboardList,
 } from "lucide-react";
 
 import {
@@ -106,6 +107,7 @@ function getSubdivisionNavGroups(subdivisionId: string, isLotOwner: boolean) {
           { href: `${base}/lots`, label: "Lot owners", icon: Users },
           { href: `${base}/meetings`, label: "Meetings", icon: CalendarCheck },
           { href: `${base}/documents`, label: "Documents", icon: FileText },
+          { href: `${base}/reports`, label: "Reports", icon: ClipboardList },
         ],
       },
     ];
@@ -124,6 +126,7 @@ function getSubdivisionNavGroups(subdivisionId: string, isLotOwner: boolean) {
         { href: `${base}/lots`, label: "Lots & owners", icon: Users },
         { href: `${base}/meetings`, label: "Meetings", icon: CalendarCheck },
         { href: `${base}/documents`, label: "Documents", icon: FileText },
+        { href: `${base}/reports`, label: "Reports", icon: ClipboardList },
       ],
     },
     {
