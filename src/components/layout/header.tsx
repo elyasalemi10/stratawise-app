@@ -18,6 +18,7 @@ const routeLabels: Record<string, string> = {
   budgets: "Budgets",
   create: "Create",
   generate: "Generate levies",
+  insurance: "Insurance",
   maintenance: "Maintenance",
   "my-levies": "My levies",
 };

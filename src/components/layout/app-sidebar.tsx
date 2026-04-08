@@ -18,6 +18,7 @@ import {
   CalendarCheck,
   Plus,
   Check,
+  Shield,
 } from "lucide-react";
 
 import {
@@ -118,6 +119,7 @@ function getSubdivisionNavGroups(subdivisionId: string, isLotOwner: boolean) {
         { href: `${base}/finance/budgets`, label: "Budgets", icon: Wallet },
         { href: `${base}/finance/levies`, label: "Levies", icon: Receipt },
         { href: `${base}/finance/generate`, label: "Generate levies", icon: Plus },
+        { href: `${base}/finance/insurance`, label: "Insurance", icon: Shield },
       ],
     },
     {
