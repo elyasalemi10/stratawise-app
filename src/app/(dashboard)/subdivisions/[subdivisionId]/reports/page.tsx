@@ -1,5 +1,6 @@
 import { getSubdivision } from "@/lib/actions/subdivision";
 import { getCurrentProfile } from "@/lib/auth";
+import { createServerClient } from "@/lib/supabase";
 import { redirect } from "next/navigation";
 import { getSubdivisionLots } from "@/lib/actions/reports";
 import { ReportsContent } from "./reports-content";
@@ -18,9 +19,23 @@ export default async function ReportsPage({
 
   if (!subdivision || !profile) redirect("/dashboard");
 
+  // Get company logo
+  let logoUrl: string | null = null;
+  if (subdivision.management_company_id) {
+    const supabase = createServerClient();
+    const { data: company } = await supabase
+      .from("management_companies")
+      .select("logo_url")
+      .eq("id", subdivision.management_company_id)
+      .single();
+    logoUrl = company?.logo_url ?? null;
+  }
+
   return (
     <ReportsContent
       subdivisionId={subdivisionId}
+      subdivisionName={subdivision.name}
+      logoUrl={logoUrl}
       isLotOwner={profile.role === "lot_owner"}
       lots={lots}
     />

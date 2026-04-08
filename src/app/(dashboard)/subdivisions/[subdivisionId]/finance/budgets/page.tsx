@@ -1,4 +1,5 @@
 import { getSubdivision } from "@/lib/actions/subdivision";
+import { getCurrentProfile } from "@/lib/auth";
 import { redirect } from "next/navigation";
 import { BudgetPageContent } from "./budget-page-content";
 
@@ -8,8 +9,9 @@ export default async function BudgetsPage({
   params: Promise<{ subdivisionId: string }>;
 }) {
   const { subdivisionId } = await params;
-  const subdivision = await getSubdivision(subdivisionId);
+  const [subdivision, profile] = await Promise.all([getSubdivision(subdivisionId), getCurrentProfile()]);
   if (!subdivision) redirect("/dashboard");
+  if (profile?.role === "lot_owner") redirect(`/subdivisions/${subdivisionId}/dashboard`);
 
   return (
     <BudgetPageContent

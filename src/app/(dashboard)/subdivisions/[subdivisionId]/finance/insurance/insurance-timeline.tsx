@@ -327,9 +327,11 @@ function AddPolicyDialog({
 export function InsuranceTimeline({
   subdivisionId,
   policies: initialPolicies,
+  readOnly,
 }: {
   subdivisionId: string;
   policies: InsurancePolicy[];
+  readOnly?: boolean;
 }) {
   const router = useRouter();
   const [policies, setPolicies] = useState(initialPolicies);
@@ -393,10 +395,12 @@ export function InsuranceTimeline({
     <div className="space-y-6">
       <div className="flex items-center justify-between">
         <h1 className="text-lg font-semibold text-foreground">Insurance</h1>
-        <Button size="sm" onClick={() => setShowAdd(true)}>
-          <Plus className="mr-2 h-3.5 w-3.5" />
-          Add policy
-        </Button>
+        {!readOnly && (
+          <Button size="sm" onClick={() => setShowAdd(true)}>
+            <Plus className="mr-2 h-3.5 w-3.5" />
+            Add policy
+          </Button>
+        )}
       </div>
 
       {policies.length === 0 ? (
@@ -407,10 +411,12 @@ export function InsuranceTimeline({
             <p className="mt-1 text-sm text-muted-foreground max-w-sm">
               Add your first insurance policy to track coverage and get expiry alerts.
             </p>
-            <Button className="mt-4" onClick={() => setShowAdd(true)}>
-              <Plus className="mr-2 h-4 w-4" />
-              Add policy
-            </Button>
+            {!readOnly && (
+              <Button className="mt-4" onClick={() => setShowAdd(true)}>
+                <Plus className="mr-2 h-4 w-4" />
+                Add policy
+              </Button>
+            )}
           </CardContent>
         </Card>
       ) : (

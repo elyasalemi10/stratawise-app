@@ -107,6 +107,7 @@ function getSubdivisionNavGroups(subdivisionId: string, isLotOwner: boolean) {
           { href: `${base}/lots`, label: "Lot owners", icon: Users },
           { href: `${base}/meetings`, label: "Meetings", icon: CalendarCheck },
           { href: `${base}/documents`, label: "Documents", icon: FileText },
+          { href: `${base}/finance/insurance`, label: "Insurance", icon: Shield },
           { href: `${base}/reports`, label: "Reports", icon: ClipboardList },
         ],
       },
