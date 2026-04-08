@@ -45,6 +45,44 @@ export async function getBudgetCategories(): Promise<BudgetCategory[]> {
   return data ?? [];
 }
 
+export async function createBudgetCategory(
+  name: string,
+  fundType: "administrative" | "capital_works"
+): Promise<{ id: string; error?: string }> {
+  const supabase = createServerClient();
+
+  // Check if it already exists
+  const { data: existing } = await supabase
+    .from("budget_categories")
+    .select("id")
+    .eq("name", name)
+    .eq("fund_type", fundType)
+    .single();
+
+  if (existing) return { id: existing.id };
+
+  // Get max sort order for this fund type
+  const { data: maxSort } = await supabase
+    .from("budget_categories")
+    .select("sort_order")
+    .eq("fund_type", fundType)
+    .order("sort_order", { ascending: false })
+    .limit(1)
+    .single();
+
+  const sortOrder = (maxSort?.sort_order ?? 0) + 1;
+  const code = `${fundType === "administrative" ? "2" : "3"}99${String(sortOrder).padStart(3, "0")}`;
+
+  const { data: newCat, error } = await supabase
+    .from("budget_categories")
+    .insert({ code, name, fund_type: fundType, sort_order: sortOrder })
+    .select("id")
+    .single();
+
+  if (error) return { id: "", error: error.message };
+  return { id: newCat.id };
+}
+
 export async function getSubdivisionBudgets(subdivisionId: string): Promise<BudgetWithItems[]> {
   await requireSubdivisionAccess(subdivisionId);
   const supabase = createServerClient();

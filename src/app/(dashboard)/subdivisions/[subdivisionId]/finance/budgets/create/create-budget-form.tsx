@@ -8,7 +8,7 @@ import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { createBudget, type BudgetCategory } from "@/lib/actions/budget";
+import { createBudget, createBudgetCategory, type BudgetCategory } from "@/lib/actions/budget";
 
 const formatCurrency = (n: number) =>
   new Intl.NumberFormat("en-AU", { style: "currency", currency: "AUD" }).format(n);
@@ -18,16 +18,19 @@ const formatCurrency = (n: number) =>
 function CategoryCombobox({
   categories,
   usedCategoryIds,
+  fundType,
   onSelect,
   onCancel,
 }: {
   categories: BudgetCategory[];
   usedCategoryIds: string[];
-  onSelect: (category: { id: string; name: string; isCustom?: boolean }) => void;
+  fundType: "administrative" | "capital_works";
+  onSelect: (category: { id: string; name: string }) => void;
   onCancel: () => void;
 }) {
   const [query, setQuery] = useState("");
   const [open, setOpen] = useState(true);
+  const [creating, setCreating] = useState(false);
   const inputRef = useRef<HTMLInputElement>(null);
   const containerRef = useRef<HTMLDivElement>(null);
 
@@ -38,20 +41,17 @@ function CategoryCombobox({
   useEffect(() => {
     function handleClickOutside(e: MouseEvent) {
       if (containerRef.current && !containerRef.current.contains(e.target as Node)) {
-        // If there's text typed, create it as custom
-        if (query.trim()) {
-          const otherCat = categories.find((c) => c.name.toLowerCase().includes("other"));
-          if (otherCat) {
-            onSelect({ id: otherCat.id, name: query.trim(), isCustom: true });
-            return;
-          }
+        if (query.trim() && !creating) {
+          handleCreateCustom();
+        } else {
+          onCancel();
         }
-        onCancel();
       }
     }
     document.addEventListener("mousedown", handleClickOutside);
     return () => document.removeEventListener("mousedown", handleClickOutside);
-  }, [query, categories, onSelect, onCancel]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [query, creating]);
 
   const filtered = categories.filter(
     (c) =>
@@ -63,9 +63,15 @@ function CategoryCombobox({
     (c) => c.name.toLowerCase() === query.toLowerCase()
   );
 
-  function handleSelect(cat: { id: string; name: string; isCustom?: boolean }) {
-    onSelect(cat);
-    setQuery("");
+  async function handleCreateCustom() {
+    if (!query.trim() || creating) return;
+    setCreating(true);
+    const result = await createBudgetCategory(query.trim(), fundType);
+    setCreating(false);
+    if (result.id) {
+      onSelect({ id: result.id, name: query.trim() });
+      setQuery("");
+    }
   }
 
   function handleKeyDown(e: React.KeyboardEvent) {
@@ -76,12 +82,10 @@ function CategoryCombobox({
     if (e.key === "Enter") {
       e.preventDefault();
       if (filtered.length === 1) {
-        handleSelect({ id: filtered[0].id, name: filtered[0].name });
+        onSelect({ id: filtered[0].id, name: filtered[0].name });
+        setQuery("");
       } else if (query.trim() && !exactMatch) {
-        const otherCat = categories.find((c) => c.name.toLowerCase().includes("other"));
-        if (otherCat) {
-          handleSelect({ id: otherCat.id, name: query.trim(), isCustom: true });
-        }
+        handleCreateCustom();
       }
     }
   }
@@ -103,7 +107,7 @@ function CategoryCombobox({
             <button
               key={cat.id}
               type="button"
-              onClick={() => handleSelect({ id: cat.id, name: cat.name })}
+              onClick={() => { onSelect({ id: cat.id, name: cat.name }); setQuery(""); }}
               className="flex w-full items-center px-3 py-2 text-sm text-foreground hover:bg-accent hover:text-accent-foreground cursor-pointer"
             >
               {cat.name}
@@ -112,12 +116,8 @@ function CategoryCombobox({
           {query.trim() && !exactMatch && (
             <button
               type="button"
-              onClick={() => {
-                const otherCat = categories.find((c) => c.name.toLowerCase().includes("other"));
-                if (otherCat) {
-                  handleSelect({ id: otherCat.id, name: query.trim(), isCustom: true });
-                }
-              }}
+              onClick={handleCreateCustom}
+              disabled={creating}
               className="flex w-full items-center px-3 py-2 text-sm text-primary hover:bg-accent cursor-pointer border-t border-border"
             >
               <Plus className="mr-2 h-3.5 w-3.5" />
@@ -179,7 +179,6 @@ interface BudgetItem {
   category_id: string;
   description: string;
   amount: number;
-  isCustom?: boolean;
 }
 
 export function CreateBudgetForm({
@@ -206,14 +205,13 @@ export function CreateBudgetForm({
   }, [fundType]);
 
   const total = items.reduce((sum, item) => sum + item.amount, 0);
-  const usedCategoryIds = items.filter((i) => !i.isCustom).map((i) => i.category_id);
+  const usedCategoryIds = items.map((i) => i.category_id);
 
-  const addItem = useCallback((cat: { id: string; name: string; isCustom?: boolean }) => {
+  const addItem = useCallback((cat: { id: string; name: string }) => {
     setItems((prev) => [...prev, {
       category_id: cat.id,
       description: cat.name,
       amount: 0,
-      isCustom: cat.isCustom,
     }]);
     setShowCombobox(false);
   }, []);
@@ -345,6 +343,7 @@ export function CreateBudgetForm({
                       <CategoryCombobox
                         categories={fundCategories}
                         usedCategoryIds={usedCategoryIds}
+                        fundType={fundType}
                         onSelect={addItem}
                         onCancel={() => setShowCombobox(false)}
                       />
