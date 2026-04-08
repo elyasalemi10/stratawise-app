@@ -310,10 +310,12 @@ export function LotRegisterReport({ data, title, subtitle, address, logoUrl, sho
             <Text style={s.summaryLabel}>Total lots</Text>
             <Text style={s.summaryValue}>{data.length}</Text>
           </View>
-          <View style={s.summaryRow}>
-            <Text style={s.summaryLabel}>Owners assigned</Text>
-            <Text style={s.summaryValue}>{assignedCount} of {data.length}</Text>
-          </View>
+          {showContact && (
+            <View style={s.summaryRow}>
+              <Text style={s.summaryLabel}>Lots with owners</Text>
+              <Text style={s.summaryValue}>{assignedCount} of {data.length}</Text>
+            </View>
+          )}
           <View style={s.summaryRow}>
             <Text style={s.summaryLabel}>Total units of entitlement</Text>
             <Text style={s.summaryValue}>{totalUE}</Text>

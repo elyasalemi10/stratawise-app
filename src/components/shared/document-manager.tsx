@@ -76,6 +76,7 @@ export function DocumentManager({ subdivisionId, lotId, initialDocuments, readOn
   const [deleteDoc, setDeleteDoc] = useState<DocWithUrl | null>(null);
   const [deleting, setDeleting] = useState(false);
   const [previewDoc, setPreviewDoc] = useState<DocWithUrl | null>(null);
+  const [selectedCategory, setSelectedCategory] = useState("other");
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   const uploadFile = useCallback((file: File) => {
@@ -86,6 +87,7 @@ export function DocumentManager({ subdivisionId, lotId, initialDocuments, readOn
     const formData = new FormData();
     formData.append("file", file);
     formData.append("subdivision_id", subdivisionId);
+    formData.append("category", selectedCategory);
     if (lotId) formData.append("lot_id", lotId);
 
     xhr.upload.addEventListener("progress", (e) => {
@@ -121,7 +123,7 @@ export function DocumentManager({ subdivisionId, lotId, initialDocuments, readOn
 
     xhr.open("POST", "/api/documents");
     xhr.send(formData);
-  }, [subdivisionId, lotId]);
+  }, [subdivisionId, lotId, selectedCategory]);
 
   function handleFiles(files: FileList | File[]) {
     Array.from(files).forEach(uploadFile);
@@ -197,22 +199,40 @@ export function DocumentManager({ subdivisionId, lotId, initialDocuments, readOn
     <div className="space-y-4">
       {/* Upload zone (hidden for read-only) */}
       {!readOnly && (
-        <div
-          className={`border-2 border-dashed rounded-lg p-8 text-center transition-colors cursor-pointer ${
-            dragging ? "border-primary bg-primary/5" : "border-border hover:border-primary/50"
-          }`}
-          onDragOver={(e) => { e.preventDefault(); setDragging(true); }}
-          onDragLeave={() => setDragging(false)}
-          onDrop={handleDrop}
-          onClick={() => fileInputRef.current?.click()}
-        >
-          <Upload className="h-8 w-8 text-muted-foreground mx-auto" />
-          <p className="mt-2 text-sm text-foreground font-medium">
-            Drop files here or click to upload
-          </p>
-          <p className="mt-1 text-xs text-muted-foreground">
-            PDF, DOC, XLS, images, CSV. Max 25MB per file.
-          </p>
+        <div className="space-y-2">
+          <div className="flex items-center gap-2">
+            <span className="text-xs text-muted-foreground">Tag:</span>
+            {["other", "insurance", "levy", "meeting", "legal", "maintenance"].map((cat) => (
+              <button
+                key={cat}
+                type="button"
+                onClick={() => setSelectedCategory(cat)}
+                className={`px-2.5 py-0.5 rounded-full text-xs font-medium cursor-pointer transition-colors ${
+                  selectedCategory === cat
+                    ? "bg-primary text-white"
+                    : "bg-muted text-muted-foreground hover:bg-muted/80"
+                }`}
+              >
+                {cat === "other" ? "General" : cat.charAt(0).toUpperCase() + cat.slice(1)}
+              </button>
+            ))}
+          </div>
+          <div
+            className={`border-2 border-dashed rounded-lg p-8 text-center transition-colors cursor-pointer ${
+              dragging ? "border-primary bg-primary/5" : "border-border hover:border-primary/50"
+            }`}
+            onDragOver={(e) => { e.preventDefault(); setDragging(true); }}
+            onDragLeave={() => setDragging(false)}
+            onDrop={handleDrop}
+            onClick={() => fileInputRef.current?.click()}
+          >
+            <Upload className="h-8 w-8 text-muted-foreground mx-auto" />
+            <p className="mt-2 text-sm text-foreground font-medium">
+              Drop files here or click to upload
+            </p>
+            <p className="mt-1 text-xs text-muted-foreground">
+              PDF, DOC, XLS, images, CSV. Max 25MB per file.
+            </p>
           <input
             ref={fileInputRef}
             type="file"
@@ -224,6 +244,7 @@ export function DocumentManager({ subdivisionId, lotId, initialDocuments, readOn
               e.target.value = "";
             }}
           />
+          </div>
         </div>
       )}
 
@@ -300,9 +321,16 @@ export function DocumentManager({ subdivisionId, lotId, initialDocuments, readOn
                   </div>
 
                   {/* File info */}
-                  <p className="text-sm font-medium text-foreground truncate" title={doc.file_name}>
-                    {doc.file_name}
-                  </p>
+                  <div className="flex items-center gap-1.5">
+                    <p className="text-sm font-medium text-foreground truncate flex-1" title={doc.file_name}>
+                      {doc.file_name}
+                    </p>
+                    {doc.category && doc.category !== "other" && (
+                      <span className="shrink-0 px-1.5 py-0.5 rounded-full text-[10px] font-medium bg-primary/10 text-primary">
+                        {doc.category.charAt(0).toUpperCase() + doc.category.slice(1)}
+                      </span>
+                    )}
+                  </div>
                   <p className="text-xs text-muted-foreground mt-0.5">
                     {formatFileSize(doc.file_size)} · {formatDate(doc.created_at)}
                   </p>
