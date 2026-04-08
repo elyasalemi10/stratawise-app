@@ -142,11 +142,12 @@ export interface LevyHistoryData {
   status: string; due_date: string;
 }
 
-export function LevyHistoryReport({ data, title, subtitle, logoUrl, lotOwnerName }: { data: LevyHistoryData[]; title: string; subtitle: string; logoUrl?: string | null; lotOwnerName?: string }) {
+export function LevyHistoryReport({ data, title, subtitle, address, logoUrl, lotOwnerName }: { data: LevyHistoryData[]; title: string; subtitle: string; address?: string; logoUrl?: string | null; lotOwnerName?: string }) {
   const total = data.reduce((sum, l) => sum + l.amount, 0);
   const totalPaid = data.reduce((sum, l) => sum + l.amount_paid, 0);
   const info = [
     { label: "Subdivision", value: subtitle },
+    ...(address ? [{ label: "Address", value: address }] : []),
     ...(lotOwnerName ? [{ label: "Lot owner", value: lotOwnerName }] : []),
   ];
 
@@ -163,17 +164,20 @@ export function LevyHistoryReport({ data, title, subtitle, logoUrl, lotOwnerName
           <Text style={[s.th, { width: "16%", textAlign: "right" as const }]}>Amount</Text>
           <Text style={[s.th, { width: "16%", textAlign: "right" as const }]}>Paid</Text>
         </View>
-        {data.map((l, i) => (
-          <View key={i} style={i % 2 === 0 ? s.rowStriped : s.row} wrap={false}>
-            <Text style={[s.td, { width: "6%" }]}>{l.lot_number}</Text>
-            <Text style={[s.td, { width: "15%" }]}>{l.reference_number}</Text>
-            <Text style={[s.tdMuted, { width: "22%" }]}>{fmtDate(l.period_start)} — {fmtDate(l.period_end)}</Text>
-            <Text style={[s.td, { width: "12%" }]}>{fmtDate(l.due_date)}</Text>
-            <View style={{ width: "13%", flexDirection: "row" }}><StatusBadge status={l.status === "partially_paid" ? "partially paid" : l.status} /></View>
-            <Text style={[s.tdRight, { width: "16%" }]}>{fmt(l.amount)}</Text>
-            <Text style={[s.tdGreen, { width: "16%" }]}>{fmt(l.amount_paid)}</Text>
-          </View>
-        ))}
+        {data.map((l, i) => {
+          const paidColor = l.amount_paid <= 0 ? c.red : l.amount_paid >= l.amount ? c.green : "#f59e0b";
+          return (
+            <View key={i} style={i % 2 === 0 ? s.rowStriped : s.row} wrap={false}>
+              <Text style={[s.td, { width: "6%" }]}>{l.lot_number}</Text>
+              <Text style={[s.td, { width: "15%" }]}>{l.reference_number}</Text>
+              <Text style={[s.tdMuted, { width: "22%" }]}>{fmtDate(l.period_start)} — {fmtDate(l.period_end)}</Text>
+              <Text style={[s.td, { width: "12%" }]}>{fmtDate(l.due_date)}</Text>
+              <View style={{ width: "13%", flexDirection: "row" }}><StatusBadge status={l.status === "partially_paid" ? "partially paid" : l.status} /></View>
+              <Text style={[s.tdRight, { width: "16%" }]}>{fmt(l.amount)}</Text>
+              <Text style={{ fontSize: 8, fontWeight: 600, textAlign: "right" as const, width: "16%", color: paidColor }}>{fmt(l.amount_paid)}</Text>
+            </View>
+          );
+        })}
         <View style={s.summarySection}>
           <View style={s.summaryRow}>
             <Text style={s.summaryLabel}>Total levied</Text>
@@ -207,13 +211,13 @@ const POLICY_NAMES: Record<string, string> = {
   workers_comp: "Workers Comp", office_bearers: "Office Bearers", fidelity: "Fidelity", other: "Other",
 };
 
-export function InsuranceStatusReport({ data, title, subtitle, logoUrl }: { data: InsuranceStatusData[]; title: string; subtitle: string; logoUrl?: string | null }) {
+export function InsuranceStatusReport({ data, title, subtitle, address, logoUrl }: { data: InsuranceStatusData[]; title: string; subtitle: string; address?: string; logoUrl?: string | null }) {
   const activeCount = data.filter((p) => !p.is_expired).length;
   const totalPremium = data.filter((p) => !p.is_expired).reduce((sum, p) => sum + (p.premium ?? 0), 0);
+  const totalInsured = data.filter((p) => !p.is_expired).reduce((sum, p) => sum + (p.sum_insured ?? 0), 0);
   const info = [
     { label: "Subdivision", value: subtitle },
-    { label: "Active policies", value: String(activeCount) },
-    { label: "Total premium", value: fmt(totalPremium) },
+    ...(address ? [{ label: "Address", value: address }] : []),
   ];
 
   return (
@@ -240,6 +244,20 @@ export function InsuranceStatusReport({ data, title, subtitle, logoUrl }: { data
             </View>
           </View>
         ))}
+        <View style={s.summarySection}>
+          <View style={s.summaryRow}>
+            <Text style={s.summaryLabel}>Active policies</Text>
+            <Text style={s.summaryValue}>{activeCount}</Text>
+          </View>
+          <View style={s.summaryRow}>
+            <Text style={s.summaryLabel}>Total sum insured</Text>
+            <Text style={s.summaryValue}>{fmt(totalInsured)}</Text>
+          </View>
+          <View style={s.summaryRow}>
+            <Text style={s.summaryLabel}>Total annual premium</Text>
+            <Text style={s.summaryValue}>{fmt(totalPremium)}</Text>
+          </View>
+        </View>
         <ReportFooter label="Insurance Status Report" />
       </Page>
     </Document>
@@ -254,14 +272,13 @@ export interface LotRegisterData {
   lot_entitlement: number; lot_liability: number; owner_occupied: boolean | null;
 }
 
-export function LotRegisterReport({ data, title, subtitle, logoUrl, showContact }: { data: LotRegisterData[]; title: string; subtitle: string; logoUrl?: string | null; showContact: boolean }) {
+export function LotRegisterReport({ data, title, subtitle, address, logoUrl, showContact }: { data: LotRegisterData[]; title: string; subtitle: string; address?: string; logoUrl?: string | null; showContact: boolean }) {
   const totalUE = data.reduce((sum, lot) => sum + (lot.lot_entitlement || 0), 0);
+  const totalLiability = data.reduce((sum, lot) => sum + (lot.lot_liability || 0), 0);
   const assignedCount = data.filter((lot) => lot.owner_name).length;
   const info = [
     { label: "Subdivision", value: subtitle },
-    { label: "Total lots", value: String(data.length) },
-    { label: "Assigned", value: `${assignedCount} of ${data.length}` },
-    { label: "Total UE", value: String(totalUE) },
+    ...(address ? [{ label: "Address", value: address }] : []),
   ];
 
   return (
@@ -269,25 +286,43 @@ export function LotRegisterReport({ data, title, subtitle, logoUrl, showContact 
       <Page size="A4" style={s.page} orientation={showContact ? "landscape" : "portrait"} wrap>
         <ReportHeader title={title} logoUrl={logoUrl} info={info} />
         <View style={s.tableHeader}>
-          <Text style={[s.th, { width: showContact ? "8%" : "12%" }]}>Lot</Text>
-          <Text style={[s.th, { width: showContact ? "14%" : "28%" }]}>Owner</Text>
+          <Text style={[s.th, { width: showContact ? "8%" : "15%" }]}>Lot</Text>
+          <Text style={[s.th, { width: showContact ? "14%" : "35%" }]}>Owner</Text>
           {showContact && <Text style={[s.th, { width: "20%" }]}>Email</Text>}
           {showContact && <Text style={[s.th, { width: "12%" }]}>Phone</Text>}
-          <Text style={[s.th, { width: showContact ? "10%" : "15%", textAlign: "right" as const }]}>Entitlement</Text>
-          <Text style={[s.th, { width: showContact ? "10%" : "15%", textAlign: "right" as const }]}>Liability</Text>
+          <Text style={[s.th, { width: showContact ? "10%" : "25%", textAlign: "right" as const }]}>Entitlement</Text>
+          <Text style={[s.th, { width: showContact ? "10%" : "25%", textAlign: "right" as const }]}>Liability</Text>
           {showContact && <Text style={[s.th, { width: "10%" }]}>Occupied</Text>}
         </View>
         {data.map((lot, i) => (
           <View key={i} style={i % 2 === 0 ? s.rowStriped : s.row} wrap={false}>
-            <Text style={[s.td, { width: showContact ? "8%" : "12%" }]}>Lot {lot.lot_number}{lot.unit_number ? ` (${lot.unit_number})` : ""}</Text>
-            <Text style={[s.td, { width: showContact ? "14%" : "28%" }]}>{lot.owner_name ?? "Unassigned"}</Text>
+            <Text style={[s.td, { width: showContact ? "8%" : "15%" }]}>Lot {lot.lot_number}{lot.unit_number ? ` (${lot.unit_number})` : ""}</Text>
+            <Text style={[s.td, { width: showContact ? "14%" : "35%" }]}>{lot.owner_name ?? "Unassigned"}</Text>
             {showContact && <Text style={[s.tdMuted, { width: "20%" }]}>{lot.owner_email ?? "—"}</Text>}
             {showContact && <Text style={[s.td, { width: "12%" }]}>{lot.owner_phone ?? "—"}</Text>}
-            <Text style={[s.tdRight, { width: showContact ? "10%" : "15%" }]}>{lot.lot_entitlement || "—"}</Text>
-            <Text style={[s.tdRight, { width: showContact ? "10%" : "15%" }]}>{lot.lot_liability || "—"}</Text>
+            <Text style={[s.tdRight, { width: showContact ? "10%" : "25%" }]}>{lot.lot_entitlement || "—"}</Text>
+            <Text style={[s.tdRight, { width: showContact ? "10%" : "25%" }]}>{lot.lot_liability || "—"}</Text>
             {showContact && <Text style={[s.td, { width: "10%" }]}>{lot.owner_occupied === null ? "—" : lot.owner_occupied ? "Yes" : "No"}</Text>}
           </View>
         ))}
+        <View style={s.summarySection}>
+          <View style={s.summaryRow}>
+            <Text style={s.summaryLabel}>Total lots</Text>
+            <Text style={s.summaryValue}>{data.length}</Text>
+          </View>
+          <View style={s.summaryRow}>
+            <Text style={s.summaryLabel}>Owners assigned</Text>
+            <Text style={s.summaryValue}>{assignedCount} of {data.length}</Text>
+          </View>
+          <View style={s.summaryRow}>
+            <Text style={s.summaryLabel}>Total units of entitlement</Text>
+            <Text style={s.summaryValue}>{totalUE}</Text>
+          </View>
+          <View style={s.summaryRow}>
+            <Text style={s.summaryLabel}>Total liability</Text>
+            <Text style={s.summaryValue}>{totalLiability}</Text>
+          </View>
+        </View>
         <ReportFooter label="Lot Owner Register" />
       </Page>
     </Document>
@@ -300,9 +335,10 @@ export interface CommLogData {
   type: string; description: string; detail: string; date: string; channel: string;
 }
 
-export function CommLogReport({ data, title, subtitle, logoUrl }: { data: CommLogData[]; title: string; subtitle: string; logoUrl?: string | null }) {
+export function CommLogReport({ data, title, subtitle, address, logoUrl }: { data: CommLogData[]; title: string; subtitle: string; address?: string; logoUrl?: string | null }) {
   const info = [
     { label: "Subdivision", value: subtitle },
+    ...(address ? [{ label: "Address", value: address }] : []),
     { label: "Total entries", value: String(data.length) },
   ];
   return (
@@ -337,9 +373,10 @@ export interface AuditTrailData {
   action: string; entity_type: string; date: string; user_name: string; after_state: unknown;
 }
 
-export function AuditTrailReport({ data, title, subtitle, logoUrl }: { data: AuditTrailData[]; title: string; subtitle: string; logoUrl?: string | null }) {
+export function AuditTrailReport({ data, title, subtitle, address, logoUrl }: { data: AuditTrailData[]; title: string; subtitle: string; address?: string; logoUrl?: string | null }) {
   const info = [
     { label: "Subdivision", value: subtitle },
+    ...(address ? [{ label: "Address", value: address }] : []),
     { label: "Total entries", value: String(data.length) },
   ];
   return (

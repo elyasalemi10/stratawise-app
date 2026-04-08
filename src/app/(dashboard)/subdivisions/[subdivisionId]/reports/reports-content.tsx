@@ -87,7 +87,8 @@ export function ReportsContent({
     setPdfUrl(null);
 
     try {
-      const subtitle = `${subdivisionName} · ${subdivisionPlanNumber}\n${subdivisionAddress}`;
+      const subName = `${subdivisionName} · ${subdivisionPlanNumber}`;
+      const subAddr = subdivisionAddress;
       const logoDataUrl = await getLogoDataUrl();
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       let element: any;
@@ -97,27 +98,27 @@ export function ReportsContent({
           const data = await getLevyHistory(subdivisionId, selectedLotId || undefined);
           const selectedLot = selectedLotId ? lots.find((l) => l.id === selectedLotId) : null;
           const lotOwnerName = selectedLot?.owner_name ?? undefined;
-          element = createElement(LevyHistoryReport, { data, title: "Levy History Report", subtitle, logoUrl: logoDataUrl, lotOwnerName });
+          element = createElement(LevyHistoryReport, { data, title: "Levy History Report", subtitle: subName, address: subAddr, logoUrl: logoDataUrl, lotOwnerName });
           break;
         }
         case "insurance_status": {
           const data = await getInsuranceStatus(subdivisionId);
-          element = createElement(InsuranceStatusReport, { data, title: "Insurance Status Report", subtitle, logoUrl: logoDataUrl });
+          element = createElement(InsuranceStatusReport, { data, title: "Insurance Status Report", subtitle: subName, address: subAddr, logoUrl: logoDataUrl });
           break;
         }
         case "lot_register": {
           const data = await getLotOwnerRegister(subdivisionId);
-          element = createElement(LotRegisterReport, { data, title: "Lot Owner Register", subtitle, logoUrl: logoDataUrl, showContact: !isLotOwner });
+          element = createElement(LotRegisterReport, { data, title: "Lot Owner Register", subtitle: subName, address: subAddr, logoUrl: logoDataUrl, showContact: !isLotOwner });
           break;
         }
         case "communication_log": {
           const data = await getCommunicationLog(subdivisionId);
-          element = createElement(CommLogReport, { data, title: "Communication Log Report", subtitle, logoUrl: logoDataUrl });
+          element = createElement(CommLogReport, { data, title: "Communication Log Report", subtitle: subName, address: subAddr, logoUrl: logoDataUrl });
           break;
         }
         case "audit_trail": {
           const data = await getAuditTrail(subdivisionId);
-          element = createElement(AuditTrailReport, { data, title: "Audit Trail Report", subtitle, logoUrl: logoDataUrl });
+          element = createElement(AuditTrailReport, { data, title: "Audit Trail Report", subtitle: subName, address: subAddr, logoUrl: logoDataUrl });
           break;
         }
       }
