@@ -136,11 +136,13 @@ async function LotOwnerDashboard({ subdivisionId, profileId }: { subdivisionId: 
                   <tbody>
                     {allLevies.map((levy) => (
                       <tr key={levy.id} className="border-t border-border/50">
-                        <td className="px-4 py-2.5 text-foreground">
-                          {formatDateLong(levy.period_start)} — {formatDateLong(levy.period_end)}
+                        <td colSpan={3} className="p-0">
+                          <Link href={`/subdivisions/${subdivisionId}/my-levies`} className="flex w-full hover:bg-muted/30 transition-colors">
+                            <span className="px-4 py-2.5 text-foreground flex-1">{formatDateLong(levy.period_start)} — {formatDateLong(levy.period_end)}</span>
+                            <span className="px-4 py-2.5 text-foreground">{formatDateLong(levy.due_date)}</span>
+                            <span className="px-4 py-2.5 text-right font-semibold tabular-nums">{formatCurrency(levy.amount ?? 0)}</span>
+                          </Link>
                         </td>
-                        <td className="px-4 py-2.5 text-foreground">{formatDateLong(levy.due_date)}</td>
-                        <td className="px-4 py-2.5 text-right font-semibold tabular-nums">{formatCurrency(levy.amount ?? 0)}</td>
                       </tr>
                     ))}
                   </tbody>
@@ -157,15 +159,6 @@ async function LotOwnerDashboard({ subdivisionId, profileId }: { subdivisionId: 
         );
       })()}
 
-      {/* Placeholder for meetings */}
-      <Card>
-        <CardContent className="flex items-center gap-3 py-8 justify-center">
-          <CalendarDays className="h-5 w-5 text-muted-foreground/50" />
-          <p className="text-sm text-muted-foreground">
-            Meeting notices and minutes will appear here.
-          </p>
-        </CardContent>
-      </Card>
     </div>
   );
 }

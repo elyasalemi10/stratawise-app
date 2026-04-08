@@ -101,14 +101,31 @@ export function MyLeviesContent({ levies }: { levies: Levy[] }) {
                           {isPaid && <span className="ml-2 text-xs text-[hsl(160,100%,37%)]">Paid</span>}
                         </td>
                         <td className="px-4 py-3 text-right">
-                          <Button
-                            variant="outline"
-                            size="sm"
-                            className="h-7 text-xs cursor-pointer"
-                            onClick={(e) => { e.stopPropagation(); setSelectedLevy(levy); }}
-                          >
-                            View levy
-                          </Button>
+                          {levy.pdf_url ? (
+                            <a
+                              href={levy.pdf_url}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              onClick={(e) => e.stopPropagation()}
+                            >
+                              <Button
+                                variant="outline"
+                                size="sm"
+                                className="h-7 text-xs cursor-pointer"
+                              >
+                                View levy
+                              </Button>
+                            </a>
+                          ) : (
+                            <Button
+                              variant="outline"
+                              size="sm"
+                              className="h-7 text-xs cursor-pointer"
+                              onClick={(e) => { e.stopPropagation(); setSelectedLevy(levy); }}
+                            >
+                              Details
+                            </Button>
+                          )}
                         </td>
                       </tr>
                     );
@@ -172,13 +189,18 @@ export function MyLeviesContent({ levies }: { levies: Levy[] }) {
                   )}
                 </div>
 
-                {/* Download */}
+                {/* Actions */}
                 {selectedLevy.pdf_url && (
-                  <div className="border-t border-border pt-4">
-                    <a href={selectedLevy.pdf_url} target="_blank" rel="noopener noreferrer">
+                  <div className="border-t border-border pt-4 flex gap-2">
+                    <a href={selectedLevy.pdf_url} target="_blank" rel="noopener noreferrer" className="flex-1">
                       <Button variant="default" className="w-full cursor-pointer">
+                        View levy
+                      </Button>
+                    </a>
+                    <a href={selectedLevy.pdf_url} download className="flex-1">
+                      <Button variant="outline" className="w-full cursor-pointer">
                         <Download className="mr-2 h-4 w-4" />
-                        Download levy notice
+                        Download
                       </Button>
                     </a>
                   </div>
