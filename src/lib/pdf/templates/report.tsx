@@ -53,8 +53,8 @@ const s = StyleSheet.create({
     paddingHorizontal: 36,
   },
   th: { fontSize: 7, fontWeight: 700, color: c.white, textTransform: "uppercase" as const, letterSpacing: 0.3 },
-  row: { flexDirection: "row", paddingVertical: 5, paddingHorizontal: 8 },
-  rowStriped: { flexDirection: "row", paddingVertical: 5, paddingHorizontal: 8, backgroundColor: c.stripe },
+  row: { flexDirection: "row", paddingVertical: 5, marginHorizontal: -28, paddingHorizontal: 36 },
+  rowStriped: { flexDirection: "row", paddingVertical: 5, marginHorizontal: -28, paddingHorizontal: 36, backgroundColor: c.stripe },
   td: { fontSize: 8, color: c.foreground },
   tdRight: { fontSize: 8, color: c.foreground, textAlign: "right" as const },
   tdMuted: { fontSize: 8, color: c.muted },
@@ -112,11 +112,11 @@ function ReportHeader({ title, logoUrl, info }: { title: string; logoUrl?: strin
         </View>
         <View style={s.headerRight}>
           <Text style={s.title}>{title}</Text>
-          <Text style={s.subtitle}>Generated {fmtDate(new Date().toISOString())}</Text>
-          {info.map((item, i) => (
-            <Text key={i} style={[s.subtitle, { marginTop: i === 0 ? 6 : 1 }]}>
-              {item.label}: {item.value}
-            </Text>
+          {[{ label: "Generated", value: fmtDate(new Date().toISOString()) }, ...info].map((item, i) => (
+            <View key={i} style={{ flexDirection: "row", justifyContent: "space-between", gap: 12, marginTop: i === 0 ? 4 : 1, minWidth: 200 }}>
+              <Text style={[s.subtitle, { textAlign: "left" as const }]}>{item.label}</Text>
+              <Text style={[s.subtitle, { fontWeight: 600 }]}>{item.value}</Text>
+            </View>
           ))}
         </View>
       </View>
@@ -155,8 +155,8 @@ export function LevyHistoryReport({ data, title, subtitle, logoUrl, lotOwnerName
       <Page size="A4" style={s.page} wrap>
         <ReportHeader title={title} logoUrl={logoUrl} info={info} />
         <View style={s.tableHeader}>
-          <Text style={[s.th, { width: "8%" }]}>Lot</Text>
-          <Text style={[s.th, { width: "13%" }]}>Reference</Text>
+          <Text style={[s.th, { width: "6%" }]}>Lot</Text>
+          <Text style={[s.th, { width: "15%" }]}>Reference</Text>
           <Text style={[s.th, { width: "22%" }]}>Period</Text>
           <Text style={[s.th, { width: "12%" }]}>Due date</Text>
           <Text style={[s.th, { width: "13%" }]}>Status</Text>
@@ -165,11 +165,11 @@ export function LevyHistoryReport({ data, title, subtitle, logoUrl, lotOwnerName
         </View>
         {data.map((l, i) => (
           <View key={i} style={i % 2 === 0 ? s.rowStriped : s.row} wrap={false}>
-            <Text style={[s.td, { width: "8%" }]}>{l.lot_number}</Text>
-            <Text style={[s.td, { width: "13%" }]}>{l.reference_number}</Text>
+            <Text style={[s.td, { width: "6%" }]}>{l.lot_number}</Text>
+            <Text style={[s.td, { width: "15%" }]}>{l.reference_number}</Text>
             <Text style={[s.tdMuted, { width: "22%" }]}>{fmtDate(l.period_start)} — {fmtDate(l.period_end)}</Text>
             <Text style={[s.td, { width: "12%" }]}>{fmtDate(l.due_date)}</Text>
-            <View style={{ width: "13%" }}><StatusBadge status={l.status === "partially_paid" ? "partially paid" : l.status} /></View>
+            <View style={{ width: "13%", flexDirection: "row" }}><StatusBadge status={l.status === "partially_paid" ? "partially paid" : l.status} /></View>
             <Text style={[s.tdRight, { width: "16%" }]}>{fmt(l.amount)}</Text>
             <Text style={[s.tdGreen, { width: "16%" }]}>{fmt(l.amount_paid)}</Text>
           </View>
@@ -235,7 +235,7 @@ export function InsuranceStatusReport({ data, title, subtitle, logoUrl }: { data
             <Text style={[s.tdMuted, { width: "24%" }]}>{fmtDate(p.start_date)} — {fmtDate(p.end_date)}</Text>
             <Text style={[s.tdRight, { width: "16%" }]}>{p.sum_insured ? fmt(p.sum_insured) : "—"}</Text>
             <Text style={[s.tdRight, { width: "14%" }]}>{p.premium ? fmt(p.premium) : "—"}</Text>
-            <View style={{ width: "16%", alignItems: "flex-end" as const }}>
+            <View style={{ width: "16%", flexDirection: "row", justifyContent: "flex-end" as const }}>
               <StatusBadge status={p.is_expired ? "expired" : p.is_expiring_soon ? "expiring soon" : "active"} />
             </View>
           </View>
