@@ -21,12 +21,22 @@ export async function getNotifications(limit = 20): Promise<Notification[]> {
   const supabase = createServerClient();
   const { data } = await supabase
     .from("notifications")
-    .select("*")
-    .eq("recipient_id", profile.id)
+    .select("id, type, title, body, link, read_at, created_at, subdivision_id")
+    .eq("profile_id", profile.id)
     .order("created_at", { ascending: false })
     .limit(limit);
 
-  return data ?? [];
+  // Map DB column "body" to interface "message"
+  return (data ?? []).map((n) => ({
+    id: n.id,
+    type: n.type,
+    title: n.title,
+    message: n.body,
+    link: n.link,
+    read_at: n.read_at,
+    created_at: n.created_at,
+    subdivision_id: n.subdivision_id,
+  }));
 }
 
 export async function getUnreadCount(): Promise<number> {
@@ -37,7 +47,7 @@ export async function getUnreadCount(): Promise<number> {
   const { count } = await supabase
     .from("notifications")
     .select("id", { count: "exact", head: true })
-    .eq("recipient_id", profile.id)
+    .eq("profile_id", profile.id)
     .is("read_at", null);
 
   return count ?? 0;
@@ -50,9 +60,9 @@ export async function markAsRead(notificationId: string) {
   const supabase = createServerClient();
   await supabase
     .from("notifications")
-    .update({ read_at: new Date().toISOString() })
+    .update({ read_at: new Date().toISOString(), read: true })
     .eq("id", notificationId)
-    .eq("recipient_id", profile.id);
+    .eq("profile_id", profile.id);
 }
 
 export async function markAllAsRead() {
@@ -62,8 +72,8 @@ export async function markAllAsRead() {
   const supabase = createServerClient();
   await supabase
     .from("notifications")
-    .update({ read_at: new Date().toISOString() })
-    .eq("recipient_id", profile.id)
+    .update({ read_at: new Date().toISOString(), read: true })
+    .eq("profile_id", profile.id)
     .is("read_at", null);
 }
 
@@ -79,11 +89,11 @@ export async function createNotification(params: {
 }) {
   const supabase = createServerClient();
   await supabase.from("notifications").insert({
-    recipient_id: params.recipientId,
+    profile_id: params.recipientId,
     subdivision_id: params.subdivisionId ?? null,
     type: params.type,
     title: params.title,
-    message: params.message,
+    body: params.message,
     link: params.link ?? null,
   });
 }
@@ -108,11 +118,11 @@ export async function notifySubdivisionLotOwners(params: {
   if (!members || members.length === 0) return;
 
   const inserts = members.map((m) => ({
-    recipient_id: m.profile_id,
+    profile_id: m.profile_id,
     subdivision_id: params.subdivisionId,
     type: params.type,
     title: params.title,
-    message: params.message,
+    body: params.message,
     link: params.link ?? null,
   }));
 
