@@ -1,8 +1,8 @@
 import Link from "next/link";
-import { Building2, DollarSign, AlertTriangle, Users, ArrowRight, Home, FileText, CalendarDays } from "lucide-react";
+import { Building2, DollarSign, AlertTriangle, Users, ArrowRight, Home, FileText, CalendarDays, Download } from "lucide-react";
+import { formatDateLong } from "@/lib/utils";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { Badge } from "@/components/ui/badge";
 import { getSubdivision, getSubdivisionStats } from "@/lib/actions/subdivision";
 import { getCurrentProfile } from "@/lib/auth";
 import { createServerClient } from "@/lib/supabase";
@@ -73,11 +73,12 @@ async function LotOwnerDashboard({ subdivisionId, profileId }: { subdivisionId: 
     .select("id, lot_number, unit_number, lot_entitlement, lot_liability, owner_name, owner_email")
     .in("id", lotIds);
 
-  // Fetch levies for these lots
+  // Fetch levies for these lots (only issued, not drafts)
   const { data: levies } = await supabase
     .from("levy_notices")
-    .select("id, lot_id, reference_number, period_start, period_end, amount, status, due_date")
+    .select("id, lot_id, reference_number, period_start, period_end, amount, status, due_date, pdf_url")
     .in("lot_id", lotIds)
+    .in("status", ["issued", "partially_paid", "paid", "overdue"])
     .order("due_date", { ascending: false });
 
   // Fetch payments for these lots
@@ -131,19 +132,23 @@ async function LotOwnerDashboard({ subdivisionId, profileId }: { subdivisionId: 
                   <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground mb-3">Recent levies</p>
                   <div className="space-y-2">
                     {lotLevies.slice(0, 5).map((levy) => (
-                      <div key={levy.id} className="flex items-center justify-between py-2 text-sm">
+                      <div key={levy.id} className="flex items-center justify-between py-2.5 text-sm border-b border-border/50 last:border-b-0">
                         <div className="flex items-center gap-3">
-                          <FileText className="h-4 w-4 text-muted-foreground" />
+                          <FileText className="h-4 w-4 text-muted-foreground shrink-0" />
                           <div>
                             <p className="font-medium text-foreground">{levy.reference_number}</p>
-                            <p className="text-xs text-muted-foreground">Due {levy.due_date}</p>
+                            <p className="text-xs text-muted-foreground">Due {formatDateLong(levy.due_date)}</p>
                           </div>
                         </div>
                         <div className="flex items-center gap-3">
-                          <span className="font-medium tabular-nums">{formatCurrency(levy.amount ?? 0)}</span>
-                          <Badge variant={levy.status === "paid" ? "success" : levy.status === "overdue" ? "destructive" : "info"}>
-                            {levy.status}
-                          </Badge>
+                          <span className="font-semibold tabular-nums">{formatCurrency(levy.amount ?? 0)}</span>
+                          {levy.pdf_url && (
+                            <a href={levy.pdf_url} target="_blank" rel="noopener noreferrer" onClick={(e) => e.stopPropagation()}>
+                              <Button variant="ghost" size="icon" className="h-7 w-7">
+                                <Download className="h-3.5 w-3.5" />
+                              </Button>
+                            </a>
+                          )}
                         </div>
                       </div>
                     ))}

@@ -29,6 +29,7 @@ interface DocumentManagerProps {
   subdivisionId: string;
   lotId?: string;
   initialDocuments: DocumentRecord[];
+  readOnly?: boolean;
 }
 
 function getFileIcon(mimeType: string | null, size: "sm" | "lg" = "sm") {
@@ -66,7 +67,7 @@ function formatDate(dateStr: string): string {
 // Build accept string for file input
 const ACCEPT_STRING = ALLOWED_EXTENSIONS.join(",");
 
-export function DocumentManager({ subdivisionId, lotId, initialDocuments }: DocumentManagerProps) {
+export function DocumentManager({ subdivisionId, lotId, initialDocuments, readOnly }: DocumentManagerProps) {
   const [documents, setDocuments] = useState<DocWithUrl[]>(initialDocuments);
   const [uploads, setUploads] = useState<UploadProgress[]>([]);
   const [dragging, setDragging] = useState(false);
@@ -194,35 +195,37 @@ export function DocumentManager({ subdivisionId, lotId, initialDocuments }: Docu
 
   return (
     <div className="space-y-4">
-      {/* Upload zone */}
-      <div
-        className={`border-2 border-dashed rounded-lg p-8 text-center transition-colors cursor-pointer ${
-          dragging ? "border-primary bg-primary/5" : "border-border hover:border-primary/50"
-        }`}
-        onDragOver={(e) => { e.preventDefault(); setDragging(true); }}
-        onDragLeave={() => setDragging(false)}
-        onDrop={handleDrop}
-        onClick={() => fileInputRef.current?.click()}
-      >
-        <Upload className="h-8 w-8 text-muted-foreground mx-auto" />
-        <p className="mt-2 text-sm text-foreground font-medium">
-          Drop files here or click to upload
-        </p>
-        <p className="mt-1 text-xs text-muted-foreground">
-          PDF, DOC, XLS, images, CSV. Max 25MB per file.
-        </p>
-        <input
-          ref={fileInputRef}
-          type="file"
-          multiple
-          accept={ACCEPT_STRING}
-          className="hidden"
-          onChange={(e) => {
-            if (e.target.files) handleFiles(e.target.files);
-            e.target.value = "";
-          }}
-        />
-      </div>
+      {/* Upload zone (hidden for read-only) */}
+      {!readOnly && (
+        <div
+          className={`border-2 border-dashed rounded-lg p-8 text-center transition-colors cursor-pointer ${
+            dragging ? "border-primary bg-primary/5" : "border-border hover:border-primary/50"
+          }`}
+          onDragOver={(e) => { e.preventDefault(); setDragging(true); }}
+          onDragLeave={() => setDragging(false)}
+          onDrop={handleDrop}
+          onClick={() => fileInputRef.current?.click()}
+        >
+          <Upload className="h-8 w-8 text-muted-foreground mx-auto" />
+          <p className="mt-2 text-sm text-foreground font-medium">
+            Drop files here or click to upload
+          </p>
+          <p className="mt-1 text-xs text-muted-foreground">
+            PDF, DOC, XLS, images, CSV. Max 25MB per file.
+          </p>
+          <input
+            ref={fileInputRef}
+            type="file"
+            multiple
+            accept={ACCEPT_STRING}
+            className="hidden"
+            onChange={(e) => {
+              if (e.target.files) handleFiles(e.target.files);
+              e.target.value = "";
+            }}
+          />
+        </div>
+      )}
 
       {/* Upload progress bars */}
       {uploads.length > 0 && (

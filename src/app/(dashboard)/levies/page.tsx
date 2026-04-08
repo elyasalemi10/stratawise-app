@@ -47,8 +47,9 @@ export default async function LeviesPage() {
   const [leviesResult, lotsResult, paymentsResult] = await Promise.all([
     supabase
       .from("levy_notices")
-      .select("id, lot_id, reference_number, period_start, period_end, amount, status, due_date, created_at")
+      .select("id, lot_id, reference_number, period_start, period_end, amount, status, due_date, created_at, pdf_url")
       .in("lot_id", lotIds)
+      .in("status", ["issued", "partially_paid", "paid", "overdue"])
       .order("due_date", { ascending: false }),
     supabase
       .from("lots")

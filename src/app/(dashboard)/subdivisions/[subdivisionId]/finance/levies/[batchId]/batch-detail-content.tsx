@@ -140,6 +140,13 @@ export function BatchDetailContent({
         </div>
       </div>
 
+      {/* Info note for drafts */}
+      {draftCount > 0 && (
+        <p className="text-xs text-muted-foreground bg-muted/50 rounded-md px-3 py-2">
+          Lot owners will only see these levies in their dashboard after they are sent or marked as sent.
+        </p>
+      )}
+
       {/* Summary cards */}
       <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
         <Card>

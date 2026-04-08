@@ -348,14 +348,12 @@ export async function createLevyBatch(
   // Build payment instructions (EFT from subdivision, no BPAY if not configured)
   const hasEft = subdivision?.bank_bsb && subdivision?.bank_account_number;
 
-  // Create levy notices for each lot
+  // Step 1: Create all levy notices in DB (sequential for reference numbers)
+  const createdLevies: { id: string; lotId: string; refNum: string; items: typeof data.lots[0]["items"] }[] = [];
+
   for (const lot of data.lots) {
-    // Generate reference number via DB function
     const { data: refNum } = await supabase.rpc("next_reference_number", { prefix: "LEV" });
-    if (!refNum) {
-      console.error("Failed to generate reference number");
-      continue;
-    }
+    if (!refNum) continue;
 
     const { data: levy, error: levyError } = await supabase
       .from("levy_notices")
@@ -376,12 +374,8 @@ export async function createLevyBatch(
       .select("id")
       .single();
 
-    if (levyError) {
-      console.error("Failed to create levy notice:", levyError);
-      continue;
-    }
+    if (levyError) { console.error("Failed to create levy:", levyError); continue; }
 
-    // Create levy notice items
     const itemInserts = lot.items
       .filter((item) => item.amount !== 0)
       .map((item, i) => ({
@@ -397,9 +391,13 @@ export async function createLevyBatch(
       await supabase.from("levy_notice_items").insert(itemInserts);
     }
 
-    // Generate PDF and upload to R2
+    createdLevies.push({ id: levy.id, lotId: lot.lot_id, refNum, items: lot.items });
+  }
+
+  // Step 2: Generate all PDFs in parallel and upload to R2
+  const pdfPromises = createdLevies.map(async (levy) => {
     try {
-      const lotInfo = lotMap.get(lot.lot_id);
+      const lotInfo = lotMap.get(levy.lotId);
       const pdfProps: LevyNoticeProps = {
         managementCompany,
         subdivision: {
@@ -409,7 +407,7 @@ export async function createLevyBatch(
           plan_number: subdivision?.plan_number ?? "",
         },
         documentTitle: "Levy Notice",
-        referenceNumber: refNum,
+        referenceNumber: levy.refNum,
         date: new Date(),
         lotOwner: {
           name: lotInfo?.owner_name ?? "Lot Owner",
@@ -417,39 +415,30 @@ export async function createLevyBatch(
           address: subdivision?.address ?? "",
         },
         levyPeriod: { start: formatDateLong(data.period_start), end: formatDateLong(data.period_end) },
-        lineItems: lot.items
+        lineItems: levy.items
           .filter((item) => item.amount !== 0)
           .map((item) => ({ description: item.description, amount: item.amount })),
-        totalDue: lot.amount,
+        totalDue: levy.items.reduce((s, i) => s + i.amount, 0),
         dueDate: formatDateLong(data.due_date),
         paymentInstructions: {
-          bpay: null, // No BPAY configured yet
+          bpay: null,
           eft: hasEft ? {
             bsb: subdivision!.bank_bsb!,
             account_number: subdivision!.bank_account_number!,
             account_name: subdivision!.bank_account_name ?? subdivision!.name ?? "",
-            reference: refNum,
-          } : {
-            bsb: "",
-            account_number: "",
-            account_name: "",
-            reference: refNum,
-          },
+            reference: levy.refNum,
+          } : { bsb: "", account_number: "", account_name: "", reference: levy.refNum },
         },
       };
 
-      const pdfUrl = await generateAndUploadLevyPDF(pdfProps, subdivisionId, refNum);
-
-      // Save PDF URL to levy notice
-      await supabase
-        .from("levy_notices")
-        .update({ pdf_url: pdfUrl })
-        .eq("id", levy.id);
-    } catch (pdfError) {
-      console.error("Failed to generate PDF for", refNum, pdfError);
-      // Don't fail the whole batch if PDF generation fails
+      const pdfUrl = await generateAndUploadLevyPDF(pdfProps, subdivisionId, levy.refNum);
+      await supabase.from("levy_notices").update({ pdf_url: pdfUrl }).eq("id", levy.id);
+    } catch (err) {
+      console.error("PDF generation failed for", levy.refNum, err);
     }
-  }
+  });
+
+  await Promise.all(pdfPromises);
 
   // Audit log
   await supabase.from("audit_log").insert({

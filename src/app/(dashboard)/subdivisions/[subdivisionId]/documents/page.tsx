@@ -1,5 +1,6 @@
 import { redirect } from "next/navigation";
 import { getSubdivision } from "@/lib/actions/subdivision";
+import { getCurrentProfile } from "@/lib/auth";
 import { DocumentManager } from "@/components/shared/document-manager";
 
 async function getSubdivisionDocuments(subdivisionId: string) {
@@ -19,17 +20,20 @@ export default async function DocumentsPage({
   params: Promise<{ subdivisionId: string }>;
 }) {
   const { subdivisionId } = await params;
-  const [subdivision, documents] = await Promise.all([
+  const [subdivision, documents, profile] = await Promise.all([
     getSubdivision(subdivisionId),
     getSubdivisionDocuments(subdivisionId),
+    getCurrentProfile(),
   ]);
 
   if (!subdivision) redirect("/dashboard");
 
+  const isLotOwner = profile?.role === "lot_owner";
+
   return (
     <div className="space-y-6">
       <h1 className="text-lg font-semibold text-foreground">Documents</h1>
-      <DocumentManager subdivisionId={subdivisionId} initialDocuments={documents} />
+      <DocumentManager subdivisionId={subdivisionId} initialDocuments={documents} readOnly={isLotOwner} />
     </div>
   );
 }
