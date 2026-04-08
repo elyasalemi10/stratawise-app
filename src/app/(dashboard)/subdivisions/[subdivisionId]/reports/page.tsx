@@ -35,6 +35,8 @@ export default async function ReportsPage({
     <ReportsContent
       subdivisionId={subdivisionId}
       subdivisionName={subdivision.name}
+      subdivisionAddress={subdivision.address ?? ""}
+      subdivisionPlanNumber={subdivision.plan_number ?? ""}
       logoUrl={logoUrl}
       isLotOwner={profile.role === "lot_owner"}
       lots={lots}

@@ -42,12 +42,16 @@ const REPORTS: { id: ReportType; label: string; managerOnly: boolean }[] = [
 export function ReportsContent({
   subdivisionId,
   subdivisionName,
+  subdivisionAddress,
+  subdivisionPlanNumber,
   logoUrl,
   isLotOwner,
   lots,
 }: {
   subdivisionId: string;
   subdivisionName: string;
+  subdivisionAddress: string;
+  subdivisionPlanNumber: string;
   logoUrl: string | null;
   isLotOwner: boolean;
   lots: LotOption[];
@@ -59,6 +63,22 @@ export function ReportsContent({
 
   const availableReports = REPORTS.filter((r) => !r.managerOnly || !isLotOwner);
 
+  // Convert logo URL to data URL for client-side PDF rendering (avoids CORS)
+  async function getLogoDataUrl(): Promise<string | null> {
+    if (!logoUrl) return null;
+    try {
+      const res = await fetch(logoUrl);
+      const blob = await res.blob();
+      return new Promise((resolve) => {
+        const reader = new FileReader();
+        reader.onloadend = () => resolve(reader.result as string);
+        reader.readAsDataURL(blob);
+      });
+    } catch {
+      return null;
+    }
+  }
+
   async function handleGenerate() {
     if (!reportType) return;
 
@@ -66,7 +86,8 @@ export function ReportsContent({
     setPdfUrl(null);
 
     try {
-      const subtitle = subdivisionName;
+      const subtitle = `${subdivisionName} · ${subdivisionPlanNumber}\n${subdivisionAddress}`;
+      const logoDataUrl = await getLogoDataUrl();
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       let element: any;
 
@@ -75,27 +96,27 @@ export function ReportsContent({
           const data = await getLevyHistory(subdivisionId, selectedLotId || undefined);
           const selectedLot = selectedLotId ? lots.find((l) => l.id === selectedLotId) : null;
           const lotOwnerName = selectedLot?.owner_name ?? undefined;
-          element = createElement(LevyHistoryReport, { data, title: "Levy History Report", subtitle, logoUrl, lotOwnerName });
+          element = createElement(LevyHistoryReport, { data, title: "Levy History Report", subtitle, logoUrl: logoDataUrl, lotOwnerName });
           break;
         }
         case "insurance_status": {
           const data = await getInsuranceStatus(subdivisionId);
-          element = createElement(InsuranceStatusReport, { data, title: "Insurance Status Report", subtitle, logoUrl });
+          element = createElement(InsuranceStatusReport, { data, title: "Insurance Status Report", subtitle, logoUrl: logoDataUrl });
           break;
         }
         case "lot_register": {
           const data = await getLotOwnerRegister(subdivisionId);
-          element = createElement(LotRegisterReport, { data, title: "Lot Owner Register", subtitle, logoUrl, showContact: !isLotOwner });
+          element = createElement(LotRegisterReport, { data, title: "Lot Owner Register", subtitle, logoUrl: logoDataUrl, showContact: !isLotOwner });
           break;
         }
         case "communication_log": {
           const data = await getCommunicationLog(subdivisionId);
-          element = createElement(CommLogReport, { data, title: "Communication Log Report", subtitle, logoUrl });
+          element = createElement(CommLogReport, { data, title: "Communication Log Report", subtitle, logoUrl: logoDataUrl });
           break;
         }
         case "audit_trail": {
           const data = await getAuditTrail(subdivisionId);
-          element = createElement(AuditTrailReport, { data, title: "Audit Trail Report", subtitle, logoUrl });
+          element = createElement(AuditTrailReport, { data, title: "Audit Trail Report", subtitle, logoUrl: logoDataUrl });
           break;
         }
       }
