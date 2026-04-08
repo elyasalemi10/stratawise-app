@@ -4,7 +4,8 @@ function getResend() {
   return new Resend(process.env.RESEND_API_KEY);
 }
 
-const FROM_EMAIL = process.env.RESEND_INVITES_FROM ?? "My Strata Management <noreply@myocm.com.au>";
+const FROM_INVITES = process.env.RESEND_INVITES_FROM ?? "My Strata Management <noreply@myocm.com.au>";
+const FROM_LEVIES = process.env.RESEND_LEVIES_FROM ?? "My Strata Management <noreply@myocm.com.au>";
 
 interface SendInvitationEmailParams {
   to: string;
@@ -33,7 +34,7 @@ export async function sendInvitationEmail({
   const invitedByLine = invitedByName ? ` by ${invitedByName}` : "";
 
   const { error } = await getResend().emails.send({
-    from: FROM_EMAIL,
+    from: FROM_INVITES,
     to,
     subject: `You've been invited to ${subdivisionName}`,
     html: `
@@ -93,7 +94,7 @@ export async function sendLevyEmail({
   const greeting = ownerName ? `Hi ${ownerName},` : "Hi,";
 
   const { error } = await getResend().emails.send({
-    from: FROM_EMAIL,
+    from: FROM_LEVIES,
     to,
     subject: `Levy Notice — ${subdivisionName} — ${periodLabel}`,
     html: `
