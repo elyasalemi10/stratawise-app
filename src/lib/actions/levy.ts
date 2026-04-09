@@ -412,7 +412,7 @@ export async function createLevyBatch(
         date: new Date(),
         lotOwner: {
           name: lotInfo?.owner_name ?? "Lot Owner",
-          lot_number: String(lotInfo?.lot_number ?? ""),
+          lot_number: `${lotInfo?.lot_number ?? ""}${lotInfo?.unit_number ? ` Unit ${lotInfo.unit_number}` : ""}`,
           address: subdivision?.address ?? "",
         },
         levyPeriod: { start: formatDateLong(data.period_start), end: formatDateLong(data.period_end) },
@@ -627,6 +627,53 @@ export async function markLevySent(subdivisionId: string, levyId: string) {
   return { success: true };
 }
 
+// ─── Cancel batch ──────────────────────────────────────────
+
+export async function cancelBatch(subdivisionId: string, batchId: string) {
+  const profile = await requireCompanyRole();
+  await requireSubdivisionAccess(subdivisionId);
+  const supabase = createServerClient();
+
+  // Only allow cancelling draft batches (not sent ones)
+  const { data: batch } = await supabase
+    .from("levy_batches")
+    .select("status")
+    .eq("id", batchId)
+    .eq("subdivision_id", subdivisionId)
+    .single();
+
+  if (!batch) return { error: "Batch not found" };
+  if (batch.status === "sent") return { error: "Cannot cancel a batch that has already been sent" };
+
+  // Delete levy notice items first
+  const { data: levies } = await supabase
+    .from("levy_notices")
+    .select("id")
+    .eq("batch_id", batchId);
+
+  const levyIds = (levies ?? []).map((l) => l.id);
+  if (levyIds.length > 0) {
+    await supabase.from("levy_notice_items").delete().in("levy_notice_id", levyIds);
+  }
+
+  // Delete levy notices
+  await supabase.from("levy_notices").delete().eq("batch_id", batchId);
+
+  // Delete batch
+  await supabase.from("levy_batches").delete().eq("id", batchId);
+
+  await supabase.from("audit_log").insert({
+    profile_id: profile.id,
+    subdivision_id: subdivisionId,
+    action: "cancel",
+    entity_type: "levy_batch",
+    entity_id: batchId,
+  });
+
+  revalidatePath(`/subdivisions/${subdivisionId}/finance`);
+  return { success: true };
+}
+
 // ─── Send batch emails ─────────────────────────────────────
 
 export async function sendBatchEmails(subdivisionId: string, batchId: string) {
@@ -692,7 +739,7 @@ export async function sendBatchEmails(subdivisionId: string, batchId: string) {
         date: new Date(),
         lotOwner: {
           name: lot?.owner_name ?? "Lot Owner",
-          lot_number: String(lot?.lot_number ?? ""),
+          lot_number: `${lot?.lot_number ?? ""}${lot?.unit_number ? ` Unit ${lot.unit_number}` : ""}`,
           address: subdivision?.address ?? "",
         },
         levyPeriod: { start: formatDateLong(levy.period_start), end: formatDateLong(levy.period_end) },

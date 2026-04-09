@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import { useRouter } from "next/navigation";
-import { ArrowLeft, CheckCircle2, ChevronDown, Download, Mail } from "lucide-react";
+import { ArrowLeft, CheckCircle2, ChevronDown, Download, Mail, Trash2, FolderDown } from "lucide-react";
 import { formatDateLong } from "@/lib/utils";
 import { toast } from "sonner";
 import { Card, CardContent } from "@/components/ui/card";
@@ -12,6 +12,7 @@ import {
   markBatchSent,
   markLevySent,
   sendBatchEmails,
+  cancelBatch,
   type LevyBatchDetail,
 } from "@/lib/actions/levy";
 
@@ -92,6 +93,37 @@ export function BatchDetailContent({
     }
   }
 
+  const [cancelling, setCancelling] = useState(false);
+
+  async function handleCancel() {
+    if (!confirm("Cancel this levy batch? All levy notices in this batch will be deleted. This cannot be undone.")) return;
+    setCancelling(true);
+    const result = await cancelBatch(subdivisionId, batch.id);
+    setCancelling(false);
+    if (result.error) {
+      toast.error(result.error);
+    } else {
+      toast.success("Batch cancelled");
+      router.push(`/subdivisions/${subdivisionId}/finance/levies`);
+    }
+  }
+
+  async function handleDownloadAll() {
+    const pdfUrls = batch.levies.filter((l) => l.pdf_url).map((l) => ({ url: l.pdf_url!, name: `${l.reference_number}.pdf` }));
+    if (pdfUrls.length === 0) { toast.error("No PDFs available"); return; }
+
+    // Download each PDF and trigger individual downloads
+    for (const pdf of pdfUrls) {
+      const a = document.createElement("a");
+      a.href = pdf.url;
+      a.download = pdf.name;
+      a.target = "_blank";
+      a.click();
+      await new Promise((r) => setTimeout(r, 300)); // Small delay between downloads
+    }
+    toast.success(`${pdfUrls.length} levy PDFs downloading`);
+  }
+
   const draftCount = batch.levies.filter((l) => l.status === "draft").length;
   const fundLabel = batch.fund_type === "administrative" ? "Administrative Fund" : "Capital Works Fund";
 
@@ -127,15 +159,25 @@ export function BatchDetailContent({
         <div className="flex items-center gap-2">
           {draftCount > 0 && (
             <>
-              <Button onClick={handleEmailAll} disabled={emailingAll} size="sm">
+              <Button onClick={handleEmailAll} disabled={emailingAll} size="sm" className="cursor-pointer">
                 <Mail className="mr-2 h-3.5 w-3.5" />
                 {emailingAll ? "Emailing..." : `Send by email (${draftCount})`}
               </Button>
-              <Button onClick={handleSendAll} disabled={sendingAll} size="sm" variant="outline">
+              <Button onClick={handleSendAll} disabled={sendingAll} size="sm" variant="outline" className="cursor-pointer">
                 <CheckCircle2 className="mr-2 h-3.5 w-3.5" />
                 {sendingAll ? "Marking..." : "Mark all as sent"}
               </Button>
             </>
+          )}
+          <Button onClick={handleDownloadAll} size="sm" variant="outline" className="cursor-pointer">
+            <FolderDown className="mr-2 h-3.5 w-3.5" />
+            Download all
+          </Button>
+          {batch.status !== "sent" && (
+            <Button onClick={handleCancel} disabled={cancelling} size="sm" variant="ghost" className="cursor-pointer text-destructive hover:text-destructive">
+              <Trash2 className="mr-2 h-3.5 w-3.5" />
+              {cancelling ? "Cancelling..." : "Cancel batch"}
+            </Button>
           )}
         </div>
       </div>

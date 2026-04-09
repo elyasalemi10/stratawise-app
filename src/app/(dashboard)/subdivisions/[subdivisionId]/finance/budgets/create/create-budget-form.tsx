@@ -21,12 +21,14 @@ function CategoryCombobox({
   fundType,
   onSelect,
   onCancel,
+  onUpdateCategoryId,
 }: {
   categories: BudgetCategory[];
   usedCategoryIds: string[];
   fundType: "administrative" | "capital_works";
   onSelect: (category: { id: string; name: string }) => void;
   onCancel: () => void;
+  onUpdateCategoryId?: (tempId: string, realId: string) => void;
 }) {
   const [query, setQuery] = useState("");
   const [open, setOpen] = useState(true);
@@ -63,15 +65,23 @@ function CategoryCombobox({
     (c) => c.name.toLowerCase() === query.toLowerCase()
   );
 
-  async function handleCreateCustom() {
+  function handleCreateCustom() {
     if (!query.trim() || creating) return;
-    setCreating(true);
-    const result = await createBudgetCategory(query.trim(), fundType);
-    setCreating(false);
-    if (result.id) {
-      onSelect({ id: result.id, name: query.trim() });
-      setQuery("");
-    }
+    const name = query.trim();
+    const tempId = `temp-${Date.now()}`;
+
+    // Add immediately with temp ID
+    onSelect({ id: tempId, name });
+    setQuery("");
+
+    // Persist in background, replace temp ID with real one
+    createBudgetCategory(name, fundType).then((result) => {
+      if (result.error) {
+        toast.error(`Failed to save "${name}"`);
+      } else if (result.id && result.id !== tempId) {
+        onUpdateCategoryId?.(tempId, result.id);
+      }
+    });
   }
 
   function handleKeyDown(e: React.KeyboardEvent) {
@@ -216,6 +226,13 @@ export function CreateBudgetForm({
     setShowCombobox(false);
   }, []);
 
+  const updateCategoryId = useCallback((tempId: string, realId: string) => {
+    setItems((prev) =>
+      prev.map((item) => item.category_id === tempId ? { ...item, category_id: realId } : item)
+    );
+    setShowCombobox(false);
+  }, []);
+
   function updateAmount(index: number, value: number) {
     setItems((prev) =>
       prev.map((item, i) =>
@@ -346,6 +363,7 @@ export function CreateBudgetForm({
                         fundType={fundType}
                         onSelect={addItem}
                         onCancel={() => setShowCombobox(false)}
+                        onUpdateCategoryId={updateCategoryId}
                       />
                     </td>
                   </tr>
