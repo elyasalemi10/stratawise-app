@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import { useRouter } from "next/navigation";
-import { Plus, ShieldAlert, ShieldX, Download, CalendarIcon, Loader2, X } from "lucide-react";
+import { Plus, ShieldAlert, ShieldX, Download, CalendarIcon, Loader2, X, Pencil, Trash2 } from "lucide-react";
 import { format } from "date-fns";
 import { toast } from "sonner";
 import { Card, CardContent } from "@/components/ui/card";
@@ -16,6 +16,8 @@ import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover
 import { formatDateLong } from "@/lib/utils";
 import {
   createInsurancePolicy,
+  updateInsurancePolicy,
+  deleteInsurancePolicy,
   getInsurancePolicies,
   type InsurancePolicy,
 } from "@/lib/actions/insurance";
@@ -56,60 +58,145 @@ function AmountInput({ value, onChange, placeholder }: { value: string; onChange
 
 // ─── Policy Detail Dialog ──────────────────────────────────
 
-function PolicyDetailDialog({ policy, open, onClose }: { policy: InsurancePolicy | null; open: boolean; onClose: () => void }) {
+function PolicyDetailDialog({
+  policy, open, onClose, readOnly, subdivisionId, onUpdated,
+}: {
+  policy: InsurancePolicy | null; open: boolean; onClose: () => void;
+  readOnly?: boolean; subdivisionId: string; onUpdated: () => void;
+}) {
+  const [deleting, setDeleting] = useState(false);
+  const [editing, setEditing] = useState(false);
+  const [editProvider, setEditProvider] = useState("");
+  const [editPolicyNum, setEditPolicyNum] = useState("");
+  const [editSumInsured, setEditSumInsured] = useState("");
+  const [editPremium, setEditPremium] = useState("");
+  const [saving, setSaving] = useState(false);
+
   if (!policy) return null;
   const isExpired = new Date(policy.end_date) < new Date();
   const isExpiringSoon = !isExpired && new Date(policy.end_date) < new Date(Date.now() + 30 * 86400000);
 
+  function startEdit() {
+    setEditProvider(policy!.provider);
+    setEditPolicyNum(policy!.policy_number ?? "");
+    setEditSumInsured(policy!.sum_insured ? String(policy!.sum_insured) : "");
+    setEditPremium(policy!.premium ? String(policy!.premium) : "");
+    setEditing(true);
+  }
+
+  async function handleSave() {
+    setSaving(true);
+    const result = await updateInsurancePolicy(subdivisionId, policy!.id, {
+      provider: editProvider,
+      policy_number: editPolicyNum,
+      sum_insured: editSumInsured ? Number(editSumInsured) : undefined,
+      premium: editPremium ? Number(editPremium) : undefined,
+    });
+    setSaving(false);
+    if (result.error) { toast.error(result.error); }
+    else { toast.success("Policy updated"); setEditing(false); onUpdated(); onClose(); }
+  }
+
+  async function handleDelete() {
+    if (!confirm("Delete this insurance policy? This cannot be undone.")) return;
+    setDeleting(true);
+    const result = await deleteInsurancePolicy(subdivisionId, policy!.id);
+    setDeleting(false);
+    if (result.error) { toast.error(result.error); }
+    else { toast.success("Policy deleted"); onUpdated(); onClose(); }
+  }
+
   return (
-    <Dialog open={open} onOpenChange={onClose}>
+    <Dialog open={open} onOpenChange={() => { setEditing(false); onClose(); }}>
       <DialogContent className="max-w-md">
         <DialogHeader>
           <DialogTitle>{POLICY_LABELS[policy.policy_type] ?? policy.policy_type} insurance</DialogTitle>
         </DialogHeader>
-        <div className="space-y-3">
-          <div className="flex justify-between">
-            <span className="text-sm text-muted-foreground">Provider</span>
-            <span className="text-sm font-medium text-foreground">{policy.provider}</span>
-          </div>
-          {policy.policy_number && (
-            <div className="flex justify-between">
-              <span className="text-sm text-muted-foreground">Policy number</span>
-              <span className="text-sm text-foreground">{policy.policy_number}</span>
+
+        {editing ? (
+          <div className="space-y-3">
+            <div className="space-y-1.5">
+              <Label className="text-xs">Provider</Label>
+              <Input value={editProvider} onChange={(e) => setEditProvider(e.target.value)} className="h-8 text-sm" />
             </div>
-          )}
-          <div className="flex justify-between">
-            <span className="text-sm text-muted-foreground">Coverage</span>
-            <span className="text-sm text-foreground">{formatDateLong(policy.start_date)} — {formatDateLong(policy.end_date)}</span>
-          </div>
-          <div className="flex justify-between">
-            <span className="text-sm text-muted-foreground">Status</span>
-            <Badge variant={isExpired ? "destructive" : isExpiringSoon ? "warning" : "success"}>
-              {isExpired ? "Expired" : isExpiringSoon ? "Expiring soon" : "Active"}
-            </Badge>
-          </div>
-          {policy.sum_insured && (
-            <div className="flex justify-between">
-              <span className="text-sm text-muted-foreground">Sum insured</span>
-              <span className="text-sm font-medium text-foreground">{formatCurrency(Number(policy.sum_insured))}</span>
+            <div className="space-y-1.5">
+              <Label className="text-xs">Policy number</Label>
+              <Input value={editPolicyNum} onChange={(e) => setEditPolicyNum(e.target.value)} className="h-8 text-sm" />
             </div>
-          )}
-          {policy.premium && (
-            <div className="flex justify-between">
-              <span className="text-sm text-muted-foreground">Premium</span>
-              <span className="text-sm text-foreground">{formatCurrency(Number(policy.premium))}</span>
+            <div className="grid grid-cols-2 gap-3">
+              <div className="space-y-1.5">
+                <Label className="text-xs">Sum insured</Label>
+                <AmountInput value={editSumInsured} onChange={setEditSumInsured} placeholder="0.00" />
+              </div>
+              <div className="space-y-1.5">
+                <Label className="text-xs">Premium</Label>
+                <AmountInput value={editPremium} onChange={setEditPremium} placeholder="0.00" />
+              </div>
             </div>
-          )}
-        </div>
-        {policy.document_url && (
-          <div className="border-t border-border pt-4 mt-2">
-            <a href={policy.document_url} target="_blank" rel="noopener noreferrer">
-              <Button variant="default" className="w-full cursor-pointer">
-                <Download className="mr-2 h-4 w-4" />
-                Download certificate of currency
-              </Button>
-            </a>
+            <DialogFooter>
+              <Button variant="ghost" onClick={() => setEditing(false)} className="cursor-pointer">Cancel</Button>
+              <Button onClick={handleSave} disabled={saving} className="cursor-pointer">{saving ? "Saving..." : "Save"}</Button>
+            </DialogFooter>
           </div>
+        ) : (
+          <>
+            <div className="space-y-3">
+              <div className="flex justify-between">
+                <span className="text-sm text-muted-foreground">Provider</span>
+                <span className="text-sm font-medium text-foreground">{policy.provider}</span>
+              </div>
+              {policy.policy_number && (
+                <div className="flex justify-between">
+                  <span className="text-sm text-muted-foreground">Policy number</span>
+                  <span className="text-sm text-foreground">{policy.policy_number}</span>
+                </div>
+              )}
+              <div className="flex justify-between">
+                <span className="text-sm text-muted-foreground">Coverage</span>
+                <span className="text-sm text-foreground">{formatDateLong(policy.start_date)} — {formatDateLong(policy.end_date)}</span>
+              </div>
+              <div className="flex justify-between">
+                <span className="text-sm text-muted-foreground">Status</span>
+                <Badge variant={isExpired ? "destructive" : isExpiringSoon ? "warning" : "success"}>
+                  {isExpired ? "Expired" : isExpiringSoon ? "Expiring soon" : "Active"}
+                </Badge>
+              </div>
+              {policy.sum_insured && (
+                <div className="flex justify-between">
+                  <span className="text-sm text-muted-foreground">Sum insured</span>
+                  <span className="text-sm font-medium text-foreground">{formatCurrency(Number(policy.sum_insured))}</span>
+                </div>
+              )}
+              {policy.premium && (
+                <div className="flex justify-between">
+                  <span className="text-sm text-muted-foreground">Premium</span>
+                  <span className="text-sm text-foreground">{formatCurrency(Number(policy.premium))}</span>
+                </div>
+              )}
+            </div>
+            {policy.document_url && (
+              <div className="border-t border-border pt-4 mt-2">
+                <a href={policy.document_url} target="_blank" rel="noopener noreferrer">
+                  <Button variant="default" className="w-full cursor-pointer">
+                    <Download className="mr-2 h-4 w-4" />
+                    Download certificate of currency
+                  </Button>
+                </a>
+              </div>
+            )}
+            {!readOnly && (
+              <div className="flex items-center gap-2 border-t border-border pt-4 mt-2">
+                <Button variant="outline" size="sm" onClick={startEdit} className="cursor-pointer">
+                  <Pencil className="mr-2 h-3.5 w-3.5" />
+                  Edit
+                </Button>
+                <Button variant="ghost" size="sm" onClick={handleDelete} disabled={deleting} className="cursor-pointer text-destructive hover:text-destructive">
+                  <Trash2 className="mr-2 h-3.5 w-3.5" />
+                  {deleting ? "Deleting..." : "Delete"}
+                </Button>
+              </div>
+            )}
+          </>
         )}
       </DialogContent>
     </Dialog>
@@ -452,6 +539,12 @@ export function InsuranceTimeline({
         policy={selectedPolicy}
         open={!!selectedPolicy}
         onClose={() => setSelectedPolicy(null)}
+        readOnly={readOnly}
+        subdivisionId={subdivisionId}
+        onUpdated={async () => {
+          const updated = await getInsurancePolicies(subdivisionId);
+          setPolicies(updated);
+        }}
       />
     </div>
   );

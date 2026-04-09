@@ -84,3 +84,81 @@ export async function createInsurancePolicy(
   revalidatePath(`/subdivisions/${subdivisionId}/finance`);
   return { success: true };
 }
+
+export async function updateInsurancePolicy(
+  subdivisionId: string,
+  policyId: string,
+  data: {
+    policy_type?: string;
+    provider?: string;
+    policy_number?: string;
+    sum_insured?: number;
+    premium?: number;
+    start_date?: string;
+    end_date?: string;
+    document_url?: string;
+  }
+) {
+  const profile = await requireCompanyRole();
+  await requireSubdivisionAccess(subdivisionId);
+  const supabase = createServerClient();
+
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const updateData: Record<string, any> = {};
+  if (data.policy_type !== undefined) updateData.policy_type = data.policy_type;
+  if (data.provider !== undefined) updateData.provider = data.provider;
+  if (data.policy_number !== undefined) updateData.policy_number = data.policy_number || null;
+  if (data.sum_insured !== undefined) updateData.sum_insured = data.sum_insured || null;
+  if (data.premium !== undefined) updateData.premium = data.premium || null;
+  if (data.start_date !== undefined) updateData.start_date = data.start_date;
+  if (data.end_date !== undefined) {
+    updateData.end_date = data.end_date;
+    updateData.status = new Date(data.end_date) < new Date() ? "expired" : "active";
+  }
+  if (data.document_url !== undefined) updateData.document_url = data.document_url || null;
+
+  const { error } = await supabase
+    .from("insurance_policies")
+    .update(updateData)
+    .eq("id", policyId)
+    .eq("subdivision_id", subdivisionId);
+
+  if (error) return { error: error.message };
+
+  await supabase.from("audit_log").insert({
+    profile_id: profile.id,
+    subdivision_id: subdivisionId,
+    action: "update",
+    entity_type: "insurance_policy",
+    entity_id: policyId,
+    after_state: data,
+  });
+
+  revalidatePath(`/subdivisions/${subdivisionId}/finance`);
+  return { success: true };
+}
+
+export async function deleteInsurancePolicy(subdivisionId: string, policyId: string) {
+  const profile = await requireCompanyRole();
+  await requireSubdivisionAccess(subdivisionId);
+  const supabase = createServerClient();
+
+  const { error } = await supabase
+    .from("insurance_policies")
+    .delete()
+    .eq("id", policyId)
+    .eq("subdivision_id", subdivisionId);
+
+  if (error) return { error: error.message };
+
+  await supabase.from("audit_log").insert({
+    profile_id: profile.id,
+    subdivision_id: subdivisionId,
+    action: "delete",
+    entity_type: "insurance_policy",
+    entity_id: policyId,
+  });
+
+  revalidatePath(`/subdivisions/${subdivisionId}/finance`);
+  return { success: true };
+}

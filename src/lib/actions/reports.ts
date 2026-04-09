@@ -201,8 +201,7 @@ export async function getOCCertificateData(subdivisionId: string, lotId: string,
   // Insurance summary
   const insuranceSummary = (insurance ?? []).length > 0
     ? (insurance ?? []).map((p) => {
-        const typeName = p.policy_type.charAt(0).toUpperCase() + p.policy_type.slice(1).replace(/_/g, " ");
-        return `${typeName}: ${p.provider}`;
+        return `${p.provider}${p.policy_number ? ` (Policy #: ${p.policy_number})` : ""}`;
       }).join(", ")
     : "n/a";
 
