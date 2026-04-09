@@ -742,6 +742,39 @@ export async function cancelBatch(subdivisionId: string, batchId: string) {
   return { success: true };
 }
 
+// ─── Mark batch as paid ────────────────────────────────────
+
+export async function markBatchPaid(subdivisionId: string, batchId: string) {
+  const profile = await requireCompanyRole();
+  await requireSubdivisionAccess(subdivisionId);
+  const supabase = createServerClient();
+
+  // Update all levies in batch to paid
+  const now = new Date().toISOString();
+  const { data: levies } = await supabase
+    .from("levy_notices")
+    .select("id, amount")
+    .eq("batch_id", batchId);
+
+  for (const levy of levies ?? []) {
+    await supabase
+      .from("levy_notices")
+      .update({ status: "paid", amount_paid: levy.amount, paid_at: now })
+      .eq("id", levy.id);
+  }
+
+  await supabase.from("audit_log").insert({
+    profile_id: profile.id,
+    subdivision_id: subdivisionId,
+    action: "mark_paid",
+    entity_type: "levy_batch",
+    entity_id: batchId,
+  });
+
+  revalidatePath(`/subdivisions/${subdivisionId}/finance`);
+  return { success: true };
+}
+
 // ─── Send batch emails ─────────────────────────────────────
 
 export async function sendBatchEmails(subdivisionId: string, batchId: string) {

@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import { useRouter } from "next/navigation";
-import { ArrowLeft, CheckCircle2, ChevronDown, Download, Mail, Trash2, FolderDown } from "lucide-react";
+import { ArrowLeft, CheckCircle2, ChevronDown, Download, Mail, Trash2, FolderDown, DollarSign } from "lucide-react";
 import { formatDateLong } from "@/lib/utils";
 import { toast } from "sonner";
 import { Card, CardContent } from "@/components/ui/card";
@@ -14,6 +14,7 @@ import {
   sendBatchEmails,
   cancelBatch,
   resendBatchEmails,
+  markBatchPaid,
   type LevyBatchDetail,
 } from "@/lib/actions/levy";
 
@@ -96,6 +97,21 @@ export function BatchDetailContent({
 
   const [cancelling, setCancelling] = useState(false);
   const [resending, setResending] = useState(false);
+  const [markingPaid, setMarkingPaid] = useState(false);
+
+  async function handleMarkPaid() {
+    if (!confirm("Mark all levies in this batch as paid? This is for testing purposes.")) return;
+    setMarkingPaid(true);
+    const result = await markBatchPaid(subdivisionId, batch.id);
+    setMarkingPaid(false);
+    if (result.success) {
+      toast.success("All levies marked as paid");
+      setBatch((prev) => ({
+        ...prev,
+        levies: prev.levies.map((l) => ({ ...l, status: "paid" })),
+      }));
+    }
+  }
 
   async function handleResendAll() {
     setResending(true);
@@ -192,6 +208,12 @@ export function BatchDetailContent({
             <FolderDown className="mr-2 h-3.5 w-3.5" />
             Download all
           </Button>
+          {batch.levies.some((l) => l.status !== "paid") && (
+            <Button onClick={handleMarkPaid} disabled={markingPaid} size="sm" variant="outline" className="cursor-pointer">
+              <DollarSign className="mr-2 h-3.5 w-3.5" />
+              {markingPaid ? "Marking..." : "Mark all as paid"}
+            </Button>
+          )}
           {batch.status !== "sent" && (
             <Button onClick={handleCancel} disabled={cancelling} size="sm" variant="ghost" className="cursor-pointer text-destructive hover:text-destructive">
               <Trash2 className="mr-2 h-3.5 w-3.5" />

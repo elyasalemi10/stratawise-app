@@ -206,17 +206,17 @@ export function OCCertificate(props: OCCertificateProps) {
               <View>
                 <Text style={s.itemText}>The special fees or levies which have been struck, and the dates on which they were struck and are payable are:</Text>
                 <View style={[s.tableHeader, { marginTop: 4 }]}>
-                  <Text style={[s.th, { width: "25%" }]}>Fund</Text>
-                  <Text style={[s.th, { width: "20%", textAlign: "right" as const }]}>Amount</Text>
-                  <Text style={[s.th, { width: "30%" }]}>Period</Text>
-                  <Text style={[s.th, { width: "25%" }]}>Due date</Text>
+                  <Text style={[s.th, { width: "22%" }]}>Fund</Text>
+                  <Text style={[s.th, { width: "16%", textAlign: "right" as const }]}>Amount</Text>
+                  <Text style={[s.th, { width: "38%", paddingLeft: 10 }]}>Period</Text>
+                  <Text style={[s.th, { width: "24%" }]}>Due date</Text>
                 </View>
                 {levies.map((l, i) => (
                   <View key={i} style={s.trow}>
-                    <Text style={[s.td, { width: "25%" }]}>{l.fund}</Text>
-                    <Text style={[s.tdRight, { width: "20%" }]}>{fmt(l.amount)}</Text>
-                    <Text style={[s.td, { width: "30%" }]}>{fmtDate(l.period_start)} to {fmtDate(l.period_end)}</Text>
-                    <Text style={[s.td, { width: "25%" }]}>{fmtDate(l.due_date)}</Text>
+                    <Text style={[s.td, { width: "22%" }]}>{l.fund}</Text>
+                    <Text style={[s.tdRight, { width: "16%" }]}>{fmt(l.amount)}</Text>
+                    <Text style={[s.td, { width: "38%", paddingLeft: 10 }]}>{fmtDate(l.period_start)} to {fmtDate(l.period_end)}</Text>
+                    <Text style={[s.td, { width: "24%" }]}>{fmtDate(l.due_date)}</Text>
                   </View>
                 ))}
               </View>

@@ -200,7 +200,10 @@ export async function getOCCertificateData(subdivisionId: string, lotId: string,
 
   // Insurance summary
   const insuranceSummary = (insurance ?? []).length > 0
-    ? (insurance ?? []).map((p) => `${p.policy_type}: ${p.provider}`).join(", ")
+    ? (insurance ?? []).map((p) => {
+        const typeName = p.policy_type.charAt(0).toUpperCase() + p.policy_type.slice(1).replace(/_/g, " ");
+        return `${typeName}: ${p.provider}`;
+      }).join(", ")
     : "n/a";
 
   // Current fees
