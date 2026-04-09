@@ -15,8 +15,10 @@ import { Label } from "@/components/ui/label";
 import {
   generateLevyPreview,
   createLevyBatch,
+  getAvailablePeriods,
   type LevyPreviewData,
   type LevyPreviewLot,
+  type AvailablePeriod,
 } from "@/lib/actions/levy";
 import type { BudgetWithItems } from "@/lib/actions/budget";
 
@@ -165,25 +167,44 @@ export function GenerateLeviesForm({
 }) {
   const router = useRouter();
   const [selectedBudgetId, setSelectedBudgetId] = useState<string>("");
+  const [availablePeriods, setAvailablePeriods] = useState<AvailablePeriod[]>([]);
+  const [selectedPeriodIndex, setSelectedPeriodIndex] = useState<string>("");
   const [preview, setPreview] = useState<LevyPreviewData | null>(null);
   const [lots, setLots] = useState<AdjustedLot[]>([]);
   const [dueDate, setDueDate] = useState<Date | undefined>(undefined);
+  const [loadingPeriods, setLoadingPeriods] = useState(false);
   const [loading, setLoading] = useState(false);
   const [generating, setGenerating] = useState(false);
   const [openLotId, setOpenLotId] = useState<string | null>(null);
 
   const selectedBudget = budgets.find((b) => b.id === selectedBudgetId);
+  const ungenPeriods = availablePeriods.filter((p) => !p.already_generated);
 
   async function handleBudgetSelect(budgetId: string) {
     setSelectedBudgetId(budgetId);
+    setSelectedPeriodIndex("");
+    setAvailablePeriods([]);
     setPreview(null);
     setLots([]);
     setOpenLotId(null);
 
     if (!budgetId) return;
 
+    setLoadingPeriods(true);
+    const periods = await getAvailablePeriods(subdivisionId, budgetId);
+    setAvailablePeriods(periods);
+    setLoadingPeriods(false);
+  }
+
+  async function handlePeriodSelect(periodIdx: string) {
+    setSelectedPeriodIndex(periodIdx);
+    setPreview(null);
+    setLots([]);
+
+    if (!periodIdx || !selectedBudgetId) return;
+
     setLoading(true);
-    const result = await generateLevyPreview(subdivisionId, budgetId);
+    const result = await generateLevyPreview(subdivisionId, selectedBudgetId, parseInt(periodIdx));
     setLoading(false);
 
     if (result.error) {
@@ -319,13 +340,35 @@ export function GenerateLeviesForm({
             )}
           </div>
 
-          {/* Period info (auto-selected, read-only) */}
+          {/* Period selector */}
+          {selectedBudgetId && availablePeriods.length > 0 && (
+            <div className="space-y-1.5">
+              <Label>Period</Label>
+              {ungenPeriods.length === 0 ? (
+                <p className="text-sm text-muted-foreground">All periods have been generated for this budget.</p>
+              ) : (
+                <select
+                  value={selectedPeriodIndex}
+                  onChange={(e) => handlePeriodSelect(e.target.value)}
+                  className="h-9 w-full rounded-md border border-border bg-background px-3 text-sm outline-none focus:border-primary focus:ring-2 focus:ring-primary/20"
+                >
+                  <option value="">Select a period...</option>
+                  {ungenPeriods.map((p) => (
+                    <option key={p.periodIndex} value={String(p.periodIndex)}>
+                      {p.label} ({formatDateLong(p.start)} — {formatDateLong(p.end)})
+                    </option>
+                  ))}
+                </select>
+              )}
+            </div>
+          )}
+          {loadingPeriods && (
+            <p className="text-sm text-muted-foreground">Loading periods...</p>
+          )}
+
+          {/* Period details */}
           {preview && (
-            <div className="grid grid-cols-3 gap-4 pt-2 border-t border-border">
-              <div>
-                <Label className="text-xs text-muted-foreground">Period</Label>
-                <p className="text-sm font-medium text-foreground mt-0.5">{preview.period_label}</p>
-              </div>
+            <div className="grid grid-cols-2 gap-4 pt-2 border-t border-border">
               <div>
                 <Label className="text-xs text-muted-foreground">Date range</Label>
                 <p className="text-sm text-foreground mt-0.5">{formatDateLong(preview.period_start)} — {formatDateLong(preview.period_end)}</p>

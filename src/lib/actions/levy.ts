@@ -167,11 +167,62 @@ export async function getNextPeriod(subdivisionId: string, budgetId: string) {
   return null; // All periods generated
 }
 
+// ─── Get available periods for a budget ────────────────────
+
+export interface AvailablePeriod {
+  periodIndex: number;
+  label: string;
+  start: string;
+  end: string;
+  due_date: string;
+  already_generated: boolean;
+}
+
+export async function getAvailablePeriods(subdivisionId: string, budgetId: string): Promise<AvailablePeriod[]> {
+  await requireSubdivisionAccess(subdivisionId);
+  const supabase = createServerClient();
+
+  const [{ data: budget }, { data: subdivision }] = await Promise.all([
+    supabase.from("budgets").select("*").eq("id", budgetId).single(),
+    supabase.from("subdivisions").select("financial_year_start_month, billing_cycle").eq("id", subdivisionId).single(),
+  ]);
+
+  if (!budget || !subdivision) return [];
+
+  const periodsPerYear = getPeriodsForCycle(subdivision.billing_cycle);
+  const fyParts = budget.financial_year.split("-");
+  const fyStartYear = parseInt(fyParts[0]);
+  const fyStartMonth = subdivision.financial_year_start_month ?? 7;
+
+  const { data: existingBatches } = await supabase
+    .from("levy_batches")
+    .select("period_start")
+    .eq("budget_id", budgetId);
+
+  const existingPeriodStarts = new Set((existingBatches ?? []).map((b) => b.period_start));
+
+  const periods: AvailablePeriod[] = [];
+  for (let i = 0; i < periodsPerYear; i++) {
+    const period = getPeriodDates(fyStartMonth, fyStartYear, i, periodsPerYear);
+    periods.push({
+      periodIndex: i,
+      label: `${period.label} ${budget.financial_year}`,
+      start: period.start,
+      end: period.end,
+      due_date: calculateDueDate(period.start),
+      already_generated: existingPeriodStarts.has(period.start),
+    });
+  }
+
+  return periods;
+}
+
 // ─── Generate levy preview ─────────────────────────────────
 
 export async function generateLevyPreview(
   subdivisionId: string,
   budgetId: string,
+  periodIndex?: number,
 ): Promise<{ data?: LevyPreviewData; error?: string }> {
   await requireSubdivisionAccess(subdivisionId);
   const supabase = createServerClient();
@@ -201,9 +252,26 @@ export async function generateLevyPreview(
 
   if (!subdivision) return { error: "Subdivision not found" };
 
-  // Get next period
-  const nextPeriod = await getNextPeriod(subdivisionId, budgetId);
-  if (!nextPeriod) return { error: "All periods for this financial year have been generated" };
+  // Get period — either specific index or auto-detect next
+  let nextPeriod;
+  if (periodIndex !== undefined) {
+    const periodsPerYear = getPeriodsForCycle(subdivision.billing_cycle);
+    const fyParts = budget.financial_year.split("-");
+    const fyStartYear = parseInt(fyParts[0]);
+    const fyStartMonth = subdivision.financial_year_start_month ?? 7;
+    const period = getPeriodDates(fyStartMonth, fyStartYear, periodIndex, periodsPerYear);
+    nextPeriod = {
+      periodIndex,
+      ...period,
+      label: `${period.label} ${budget.financial_year}`,
+      due_date: calculateDueDate(period.start),
+      billing_cycle: subdivision.billing_cycle,
+      periods_per_year: periodsPerYear,
+    };
+  } else {
+    nextPeriod = await getNextPeriod(subdivisionId, budgetId);
+    if (!nextPeriod) return { error: "All periods for this financial year have been generated" };
+  }
 
   // Get lots
   const { data: lots } = await supabase
