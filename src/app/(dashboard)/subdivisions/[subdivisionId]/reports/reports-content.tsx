@@ -66,6 +66,15 @@ export function ReportsContent({
   const [certLotId, setCertLotId] = useState("");
   const [certApplicant, setCertApplicant] = useState("");
   const [certEmail, setCertEmail] = useState("");
+  const [certAppDate, setCertAppDate] = useState(new Date().toISOString().split("T")[0]);
+  // Editable certificate text fields
+  const [certRepairs, setCertRepairs] = useState("n/a");
+  const [certFunds, setCertFunds] = useState("n/a");
+  const [certLiabilities, setCertLiabilities] = useState("n/a");
+  const [certContracts, setCertContracts] = useState("n/a");
+  const [certServices, setCertServices] = useState("n/a");
+  const [certNotices, setCertNotices] = useState("n/a");
+  const [certLegal, setCertLegal] = useState("n/a");
   const [generating, setGenerating] = useState(false);
   const [pdfUrl, setPdfUrl] = useState<string | null>(null);
 
@@ -137,6 +146,15 @@ export function ReportsContent({
           }
           const certData = await getOCCertificateData(subdivisionId, certLotId, certApplicant, certEmail);
           if (!certData) { toast.error("Failed to load certificate data"); setGenerating(false); return; }
+          // Override with form values
+          certData.applicationDate = certAppDate;
+          certData.repairsInfo = certRepairs;
+          certData.totalFundsHeld = certFunds;
+          certData.liabilities = certLiabilities;
+          certData.currentContracts = certContracts;
+          certData.serviceAgreements = certServices;
+          certData.noticesOrders = certNotices;
+          certData.legalProceedings = certLegal;
           // Proxy logo and signature for client-side PDF
           const certLogo = certData.logoUrl ? await getLogoDataUrl() : null;
           let certSig: string | null = null;
@@ -249,7 +267,45 @@ export function ReportsContent({
                   <Label>Delivery email</Label>
                   <Input value={certEmail} onChange={(e) => setCertEmail(e.target.value)} placeholder="email@example.com" className="h-9" />
                 </div>
+                <div className="space-y-1.5 min-w-[150px]">
+                  <Label>Application received</Label>
+                  <Input type="date" value={certAppDate} onChange={(e) => setCertAppDate(e.target.value)} className="h-9" />
+                </div>
               </>
+            )}
+
+            {/* OC Certificate detail fields */}
+            {reportType === "oc_certificate" && certLotId && (
+              <div className="w-full border-t border-border pt-4 mt-2 grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <div className="space-y-1.5">
+                  <Label className="text-xs">5. Repairs / maintenance</Label>
+                  <Input value={certRepairs} onChange={(e) => setCertRepairs(e.target.value)} className="h-8 text-sm" />
+                </div>
+                <div className="space-y-1.5">
+                  <Label className="text-xs">8. Total funds held</Label>
+                  <Input value={certFunds} onChange={(e) => setCertFunds(e.target.value)} placeholder="e.g. Admin: $12,450, Capital: $8,200" className="h-8 text-sm" />
+                </div>
+                <div className="space-y-1.5">
+                  <Label className="text-xs">9. Liabilities</Label>
+                  <Input value={certLiabilities} onChange={(e) => setCertLiabilities(e.target.value)} placeholder="e.g. Nil" className="h-8 text-sm" />
+                </div>
+                <div className="space-y-1.5">
+                  <Label className="text-xs">10. Contracts / leases</Label>
+                  <Input value={certContracts} onChange={(e) => setCertContracts(e.target.value)} placeholder="e.g. Cleaning contract..." className="h-8 text-sm" />
+                </div>
+                <div className="space-y-1.5">
+                  <Label className="text-xs">11. Service agreements</Label>
+                  <Input value={certServices} onChange={(e) => setCertServices(e.target.value)} className="h-8 text-sm" />
+                </div>
+                <div className="space-y-1.5">
+                  <Label className="text-xs">12. Notices / orders (12 months)</Label>
+                  <Input value={certNotices} onChange={(e) => setCertNotices(e.target.value)} className="h-8 text-sm" />
+                </div>
+                <div className="space-y-1.5 sm:col-span-2">
+                  <Label className="text-xs">13. Legal proceedings</Label>
+                  <Input value={certLegal} onChange={(e) => setCertLegal(e.target.value)} className="h-8 text-sm" />
+                </div>
+              </div>
             )}
 
             <Button

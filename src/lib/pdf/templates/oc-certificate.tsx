@@ -201,10 +201,10 @@ export function OCCertificate(props: OCCertificateProps) {
           </View>
 
           <View style={s.item}>
-            <Text style={s.itemNumber}>4. Special levies</Text>
+            <Text style={s.itemNumber}>4. Fees and levies struck</Text>
             {levies.length > 0 ? (
               <View>
-                <Text style={s.itemText}>The special fees or levies which have been struck, and the dates on which they were struck and are payable are:</Text>
+                <Text style={s.itemText}>The fees or levies which have been struck, and the dates on which they were struck and are payable are:</Text>
                 <View style={[s.tableHeader, { marginTop: 4 }]}>
                   <Text style={[s.th, { width: "22%" }]}>Fund</Text>
                   <Text style={[s.th, { width: "16%", textAlign: "right" as const }]}>Amount</Text>
