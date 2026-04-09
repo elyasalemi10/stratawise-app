@@ -71,6 +71,10 @@ function PolicyDetailDialog({
   const [editSumInsured, setEditSumInsured] = useState("");
   const [editPremium, setEditPremium] = useState("");
   const [saving, setSaving] = useState(false);
+  const [editStartDate, setEditStartDate] = useState<Date | undefined>(undefined);
+  const [editEndDate, setEditEndDate] = useState<Date | undefined>(undefined);
+  const [editStartOpen, setEditStartOpen] = useState(false);
+  const [editEndOpen, setEditEndOpen] = useState(false);
   const [uploadingDoc, setUploadingDoc] = useState(false);
   const [uploadDocName, setUploadDocName] = useState("");
 
@@ -128,16 +132,24 @@ function PolicyDetailDialog({
     setEditPolicyNum(policy!.policy_number ?? "");
     setEditSumInsured(policy!.sum_insured ? String(policy!.sum_insured) : "");
     setEditPremium(policy!.premium ? String(policy!.premium) : "");
+    setEditStartDate(new Date(policy!.start_date + "T00:00:00"));
+    setEditEndDate(new Date(policy!.end_date + "T00:00:00"));
     setEditing(true);
   }
 
   async function handleSave() {
+    if (editStartDate && editEndDate && editEndDate <= editStartDate) {
+      toast.error("End date must be after start date");
+      return;
+    }
     setSaving(true);
     const result = await updateInsurancePolicy(subdivisionId, policy!.id, {
       provider: editProvider,
       policy_number: editPolicyNum,
       sum_insured: editSumInsured ? Number(editSumInsured) : undefined,
       premium: editPremium ? Number(editPremium) : undefined,
+      ...(editStartDate ? { start_date: format(editStartDate, "yyyy-MM-dd") } : {}),
+      ...(editEndDate ? { end_date: format(editEndDate, "yyyy-MM-dd") } : {}),
     });
     setSaving(false);
     if (result.error) { toast.error(result.error); }
@@ -169,6 +181,32 @@ function PolicyDetailDialog({
             <div className="space-y-1.5">
               <Label className="text-xs">Policy number</Label>
               <Input value={editPolicyNum} onChange={(e) => setEditPolicyNum(e.target.value)} className="h-8 text-sm" />
+            </div>
+            <div className="grid grid-cols-2 gap-3">
+              <div className="space-y-1.5">
+                <Label className="text-xs">Start date</Label>
+                <Popover open={editStartOpen} onOpenChange={setEditStartOpen}>
+                  <PopoverTrigger className="flex h-8 w-full items-center gap-2 rounded-md border border-border bg-background px-3 text-sm cursor-pointer">
+                    <CalendarIcon className="h-3 w-3 text-muted-foreground" />
+                    {editStartDate ? format(editStartDate, "d MMM yyyy") : "Select"}
+                  </PopoverTrigger>
+                  <PopoverContent className="w-auto p-2" align="start" side="bottom">
+                    <Calendar mode="single" selected={editStartDate} onSelect={(d) => { setEditStartDate(d); if (d && editEndDate && editEndDate <= d) setEditEndDate(undefined); setEditStartOpen(false); }} />
+                  </PopoverContent>
+                </Popover>
+              </div>
+              <div className="space-y-1.5">
+                <Label className="text-xs">End date</Label>
+                <Popover open={editEndOpen} onOpenChange={setEditEndOpen}>
+                  <PopoverTrigger className="flex h-8 w-full items-center gap-2 rounded-md border border-border bg-background px-3 text-sm cursor-pointer">
+                    <CalendarIcon className="h-3 w-3 text-muted-foreground" />
+                    {editEndDate ? format(editEndDate, "d MMM yyyy") : "Select"}
+                  </PopoverTrigger>
+                  <PopoverContent className="w-auto p-2" align="start" side="bottom">
+                    <Calendar mode="single" selected={editEndDate} onSelect={(d) => { setEditEndDate(d); setEditEndOpen(false); }} disabled={editStartDate ? { before: new Date(editStartDate.getTime() + 86400000) } : undefined} />
+                  </PopoverContent>
+                </Popover>
+              </div>
             </div>
             <div className="grid grid-cols-2 gap-3">
               <div className="space-y-1.5">
