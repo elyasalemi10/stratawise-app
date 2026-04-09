@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import { useRouter } from "next/navigation";
-import { ArrowLeft, CheckCircle2, ChevronDown, Download, Mail, Trash2, FolderDown, DollarSign } from "lucide-react";
+import { ArrowLeft, CheckCircle2, ChevronDown, Download, Mail, Trash2, FolderDown, DollarSign, Undo2 } from "lucide-react";
 import { formatDateLong } from "@/lib/utils";
 import { toast } from "sonner";
 import { Card, CardContent } from "@/components/ui/card";
@@ -13,6 +13,7 @@ import {
   markLevySent,
   sendBatchEmails,
   cancelBatch,
+  recallBatch,
   resendBatchEmails,
   markBatchPaid,
   type LevyBatchDetail,
@@ -97,7 +98,25 @@ export function BatchDetailContent({
 
   const [cancelling, setCancelling] = useState(false);
   const [resending, setResending] = useState(false);
+  const [recalling, setRecalling] = useState(false);
   const [markingPaid, setMarkingPaid] = useState(false);
+
+  async function handleRecall() {
+    if (!confirm("Recall this levy batch? All levies will revert to draft and be hidden from lot owners. Emails already sent cannot be unsent.")) return;
+    setRecalling(true);
+    const result = await recallBatch(subdivisionId, batch.id);
+    setRecalling(false);
+    if (result.error) {
+      toast.error(result.error);
+    } else {
+      toast.success("Batch recalled — levies reverted to draft");
+      setBatch((prev) => ({
+        ...prev,
+        status: "draft",
+        levies: prev.levies.map((l) => ({ ...l, status: "draft" })),
+      }));
+    }
+  }
 
   async function handleMarkPaid() {
     if (!confirm("Mark all levies in this batch as paid? This is for testing purposes.")) return;
@@ -214,7 +233,13 @@ export function BatchDetailContent({
               {markingPaid ? "Marking..." : "Mark all as paid"}
             </Button>
           )}
-          {batch.status !== "sent" && (
+          {(batch.status === "sent" || batch.status === "partially_sent") && !batch.levies.some((l) => l.status === "paid") && (
+            <Button onClick={handleRecall} disabled={recalling} size="sm" variant="outline" className="cursor-pointer">
+              <Undo2 className="mr-2 h-3.5 w-3.5" />
+              {recalling ? "Recalling..." : "Recall batch"}
+            </Button>
+          )}
+          {batch.status === "draft" && (
             <Button onClick={handleCancel} disabled={cancelling} size="sm" variant="ghost" className="cursor-pointer text-destructive hover:text-destructive">
               <Trash2 className="mr-2 h-3.5 w-3.5" />
               {cancelling ? "Cancelling..." : "Cancel batch"}

@@ -742,6 +742,48 @@ export async function cancelBatch(subdivisionId: string, batchId: string) {
   return { success: true };
 }
 
+// ─── Recall batch (unsend — revert to draft) ──────────────
+
+export async function recallBatch(subdivisionId: string, batchId: string) {
+  const profile = await requireCompanyRole();
+  await requireSubdivisionAccess(subdivisionId);
+  const supabase = createServerClient();
+
+  // Can't recall if any levy is already paid
+  const { data: paidLevies } = await supabase
+    .from("levy_notices")
+    .select("id")
+    .eq("batch_id", batchId)
+    .eq("status", "paid");
+
+  if (paidLevies && paidLevies.length > 0) {
+    return { error: "Cannot recall — some levies have already been paid" };
+  }
+
+  // Revert all levies to draft
+  await supabase
+    .from("levy_notices")
+    .update({ status: "draft", issued_at: null })
+    .eq("batch_id", batchId);
+
+  // Revert batch status
+  await supabase
+    .from("levy_batches")
+    .update({ status: "draft", sent_at: null })
+    .eq("id", batchId);
+
+  await supabase.from("audit_log").insert({
+    profile_id: profile.id,
+    subdivision_id: subdivisionId,
+    action: "recall",
+    entity_type: "levy_batch",
+    entity_id: batchId,
+  });
+
+  revalidatePath(`/subdivisions/${subdivisionId}/finance`);
+  return { success: true };
+}
+
 // ─── Mark batch as paid ────────────────────────────────────
 
 export async function markBatchPaid(subdivisionId: string, batchId: string) {
