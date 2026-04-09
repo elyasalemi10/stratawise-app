@@ -13,6 +13,7 @@ import {
   markLevySent,
   sendBatchEmails,
   cancelBatch,
+  resendBatchEmails,
   type LevyBatchDetail,
 } from "@/lib/actions/levy";
 
@@ -94,6 +95,18 @@ export function BatchDetailContent({
   }
 
   const [cancelling, setCancelling] = useState(false);
+  const [resending, setResending] = useState(false);
+
+  async function handleResendAll() {
+    setResending(true);
+    const result = await resendBatchEmails(subdivisionId, batch.id);
+    setResending(false);
+    if (result.error) {
+      toast.error(result.error);
+    } else {
+      toast.success(`${result.sentCount} levy emails resent`);
+    }
+  }
 
   async function handleCancel() {
     if (!confirm("Cancel this levy batch? All levy notices in this batch will be deleted. This cannot be undone.")) return;
@@ -168,6 +181,12 @@ export function BatchDetailContent({
                 {sendingAll ? "Marking..." : "Mark all as sent"}
               </Button>
             </>
+          )}
+          {draftCount === 0 && batch.levies.length > 0 && (
+            <Button onClick={handleResendAll} disabled={resending} size="sm" variant="outline" className="cursor-pointer">
+              <Mail className="mr-2 h-3.5 w-3.5" />
+              {resending ? "Resending..." : "Resend all by email"}
+            </Button>
           )}
           <Button onClick={handleDownloadAll} size="sm" variant="outline" className="cursor-pointer">
             <FolderDown className="mr-2 h-3.5 w-3.5" />

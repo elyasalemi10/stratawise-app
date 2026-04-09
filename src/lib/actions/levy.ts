@@ -840,3 +840,125 @@ export async function sendBatchEmails(subdivisionId: string, batchId: string) {
 
   return { success: true, sentCount };
 }
+
+// ─── Resend batch emails (for already-sent batches) ────────
+
+export async function resendBatchEmails(subdivisionId: string, batchId: string) {
+  const profile = await requireCompanyRole();
+  await requireSubdivisionAccess(subdivisionId);
+  const supabase = createServerClient();
+
+  const { data: batch } = await supabase
+    .from("levy_batches")
+    .select("period_label")
+    .eq("id", batchId)
+    .single();
+
+  const { data: subdivision } = await supabase
+    .from("subdivisions")
+    .select("name, bank_bsb, bank_account_number, bank_account_name, plan_number, address, abn, management_company_id")
+    .eq("id", subdivisionId)
+    .single();
+
+  let managementCompany = { name: "", logo_url: null as string | null };
+  if (subdivision?.management_company_id) {
+    const { data: mc } = await supabase
+      .from("management_companies")
+      .select("name, logo_url")
+      .eq("id", subdivision.management_company_id)
+      .single();
+    if (mc) managementCompany = mc;
+  }
+
+  // Get ALL levies (not just drafts)
+  const { data: levies } = await supabase
+    .from("levy_notices")
+    .select("id, reference_number, amount, due_date, period_start, period_end, pdf_url, lots!inner(lot_number, unit_number, owner_name, owner_email)")
+    .eq("batch_id", batchId);
+
+  if (!levies || levies.length === 0) return { error: "No levies to resend" };
+
+  const hasEft = subdivision?.bank_bsb && subdivision?.bank_account_number;
+  let sentCount = 0;
+
+  for (const levy of levies) {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const lot = (levy as any).lots;
+    const email = lot?.owner_email;
+    if (!email) continue;
+
+    try {
+      const pdfProps: LevyNoticeProps = {
+        managementCompany,
+        subdivision: {
+          name: subdivision?.name ?? "",
+          address: subdivision?.address ?? "",
+          abn: subdivision?.abn ?? null,
+          plan_number: subdivision?.plan_number ?? "",
+        },
+        documentTitle: "Levy Notice",
+        referenceNumber: levy.reference_number,
+        date: new Date(),
+        lotOwner: {
+          name: lot?.owner_name ?? "Lot Owner",
+          lot_number: `${lot?.lot_number ?? ""}${lot?.unit_number ? ` Unit ${lot.unit_number}` : ""}`,
+          address: subdivision?.address ?? "",
+        },
+        levyPeriod: { start: formatDateLong(levy.period_start), end: formatDateLong(levy.period_end) },
+        lineItems: [],
+        totalDue: Number(levy.amount),
+        dueDate: formatDateLong(levy.due_date),
+        paymentInstructions: {
+          bpay: null,
+          eft: hasEft ? {
+            bsb: subdivision!.bank_bsb!,
+            account_number: subdivision!.bank_account_number!,
+            account_name: subdivision!.bank_account_name ?? subdivision!.name ?? "",
+            reference: levy.reference_number,
+          } : { bsb: "", account_number: "", account_name: "", reference: levy.reference_number },
+        },
+      };
+
+      const { data: items } = await supabase
+        .from("levy_notice_items")
+        .select("description, amount")
+        .eq("levy_notice_id", levy.id)
+        .order("sort_order");
+
+      pdfProps.lineItems = (items ?? []).map((i) => ({ description: i.description, amount: Number(i.amount) }));
+
+      const pdfBuffer = await generateLevyPDFBuffer(pdfProps);
+
+      const formatCurrency = (n: number) =>
+        new Intl.NumberFormat("en-AU", { style: "currency", currency: "AUD" }).format(n);
+
+      await sendLevyEmail({
+        to: email,
+        ownerName: lot?.owner_name ?? null,
+        subdivisionName: subdivision?.name ?? "",
+        referenceNumber: levy.reference_number,
+        dueDate: formatDateLong(levy.due_date),
+        totalAmount: formatCurrency(Number(levy.amount)),
+        periodLabel: batch?.period_label ?? "",
+        pdfBuffer,
+        pdfFilename: `${levy.reference_number}.pdf`,
+      });
+
+      sentCount++;
+    } catch (err) {
+      console.error("Failed to resend levy email for", levy.reference_number, err);
+    }
+  }
+
+  await supabase.from("audit_log").insert({
+    profile_id: profile.id,
+    subdivision_id: subdivisionId,
+    action: "resend_emails",
+    entity_type: "levy_batch",
+    entity_id: batchId,
+    after_state: { sent_count: sentCount },
+  });
+
+  revalidatePath(`/subdivisions/${subdivisionId}/finance`);
+  return { success: true, sentCount };
+}
