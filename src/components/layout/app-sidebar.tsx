@@ -21,6 +21,7 @@ import {
   Check,
   Shield,
   ClipboardList,
+  Landmark,
 } from "lucide-react";
 
 import {
@@ -137,6 +138,7 @@ function getSubdivisionNavGroups(subdivisionId: string, isLotOwner: boolean) {
         { href: `${base}/finance/levies`, label: "Levies", icon: Receipt },
         { href: `${base}/finance/generate`, label: "Generate levies", icon: Plus },
         { href: `${base}/finance/insurance`, label: "Insurance", icon: Shield },
+        { href: `${base}/finance/bank-account`, label: "Bank account", icon: Landmark },
       ],
     },
     {

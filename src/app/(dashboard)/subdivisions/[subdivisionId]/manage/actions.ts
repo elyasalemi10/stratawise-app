@@ -19,6 +19,7 @@ export async function updateSubdivisionField(
     "street_number", "street_name", "suburb", "state",
     "levy_year_start_month", "levies_per_year",
     "common_seal_text", "inspection_address", "manager_appointed", "administrator_appointed",
+    "bank_bsb", "bank_account_number", "bank_account_name",
   ];
 
   if (!allowedFields.includes(field)) {
