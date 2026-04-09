@@ -291,7 +291,7 @@ export function BatchDetailContent({
                 {regenDate ? format(regenDate, "d MMMM yyyy") : "Select date"}
               </PopoverTrigger>
               <PopoverContent className="w-auto p-2" align="start">
-                <Calendar mode="single" selected={regenDate} onSelect={(d) => { setRegenDate(d); setRegenDateOpen(false); }} disabled={{ before: new Date() }} />
+                <Calendar mode="single" selected={regenDate} onSelect={(d) => { setRegenDate(d); setRegenDateOpen(false); }} />
               </PopoverContent>
             </Popover>
           </div>

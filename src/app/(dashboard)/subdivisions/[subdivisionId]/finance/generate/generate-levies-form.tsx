@@ -387,7 +387,6 @@ export function GenerateLeviesForm({
                       mode="single"
                       selected={dueDate}
                       onSelect={setDueDate}
-                      disabled={{ before: new Date() }}
                     />
                   </PopoverContent>
                 </Popover>
