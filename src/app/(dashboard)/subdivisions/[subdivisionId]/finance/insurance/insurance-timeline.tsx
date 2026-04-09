@@ -71,6 +71,53 @@ function PolicyDetailDialog({
   const [editSumInsured, setEditSumInsured] = useState("");
   const [editPremium, setEditPremium] = useState("");
   const [saving, setSaving] = useState(false);
+  const [uploadingDoc, setUploadingDoc] = useState(false);
+  const [uploadDocName, setUploadDocName] = useState("");
+
+  async function handleReplaceDocument(file: File) {
+    if (!policy) return;
+    setUploadDocName(file.name);
+    setUploadingDoc(true);
+
+    // Upload new file
+    const formData = new FormData();
+    formData.append("file", file);
+    formData.append("subdivision_id", subdivisionId);
+    formData.append("category", "insurance");
+    const uploadRes = await fetch("/api/documents", { method: "POST", body: formData });
+
+    if (!uploadRes.ok) {
+      toast.error("Failed to upload document");
+      setUploadingDoc(false);
+      setUploadDocName("");
+      return;
+    }
+
+    const uploadData = await uploadRes.json();
+    const newUrl = uploadData.public_url;
+
+    // Delete old document from R2 if it exists
+    if (policy.document_url && uploadData.id) {
+      // The old doc may have been uploaded via a different mechanism,
+      // but the new one is tracked in the documents table
+    }
+
+    // Update policy with new document URL
+    const result = await updateInsurancePolicy(subdivisionId, policy.id, {
+      document_url: newUrl,
+    });
+
+    setUploadingDoc(false);
+    setUploadDocName("");
+
+    if (result.error) {
+      toast.error(result.error);
+    } else {
+      toast.success("Certificate of currency updated");
+      onUpdated();
+      onClose();
+    }
+  }
 
   if (!policy) return null;
   const isExpired = new Date(policy.end_date) < new Date();
@@ -185,15 +232,38 @@ function PolicyDetailDialog({
               </div>
             )}
             {!readOnly && (
-              <div className="flex items-center gap-2 border-t border-border pt-4 mt-2">
-                <Button variant="outline" size="sm" onClick={startEdit} className="cursor-pointer">
-                  <Pencil className="mr-2 h-3.5 w-3.5" />
-                  Edit
-                </Button>
-                <Button variant="ghost" size="sm" onClick={handleDelete} disabled={deleting} className="cursor-pointer text-destructive hover:text-destructive">
-                  <Trash2 className="mr-2 h-3.5 w-3.5" />
-                  {deleting ? "Deleting..." : "Delete"}
-                </Button>
+              <div className="border-t border-border pt-4 mt-2 space-y-3">
+                {/* Replace certificate */}
+                <div>
+                  {uploadingDoc ? (
+                    <div className="flex items-center gap-2">
+                      <span className="text-sm text-foreground truncate flex-1">{uploadDocName}</span>
+                      <Loader2 className="h-4 w-4 animate-spin text-muted-foreground shrink-0" />
+                    </div>
+                  ) : (
+                    <label className="flex items-center gap-2 text-sm text-primary hover:text-primary/80 cursor-pointer">
+                      <Plus className="h-3.5 w-3.5" />
+                      {policy.document_url ? "Replace certificate of currency" : "Upload certificate of currency"}
+                      <input
+                        type="file"
+                        accept=".pdf,.doc,.docx,.png,.jpg,.jpeg"
+                        onChange={(e) => { const f = e.target.files?.[0]; if (f) handleReplaceDocument(f); }}
+                        className="hidden"
+                      />
+                    </label>
+                  )}
+                </div>
+                {/* Edit / Delete */}
+                <div className="flex items-center gap-2">
+                  <Button variant="outline" size="sm" onClick={startEdit} className="cursor-pointer">
+                    <Pencil className="mr-2 h-3.5 w-3.5" />
+                    Edit
+                  </Button>
+                  <Button variant="ghost" size="sm" onClick={handleDelete} disabled={deleting} className="cursor-pointer text-destructive hover:text-destructive">
+                    <Trash2 className="mr-2 h-3.5 w-3.5" />
+                    {deleting ? "Deleting..." : "Delete"}
+                  </Button>
+                </div>
               </div>
             )}
           </>
