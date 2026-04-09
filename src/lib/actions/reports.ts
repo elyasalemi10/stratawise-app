@@ -186,7 +186,7 @@ export async function getOCCertificateData(subdivisionId: string, lotId: string,
   ] = await Promise.all([
     supabase.from("subdivisions").select("*, management_companies!inner(name, address, logo_url, registered_name, signature_url)").eq("id", subdivisionId).single(),
     supabase.from("lots").select("*").eq("id", lotId).single(),
-    supabase.from("levy_notices").select("*").eq("lot_id", lotId).in("status", ["issued", "partially_paid", "paid", "overdue"]).order("due_date", { ascending: false }),
+    supabase.from("levy_notices").select("*").eq("lot_id", lotId).in("status", ["issued", "partially_paid", "paid", "overdue"]).order("due_date", { ascending: true }),
     supabase.from("insurance_policies").select("*").eq("subdivision_id", subdivisionId).eq("status", "active"),
   ]);
 

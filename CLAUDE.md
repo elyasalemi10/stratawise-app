@@ -33,6 +33,7 @@
 - ALL outbound communications logged to communication_log table.
 - ALL data mutations logged to audit_log with before/after JSON state.
 - ALL generated documents follow naming: MSM-{TYPE}-{YYYY}-{NNNNNN}.pdf
+- ALL date pickers use shadcn Calendar + Popover (never native HTML date inputs).
 
 ## Colour Palette
 ```

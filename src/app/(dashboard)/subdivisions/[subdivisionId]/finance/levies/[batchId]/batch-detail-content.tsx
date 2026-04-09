@@ -2,12 +2,17 @@
 
 import { useState } from "react";
 import { useRouter } from "next/navigation";
-import { ArrowLeft, CheckCircle2, ChevronDown, Download, Mail, Trash2, FolderDown, DollarSign, Undo2 } from "lucide-react";
+import { ArrowLeft, CheckCircle2, ChevronDown, Download, Mail, Trash2, FolderDown, DollarSign, Undo2, RefreshCw, CalendarIcon } from "lucide-react";
+import { format } from "date-fns";
 import { formatDateLong } from "@/lib/utils";
 import { toast } from "sonner";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
+import { Label } from "@/components/ui/label";
 import { Badge } from "@/components/ui/badge";
+import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { Calendar } from "@/components/ui/calendar";
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import {
   markBatchSent,
   markLevySent,
@@ -16,6 +21,7 @@ import {
   recallBatch,
   resendBatchEmails,
   markBatchPaid,
+  regenerateBatch,
   type LevyBatchDetail,
 } from "@/lib/actions/levy";
 
@@ -100,6 +106,22 @@ export function BatchDetailContent({
   const [resending, setResending] = useState(false);
   const [recalling, setRecalling] = useState(false);
   const [markingPaid, setMarkingPaid] = useState(false);
+  const [showRegenerate, setShowRegenerate] = useState(false);
+  const [regenDate, setRegenDate] = useState<Date | undefined>(undefined);
+  const [regenDateOpen, setRegenDateOpen] = useState(false);
+  const [regenerating, setRegenerating] = useState(false);
+
+  async function handleRegenerate() {
+    if (!regenDate) { toast.error("Select a new due date"); return; }
+    setRegenerating(true);
+    const result = await regenerateBatch(subdivisionId, batch.id, format(regenDate, "yyyy-MM-dd"));
+    setRegenerating(false);
+    if (result.success) {
+      toast.success("Batch regenerated with new due date");
+      setShowRegenerate(false);
+      router.refresh();
+    }
+  }
 
   async function handleRecall() {
     if (!confirm("Recall this levy batch? All levies will revert to draft and be hidden from lot owners. Emails already sent cannot be unsent.")) return;
@@ -239,6 +261,10 @@ export function BatchDetailContent({
               {recalling ? "Recalling..." : "Recall batch"}
             </Button>
           )}
+          <Button onClick={() => { setRegenDate(undefined); setShowRegenerate(true); }} size="sm" variant="outline" className="cursor-pointer">
+            <RefreshCw className="mr-2 h-3.5 w-3.5" />
+            Regenerate
+          </Button>
           {batch.status === "draft" && (
             <Button onClick={handleCancel} disabled={cancelling} size="sm" variant="ghost" className="cursor-pointer text-destructive hover:text-destructive">
               <Trash2 className="mr-2 h-3.5 w-3.5" />
@@ -247,6 +273,36 @@ export function BatchDetailContent({
           )}
         </div>
       </div>
+
+      {/* Regenerate dialog */}
+      <Dialog open={showRegenerate} onOpenChange={setShowRegenerate}>
+        <DialogContent className="max-w-sm">
+          <DialogHeader>
+            <DialogTitle>Regenerate levy batch</DialogTitle>
+          </DialogHeader>
+          <p className="text-sm text-muted-foreground">
+            Set a new due date. All levies will be regenerated with updated PDFs and reverted to draft status.
+          </p>
+          <div className="space-y-1.5">
+            <Label>New due date</Label>
+            <Popover open={regenDateOpen} onOpenChange={setRegenDateOpen}>
+              <PopoverTrigger className="flex h-9 w-full items-center gap-2 rounded-md border border-border bg-background px-3 text-sm cursor-pointer">
+                <CalendarIcon className="h-3.5 w-3.5 text-muted-foreground" />
+                {regenDate ? format(regenDate, "d MMMM yyyy") : "Select date"}
+              </PopoverTrigger>
+              <PopoverContent className="w-auto p-2" align="start">
+                <Calendar mode="single" selected={regenDate} onSelect={(d) => { setRegenDate(d); setRegenDateOpen(false); }} disabled={{ before: new Date() }} />
+              </PopoverContent>
+            </Popover>
+          </div>
+          <DialogFooter>
+            <Button variant="ghost" onClick={() => setShowRegenerate(false)} className="cursor-pointer">Cancel</Button>
+            <Button onClick={handleRegenerate} disabled={regenerating || !regenDate} className="cursor-pointer">
+              {regenerating ? "Regenerating..." : "Regenerate"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
 
       {/* Info note for drafts */}
       {draftCount > 0 && (

@@ -1,7 +1,10 @@
 "use client";
 
 import { useState } from "react";
-import { Download, Loader2 } from "lucide-react";
+import { Download, Loader2, CalendarIcon } from "lucide-react";
+import { format } from "date-fns";
+import { Calendar } from "@/components/ui/calendar";
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { toast } from "sonner";
 import { pdf } from "@react-pdf/renderer";
 import { createElement } from "react";
@@ -66,7 +69,8 @@ export function ReportsContent({
   const [certLotId, setCertLotId] = useState("");
   const [certApplicant, setCertApplicant] = useState("");
   const [certEmail, setCertEmail] = useState("");
-  const [certAppDate, setCertAppDate] = useState(new Date().toISOString().split("T")[0]);
+  const [certAppDate, setCertAppDate] = useState<Date>(new Date());
+  const [certAppDateOpen, setCertAppDateOpen] = useState(false);
   // Editable certificate text fields
   const [certRepairs, setCertRepairs] = useState("n/a");
   const [certFunds, setCertFunds] = useState("n/a");
@@ -147,7 +151,7 @@ export function ReportsContent({
           const certData = await getOCCertificateData(subdivisionId, certLotId, certApplicant, certEmail);
           if (!certData) { toast.error("Failed to load certificate data"); setGenerating(false); return; }
           // Override with form values
-          certData.applicationDate = certAppDate;
+          certData.applicationDate = format(certAppDate, "yyyy-MM-dd");
           certData.repairsInfo = certRepairs;
           certData.totalFundsHeld = certFunds;
           certData.liabilities = certLiabilities;
@@ -269,7 +273,15 @@ export function ReportsContent({
                 </div>
                 <div className="space-y-1.5 min-w-[150px]">
                   <Label>Application received</Label>
-                  <Input type="date" value={certAppDate} onChange={(e) => setCertAppDate(e.target.value)} className="h-9" />
+                  <Popover open={certAppDateOpen} onOpenChange={setCertAppDateOpen}>
+                    <PopoverTrigger className="flex h-9 w-full items-center gap-2 rounded-md border border-border bg-background px-3 text-sm cursor-pointer">
+                      <CalendarIcon className="h-3.5 w-3.5 text-muted-foreground" />
+                      {format(certAppDate, "d MMM yyyy")}
+                    </PopoverTrigger>
+                    <PopoverContent className="w-auto p-2" align="start">
+                      <Calendar mode="single" selected={certAppDate} onSelect={(d) => { if (d) setCertAppDate(d); setCertAppDateOpen(false); }} />
+                    </PopoverContent>
+                  </Popover>
                 </div>
               </>
             )}

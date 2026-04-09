@@ -742,6 +742,114 @@ export async function cancelBatch(subdivisionId: string, batchId: string) {
   return { success: true };
 }
 
+// ─── Regenerate batch (new due date, new PDFs) ────────────
+
+export async function regenerateBatch(subdivisionId: string, batchId: string, newDueDate: string) {
+  const profile = await requireCompanyRole();
+  await requireSubdivisionAccess(subdivisionId);
+  const supabase = createServerClient();
+
+  // Update batch due date
+  await supabase
+    .from("levy_batches")
+    .update({ due_date: newDueDate, status: "draft" })
+    .eq("id", batchId);
+
+  // Update all levy notices with new due date and revert to draft
+  await supabase
+    .from("levy_notices")
+    .update({ due_date: newDueDate, status: "draft", issued_at: null })
+    .eq("batch_id", batchId);
+
+  // Fetch data for PDF regeneration
+  const { data: subdivision } = await supabase
+    .from("subdivisions")
+    .select("name, address, abn, plan_number, bank_bsb, bank_account_number, bank_account_name, management_company_id")
+    .eq("id", subdivisionId)
+    .single();
+
+  let managementCompany = { name: "", logo_url: null as string | null };
+  if (subdivision?.management_company_id) {
+    const { data: mc } = await supabase
+      .from("management_companies")
+      .select("name, logo_url")
+      .eq("id", subdivision.management_company_id)
+      .single();
+    if (mc) managementCompany = mc;
+  }
+
+  const hasEft = subdivision?.bank_bsb && subdivision?.bank_account_number;
+
+  // Get levies with lot info and items
+  const { data: levies } = await supabase
+    .from("levy_notices")
+    .select("id, reference_number, amount, period_start, period_end, lot_id, lots!inner(lot_number, unit_number, owner_name)")
+    .eq("batch_id", batchId);
+
+  // Regenerate PDFs in parallel
+  const pdfPromises = (levies ?? []).map(async (levy) => {
+    try {
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const lot = (levy as any).lots;
+      const { data: items } = await supabase
+        .from("levy_notice_items")
+        .select("description, amount")
+        .eq("levy_notice_id", levy.id)
+        .order("sort_order");
+
+      const pdfProps: LevyNoticeProps = {
+        managementCompany,
+        subdivision: {
+          name: subdivision?.name ?? "",
+          address: subdivision?.address ?? "",
+          abn: subdivision?.abn ?? null,
+          plan_number: subdivision?.plan_number ?? "",
+        },
+        documentTitle: "Levy Notice",
+        referenceNumber: levy.reference_number,
+        date: new Date(),
+        lotOwner: {
+          name: lot?.owner_name ?? "Lot Owner",
+          lot_number: `${lot?.lot_number ?? ""}${lot?.unit_number ? ` Unit ${lot.unit_number}` : ""}`,
+          address: subdivision?.address ?? "",
+        },
+        levyPeriod: { start: formatDateLong(levy.period_start), end: formatDateLong(levy.period_end) },
+        lineItems: (items ?? []).map((i) => ({ description: i.description, amount: Number(i.amount) })),
+        totalDue: Number(levy.amount),
+        dueDate: formatDateLong(newDueDate),
+        paymentInstructions: {
+          bpay: null,
+          eft: hasEft ? {
+            bsb: subdivision!.bank_bsb!,
+            account_number: subdivision!.bank_account_number!,
+            account_name: subdivision!.bank_account_name ?? subdivision!.name ?? "",
+            reference: levy.reference_number,
+          } : { bsb: "", account_number: "", account_name: "", reference: levy.reference_number },
+        },
+      };
+
+      const pdfUrl = await generateAndUploadLevyPDF(pdfProps, subdivisionId, levy.reference_number);
+      await supabase.from("levy_notices").update({ pdf_url: pdfUrl }).eq("id", levy.id);
+    } catch (err) {
+      console.error("PDF regeneration failed for", levy.reference_number, err);
+    }
+  });
+
+  await Promise.all(pdfPromises);
+
+  await supabase.from("audit_log").insert({
+    profile_id: profile.id,
+    subdivision_id: subdivisionId,
+    action: "regenerate",
+    entity_type: "levy_batch",
+    entity_id: batchId,
+    after_state: { new_due_date: newDueDate },
+  });
+
+  revalidatePath(`/subdivisions/${subdivisionId}/finance`);
+  return { success: true };
+}
+
 // ─── Recall batch (unsend — revert to draft) ──────────────
 
 export async function recallBatch(subdivisionId: string, batchId: string) {
