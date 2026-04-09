@@ -172,6 +172,86 @@ export async function getAuditTrail(subdivisionId: string) {
   }));
 }
 
+// ─── OC Certificate data ───────────────────────────────────
+
+export async function getOCCertificateData(subdivisionId: string, lotId: string, applicantName: string, applicantEmail: string) {
+  await requireSubdivisionAccess(subdivisionId);
+  const supabase = createServerClient();
+
+  const [
+    { data: subdivision },
+    { data: lot },
+    { data: levies },
+    { data: insurance },
+  ] = await Promise.all([
+    supabase.from("subdivisions").select("*, management_companies!inner(name, address, logo_url, registered_name, signature_url)").eq("id", subdivisionId).single(),
+    supabase.from("lots").select("*").eq("id", lotId).single(),
+    supabase.from("levy_notices").select("*").eq("lot_id", lotId).in("status", ["issued", "partially_paid", "overdue"]).order("due_date", { ascending: false }),
+    supabase.from("insurance_policies").select("*").eq("subdivision_id", subdivisionId).eq("status", "active"),
+  ]);
+
+  if (!subdivision || !lot) return null;
+
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const company = (subdivision as any).management_companies;
+
+  // Calculate unpaid total
+  const unpaidTotal = (levies ?? []).reduce((sum, l) => sum + (Number(l.amount) - Number(l.amount_paid)), 0);
+
+  // Insurance summary
+  const insuranceSummary = (insurance ?? []).length > 0
+    ? (insurance ?? []).map((p) => `${p.policy_type}: ${p.provider}`).join(", ")
+    : "n/a";
+
+  // Current fees
+  const latestLevy = (levies ?? [])[0];
+  const currentFees = latestLevy ? `$${Number(latestLevy.amount).toFixed(2)}` : "n/a";
+
+  // Fees paid up to
+  const paidLevies = (levies ?? []).filter((l) => l.status === "paid" || Number(l.amount_paid) >= Number(l.amount));
+  const feesPaidUpTo = paidLevies.length > 0 ? paidLevies[0]?.period_end : "n/a";
+
+  return {
+    planNumber: subdivision.plan_number,
+    subdivisionAddress: subdivision.address,
+    lotNumber: lot.lot_number,
+    lotUnitNumber: lot.unit_number,
+    applicantName,
+    applicantEmail,
+    applicationDate: new Date().toISOString().split("T")[0],
+    certificateDate: new Date().toISOString().split("T")[0],
+    currentFees,
+    billingCycle: subdivision.billing_cycle ?? "quarterly",
+    feesPaidUpTo: feesPaidUpTo ?? "n/a",
+    unpaidFeesTotal: Math.max(0, unpaidTotal),
+    levies: (levies ?? []).map((l) => ({
+      fund: l.fund_type === "administrative" ? "Administrative Fund" : "Capital Works Fund",
+      amount: Number(l.amount),
+      period_start: l.period_start,
+      period_end: l.period_end,
+      due_date: l.due_date,
+    })),
+    repairsInfo: "n/a",
+    insuranceCover: insuranceSummary,
+    totalFundsHeld: "n/a",
+    liabilities: "n/a",
+    currentContracts: "n/a",
+    serviceAgreements: "n/a",
+    noticesOrders: "n/a",
+    legalProceedings: "n/a",
+    managerAppointed: subdivision.manager_appointed ?? true,
+    administratorAppointed: subdivision.administrator_appointed ?? false,
+    lastAgmDate: "",
+    companyName: company?.name ?? "",
+    registeredName: company?.registered_name ?? company?.name ?? "",
+    companyAddress: company?.address ?? "",
+    logoUrl: company?.logo_url ?? null,
+    signatureUrl: company?.signature_url ?? null,
+    commonSealText: subdivision.common_seal_text ?? "",
+    inspectionAddress: subdivision.inspection_address ?? company?.address ?? "",
+  };
+}
+
 // ─── Get lots for filter dropdown ──────────────────────────
 
 export async function getSubdivisionLots(subdivisionId: string) {

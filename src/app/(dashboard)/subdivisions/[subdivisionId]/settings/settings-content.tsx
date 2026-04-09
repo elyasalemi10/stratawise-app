@@ -37,6 +37,8 @@ interface SubdivisionData {
   subdivision_type?: string;
   abn?: string | null;
   tfn?: string | null;
+  common_seal_text?: string | null;
+  inspection_address?: string | null;
 }
 
 function EditableField({
@@ -214,6 +216,15 @@ export function SettingsContent({ subdivision: initial }: { subdivision: Subdivi
             <EditableField label="Financial year starts" value={isEditing ? String(subdivision.financial_year_start_month) : fyMonth} field="financial_year_start_month" subdivisionId={subdivision.id} isEditing={isEditing} type={isEditing ? "select" : "text"} options={monthOptions} onSaved={(v) => onFieldSaved("financial_year_start_month", v)} />
             <EditableField label="Billing cycle" value={isEditing ? subdivision.billing_cycle : (BILLING_LABELS[subdivision.billing_cycle] ?? subdivision.billing_cycle)} field="billing_cycle" subdivisionId={subdivision.id} isEditing={isEditing} type={isEditing ? "select" : "text"} options={billingOptions} onSaved={(v) => onFieldSaved("billing_cycle", v)} />
             <EditableField label="Rules type" value={isEditing ? subdivision.rules_type : (subdivision.rules_type === "model" ? "Model rules" : "Custom rules")} field="rules_type" subdivisionId={subdivision.id} isEditing={isEditing} type={isEditing ? "select" : "text"} options={rulesOptions} onSaved={(v) => onFieldSaved("rules_type", v)} />
+          </CardContent>
+        </Card>
+
+        {/* Certificate settings */}
+        <Card>
+          <CardContent className="pt-5">
+            <h3 className="text-sm font-semibold text-foreground mb-3">Certificate settings</h3>
+            <EditableField label="Common seal text" value={subdivision.common_seal_text ?? ""} field="common_seal_text" subdivisionId={subdivision.id} isEditing={isEditing} type={isEditing ? "textarea" : "text"} onSaved={(v) => onFieldSaved("common_seal_text", v)} />
+            <EditableField label="Inspection address" value={subdivision.inspection_address ?? ""} field="inspection_address" subdivisionId={subdivision.id} isEditing={isEditing} onSaved={(v) => onFieldSaved("inspection_address", v)} />
           </CardContent>
         </Card>
 

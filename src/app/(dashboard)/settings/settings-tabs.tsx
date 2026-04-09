@@ -19,6 +19,8 @@ interface CompanyData {
   phone: string | null;
   email: string | null;
   logo_url: string | null;
+  registered_name: string | null;
+  signature_url: string | null;
 }
 
 function TabsInner({

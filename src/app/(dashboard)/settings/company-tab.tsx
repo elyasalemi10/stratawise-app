@@ -17,6 +17,8 @@ interface CompanyData {
   phone: string | null;
   email: string | null;
   logo_url: string | null;
+  registered_name: string | null;
+  signature_url: string | null;
 }
 
 function EditableRow({
@@ -64,8 +66,11 @@ function EditableRow({
 
 export function CompanyTab({ company }: { company: CompanyData | null }) {
   const [logoUrl, setLogoUrl] = useState(company?.logo_url ?? null);
+  const [signatureUrl, setSignatureUrl] = useState(company?.signature_url ?? null);
   const [uploading, setUploading] = useState(false);
+  const [uploadingSig, setUploadingSig] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const sigInputRef = useRef<HTMLInputElement>(null);
 
   if (!company) {
     return (
@@ -145,11 +150,65 @@ export function CompanyTab({ company }: { company: CompanyData | null }) {
         </CardContent>
       </Card>
 
+      {/* Signature */}
+      <Card>
+        <CardContent className="pt-5">
+          <h3 className="text-sm font-semibold text-foreground mb-4">Authorised signature</h3>
+          <div className="flex items-center gap-4">
+            {signatureUrl ? (
+              // eslint-disable-next-line @next/next/no-img-element
+              <img
+                src={signatureUrl}
+                alt="Signature"
+                className="h-12 max-w-[200px] object-contain rounded border border-border bg-white p-1"
+              />
+            ) : (
+              <div className="h-12 w-32 rounded border border-dashed border-border flex items-center justify-center text-xs text-muted-foreground">
+                No signature
+              </div>
+            )}
+            <div>
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => sigInputRef.current?.click()}
+                disabled={uploadingSig}
+              >
+                <Upload className="mr-2 h-3.5 w-3.5" />
+                {uploadingSig ? "Uploading..." : "Upload signature"}
+              </Button>
+              <p className="mt-1 text-xs text-muted-foreground">PNG with transparent background. Used on OC certificates.</p>
+              <input
+                ref={sigInputRef}
+                type="file"
+                accept="image/png,image/jpeg"
+                onChange={async (e) => {
+                  const file = e.target.files?.[0];
+                  if (!file || !company) return;
+                  if (file.size > 2 * 1024 * 1024) { toast.error("File must be under 2MB"); return; }
+                  setUploadingSig(true);
+                  const formData = new FormData();
+                  formData.append("file", file);
+                  formData.append("company_id", company.id);
+                  formData.append("type", "signature");
+                  const result = await uploadCompanyLogo(formData);
+                  setUploadingSig(false);
+                  if (result.error) { toast.error(result.error); }
+                  else if (result.url) { setSignatureUrl(result.url); toast.success("Signature updated"); }
+                }}
+                className="hidden"
+              />
+            </div>
+          </div>
+        </CardContent>
+      </Card>
+
       {/* Company details */}
       <Card>
         <CardContent className="pt-5">
           <h3 className="text-sm font-semibold text-foreground mb-3">Company details</h3>
           <EditableRow label="Company name" value={company.name} field="name" companyId={company.id} />
+          <EditableRow label="Registered name" value={company.registered_name} field="registered_name" companyId={company.id} />
           <EditableRow label="ABN" value={company.abn} field="abn" companyId={company.id} />
           <EditableRow label="Address" value={company.address} field="address" companyId={company.id} />
           <EditableRow label="Phone" value={company.phone} field="phone" companyId={company.id} />

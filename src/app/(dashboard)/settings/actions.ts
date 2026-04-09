@@ -82,7 +82,7 @@ export async function getCompanyData() {
   const supabase = createServerClient();
   const { data } = await supabase
     .from("management_companies")
-    .select("id, name, abn, address, phone, email, logo_url")
+    .select("id, name, abn, address, phone, email, logo_url, registered_name, signature_url")
     .eq("id", profile.management_company_id)
     .single();
 
@@ -95,7 +95,7 @@ export async function updateCompanyField(companyId: string, field: string, value
     return { error: "Unauthorized" };
   }
 
-  const allowedFields = ["name", "abn", "address", "phone", "email"];
+  const allowedFields = ["name", "abn", "address", "phone", "email", "registered_name"];
   if (!allowedFields.includes(field)) {
     return { error: "Invalid field" };
   }
@@ -122,8 +122,11 @@ export async function uploadCompanyLogo(formData: FormData): Promise<{ url?: str
   }
 
   const buffer = Buffer.from(await file.arrayBuffer());
+  const uploadType = (formData.get("type") as string) ?? "logo";
   const ext = file.type === "image/png" ? "png" : "jpg";
-  const key = `logos/${companyId}/logo.${ext}`;
+  const key = uploadType === "signature"
+    ? `logos/${companyId}/signature.${ext}`
+    : `logos/${companyId}/logo.${ext}`;
 
   const r2 = new S3Client({
     region: "auto",
@@ -147,9 +150,10 @@ export async function uploadCompanyLogo(formData: FormData): Promise<{ url?: str
 
   // Update management company
   const supabase = createServerClient();
+  const updateField = uploadType === "signature" ? "signature_url" : "logo_url";
   await supabase
     .from("management_companies")
-    .update({ logo_url: publicUrl })
+    .update({ [updateField]: publicUrl })
     .eq("id", companyId);
 
   return { url: publicUrl };

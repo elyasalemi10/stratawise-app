@@ -35,6 +35,8 @@ export default async function SubdivisionSettingsPage({
         subdivision_type: subdivision.subdivision_type,
         abn: subdivision.abn,
         tfn: subdivision.tfn,
+        common_seal_text: subdivision.common_seal_text ?? null,
+        inspection_address: subdivision.inspection_address ?? null,
       }}
     />
   );

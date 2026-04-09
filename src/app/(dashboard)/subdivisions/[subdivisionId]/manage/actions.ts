@@ -18,6 +18,7 @@ export async function updateSubdivisionField(
     "is_developer_period", "subdivision_type", "abn", "tfn",
     "street_number", "street_name", "suburb", "state",
     "levy_year_start_month", "levies_per_year",
+    "common_seal_text", "inspection_address", "manager_appointed", "administrator_appointed",
   ];
 
   if (!allowedFields.includes(field)) {

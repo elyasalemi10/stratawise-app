@@ -2,17 +2,20 @@
 
 import { useState } from "react";
 import { Download, Loader2 } from "lucide-react";
+import { toast } from "sonner";
 import { pdf } from "@react-pdf/renderer";
 import { createElement } from "react";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
+import { Input } from "@/components/ui/input";
 import {
   getLevyHistory,
   getInsuranceStatus,
   getLotOwnerRegister,
   getCommunicationLog,
   getAuditTrail,
+  getOCCertificateData,
 } from "@/lib/actions/reports";
 import {
   LevyHistoryReport,
@@ -21,6 +24,7 @@ import {
   CommLogReport,
   AuditTrailReport,
 } from "@/lib/pdf/templates/report";
+import { OCCertificate } from "@/lib/pdf/templates/oc-certificate";
 
 interface LotOption {
   id: string;
@@ -29,9 +33,10 @@ interface LotOption {
   owner_name: string | null;
 }
 
-type ReportType = "levy_history" | "insurance_status" | "lot_register" | "communication_log" | "audit_trail";
+type ReportType = "levy_history" | "insurance_status" | "lot_register" | "communication_log" | "audit_trail" | "oc_certificate";
 
 const REPORTS: { id: ReportType; label: string; managerOnly: boolean }[] = [
+  { id: "oc_certificate", label: "Owners Corporation Certificate", managerOnly: true },
   { id: "levy_history", label: "Levy history", managerOnly: false },
   { id: "insurance_status", label: "Insurance status", managerOnly: false },
   { id: "lot_register", label: "Lot owner register", managerOnly: false },
@@ -58,6 +63,9 @@ export function ReportsContent({
 }) {
   const [reportType, setReportType] = useState<ReportType | "">("");
   const [selectedLotId, setSelectedLotId] = useState("");
+  const [certLotId, setCertLotId] = useState("");
+  const [certApplicant, setCertApplicant] = useState("");
+  const [certEmail, setCertEmail] = useState("");
   const [generating, setGenerating] = useState(false);
   const [pdfUrl, setPdfUrl] = useState<string | null>(null);
 
@@ -121,6 +129,29 @@ export function ReportsContent({
           element = createElement(AuditTrailReport, { data, title: "Audit Trail Report", subtitle: subName, address: subAddr, logoUrl: logoDataUrl });
           break;
         }
+        case "oc_certificate": {
+          if (!certLotId || !certApplicant || !certEmail) {
+            toast.error("Please fill in all certificate fields");
+            setGenerating(false);
+            return;
+          }
+          const certData = await getOCCertificateData(subdivisionId, certLotId, certApplicant, certEmail);
+          if (!certData) { toast.error("Failed to load certificate data"); setGenerating(false); return; }
+          // Proxy logo and signature for client-side PDF
+          const certLogo = certData.logoUrl ? await getLogoDataUrl() : null;
+          let certSig: string | null = null;
+          if (certData.signatureUrl) {
+            try {
+              const sigRes = await fetch(`/api/proxy-image?url=${encodeURIComponent(certData.signatureUrl)}`);
+              if (sigRes.ok) {
+                const sigBlob = await sigRes.blob();
+                certSig = await new Promise((r) => { const rd = new FileReader(); rd.onloadend = () => r(rd.result as string); rd.readAsDataURL(sigBlob); });
+              }
+            } catch { /* ignore */ }
+          }
+          element = createElement(OCCertificate, { ...certData, logoUrl: certLogo, signatureUrl: certSig });
+          break;
+        }
       }
 
       const blob = await pdf(element).toBlob();
@@ -138,6 +169,7 @@ export function ReportsContent({
     const a = document.createElement("a");
     a.href = pdfUrl;
     const reportNames: Record<string, string> = {
+      oc_certificate: "OC-Certificate",
       levy_history: "Levy-History-Report",
       insurance_status: "Insurance-Status-Report",
       lot_register: "Lot-Owner-Register",
@@ -189,6 +221,35 @@ export function ReportsContent({
                   ))}
                 </select>
               </div>
+            )}
+
+            {/* OC Certificate fields */}
+            {reportType === "oc_certificate" && (
+              <>
+                <div className="space-y-1.5 min-w-[200px]">
+                  <Label>Lot</Label>
+                  <select
+                    value={certLotId}
+                    onChange={(e) => setCertLotId(e.target.value)}
+                    className="h-9 w-full rounded-md border border-border bg-background px-3 text-sm outline-none focus:border-primary focus:ring-2 focus:ring-primary/20"
+                  >
+                    <option value="">Select lot...</option>
+                    {lots.map((lot) => (
+                      <option key={lot.id} value={lot.id}>
+                        Lot {lot.lot_number}{lot.owner_name ? ` — ${lot.owner_name}` : ""}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+                <div className="space-y-1.5 min-w-[180px]">
+                  <Label>Applicant name</Label>
+                  <Input value={certApplicant} onChange={(e) => setCertApplicant(e.target.value)} placeholder="Applicant name" className="h-9" />
+                </div>
+                <div className="space-y-1.5 min-w-[180px]">
+                  <Label>Delivery email</Label>
+                  <Input value={certEmail} onChange={(e) => setCertEmail(e.target.value)} placeholder="email@example.com" className="h-9" />
+                </div>
+              </>
             )}
 
             <Button
