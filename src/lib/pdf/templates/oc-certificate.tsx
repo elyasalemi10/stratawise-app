@@ -287,9 +287,7 @@ export function OCCertificate(props: OCCertificateProps) {
 
           <View style={s.item}>
             <Text style={s.itemNumber}>17. Documents attached</Text>
-            <Text style={s.itemText}>• A copy of all resolutions made at the last annual general meeting</Text>
-            <Text style={s.itemText}>• A copy of the consolidated rules registered at Land Victoria</Text>
-            <Text style={s.itemText}>• A copy of Schedule 3 of the Owners Corporations Regulations 2018</Text>
+            <Text style={s.itemText}>• A copy of Schedule 3 of the Owners Corporations Regulations 2018 entitled &quot;Statement of advice and information for prospective purchasers and lot owners&quot;</Text>
           </View>
 
           <View style={s.item}>
