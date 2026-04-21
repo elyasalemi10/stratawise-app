@@ -1,6 +1,6 @@
 "use server";
 
-import { getCurrentProfile } from "@/lib/auth";
+import { getCurrentProfile, requireSubdivisionAccess } from "@/lib/auth";
 import { createServerClient } from "@/lib/supabase";
 
 export interface SidebarLot {
@@ -74,6 +74,7 @@ export async function getSidebarSubdivisions(): Promise<SidebarSubdivision[]> {
 }
 
 export async function getSubdivision(subdivisionId: string) {
+  await requireSubdivisionAccess(subdivisionId);
   const supabase = createServerClient();
 
   const { data, error } = await supabase
@@ -87,6 +88,7 @@ export async function getSubdivision(subdivisionId: string) {
 }
 
 export async function getSubdivisionStats(subdivisionId: string) {
+  await requireSubdivisionAccess(subdivisionId);
   const supabase = createServerClient();
 
   const [lotsResult, membersResult, leviesResult, paymentsResult] = await Promise.all([
@@ -138,6 +140,7 @@ export interface LotWithFinancials {
 }
 
 export async function getLotsWithFinancials(subdivisionId: string): Promise<LotWithFinancials[]> {
+  await requireSubdivisionAccess(subdivisionId);
   const supabase = createServerClient();
 
   const { data: lots } = await supabase
@@ -207,6 +210,7 @@ export async function getLotsWithFinancials(subdivisionId: string): Promise<LotW
 }
 
 export async function getSubdivisionManageStats(subdivisionId: string) {
+  await requireSubdivisionAccess(subdivisionId);
   const supabase = createServerClient();
 
   const [lotsResult, ownersResult, membersResult] = await Promise.all([

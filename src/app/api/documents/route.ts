@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
-import { auth } from "@clerk/nextjs/server";
 import { S3Client, PutObjectCommand } from "@aws-sdk/client-s3";
 import { createServerClient } from "@/lib/supabase";
+import { requireCompanyRole, requireSubdivisionAccess } from "@/lib/auth";
 import { ALLOWED_DOCUMENT_TYPES, MAX_DOCUMENT_SIZE } from "@/lib/validations/documents";
 
 const R2 = new S3Client({
@@ -14,11 +14,20 @@ const R2 = new S3Client({
 });
 
 const BUCKET = process.env.R2_BUCKET_NAME ?? "msm-company-logos";
+const UUID_REGEX = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+function sanitiseFileName(name: string): string {
+  // Strip path separators and control chars, collapse whitespace, cap length.
+  const base = name.replace(/[/\\]/g, "_").replace(/[\x00-\x1f]/g, "").trim();
+  return base.slice(0, 200) || "document";
+}
 
 export async function POST(request: NextRequest) {
-  const { userId } = await auth();
-  if (!userId) {
-    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  let profile;
+  try {
+    profile = await requireCompanyRole();
+  } catch {
+    return NextResponse.json({ error: "Forbidden" }, { status: 403 });
   }
 
   const formData = await request.formData();
@@ -31,8 +40,18 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: "No file provided" }, { status: 400 });
   }
 
-  if (!subdivisionId) {
-    return NextResponse.json({ error: "subdivision_id is required" }, { status: 400 });
+  if (!subdivisionId || !UUID_REGEX.test(subdivisionId)) {
+    return NextResponse.json({ error: "Valid subdivision_id is required" }, { status: 400 });
+  }
+
+  if (lotId && !UUID_REGEX.test(lotId)) {
+    return NextResponse.json({ error: "Invalid lot_id" }, { status: 400 });
+  }
+
+  try {
+    await requireSubdivisionAccess(subdivisionId);
+  } catch {
+    return NextResponse.json({ error: "Forbidden" }, { status: 403 });
   }
 
   if (!ALLOWED_DOCUMENT_TYPES.includes(file.type)) {
@@ -49,22 +68,24 @@ export async function POST(request: NextRequest) {
     );
   }
 
-  // Get profile for uploaded_by
   const supabase = createServerClient();
-  const { data: profile } = await supabase
-    .from("profiles")
-    .select("id")
-    .eq("clerk_id", userId)
-    .single();
 
-  if (!profile) {
-    return NextResponse.json({ error: "Profile not found" }, { status: 404 });
+  // If uploading against a lot, ensure the lot belongs to this subdivision.
+  if (lotId) {
+    const { data: lot } = await supabase
+      .from("lots")
+      .select("id, subdivision_id")
+      .eq("id", lotId)
+      .single();
+    if (!lot || lot.subdivision_id !== subdivisionId) {
+      return NextResponse.json({ error: "Lot does not belong to this subdivision" }, { status: 400 });
+    }
   }
 
-  // Upload to R2
+  const safeName = sanitiseFileName(file.name);
   const uuid = crypto.randomUUID();
   const folder = lotId || "subdivision";
-  const key = `documents/${subdivisionId}/${folder}/${uuid}-${file.name}`;
+  const key = `documents/${subdivisionId}/${folder}/${uuid}-${safeName}`;
   const buffer = Buffer.from(await file.arrayBuffer());
 
   await R2.send(
@@ -76,14 +97,13 @@ export async function POST(request: NextRequest) {
     })
   );
 
-  // Store metadata in DB
   const { data: doc, error } = await supabase
     .from("documents")
     .insert({
       subdivision_id: subdivisionId,
       lot_id: lotId || null,
       category,
-      file_name: file.name,
+      file_name: safeName,
       file_path: key,
       file_size: file.size,
       mime_type: file.type,
@@ -96,6 +116,15 @@ export async function POST(request: NextRequest) {
   if (error) {
     return NextResponse.json({ error: error.message }, { status: 500 });
   }
+
+  await supabase.from("audit_log").insert({
+    profile_id: profile.id,
+    subdivision_id: subdivisionId,
+    action: "upload",
+    entity_type: "document",
+    entity_id: doc.id,
+    after_state: { file_name: safeName, category, lot_id: lotId || null },
+  });
 
   const publicUrl = `${process.env.R2_PUBLIC_URL}/${key}`;
 

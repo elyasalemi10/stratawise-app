@@ -20,6 +20,7 @@ CREATE EXTENSION IF NOT EXISTS "pgcrypto";
 -- ============================================================================
 CREATE TYPE profile_role AS ENUM ('super_admin', 'strata_manager', 'lot_owner');
 CREATE TYPE profile_status AS ENUM ('active', 'deactivated', 'anonymised');
+CREATE TYPE company_role AS ENUM ('admin', 'manager', 'viewer');
 CREATE TYPE subdivision_status AS ENUM ('active', 'archived', 'suspended');
 CREATE TYPE subscription_status AS ENUM ('active', 'suspended', 'cancelled');
 CREATE TYPE fund_type AS ENUM ('administrative', 'capital_works');
@@ -61,6 +62,24 @@ CREATE SEQUENCE msm_invitation_seq START 1;
 CREATE SEQUENCE msm_complaint_seq START 1;
 CREATE SEQUENCE msm_escalation_seq START 1;
 
+-- Sequential reference number generator.
+-- Usage: SELECT next_reference_number('LEV');  → 'LEV-2026-000001'
+CREATE OR REPLACE FUNCTION next_reference_number(prefix TEXT)
+RETURNS TEXT
+LANGUAGE plpgsql
+AS $$
+DECLARE
+  seq_name TEXT;
+  seq_val BIGINT;
+  year_str TEXT;
+BEGIN
+  seq_name := 'msm_' || lower(prefix) || '_seq';
+  EXECUTE format('SELECT nextval(%L)', seq_name) INTO seq_val;
+  year_str := extract(year from now())::TEXT;
+  RETURN prefix || '-' || year_str || '-' || lpad(seq_val::TEXT, 6, '0');
+END;
+$$;
+
 -- ============================================================================
 -- 1. MANAGEMENT COMPANIES
 -- ============================================================================
@@ -91,6 +110,7 @@ CREATE TABLE profiles (
   postal_address TEXT,
   avatar_url TEXT,
   role profile_role NOT NULL DEFAULT 'lot_owner',
+  company_role company_role, -- null for lot_owner; required for strata_manager
   management_company_id UUID REFERENCES management_companies(id),
   status profile_status NOT NULL DEFAULT 'active',
   deactivated_at TIMESTAMPTZ,

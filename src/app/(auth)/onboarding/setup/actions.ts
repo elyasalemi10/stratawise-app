@@ -89,12 +89,14 @@ export async function createCompany(formData: {
     return { error: "Failed to create company. Please try again." };
   }
 
-  // Assign user to this company as strata_manager + save avatar
+  // Assign user to this company as strata_manager + save avatar.
+  // First user onboarding their company becomes the admin.
   const { error: profileError } = await supabase
     .from("profiles")
     .update({
       management_company_id: company.id,
       role: "strata_manager",
+      company_role: "admin",
     })
     .eq("clerk_id", userId);
 

@@ -97,8 +97,9 @@ export async function requireCompanyRole(
   // super_admin bypasses company role check
   if (profile.role === "super_admin") return profile;
 
-  // If company_role is null (migration not run yet), treat as admin
-  if (profile.company_role && !(allowedCompanyRoles as string[]).includes(profile.company_role)) {
+  // strata_manager must have an explicit company_role in the allowed set.
+  // A null company_role is NOT treated as admin — deny by default.
+  if (!profile.company_role || !(allowedCompanyRoles as string[]).includes(profile.company_role)) {
     throw new Error("Access denied. Insufficient permissions.");
   }
 

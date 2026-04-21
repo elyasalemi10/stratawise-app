@@ -147,12 +147,15 @@ export async function acceptInvitation(token: string) {
       .single();
 
     if (sub) {
-      // Assign to management company
+      // Assign to management company. Invited managers default to
+      // 'manager' company_role (can do day-to-day ops, cannot invite
+      // others or modify team). An admin can promote them later.
       await supabase
         .from("profiles")
         .update({
           role: "strata_manager",
           management_company_id: sub.management_company_id,
+          company_role: "manager",
         })
         .eq("id", profile.id);
     }

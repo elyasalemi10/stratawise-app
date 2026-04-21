@@ -49,13 +49,18 @@ export async function createBudgetCategory(
   name: string,
   fundType: "administrative" | "capital_works"
 ): Promise<{ id: string; error?: string }> {
+  await requireCompanyRole();
+  const trimmed = name.trim();
+  if (!trimmed || trimmed.length > 120) {
+    return { id: "", error: "Category name is required and must be under 120 characters." };
+  }
   const supabase = createServerClient();
 
   // Check if it already exists
   const { data: existing } = await supabase
     .from("budget_categories")
     .select("id")
-    .eq("name", name)
+    .eq("name", trimmed)
     .eq("fund_type", fundType)
     .single();
 
@@ -75,7 +80,7 @@ export async function createBudgetCategory(
 
   const { data: newCat, error } = await supabase
     .from("budget_categories")
-    .insert({ code, name, fund_type: fundType, sort_order: sortOrder })
+    .insert({ code, name: trimmed, fund_type: fundType, sort_order: sortOrder })
     .select("id")
     .single();
 
