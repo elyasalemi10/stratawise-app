@@ -80,22 +80,26 @@ CREATE TYPE reconciliation_match_method AS ENUM (
 
 -- ============================================================================
 -- GLOBAL SEQUENCES (reference numbers are never per-subdivision)
+-- ----------------------------------------------------------------------------
+-- One sequence per reference-number prefix. Names are short-form matching
+-- the prefix string used by next_reference_number() callers — function
+-- derives the sequence name as 'msm_' || lower(prefix) || '_seq'.
+-- The canonical list of prefixes is in project-context.md §581.
 -- ============================================================================
-CREATE SEQUENCE msm_levy_seq START 1;
-CREATE SEQUENCE msm_levy_batch_seq START 1;
-CREATE SEQUENCE msm_special_levy_seq START 1;
-CREATE SEQUENCE msm_payment_seq START 1;
-CREATE SEQUENCE msm_meeting_seq START 1;
-CREATE SEQUENCE msm_minutes_seq START 1;
-CREATE SEQUENCE msm_policy_seq START 1;
-CREATE SEQUENCE msm_claim_seq START 1;
-CREATE SEQUENCE msm_maintenance_seq START 1;
-CREATE SEQUENCE msm_invitation_seq START 1;
-CREATE SEQUENCE msm_complaint_seq START 1;
-CREATE SEQUENCE msm_escalation_seq START 1;
+CREATE SEQUENCE msm_lev_seq  START 1;   -- LEV  — Levy notices
+CREATE SEQUENCE msm_slev_seq START 1;   -- SLEV — Special levies
+CREATE SEQUENCE msm_pay_seq  START 1;   -- PAY  — Payments
+CREATE SEQUENCE msm_mtg_seq  START 1;   -- MTG  — Meetings
+CREATE SEQUENCE msm_min_seq  START 1;   -- MIN  — Meeting minutes
+CREATE SEQUENCE msm_pol_seq  START 1;   -- POL  — Insurance policies
+CREATE SEQUENCE msm_clm_seq  START 1;   -- CLM  — Insurance claims
+CREATE SEQUENCE msm_mnt_seq  START 1;   -- MNT  — Maintenance requests
+CREATE SEQUENCE msm_inv_seq  START 1;   -- INV  — Invitations
+CREATE SEQUENCE msm_cmp_seq  START 1;   -- CMP  — Complaints
+CREATE SEQUENCE msm_esc_seq  START 1;   -- ESC  — Escalation instances
 
 -- Sequential reference number generator.
--- Usage: SELECT next_reference_number('LEV');  →  'LEV-2026-000001'
+-- Usage: SELECT next_reference_number('LEV');  →  'MSM-LEV-2026-000001'
 CREATE OR REPLACE FUNCTION next_reference_number(prefix TEXT)
 RETURNS TEXT
 LANGUAGE plpgsql
@@ -108,7 +112,7 @@ BEGIN
   seq_name := 'msm_' || lower(prefix) || '_seq';
   EXECUTE format('SELECT nextval(%L)', seq_name) INTO seq_val;
   year_str := extract(year from now())::TEXT;
-  RETURN prefix || '-' || year_str || '-' || lpad(seq_val::TEXT, 6, '0');
+  RETURN 'MSM-' || prefix || '-' || year_str || '-' || lpad(seq_val::TEXT, 6, '0');
 END;
 $$;
 

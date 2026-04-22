@@ -120,7 +120,14 @@ async function createFixture(): Promise<Fixture> {
     lot_entitlement: 100,
     lot_liability: 100,
   }));
-  const { data: lots, error: lotsErr } = await supabase.from("lots").insert(lotRows).select("id").order("lot_number");
+  // Select lot_number alongside id so PostgREST allows ORDER BY lot_number.
+  // (ORDER BY a column not in the projection raises a confusing
+  // "column does not exist" error.)
+  const { data: lots, error: lotsErr } = await supabase
+    .from("lots")
+    .insert(lotRows)
+    .select("id, lot_number")
+    .order("lot_number", { ascending: true });
   if (lotsErr || !lots || lots.length !== 3) throw new Error(`Fixture: lots insert failed: ${lotsErr?.message}`);
 
   return {

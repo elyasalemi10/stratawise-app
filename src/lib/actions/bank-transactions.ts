@@ -11,7 +11,7 @@ import {
   type ImportTransactionsInput,
 } from "@/lib/validations/bank-transactions";
 
-const REF_REGEX = /\bLEV-\d{4}-\d{6}\b/i;
+const REF_REGEX = /\bMSM-LEV-\d{4}-\d{6}\b/i;
 
 export async function getBankAccountsForSubdivision(
   subdivisionId: string

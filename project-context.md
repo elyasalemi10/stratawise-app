@@ -596,7 +596,7 @@ Complaints:        MSM-CMP-{YYYY}-{NNNNNN}     e.g., MSM-CMP-2026-000003
 Escalation:        MSM-ESC-{YYYY}-{NNNNNN}     e.g., MSM-ESC-2026-000012
 
 {NNNNNN} is a GLOBAL auto-incrementing sequence per type — NEVER per-subdivision. Two levies from different subdivisions must never share a reference number. Reset to 000001 each January 1st.
-Use a Postgres SEQUENCE per type: CREATE SEQUENCE msm_levy_seq; CREATE SEQUENCE msm_meeting_seq; etc. Generate via Supabase RPC. A single global sequence per entity type ensures uniqueness across the entire platform.
+Use a Postgres SEQUENCE per type: CREATE SEQUENCE msm_lev_seq; CREATE SEQUENCE msm_mtg_seq; etc. (names are short-form matching the prefix passed to `next_reference_number()` — e.g. `LEV` → `msm_lev_seq`). Generate via Supabase RPC; the function prepends `MSM-` and returns `MSM-<PREFIX>-YYYY-NNNNNN`. A single global sequence per entity type ensures uniqueness across the entire platform.
 
 === PDF FILE NAMES (when downloaded/generated) ===
 

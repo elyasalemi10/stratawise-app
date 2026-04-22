@@ -46,7 +46,11 @@ a new SQL editor tab and run it. It creates, in order:
   `ledger_entry_type`, `ledger_entry_category`, `ledger_entry_status`,
   `reconciliation_match_method`; plus `levy_batch_status` extended with
   `ledger_written`)
-- 12 global sequences + `next_reference_number()`
+- 11 global sequences + `next_reference_number()` (sequence names are
+  short-form: `msm_lev_seq`, `msm_slev_seq`, `msm_pay_seq`, `msm_mtg_seq`,
+  `msm_min_seq`, `msm_pol_seq`, `msm_clm_seq`, `msm_mnt_seq`, `msm_inv_seq`,
+  `msm_cmp_seq`, `msm_esc_seq` — matching the prefixes accepted by the
+  reference-number function, which returns `MSM-<PREFIX>-YYYY-NNNNNN`)
 - 48 tables (45 pre-Prompt-1 + `lot_ledger_entries`, `lot_ledger_state`,
   `reconciliation_matches`)
 - 4 trigger functions + 16 triggers (adds `trg_lot_ledger_state_create`
@@ -69,7 +73,9 @@ After the rebuild, run each query in the SQL editor and confirm the result:
 |---|-------|----------|
 | 1 | `SELECT COUNT(*) FROM information_schema.tables WHERE table_schema = 'public';` | **48** |
 | 2 | `SELECT COUNT(*) FROM pg_type WHERE typnamespace = 'public'::regnamespace AND typtype = 'e';` | **33** |
-| 3 | `SELECT COUNT(*) FROM information_schema.sequences WHERE sequence_schema = 'public';` | **12** |
+| 3 | `SELECT COUNT(*) FROM information_schema.sequences WHERE sequence_schema = 'public';` | **11** |
+| 3a | `SELECT sequence_name FROM information_schema.sequences WHERE sequence_schema = 'public' ORDER BY sequence_name;` | `msm_clm_seq, msm_cmp_seq, msm_esc_seq, msm_inv_seq, msm_lev_seq, msm_min_seq, msm_mnt_seq, msm_mtg_seq, msm_pay_seq, msm_pol_seq, msm_slev_seq` |
+| 3b | `SELECT next_reference_number('LEV');` | `MSM-LEV-2026-000001` (the `MSM-` prefix is now applied inside the function) |
 | 4 | `SELECT COUNT(*) FROM state_compliance_rules WHERE state = 'VIC';` | **14** |
 | 5 | `SELECT COUNT(*) FROM budget_categories;` | **23** |
 | 6 | `SELECT COUNT(*) FROM escalation_workflows WHERE is_default;` | **1** |
@@ -95,7 +101,7 @@ If any row differs from the expected value, stop and diff against
 
 The schema creates all sequences starting at 1, so no further action is
 needed. (Previously `database-migration-reference-numbers.sql` restarted
-`msm_levy_seq` — that behaviour is now baked in.)
+`msm_lev_seq` — that behaviour is now baked in.)
 
 ## 5. Seed development profiles (optional)
 
