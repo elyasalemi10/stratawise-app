@@ -113,3 +113,24 @@ Small fixes to batch before going live. Non-blocking for feature work.
   (unusual but valid), the user gets the first match arbitrarily. Polish path:
   add an account selector dropdown to `RecordCashReceiptDialog` so managers
   can pick the correct account when multiple exist.
+
+- **Lot ledger "Oldest unpaid" KPI card colour:** Currently goes red whenever
+  any unpaid date exists. Refine to go red only when oldest-unpaid-date is
+  older than the subdivision's interest grace period (or before today if no
+  grace configured). Neutral/grey for merely-outstanding-but-not-yet-overdue.
+  Prevents false alarm on freshly-issued levies.
+
+## From Prompt 8
+
+- **Audit trail in ledger entry drawer — pagination:** Query capped at 100
+  entries per record. If >100 audit events on a single ledger record becomes
+  common (e.g. heavily-contested payment repeatedly voided/re-applied), add a
+  "Load older" button with cursor-based pagination. Unlikely in practice for
+  strata management volumes.
+
+- **Audit trail expandable metadata — native `<details>` element:** The
+  before/after state diff and metadata sections use a native `<details>`/
+  `<summary>` disclosure widget. Renders the browser's default triangle, which
+  is inconsistent with the rest of the UI. Polish path: replace with a
+  shadcn-styled Collapsible or a Chevron-icon toggle button for visual
+  consistency.

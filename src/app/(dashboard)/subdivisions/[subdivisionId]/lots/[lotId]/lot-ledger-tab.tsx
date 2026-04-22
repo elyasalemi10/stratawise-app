@@ -4,6 +4,7 @@ import { useEffect, useState, useTransition } from "react";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
+import Link from "next/link";
 import { toast } from "sonner";
 import { Wallet, Info } from "lucide-react";
 import { Card, CardContent } from "@/components/ui/card";
@@ -41,11 +42,12 @@ import {
   TooltipProvider,
 } from "@/components/ui/tooltip";
 import { cn } from "@/lib/utils";
-import { getLotBalance, getLotLedgerEntries, voidLedgerEntry } from "@/lib/actions/ledger";
+import { getLotBalance, getLotLedgerEntries, getLedgerPaymentSourceLinks, voidLedgerEntry } from "@/lib/actions/ledger";
 import { getBankAccountsForSubdivision } from "@/lib/actions/bank-transactions";
 import { RecordCashReceiptDialog } from "@/components/shared/record-cash-receipt-dialog";
 import { RecordAdjustmentDialog } from "@/components/shared/record-adjustment-dialog";
-import type { LotLedgerState, LotLedgerEntry, LedgerEntryCategory, FundType } from "@/lib/validations/ledger";
+import { LedgerEntryDrawer } from "./lot-ledger-drawer";
+import type { LotLedgerState, LotLedgerEntry, LedgerEntryCategory, FundType, LedgerSourceLink } from "@/lib/validations/ledger";
 import type { BankAccountSummary } from "@/lib/validations/bank-transactions";
 
 const formatCurrency = (n: number) =>
@@ -81,15 +83,33 @@ const CATEGORY_FILTER_OPTIONS: { value: LedgerEntryCategory | "all"; label: stri
   { value: "void_offset", label: "Void offset" },
 ];
 
-function canVoid(entry: LotLedgerEntry): { allowed: boolean; reason?: string } {
+function canVoid(
+  entry: LotLedgerEntry,
+  sourceLink?: LedgerSourceLink,
+): { allowed: boolean; reason?: string; linkHref?: string } {
   if (entry.status === "voided") return { allowed: false };
   if (entry.category === "void_offset") return { allowed: false };
-  if (entry.category === "payment" && entry.entry_type === "credit")
+  if (entry.category === "payment" && entry.entry_type === "credit") {
+    if (sourceLink?.bankTxnId) {
+      return {
+        allowed: false,
+        reason: "To reverse this payment, unmatch the bank transaction.",
+        linkHref: `/subdivisions/${entry.subdivision_id}/finance/reconciliation/${sourceLink.bankTxnId}`,
+      };
+    }
+    if (sourceLink?.receiptId) {
+      return {
+        allowed: false,
+        reason: "To reverse this payment, void the underlying cash receipt.",
+        linkHref: `/subdivisions/${entry.subdivision_id}/finance/bank-account`,
+      };
+    }
     return {
       allowed: false,
       reason:
-        "Payment credits can't be voided directly. To reverse, unmatch the bank transaction or void the underlying cash receipt.",
+        "Payment credits can't be voided directly. To reverse, use the reconciliation queue.",
     };
+  }
   return { allowed: true };
 }
 
@@ -260,6 +280,7 @@ export function LedgerTab({
 }) {
   const [balance, setBalance] = useState<LotLedgerState | null>(null);
   const [entries, setEntries] = useState<LotLedgerEntry[] | null>(null);
+  const [sourceLinks, setSourceLinks] = useState<Record<string, LedgerSourceLink>>({});
   const [bankAccounts, setBankAccounts] = useState<BankAccountSummary[]>([]);
   const [isPending, startTransition] = useTransition();
   const [refreshToken, setRefreshToken] = useState(0);
@@ -271,27 +292,31 @@ export function LedgerTab({
   const [dateTo, setDateTo] = useState("");
   const [includeVoided, setIncludeVoided] = useState(false);
 
-  // Dialogs
+  // Dialogs + drawer
   const [receiptDialogOpen, setReceiptDialogOpen] = useState(false);
   const [adjustmentDialogOpen, setAdjustmentDialogOpen] = useState(false);
   const [voidTarget, setVoidTarget] = useState<LotLedgerEntry | null>(null);
+  const [drawerEntryId, setDrawerEntryId] = useState<string | null>(null);
+  const [drawerOpen, setDrawerOpen] = useState(false);
 
   const refresh = () => setRefreshToken((n) => n + 1);
 
   useEffect(() => {
     startTransition(async () => {
       try {
-        const [bal, ents, accts] = await Promise.all([
+        const [bal, ents, accts, links] = await Promise.all([
           getLotBalance(lotId),
           getLotLedgerEntries(lotId, {
             limit: 500,
             status: includeVoided ? null : "active",
           }),
           getBankAccountsForSubdivision(subdivisionId),
+          getLedgerPaymentSourceLinks(lotId),
         ]);
         setBalance(bal);
         setEntries(ents);
         setBankAccounts(accts);
+        setSourceLinks(links);
       } catch (err) {
         toast.error(err instanceof Error ? err.message : "Failed to load ledger");
         setEntries([]);
@@ -537,7 +562,7 @@ export function LedgerTab({
               <tbody>
                 {visible.map((entry) => {
                   const voided = entry.status === "voided";
-                  const voidCheck = canVoid(entry);
+                  const voidCheck = canVoid(entry, sourceLinks[entry.id]);
                   const runBal = runningBalMap.get(entry.id);
                   return (
                     <tr
@@ -602,7 +627,7 @@ export function LedgerTab({
                             variant="ghost"
                             size="sm"
                             className="h-7 px-2 text-xs cursor-pointer"
-                            onClick={() => toast.info("Entry details coming in the next update.")}
+                            onClick={() => { setDrawerEntryId(entry.id); setDrawerOpen(true); }}
                           >
                             View
                           </Button>
@@ -628,7 +653,18 @@ export function LedgerTab({
                                     Void
                                   </Button>
                                 </TooltipTrigger>
-                                <TooltipContent side="left">{voidCheck.reason}</TooltipContent>
+                                <TooltipContent side="left">
+                                  {voidCheck.linkHref ? (
+                                    <span>
+                                      {voidCheck.reason}{" "}
+                                      <Link href={voidCheck.linkHref} className="underline">
+                                        Go →
+                                      </Link>
+                                    </span>
+                                  ) : (
+                                    voidCheck.reason
+                                  )}
+                                </TooltipContent>
                               </Tooltip>
                             ) : null
                           )}
@@ -674,6 +710,13 @@ export function LedgerTab({
             }}
           />
         )}
+
+        <LedgerEntryDrawer
+          entryId={drawerEntryId}
+          subdivisionId={subdivisionId}
+          open={drawerOpen}
+          onOpenChange={setDrawerOpen}
+        />
       </div>
     </TooltipProvider>
   );

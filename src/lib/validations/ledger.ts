@@ -139,3 +139,30 @@ export interface LotStatement {
   closing_balance_capital: number;
   closing_balance_total: number;
 }
+
+export interface LedgerSourceLink {
+  bankTxnId?: string;
+  receiptId?: string;
+  receiptNumber?: string;
+  bankAccountId?: string;
+  levyBatchId?: string;
+  levyReference?: string;
+}
+
+export interface LedgerAuditEntry {
+  id: string;
+  action: string;
+  profile_id: string;
+  performed_by_name: string | null;
+  before_state: Record<string, unknown> | null;
+  after_state: Record<string, unknown> | null;
+  metadata: Record<string, unknown> | null;
+  created_at: string;
+}
+
+export interface LedgerEntryDetail {
+  entry: LotLedgerEntry;
+  auditTrail: LedgerAuditEntry[];
+  sourceLink: LedgerSourceLink;
+  relatedEntry: LotLedgerEntry | null;
+}

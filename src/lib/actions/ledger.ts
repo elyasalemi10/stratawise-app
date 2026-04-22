@@ -8,8 +8,11 @@ import {
   ledgerVoidSchema,
   lotStatementQuerySchema,
   type LedgerAdjustmentInput,
+  type LedgerAuditEntry,
   type LedgerEntryCategory,
+  type LedgerEntryDetail,
   type LedgerEntryStatus,
+  type LedgerSourceLink,
   type LotLedgerEntry,
   type LotLedgerState,
   type LotStatement,
@@ -335,4 +338,181 @@ function mapLedgerEntry(r: any): LotLedgerEntry {
 
 function round2(n: number): number {
   return Math.round(n * 100) / 100;
+}
+
+// ─── getLedgerPaymentSourceLinks ───────────────────────────────
+// Returns a map of entry_id → source link for payment credit entries in a lot.
+// Used in the ledger tab to populate specific routing in void tooltips.
+export async function getLedgerPaymentSourceLinks(
+  lotId: string,
+): Promise<Record<string, LedgerSourceLink>> {
+  const supabase = createServerClient();
+
+  const { data: lot } = await supabase
+    .from("lots")
+    .select("subdivision_id")
+    .eq("id", lotId)
+    .single();
+  if (!lot) throw new Error(`Lot ${lotId} not found`);
+  await requireSubdivisionAccess(lot.subdivision_id);
+
+  // Step 1: get payment credit entry IDs for this lot
+  const { data: paymentEntries } = await supabase
+    .from("lot_ledger_entries")
+    .select("id")
+    .eq("lot_id", lotId)
+    .eq("category", "payment")
+    .eq("entry_type", "credit");
+
+  const entryIds = (paymentEntries ?? []).map((e) => e.id);
+  if (entryIds.length === 0) return {};
+
+  // Step 2: query both source tables in parallel
+  const [matchesRes, receiptsRes] = await Promise.all([
+    supabase
+      .from("reconciliation_matches")
+      .select("ledger_entry_id, bank_transaction_id")
+      .in("ledger_entry_id", entryIds),
+    supabase
+      .from("undeposited_funds_entries")
+      .select("linked_ledger_credit_id, id, bank_account_id, receipt_number")
+      .in("linked_ledger_credit_id", entryIds),
+  ]);
+
+  const result: Record<string, LedgerSourceLink> = {};
+
+  for (const m of matchesRes.data ?? []) {
+    result[m.ledger_entry_id] = {
+      ...result[m.ledger_entry_id],
+      bankTxnId: m.bank_transaction_id,
+    };
+  }
+  for (const r of receiptsRes.data ?? []) {
+    result[r.linked_ledger_credit_id] = {
+      ...result[r.linked_ledger_credit_id],
+      receiptId: r.id,
+      receiptNumber: r.receipt_number,
+      bankAccountId: r.bank_account_id,
+    };
+  }
+  return result;
+}
+
+// ─── getLedgerEntryDetail ──────────────────────────────────────
+// Full metadata for the drawer: entry + audit trail + source chain.
+export async function getLedgerEntryDetail(
+  entryId: string,
+): Promise<LedgerEntryDetail> {
+  const supabase = createServerClient();
+
+  const { data: entry, error: entryErr } = await supabase
+    .from("lot_ledger_entries")
+    .select("*")
+    .eq("id", entryId)
+    .single();
+  if (entryErr || !entry) throw new Error("Ledger entry not found");
+  await requireSubdivisionAccess(entry.subdivision_id);
+
+  const mappedEntry = mapLedgerEntry(entry);
+
+  // Audit trail, source chain, and related entry — all in parallel
+  const relatedEntryId =
+    mappedEntry.category === "void_offset"
+      ? mappedEntry.voids_entry_id
+      : mappedEntry.voided_by_entry_id;
+
+  const [auditRes, relatedRes, sourceRes] = await Promise.all([
+    supabase
+      .from("audit_log")
+      .select("id, action, profile_id, before_state, after_state, metadata, created_at")
+      .eq("entity_id", entryId)
+      .order("created_at", { ascending: false })
+      .limit(100),
+
+    relatedEntryId
+      ? supabase
+          .from("lot_ledger_entries")
+          .select("*")
+          .eq("id", relatedEntryId)
+          .single()
+      : Promise.resolve({ data: null }),
+
+    buildSourceLink(supabase, mappedEntry),
+  ]);
+
+  // Join profiles to resolve names for each audit entry
+  const profileIds = [...new Set((auditRes.data ?? []).map((r) => r.profile_id).filter(Boolean))];
+  const profileNameMap: Record<string, string> = {};
+  if (profileIds.length > 0) {
+    const { data: profiles } = await supabase
+      .from("profiles")
+      .select("id, first_name, last_name")
+      .in("id", profileIds);
+    for (const p of profiles ?? []) {
+      const name = [p.first_name, p.last_name].filter(Boolean).join(" ");
+      profileNameMap[p.id] = name || `Manager ${p.id.slice(0, 8)}`;
+    }
+  }
+
+  const auditTrail: LedgerAuditEntry[] = (auditRes.data ?? []).map((r) => ({
+    id: r.id,
+    action: r.action,
+    profile_id: r.profile_id,
+    performed_by_name: profileNameMap[r.profile_id] ?? null,
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    before_state: r.before_state as any,
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    after_state: r.after_state as any,
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    metadata: r.metadata as any,
+    created_at: r.created_at,
+  }));
+
+  const relatedEntry =
+    relatedRes.data ? mapLedgerEntry(relatedRes.data) : null;
+
+  return { entry: mappedEntry, auditTrail, sourceLink: sourceRes, relatedEntry };
+}
+
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+async function buildSourceLink(supabase: any, entry: LotLedgerEntry): Promise<LedgerSourceLink> {
+  const link: LedgerSourceLink = {};
+
+  if (
+    (entry.category === "levy" || entry.category === "special_levy") &&
+    entry.levy_notice_id
+  ) {
+    const { data: notice } = await supabase
+      .from("levy_notices")
+      .select("id, reference_number, batch_id")
+      .eq("id", entry.levy_notice_id)
+      .single();
+    if (notice) {
+      link.levyBatchId = notice.batch_id;
+      link.levyReference = notice.reference_number;
+    }
+  } else if (entry.category === "payment" && entry.entry_type === "credit") {
+    const [matchRes, receiptRes] = await Promise.all([
+      supabase
+        .from("reconciliation_matches")
+        .select("bank_transaction_id")
+        .eq("ledger_entry_id", entry.id)
+        .limit(1)
+        .maybeSingle(),
+      supabase
+        .from("undeposited_funds_entries")
+        .select("id, receipt_number, bank_account_id")
+        .eq("linked_ledger_credit_id", entry.id)
+        .limit(1)
+        .maybeSingle(),
+    ]);
+    if (matchRes.data) link.bankTxnId = matchRes.data.bank_transaction_id;
+    if (receiptRes.data) {
+      link.receiptId = receiptRes.data.id;
+      link.receiptNumber = receiptRes.data.receipt_number;
+      link.bankAccountId = receiptRes.data.bank_account_id;
+    }
+  }
+
+  return link;
 }
