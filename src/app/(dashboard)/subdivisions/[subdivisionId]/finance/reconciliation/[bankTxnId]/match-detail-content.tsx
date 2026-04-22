@@ -57,7 +57,7 @@ export function MatchDetailContent({ subdivisionId, transaction }: Props) {
       <div className="grid grid-cols-1 lg:grid-cols-[1fr_1.5fr] gap-6">
         {/* LEFT PANEL */}
         <div className="space-y-6">
-          <TransactionCard transaction={transaction} />
+          <TransactionCard transaction={transaction} showAllocateForm={showAllocateForm} />
 
           {transaction.matches.length > 0 && (
             <ExistingMatchesSection
@@ -82,7 +82,7 @@ export function MatchDetailContent({ subdivisionId, transaction }: Props) {
                     All funds have been reconciled to ledger entries.
                   </div>
                 </div>
-                <Link href={base}>
+                <Link href={`${base}?status=all`}>
                   <Button variant="outline" size="sm" className="text-xs">
                     Back to queue
                   </Button>

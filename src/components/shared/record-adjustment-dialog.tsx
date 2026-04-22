@@ -1,0 +1,317 @@
+"use client";
+
+import { useState, useEffect } from "react";
+import { useForm } from "react-hook-form";
+import { zodResolver } from "@hookform/resolvers/zod";
+import { toast } from "sonner";
+import { z } from "zod";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogHeader,
+  DialogTitle,
+  DialogFooter,
+} from "@/components/ui/dialog";
+import {
+  Form,
+  FormControl,
+  FormField,
+  FormItem,
+  FormLabel,
+  FormMessage,
+} from "@/components/ui/form";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
+import {
+  Command,
+  CommandEmpty,
+  CommandGroup,
+  CommandInput,
+  CommandItem,
+  CommandList,
+} from "@/components/ui/command";
+import {
+  Popover,
+  PopoverContent,
+  PopoverTrigger,
+} from "@/components/ui/popover";
+import { Input } from "@/components/ui/input";
+import { Textarea } from "@/components/ui/textarea";
+import { Button } from "@/components/ui/button";
+import { Check } from "lucide-react";
+import { cn } from "@/lib/utils";
+import { recordAdjustment } from "@/lib/actions/ledger";
+import { getSubdivisionLotsForAllocation } from "@/lib/actions/reconciliation";
+import { FUND_TYPES } from "@/lib/validations/ledger";
+
+const adjustmentSchema = z.object({
+  lot_id: z.string().uuid("Select a lot"),
+  fund_type: z.enum(FUND_TYPES),
+  adjustment_type: z.enum(["debit", "credit"]),
+  amount: z.coerce
+    .number()
+    .positive("Amount must be greater than zero")
+    .finite(),
+  description: z.string().trim().min(10, "Description must be at least 10 characters").max(500),
+});
+
+type FormInput = z.infer<typeof adjustmentSchema>;
+
+interface Props {
+  open: boolean;
+  onOpenChange: (open: boolean) => void;
+  subdivisionId: string;
+  onSuccess: () => void;
+}
+
+export function RecordAdjustmentDialog({
+  open,
+  onOpenChange,
+  subdivisionId,
+  onSuccess,
+}: Props) {
+  const [isSubmitting, setIsSubmitting] = useState(false);
+  const [lotsLoading, setLotsLoading] = useState(true);
+  const [lots, setLots] = useState<Awaited<ReturnType<typeof getSubdivisionLotsForAllocation>>>([]);
+  const [lotOpen, setLotOpen] = useState(false);
+
+  const form = useForm<FormInput>({
+    resolver: zodResolver(adjustmentSchema),
+    defaultValues: {
+      lot_id: "",
+      fund_type: "administrative",
+      adjustment_type: "credit",
+      amount: undefined,
+      description: "",
+    },
+  });
+
+  const selectedLotId = form.watch("lot_id");
+  const selectedLot = lots.find((l) => l.id === selectedLotId);
+  const lotLabel = selectedLot
+    ? `Lot ${selectedLot.lot_number}${selectedLot.unit_number ? ` — Unit ${selectedLot.unit_number}` : ""}`
+    : "Select a lot";
+
+  useEffect(() => {
+    if (!open) return;
+    const loadLots = async () => {
+      try {
+        setLotsLoading(true);
+        const data = await getSubdivisionLotsForAllocation(subdivisionId);
+        setLots(data);
+      } catch {
+        toast.error("Failed to load lots");
+      } finally {
+        setLotsLoading(false);
+      }
+    };
+    loadLots();
+  }, [open, subdivisionId]);
+
+  const onSubmit = async (data: FormInput) => {
+    setIsSubmitting(true);
+    try {
+      await recordAdjustment({
+        lot_id: data.lot_id,
+        fund_type: data.fund_type,
+        adjustment_type: data.adjustment_type,
+        amount: data.amount,
+        description: data.description,
+      });
+      toast.success("Adjustment recorded successfully");
+      form.reset();
+      onOpenChange(false);
+      onSuccess();
+    } catch (err) {
+      const message = err instanceof Error ? err.message : "Failed to record adjustment";
+      toast.error(message);
+    } finally {
+      setIsSubmitting(false);
+    }
+  };
+
+  return (
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      <DialogContent className="max-w-md">
+        <DialogHeader>
+          <DialogTitle>Record adjustment</DialogTitle>
+          <DialogDescription>
+            Add a credit or debit adjustment to a lot&apos;s account.
+          </DialogDescription>
+        </DialogHeader>
+
+        <Form {...form}>
+          <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-4">
+            {/* Lot select */}
+            <FormField
+              control={form.control}
+              name="lot_id"
+              render={({ field }) => (
+                <FormItem>
+                  <FormLabel>Lot</FormLabel>
+                  <Popover open={lotOpen} onOpenChange={setLotOpen}>
+                    <PopoverTrigger asChild>
+                      <Button
+                        variant="outline"
+                        role="combobox"
+                        className={cn(
+                          "w-full justify-between",
+                          !field.value && "text-muted-foreground"
+                        )}
+                        disabled={lotsLoading}
+                      >
+                        {lotLabel}
+                      </Button>
+                    </PopoverTrigger>
+                    <PopoverContent className="w-full p-0" align="start">
+                      <Command>
+                        <CommandInput placeholder="Search lots..." />
+                        <CommandEmpty>No lots found.</CommandEmpty>
+                        <CommandList>
+                          <CommandGroup>
+                            {lots.map((lot) => (
+                              <CommandItem
+                                key={lot.id}
+                                value={lot.id}
+                                onSelect={(currentValue) => {
+                                  field.onChange(currentValue === field.value ? "" : currentValue);
+                                  setLotOpen(false);
+                                }}
+                              >
+                                <Check
+                                  className={cn(
+                                    "mr-2 h-4 w-4",
+                                    field.value === lot.id ? "opacity-100" : "opacity-0"
+                                  )}
+                                />
+                                Lot {lot.lot_number}
+                                {lot.unit_number && ` — Unit ${lot.unit_number}`}
+                              </CommandItem>
+                            ))}
+                          </CommandGroup>
+                        </CommandList>
+                      </Command>
+                    </PopoverContent>
+                  </Popover>
+                  <FormMessage />
+                </FormItem>
+              )}
+            />
+
+            {/* Fund type */}
+            <FormField
+              control={form.control}
+              name="fund_type"
+              render={({ field }) => (
+                <FormItem>
+                  <FormLabel>Fund type</FormLabel>
+                  <Select value={field.value} onValueChange={field.onChange}>
+                    <FormControl>
+                      <SelectTrigger>
+                        <SelectValue />
+                      </SelectTrigger>
+                    </FormControl>
+                    <SelectContent>
+                      <SelectItem value="administrative">Administrative</SelectItem>
+                      <SelectItem value="capital_works">Capital works</SelectItem>
+                    </SelectContent>
+                  </Select>
+                  <FormMessage />
+                </FormItem>
+              )}
+            />
+
+            {/* Adjustment type */}
+            <FormField
+              control={form.control}
+              name="adjustment_type"
+              render={({ field }) => (
+                <FormItem>
+                  <FormLabel>Type</FormLabel>
+                  <Select value={field.value} onValueChange={field.onChange}>
+                    <FormControl>
+                      <SelectTrigger>
+                        <SelectValue />
+                      </SelectTrigger>
+                    </FormControl>
+                    <SelectContent>
+                      <SelectItem value="credit">Credit (reduce balance owed)</SelectItem>
+                      <SelectItem value="debit">Debit (increase balance owed)</SelectItem>
+                    </SelectContent>
+                  </Select>
+                  <FormMessage />
+                </FormItem>
+              )}
+            />
+
+            {/* Amount */}
+            <FormField
+              control={form.control}
+              name="amount"
+              render={({ field }) => (
+                <FormItem>
+                  <FormLabel>Amount</FormLabel>
+                  <FormControl>
+                    <div className="relative">
+                      <span className="absolute left-3 top-2.5 text-sm text-muted-foreground">$</span>
+                      <Input
+                        type="number"
+                        step="0.01"
+                        placeholder="0.00"
+                        className="pl-6"
+                        {...field}
+                        value={field.value ?? ""}
+                        onChange={(e) =>
+                          field.onChange(e.target.value ? parseFloat(e.target.value) : undefined)
+                        }
+                      />
+                    </div>
+                  </FormControl>
+                  <FormMessage />
+                </FormItem>
+              )}
+            />
+
+            {/* Description */}
+            <FormField
+              control={form.control}
+              name="description"
+              render={({ field }) => (
+                <FormItem>
+                  <FormLabel>Reason for adjustment</FormLabel>
+                  <FormControl>
+                    <Textarea
+                      placeholder="E.g. Meter reading correction, reversal of previous entry..."
+                      className="resize-none"
+                      rows={3}
+                      {...field}
+                    />
+                  </FormControl>
+                  <div className="text-xs text-muted-foreground mt-1">
+                    {field.value.length}/{500} characters (minimum 10)
+                  </div>
+                  <FormMessage />
+                </FormItem>
+              )}
+            />
+
+            <DialogFooter>
+              <Button type="button" variant="outline" onClick={() => onOpenChange(false)}>
+                Cancel
+              </Button>
+              <Button type="submit" disabled={isSubmitting}>
+                {isSubmitting ? "Recording..." : "Record adjustment"}
+              </Button>
+            </DialogFooter>
+          </form>
+        </Form>
+      </DialogContent>
+    </Dialog>
+  );
+}

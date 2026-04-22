@@ -20,9 +20,10 @@ const formatDate = (iso: string) => {
 
 interface Props {
   transaction: BankTransactionDetail;
+  showAllocateForm?: boolean;
 }
 
-export function TransactionCard({ transaction }: Props) {
+export function TransactionCard({ transaction, showAllocateForm = true }: Props) {
   const isCredit = transaction.amount > 0;
   const amountClass = isCredit ? "text-[hsl(160,100%,37%)]" : "text-destructive";
 
@@ -78,8 +79,8 @@ export function TransactionCard({ transaction }: Props) {
           </div>
         </div>
 
-        {/* Detected reference with pre-fill button */}
-        {transaction.detected_reference && (
+        {/* Detected reference — only show when allocate form will be visible */}
+        {transaction.detected_reference && showAllocateForm && (
           <div className="mt-3 p-3 bg-blue-50 rounded-md border border-blue-200">
             <div className="text-xs font-medium text-blue-900 mb-2">
               Detected reference
@@ -88,7 +89,7 @@ export function TransactionCard({ transaction }: Props) {
               {transaction.detected_reference}
             </div>
             <div className="text-xs text-blue-600">
-              ℹ This reference will be pre-filled in the first allocation row below.
+              ℹ Reference detected. The first allocation row will suggest this levy and lot.
             </div>
           </div>
         )}
