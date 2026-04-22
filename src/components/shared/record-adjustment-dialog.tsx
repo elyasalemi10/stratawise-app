@@ -56,6 +56,7 @@ interface Props {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   subdivisionId: string;
+  defaultLotId?: string;
   onSuccess: () => void;
 }
 
@@ -63,6 +64,7 @@ export function RecordAdjustmentDialog({
   open,
   onOpenChange,
   subdivisionId,
+  defaultLotId,
   onSuccess,
 }: Props) {
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -74,7 +76,7 @@ export function RecordAdjustmentDialog({
     resolver: zodResolver(ledgerAdjustmentSchema),
     defaultValues: {
       subdivision_id: subdivisionId,
-      lot_id: "",
+      lot_id: defaultLotId ?? "",
       fund_type: "administrative",
       entry_type: "credit",
       category: "adjustment_credit",

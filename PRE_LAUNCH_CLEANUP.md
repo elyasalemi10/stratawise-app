@@ -97,3 +97,19 @@ Small fixes to batch before going live. Non-blocking for feature work.
   plumbing that outweighs the visual benefit. Polish path: pass an
   `undepositedCount` prop from the page's server component and show the
   panel skeleton rows conditionally during `isPending && transactions === null`.
+
+## From Prompt 7
+
+- **Lot ledger tab — paginate entries:** Current implementation fetches at most
+  500 entries and displays them all. Running balance is computed from this
+  capped set, so it will be incorrect for lots with >500 historical entries.
+  Polish path: store a `running_balance` column per row at write time (DB
+  trigger) so the UI can display it exactly, or implement cursor-based
+  pagination with balance carried forward from the prior page.
+
+- **Multiple bank accounts per fund on lot detail page:** `LedgerTab` selects
+  the first bank account matching the current fund filter when opening
+  `RecordCashReceiptDialog`. If an OC has multiple bank accounts per fund
+  (unusual but valid), the user gets the first match arbitrarily. Polish path:
+  add an account selector dropdown to `RecordCashReceiptDialog` so managers
+  can pick the correct account when multiple exist.

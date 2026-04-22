@@ -2,6 +2,7 @@
 
 import { useState, useRef, useEffect, useCallback } from "react";
 import { useSearchParams } from "next/navigation";
+import { LedgerTab } from "./lot-ledger-tab";
 import Link from "next/link";
 import { ChevronLeft, Building2, DollarSign, Users, Pencil, Check } from "lucide-react";
 import { toast } from "sonner";
@@ -28,7 +29,7 @@ interface LotDetailContentProps {
 const TABS = [
   { value: "general", label: "General" },
   { value: "documents", label: "Documents" },
-  { value: "payments", label: "Payments" },
+  { value: "ledger", label: "Ledger" },
   { value: "levies", label: "Levies" },
   { value: "communications", label: "Communications" },
 ];
@@ -146,10 +147,20 @@ function PlaceholderTab({ name }: { name: string }) {
 
 export function LotDetailContent({ lot: initialLot, owner, subdivisionId, balance, documents }: LotDetailContentProps) {
   const searchParams = useSearchParams();
-  const initialTab = searchParams.get("tab") ?? "general";
+  const rawTab = searchParams.get("tab") ?? "general";
+  // ?tab=payments is a legacy URL — shim silently to ledger
+  const initialTab = rawTab === "payments" ? "ledger" : rawTab;
   const [activeTab, setActiveTab] = useState(initialTab);
   const [isEditing, setIsEditing] = useState(false);
   const [lot, setLot] = useState(initialLot);
+
+  // Silently rewrite the URL when the payments→ledger shim fires
+  useEffect(() => {
+    if (rawTab === "payments") {
+      window.history.replaceState(null, "", `/subdivisions/${subdivisionId}/lots/${lot.id}?tab=ledger`);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   function onTabChange(value: string) {
     setActiveTab(value);
@@ -301,8 +312,8 @@ export function LotDetailContent({ lot: initialLot, owner, subdivisionId, balanc
         <DocumentManager subdivisionId={subdivisionId} lotId={lot.id} initialDocuments={documents} />
       </div>
 
-      <div className={activeTab === "payments" ? "" : "hidden"}>
-        <PlaceholderTab name="Payments" />
+      <div className={activeTab === "ledger" ? "" : "hidden"}>
+        <LedgerTab subdivisionId={subdivisionId} lotId={lot.id} />
       </div>
       <div className={activeTab === "levies" ? "" : "hidden"}>
         <PlaceholderTab name="Levies" />

@@ -77,16 +77,18 @@ export async function getLotLedgerEntries(
   await requireSubdivisionAccess(lot.subdivision_id);
 
   const limit = Math.min(Math.max(opts.limit ?? 50, 1), 500);
-  const statusFilter = opts.status ?? "active";
+  // null = no status filter (return all); undefined = default to "active"
+  const statusFilter = opts.status === undefined ? "active" : opts.status;
 
   let q = supabase
     .from("lot_ledger_entries")
     .select("*")
     .eq("lot_id", lotId)
-    .eq("status", statusFilter)
     .order("entry_date", { ascending: false })
     .order("created_at", { ascending: false })
     .limit(limit);
+
+  if (statusFilter !== null) q = q.eq("status", statusFilter);
 
   if (opts.before) q = q.lt("entry_date", opts.before);
   if (opts.category) q = q.eq("category", opts.category);

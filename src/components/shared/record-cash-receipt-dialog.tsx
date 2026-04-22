@@ -54,6 +54,7 @@ interface Props {
   bankAccountId: string;
   bankAccountName: string;
   fundType: "administrative" | "capital_works";
+  defaultLotId?: string;
   onSuccess: () => void;
 }
 
@@ -64,6 +65,7 @@ export function RecordCashReceiptDialog({
   bankAccountId,
   bankAccountName,
   fundType,
+  defaultLotId,
   onSuccess,
 }: Props) {
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -75,7 +77,7 @@ export function RecordCashReceiptDialog({
     resolver: zodResolver(recordCashReceiptSchema),
     defaultValues: {
       subdivision_id: subdivisionId,
-      lot_id: "",
+      lot_id: defaultLotId ?? "",
       bank_account_id: bankAccountId,
       fund_type: fundType,
       amount: undefined,
