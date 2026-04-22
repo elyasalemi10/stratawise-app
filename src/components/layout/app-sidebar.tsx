@@ -22,6 +22,7 @@ import {
   Shield,
   ClipboardList,
   Landmark,
+  GitMerge,
 } from "lucide-react";
 
 import {
@@ -48,6 +49,7 @@ import {
   setCachedProfile,
   getCachedSubdivisions,
   setCachedSubdivisions,
+  SIDEBAR_REFRESH_EVENT,
 } from "@/lib/sidebar-cache";
 
 // ─── Nav definitions ────────────────────────────────────────────
@@ -139,6 +141,7 @@ function getSubdivisionNavGroups(subdivisionId: string, isLotOwner: boolean) {
         { href: `${base}/finance/generate`, label: "Generate levies", icon: Plus },
         { href: `${base}/finance/insurance`, label: "Insurance", icon: Shield },
         { href: `${base}/finance/bank-account`, label: "Bank account", icon: Landmark },
+        { href: `${base}/finance/reconciliation`, label: "Reconciliation", icon: GitMerge, badgeKey: "unmatched_count" as const },
       ],
     },
     {
@@ -252,18 +255,31 @@ export function AppSidebar() {
       setSubdivisions(cachedSubs);
     }
 
-    // Fetch fresh data in background
-    Promise.all([getSidebarProfile(), getSidebarSubdivisions()])
-      .then(([profileData, subdivisionData]) => {
-        setProfile(profileData);
-        setSubdivisions(subdivisionData);
-        setLoaded(true);
-        if (profileData) setCachedProfile(profileData);
-        setCachedSubdivisions(subdivisionData);
-      })
-      .catch(() => {
-        setLoaded(true);
-      });
+    function fetchFresh() {
+      Promise.all([getSidebarProfile(), getSidebarSubdivisions()])
+        .then(([profileData, subdivisionData]) => {
+          setProfile(profileData);
+          setSubdivisions(subdivisionData);
+          setLoaded(true);
+          if (profileData) setCachedProfile(profileData);
+          setCachedSubdivisions(subdivisionData);
+        })
+        .catch(() => {
+          setLoaded(true);
+        });
+    }
+
+    fetchFresh();
+
+    // Listen for client-side invalidation events dispatched by mutations
+    // (see revalidateSidebarFromClient in sidebar-cache.ts). revalidateTag on
+    // the server clears unstable_cache; this event clears localStorage +
+    // triggers an immediate refetch so the badge count updates in-session.
+    function onRefresh() {
+      fetchFresh();
+    }
+    window.addEventListener(SIDEBAR_REFRESH_EVENT, onRefresh);
+    return () => window.removeEventListener(SIDEBAR_REFRESH_EVENT, onRefresh);
   }, []);
 
   // Detect subdivision context from URL
@@ -415,11 +431,24 @@ export function AppSidebar() {
                   } else {
                     isActive = pathname === item.href || pathname.startsWith(item.href + "/");
                   }
+                  const badgeKey = "badgeKey" in item ? item.badgeKey : undefined;
+                  const count =
+                    badgeKey === "unmatched_count"
+                      ? currentSubdivision?.unmatched_count ?? 0
+                      : 0;
                   return (
                     <SidebarMenuItem key={item.href}>
                       <SidebarMenuButton isActive={isActive} render={<Link href={item.href} />}>
                         <item.icon />
                         <span>{item.label}</span>
+                        {count > 0 && (
+                          <span
+                            className="ml-auto inline-flex items-center justify-center rounded-full bg-muted px-1.5 text-[10px] font-semibold leading-none text-muted-foreground h-4 min-w-[1rem]"
+                            aria-label={`${count} unmatched`}
+                          >
+                            {count > 99 ? "99+" : count}
+                          </span>
+                        )}
                       </SidebarMenuButton>
                     </SidebarMenuItem>
                   );

@@ -3,6 +3,7 @@
 import { requireCompanyRole, requireSubdivisionAccess } from "@/lib/auth";
 import { createServerClient } from "@/lib/supabase";
 import { revalidatePath } from "next/cache";
+import { revalidateSidebarForSubdivision } from "./subdivision";
 import {
   addManualBankTransactionSchema,
   depositUndepositedFundsSchema,
@@ -503,6 +504,7 @@ export async function addManualBankTransaction(
     matchedRef = result.reference;
   }
 
+  await revalidateSidebarForSubdivision(parsed.data.subdivision_id);
   revalidatePath(`/subdivisions/${parsed.data.subdivision_id}/finance/reconciliation`);
   revalidatePath(`/subdivisions/${parsed.data.subdivision_id}/finance/bank-account`);
   return { success: { bankTransactionId: inserted.id, autoMatched, matchedRef } };
@@ -544,6 +546,7 @@ export async function reconcileTransaction(
     flags?: string[];
   };
 
+  await revalidateSidebarForSubdivision(parsed.data.subdivision_id);
   revalidatePath(`/subdivisions/${parsed.data.subdivision_id}/finance/reconciliation`);
   return {
     success: {
@@ -581,6 +584,7 @@ export async function unmatchTransaction(
     new_matched_total?: number | string;
   };
 
+  await revalidateSidebarForSubdivision(parsed.data.subdivision_id);
   revalidatePath(`/subdivisions/${parsed.data.subdivision_id}/finance/reconciliation`);
   return {
     success: {
@@ -618,6 +622,7 @@ export async function recordCashReceipt(
   if (error) return { error: error.message };
   const payload = (data ?? {}) as { receipt_id?: string; receipt_number?: string; ledger_entry_id?: string };
 
+  await revalidateSidebarForSubdivision(parsed.data.subdivision_id);
   revalidatePath(`/subdivisions/${parsed.data.subdivision_id}/finance/reconciliation`);
   revalidatePath(`/subdivisions/${parsed.data.subdivision_id}/finance/bank-account`);
   revalidatePath(`/subdivisions/${parsed.data.subdivision_id}/lots/${parsed.data.lot_id}`);
@@ -649,6 +654,7 @@ export async function depositUndepositedFunds(
   if (error) return { error: error.message };
   const payload = (data ?? {}) as { cleared_receipt_numbers?: string[]; match_ids?: string[] };
 
+  await revalidateSidebarForSubdivision(parsed.data.subdivision_id);
   revalidatePath(`/subdivisions/${parsed.data.subdivision_id}/finance/reconciliation`);
   revalidatePath(`/subdivisions/${parsed.data.subdivision_id}/finance/bank-account`);
   return {
@@ -677,6 +683,7 @@ export async function excludeTransaction(
 
   if (error) return { error: error.message };
 
+  await revalidateSidebarForSubdivision(parsed.data.subdivision_id);
   revalidatePath(`/subdivisions/${parsed.data.subdivision_id}/finance/reconciliation`);
   return { success: true };
 }
@@ -698,6 +705,7 @@ export async function unexcludeTransaction(
 
   if (error) return { error: error.message };
 
+  await revalidateSidebarForSubdivision(parsed.data.subdivision_id);
   revalidatePath(`/subdivisions/${parsed.data.subdivision_id}/finance/reconciliation`);
   return { success: true };
 }
@@ -796,6 +804,7 @@ export async function voidBankTransaction(
     },
   });
 
+  await revalidateSidebarForSubdivision(parsed.data.subdivision_id);
   revalidatePath(`/subdivisions/${parsed.data.subdivision_id}/finance/reconciliation`);
   revalidatePath(`/subdivisions/${parsed.data.subdivision_id}/finance/bank-account`);
   return { success: { voidedCreditIds, reopenedReceiptIds } };
@@ -855,6 +864,7 @@ export async function voidUndepositedReceipt(
   });
 
   revalidatePath(`/subdivisions/${parsed.data.subdivision_id}/finance/bank-account`);
+  await revalidateSidebarForSubdivision(parsed.data.subdivision_id);
   revalidatePath(`/subdivisions/${parsed.data.subdivision_id}/finance/reconciliation`);
   return { success: { voidedCreditId: uf.linked_ledger_credit_id } };
 }

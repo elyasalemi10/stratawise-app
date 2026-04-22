@@ -3,6 +3,7 @@
 import { requireCompanyRole, requireSubdivisionAccess } from "@/lib/auth";
 import { createServerClient } from "@/lib/supabase";
 import { revalidatePath } from "next/cache";
+import { revalidateSidebarForSubdivision } from "./subdivision";
 import {
   importTransactionsSchema,
   type BankAccountSummary,
@@ -287,6 +288,7 @@ export async function importBankTransactions(
     },
   });
 
+  await revalidateSidebarForSubdivision(subdivisionId);
   revalidatePath(`/subdivisions/${subdivisionId}/finance/bank-account`);
   revalidatePath(`/subdivisions/${subdivisionId}/finance/reconciliation`);
   return { summary };

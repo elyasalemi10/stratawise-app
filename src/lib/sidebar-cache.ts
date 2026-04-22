@@ -55,3 +55,25 @@ export function clearSidebarCache(): void {
     // ignore
   }
 }
+
+/**
+ * Event name the sidebar listens for. Kept as an export so callers don't
+ * duplicate the string literal (grep-safety).
+ */
+export const SIDEBAR_REFRESH_EVENT = "msm-sidebar:refresh";
+
+/**
+ * Call this from ANY client-side mutation success handler that affected the
+ * sidebar unmatched count (reconciliation actions, CSV import, etc.). It:
+ *   1. Clears the localStorage fast-path so the next mount reads fresh data.
+ *   2. Fires a custom event the mounted sidebar listens for, triggering an
+ *      immediate server-action re-fetch without a page reload.
+ * The corresponding server-side revalidateTag is the responsibility of each
+ * mutation server action — see revalidateSidebarForSubdivision.
+ */
+export function revalidateSidebarFromClient(): void {
+  clearSidebarCache();
+  if (typeof window !== "undefined") {
+    window.dispatchEvent(new Event(SIDEBAR_REFRESH_EVENT));
+  }
+}

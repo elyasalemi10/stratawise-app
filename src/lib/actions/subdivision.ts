@@ -1,8 +1,32 @@
 "use server";
 
+import { unstable_cache, updateTag } from "next/cache";
 import { getCurrentProfile, requireSubdivisionAccess } from "@/lib/auth";
 import { createServerClient } from "@/lib/supabase";
 import { countLotsWithOwner, getLotOwners, type LotOwnerStatus } from "@/lib/actions/lot-ownership";
+
+/**
+ * Call at the tail of every mutation server action that affects the sidebar
+ * unmatched count (bank_transactions / reconciliation_matches /
+ * undeposited_funds_entries). Performs one indexed lookup to resolve the
+ * subdivision's company_id, then revalidates the matching cache tag.
+ * Client-side invalidation of localStorage + the sidebar re-fetch is the
+ * caller's responsibility (see sidebar-cache.ts#revalidateSidebarFromClient).
+ */
+export async function revalidateSidebarForSubdivision(subdivisionId: string): Promise<void> {
+  const sb = createServerClient();
+  const { data } = await sb
+    .from("subdivisions")
+    .select("management_company_id")
+    .eq("id", subdivisionId)
+    .single();
+  if (data?.management_company_id) {
+    // Next.js 16: updateTag is the server-action-side API with
+    // read-your-own-writes semantics (revalidateTag gained a second
+    // required arg and is intended for route revalidation).
+    updateTag(`sidebar-subdivisions-${data.management_company_id}`);
+  }
+}
 
 export interface SidebarLot {
   lot_number: number;
@@ -17,6 +41,14 @@ export interface SidebarSubdivision {
   total_lots: number;
   status: string;
   lots?: SidebarLot[];
+  /**
+   * Count of bank transactions in this subdivision awaiting manager
+   * reconciliation. Computed on sidebar load — becomes stale after in-session
+   * match/exclude/void actions until the next sidebar remount. Acceptable
+   * for MVP; tighter staleness handling is a Prompt 7 polish item.
+   * Lot-owner role: always 0 (not shown).
+   */
+  unmatched_count?: number;
 }
 
 export async function getSidebarSubdivisions(): Promise<SidebarSubdivision[]> {
@@ -27,13 +59,71 @@ export async function getSidebarSubdivisions(): Promise<SidebarSubdivision[]> {
 
   if (profile.role === "super_admin" || profile.role === "strata_manager") {
     if (!profile.management_company_id) return [];
-    const { data } = await supabase
-      .from("subdivisions")
-      .select("id, name, address, plan_number, total_lots, status")
-      .eq("management_company_id", profile.management_company_id)
-      .eq("status", "active")
-      .order("name");
-    return (data ?? []).map((s) => ({ ...s, address: s.address ?? "" }));
+    const companyId = profile.management_company_id;
+
+    // The per-company fetch is tagged via unstable_cache. Every reconciliation
+    // mutation (match, unmatch, exclude/unexclude, receipt, deposit, void,
+    // CSV import, manual-txn add) calls revalidateSidebarForSubdivision(), which
+    // resolves company_id and invokes Next.js 16 updateTag() on this cache tag
+    // for read-your-own-writes semantics. The client also clears localStorage
+    // (sidebar-cache.ts) and re-fetches on the "msm-sidebar:refresh" event.
+    //
+    // Deliberate trade-off on query count:
+    // - +2 supabase queries on sidebar mount (bank_accounts fan-out + unmatched
+    //   bank_transactions scan), aggregated in JS (Supabase JS has no GROUP BY).
+    // - Zero extra queries per navigation — the whole result is wrapped in
+    //   unstable_cache + served from localStorage on the client for up to 5
+    //   minutes (see sidebar-cache.ts).
+    // Do NOT "optimise" this without understanding the cache pattern. Trying
+    // to count in a single SQL statement without a supporting RPC removes the
+    // cache-tag invalidation seam we rely on here.
+    const fetchForCompany = unstable_cache(
+      async (cid: string): Promise<SidebarSubdivision[]> => {
+        const sb = createServerClient();
+        const { data: subs } = await sb
+          .from("subdivisions")
+          .select("id, name, address, plan_number, total_lots, status")
+          .eq("management_company_id", cid)
+          .eq("status", "active")
+          .order("name");
+        const subRows = subs ?? [];
+        if (subRows.length === 0) return [];
+
+        const subIds = subRows.map((s) => s.id);
+        const { data: accounts } = await sb
+          .from("bank_accounts")
+          .select("id, subdivision_id")
+          .in("subdivision_id", subIds);
+        const accountToSub = new Map<string, string>();
+        for (const a of accounts ?? []) accountToSub.set(a.id, a.subdivision_id);
+
+        const accountIds = Array.from(accountToSub.keys());
+        const countBySub = new Map<string, number>();
+        if (accountIds.length > 0) {
+          const { data: unmatchedRows } = await sb
+            .from("bank_transactions")
+            .select("bank_account_id")
+            .in("bank_account_id", accountIds)
+            .eq("is_voided", false)
+            .eq("match_status", "unmatched");
+          for (const row of unmatchedRows ?? []) {
+            const sid = accountToSub.get(row.bank_account_id);
+            if (!sid) continue;
+            countBySub.set(sid, (countBySub.get(sid) ?? 0) + 1);
+          }
+        }
+
+        return subRows.map((s) => ({
+          ...s,
+          address: s.address ?? "",
+          unmatched_count: countBySub.get(s.id) ?? 0,
+        }));
+      },
+      [`sidebar-subdivisions`],
+      { tags: [`sidebar-subdivisions-${companyId}`] },
+    );
+
+    return fetchForCompany(companyId);
   }
 
   // lot_owner — subdivisions they're a member of, with their lot info

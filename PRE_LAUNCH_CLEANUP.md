@@ -37,6 +37,12 @@ Small fixes to batch before going live. Non-blocking for feature work.
   application code paths. The convention is: any `__`-prefixed export in
   `auth.ts` is a testing-only seam; grep -rn the name and verify no hit
   lands in a non-verification file.
+- **Enrich sidebar badge with age-based severity.** Current badge is neutral
+  grey — a count only. Upgrade path: include the oldest-unmatched
+  `transaction_date` per subdivision in `getSidebarSubdivisions`, then vary
+  the badge colour by age: grey for recent, amber for >7 days, red for
+  >30 days. Requires an additional aggregate column on the already-cached
+  query, not extra round-trips.
 - **`next/cache` stub audit:** verification scripts pre-populate Node's
   CommonJS `require.cache` with a no-op stub for `next/cache` so
   `revalidatePath()` can be safely called from a standalone `tsx` context.
