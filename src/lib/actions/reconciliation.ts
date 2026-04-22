@@ -75,12 +75,18 @@ export async function getReconciliationQueue(
   const { data: accounts } = await supabase
     .from("bank_accounts")
     .select("id, account_name, fund_type")
-    .eq("subdivision_id", subdivisionId);
+    .eq("subdivision_id", subdivisionId)
+    .order("fund_type");
 
   const accountIds = (accounts ?? []).map((a) => a.id);
   const accountMap = new Map(
     (accounts ?? []).map((a) => [a.id, { name: a.account_name, fund_type: a.fund_type as FundType }]),
   );
+  const bankAccountOptions = (accounts ?? []).map((a) => ({
+    id: a.id,
+    name: a.account_name,
+    fund_type: a.fund_type as FundType,
+  }));
 
   if (accountIds.length === 0) {
     return {
@@ -92,8 +98,22 @@ export async function getReconciliationQueue(
       unmatchedValue: 0,
       oldestUnmatchedDays: null,
       matchedThisMonthValue: 0,
+      availableSources: [],
+      bankAccounts: [],
     };
   }
+
+  // Distinct sources across all (non-voided) transactions in this subdivision.
+  // Filter-agnostic so the dropdown shows every source ever seen, regardless
+  // of the currently-applied filters.
+  const { data: sourceRows } = await supabase
+    .from("bank_transactions")
+    .select("source")
+    .in("bank_account_id", accountIds)
+    .eq("is_voided", false);
+  const availableSources = Array.from(
+    new Set((sourceRows ?? []).map((r) => r.source as TransactionSource)),
+  ).sort();
 
   let q = supabase
     .from("bank_transactions")
@@ -190,6 +210,8 @@ export async function getReconciliationQueue(
     unmatchedValue: round2(unmatchedValue),
     oldestUnmatchedDays,
     matchedThisMonthValue: round2(matchedThisMonthValue),
+    availableSources,
+    bankAccounts: bankAccountOptions,
   };
 }
 

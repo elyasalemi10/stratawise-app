@@ -208,6 +208,12 @@ export interface ReconciliationQueueRow {
   imported_at: string;
 }
 
+export interface BankAccountOption {
+  id: string;
+  name: string;
+  fund_type: FundType;
+}
+
 export interface ReconciliationQueueResult {
   rows: ReconciliationQueueRow[];
   total: number;
@@ -217,6 +223,16 @@ export interface ReconciliationQueueResult {
   unmatchedValue: number;
   oldestUnmatchedDays: number | null;
   matchedThisMonthValue: number;
+  /**
+   * Distinct transaction_source values present in this subdivision's data.
+   * Drives the dynamic source-filter dropdown — the UI prepends "All" to
+   * this list. Filter-agnostic: doesn't depend on the currently-applied
+   * status/source/bank filters. New sources (basiq, future integrations)
+   * appear automatically once a transaction of that source is recorded.
+   */
+  availableSources: TransactionSource[];
+  /** Bank accounts for this subdivision, for the account-picker filter. */
+  bankAccounts: BankAccountOption[];
 }
 
 export interface BankTransactionDetail {
