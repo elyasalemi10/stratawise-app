@@ -145,7 +145,7 @@ export function RecordCashReceiptDialog({
                 <FormItem>
                   <FormLabel>Lot</FormLabel>
                   <Popover open={lotOpen} onOpenChange={setLotOpen}>
-                    <PopoverTrigger asChild>
+                    <PopoverTrigger>
                       <Button
                         variant="outline"
                         role="combobox"

@@ -48,20 +48,9 @@ import { Check } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { recordAdjustment } from "@/lib/actions/ledger";
 import { getSubdivisionLotsForAllocation } from "@/lib/actions/reconciliation";
-import { FUND_TYPES } from "@/lib/validations/ledger";
+import { ledgerAdjustmentSchema } from "@/lib/validations/ledger";
 
-const adjustmentSchema = z.object({
-  lot_id: z.string().uuid("Select a lot"),
-  fund_type: z.enum(FUND_TYPES),
-  adjustment_type: z.enum(["debit", "credit"]),
-  amount: z.coerce
-    .number()
-    .positive("Amount must be greater than zero")
-    .finite(),
-  description: z.string().trim().min(10, "Description must be at least 10 characters").max(500),
-});
-
-type FormInput = z.infer<typeof adjustmentSchema>;
+type FormInput = z.infer<typeof ledgerAdjustmentSchema>;
 
 interface Props {
   open: boolean;
@@ -82,12 +71,15 @@ export function RecordAdjustmentDialog({
   const [lotOpen, setLotOpen] = useState(false);
 
   const form = useForm<FormInput>({
-    resolver: zodResolver(adjustmentSchema),
+    resolver: zodResolver(ledgerAdjustmentSchema),
     defaultValues: {
+      subdivision_id: subdivisionId,
       lot_id: "",
       fund_type: "administrative",
-      adjustment_type: "credit",
-      amount: undefined,
+      entry_type: "credit",
+      category: "adjustment_credit",
+      amount: 0,
+      entry_date: new Date().toISOString().slice(0, 10),
       description: "",
     },
   });
@@ -97,6 +89,11 @@ export function RecordAdjustmentDialog({
   const lotLabel = selectedLot
     ? `Lot ${selectedLot.lot_number}${selectedLot.unit_number ? ` — Unit ${selectedLot.unit_number}` : ""}`
     : "Select a lot";
+
+  const entryType = form.watch("entry_type");
+  useEffect(() => {
+    form.setValue("category", entryType === "credit" ? "adjustment_credit" : "adjustment_debit");
+  }, [entryType, form]);
 
   useEffect(() => {
     if (!open) return;
@@ -117,13 +114,7 @@ export function RecordAdjustmentDialog({
   const onSubmit = async (data: FormInput) => {
     setIsSubmitting(true);
     try {
-      await recordAdjustment({
-        lot_id: data.lot_id,
-        fund_type: data.fund_type,
-        adjustment_type: data.adjustment_type,
-        amount: data.amount,
-        description: data.description,
-      });
+      await recordAdjustment(data);
       toast.success("Adjustment recorded successfully");
       form.reset();
       onOpenChange(false);
@@ -156,7 +147,7 @@ export function RecordAdjustmentDialog({
                 <FormItem>
                   <FormLabel>Lot</FormLabel>
                   <Popover open={lotOpen} onOpenChange={setLotOpen}>
-                    <PopoverTrigger asChild>
+                    <PopoverTrigger>
                       <Button
                         variant="outline"
                         role="combobox"
@@ -227,10 +218,10 @@ export function RecordAdjustmentDialog({
               )}
             />
 
-            {/* Adjustment type */}
+            {/* Entry type */}
             <FormField
               control={form.control}
-              name="adjustment_type"
+              name="entry_type"
               render={({ field }) => (
                 <FormItem>
                   <FormLabel>Type</FormLabel>
@@ -245,6 +236,21 @@ export function RecordAdjustmentDialog({
                       <SelectItem value="debit">Debit (increase balance owed)</SelectItem>
                     </SelectContent>
                   </Select>
+                  <FormMessage />
+                </FormItem>
+              )}
+            />
+
+            {/* Entry date */}
+            <FormField
+              control={form.control}
+              name="entry_date"
+              render={({ field }) => (
+                <FormItem>
+                  <FormLabel>Date</FormLabel>
+                  <FormControl>
+                    <Input type="date" {...field} />
+                  </FormControl>
                   <FormMessage />
                 </FormItem>
               )}

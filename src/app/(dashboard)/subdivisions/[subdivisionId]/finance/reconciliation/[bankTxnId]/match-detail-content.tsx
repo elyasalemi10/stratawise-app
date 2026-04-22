@@ -10,7 +10,8 @@ import type { BankTransactionDetail } from "@/lib/validations/reconciliation";
 import { previewVoidBankTransaction, voidBankTransaction } from "@/lib/actions/reconciliation";
 import { MatchExcludeDialog } from "@/components/shared/match-exclude-dialog";
 import { UnmatchDialog } from "@/components/shared/unmatch-dialog";
-import { VoidCascadeConfirmDialog, type CascadePreview } from "@/components/shared/void-cascade-confirm-dialog";
+import { VoidCascadeConfirmDialog } from "@/components/shared/void-cascade-confirm-dialog";
+import type { VoidCascadePreview } from "@/lib/validations/reconciliation";
 import { TransactionCard } from "./transaction-card";
 import { ExistingMatchesSection } from "./existing-matches-section";
 import { ClearPendingReceiptsCard } from "./clear-pending-receipts-card";
@@ -29,7 +30,7 @@ export function MatchDetailContent({ subdivisionId, transaction }: Props) {
   const [excludeDialogOpen, setExcludeDialogOpen] = useState(false);
   const [voidDialogOpen, setVoidDialogOpen] = useState(false);
   const [unmatchDialogOpen, setUnmatchDialogOpen] = useState(false);
-  const [voidPreview, setVoidPreview] = useState<CascadePreview | null>(null);
+  const [voidPreview, setVoidPreview] = useState<VoidCascadePreview | null>(null);
   const [unmatchPrefillId, setUnmatchPrefillId] = useState<string | null>(null);
   const [isLoadingVoidPreview, setIsLoadingVoidPreview] = useState(false);
   const [isSubmittingVoid, setIsSubmittingVoid] = useState(false);
@@ -53,8 +54,8 @@ export function MatchDetailContent({ subdivisionId, transaction }: Props) {
   const handleOpenVoidDialog = async () => {
     setIsLoadingVoidPreview(true);
     try {
-      const preview = await previewVoidBankTransaction(transaction.id);
-      setVoidPreview(preview as CascadePreview);
+      const preview = await previewVoidBankTransaction(subdivisionId, transaction.id);
+      setVoidPreview(preview);
       setVoidDialogOpen(true);
     } catch (error) {
       const message = error instanceof Error ? error.message : "Failed to load void preview";

@@ -29,8 +29,9 @@ import {
 } from "@/components/ui/select";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
-import { addManualBankTransactionSchema, type AddManualBankTransactionInput } from "@/lib/validations/reconciliation";
+import { addManualBankTransactionSchema } from "@/lib/validations/reconciliation";
 import { addManualBankTransaction } from "@/lib/actions/reconciliation";
+import { z } from "zod";
 
 interface Props {
   open: boolean;
@@ -44,6 +45,9 @@ interface Props {
 const formatCurrency = (n: number) =>
   new Intl.NumberFormat("en-AU", { style: "currency", currency: "AUD" }).format(n);
 
+type FormInput = z.input<typeof addManualBankTransactionSchema>;
+type FormOutput = z.infer<typeof addManualBankTransactionSchema>;
+
 export function AddManualTransactionDialog({
   open,
   onOpenChange,
@@ -54,7 +58,7 @@ export function AddManualTransactionDialog({
 }: Props) {
   const [isSubmitting, setIsSubmitting] = useState(false);
 
-  const form = useForm<AddManualBankTransactionInput>({
+  const form = useForm<FormInput>({
     resolver: zodResolver(addManualBankTransactionSchema),
     defaultValues: {
       subdivision_id: subdivisionId,
@@ -67,10 +71,10 @@ export function AddManualTransactionDialog({
     },
   });
 
-  const onSubmit = async (data: AddManualBankTransactionInput) => {
+  const onSubmit = async (data: FormInput) => {
     setIsSubmitting(true);
     try {
-      await addManualBankTransaction(data);
+      await addManualBankTransaction(data as FormOutput);
       toast.success("Transaction added successfully");
       form.reset();
       onOpenChange(false);

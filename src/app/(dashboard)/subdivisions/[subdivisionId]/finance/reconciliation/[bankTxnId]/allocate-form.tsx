@@ -46,7 +46,7 @@ import type { FundType } from "@/lib/validations/ledger";
 const allocationSchema = z.object({
   lot_id: z.string().uuid("Select a lot"),
   fund_type: z.enum(FUND_TYPES),
-  amount: z.coerce
+  amount: z
     .number()
     .positive("Amount must be greater than zero")
     .finite("Amount must be a valid number"),
@@ -110,7 +110,7 @@ export function AllocateForm({
             {
               lot_id: "",
               fund_type: bankAccountFundType,
-              amount: undefined,
+              amount: 0,
               levy_notice_id: null,
             },
           ]
@@ -118,7 +118,7 @@ export function AllocateForm({
             {
               lot_id: "",
               fund_type: bankAccountFundType,
-              amount: undefined,
+              amount: 0,
               levy_notice_id: null,
             },
           ],
@@ -214,7 +214,7 @@ export function AllocateForm({
                           }))
                         }
                       >
-                        <PopoverTrigger asChild>
+                        <PopoverTrigger>
                           <Button
                             variant="outline"
                             role="combobox"
@@ -385,7 +385,7 @@ export function AllocateForm({
                 append({
                   lot_id: "",
                   fund_type: bankAccountFundType,
-                  amount: undefined,
+                  amount: 0,
                   levy_notice_id: null,
                 })
               }

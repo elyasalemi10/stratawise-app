@@ -25,24 +25,14 @@ import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { Button } from "@/components/ui/button";
 import { AlertCircle } from "lucide-react";
+import type { VoidCascadePreview } from "@/lib/validations/reconciliation";
 
 export const DESTRUCTIVE_VOID_LOT_THRESHOLD = 3;
-
-interface CascadePreview {
-  affectedLots: number;
-  totalAffectedAmount: number;
-  subdivisionAverageLevyAmount?: number;
-  details: {
-    unmatches: Array<{ lot_number: string; amount: number }>;
-    voidedCredits: Array<{ lot_number: string; amount: number }>;
-    reopenedReceipts: Array<{ lot_number: string; amount: number }>;
-  };
-}
 
 interface Props {
   open: boolean;
   onOpenChange: (open: boolean) => void;
-  cascadePreview: CascadePreview | null;
+  cascadePreview: VoidCascadePreview | null;
   isSubmitting?: boolean;
   onConfirm: (reason: string) => Promise<void>;
 }
@@ -59,12 +49,13 @@ export function VoidCascadeConfirmDialog({
 }: Props) {
   const [localSubmitting, setLocalSubmitting] = useState(false);
 
-  const needsTypedConfirmation =
-    cascadePreview &&
-    (cascadePreview.affectedLots >= DESTRUCTIVE_VOID_LOT_THRESHOLD ||
-      (cascadePreview.subdivisionAverageLevyAmount &&
-        cascadePreview.totalAffectedAmount >
-          cascadePreview.subdivisionAverageLevyAmount * 2));
+  const affectedLots = new Set([
+    ...(cascadePreview?.matches_to_unlink || []).map((m) => m.lot_number),
+    ...(cascadePreview?.credits_to_void || []).map((c) => c.lot_number),
+    ...(cascadePreview?.undeposited_receipts_to_reopen || []).map((r) => r.lot_number),
+  ]).size;
+
+  const needsTypedConfirmation = affectedLots >= DESTRUCTIVE_VOID_LOT_THRESHOLD;
 
   const formSchema = z.object({
     reason: z
@@ -119,46 +110,47 @@ export function VoidCascadeConfirmDialog({
 
         {/* Cascade preview */}
         <div className="space-y-4">
-          {cascadePreview.affectedLots > 0 && (
+          {affectedLots > 0 && (
             <div className="p-3 bg-amber-50 rounded-lg border border-amber-200">
               <div className="flex gap-2">
                 <AlertCircle className="h-5 w-5 text-amber-600 flex-shrink-0 mt-0.5" />
                 <div className="flex-1 text-sm">
                   <div className="font-medium text-amber-900 mb-2">
-                    This will affect {cascadePreview.affectedLots} lot{cascadePreview.affectedLots !== 1 ? "s" : ""}
+                    This will affect {affectedLots} lot{affectedLots !== 1 ? "s" : ""}
                   </div>
-                  {cascadePreview.details.unmatches.length > 0 && (
+                  {cascadePreview.matches_to_unlink.length > 0 && (
                     <div className="mb-2">
                       <div className="text-xs font-medium text-amber-800 mb-1">
                         Unmatched entries:
                       </div>
-                      {cascadePreview.details.unmatches.map((u, i) => (
+                      {cascadePreview.matches_to_unlink.map((m, i) => (
                         <div key={i} className="text-xs text-amber-700">
-                          Lot {u.lot_number}: {formatCurrency(u.amount)}
+                          Lot {m.lot_number}: {formatCurrency(m.amount)}
+                          {m.levy_reference && ` (${m.levy_reference})`}
                         </div>
                       ))}
                     </div>
                   )}
-                  {cascadePreview.details.voidedCredits.length > 0 && (
+                  {cascadePreview.credits_to_void.length > 0 && (
                     <div className="mb-2">
                       <div className="text-xs font-medium text-amber-800 mb-1">
                         Voided credits:
                       </div>
-                      {cascadePreview.details.voidedCredits.map((v, i) => (
+                      {cascadePreview.credits_to_void.map((c, i) => (
                         <div key={i} className="text-xs text-amber-700">
-                          Lot {v.lot_number}: {formatCurrency(v.amount)}
+                          Lot {c.lot_number}: {formatCurrency(c.amount)} ({c.category})
                         </div>
                       ))}
                     </div>
                   )}
-                  {cascadePreview.details.reopenedReceipts.length > 0 && (
+                  {cascadePreview.undeposited_receipts_to_reopen.length > 0 && (
                     <div>
                       <div className="text-xs font-medium text-amber-800 mb-1">
                         Reopened receipts:
                       </div>
-                      {cascadePreview.details.reopenedReceipts.map((r, i) => (
+                      {cascadePreview.undeposited_receipts_to_reopen.map((r, i) => (
                         <div key={i} className="text-xs text-amber-700">
-                          Lot {r.lot_number}: {formatCurrency(r.amount)}
+                          Lot {r.lot_number}: {formatCurrency(r.amount)} (#{r.receipt_number})
                         </div>
                       ))}
                     </div>
