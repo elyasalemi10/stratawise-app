@@ -137,21 +137,10 @@ export async function importBankTransactions(
     .eq("bank_account_id", account.id);
 
   const existingKeys = new Set(
-    (existing ?? []).map((t) =>
-      `${t.transaction_date}|${Number(t.amount).toFixed(2)}|${(t.description ?? "").trim()}`
+    (existing ?? []).map(
+      (t) => `${t.transaction_date}|${Number(t.amount).toFixed(2)}|${(t.description ?? "").trim()}`
     )
   );
-
-  const toInsert: Array<{
-    bank_account_id: string;
-    source: "csv";
-    transaction_date: string;
-    amount: number;
-    description: string;
-    balance: number | null;
-    match_status: "unmatched" | "auto_matched";
-    matched_payment_id: string | null;
-  }> = [];
 
   const summary: ImportSummary = {
     imported: 0,
@@ -160,24 +149,38 @@ export async function importBankTransactions(
     errors: [],
   };
 
+  // Pre-fetch candidate levy notices by reference for the whole batch.
+  // Outstanding balance is recomputed per-row inside the loop so we only need
+  // the id/lot/fund mapping up-front.
   const candidateReferences = new Set<string>();
   for (const row of parsed.data.rows) {
-    const ref = row.description.match(REF_REGEX)?.[0];
-    if (ref) candidateReferences.add(ref.toUpperCase());
+    const refs = row.description.match(/\bMSM-LEV-\d{4}-\d{6}\b/gi) ?? [];
+    if (refs.length === 1) candidateReferences.add(refs[0].toUpperCase());
   }
 
-  const refToLevy = new Map<string, { id: string; amount: number }>();
+  const refToLevy = new Map<
+    string,
+    { id: string; lot_id: string; fund_type: "administrative" | "capital_works"; amount: number }
+  >();
   if (candidateReferences.size > 0) {
     const { data: levies } = await supabase
       .from("levy_notices")
-      .select("id, reference_number, amount, subdivision_id")
+      .select("id, lot_id, reference_number, fund_type, amount, subdivision_id")
       .eq("subdivision_id", subdivisionId)
       .in("reference_number", Array.from(candidateReferences));
     for (const l of levies ?? []) {
-      refToLevy.set(l.reference_number.toUpperCase(), { id: l.id, amount: Number(l.amount) });
+      refToLevy.set(l.reference_number.toUpperCase(), {
+        id: l.id,
+        lot_id: l.lot_id,
+        fund_type: l.fund_type as "administrative" | "capital_works",
+        amount: Number(l.amount),
+      });
     }
   }
 
+  // Per-row: insert the bank_transaction; then try a minimal auto-match
+  // against the exact reference. Auto-match failures are tolerated — the row
+  // still imports as 'unmatched', with a warning audit entry.
   for (const row of parsed.data.rows) {
     const key = `${row.transaction_date}|${row.amount.toFixed(2)}|${row.description.trim()}`;
     if (existingKeys.has(key)) {
@@ -186,51 +189,106 @@ export async function importBankTransactions(
     }
     existingKeys.add(key);
 
-    const ref = row.description.match(REF_REGEX)?.[0]?.toUpperCase();
-    const levy = ref ? refToLevy.get(ref) : undefined;
-    const matches = !!(levy && row.amount > 0 && Math.abs(row.amount - levy.amount) < 0.01);
+    const { data: inserted, error: insertErr } = await supabase
+      .from("bank_transactions")
+      .insert({
+        bank_account_id: account.id,
+        source: "csv",
+        transaction_date: row.transaction_date,
+        amount: row.amount,
+        description: row.description,
+        balance: row.balance ?? null,
+        match_status: "unmatched",
+      })
+      .select("id")
+      .single();
 
-    toInsert.push({
-      bank_account_id: account.id,
-      source: "csv",
-      transaction_date: row.transaction_date,
-      amount: row.amount,
-      description: row.description,
-      balance: row.balance ?? null,
-      match_status: matches ? "auto_matched" : "unmatched",
-      matched_payment_id: null,
+    if (insertErr || !inserted) {
+      summary.errors.push(`${row.transaction_date} ${row.description}: ${insertErr?.message ?? "insert failed"}`);
+      continue;
+    }
+    summary.imported += 1;
+
+    // Auto-match eligibility: credit (amount > 0), single MSM-LEV reference in
+    // description, notice exists in this subdivision, outstanding > 0.
+    if (row.amount <= 0) continue;
+    const refMatches = row.description.match(/\bMSM-LEV-\d{4}-\d{6}\b/gi) ?? [];
+    if (refMatches.length !== 1) continue;
+    const ref = refMatches[0].toUpperCase();
+    const notice = refToLevy.get(ref);
+    if (!notice) continue;
+
+    const { data: priorCredits } = await supabase
+      .from("lot_ledger_entries")
+      .select("amount, entry_type, status")
+      .eq("levy_notice_id", notice.id)
+      .eq("status", "active")
+      .eq("entry_type", "credit");
+    const paidSoFar = (priorCredits ?? []).reduce((s, c) => s + Number(c.amount), 0);
+    const outstanding = Math.round((notice.amount - paidSoFar) * 100) / 100;
+    if (outstanding <= 0) continue;
+
+    const allocated = Math.min(row.amount, outstanding);
+
+    const { error: matchErr } = await supabase.rpc("rpc_reconcile_bank_transaction", {
+      p_bank_transaction_id: inserted.id,
+      p_allocations: [
+        {
+          lot_id: notice.lot_id,
+          fund_type: notice.fund_type,
+          amount: allocated,
+          levy_notice_id: notice.id,
+          reference: ref,
+        },
+      ],
+      p_match_method: "auto_reference",
+      p_match_confidence: "exact_reference",
+      p_notes: `CSV auto-match on reference ${ref}`,
+      p_performed_by: profile.id,
     });
-    if (matches) summary.matched += 1;
+
+    if (matchErr) {
+      await supabase.from("audit_log").insert({
+        profile_id: profile.id,
+        subdivision_id: subdivisionId,
+        action: "reconciliation.auto_match_failed",
+        entity_type: "bank_transaction",
+        entity_id: inserted.id,
+        metadata: { reason: matchErr.message, reference: ref, severity: "warning" },
+      });
+      continue;
+    }
+
+    summary.matched += 1;
+
+    if (row.amount > outstanding) {
+      await supabase
+        .from("bank_transactions")
+        .update({
+          notes: `Auto-matched $${allocated.toFixed(2)} against ${ref}; $${(row.amount - outstanding).toFixed(2)} remaining — review manually.`,
+        })
+        .eq("id", inserted.id);
+    }
   }
-
-  if (toInsert.length === 0) {
-    return { summary };
-  }
-
-  const { error, data: inserted } = await supabase
-    .from("bank_transactions")
-    .insert(toInsert)
-    .select("id");
-
-  if (error) return { error: error.message };
-
-  summary.imported = inserted?.length ?? 0;
 
   await supabase.from("audit_log").insert({
     profile_id: profile.id,
     subdivision_id: subdivisionId,
-    action: "import",
-    entity_type: "bank_transaction",
+    action: "bank_transaction.csv_imported",
+    entity_type: "bank_account",
+    entity_id: account.id,
     after_state: {
       bank_account_id: account.id,
       fund_type: account.fund_type,
       imported: summary.imported,
       duplicates: summary.duplicates,
       matched: summary.matched,
+      errors: summary.errors.length,
     },
   });
 
   revalidatePath(`/subdivisions/${subdivisionId}/finance/bank-account`);
+  revalidatePath(`/subdivisions/${subdivisionId}/finance/reconciliation`);
   return { summary };
 }
 

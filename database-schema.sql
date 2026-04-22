@@ -38,7 +38,7 @@ CREATE TYPE levy_status AS ENUM ('draft', 'issued', 'partially_paid', 'paid', 'o
 CREATE TYPE levy_type AS ENUM ('regular', 'special', 'penalty_interest');
 CREATE TYPE levy_batch_status AS ENUM ('draft', 'ledger_written', 'sent', 'partially_sent');
 CREATE TYPE payment_method AS ENUM ('bpay', 'eft', 'cash', 'cheque', 'direct_debit', 'stripe_card', 'other');
-CREATE TYPE match_confidence AS ENUM ('exact_reference', 'amount_match', 'name_match', 'manual', 'auto_portal', 'basiq_auto');
+CREATE TYPE match_confidence AS ENUM ('exact_reference', 'amount_match', 'name_match', 'manual', 'auto_portal', 'basiq_auto', 'system_created');
 CREATE TYPE transaction_source AS ENUM ('manual', 'csv', 'basiq');
 CREATE TYPE meeting_type AS ENUM ('agm', 'sgm', 'committee');
 CREATE TYPE meeting_status AS ENUM ('draft', 'notice_sent', 'in_progress', 'completed', 'cancelled');
@@ -97,6 +97,7 @@ CREATE SEQUENCE msm_mnt_seq  START 1;   -- MNT  — Maintenance requests
 CREATE SEQUENCE msm_inv_seq  START 1;   -- INV  — Invitations
 CREATE SEQUENCE msm_cmp_seq  START 1;   -- CMP  — Complaints
 CREATE SEQUENCE msm_esc_seq  START 1;   -- ESC  — Escalation instances
+CREATE SEQUENCE msm_rcpt_seq START 1;   -- RCPT — Cash/cheque receipts (undeposited funds)
 
 -- Sequential reference number generator.
 -- Usage: SELECT next_reference_number('LEV');  →  'MSM-LEV-2026-000001'
@@ -507,16 +508,27 @@ CREATE TABLE bank_transactions (
   balance DECIMAL(12,2),
   category TEXT,
   match_status TEXT NOT NULL DEFAULT 'unmatched',   -- unmatched | auto_matched | manually_matched | excluded
-  matched_payment_id UUID REFERENCES payments(id),
+  matched_payment_id UUID REFERENCES payments(id), -- LEGACY (Prompt 7 cleanup): unused after Prompt 2; see PRE_LAUNCH_CLEANUP.md
   matched_total DECIMAL(12,2) NOT NULL DEFAULT 0,   -- sum of reconciliation_matches.amount_matched; app guard: matched_total <= amount
+  excluded_reason TEXT,                             -- required when match_status = 'excluded'
+  is_voided BOOLEAN NOT NULL DEFAULT false,
+  voided_at TIMESTAMPTZ,
+  voided_by UUID REFERENCES profiles(id),
+  void_reason TEXT,
   notes TEXT,
-  imported_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+  imported_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  CONSTRAINT chk_bt_excluded_reason
+    CHECK ((match_status = 'excluded') = (excluded_reason IS NOT NULL)),
+  CONSTRAINT chk_bt_void_fields
+    CHECK ((is_voided = true)
+           = (voided_at IS NOT NULL AND voided_by IS NOT NULL AND void_reason IS NOT NULL))
 );
 
 CREATE INDEX idx_bank_transactions_account ON bank_transactions(bank_account_id);
 CREATE INDEX idx_bank_transactions_date ON bank_transactions(transaction_date);
 CREATE INDEX idx_bank_transactions_basiq ON bank_transactions(basiq_transaction_id);
 CREATE INDEX idx_bank_transactions_match ON bank_transactions(match_status);
+CREATE INDEX idx_bank_transactions_active ON bank_transactions(bank_account_id, transaction_date DESC) WHERE is_voided = false;
 
 -- FK: payments → bank_transactions (after both exist)
 ALTER TABLE payments ADD CONSTRAINT fk_payments_bank_transaction
@@ -1095,6 +1107,55 @@ CREATE INDEX idx_recon_matches_bank_txn ON reconciliation_matches(bank_transacti
 CREATE INDEX idx_recon_matches_ledger   ON reconciliation_matches(ledger_entry_id);
 
 -- ============================================================================
+-- 49. UNDEPOSITED FUNDS ENTRIES  (Prompt 2)
+-- Per-subdivision clearing account for cash/cheque receipts recorded against
+-- a lot but not yet deposited to the bank. Receipt entry credits the lot's
+-- ledger AND creates a pending_deposit row here. When the real bank deposit
+-- arrives, depositUndepositedFunds links the existing credit to the bank
+-- transaction via reconciliation_matches — it does NOT create a second credit.
+-- ============================================================================
+CREATE TABLE undeposited_funds_entries (
+  id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+  subdivision_id UUID NOT NULL REFERENCES subdivisions(id),
+  lot_id UUID NOT NULL REFERENCES lots(id),
+  bank_account_id UUID NOT NULL REFERENCES bank_accounts(id),       -- where this will be deposited
+  fund_type fund_type NOT NULL,
+  amount DECIMAL(12,2) NOT NULL,
+  received_date DATE NOT NULL,
+  payment_method payment_method NOT NULL,                           -- constrained to cash|cheque below
+  cheque_number TEXT,                                               -- required iff payment_method='cheque'
+  receipt_number TEXT NOT NULL UNIQUE,                              -- MSM-RCPT-YYYY-NNNNNN via next_reference_number('RCPT')
+  description TEXT,
+  status TEXT NOT NULL DEFAULT 'pending_deposit',                   -- pending_deposit | deposited | voided
+  deposited_at TIMESTAMPTZ,
+  deposited_by_bank_transaction_id UUID REFERENCES bank_transactions(id),
+  linked_ledger_credit_id UUID NOT NULL REFERENCES lot_ledger_entries(id),
+  voided_at TIMESTAMPTZ,
+  voided_by UUID REFERENCES profiles(id),
+  void_reason TEXT,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  created_by UUID NOT NULL REFERENCES profiles(id),
+  metadata JSONB NOT NULL DEFAULT '{}'::jsonb,
+  CONSTRAINT chk_uf_amount_positive CHECK (amount > 0),
+  CONSTRAINT chk_uf_method CHECK (payment_method IN ('cash','cheque')),
+  CONSTRAINT chk_uf_cheque_number
+    CHECK ((payment_method = 'cheque') = (cheque_number IS NOT NULL)),
+  CONSTRAINT chk_uf_status_values
+    CHECK (status IN ('pending_deposit','deposited','voided')),
+  CONSTRAINT chk_uf_deposited_fields
+    CHECK ((status = 'deposited')
+           = (deposited_at IS NOT NULL AND deposited_by_bank_transaction_id IS NOT NULL)),
+  CONSTRAINT chk_uf_voided_fields
+    CHECK ((status = 'voided') = (voided_at IS NOT NULL))
+);
+
+CREATE INDEX idx_uf_subdivision  ON undeposited_funds_entries(subdivision_id);
+CREATE INDEX idx_uf_bank_account ON undeposited_funds_entries(bank_account_id);
+CREATE INDEX idx_uf_lot          ON undeposited_funds_entries(lot_id);
+CREATE INDEX idx_uf_pending      ON undeposited_funds_entries(bank_account_id, status)
+  WHERE status = 'pending_deposit';
+
+-- ============================================================================
 -- TRIGGERS
 -- ============================================================================
 
@@ -1650,6 +1711,717 @@ END;
 $$;
 
 -- ============================================================================
+-- RECONCILIATION RPCs  (Prompt 2)
+-- ----------------------------------------------------------------------------
+-- All six RPCs below operate on a locked bank_transactions row and write to
+-- audit_log. They enforce the matching contract end-to-end — no code outside
+-- these RPCs should ever insert into reconciliation_matches or mutate
+-- bank_transactions.matched_total / match_status / is_voided / excluded_reason.
+-- ============================================================================
+
+-- rpc_reconcile_bank_transaction: the core matching primitive. Creates one
+-- ledger credit per allocation AND one reconciliation_matches row per credit,
+-- atomically. Partial matches are allowed (matched_total < amount stays
+-- 'unmatched'); a transaction becomes 'manually_matched' / 'auto_matched'
+-- (based on p_match_method) only when matched_total reaches amount — the
+-- LATEST completing method wins (per-match provenance is preserved on the
+-- reconciliation_matches row).
+CREATE OR REPLACE FUNCTION rpc_reconcile_bank_transaction(
+  p_bank_transaction_id uuid,
+  p_allocations jsonb,
+  p_match_method reconciliation_match_method,
+  p_match_confidence match_confidence,
+  p_notes text,
+  p_performed_by uuid
+)
+RETURNS jsonb
+LANGUAGE plpgsql
+AS $$
+DECLARE
+  v_bt                   bank_transactions%ROWTYPE;
+  v_bt_subdivision_id    uuid;
+  v_bt_bank_fund_type    fund_type;
+  v_before               jsonb;
+  v_after                jsonb;
+  v_alloc                jsonb;
+  v_alloc_sum            decimal(12,2) := 0;
+  v_lot_id               uuid;
+  v_fund_type            fund_type;
+  v_amount               decimal(12,2);
+  v_levy_notice_id       uuid;
+  v_reference            text;
+  v_lot_subdivision_id   uuid;
+  v_ln_lot_id            uuid;
+  v_ln_fund_type         fund_type;
+  v_ln_reference         text;
+  v_credit_id            uuid;
+  v_match_id             uuid;
+  v_description          text;
+  v_created_credit_ids   uuid[] := ARRAY[]::uuid[];
+  v_match_ids            uuid[] := ARRAY[]::uuid[];
+  v_lot_ids              uuid[] := ARRAY[]::uuid[];
+  v_new_matched_total    decimal(12,2);
+  v_fund_types_used      fund_type[] := ARRAY[]::fund_type[];
+  v_flags                text[] := ARRAY[]::text[];
+  v_new_status           text;
+BEGIN
+  IF p_allocations IS NULL OR jsonb_typeof(p_allocations) <> 'array' OR jsonb_array_length(p_allocations) = 0 THEN
+    RAISE EXCEPTION 'rpc_reconcile_bank_transaction: p_allocations must be a non-empty array';
+  END IF;
+
+  -- Lock the bank transaction and pull bank_account context.
+  SELECT * INTO v_bt FROM bank_transactions WHERE id = p_bank_transaction_id FOR UPDATE;
+  IF NOT FOUND THEN
+    RAISE EXCEPTION 'rpc_reconcile_bank_transaction: bank_transaction % not found', p_bank_transaction_id;
+  END IF;
+  IF v_bt.is_voided THEN
+    RAISE EXCEPTION 'rpc_reconcile_bank_transaction: bank_transaction % is voided', p_bank_transaction_id;
+  END IF;
+  IF v_bt.match_status = 'excluded' THEN
+    RAISE EXCEPTION 'rpc_reconcile_bank_transaction: bank_transaction % is excluded', p_bank_transaction_id;
+  END IF;
+  IF v_bt.amount <= 0 THEN
+    RAISE EXCEPTION 'rpc_reconcile_bank_transaction: only credit-direction (amount > 0) transactions can be matched; got %', v_bt.amount;
+  END IF;
+
+  SELECT ba.subdivision_id, ba.fund_type
+    INTO v_bt_subdivision_id, v_bt_bank_fund_type
+    FROM bank_accounts ba WHERE ba.id = v_bt.bank_account_id;
+
+  v_before := to_jsonb(v_bt);
+
+  -- Pass 1: per-allocation validation + sum.
+  FOR v_alloc IN SELECT * FROM jsonb_array_elements(p_allocations)
+  LOOP
+    v_lot_id          := NULLIF(v_alloc->>'lot_id','')::uuid;
+    v_fund_type       := (v_alloc->>'fund_type')::fund_type;
+    v_amount          := (v_alloc->>'amount')::decimal(12,2);
+    v_levy_notice_id  := NULLIF(v_alloc->>'levy_notice_id','')::uuid;
+    v_reference       := NULLIF(v_alloc->>'reference','');
+
+    IF v_lot_id IS NULL THEN
+      RAISE EXCEPTION 'rpc_reconcile_bank_transaction: allocation missing lot_id';
+    END IF;
+    IF v_amount IS NULL OR v_amount <= 0 THEN
+      RAISE EXCEPTION 'rpc_reconcile_bank_transaction: allocation amount must be positive (got %)', v_amount;
+    END IF;
+
+    SELECT l.subdivision_id INTO v_lot_subdivision_id FROM lots l WHERE l.id = v_lot_id;
+    IF v_lot_subdivision_id IS NULL THEN
+      RAISE EXCEPTION 'rpc_reconcile_bank_transaction: lot % not found', v_lot_id;
+    END IF;
+    IF v_lot_subdivision_id <> v_bt_subdivision_id THEN
+      RAISE EXCEPTION 'rpc_reconcile_bank_transaction: lot % does not belong to bank transaction subdivision %', v_lot_id, v_bt_subdivision_id;
+    END IF;
+
+    IF v_levy_notice_id IS NOT NULL THEN
+      SELECT ln.lot_id, ln.fund_type, ln.reference_number
+        INTO v_ln_lot_id, v_ln_fund_type, v_ln_reference
+        FROM levy_notices ln WHERE ln.id = v_levy_notice_id;
+      IF v_ln_lot_id IS NULL THEN
+        RAISE EXCEPTION 'rpc_reconcile_bank_transaction: levy_notice % not found', v_levy_notice_id;
+      END IF;
+      IF v_ln_lot_id <> v_lot_id THEN
+        RAISE EXCEPTION 'rpc_reconcile_bank_transaction: levy_notice % does not belong to lot %', v_levy_notice_id, v_lot_id;
+      END IF;
+      IF v_ln_fund_type <> v_fund_type THEN
+        RAISE EXCEPTION 'rpc_reconcile_bank_transaction: levy_notice fund_type % does not match allocation fund_type %', v_ln_fund_type, v_fund_type;
+      END IF;
+    END IF;
+
+    IF NOT (v_fund_type = ANY (v_fund_types_used)) THEN
+      v_fund_types_used := array_append(v_fund_types_used, v_fund_type);
+    END IF;
+
+    v_alloc_sum := v_alloc_sum + v_amount;
+  END LOOP;
+
+  IF (v_bt.matched_total + v_alloc_sum) > v_bt.amount THEN
+    RAISE EXCEPTION 'rpc_reconcile_bank_transaction: over-allocation: matched_total(%) + new(%) > amount(%)',
+      v_bt.matched_total, v_alloc_sum, v_bt.amount;
+  END IF;
+
+  -- Pragmatic allocation across fund_types is allowed on reconcile (per Prompt 2 open-Q1).
+  -- Flag it flat in metadata for grep-ability.
+  IF array_length(v_fund_types_used, 1) > 1 THEN
+    v_flags := array_append(v_flags, 'cross_fund_allocation');
+  END IF;
+
+  -- Pass 2: writes.
+  FOR v_alloc IN SELECT * FROM jsonb_array_elements(p_allocations)
+  LOOP
+    v_lot_id          := (v_alloc->>'lot_id')::uuid;
+    v_fund_type       := (v_alloc->>'fund_type')::fund_type;
+    v_amount          := (v_alloc->>'amount')::decimal(12,2);
+    v_levy_notice_id  := NULLIF(v_alloc->>'levy_notice_id','')::uuid;
+    v_reference       := NULLIF(v_alloc->>'reference','');
+
+    -- Auto-fill reference from the linked levy_notice if not explicitly provided.
+    IF v_levy_notice_id IS NOT NULL AND v_reference IS NULL THEN
+      SELECT reference_number INTO v_reference FROM levy_notices WHERE id = v_levy_notice_id;
+    END IF;
+
+    v_description := 'Reconciled from bank transaction ' || p_bank_transaction_id::text;
+
+    -- Inline rpc_payment_credit logic (per Prompt 2 spec: don't cross-RPC — one transaction, one audit scope).
+    INSERT INTO lot_ledger_entries (
+      subdivision_id, lot_id, fund_type, entry_type, category,
+      amount, entry_date, description, reference, levy_notice_id,
+      status, created_by
+    ) VALUES (
+      v_bt_subdivision_id, v_lot_id, v_fund_type, 'credit', 'payment',
+      v_amount, v_bt.transaction_date, v_description, v_reference, v_levy_notice_id,
+      'active', p_performed_by
+    ) RETURNING id INTO v_credit_id;
+
+    v_created_credit_ids := array_append(v_created_credit_ids, v_credit_id);
+
+    INSERT INTO reconciliation_matches (
+      bank_transaction_id, ledger_entry_id, amount_matched,
+      match_method, match_confidence, matched_by, notes
+    ) VALUES (
+      p_bank_transaction_id, v_credit_id, v_amount,
+      p_match_method, p_match_confidence, p_performed_by, p_notes
+    ) RETURNING id INTO v_match_id;
+
+    v_match_ids := array_append(v_match_ids, v_match_id);
+
+    IF NOT (v_lot_id = ANY (v_lot_ids)) THEN
+      v_lot_ids := array_append(v_lot_ids, v_lot_id);
+    END IF;
+  END LOOP;
+
+  -- Update bank_transaction.
+  v_new_matched_total := v_bt.matched_total + v_alloc_sum;
+
+  IF v_new_matched_total >= v_bt.amount THEN
+    IF p_match_method = 'manual' THEN
+      v_new_status := 'manually_matched';
+    ELSE
+      v_new_status := 'auto_matched';
+    END IF;
+  ELSE
+    v_new_status := 'unmatched';   -- partial matches stay 'unmatched' per spec
+  END IF;
+
+  UPDATE bank_transactions
+     SET matched_total = v_new_matched_total,
+         match_status  = v_new_status
+   WHERE id = p_bank_transaction_id;
+
+  -- Recompute state per distinct lot.
+  FOR v_lot_id IN SELECT unnest(v_lot_ids) LOOP
+    PERFORM recompute_lot_ledger_state(v_lot_id);
+  END LOOP;
+
+  SELECT to_jsonb(bt) INTO v_after FROM bank_transactions bt WHERE bt.id = p_bank_transaction_id;
+  INSERT INTO audit_log (profile_id, subdivision_id, action, entity_type, entity_id, before_state, after_state, metadata)
+  VALUES (p_performed_by, v_bt_subdivision_id, 'reconciliation.matched', 'bank_transaction', p_bank_transaction_id,
+          v_before, v_after,
+          jsonb_build_object(
+            'allocations', p_allocations,
+            'created_credit_ids', to_jsonb(v_created_credit_ids),
+            'match_ids', to_jsonb(v_match_ids),
+            'match_method', p_match_method,
+            'match_confidence', p_match_confidence,
+            'flags', to_jsonb(v_flags)
+          ));
+
+  RETURN jsonb_build_object(
+    'created_credit_ids', to_jsonb(v_created_credit_ids),
+    'match_ids', to_jsonb(v_match_ids),
+    'remaining_unmatched', (v_bt.amount - v_new_matched_total),
+    'flags', to_jsonb(v_flags)
+  );
+END;
+$$;
+
+-- rpc_unmatch_bank_transaction: removes matches and voids their linked credits.
+-- Pass p_match_ids = NULL to unmatch every match on the bank transaction.
+--
+-- ORDERING NOTE (deliberate): we DELETE the reconciliation_matches row FIRST,
+-- then call rpc_ledger_void on the (now-orphaned) credit. Two reasons:
+--   1. Invariant: "an active ledger credit linked via reconciliation_matches
+--      has not been voided". Deleting the match row first means at no point
+--      does the DB hold a match row pointing to a voided credit (which would
+--      be a confusing snapshot if a future query landed mid-RPC).
+--   2. rpc_ledger_void audits linked_reconciliation_match_ids by querying
+--      reconciliation_matches. If we voided first, the audit entry would
+--      name a match id that we're about to delete — misleading for a future
+--      reader grepping history. By deleting first, rpc_ledger_void's audit
+--      correctly records 'no linked matches' for this specific void.
+-- The whole RPC is one transaction, so external observers never see the
+-- intermediate state either way.
+--
+-- UNDEPOSITED-RECEIPT BRANCH: if a match's ledger_entry_id is linked from an
+-- undeposited_funds_entries row AND that row's deposited_by_bank_transaction_id
+-- equals the bank_transaction being unmatched, we DO NOT void the credit —
+-- the credit belongs to the original receipt entry, not to this deposit. We
+-- only delete the match row and revert the receipt to 'pending_deposit'.
+CREATE OR REPLACE FUNCTION rpc_unmatch_bank_transaction(
+  p_bank_transaction_id uuid,
+  p_match_ids uuid[],
+  p_reason text,
+  p_performed_by uuid
+)
+RETURNS jsonb
+LANGUAGE plpgsql
+AS $$
+DECLARE
+  v_bt                   bank_transactions%ROWTYPE;
+  v_bt_subdivision_id    uuid;
+  v_before               jsonb;
+  v_after                jsonb;
+  v_match                reconciliation_matches%ROWTYPE;
+  v_uf                   undeposited_funds_entries%ROWTYPE;
+  v_voided_credit_ids    uuid[] := ARRAY[]::uuid[];
+  v_deleted_match_ids    uuid[] := ARRAY[]::uuid[];
+  v_reopened_receipt_ids uuid[] := ARRAY[]::uuid[];
+  v_removed_sum          decimal(12,2) := 0;
+  v_new_matched_total    decimal(12,2);
+  v_new_status           text;
+  v_is_receipt_deposit   boolean;
+BEGIN
+  IF p_reason IS NULL OR length(trim(p_reason)) = 0 THEN
+    RAISE EXCEPTION 'rpc_unmatch_bank_transaction: reason is required';
+  END IF;
+
+  SELECT * INTO v_bt FROM bank_transactions WHERE id = p_bank_transaction_id FOR UPDATE;
+  IF NOT FOUND THEN
+    RAISE EXCEPTION 'rpc_unmatch_bank_transaction: bank_transaction % not found', p_bank_transaction_id;
+  END IF;
+
+  SELECT ba.subdivision_id INTO v_bt_subdivision_id
+    FROM bank_accounts ba WHERE ba.id = v_bt.bank_account_id;
+
+  v_before := to_jsonb(v_bt);
+
+  FOR v_match IN
+    SELECT * FROM reconciliation_matches
+     WHERE bank_transaction_id = p_bank_transaction_id
+       AND (p_match_ids IS NULL OR id = ANY (p_match_ids))
+     FOR UPDATE
+  LOOP
+    -- Is this an undeposited-receipt deposit match? (Stash FOUND before any
+    -- other SQL runs — subsequent DML resets the FOUND flag.)
+    SELECT * INTO v_uf
+      FROM undeposited_funds_entries
+     WHERE linked_ledger_credit_id = v_match.ledger_entry_id
+       AND status = 'deposited'
+       AND deposited_by_bank_transaction_id = p_bank_transaction_id
+     FOR UPDATE;
+    v_is_receipt_deposit := FOUND;
+
+    DELETE FROM reconciliation_matches WHERE id = v_match.id;
+    v_deleted_match_ids := array_append(v_deleted_match_ids, v_match.id);
+    v_removed_sum := v_removed_sum + v_match.amount_matched;
+
+    IF v_is_receipt_deposit THEN
+      -- Reopen the receipt. Leave the original credit active — it belongs to
+      -- the receipt, not to this bank transaction.
+      UPDATE undeposited_funds_entries
+         SET status = 'pending_deposit',
+             deposited_at = NULL,
+             deposited_by_bank_transaction_id = NULL
+       WHERE id = v_uf.id;
+      v_reopened_receipt_ids := array_append(v_reopened_receipt_ids, v_uf.id);
+    ELSE
+      -- Regular match: void the linked credit.
+      PERFORM rpc_ledger_void(v_match.ledger_entry_id,
+                              'Unmatch: ' || p_reason,
+                              p_performed_by);
+      v_voided_credit_ids := array_append(v_voided_credit_ids, v_match.ledger_entry_id);
+    END IF;
+  END LOOP;
+
+  IF array_length(v_deleted_match_ids, 1) IS NULL THEN
+    RAISE EXCEPTION 'rpc_unmatch_bank_transaction: no matches removed (either no matches exist or none of the supplied ids matched)';
+  END IF;
+
+  -- Recompute matched_total from what remains.
+  SELECT COALESCE(SUM(amount_matched), 0)
+    INTO v_new_matched_total
+    FROM reconciliation_matches
+   WHERE bank_transaction_id = p_bank_transaction_id;
+
+  IF v_new_matched_total = 0 THEN
+    v_new_status := 'unmatched';
+  ELSIF v_new_matched_total >= v_bt.amount THEN
+    -- Should not happen because we only decrement, but keep current status intact if so.
+    v_new_status := v_bt.match_status;
+  ELSE
+    v_new_status := 'unmatched';   -- partial remainder reverts to unmatched per spec
+  END IF;
+
+  UPDATE bank_transactions
+     SET matched_total = v_new_matched_total,
+         match_status  = v_new_status
+   WHERE id = p_bank_transaction_id;
+
+  SELECT to_jsonb(bt) INTO v_after FROM bank_transactions bt WHERE bt.id = p_bank_transaction_id;
+  INSERT INTO audit_log (profile_id, subdivision_id, action, entity_type, entity_id, before_state, after_state, metadata)
+  VALUES (p_performed_by, v_bt_subdivision_id, 'reconciliation.unmatched', 'bank_transaction', p_bank_transaction_id,
+          v_before, v_after,
+          jsonb_build_object(
+            'reason', p_reason,
+            'deleted_match_ids', to_jsonb(v_deleted_match_ids),
+            'voided_credit_ids', to_jsonb(v_voided_credit_ids),
+            'reopened_receipt_ids', to_jsonb(v_reopened_receipt_ids),
+            'removed_amount', v_removed_sum
+          ));
+
+  RETURN jsonb_build_object(
+    'voided_credit_ids', to_jsonb(v_voided_credit_ids),
+    'deleted_match_ids', to_jsonb(v_deleted_match_ids),
+    'reopened_receipt_ids', to_jsonb(v_reopened_receipt_ids),
+    'new_matched_total', v_new_matched_total
+  );
+END;
+$$;
+
+-- rpc_record_cash_receipt: records a cash/cheque receipt. Creates two rows
+-- atomically: a lot_ledger_entries credit AND an undeposited_funds_entries
+-- row with status='pending_deposit'. The matching bank-side deposit arrives
+-- later and is cleared via rpc_deposit_undeposited_funds.
+--
+-- Strict fund-type rule: p_fund_type MUST equal bank_account.fund_type. Cash
+-- is earmarked to the destination account's fund at receipt time.
+CREATE OR REPLACE FUNCTION rpc_record_cash_receipt(
+  p_subdivision_id uuid,
+  p_lot_id uuid,
+  p_bank_account_id uuid,
+  p_fund_type fund_type,
+  p_amount decimal,
+  p_received_date date,
+  p_payment_method text,
+  p_cheque_number text,
+  p_description text,
+  p_performed_by uuid
+)
+RETURNS jsonb
+LANGUAGE plpgsql
+AS $$
+DECLARE
+  v_lot_subdivision_id uuid;
+  v_ba_subdivision_id  uuid;
+  v_ba_fund_type       fund_type;
+  v_receipt_number     text;
+  v_credit_id          uuid;
+  v_receipt_id         uuid;
+  v_method_enum        payment_method;
+  v_description        text;
+  v_after              jsonb;
+BEGIN
+  IF p_amount IS NULL OR p_amount <= 0 THEN
+    RAISE EXCEPTION 'rpc_record_cash_receipt: amount must be positive (got %)', p_amount;
+  END IF;
+  IF p_payment_method NOT IN ('cash','cheque') THEN
+    RAISE EXCEPTION 'rpc_record_cash_receipt: payment_method must be cash or cheque, got %', p_payment_method;
+  END IF;
+  IF p_payment_method = 'cheque' AND (p_cheque_number IS NULL OR length(trim(p_cheque_number)) = 0) THEN
+    RAISE EXCEPTION 'rpc_record_cash_receipt: cheque_number is required when payment_method = cheque';
+  END IF;
+  IF p_payment_method = 'cash' AND p_cheque_number IS NOT NULL THEN
+    RAISE EXCEPTION 'rpc_record_cash_receipt: cheque_number must be null when payment_method = cash';
+  END IF;
+
+  SELECT subdivision_id INTO v_lot_subdivision_id FROM lots WHERE id = p_lot_id;
+  IF v_lot_subdivision_id IS NULL THEN
+    RAISE EXCEPTION 'rpc_record_cash_receipt: lot % not found', p_lot_id;
+  END IF;
+  IF v_lot_subdivision_id <> p_subdivision_id THEN
+    RAISE EXCEPTION 'rpc_record_cash_receipt: lot % does not belong to subdivision %', p_lot_id, p_subdivision_id;
+  END IF;
+
+  SELECT subdivision_id, fund_type
+    INTO v_ba_subdivision_id, v_ba_fund_type
+    FROM bank_accounts WHERE id = p_bank_account_id;
+  IF v_ba_subdivision_id IS NULL THEN
+    RAISE EXCEPTION 'rpc_record_cash_receipt: bank_account % not found', p_bank_account_id;
+  END IF;
+  IF v_ba_subdivision_id <> p_subdivision_id THEN
+    RAISE EXCEPTION 'rpc_record_cash_receipt: bank_account % does not belong to subdivision %', p_bank_account_id, p_subdivision_id;
+  END IF;
+  IF v_ba_fund_type <> p_fund_type THEN
+    RAISE EXCEPTION 'rpc_record_cash_receipt: fund_type mismatch — receipt %, bank account %', p_fund_type, v_ba_fund_type;
+  END IF;
+
+  v_receipt_number := next_reference_number('RCPT');
+  v_method_enum := p_payment_method::payment_method;
+
+  IF p_payment_method = 'cheque' THEN
+    v_description := 'Cheque receipt ' || v_receipt_number
+      || ' (cheque #' || p_cheque_number || ')'
+      || COALESCE(' — ' || p_description, '');
+  ELSE
+    v_description := 'Cash receipt ' || v_receipt_number
+      || COALESCE(' — ' || p_description, '');
+  END IF;
+
+  -- Inline payment-credit insert (avoids cross-RPC audit duplication).
+  INSERT INTO lot_ledger_entries (
+    subdivision_id, lot_id, fund_type, entry_type, category,
+    amount, entry_date, description, reference,
+    status, created_by
+  ) VALUES (
+    p_subdivision_id, p_lot_id, p_fund_type, 'credit', 'payment',
+    p_amount, p_received_date, v_description, v_receipt_number,
+    'active', p_performed_by
+  ) RETURNING id INTO v_credit_id;
+
+  INSERT INTO undeposited_funds_entries (
+    subdivision_id, lot_id, bank_account_id, fund_type, amount, received_date,
+    payment_method, cheque_number, receipt_number, description,
+    status, linked_ledger_credit_id, created_by
+  ) VALUES (
+    p_subdivision_id, p_lot_id, p_bank_account_id, p_fund_type, p_amount, p_received_date,
+    v_method_enum, p_cheque_number, v_receipt_number, p_description,
+    'pending_deposit', v_credit_id, p_performed_by
+  ) RETURNING id INTO v_receipt_id;
+
+  PERFORM recompute_lot_ledger_state(p_lot_id);
+
+  SELECT to_jsonb(u) INTO v_after FROM undeposited_funds_entries u WHERE u.id = v_receipt_id;
+  INSERT INTO audit_log (profile_id, subdivision_id, action, entity_type, entity_id, after_state, metadata)
+  VALUES (p_performed_by, p_subdivision_id, 'receipt.recorded', 'undeposited_funds_entry', v_receipt_id,
+          v_after,
+          jsonb_build_object(
+            'receipt_number', v_receipt_number,
+            'ledger_entry_id', v_credit_id,
+            'lot_id', p_lot_id,
+            'bank_account_id', p_bank_account_id
+          ));
+
+  RETURN jsonb_build_object(
+    'receipt_id', v_receipt_id,
+    'receipt_number', v_receipt_number,
+    'ledger_entry_id', v_credit_id
+  );
+END;
+$$;
+
+-- rpc_deposit_undeposited_funds: clears pending undeposited receipts against
+-- a real bank deposit. CRITICAL: does NOT create a ledger credit — the credit
+-- already exists from rpc_record_cash_receipt. This RPC only links the
+-- existing credit to the bank transaction via reconciliation_matches.
+-- Exact-sum enforcement: sum(undeposited.amount) MUST equal bank_transaction.amount.
+CREATE OR REPLACE FUNCTION rpc_deposit_undeposited_funds(
+  p_bank_transaction_id uuid,
+  p_undeposited_entry_ids uuid[],
+  p_performed_by uuid
+)
+RETURNS jsonb
+LANGUAGE plpgsql
+AS $$
+DECLARE
+  v_bt                 bank_transactions%ROWTYPE;
+  v_bt_subdivision_id  uuid;
+  v_before             jsonb;
+  v_after              jsonb;
+  v_uf                 undeposited_funds_entries%ROWTYPE;
+  v_sum                decimal(12,2) := 0;
+  v_count              int := 0;
+  v_match_id           uuid;
+  v_match_ids          uuid[] := ARRAY[]::uuid[];
+  v_cleared_numbers    text[] := ARRAY[]::text[];
+  v_lot_ids            uuid[] := ARRAY[]::uuid[];
+  v_lot_id             uuid;
+BEGIN
+  IF p_undeposited_entry_ids IS NULL OR array_length(p_undeposited_entry_ids, 1) IS NULL THEN
+    RAISE EXCEPTION 'rpc_deposit_undeposited_funds: p_undeposited_entry_ids must be non-empty';
+  END IF;
+
+  SELECT * INTO v_bt FROM bank_transactions WHERE id = p_bank_transaction_id FOR UPDATE;
+  IF NOT FOUND THEN
+    RAISE EXCEPTION 'rpc_deposit_undeposited_funds: bank_transaction % not found', p_bank_transaction_id;
+  END IF;
+  IF v_bt.is_voided THEN
+    RAISE EXCEPTION 'rpc_deposit_undeposited_funds: bank_transaction % is voided', p_bank_transaction_id;
+  END IF;
+  IF v_bt.match_status <> 'unmatched' OR v_bt.matched_total <> 0 THEN
+    RAISE EXCEPTION 'rpc_deposit_undeposited_funds: bank_transaction % must be unmatched with matched_total=0', p_bank_transaction_id;
+  END IF;
+  IF v_bt.amount <= 0 THEN
+    RAISE EXCEPTION 'rpc_deposit_undeposited_funds: only credit-direction transactions can clear receipts';
+  END IF;
+
+  SELECT ba.subdivision_id INTO v_bt_subdivision_id
+    FROM bank_accounts ba WHERE ba.id = v_bt.bank_account_id;
+
+  v_before := to_jsonb(v_bt);
+
+  -- Validate every undeposited entry up front AND sum.
+  FOR v_uf IN
+    SELECT * FROM undeposited_funds_entries
+     WHERE id = ANY (p_undeposited_entry_ids)
+     FOR UPDATE
+  LOOP
+    v_count := v_count + 1;
+    IF v_uf.status <> 'pending_deposit' THEN
+      RAISE EXCEPTION 'rpc_deposit_undeposited_funds: undeposited entry % is not pending_deposit (status=%)', v_uf.id, v_uf.status;
+    END IF;
+    IF v_uf.bank_account_id <> v_bt.bank_account_id THEN
+      RAISE EXCEPTION 'rpc_deposit_undeposited_funds: undeposited entry % is for a different bank_account', v_uf.id;
+    END IF;
+    v_sum := v_sum + v_uf.amount;
+  END LOOP;
+
+  IF v_count <> array_length(p_undeposited_entry_ids, 1) THEN
+    RAISE EXCEPTION 'rpc_deposit_undeposited_funds: one or more undeposited_entry_ids not found (% of % resolved)',
+      v_count, array_length(p_undeposited_entry_ids, 1);
+  END IF;
+
+  IF v_sum <> v_bt.amount THEN
+    RAISE EXCEPTION 'rpc_deposit_undeposited_funds: sum of undeposited entries (%) does not equal bank transaction amount (%). Use regular matching instead.', v_sum, v_bt.amount;
+  END IF;
+
+  -- Clear each entry + create the matching row against its existing credit.
+  FOR v_uf IN
+    SELECT * FROM undeposited_funds_entries
+     WHERE id = ANY (p_undeposited_entry_ids)
+     FOR UPDATE
+  LOOP
+    UPDATE undeposited_funds_entries
+       SET status = 'deposited',
+           deposited_at = NOW(),
+           deposited_by_bank_transaction_id = p_bank_transaction_id
+     WHERE id = v_uf.id;
+
+    INSERT INTO reconciliation_matches (
+      bank_transaction_id, ledger_entry_id, amount_matched,
+      match_method, match_confidence, matched_by, notes
+    ) VALUES (
+      p_bank_transaction_id, v_uf.linked_ledger_credit_id, v_uf.amount,
+      'system', 'system_created', p_performed_by,
+      'Cleared undeposited receipt ' || v_uf.receipt_number
+    ) RETURNING id INTO v_match_id;
+
+    v_match_ids       := array_append(v_match_ids, v_match_id);
+    v_cleared_numbers := array_append(v_cleared_numbers, v_uf.receipt_number);
+
+    IF NOT (v_uf.lot_id = ANY (v_lot_ids)) THEN
+      v_lot_ids := array_append(v_lot_ids, v_uf.lot_id);
+    END IF;
+  END LOOP;
+
+  UPDATE bank_transactions
+     SET matched_total = v_bt.amount,
+         match_status  = 'auto_matched'
+   WHERE id = p_bank_transaction_id;
+
+  -- Recompute state per distinct lot (credit amounts did not change, but
+  -- oldest-unpaid walker is unaffected — still cheap to keep the invariant).
+  FOR v_lot_id IN SELECT unnest(v_lot_ids) LOOP
+    PERFORM recompute_lot_ledger_state(v_lot_id);
+  END LOOP;
+
+  SELECT to_jsonb(bt) INTO v_after FROM bank_transactions bt WHERE bt.id = p_bank_transaction_id;
+  INSERT INTO audit_log (profile_id, subdivision_id, action, entity_type, entity_id, before_state, after_state, metadata)
+  VALUES (p_performed_by, v_bt_subdivision_id, 'reconciliation.deposited_receipts', 'bank_transaction', p_bank_transaction_id,
+          v_before, v_after,
+          jsonb_build_object(
+            'cleared_receipt_numbers', to_jsonb(v_cleared_numbers),
+            'match_ids', to_jsonb(v_match_ids),
+            'cleared_entry_ids', to_jsonb(p_undeposited_entry_ids)
+          ));
+
+  RETURN jsonb_build_object(
+    'cleared_receipt_numbers', to_jsonb(v_cleared_numbers),
+    'match_ids', to_jsonb(v_match_ids)
+  );
+END;
+$$;
+
+-- rpc_exclude_bank_transaction: marks a transaction as excluded from
+-- reconciliation (e.g. bank fee, interest credited by the bank, inter-account
+-- transfer). Must be unmatched with matched_total=0 and not voided.
+CREATE OR REPLACE FUNCTION rpc_exclude_bank_transaction(
+  p_bank_transaction_id uuid,
+  p_reason text,
+  p_performed_by uuid
+)
+RETURNS jsonb
+LANGUAGE plpgsql
+AS $$
+DECLARE
+  v_bt                bank_transactions%ROWTYPE;
+  v_bt_subdivision_id uuid;
+  v_before            jsonb;
+  v_after             jsonb;
+BEGIN
+  IF p_reason IS NULL OR length(trim(p_reason)) = 0 THEN
+    RAISE EXCEPTION 'rpc_exclude_bank_transaction: reason is required';
+  END IF;
+
+  SELECT * INTO v_bt FROM bank_transactions WHERE id = p_bank_transaction_id FOR UPDATE;
+  IF NOT FOUND THEN
+    RAISE EXCEPTION 'rpc_exclude_bank_transaction: bank_transaction % not found', p_bank_transaction_id;
+  END IF;
+  IF v_bt.is_voided THEN
+    RAISE EXCEPTION 'rpc_exclude_bank_transaction: bank_transaction % is voided', p_bank_transaction_id;
+  END IF;
+  IF v_bt.match_status <> 'unmatched' OR v_bt.matched_total <> 0 THEN
+    RAISE EXCEPTION 'rpc_exclude_bank_transaction: can only exclude an unmatched transaction with matched_total=0';
+  END IF;
+
+  SELECT ba.subdivision_id INTO v_bt_subdivision_id FROM bank_accounts ba WHERE ba.id = v_bt.bank_account_id;
+  v_before := to_jsonb(v_bt);
+
+  UPDATE bank_transactions
+     SET match_status    = 'excluded',
+         excluded_reason = p_reason
+   WHERE id = p_bank_transaction_id;
+
+  SELECT to_jsonb(bt) INTO v_after FROM bank_transactions bt WHERE bt.id = p_bank_transaction_id;
+  INSERT INTO audit_log (profile_id, subdivision_id, action, entity_type, entity_id, before_state, after_state, metadata)
+  VALUES (p_performed_by, v_bt_subdivision_id, 'reconciliation.excluded', 'bank_transaction', p_bank_transaction_id,
+          v_before, v_after,
+          jsonb_build_object('reason', p_reason));
+
+  RETURN jsonb_build_object('ok', true);
+END;
+$$;
+
+-- rpc_unexclude_bank_transaction: reverses exclusion.
+CREATE OR REPLACE FUNCTION rpc_unexclude_bank_transaction(
+  p_bank_transaction_id uuid,
+  p_performed_by uuid
+)
+RETURNS jsonb
+LANGUAGE plpgsql
+AS $$
+DECLARE
+  v_bt                bank_transactions%ROWTYPE;
+  v_bt_subdivision_id uuid;
+  v_before            jsonb;
+  v_after             jsonb;
+BEGIN
+  SELECT * INTO v_bt FROM bank_transactions WHERE id = p_bank_transaction_id FOR UPDATE;
+  IF NOT FOUND THEN
+    RAISE EXCEPTION 'rpc_unexclude_bank_transaction: bank_transaction % not found', p_bank_transaction_id;
+  END IF;
+  IF v_bt.match_status <> 'excluded' THEN
+    RAISE EXCEPTION 'rpc_unexclude_bank_transaction: transaction is not excluded (status=%)', v_bt.match_status;
+  END IF;
+
+  SELECT ba.subdivision_id INTO v_bt_subdivision_id FROM bank_accounts ba WHERE ba.id = v_bt.bank_account_id;
+  v_before := to_jsonb(v_bt);
+
+  UPDATE bank_transactions
+     SET match_status    = 'unmatched',
+         excluded_reason = NULL
+   WHERE id = p_bank_transaction_id;
+
+  SELECT to_jsonb(bt) INTO v_after FROM bank_transactions bt WHERE bt.id = p_bank_transaction_id;
+  INSERT INTO audit_log (profile_id, subdivision_id, action, entity_type, entity_id, before_state, after_state)
+  VALUES (p_performed_by, v_bt_subdivision_id, 'reconciliation.unexcluded', 'bank_transaction', p_bank_transaction_id,
+          v_before, v_after);
+
+  RETURN jsonb_build_object('ok', true);
+END;
+$$;
+
+-- ============================================================================
 -- VIEWS  (Prompt 1)
 -- ----------------------------------------------------------------------------
 -- v_levy_notice_status: derived effective status of a levy notice from the
@@ -1752,6 +2524,7 @@ ALTER TABLE chat_read_status             ENABLE ROW LEVEL SECURITY;
 ALTER TABLE lot_ledger_entries           ENABLE ROW LEVEL SECURITY;
 ALTER TABLE lot_ledger_state             ENABLE ROW LEVEL SECURITY;
 ALTER TABLE reconciliation_matches       ENABLE ROW LEVEL SECURITY;
+ALTER TABLE undeposited_funds_entries    ENABLE ROW LEVEL SECURITY;
 
 -- Audit log is immutable — INSERT only.
 CREATE POLICY "audit_log_insert_only" ON audit_log FOR INSERT WITH CHECK (true);
