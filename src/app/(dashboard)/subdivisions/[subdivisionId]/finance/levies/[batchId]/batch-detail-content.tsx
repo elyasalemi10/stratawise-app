@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import { useRouter } from "next/navigation";
-import { ArrowLeft, CheckCircle2, ChevronDown, Download, Mail, Trash2, FolderDown, DollarSign, Undo2, RefreshCw, CalendarIcon } from "lucide-react";
+import { ArrowLeft, CheckCircle2, ChevronDown, Download, Mail, Trash2, FolderDown, DollarSign, Undo2, RefreshCw, CalendarIcon, AlertTriangle } from "lucide-react";
 import { format } from "date-fns";
 import { formatDateLong } from "@/lib/utils";
 import { toast } from "sonner";
@@ -11,6 +11,24 @@ import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
 import { Badge } from "@/components/ui/badge";
 import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuLabel,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
 import { Calendar } from "@/components/ui/calendar";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import {
@@ -106,6 +124,7 @@ export function BatchDetailContent({
   const [resending, setResending] = useState(false);
   const [recalling, setRecalling] = useState(false);
   const [markingPaid, setMarkingPaid] = useState(false);
+  const [showMarkPaidConfirm, setShowMarkPaidConfirm] = useState(false);
   const [showRegenerate, setShowRegenerate] = useState(false);
   const [regenDate, setRegenDate] = useState<Date | undefined>(undefined);
   const [regenDateOpen, setRegenDateOpen] = useState(false);
@@ -141,7 +160,6 @@ export function BatchDetailContent({
   }
 
   async function handleMarkPaid() {
-    if (!confirm("Mark all levies in this batch as paid? This is for testing purposes.")) return;
     setMarkingPaid(true);
     const result = await markBatchPaid(subdivisionId, batch.id);
     setMarkingPaid(false);
@@ -249,12 +267,6 @@ export function BatchDetailContent({
             <FolderDown className="mr-2 h-3.5 w-3.5" />
             Download all
           </Button>
-          {batch.levies.some((l) => l.status !== "paid") && (
-            <Button onClick={handleMarkPaid} disabled={markingPaid} size="sm" variant="outline" className="cursor-pointer">
-              <DollarSign className="mr-2 h-3.5 w-3.5" />
-              {markingPaid ? "Marking..." : "Mark all as paid"}
-            </Button>
-          )}
           {(batch.status === "sent" || batch.status === "partially_sent") && !batch.levies.some((l) => l.status === "paid") && (
             <Button onClick={handleRecall} disabled={recalling} size="sm" variant="outline" className="cursor-pointer">
               <Undo2 className="mr-2 h-3.5 w-3.5" />
@@ -271,6 +283,37 @@ export function BatchDetailContent({
               {cancelling ? "Cancelling..." : "Cancel batch"}
             </Button>
           )}
+          <DropdownMenu>
+            <DropdownMenuTrigger render={<Button size="sm" variant="outline" className="cursor-pointer" />}>
+              Advanced actions
+              <ChevronDown className="ml-2 h-3.5 w-3.5" />
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="end" className="w-72">
+              <DropdownMenuLabel className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
+                Advanced
+              </DropdownMenuLabel>
+              <DropdownMenuSeparator />
+              {batch.levies.some((l) => l.status !== "paid") ? (
+                <>
+                  <DropdownMenuItem
+                    className="cursor-pointer text-destructive focus:text-destructive focus:bg-destructive/5"
+                    onSelect={() => setShowMarkPaidConfirm(true)}
+                  >
+                    <DollarSign className="mr-2 h-3.5 w-3.5 shrink-0" />
+                    Mark batch paid (legacy)
+                  </DropdownMenuItem>
+                  <p className="px-2 pb-2 pt-1 text-[11px] text-muted-foreground leading-relaxed">
+                    Legacy action. Prefer recording payments via the reconciliation queue or cash receipt flow. Use only when reconciliation isn&apos;t available.
+                  </p>
+                </>
+              ) : (
+                <DropdownMenuItem disabled className="text-muted-foreground">
+                  <DollarSign className="mr-2 h-3.5 w-3.5 shrink-0" />
+                  Mark batch paid (legacy)
+                </DropdownMenuItem>
+              )}
+            </DropdownMenuContent>
+          </DropdownMenu>
         </div>
       </div>
 
@@ -303,6 +346,31 @@ export function BatchDetailContent({
           </DialogFooter>
         </DialogContent>
       </Dialog>
+
+      {/* Mark batch paid confirmation */}
+      <AlertDialog open={showMarkPaidConfirm} onOpenChange={setShowMarkPaidConfirm}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle className="flex items-center gap-2">
+              <AlertTriangle className="h-4 w-4 text-destructive" />
+              Mark this batch as paid?
+            </AlertDialogTitle>
+            <AlertDialogDescription>
+              This is a legacy action. Any ledger credits already covering these notices will trigger a coverage warning in the audit log. Prefer the reconciliation queue for new payments.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel className="cursor-pointer">Cancel</AlertDialogCancel>
+            <AlertDialogAction
+              className="cursor-pointer bg-destructive text-white hover:bg-destructive/90"
+              onClick={handleMarkPaid}
+              disabled={markingPaid}
+            >
+              {markingPaid ? "Marking..." : "Mark paid anyway"}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
 
       {/* Info note for drafts */}
       {draftCount > 0 && (
