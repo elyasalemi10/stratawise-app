@@ -451,6 +451,156 @@ export async function getUndepositedEntries(
   }));
 }
 
+export async function getSubdivisionLotsForAllocation(
+  subdivisionId: string,
+): Promise<
+  Array<{
+    id: string;
+    lot_number: string;
+    unit_number: string | null;
+    owner_display_name: string | null;
+    owner_status: "member" | "pending_invitation" | "unowned";
+    outstanding_levies: Array<{
+      id: string;
+      reference_number: string;
+      amount_outstanding: number;
+    }>;
+  }>
+> {
+  await requireSubdivisionAccess(subdivisionId);
+  const supabase = createServerClient();
+
+  // Get all lots in the subdivision
+  const { data: lots, error: lotsErr } = await supabase
+    .from("lots")
+    .select("id, lot_number, unit_number, subdivision_id")
+    .eq("subdivision_id", subdivisionId)
+    .order("lot_number", { ascending: true });
+
+  if (lotsErr || !lots) throw new Error("Failed to fetch lots");
+
+  const lotIds = lots.map((l) => l.id);
+
+  // Get lot owners (members + pending invitations)
+  const { data: members } = await supabase
+    .from("subdivision_members")
+    .select("lot_id, profile_id, profiles!inner(id, first_name, last_name)")
+    .in("lot_id", lotIds)
+    .eq("role", "lot_owner")
+    .is("left_at", null);
+
+  const memberMap = new Map<
+    string,
+    { owner_display_name: string | null; owner_status: "member" }
+  >();
+  for (const m of members ?? []) {
+    if (!m.lot_id) continue;
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const profile = (m as any).profiles;
+    const name = [profile?.first_name, profile?.last_name]
+      .filter(Boolean)
+      .join(" ")
+      .trim();
+    memberMap.set(m.lot_id, {
+      owner_display_name: name || null,
+      owner_status: "member",
+    });
+  }
+
+  const lotsStillUnowned = lotIds.filter((id) => !memberMap.has(id));
+  const inviteMap = new Map<
+    string,
+    { owner_display_name: string | null; owner_status: "pending_invitation" }
+  >();
+  if (lotsStillUnowned.length > 0) {
+    const { data: invites } = await supabase
+      .from("invitations")
+      .select("id, lot_id, name, created_at")
+      .in("lot_id", lotsStillUnowned)
+      .eq("status", "pending")
+      .order("created_at", { ascending: false });
+
+    for (const inv of invites ?? []) {
+      if (!inviteMap.has(inv.lot_id)) {
+        inviteMap.set(inv.lot_id, {
+          owner_display_name: inv.name ?? null,
+          owner_status: "pending_invitation",
+        });
+      }
+    }
+  }
+
+  // Get outstanding levy notices per lot
+  const { data: notices } = await supabase
+    .from("levy_notices")
+    .select(
+      "id, lot_id, reference_number, amount_due, amount_paid, levy_batch_id, status"
+    )
+    .in("lot_id", lotIds)
+    .in("status", ["issued", "overdue", "partially_paid"]);
+
+  const ledgerMap = new Map<
+    string,
+    { paid: number; due: number }
+  >();
+  for (const notice of notices ?? []) {
+    if (!ledgerMap.has(notice.lot_id)) {
+      ledgerMap.set(notice.lot_id, { paid: 0, due: 0 });
+    }
+    const stats = ledgerMap.get(notice.lot_id)!;
+    stats.due += Number(notice.amount_due);
+    stats.paid += Number(notice.amount_paid);
+  }
+
+  const noticeIds = (notices ?? []).map((n) => n.id);
+  const noticeAmountMap = new Map<string, number>();
+  if (noticeIds.length > 0) {
+    const { data: ledgerCredits } = await supabase
+      .from("lot_ledger_entries")
+      .select("levy_notice_id, amount")
+      .in("levy_notice_id", noticeIds)
+      .eq("entry_type", "credit");
+
+    for (const credit of ledgerCredits ?? []) {
+      if (!credit.levy_notice_id) continue;
+      const current = noticeAmountMap.get(credit.levy_notice_id) ?? 0;
+      noticeAmountMap.set(credit.levy_notice_id, current + Number(credit.amount));
+    }
+  }
+
+  return lots.map((lot) => {
+    const owner = memberMap.get(lot.id) || inviteMap.get(lot.id) || {
+      owner_display_name: null,
+      owner_status: "unowned" as const,
+    };
+
+    const lotNotices = (notices ?? []).filter((n) => n.lot_id === lot.id);
+    const outstanding_levies = lotNotices
+      .map((notice) => {
+        const amountPaid = noticeAmountMap.get(notice.id) ?? 0;
+        const amountOutstanding = round2(
+          Number(notice.amount_due) - amountPaid
+        );
+        return {
+          id: notice.id,
+          reference_number: notice.reference_number,
+          amount_outstanding: amountOutstanding,
+        };
+      })
+      .filter((l) => l.amount_outstanding > 0)
+      .sort((a, b) => a.reference_number.localeCompare(b.reference_number));
+
+    return {
+      id: lot.id,
+      lot_number: String(lot.lot_number),
+      unit_number: lot.unit_number ?? null,
+      owner_display_name: owner.owner_display_name,
+      owner_status: owner.owner_status,
+      outstanding_levies,
+    };
+  });
+}
+
 // ============================================================================
 // MUTATIONS
 // ============================================================================
