@@ -361,23 +361,14 @@ leave the fixture for inspection; `--cleanup` cleans stale runs).
 The full delivery plan is 8 prompts. Prompt 0 is complete; the rest build
 the reconciliation feature progressively on top of the now-stable schema.
 
-- [x] **Prompt 0** — Schema consolidation & structural cleanup.
-- [x] **Prompt 1** — Lot ledger foundation: ledger tables + state
-  materialisation + RPCs (debit, credit, adjustment, void, batch debit) +
-  atomic levy-debit generation on batch create. No UI.
-- [ ] **Prompt 2** — CSV import full flow + manual payment entry against
-  the ledger.
-- [ ] **Prompt 3** — Basiq integration (webhook + polling fallback,
-  idempotent by `basiq_transaction_id`).
-- [ ] **Prompt 4** — Auto-matching logic: exact reference, BPAY CRN,
-  known-sender memory, amount+window heuristics, explicit-levy-reference
-  honouring.
-- [ ] **Prompt 5** — Owner self-report payment flow (submit + manager
-  approval writes the ledger credit).
-- [ ] **Prompt 6** — Interest calculation cron (writes `interest` ledger
-  debits), levy-notice status sweep, and arrears notification emails.
-- [ ] **Prompt 7** — Statement PDFs + reconciliation reporting dashboards
-  (arrears, evidence-trail exports, bulk match operations).
+- [x] Prompt 0 — Schema consolidation & structural cleanup
+- [x] Prompt 1 — Lot ledger foundation + RPC functions + levy generation rewrite
+- [ ] Prompt 2 — Manual bank transaction entry + manual matching UI + cash/cheque receipts + undeposited funds + void/reversal
+- [ ] Prompt 3 — Basiq integration (connect, consent, polling, webhook, reauth, gap reconciliation)
+- [ ] Prompt 4 — Auto-matching pipeline (levy ref, BPAY CRN, sender identity, confidence, auto-learn)
+- [ ] Prompt 5 — Duplicate detection + owner self-report
+- [ ] Prompt 6 — Notifications + interest/arrears/penalty
+- [ ] Prompt 7 — Reporting, exports, owner portal, polish
 
 Each subsequent prompt should read this file and `CLAUDE.md` first, then
 the relevant sections of `project-context.md`.
