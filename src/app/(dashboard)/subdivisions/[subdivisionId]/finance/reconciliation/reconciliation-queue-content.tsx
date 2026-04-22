@@ -6,8 +6,6 @@ import { useTransition } from "react";
 import {
   FileText,
   Inbox,
-  Plus,
-  Upload,
   Wallet,
   ChevronLeft,
   ChevronRight,
