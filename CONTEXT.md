@@ -354,6 +354,102 @@ that creates isolated test data under a `__VERIFY_LEDGER__` marker,
 runs the 9 Prompt 1 §6 scenarios, and cleans up (or `--no-cleanup` to
 leave the fixture for inspection; `--cleanup` cleans stale runs).
 
+### What Prompt 2 added
+
+**New table.** `undeposited_funds_entries` — staging table for
+cash/cheque receipts. Rows live here from `rpc_record_cash_receipt`
+until `rpc_deposit_receipts` links them to a bank transaction. Each row
+carries `receipt_number` (MSM-RCPT-YYYY-NNNNNN), `amount`,
+`bank_account_id`, `linked_ledger_credit_id` (the ledger credit it
+created), `status` (`pending_deposit | deposited | voided`), and
+deposit tracking columns (`deposited_at`, `deposited_bank_txn_id`,
+`deposited_by`).
+
+**Reconciliation_matches populated.** The `reconciliation_matches`
+scaffold from Prompt 1 is now fully written. Each row links one
+`bank_transaction_id` to one `ledger_entry_id` with a `matched_amount`,
+`match_method`, and `matched_by`. The trigger
+`trg_auto_match_on_bank_txn_insert` fires on `bank_transactions` INSERT
+and calls `rpc_auto_match_on_insert` — which looks for an exact
+MSM-LEV-* reference match and auto-applies it.
+
+**RPCs.** Six new transactional RPCs — all in `database-schema.sql`:
+- `rpc_manual_match(p_bank_txn_id, p_lot_allocations[])` — manual
+  allocation of one bank txn across ≥1 lots; updates `matched_total`,
+  inserts `reconciliation_matches`, calls `rpc_payment_credit` per lot.
+- `rpc_unmatch(p_bank_txn_id)` — reverses a match: voids all credits
+  via `rpc_ledger_void`, deletes match rows, resets `matched_total` and
+  `status` to `unmatched`.
+- `rpc_record_cash_receipt(...)` — records a cash/cheque receipt: calls
+  `rpc_payment_credit` for the lot, inserts `undeposited_funds_entries`.
+- `rpc_deposit_receipts(p_bank_txn_id, p_receipt_ids[])` — deposits
+  pending receipts into a bank transaction: validates sum = txn amount,
+  marks receipts `deposited`, creates one `reconciliation_matches` row
+  per receipt. Rejected if sum mismatches.
+- `rpc_void_bank_transaction(p_bank_txn_id, p_reason)` — cascades
+  unmatch (re-opens deposited receipts to `pending_deposit`), marks
+  transaction `is_voided = true`, writes audit.
+- `rpc_void_cash_receipt(p_receipt_id, p_reason)` — can only void
+  `pending_deposit` receipts; voids the linked ledger credit, marks
+  receipt `voided`. Blocks on deposited receipts (must void the bank
+  transaction first).
+
+**Server actions.** `src/lib/actions/reconciliation.ts` exposes
+`addManualBankTransaction`, `getReconciliationQueue`,
+`getReconciliationDetail`, `matchBankTransaction`,
+`unmatchBankTransaction`, `excludeBankTransaction`,
+`unexcludeBankTransaction`, `voidBankTransaction`.
+`src/lib/actions/bank-transactions.ts` gains `getBankAccountsForSubdivision`,
+`getUndepositedEntries`, `recordCashReceipt`, `depositReceipts`,
+`voidCashReceipt`. `src/lib/actions/ledger.ts` gains
+`getLedgerPaymentSourceLinks` (list-level source map for tooltip routing)
+and `getLedgerEntryDetail` (full drawer payload: entry + audit trail
+with performer names + source chain).
+
+**Auth resolver seam.** `src/lib/auth-resolver.ts` carries two
+`__`-prefixed exports (`__setUserIdResolverForVerification`,
+`__getUserIdResolverForVerification`) used exclusively by `*.verification.ts`
+scripts to bypass Clerk in standalone `tsx` runs. Application code never
+imports them. See `PRE_LAUNCH_CLEANUP.md` for the grep command to verify.
+
+**Verification harness.** `src/lib/actions/reconciliation.verification.ts`
+— 12 scenarios covering manual entry, auto-match, partial match,
+multi-lot manual match, unmatch round-trip, receipt → deposit, sum
+mismatch rejection, exclude/unexclude, void cascade for bank txn and
+receipt (pending and deposited). Runs clean with 12/12 pass.
+
+**UI surfaces.**
+- Reconciliation queue: `/finance/reconciliation` — filterable table of
+  bank transactions with status badges and sidebar link.
+- Reconciliation detail: `/finance/reconciliation/[bankTxnId]` — full
+  transaction view with match/unmatch/void actions and lot allocation.
+- Bank account page enhancements: undeposited funds panel (staging table
+  view), record cash receipt flow, deposit-receipts flow.
+- Lot ledger tab (replaces Payments placeholder): 4-KPI header, filter
+  bar (fund, category, date range, include-voided toggle), running balance
+  column (single-fund mode only), per-row void with `VoidEntryDialog`,
+  `RecordCashReceiptDialog` and `RecordAdjustmentDialog` pre-filled with
+  the lot.
+- Ledger entry drawer: Sheet panel (fade-in, no slide) lazy-loaded on
+  "View" click. Shows entry metadata, source chain deep links (levy →
+  batch, payment → recon/receipt), and audit trail with performer names
+  resolved from `profiles`.
+- `markBatchPaid` relocated to "Advanced actions" DropdownMenu with
+  legacy warning and an `AlertDialog` confirmation gate.
+
+**Shared components.** `RecordCashReceiptDialog` and
+`RecordAdjustmentDialog` (both accept `defaultLotId` for pre-fill).
+`SharedBadges` for reuse across surfaces. `alert-dialog.tsx` UI wrapper
+(thin over Dialog, follows custom `form.tsx` pattern).
+
+**Deferred to later prompts.**
+- Basiq bank feed connection and webhook ingestion → Prompt 3.
+- Auto-matching beyond MSM-LEV reference (BPAY CRN, sender identity,
+  confidence scoring) → Prompt 4.
+- Owner self-report and duplicate detection → Prompt 5.
+- Lot statement PDF (`getLotStatement` data is ready; PDF template
+  pending) → Prompt 7.
+
 ---
 
 ## 8. What comes next
@@ -363,7 +459,7 @@ the reconciliation feature progressively on top of the now-stable schema.
 
 - [x] Prompt 0 — Schema consolidation & structural cleanup
 - [x] Prompt 1 — Lot ledger foundation + RPC functions + levy generation rewrite
-- [ ] Prompt 2 — Manual bank transaction entry + manual matching UI + cash/cheque receipts + undeposited funds + void/reversal
+- [x] Prompt 2 — Manual bank transaction entry + manual matching UI + cash/cheque receipts + undeposited funds + void/reversal
 - [ ] Prompt 3 — Basiq integration (connect, consent, polling, webhook, reauth, gap reconciliation)
 - [ ] Prompt 4 — Auto-matching pipeline (levy ref, BPAY CRN, sender identity, confidence, auto-learn)
 - [ ] Prompt 5 — Duplicate detection + owner self-report
