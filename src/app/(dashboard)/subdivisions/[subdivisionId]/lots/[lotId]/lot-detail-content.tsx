@@ -14,10 +14,12 @@ import { FileText } from "lucide-react";
 import { updateLotField } from "../../manage/actions";
 import { DocumentManager } from "@/components/shared/document-manager";
 import type { DocumentRecord } from "@/lib/validations/documents";
+import type { LotOwnerInfo } from "@/lib/actions/lot-ownership";
 
 interface LotDetailContentProps {
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   lot: any;
+  owner: LotOwnerInfo;
   subdivisionId: string;
   balance: number;
   documents: DocumentRecord[];
@@ -120,6 +122,15 @@ function EditableInfoRow({
 
 // ─── Placeholder tab ────────────────────────────────────────────
 
+function ReadOnlyInfoRow({ label, value }: { label: string; value: string }) {
+  return (
+    <div className="flex items-start justify-between py-3 border-b border-border last:border-b-0">
+      <span className="text-sm text-muted-foreground">{label}</span>
+      <span className="text-sm text-foreground">{value}</span>
+    </div>
+  );
+}
+
 function PlaceholderTab({ name }: { name: string }) {
   return (
     <Card>
@@ -133,7 +144,7 @@ function PlaceholderTab({ name }: { name: string }) {
 
 // ─── Main component ─────────────────────────────────────────────
 
-export function LotDetailContent({ lot: initialLot, subdivisionId, balance, documents }: LotDetailContentProps) {
+export function LotDetailContent({ lot: initialLot, owner, subdivisionId, balance, documents }: LotDetailContentProps) {
   const searchParams = useSearchParams();
   const initialTab = searchParams.get("tab") ?? "general";
   const [activeTab, setActiveTab] = useState(initialTab);
@@ -152,14 +163,11 @@ export function LotDetailContent({ lot: initialLot, subdivisionId, balance, docu
   const formatCurrency = (n: number) =>
     new Intl.NumberFormat("en-AU", { style: "currency", currency: "AUD" }).format(n);
 
-  const hasOwner = !!lot.owner_name;
-  const statusVariant = !hasOwner ? "neutral" : balance > 0 ? "destructive" : "success";
-  const statusLabel = !hasOwner ? "Unassigned" : balance > 0 ? "Behind" : "Up to date";
-
-  const ownerTypeOptions = [
-    { value: "individual", label: "Individual" },
-    { value: "company", label: "Company" },
-  ];
+  const isMember = owner.owner_status === "member";
+  const isPending = owner.owner_status === "pending_invitation";
+  const statusVariant = !isMember ? "neutral" : balance > 0 ? "destructive" : "success";
+  const statusLabel = !isMember ? (isPending ? "Pending invitation" : "Unassigned") : balance > 0 ? "Behind" : "Up to date";
+  const headerTitle = owner.owner_display_name ?? `Lot ${lot.lot_number}`;
 
   return (
     <div className="space-y-6">
@@ -177,7 +185,7 @@ export function LotDetailContent({ lot: initialLot, subdivisionId, balance, docu
         <div>
           <div className="flex items-center gap-3">
             <h1 className="text-2xl font-semibold tracking-tight text-foreground">
-              {lot.owner_name ?? `Lot ${lot.lot_number}`}
+              {headerTitle}
             </h1>
             <Badge variant={statusVariant}>{statusLabel}</Badge>
           </div>
@@ -266,39 +274,24 @@ export function LotDetailContent({ lot: initialLot, subdivisionId, balance, docu
               <EditableInfoRow label="Unit number" value={lot.unit_number} field="unit_number" lotId={lot.id} subdivisionId={subdivisionId} isEditing={isEditing} onSaved={(v) => onFieldSaved("unit_number", v)} />
               <EditableInfoRow label="Entitlement" value={lot.lot_entitlement ? String(lot.lot_entitlement) : null} field="lot_entitlement" lotId={lot.id} subdivisionId={subdivisionId} isEditing={isEditing} onSaved={(v) => onFieldSaved("lot_entitlement", v)} />
               <EditableInfoRow label="Liability" value={lot.lot_liability ? String(lot.lot_liability) : null} field="lot_liability" lotId={lot.id} subdivisionId={subdivisionId} isEditing={isEditing} onSaved={(v) => onFieldSaved("lot_liability", v)} />
-              {/* Owner occupied toggle */}
-              <div className="flex items-center justify-between py-3 border-b border-border last:border-b-0">
-                <span className="text-sm text-muted-foreground">Owner occupied</span>
-                {isEditing ? (
-                  <button
-                    type="button"
-                    onClick={async () => {
-                      const newVal = !(lot.owner_occupied ?? true);
-                      const result = await updateLotField(subdivisionId, lot.id, "owner_occupied", newVal);
-                      if (!result.error) onFieldSaved("owner_occupied", String(newVal));
-                    }}
-                    className="cursor-pointer"
-                  >
-                    <Badge variant={(lot.owner_occupied ?? true) ? "success" : "neutral"}>
-                      {(lot.owner_occupied ?? true) ? "Yes" : "No"}
-                    </Badge>
-                  </button>
-                ) : (
-                  <Badge variant={(lot.owner_occupied ?? true) ? "success" : "neutral"}>
-                    {(lot.owner_occupied ?? true) ? "Yes" : "No"}
-                  </Badge>
-                )}
-              </div>
             </CardContent>
           </Card>
 
           <Card>
             <CardContent className="pt-5">
               <h3 className="text-sm font-semibold text-foreground mb-3">Owner details</h3>
-              <EditableInfoRow label="Name" value={lot.owner_name} field="owner_name" lotId={lot.id} subdivisionId={subdivisionId} isEditing={isEditing} onSaved={(v) => onFieldSaved("owner_name", v)} />
-              <EditableInfoRow label="Type" value={lot.owner_type ?? "individual"} field="owner_type" lotId={lot.id} subdivisionId={subdivisionId} isEditing={isEditing} type="select" options={ownerTypeOptions} onSaved={(v) => onFieldSaved("owner_type", v)} />
-              <EditableInfoRow label="Email" value={lot.owner_email} field="owner_email" lotId={lot.id} subdivisionId={subdivisionId} isEditing={isEditing} onSaved={(v) => onFieldSaved("owner_email", v)} />
-              <EditableInfoRow label="Phone" value={lot.owner_phone} field="owner_phone" lotId={lot.id} subdivisionId={subdivisionId} isEditing={isEditing} onSaved={(v) => onFieldSaved("owner_phone", v)} />
+              <ReadOnlyInfoRow
+                label="Status"
+                value={isMember ? "Active member" : isPending ? "Pending invitation" : "Unassigned"}
+              />
+              <ReadOnlyInfoRow label="Name" value={owner.owner_display_name ?? "—"} />
+              <ReadOnlyInfoRow label="Email" value={owner.owner_contact_email ?? "—"} />
+              <ReadOnlyInfoRow label="Phone" value={owner.owner_contact_phone ?? "—"} />
+              <p className="mt-3 text-xs text-muted-foreground">
+                Owner details come from the accepted invitation + linked profile.
+                Change them via the Invite flow on the Manage page, or ask the
+                owner to update their profile.
+              </p>
             </CardContent>
           </Card>
         </div>

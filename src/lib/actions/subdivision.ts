@@ -2,6 +2,7 @@
 
 import { getCurrentProfile, requireSubdivisionAccess } from "@/lib/auth";
 import { createServerClient } from "@/lib/supabase";
+import { countLotsWithOwner, getLotOwners, type LotOwnerStatus } from "@/lib/actions/lot-ownership";
 
 export interface SidebarLot {
   lot_number: number;
@@ -130,11 +131,10 @@ export interface LotWithFinancials {
   lot_entitlement: number;
   lot_liability: number;
   unit_number: string | null;
-  owner_type: string | null;
-  owner_name: string | null;
-  owner_email: string | null;
-  owner_phone: string | null;
-  owner_occupied: boolean;
+  owner_display_name: string | null;
+  owner_contact_email: string | null;
+  owner_contact_phone: string | null;
+  owner_status: LotOwnerStatus;
   balance: number;
   financial_status: "up_to_date" | "unassigned" | "behind";
 }
@@ -145,16 +145,15 @@ export async function getLotsWithFinancials(subdivisionId: string): Promise<LotW
 
   const { data: lots } = await supabase
     .from("lots")
-    .select("*")
+    .select("id, lot_number, unit_number, lot_entitlement, lot_liability")
     .eq("subdivision_id", subdivisionId)
     .order("lot_number");
 
   if (!lots) return [];
 
-  // Get levy and payment totals per lot
   const lotIds = lots.map((l) => l.id);
 
-  const [leviesResult, paymentsResult] = await Promise.all([
+  const [leviesResult, paymentsResult, owners] = await Promise.all([
     supabase
       .from("levy_notices")
       .select("lot_id, amount")
@@ -164,9 +163,9 @@ export async function getLotsWithFinancials(subdivisionId: string): Promise<LotW
       .from("payments")
       .select("lot_id, amount")
       .in("lot_id", lotIds),
+    getLotOwners(supabase, lotIds),
   ]);
 
-  // Aggregate per lot
   const leviesByLot = new Map<string, number>();
   const paymentsByLot = new Map<string, number>();
 
@@ -181,10 +180,11 @@ export async function getLotsWithFinancials(subdivisionId: string): Promise<LotW
     const totalLevied = leviesByLot.get(lot.id) ?? 0;
     const totalPaid = paymentsByLot.get(lot.id) ?? 0;
     const balance = totalLevied - totalPaid;
-    const hasOwner = !!lot.owner_name;
+    const owner = owners.get(lot.id);
+    const isAssigned = owner?.owner_status === "member";
 
     let financial_status: "up_to_date" | "unassigned" | "behind";
-    if (!hasOwner) {
+    if (!isAssigned) {
       financial_status = "unassigned";
     } else if (balance > 0) {
       financial_status = "behind";
@@ -198,11 +198,10 @@ export async function getLotsWithFinancials(subdivisionId: string): Promise<LotW
       lot_entitlement: Number(lot.lot_entitlement),
       lot_liability: Number(lot.lot_liability),
       unit_number: lot.unit_number,
-      owner_type: lot.owner_type,
-      owner_name: lot.owner_name,
-      owner_email: lot.owner_email,
-      owner_phone: lot.owner_phone,
-      owner_occupied: lot.owner_occupied ?? true,
+      owner_display_name: owner?.owner_display_name ?? null,
+      owner_contact_email: owner?.owner_contact_email ?? null,
+      owner_contact_phone: owner?.owner_contact_phone ?? null,
+      owner_status: owner?.owner_status ?? "unowned",
       balance,
       financial_status,
     };
@@ -213,17 +212,12 @@ export async function getSubdivisionManageStats(subdivisionId: string) {
   await requireSubdivisionAccess(subdivisionId);
   const supabase = createServerClient();
 
-  const [lotsResult, ownersResult, membersResult] = await Promise.all([
+  const [lotsResult, ownersAssignedCount, membersResult] = await Promise.all([
     supabase
       .from("lots")
       .select("id", { count: "exact", head: true })
       .eq("subdivision_id", subdivisionId),
-    supabase
-      .from("lots")
-      .select("id", { count: "exact", head: true })
-      .eq("subdivision_id", subdivisionId)
-      .not("owner_name", "is", null)
-      .neq("owner_name", ""),
+    countLotsWithOwner(supabase, subdivisionId),
     supabase
       .from("subdivision_members")
       .select("id", { count: "exact", head: true })
@@ -233,7 +227,7 @@ export async function getSubdivisionManageStats(subdivisionId: string) {
 
   return {
     totalLots: lotsResult.count ?? 0,
-    ownersAssigned: ownersResult.count ?? 0,
+    ownersAssigned: ownersAssignedCount,
     totalMembers: membersResult.count ?? 0,
   };
 }

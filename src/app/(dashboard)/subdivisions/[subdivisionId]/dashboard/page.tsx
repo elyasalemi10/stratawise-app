@@ -70,7 +70,7 @@ async function LotOwnerDashboard({ subdivisionId, profileId }: { subdivisionId: 
   // Fetch lot details
   const { data: lots } = await supabase
     .from("lots")
-    .select("id, lot_number, unit_number, lot_entitlement, lot_liability, owner_name, owner_email")
+    .select("id, lot_number, unit_number, lot_entitlement, lot_liability")
     .in("id", lotIds);
 
   // Fetch levies for these lots (only issued, not drafts)

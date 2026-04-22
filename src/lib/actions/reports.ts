@@ -2,6 +2,7 @@
 
 import { getCurrentProfile, requireSubdivisionAccess } from "@/lib/auth";
 import { createServerClient } from "@/lib/supabase";
+import { getLotOwners } from "@/lib/actions/lot-ownership";
 
 // ─── Levy History ──────────────────────────────────────────
 
@@ -13,7 +14,7 @@ export async function getLevyHistory(subdivisionId: string, lotId?: string) {
   const supabase = createServerClient();
   let query = supabase
     .from("levy_notices")
-    .select("id, lot_id, reference_number, period_start, period_end, amount, amount_paid, status, due_date, issued_at, pdf_url, lots!inner(lot_number, unit_number, owner_name)")
+    .select("id, lot_id, reference_number, period_start, period_end, amount, amount_paid, status, due_date, issued_at, pdf_url, lots!inner(lot_number, unit_number)")
     .eq("subdivision_id", subdivisionId)
     .order("due_date", { ascending: false });
 
@@ -33,12 +34,16 @@ export async function getLevyHistory(subdivisionId: string, lotId?: string) {
   }
 
   const { data } = await query;
+  const rows = data ?? [];
+  const lotIds = rows.map((r) => r.lot_id).filter(Boolean) as string[];
+  const owners = await getLotOwners(supabase, lotIds);
+
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  return (data ?? []).map((l: any) => ({
+  return rows.map((l: any) => ({
     id: l.id,
     lot_number: l.lots?.lot_number,
     unit_number: l.lots?.unit_number,
-    owner_name: l.lots?.owner_name,
+    owner_display_name: owners.get(l.lot_id)?.owner_display_name ?? null,
     reference_number: l.reference_number,
     period_start: l.period_start,
     period_end: l.period_end,
@@ -82,23 +87,28 @@ export async function getLotOwnerRegister(subdivisionId: string) {
   const supabase = createServerClient();
   const { data } = await supabase
     .from("lots")
-    .select("id, lot_number, unit_number, owner_name, owner_email, owner_phone, lot_entitlement, lot_liability, owner_occupied")
+    .select("id, lot_number, unit_number, lot_entitlement, lot_liability")
     .eq("subdivision_id", subdivisionId)
     .order("lot_number");
 
+  const lots = data ?? [];
+  const owners = await getLotOwners(supabase, lots.map((l) => l.id));
   const isManager = profile.role !== "lot_owner";
 
-  return (data ?? []).map((lot) => ({
-    lot_number: lot.lot_number,
-    unit_number: lot.unit_number,
-    owner_name: lot.owner_name,
-    // Only managers see contact details
-    owner_email: isManager ? lot.owner_email : null,
-    owner_phone: isManager ? (lot.owner_phone ?? null) : null,
-    lot_entitlement: lot.lot_entitlement,
-    lot_liability: lot.lot_liability,
-    owner_occupied: isManager ? lot.owner_occupied : null,
-  }));
+  return lots.map((lot) => {
+    const owner = owners.get(lot.id);
+    return {
+      lot_number: lot.lot_number,
+      unit_number: lot.unit_number,
+      owner_display_name: owner?.owner_display_name ?? null,
+      owner_status: owner?.owner_status ?? "unowned",
+      // Only managers see contact details
+      owner_contact_email: isManager ? (owner?.owner_contact_email ?? null) : null,
+      owner_contact_phone: isManager ? (owner?.owner_contact_phone ?? null) : null,
+      lot_entitlement: lot.lot_entitlement,
+      lot_liability: lot.lot_liability,
+    };
+  });
 }
 
 // ─── Communication Log ─────────────────────────────────────
@@ -263,9 +273,14 @@ export async function getSubdivisionLots(subdivisionId: string) {
 
   const { data } = await supabase
     .from("lots")
-    .select("id, lot_number, unit_number, owner_name")
+    .select("id, lot_number, unit_number")
     .eq("subdivision_id", subdivisionId)
     .order("lot_number");
 
-  return data ?? [];
+  const lots = data ?? [];
+  const owners = await getLotOwners(supabase, lots.map((l) => l.id));
+  return lots.map((l) => ({
+    ...l,
+    owner_display_name: owners.get(l.id)?.owner_display_name ?? null,
+  }));
 }

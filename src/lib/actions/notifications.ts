@@ -60,7 +60,7 @@ export async function markAsRead(notificationId: string) {
   const supabase = createServerClient();
   await supabase
     .from("notifications")
-    .update({ read_at: new Date().toISOString(), read: true })
+    .update({ read_at: new Date().toISOString() })
     .eq("id", notificationId)
     .eq("profile_id", profile.id);
 }
@@ -72,7 +72,7 @@ export async function markAllAsRead() {
   const supabase = createServerClient();
   await supabase
     .from("notifications")
-    .update({ read_at: new Date().toISOString(), read: true })
+    .update({ read_at: new Date().toISOString() })
     .eq("profile_id", profile.id)
     .is("read_at", null);
 }

@@ -2,6 +2,7 @@
 
 import { requireCompanyRole } from "@/lib/auth";
 import { createServerClient } from "@/lib/supabase";
+import { sendInvitationEmail } from "@/lib/email";
 import {
   step1Schema,
   step2Schema,
@@ -311,32 +312,84 @@ export async function updateSubdivisionStep4(subdivisionId: string, data: Step4V
     const v = parsed.data;
     const supabase = createServerClient();
 
-    // Delete existing lots (safe during setup, no downstream refs yet)
+    // Replace the full lot list for this subdivision during setup. Pending
+    // invitations reference lot_id with no ON DELETE CASCADE, so we must
+    // clear them before deleting lots.
+    const { data: existingLots } = await supabase
+      .from("lots")
+      .select("id")
+      .eq("subdivision_id", subdivisionId);
+
+    const existingLotIds = (existingLots ?? []).map((l) => l.id);
+    if (existingLotIds.length > 0) {
+      await supabase
+        .from("invitations")
+        .delete()
+        .in("lot_id", existingLotIds)
+        .eq("status", "pending");
+    }
+
     await supabase
       .from("lots")
       .delete()
       .eq("subdivision_id", subdivisionId);
 
-    // Insert new lots
+    // Insert lots (no owner fields — ownership lives on subdivision_members).
     const lotsToInsert = v.lots.map((lot, idx) => ({
       subdivision_id: subdivisionId,
       lot_number: parseInt(lot.lot_number, 10) || (idx + 1),
       unit_number: lot.unit_number || null,
-      owner_type: lot.owner_type,
-      owner_name: lot.owner_name || null,
-      owner_email: lot.owner_email || null,
-      owner_phone: lot.owner_phone || null,
       lot_entitlement: lot.lot_entitlement,
       lot_liability: lot.lot_entitlement, // Default liability = entitlement
     }));
 
-    const { error: lotsError } = await supabase
+    const { data: insertedLots, error: lotsError } = await supabase
       .from("lots")
-      .insert(lotsToInsert);
+      .insert(lotsToInsert)
+      .select("id, lot_number");
 
     if (lotsError) {
       console.error("Step 4 lots error:", lotsError);
       return { error: "Failed to create lots" };
+    }
+
+    // Pre-create pending invitations for lots that provided owner contact
+    // details. Invitation emails are NOT sent here — they're sent when the
+    // wizard completes (see completeSubdivisionSetup). Until then, the
+    // subdivision is in setup mode and the pending invitations are the
+    // canonical pre-acceptance identity for each lot.
+    const lotByNumber = new Map<number, string>();
+    for (const l of insertedLots ?? []) lotByNumber.set(l.lot_number, l.id);
+
+    const invitationsToInsert = v.lots
+      .map((lot, idx) => {
+        const email = (lot.invitee_email ?? "").trim();
+        if (!email) return null;
+        const lotNumber = parseInt(lot.lot_number, 10) || (idx + 1);
+        const lotId = lotByNumber.get(lotNumber);
+        if (!lotId) return null;
+        return {
+          subdivision_id: subdivisionId,
+          lot_id: lotId,
+          email,
+          name: lot.invitee_name?.trim() || null,
+          phone: lot.invitee_phone?.trim() || null,
+          role: "lot_owner" as const,
+          status: "pending" as const,
+          invited_by: profile.id,
+        };
+      })
+      .filter((x): x is NonNullable<typeof x> => x !== null);
+
+    if (invitationsToInsert.length > 0) {
+      const { error: invError } = await supabase
+        .from("invitations")
+        .insert(invitationsToInsert);
+      if (invError) {
+        console.error("Step 4 invitations error:", invError);
+        // Don't fail step 4 — lots are created; manager can retry invitations
+        // from the manage page.
+      }
     }
 
     // Update total_lots
@@ -404,6 +457,42 @@ export async function completeSubdivisionSetup(subdivisionId: string, data: Step
       })
       .eq("id", subdivisionId);
 
+    // Dispatch any pending lot-owner invitations that were queued during
+    // step 4. Emails are only sent now — at the end of setup — so the
+    // manager isn't firing invitations while they're still editing the lot
+    // list. Each send failure is logged but doesn't abort completion.
+    const { data: subdivisionRow } = await supabase
+      .from("subdivisions")
+      .select("name, address")
+      .eq("id", subdivisionId)
+      .single();
+
+    const { data: pendingInvitations } = await supabase
+      .from("invitations")
+      .select("id, token, email, name, lot_id, lots(lot_number)")
+      .eq("subdivision_id", subdivisionId)
+      .eq("status", "pending")
+      .eq("role", "lot_owner");
+
+    const baseUrl = process.env.APP_URL ?? "http://localhost:3000";
+    for (const inv of pendingInvitations ?? []) {
+      try {
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        const lot = (inv as any).lots;
+        await sendInvitationEmail({
+          to: inv.email,
+          inviteeName: inv.name ?? "",
+          role: "lot_owner",
+          subdivisionName: subdivisionRow?.name ?? "Your subdivision",
+          subdivisionAddress: subdivisionRow?.address ?? "",
+          lotNumber: lot?.lot_number ?? null,
+          inviteUrl: `${baseUrl}/invite/${inv.token}`,
+        });
+      } catch (err) {
+        console.error("Failed to send wizard invitation:", inv.email, err);
+      }
+    }
+
     // Audit log — full setup completed
     await supabase.from("audit_log").insert({
       profile_id: profile.id,
@@ -412,7 +501,10 @@ export async function completeSubdivisionSetup(subdivisionId: string, data: Step
       entity_type: "subdivision",
       entity_id: subdivisionId,
       after_state: { step: 5, status: "active" },
-      metadata: { source: "subdivision_wizard_complete" },
+      metadata: {
+        source: "subdivision_wizard_complete",
+        invitations_sent: pendingInvitations?.length ?? 0,
+      },
     });
 
     return { success: true };

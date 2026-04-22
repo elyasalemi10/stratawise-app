@@ -71,7 +71,7 @@ export function BatchDetailContent({
         status: "sent",
         levies: prev.levies.map((l) => ({
           ...l,
-          status: l.status === "draft" && l.owner_email ? "issued" : l.status,
+          status: l.status === "draft" && l.owner_contact_email ? "issued" : l.status,
         })),
       }));
     }
@@ -354,7 +354,7 @@ export function BatchDetailContent({
                         {levy.unit_number ? ` (Unit ${levy.unit_number})` : ""}
                       </span>
                       <span className="ml-2 text-muted-foreground">
-                        {levy.owner_name ?? "Unassigned"}
+                        {levy.owner_display_name ?? "Unassigned"}
                       </span>
                       <span className="ml-2 text-xs text-muted-foreground">{levy.reference_number}</span>
                     </div>
@@ -411,8 +411,8 @@ export function BatchDetailContent({
                           </Button>
                         </a>
                       )}
-                      {levy.owner_email && (
-                        <span className="text-xs text-muted-foreground ml-2">{levy.owner_email}</span>
+                      {levy.owner_contact_email && (
+                        <span className="text-xs text-muted-foreground ml-2">{levy.owner_contact_email}</span>
                       )}
                     </div>
                   </div>

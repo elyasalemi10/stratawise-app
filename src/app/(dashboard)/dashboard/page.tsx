@@ -79,7 +79,7 @@ export default async function DashboardPage() {
       lotIds.length > 0
         ? supabase
             .from("lots")
-            .select("id, subdivision_id, lot_number, unit_number, lot_entitlement, owner_name")
+            .select("id, subdivision_id, lot_number, unit_number, lot_entitlement")
             .in("id", lotIds)
         : Promise.resolve({ data: [] }),
       lotIds.length > 0

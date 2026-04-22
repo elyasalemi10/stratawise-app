@@ -173,15 +173,6 @@ export async function acceptInvitation(token: string) {
       role: "lot_owner",
       is_primary_contact: true,
     });
-
-    // Update lot with owner email if not set
-    if (invitation.lot_id) {
-      await supabase
-        .from("lots")
-        .update({ owner_email: profile.email })
-        .eq("id", invitation.lot_id)
-        .is("owner_email", null);
-    }
   }
 
   // Audit

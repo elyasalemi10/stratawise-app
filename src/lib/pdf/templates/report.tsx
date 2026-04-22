@@ -137,7 +137,7 @@ function ReportFooter({ label }: { label: string }) {
 // ─── Levy History Report ───────────────────────────────────
 
 export interface LevyHistoryData {
-  lot_number: number; owner_name: string | null; reference_number: string;
+  lot_number: number; owner_display_name: string | null; reference_number: string;
   period_start: string; period_end: string; amount: number; amount_paid: number;
   status: string; due_date: string;
 }
@@ -267,15 +267,16 @@ export function InsuranceStatusReport({ data, title, subtitle, address, logoUrl 
 // ─── Lot Owner Register Report ─────────────────────────────
 
 export interface LotRegisterData {
-  lot_number: number; unit_number: string | null; owner_name: string | null;
-  owner_email: string | null; owner_phone: string | null;
-  lot_entitlement: number; lot_liability: number; owner_occupied: boolean | null;
+  lot_number: number; unit_number: string | null;
+  owner_display_name: string | null; owner_status: "member" | "pending_invitation" | "unowned";
+  owner_contact_email: string | null; owner_contact_phone: string | null;
+  lot_entitlement: number; lot_liability: number;
 }
 
 export function LotRegisterReport({ data, title, subtitle, address, logoUrl, showContact }: { data: LotRegisterData[]; title: string; subtitle: string; address?: string; logoUrl?: string | null; showContact: boolean }) {
   const totalUE = data.reduce((sum, lot) => sum + (lot.lot_entitlement || 0), 0);
   const totalLiability = data.reduce((sum, lot) => sum + (lot.lot_liability || 0), 0);
-  const assignedCount = data.filter((lot) => lot.owner_name).length;
+  const assignedCount = data.filter((lot) => lot.owner_status === "member").length;
   const info = [
     { label: "Subdivision", value: subtitle },
     ...(address ? [{ label: "Address", value: address }] : []),
@@ -287,24 +288,33 @@ export function LotRegisterReport({ data, title, subtitle, address, logoUrl, sho
         <ReportHeader title={title} logoUrl={logoUrl} info={info} />
         <View style={s.tableHeader}>
           <Text style={[s.th, { width: showContact ? "8%" : "15%" }]}>Lot</Text>
-          <Text style={[s.th, { width: showContact ? "14%" : "35%" }]}>Owner</Text>
-          {showContact && <Text style={[s.th, { width: "20%" }]}>Email</Text>}
-          {showContact && <Text style={[s.th, { width: "12%" }]}>Phone</Text>}
-          <Text style={[s.th, { width: showContact ? "10%" : "25%", textAlign: "right" as const }]}>Entitlement</Text>
-          <Text style={[s.th, { width: showContact ? "10%" : "25%", textAlign: "right" as const }]}>Liability</Text>
-          {showContact && <Text style={[s.th, { width: "10%" }]}>Occupied</Text>}
+          <Text style={[s.th, { width: showContact ? "18%" : "40%" }]}>Owner</Text>
+          {showContact && <Text style={[s.th, { width: "22%" }]}>Email</Text>}
+          {showContact && <Text style={[s.th, { width: "14%" }]}>Phone</Text>}
+          <Text style={[s.th, { width: showContact ? "11%" : "22%", textAlign: "right" as const }]}>Entitlement</Text>
+          <Text style={[s.th, { width: showContact ? "11%" : "23%", textAlign: "right" as const }]}>Liability</Text>
+          {showContact && <Text style={[s.th, { width: "16%" }]}>Status</Text>}
         </View>
-        {data.map((lot, i) => (
-          <View key={i} style={i % 2 === 0 ? s.rowStriped : s.row} wrap={false}>
-            <Text style={[s.td, { width: showContact ? "8%" : "15%" }]}>Lot {lot.lot_number}{lot.unit_number ? ` (${lot.unit_number})` : ""}</Text>
-            <Text style={[s.td, { width: showContact ? "14%" : "35%" }]}>{lot.owner_name ?? "Unassigned"}</Text>
-            {showContact && <Text style={[s.tdMuted, { width: "20%" }]}>{lot.owner_email ?? "—"}</Text>}
-            {showContact && <Text style={[s.td, { width: "12%" }]}>{lot.owner_phone ?? "—"}</Text>}
-            <Text style={[s.tdRight, { width: showContact ? "10%" : "25%" }]}>{lot.lot_entitlement || "—"}</Text>
-            <Text style={[s.tdRight, { width: showContact ? "10%" : "25%" }]}>{lot.lot_liability || "—"}</Text>
-            {showContact && <Text style={[s.td, { width: "10%" }]}>{lot.owner_occupied === null ? "—" : lot.owner_occupied ? "Yes" : "No"}</Text>}
-          </View>
-        ))}
+        {data.map((lot, i) => {
+          const ownerLabel = lot.owner_display_name
+            ?? (lot.owner_status === "pending_invitation" ? "Pending invitation" : "Unassigned");
+          const statusLabel = lot.owner_status === "member"
+            ? "Member"
+            : lot.owner_status === "pending_invitation"
+              ? "Pending"
+              : "Unassigned";
+          return (
+            <View key={i} style={i % 2 === 0 ? s.rowStriped : s.row} wrap={false}>
+              <Text style={[s.td, { width: showContact ? "8%" : "15%" }]}>Lot {lot.lot_number}{lot.unit_number ? ` (${lot.unit_number})` : ""}</Text>
+              <Text style={[s.td, { width: showContact ? "18%" : "40%" }]}>{ownerLabel}</Text>
+              {showContact && <Text style={[s.tdMuted, { width: "22%" }]}>{lot.owner_contact_email ?? "—"}</Text>}
+              {showContact && <Text style={[s.td, { width: "14%" }]}>{lot.owner_contact_phone ?? "—"}</Text>}
+              <Text style={[s.tdRight, { width: showContact ? "11%" : "22%" }]}>{lot.lot_entitlement || "—"}</Text>
+              <Text style={[s.tdRight, { width: showContact ? "11%" : "23%" }]}>{lot.lot_liability || "—"}</Text>
+              {showContact && <Text style={[s.td, { width: "16%" }]}>{statusLabel}</Text>}
+            </View>
+          );
+        })}
         <View style={s.summarySection}>
           <View style={s.summaryRow}>
             <Text style={s.summaryLabel}>Total lots</Text>

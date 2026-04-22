@@ -33,7 +33,7 @@ interface LotOption {
   id: string;
   lot_number: number;
   unit_number: string | null;
-  owner_name: string | null;
+  owner_display_name: string | null;
 }
 
 type ReportType = "levy_history" | "insurance_status" | "lot_register" | "communication_log" | "audit_trail" | "oc_certificate";
@@ -118,7 +118,7 @@ export function ReportsContent({
         case "levy_history": {
           const data = await getLevyHistory(subdivisionId, selectedLotId || undefined);
           const selectedLot = selectedLotId ? lots.find((l) => l.id === selectedLotId) : null;
-          const lotOwnerName = selectedLot?.owner_name ?? undefined;
+          const lotOwnerName = selectedLot?.owner_display_name ?? undefined;
           element = createElement(LevyHistoryReport, { data, title: "Levy History Report", subtitle: subName, address: subAddr, logoUrl: logoDataUrl, lotOwnerName });
           break;
         }
@@ -238,7 +238,7 @@ export function ReportsContent({
                   <option value="">All lots</option>
                   {lots.map((lot) => (
                     <option key={lot.id} value={lot.id}>
-                      Lot {lot.lot_number}{lot.owner_name ? ` — ${lot.owner_name}` : ""}
+                      Lot {lot.lot_number}{lot.owner_display_name ? ` — ${lot.owner_display_name}` : ""}
                     </option>
                   ))}
                 </select>
@@ -258,7 +258,7 @@ export function ReportsContent({
                     <option value="">Select lot...</option>
                     {lots.map((lot) => (
                       <option key={lot.id} value={lot.id}>
-                        Lot {lot.lot_number}{lot.owner_name ? ` — ${lot.owner_name}` : ""}
+                        Lot {lot.lot_number}{lot.owner_display_name ? ` — ${lot.owner_display_name}` : ""}
                       </option>
                     ))}
                   </select>

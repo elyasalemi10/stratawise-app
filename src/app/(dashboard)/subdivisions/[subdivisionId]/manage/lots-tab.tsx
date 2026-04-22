@@ -138,7 +138,7 @@ export function LotsTab({ lots, subdivisionId, isEditing, onLotUpdated, totalEnt
         <table className="w-full text-sm">
           <thead>
             <tr className="bg-muted/50 text-xs font-medium uppercase tracking-wider text-muted-foreground">
-              <th className={`px-4 py-2.5 text-left ${isLotOwner ? "w-[40%]" : ""}`}>Owner name</th>
+              <th className={`px-4 py-2.5 text-left ${isLotOwner ? "w-[40%]" : ""}`}>Owner</th>
               {!isLotOwner && <th className="px-4 py-2.5 text-left">Email</th>}
               <th className="px-4 py-2.5 text-left">Units of entitlement</th>
               <th className="px-4 py-2.5 text-left">Unit number</th>
@@ -148,7 +148,6 @@ export function LotsTab({ lots, subdivisionId, isEditing, onLotUpdated, totalEnt
               >
                 Lot # {sortAsc ? "↑" : "↓"}
               </th>
-              {!isLotOwner && <th className="px-4 py-2.5 text-left">Owner occupied</th>}
               {!isLotOwner && <th className="px-4 py-2.5 text-left">Invite status</th>}
               {!isLotOwner && <th className="px-4 py-2.5 text-right">Balance</th>}
               {!isEditing && !isLotOwner && <th className="px-4 py-2.5 text-right w-20"></th>}
@@ -158,6 +157,8 @@ export function LotsTab({ lots, subdivisionId, isEditing, onLotUpdated, totalEnt
             {sortedLots.map((lot) => {
               const status = inviteStatus.get(lot.id);
               const canInvite = status !== "accepted" && status !== "pending";
+              const ownerLabel = lot.owner_display_name
+                ?? (lot.owner_status === "pending_invitation" ? "Pending invitation" : null);
 
               return (
                 <tr
@@ -166,33 +167,17 @@ export function LotsTab({ lots, subdivisionId, isEditing, onLotUpdated, totalEnt
                   className={`border-t border-border/50 h-12 transition-colors ${!isEditing && !isLotOwner ? "cursor-pointer hover:bg-muted/30" : ""}`}
                 >
                   <td className="px-4">
-                    {isEditing ? (
-                      <EditableCell
-                        value={lot.owner_name}
-                        lotId={lot.id}
-                        field="owner_name"
-                        subdivisionId={subdivisionId}
-                        isEditing={true}
-                        placeholder="Unassigned"
-                        onSaved={(v) => onLotUpdated(lot.id, "owner_name", v)}
-                      />
-                    ) : lot.owner_name ? (
-                      <span className="font-medium text-foreground">{lot.owner_name}</span>
+                    {ownerLabel ? (
+                      <span className={`font-medium ${lot.owner_status === "member" ? "text-foreground" : "text-muted-foreground"}`}>
+                        {ownerLabel}
+                      </span>
                     ) : (
                       <span className="text-muted-foreground">Unassigned</span>
                     )}
                   </td>
                   {!isLotOwner && (
-                    <td className="px-4">
-                      <EditableCell
-                        value={lot.owner_email}
-                        lotId={lot.id}
-                        field="owner_email"
-                        subdivisionId={subdivisionId}
-                        isEditing={isEditing}
-                        placeholder="—"
-                        onSaved={(v) => onLotUpdated(lot.id, "owner_email", v)}
-                      />
+                    <td className="px-4 text-muted-foreground">
+                      {lot.owner_contact_email ?? "—"}
                     </td>
                   )}
                   <td className="px-4">
@@ -219,31 +204,6 @@ export function LotsTab({ lots, subdivisionId, isEditing, onLotUpdated, totalEnt
                     />
                   </td>
                   <td className="px-4 font-medium text-foreground">{lot.lot_number}</td>
-                  {!isLotOwner && (
-                    <td className="px-4">
-                      {isEditing ? (
-                        <button
-                          type="button"
-                          onClick={async () => {
-                            const newVal = !lot.owner_occupied;
-                            const result = await updateLotField(subdivisionId, lot.id, "owner_occupied", newVal);
-                            if (!result.error) {
-                              onLotUpdated(lot.id, "owner_occupied", newVal as unknown as string | number | null);
-                            }
-                          }}
-                          className="cursor-pointer"
-                        >
-                          <Badge variant={lot.owner_occupied ? "success" : "neutral"}>
-                            {lot.owner_occupied ? "Yes" : "No"}
-                          </Badge>
-                        </button>
-                      ) : (
-                        <Badge variant={lot.owner_occupied ? "success" : "neutral"}>
-                          {lot.owner_occupied ? "Yes" : "No"}
-                        </Badge>
-                      )}
-                    </td>
-                  )}
                   {!isLotOwner && <td className="px-4">{getInviteStatusBadge(lot.id)}</td>}
                   {!isLotOwner && (
                     <td className="px-4 text-right tabular-nums">
@@ -276,7 +236,7 @@ export function LotsTab({ lots, subdivisionId, isEditing, onLotUpdated, totalEnt
             })}
             {sortedLots.length === 0 && (
               <tr>
-                <td colSpan={isEditing ? 8 : 9} className="px-4 py-12 text-center text-sm text-muted-foreground">
+                <td colSpan={isEditing ? 7 : 8} className="px-4 py-12 text-center text-sm text-muted-foreground">
                   No lots found. Create lots from the subdivision setup wizard.
                 </td>
               </tr>
@@ -293,8 +253,8 @@ export function LotsTab({ lots, subdivisionId, isEditing, onLotUpdated, totalEnt
           subdivisionId={subdivisionId}
           lotId={inviteLot.id}
           lotNumber={inviteLot.lot_number}
-          prefillEmail={inviteLot.owner_email ?? undefined}
-          prefillName={inviteLot.owner_name ?? undefined}
+          prefillEmail={inviteLot.owner_contact_email ?? undefined}
+          prefillName={inviteLot.owner_display_name ?? undefined}
         />
       )}
     </div>

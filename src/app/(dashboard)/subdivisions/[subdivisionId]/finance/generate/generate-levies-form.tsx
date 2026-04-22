@@ -63,7 +63,7 @@ function LotRow({
               {lot.unit_number ? ` (Unit ${lot.unit_number})` : ""}
             </span>
             <span className="ml-2 text-muted-foreground">
-              {lot.owner_name ?? "Unassigned"}
+              {lot.owner_display_name ?? "Unassigned"}
             </span>
           </div>
         </div>

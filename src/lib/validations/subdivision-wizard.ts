@@ -63,14 +63,17 @@ export const step3Schema = z.object({
 });
 
 // ─── Step 4: Lots ───────────────────────────────────────────────
+//
+// Owner details entered here are NOT written to `lots` (the DB has no owner
+// columns). If `invitee_email` is provided, the server creates a pending
+// invitations row so the owner can accept and be linked via subdivision_members.
 
 export const lotRowSchema = z.object({
   lot_number: z.string().min(1, "Lot number is required"),
   unit_number: z.string().min(1, "Unit number is required"),
-  owner_type: z.enum(["individual", "company"]),
-  owner_name: z.string().min(1, "Owner name is required"),
-  owner_email: z.string().email("Invalid email").min(1, "Email is required"),
-  owner_phone: z.string().min(1, "Phone is required"),
+  invitee_name: z.string().optional().default(""),
+  invitee_email: z.string().email("Invalid email").optional().or(z.literal("")),
+  invitee_phone: z.string().optional().default(""),
   lot_entitlement: z.coerce.number().min(1, "Entitlement is required"),
 });
 

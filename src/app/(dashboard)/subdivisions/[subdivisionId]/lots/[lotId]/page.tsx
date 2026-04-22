@@ -1,6 +1,7 @@
 import { redirect } from "next/navigation";
 import { getCurrentProfile } from "@/lib/auth";
 import { createServerClient } from "@/lib/supabase";
+import { getLotOwner } from "@/lib/actions/lot-ownership";
 import { LotDetailContent } from "./lot-detail-content";
 import type { DocumentRecord } from "@/lib/validations/documents";
 
@@ -59,9 +60,12 @@ export default async function LotDetailPage({
 
   const documents = (documentsResult.data as DocumentRecord[]) ?? [];
 
+  const owner = await getLotOwner(supabase, lotId);
+
   return (
     <LotDetailContent
       lot={lot}
+      owner={owner}
       subdivisionId={subdivisionId}
       balance={balance}
       documents={documents}

@@ -16,10 +16,9 @@ function createEmptyLot(index: number) {
   return {
     lot_number: String(index + 1),
     unit_number: "",
-    owner_type: "individual" as const,
-    owner_name: "",
-    owner_email: "",
-    owner_phone: "",
+    invitee_name: "",
+    invitee_email: "",
+    invitee_phone: "",
     lot_entitlement: "" as unknown as number,
   };
 }
@@ -36,13 +35,14 @@ export function Step4Lots({
   onBack: () => void;
   initialData?: any[];
 }) {
+  // When editing a subdivision mid-setup, pre-fill invitee contact details
+  // from any pending invitation the wizard previously created for each lot.
   const existingLots = initialData?.map((lot: any) => ({
     lot_number: String(lot.lot_number),
     unit_number: lot.unit_number ?? "",
-    owner_type: lot.owner_type ?? "individual",
-    owner_name: lot.owner_name ?? "",
-    owner_email: lot.owner_email ?? "",
-    owner_phone: lot.owner_phone ?? "",
+    invitee_name: lot.pending_invitation?.name ?? "",
+    invitee_email: lot.pending_invitation?.email ?? "",
+    invitee_phone: lot.pending_invitation?.phone ?? "",
     lot_entitlement: lot.lot_entitlement || ("" as unknown as number),
   })) ?? [];
 
@@ -129,9 +129,6 @@ export function Step4Lots({
     onNext();
   }
 
-  const selectClass =
-    "flex h-8 w-full rounded-md border bg-background px-2 text-xs focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary";
-
   return (
     <form onSubmit={handleSubmit(onSubmit)} autoComplete="off" className="space-y-4">
       {/* Number of lots */}
@@ -174,37 +171,17 @@ export function Step4Lots({
             <table className="w-full text-sm">
               <thead>
                 <tr className="bg-muted/50 text-xs font-medium uppercase tracking-wider text-muted-foreground">
-                  <th className="px-2 py-2 text-left w-24">Type</th>
-                  <th className="px-2 py-2 text-left">Owner name</th>
                   <th className="px-2 py-2 text-left w-20">Lot no.</th>
                   <th className="px-2 py-2 text-left w-20">Unit no.</th>
                   <th className="px-2 py-2 text-left w-24">Entitlement</th>
-                  <th className="px-2 py-2 text-left">Email</th>
-                  <th className="px-2 py-2 text-left w-28">Phone</th>
+                  <th className="px-2 py-2 text-left">Invitee name</th>
+                  <th className="px-2 py-2 text-left">Invitee email</th>
+                  <th className="px-2 py-2 text-left w-28">Invitee phone</th>
                 </tr>
               </thead>
               <tbody>
                 {fields.map((field, index) => (
                   <tr key={field.id} className="border-t border-border/50">
-                    <td className="px-2 py-1.5">
-                      <select
-                        className={cn(selectClass, "border-border")}
-                        {...register(`lots.${index}.owner_type`)}
-                      >
-                        <option value="individual">Individual</option>
-                        <option value="company">Company</option>
-                      </select>
-                    </td>
-                    <td className="px-2 py-1.5">
-                      <Input
-                        className={cn(
-                          "h-8 text-xs px-2",
-                          lotFieldError(index, "owner_name") && "border-destructive"
-                        )}
-                        placeholder="Full name"
-                        {...register(`lots.${index}.owner_name`)}
-                      />
-                    </td>
                     <td className="px-2 py-1.5">
                       <Input
                         className={cn(
@@ -248,21 +225,31 @@ export function Step4Lots({
                       <Input
                         className={cn(
                           "h-8 text-xs px-2",
-                          lotFieldError(index, "owner_email") && "border-destructive"
+                          lotFieldError(index, "invitee_name") && "border-destructive"
                         )}
-                        type="email"
-                        placeholder=""
-                        {...register(`lots.${index}.owner_email`)}
+                        placeholder="Full name (optional)"
+                        {...register(`lots.${index}.invitee_name`)}
                       />
                     </td>
                     <td className="px-2 py-1.5">
                       <Input
                         className={cn(
                           "h-8 text-xs px-2",
-                          lotFieldError(index, "owner_phone") && "border-destructive"
+                          lotFieldError(index, "invitee_email") && "border-destructive"
                         )}
-                        placeholder=""
-                        {...register(`lots.${index}.owner_phone`)}
+                        type="email"
+                        placeholder="Leave blank to skip invite"
+                        {...register(`lots.${index}.invitee_email`)}
+                      />
+                    </td>
+                    <td className="px-2 py-1.5">
+                      <Input
+                        className={cn(
+                          "h-8 text-xs px-2",
+                          lotFieldError(index, "invitee_phone") && "border-destructive"
+                        )}
+                        placeholder="Optional"
+                        {...register(`lots.${index}.invitee_phone`)}
                       />
                     </td>
                   </tr>

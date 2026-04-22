@@ -65,10 +65,10 @@ export async function updateLotField(
   await requireCompanyRole();
   await requireSubdivisionAccess(subdivisionId);
 
+  // Owner fields are NOT editable here — ownership lives on
+  // subdivision_members + profiles and changes via the invitation flow.
   const allowedFields = [
-    "owner_name", "owner_email", "owner_phone", "owner_type",
     "lot_entitlement", "lot_liability", "unit_number", "lot_number",
-    "owner_occupied",
   ];
 
   if (!allowedFields.includes(field)) {
