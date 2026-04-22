@@ -368,31 +368,29 @@ deposit tracking columns (`deposited_at`, `deposited_bank_txn_id`,
 **Reconciliation_matches populated.** The `reconciliation_matches`
 scaffold from Prompt 1 is now fully written. Each row links one
 `bank_transaction_id` to one `ledger_entry_id` with a `matched_amount`,
-`match_method`, and `matched_by`. The trigger
-`trg_auto_match_on_bank_txn_insert` fires on `bank_transactions` INSERT
-and calls `rpc_auto_match_on_insert` — which looks for an exact
-MSM-LEV-* reference match and auto-applies it.
+`match_method`, and `matched_by`.
 
-**RPCs.** Six new transactional RPCs — all in `database-schema.sql`:
-- `rpc_manual_match(p_bank_txn_id, p_lot_allocations[])` — manual
-  allocation of one bank txn across ≥1 lots; updates `matched_total`,
+**Auto-matching is application-layer only (no DB trigger).** After a
+manual bank transaction is inserted, `addManualBankTransaction` calls
+`tryAutoMatchByReference` as a best-effort step — it scans the
+description for a single MSM-LEV-* reference, looks up the levy notice,
+and calls `rpc_reconcile_bank_transaction` if an outstanding amount
+exists. If matching fails, the error is written to `audit_log` and the
+function returns `{ matched: false }` without failing or rolling back the
+outer insert. CSV imports have an inline copy of the same logic.
+
+**RPCs.** Three core transactional RPCs in `database-schema.sql`:
+- `rpc_reconcile_bank_transaction(p_bank_transaction_id, p_allocations[],
+  p_match_method, p_match_confidence, p_notes, p_performed_by)` —
+  allocates one bank txn across ≥1 lots; updates `matched_total`,
   inserts `reconciliation_matches`, calls `rpc_payment_credit` per lot.
-- `rpc_unmatch(p_bank_txn_id)` — reverses a match: voids all credits
-  via `rpc_ledger_void`, deletes match rows, resets `matched_total` and
-  `status` to `unmatched`.
+- `rpc_unmatch_bank_transaction(p_bank_txn_id, p_reason, p_performed_by)` —
+  reverses a match: voids all credits via `rpc_ledger_void`, deletes
+  match rows, resets `matched_total` and `match_status` to `unmatched`.
+  Re-opens any deposited receipts to `pending_deposit`.
 - `rpc_record_cash_receipt(...)` — records a cash/cheque receipt: calls
-  `rpc_payment_credit` for the lot, inserts `undeposited_funds_entries`.
-- `rpc_deposit_receipts(p_bank_txn_id, p_receipt_ids[])` — deposits
-  pending receipts into a bank transaction: validates sum = txn amount,
-  marks receipts `deposited`, creates one `reconciliation_matches` row
-  per receipt. Rejected if sum mismatches.
-- `rpc_void_bank_transaction(p_bank_txn_id, p_reason)` — cascades
-  unmatch (re-opens deposited receipts to `pending_deposit`), marks
-  transaction `is_voided = true`, writes audit.
-- `rpc_void_cash_receipt(p_receipt_id, p_reason)` — can only void
-  `pending_deposit` receipts; voids the linked ledger credit, marks
-  receipt `voided`. Blocks on deposited receipts (must void the bank
-  transaction first).
+  `rpc_payment_credit` for the lot, inserts `undeposited_funds_entries`,
+  assigns `MSM-RCPT-YYYY-NNNNNN` reference.
 
 **Server actions.** `src/lib/actions/reconciliation.ts` exposes
 `addManualBankTransaction`, `getReconciliationQueue`,
