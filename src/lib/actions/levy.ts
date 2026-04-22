@@ -49,7 +49,7 @@ export interface LevyBatchSummary {
   due_date: string;
   total_amount: number;
   levy_count: number;
-  status: "draft" | "sent" | "partially_sent";
+  status: "draft" | "ledger_written" | "sent" | "partially_sent";
   created_at: string;
 }
 
@@ -121,6 +121,58 @@ function calculateDueDate(periodStart: string): string {
   const d = new Date(periodStart);
   d.setDate(d.getDate() + 28);
   return d.toISOString().split("T")[0];
+}
+
+// ─── Rollback helper for createLevyBatch atomicity ──────────
+// If rpc_levy_batch_debit fails after we've inserted batch + notices + items,
+// this helper undoes the JS-side writes. Returns flags describing whether
+// anything was left behind so the caller can escalate to a critical audit.
+type RollbackReport = {
+  clean: boolean;
+  batchRemains: boolean;
+  orphanedNoticeIds: string[];
+  itemsDeleteFailed: boolean;
+};
+
+async function rollbackBatchInsert(
+  supabase: ReturnType<typeof createServerClient>,
+  batchId: string,
+  levyIds: string[],
+): Promise<RollbackReport> {
+  let itemsDeleteFailed = false;
+  const orphanedNoticeIds: string[] = [];
+  let batchRemains = false;
+
+  if (levyIds.length > 0) {
+    const { error: itemsErr } = await supabase
+      .from("levy_notice_items")
+      .delete()
+      .in("levy_notice_id", levyIds);
+    if (itemsErr) itemsDeleteFailed = true;
+
+    const { data: remaining, error: noticesErr } = await supabase
+      .from("levy_notices")
+      .delete()
+      .in("id", levyIds)
+      .select("id");
+    if (noticesErr) {
+      orphanedNoticeIds.push(...levyIds);
+    } else {
+      const deletedIds = new Set((remaining ?? []).map((r) => r.id));
+      const failedIds = levyIds.filter((id) => !deletedIds.has(id));
+      orphanedNoticeIds.push(...failedIds);
+    }
+  }
+
+  const { error: batchErr } = await supabase.from("levy_batches").delete().eq("id", batchId);
+  if (batchErr) batchRemains = true;
+
+  return {
+    clean: !batchRemains && orphanedNoticeIds.length === 0 && !itemsDeleteFailed,
+    batchRemains,
+    orphanedNoticeIds,
+    itemsDeleteFailed,
+  };
 }
 
 // ─── Get next period to generate ───────────────────────────
@@ -347,7 +399,24 @@ export async function generateLevyPreview(
 }
 
 // ─── Create levy batch (generate levies) ───────────────────
-
+//
+// Atomicity approach (Prompt 1 — Option B orchestration):
+//   1. Insert levy_batches row (status='draft').
+//   2. Per lot: allocate reference number, insert levy_notices, insert
+//      levy_notice_items.
+//   3. Defensive parity check — if the loop produced fewer notices than lots
+//      we were given, bail out with a CRITICAL audit entry. The batch row
+//      is left in place (notices too) so an operator can inspect.
+//   4. Call rpc_levy_batch_debit — FOR UPDATE lock on the batch row is
+//      non-negotiable; writes one ledger debit per notice atomically;
+//      flips batch status draft → ledger_written.
+//      On failure, rollbackBatchInsert undoes the JS writes. If the
+//      rollback itself is unclean, write a CRITICAL audit entry naming
+//      the orphans and surface a loud error to the caller.
+//   5. Generate PDFs in parallel and stamp pdf_url.
+//
+// Not using a single monolithic RPC because PDF generation + R2 uploads
+// live in JS and would require base64-shuttling through SQL.
 export async function createLevyBatch(
   subdivisionId: string,
   data: {
@@ -466,6 +535,66 @@ export async function createLevyBatch(
     }
 
     createdLevies.push({ id: levy.id, lotId: lot.lot_id, refNum, items: lot.items });
+  }
+
+  // Defensive: every input lot must have produced a notice. If not, some
+  // step silently failed — surface loudly before we write ledger debits.
+  if (createdLevies.length !== data.lots.length) {
+    await supabase.from("audit_log").insert({
+      profile_id: profile.id,
+      subdivision_id: subdivisionId,
+      action: "levy_batch.notice_insert.partial",
+      entity_type: "levy_batch",
+      entity_id: batch.id,
+      metadata: {
+        severity: "critical",
+        expected_lot_count: data.lots.length,
+        actual_notice_count: createdLevies.length,
+        message:
+          "Per-lot notice insert loop produced fewer notices than lots supplied. Ledger debits not written. Batch left in draft for manual inspection.",
+      },
+    });
+    return {
+      error:
+        `Levy batch partially inserted (${createdLevies.length}/${data.lots.length} notices). ` +
+        `Ledger debits not written. Batch id ${batch.id} left in draft for manual review.`,
+    };
+  }
+
+  // Step 1.5: Atomically write one ledger debit per notice.
+  const { error: debitError } = await supabase.rpc("rpc_levy_batch_debit", {
+    p_batch_id: batch.id,
+    p_created_by: profile.id,
+  });
+
+  if (debitError) {
+    const rollback = await rollbackBatchInsert(
+      supabase,
+      batch.id,
+      createdLevies.map((l) => l.id),
+    );
+    if (!rollback.clean) {
+      await supabase.from("audit_log").insert({
+        profile_id: profile.id,
+        subdivision_id: subdivisionId,
+        action: "levy_batch.rollback.failed",
+        entity_type: "levy_batch",
+        entity_id: batch.id,
+        metadata: {
+          severity: "critical",
+          debit_error: debitError.message,
+          orphaned_batch_id: rollback.batchRemains ? batch.id : null,
+          orphaned_notice_ids: rollback.orphanedNoticeIds,
+          items_delete_failed: rollback.itemsDeleteFailed,
+        },
+      });
+      return {
+        error:
+          `Ledger debit generation failed AND rollback left orphaned records. ` +
+          `Contact support with batch id ${batch.id}. Reason: ${debitError.message}`,
+      };
+    }
+    return { error: `Ledger debit generation failed: ${debitError.message}` };
   }
 
   // Step 2: Generate all PDFs in parallel and upload to R2
@@ -722,7 +851,13 @@ export async function cancelBatch(subdivisionId: string, batchId: string) {
     .single();
 
   if (!batch) return { error: "Batch not found" };
-  if (batch.status === "sent") return { error: "Cannot cancel a batch that has already been sent" };
+  if (batch.status === "ledger_written" || batch.status === "sent" || batch.status === "partially_sent") {
+    return {
+      error:
+        "Cannot cancel a batch once ledger debits have been written. " +
+        "Use the void flow (per-notice) to reverse individual levies.",
+    };
+  }
 
   // Delete levy notice items first
   const { data: levies } = await supabase
@@ -918,8 +1053,57 @@ export async function markBatchPaid(subdivisionId: string, batchId: string) {
   const now = new Date().toISOString();
   const { data: levies } = await supabase
     .from("levy_notices")
-    .select("id, amount")
+    .select("id, amount, reference_number")
     .eq("batch_id", batchId);
+
+  // Guard: if ledger credits already fully cover any notice, warn (don't block).
+  // The ledger + reconciliation flow is the source of truth from Prompt 1
+  // onward; this legacy operator-only mark-paid should be rare.
+  let coverageWarning: { covered: number; total: number; notice_ids: string[] } | null = null;
+  if (levies && levies.length > 0) {
+    const levyIds = levies.map((l) => l.id);
+    const refNums = levies.map((l) => l.reference_number);
+    const [{ data: creditsByNoticeId }, { data: creditsByRef }] = await Promise.all([
+      supabase
+        .from("lot_ledger_entries")
+        .select("levy_notice_id, amount")
+        .eq("entry_type", "credit")
+        .eq("status", "active")
+        .in("levy_notice_id", levyIds),
+      supabase
+        .from("lot_ledger_entries")
+        .select("reference, amount")
+        .eq("entry_type", "credit")
+        .eq("status", "active")
+        .in("reference", refNums),
+    ]);
+    const creditByNotice = new Map<string, number>();
+    for (const c of creditsByNoticeId ?? []) {
+      if (c.levy_notice_id) {
+        creditByNotice.set(
+          c.levy_notice_id,
+          (creditByNotice.get(c.levy_notice_id) ?? 0) + Number(c.amount),
+        );
+      }
+    }
+    for (const c of creditsByRef ?? []) {
+      const match = levies.find((l) => l.reference_number === c.reference);
+      if (match) {
+        creditByNotice.set(match.id, (creditByNotice.get(match.id) ?? 0) + Number(c.amount));
+      }
+    }
+    const covered = levies.filter((l) => (creditByNotice.get(l.id) ?? 0) >= Number(l.amount));
+    if (covered.length > 0) {
+      coverageWarning = {
+        covered: covered.length,
+        total: levies.length,
+        notice_ids: covered.map((l) => l.id),
+      };
+      console.warn(
+        `[markBatchPaid] batch ${batchId}: ${covered.length}/${levies.length} notices already fully covered by active ledger credits. Proceeding anyway.`,
+      );
+    }
+  }
 
   for (const levy of levies ?? []) {
     await supabase
@@ -934,6 +1118,13 @@ export async function markBatchPaid(subdivisionId: string, batchId: string) {
     action: "mark_paid",
     entity_type: "levy_batch",
     entity_id: batchId,
+    metadata: coverageWarning
+      ? {
+          severity: "warning",
+          warning_type: "ledger_coverage_warning",
+          ledger_coverage: coverageWarning,
+        }
+      : null,
   });
 
   revalidatePath(`/subdivisions/${subdivisionId}/finance`);

@@ -283,6 +283,71 @@ column names are unchanged. TypeScript interfaces introduced new field
 names (`owner_display_name`, `owner_contact_email`, `owner_contact_phone`,
 `owner_status`) to reflect that the data is now derived, not stored.
 
+### What Prompt 1 added
+
+**New enums.** `ledger_entry_type` (`debit | credit`),
+`ledger_entry_category` (9 values including `void_offset`),
+`ledger_entry_status` (`active | voided`), `reconciliation_match_method`
+(6 values). `levy_batch_status` extended with `ledger_written` —
+lifecycle is now `draft → ledger_written → sent / partially_sent`.
+
+**New tables.**
+- `lot_ledger_entries` — per-lot debit/credit log. No hard deletes: voids
+  create a `void_offset` entry that points back to the original.
+- `lot_ledger_state` — materialised per-lot summary (balances per fund,
+  `oldest_unpaid_date_*`, `last_entry_at`). Seeded by a trigger on
+  `lots` INSERT.
+- `reconciliation_matches` — scaffold for the bank-txn ↔ ledger link.
+  Writes arrive in Prompt 2+.
+
+**New column.** `bank_transactions.matched_total` (scaffold for
+reconciliation totalling; app-layer guard `matched_total <= amount`).
+
+**RPCs.** Every financial mutation goes through one of:
+`rpc_levy_debit`, `rpc_payment_credit`, `rpc_ledger_adjustment`,
+`rpc_ledger_void`, `rpc_levy_batch_debit`. All call
+`recompute_lot_ledger_state` internally and write `audit_log` with
+before/after JSONB. The void RPC also flips `levy_notices.status →
+written_off` when voiding a levy-category debit.
+
+**Helper function.** `_walk_oldest_unpaid(lot_id, fund_type)` walks
+active debits oldest-first. Free credits (no `levy_notice_id`, no
+`reference`) feed a pool; targeted credits (either set) are pinned to
+the matching debit. Excess targeted credit does NOT spill into the
+free pool — it stays on the notice. Surplus credit still shows up in
+the balance via the simple SUM(credit) − SUM(debit) calculation.
+
+**View.** `v_levy_notice_status` derives a levy notice's effective
+status from the ledger (precedence: `written_off` > `paid` >
+`partially_paid` > `overdue` > stored). The stored
+`levy_notices.status` column remains for the last explicit transition;
+a cron sweep to keep them in sync is Prompt 6.
+
+**Levy generation rewrite.** `createLevyBatch` now writes ledger
+debits atomically after inserting notices. On RPC failure, the batch +
+notices + items are rolled back; if rollback itself is incomplete, a
+`severity: critical` `audit_log` entry names the orphans.
+`cancelBatch` rejects once the batch is past `draft` — users must use
+the void RPC per-notice. `markBatchPaid` now logs a
+`ledger_coverage_warning` when ledger credits already cover notices
+(doesn't block — legacy path).
+
+**Penalty interest.** No existing code path created
+`levy_type = 'penalty_interest'` rows; nothing to stub. Flagged for
+Prompt 6 which will own interest-debit writes via a dedicated RPC.
+
+**Server actions.** `src/lib/actions/ledger.ts` exposes
+`getLotBalance`, `getLotLedgerEntries`, `recordAdjustment`,
+`voidLedgerEntry`, `getSubdivisionArrearsSummary` (queries
+`lot_ledger_state` only — never re-walks), and `getLotStatement` (data
+assembly for the future statement PDF). Zod schemas in
+`src/lib/validations/ledger.ts`.
+
+**Verification.** `src/lib/actions/ledger.verification.ts` — `tsx` CLI
+that creates isolated test data under a `__VERIFY_LEDGER__` marker,
+runs the 9 Prompt 1 §6 scenarios, and cleans up (or `--no-cleanup` to
+leave the fixture for inspection; `--cleanup` cleans stale runs).
+
 ---
 
 ## 8. What comes next
@@ -291,7 +356,7 @@ The full delivery plan is 8 prompts. Prompt 0 is complete; the rest build
 the reconciliation feature progressively on top of the now-stable schema.
 
 - [x] **Prompt 0** — Schema consolidation & structural cleanup.
-- [ ] **Prompt 1** — Lot ledger foundation: ledger tables + state
+- [x] **Prompt 1** — Lot ledger foundation: ledger tables + state
   materialisation + RPCs (debit, credit, adjustment, void, batch debit) +
   atomic levy-debit generation on batch create. No UI.
 - [ ] **Prompt 2** — CSV import full flow + manual payment entry against
