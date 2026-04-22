@@ -19,9 +19,24 @@ Small fixes to batch before going live. Non-blocking for feature work.
   declarations in `src/lib/validations/bank-transactions.ts` — if any runtime
   read or write appears, migrate it to `reconciliation_matches` before the
   column drops.
+- **Custom shadcn form component decision:** `npx shadcn@latest add form` hung
+  on interactive prompts during build. Instead of waiting, a custom
+  `src/components/ui/form.tsx` was created following the canonical shadcn
+  pattern. The wrapper exports:
+  - `Form` (FormProvider)
+  - `FormField` (Controller from react-hook-form)
+  - `FormItem`, `FormLabel`, `FormControl`, `FormDescription`, `FormMessage`
+  - `useFormField`
+  
+  This matches the standard shadcn form API. All 6 dialog files
+  (add-manual-transaction, record-cash-receipt, record-adjustment, etc.)
+  use these exports and build cleanly. **If shadcn adds form components
+  that diverge in behaviour, revisit this decision and replace with
+  canonical.** For now, the custom wrapper is API-compatible and verified
+  via 12/12 verification scenarios passing.
 - **Injection seam grep check:** symbols
   `__setUserIdResolverForVerification` and
-  `__getUserIdResolverForVerification` must appear ONLY in `src/lib/auth.ts`
+  `__getUserIdResolverForVerification` must appear ONLY in `src/lib/auth-resolver.ts`
   and `src/**/*.verification.ts`. Run:
   `grep -rn "__setUserIdResolverForVerification" src/`
   Expected:
@@ -32,10 +47,10 @@ Small fixes to batch before going live. Non-blocking for feature work.
     - Any hit outside these locations is a bug. These symbols exist solely
       so verification scripts can exercise server actions end-to-end;
       application code must never import them.
-- **Audit all `__verification`-prefixed exports in `src/lib/auth.ts`** before
+- **Audit all `__verification`-prefixed exports in `src/lib/auth-resolver.ts`** before
   launch and confirm each is called only from `*.verification.ts` — no
   application code paths. The convention is: any `__`-prefixed export in
-  `auth.ts` is a testing-only seam; grep -rn the name and verify no hit
+  `auth-resolver.ts` is a testing-only seam; grep -rn the name and verify no hit
   lands in a non-verification file.
 - **Enrich sidebar badge with age-based severity.** Current badge is neutral
   grey — a count only. Upgrade path: include the oldest-unmatched
@@ -70,3 +85,15 @@ Small fixes to batch before going live. Non-blocking for feature work.
   themselves.** Fixed in commit that renamed sequences to short-form and
   updated `next_reference_number()` to prepend `MSM-` so output matches
   the format advertised in CLAUDE.md and project-context.md.
+
+## From Prompt 6
+
+- **Undeposited funds panel skeleton:** The panel in `BankAccountCard` renders
+  conditionally after `getUndepositedEntries` resolves. During the initial
+  transition, no panel skeleton is shown (skeleton only covers the transactions
+  table). This means the panel paints in after load rather than appearing at
+  skeleton time. Accepted trade-off: knowing the entry count before first
+  render would require passing it from the server component, which adds
+  plumbing that outweighs the visual benefit. Polish path: pass an
+  `undepositedCount` prop from the page's server component and show the
+  panel skeleton rows conditionally during `isPending && transactions === null`.

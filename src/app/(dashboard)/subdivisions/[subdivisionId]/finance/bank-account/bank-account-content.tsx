@@ -1,6 +1,10 @@
 "use client";
 
 import { useEffect, useState, useTransition } from "react";
+import { useForm } from "react-hook-form";
+import { zodResolver } from "@hookform/resolvers/zod";
+import { z } from "zod";
+import Link from "next/link";
 import { toast } from "sonner";
 import { Pencil, Check, Upload, Landmark, Info } from "lucide-react";
 import { Card, CardContent } from "@/components/ui/card";
@@ -8,10 +12,30 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Badge } from "@/components/ui/badge";
+import { Textarea } from "@/components/ui/textarea";
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogFooter,
+} from "@/components/ui/dialog";
+import {
+  Form,
+  FormField,
+  FormItem,
+  FormLabel,
+  FormControl,
+  FormMessage,
+} from "@/components/ui/form";
 import { cn } from "@/lib/utils";
 import { updateSubdivisionField } from "../../manage/actions";
 import { getBankTransactions } from "@/lib/actions/bank-transactions";
+import { getUndepositedEntries, voidUndepositedReceipt } from "@/lib/actions/reconciliation";
+import { RecordCashReceiptDialog } from "@/components/shared/record-cash-receipt-dialog";
+import { AddManualTransactionDialog } from "@/components/shared/add-manual-transaction-dialog";
 import type { BankAccountSummary, BankTransactionRecord } from "@/lib/validations/bank-transactions";
+import type { UndepositedFundsEntry } from "@/lib/validations/reconciliation";
 import { ImportCsvDialog } from "./import-csv-dialog";
 
 const formatCurrency = (n: number) =>
@@ -184,18 +208,30 @@ function BankAccountCard({
   onImport: () => void;
 }) {
   const [transactions, setTransactions] = useState<BankTransactionRecord[] | null>(null);
+  const [undepositedEntries, setUndepositedEntries] = useState<UndepositedFundsEntry[] | null>(null);
   const [isPending, startTransition] = useTransition();
+  const [refreshToken, setRefreshToken] = useState(0);
+  const [receiptDialogOpen, setReceiptDialogOpen] = useState(false);
+  const [manualTxnDialogOpen, setManualTxnDialogOpen] = useState(false);
+  const [voidTarget, setVoidTarget] = useState<UndepositedFundsEntry | null>(null);
+
+  const refresh = () => setRefreshToken((n) => n + 1);
 
   useEffect(() => {
     startTransition(async () => {
       try {
-        const txs = await getBankTransactions(subdivisionId, account.id);
+        const [txs, entries] = await Promise.all([
+          getBankTransactions(subdivisionId, account.id),
+          getUndepositedEntries(subdivisionId, account.id),
+        ]);
         setTransactions(txs);
+        setUndepositedEntries(entries);
       } catch {
         setTransactions([]);
+        setUndepositedEntries([]);
       }
     });
-  }, [subdivisionId, account.id, account.transaction_count, account.last_transaction_date]);
+  }, [subdivisionId, account.id, account.transaction_count, account.last_transaction_date, refreshToken]);
 
   return (
     <Card>
@@ -217,10 +253,18 @@ function BankAccountCard({
               BSB {account.bsb || "—"} · Account {account.account_number || "—"}
             </div>
           </div>
-          <Button size="sm" onClick={onImport} className="cursor-pointer shrink-0">
-            <Upload className="mr-2 h-3.5 w-3.5" />
-            Import CSV
-          </Button>
+          <div className="flex items-center gap-2 shrink-0">
+            <Button variant="outline" size="sm" onClick={() => setReceiptDialogOpen(true)} className="cursor-pointer">
+              Record cash receipt
+            </Button>
+            <Button variant="outline" size="sm" onClick={() => setManualTxnDialogOpen(true)} className="cursor-pointer">
+              Add manual transaction
+            </Button>
+            <Button size="sm" onClick={onImport} className="cursor-pointer">
+              <Upload className="mr-2 h-3.5 w-3.5" />
+              Import CSV
+            </Button>
+          </div>
         </div>
 
         <div className="grid grid-cols-3 gap-4 mb-5">
@@ -229,11 +273,19 @@ function BankAccountCard({
           <Metric label="Transactions" value={account.transaction_count.toString()} sub={account.last_transaction_date ? `latest ${formatDate(account.last_transaction_date)}` : "none imported"} />
         </div>
 
+        {undepositedEntries && undepositedEntries.length > 0 && (
+          <UndepositedFundsPanel entries={undepositedEntries} onVoid={setVoidTarget} />
+        )}
+
         <div className="text-xs font-medium uppercase tracking-wide text-muted-foreground mb-2">Recent transactions</div>
         {isPending && transactions === null ? (
           <TransactionsSkeleton />
         ) : transactions && transactions.length > 0 ? (
-          <TransactionsTable transactions={transactions} />
+          <TransactionsTable
+            transactions={transactions}
+            undepositedEntries={undepositedEntries ?? []}
+            subdivisionId={subdivisionId}
+          />
         ) : (
           <div className="rounded-md border border-border bg-muted/30 py-8 text-center">
             <p className="text-sm text-muted-foreground">No transactions yet.</p>
@@ -241,7 +293,181 @@ function BankAccountCard({
           </div>
         )}
       </CardContent>
+
+      <RecordCashReceiptDialog
+        open={receiptDialogOpen}
+        onOpenChange={setReceiptDialogOpen}
+        subdivisionId={subdivisionId}
+        bankAccountId={account.id}
+        bankAccountName={account.bank_name ?? "Bank account"}
+        fundType={account.fund_type}
+        onSuccess={refresh}
+      />
+
+      <AddManualTransactionDialog
+        open={manualTxnDialogOpen}
+        onOpenChange={setManualTxnDialogOpen}
+        subdivisionId={subdivisionId}
+        bankAccountId={account.id}
+        bankAccountName={account.bank_name ?? "Bank account"}
+        onSuccess={refresh}
+      />
+
+      {voidTarget && (
+        <VoidReceiptDialog
+          entry={voidTarget}
+          onClose={() => setVoidTarget(null)}
+          onSuccess={() => {
+            setVoidTarget(null);
+            refresh();
+          }}
+        />
+      )}
     </Card>
+  );
+}
+
+function UndepositedFundsPanel({
+  entries,
+  onVoid,
+}: {
+  entries: UndepositedFundsEntry[];
+  onVoid: (entry: UndepositedFundsEntry) => void;
+}) {
+  return (
+    <div className="mb-5">
+      <div className="flex items-center gap-2 mb-1">
+        <div className="text-xs font-medium uppercase tracking-wide text-muted-foreground">Undeposited funds</div>
+        <Badge className="rounded-full bg-warning/10 text-warning hover:bg-warning/10">{entries.length}</Badge>
+      </div>
+      <p className="text-xs text-muted-foreground mb-3">
+        Cash and cheque receipts not yet matched to a bank deposit.
+      </p>
+      <div className="rounded-md border border-border overflow-hidden mb-4">
+        <table className="w-full text-sm">
+          <thead className="bg-muted/50">
+            <tr>
+              <th className="px-3 py-2 text-left text-xs font-medium uppercase tracking-wide text-muted-foreground w-28">Date</th>
+              <th className="px-3 py-2 text-left text-xs font-medium uppercase tracking-wide text-muted-foreground">Lot</th>
+              <th className="px-3 py-2 text-left text-xs font-medium uppercase tracking-wide text-muted-foreground">Receipt #</th>
+              <th className="px-3 py-2 text-left text-xs font-medium uppercase tracking-wide text-muted-foreground w-24">Method</th>
+              <th className="px-3 py-2 text-right text-xs font-medium uppercase tracking-wide text-muted-foreground w-28">Amount</th>
+              <th className="px-3 py-2 w-16" />
+            </tr>
+          </thead>
+          <tbody>
+            {entries.map((entry) => (
+              <tr key={entry.id} className="border-t border-border hover:bg-muted/30">
+                <td className="px-3 py-2 tabular-nums text-foreground">{formatDate(entry.received_date)}</td>
+                <td className="px-3 py-2 text-foreground">
+                  Lot {entry.lot_number}{entry.unit_number ? ` — Unit ${entry.unit_number}` : ""}
+                </td>
+                <td className="px-3 py-2 font-mono text-xs text-foreground">{entry.receipt_number}</td>
+                <td className="px-3 py-2 text-foreground">{entry.payment_method === "cheque" ? "Cheque" : "Cash"}</td>
+                <td className="px-3 py-2 text-right tabular-nums font-medium text-secondary">{formatCurrency(entry.amount)}</td>
+                <td className="px-3 py-2 text-right">
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    className="h-7 text-xs text-destructive border-destructive/30 hover:bg-destructive/5 hover:text-destructive cursor-pointer"
+                    onClick={() => onVoid(entry)}
+                  >
+                    Void
+                  </Button>
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  );
+}
+
+const voidReasonSchema = z.object({
+  reason: z.string().trim().min(10, "Reason must be at least 10 characters").max(1000),
+});
+
+type VoidReasonInput = z.infer<typeof voidReasonSchema>;
+
+function VoidReceiptDialog({
+  entry,
+  onClose,
+  onSuccess,
+}: {
+  entry: UndepositedFundsEntry;
+  onClose: () => void;
+  onSuccess: () => void;
+}) {
+  const [isSubmitting, setIsSubmitting] = useState(false);
+
+  const form = useForm<VoidReasonInput>({
+    resolver: zodResolver(voidReasonSchema),
+    defaultValues: { reason: "" },
+  });
+
+  const onSubmit = async (data: VoidReasonInput) => {
+    setIsSubmitting(true);
+    try {
+      const result = await voidUndepositedReceipt({
+        subdivision_id: entry.subdivision_id,
+        receipt_id: entry.id,
+        reason: data.reason,
+      });
+      if (result.error) {
+        toast.error(result.error);
+        return;
+      }
+      toast.success("Receipt voided");
+      onSuccess();
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Failed to void receipt");
+    } finally {
+      setIsSubmitting(false);
+    }
+  };
+
+  return (
+    <Dialog open onOpenChange={(open) => { if (!open) onClose(); }}>
+      <DialogContent className="max-w-sm">
+        <DialogHeader>
+          <DialogTitle>Void receipt</DialogTitle>
+        </DialogHeader>
+        <p className="text-sm text-muted-foreground">
+          Void {entry.receipt_number} for {formatCurrency(entry.amount)}. This will also reverse the ledger credit and cannot be undone.
+        </p>
+        <Form {...form}>
+          <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-4">
+            <FormField
+              control={form.control}
+              name="reason"
+              render={({ field }) => (
+                <FormItem>
+                  <FormLabel>Reason for voiding</FormLabel>
+                  <FormControl>
+                    <Textarea
+                      placeholder="E.g. Entered in error, cheque bounced..."
+                      className="resize-none"
+                      rows={3}
+                      {...field}
+                    />
+                  </FormControl>
+                  <FormMessage />
+                </FormItem>
+              )}
+            />
+            <DialogFooter>
+              <Button type="button" variant="outline" onClick={onClose} className="cursor-pointer">
+                Cancel
+              </Button>
+              <Button type="submit" variant="destructive" disabled={isSubmitting} className="cursor-pointer">
+                {isSubmitting ? "Voiding..." : "Void receipt"}
+              </Button>
+            </DialogFooter>
+          </form>
+        </Form>
+      </DialogContent>
+    </Dialog>
   );
 }
 
@@ -284,7 +510,15 @@ function TransactionsSkeleton() {
   );
 }
 
-function TransactionsTable({ transactions }: { transactions: BankTransactionRecord[] }) {
+function TransactionsTable({
+  transactions,
+  undepositedEntries,
+  subdivisionId,
+}: {
+  transactions: BankTransactionRecord[];
+  undepositedEntries: UndepositedFundsEntry[];
+  subdivisionId: string;
+}) {
   return (
     <div className="rounded-md border border-border overflow-hidden">
       <table className="w-full text-sm">
@@ -297,20 +531,39 @@ function TransactionsTable({ transactions }: { transactions: BankTransactionReco
           </tr>
         </thead>
         <tbody>
-          {transactions.map((t) => (
-            <tr key={t.id} className="border-t border-border hover:bg-muted/30">
-              <td className="px-3 py-2 tabular-nums text-foreground">{formatDate(t.transaction_date)}</td>
-              <td className="px-3 py-2 text-foreground max-w-md truncate" title={t.description ?? ""}>
-                {t.description || <span className="text-muted-foreground italic">—</span>}
-              </td>
-              <td className="px-3 py-2">
-                <MatchBadge tx={t} />
-              </td>
-              <td className={cn("px-3 py-2 text-right tabular-nums font-medium", t.amount < 0 ? "text-destructive" : "text-secondary")}>
-                {formatCurrency(t.amount)}
-              </td>
-            </tr>
-          ))}
+          {transactions.map((t) => {
+            const matchingReceipt =
+              t.match_status === "unmatched" && t.amount > 0
+                ? undepositedEntries.find((e) => e.amount === t.amount)
+                : undefined;
+            return (
+              <tr key={t.id} className="border-t border-border hover:bg-muted/30">
+                <td className="px-3 py-2 tabular-nums text-foreground">{formatDate(t.transaction_date)}</td>
+                <td className="px-3 py-2 text-foreground max-w-md" title={t.description ?? ""}>
+                  <div className="truncate">
+                    {t.description || <span className="text-muted-foreground italic">—</span>}
+                  </div>
+                  {matchingReceipt && (
+                    <div className="text-xs text-primary mt-0.5">
+                      May match pending receipt {matchingReceipt.receipt_number} —{" "}
+                      <Link
+                        href={`/subdivisions/${subdivisionId}/finance/reconciliation/${t.id}`}
+                        className="underline hover:no-underline"
+                      >
+                        Review
+                      </Link>
+                    </div>
+                  )}
+                </td>
+                <td className="px-3 py-2">
+                  <MatchBadge tx={t} />
+                </td>
+                <td className={cn("px-3 py-2 text-right tabular-nums font-medium", t.amount < 0 ? "text-destructive" : "text-secondary")}>
+                  {formatCurrency(t.amount)}
+                </td>
+              </tr>
+            );
+          })}
         </tbody>
       </table>
     </div>

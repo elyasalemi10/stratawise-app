@@ -38,6 +38,7 @@ const nextCachePath = scriptRequire.resolve("next/cache");
   exports: {
     revalidatePath: () => {},
     revalidateTag: () => {},
+    updateTag: () => {},
     unstable_cache: <T extends (...args: unknown[]) => unknown>(fn: T) => fn,
   },
   paths: [],
