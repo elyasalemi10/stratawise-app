@@ -1,12 +1,5 @@
 import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
-import {
-  Tooltip,
-  TooltipContent,
-  TooltipProvider,
-  TooltipTrigger,
-} from "@/components/ui/tooltip";
-import { Info } from "lucide-react";
 import type { BankTransactionDetail } from "@/lib/validations/reconciliation";
 
 const formatCurrency = (n: number) =>
