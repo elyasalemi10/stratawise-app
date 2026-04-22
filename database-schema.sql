@@ -1806,3 +1806,22 @@ UNION ALL
 SELECT id, 2, 'email'::communication_channel, 28, 'levy_reminder_firm'     FROM escalation_workflows WHERE is_default = true
 UNION ALL
 SELECT id, 3, 'email'::communication_channel, 42, 'levy_final_notice'      FROM escalation_workflows WHERE is_default = true;
+
+-- ============================================================================
+-- PRIVILEGES
+-- ----------------------------------------------------------------------------
+-- `DROP SCHEMA public CASCADE` wipes the default privileges that Supabase
+-- sets up at project creation. Restore them here so every object declared
+-- above is accessible to the application roles (`service_role` in
+-- particular — server actions use it and it must bypass RLS). These
+-- statements are idempotent and also live in REBUILD_INSTRUCTIONS.md §1
+-- for a belt-and-braces setup.
+-- ============================================================================
+GRANT USAGE ON SCHEMA public TO anon, authenticated, service_role;
+GRANT ALL ON ALL TABLES    IN SCHEMA public TO anon, authenticated, service_role;
+GRANT ALL ON ALL SEQUENCES IN SCHEMA public TO anon, authenticated, service_role;
+GRANT ALL ON ALL ROUTINES  IN SCHEMA public TO anon, authenticated, service_role;
+
+ALTER DEFAULT PRIVILEGES IN SCHEMA public GRANT ALL ON TABLES    TO anon, authenticated, service_role;
+ALTER DEFAULT PRIVILEGES IN SCHEMA public GRANT ALL ON SEQUENCES TO anon, authenticated, service_role;
+ALTER DEFAULT PRIVILEGES IN SCHEMA public GRANT ALL ON ROUTINES  TO anon, authenticated, service_role;
