@@ -97,9 +97,15 @@ artefacts via the matching layer (see §4.3).
 ### 4.2 Lot ledger
 Each lot has a running balance. Debits (levies owed, interest, adjustments)
 and credits (payments, write-offs, credit adjustments) are entries on this
-ledger. **Balance = sum of active credits − sum of active debits.** Voided
-entries are excluded. No hard deletes on financial data — only voids with
-offsetting entries. Every write goes through an RPC function for atomicity.
+ledger. **Balance = sum of all credits − sum of all debits** (active and
+voided both counted). When an entry is voided, an offsetting entry of
+opposite type is created so they cancel in the balance sum. Both the
+original entry and its offset remain in the ledger permanently — the
+ledger is append-only. The oldest-unpaid-date walker filters to active
+entries only (excluding voided debits and `void_offset` credits) so
+reversed debts don't appear as arrears and offset credits aren't counted
+as "free money" to absorb other debts. Every write goes through an RPC
+function for atomicity.
 
 ### 4.3 Reconciliation matches
 A link table connecting a bank transaction to one or more ledger credits.

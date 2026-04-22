@@ -1255,22 +1255,31 @@ BEGIN
     RAISE EXCEPTION 'recompute_lot_ledger_state: lot % not found', p_lot_id;
   END IF;
 
+  -- Balance = sum of ALL credits − sum of ALL debits (active + voided).
+  -- When an entry is voided, an offsetting entry of opposite type is inserted;
+  -- both remain in the ledger permanently and cancel in the sum. Filtering
+  -- by status here would double-count every reversal (once by excluding the
+  -- voided original and again by including the offset). See CONTEXT.md §4.2.
   SELECT COALESCE(SUM(CASE WHEN entry_type = 'credit' THEN amount ELSE -amount END), 0)
     INTO v_admin
     FROM lot_ledger_entries
-   WHERE lot_id = p_lot_id AND status = 'active' AND fund_type = 'administrative';
+   WHERE lot_id = p_lot_id AND fund_type = 'administrative';
 
   SELECT COALESCE(SUM(CASE WHEN entry_type = 'credit' THEN amount ELSE -amount END), 0)
     INTO v_capital
     FROM lot_ledger_entries
-   WHERE lot_id = p_lot_id AND status = 'active' AND fund_type = 'capital_works';
+   WHERE lot_id = p_lot_id AND fund_type = 'capital_works';
 
+  -- The walker filters to status='active' internally — voided debits aren't
+  -- walked as arrears, and their offset credits stay out of the free pool.
   v_oldest_admin   := _walk_oldest_unpaid(p_lot_id, 'administrative');
   v_oldest_capital := _walk_oldest_unpaid(p_lot_id, 'capital_works');
 
+  -- last_entry_at tracks the most recent insert-time activity on the lot,
+  -- including voids (which are themselves meaningful manager activity).
   SELECT MAX(created_at) INTO v_last_entry
     FROM lot_ledger_entries
-   WHERE lot_id = p_lot_id AND status = 'active';
+   WHERE lot_id = p_lot_id;
 
   INSERT INTO lot_ledger_state (
     lot_id, subdivision_id, admin_balance, capital_balance, total_balance,

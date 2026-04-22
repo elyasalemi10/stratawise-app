@@ -199,17 +199,25 @@ async function fetchState(lotId: string) {
 }
 
 // ───────── Scenarios ─────────
+//
+// Assertion style: every expected value is derived from inputs declared in
+// this block (e.g. a levy amount, a payment amount) or from state captured
+// BEFORE the mutation (balance_before + delta). No hardcoded magic numbers.
+// The script would still pass if the S1 amount were changed from 500 to 750.
 
-async function scenario1_BatchDebits(fx: Fixture) {
+type S1Out = { batchId: string; noticeIds: string[]; amount: number; periodStart: string };
+
+async function scenario1_BatchDebits(fx: Fixture): Promise<S1Out> {
   const header = "S1: levy batch with 3 lots writes 3 debits + state balance/oldest_unpaid_date";
+  const BATCH = {
+    periodStart: "2026-07-01",
+    periodEnd: "2026-09-30",
+    dueDate: "2026-07-28",
+    amountPerLot: 500,
+    label: "S1 Q1",
+  } as const;
   try {
-    const { batchId, noticeIds } = await makeLevyBatch(fx, {
-      periodStart: "2026-07-01",
-      periodEnd: "2026-09-30",
-      dueDate: "2026-07-28",
-      amountPerLot: 500,
-      label: "S1 Q1",
-    });
+    const { batchId, noticeIds } = await makeLevyBatch(fx, BATCH);
     const { error: rpcErr } = await supabase.rpc("rpc_levy_batch_debit", {
       p_batch_id: batchId,
       p_created_by: fx.profileId,
@@ -218,31 +226,41 @@ async function scenario1_BatchDebits(fx: Fixture) {
 
     for (const lotId of fx.lotIds) {
       const state = await fetchState(lotId);
-      assert(state !== null, `state row missing for ${lotId}`);
-      assert(Number(state.admin_balance) === -500, `S1 admin_balance expected -500, got ${state.admin_balance}`);
-      assert(state.oldest_unpaid_date_admin === "2026-07-01", `S1 oldest_unpaid mismatch: ${state.oldest_unpaid_date_admin}`);
+      assert(state !== null, `S1 state row missing for ${lotId}`);
+      assert(
+        Number(state.admin_balance) === -BATCH.amountPerLot,
+        `S1 admin_balance expected ${-BATCH.amountPerLot}, got ${state.admin_balance}`,
+      );
+      assert(
+        state.oldest_unpaid_date_admin === BATCH.periodStart,
+        `S1 oldest_unpaid_date_admin expected ${BATCH.periodStart}, got ${state.oldest_unpaid_date_admin}`,
+      );
     }
 
     const { data: batch } = await supabase.from("levy_batches").select("status").eq("id", batchId).single();
     assert(batch?.status === "ledger_written", `S1 batch status expected ledger_written, got ${batch?.status}`);
 
-    record(header, true, `3 debits written, balances correct, batch→ledger_written (noticeIds=${noticeIds.length})`);
-    return { batchId, noticeIds };
+    record(header, true, `3 debits of ${BATCH.amountPerLot} written, all balances=${-BATCH.amountPerLot}, batch→ledger_written`);
+    return { batchId, noticeIds, amount: BATCH.amountPerLot, periodStart: BATCH.periodStart };
   } catch (e) {
     record(header, false, (e as Error).message);
     throw e;
   }
 }
 
-async function scenario2_FullPayment(fx: Fixture) {
-  const header = "S2: full payment brings balance to 0 and oldest_unpaid_date to null";
+async function scenario2_FullPayment(fx: Fixture, s1: S1Out) {
+  const header = "S2: full payment on lot[0] — balance delta equals payment amount";
   try {
     const lotId = fx.lotIds[0];
+    const paymentAmount = s1.amount;
+    const before = await fetchState(lotId);
+    const balanceBefore = Number(before.admin_balance);
+
     const { error: pErr } = await supabase.rpc("rpc_payment_credit", {
       p_subdivision_id: fx.subdivisionId,
       p_lot_id: lotId,
       p_fund_type: "administrative",
-      p_amount: 500,
+      p_amount: paymentAmount,
       p_entry_date: "2026-07-15",
       p_description: "S2 full payment",
       p_reference: null,
@@ -251,24 +269,38 @@ async function scenario2_FullPayment(fx: Fixture) {
     });
     assert(!pErr, `rpc_payment_credit failed: ${pErr?.message}`);
 
-    const s = await fetchState(lotId);
-    assert(Number(s.admin_balance) === 0, `S2 balance expected 0, got ${s.admin_balance}`);
-    assert(s.oldest_unpaid_date_admin === null, `S2 oldest_unpaid expected null, got ${s.oldest_unpaid_date_admin}`);
-    record(header, true, `balance=0, oldest_unpaid=null`);
+    const after = await fetchState(lotId);
+    const balanceAfter = Number(after.admin_balance);
+    const expectedAfter = balanceBefore + paymentAmount;
+    assert(
+      balanceAfter === expectedAfter,
+      `S2 balance delta: expected ${balanceBefore} + ${paymentAmount} = ${expectedAfter}, got ${balanceAfter}`,
+    );
+    // Payment equals the one prior debit on this lot, so the walker finds nothing unpaid.
+    assert(
+      after.oldest_unpaid_date_admin === null,
+      `S2 oldest_unpaid expected null (full coverage), got ${after.oldest_unpaid_date_admin}`,
+    );
+    record(header, true, `delta=+${paymentAmount} (${balanceBefore}→${balanceAfter}), oldest_unpaid cleared`);
   } catch (e) {
     record(header, false, (e as Error).message);
   }
 }
 
-async function scenario3_PartialPayment(fx: Fixture) {
-  const header = "S3: partial payment reduces balance but preserves oldest_unpaid_date";
+async function scenario3_PartialPayment(fx: Fixture, s1: S1Out) {
+  const header = "S3: partial payment on lot[1] — balance moves by +payment, oldest_unpaid unchanged";
+  const PAYMENT_AMOUNT = 200;
   try {
     const lotId = fx.lotIds[1];
+    const before = await fetchState(lotId);
+    const balanceBefore = Number(before.admin_balance);
+    const oldestBefore = before.oldest_unpaid_date_admin;
+
     const { error: pErr } = await supabase.rpc("rpc_payment_credit", {
       p_subdivision_id: fx.subdivisionId,
       p_lot_id: lotId,
       p_fund_type: "administrative",
-      p_amount: 200,
+      p_amount: PAYMENT_AMOUNT,
       p_entry_date: "2026-07-20",
       p_description: "S3 partial payment",
       p_reference: null,
@@ -277,42 +309,55 @@ async function scenario3_PartialPayment(fx: Fixture) {
     });
     assert(!pErr, `rpc_payment_credit failed: ${pErr?.message}`);
 
-    const s = await fetchState(lotId);
-    assert(Number(s.admin_balance) === -300, `S3 balance expected -300, got ${s.admin_balance}`);
-    assert(s.oldest_unpaid_date_admin === "2026-07-01", `S3 oldest_unpaid expected 2026-07-01, got ${s.oldest_unpaid_date_admin}`);
-    record(header, true, `balance=-300, oldest_unpaid preserved`);
+    const after = await fetchState(lotId);
+    const balanceAfter = Number(after.admin_balance);
+    const expectedAfter = balanceBefore + PAYMENT_AMOUNT;
+    assert(
+      balanceAfter === expectedAfter,
+      `S3 balance delta: expected ${balanceBefore} + ${PAYMENT_AMOUNT} = ${expectedAfter}, got ${balanceAfter}`,
+    );
+    // Partial payment < prior debit, so the S1 debit is still the oldest uncovered.
+    assert(
+      after.oldest_unpaid_date_admin === oldestBefore,
+      `S3 oldest_unpaid_date changed: before=${oldestBefore}, after=${after.oldest_unpaid_date_admin}`,
+    );
+    assert(
+      after.oldest_unpaid_date_admin === s1.periodStart,
+      `S3 oldest_unpaid should equal S1 period start ${s1.periodStart}, got ${after.oldest_unpaid_date_admin}`,
+    );
+    record(header, true, `delta=+${PAYMENT_AMOUNT}, oldest_unpaid preserved at ${oldestBefore}`);
   } catch (e) {
     record(header, false, (e as Error).message);
   }
 }
 
-async function scenario4_OldestUnpaidAdvances(fx: Fixture) {
-  const header = "S4: two levies, pay enough to cover first → oldest_unpaid_date advances to second";
+async function scenario4_OldestUnpaidAdvances(fx: Fixture, s1: S1Out) {
+  const header = "S4: Q2 levy + payment that covers S1 on lot[2] — oldest_unpaid advances to Q2 start";
+  const Q2 = {
+    periodStart: "2026-10-01",
+    periodEnd: "2026-12-31",
+    dueDate: "2026-10-28",
+    amountPerLot: 400,
+    label: "S4 Q2",
+  } as const;
+  const coveragePayment = s1.amount; // exactly enough to cover the first levy
   try {
     const lotId = fx.lotIds[2];
-    // lotId[2] already has S1 debit of 500 on 2026-07-01, balance -500, oldest 2026-07-01
+    const before = await fetchState(lotId);
+    const balanceBefore = Number(before.admin_balance);
 
-    // Add a second batch with a later period_start
-    const { batchId } = await makeLevyBatch(fx, {
-      periodStart: "2026-10-01",
-      periodEnd: "2026-12-31",
-      dueDate: "2026-10-28",
-      amountPerLot: 400,
-      label: "S4 Q2",
-    });
+    const { batchId } = await makeLevyBatch(fx, Q2);
     const { error: rpcErr } = await supabase.rpc("rpc_levy_batch_debit", {
       p_batch_id: batchId,
       p_created_by: fx.profileId,
     });
     assert(!rpcErr, `rpc_levy_batch_debit Q2 failed: ${rpcErr?.message}`);
 
-    // After 2nd batch, lotId[2] has debits: 500 on 07-01 AND 400 on 10-01. total -900.
-    // Pay exactly 500 → should cover first debit entirely → oldest_unpaid advances to 10-01
     const { error: pErr } = await supabase.rpc("rpc_payment_credit", {
       p_subdivision_id: fx.subdivisionId,
       p_lot_id: lotId,
       p_fund_type: "administrative",
-      p_amount: 500,
+      p_amount: coveragePayment,
       p_entry_date: "2026-08-01",
       p_description: "S4 covers first levy",
       p_reference: null,
@@ -321,32 +366,45 @@ async function scenario4_OldestUnpaidAdvances(fx: Fixture) {
     });
     assert(!pErr, `rpc_payment_credit failed: ${pErr?.message}`);
 
-    const s = await fetchState(lotId);
-    assert(Number(s.admin_balance) === -400, `S4 balance expected -400, got ${s.admin_balance}`);
-    assert(s.oldest_unpaid_date_admin === "2026-10-01", `S4 oldest_unpaid expected 2026-10-01, got ${s.oldest_unpaid_date_admin}`);
-    record(header, true, `balance=-400, oldest_unpaid advanced to 2026-10-01`);
+    const after = await fetchState(lotId);
+    const balanceAfter = Number(after.admin_balance);
+    // Delta: +(-Q2.amountPerLot)  [new debit]  +coveragePayment  [new credit]
+    const expectedDelta = -Q2.amountPerLot + coveragePayment;
+    const expectedAfter = balanceBefore + expectedDelta;
+    assert(
+      balanceAfter === expectedAfter,
+      `S4 balance: expected ${balanceBefore} + (${expectedDelta}) = ${expectedAfter}, got ${balanceAfter}`,
+    );
+    assert(
+      after.oldest_unpaid_date_admin === Q2.periodStart,
+      `S4 oldest_unpaid expected ${Q2.periodStart} (coverage absorbed S1), got ${after.oldest_unpaid_date_admin}`,
+    );
+    record(header, true, `delta=${expectedDelta}, oldest_unpaid advanced to ${Q2.periodStart}`);
   } catch (e) {
     record(header, false, (e as Error).message);
   }
 }
 
-async function scenario5_VoidLevyDebit(fx: Fixture, s1NoticeIds: string[]) {
-  const header = "S5: void a levy debit → offset entry → balance 0 → levy_notices.status=written_off";
+async function scenario5_VoidLevyDebit(fx: Fixture, s1: S1Out) {
+  const header = "S5: void S1 debit on lot[1] — balance delta equals voided amount; original→voided, offset created, notice→written_off";
   try {
-    // Use lot[1] — it had S1 debit of 500 and partial payment of 200 (balance -300)
-    // Find its debit entry
     const lotId = fx.lotIds[1];
-    const s1NoticeIdForLot = s1NoticeIds[1];
+    const s1NoticeIdForLot = s1.noticeIds[1];
+
+    // Find the S1 debit specifically (lot[1] now has a Q2 debit too, from S4's batch).
     const { data: debits } = await supabase
       .from("lot_ledger_entries")
-      .select("id, levy_notice_id")
+      .select("id, amount")
       .eq("lot_id", lotId)
+      .eq("levy_notice_id", s1NoticeIdForLot)
       .eq("entry_type", "debit")
-      .eq("category", "levy")
       .eq("status", "active");
-    assert(debits && debits.length === 1, `S5 setup: expected 1 active debit for lot[1], got ${debits?.length}`);
+    assert(debits && debits.length === 1, `S5 setup: expected 1 active S1 debit for lot[1], got ${debits?.length}`);
     const entryId = debits[0].id;
-    assert(debits[0].levy_notice_id === s1NoticeIdForLot, `S5 setup: debit not linked to expected levy_notice`);
+    const voidedAmount = Number(debits[0].amount);
+
+    const before = await fetchState(lotId);
+    const balanceBefore = Number(before.admin_balance);
 
     const { data: offsetId, error: vErr } = await supabase.rpc("rpc_ledger_void", {
       p_entry_id: entryId,
@@ -356,33 +414,46 @@ async function scenario5_VoidLevyDebit(fx: Fixture, s1NoticeIds: string[]) {
     assert(!vErr, `rpc_ledger_void failed: ${vErr?.message}`);
     assert(typeof offsetId === "string", `S5 expected offset uuid, got ${offsetId}`);
 
-    // Check: original voided, offset exists, balance is now +200 (credit remains, debit voided)
-    const { data: original } = await supabase.from("lot_ledger_entries").select("status, voided_by_entry_id, void_reason").eq("id", entryId).single();
+    const { data: original } = await supabase
+      .from("lot_ledger_entries")
+      .select("status, voided_by_entry_id")
+      .eq("id", entryId)
+      .single();
     assert(original?.status === "voided", `S5 original not marked voided`);
     assert(original?.voided_by_entry_id === offsetId, `S5 voided_by_entry_id mismatch`);
 
-    const { data: offsetEntry } = await supabase.from("lot_ledger_entries").select("category, entry_type, voids_entry_id").eq("id", offsetId).single();
+    const { data: offsetEntry } = await supabase
+      .from("lot_ledger_entries")
+      .select("category, entry_type, voids_entry_id, amount")
+      .eq("id", offsetId)
+      .single();
     assert(offsetEntry?.category === "void_offset", `S5 offset category wrong`);
     assert(offsetEntry?.entry_type === "credit", `S5 offset should be credit (inverted from debit)`);
     assert(offsetEntry?.voids_entry_id === entryId, `S5 voids_entry_id mismatch`);
+    assert(Number(offsetEntry.amount) === voidedAmount, `S5 offset amount should mirror original`);
 
-    const state = await fetchState(lotId);
-    // Partial payment of 200 remains; debit is voided. Balance = +200.
-    assert(Number(state.admin_balance) === 200, `S5 balance expected 200, got ${state.admin_balance}`);
+    const after = await fetchState(lotId);
+    const balanceAfter = Number(after.admin_balance);
+    // Voiding a debit of X moves the balance by +X (the offset credit cancels the
+    // voided debit in the sum-all balance; see CONTEXT.md §4.2).
+    const expectedAfter = balanceBefore + voidedAmount;
+    assert(
+      balanceAfter === expectedAfter,
+      `S5 balance delta: expected ${balanceBefore} + ${voidedAmount} = ${expectedAfter}, got ${balanceAfter}`,
+    );
 
     const { data: notice } = await supabase.from("levy_notices").select("status").eq("id", s1NoticeIdForLot).single();
     assert(notice?.status === "written_off", `S5 levy_notice status expected written_off, got ${notice?.status}`);
 
-    record(header, true, `offset=${offsetId}, notice→written_off, balance=+200`);
+    record(header, true, `delta=+${voidedAmount} (${balanceBefore}→${balanceAfter}), notice→written_off, offset=${offsetId.slice(0, 8)}…`);
   } catch (e) {
     record(header, false, (e as Error).message);
   }
 }
 
 async function scenario6_VoidAlreadyVoided(fx: Fixture) {
-  const header = "S6: voiding an already-voided entry raises an error";
+  const header = "S6: re-void raises error AND leaves state unchanged";
   try {
-    // Reuse the voided entry from S5 (still on lot[1])
     const lotId = fx.lotIds[1];
     const { data: voided } = await supabase
       .from("lot_ledger_entries")
@@ -391,7 +462,10 @@ async function scenario6_VoidAlreadyVoided(fx: Fixture) {
       .eq("status", "voided")
       .limit(1)
       .single();
-    assert(voided?.id, `S6 setup: no voided entry found`);
+    assert(voided?.id, `S6 setup: no voided entry found on lot[1] (did S5 not run?)`);
+
+    const before = await fetchState(lotId);
+    const balanceBefore = Number(before.admin_balance);
 
     const { error: vErr } = await supabase.rpc("rpc_ledger_void", {
       p_entry_id: voided.id,
@@ -399,32 +473,39 @@ async function scenario6_VoidAlreadyVoided(fx: Fixture) {
       p_voided_by: fx.profileId,
     });
     assert(vErr !== null, `S6 expected error but got none`);
-    record(header, true, `error raised: ${vErr!.message.slice(0, 80)}`);
+
+    const after = await fetchState(lotId);
+    const balanceAfter = Number(after.admin_balance);
+    assert(
+      balanceAfter === balanceBefore,
+      `S6 balance changed despite RPC error: before=${balanceBefore}, after=${balanceAfter}`,
+    );
+    record(header, true, `error raised ("${vErr!.message.slice(0, 60)}…"); balance unchanged at ${balanceAfter}`);
   } catch (e) {
     record(header, false, (e as Error).message);
   }
 }
 
-async function scenario7_DuplicateLevyDebit(fx: Fixture, s1NoticeIds: string[]) {
-  const header = "S7: duplicate levy debit for same levy_notice_id returns existing id, no insert";
+async function scenario7_DuplicateLevyDebit(fx: Fixture, s1: S1Out) {
+  const header = "S7: duplicate rpc_levy_debit on same levy_notice_id returns existing id, count unchanged";
   try {
-    // Pick a notice whose debit is still active (lot[0] — its debit wasn't voided).
     const lotId = fx.lotIds[0];
-    const noticeId = s1NoticeIds[0];
+    const noticeId = s1.noticeIds[0];
     const { data: before } = await supabase
       .from("lot_ledger_entries")
-      .select("id")
+      .select("id, amount")
       .eq("levy_notice_id", noticeId)
       .eq("entry_type", "debit")
       .eq("status", "active");
-    assert(before && before.length === 1, `S7 setup: expected exactly 1 active debit`);
+    assert(before && before.length === 1, `S7 setup: expected 1 active debit, got ${before?.length}`);
     const existingId = before[0].id;
+    const existingAmount = Number(before[0].amount);
 
     const { data: returnedId, error: rErr } = await supabase.rpc("rpc_levy_debit", {
       p_subdivision_id: fx.subdivisionId,
       p_lot_id: lotId,
       p_fund_type: "administrative",
-      p_amount: 500,
+      p_amount: existingAmount,
       p_entry_date: "2026-07-01",
       p_description: "dup attempt",
       p_reference: "dup",
@@ -441,131 +522,116 @@ async function scenario7_DuplicateLevyDebit(fx: Fixture, s1NoticeIds: string[]) 
       .eq("levy_notice_id", noticeId)
       .eq("entry_type", "debit")
       .eq("status", "active");
-    assert(after && after.length === 1, `S7 expected still 1 active debit, got ${after?.length}`);
-    record(header, true, `returned existing id, no duplicate insert`);
+    assert(
+      (after?.length ?? 0) === before.length,
+      `S7 expected count unchanged (${before.length}), got ${after?.length}`,
+    );
+    record(header, true, `returned existing id, active-debit count unchanged at ${before.length}`);
   } catch (e) {
     record(header, false, (e as Error).message);
   }
 }
 
 async function scenario8_ExplicitReferencePayment(fx: Fixture) {
-  const header = "S8: payment with explicit ref to OLDER levy skips that levy in walker, oldest_unpaid = newer levy";
+  const header = "S8: targeted payment on OLDER levy — walker skips it, oldest_unpaid = newer levy";
+  const LEVY_AMOUNT = 300;
+  const OLDER = { start: "2026-01-01", end: "2026-03-31", due: "2026-01-28" } as const;
+  const NEWER = { start: "2026-04-01", end: "2026-06-30", due: "2026-04-28" } as const;
   try {
-    // Use lot[2] — has active debits: 500 on 07-01 and 400 on 10-01, plus a free-pool
-    // credit of 500 from S4 that consumed the 07-01 debit. Reset by adding a
-    // fresh lot via another batch would be noisy; instead use another lot.
-    //
-    // Cleaner: create a new lot and a 2-period batch just for this scenario.
-    // But we can also add a fresh lot[2] equivalent via a new batch set:
-    //
-    // Actually, lot[2] after S4 has: debits 500@07-01, 400@10-01; credits 500@08-01 (free).
-    // Walker: free_pool=500. debit1 (500): no targeted → needs 500 from free → 0 left. debit2 (400): no free → return 10-01. So oldest=10-01.
-    //
-    // For S8, we need a pristine 2-debit lot. Let's create a new lot directly.
     const { data: newLot, error: lotErr } = await supabase
       .from("lots")
       .insert({ subdivision_id: fx.subdivisionId, lot_number: 100, lot_entitlement: 100, lot_liability: 100 })
       .select("id")
       .single();
     assert(!lotErr && newLot, `S8 setup lot insert failed: ${lotErr?.message}`);
+    const newLotId = newLot.id;
 
-    // Generate two levy notices on different dates directly
+    // Fresh lot should start at balance 0 (zero-state row seeded by trigger).
+    const initial = await fetchState(newLotId);
+    const initialBalance = Number(initial.admin_balance);
+    assert(initialBalance === 0, `S8 fresh lot should start at balance 0, got ${initialBalance}`);
+
+    type Period = { start: string; end: string; due: string };
+    const mkNotice = async (ref: string, period: Period) => {
+      const { data: n } = await supabase
+        .from("levy_notices")
+        .insert({
+          subdivision_id: fx.subdivisionId,
+          lot_id: newLotId,
+          budget_id: fx.budgetId,
+          reference_number: ref,
+          fund_type: "administrative",
+          levy_type: "regular",
+          period_start: period.start,
+          period_end: period.end,
+          amount: LEVY_AMOUNT,
+          due_date: period.due,
+          status: "draft",
+        })
+        .select("id, reference_number")
+        .single();
+      assert(n, `S8 notice insert failed`);
+      return n;
+    };
     const { data: ref1 } = await supabase.rpc("next_reference_number", { prefix: "LEV" });
     const { data: ref2 } = await supabase.rpc("next_reference_number", { prefix: "LEV" });
-    assert(ref1 && ref2, "S8 ref num fetch failed");
+    assert(ref1 && ref2, "S8 ref alloc failed");
+    const n1 = await mkNotice(ref1 as string, OLDER);
+    const n2 = await mkNotice(ref2 as string, NEWER);
 
-    const { data: n1, error: n1Err } = await supabase
-      .from("levy_notices")
-      .insert({
-        subdivision_id: fx.subdivisionId,
-        lot_id: newLot.id,
-        budget_id: fx.budgetId,
-        reference_number: ref1!,
-        fund_type: "administrative",
-        levy_type: "regular",
-        period_start: "2026-01-01",
-        period_end: "2026-03-31",
-        amount: 300,
-        due_date: "2026-01-28",
-        status: "draft",
-      })
-      .select("id, reference_number")
-      .single();
-    const { data: n2, error: n2Err } = await supabase
-      .from("levy_notices")
-      .insert({
-        subdivision_id: fx.subdivisionId,
-        lot_id: newLot.id,
-        budget_id: fx.budgetId,
-        reference_number: ref2!,
-        fund_type: "administrative",
-        levy_type: "regular",
-        period_start: "2026-04-01",
-        period_end: "2026-06-30",
-        amount: 300,
-        due_date: "2026-04-28",
-        status: "draft",
-      })
-      .select("id, reference_number")
-      .single();
-    assert(!n1Err && !n2Err && n1 && n2, `S8 notice inserts failed`);
+    for (const [n, period] of [[n1, OLDER], [n2, NEWER]] as const) {
+      await supabase.rpc("rpc_levy_debit", {
+        p_subdivision_id: fx.subdivisionId,
+        p_lot_id: newLotId,
+        p_fund_type: "administrative",
+        p_amount: LEVY_AMOUNT,
+        p_entry_date: period.start,
+        p_description: `S8 ${period.start}`,
+        p_reference: n.reference_number,
+        p_levy_notice_id: n.id,
+        p_category: "levy",
+        p_created_by: fx.profileId,
+      });
+    }
 
-    await supabase.rpc("rpc_levy_debit", {
-      p_subdivision_id: fx.subdivisionId,
-      p_lot_id: newLot.id,
-      p_fund_type: "administrative",
-      p_amount: 300,
-      p_entry_date: "2026-01-01",
-      p_description: "S8 older levy",
-      p_reference: n1.reference_number,
-      p_levy_notice_id: n1.id,
-      p_category: "levy",
-      p_created_by: fx.profileId,
-    });
-    await supabase.rpc("rpc_levy_debit", {
-      p_subdivision_id: fx.subdivisionId,
-      p_lot_id: newLot.id,
-      p_fund_type: "administrative",
-      p_amount: 300,
-      p_entry_date: "2026-04-01",
-      p_description: "S8 newer levy",
-      p_reference: n2.reference_number,
-      p_levy_notice_id: n2.id,
-      p_category: "levy",
-      p_created_by: fx.profileId,
-    });
-
-    // Explicit-reference payment targeting the OLDER levy
+    // Targeted payment on the OLDER levy.
     await supabase.rpc("rpc_payment_credit", {
       p_subdivision_id: fx.subdivisionId,
-      p_lot_id: newLot.id,
+      p_lot_id: newLotId,
       p_fund_type: "administrative",
-      p_amount: 300,
+      p_amount: LEVY_AMOUNT,
       p_entry_date: "2026-02-01",
-      p_description: "S8 targeted payment on older levy",
+      p_description: "S8 targeted on older",
       p_reference: n1.reference_number,
       p_levy_notice_id: n1.id,
       p_created_by: fx.profileId,
     });
 
-    const s = await fetchState(newLot.id);
-    // Balance: credits=300, debits=600 → -300
-    assert(Number(s.admin_balance) === -300, `S8 balance expected -300, got ${s.admin_balance}`);
-    // Walker should skip older levy (fully targeted), then hit newer one (uncovered)
-    assert(s.oldest_unpaid_date_admin === "2026-04-01", `S8 oldest_unpaid expected 2026-04-01 (newer levy), got ${s.oldest_unpaid_date_admin}`);
-    record(header, true, `walker skipped targeted older levy; oldest=2026-04-01`);
+    const after = await fetchState(newLotId);
+    const balanceAfter = Number(after.admin_balance);
+    // Derived: 2 × (-LEVY_AMOUNT) debits + 1 × (+LEVY_AMOUNT) credit = -LEVY_AMOUNT.
+    const expectedBalance = initialBalance - 2 * LEVY_AMOUNT + LEVY_AMOUNT;
+    assert(
+      balanceAfter === expectedBalance,
+      `S8 balance: expected ${expectedBalance}, got ${balanceAfter}`,
+    );
+    assert(
+      after.oldest_unpaid_date_admin === NEWER.start,
+      `S8 oldest_unpaid expected ${NEWER.start} (walker skipped fully-targeted older), got ${after.oldest_unpaid_date_admin}`,
+    );
+    record(header, true, `balance=${balanceAfter}, walker skipped older, oldest=${NEWER.start}`);
   } catch (e) {
     record(header, false, (e as Error).message);
   }
 }
 
 async function scenario9_WriteoffAdjustment(fx: Fixture) {
-  const header = "S9: writeoff adjustment adjusts balance and records audit_log entry";
+  const header = "S9: writeoff credit via rpc_ledger_adjustment — balance delta equals amount, audit logged";
+  const WRITEOFF_AMOUNT = 100;
   try {
-    // Use lot[0] — balance currently -500 (original S1 debit, no payment on this lot).
     const lotId = fx.lotIds[0];
     const before = await fetchState(lotId);
-    const beforeBalance = Number(before.admin_balance);
+    const balanceBefore = Number(before.admin_balance);
 
     const { data: entryId, error: aErr } = await supabase.rpc("rpc_ledger_adjustment", {
       p_subdivision_id: fx.subdivisionId,
@@ -573,7 +639,7 @@ async function scenario9_WriteoffAdjustment(fx: Fixture) {
       p_fund_type: "administrative",
       p_entry_type: "credit",
       p_category: "writeoff",
-      p_amount: 100,
+      p_amount: WRITEOFF_AMOUNT,
       p_entry_date: "2026-08-15",
       p_description: "S9 goodwill writeoff",
       p_created_by: fx.profileId,
@@ -581,7 +647,12 @@ async function scenario9_WriteoffAdjustment(fx: Fixture) {
     assert(!aErr && typeof entryId === "string", `rpc_ledger_adjustment failed: ${aErr?.message}`);
 
     const after = await fetchState(lotId);
-    assert(Number(after.admin_balance) === beforeBalance + 100, `S9 balance mismatch: before=${beforeBalance}, after=${after.admin_balance}`);
+    const balanceAfter = Number(after.admin_balance);
+    const expectedAfter = balanceBefore + WRITEOFF_AMOUNT;
+    assert(
+      balanceAfter === expectedAfter,
+      `S9 balance delta: expected ${balanceBefore} + ${WRITEOFF_AMOUNT} = ${expectedAfter}, got ${balanceAfter}`,
+    );
 
     const { data: audit } = await supabase
       .from("audit_log")
@@ -589,8 +660,8 @@ async function scenario9_WriteoffAdjustment(fx: Fixture) {
       .eq("entity_id", entryId)
       .eq("action", "ledger.adjustment.created")
       .limit(1);
-    assert(audit && audit.length === 1, `S9 expected audit_log row for entry, got ${audit?.length}`);
-    record(header, true, `balance delta=+100, audit logged`);
+    assert(audit && audit.length === 1, `S9 expected audit_log row, got ${audit?.length}`);
+    record(header, true, `delta=+${WRITEOFF_AMOUNT} (${balanceBefore}→${balanceAfter}), audit logged`);
   } catch (e) {
     record(header, false, (e as Error).message);
   }
@@ -708,13 +779,13 @@ async function main() {
   const fx = await createFixture();
 
   try {
-    const { noticeIds: s1Notices } = await scenario1_BatchDebits(fx);
-    await scenario2_FullPayment(fx);
-    await scenario3_PartialPayment(fx);
-    await scenario4_OldestUnpaidAdvances(fx);
-    await scenario5_VoidLevyDebit(fx, s1Notices);
+    const s1 = await scenario1_BatchDebits(fx);
+    await scenario2_FullPayment(fx, s1);
+    await scenario3_PartialPayment(fx, s1);
+    await scenario4_OldestUnpaidAdvances(fx, s1);
+    await scenario5_VoidLevyDebit(fx, s1);
     await scenario6_VoidAlreadyVoided(fx);
-    await scenario7_DuplicateLevyDebit(fx, s1Notices);
+    await scenario7_DuplicateLevyDebit(fx, s1);
     await scenario8_ExplicitReferencePayment(fx);
     await scenario9_WriteoffAdjustment(fx);
   } catch (e) {
