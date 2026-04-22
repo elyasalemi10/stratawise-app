@@ -2,13 +2,15 @@
 
 import { useRouter } from "next/navigation";
 import Link from "next/link";
-import { useTransition } from "react";
+import { useState, useTransition } from "react";
 import {
   FileText,
   Inbox,
   Wallet,
   ChevronLeft,
   ChevronRight,
+  Plus,
+  Upload,
 } from "lucide-react";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -21,6 +23,8 @@ import {
 } from "@/components/ui/select";
 import { Badge } from "@/components/ui/badge";
 import { MatchStatusBadge } from "@/components/shared/match-status-badge";
+import { AddManualTransactionDialog } from "@/components/shared/add-manual-transaction-dialog";
+import { RecordCashReceiptDialog } from "@/components/shared/record-cash-receipt-dialog";
 import type {
   ReconciliationQueueResult,
   ReconciliationQueueRow,
@@ -67,6 +71,13 @@ export function ReconciliationQueueContent({
 }: Props) {
   const router = useRouter();
   const [isPending, startTransition] = useTransition();
+  const [addManualTxnOpen, setAddManualTxnOpen] = useState(false);
+  const [recordReceiptOpen, setRecordReceiptOpen] = useState(false);
+  const [selectedBankAccount, setSelectedBankAccount] = useState<{
+    id: string;
+    name: string;
+    fund_type: "administrative" | "capital_works";
+  } | null>(null);
 
   const base = `/subdivisions/${subdivisionId}/finance/reconciliation`;
 
@@ -111,12 +122,39 @@ export function ReconciliationQueueContent({
           {queue.total} transaction{queue.total === 1 ? "" : "s"} matching current filters
         </div>
         <div className="flex items-center gap-2">
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={() => {
+              if (queue.bankAccounts.length > 0) {
+                setSelectedBankAccount(queue.bankAccounts[0]);
+                setRecordReceiptOpen(true);
+              }
+            }}
+            disabled={queue.bankAccounts.length === 0}
+          >
+            <Upload className="mr-2 h-4 w-4" />
+            Record receipt
+          </Button>
           <Link href={`/subdivisions/${subdivisionId}/finance/bank-account`}>
             <Button variant="outline" size="sm">
               <FileText className="mr-2 h-4 w-4" />
               Import CSV
             </Button>
           </Link>
+          <Button
+            size="sm"
+            onClick={() => {
+              if (queue.bankAccounts.length > 0) {
+                setSelectedBankAccount(queue.bankAccounts[0]);
+                setAddManualTxnOpen(true);
+              }
+            }}
+            disabled={queue.bankAccounts.length === 0}
+          >
+            <Plus className="mr-2 h-4 w-4" />
+            Add manual transaction
+          </Button>
         </div>
       </div>
 
@@ -295,6 +333,37 @@ export function ReconciliationQueueContent({
             </div>
           </CardContent>
         </Card>
+      )}
+
+      {/* Dialogs */}
+      {selectedBankAccount && (
+        <>
+          <AddManualTransactionDialog
+            open={addManualTxnOpen}
+            onOpenChange={setAddManualTxnOpen}
+            subdivisionId={subdivisionId}
+            bankAccountId={selectedBankAccount.id}
+            bankAccountName={selectedBankAccount.name}
+            onSuccess={() => {
+              startTransition(() => {
+                router.refresh();
+              });
+            }}
+          />
+          <RecordCashReceiptDialog
+            open={recordReceiptOpen}
+            onOpenChange={setRecordReceiptOpen}
+            subdivisionId={subdivisionId}
+            bankAccountId={selectedBankAccount.id}
+            bankAccountName={selectedBankAccount.name}
+            fundType={selectedBankAccount.fund_type}
+            onSuccess={() => {
+              startTransition(() => {
+                router.refresh();
+              });
+            }}
+          />
+        </>
       )}
     </div>
   );

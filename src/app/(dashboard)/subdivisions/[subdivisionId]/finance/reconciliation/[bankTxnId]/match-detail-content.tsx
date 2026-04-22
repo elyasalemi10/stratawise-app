@@ -2,11 +2,15 @@
 
 import { useState } from "react";
 import Link from "next/link";
-import { ArrowLeft, Check } from "lucide-react";
+import { ArrowLeft, Check, Trash2 } from "lucide-react";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { toast } from "sonner";
 import type { BankTransactionDetail } from "@/lib/validations/reconciliation";
+import { previewVoidBankTransaction, voidBankTransaction } from "@/lib/actions/reconciliation";
+import { MatchExcludeDialog } from "@/components/shared/match-exclude-dialog";
+import { UnmatchDialog } from "@/components/shared/unmatch-dialog";
+import { VoidCascadeConfirmDialog, type CascadePreview } from "@/components/shared/void-cascade-confirm-dialog";
 import { TransactionCard } from "./transaction-card";
 import { ExistingMatchesSection } from "./existing-matches-section";
 import { ClearPendingReceiptsCard } from "./clear-pending-receipts-card";
@@ -22,6 +26,13 @@ export function MatchDetailContent({ subdivisionId, transaction }: Props) {
   const [isFullyMatched, setIsFullyMatched] = useState(
     transaction.remaining === 0
   );
+  const [excludeDialogOpen, setExcludeDialogOpen] = useState(false);
+  const [voidDialogOpen, setVoidDialogOpen] = useState(false);
+  const [unmatchDialogOpen, setUnmatchDialogOpen] = useState(false);
+  const [voidPreview, setVoidPreview] = useState<CascadePreview | null>(null);
+  const [unmatchPrefillId, setUnmatchPrefillId] = useState<string | null>(null);
+  const [isLoadingVoidPreview, setIsLoadingVoidPreview] = useState(false);
+  const [isSubmittingVoid, setIsSubmittingVoid] = useState(false);
 
   const clearCardApplicable =
     transaction.undeposited_candidates &&
@@ -39,18 +50,81 @@ export function MatchDetailContent({ subdivisionId, transaction }: Props) {
 
   const base = `/subdivisions/${subdivisionId}/finance/reconciliation`;
 
+  const handleOpenVoidDialog = async () => {
+    setIsLoadingVoidPreview(true);
+    try {
+      const preview = await previewVoidBankTransaction(transaction.id);
+      setVoidPreview(preview as CascadePreview);
+      setVoidDialogOpen(true);
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "Failed to load void preview";
+      toast.error(message);
+    } finally {
+      setIsLoadingVoidPreview(false);
+    }
+  };
+
+  const handleConfirmVoid = async (reason: string) => {
+    setIsSubmittingVoid(true);
+    try {
+      await voidBankTransaction({
+        subdivision_id: subdivisionId,
+        bank_transaction_id: transaction.id,
+        reason,
+      });
+      toast.success("Transaction voided successfully");
+      setVoidDialogOpen(false);
+      // Redirect back to queue
+      window.location.href = `${base}?status=all`;
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "Failed to void transaction";
+      toast.error(message);
+    } finally {
+      setIsSubmittingVoid(false);
+    }
+  };
+
+  const handleUnlink = (matchId: string) => {
+    setUnmatchPrefillId(matchId);
+    setUnmatchDialogOpen(true);
+  };
+
   return (
     <div className="px-6 py-6">
-      {/* Header with back link */}
-      <div className="flex items-center gap-2 mb-6">
-        <Link href={base}>
-          <Button variant="ghost" size="sm" className="h-8 px-2">
-            <ArrowLeft className="h-4 w-4" />
+      {/* Header with back link and action buttons */}
+      <div className="flex items-center justify-between gap-2 mb-6">
+        <div className="flex items-center gap-2">
+          <Link href={base}>
+            <Button variant="ghost" size="sm" className="h-8 px-2">
+              <ArrowLeft className="h-4 w-4" />
+            </Button>
+          </Link>
+          <span className="text-sm text-muted-foreground">
+            Back to reconciliation
+          </span>
+        </div>
+
+        {/* Action buttons */}
+        <div className="flex items-center gap-2">
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={() => setExcludeDialogOpen(true)}
+            className="h-8"
+          >
+            Exclude
           </Button>
-        </Link>
-        <span className="text-sm text-muted-foreground">
-          Back to reconciliation
-        </span>
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={handleOpenVoidDialog}
+            disabled={isLoadingVoidPreview}
+            className="h-8 text-destructive"
+          >
+            <Trash2 className="mr-1 h-4 w-4" />
+            Void
+          </Button>
+        </div>
       </div>
 
       {/* Main layout: left (40%) | right (60%) on desktop, stacked on mobile */}
@@ -64,6 +138,7 @@ export function MatchDetailContent({ subdivisionId, transaction }: Props) {
               matches={transaction.matches}
               bankTxnId={transaction.id}
               subdivisionId={subdivisionId}
+              onUnlink={handleUnlink}
             />
           )}
         </div>
@@ -138,6 +213,38 @@ export function MatchDetailContent({ subdivisionId, transaction }: Props) {
           )}
         </div>
       </div>
+
+      {/* Dialogs */}
+      <MatchExcludeDialog
+        open={excludeDialogOpen}
+        onOpenChange={setExcludeDialogOpen}
+        bankTxnId={transaction.id}
+        subdivisionId={subdivisionId}
+        onSuccess={() => {
+          window.location.href = base;
+        }}
+      />
+
+      <UnmatchDialog
+        open={unmatchDialogOpen}
+        onOpenChange={setUnmatchDialogOpen}
+        bankTxnId={transaction.id}
+        subdivisionId={subdivisionId}
+        matches={transaction.matches}
+        prefillMatchId={unmatchPrefillId}
+        onSuccess={() => {
+          setUnmatchPrefillId(null);
+          window.location.reload();
+        }}
+      />
+
+      <VoidCascadeConfirmDialog
+        open={voidDialogOpen}
+        onOpenChange={setVoidDialogOpen}
+        cascadePreview={voidPreview}
+        isSubmitting={isSubmittingVoid}
+        onConfirm={handleConfirmVoid}
+      />
     </div>
   );
 }

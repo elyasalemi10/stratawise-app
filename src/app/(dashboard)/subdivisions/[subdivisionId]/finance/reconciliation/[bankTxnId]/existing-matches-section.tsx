@@ -21,25 +21,14 @@ interface Props {
   matches: BankTransactionDetail["matches"];
   bankTxnId: string;
   subdivisionId: string;
+  onUnlink?: (matchId: string) => void;
 }
 
-export function ExistingMatchesSection({ matches }: Props) {
+export function ExistingMatchesSection({ matches, onUnlink }: Props) {
   return (
     <Card className="shadow-none">
       <CardContent className="p-5">
-        <div className="flex items-center gap-2 mb-4">
-          <h3 className="text-sm font-semibold">Existing matches</h3>
-          <TooltipProvider>
-            <Tooltip>
-              <TooltipTrigger asChild>
-                <Info className="h-4 w-4 text-muted-foreground cursor-help" />
-              </TooltipTrigger>
-              <TooltipContent className="max-w-xs text-xs">
-                Unmatch individual entries in a future update. Void the bank transaction to reverse all matches.
-              </TooltipContent>
-            </Tooltip>
-          </TooltipProvider>
-        </div>
+        <h3 className="text-sm font-semibold mb-4">Existing matches</h3>
 
         <div className="space-y-3">
           {matches.map((match) => (
@@ -84,6 +73,17 @@ export function ExistingMatchesSection({ matches }: Props) {
               {match.notes && (
                 <div className="mt-2 text-xs text-muted-foreground italic border-l-2 border-muted-foreground pl-2">
                   &quot;{match.notes}&quot;
+                </div>
+              )}
+
+              {onUnlink && (
+                <div className="mt-3">
+                  <button
+                    onClick={() => onUnlink(match.id)}
+                    className="text-xs text-destructive hover:text-destructive/80 underline"
+                  >
+                    Unlink this match
+                  </button>
                 </div>
               )}
             </div>
