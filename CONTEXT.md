@@ -21,7 +21,7 @@ extending to other states is a seed-data exercise, not a code rewrite.
 
 ## 2. Stack summary
 
-- **Framework**: Next.js 15 (App Router), TypeScript, Tailwind CSS
+- **Framework**: Next.js 16 (App Router), TypeScript, Tailwind CSS
 - **UI**: shadcn/ui components, Tremor charts, Lucide React icons
 - **Auth**: Clerk (profiles synced via webhook → `profiles` table)
 - **DB**: Supabase Postgres. **NO ORM.** Supabase JS client only. Multi-row
@@ -290,21 +290,23 @@ names (`owner_display_name`, `owner_contact_email`, `owner_contact_phone`,
 The full delivery plan is 8 prompts. Prompt 0 is complete; the rest build
 the reconciliation feature progressively on top of the now-stable schema.
 
-- [x] **Prompt 0 — Schema consolidation & structural cleanup** *(DONE)*
-- [ ] **Prompt 1** — Lot ledger tables + RPC functions (debits, credits,
-  voids, balance rollups). No UI yet.
-- [ ] **Prompt 2** — Bank transactions ingestion (CSV import full flow;
-  Basiq webhook stub). Unmatched queue.
-- [ ] **Prompt 3** — Reconciliation match table + matching UI
-  (manual-first). Auto-match rules by exact reference.
-- [ ] **Prompt 4** — Auto-match expansion: known-sender memory,
-  amount+window heuristics, explicit-levy-reference honouring.
-- [ ] **Prompt 5** — Oldest-unpaid-date walker + statutory interest
-  calculation + interest debit writer (Trigger.dev job).
-- [ ] **Prompt 6** — Lot-owner portal views: "my levies", payment history,
-  statement PDFs.
-- [ ] **Prompt 7** — Final polish: reporting dashboards for
-  reconciliation health, evidence-trail exports, bulk match operations.
+- [x] **Prompt 0** — Schema consolidation & structural cleanup.
+- [ ] **Prompt 1** — Lot ledger foundation: ledger tables + state
+  materialisation + RPCs (debit, credit, adjustment, void, batch debit) +
+  atomic levy-debit generation on batch create. No UI.
+- [ ] **Prompt 2** — CSV import full flow + manual payment entry against
+  the ledger.
+- [ ] **Prompt 3** — Basiq integration (webhook + polling fallback,
+  idempotent by `basiq_transaction_id`).
+- [ ] **Prompt 4** — Auto-matching logic: exact reference, BPAY CRN,
+  known-sender memory, amount+window heuristics, explicit-levy-reference
+  honouring.
+- [ ] **Prompt 5** — Owner self-report payment flow (submit + manager
+  approval writes the ledger credit).
+- [ ] **Prompt 6** — Interest calculation cron (writes `interest` ledger
+  debits), levy-notice status sweep, and arrears notification emails.
+- [ ] **Prompt 7** — Statement PDFs + reconciliation reporting dashboards
+  (arrears, evidence-trail exports, bulk match operations).
 
 Each subsequent prompt should read this file and `CLAUDE.md` first, then
 the relevant sections of `project-context.md`.
