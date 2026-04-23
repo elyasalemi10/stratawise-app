@@ -656,7 +656,7 @@ async function scenarioB7(fx: Fixture, connectionId: string) {
       ),
     ];
     const before = await fetchConnection(connectionId);
-    const res = await basiq.pollBasiqConnection(connectionId, fx.profileId);
+    const res = await basiq.pollBasiqConnection(connectionId);
     assert(res.success, `error: ${res.error}`);
     assert(res.success!.inserted >= 1, "expected at least 1 insert");
     const after = await fetchConnection(connectionId);

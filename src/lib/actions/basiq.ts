@@ -4,18 +4,19 @@ import { revalidatePath } from "next/cache";
 import { requireCompanyRole, requireSubdivisionAccess } from "@/lib/auth";
 import { createServerClient } from "@/lib/supabase";
 import { revalidateSidebarForSubdivision } from "./subdivision";
-import { tryAutoMatchByReference } from "./reconciliation";
 import {
   BasiqApiError,
   getBasiqApiClient,
 } from "@/lib/basiq/client";
-import { parseBasiqDescription } from "@/lib/basiq/parsers";
 import { issueStateToken } from "@/lib/basiq/state";
 import {
+  pollConnectionAsSystem,
+  sendPendingReauthNotificationsJob,
+  sweepExpiredConnectionsJob,
+} from "@/lib/basiq/jobs";
+import {
   sendBasiqCommitteeGapNotificationEmail,
-  sendBasiqConsentExpiredEmail,
   sendBasiqGapReconciliationEmail,
-  sendBasiqReauthReminderEmail,
 } from "@/lib/email";
 import {
   BASIQ_WEBHOOK_EVENTS,
@@ -25,7 +26,6 @@ import {
   type BasiqConnectionStatus,
   type BasiqConnectionStatusResult,
   type BasiqInstitution,
-  type BasiqReauthNotificationType,
   type BasiqTransactionPayload,
   type BasiqWebhookEvent,
   type ForceSyncResult,
@@ -78,24 +78,6 @@ function buildConsentUrl(args: {
   if (args.action) qs.set("action", args.action);
   if (args.connectionId) qs.set("connectionId", args.connectionId);
   return `${CONSENT_BASE.replace(/\/+$/, "")}/home?${qs.toString()}`;
-}
-
-function signedBasiqAmount(tx: BasiqTransactionPayload): number {
-  const n = Number(tx.amount);
-  if (!Number.isFinite(n)) return 0;
-  return n;
-}
-
-function transactionDateFromPayload(tx: BasiqTransactionPayload): string {
-  const candidate = tx.postDate ?? tx.transactionDate;
-  if (candidate) return candidate.slice(0, 10);
-  return new Date().toISOString().slice(0, 10);
-}
-
-function balanceFromPayload(tx: BasiqTransactionPayload): number | null {
-  if (!tx.balance) return null;
-  const n = Number(tx.balance);
-  return Number.isFinite(n) ? n : null;
 }
 
 // ============================================================================
@@ -540,7 +522,7 @@ export async function forceSyncBasiqConnection(args: {
     const allIds: string[] = [];
     const errors: string[] = [];
     for (const c of conns as { id: string }[]) {
-      const res = await pollBasiqConnectionInternal(c.id, profile.id);
+      const res = await pollConnectionAsSystem(c.id, profile.id);
       totalNew += res.inserted;
       if (res.error) errors.push(`${c.id}: ${res.error}`);
     }
@@ -566,218 +548,27 @@ export async function forceSyncBasiqConnection(args: {
 
 export async function pollBasiqConnection(
   connectionId: string,
-  performedBy?: string,
 ): Promise<{ success?: PollResult; error?: string }> {
+  // Server-action entry: always requires auth. Cron-invoked callers must
+  // import pollConnectionAsSystem from src/lib/basiq/jobs.ts directly —
+  // that path is framework-agnostic and expects an explicit performer.
   try {
-    // Resolve a performer id — the cron caller passes one; manager-initiated
-    // callers come through requireCompanyRole.
-    let performer = performedBy;
-    if (!performer) {
-      const profile = await requireCompanyRole();
-      performer = profile.id;
-    }
-    const res = await pollBasiqConnectionInternal(connectionId, performer);
+    const supabase = createServerClient();
+    const { data: conn } = await supabase
+      .from("basiq_connections")
+      .select("subdivision_id")
+      .eq("id", connectionId)
+      .single();
+    if (!conn) return { error: "connection not found" };
+
+    const profile = await requireCompanyRole();
+    await requireSubdivisionAccess(conn.subdivision_id);
+
+    const res = await pollConnectionAsSystem(connectionId, profile.id);
     return { success: res };
   } catch (e) {
     return { error: (e as Error).message };
   }
-}
-
-async function pollBasiqConnectionInternal(
-  connectionId: string,
-  performedBy: string,
-): Promise<PollResult> {
-  const supabase = createServerClient();
-  const client = getBasiqApiClient();
-
-  const { data: conn } = await supabase
-    .from("basiq_connections")
-    .select(
-      "id, subdivision_id, basiq_user_id, basiq_external_connection_id, basiq_institution_id, last_sync_at, status, consent_expires_at",
-    )
-    .eq("id", connectionId)
-    .single();
-  if (!conn) {
-    return {
-      connectionId,
-      fetched: 0,
-      inserted: 0,
-      duplicates: 0,
-      autoMatched: 0,
-      error: "connection not found",
-    };
-  }
-
-  if (
-    conn.consent_expires_at &&
-    new Date(conn.consent_expires_at).getTime() < Date.now()
-  ) {
-    return {
-      connectionId,
-      fetched: 0,
-      inserted: 0,
-      duplicates: 0,
-      autoMatched: 0,
-      error: "consent_required",
-    };
-  }
-
-  await supabase
-    .from("basiq_connections")
-    .update({ status: "syncing" })
-    .eq("id", connectionId);
-
-  let fetched = 0;
-  let inserted = 0;
-  let duplicates = 0;
-  let autoMatched = 0;
-
-  try {
-    const sinceIso = conn.last_sync_at ?? conn.consent_expires_at ?? undefined;
-    const txns = await client.getTransactions({
-      basiqUserId: conn.basiq_user_id,
-      sinceIso: sinceIso ?? undefined,
-      limit: 500,
-    });
-    fetched = txns.length;
-
-    // Resolve account mapping: match Basiq account IDs → our bank_accounts.
-    const accountMap = await resolveAccountMap(
-      conn.subdivision_id,
-      conn.id,
-      txns,
-    );
-
-    for (const tx of txns) {
-      const bankAccountId = accountMap.get(tx.account);
-      if (!bankAccountId) continue; // transaction on an unmapped account — skip silently
-
-      const parsed = parseBasiqDescription(conn.basiq_institution_id, tx);
-      const signed = signedBasiqAmount(tx);
-      const date = transactionDateFromPayload(tx);
-      const balance = balanceFromPayload(tx);
-
-      const { data: rpcRes, error: rpcErr } = await supabase.rpc(
-        "rpc_insert_basiq_transaction",
-        {
-          p_bank_account_id: bankAccountId,
-          p_basiq_transaction_id: tx.id,
-          p_transaction_date: date,
-          p_amount: signed,
-          p_description: parsed.cleaned_description,
-          p_balance: balance,
-          p_basiq_raw: tx,
-          p_performed_by: performedBy,
-        },
-      );
-      if (rpcErr) continue; // skip this row, keep going
-      const result = rpcRes as {
-        bank_transaction_id: string;
-        was_duplicate: boolean;
-      };
-      if (result.was_duplicate) {
-        duplicates += 1;
-        continue;
-      }
-      inserted += 1;
-
-      // Auto-match if credit and description has an MSM-LEV reference.
-      if (signed > 0 && parsed.reference) {
-        const m = await tryAutoMatchByReference({
-          bankTransactionId: result.bank_transaction_id,
-          subdivisionId: conn.subdivision_id,
-          description: parsed.cleaned_description,
-          amount: signed,
-          performedBy,
-        });
-        if (m.matched) autoMatched += 1;
-      }
-    }
-
-    const nowIso = new Date().toISOString();
-    await supabase
-      .from("basiq_connections")
-      .update({
-        status: "active",
-        last_sync_at: nowIso,
-        last_sync_error: null,
-      })
-      .eq("id", connectionId);
-    await supabase
-      .from("bank_accounts")
-      .update({ last_sync_at: nowIso })
-      .eq("basiq_connection_id", connectionId);
-
-    return {
-      connectionId,
-      fetched,
-      inserted,
-      duplicates,
-      autoMatched,
-      error: null,
-    };
-  } catch (e) {
-    const err = e as Error | BasiqApiError;
-    if (
-      err instanceof BasiqApiError &&
-      err.category === "consent_required"
-    ) {
-      await supabase.rpc("rpc_mark_basiq_connection_expired", {
-        p_basiq_connection_id: connectionId,
-        p_reason: "Basiq returned consent_required during poll",
-        p_performed_by: performedBy,
-      });
-      return {
-        connectionId,
-        fetched,
-        inserted,
-        duplicates,
-        autoMatched,
-        error: "consent_required",
-      };
-    }
-    await supabase
-      .from("basiq_connections")
-      .update({
-        status: "active",
-        last_sync_error: err.message,
-      })
-      .eq("id", connectionId);
-    return {
-      connectionId,
-      fetched,
-      inserted,
-      duplicates,
-      autoMatched,
-      error: err.message,
-    };
-  }
-}
-
-async function resolveAccountMap(
-  subdivisionId: string,
-  connectionId: string,
-  txns: BasiqTransactionPayload[],
-): Promise<Map<string, string>> {
-  const supabase = createServerClient();
-  const map = new Map<string, string>();
-  const distinctBasiqAccountIds = Array.from(
-    new Set(txns.map((t) => t.account).filter(Boolean)),
-  );
-  if (distinctBasiqAccountIds.length === 0) return map;
-
-  const { data: accounts } = await supabase
-    .from("bank_accounts")
-    .select("id, basiq_account_id")
-    .eq("subdivision_id", subdivisionId)
-    .eq("basiq_connection_id", connectionId);
-  for (const a of (accounts ?? []) as {
-    id: string;
-    basiq_account_id: string | null;
-  }[]) {
-    if (a.basiq_account_id) map.set(a.basiq_account_id, a.id);
-  }
-  return map;
 }
 
 export async function runGapReconciliation(
@@ -806,10 +597,7 @@ export async function runGapReconciliation(
       ),
     );
 
-    const pollRes = await pollBasiqConnectionInternal(
-      connectionId,
-      profile.id,
-    );
+    const pollRes = await pollConnectionAsSystem(connectionId, profile.id);
 
     // Count arrears notifications that went out during the gap (stub — a
     // proper implementation will query communication_log once Prompt 6
@@ -986,150 +774,16 @@ async function listBasiqInstitutionsInternal(): Promise<BasiqInstitution[]> {
 export async function sendPendingReauthNotifications(): Promise<{
   sentCount: number;
 }> {
-  const supabase = createServerClient();
-
-  const { data: active } = await supabase
-    .from("basiq_connections")
-    .select(
-      "id, subdivision_id, consent_expires_at, nominated_representative_profile_id, institution_name",
-    )
-    .eq("status", "active");
-  if (!active || active.length === 0) return { sentCount: 0 };
-
-  let sent = 0;
-
-  for (const conn of active as {
-    id: string;
-    subdivision_id: string;
-    consent_expires_at: string | null;
-    nominated_representative_profile_id: string | null;
-    institution_name: string;
-  }[]) {
-    if (!conn.consent_expires_at || !conn.nominated_representative_profile_id) {
-      continue;
-    }
-    const daysLeft = daysUntil(conn.consent_expires_at);
-    if (daysLeft === null) continue;
-
-    const cadence: Record<number, BasiqReauthNotificationType> = {
-      30: "reauth_30d",
-      14: "reauth_14d",
-      7: "reauth_7d",
-      3: "reauth_3d",
-      1: "reauth_1d",
-    };
-    const type = cadence[daysLeft];
-    if (!type) continue;
-
-    // Idempotency guard
-    const { data: existing } = await supabase
-      .from("basiq_reauth_notifications")
-      .select("id")
-      .eq("basiq_connection_id", conn.id)
-      .eq("notification_type", type)
-      .maybeSingle();
-    if (existing) continue;
-
-    const { data: rep } = await supabase
-      .from("profiles")
-      .select("email")
-      .eq("id", conn.nominated_representative_profile_id)
-      .single();
-    const { data: sub } = await supabase
-      .from("subdivisions")
-      .select("name")
-      .eq("id", conn.subdivision_id)
-      .single();
-    if (!rep || !sub) continue;
-
-    const reauthUrl = `${process.env.NEXT_PUBLIC_APP_URL ?? ""}/subdivisions/${conn.subdivision_id}/finance/bank-account`;
-
-    await sendBasiqReauthReminderEmail({
-      to: (rep as { email: string }).email,
-      subdivisionName: (sub as { name: string }).name,
-      daysRemaining: daysLeft,
-      reauthUrl,
-    });
-
-    await supabase.from("basiq_reauth_notifications").insert({
-      basiq_connection_id: conn.id,
-      notification_type: type,
-      profile_id: conn.nominated_representative_profile_id,
-    });
-    await supabase
-      .from("basiq_connections")
-      .update({ last_reauth_prompt_sent_at: new Date().toISOString() })
-      .eq("id", conn.id);
-    sent += 1;
-  }
-
-  return { sentCount: sent };
+  // Thin delegate — real work is in src/lib/basiq/jobs.ts so Trigger.dev
+  // can invoke it directly without crossing the "use server" boundary.
+  return await sendPendingReauthNotificationsJob();
 }
 
 // Called by hourly-expiry-check scheduled task.
 export async function sweepExpiredConnections(): Promise<{
   expiredCount: number;
 }> {
-  const supabase = createServerClient();
-  const nowIso = new Date().toISOString();
-  const { data: due } = await supabase
-    .from("basiq_connections")
-    .select("id, nominated_representative_profile_id, subdivision_id")
-    .eq("status", "active")
-    .lte("consent_expires_at", nowIso);
-  if (!due || due.length === 0) return { expiredCount: 0 };
-
-  let count = 0;
-  for (const row of due as {
-    id: string;
-    nominated_representative_profile_id: string | null;
-    subdivision_id: string;
-  }[]) {
-    const { error } = await supabase.rpc(
-      "rpc_mark_basiq_connection_expired",
-      {
-        p_basiq_connection_id: row.id,
-        p_reason: "12-month CDR consent expired",
-        p_performed_by:
-          row.nominated_representative_profile_id ?? row.id,
-      },
-    );
-    if (error) continue;
-    count += 1;
-
-    // Send an expired email (best effort).
-    if (row.nominated_representative_profile_id) {
-      const { data: rep } = await supabase
-        .from("profiles")
-        .select("email")
-        .eq("id", row.nominated_representative_profile_id)
-        .single();
-      const { data: sub } = await supabase
-        .from("subdivisions")
-        .select("name")
-        .eq("id", row.subdivision_id)
-        .single();
-      if (rep && sub) {
-        const reauthUrl = `${process.env.NEXT_PUBLIC_APP_URL ?? ""}/subdivisions/${row.subdivision_id}/finance/bank-account`;
-        await sendBasiqConsentExpiredEmail({
-          to: (rep as { email: string }).email,
-          subdivisionName: (sub as { name: string }).name,
-          reauthUrl,
-        });
-        await supabase
-          .from("basiq_reauth_notifications")
-          .insert({
-            basiq_connection_id: row.id,
-            notification_type: "expired",
-            profile_id: row.nominated_representative_profile_id,
-          })
-          .select()
-          .single()
-          .then(() => null, () => null);
-      }
-    }
-  }
-  return { expiredCount: count };
+  return await sweepExpiredConnectionsJob();
 }
 
 // ============================================================================
@@ -1237,7 +891,7 @@ export async function handleBasiqEvent(args: {
         (row as { nominated_representative_profile_id: string | null })
           .nominated_representative_profile_id ??
         (row as { created_by: string }).created_by;
-      await pollBasiqConnectionInternal(
+      await pollConnectionAsSystem(
         (row as { id: string }).id,
         performer,
       );

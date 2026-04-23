@@ -120,6 +120,27 @@ Small fixes to batch before going live. Non-blocking for feature work.
   grace configured). Neutral/grey for merely-outstanding-but-not-yet-overdue.
   Prevents false alarm on freshly-issued levies.
 
+## From Prompt 3
+
+- **Pre-launch grep audit:** no exported server action should accept performedBy from the caller. Auth guards must resolve the performer identity server-side, not trust a client-supplied UUID.
+
+  Known live finding (as of commit that split basiq cron paths):
+  `src/lib/actions/reconciliation.ts` exports `tryAutoMatchByReference(args: AutoMatchArgs)` from a `"use server"` module, and `AutoMatchArgs` contains `performedBy: string`. A client could therefore import and call it with an arbitrary UUID. Triage options: (a) move to a non-`"use server"` shared module (mirrors the `src/lib/basiq/jobs.ts` pattern), (b) add `requireCompanyRole()` inside it and ignore the caller-supplied performer, (c) keep but document the intended non-client callers only. Decision deferred; does not block Prompt 3.
+
+- **Bank parser verification (src/lib/basiq/parsers.ts):** every per-bank function is currently a thin wrapper around `parseGeneric` with a `TODO(pre-launch)` note. Confirm the actual description format for CBA, NAB, ANZ, Westpac, Macquarie, ING, and Bendigo & Adelaide against real sandbox transactions before launch, and replace the wrapper bodies with bank-specific handling. Also verify `BASIQ_INSTITUTION_IDS` map against the live `GET /institutions` response — the current values are best-effort placeholders.
+
+- **Basiq webhook payload shape:** `handleBasiqEvent` extracts the external connection id via best-effort probing of several candidate fields (`connectionId`, `connection`, `data.connectionId`, `data.connection`, `data.id`). Once we have a real webhook sample from Basiq's sandbox, lock down the exact shape with Zod validation.
+
+- **Basiq consent URL institution hint parameter:** `buildConsentUrl` passes `institutionId=...` as a query param. If Basiq's Consent UI actually expects a different parameter name (e.g. `connectorId`) or ignores it entirely, fix in `src/lib/actions/basiq.ts::buildConsentUrl`.
+
+- **Basiq job `links.source` extraction:** `completeBasiqConsent` parses the connection id out of `job.links.source` with `/connections\/([^/?]+)/`. Verify this matches the actual sandbox shape; fall-back path (listing user connections and picking the freshest untracked one) exists but should not be the primary path in production.
+
+- **Injection seam grep rule (Prompt 3 addition to Prompt 2's rule):** the symbol `__setBasiqApiClientForVerification` (and its read-only twin `__getBasiqApiClientForVerification`) must appear ONLY in `src/lib/basiq/client.ts` and `src/**/*.verification.ts`. Same rules and rationale as the auth resolver seam.
+
+- RPC security model audit. All 15 RPCs currently run as SECURITY INVOKER (caller's permissions). If Prompt 7 introduces RLS policies that differentiate per-user access, RPC behaviour becomes inconsistent across caller contexts. Before launch: decide per-RPC whether to add SECURITY DEFINER SET search_path = public, pg_temp. The financial-mutation RPCs (rpc_* that write to lot_ledger_entries, reconciliation_matches, undeposited_funds_entries, basiq_*) should all run DEFINER so they enforce app-level authorisation rather than DB-level permissions. Read-only RPCs can stay INVOKER.
+
+- Schema-authoring rule: CREATE INDEX ... WHERE ... predicates must only reference IMMUTABLE functions. NOW(), CURRENT_TIMESTAMP, and any user-defined non-IMMUTABLE function cannot appear in index predicates. Index all rows instead; filter at query time.
+
 ## From Prompt 8
 
 - **Audit trail in ledger entry drawer — pagination:** Query capped at 100
