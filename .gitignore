@@ -46,3 +46,9 @@ next-env.d.ts
 
 # MCP config (contains secrets)
 .mcp.json
+
+# throwaway / scratch artefacts (SQL deltas, stashed snippets, etc.)
+# Convention: any file whose basename starts with "_" is scratch — never
+# canonical. Canonical files (database-schema.sql, CONTEXT.md, CLAUDE.md,
+# PRE_LAUNCH_CLEANUP.md, etc.) never use this prefix.
+_*
