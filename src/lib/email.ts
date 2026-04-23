@@ -6,6 +6,7 @@ function getResend() {
 
 const FROM_INVITES = process.env.RESEND_INVITES_FROM ?? "My Strata Management <noreply@myocm.com.au>";
 const FROM_LEVIES = process.env.RESEND_LEVIES_FROM ?? "My Strata Management <noreply@myocm.com.au>";
+const FROM_SYSTEM = process.env.RESEND_SYSTEM_FROM ?? "My Strata Management <noreply@myocm.com.au>";
 
 interface SendInvitationEmailParams {
   to: string;
@@ -141,4 +142,144 @@ export async function sendLevyEmail({
   }
 
   return { success: true };
+}
+
+// ─── Bank-feed system emails (Prompt 3) ───────────────────────────
+// Plaintext-ish HTML. Copy polish is deferred to Prompt 6; these are
+// the minimum needed to honour the 30/14/7/3/1-day reauth cadence, the
+// expired notification, the gap reconciliation notice, and the
+// committee notification on gaps > 30 days.
+
+type BasiqEmailResult = { success: true } | { error: string };
+
+async function sendSystemEmail(
+  to: string,
+  subject: string,
+  bodyHtml: string,
+): Promise<BasiqEmailResult> {
+  // In dev with no RESEND_API_KEY, log instead of sending.
+  if (!process.env.RESEND_API_KEY) {
+    console.log(`[email-stub] to=${to} subject="${subject}"`);
+    return { success: true };
+  }
+  const { error } = await getResend().emails.send({
+    from: FROM_SYSTEM,
+    to,
+    subject,
+    html: bodyHtml,
+  });
+  if (error) {
+    console.error("Failed to send system email:", error);
+    return { error: error.message };
+  }
+  return { success: true };
+}
+
+export async function sendBasiqReauthReminderEmail(params: {
+  to: string;
+  subdivisionName: string;
+  daysRemaining: number;
+  reauthUrl: string;
+}): Promise<BasiqEmailResult> {
+  const { to, subdivisionName, daysRemaining, reauthUrl } = params;
+  const subject = `Bank feed reauthorisation required in ${daysRemaining} day${daysRemaining === 1 ? "" : "s"} — ${subdivisionName}`;
+  const html = `
+    <div style="font-family:'Inter',system-ui,sans-serif;max-width:520px;margin:0 auto;padding:24px 0;">
+      <h2 style="margin:0 0 12px;font-size:18px;font-weight:600;color:#1a1f2e;">Bank feed expiring soon</h2>
+      <p style="margin:0 0 16px;color:#1a1f2e;font-size:14px;line-height:1.5;">
+        The automatic bank feed for <strong>${subdivisionName}</strong> will expire in
+        <strong>${daysRemaining} day${daysRemaining === 1 ? "" : "s"}</strong>. Reauthorise to keep transactions syncing.
+      </p>
+      <a href="${reauthUrl}" style="display:inline-block;background:#2b7fff;color:#ffffff;font-size:14px;font-weight:600;text-decoration:none;padding:10px 20px;border-radius:6px;">
+        Reauthorise now
+      </a>
+      <p style="margin:16px 0 0;color:#6b7280;font-size:12px;">If the feed expires, CSV import remains available as a fallback.</p>
+    </div>
+  `;
+  return sendSystemEmail(to, subject, html);
+}
+
+export async function sendBasiqConsentExpiredEmail(params: {
+  to: string;
+  subdivisionName: string;
+  reauthUrl: string;
+}): Promise<BasiqEmailResult> {
+  const { to, subdivisionName, reauthUrl } = params;
+  const subject = `Bank feed disconnected — ${subdivisionName}`;
+  const html = `
+    <div style="font-family:'Inter',system-ui,sans-serif;max-width:520px;margin:0 auto;padding:24px 0;">
+      <h2 style="margin:0 0 12px;font-size:18px;font-weight:600;color:#b91c1c;">Bank feed disconnected</h2>
+      <p style="margin:0 0 16px;color:#1a1f2e;font-size:14px;line-height:1.5;">
+        The automatic bank feed for <strong>${subdivisionName}</strong> has expired. New transactions will not be imported until you reauthorise.
+      </p>
+      <a href="${reauthUrl}" style="display:inline-block;background:#2b7fff;color:#ffffff;font-size:14px;font-weight:600;text-decoration:none;padding:10px 20px;border-radius:6px;">
+        Reauthorise now
+      </a>
+      <p style="margin:16px 0 0;color:#6b7280;font-size:12px;">CSV import remains available as a fallback.</p>
+    </div>
+  `;
+  return sendSystemEmail(to, subject, html);
+}
+
+export async function sendBasiqGapReconciliationEmail(params: {
+  to: string;
+  subdivisionName: string;
+  gapHours: number;
+  backfilledCount: number;
+  autoMatchedCount: number;
+  manualReviewCount: number;
+  reportUrl: string;
+}): Promise<BasiqEmailResult> {
+  const {
+    to,
+    subdivisionName,
+    gapHours,
+    backfilledCount,
+    autoMatchedCount,
+    manualReviewCount,
+    reportUrl,
+  } = params;
+  const subject = `Bank feed reconnected — reconciliation gap report for ${subdivisionName}`;
+  const html = `
+    <div style="font-family:'Inter',system-ui,sans-serif;max-width:520px;margin:0 auto;padding:24px 0;">
+      <h2 style="margin:0 0 12px;font-size:18px;font-weight:600;color:#1a1f2e;">Bank feed reconnected</h2>
+      <p style="margin:0 0 12px;color:#1a1f2e;font-size:14px;line-height:1.5;">
+        The bank feed for <strong>${subdivisionName}</strong> was disconnected for <strong>${gapHours} hour${gapHours === 1 ? "" : "s"}</strong>.
+      </p>
+      <ul style="margin:0 0 16px;padding-left:20px;color:#1a1f2e;font-size:14px;line-height:1.6;">
+        <li>${backfilledCount} transaction${backfilledCount === 1 ? "" : "s"} imported during reconnection</li>
+        <li>${autoMatchedCount} auto-matched</li>
+        <li>${manualReviewCount} awaiting manual review</li>
+      </ul>
+      <p style="margin:0 0 16px;color:#1a1f2e;font-size:14px;line-height:1.5;">
+        Arrears notifications are paused for 48 hours while you review.
+      </p>
+      <a href="${reportUrl}" style="display:inline-block;background:#2b7fff;color:#ffffff;font-size:14px;font-weight:600;text-decoration:none;padding:10px 20px;border-radius:6px;">
+        View gap report
+      </a>
+    </div>
+  `;
+  return sendSystemEmail(to, subject, html);
+}
+
+export async function sendBasiqCommitteeGapNotificationEmail(params: {
+  to: string;
+  subdivisionName: string;
+  gapHours: number;
+}): Promise<BasiqEmailResult> {
+  const { to, subdivisionName, gapHours } = params;
+  const days = Math.round(gapHours / 24);
+  const subject = `Extended bank-feed outage — ${subdivisionName}`;
+  const html = `
+    <div style="font-family:'Inter',system-ui,sans-serif;max-width:520px;margin:0 auto;padding:24px 0;">
+      <h2 style="margin:0 0 12px;font-size:18px;font-weight:600;color:#b45309;">Extended bank-feed outage</h2>
+      <p style="margin:0 0 12px;color:#1a1f2e;font-size:14px;line-height:1.5;">
+        The automatic bank feed for <strong>${subdivisionName}</strong> was disconnected for approximately <strong>${days} days</strong>.
+      </p>
+      <p style="margin:0 0 0;color:#1a1f2e;font-size:14px;line-height:1.5;">
+        During this time, arrears notifications may have been issued based on stale reconciliation state. A detailed gap report is available in the MSM dashboard.
+      </p>
+    </div>
+  `;
+  return sendSystemEmail(to, subject, html);
 }

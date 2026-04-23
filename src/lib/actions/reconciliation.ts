@@ -1279,12 +1279,16 @@ export async function previewVoidUndepositedReceipt(
 }
 
 // ============================================================================
-// INTERNAL: auto-match by reference (used by addManualBankTransaction). CSV
-// import has its own inline copy because it already runs inside an authenticated
-// per-row context and doesn't benefit from the wrapping.
+// SHARED: auto-match by reference.
+// ----------------------------------------------------------------------------
+// Used by addManualBankTransaction (above) and reused by Basiq ingestion
+// (src/lib/actions/basiq.ts) per the Prompt 3 spec — one MSM-LEV reference
+// path across all transaction sources. CSV import keeps its own inline copy
+// because it already runs inside an authenticated per-row context and
+// doesn't benefit from the wrapping.
 // ============================================================================
 
-interface AutoMatchArgs {
+export interface AutoMatchArgs {
   bankTransactionId: string;
   subdivisionId: string;
   description: string;
@@ -1292,7 +1296,7 @@ interface AutoMatchArgs {
   performedBy: string;
 }
 
-interface AutoMatchResult {
+export interface AutoMatchResult {
   matched: boolean;
   reference: string | null;
   partial: boolean;
@@ -1300,7 +1304,7 @@ interface AutoMatchResult {
   warning: string | null;
 }
 
-async function tryAutoMatchByReference(args: AutoMatchArgs): Promise<AutoMatchResult> {
+export async function tryAutoMatchByReference(args: AutoMatchArgs): Promise<AutoMatchResult> {
   const supabase = createServerClient();
   const refs = args.description.match(REF_REGEX_GLOBAL) ?? [];
   if (refs.length !== 1) {
