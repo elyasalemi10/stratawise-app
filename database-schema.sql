@@ -483,16 +483,21 @@ CREATE TABLE bank_accounts (
   bank_name TEXT,                                   -- Westpac, CBA, ANZ, NAB, Other
   opening_balance DECIMAL(12,2) NOT NULL DEFAULT 0,
   opening_balance_date DATE,
-  -- Basiq integration (next phase builds this out)
-  basiq_user_id TEXT,
-  basiq_connection_id TEXT,
-  last_poll_at TIMESTAMPTZ,
+  -- Basiq integration (Prompt 3): optional FK to basiq_connections (§50).
+  -- FK added via ALTER TABLE after basiq_connections exists (mirrors the
+  -- payments → bank_transactions pattern below). NULL means no bank feed
+  -- (CSV / manual only).
+  basiq_connection_id UUID,
+  basiq_account_id    TEXT,                         -- Basiq's account identifier once linked
+  last_sync_at        TIMESTAMPTZ,                  -- last successful sync for this account
   status TEXT NOT NULL DEFAULT 'active',
   created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
   updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 
 CREATE INDEX idx_bank_accounts_subdivision ON bank_accounts(subdivision_id);
+CREATE INDEX idx_bank_accounts_basiq_connection ON bank_accounts(basiq_connection_id)
+  WHERE basiq_connection_id IS NOT NULL;
 
 -- ============================================================================
 -- 18. BANK TRANSACTIONS
@@ -502,6 +507,7 @@ CREATE TABLE bank_transactions (
   bank_account_id UUID NOT NULL REFERENCES bank_accounts(id) ON DELETE CASCADE,
   source transaction_source NOT NULL DEFAULT 'manual',
   basiq_transaction_id TEXT UNIQUE,                 -- idempotency key for Basiq
+  basiq_raw JSONB,                                  -- full Basiq payload for re-parsing / debugging (Prompt 3)
   transaction_date DATE NOT NULL,
   amount DECIMAL(12,2) NOT NULL,                    -- positive = credit, negative = debit
   description TEXT,
@@ -1156,6 +1162,165 @@ CREATE INDEX idx_uf_pending      ON undeposited_funds_entries(bank_account_id, s
   WHERE status = 'pending_deposit';
 
 -- ============================================================================
+-- 50. BASIQ CONNECTIONS  (Prompt 3 — one row per CDR consent per OC)
+-- ----------------------------------------------------------------------------
+-- Tracks the lifecycle of a Basiq consent from first grant through
+-- expiry / reauth / revocation. An OC typically has one active connection
+-- at a time; expired/revoked rows are retained for audit.
+--
+-- basiq_external_connection_id holds Basiq's connection string (TEXT) —
+-- named distinctly from bank_accounts.basiq_connection_id (our internal
+-- UUID FK pointing at this row) to keep the two identifiers visually
+-- unambiguous in queries and code.
+-- ============================================================================
+CREATE TABLE basiq_connections (
+  id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+  subdivision_id UUID NOT NULL REFERENCES subdivisions(id) ON DELETE CASCADE,
+
+  -- Basiq-side identifiers (external, issued by Basiq).
+  basiq_user_id                TEXT NOT NULL,       -- Basiq's user ID for this OC
+  basiq_external_connection_id TEXT NOT NULL,       -- Basiq's connection ID for this bank link
+  basiq_institution_id         TEXT NOT NULL,       -- e.g. "AU00000" for CBA
+
+  -- Human-readable
+  institution_name TEXT NOT NULL,
+  institution_short_name TEXT,
+
+  -- Lifecycle. The CHECK enforces the allowed value set only; legal
+  -- transitions are enforced in application code (server actions). For
+  -- reference, with triggers:
+  --   pending → active    : manager completes consent in Basiq UI
+  --   pending → failed    : consent declined / session expired
+  --   active  → syncing   : force-sync or scheduled poll in progress
+  --   active  → expired   : 12-month auto-expiry, OR Basiq returns
+  --                         consent_required on a read
+  --   active  → revoked   : consumer revokes via Basiq dashboard, OR
+  --                         bank revokes server-side
+  --   active  → failed    : permanent error (account closed, API
+  --                         rejection on non-consent grounds, etc.)
+  --   syncing → active    : sync completes successfully
+  --   syncing → failed    : sync fails with unrecoverable error
+  --   expired → active    : manager reauthorises via initiateReauth
+  --   revoked → active    : manual reconnect (new consent flow)
+  --   failed  → active    : manual intervention only — fix root cause
+  --                         then reconnect
+  -- 'syncing' is a transient marker for an in-flight sync; every other
+  -- stable state is a terminal branch until a user or scheduler action
+  -- moves it.
+  status TEXT NOT NULL CHECK (status IN (
+    'pending',          -- consent UI opened, not yet completed
+    'active',           -- consent granted, data flowing
+    'expired',          -- 12-month consent expired
+    'revoked',          -- revoked by consumer or bank
+    'failed',           -- permanent error (account closed, etc.)
+    'syncing'           -- transient state during active sync
+  )),
+
+  -- Consent tracking
+  consent_granted_at TIMESTAMPTZ,
+  consent_expires_at TIMESTAMPTZ,                   -- consent_granted_at + 12 months
+  last_reauth_prompt_sent_at TIMESTAMPTZ,
+
+  -- Sync tracking
+  last_sync_at             TIMESTAMPTZ,
+  last_sync_error          TEXT,
+  last_webhook_received_at TIMESTAMPTZ,
+
+  -- Nominated rep (audit only; platform does not enforce).
+  nominated_representative_name       TEXT,
+  nominated_representative_profile_id UUID REFERENCES profiles(id),
+
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  created_by UUID NOT NULL REFERENCES profiles(id),
+  updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+CREATE INDEX idx_basiq_connections_subdivision ON basiq_connections(subdivision_id);
+CREATE INDEX idx_basiq_connections_status      ON basiq_connections(status)
+  WHERE status IN ('active', 'pending');
+CREATE INDEX idx_basiq_connections_expires     ON basiq_connections(consent_expires_at)
+  WHERE status = 'active';
+CREATE UNIQUE INDEX idx_basiq_connections_external_id
+  ON basiq_connections(basiq_external_connection_id);
+
+-- Forward FK from bank_accounts (declared earlier) to this table.
+ALTER TABLE bank_accounts ADD CONSTRAINT fk_bank_accounts_basiq_connection
+  FOREIGN KEY (basiq_connection_id) REFERENCES basiq_connections(id) ON DELETE SET NULL;
+
+-- ============================================================================
+-- 51. BASIQ REAUTH NOTIFICATIONS  (Prompt 3 — idempotency ledger for reminders)
+-- ----------------------------------------------------------------------------
+-- UNIQUE(connection, type) guarantees each reminder in the 30/14/7/3/1-day
+-- cadence + expired + gap_reconciliation sends once per consent lifecycle.
+-- ============================================================================
+CREATE TABLE basiq_reauth_notifications (
+  id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+  basiq_connection_id UUID NOT NULL REFERENCES basiq_connections(id) ON DELETE CASCADE,
+  notification_type TEXT NOT NULL CHECK (notification_type IN (
+    'reauth_30d', 'reauth_14d', 'reauth_7d', 'reauth_3d', 'reauth_1d',
+    'expired', 'gap_reconciliation'
+  )),
+  sent_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  profile_id UUID NOT NULL REFERENCES profiles(id),
+  UNIQUE (basiq_connection_id, notification_type)
+);
+
+CREATE INDEX idx_basiq_reauth_notifications_connection
+  ON basiq_reauth_notifications(basiq_connection_id);
+
+-- ============================================================================
+-- 52. BASIQ GAP REPORTS  (Prompt 3 — one row per late-reauth gap)
+-- ============================================================================
+CREATE TABLE basiq_gap_reports (
+  id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+  basiq_connection_id UUID NOT NULL REFERENCES basiq_connections(id) ON DELETE CASCADE,
+  subdivision_id      UUID NOT NULL REFERENCES subdivisions(id) ON DELETE CASCADE,
+
+  gap_start_at TIMESTAMPTZ NOT NULL,
+  gap_end_at   TIMESTAMPTZ NOT NULL,
+  gap_duration_hours INT GENERATED ALWAYS AS
+    ((EXTRACT(EPOCH FROM (gap_end_at - gap_start_at)) / 3600)::INT) STORED,
+
+  backfilled_transaction_count INT NOT NULL DEFAULT 0,
+  auto_matched_count           INT NOT NULL DEFAULT 0,
+  manual_review_count          INT NOT NULL DEFAULT 0,
+
+  arrears_notifications_during_gap INT     DEFAULT 0,
+  committee_notified               BOOLEAN DEFAULT FALSE,  -- set when gap > 30 days
+
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+CREATE INDEX idx_basiq_gap_reports_subdivision ON basiq_gap_reports(subdivision_id);
+CREATE INDEX idx_basiq_gap_reports_connection  ON basiq_gap_reports(basiq_connection_id);
+
+-- ============================================================================
+-- 53. SUBDIVISION NOTIFICATION SUPPRESSIONS  (Prompt 3 — 48h arrears pause etc.)
+-- ----------------------------------------------------------------------------
+-- Queried by arrears-email flows (Prompt 6 consumers) before sending.
+-- Multiple active rows per subdivision are legitimate (overlapping
+-- suppressions); readers filter WHERE suppressed_until > NOW().
+-- ============================================================================
+CREATE TABLE subdivision_notification_suppressions (
+  id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+  subdivision_id UUID NOT NULL REFERENCES subdivisions(id) ON DELETE CASCADE,
+  suppression_type TEXT NOT NULL CHECK (suppression_type IN (
+    'arrears_post_gap_reauth',
+    'other_placeholder'
+  )),
+  suppressed_until TIMESTAMPTZ NOT NULL,
+  reason TEXT,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+-- Full index (not partial): Postgres forbids volatile functions like NOW()
+-- in index predicates (must be IMMUTABLE). Indexing every row is cheap for
+-- this table and the planner still uses the index efficiently for the
+-- query-time filter `WHERE suppressed_until > NOW()`.
+CREATE INDEX idx_suppressions_subdivision_active
+  ON subdivision_notification_suppressions(subdivision_id, suppressed_until);
+
+-- ============================================================================
 -- TRIGGERS
 -- ============================================================================
 
@@ -1215,6 +1380,7 @@ CREATE TRIGGER trg_updated_at_maintenance_requests BEFORE UPDATE ON maintenance_
 CREATE TRIGGER trg_updated_at_complaints          BEFORE UPDATE ON complaints          FOR EACH ROW EXECUTE FUNCTION update_updated_at();
 CREATE TRIGGER trg_updated_at_escalation_instances BEFORE UPDATE ON escalation_instances FOR EACH ROW EXECUTE FUNCTION update_updated_at();
 CREATE TRIGGER trg_updated_at_charge_groups       BEFORE UPDATE ON charge_groups       FOR EACH ROW EXECUTE FUNCTION update_updated_at();
+CREATE TRIGGER trg_updated_at_basiq_connections   BEFORE UPDATE ON basiq_connections   FOR EACH ROW EXECUTE FUNCTION update_updated_at();
 
 -- Seed a zero-balance lot_ledger_state row whenever a new lot is inserted.
 CREATE OR REPLACE FUNCTION create_lot_trigger_ledger_state()
@@ -2422,6 +2588,166 @@ END;
 $$;
 
 -- ============================================================================
+-- BASIQ RPCs  (Prompt 3)
+-- ----------------------------------------------------------------------------
+-- Two RPCs only. Basiq API calls can't happen inside Postgres, so the rest
+-- of the Basiq pipeline (consent start/complete, poll, webhook dispatch,
+-- gap reconciliation) lives in server actions.
+-- ============================================================================
+
+-- rpc_insert_basiq_transaction: idempotent insert of a Basiq-sourced
+-- bank transaction. If basiq_transaction_id already exists, returns the
+-- existing row with was_duplicate=true (silent — no audit entry for
+-- duplicates, to avoid log noise from webhook replays). On first insert,
+-- creates the bank_transactions row and writes audit_log.
+--
+-- Callers: webhook handler, polling job, force-sync. The caller is
+-- responsible for firing auto-match (application layer — this RPC never
+-- calls rpc_reconcile_bank_transaction).
+CREATE OR REPLACE FUNCTION rpc_insert_basiq_transaction(
+  p_bank_account_id      uuid,
+  p_basiq_transaction_id text,
+  p_transaction_date     date,
+  p_amount               numeric,
+  p_description          text,
+  p_balance              numeric,
+  p_basiq_raw            jsonb,
+  p_performed_by         uuid
+)
+RETURNS jsonb
+LANGUAGE plpgsql
+AS $$
+DECLARE
+  v_existing_id    uuid;
+  v_inserted_id    uuid;
+  v_subdivision_id uuid;
+BEGIN
+  IF p_basiq_transaction_id IS NULL OR length(trim(p_basiq_transaction_id)) = 0 THEN
+    RAISE EXCEPTION 'rpc_insert_basiq_transaction: basiq_transaction_id is required';
+  END IF;
+
+  -- Defensive payload size check: real Basiq payloads are a few KB. Anything
+  -- ≥ 20KB points at a malformed caller or an attack surface, not a
+  -- legitimate transaction. Reject loudly so it lands in the application
+  -- error path (and is surfaced in the audit log by the caller's wrapper).
+  IF p_basiq_raw IS NOT NULL AND octet_length(p_basiq_raw::text) > 20000 THEN
+    RAISE EXCEPTION 'rpc_insert_basiq_transaction: basiq_raw payload exceeds 20KB limit (got % bytes)',
+      octet_length(p_basiq_raw::text);
+  END IF;
+
+  -- Duplicate check via the UNIQUE index on basiq_transaction_id.
+  SELECT id INTO v_existing_id
+    FROM bank_transactions
+   WHERE basiq_transaction_id = p_basiq_transaction_id
+   LIMIT 1;
+
+  IF v_existing_id IS NOT NULL THEN
+    RETURN jsonb_build_object(
+      'bank_transaction_id', v_existing_id,
+      'was_duplicate',       true
+    );
+  END IF;
+
+  SELECT subdivision_id INTO v_subdivision_id
+    FROM bank_accounts
+   WHERE id = p_bank_account_id;
+  IF v_subdivision_id IS NULL THEN
+    RAISE EXCEPTION 'rpc_insert_basiq_transaction: bank_account % not found', p_bank_account_id;
+  END IF;
+
+  INSERT INTO bank_transactions (
+    bank_account_id, source, basiq_transaction_id, transaction_date,
+    amount, description, balance, basiq_raw, match_status
+  )
+  VALUES (
+    p_bank_account_id, 'basiq', p_basiq_transaction_id, p_transaction_date,
+    p_amount, p_description, p_balance, p_basiq_raw, 'unmatched'
+  )
+  RETURNING id INTO v_inserted_id;
+
+  INSERT INTO audit_log (
+    profile_id, subdivision_id, action, entity_type, entity_id, after_state, metadata
+  )
+  VALUES (
+    p_performed_by,
+    v_subdivision_id,
+    'bank_transaction.imported_from_basiq',
+    'bank_transaction',
+    v_inserted_id,
+    jsonb_build_object(
+      'bank_account_id',      p_bank_account_id,
+      'transaction_date',     p_transaction_date,
+      'amount',               p_amount,
+      'description',          p_description,
+      'basiq_transaction_id', p_basiq_transaction_id
+    ),
+    jsonb_build_object('source', 'basiq')
+  );
+
+  RETURN jsonb_build_object(
+    'bank_transaction_id', v_inserted_id,
+    'was_duplicate',       false
+  );
+END;
+$$;
+
+-- rpc_mark_basiq_connection_expired: idempotent state flip to 'expired'.
+-- Called from the hourly-expiry-check scheduled job, the webhook handler
+-- on consent.expired events, and the force-sync path when Basiq returns
+-- consent_required.
+CREATE OR REPLACE FUNCTION rpc_mark_basiq_connection_expired(
+  p_basiq_connection_id uuid,
+  p_reason              text,
+  p_performed_by        uuid
+)
+RETURNS jsonb
+LANGUAGE plpgsql
+AS $$
+DECLARE
+  v_conn   basiq_connections%ROWTYPE;
+  v_before jsonb;
+  v_after  jsonb;
+BEGIN
+  SELECT * INTO v_conn FROM basiq_connections WHERE id = p_basiq_connection_id FOR UPDATE;
+  IF NOT FOUND THEN
+    RAISE EXCEPTION 'rpc_mark_basiq_connection_expired: connection % not found', p_basiq_connection_id;
+  END IF;
+
+  IF v_conn.status = 'expired' THEN
+    -- Idempotent: already expired, no-op.
+    RETURN jsonb_build_object('ok', true, 'already_expired', true);
+  END IF;
+
+  v_before := to_jsonb(v_conn);
+
+  UPDATE basiq_connections
+     SET status          = 'expired',
+         last_sync_error = COALESCE(p_reason, 'Consent expired'),
+         updated_at      = NOW()
+   WHERE id = p_basiq_connection_id;
+
+  SELECT to_jsonb(c) INTO v_after FROM basiq_connections c WHERE c.id = p_basiq_connection_id;
+
+  INSERT INTO audit_log (
+    profile_id, subdivision_id, action, entity_type, entity_id,
+    before_state, after_state, metadata
+  )
+  VALUES (
+    p_performed_by,
+    v_conn.subdivision_id,
+    'basiq_connection.marked_expired',
+    'basiq_connection',
+    p_basiq_connection_id,
+    v_before,
+    v_after,
+    jsonb_build_object('reason', p_reason)
+  );
+
+  RETURN jsonb_build_object('ok', true, 'already_expired', false);
+END;
+$$;
+
+-- ============================================================================
 -- VIEWS  (Prompt 1)
 -- ----------------------------------------------------------------------------
 -- v_levy_notice_status: derived effective status of a levy notice from the
@@ -2525,6 +2851,10 @@ ALTER TABLE lot_ledger_entries           ENABLE ROW LEVEL SECURITY;
 ALTER TABLE lot_ledger_state             ENABLE ROW LEVEL SECURITY;
 ALTER TABLE reconciliation_matches       ENABLE ROW LEVEL SECURITY;
 ALTER TABLE undeposited_funds_entries    ENABLE ROW LEVEL SECURITY;
+ALTER TABLE basiq_connections                     ENABLE ROW LEVEL SECURITY;
+ALTER TABLE basiq_reauth_notifications            ENABLE ROW LEVEL SECURITY;
+ALTER TABLE basiq_gap_reports                     ENABLE ROW LEVEL SECURITY;
+ALTER TABLE subdivision_notification_suppressions ENABLE ROW LEVEL SECURITY;
 
 -- Audit log is immutable — INSERT only.
 CREATE POLICY "audit_log_insert_only" ON audit_log FOR INSERT WITH CHECK (true);
