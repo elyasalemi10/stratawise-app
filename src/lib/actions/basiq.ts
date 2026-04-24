@@ -1255,6 +1255,247 @@ export async function getBasiqConnectionDetails(
 }
 
 // ============================================================================
+// 6b. GAP REPORT reads + dismissal
+// ============================================================================
+
+export interface GapReportBannerData {
+  id: string;
+  gapStartAt: string;
+  gapEndAt: string;
+  gapDurationHours: number;
+  backfilledTransactionCount: number;
+  autoMatchedCount: number;
+  manualReviewCount: number;
+  suppressionUntil: string | null;
+}
+
+export async function getActiveGapReportForSubdivision(
+  subdivisionId: string,
+): Promise<GapReportBannerData | null> {
+  await requireSubdivisionAccess(subdivisionId);
+  const supabase = createServerClient();
+
+  const { data } = await supabase
+    .from("basiq_gap_reports")
+    .select(
+      "id, gap_start_at, gap_end_at, gap_duration_hours, backfilled_transaction_count, auto_matched_count, manual_review_count",
+    )
+    .eq("subdivision_id", subdivisionId)
+    .is("dismissed_at", null)
+    .order("created_at", { ascending: false })
+    .limit(1)
+    .maybeSingle();
+  if (!data) return null;
+
+  // Also fetch the current arrears suppression expiry (the banner tells the
+  // manager when arrears notifications resume).
+  const { data: suppression } = await supabase
+    .from("subdivision_notification_suppressions")
+    .select("suppressed_until")
+    .eq("subdivision_id", subdivisionId)
+    .eq("suppression_type", "arrears_post_gap_reauth")
+    .gt("suppressed_until", new Date().toISOString())
+    .order("created_at", { ascending: false })
+    .limit(1)
+    .maybeSingle();
+
+  const row = data as {
+    id: string;
+    gap_start_at: string;
+    gap_end_at: string;
+    gap_duration_hours: number;
+    backfilled_transaction_count: number;
+    auto_matched_count: number;
+    manual_review_count: number;
+  };
+  return {
+    id: row.id,
+    gapStartAt: row.gap_start_at,
+    gapEndAt: row.gap_end_at,
+    gapDurationHours: row.gap_duration_hours,
+    backfilledTransactionCount: row.backfilled_transaction_count,
+    autoMatchedCount: row.auto_matched_count,
+    manualReviewCount: row.manual_review_count,
+    suppressionUntil:
+      (suppression as { suppressed_until?: string } | null)?.suppressed_until ??
+      null,
+  };
+}
+
+export interface GapReportPageData {
+  report: {
+    id: string;
+    subdivisionId: string;
+    connectionId: string;
+    institutionName: string;
+    nominatedRepresentativeName: string | null;
+    gapStartAt: string;
+    gapEndAt: string;
+    gapDurationHours: number;
+    backfilledTransactionCount: number;
+    autoMatchedCount: number;
+    manualReviewCount: number;
+    arrearsNotificationsDuringGap: number;
+    committeeNotified: boolean;
+    dismissedAt: string | null;
+    createdAt: string;
+  };
+  suppressionUntil: string | null;
+  transactions: Array<{
+    id: string;
+    transactionDate: string;
+    amount: number;
+    description: string | null;
+    matchStatus: string;
+    bankAccountId: string;
+  }>;
+}
+
+export async function getGapReportPageData(
+  reportId: string,
+  subdivisionId: string,
+): Promise<GapReportPageData | null> {
+  await requireSubdivisionAccess(subdivisionId);
+  const supabase = createServerClient();
+
+  const { data: report } = await supabase
+    .from("basiq_gap_reports")
+    .select("*")
+    .eq("id", reportId)
+    .eq("subdivision_id", subdivisionId) // scope guard — 404 if wrong subdivision
+    .single();
+  if (!report) return null;
+
+  const { data: conn } = await supabase
+    .from("basiq_connections")
+    .select(
+      "id, institution_name, nominated_representative_name",
+    )
+    .eq("id", report.basiq_connection_id)
+    .single();
+
+  // Backfilled transactions = source='basiq', transaction_date within gap
+  // window, on a bank_account linked to the gap report's connection.
+  const { data: accountIds } = await supabase
+    .from("bank_accounts")
+    .select("id")
+    .eq("subdivision_id", subdivisionId)
+    .eq("basiq_connection_id", report.basiq_connection_id);
+  const ids = (accountIds ?? []).map((a) => (a as { id: string }).id);
+
+  let transactions: GapReportPageData["transactions"] = [];
+  if (ids.length > 0) {
+    const { data: txRows } = await supabase
+      .from("bank_transactions")
+      .select(
+        "id, transaction_date, amount, description, match_status, bank_account_id",
+      )
+      .eq("source", "basiq")
+      .in("bank_account_id", ids)
+      .gte("transaction_date", report.gap_start_at.slice(0, 10))
+      .lte("transaction_date", report.gap_end_at.slice(0, 10))
+      .order("transaction_date", { ascending: false });
+    transactions = (txRows ?? []).map((r) => {
+      const row = r as {
+        id: string;
+        transaction_date: string;
+        amount: string | number;
+        description: string | null;
+        match_status: string;
+        bank_account_id: string;
+      };
+      return {
+        id: row.id,
+        transactionDate: row.transaction_date,
+        amount: Number(row.amount),
+        description: row.description,
+        matchStatus: row.match_status,
+        bankAccountId: row.bank_account_id,
+      };
+    });
+  }
+
+  const { data: suppression } = await supabase
+    .from("subdivision_notification_suppressions")
+    .select("suppressed_until")
+    .eq("subdivision_id", subdivisionId)
+    .eq("suppression_type", "arrears_post_gap_reauth")
+    .order("created_at", { ascending: false })
+    .limit(1)
+    .maybeSingle();
+
+  return {
+    report: {
+      id: report.id,
+      subdivisionId: report.subdivision_id,
+      connectionId: report.basiq_connection_id,
+      institutionName:
+        (conn as { institution_name?: string } | null)?.institution_name ??
+        "—",
+      nominatedRepresentativeName:
+        (conn as { nominated_representative_name?: string | null } | null)
+          ?.nominated_representative_name ?? null,
+      gapStartAt: report.gap_start_at,
+      gapEndAt: report.gap_end_at,
+      gapDurationHours: report.gap_duration_hours,
+      backfilledTransactionCount: report.backfilled_transaction_count,
+      autoMatchedCount: report.auto_matched_count,
+      manualReviewCount: report.manual_review_count,
+      arrearsNotificationsDuringGap: report.arrears_notifications_during_gap ?? 0,
+      committeeNotified: !!report.committee_notified,
+      dismissedAt: report.dismissed_at,
+      createdAt: report.created_at,
+    },
+    suppressionUntil:
+      (suppression as { suppressed_until?: string } | null)?.suppressed_until ??
+      null,
+    transactions,
+  };
+}
+
+export async function dismissGapReport(
+  reportId: string,
+): Promise<{ success?: true; error?: string }> {
+  try {
+    const supabase = createServerClient();
+    const { data: report } = await supabase
+      .from("basiq_gap_reports")
+      .select("subdivision_id, dismissed_at")
+      .eq("id", reportId)
+      .single();
+    if (!report) return { error: "gap report not found" };
+    if (report.dismissed_at) return { success: true }; // idempotent
+
+    const profile = await requireCompanyRole();
+    await requireSubdivisionAccess(report.subdivision_id);
+
+    const { error } = await supabase
+      .from("basiq_gap_reports")
+      .update({
+        dismissed_at: new Date().toISOString(),
+        dismissed_by: profile.id,
+      })
+      .eq("id", reportId);
+    if (error) return { error: error.message };
+
+    await supabase.from("audit_log").insert({
+      profile_id: profile.id,
+      subdivision_id: report.subdivision_id,
+      action: "basiq_gap_report.dismissed",
+      entity_type: "basiq_gap_report",
+      entity_id: reportId,
+    });
+
+    revalidatePath(
+      `/subdivisions/${report.subdivision_id}/finance/bank-account`,
+    );
+    return { success: true };
+  } catch (e) {
+    return { error: (e as Error).message };
+  }
+}
+
+// ============================================================================
 // 7. WEBHOOK EVENT DISPATCHER
 // ============================================================================
 

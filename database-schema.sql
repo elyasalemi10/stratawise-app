@@ -1288,11 +1288,20 @@ CREATE TABLE basiq_gap_reports (
   arrears_notifications_during_gap INT     DEFAULT 0,
   committee_notified               BOOLEAN DEFAULT FALSE,  -- set when gap > 30 days
 
+  -- Dismissal is team-wide (per-report, not per-user): clicking Dismiss
+  -- on the bank-account banner hides it for everyone on the subdivision.
+  -- dismissed_by records the actor for audit.
+  dismissed_at TIMESTAMPTZ,
+  dismissed_by UUID REFERENCES profiles(id),
+
   created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 
 CREATE INDEX idx_basiq_gap_reports_subdivision ON basiq_gap_reports(subdivision_id);
 CREATE INDEX idx_basiq_gap_reports_connection  ON basiq_gap_reports(basiq_connection_id);
+CREATE INDEX idx_basiq_gap_reports_undismissed
+  ON basiq_gap_reports(subdivision_id, created_at DESC)
+  WHERE dismissed_at IS NULL;
 
 -- ============================================================================
 -- 53. SUBDIVISION NOTIFICATION SUPPRESSIONS  (Prompt 3 — 48h arrears pause etc.)
