@@ -421,6 +421,181 @@ export async function listBasiqConnectionsForSubdivision(
   });
 }
 
+// ── Feed-state for a single bank account (bank-account page panel) ──────
+
+export type FeedPanelState =
+  | "not_connected"
+  | "active"
+  | "expiring_soon"
+  | "expired"
+  | "revoked"
+  | "failed"
+  | "syncing"
+  | "pending";
+
+export interface FeedPanelResult {
+  state: FeedPanelState;
+  connection: {
+    id: string;
+    institutionName: string;
+    institutionShortName: string | null;
+    institutionId: string;
+    consentGrantedAt: string | null;
+    consentExpiresAt: string | null;
+    daysUntilExpiry: number | null;
+    lastSyncAt: string | null;
+    lastSyncError: string | null;
+    nominatedRepresentativeName: string | null;
+  } | null;
+  linkedBankAccounts: Array<{
+    id: string;
+    accountName: string;
+    fundType: "administrative" | "capital_works";
+  }>;
+}
+
+export async function getFeedStateForBankAccount(
+  bankAccountId: string,
+): Promise<FeedPanelResult> {
+  const supabase = createServerClient();
+  const { data: account } = await supabase
+    .from("bank_accounts")
+    .select("id, subdivision_id, basiq_connection_id")
+    .eq("id", bankAccountId)
+    .single();
+  if (!account) {
+    return {
+      state: "not_connected",
+      connection: null,
+      linkedBankAccounts: [],
+    };
+  }
+  await requireSubdivisionAccess(account.subdivision_id);
+
+  if (!account.basiq_connection_id) {
+    return {
+      state: "not_connected",
+      connection: null,
+      linkedBankAccounts: [],
+    };
+  }
+
+  const { data: conn } = await supabase
+    .from("basiq_connections")
+    .select(
+      "id, status, institution_name, institution_short_name, basiq_institution_id, consent_granted_at, consent_expires_at, last_sync_at, last_sync_error, nominated_representative_name",
+    )
+    .eq("id", account.basiq_connection_id)
+    .single();
+  if (!conn) {
+    return {
+      state: "not_connected",
+      connection: null,
+      linkedBankAccounts: [],
+    };
+  }
+
+  const { data: siblings } = await supabase
+    .from("bank_accounts")
+    .select("id, account_name, fund_type")
+    .eq("basiq_connection_id", conn.id)
+    .order("created_at", { ascending: true });
+
+  const state = deriveFeedState(conn.status, conn.consent_expires_at);
+  const daysUntilExpiry = conn.consent_expires_at
+    ? Math.floor(
+        (new Date(conn.consent_expires_at).getTime() - Date.now()) /
+          (24 * 60 * 60 * 1000),
+      )
+    : null;
+
+  return {
+    state,
+    connection: {
+      id: conn.id,
+      institutionName: conn.institution_name,
+      institutionShortName: conn.institution_short_name,
+      institutionId: conn.basiq_institution_id,
+      consentGrantedAt: conn.consent_granted_at,
+      consentExpiresAt: conn.consent_expires_at,
+      daysUntilExpiry,
+      lastSyncAt: conn.last_sync_at,
+      lastSyncError: conn.last_sync_error,
+      nominatedRepresentativeName: conn.nominated_representative_name,
+    },
+    linkedBankAccounts: (siblings ?? []).map((s) => {
+      const row = s as {
+        id: string;
+        account_name: string;
+        fund_type: "administrative" | "capital_works";
+      };
+      return {
+        id: row.id,
+        accountName: row.account_name,
+        fundType: row.fund_type,
+      };
+    }),
+  };
+}
+
+function deriveFeedState(
+  status: BasiqConnectionStatus,
+  consentExpiresAt: string | null,
+): FeedPanelState {
+  if (status === "pending") return "pending";
+  if (status === "expired") return "expired";
+  if (status === "revoked") return "revoked";
+  if (status === "failed") return "failed";
+  if (status === "syncing") return "syncing";
+  // status === 'active' — refine by expiry window
+  if (consentExpiresAt) {
+    const diffMs = new Date(consentExpiresAt).getTime() - Date.now();
+    const days = Math.floor(diffMs / (24 * 60 * 60 * 1000));
+    if (days < 0) return "expired";
+    if (days <= 30) return "expiring_soon";
+  }
+  return "active";
+}
+
+// ── Release a single bank_account from its connection (for Reconnect) ───
+// Nulls the FK without touching the basiq_connections row (keeps audit).
+
+export async function releaseBankAccountFromConnection(
+  bankAccountId: string,
+): Promise<{ success?: true; error?: string }> {
+  try {
+    const supabase = createServerClient();
+    const { data: acct } = await supabase
+      .from("bank_accounts")
+      .select("subdivision_id")
+      .eq("id", bankAccountId)
+      .single();
+    if (!acct) return { error: "bank account not found" };
+    const profile = await requireCompanyRole();
+    await requireSubdivisionAccess(acct.subdivision_id);
+
+    const { error } = await supabase
+      .from("bank_accounts")
+      .update({ basiq_connection_id: null, basiq_account_id: null })
+      .eq("id", bankAccountId);
+    if (error) return { error: error.message };
+
+    await supabase.from("audit_log").insert({
+      profile_id: profile.id,
+      subdivision_id: acct.subdivision_id,
+      action: "bank_account.released_from_basiq_connection",
+      entity_type: "bank_account",
+      entity_id: bankAccountId,
+      metadata: { reason: "manual reconnect" },
+    });
+
+    revalidatePath(`/subdivisions/${acct.subdivision_id}/finance/bank-account`);
+    return { success: true };
+  } catch (e) {
+    return { error: (e as Error).message };
+  }
+}
+
 export async function getBasiqConnectionStatus(
   subdivisionId: string,
 ): Promise<BasiqConnectionStatusResult> {
@@ -1041,8 +1216,9 @@ export async function getBasiqConnectionDetails(
 
   const { data: accounts } = await supabase
     .from("bank_accounts")
-    .select("id")
-    .eq("basiq_connection_id", connectionId);
+    .select("id, account_name, fund_type")
+    .eq("basiq_connection_id", connectionId)
+    .order("created_at", { ascending: true });
 
   return {
     id: conn.id,
@@ -1063,9 +1239,18 @@ export async function getBasiqConnectionDetails(
       conn.nominated_representative_profile_id,
     createdAt: conn.created_at,
     createdBy: conn.created_by,
-    linkedBankAccountIds: (accounts ?? []).map(
-      (a) => (a as { id: string }).id,
-    ),
+    linkedBankAccounts: (accounts ?? []).map((a) => {
+      const row = a as {
+        id: string;
+        account_name: string;
+        fund_type: "administrative" | "capital_works";
+      };
+      return {
+        id: row.id,
+        accountName: row.account_name,
+        fundType: row.fund_type,
+      };
+    }),
   };
 }
 

@@ -193,7 +193,11 @@ export interface BasiqConnectionDetail {
   nominatedRepresentativeProfileId: string | null;
   createdAt: string;
   createdBy: string;
-  linkedBankAccountIds: string[];
+  linkedBankAccounts: Array<{
+    id: string;
+    accountName: string;
+    fundType: "administrative" | "capital_works";
+  }>;
 }
 
 // ─── Form schemas ──────────────────────────────────────────────

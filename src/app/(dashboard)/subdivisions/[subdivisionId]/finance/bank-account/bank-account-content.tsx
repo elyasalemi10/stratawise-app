@@ -6,7 +6,7 @@ import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
 import Link from "next/link";
 import { toast } from "sonner";
-import { Pencil, Check, Upload, Landmark, Info } from "lucide-react";
+import { Pencil, Check, Upload, Landmark } from "lucide-react";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -34,6 +34,7 @@ import { getBankTransactions } from "@/lib/actions/bank-transactions";
 import { getUndepositedEntries, voidUndepositedReceipt } from "@/lib/actions/reconciliation";
 import { RecordCashReceiptDialog } from "@/components/shared/record-cash-receipt-dialog";
 import { AddManualTransactionDialog } from "@/components/shared/add-manual-transaction-dialog";
+import { BankFeedPanel } from "./bank-feed-panel";
 import type { BankAccountSummary, BankTransactionRecord } from "@/lib/validations/bank-transactions";
 import type { UndepositedFundsEntry } from "@/lib/validations/reconciliation";
 import { ImportCsvDialog } from "./import-csv-dialog";
@@ -153,17 +154,6 @@ export function BankAccountContent({
         <div className="flex items-center justify-between mb-3">
           <h3 className="text-sm font-semibold text-foreground">Bank transactions</h3>
         </div>
-        <div className="flex items-start gap-2 rounded-md border border-primary/30 bg-primary/5 p-3 text-xs text-foreground mb-4">
-          <Info className="h-4 w-4 text-primary mt-0.5 shrink-0" />
-          <div>
-            <div className="font-medium">Automatic bank feeds coming soon</div>
-            <div className="text-muted-foreground mt-0.5">
-              While we finalise Basiq integration, export a CSV from your bank and import it here.
-              Transactions with a levy reference (e.g. <span className="font-mono">LEV-2026-000001</span>) in the description are auto-matched.
-            </div>
-          </div>
-        </div>
-
         {bankAccounts.length === 0 ? (
           <Card>
             <CardContent className="py-10 text-center">
@@ -266,6 +256,11 @@ function BankAccountCard({
             </Button>
           </div>
         </div>
+
+        <BankFeedPanel
+          subdivisionId={subdivisionId}
+          bankAccountId={account.id}
+        />
 
         <div className="grid grid-cols-3 gap-4 mb-5">
           <Metric label="Current balance" value={formatCurrency(account.current_balance)} primary />

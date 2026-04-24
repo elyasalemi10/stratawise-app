@@ -145,6 +145,12 @@ Small fixes to batch before going live. Non-blocking for feature work.
 
 - Trigger.dev transitive high-severity deps (4 entries): @trigger.dev/core, @trigger.dev/sdk, @opentelemetry/host-metrics, systeminformation. Acceptable at integration time — worker-runtime transitives, none on application request paths. systeminformation flaw is Windows-only (we deploy Linux). Monitor Trigger.dev SDK updates; upgrade when patched releases land.
 
+- Add consecutive_sync_failures column to basiq_connections + update poll/force-sync to increment/reset it. Surface on bank-account feed panel when ≥2. Rule: 1 error shows only in Manage dialog; 2+ consecutive errors render an additional warning row on the feed panel itself ("⚠ Last {N} syncs failed — {translated error}"). Deferred from PP3-B to avoid a schema round-trip mid-UI work; the panel's translation helper already exists and can gain the counter branch without refactor.
+
+- Feed-panel "Details" expandable for raw error text is present on states revoked/failed via a native `<details>`/`<summary>` element. Matches the existing audit-trail expandable in the ledger-entry drawer. Polish path (also tracked in Prompt 8): replace both with a shadcn-styled Collapsible for visual consistency.
+
+- Pre-existing lint errors in unrelated files (20 as of the PP3-B commit): six `react-hooks/set-state-in-effect` hits in wizard/dashboard client components using the standard data-fetch-on-mount pattern; one `react-hooks/exhaustive-deps` warning; a cluster of `@typescript-eslint/no-explicit-any` in form.tsx + step-4-lots.tsx; `react-compiler/static-components` violation in phone-input.tsx (setState cascade) and document-manager.tsx. None introduced by Prompts 1–3. Triage individually before launch; most are five-minute refactors.
+
 ## From Prompt 8
 
 - **Audit trail in ledger entry drawer — pagination:** Query capped at 100
