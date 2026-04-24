@@ -495,7 +495,10 @@ export async function createLevyBatch(
   const createdLevies: { id: string; lotId: string; refNum: string; items: typeof data.lots[0]["items"] }[] = [];
 
   for (const lot of data.lots) {
-    const { data: refNum } = await supabase.rpc("next_reference_number", { prefix: "LEV" });
+    const { data: refNum } = await supabase.rpc("next_reference_number", {
+      p_prefix: "LEV",
+      p_subdivision_id: subdivisionId,
+    });
     if (!refNum) continue;
 
     const { data: levy, error: levyError } = await supabase

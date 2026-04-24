@@ -40,7 +40,7 @@ Small fixes to batch before going live. Non-blocking for feature work.
   and `src/**/*.verification.ts`. Run:
   `grep -rn "__setUserIdResolverForVerification" src/`
   Expected:
-    - Exactly ONE file with the definition: `src/lib/auth.ts`.
+    - Exactly ONE file with the definition: `src/lib/auth-resolver.ts`.
     - At most one `*.verification.ts` file per verification script (Prompts
       2, 3, 4, 5, 6, 7 each add one). Multiple hits within a single
       verification file are fine (import + call-site + assertion probe).
@@ -162,6 +162,16 @@ Small fixes to batch before going live. Non-blocking for feature work.
 - Gap report "Arrears notifications suppressed until {timestamp}" copy renders as absolute timestamp without checking if past/future due to Server Component + React Compiler Date.now() constraints. Minor UX issue — add server-time-prop or Client Component wrapper to show correct past/future state.
 
 - Gap report backfilled transactions uses date-window heuristic on source='basiq', not true lineage. Consider linked_gap_report_id column if precise audit required.
+
+## From Prompt 4 (PP4-0 refactor)
+
+- **Operational-sequence reference format overflow:** `next_reference_number` for operational prefixes (MTG, MIN, SLEV, INV, POL, CLM, MNT, CMP, ESC) uses `lpad(seq_val::TEXT, 6, '0')`. `lpad` only pads to the minimum width; it does not truncate past 999,999. At scale a seven-digit sequence value would silently produce `MSM-PREFIX-YYYY-NNNNNNN` (seven digits), breaking any regex that assumes exactly six digits. Before launch: decide whether to widen the pad to 7, pre-validate against the six-digit Zod regex in `src/lib/validations/`, or add a guard that raises when the sequence crosses 999,999 on a given prefix. Unlikely in practice for single-tenant MSM deployments but worth naming.
+
+- **Legacy `msm_slev_seq` sequence:** Declared in `database-schema.sql` but has zero callers (`grep -rn "'SLEV'\|\"SLEV\"" src/` returns nothing). Special levies currently flow through the `LEV` prefix with `levy_type='special'`. Either wire up a caller (if we genuinely want distinct SLEV references for special levies) or drop the sequence. No functional issue today — pure dead weight.
+
+- **Legacy `payments.reference_number` UNIQUE constraint:** PP4-0 deliberately skipped altering the `payments` table because it has zero active write paths in Prompts 1-3 and is slated for removal in Prompt 7. The old single-column UNIQUE is still in place. When Prompt 7 removes the table, the constraint goes with it; if Prompt 7 decides to keep `payments` and add new write paths, re-evaluate whether the constraint should become composite `(subdivision_id, reference_number)` to match the LEV/RCP tables.
+
+- **Duplicated `detectSingleLevyReference` helper:** The same small helper (flexible regex + normalise to `LEV-{n}`) lives inline in three files: `src/lib/reconciliation/auto-match.ts`, `src/lib/actions/reconciliation.ts`, `src/lib/actions/bank-transactions.ts`. PP4-A consolidation: extract to `src/lib/reconciliation/reference.ts` (or similar) and import. Left duplicated in PP4-0 on purpose to keep the refactor commit narrow.
 
 ## From Prompt 8
 

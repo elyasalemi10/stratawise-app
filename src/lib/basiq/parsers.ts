@@ -13,8 +13,8 @@ import {
 // incrementally. Per-bank quirks (e.g. CBA's "TRANSFER FROM …" prefix, NAB's
 // all-caps, ANZ's truncation) are NOT yet encoded — we don't fabricate
 // patterns we haven't verified. Every bank currently routes to
-// `parseGeneric`, which extracts the MSM-LEV reference and (where obvious)
-// a sender identity.
+// `parseGeneric`, which extracts a normalised levy reference ("LEV-{n}")
+// and (where obvious) a sender identity.
 //
 // See PRE_LAUNCH_CLEANUP.md — each bank has a TODO listing the confirmation
 // work required before launch.
@@ -109,9 +109,10 @@ function parseBendigo(raw: BasiqTransactionPayload): ParsedBasiqDescription {
 }
 
 // ─── Generic fallback ──────────────────────────────────────────
-// Extracts the MSM-LEV reference (required for auto-match) and a best-effort
-// sender identity + BPAY CRN. Aggressive whitespace normalisation makes the
-// output stable across whichever bank produced the string.
+// Extracts a normalised levy reference "LEV-{n}" (required for auto-match)
+// and a best-effort sender identity + BPAY CRN. Aggressive whitespace
+// normalisation makes the output stable across whichever bank produced the
+// string.
 
 function parseGeneric(
   raw: BasiqTransactionPayload,
@@ -135,8 +136,17 @@ function parseGeneric(
 // ─── Extraction primitives ─────────────────────────────────────
 
 function extractLevyReference(s: string): string | null {
-  const m = s.match(LEVY_REFERENCE_REGEX);
-  return m ? m[0].toUpperCase() : null;
+  // LEVY_REFERENCE_REGEX is a /g-flagged capturing regex — iterate via
+  // matchAll so we can read the captured digit group and normalise to
+  // "LEV-{n}". Returns null if zero or multiple distinct references are
+  // present (avoids guessing between ambiguous candidates at parse time).
+  const unique = new Set<string>();
+  for (const m of s.matchAll(LEVY_REFERENCE_REGEX)) {
+    const raw = m[1] ?? m[2];
+    const n = Number.parseInt(raw, 10);
+    if (Number.isFinite(n) && n > 0) unique.add(`LEV-${n}`);
+  }
+  return unique.size === 1 ? [...unique][0] : null;
 }
 
 function extractBpayCrn(s: string): string | null {

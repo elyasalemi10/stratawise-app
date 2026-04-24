@@ -313,7 +313,8 @@ async function createFixture(): Promise<Fixture> {
   if (!batch) throw new Error("fixture: batch");
 
   const { data: ref } = await supabase.rpc("next_reference_number", {
-    prefix: "LEV",
+    p_prefix: "LEV",
+    p_subdivision_id: subdivision.id,
   });
   if (!ref) throw new Error("fixture: next_reference_number");
 
@@ -547,7 +548,7 @@ async function scenarioB3(fx: Fixture, pendingConnectionId: string) {
 }
 
 async function scenarioB4(fx: Fixture, connectionId: string) {
-  const header = "B4: force-sync inserts + auto-matches on MSM-LEV reference";
+  const header = "B4: force-sync inserts + auto-matches on LEV reference";
   try {
     const txns: BasiqTransactionPayload[] = [
       buildStubTxn(

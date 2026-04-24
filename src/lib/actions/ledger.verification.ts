@@ -166,7 +166,10 @@ async function makeLevyBatch(
 
   const noticeIds: string[] = [];
   for (const lotId of fx.lotIds) {
-    const { data: ref } = await supabase.rpc("next_reference_number", { prefix: "LEV" });
+    const { data: ref } = await supabase.rpc("next_reference_number", {
+      p_prefix: "LEV",
+      p_subdivision_id: fx.subdivisionId,
+    });
     if (!ref) throw new Error("next_reference_number returned null");
     const { data: notice, error: nErr } = await supabase
       .from("levy_notices")
@@ -573,8 +576,14 @@ async function scenario8_ExplicitReferencePayment(fx: Fixture) {
       assert(n, `S8 notice insert failed`);
       return n;
     };
-    const { data: ref1 } = await supabase.rpc("next_reference_number", { prefix: "LEV" });
-    const { data: ref2 } = await supabase.rpc("next_reference_number", { prefix: "LEV" });
+    const { data: ref1 } = await supabase.rpc("next_reference_number", {
+      p_prefix: "LEV",
+      p_subdivision_id: fx.subdivisionId,
+    });
+    const { data: ref2 } = await supabase.rpc("next_reference_number", {
+      p_prefix: "LEV",
+      p_subdivision_id: fx.subdivisionId,
+    });
     assert(ref1 && ref2, "S8 ref alloc failed");
     const n1 = await mkNotice(ref1 as string, OLDER);
     const n2 = await mkNotice(ref2 as string, NEWER);

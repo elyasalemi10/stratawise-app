@@ -50,8 +50,11 @@ export const TRANSACTION_DIRECTIONS = ["credit", "debit"] as const;
 export type TransactionDirection = (typeof TRANSACTION_DIRECTIONS)[number];
 
 const ISO_DATE = /^\d{4}-\d{2}-\d{2}$/;
-const LEVY_REFERENCE_REGEX = /^MSM-LEV-\d{4}-\d{6}$/i;
-const RECEIPT_REFERENCE_REGEX = /^MSM-RCPT-\d{4}-\d{6}$/i;
+// Strict per-OC reference format: "LEV-{n}" / "RCP-{n}" (PP4-0 refactor).
+// Free-text parsing in auto-match uses a flexible variant; form input is
+// still exact-form.
+const LEVY_REFERENCE_REGEX = /^LEV-\d+$/i;
+const RECEIPT_REFERENCE_REGEX = /^RCP-\d+$/i;
 
 // Min reason length for exclude/void/unmatch — CLAUDE.md-adjacent rule from Prompt 2 spec.
 const MIN_REASON_LEN = 10;
@@ -72,7 +75,7 @@ export const addManualBankTransactionSchema = z.object({
   reference: z
     .string()
     .trim()
-    .regex(LEVY_REFERENCE_REGEX, "Reference must be MSM-LEV-YYYY-NNNNNN")
+    .regex(LEVY_REFERENCE_REGEX, "Reference must be LEV-{n} (e.g. LEV-42)")
     .optional()
     .or(z.literal("")),
 });

@@ -47,7 +47,20 @@ function formatIssues(issues: { message: string }[]): string {
   return issues.map((i) => i.message).join("; ");
 }
 
-const REF_REGEX_GLOBAL = /\bMSM-LEV-\d{4}-\d{6}\b/gi;
+// Flexible levy-reference regex (mirrors auto-match.ts). Used for queue /
+// detail UI surfacing of a detected reference — NOT for matching decisions.
+const LEV_REF_REGEX_GLOBAL = /\b(?:lev(?:y)?\s*[-]?\s*(\d+)|(\d+)\s*[-]?\s*lev(?:y)?)\b/gi;
+
+function detectSingleLevyReference(description: string | null | undefined): string | null {
+  if (!description) return null;
+  const unique = new Set<string>();
+  for (const m of description.matchAll(LEV_REF_REGEX_GLOBAL)) {
+    const raw = m[1] ?? m[2];
+    const n = Number.parseInt(raw, 10);
+    if (Number.isFinite(n) && n > 0) unique.add(`LEV-${n}`);
+  }
+  return unique.size === 1 ? [...unique][0] : null;
+}
 
 // ============================================================================
 // READS
@@ -143,8 +156,7 @@ export async function getReconciliationQueue(
     const acct = accountMap.get(r.bank_account_id);
     const amount = Number(r.amount);
     const matched = Number(r.matched_total);
-    const detectedMatches = r.description?.match(REF_REGEX_GLOBAL) ?? [];
-    const detectedReference = detectedMatches.length === 1 ? detectedMatches[0].toUpperCase() : null;
+    const detectedReference = detectSingleLevyReference(r.description);
     return {
       id: r.id,
       bank_account_id: r.bank_account_id,
@@ -337,7 +349,7 @@ export async function getBankTransactionDetail(
 
   const amount = Number(bt.amount);
   const matchedTotal = Number(bt.matched_total);
-  const detected = bt.description?.match(REF_REGEX_GLOBAL) ?? [];
+  const detectedReference = detectSingleLevyReference(bt.description);
 
   return {
     id: bt.id,
@@ -358,7 +370,7 @@ export async function getBankTransactionDetail(
     voided_by: bt.voided_by,
     void_reason: bt.void_reason,
     excluded_reason: bt.excluded_reason,
-    detected_reference: detected.length === 1 ? detected[0].toUpperCase() : null,
+    detected_reference: detectedReference,
     imported_at: bt.imported_at,
     matches: matchRows.map((m) => {
       const led = ledgerMap.get(m.ledger_entry_id);

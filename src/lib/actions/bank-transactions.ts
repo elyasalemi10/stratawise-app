@@ -12,7 +12,22 @@ import {
   type ImportTransactionsInput,
 } from "@/lib/validations/bank-transactions";
 
-const REF_REGEX = /\bMSM-LEV-\d{4}-\d{6}\b/i;
+// Flexible levy-reference regex (mirrors auto-match.ts). Returns the
+// normalised "LEV-{n}" form when exactly one unique reference is present,
+// else null. Duplicated deliberately for PP4-0; consolidates into a shared
+// helper in PP4-A when the orchestrator lands.
+const LEV_REF_REGEX_GLOBAL = /\b(?:lev(?:y)?\s*[-]?\s*(\d+)|(\d+)\s*[-]?\s*lev(?:y)?)\b/gi;
+
+function detectSingleLevyReference(description: string | null | undefined): string | null {
+  if (!description) return null;
+  const unique = new Set<string>();
+  for (const m of description.matchAll(LEV_REF_REGEX_GLOBAL)) {
+    const raw = m[1] ?? m[2];
+    const n = Number.parseInt(raw, 10);
+    if (Number.isFinite(n) && n > 0) unique.add(`LEV-${n}`);
+  }
+  return unique.size === 1 ? [...unique][0] : null;
+}
 
 export async function getBankAccountsForSubdivision(
   subdivisionId: string
@@ -90,7 +105,7 @@ export async function getBankTransactions(
     .limit(limit);
 
   return (data ?? []).map((t) => {
-    const matchedRef = t.description ? t.description.match(REF_REGEX)?.[0] ?? null : null;
+    const matchedRef = detectSingleLevyReference(t.description);
     return {
       id: t.id,
       bank_account_id: t.bank_account_id,
@@ -155,8 +170,8 @@ export async function importBankTransactions(
   // the id/lot/fund mapping up-front.
   const candidateReferences = new Set<string>();
   for (const row of parsed.data.rows) {
-    const refs = row.description.match(/\bMSM-LEV-\d{4}-\d{6}\b/gi) ?? [];
-    if (refs.length === 1) candidateReferences.add(refs[0].toUpperCase());
+    const ref = detectSingleLevyReference(row.description);
+    if (ref) candidateReferences.add(ref);
   }
 
   const refToLevy = new Map<
@@ -210,12 +225,11 @@ export async function importBankTransactions(
     }
     summary.imported += 1;
 
-    // Auto-match eligibility: credit (amount > 0), single MSM-LEV reference in
+    // Auto-match eligibility: credit (amount > 0), single levy reference in
     // description, notice exists in this subdivision, outstanding > 0.
     if (row.amount <= 0) continue;
-    const refMatches = row.description.match(/\bMSM-LEV-\d{4}-\d{6}\b/gi) ?? [];
-    if (refMatches.length !== 1) continue;
-    const ref = refMatches[0].toUpperCase();
+    const ref = detectSingleLevyReference(row.description);
+    if (!ref) continue;
     const notice = refToLevy.get(ref);
     if (!notice) continue;
 

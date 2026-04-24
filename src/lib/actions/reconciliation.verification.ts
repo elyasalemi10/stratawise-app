@@ -240,7 +240,10 @@ async function createFixture(): Promise<Fixture> {
 
   const noticeByLot: Record<string, { id: string; reference: string; amount: number }> = {};
   for (const lotId of lotIds) {
-    const { data: ref } = await supabase.rpc("next_reference_number", { prefix: "LEV" });
+    const { data: ref } = await supabase.rpc("next_reference_number", {
+      p_prefix: "LEV",
+      p_subdivision_id: subdivision.id,
+    });
     if (!ref) throw new Error("next_reference_number returned null");
     const { data: notice, error: nErr } = await supabase
       .from("levy_notices")
@@ -368,7 +371,7 @@ async function scenarioR1_ManualNoAutoMatch(fx: Fixture) {
 }
 
 async function scenarioR2_ReferenceExactAutoMatch(fx: Fixture) {
-  const header = "R2: manual txn with MSM-LEV reference + exact amount → auto-matched";
+  const header = "R2: manual txn with LEV reference + exact amount → auto-matched";
   try {
     const lotId = fx.lotIds[0];
     const notice = fx.noticeByLot[lotId];
@@ -561,7 +564,7 @@ async function scenarioR6_CashReceiptDeposit(fx: Fixture) {
     assert(receiptRes.success, `recordCashReceipt error: ${receiptRes.error}`);
     const receipt = await fetchUndeposited(receiptRes.success!.receiptId);
     assert(receipt!.status === "pending_deposit", `receipt status expected pending_deposit, got ${receipt!.status}`);
-    assert(receipt!.receipt_number.startsWith("MSM-RCPT-"), `receipt_number format: ${receipt!.receipt_number}`);
+    assert(receipt!.receipt_number.startsWith("RCP-"), `receipt_number format: ${receipt!.receipt_number}`);
 
     const stateAfterReceipt = await fetchLotState(lotId);
     const balAfterReceipt = Number(stateAfterReceipt?.admin_balance ?? 0);
@@ -606,11 +609,11 @@ async function scenarioR6_CashReceiptDeposit(fx: Fixture) {
       approx(balAfterDeposit, balAfterReceipt),
       `balance unchanged after deposit expected ${balAfterReceipt}, got ${balAfterDeposit} (NO DOUBLE-COUNT)`,
     );
-    // Assert RCPT reference format so the output signal is greppable.
-    const RCPT_FMT = /^MSM-RCPT-\d{4}-\d{6}$/;
+    // Assert RCP reference format so the output signal is greppable.
+    const RCP_FMT = /^RCP-\d+$/;
     assert(
-      RCPT_FMT.test(receipt!.receipt_number),
-      `receipt_number does not match MSM-RCPT-YYYY-NNNNNN: ${receipt!.receipt_number}`,
+      RCP_FMT.test(receipt!.receipt_number),
+      `receipt_number does not match RCP-{n}: ${receipt!.receipt_number}`,
     );
     record(
       header,

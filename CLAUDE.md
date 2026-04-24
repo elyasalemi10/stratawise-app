@@ -98,8 +98,9 @@
 - Three enforcement layers: UI (cosmetic) → server action (functional) → Supabase RLS (database).
 
 ## Reference Numbers
-- Global Postgres SEQUENCE per type. Never per-subdivision. Two levies from different subdivisions never share a reference.
-- Format: MSM-LEV-{YYYY}-{NNNNNN}, MSM-MTG-{YYYY}-{NNNNNN}, etc.
+- Financial-facing references (LEV, RCP, PAY): per-OC sequence via subdivisions.next_{levy|receipt|payment}_number integer column. Format `{PREFIX}-{n}` where n is the OC's own counter. Two OCs can each have LEV-1; matching is always subdivision-scoped so no ambiguity.
+- Operational references (MTG, MIN, SLEV, INV, POL, CLM, MNT, CMP, ESC): global Postgres SEQUENCE. Format `MSM-{PREFIX}-{YYYY}-{NNNNNN}`.
+- Function signature: `next_reference_number(prefix TEXT, subdivision_id UUID DEFAULT NULL)`. Financial prefixes require subdivision_id; operational prefixes ignore it.
 
 ## Background Jobs
 - Trigger.dev for: levy distribution, overdue checks, meeting notice distribution, minutes distribution, interest calculation, escalation processing, Basiq transaction polling (fallback).

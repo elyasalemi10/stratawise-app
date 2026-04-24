@@ -198,7 +198,7 @@ export function AddManualTransactionDialog({
                   <FormLabel>Reference (optional)</FormLabel>
                   <FormControl>
                     <Input
-                      placeholder="MSM-LEV-2026-000042"
+                      placeholder="LEV-42"
                       {...field}
                       value={field.value ?? ""}
                     />

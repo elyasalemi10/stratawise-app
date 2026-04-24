@@ -39,7 +39,7 @@ export type BasiqWebhookEvent = (typeof BASIQ_WEBHOOK_EVENTS)[number];
 export interface ParsedBasiqDescription {
   cleaned_description: string;
   sender_identity: string | null;
-  reference: string | null; // extracted MSM-LEV reference if present
+  reference: string | null; // extracted levy reference (normalised "LEV-{n}") if present
   bpay_crn: string | null; // captured but unused until Prompt 4
   raw: string;
 }
@@ -227,7 +227,14 @@ export type ForceSyncBasiqConnectionInput = z.infer<
 
 // ─── Helpers ───────────────────────────────────────────────────
 
-export const LEVY_REFERENCE_REGEX = /\bMSM-LEV-\d{4}-\d{6}\b/i;
+// Flexible levy-reference regex for free-text Basiq description parsing.
+// Accepts "LEV-7", "LEV 7", "Levy 7", "Levy-7", "7-LEV", "7 Levy", etc.
+// The digit is captured in group 1 (prefix form) or group 2 (suffix form);
+// callers should parseInt and reconstruct as "LEV-{n}". See
+// src/lib/basiq/parsers.ts::extractLevyReference for the canonical usage.
+// Form-input validation uses the strict anchored LEV-\d+ in
+// src/lib/validations/reconciliation.ts — do not re-use this one for that.
+export const LEVY_REFERENCE_REGEX = /\b(?:lev(?:y)?\s*[-]?\s*(\d+)|(\d+)\s*[-]?\s*lev(?:y)?)\b/gi;
 export const BPAY_CRN_REGEX = /\bBPAY[^\d]{0,10}(\d{4,20})\b/i;
 
 export function isTerminalStatus(status: BasiqConnectionStatus): boolean {

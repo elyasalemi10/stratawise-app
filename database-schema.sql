@@ -79,16 +79,20 @@ CREATE TYPE reconciliation_match_method AS ENUM (
 );
 
 -- ============================================================================
--- GLOBAL SEQUENCES (reference numbers are never per-subdivision)
+-- REFERENCE NUMBER SEQUENCES
 -- ----------------------------------------------------------------------------
--- One sequence per reference-number prefix. Names are short-form matching
--- the prefix string used by next_reference_number() callers — function
--- derives the sequence name as 'msm_' || lower(prefix) || '_seq'.
--- The canonical list of prefixes is in project-context.md §581.
+-- Two reference-number schemes coexist:
+--   1. Operational prefixes (MTG, MIN, SLEV, INV, POL, CLM, MNT, CMP, ESC)
+--      use global Postgres sequences declared below. Format:
+--      "MSM-{PREFIX}-{YYYY}-{NNNNNN}". next_reference_number(prefix) — the
+--      p_subdivision_id arg is accepted but ignored.
+--   2. Financial prefixes (LEV, RCP, PAY) use per-OC integer counters on
+--      subdivisions.next_{levy,receipt,payment}_number. Format: "{PREFIX}-{n}".
+--      next_reference_number(prefix, subdivision_id) — subdivision_id required.
+-- Two OCs can each have LEV-1; downstream matching is always subdivision-
+-- scoped so collisions are not possible.
 -- ============================================================================
-CREATE SEQUENCE msm_lev_seq  START 1;   -- LEV  — Levy notices
 CREATE SEQUENCE msm_slev_seq START 1;   -- SLEV — Special levies
-CREATE SEQUENCE msm_pay_seq  START 1;   -- PAY  — Payments
 CREATE SEQUENCE msm_mtg_seq  START 1;   -- MTG  — Meetings
 CREATE SEQUENCE msm_min_seq  START 1;   -- MIN  — Meeting minutes
 CREATE SEQUENCE msm_pol_seq  START 1;   -- POL  — Insurance policies
@@ -97,23 +101,69 @@ CREATE SEQUENCE msm_mnt_seq  START 1;   -- MNT  — Maintenance requests
 CREATE SEQUENCE msm_inv_seq  START 1;   -- INV  — Invitations
 CREATE SEQUENCE msm_cmp_seq  START 1;   -- CMP  — Complaints
 CREATE SEQUENCE msm_esc_seq  START 1;   -- ESC  — Escalation instances
-CREATE SEQUENCE msm_rcpt_seq START 1;   -- RCPT — Cash/cheque receipts (undeposited funds)
 
--- Sequential reference number generator.
--- Usage: SELECT next_reference_number('LEV');  →  'MSM-LEV-2026-000001'
-CREATE OR REPLACE FUNCTION next_reference_number(prefix TEXT)
+-- Prefix-aware reference number generator.
+-- Usage:
+--   SELECT next_reference_number('LEV', '<subdivision-uuid>');  →  'LEV-1'
+--   SELECT next_reference_number('RCP', '<subdivision-uuid>');  →  'RCP-1'
+--   SELECT next_reference_number('MTG');                        →  'MSM-MTG-2026-000001'
+-- Financial prefixes (LEV, RCP, PAY) atomically bump the OC's counter column
+-- and return '{PREFIX}-{n}'. Operational prefixes use the global sequence and
+-- return the long 'MSM-{PREFIX}-{YYYY}-{NNNNNN}' form. Input prefix is
+-- normalised to uppercase — callers may pass either case.
+CREATE FUNCTION next_reference_number(
+  p_prefix         TEXT,
+  p_subdivision_id UUID DEFAULT NULL
+)
 RETURNS TEXT
 LANGUAGE plpgsql
 AS $$
 DECLARE
-  seq_name TEXT;
-  seq_val BIGINT;
-  year_str TEXT;
+  v_prefix   TEXT := upper(p_prefix);
+  v_n        INTEGER;
+  v_seq_name TEXT;
+  v_seq_val  BIGINT;
+  v_year     TEXT;
 BEGIN
-  seq_name := 'msm_' || lower(prefix) || '_seq';
-  EXECUTE format('SELECT nextval(%L)', seq_name) INTO seq_val;
-  year_str := extract(year from now())::TEXT;
-  RETURN 'MSM-' || prefix || '-' || year_str || '-' || lpad(seq_val::TEXT, 6, '0');
+  IF v_prefix IN ('LEV', 'RCP', 'PAY') THEN
+    IF p_subdivision_id IS NULL THEN
+      RAISE EXCEPTION 'next_reference_number: subdivision_id is required for financial prefix %', v_prefix;
+    END IF;
+
+    -- Atomic increment-and-return on the per-OC counter.
+    -- RETURNING (column - 1) gives the value consumed by THIS call;
+    -- concurrent callers get consecutive values by row-lock semantics.
+    IF v_prefix = 'LEV' THEN
+      UPDATE subdivisions
+         SET next_levy_number = next_levy_number + 1
+       WHERE id = p_subdivision_id
+      RETURNING next_levy_number - 1 INTO v_n;
+    ELSIF v_prefix = 'RCP' THEN
+      UPDATE subdivisions
+         SET next_receipt_number = next_receipt_number + 1
+       WHERE id = p_subdivision_id
+      RETURNING next_receipt_number - 1 INTO v_n;
+    ELSE -- PAY
+      UPDATE subdivisions
+         SET next_payment_number = next_payment_number + 1
+       WHERE id = p_subdivision_id
+      RETURNING next_payment_number - 1 INTO v_n;
+    END IF;
+
+    IF v_n IS NULL THEN
+      RAISE EXCEPTION 'next_reference_number: subdivision % not found', p_subdivision_id;
+    END IF;
+
+    RETURN v_prefix || '-' || v_n::TEXT;
+
+  ELSE
+    -- Operational prefix: global sequence, legacy MSM-{PREFIX}-{YYYY}-{NNNNNN}.
+    -- p_subdivision_id is accepted but ignored for these prefixes.
+    v_seq_name := 'msm_' || lower(v_prefix) || '_seq';
+    EXECUTE format('SELECT nextval(%L)', v_seq_name) INTO v_seq_val;
+    v_year := extract(year FROM now())::TEXT;
+    RETURN 'MSM-' || v_prefix || '-' || v_year || '-' || lpad(v_seq_val::TEXT, 6, '0');
+  END IF;
 END;
 $$;
 
@@ -231,6 +281,13 @@ CREATE TABLE subdivisions (
   interest_rate_monthly DECIMAL(5,2) NOT NULL DEFAULT 2.0,
   interest_accrual_day INTEGER NOT NULL DEFAULT 1,  -- 1, 15, or 0 (last day)
   interest_grace_period_days INTEGER NOT NULL DEFAULT 0,
+  -- Per-OC reference counters (LEV/RCP/PAY). Financial references are
+  -- subdivision-scoped, not globally unique — see §REFERENCE NUMBER
+  -- SEQUENCES at file top. Counter column is the NEXT value to hand out;
+  -- next_reference_number increments atomically and returns (value - 1).
+  next_levy_number    INTEGER NOT NULL DEFAULT 1,
+  next_receipt_number INTEGER NOT NULL DEFAULT 1,
+  next_payment_number INTEGER NOT NULL DEFAULT 1,
   -- OC Certificate fields
   common_seal_text TEXT,
   inspection_address TEXT,
@@ -405,7 +462,7 @@ CREATE TABLE levy_notices (
   lot_id UUID NOT NULL REFERENCES lots(id),
   budget_id UUID REFERENCES budgets(id),
   batch_id UUID REFERENCES levy_batches(id),
-  reference_number TEXT UNIQUE NOT NULL,            -- MSM-LEV-YYYY-NNNNNN
+  reference_number TEXT NOT NULL,                   -- "LEV-{n}"; per-OC via next_reference_number('LEV', subdivision_id)
   fund_type fund_type NOT NULL,
   levy_type levy_type NOT NULL DEFAULT 'regular',
   period_start DATE NOT NULL,
@@ -419,7 +476,8 @@ CREATE TABLE levy_notices (
   pdf_url TEXT,
   linked_levy_id UUID REFERENCES levy_notices(id),  -- penalty_interest → original
   created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-  updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+  updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  CONSTRAINT levy_notices_subdivision_reference_key UNIQUE (subdivision_id, reference_number)
 );
 
 CREATE INDEX idx_levy_notices_subdivision ON levy_notices(subdivision_id);
@@ -1130,7 +1188,7 @@ CREATE TABLE undeposited_funds_entries (
   received_date DATE NOT NULL,
   payment_method payment_method NOT NULL,                           -- constrained to cash|cheque below
   cheque_number TEXT,                                               -- required iff payment_method='cheque'
-  receipt_number TEXT NOT NULL UNIQUE,                              -- MSM-RCPT-YYYY-NNNNNN via next_reference_number('RCPT')
+  receipt_number TEXT NOT NULL,                                     -- "RCP-{n}" via next_reference_number('RCP', subdivision_id)
   description TEXT,
   status TEXT NOT NULL DEFAULT 'pending_deposit',                   -- pending_deposit | deposited | voided
   deposited_at TIMESTAMPTZ,
@@ -1152,7 +1210,9 @@ CREATE TABLE undeposited_funds_entries (
     CHECK ((status = 'deposited')
            = (deposited_at IS NOT NULL AND deposited_by_bank_transaction_id IS NOT NULL)),
   CONSTRAINT chk_uf_voided_fields
-    CHECK ((status = 'voided') = (voided_at IS NOT NULL))
+    CHECK ((status = 'voided') = (voided_at IS NOT NULL)),
+  CONSTRAINT undeposited_funds_entries_subdivision_receipt_key
+    UNIQUE (subdivision_id, receipt_number)
 );
 
 CREATE INDEX idx_uf_subdivision  ON undeposited_funds_entries(subdivision_id);
@@ -2321,7 +2381,8 @@ BEGIN
     RAISE EXCEPTION 'rpc_record_cash_receipt: fund_type mismatch — receipt %, bank account %', p_fund_type, v_ba_fund_type;
   END IF;
 
-  v_receipt_number := next_reference_number('RCPT');
+  -- Financial prefix: must pass subdivision_id. 'RCP' (was 'RCPT' pre-PP4-0).
+  v_receipt_number := next_reference_number('RCP', p_subdivision_id);
   v_method_enum := p_payment_method::payment_method;
 
   IF p_payment_method = 'cheque' THEN
