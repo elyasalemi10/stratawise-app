@@ -13,7 +13,7 @@ import { Spinner } from "@/components/ui/spinner";
 import { BankSelect } from "@/components/shared/bank-select";
 
 const CONNECTION_TYPES = [
-  { value: "basiq", label: "Direct connect (Basiq)" },
+  { value: "basiq", label: "Automatic bank feed" },
   { value: "manual", label: "Manual statement upload" },
 ] as const;
 

@@ -178,7 +178,7 @@ export function BankFeedPanel({
           <FeedRow
             glyph={<Loader2 className="h-3.5 w-3.5 animate-spin text-muted-foreground" />}
             title="Bank feed: awaiting consent"
-            subtitle="You started a connection but haven't finished yet. Reopen the Basiq consent UI from the bank account page or the wizard."
+            subtitle="You started a connection but haven't finished yet. Reopen the consent flow from the bank account page or the wizard."
           />
         </FeedBox>
       );

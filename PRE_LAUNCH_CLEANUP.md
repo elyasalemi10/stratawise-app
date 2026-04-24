@@ -122,12 +122,20 @@ Small fixes to batch before going live. Non-blocking for feature work.
 
 ## From Prompt 3
 
-- **Pre-launch grep audit:** no exported server action should accept performedBy from the caller. Auth guards must resolve the performer identity server-side, not trust a client-supplied UUID.
+- **Pre-launch grep audit:** no exported server action should accept performedBy from the caller. Auth guards must resolve the performer identity server-side, not trust a client-supplied UUID. Standing policy for all future server actions; run `grep -rn "performedBy\|performed_by" src/lib/actions/ | grep -v "\.verification\.ts"` and confirm every hit is either an RPC argument resolved from `profile.id`, an internal helper, or a type declaration — never a caller-supplied parameter on an exported `"use server"` function.
 
-  Known live finding (as of commit that split basiq cron paths):
-  `src/lib/actions/reconciliation.ts` exports `tryAutoMatchByReference(args: AutoMatchArgs)` from a `"use server"` module, and `AutoMatchArgs` contains `performedBy: string`. A client could therefore import and call it with an arbitrary UUID. Triage options: (a) move to a non-`"use server"` shared module (mirrors the `src/lib/basiq/jobs.ts` pattern), (b) add `requireCompanyRole()` inside it and ignore the caller-supplied performer, (c) keep but document the intended non-client callers only. Decision deferred; does not block Prompt 3.
+  **[RESOLVED in commit 73e9654]** — the live finding on
+  `src/lib/actions/reconciliation.ts::tryAutoMatchByReference` was fixed
+  by extracting the function (with its `AutoMatchArgs`/`AutoMatchResult`
+  types and helpers) to `src/lib/reconciliation/auto-match.ts` — a
+  module with no `"use server"` directive. It is no longer reachable
+  as a server action from any client component, closing the trust
+  hole. The rule stays as open-standing policy for future server
+  actions.
 
-- **Bank parser verification (src/lib/basiq/parsers.ts):** every per-bank function is currently a thin wrapper around `parseGeneric` with a `TODO(pre-launch)` note. Confirm the actual description format for CBA, NAB, ANZ, Westpac, Macquarie, ING, and Bendigo & Adelaide against real sandbox transactions before launch, and replace the wrapper bodies with bank-specific handling. Also verify `BASIQ_INSTITUTION_IDS` map against the live `GET /institutions` response — the current values are best-effort placeholders.
+- Verify each of the 7 bank parsers (CBA, NAB, ANZ, WBC, Macquarie, ING, Bendigo) against real Basiq sandbox descriptions. Placeholders exist with regex-only extraction; real per-bank quirks need documenting. Also verify `BASIQ_INSTITUTION_IDS` map in `src/lib/basiq/parsers.ts` against the live `GET /institutions` response — the current values are best-effort placeholders.
+
+- docs/help/nominated-representative-setup.md has inferred URLs for each bank's CDR page. Verify each link resolves correctly before launch.
 
 - **Basiq webhook payload shape:** `handleBasiqEvent` extracts the external connection id via best-effort probing of several candidate fields (`connectionId`, `connection`, `data.connectionId`, `data.connection`, `data.id`). Once we have a real webhook sample from Basiq's sandbox, lock down the exact shape with Zod validation.
 
@@ -150,6 +158,10 @@ Small fixes to batch before going live. Non-blocking for feature work.
 - Feed-panel "Details" expandable for raw error text is present on states revoked/failed via a native `<details>`/`<summary>` element. Matches the existing audit-trail expandable in the ledger-entry drawer. Polish path (also tracked in Prompt 8): replace both with a shadcn-styled Collapsible for visual consistency.
 
 - Pre-existing lint errors in unrelated files (20 as of the PP3-B commit): six `react-hooks/set-state-in-effect` hits in wizard/dashboard client components using the standard data-fetch-on-mount pattern; one `react-hooks/exhaustive-deps` warning; a cluster of `@typescript-eslint/no-explicit-any` in form.tsx + step-4-lots.tsx; `react-compiler/static-components` violation in phone-input.tsx (setState cascade) and document-manager.tsx. None introduced by Prompts 1–3. Triage individually before launch; most are five-minute refactors.
+
+- Gap report "Arrears notifications suppressed until {timestamp}" copy renders as absolute timestamp without checking if past/future due to Server Component + React Compiler Date.now() constraints. Minor UX issue — add server-time-prop or Client Component wrapper to show correct past/future state.
+
+- Gap report backfilled transactions uses date-window heuristic on source='basiq', not true lineage. Consider linked_gap_report_id column if precise audit required.
 
 ## From Prompt 8
 

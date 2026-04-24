@@ -43,7 +43,7 @@ const formatDate = (iso: string) => {
 const SOURCE_LABEL: Record<TransactionSource, string> = {
   manual: "Manual",
   csv: "CSV",
-  basiq: "Basiq",
+  basiq: "Bank feed",
 };
 
 const STATUS_OPTIONS: Array<{ value: string; label: string }> = [

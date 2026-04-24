@@ -448,6 +448,173 @@ receipt (pending and deposited). Runs clean with 12/12 pass.
 - Lot statement PDF (`getLotStatement` data is ready; PDF template
   pending) → Prompt 7.
 
+### What Prompt 3 added
+
+**Scope.** Basiq-powered bank feed integration — consent lifecycle,
+webhook ingestion, scheduled polling, force-sync before critical
+operations, 12-month consent expiry with reminders, and gap
+reconciliation when a manager reauthorises late. No UX copy uses
+"Basiq"; the system refers to it as "bank feed" or "automatic bank
+feed". "Basiq" appears only in legal/privacy disclosures and internal
+audit logs.
+
+**New tables (6).**
+- `basiq_connections` — one row per CDR consent per OC. Lifecycle
+  (`pending → active → syncing ↔ active → expired|revoked|failed`),
+  12-month expiry, nominated rep, last-sync + last-webhook tracking.
+  `basiq_external_connection_id` (TEXT) holds Basiq's own connection
+  string, kept visually distinct from `bank_accounts.basiq_connection_id`
+  (our UUID FK). Legal transitions documented in an inline comment.
+- `basiq_reauth_notifications` — idempotency ledger for the
+  30/14/7/3/1-day reminders + expired + gap_reconciliation emails.
+  `UNIQUE(connection, type)` guarantees each reminder sends once.
+- `basiq_gap_reports` — one row per late-reauth gap. Generated
+  `gap_duration_hours`, counts for backfilled/auto-matched/manual-review,
+  `committee_notified` flag when gap > 30 days, `dismissed_at` +
+  `dismissed_by` for team-wide banner dismissal, undismissed partial
+  index.
+- `subdivision_notification_suppressions` — 48h arrears-email pause
+  after a gap-reconciliation event. Read by Prompt 6 arrears flows.
+- Legacy `bank_accounts.{basiq_user_id, basiq_connection_id TEXT,
+  last_poll_at}` dropped (never wired up in prod) and replaced with
+  `{basiq_connection_id UUID FK, basiq_account_id TEXT, last_sync_at
+  TIMESTAMPTZ}`.
+- `bank_transactions.basiq_raw JSONB` added; `basiq_transaction_id`
+  (unique) was pre-wired from Prompt 0.
+
+**New RPCs (2).** `rpc_insert_basiq_transaction` (idempotent; silent
+on duplicates; 20KB `basiq_raw` size guard; writes `audit_log` on
+first insert). `rpc_mark_basiq_connection_expired` (state flip to
+`expired` + audit; idempotent).
+
+**Server actions (15+).** `src/lib/actions/basiq.ts` — `createBasiqUser`,
+`startBasiqConsent`, `completeBasiqConsent`, `getBasiqConnectionStatus`,
+`disconnectBasiqConnection`, `initiateReauth`, `forceSyncBasiqConnection`,
+`pollBasiqConnection` (auth-required wrapper; cron path goes through
+`src/lib/basiq/jobs.ts` → `pollConnectionAsSystem`), `runGapReconciliation`,
+`listBasiqInstitutions` (24h cache), `sendPendingReauthNotifications`,
+`sweepExpiredConnections`, `isArrearsNotificationSuppressed`,
+`getBasiqConnectionDetails`, `handleBasiqEvent` (webhook dispatcher),
+`autoBindBankAccountsForConnection`, `releaseBankAccountFromConnection`,
+`getFeedStateForBankAccount`, `getBankAccountsForWizardStep`,
+`listBasiqConnectionsForSubdivision`, `getActiveGapReportForSubdivision`,
+`getGapReportPageData`, `dismissGapReport`.
+
+**Framework-agnostic modules (`src/lib/basiq/*.ts`).**
+- `client.ts` — `BasiqApiClient` interface + `RealBasiqApiClient` (60-min
+  server-token cache, 15s timeout, single 5xx retry, `basiq-version:
+  3.0` header) + `__setBasiqApiClientForVerification` seam.
+- `parsers.ts` — 7 bank parsers (CBA, NAB, ANZ, WBC, Macquarie, ING,
+  Bendigo) with a generic fallback. All per-bank entries currently
+  route to the generic parser with `TODO(pre-launch)` flags; no
+  bank-specific patterns fabricated.
+- `state.ts` — stateless HMAC-signed CSRF state tokens for the Consent
+  UI round-trip (1h TTL).
+- `webhook-signature.ts` — HMAC-SHA256 verifier matching Basiq's
+  webhooks-security spec (headers `webhook-id`, `webhook-timestamp`,
+  `webhook-signature`; signed content `id.timestamp.rawBody`; 5-minute
+  replay tolerance).
+- `jobs.ts` — `pollConnectionAsSystem`, `sendPendingReauthNotificationsJob`,
+  `sweepExpiredConnectionsJob`. No `"use server"` directive; callable
+  from Trigger.dev tasks without crossing the Next.js request context.
+
+**Route handlers.**
+- `POST /api/basiq/webhook` — HMAC-verified dispatcher. Bad signature
+  → 401 + audit entry. Good signature → `handleBasiqEvent` (handles
+  `transactions.updated`, `connection.invalidated`, `account.updated`;
+  `consent.revoked` is NOT a Basiq event — revocation surfaces via
+  `connection.invalidated` with remote-status inspection).
+- `GET /api/basiq/callback` — verifies the state token, runs
+  `completeBasiqConsent`, `autoBindBankAccountsForConnection`, and
+  (when the prior state was expired/revoked/failed) `runGapReconciliation`.
+  Redirects to the caller-supplied `returnTo` with `?basiq=connected`
+  appended, or `?basiq=error&message=…` on failure.
+
+**Trigger.dev scheduled tasks** (`/trigger/basiq-jobs.ts`, `@trigger.dev/sdk@4.4.4`):
+- `midnight-basiq-poll` — daily 00:00 Australia/Melbourne;
+  Promise.allSettled over active connections with per-connection 15s
+  timeout; one aggregate audit_log entry per batch run.
+- `daily-reauth-notifications` — daily 09:00 Australia/Melbourne;
+  30/14/7/3/1-day cadence with idempotency via
+  `basiq_reauth_notifications`.
+- `hourly-expiry-check` — hourly (UTC); flips `consent_expires_at`-past
+  rows to `expired`, emails the nominated rep.
+- All three tasks import ONLY from `src/lib/basiq/jobs.ts` — grep
+  invariant `grep -n "from.*actions" trigger/basiq-jobs.ts` returns
+  zero code hits.
+
+**UI surfaces.**
+- Wizard step 4 "Connect bank feeds" (optional) — per-account Connect
+  buttons; institution picker with search, generic `Landmark` icons
+  (no Basiq-branded logos); pending-resume banner; inline success /
+  error banners; single Skip-for-now → Continue button transition.
+- Bank-account page: `GapReconciliationBanner` at the top of the
+  content area; inline `BankFeedPanel` inside each bank-account card
+  rendering one of five states (Not connected / Active / Expiring soon
+  / Expired / Revoked|Failed) plus a sixth Pending state for abandoned
+  consent. Active/Expiring rows expose a 30s-cooldown Sync-now button
+  and a Manage dialog. Manage dialog shows institution, grant +
+  expiry dates, last-synced relative (en-AU), nominated rep, human-
+  readable linked accounts, optional last-error, Reauthorise and
+  Disconnect (guarded by an AlertDialog confirmation).
+- Read-only gap report page at
+  `/subdivisions/[id]/finance/reconciliation/gap-reports/[reportId]` —
+  Summary + Metrics + whole-row-clickable transactions table +
+  arrears-suppression footer. Breadcrumb-carried title
+  "Reconciliation > Gap report". 404 on missing or cross-subdivision
+  reports; renders fine for dismissed reports via direct URL.
+- `InstitutionPicker` extracted to `src/components/shared/` and reused
+  by the wizard step and the bank-account page's Connect/Reconnect
+  flows.
+
+**Help + legal artefacts.**
+- `docs/help/nominated-representative-setup.md` (canonical markdown).
+- `src/app/(dashboard)/help/nominated-representative-setup/page.tsx`
+  (in-app mirror at `/help/nominated-representative-setup`).
+- `PRIVACY_POLICY_BASIQ_DISCLOSURE.md` — one-paragraph CDR disclosure
+  for Elyas to paste into the privacy policy document.
+
+**Trust-hole fixes during Prompt 3.**
+- `pollBasiqConnection` previously accepted an optional `performedBy`
+  parameter from callers (trust hole in a `"use server"` module —
+  any client component could import and invoke with an arbitrary
+  profile UUID). Refactored: the server action now requires auth
+  unconditionally; cron callers go through the non-`"use server"`
+  `src/lib/basiq/jobs.ts::pollConnectionAsSystem`.
+- `tryAutoMatchByReference` carried the same shape after Prompt 2's
+  export. Moved to `src/lib/reconciliation/auto-match.ts` — no
+  `"use server"` directive, not reachable from client components.
+  Call sites (`addManualBankTransaction`, `pollConnectionAsSystem`)
+  update their imports only; audit accuracy preserved (performer
+  still flows from the server-side resolution point).
+- `sweepExpiredConnections` had a latent FK landmine: the fallback
+  performer was `row.id` (a `basiq_connections.id`, not a profile
+  UUID). Changed to `row.created_by` (NOT NULL FK to profiles).
+
+**Verification.** `src/lib/actions/basiq.verification.ts` — 15
+scenarios covering user creation, consent start/complete,
+force-sync + auto-match, duplicate-id silent dedupe, 30s rate-limit
+bypass, poll flow, HMAC signature good/bad, connection.invalidated
+dispatch, expired-sync skip, reauth URL shape, 5-day gap
+reconciliation, 40-day committee-notified gap, reauth cadence
+idempotency, disconnect-preserves-transactions. Zero live HTTP calls
+in the default run; optional `--live` flag reserved for sandbox
+smoke testing.
+
+**What Prompt 3 did NOT do (flagged in `PRE_LAUNCH_CLEANUP.md`).**
+- Bank-specific description parsing (all 7 parsers are generic-fallback
+  wrappers pending sandbox sample verification).
+- `consecutive_sync_failures` counter + inline ≥2-failures warning on
+  the feed panel.
+- Precise lineage from `basiq_gap_reports` to backfilled
+  `bank_transactions` rows (currently a date-window heuristic).
+- Gap-report footer absolute-only suppression copy (can't show
+  "active vs past" because `Date.now()` is impure in Server Components
+  per the React Compiler lint rule).
+- Pre-launch URL verification for the seven bank CDR pages in the
+  help doc.
+- Pre-launch RPC security-model audit (`SECURITY DEFINER` opt-in).
+
 ---
 
 ## 8. What comes next
@@ -458,7 +625,7 @@ the reconciliation feature progressively on top of the now-stable schema.
 - [x] Prompt 0 — Schema consolidation & structural cleanup
 - [x] Prompt 1 — Lot ledger foundation + RPC functions + levy generation rewrite
 - [x] Prompt 2 — Manual bank transaction entry + manual matching UI + cash/cheque receipts + undeposited funds + void/reversal
-- [ ] Prompt 3 — Basiq integration (connect, consent, polling, webhook, reauth, gap reconciliation)
+- [x] Prompt 3 — Basiq integration (connect, consent, polling, webhook, reauth, gap reconciliation)
 - [ ] Prompt 4 — Auto-matching pipeline (levy ref, BPAY CRN, sender identity, confidence, auto-learn)
 - [ ] Prompt 5 — Duplicate detection + owner self-report
 - [ ] Prompt 6 — Notifications + interest/arrears/penalty

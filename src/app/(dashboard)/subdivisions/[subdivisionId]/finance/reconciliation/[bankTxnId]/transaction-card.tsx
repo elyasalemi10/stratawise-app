@@ -6,7 +6,7 @@ import type { BankTransactionDetail } from "@/lib/validations/reconciliation";
 const SOURCE_LABEL: Record<string, string> = {
   manual: "Manual",
   csv: "CSV",
-  basiq: "Basiq",
+  basiq: "Bank feed",
 };
 
 const formatCurrency = (n: number) =>
