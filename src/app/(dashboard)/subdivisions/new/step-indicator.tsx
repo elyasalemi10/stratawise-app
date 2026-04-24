@@ -7,8 +7,9 @@ const steps = [
   { number: 1, label: "General" },
   { number: 2, label: "Settings" },
   { number: 3, label: "Banking" },
-  { number: 4, label: "Lots" },
-  { number: 5, label: "Balances" },
+  { number: 4, label: "Bank feeds" },
+  { number: 5, label: "Lots" },
+  { number: 6, label: "Balances" },
 ];
 
 export function StepIndicator({

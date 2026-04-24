@@ -1,8 +1,10 @@
 import {
+  basiqAccountApiSchema,
   basiqConnectionApiSchema,
   basiqInstitutionSchema,
   basiqJobSchema,
   basiqTransactionPayloadSchema,
+  type BasiqAccountApi,
   type BasiqConnectionApi,
   type BasiqInstitution,
   type BasiqJob,
@@ -48,6 +50,10 @@ export interface BasiqApiClient {
     limit?: number;
   }): Promise<BasiqTransactionPayload[]>;
   getJob(args: { jobId: string }): Promise<BasiqJob>;
+  getAccounts(args: {
+    basiqUserId: string;
+    connectionId?: string;
+  }): Promise<BasiqAccountApi[]>;
 }
 
 // ─── Structured error ──────────────────────────────────────────
@@ -237,6 +243,26 @@ class RealBasiqApiClient implements BasiqApiClient {
       { server: true },
     );
     return basiqJobSchema.parse(res);
+  }
+
+  async getAccounts(args: {
+    basiqUserId: string;
+    connectionId?: string;
+  }): Promise<BasiqAccountApi[]> {
+    const qs = new URLSearchParams();
+    if (args.connectionId) {
+      qs.set("filter", `account.connection.eq('${args.connectionId}')`);
+    }
+    const path = `/users/${encodeURIComponent(args.basiqUserId)}/accounts${
+      qs.toString() ? `?${qs.toString()}` : ""
+    }`;
+    const res = await this.call<{ data: unknown[] }>("GET", path, {
+      server: true,
+    });
+    return (res.data ?? [])
+      .map((raw) => basiqAccountApiSchema.safeParse(raw))
+      .filter((r): r is { success: true; data: BasiqAccountApi } => r.success)
+      .map((r) => r.data);
   }
 
   // ─── Internals ───────────────────────────────────────────────

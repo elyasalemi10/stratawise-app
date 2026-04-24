@@ -9,6 +9,7 @@ import { StepIndicator } from "./step-indicator";
 import { Step1General } from "./steps/step-1-general";
 import { Step2Settings } from "./steps/step-2-settings";
 import { Step3Banking } from "./steps/step-3-banking";
+import { Step4BankFeeds } from "./steps/step-4-bank-feeds";
 import { Step4Lots } from "./steps/step-4-lots";
 import { Step5Balances } from "./steps/step-5-balances";
 import { getSubdivisionWizardData } from "./actions";
@@ -17,8 +18,9 @@ const STEP_TITLES: Record<number, { title: string; subtitle: string }> = {
   1: { title: "Create new subdivision", subtitle: "Set up a new owners corporation" },
   2: { title: "Advanced settings", subtitle: "Configure financial year and levy schedule" },
   3: { title: "Banking details", subtitle: "Set up bank account for this subdivision" },
-  4: { title: "Strata membership", subtitle: "Add lots and assign owners" },
-  5: { title: "Opening balances", subtitle: "Enter current fund balances" },
+  4: { title: "Connect bank feeds", subtitle: "Optional. Link the bank accounts you just added to automatic transaction syncing." },
+  5: { title: "Strata membership", subtitle: "Add lots and assign owners" },
+  6: { title: "Opening balances", subtitle: "Enter current fund balances" },
 };
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -30,7 +32,7 @@ function WizardContent() {
 
   // Use local state for step and ID — URL is synced but not the source of truth
   const [currentStep, setCurrentStep] = useState(() =>
-    Math.max(1, Math.min(5, parseInt(searchParams.get("step") ?? "1", 10)))
+    Math.max(1, Math.min(6, parseInt(searchParams.get("step") ?? "1", 10)))
   );
   const [subId, setSubId] = useState(() => searchParams.get("id") ?? "");
 
@@ -117,18 +119,25 @@ function WizardContent() {
                 />
               )}
               {currentStep === 4 && subdivisionId && (
-                <Step4Lots
+                <Step4BankFeeds
                   subdivisionId={subdivisionId}
                   onNext={() => goToStep(5)}
                   onBack={() => goToStep(3)}
-                  initialData={wizardData?.lots}
                 />
               )}
               {currentStep === 5 && subdivisionId && (
+                <Step4Lots
+                  subdivisionId={subdivisionId}
+                  onNext={() => goToStep(6)}
+                  onBack={() => goToStep(4)}
+                  initialData={wizardData?.lots}
+                />
+              )}
+              {currentStep === 6 && subdivisionId && (
                 <Step5Balances
                   subdivisionId={subdivisionId}
                   onComplete={() => router.push(`/subdivisions/${subdivisionId}/dashboard`)}
-                  onBack={() => goToStep(4)}
+                  onBack={() => goToStep(5)}
                   initialData={wizardData?.bankAccounts}
                 />
               )}

@@ -46,6 +46,7 @@ import {
 } from "@/lib/basiq/client";
 import { verifyBasiqWebhookSignature } from "@/lib/basiq/webhook-signature";
 import type {
+  BasiqAccountApi,
   BasiqConnectionApi,
   BasiqInstitution,
   BasiqJob,
@@ -160,6 +161,11 @@ class StubBasiqApiClient implements BasiqApiClient {
     this.bump("getJob");
     if (!this.stubJob) throw new Error("stub: no job configured");
     return this.stubJob;
+  }
+  stubAccounts: BasiqAccountApi[] = [];
+  async getAccounts(): Promise<BasiqAccountApi[]> {
+    this.bump("getAccounts");
+    return this.stubAccounts;
   }
 }
 

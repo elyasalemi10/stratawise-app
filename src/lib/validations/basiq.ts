@@ -86,6 +86,30 @@ export const basiqConnectionApiSchema = z.object({
 });
 export type BasiqConnectionApi = z.infer<typeof basiqConnectionApiSchema>;
 
+// Basiq account — what GET /users/{userId}/accounts returns. The shape
+// varies mildly per institution; we only rely on the fields needed for
+// BSB/account-number binding.
+export const basiqAccountApiSchema = z.object({
+  id: z.string(),
+  accountNumber: z.string().nullable().optional(),
+  accountHolder: z.string().nullable().optional(),
+  class: z
+    .object({
+      type: z.string().optional(),
+      product: z.string().optional(),
+    })
+    .or(z.string())
+    .optional()
+    .nullable(),
+  connection: z.string().optional().nullable(),
+  institution: z.string().optional().nullable(),
+  status: z.string().optional().nullable(),
+  // Basiq's AU-branded responses may include BSB as a separate field;
+  // when absent, we extract from `accountNumber`.
+  bsb: z.string().optional().nullable(),
+});
+export type BasiqAccountApi = z.infer<typeof basiqAccountApiSchema>;
+
 export const basiqJobSchema = z.object({
   id: z.string(),
   type: z.string().optional(),

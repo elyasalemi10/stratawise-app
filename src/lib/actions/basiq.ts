@@ -324,6 +324,103 @@ export async function completeBasiqConsent(args: {
   }
 }
 
+export interface BasiqConnectionListItem {
+  id: string;
+  status: BasiqConnectionStatus;
+  institutionName: string;
+  institutionShortName: string | null;
+  institutionId: string;
+  consentExpiresAt: string | null;
+  lastSyncAt: string | null;
+  createdAt: string;
+}
+
+export interface WizardBankAccountRow {
+  id: string;
+  accountName: string;
+  fundType: "administrative" | "capital_works";
+  bsb: string;
+  accountNumber: string;
+  bankName: string | null;
+  basiqConnectionId: string | null;
+  basiqAccountId: string | null;
+  createdAt: string;
+}
+
+export async function getBankAccountsForWizardStep(
+  subdivisionId: string,
+): Promise<WizardBankAccountRow[]> {
+  await requireSubdivisionAccess(subdivisionId);
+  const supabase = createServerClient();
+  const { data } = await supabase
+    .from("bank_accounts")
+    .select(
+      "id, account_name, fund_type, bsb, account_number, bank_name, basiq_connection_id, basiq_account_id, created_at",
+    )
+    .eq("subdivision_id", subdivisionId)
+    .order("created_at", { ascending: true });
+  return (data ?? []).map((r) => {
+    const row = r as {
+      id: string;
+      account_name: string;
+      fund_type: "administrative" | "capital_works";
+      bsb: string;
+      account_number: string;
+      bank_name: string | null;
+      basiq_connection_id: string | null;
+      basiq_account_id: string | null;
+      created_at: string;
+    };
+    return {
+      id: row.id,
+      accountName: row.account_name,
+      fundType: row.fund_type,
+      bsb: row.bsb,
+      accountNumber: row.account_number,
+      bankName: row.bank_name,
+      basiqConnectionId: row.basiq_connection_id,
+      basiqAccountId: row.basiq_account_id,
+      createdAt: row.created_at,
+    };
+  });
+}
+
+export async function listBasiqConnectionsForSubdivision(
+  subdivisionId: string,
+): Promise<BasiqConnectionListItem[]> {
+  await requireSubdivisionAccess(subdivisionId);
+  const supabase = createServerClient();
+  const { data } = await supabase
+    .from("basiq_connections")
+    .select(
+      "id, status, institution_name, institution_short_name, basiq_institution_id, consent_expires_at, last_sync_at, created_at",
+    )
+    .eq("subdivision_id", subdivisionId)
+    .order("created_at", { ascending: false });
+  return (data ?? []).map((r) => {
+    const row = r as {
+      id: string;
+      status: BasiqConnectionStatus;
+      institution_name: string;
+      institution_short_name: string | null;
+      basiq_institution_id: string;
+      consent_expires_at: string | null;
+      last_sync_at: string | null;
+      created_at: string;
+    };
+    return {
+      id: row.id,
+      status: row.status,
+      institutionName: row.institution_name,
+      institutionShortName: row.institution_short_name,
+      institutionId: row.basiq_institution_id,
+      consentExpiresAt: row.consent_expires_at,
+      lastSyncAt: row.last_sync_at,
+      createdAt: row.created_at,
+    };
+  });
+}
+
 export async function getBasiqConnectionStatus(
   subdivisionId: string,
 ): Promise<BasiqConnectionStatusResult> {
@@ -747,7 +844,127 @@ async function sendGapEmails(args: {
 }
 
 // ============================================================================
-// 3. INSTITUTIONS
+// 3. ACCOUNT AUTO-BIND
+// ============================================================================
+
+// After consent completes, Basiq's single consent may expose several
+// accounts (admin + capital at the same bank login). This action matches
+// Basiq's reported accounts to our bank_accounts rows by normalised BSB +
+// account_number and binds the matches.
+//
+// Match key: digits-only concatenation of BSB and account_number. Basiq's
+// accountNumber field varies by institution — some include the BSB prefix,
+// some don't. We normalise both sides and match on the longest suffix that
+// aligns.
+export async function autoBindBankAccountsForConnection(
+  connectionId: string,
+): Promise<{
+  success?: {
+    totalMatched: number;
+    boundBankAccountIds: string[];
+  };
+  error?: string;
+}> {
+  try {
+    const supabase = createServerClient();
+    const client = getBasiqApiClient();
+
+    const { data: conn } = await supabase
+      .from("basiq_connections")
+      .select(
+        "id, subdivision_id, basiq_user_id, basiq_external_connection_id",
+      )
+      .eq("id", connectionId)
+      .single();
+    if (!conn) return { error: "connection not found" };
+
+    // Fetch all Basiq accounts for this user+connection.
+    const basiqAccounts = await client.getAccounts({
+      basiqUserId: conn.basiq_user_id,
+      connectionId: conn.basiq_external_connection_id,
+    });
+
+    // Fetch all bank_accounts for this subdivision that aren't yet bound.
+    const { data: ourAccounts } = await supabase
+      .from("bank_accounts")
+      .select("id, bsb, account_number, basiq_connection_id")
+      .eq("subdivision_id", conn.subdivision_id);
+    const unbound = (ourAccounts ?? []).filter(
+      (a) =>
+        !(a as { basiq_connection_id: string | null }).basiq_connection_id,
+    );
+
+    const bound: string[] = [];
+    for (const basiqAcct of basiqAccounts) {
+      const key = buildStrictBankKey(basiqAcct.bsb, basiqAcct.accountNumber);
+      if (!key) continue; // Not enough Basiq info to form a safe key — skip
+      const match = unbound.find((a) => {
+        const ours = buildStrictBankKey(
+          (a as { bsb: string }).bsb,
+          (a as { account_number: string }).account_number,
+        );
+        return ours !== null && ours === key;
+      });
+      if (!match) continue;
+
+      const { error: updErr } = await supabase
+        .from("bank_accounts")
+        .update({
+          basiq_connection_id: conn.id,
+          basiq_account_id: basiqAcct.id,
+        })
+        .eq("id", (match as { id: string }).id);
+      if (!updErr) {
+        bound.push((match as { id: string }).id);
+      }
+    }
+
+    return {
+      success: {
+        totalMatched: bound.length,
+        boundBankAccountIds: bound,
+      },
+    };
+  } catch (e) {
+    return { error: (e as Error).message };
+  }
+}
+
+// Build a strict 6-digit-BSB + account-number key. Both inputs are
+// normalised to digits only. Matching requires the full BSB to be known on
+// both sides — we never match on account-number alone, even if the suffix
+// looks the same, because two different branches (or banks) can legally
+// issue the same tail digits. If Basiq gives us accountNumber with the BSB
+// already prefixed (some AU connectors do this), we split off the first 6
+// digits as the BSB. If we can't reconstruct a 6-digit BSB for either side,
+// we skip — the manager can bind manually on the bank-account page.
+function buildStrictBankKey(
+  bsb: string | null | undefined,
+  accountNumber: string | null | undefined,
+): string | null {
+  const digitsBsb = (bsb ?? "").replace(/\D/g, "");
+  const digitsAcc = (accountNumber ?? "").replace(/\D/g, "");
+
+  if (digitsBsb.length === 6 && digitsAcc.length >= 1) {
+    // Strip accidental BSB prefix from accountNumber if present.
+    const acc = digitsAcc.startsWith(digitsBsb)
+      ? digitsAcc.slice(digitsBsb.length)
+      : digitsAcc;
+    if (acc.length === 0) return null;
+    return `${digitsBsb}${acc}`;
+  }
+
+  // BSB absent: attempt to split from accountNumber if it's long enough to
+  // contain a 6-digit BSB prefix.
+  if (!digitsBsb && digitsAcc.length >= 7) {
+    return digitsAcc;
+  }
+
+  return null;
+}
+
+// ============================================================================
+// 4. INSTITUTIONS
 // ============================================================================
 
 export async function listBasiqInstitutions(): Promise<BasiqInstitution[]> {

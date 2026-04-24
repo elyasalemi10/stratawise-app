@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import {
+  autoBindBankAccountsForConnection,
   completeBasiqConsent,
   runGapReconciliation,
 } from "@/lib/actions/basiq";
@@ -76,6 +77,11 @@ export async function GET(req: Request): Promise<Response> {
       ),
     );
   }
+
+  // Auto-bind any matching bank_accounts (BSB + account_number) to the new
+  // connection. Failures are swallowed — the manager can still bind manually
+  // from the bank-account page.
+  await autoBindBankAccountsForConnection(connectionId).catch(() => null);
 
   if (wasReauth) {
     // Best-effort; gap reconciliation failures don't break the callback.
