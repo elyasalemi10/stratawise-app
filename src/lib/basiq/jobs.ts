@@ -19,7 +19,7 @@
 // ============================================================================
 
 import { createServerClient } from "@/lib/supabase";
-import { tryAutoMatchByReference } from "@/lib/actions/reconciliation";
+import { tryAutoMatchByReference } from "@/lib/reconciliation/auto-match";
 import {
   BasiqApiError,
   getBasiqApiClient,

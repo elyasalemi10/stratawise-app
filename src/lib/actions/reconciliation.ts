@@ -4,6 +4,7 @@ import { requireCompanyRole, requireSubdivisionAccess } from "@/lib/auth";
 import { createServerClient } from "@/lib/supabase";
 import { revalidatePath } from "next/cache";
 import { revalidateSidebarForSubdivision } from "./subdivision";
+import { tryAutoMatchByReference } from "@/lib/reconciliation/auto-match";
 import {
   addManualBankTransactionSchema,
   depositUndepositedFundsSchema,
@@ -1275,114 +1276,6 @@ export async function previewVoidUndepositedReceipt(
     distinct_lot_count: 1,
     cascade_amount_total: Number(uf.amount),
     blocker,
-  };
-}
-
-// ============================================================================
-// SHARED: auto-match by reference.
-// ----------------------------------------------------------------------------
-// Used by addManualBankTransaction (above) and reused by Basiq ingestion
-// (src/lib/actions/basiq.ts) per the Prompt 3 spec — one MSM-LEV reference
-// path across all transaction sources. CSV import keeps its own inline copy
-// because it already runs inside an authenticated per-row context and
-// doesn't benefit from the wrapping.
-// ============================================================================
-
-export interface AutoMatchArgs {
-  bankTransactionId: string;
-  subdivisionId: string;
-  description: string;
-  amount: number;
-  performedBy: string;
-}
-
-export interface AutoMatchResult {
-  matched: boolean;
-  reference: string | null;
-  partial: boolean;
-  allocatedAmount: number;
-  warning: string | null;
-}
-
-export async function tryAutoMatchByReference(args: AutoMatchArgs): Promise<AutoMatchResult> {
-  const supabase = createServerClient();
-  const refs = args.description.match(REF_REGEX_GLOBAL) ?? [];
-  if (refs.length !== 1) {
-    return { matched: false, reference: null, partial: false, allocatedAmount: 0, warning: null };
-  }
-  const reference = refs[0].toUpperCase();
-
-  const { data: notice } = await supabase
-    .from("levy_notices")
-    .select("id, lot_id, subdivision_id, fund_type, amount, reference_number")
-    .eq("subdivision_id", args.subdivisionId)
-    .eq("reference_number", reference)
-    .single();
-  if (!notice) {
-    return { matched: false, reference, partial: false, allocatedAmount: 0, warning: null };
-  }
-
-  // Outstanding = notice.amount − sum of active credits targeting this notice.
-  const { data: credits } = await supabase
-    .from("lot_ledger_entries")
-    .select("amount, entry_type, status")
-    .eq("levy_notice_id", notice.id)
-    .eq("status", "active")
-    .eq("entry_type", "credit");
-  const paidSoFar = (credits ?? []).reduce((s, c) => s + Number(c.amount), 0);
-  const outstanding = round2(Number(notice.amount) - paidSoFar);
-  if (outstanding <= 0) {
-    return { matched: false, reference, partial: false, allocatedAmount: 0, warning: null };
-  }
-
-  const allocated = Math.min(args.amount, outstanding);
-  const partial = args.amount > outstanding;
-
-  const { error: matchErr } = await supabase.rpc("rpc_reconcile_bank_transaction", {
-    p_bank_transaction_id: args.bankTransactionId,
-    p_allocations: [
-      {
-        lot_id: notice.lot_id,
-        fund_type: notice.fund_type,
-        amount: allocated,
-        levy_notice_id: notice.id,
-        reference: notice.reference_number,
-      },
-    ],
-    p_match_method: "auto_reference",
-    p_match_confidence: "exact_reference",
-    p_notes: `CSV/manual auto-match on reference ${reference}`,
-    p_performed_by: args.performedBy,
-  });
-  if (matchErr) {
-    // Don't fail the outer insert — log and return.
-    await supabase.from("audit_log").insert({
-      profile_id: args.performedBy,
-      subdivision_id: args.subdivisionId,
-      action: "reconciliation.auto_match_failed",
-      entity_type: "bank_transaction",
-      entity_id: args.bankTransactionId,
-      metadata: { reason: matchErr.message, reference },
-    });
-    return { matched: false, reference, partial: false, allocatedAmount: 0, warning: matchErr.message };
-  }
-
-  // Flag the partial-allocation remainder in bank_transactions.notes for
-  // later review (metadata column would be nicer but bank_transactions has
-  // no metadata col; notes is free-form text).
-  if (partial) {
-    await supabase
-      .from("bank_transactions")
-      .update({ notes: `Auto-matched $${allocated.toFixed(2)} against ${reference}; $${(args.amount - allocated).toFixed(2)} remaining — review manually.` })
-      .eq("id", args.bankTransactionId);
-  }
-
-  return {
-    matched: !partial,
-    reference,
-    partial,
-    allocatedAmount: allocated,
-    warning: partial ? `Amount exceeded outstanding — $${(args.amount - allocated).toFixed(2)} remains unmatched.` : null,
   };
 }
 
