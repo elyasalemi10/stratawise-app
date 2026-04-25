@@ -1,4 +1,5 @@
 import { createServerClient } from "@/lib/supabase";
+import { detectSingleLevyReference } from "@/lib/reconciliation/reference";
 
 // ============================================================================
 // Levy-reference auto-match — framework-agnostic
@@ -29,12 +30,6 @@ import { createServerClient } from "@/lib/supabase";
 // subdivision's books.
 // ============================================================================
 
-// Flexible reference regex (from the Prompt 4 Strategy 1 spec).
-// Accepts: "LEV-7", "LEV 7", "Levy 7", "Levy-7", "7-LEV", "7 Levy", etc.
-// Digit is captured in group 1 (prefix form) or group 2 (suffix form).
-// parseInt strips leading zeros at lookup so "LEV-007" resolves to "LEV-7".
-const REF_REGEX_GLOBAL = /\b(?:lev(?:y)?\s*[-]?\s*(\d+)|(\d+)\s*[-]?\s*lev(?:y)?)\b/gi;
-
 export interface AutoMatchArgs {
   bankTransactionId: string;
   subdivisionId: string;
@@ -55,14 +50,8 @@ export async function tryAutoMatchByReference(
   args: AutoMatchArgs,
 ): Promise<AutoMatchResult> {
   const supabase = createServerClient();
-  const matches = Array.from(args.description.matchAll(REF_REGEX_GLOBAL));
-  const uniqueRefs = new Set<string>();
-  for (const m of matches) {
-    const raw = m[1] ?? m[2];
-    const n = Number.parseInt(raw, 10);
-    if (Number.isFinite(n) && n > 0) uniqueRefs.add(`LEV-${n}`);
-  }
-  if (uniqueRefs.size !== 1) {
+  const reference = detectSingleLevyReference(args.description);
+  if (!reference) {
     return {
       matched: false,
       reference: null,
@@ -71,7 +60,6 @@ export async function tryAutoMatchByReference(
       warning: null,
     };
   }
-  const reference = [...uniqueRefs][0];
 
   const { data: notice } = await supabase
     .from("levy_notices")

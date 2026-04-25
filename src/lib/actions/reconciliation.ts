@@ -5,6 +5,7 @@ import { createServerClient } from "@/lib/supabase";
 import { revalidatePath } from "next/cache";
 import { revalidateSidebarForSubdivision } from "./subdivision";
 import { tryAutoMatchByReference } from "@/lib/reconciliation/auto-match";
+import { detectSingleLevyReference } from "@/lib/reconciliation/reference";
 import {
   addManualBankTransactionSchema,
   depositUndepositedFundsSchema,
@@ -47,20 +48,6 @@ function formatIssues(issues: { message: string }[]): string {
   return issues.map((i) => i.message).join("; ");
 }
 
-// Flexible levy-reference regex (mirrors auto-match.ts). Used for queue /
-// detail UI surfacing of a detected reference — NOT for matching decisions.
-const LEV_REF_REGEX_GLOBAL = /\b(?:lev(?:y)?\s*[-]?\s*(\d+)|(\d+)\s*[-]?\s*lev(?:y)?)\b/gi;
-
-function detectSingleLevyReference(description: string | null | undefined): string | null {
-  if (!description) return null;
-  const unique = new Set<string>();
-  for (const m of description.matchAll(LEV_REF_REGEX_GLOBAL)) {
-    const raw = m[1] ?? m[2];
-    const n = Number.parseInt(raw, 10);
-    if (Number.isFinite(n) && n > 0) unique.add(`LEV-${n}`);
-  }
-  return unique.size === 1 ? [...unique][0] : null;
-}
 
 // ============================================================================
 // READS

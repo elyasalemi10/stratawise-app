@@ -1,9 +1,9 @@
 import {
   BPAY_CRN_REGEX,
-  LEVY_REFERENCE_REGEX,
   type BasiqTransactionPayload,
   type ParsedBasiqDescription,
 } from "@/lib/validations/basiq";
+import { detectSingleLevyReference } from "@/lib/reconciliation/reference";
 
 // ============================================================================
 // Bank-specific description parsers
@@ -136,17 +136,7 @@ function parseGeneric(
 // ─── Extraction primitives ─────────────────────────────────────
 
 function extractLevyReference(s: string): string | null {
-  // LEVY_REFERENCE_REGEX is a /g-flagged capturing regex — iterate via
-  // matchAll so we can read the captured digit group and normalise to
-  // "LEV-{n}". Returns null if zero or multiple distinct references are
-  // present (avoids guessing between ambiguous candidates at parse time).
-  const unique = new Set<string>();
-  for (const m of s.matchAll(LEVY_REFERENCE_REGEX)) {
-    const raw = m[1] ?? m[2];
-    const n = Number.parseInt(raw, 10);
-    if (Number.isFinite(n) && n > 0) unique.add(`LEV-${n}`);
-  }
-  return unique.size === 1 ? [...unique][0] : null;
+  return detectSingleLevyReference(s);
 }
 
 function extractBpayCrn(s: string): string | null {

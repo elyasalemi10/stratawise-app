@@ -11,23 +11,7 @@ import {
   type ImportSummary,
   type ImportTransactionsInput,
 } from "@/lib/validations/bank-transactions";
-
-// Flexible levy-reference regex (mirrors auto-match.ts). Returns the
-// normalised "LEV-{n}" form when exactly one unique reference is present,
-// else null. Duplicated deliberately for PP4-0; consolidates into a shared
-// helper in PP4-A when the orchestrator lands.
-const LEV_REF_REGEX_GLOBAL = /\b(?:lev(?:y)?\s*[-]?\s*(\d+)|(\d+)\s*[-]?\s*lev(?:y)?)\b/gi;
-
-function detectSingleLevyReference(description: string | null | undefined): string | null {
-  if (!description) return null;
-  const unique = new Set<string>();
-  for (const m of description.matchAll(LEV_REF_REGEX_GLOBAL)) {
-    const raw = m[1] ?? m[2];
-    const n = Number.parseInt(raw, 10);
-    if (Number.isFinite(n) && n > 0) unique.add(`LEV-${n}`);
-  }
-  return unique.size === 1 ? [...unique][0] : null;
-}
+import { detectSingleLevyReference } from "@/lib/reconciliation/reference";
 
 export async function getBankAccountsForSubdivision(
   subdivisionId: string

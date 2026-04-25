@@ -171,8 +171,6 @@ Small fixes to batch before going live. Non-blocking for feature work.
 
 - **Legacy `payments.reference_number` UNIQUE constraint:** PP4-0 deliberately skipped altering the `payments` table because it has zero active write paths in Prompts 1-3 and is slated for removal in Prompt 7. The old single-column UNIQUE is still in place. When Prompt 7 removes the table, the constraint goes with it; if Prompt 7 decides to keep `payments` and add new write paths, re-evaluate whether the constraint should become composite `(subdivision_id, reference_number)` to match the LEV/RCP tables.
 
-- **Duplicated `detectSingleLevyReference` helper:** The same small helper (flexible regex + normalise to `LEV-{n}`) lives inline in three files: `src/lib/reconciliation/auto-match.ts`, `src/lib/actions/reconciliation.ts`, `src/lib/actions/bank-transactions.ts`. PP4-A consolidation: extract to `src/lib/reconciliation/reference.ts` (or similar) and import. Left duplicated in PP4-0 on purpose to keep the refactor commit narrow.
-
 ## From Prompt 8
 
 - **Audit trail in ledger entry drawer — pagination:** Query capped at 100

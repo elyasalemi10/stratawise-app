@@ -227,14 +227,10 @@ export type ForceSyncBasiqConnectionInput = z.infer<
 
 // ─── Helpers ───────────────────────────────────────────────────
 
-// Flexible levy-reference regex for free-text Basiq description parsing.
-// Accepts "LEV-7", "LEV 7", "Levy 7", "Levy-7", "7-LEV", "7 Levy", etc.
-// The digit is captured in group 1 (prefix form) or group 2 (suffix form);
-// callers should parseInt and reconstruct as "LEV-{n}". See
-// src/lib/basiq/parsers.ts::extractLevyReference for the canonical usage.
-// Form-input validation uses the strict anchored LEV-\d+ in
-// src/lib/validations/reconciliation.ts — do not re-use this one for that.
-export const LEVY_REFERENCE_REGEX = /\b(?:lev(?:y)?\s*[-]?\s*(\d+)|(\d+)\s*[-]?\s*lev(?:y)?)\b/gi;
+// Levy-reference parsing now lives in src/lib/reconciliation/reference.ts
+// (LEV_REF_REGEX_GLOBAL + detectSingleLevyReference). Importers use that
+// module directly. Form-input validation uses the strict anchored LEV-\d+
+// in src/lib/validations/reconciliation.ts.
 export const BPAY_CRN_REGEX = /\bBPAY[^\d]{0,10}(\d{4,20})\b/i;
 
 export function isTerminalStatus(status: BasiqConnectionStatus): boolean {
