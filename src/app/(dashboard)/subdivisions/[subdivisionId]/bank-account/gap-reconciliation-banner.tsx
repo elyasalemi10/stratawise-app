@@ -77,7 +77,7 @@ export function GapReconciliationBanner({
         </p>
         <div className="mt-3 flex flex-wrap gap-2">
           <Link
-            href={`/subdivisions/${subdivisionId}/finance/reconciliation/gap-reports/${report.id}`}
+            href={`/subdivisions/${subdivisionId}/reconciliation/gap-reports/${report.id}`}
             className="inline-flex h-8 items-center rounded-md bg-primary px-3 text-xs font-medium text-white transition-colors hover:bg-primary/90"
           >
             View gap report

@@ -467,9 +467,9 @@ mismatch rejection, exclude/unexclude, void cascade for bank txn and
 receipt (pending and deposited). Runs clean with 12/12 pass.
 
 **UI surfaces.**
-- Reconciliation queue: `/finance/reconciliation` — filterable table of
+- Reconciliation queue: `/reconciliation` — filterable table of
   bank transactions with status badges and sidebar link.
-- Reconciliation detail: `/finance/reconciliation/[bankTxnId]` — full
+- Reconciliation detail: `/reconciliation/[bankTxnId]` — full
   transaction view with match/unmatch/void actions and lot allocation.
 - Bank account page enhancements: undeposited funds panel (staging table
   view), record cash receipt flow, deposit-receipts flow.
@@ -608,7 +608,7 @@ first insert). `rpc_mark_basiq_connection_expired` (state flip to
   readable linked accounts, optional last-error, Reauthorise and
   Disconnect (guarded by an AlertDialog confirmation).
 - Read-only gap report page at
-  `/subdivisions/[id]/finance/reconciliation/gap-reports/[reportId]` —
+  `/subdivisions/[id]/reconciliation/gap-reports/[reportId]` —
   Summary + Metrics + whole-row-clickable transactions table +
   arrears-suppression footer. Breadcrumb-carried title
   "Reconciliation > Gap report". 404 on missing or cross-subdivision

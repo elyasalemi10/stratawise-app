@@ -177,7 +177,7 @@ export function BudgetTab({ subdivisionId, financialYearStartMonth }: { subdivis
       <div className="flex items-center justify-between">
         <h1 className="text-lg font-semibold text-foreground">Budgets</h1>
         {(!hasAdmin || !hasCapital) && (
-          <Link href={`/subdivisions/${subdivisionId}/finance/budgets/create`}>
+          <Link href={`/subdivisions/${subdivisionId}/budgets/create`}>
             <Button size="sm">
               <Plus className="mr-2 h-3.5 w-3.5" />
               Create budget
@@ -195,7 +195,7 @@ export function BudgetTab({ subdivisionId, financialYearStartMonth }: { subdivis
             <p className="mt-1 text-sm text-muted-foreground max-w-sm">
               Create an annual budget to start generating levy notices.
             </p>
-            <Link href={`/subdivisions/${subdivisionId}/finance/budgets/create`}>
+            <Link href={`/subdivisions/${subdivisionId}/budgets/create`}>
               <Button className="mt-4">
                 <Plus className="mr-2 h-4 w-4" />
                 Create budget

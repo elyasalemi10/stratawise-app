@@ -266,7 +266,7 @@ export function CreateBudgetForm({
     }
 
     toast.success(`${fundType === "administrative" ? "Administrative Fund" : "Capital Works Fund"} budget created`);
-    router.push(`/subdivisions/${subdivisionId}/finance/budgets`);
+    router.push(`/subdivisions/${subdivisionId}/budgets`);
   }
 
   return (
@@ -277,7 +277,7 @@ export function CreateBudgetForm({
             variant="ghost"
             size="icon"
             className="h-8 w-8"
-            onClick={() => router.push(`/subdivisions/${subdivisionId}/finance/budgets`)}
+            onClick={() => router.push(`/subdivisions/${subdivisionId}/budgets`)}
           >
             <ArrowLeft className="h-4 w-4" />
           </Button>

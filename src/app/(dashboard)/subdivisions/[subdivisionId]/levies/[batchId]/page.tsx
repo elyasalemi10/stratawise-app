@@ -14,7 +14,7 @@ export default async function BatchDetailPage({
     getLevyBatchDetail(subdivisionId, batchId),
   ]);
 
-  if (!subdivision || !batch) redirect(`/subdivisions/${subdivisionId}/finance/levies`);
+  if (!subdivision || !batch) redirect(`/subdivisions/${subdivisionId}/levies`);
 
   return (
     <BatchDetailContent

@@ -67,7 +67,7 @@ export async function GET(req: Request): Promise<Response> {
     const target =
       returnTo ??
       (priorConn
-        ? `/subdivisions/${priorConn.subdivision_id}/finance/bank-account`
+        ? `/subdivisions/${priorConn.subdivision_id}/bank-account`
         : "/");
     const sep = target.includes("?") ? "&" : "?";
     return NextResponse.redirect(
@@ -91,7 +91,7 @@ export async function GET(req: Request): Promise<Response> {
   const target =
     returnTo ??
     (priorConn
-      ? `/subdivisions/${priorConn.subdivision_id}/finance/bank-account`
+      ? `/subdivisions/${priorConn.subdivision_id}/bank-account`
       : "/");
   const sep = target.includes("?") ? "&" : "?";
   return NextResponse.redirect(

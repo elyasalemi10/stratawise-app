@@ -117,7 +117,7 @@ export function MatchDetailContent({
   const showClearCard = undepositedMatchesExactly || undepositedPartialMatch;
   const showAllocateForm = !undepositedMatchesExactly;
 
-  const base = `/subdivisions/${subdivisionId}/finance/reconciliation`;
+  const base = `/subdivisions/${subdivisionId}/reconciliation`;
 
   const handleOpenVoidDialog = async () => {
     setIsLoadingVoidPreview(true);

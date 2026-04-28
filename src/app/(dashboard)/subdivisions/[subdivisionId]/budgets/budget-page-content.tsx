@@ -1,6 +1,6 @@
 "use client";
 
-import { BudgetTab } from "../../manage/budget-tab";
+import { BudgetTab } from "../manage/budget-tab";
 
 export function BudgetPageContent({
   subdivisionId,

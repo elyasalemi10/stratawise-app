@@ -240,8 +240,8 @@ export async function importBankTransactions(
   });
 
   await revalidateSidebarForSubdivision(subdivisionId);
-  revalidatePath(`/subdivisions/${subdivisionId}/finance/bank-account`);
-  revalidatePath(`/subdivisions/${subdivisionId}/finance/reconciliation`);
+  revalidatePath(`/subdivisions/${subdivisionId}/bank-account`);
+  revalidatePath(`/subdivisions/${subdivisionId}/reconciliation`);
   return { summary };
 }
 
@@ -317,6 +317,6 @@ export async function updateBankAccount(
     after_state: payload,
   });
 
-  revalidatePath(`/subdivisions/${existing.subdivision_id}/finance/bank-account`);
+  revalidatePath(`/subdivisions/${existing.subdivision_id}/bank-account`);
   return { success: { id } };
 }

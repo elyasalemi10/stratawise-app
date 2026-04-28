@@ -242,7 +242,7 @@ export function LedgerEntryDrawer({
                             )}
                           </div>
                           <Link
-                            href={`/subdivisions/${subdivisionId}/finance/levies/${sourceLink.levyBatchId}`}
+                            href={`/subdivisions/${subdivisionId}/levies/${sourceLink.levyBatchId}`}
                             className="flex items-center gap-1 text-xs text-primary hover:underline"
                           >
                             View batch
@@ -264,7 +264,7 @@ export function LedgerEntryDrawer({
                             </p>
                           </div>
                           <Link
-                            href={`/subdivisions/${subdivisionId}/finance/reconciliation/${sourceLink.bankTxnId}`}
+                            href={`/subdivisions/${subdivisionId}/reconciliation/${sourceLink.bankTxnId}`}
                             className="flex items-center gap-1 text-xs text-primary hover:underline"
                           >
                             View match
@@ -282,7 +282,7 @@ export function LedgerEntryDrawer({
                             )}
                           </div>
                           <Link
-                            href={`/subdivisions/${subdivisionId}/finance/bank-account`}
+                            href={`/subdivisions/${subdivisionId}/bank-account`}
                             className="flex items-center gap-1 text-xs text-primary hover:underline"
                           >
                             View receipts

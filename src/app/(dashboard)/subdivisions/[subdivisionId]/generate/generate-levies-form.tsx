@@ -336,7 +336,7 @@ export function GenerateLeviesForm({
     }
 
     toast.success("Levies generated");
-    router.push(`/subdivisions/${subdivisionId}/finance/levies/${result.batchId}`);
+    router.push(`/subdivisions/${subdivisionId}/levies/${result.batchId}`);
   }
 
   const grandTotal = lots.reduce((sum, lot) => {

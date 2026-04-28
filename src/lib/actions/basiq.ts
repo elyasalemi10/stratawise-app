@@ -317,7 +317,7 @@ export async function completeBasiqConsent(args: {
       },
     });
 
-    revalidatePath(`/subdivisions/${conn.subdivision_id}/finance/bank-account`);
+    revalidatePath(`/subdivisions/${conn.subdivision_id}/bank-account`);
     return { success: true };
   } catch (e) {
     return { error: (e as Error).message };
@@ -589,7 +589,7 @@ export async function releaseBankAccountFromConnection(
       metadata: { reason: "manual reconnect" },
     });
 
-    revalidatePath(`/subdivisions/${acct.subdivision_id}/finance/bank-account`);
+    revalidatePath(`/subdivisions/${acct.subdivision_id}/bank-account`);
     return { success: true };
   } catch (e) {
     return { error: (e as Error).message };
@@ -696,7 +696,7 @@ export async function disconnectBasiqConnection(
     });
 
     revalidatePath(
-      `/subdivisions/${conn.subdivision_id}/finance/bank-account`,
+      `/subdivisions/${conn.subdivision_id}/bank-account`,
     );
     return { success: true };
   } catch (e) {
@@ -799,10 +799,10 @@ export async function forceSyncBasiqConnection(args: {
       if (res.error) errors.push(`${c.id}: ${res.error}`);
     }
     revalidatePath(
-      `/subdivisions/${args.subdivisionId}/finance/bank-account`,
+      `/subdivisions/${args.subdivisionId}/bank-account`,
     );
     revalidatePath(
-      `/subdivisions/${args.subdivisionId}/finance/reconciliation`,
+      `/subdivisions/${args.subdivisionId}/reconciliation`,
     );
     return {
       success: {
@@ -1004,7 +1004,7 @@ async function sendGapEmails(args: {
       backfilledCount: args.backfilledCount,
       autoMatchedCount: args.autoMatchedCount,
       manualReviewCount: args.manualReviewCount,
-      reportUrl: `${process.env.NEXT_PUBLIC_APP_URL ?? ""}/subdivisions/${args.subdivisionId}/finance/bank-account`,
+      reportUrl: `${process.env.NEXT_PUBLIC_APP_URL ?? ""}/subdivisions/${args.subdivisionId}/bank-account`,
     });
     if (args.committeeNotified) {
       await sendBasiqCommitteeGapNotificationEmail({
@@ -1487,7 +1487,7 @@ export async function dismissGapReport(
     });
 
     revalidatePath(
-      `/subdivisions/${report.subdivision_id}/finance/bank-account`,
+      `/subdivisions/${report.subdivision_id}/bank-account`,
     );
     return { success: true };
   } catch (e) {

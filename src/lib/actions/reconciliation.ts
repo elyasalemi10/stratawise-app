@@ -977,8 +977,8 @@ export async function addManualBankTransaction(
   }
 
   await revalidateSidebarForSubdivision(parsed.data.subdivision_id);
-  revalidatePath(`/subdivisions/${parsed.data.subdivision_id}/finance/reconciliation`);
-  revalidatePath(`/subdivisions/${parsed.data.subdivision_id}/finance/bank-account`);
+  revalidatePath(`/subdivisions/${parsed.data.subdivision_id}/reconciliation`);
+  revalidatePath(`/subdivisions/${parsed.data.subdivision_id}/bank-account`);
   return { success: { bankTransactionId: inserted.id, autoMatched, matchedRef } };
 }
 
@@ -1202,7 +1202,7 @@ export async function reconcileTransaction(
   }
 
   await revalidateSidebarForSubdivision(parsed.data.subdivision_id);
-  revalidatePath(`/subdivisions/${parsed.data.subdivision_id}/finance/reconciliation`);
+  revalidatePath(`/subdivisions/${parsed.data.subdivision_id}/reconciliation`);
 
   return {
     success: {
@@ -1274,7 +1274,7 @@ export async function resolvePayerMappingCollision(
   });
 
   await revalidateSidebarForSubdivision(parsed.data.subdivision_id);
-  revalidatePath(`/subdivisions/${parsed.data.subdivision_id}/finance/reconciliation`);
+  revalidatePath(`/subdivisions/${parsed.data.subdivision_id}/reconciliation`);
 
   if (!result.ok) {
     return {
@@ -1492,7 +1492,7 @@ export async function disableMappingAction(
   if (!result.ok) return { error: result.error };
 
   revalidatePath(
-    `/subdivisions/${parsed.data.subdivision_id}/finance/reconciliation/mappings`,
+    `/subdivisions/${parsed.data.subdivision_id}/reconciliation/mappings`,
   );
   return { success: { mapping_id: result.mapping_id } };
 }
@@ -1569,7 +1569,7 @@ export async function reactivateMappingAction(
   // ok: true case
   if (result.ok) {
     revalidatePath(
-      `/subdivisions/${parsed.data.subdivision_id}/finance/reconciliation/mappings`,
+      `/subdivisions/${parsed.data.subdivision_id}/reconciliation/mappings`,
     );
     return { success: { mapping_id: result.mapping_id } };
   }
@@ -1602,7 +1602,7 @@ export async function deleteMappingAction(
   if (!result.ok) return { error: result.error };
 
   revalidatePath(
-    `/subdivisions/${parsed.data.subdivision_id}/finance/reconciliation/mappings`,
+    `/subdivisions/${parsed.data.subdivision_id}/reconciliation/mappings`,
   );
   return { success: { mapping_id: result.mapping_id } };
 }
@@ -1650,7 +1650,7 @@ export async function resolveMappingCollision(
   });
 
   revalidatePath(
-    `/subdivisions/${parsed.data.subdivision_id}/finance/reconciliation/mappings`,
+    `/subdivisions/${parsed.data.subdivision_id}/reconciliation/mappings`,
   );
 
   if (!result.ok) {
@@ -1709,7 +1709,7 @@ export async function createMappingDirectAction(input: {
   });
 
   revalidatePath(
-    `/subdivisions/${input.subdivision_id}/finance/reconciliation/mappings`,
+    `/subdivisions/${input.subdivision_id}/reconciliation/mappings`,
   );
 
   if (result.ok) {
@@ -1752,7 +1752,7 @@ export async function unmatchTransaction(
   };
 
   await revalidateSidebarForSubdivision(parsed.data.subdivision_id);
-  revalidatePath(`/subdivisions/${parsed.data.subdivision_id}/finance/reconciliation`);
+  revalidatePath(`/subdivisions/${parsed.data.subdivision_id}/reconciliation`);
   return {
     success: {
       voidedCreditIds: payload.voided_credit_ids ?? [],
@@ -1790,8 +1790,8 @@ export async function recordCashReceipt(
   const payload = (data ?? {}) as { receipt_id?: string; receipt_number?: string; ledger_entry_id?: string };
 
   await revalidateSidebarForSubdivision(parsed.data.subdivision_id);
-  revalidatePath(`/subdivisions/${parsed.data.subdivision_id}/finance/reconciliation`);
-  revalidatePath(`/subdivisions/${parsed.data.subdivision_id}/finance/bank-account`);
+  revalidatePath(`/subdivisions/${parsed.data.subdivision_id}/reconciliation`);
+  revalidatePath(`/subdivisions/${parsed.data.subdivision_id}/bank-account`);
   revalidatePath(`/subdivisions/${parsed.data.subdivision_id}/lots/${parsed.data.lot_id}`);
   return {
     success: {
@@ -1822,8 +1822,8 @@ export async function depositUndepositedFunds(
   const payload = (data ?? {}) as { cleared_receipt_numbers?: string[]; match_ids?: string[] };
 
   await revalidateSidebarForSubdivision(parsed.data.subdivision_id);
-  revalidatePath(`/subdivisions/${parsed.data.subdivision_id}/finance/reconciliation`);
-  revalidatePath(`/subdivisions/${parsed.data.subdivision_id}/finance/bank-account`);
+  revalidatePath(`/subdivisions/${parsed.data.subdivision_id}/reconciliation`);
+  revalidatePath(`/subdivisions/${parsed.data.subdivision_id}/bank-account`);
   return {
     success: {
       clearedReceiptNumbers: payload.cleared_receipt_numbers ?? [],
@@ -1851,7 +1851,7 @@ export async function excludeTransaction(
   if (error) return { error: error.message };
 
   await revalidateSidebarForSubdivision(parsed.data.subdivision_id);
-  revalidatePath(`/subdivisions/${parsed.data.subdivision_id}/finance/reconciliation`);
+  revalidatePath(`/subdivisions/${parsed.data.subdivision_id}/reconciliation`);
   return { success: true };
 }
 
@@ -1873,7 +1873,7 @@ export async function unexcludeTransaction(
   if (error) return { error: error.message };
 
   await revalidateSidebarForSubdivision(parsed.data.subdivision_id);
-  revalidatePath(`/subdivisions/${parsed.data.subdivision_id}/finance/reconciliation`);
+  revalidatePath(`/subdivisions/${parsed.data.subdivision_id}/reconciliation`);
   return { success: true };
 }
 
@@ -1972,8 +1972,8 @@ export async function voidBankTransaction(
   });
 
   await revalidateSidebarForSubdivision(parsed.data.subdivision_id);
-  revalidatePath(`/subdivisions/${parsed.data.subdivision_id}/finance/reconciliation`);
-  revalidatePath(`/subdivisions/${parsed.data.subdivision_id}/finance/bank-account`);
+  revalidatePath(`/subdivisions/${parsed.data.subdivision_id}/reconciliation`);
+  revalidatePath(`/subdivisions/${parsed.data.subdivision_id}/bank-account`);
   return { success: { voidedCreditIds, reopenedReceiptIds } };
 }
 
@@ -2030,9 +2030,9 @@ export async function voidUndepositedReceipt(
     metadata: { reason: parsed.data.reason, voided_credit_id: uf.linked_ledger_credit_id },
   });
 
-  revalidatePath(`/subdivisions/${parsed.data.subdivision_id}/finance/bank-account`);
+  revalidatePath(`/subdivisions/${parsed.data.subdivision_id}/bank-account`);
   await revalidateSidebarForSubdivision(parsed.data.subdivision_id);
-  revalidatePath(`/subdivisions/${parsed.data.subdivision_id}/finance/reconciliation`);
+  revalidatePath(`/subdivisions/${parsed.data.subdivision_id}/reconciliation`);
   return { success: { voidedCreditId: uf.linked_ledger_credit_id } };
 }
 

@@ -192,7 +192,7 @@ export function BatchDetailContent({
       toast.error(result.error);
     } else {
       toast.success("Batch cancelled");
-      router.push(`/subdivisions/${subdivisionId}/finance/levies`);
+      router.push(`/subdivisions/${subdivisionId}/levies`);
     }
   }
 
@@ -224,7 +224,7 @@ export function BatchDetailContent({
             variant="ghost"
             size="icon"
             className="h-8 w-8"
-            onClick={() => router.push(`/subdivisions/${subdivisionId}/finance/levies`)}
+            onClick={() => router.push(`/subdivisions/${subdivisionId}/levies`)}
           >
             <ArrowLeft className="h-4 w-4" />
           </Button>

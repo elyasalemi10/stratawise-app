@@ -70,7 +70,7 @@ export function MappingsContent({
   const [collisionPayload, setCollisionPayload] =
     useState<MappingCollisionPayload | null>(null);
 
-  const base = `/subdivisions/${subdivisionId}/finance/reconciliation/mappings`;
+  const base = `/subdivisions/${subdivisionId}/reconciliation/mappings`;
 
   function setStatus(next: StatusFilter) {
     const params = new URLSearchParams();

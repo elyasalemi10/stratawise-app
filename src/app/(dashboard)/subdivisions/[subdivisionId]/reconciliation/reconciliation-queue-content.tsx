@@ -139,7 +139,7 @@ export function ReconciliationQueueContent({
     { allowed: MATCH_METHOD_ALLOWED },
   );
 
-  const base = `/subdivisions/${subdivisionId}/finance/reconciliation`;
+  const base = `/subdivisions/${subdivisionId}/reconciliation`;
 
   function updateFilter(key: "bank" | "status" | "source", value: string | null) {
     const params = new URLSearchParams();
@@ -196,7 +196,7 @@ export function ReconciliationQueueContent({
             <Upload className="mr-2 h-4 w-4" />
             Record receipt
           </Button>
-          <Link href={`/subdivisions/${subdivisionId}/finance/bank-account`}>
+          <Link href={`/subdivisions/${subdivisionId}/bank-account`}>
             <Button variant="outline" size="sm">
               <FileText className="mr-2 h-4 w-4" />
               Import CSV
@@ -497,7 +497,7 @@ function QueueRow({
   subdivisionId: string;
   onOpenAuditDrawer: (bankTxnId: string) => void;
 }) {
-  const href = `/subdivisions/${subdivisionId}/finance/reconciliation/${row.id}`;
+  const href = `/subdivisions/${subdivisionId}/reconciliation/${row.id}`;
   const isCredit = row.amount > 0;
   const amountClass = isCredit ? "text-[hsl(160,100%,37%)]" : "text-destructive";
   return (
@@ -585,7 +585,7 @@ function EmptyState({
         </div>
         <div className="mt-6 flex items-center justify-center gap-2">
           {noUnmatchedOnSubdivision ? (
-            <Link href={`/subdivisions/${subdivisionId}/finance/bank-account`}>
+            <Link href={`/subdivisions/${subdivisionId}/bank-account`}>
               <Button variant="outline" size="sm">
                 <Wallet className="mr-2 h-4 w-4" />
                 Open bank account

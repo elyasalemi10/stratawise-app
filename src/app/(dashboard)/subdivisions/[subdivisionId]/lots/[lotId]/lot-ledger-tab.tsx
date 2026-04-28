@@ -94,14 +94,14 @@ function canVoid(
       return {
         allowed: false,
         reason: "To reverse this payment, unmatch the bank transaction.",
-        linkHref: `/subdivisions/${entry.subdivision_id}/finance/reconciliation/${sourceLink.bankTxnId}`,
+        linkHref: `/subdivisions/${entry.subdivision_id}/reconciliation/${sourceLink.bankTxnId}`,
       };
     }
     if (sourceLink?.receiptId) {
       return {
         allowed: false,
         reason: "To reverse this payment, void the underlying cash receipt.",
-        linkHref: `/subdivisions/${entry.subdivision_id}/finance/bank-account`,
+        linkHref: `/subdivisions/${entry.subdivision_id}/bank-account`,
       };
     }
     return {

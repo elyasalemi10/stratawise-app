@@ -216,7 +216,7 @@ function TransactionRow({
     matchStatus: string;
   };
 }) {
-  const href = `/subdivisions/${subdivisionId}/finance/reconciliation/${tx.id}`;
+  const href = `/subdivisions/${subdivisionId}/reconciliation/${tx.id}`;
   return (
     <tr className="border-b border-border last:border-b-0 hover:bg-muted/30">
       <td className="px-3 py-3 text-sm text-foreground">

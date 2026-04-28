@@ -29,7 +29,7 @@ import {
   FormMessage,
 } from "@/components/ui/form";
 import { cn } from "@/lib/utils";
-import { updateSubdivisionField } from "../../manage/actions";
+import { updateSubdivisionField } from "../manage/actions";
 import { getBankTransactions, updateBankAccount } from "@/lib/actions/bank-transactions";
 import { getUndepositedEntries, voidUndepositedReceipt } from "@/lib/actions/reconciliation";
 import { RecordCashReceiptDialog } from "@/components/shared/record-cash-receipt-dialog";
@@ -660,7 +660,7 @@ function TransactionsTable({
                     <div className="text-xs text-primary mt-0.5">
                       May match pending receipt {matchingReceipt.receipt_number} —{" "}
                       <Link
-                        href={`/subdivisions/${subdivisionId}/finance/reconciliation/${t.id}`}
+                        href={`/subdivisions/${subdivisionId}/reconciliation/${t.id}`}
                         className="underline hover:no-underline"
                       >
                         Review

@@ -28,7 +28,7 @@ export default async function LeviesPage({
     <div className="space-y-6">
       <div className="flex items-center justify-between">
         <h1 className="text-lg font-semibold text-foreground">Levies</h1>
-        <Link href={`/subdivisions/${subdivisionId}/finance/generate`}>
+        <Link href={`/subdivisions/${subdivisionId}/generate`}>
           <Button size="sm">
             <Plus className="mr-2 h-3.5 w-3.5" />
             Generate levies
@@ -44,7 +44,7 @@ export default async function LeviesPage({
             <p className="mt-1 text-sm text-muted-foreground max-w-sm">
               Generate levies from an approved budget to start issuing levy notices to lot owners.
             </p>
-            <Link href={`/subdivisions/${subdivisionId}/finance/generate`}>
+            <Link href={`/subdivisions/${subdivisionId}/generate`}>
               <Button className="mt-4">
                 <Plus className="mr-2 h-4 w-4" />
                 Generate levies
@@ -57,7 +57,7 @@ export default async function LeviesPage({
           {batches.map((batch) => (
             <Link
               key={batch.id}
-              href={`/subdivisions/${subdivisionId}/finance/levies/${batch.id}`}
+              href={`/subdivisions/${subdivisionId}/levies/${batch.id}`}
               className="block"
             >
               <Card className="transition-colors hover:border-primary/30 cursor-pointer">

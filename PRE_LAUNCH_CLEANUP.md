@@ -237,6 +237,14 @@ Small fixes to batch before going live. Non-blocking for feature work.
 
 - **Queue `mm` filter "ANY allocation" semantic.** The queue's `match_method` filter (`?mm=auto_reference,auto_bpay_crn`) matches `bank_transactions` where ANY allocation row in `reconciliation_matches` has the specified method. In practice all allocations for a single transaction share a method (orchestrator writes them atomically; manual matches via `reconcileTransaction` set one method per call). If piecemeal manual matching with mixed methods becomes possible (e.g., a future "split-method match" UI), revisit the filter semantic — either apply ALL-allocations-match or surface the disagreement explicitly in the queue.
 
+## From route-flattening refactor
+
+- **Breadcrumb terminal-crumb missing on UUID-final routes (M4).** `buildBreadcrumbs` in [header.tsx](src/components/layout/header.tsx) skips UUID segments, but does not promote the last *pushed* crumb to `isLast=true` when the final URL segment is a skipped UUID. Affected routes:
+  - `/subdivisions/[id]/levies/[batchId]` — renders `[Levies]` with `isLast=false`, so it becomes a clickable link to itself.
+  - `/subdivisions/[id]/reconciliation/[bankTxnId]` — same pattern, renders `[Reconciliation]` only.
+  - `/subdivisions/[id]/reconciliation/gap-reports/[reportId]` — renders `[Reconciliation > Gap report]` with neither marked terminal.
+  - `/subdivisions/[id]/lots/[lotId]` is correctly handled via the explicit special-case branch — extend that pattern to cover the others, or post-loop promote the final pushed crumb to `isLast=true` when the actual last segment was a UUID. Pre-existed before the route-flattening refactor; surfaced during the breadcrumb walk-through.
+
 ## From Prompt 8
 
 - **Audit trail in ledger entry drawer — pagination:** Query capped at 100

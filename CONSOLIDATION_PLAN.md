@@ -301,8 +301,8 @@ Per the instruction "minimise renames; only rename where the current name is act
 12. `src/app/(dashboard)/subdivisions/[subdivisionId]/manage/lots-tab.tsx`
 13. `src/app/(dashboard)/subdivisions/[subdivisionId]/lots/[lotId]/lot-detail-content.tsx`
 14. `src/app/(dashboard)/subdivisions/[subdivisionId]/reports/reports-content.tsx`
-15. `src/app/(dashboard)/subdivisions/[subdivisionId]/finance/generate/generate-levies-form.tsx`
-16. `src/app/(dashboard)/subdivisions/[subdivisionId]/finance/levies/[batchId]/batch-detail-content.tsx`
+15. `src/app/(dashboard)/subdivisions/[subdivisionId]/generate/generate-levies-form.tsx`
+16. `src/app/(dashboard)/subdivisions/[subdivisionId]/levies/[batchId]/batch-detail-content.tsx`
 
 ---
 
