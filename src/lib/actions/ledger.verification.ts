@@ -676,6 +676,463 @@ async function scenario9_WriteoffAdjustment(fx: Fixture) {
   }
 }
 
+// ───────── PP4-A: priority-aware walker + payment-status snapshot ─────────
+
+// Helper: insert a fresh lot for a clean ledger state. Caller passes a unique
+// lot_number to avoid the (subdivision_id, lot_number) UNIQUE.
+async function makeFreshLot(fx: Fixture, lotNumber: number): Promise<string> {
+  const { data, error } = await supabase
+    .from("lots")
+    .insert({
+      subdivision_id: fx.subdivisionId,
+      lot_number: lotNumber,
+      lot_entitlement: 100,
+      lot_liability: 100,
+    })
+    .select("id")
+    .single();
+  if (error || !data) throw new Error(`makeFreshLot: ${error?.message}`);
+  return data.id;
+}
+
+// Helper: insert a levy_notice row directly (bypasses batch). Returns id.
+async function makeNotice(
+  fx: Fixture,
+  lotId: string,
+  opts: {
+    levyType: "regular" | "special";
+    amount: number;
+    periodStart: string;
+    periodEnd: string;
+    dueDate: string;
+  },
+): Promise<{ id: string; reference: string }> {
+  const { data: ref } = await supabase.rpc("next_reference_number", {
+    p_prefix: "LEV",
+    p_subdivision_id: fx.subdivisionId,
+  });
+  if (!ref) throw new Error("makeNotice: next_reference_number returned null");
+  const { data, error } = await supabase
+    .from("levy_notices")
+    .insert({
+      subdivision_id: fx.subdivisionId,
+      lot_id: lotId,
+      budget_id: fx.budgetId,
+      reference_number: ref as string,
+      fund_type: "administrative",
+      levy_type: opts.levyType,
+      period_start: opts.periodStart,
+      period_end: opts.periodEnd,
+      amount: opts.amount,
+      due_date: opts.dueDate,
+      status: "draft",
+    })
+    .select("id")
+    .single();
+  if (error || !data) throw new Error(`makeNotice: ${error?.message}`);
+  return { id: data.id, reference: ref as string };
+}
+
+async function scenario10_PriorityAwareWalker(fx: Fixture) {
+  const header =
+    "S10: priority-aware walker — special_levy outstanding behind newer regular levy";
+  try {
+    // Test setup distinguishes priority-aware from date-only:
+    //   - Special levy ($300, 2026-01-01) — older but lower priority (3)
+    //   - Regular levy ($500, 2026-12-01) — newer, higher priority (2)
+    //   - Untargeted credit ($500)
+    // Date-only walk:    visits Jan first → covers special → 200 left → can't cover Dec → oldest=Dec
+    // Priority-aware:    visits Dec first (pri 2) → covers regular → 0 left → can't cover Jan → oldest=Jan
+    // Test asserts oldest_unpaid_date = special's date (2026-01-01) → only passes with priority-aware.
+
+    const lotId = await makeFreshLot(fx, 200);
+
+    const reg = await makeNotice(fx, lotId, {
+      levyType: "regular",
+      amount: 500,
+      periodStart: "2026-12-01",
+      periodEnd: "2026-12-31",
+      dueDate: "2026-12-28",
+    });
+    const spec = await makeNotice(fx, lotId, {
+      levyType: "special",
+      amount: 300,
+      periodStart: "2026-01-01",
+      periodEnd: "2026-01-31",
+      dueDate: "2026-01-28",
+    });
+
+    // Direct INSERT into lot_ledger_entries with explicit allocation_priority.
+    // The PP4-A schema delta added the column + backfilled existing rows but
+    // did NOT add a BEFORE-INSERT trigger to derive priority from category on
+    // new rows — see PRE_LAUNCH_CLEANUP for the trigger / per-RPC fix.
+    await supabase.from("lot_ledger_entries").insert([
+      {
+        subdivision_id: fx.subdivisionId,
+        lot_id: lotId,
+        fund_type: "administrative",
+        entry_type: "debit",
+        category: "levy",
+        amount: 500,
+        entry_date: "2026-12-01",
+        description: "S10 regular levy",
+        reference: reg.reference,
+        levy_notice_id: reg.id,
+        status: "active",
+        created_by: fx.profileId,
+        allocation_priority: 2,
+      },
+      {
+        subdivision_id: fx.subdivisionId,
+        lot_id: lotId,
+        fund_type: "administrative",
+        entry_type: "debit",
+        category: "special_levy",
+        amount: 300,
+        entry_date: "2026-01-01",
+        description: "S10 special levy",
+        reference: spec.reference,
+        levy_notice_id: spec.id,
+        status: "active",
+        created_by: fx.profileId,
+        allocation_priority: 3,
+      },
+      {
+        subdivision_id: fx.subdivisionId,
+        lot_id: lotId,
+        fund_type: "administrative",
+        entry_type: "credit",
+        category: "adjustment_credit",
+        amount: 500,
+        entry_date: "2026-06-01",
+        description: "S10 free credit",
+        status: "active",
+        created_by: fx.profileId,
+        allocation_priority: 2,
+      },
+    ]);
+
+    // Trigger walker recompute.
+    const { error: rcErr } = await supabase.rpc("recompute_lot_ledger_state", {
+      p_lot_id: lotId,
+    });
+    assert(!rcErr, `S10 recompute failed: ${rcErr?.message}`);
+
+    const state = await fetchState(lotId);
+    assert(state, "S10 state row missing");
+    assert(
+      state.oldest_unpaid_date_admin === "2026-01-01",
+      `S10 expected oldest_unpaid=2026-01-01 (special's date), got ${state.oldest_unpaid_date_admin}`,
+    );
+
+    // Sanity: total balance = 500 (credit) − 800 (debits) = -300.
+    assert(
+      Number(state.admin_balance) === -300,
+      `S10 expected admin_balance=-300, got ${state.admin_balance}`,
+    );
+
+    record(
+      header,
+      true,
+      `walker absorbed regular levy (priority 2), special levy remains outstanding (oldest_unpaid=2026-01-01); date-only walk would have returned 2026-12-01`,
+    );
+  } catch (e) {
+    record(header, false, (e as Error).message);
+  }
+}
+
+async function scenario11_PaymentStatusPaid(fx: Fixture) {
+  const header = "S11: computeLevyPaymentStatus — fully paid notice → 'paid'";
+  try {
+    const lotId = await makeFreshLot(fx, 210);
+    const notice = await makeNotice(fx, lotId, {
+      levyType: "regular",
+      amount: 500,
+      periodStart: "2026-01-01",
+      periodEnd: "2026-01-31",
+      dueDate: "2026-01-28",
+    });
+
+    await supabase.from("lot_ledger_entries").insert([
+      {
+        subdivision_id: fx.subdivisionId,
+        lot_id: lotId,
+        fund_type: "administrative",
+        entry_type: "debit",
+        category: "levy",
+        amount: 500,
+        entry_date: "2026-01-01",
+        reference: notice.reference,
+        levy_notice_id: notice.id,
+        status: "active",
+        created_by: fx.profileId,
+      },
+      {
+        subdivision_id: fx.subdivisionId,
+        lot_id: lotId,
+        fund_type: "administrative",
+        entry_type: "credit",
+        category: "payment",
+        amount: 500,
+        entry_date: "2026-02-15",
+        reference: notice.reference,
+        levy_notice_id: notice.id,
+        status: "active",
+        created_by: fx.profileId,
+      },
+    ]);
+
+    const { computeLevyPaymentStatus } = await import(
+      "../reconciliation/payment-status"
+    );
+    const rows = await computeLevyPaymentStatus(lotId, "2026-03-01");
+    assert(rows.length === 1, `S11 expected 1 row, got ${rows.length}`);
+    const r = rows[0];
+    assert(r.status === "paid", `S11 status expected paid, got ${r.status}`);
+    assert(
+      r.paid_amount === 500,
+      `S11 paid_amount expected 500, got ${r.paid_amount}`,
+    );
+    assert(
+      r.outstanding_amount === 0,
+      `S11 outstanding expected 0, got ${r.outstanding_amount}`,
+    );
+    assert(
+      r.paid_date === "2026-02-15",
+      `S11 paid_date expected 2026-02-15, got ${r.paid_date}`,
+    );
+
+    record(
+      header,
+      true,
+      `notice ${notice.reference}: status=paid, paid_amount=500, paid_date=2026-02-15`,
+    );
+  } catch (e) {
+    record(header, false, (e as Error).message);
+  }
+}
+
+async function scenario12_PaymentStatusPartial(fx: Fixture) {
+  const header =
+    "S12: computeLevyPaymentStatus — partial credit → 'partially_paid'";
+  try {
+    const lotId = await makeFreshLot(fx, 220);
+    const notice = await makeNotice(fx, lotId, {
+      levyType: "regular",
+      amount: 500,
+      periodStart: "2026-01-01",
+      periodEnd: "2026-01-31",
+      dueDate: "2026-01-28",
+    });
+
+    await supabase.from("lot_ledger_entries").insert([
+      {
+        subdivision_id: fx.subdivisionId,
+        lot_id: lotId,
+        fund_type: "administrative",
+        entry_type: "debit",
+        category: "levy",
+        amount: 500,
+        entry_date: "2026-01-01",
+        reference: notice.reference,
+        levy_notice_id: notice.id,
+        status: "active",
+        created_by: fx.profileId,
+      },
+      {
+        subdivision_id: fx.subdivisionId,
+        lot_id: lotId,
+        fund_type: "administrative",
+        entry_type: "credit",
+        category: "payment",
+        amount: 300,
+        entry_date: "2026-02-15",
+        reference: notice.reference,
+        levy_notice_id: notice.id,
+        status: "active",
+        created_by: fx.profileId,
+      },
+    ]);
+
+    const { computeLevyPaymentStatus } = await import(
+      "../reconciliation/payment-status"
+    );
+    const rows = await computeLevyPaymentStatus(lotId, "2026-03-01");
+    assert(rows.length === 1, `S12 expected 1 row, got ${rows.length}`);
+    const r = rows[0];
+    assert(
+      r.status === "partially_paid",
+      `S12 status expected partially_paid, got ${r.status}`,
+    );
+    assert(r.paid_amount === 300, `S12 paid_amount expected 300, got ${r.paid_amount}`);
+    assert(
+      r.outstanding_amount === 200,
+      `S12 outstanding expected 200, got ${r.outstanding_amount}`,
+    );
+    assert(
+      r.paid_date === null,
+      `S12 paid_date expected null (notice not fully paid), got ${r.paid_date}`,
+    );
+
+    record(
+      header,
+      true,
+      `notice ${notice.reference}: status=partially_paid, paid_amount=300, outstanding=200, paid_date=null`,
+    );
+  } catch (e) {
+    record(header, false, (e as Error).message);
+  }
+}
+
+async function scenario13_PaymentStatusOutstanding(fx: Fixture) {
+  const header =
+    "S13: computeLevyPaymentStatus — no credits → 'outstanding'";
+  try {
+    const lotId = await makeFreshLot(fx, 230);
+    const notice = await makeNotice(fx, lotId, {
+      levyType: "regular",
+      amount: 500,
+      periodStart: "2026-01-01",
+      periodEnd: "2026-01-31",
+      dueDate: "2026-01-28",
+    });
+
+    await supabase.from("lot_ledger_entries").insert({
+      subdivision_id: fx.subdivisionId,
+      lot_id: lotId,
+      fund_type: "administrative",
+      entry_type: "debit",
+      category: "levy",
+      amount: 500,
+      entry_date: "2026-01-01",
+      reference: notice.reference,
+      levy_notice_id: notice.id,
+      status: "active",
+      created_by: fx.profileId,
+    });
+
+    const { computeLevyPaymentStatus } = await import(
+      "../reconciliation/payment-status"
+    );
+    const rows = await computeLevyPaymentStatus(lotId, "2026-03-01");
+    assert(rows.length === 1, `S13 expected 1 row, got ${rows.length}`);
+    const r = rows[0];
+    assert(
+      r.status === "outstanding",
+      `S13 status expected outstanding, got ${r.status}`,
+    );
+    assert(r.paid_amount === 0, `S13 paid_amount expected 0, got ${r.paid_amount}`);
+    assert(
+      r.outstanding_amount === 500,
+      `S13 outstanding expected 500, got ${r.outstanding_amount}`,
+    );
+    assert(r.paid_date === null, `S13 paid_date expected null, got ${r.paid_date}`);
+
+    record(header, true, `notice ${notice.reference}: status=outstanding, paid=0, outstanding=500`);
+  } catch (e) {
+    record(header, false, (e as Error).message);
+  }
+}
+
+async function scenario14_PaymentStatusVoidAfterAsOfDate(fx: Fixture) {
+  const header =
+    "S14: computeLevyPaymentStatus — credit voided AFTER asOfDate appears active in snapshot";
+  try {
+    const lotId = await makeFreshLot(fx, 240);
+    const notice = await makeNotice(fx, lotId, {
+      levyType: "regular",
+      amount: 500,
+      periodStart: "2025-01-01",
+      periodEnd: "2025-01-31",
+      dueDate: "2025-01-28",
+    });
+
+    // Insert debit + credit (both with entry_date in 2025).
+    const { data: inserted } = await supabase
+      .from("lot_ledger_entries")
+      .insert([
+        {
+          subdivision_id: fx.subdivisionId,
+          lot_id: lotId,
+          fund_type: "administrative",
+          entry_type: "debit",
+          category: "levy",
+          amount: 500,
+          entry_date: "2025-01-01",
+          reference: notice.reference,
+          levy_notice_id: notice.id,
+          status: "active",
+          created_by: fx.profileId,
+        },
+        {
+          subdivision_id: fx.subdivisionId,
+          lot_id: lotId,
+          fund_type: "administrative",
+          entry_type: "credit",
+          category: "payment",
+          amount: 500,
+          entry_date: "2025-03-01",
+          reference: notice.reference,
+          levy_notice_id: notice.id,
+          status: "active",
+          created_by: fx.profileId,
+        },
+      ])
+      .select("id, entry_type");
+
+    const creditRow = (inserted ?? []).find((r) => r.entry_type === "credit");
+    assert(creditRow, "S14 credit row missing");
+
+    // Void the credit. rpc_ledger_void sets voided_at = NOW() (today's date,
+    // which is well after asOfDate 2025-06-01).
+    const { error: vErr } = await supabase.rpc("rpc_ledger_void", {
+      p_entry_id: creditRow.id,
+      p_reason: "S14: void after asOfDate snapshot",
+      p_voided_by: fx.profileId,
+    });
+    assert(!vErr, `S14 void failed: ${vErr?.message}`);
+
+    // Snapshot at 2025-06-01: credit voided_at::date (today) > 2025-06-01 →
+    // credit visible in snapshot → notice paid.
+    const { computeLevyPaymentStatus } = await import(
+      "../reconciliation/payment-status"
+    );
+    const rows = await computeLevyPaymentStatus(lotId, "2025-06-01");
+    assert(rows.length === 1, `S14 expected 1 row, got ${rows.length}`);
+    const r = rows[0];
+    assert(
+      r.status === "paid",
+      `S14 expected status=paid (credit visible in snapshot), got ${r.status}`,
+    );
+    assert(
+      r.paid_amount === 500,
+      `S14 expected paid_amount=500 (snapshot-aware), got ${r.paid_amount}`,
+    );
+    assert(
+      r.outstanding_amount === 0,
+      `S14 expected outstanding=0 in snapshot, got ${r.outstanding_amount}`,
+    );
+
+    // Sanity: at asOfDate AFTER void (today), the credit is excluded — notice
+    // should be back to outstanding.
+    const today = new Date().toISOString().slice(0, 10);
+    const todayRows = await computeLevyPaymentStatus(lotId, today);
+    const todayRow = todayRows[0];
+    assert(
+      todayRow.status === "outstanding",
+      `S14 (today) expected status=outstanding (void in past), got ${todayRow.status}`,
+    );
+
+    record(
+      header,
+      true,
+      `at asOfDate=2025-06-01: credit visible (paid_amount=500); at today: credit excluded (outstanding=500)`,
+    );
+  } catch (e) {
+    record(header, false, (e as Error).message);
+  }
+}
+
 // ───────── Cleanup ─────────
 
 async function cleanupMarker() {
@@ -780,7 +1237,7 @@ async function main() {
     process.exit(0);
   }
 
-  console.log("Ledger verification — Prompt 1 scenarios\n");
+  console.log("Ledger verification — Prompt 1 + PP4-A scenarios\n");
 
   // Pre-clean any stale runs
   await cleanupMarker();
@@ -797,6 +1254,11 @@ async function main() {
     await scenario7_DuplicateLevyDebit(fx, s1);
     await scenario8_ExplicitReferencePayment(fx);
     await scenario9_WriteoffAdjustment(fx);
+    await scenario10_PriorityAwareWalker(fx);
+    await scenario11_PaymentStatusPaid(fx);
+    await scenario12_PaymentStatusPartial(fx);
+    await scenario13_PaymentStatusOutstanding(fx);
+    await scenario14_PaymentStatusVoidAfterAsOfDate(fx);
   } catch (e) {
     console.error(`\nFatal in scenarios: ${(e as Error).message}`);
   }

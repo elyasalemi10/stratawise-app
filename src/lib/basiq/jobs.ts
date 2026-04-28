@@ -19,7 +19,7 @@
 // ============================================================================
 
 import { createServerClient } from "@/lib/supabase";
-import { tryAutoMatchByReference } from "@/lib/reconciliation/auto-match";
+import { tryAutoMatch } from "@/lib/reconciliation/orchestrator";
 import {
   BasiqApiError,
   getBasiqApiClient,
@@ -138,12 +138,18 @@ export async function pollConnectionAsSystem(
       }
       inserted += 1;
 
-      if (signed > 0 && parsed.reference) {
-        const m = await tryAutoMatchByReference({
+      // Run the orchestrator on every credit-direction Basiq insert,
+      // not just those with a parsed levy reference — Strategy 2 (BPAY
+      // CRN) reads the description independently of the parser's
+      // reference extraction.
+      if (signed > 0) {
+        const m = await tryAutoMatch({
           bankTransactionId: result.bank_transaction_id,
           subdivisionId: conn.subdivision_id,
+          bankAccountId,
           description: parsed.cleaned_description,
           amount: signed,
+          transactionDate: date,
           performedBy,
         });
         if (m.matched) autoMatched += 1;

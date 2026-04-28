@@ -128,6 +128,25 @@ first uncovered debit's date is the oldest unpaid date. **No per-payment
 allocation required** unless the owner explicitly references a specific
 levy; in that case, that levy is marked paid and skipped in the walk.
 
+**Priority-aware walker (PP4-A):** the walk orders debits by
+`(allocation_priority ASC, entry_date ASC, created_at ASC)` instead of
+date-only. Categories map to priorities: interest=1, levy=2, special_levy=3,
+adjustment_debit/writeoff=4. For lots with mixed regular/special-levy
+debits, untargeted credits absorb regular levies before special levies
+(allocation priority 2 before 3), changing which debit is the oldest-unpaid
+relative to a date-only walk. Targeted credits (with `levy_notice_id` or
+`reference` set) bypass priority entirely and net directly against their
+target. Pre-launch the semantic is changeable; post-launch any change
+requires migrating computed `oldest_unpaid_date_*` values across all
+mixed-debit lots.
+
+**Snapshot-aware per-notice status (PP4-A):** `_walk_per_notice_status`
+returns per-notice payment status (`paid | partially_paid | outstanding`)
+at a given asOfDate. Visibility filter: `entry_date <= asOfDate AND
+((status = 'active') OR (status = 'voided' AND voided_at::date > asOfDate))`.
+Wrapped by `computeLevyPaymentStatus` (TS); Prompt 7 certificate rendering
+must call this rather than reading `levy_notices.status` directly.
+
 ### 4.5 Owner vs member
 - `subdivision_members` (joined to `profiles`) is the billing destination
   for levy notices, receipts, arrears notices, and statements. This is the

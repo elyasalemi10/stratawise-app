@@ -8,6 +8,7 @@ import { sendLevyEmail } from "@/lib/email";
 import { formatDateLong } from "@/lib/utils";
 import { notifySubdivisionLotOwners } from "@/lib/actions/notifications";
 import { getLotOwners } from "@/lib/actions/lot-ownership";
+import { generateCrn } from "@/lib/reconciliation/bpay-crn";
 import type { LevyNoticeProps } from "@/lib/pdf/types";
 
 // ─── Types ─────────────────────────────────────────────────
@@ -501,6 +502,12 @@ export async function createLevyBatch(
     });
     if (!refNum) continue;
 
+    // BPAY CRN: 7-digit zero-padded levy number + MOD10V01 check digit.
+    // Always populated regardless of whether the OC has registered a
+    // biller code — opt-in BPAY later requires no backfill (Gap 3).
+    const levyNumber = Number.parseInt(String(refNum).slice(4), 10);
+    const bpayCrn = Number.isFinite(levyNumber) ? generateCrn(levyNumber) : null;
+
     const { data: levy, error: levyError } = await supabase
       .from("levy_notices")
       .insert({
@@ -509,6 +516,7 @@ export async function createLevyBatch(
         budget_id: data.budget_id,
         batch_id: batch.id,
         reference_number: refNum,
+        bpay_crn: bpayCrn,
         fund_type: data.fund_type,
         levy_type: "regular",
         period_start: data.period_start,

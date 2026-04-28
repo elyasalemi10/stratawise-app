@@ -448,6 +448,10 @@ CREATE TABLE levy_batches (
   status levy_batch_status NOT NULL DEFAULT 'draft',
   generated_by UUID NOT NULL REFERENCES profiles(id),
   sent_at TIMESTAMPTZ,
+  -- Prompt 4 Strategy 4 (keyword + amount): per-batch substring keywords
+  -- (e.g. ARRAY['gardening','landscaping']). Empty array = no keyword
+  -- matching. Strategy implementation lands in PP4-B.
+  match_keywords TEXT[] NOT NULL DEFAULT ARRAY[]::TEXT[],
   created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 
@@ -463,6 +467,13 @@ CREATE TABLE levy_notices (
   budget_id UUID REFERENCES budgets(id),
   batch_id UUID REFERENCES levy_batches(id),
   reference_number TEXT NOT NULL,                   -- "LEV-{n}"; per-OC via next_reference_number('LEV', subdivision_id)
+  -- BPAY CRN (Prompt 4): 7-digit zero-padded levy number + MOD10V01 check
+  -- digit (8 chars total), generated at notice creation in TS via
+  -- generateCrn() in src/lib/reconciliation/bpay-crn.ts. Always populated
+  -- regardless of whether the OC has a registered biller code — opt-in BPAY
+  -- later requires no backfill. Composite UNIQUE (subdivision_id, bpay_crn)
+  -- below ensures intra-OC uniqueness.
+  bpay_crn TEXT,
   fund_type fund_type NOT NULL,
   levy_type levy_type NOT NULL DEFAULT 'regular',
   period_start DATE NOT NULL,
@@ -486,6 +497,9 @@ CREATE INDEX idx_levy_notices_reference ON levy_notices(reference_number);
 CREATE INDEX idx_levy_notices_status ON levy_notices(status);
 CREATE INDEX idx_levy_notices_due_date ON levy_notices(due_date);
 CREATE INDEX idx_levy_notices_batch ON levy_notices(batch_id);
+CREATE UNIQUE INDEX idx_levy_notices_bpay_crn
+  ON levy_notices (subdivision_id, bpay_crn)
+  WHERE bpay_crn IS NOT NULL;
 
 -- ============================================================================
 -- 15. LEVY NOTICE ITEMS
@@ -548,6 +562,9 @@ CREATE TABLE bank_accounts (
   basiq_connection_id UUID,
   basiq_account_id    TEXT,                         -- Basiq's account identifier once linked
   last_sync_at        TIMESTAMPTZ,                  -- last successful sync for this account
+  -- BPAY config (Prompt 4): null = BPAY not enabled for this account.
+  bpay_biller_code TEXT,                            -- e.g. "1234567"
+  bpay_crn_prefix  TEXT,                            -- optional static prefix on per-notice CRNs
   status TEXT NOT NULL DEFAULT 'active',
   created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
   updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
@@ -580,6 +597,11 @@ CREATE TABLE bank_transactions (
   voided_by UUID REFERENCES profiles(id),
   void_reason TEXT,
   notes TEXT,
+  -- Fuzzy sender hint (Prompt 4 Strategy 6): stores
+  -- { lot_id, canonical_name, similarity } when the orchestrator detects
+  -- a Jaro-Winkler similarity ≥ 0.75 against an active payer mapping but
+  -- no exact match. Rendered on the unmatched queue row; never auto-matched.
+  fuzzy_hint_metadata JSONB,
   imported_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
   CONSTRAINT chk_bt_excluded_reason
     CHECK ((match_status = 'excluded') = (excluded_reason IS NOT NULL)),
@@ -1108,6 +1130,16 @@ CREATE TABLE lot_ledger_entries (
   void_reason TEXT,
   voided_by_entry_id UUID REFERENCES lot_ledger_entries(id),  -- offset that voided this entry
   voids_entry_id UUID REFERENCES lot_ledger_entries(id),      -- set on offset entries, points back
+  -- Allocation priority (Prompt 4 PP4-A): walker iterates DEBITS in
+  -- (allocation_priority ASC, entry_date ASC, created_at ASC) order.
+  -- Lower number = walker visits first. Map: interest=1, levy=2,
+  -- special_levy=3, adjustment_debit=4, writeoff=4, default 2 for
+  -- payment / refund / adjustment_credit / void_offset / future.
+  -- Set automatically by the BEFORE INSERT trigger
+  -- set_ledger_allocation_priority — callers do NOT need to pass this
+  -- field. Credit allocation_priority is currently unread by the walker
+  -- (debit-only sort key); reserved for Prompt 6/7 waterfall use.
+  allocation_priority INTEGER NOT NULL DEFAULT 2,
   created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
   created_by UUID NOT NULL REFERENCES profiles(id),
   metadata JSONB NOT NULL DEFAULT '{}'::jsonb,
@@ -1163,6 +1195,12 @@ CREATE TABLE reconciliation_matches (
   matched_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
   matched_by UUID REFERENCES profiles(id),                    -- null for system-matched
   notes TEXT,
+  -- review_required (Prompt 4 PP4-A): UI-only derived flag. Set true by
+  -- the orchestrator for matches whose confidence is amount-based or weak
+  -- name-based; queue renders an amber "review suggested" badge and the
+  -- queue exposes a "Review suggested auto-matches" filter chip.
+  -- match_confidence enum is unchanged — no new value needed.
+  review_required BOOLEAN NOT NULL DEFAULT false,
   CONSTRAINT chk_recon_amount_positive CHECK (amount_matched > 0),
   UNIQUE (bank_transaction_id, ledger_entry_id)
 );
@@ -1390,6 +1428,56 @@ CREATE INDEX idx_suppressions_subdivision_active
   ON subdivision_notification_suppressions(subdivision_id, suppressed_until);
 
 -- ============================================================================
+-- 54. BANK PAYER MAPPINGS  (Prompt 4 PP4-A — canonical sender → lot mapping)
+-- ----------------------------------------------------------------------------
+-- Used by Strategy 3 (known_payer) and Strategy 6 (fuzzy_hint).
+-- Status lifecycle:
+--   active     — used by Strategy 3 for auto-match
+--   ambiguous  — collision detected (e.g. two lots with the same canonical
+--                sender name); manager must resolve before auto-match
+--   disabled   — soft-deleted; never auto-matches; doesn't occupy the
+--                "active per canonical_name" slot
+--
+-- Constraint design (resolved Gap 1):
+--   - Composite UNIQUE (subdivision_id, canonical_sender_name, lot_id):
+--     one row per (sub, name, lot) tuple. Allows multiple lots to share
+--     a canonical name (the ambiguous case) and multiple statuses across
+--     time for a given (sub, name, lot).
+--   - Partial UNIQUE INDEX on (subdivision_id, canonical_sender_name)
+--     WHERE status = 'active': enforces at-most-one ACTIVE mapping per
+--     canonical name per subdivision. Disabled / ambiguous rows don't
+--     occupy this slot, so collision detection can flip both old and
+--     new mappings to ambiguous and have all three rows coexist.
+--
+-- canonical_sender_name is uppercase by construction (canonicaliseSender
+-- in TS uppercases). No explicit COLLATE — relying on the canonicaliser's
+-- uppercase invariant for case-insensitive matching.
+-- ============================================================================
+CREATE TABLE bank_payer_mappings (
+  id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+  subdivision_id UUID NOT NULL REFERENCES subdivisions(id) ON DELETE CASCADE,
+  canonical_sender_name TEXT NOT NULL,
+  lot_id UUID NOT NULL REFERENCES lots(id) ON DELETE CASCADE,
+  status TEXT NOT NULL DEFAULT 'active'
+    CHECK (status IN ('active', 'ambiguous', 'disabled')),
+  status_reason TEXT,
+  raw_examples JSONB NOT NULL DEFAULT '[]'::jsonb,            -- recent raw description samples
+  created_by UUID NOT NULL REFERENCES profiles(id),
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  updated_by UUID REFERENCES profiles(id),
+  updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  CONSTRAINT bank_payer_mappings_subdivision_canonical_lot_key
+    UNIQUE (subdivision_id, canonical_sender_name, lot_id)
+);
+
+CREATE UNIQUE INDEX idx_payer_mappings_subdivision_active
+  ON bank_payer_mappings (subdivision_id, canonical_sender_name)
+  WHERE status = 'active';
+
+CREATE INDEX idx_payer_mappings_lot
+  ON bank_payer_mappings (lot_id);                            -- ownership-change sweep
+
+-- ============================================================================
 -- TRIGGERS
 -- ============================================================================
 
@@ -1450,6 +1538,7 @@ CREATE TRIGGER trg_updated_at_complaints          BEFORE UPDATE ON complaints   
 CREATE TRIGGER trg_updated_at_escalation_instances BEFORE UPDATE ON escalation_instances FOR EACH ROW EXECUTE FUNCTION update_updated_at();
 CREATE TRIGGER trg_updated_at_charge_groups       BEFORE UPDATE ON charge_groups       FOR EACH ROW EXECUTE FUNCTION update_updated_at();
 CREATE TRIGGER trg_updated_at_basiq_connections   BEFORE UPDATE ON basiq_connections   FOR EACH ROW EXECUTE FUNCTION update_updated_at();
+CREATE TRIGGER trg_updated_at_bank_payer_mappings BEFORE UPDATE ON bank_payer_mappings FOR EACH ROW EXECUTE FUNCTION update_updated_at();
 
 -- Seed a zero-balance lot_ledger_state row whenever a new lot is inserted.
 CREATE OR REPLACE FUNCTION create_lot_trigger_ledger_state()
@@ -1466,14 +1555,64 @@ CREATE TRIGGER trg_lot_ledger_state_create
   AFTER INSERT ON lots
   FOR EACH ROW EXECUTE FUNCTION create_lot_trigger_ledger_state();
 
+-- Auto-derive allocation_priority from category on lot_ledger_entries INSERT.
+-- The walker reads allocation_priority on debits; the RPC bodies don't set
+-- the column, so without this trigger every inserted row would land at the
+-- column DEFAULT (2) regardless of category. Always overwrites — the
+-- category-based map is the canonical source of truth.
+CREATE OR REPLACE FUNCTION set_ledger_allocation_priority()
+RETURNS TRIGGER
+LANGUAGE plpgsql
+AS $$
+BEGIN
+  NEW.allocation_priority := CASE NEW.category
+    WHEN 'interest'         THEN 1
+    WHEN 'levy'             THEN 2
+    WHEN 'special_levy'     THEN 3
+    WHEN 'adjustment_debit' THEN 4
+    WHEN 'writeoff'         THEN 4
+    ELSE 2  -- payment, refund, adjustment_credit, void_offset.
+            -- Credit allocation_priority is currently unread by the walker
+            -- (debit-only sort key); reserved for Prompt 6/7 waterfall use.
+            -- If Prompt 6/7 needs credit priority, REVISIT this default —
+            -- a refund of interest probably wants priority=1, not 2.
+  END;
+  RETURN NEW;
+END;
+$$;
+
+CREATE TRIGGER trg_set_ledger_allocation_priority
+  BEFORE INSERT ON lot_ledger_entries
+  FOR EACH ROW EXECUTE FUNCTION set_ledger_allocation_priority();
+
 -- ============================================================================
--- LEDGER FUNCTIONS  (Prompt 1)
+-- LEDGER FUNCTIONS  (Prompt 1, walker rewritten in Prompt 4 PP4-A)
 -- ----------------------------------------------------------------------------
 -- _walk_oldest_unpaid: per-fund walker. Returns the entry_date of the first
 -- debit not fully covered by (explicitly-targeted credits for that debit) +
--- (free credit pool), oldest-first. Targeted = credit.levy_notice_id or
--- credit.reference matches the debit. Free = both NULL. Excess targeted
--- credit does NOT spill into the free pool (spec §4.4).
+-- (free credit pool). Targeted = credit.levy_notice_id or credit.reference
+-- matches the debit. Free = both NULL. Excess targeted credit does NOT spill
+-- into the free pool (spec §4.4).
+--
+-- WALKER SEMANTICS (Prompt 4 PP4-A):
+-- The walker iterates active debits in PRIORITY order, then date, then insert
+-- order: ORDER BY (allocation_priority ASC, entry_date ASC, created_at ASC).
+-- Categories map to priorities via set_ledger_allocation_priority trigger:
+--   interest=1, levy=2, special_levy=3, adjustment_debit/writeoff=4.
+-- Free credits absorb regular levies (priority 2) before special levies
+-- (priority 3) and statutory interest (priority 1) before either. For lots
+-- with only regular levies (the common case), date-priority and date-only
+-- walks produce the same result.
+--
+-- Targeted-credit bypass (unchanged from Prompt 1): credits with
+-- levy_notice_id set or with a `reference` string matching the debit's
+-- reference are "pinned" to that debit. They do NOT spill into the free
+-- pool when they exceed the debit's amount.
+--
+-- Pre-launch lock: this semantic is locked once we have customer data.
+-- Future changes to allocation_priority logic require migrating stored
+-- oldest_unpaid_date values across all mixed-debit lots. See
+-- PRE_LAUNCH_CLEANUP.md.
 -- ============================================================================
 CREATE OR REPLACE FUNCTION _walk_oldest_unpaid(p_lot_id uuid, p_fund fund_type)
 RETURNS date
@@ -1502,7 +1641,7 @@ BEGIN
        AND fund_type = p_fund
        AND status = 'active'
        AND entry_type = 'debit'
-     ORDER BY entry_date ASC, created_at ASC
+     ORDER BY allocation_priority ASC, entry_date ASC, created_at ASC
   LOOP
     SELECT COALESCE(SUM(c.amount), 0)
       INTO v_targeted
@@ -1529,6 +1668,174 @@ BEGIN
   END LOOP;
 
   RETURN NULL;
+END;
+$$;
+
+-- ============================================================================
+-- _walk_per_notice_status  (Prompt 4 PP4-A — snapshot-aware payment status)
+-- ----------------------------------------------------------------------------
+-- Returns one row per levy_notice on the lot, with the notice's effective
+-- payment status AT p_as_of_date. Wrapped by computeLevyPaymentStatus in
+-- src/lib/reconciliation/payment-status.ts. Prompt 7 certificate rendering
+-- MUST call the TS wrapper rather than reading levy_notices.status directly
+-- — the walker is the single source of truth for "is this notice paid as
+-- of date X".
+--
+-- Visibility rules for ledger entries at the snapshot point:
+--   - entry_date <= p_as_of_date            (date filter)
+--   - status = 'active'                     OR
+--     status = 'voided' AND voided_at::date > p_as_of_date  (snapshot rule:
+--     entries voided AFTER the snapshot still appear active in it)
+--   - void_offset entries follow the same rules; if entry_date is past the
+--     snapshot they are excluded by the date filter, which is the intended
+--     behaviour (the offset did not exist yet at the snapshot point).
+--
+-- voided_at is TIMESTAMPTZ. The cast voided_at::date evaluates the void's
+-- wall-clock date in session timezone. For dev DB (UTC) and production
+-- (Supabase UTC) this matches the day on which the manager pressed Void.
+-- See PRE_LAUNCH_CLEANUP.md for the precision-upgrade note (explicit AT
+-- TIME ZONE 'Australia/Melbourne' before high-stakes certificate use).
+--
+-- Per-notice algorithm (independent of _walk_oldest_unpaid by design —
+-- different output shape, different filter, different consumers; see
+-- Gap 4 resolution):
+--   1. Iterate notices for the lot, ordered by due_date.
+--   2. Sum visible credits that target the notice (levy_notice_id link
+--      OR reference string match).
+--   3. Status:
+--        paid_amount >= notice.amount  → 'paid'
+--        paid_amount > 0               → 'partially_paid' (paid_date = NULL)
+--        else                          → 'outstanding'    (paid_date = NULL)
+--   4. paid_date for 'paid' notices: walk qualifying credits in
+--      chronological order (entry_date ASC, created_at ASC) and return
+--      the entry_date of the credit whose cumulative sum first reaches
+--      notice.amount. NOT MAX(entry_date) — that gives the latest credit
+--      even when an earlier overpayment had already settled the notice.
+--      Example: $500 notice, $600 credit on Day3 + $600 credit on Day5 →
+--      paid_date = Day3 (Day3 alone covered the notice).
+--   5. outstanding_amount = GREATEST(notice.amount - paid_amount, 0).
+--      Excess targeted credits do NOT push outstanding negative.
+--
+-- LOCK-STEP-FILTER INVARIANT:
+--   The two SELECT statements below (total-sum and settling-credit walk)
+--   share an identical void-snapshot filter predicate. If either filter
+--   is modified, the other MUST be modified in lockstep to maintain
+--   consistent snapshot semantics. A divergence (e.g. tightening the
+--   total-sum filter without tightening the walk) would produce notices
+--   marked 'paid' whose settling-credit walk finds no qualifying credit,
+--   silently returning paid_date=NULL on a paid notice.
+--
+-- DEPENDENCY ON rpc_ledger_void CONVENTION:
+--   Snapshot semantics rely on rpc_ledger_void's invariant that
+--   void_offset.entry_date = CURRENT_DATE (the void's wall-clock date),
+--   NOT the original entry's date. If rpc_ledger_void changes this
+--   convention, snapshot filter semantics break. The
+--   entry_date <= p_as_of_date predicate is what excludes voids made
+--   after asOfDate; if the offset inherited the original entry's date,
+--   it would be visible at any snapshot in which the original was
+--   visible, double-counting the credit's reversal at exactly the
+--   wrong moment.
+-- ============================================================================
+CREATE OR REPLACE FUNCTION _walk_per_notice_status(
+  p_lot_id     uuid,
+  p_as_of_date date DEFAULT CURRENT_DATE
+)
+RETURNS TABLE (
+  notice_id          uuid,
+  reference_number   text,
+  fund_type          fund_type,
+  due_date           date,
+  amount             numeric,
+  status             text,
+  paid_date          date,
+  paid_amount        numeric,
+  outstanding_amount numeric
+)
+LANGUAGE plpgsql
+AS $$
+DECLARE
+  v_notice         RECORD;
+  v_credit         RECORD;
+  v_paid           numeric;
+  v_settling_date  date;
+  v_running_total  numeric;
+BEGIN
+  FOR v_notice IN
+    SELECT n.id, n.reference_number, n.fund_type, n.due_date, n.amount
+      FROM levy_notices n
+     WHERE n.lot_id = p_lot_id
+     ORDER BY n.due_date ASC, n.created_at ASC
+  LOOP
+    -- Total paid = sum of qualifying credits at p_as_of_date.
+    SELECT COALESCE(SUM(c.amount), 0)
+      INTO v_paid
+      FROM lot_ledger_entries c
+     WHERE c.lot_id     = p_lot_id
+       AND c.fund_type  = v_notice.fund_type
+       AND c.entry_type = 'credit'
+       AND c.entry_date <= p_as_of_date
+       AND (
+         (c.status = 'active')
+         OR (c.status = 'voided' AND c.voided_at::date > p_as_of_date)
+       )
+       AND (
+         (c.levy_notice_id IS NOT NULL AND c.levy_notice_id = v_notice.id)
+         OR (c.reference IS NOT NULL AND c.reference = v_notice.reference_number)
+       );
+
+    -- Settling-credit date: walk qualifying credits chronologically and
+    -- return the entry_date of the credit whose cumulative sum first
+    -- reaches notice.amount. Only computed for fully-paid notices.
+    -- (See header comment block §4 for why this is not MAX(entry_date).)
+    v_settling_date := NULL;
+    IF v_paid >= v_notice.amount THEN
+      v_running_total := 0;
+      FOR v_credit IN
+        SELECT c.entry_date, c.amount
+          FROM lot_ledger_entries c
+         WHERE c.lot_id     = p_lot_id
+           AND c.fund_type  = v_notice.fund_type
+           AND c.entry_type = 'credit'
+           AND c.entry_date <= p_as_of_date
+           AND (
+             (c.status = 'active')
+             OR (c.status = 'voided' AND c.voided_at::date > p_as_of_date)
+           )
+           AND (
+             (c.levy_notice_id IS NOT NULL AND c.levy_notice_id = v_notice.id)
+             OR (c.reference IS NOT NULL AND c.reference = v_notice.reference_number)
+           )
+         ORDER BY c.entry_date ASC, c.created_at ASC
+      LOOP
+        v_running_total := v_running_total + v_credit.amount;
+        IF v_running_total >= v_notice.amount THEN
+          v_settling_date := v_credit.entry_date;
+          EXIT;
+        END IF;
+      END LOOP;
+    END IF;
+
+    notice_id          := v_notice.id;
+    reference_number   := v_notice.reference_number;
+    fund_type          := v_notice.fund_type;
+    due_date           := v_notice.due_date;
+    amount             := v_notice.amount;
+    paid_amount        := v_paid;
+    outstanding_amount := GREATEST(v_notice.amount - v_paid, 0);
+
+    IF v_paid >= v_notice.amount THEN
+      status    := 'paid';
+      paid_date := v_settling_date;
+    ELSIF v_paid > 0 THEN
+      status    := 'partially_paid';
+      paid_date := NULL;
+    ELSE
+      status    := 'outstanding';
+      paid_date := NULL;
+    END IF;
+
+    RETURN NEXT;
+  END LOOP;
 END;
 $$;
 
@@ -2925,6 +3232,7 @@ ALTER TABLE basiq_connections                     ENABLE ROW LEVEL SECURITY;
 ALTER TABLE basiq_reauth_notifications            ENABLE ROW LEVEL SECURITY;
 ALTER TABLE basiq_gap_reports                     ENABLE ROW LEVEL SECURITY;
 ALTER TABLE subdivision_notification_suppressions ENABLE ROW LEVEL SECURITY;
+ALTER TABLE bank_payer_mappings                   ENABLE ROW LEVEL SECURITY;
 
 -- Audit log is immutable — INSERT only.
 CREATE POLICY "audit_log_insert_only" ON audit_log FOR INSERT WITH CHECK (true);

@@ -4,7 +4,7 @@ import { requireCompanyRole, requireSubdivisionAccess } from "@/lib/auth";
 import { createServerClient } from "@/lib/supabase";
 import { revalidatePath } from "next/cache";
 import { revalidateSidebarForSubdivision } from "./subdivision";
-import { tryAutoMatchByReference } from "@/lib/reconciliation/auto-match";
+import { tryAutoMatch } from "@/lib/reconciliation/orchestrator";
 import { detectSingleLevyReference } from "@/lib/reconciliation/reference";
 import {
   addManualBankTransactionSchema,
@@ -665,11 +665,13 @@ export async function addManualBankTransaction(
   let autoMatched = false;
   let matchedRef: string | null = null;
   if (signedAmount > 0) {
-    const result = await tryAutoMatchByReference({
+    const result = await tryAutoMatch({
       bankTransactionId: inserted.id,
       subdivisionId: parsed.data.subdivision_id,
+      bankAccountId: account.id,
       description: descriptionWithRef,
       amount: signedAmount,
+      transactionDate: parsed.data.transaction_date,
       performedBy: profile.id,
     });
     autoMatched = result.matched;
