@@ -143,6 +143,35 @@ export const resolvePayerMappingCollisionSchema = z.object({
 export type ResolvePayerMappingCollisionInput = z.infer<
   typeof resolvePayerMappingCollisionSchema
 >;
+
+// PP4-D: mapping management actions (mappings page row-actions).
+export const mappingActionSchema = z.object({
+  mapping_id: z.string().uuid(),
+  subdivision_id: z.string().uuid(),
+});
+export type MappingActionInput = z.infer<typeof mappingActionSchema>;
+
+export const disableMappingSchema = mappingActionSchema.extend({
+  reason: z.string().max(200, "Reason too long").optional(),
+});
+export type DisableMappingActionInput = z.infer<typeof disableMappingSchema>;
+
+// PP4-D: collision resolution from the mappings page (re-activate flow).
+// Different concern from `resolvePayerMappingCollisionSchema` (reconcile
+// flow): no bank_transaction_id, no canonical-name lookup — the UI passes
+// canonical_sender_name + proposed_lot_id directly.
+export const resolveMappingCollisionSchema = z.object({
+  subdivision_id: z.string().uuid(),
+  canonical_sender_name: z.string().min(1),
+  proposed_lot_id: z.string().uuid(),
+  resolution: z.enum(MAPPING_RESOLUTIONS),
+  expected_collisions: z
+    .array(collidingMappingSnapshotSchema)
+    .min(1, "expected_collisions snapshot must come from the first-call collision payload"),
+});
+export type ResolveMappingCollisionInput = z.infer<
+  typeof resolveMappingCollisionSchema
+>;
 // Use z.input rather than z.infer so callers may omit `.default()` fields
 // (remember_payer in particular). The schema applies the default during
 // safeParse; consumers inside the action read parsed.data which has the
@@ -235,6 +264,23 @@ export type VoidUndepositedReceiptInput = z.infer<
 
 // ─── Read-shape types (UI-facing) ──────────────────────────────
 
+/** Inline fuzzy-hint payload as joined into the queue row. The lot label is
+ *  resolved server-side (single round-trip) so the queue UI can render
+ *  "Possibly: NAME (Lot N)" without per-row fetches. */
+export interface QueueFuzzyHint {
+  canonical_name: string;
+  similarity: number;
+  lot_id: string;
+  lot_label: string;
+}
+
+/** Per-row aggregate match metadata for matched transactions. */
+export interface QueueMatchSummary {
+  match_method: ReconciliationMatchMethod;
+  match_confidence: MatchConfidence;
+  review_required: boolean;
+}
+
 export interface ReconciliationQueueRow {
   id: string;
   bank_account_id: string;
@@ -251,6 +297,13 @@ export interface ReconciliationQueueRow {
   excluded_reason: string | null;
   detected_reference: string | null;
   imported_at: string;
+  /** Populated for matched rows. Reflects the FIRST allocation's metadata
+   *  (in practice all share method + confidence + review_required). Null on
+   *  unmatched rows. */
+  match_summary: QueueMatchSummary | null;
+  /** Populated when bank_transactions.fuzzy_hint_metadata is non-null AND
+   *  the match_status is unmatched. */
+  fuzzy_hint: QueueFuzzyHint | null;
 }
 
 export interface BankAccountOption {

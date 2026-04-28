@@ -5,8 +5,10 @@ import { createServerClient } from "@/lib/supabase";
 import { revalidatePath } from "next/cache";
 import { revalidateSidebarForSubdivision } from "./subdivision";
 import {
+  bankAccountUpdateSchema,
   importTransactionsSchema,
   type BankAccountSummary,
+  type BankAccountUpdateInput,
   type BankTransactionRecord,
   type ImportSummary,
   type ImportTransactionsInput,
@@ -22,7 +24,9 @@ export async function getBankAccountsForSubdivision(
 
   const { data: accounts } = await supabase
     .from("bank_accounts")
-    .select("id, subdivision_id, fund_type, account_name, bsb, account_number, bank_name, opening_balance, opening_balance_date")
+    .select(
+      "id, subdivision_id, fund_type, account_name, bsb, account_number, bank_name, opening_balance, opening_balance_date, bpay_biller_code, bpay_crn_prefix",
+    )
     .eq("subdivision_id", subdivisionId)
     .order("fund_type");
 
@@ -58,6 +62,8 @@ export async function getBankAccountsForSubdivision(
       current_balance: Number(a.opening_balance ?? 0) + agg.sum,
       last_transaction_date: agg.latest,
       transaction_count: agg.count,
+      bpay_biller_code: a.bpay_biller_code ?? null,
+      bpay_crn_prefix: a.bpay_crn_prefix ?? null,
     };
   });
 }
@@ -239,3 +245,78 @@ export async function importBankTransactions(
   return { summary };
 }
 
+// ─── updateBankAccount ────────────────────────────────────────
+//
+// Generic mutable-field updater for bank_accounts. Currently exposes
+// bpay_biller_code + bpay_crn_prefix. Extending to additional fields is a
+// schema-only change (add field to bankAccountUpdateSchema) — no action
+// signature changes required.
+//
+// Auth: requireCompanyRole gates on (super_admin | manager-with-role); we
+// then look up the bank account, derive its subdivision, and run
+// requireSubdivisionAccess to enforce the manager's company owns it. The
+// bank_accounts table has subdivision_id NOT NULL FK so the lookup is
+// always definitive.
+export async function updateBankAccount(
+  input: BankAccountUpdateInput,
+): Promise<{ success?: { id: string }; error?: string }> {
+  const parsed = bankAccountUpdateSchema.safeParse(input);
+  if (!parsed.success) {
+    return {
+      error: parsed.error.issues[0]?.message ?? "Invalid input",
+    };
+  }
+  const { id, ...fields } = parsed.data;
+
+  const profile = await requireCompanyRole();
+  const supabase = createServerClient();
+
+  const { data: existing, error: lookupErr } = await supabase
+    .from("bank_accounts")
+    .select(
+      "id, subdivision_id, bpay_biller_code, bpay_crn_prefix",
+    )
+    .eq("id", id)
+    .maybeSingle();
+  if (lookupErr) return { error: lookupErr.message };
+  if (!existing) return { error: "Bank account not found" };
+
+  await requireSubdivisionAccess(existing.subdivision_id);
+
+  // Build the update payload with only the keys the caller actually sent.
+  // `null` is a meaningful clear value, distinct from `undefined` (no-op).
+  const payload: Record<string, unknown> = {};
+  if (fields.bpay_biller_code !== undefined) {
+    payload.bpay_biller_code = fields.bpay_biller_code;
+  }
+  if (fields.bpay_crn_prefix !== undefined) {
+    payload.bpay_crn_prefix = fields.bpay_crn_prefix;
+  }
+
+  if (Object.keys(payload).length === 0) {
+    // Defensive: schema's `.refine` already catches this; left as a safety net.
+    return { error: "No fields to update" };
+  }
+
+  const { error: updateErr } = await supabase
+    .from("bank_accounts")
+    .update(payload)
+    .eq("id", id);
+  if (updateErr) return { error: updateErr.message };
+
+  await supabase.from("audit_log").insert({
+    profile_id: profile.id,
+    subdivision_id: existing.subdivision_id,
+    action: "bank_account.updated",
+    entity_type: "bank_account",
+    entity_id: id,
+    before_state: {
+      bpay_biller_code: existing.bpay_biller_code,
+      bpay_crn_prefix: existing.bpay_crn_prefix,
+    },
+    after_state: payload,
+  });
+
+  revalidatePath(`/subdivisions/${existing.subdivision_id}/finance/bank-account`);
+  return { success: { id } };
+}

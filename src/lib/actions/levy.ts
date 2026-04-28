@@ -9,6 +9,7 @@ import { formatDateLong } from "@/lib/utils";
 import { notifySubdivisionLotOwners } from "@/lib/actions/notifications";
 import { getLotOwners } from "@/lib/actions/lot-ownership";
 import { generateCrn } from "@/lib/reconciliation/bpay-crn";
+import { matchKeywordsSchema } from "@/lib/validations/levy";
 import type { LevyNoticeProps } from "@/lib/pdf/types";
 
 // ─── Types ─────────────────────────────────────────────────
@@ -428,6 +429,7 @@ export async function createLevyBatch(
     period_start: string;
     period_end: string;
     due_date: string;
+    match_keywords?: string[];
     lots: {
       lot_id: string;
       amount: number;
@@ -440,6 +442,21 @@ export async function createLevyBatch(
   const supabase = createServerClient();
 
   const totalAmount = data.lots.reduce((sum, lot) => sum + lot.amount, 0);
+
+  // Server-side guardrail: re-validate match_keywords against the array-level
+  // schema. The form's KeywordChipInput validates each chip on commit, but we
+  // re-check the whole array here so a misconfigured client (or a future
+  // direct caller of this action) cannot land bad data.
+  let matchKeywords: string[] = [];
+  if (data.match_keywords && data.match_keywords.length > 0) {
+    const parsed = matchKeywordsSchema.safeParse(data.match_keywords);
+    if (!parsed.success) {
+      return {
+        error: `Invalid match_keywords: ${parsed.error.issues[0]?.message ?? "validation failed"}`,
+      };
+    }
+    matchKeywords = parsed.data;
+  }
 
   // Create batch
   const { data: batch, error: batchError } = await supabase
@@ -456,6 +473,7 @@ export async function createLevyBatch(
       total_amount: totalAmount,
       levy_count: data.lots.length,
       status: "draft",
+      match_keywords: matchKeywords,
       generated_by: profile.id,
     })
     .select("id")

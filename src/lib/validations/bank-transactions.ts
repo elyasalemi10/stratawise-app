@@ -19,6 +19,38 @@ export const importTransactionsSchema = z.object({
 
 export type ImportTransactionsInput = z.infer<typeof importTransactionsSchema>;
 
+// ─── Bank account update ─────────────────────────────────────
+//
+// Generic mutable-fields schema. All fields are optional; the action only
+// touches keys that are present (`!== undefined`). New mutable fields extend
+// this schema, NOT the action signature.
+//
+// Future fields might include: account_name, bsb, account_number,
+// statement_import_email, default_match_keywords, etc. Anything that should
+// be a manager-editable setting on a bank account belongs here.
+export const bankAccountUpdateSchema = z
+  .object({
+    id: z.string().uuid(),
+    bpay_biller_code: z
+      .string()
+      .regex(/^\d{1,7}$/, "BPAY biller code must be 1-7 digits")
+      .nullable()
+      .optional(),
+    bpay_crn_prefix: z
+      .string()
+      .max(15, "CRN prefix max 15 characters")
+      .nullable()
+      .optional(),
+  })
+  .refine(
+    (v) =>
+      v.bpay_biller_code !== undefined ||
+      v.bpay_crn_prefix !== undefined,
+    { message: "No fields to update" },
+  );
+
+export type BankAccountUpdateInput = z.input<typeof bankAccountUpdateSchema>;
+
 export interface BankAccountSummary {
   id: string;
   subdivision_id: string;
@@ -32,6 +64,8 @@ export interface BankAccountSummary {
   current_balance: number;
   last_transaction_date: string | null;
   transaction_count: number;
+  bpay_biller_code: string | null;
+  bpay_crn_prefix: string | null;
 }
 
 export interface BankTransactionRecord {

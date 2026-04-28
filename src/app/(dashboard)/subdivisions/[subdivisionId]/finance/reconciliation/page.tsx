@@ -23,7 +23,23 @@ interface Props {
     status?: string;
     source?: string;
     page?: string;
+    /** comma-delimited match_confidence values */
+    mc?: string;
+    /** comma-delimited match_method values */
+    mm?: string;
+    /** "1" → review_required = true */
+    rr?: string;
+    /** "1" → has fuzzy hint */
+    fh?: string;
   }>;
+}
+
+function parseCsv(raw: string | undefined): string[] {
+  if (!raw) return [];
+  return raw
+    .split(",")
+    .map((s) => s.trim())
+    .filter(Boolean);
 }
 
 export default async function ReconciliationPage({ params, searchParams }: Props) {
@@ -43,12 +59,21 @@ export default async function ReconciliationPage({ params, searchParams }: Props
       : "unmatched";
   const page = Math.max(Number(sp.page) || 1, 1);
 
+  const matchConfidence = parseCsv(sp.mc);
+  const matchMethod = parseCsv(sp.mm);
+  const reviewRequired = sp.rr === "1";
+  const hasFuzzyHint = sp.fh === "1";
+
   const queue = await getReconciliationQueue(subdivisionId, {
     bankAccountId: sp.bank ?? null,
     source: (sp.source as TransactionSource | "all" | undefined) ?? null,
     status,
     page,
     pageSize: 50,
+    matchConfidence: matchConfidence.length > 0 ? matchConfidence : undefined,
+    matchMethod: matchMethod.length > 0 ? matchMethod : undefined,
+    reviewRequired: reviewRequired ? true : undefined,
+    hasFuzzyHint: hasFuzzyHint ? true : undefined,
   });
 
   return (

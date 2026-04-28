@@ -613,6 +613,194 @@ export async function detectRepeatedManualMatch(
  * omitted, returns active + ambiguous (the management page's default view —
  * disabled rows hidden unless explicitly requested).
  */
+// ─── Mapping lifecycle: disable / reactivate / delete (PP4-D) ─────────────
+
+export interface DisableMappingInput {
+  mapping_id: string;
+  subdivision_id: string;
+  reason?: string;
+  performed_by: string;
+}
+
+export type DisableMappingResult =
+  | { ok: true; mapping_id: string }
+  | { ok: false; error: string };
+
+export async function disableMapping(
+  input: DisableMappingInput,
+): Promise<DisableMappingResult> {
+  const supabase = createServerClient();
+  const { data: existing } = await supabase
+    .from("bank_payer_mappings")
+    .select("id, status, canonical_sender_name, lot_id")
+    .eq("id", input.mapping_id)
+    .eq("subdivision_id", input.subdivision_id)
+    .maybeSingle();
+  if (!existing) return { ok: false, error: "Mapping not found" };
+  if (existing.status === "disabled") {
+    return { ok: true, mapping_id: existing.id };
+  }
+
+  const { error } = await supabase
+    .from("bank_payer_mappings")
+    .update({
+      status: "disabled",
+      status_reason: input.reason ?? "Disabled manually",
+      updated_by: input.performed_by,
+      updated_at: new Date().toISOString(),
+    })
+    .eq("id", input.mapping_id);
+  if (error) return { ok: false, error: error.message };
+
+  await auditMapping(
+    input.performed_by,
+    input.subdivision_id,
+    input.mapping_id,
+    "bank_payer_mapping.disabled",
+    {
+      canonical_sender_name: existing.canonical_sender_name,
+      lot_id: existing.lot_id,
+      previous_status: existing.status,
+      triggered_by: "manual_disable",
+    },
+  );
+
+  return { ok: true, mapping_id: existing.id };
+}
+
+export interface ReactivateMappingInput {
+  mapping_id: string;
+  subdivision_id: string;
+  performed_by: string;
+}
+
+/** Same shape as createBankPayerMapping's collision result so the UI can
+ *  hand the same dialog component the same payload regardless of which
+ *  flow surfaced the collision. */
+export type ReactivateMappingResult =
+  | { ok: true; mapping_id: string }
+  | {
+      ok: false;
+      kind: "collision";
+      colliding_mappings: CollidingMappingSnapshot[];
+      proposed: { canonical_sender_name: string; lot_id: string };
+    }
+  | { ok: false; kind: "error"; error: string };
+
+export async function reactivateMapping(
+  input: ReactivateMappingInput,
+): Promise<ReactivateMappingResult> {
+  const supabase = createServerClient();
+  const { data: existing } = await supabase
+    .from("bank_payer_mappings")
+    .select("id, status, canonical_sender_name, lot_id")
+    .eq("id", input.mapping_id)
+    .eq("subdivision_id", input.subdivision_id)
+    .maybeSingle();
+  if (!existing) return { ok: false, kind: "error", error: "Mapping not found" };
+  if (existing.status === "active") {
+    return { ok: true, mapping_id: existing.id };
+  }
+
+  // Collision check: any OTHER active mapping for the same canonical name
+  // would block our update via the partial UNIQUE index. Detect explicitly
+  // so the UI can route to CollisionResolutionDialog.
+  const colliders = await fetchCollidingMappings(
+    input.subdivision_id,
+    existing.canonical_sender_name,
+    existing.lot_id,
+  );
+  const activeColliders = colliders.filter((m) => m.status === "active");
+  if (activeColliders.length > 0) {
+    return {
+      ok: false,
+      kind: "collision",
+      colliding_mappings: activeColliders.map((m) => ({
+        id: m.id,
+        lot_id: m.lot_id,
+        previous_status: m.status,
+        current_status: m.status,
+      })),
+      proposed: {
+        canonical_sender_name: existing.canonical_sender_name,
+        lot_id: existing.lot_id,
+      },
+    };
+  }
+
+  const { error } = await supabase
+    .from("bank_payer_mappings")
+    .update({
+      status: "active",
+      status_reason: null,
+      updated_by: input.performed_by,
+      updated_at: new Date().toISOString(),
+    })
+    .eq("id", input.mapping_id);
+  if (error) return { ok: false, kind: "error", error: error.message };
+
+  await auditMapping(
+    input.performed_by,
+    input.subdivision_id,
+    input.mapping_id,
+    "bank_payer_mapping.reactivated",
+    {
+      canonical_sender_name: existing.canonical_sender_name,
+      lot_id: existing.lot_id,
+      previous_status: existing.status,
+    },
+  );
+
+  return { ok: true, mapping_id: existing.id };
+}
+
+export interface DeleteMappingInput {
+  mapping_id: string;
+  subdivision_id: string;
+  performed_by: string;
+}
+
+export type DeleteMappingResult =
+  | { ok: true; mapping_id: string }
+  | { ok: false; error: string };
+
+export async function deleteMapping(
+  input: DeleteMappingInput,
+): Promise<DeleteMappingResult> {
+  const supabase = createServerClient();
+  const { data: existing } = await supabase
+    .from("bank_payer_mappings")
+    .select("id, status, canonical_sender_name, lot_id, raw_examples")
+    .eq("id", input.mapping_id)
+    .eq("subdivision_id", input.subdivision_id)
+    .maybeSingle();
+  if (!existing) return { ok: false, error: "Mapping not found" };
+
+  // Audit BEFORE delete so the metadata captures the row's final state.
+  await auditMapping(
+    input.performed_by,
+    input.subdivision_id,
+    input.mapping_id,
+    "bank_payer_mapping.deleted",
+    {
+      canonical_sender_name: existing.canonical_sender_name,
+      lot_id: existing.lot_id,
+      final_status: existing.status,
+      raw_examples_count: Array.isArray(existing.raw_examples)
+        ? existing.raw_examples.length
+        : 0,
+    },
+  );
+
+  const { error } = await supabase
+    .from("bank_payer_mappings")
+    .delete()
+    .eq("id", input.mapping_id);
+  if (error) return { ok: false, error: error.message };
+
+  return { ok: true, mapping_id: existing.id };
+}
+
 export async function listBankPayerMappings(
   subdivisionId: string,
   filter?: "active" | "ambiguous" | "disabled" | "all",

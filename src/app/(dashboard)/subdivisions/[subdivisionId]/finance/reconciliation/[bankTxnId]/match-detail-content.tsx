@@ -1,16 +1,24 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import Link from "next/link";
 import { ArrowLeft, Check, Trash2 } from "lucide-react";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { toast } from "sonner";
 import type { BankTransactionDetail } from "@/lib/validations/reconciliation";
-import { previewVoidBankTransaction, voidBankTransaction } from "@/lib/actions/reconciliation";
+import {
+  createMappingDirectAction,
+  previewVoidBankTransaction,
+  voidBankTransaction,
+  type MappingCollisionPayload,
+  type ProposalFlagPayload,
+} from "@/lib/actions/reconciliation";
 import { MatchExcludeDialog } from "@/components/shared/match-exclude-dialog";
 import { UnmatchDialog } from "@/components/shared/unmatch-dialog";
 import { VoidCascadeConfirmDialog } from "@/components/shared/void-cascade-confirm-dialog";
+import { CollisionResolutionDialog } from "@/components/reconciliation/collision-resolution-dialog";
+import { useDismissalFlag } from "@/hooks/use-dismissal-flag";
 import type { VoidCascadePreview } from "@/lib/validations/reconciliation";
 import { TransactionCard } from "./transaction-card";
 import { ExistingMatchesSection } from "./existing-matches-section";
@@ -18,12 +26,19 @@ import { ClearPendingReceiptsCard } from "./clear-pending-receipts-card";
 import { AllocateSummary } from "./allocate-summary";
 import { AllocateForm } from "./allocate-form";
 
+const THIRTY_DAYS_MS = 30 * 24 * 60 * 60 * 1000;
+
 interface Props {
   subdivisionId: string;
   transaction: BankTransactionDetail;
+  prefillLotId?: string | null;
 }
 
-export function MatchDetailContent({ subdivisionId, transaction }: Props) {
+export function MatchDetailContent({
+  subdivisionId,
+  transaction,
+  prefillLotId,
+}: Props) {
   const [isFullyMatched, setIsFullyMatched] = useState(
     transaction.remaining === 0
   );
@@ -34,6 +49,59 @@ export function MatchDetailContent({ subdivisionId, transaction }: Props) {
   const [unmatchPrefillId, setUnmatchPrefillId] = useState<string | null>(null);
   const [isLoadingVoidPreview, setIsLoadingVoidPreview] = useState(false);
   const [isSubmittingVoid, setIsSubmittingVoid] = useState(false);
+
+  // PP4-D collision dialog + repeat-manual toast state.
+  const [collisionPayload, setCollisionPayload] =
+    useState<MappingCollisionPayload | null>(null);
+  const [pendingProposal, setPendingProposal] =
+    useState<ProposalFlagPayload | null>(null);
+
+  const proposalDismissalKey = pendingProposal
+    ? `${subdivisionId}:${pendingProposal.canonical_sender_name}:${pendingProposal.lot_id}`
+    : "";
+  const { dismissed: proposalDismissed, dismiss: dismissProposal } =
+    useDismissalFlag(proposalDismissalKey, THIRTY_DAYS_MS);
+
+  // Repeat-manual proposal toast — fires once per (subdivision, canonical, lot)
+  // tuple per 30-day window. Backed by useDismissalFlag (localStorage).
+  useEffect(() => {
+    if (!pendingProposal || proposalDismissed) return;
+    const proposal = pendingProposal;
+    toast(
+      `Create payer mapping for ${proposal.canonical_sender_name} → ${proposal.lot_label}?`,
+      {
+        duration: 12000,
+        action: {
+          label: "Create",
+          onClick: () => {
+            void (async () => {
+              const result = await createMappingDirectAction({
+                subdivision_id: subdivisionId,
+                canonical_sender_name: proposal.canonical_sender_name,
+                lot_id: proposal.lot_id,
+              });
+              if (result.error) {
+                toast.error(result.error);
+                return;
+              }
+              if (result.success?.mappingCollision) {
+                // A competitor exists — route to the collision dialog.
+                setCollisionPayload(result.success.mappingCollision);
+                return;
+              }
+              toast.success("Mapping created");
+            })();
+          },
+        },
+        cancel: {
+          label: "Not now",
+          onClick: () => dismissProposal(),
+        },
+      },
+    );
+    // Clear the proposal so we don't re-fire on every render.
+    setPendingProposal(null);
+  }, [pendingProposal, proposalDismissed, subdivisionId, dismissProposal]);
 
   const clearCardApplicable =
     transaction.undeposited_candidates &&
@@ -200,13 +268,20 @@ export function MatchDetailContent({ subdivisionId, transaction }: Props) {
                 transactionAmount={transaction.amount}
                 alreadyMatched={transaction.matched_total}
                 detectedReference={transaction.detected_reference}
-                onSuccess={(allocated) => {
-                  const newRemaining = transaction.remaining - allocated;
+                prefillLotId={prefillLotId ?? null}
+                onSuccess={(result) => {
+                  const newRemaining = transaction.remaining - result.allocated;
                   if (newRemaining === 0) {
                     setIsFullyMatched(true);
-                    toast.success("Matched $" + allocated.toFixed(2) + " to " + transaction.matches.length + 1 + " lot(s).");
+                    toast.success("Matched $" + result.allocated.toFixed(2) + " to " + transaction.matches.length + 1 + " lot(s).");
                   } else {
-                    toast.success("Matched $" + allocated.toFixed(2) + " to lot(s).");
+                    toast.success("Matched $" + result.allocated.toFixed(2) + " to lot(s).");
+                  }
+                  // PP4-D: branch on the reconcile response.
+                  if (result.mappingCollision) {
+                    setCollisionPayload(result.mappingCollision);
+                  } else if (result.proposalFlag) {
+                    setPendingProposal(result.proposalFlag);
                   }
                 }}
               />
@@ -245,6 +320,17 @@ export function MatchDetailContent({ subdivisionId, transaction }: Props) {
         cascadePreview={voidPreview}
         isSubmitting={isSubmittingVoid}
         onConfirm={handleConfirmVoid}
+      />
+
+      <CollisionResolutionDialog
+        open={collisionPayload !== null}
+        onOpenChange={(open) => {
+          if (!open) setCollisionPayload(null);
+        }}
+        payload={collisionPayload}
+        flow="reconcile_remember_payer"
+        subdivisionId={subdivisionId}
+        bankTransactionId={transaction.id}
       />
     </div>
   );

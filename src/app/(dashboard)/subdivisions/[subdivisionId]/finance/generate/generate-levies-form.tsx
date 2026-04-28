@@ -21,6 +21,12 @@ import {
   type AvailablePeriod,
 } from "@/lib/actions/levy";
 import type { BudgetWithItems } from "@/lib/actions/budget";
+import { KeywordChipInput } from "@/components/shared/keyword-chip-input";
+import {
+  keywordSchema,
+  matchKeywordsSchema,
+  MAX_KEYWORDS,
+} from "@/lib/validations/levy";
 
 const formatCurrency = (n: number) =>
   new Intl.NumberFormat("en-AU", { style: "currency", currency: "AUD" }).format(n);
@@ -172,10 +178,24 @@ export function GenerateLeviesForm({
   const [preview, setPreview] = useState<LevyPreviewData | null>(null);
   const [lots, setLots] = useState<AdjustedLot[]>([]);
   const [dueDate, setDueDate] = useState<Date | undefined>(undefined);
+  const [matchKeywords, setMatchKeywords] = useState<string[]>([]);
   const [loadingPeriods, setLoadingPeriods] = useState(false);
   const [loading, setLoading] = useState(false);
   const [generating, setGenerating] = useState(false);
   const [openLotId, setOpenLotId] = useState<string | null>(null);
+
+  // Per-chip validation wired to the exported per-item schema. Pairs with the
+  // server-side guardrail in createLevyBatch (Flag 1: dual validation).
+  const validateKeyword = useCallback((raw: string) => {
+    const parsed = keywordSchema.safeParse(raw);
+    if (!parsed.success) {
+      return {
+        ok: false as const,
+        error: parsed.error.issues[0]?.message ?? "Invalid keyword",
+      };
+    }
+    return { ok: true as const, cleaned: parsed.data };
+  }, []);
 
   const selectedBudget = budgets.find((b) => b.id === selectedBudgetId);
   const ungenPeriods = availablePeriods.filter((p) => !p.already_generated);
@@ -187,6 +207,7 @@ export function GenerateLeviesForm({
     setPreview(null);
     setLots([]);
     setOpenLotId(null);
+    setMatchKeywords([]);
 
     if (!budgetId) return;
 
@@ -270,6 +291,18 @@ export function GenerateLeviesForm({
   async function handleGenerate() {
     if (!preview) return;
 
+    // Final array-level validation guard before hitting the server. The chip
+    // input validates each commit, but re-running the full schema here catches
+    // any drift (e.g., extra chip past the cap, or a chip that bypassed the
+    // input via an unrelated state path).
+    const keywordsParsed = matchKeywordsSchema.safeParse(matchKeywords);
+    if (!keywordsParsed.success) {
+      toast.error(
+        keywordsParsed.error.issues[0]?.message ?? "Invalid match keywords",
+      );
+      return;
+    }
+
     setGenerating(true);
 
     const result = await createLevyBatch(subdivisionId, {
@@ -280,6 +313,7 @@ export function GenerateLeviesForm({
       period_start: preview.period_start,
       period_end: preview.period_end,
       due_date: dueDate ? format(dueDate, "yyyy-MM-dd") : preview.due_date,
+      match_keywords: keywordsParsed.data,
       lots: lots.map((lot) => {
         const allItems = [
           ...lot.items.map((item) => ({ ...item, is_adjustment: false })),
@@ -368,30 +402,44 @@ export function GenerateLeviesForm({
 
           {/* Period details */}
           {preview && (
-            <div className="grid grid-cols-2 gap-4 pt-2 border-t border-border">
-              <div>
-                <Label className="text-xs text-muted-foreground">Date range</Label>
-                <p className="text-sm text-foreground mt-0.5">{formatDateLong(preview.period_start)} — {formatDateLong(preview.period_end)}</p>
+            <>
+              <div className="grid grid-cols-2 gap-4 pt-2 border-t border-border">
+                <div>
+                  <Label className="text-xs text-muted-foreground">Date range</Label>
+                  <p className="text-sm text-foreground mt-0.5">{formatDateLong(preview.period_start)} — {formatDateLong(preview.period_end)}</p>
+                </div>
+                <div>
+                  <Label className="text-xs text-muted-foreground">Due date</Label>
+                  <Popover>
+                    <PopoverTrigger
+                      className="mt-0.5 flex h-8 w-full items-center justify-start gap-2 rounded-md border border-border bg-background px-3 text-sm font-medium text-foreground hover:bg-accent cursor-pointer"
+                    >
+                      <CalendarIcon className="h-3.5 w-3.5 text-muted-foreground" />
+                      {dueDate ? format(dueDate, "d MMMM yyyy") : "Select date"}
+                    </PopoverTrigger>
+                    <PopoverContent className="w-auto p-2" align="start">
+                      <Calendar
+                        mode="single"
+                        selected={dueDate}
+                        onSelect={setDueDate}
+                      />
+                    </PopoverContent>
+                  </Popover>
+                </div>
               </div>
-              <div>
-                <Label className="text-xs text-muted-foreground">Due date</Label>
-                <Popover>
-                  <PopoverTrigger
-                    className="mt-0.5 flex h-8 w-full items-center justify-start gap-2 rounded-md border border-border bg-background px-3 text-sm font-medium text-foreground hover:bg-accent cursor-pointer"
-                  >
-                    <CalendarIcon className="h-3.5 w-3.5 text-muted-foreground" />
-                    {dueDate ? format(dueDate, "d MMMM yyyy") : "Select date"}
-                  </PopoverTrigger>
-                  <PopoverContent className="w-auto p-2" align="start">
-                    <Calendar
-                      mode="single"
-                      selected={dueDate}
-                      onSelect={setDueDate}
-                    />
-                  </PopoverContent>
-                </Popover>
+
+              <div className="pt-2 border-t border-border">
+                <KeywordChipInput
+                  label="Match keywords (optional)"
+                  description={`Words the auto-matcher will look for in incoming bank descriptions to route payments to this batch. Lowercased on commit; up to ${MAX_KEYWORDS} keywords.`}
+                  value={matchKeywords}
+                  onChange={setMatchKeywords}
+                  validate={validateKeyword}
+                  maxItems={MAX_KEYWORDS}
+                  placeholder="e.g. gardening, painting"
+                />
               </div>
-            </div>
+            </>
           )}
         </CardContent>
       </Card>

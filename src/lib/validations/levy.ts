@@ -35,7 +35,9 @@ const MIN_KEYWORD_LENGTH = 4;
 const MAX_KEYWORD_LENGTH = 30;
 const MAX_KEYWORDS_PER_BATCH = 10;
 
-const keywordSchema = z
+// Per-item schema. Exported for chip-by-chip inline validation in
+// `KeywordChipInput`. Trims + lowercases; storage form is canonical.
+export const keywordSchema = z
   .string()
   .trim()
   .toLowerCase()
@@ -51,6 +53,8 @@ const keywordSchema = z
     message:
       "Keyword too generic — common words like 'payment', 'transfer', 'levy' are blocked",
   });
+
+export const MAX_KEYWORDS = MAX_KEYWORDS_PER_BATCH;
 
 export const matchKeywordsSchema = z
   .array(keywordSchema)

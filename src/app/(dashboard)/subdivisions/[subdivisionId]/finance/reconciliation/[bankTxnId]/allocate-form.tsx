@@ -38,7 +38,11 @@ import {
 import { Input } from "@/components/ui/input";
 import { X, Plus, Check } from "lucide-react";
 import { cn } from "@/lib/utils";
-import { reconcileTransaction } from "@/lib/actions/reconciliation";
+import {
+  reconcileTransaction,
+  type MappingCollisionPayload,
+  type ProposalFlagPayload,
+} from "@/lib/actions/reconciliation";
 import { getSubdivisionLotsForAllocation } from "@/lib/actions/reconciliation";
 import { FUND_TYPES } from "@/lib/validations/ledger";
 import type { FundType } from "@/lib/validations/ledger";
@@ -78,6 +82,12 @@ interface LotOption {
 const formatCurrency = (n: number) =>
   new Intl.NumberFormat("en-AU", { style: "currency", currency: "AUD" }).format(n);
 
+export interface AllocateFormSuccess {
+  allocated: number;
+  mappingCollision?: MappingCollisionPayload;
+  proposalFlag?: ProposalFlagPayload;
+}
+
 interface Props {
   bankTxnId: string;
   subdivisionId: string;
@@ -85,7 +95,10 @@ interface Props {
   transactionAmount: number;
   alreadyMatched: number;
   detectedReference: string | null;
-  onSuccess: (allocatedAmount: number) => void;
+  /** Optional pre-fill for the first allocation's lot_id (from FuzzyHintCell
+   *  click on the queue page → `?prefill_lot=<lotId>` query param). */
+  prefillLotId?: string | null;
+  onSuccess: (result: AllocateFormSuccess) => void;
 }
 
 export function AllocateForm({
@@ -95,33 +108,26 @@ export function AllocateForm({
   transactionAmount,
   alreadyMatched,
   detectedReference,
+  prefillLotId,
   onSuccess,
 }: Props) {
   const [lots, setLots] = useState<LotOption[]>([]);
   const [lotsLoading, setLotsLoading] = useState(true);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [openComboboxes, setOpenComboboxes] = useState<Record<number, boolean>>({});
+  const [rememberPayer, setRememberPayer] = useState(true);
 
   const form = useForm<FormInput>({
     resolver: zodResolver(formSchema),
     defaultValues: {
-      allocations: detectedReference
-        ? [
-            {
-              lot_id: "",
-              fund_type: bankAccountFundType,
-              amount: 0,
-              levy_notice_id: null,
-            },
-          ]
-        : [
-            {
-              lot_id: "",
-              fund_type: bankAccountFundType,
-              amount: 0,
-              levy_notice_id: null,
-            },
-          ],
+      allocations: [
+        {
+          lot_id: prefillLotId ?? "",
+          fund_type: bankAccountFundType,
+          amount: 0,
+          levy_notice_id: null,
+        },
+      ],
     },
   });
 
@@ -154,14 +160,23 @@ export function AllocateForm({
   const onSubmit = async (data: FormInput) => {
     setIsSubmitting(true);
     try {
-      await reconcileTransaction({
+      const result = await reconcileTransaction({
         subdivision_id: subdivisionId,
         bank_transaction_id: bankTxnId,
         allocations: data.allocations,
         match_method: detectedReference ? "auto_reference" : "manual",
         match_confidence: detectedReference ? "exact_reference" : "manual",
+        remember_payer: rememberPayer,
       });
-      onSuccess(totalAllocated);
+      if (result.error) {
+        toast.error(result.error);
+        return;
+      }
+      onSuccess({
+        allocated: totalAllocated,
+        mappingCollision: result.success?.mappingCollision,
+        proposalFlag: result.success?.proposalFlag,
+      });
       form.reset();
     } catch (error) {
       const message = error instanceof Error ? error.message : "Failed to save allocation";
@@ -394,6 +409,27 @@ export function AllocateForm({
               <Plus className="mr-2 h-4 w-4" />
               Add another lot
             </Button>
+
+            {/* Remember-this-payer checkbox (PP4-D). Default checked: most
+                manual matches benefit from a mapping; when a manager
+                un-checks, the orchestrator's repeat-manual detector still
+                fires after 3 matches in 30 days. */}
+            <label className="flex items-start gap-2 text-sm">
+              <input
+                type="checkbox"
+                checked={rememberPayer}
+                onChange={(e) => setRememberPayer(e.target.checked)}
+                className="mt-0.5 h-4 w-4 rounded border-border accent-primary"
+              />
+              <span>
+                <span className="font-medium">Remember this payer</span>
+                <span className="block text-xs text-muted-foreground">
+                  Auto-match future transactions from this sender to the
+                  same lot. If a different mapping already exists you&apos;ll
+                  be prompted to resolve.
+                </span>
+              </span>
+            </label>
 
             {/* Save button */}
             <Button

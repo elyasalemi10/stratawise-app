@@ -120,7 +120,7 @@ export interface AutoMatchOutcome {
   warning: string | null;
 }
 
-interface StrategyAttempt {
+export interface StrategyAttempt {
   strategy: StrategyName;
   outcome: string; // "matched" or the failure reason
   details?: Record<string, unknown>;

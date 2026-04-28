@@ -11,15 +11,22 @@ import {
   createBankPayerMapping,
   resolveCollision,
   detectRepeatedManualMatch,
+  disableMapping as libDisableMapping,
+  reactivateMapping as libReactivateMapping,
+  deleteMapping as libDeleteMapping,
   type CollidingMappingSnapshot,
   type CreateMappingResult,
+  type MappingStatus,
 } from "@/lib/reconciliation/mappings";
 import {
   addManualBankTransactionSchema,
   depositUndepositedFundsSchema,
+  disableMappingSchema,
   excludeTransactionSchema,
+  mappingActionSchema,
   recordCashReceiptSchema,
   reconcileTransactionSchema,
+  resolveMappingCollisionSchema,
   resolvePayerMappingCollisionSchema,
   unexcludeTransactionSchema,
   unmatchTransactionSchema,
@@ -33,6 +40,8 @@ import {
   type MatchStatus,
   type ReconcileTransactionInput,
   type ResolvePayerMappingCollisionInput,
+  type MatchConfidence,
+  type ReconciliationMatchMethod,
   type ReconciliationQueueResult,
   type ReconciliationQueueRow,
   type RecordCashReceiptInput,
@@ -70,6 +79,18 @@ interface QueueOptions {
   includeVoided?: boolean;
   page?: number;
   pageSize?: number;
+  /** Multi-value filters introduced in PP4-D. */
+  matchConfidence?: string[];
+  /** Multi-value. EXISTS-style: a transaction matches if ANY of its
+   *  reconciliation_matches.match_method values is in the list. In practice
+   *  the orchestrator writes one method per transaction (all allocations
+   *  share it), so this aggregation is rarely meaningful — see
+   *  PRE_LAUNCH_CLEANUP. */
+  matchMethod?: string[];
+  /** Single boolean: only show matches flagged for review. */
+  reviewRequired?: boolean;
+  /** Single boolean: only show transactions with a fuzzy hint persisted. */
+  hasFuzzyHint?: boolean;
 }
 
 export async function getReconciliationQueue(
@@ -126,17 +147,74 @@ export async function getReconciliationQueue(
     new Set((sourceRows ?? []).map((r) => r.source as TransactionSource)),
   ).sort();
 
+  // PP4-D: filter on match metadata (match_confidence / match_method /
+  // review_required) requires an EXISTS-style aggregate on
+  // reconciliation_matches. We pre-compute the matching transaction IDs in a
+  // small companion query and constrain the main query to that set. Cheaper
+  // than a full join since the typical filtered selection is much smaller
+  // than the parent transaction set.
+  let txIdAllowlist: string[] | null = null;
+  const filteringByMatchMeta =
+    (opts.matchConfidence && opts.matchConfidence.length > 0) ||
+    (opts.matchMethod && opts.matchMethod.length > 0) ||
+    opts.reviewRequired === true;
+  if (filteringByMatchMeta) {
+    let mq = supabase
+      .from("reconciliation_matches")
+      .select("bank_transaction_id");
+    if (opts.matchConfidence && opts.matchConfidence.length > 0) {
+      mq = mq.in("match_confidence", opts.matchConfidence);
+    }
+    if (opts.matchMethod && opts.matchMethod.length > 0) {
+      mq = mq.in("match_method", opts.matchMethod);
+    }
+    if (opts.reviewRequired === true) {
+      mq = mq.eq("review_required", true);
+    }
+    const { data: matchRows, error: matchErr } = await mq;
+    if (matchErr) {
+      throw new Error(`getReconciliationQueue.matchFilter: ${matchErr.message}`);
+    }
+    txIdAllowlist = Array.from(
+      new Set(
+        (matchRows ?? [])
+          .map((r) => r.bank_transaction_id as string)
+          .filter(Boolean),
+      ),
+    );
+    if (txIdAllowlist.length === 0) {
+      // No transactions match the filter — return empty result set without
+      // any further query.
+      return {
+        rows: [],
+        total: 0,
+        page,
+        pageSize,
+        unmatchedCount: 0,
+        unmatchedValue: 0,
+        oldestUnmatchedDays: null,
+        matchedThisMonthValue: 0,
+        availableSources,
+        bankAccounts: bankAccountOptions,
+      };
+    }
+  }
+
   let q = supabase
     .from("bank_transactions")
     .select(
-      "id, bank_account_id, source, transaction_date, amount, description, matched_total, match_status, is_voided, excluded_reason, imported_at",
+      "id, bank_account_id, source, transaction_date, amount, description, matched_total, match_status, is_voided, excluded_reason, imported_at, fuzzy_hint_metadata",
       { count: "exact" },
     )
     .in("bank_account_id", accountIds);
 
+  if (txIdAllowlist) q = q.in("id", txIdAllowlist);
   if (!includeVoided) q = q.eq("is_voided", false);
   if (opts.bankAccountId) q = q.eq("bank_account_id", opts.bankAccountId);
   if (opts.source && opts.source !== "all") q = q.eq("source", opts.source);
+  if (opts.hasFuzzyHint === true) {
+    q = q.not("fuzzy_hint_metadata", "is", null);
+  }
 
   const statusFilter = opts.status ?? "unmatched";
   if (statusFilter !== "all") q = q.eq("match_status", statusFilter);
@@ -149,11 +227,105 @@ export async function getReconciliationQueue(
   const { data, error, count } = await q;
   if (error) throw new Error(`getReconciliationQueue: ${error.message}`);
 
+  // PP4-D: per-row match summary + fuzzy hint label JOIN. Both are
+  // resolved server-side in two small batches keyed by the page's tx IDs
+  // so the queue UI never makes per-row server-action calls (Flag 3).
+  const pageTxIds = (data ?? []).map((r) => r.id as string);
+  type FuzzyHintMeta = {
+    canonical_name?: unknown;
+    similarity?: unknown;
+    lot_id?: unknown;
+    hint_surfaced?: unknown;
+  };
+
+  const matchSummaryByTxn = new Map<
+    string,
+    { match_method: string; match_confidence: string; review_required: boolean }
+  >();
+  const lotLabelById = new Map<string, string>();
+
+  if (pageTxIds.length > 0) {
+    const { data: matchRows } = await supabase
+      .from("reconciliation_matches")
+      .select(
+        "bank_transaction_id, match_method, match_confidence, review_required, matched_at",
+      )
+      .in("bank_transaction_id", pageTxIds)
+      .order("matched_at", { ascending: true });
+    // Keep the FIRST allocation per transaction (orchestrator writes one
+    // method/confidence per transaction; manual matches likewise).
+    for (const m of matchRows ?? []) {
+      if (!matchSummaryByTxn.has(m.bank_transaction_id)) {
+        matchSummaryByTxn.set(m.bank_transaction_id, {
+          match_method: m.match_method,
+          match_confidence: m.match_confidence,
+          review_required: !!m.review_required,
+        });
+      }
+    }
+
+    // Collect lot_ids referenced by any fuzzy_hint_metadata on this page,
+    // then JOIN lots once.
+    const hintLotIds = new Set<string>();
+    for (const r of data ?? []) {
+      const meta = r.fuzzy_hint_metadata as FuzzyHintMeta | null;
+      if (meta && typeof meta.lot_id === "string") hintLotIds.add(meta.lot_id);
+    }
+    if (hintLotIds.size > 0) {
+      const { data: lots } = await supabase
+        .from("lots")
+        .select("id, lot_number, unit_number")
+        .in("id", Array.from(hintLotIds));
+      for (const l of lots ?? []) {
+        const label = l.unit_number
+          ? `Lot ${l.lot_number} (Unit ${l.unit_number})`
+          : `Lot ${l.lot_number}`;
+        lotLabelById.set(l.id, label);
+      }
+    }
+  }
+
   const rows: ReconciliationQueueRow[] = (data ?? []).map((r) => {
     const acct = accountMap.get(r.bank_account_id);
     const amount = Number(r.amount);
     const matched = Number(r.matched_total);
     const detectedReference = detectSingleLevyReference(r.description);
+
+    const summary = matchSummaryByTxn.get(r.id);
+    const matchSummary = summary
+      ? {
+          match_method: summary.match_method as ReconciliationMatchMethod,
+          match_confidence: summary.match_confidence as MatchConfidence,
+          review_required: summary.review_required,
+        }
+      : null;
+
+    let fuzzyHint: ReconciliationQueueRow["fuzzy_hint"] = null;
+    const meta = r.fuzzy_hint_metadata as FuzzyHintMeta | null;
+    const hintLotId =
+      meta && typeof meta.lot_id === "string" ? meta.lot_id : null;
+    const hintCanonical =
+      meta && typeof meta.canonical_name === "string"
+        ? meta.canonical_name
+        : null;
+    const hintSimilarity =
+      meta && typeof meta.similarity === "number" ? meta.similarity : null;
+    if (
+      meta &&
+      meta.hint_surfaced === true &&
+      hintLotId &&
+      hintCanonical &&
+      hintSimilarity !== null &&
+      r.match_status === "unmatched"
+    ) {
+      fuzzyHint = {
+        canonical_name: hintCanonical,
+        similarity: hintSimilarity,
+        lot_id: hintLotId,
+        lot_label: lotLabelById.get(hintLotId) ?? `Lot ?`,
+      };
+    }
+
     return {
       id: r.id,
       bank_account_id: r.bank_account_id,
@@ -170,6 +342,8 @@ export async function getReconciliationQueue(
       excluded_reason: r.excluded_reason,
       detected_reference: detectedReference,
       imported_at: r.imported_at,
+      match_summary: matchSummary,
+      fuzzy_hint: fuzzyHint,
     };
   });
 
@@ -223,6 +397,120 @@ export async function getReconciliationQueue(
     availableSources,
     bankAccounts: bankAccountOptions,
   };
+}
+
+// ─── getOrchestratorAuditForTransaction ────────────────────────
+//
+// Returns the orchestrator's audit row for a single bank_transaction.
+// audit_log.metadata is JSONB; PP4-D's MatchMetadataDrawer needs a typed
+// payload, so we runtime-validate the JSONB shape and return null if it's
+// malformed rather than crashing the drawer. The drawer renders a clean
+// "no audit data available" empty state when null is returned.
+const STRATEGY_NAMES = new Set([
+  "reference",
+  "bpay_crn",
+  "known_payer",
+  "keyword_amount",
+  "amount_window",
+  "fuzzy_hint",
+] as const);
+
+export interface OrchestratorAuditPayload {
+  strategies_tried: Array<{
+    strategy:
+      | "reference"
+      | "bpay_crn"
+      | "known_payer"
+      | "keyword_amount"
+      | "amount_window"
+      | "fuzzy_hint";
+    outcome: string;
+    details?: Record<string, unknown>;
+  }>;
+  matched_via:
+    | "reference"
+    | "bpay_crn"
+    | "known_payer"
+    | "keyword_amount"
+    | "amount_window"
+    | "fuzzy_hint"
+    | null;
+  hint_surfaced: boolean;
+  evaluated_at: string;
+}
+
+function parseAuditMetadata(
+  raw: unknown,
+  createdAt: string,
+): OrchestratorAuditPayload | null {
+  if (!raw || typeof raw !== "object") return null;
+  const obj = raw as Record<string, unknown>;
+  if (!Array.isArray(obj.strategies_tried)) return null;
+  const strategies: OrchestratorAuditPayload["strategies_tried"] = [];
+  for (const s of obj.strategies_tried) {
+    if (!s || typeof s !== "object") return null;
+    const item = s as Record<string, unknown>;
+    if (
+      typeof item.strategy !== "string" ||
+      !(STRATEGY_NAMES as Set<string>).has(item.strategy) ||
+      typeof item.outcome !== "string"
+    ) {
+      return null;
+    }
+    strategies.push({
+      strategy: item.strategy as OrchestratorAuditPayload["strategies_tried"][number]["strategy"],
+      outcome: item.outcome,
+      details:
+        item.details && typeof item.details === "object"
+          ? (item.details as Record<string, unknown>)
+          : undefined,
+    });
+  }
+  const matchedVia =
+    typeof obj.matched_via === "string" &&
+    (STRATEGY_NAMES as Set<string>).has(obj.matched_via)
+      ? (obj.matched_via as OrchestratorAuditPayload["matched_via"])
+      : null;
+  const hintSurfaced = obj.hint_surfaced === true;
+  return {
+    strategies_tried: strategies,
+    matched_via: matchedVia,
+    hint_surfaced: hintSurfaced,
+    evaluated_at: createdAt,
+  };
+}
+
+export async function getOrchestratorAuditForTransaction(
+  bankTransactionId: string,
+): Promise<OrchestratorAuditPayload | null> {
+  const supabase = createServerClient();
+
+  // Resolve subdivision via the bank transaction → bank account → subdivision
+  // chain, then enforce access. Audit_log rows are subdivision-scoped, so
+  // RLS-equivalent check belongs here.
+  const { data: bt } = await supabase
+    .from("bank_transactions")
+    .select("id, bank_account_id, bank_accounts!inner(subdivision_id)")
+    .eq("id", bankTransactionId)
+    .maybeSingle();
+  if (!bt) return null;
+  const subdivisionId = (
+    bt as unknown as { bank_accounts: { subdivision_id: string } }
+  ).bank_accounts.subdivision_id;
+  await requireSubdivisionAccess(subdivisionId);
+
+  const { data: audit } = await supabase
+    .from("audit_log")
+    .select("metadata, created_at")
+    .eq("entity_type", "bank_transaction")
+    .eq("entity_id", bankTransactionId)
+    .eq("action", "reconciliation.auto_match_attempted")
+    .order("created_at", { ascending: false })
+    .limit(1)
+    .maybeSingle();
+  if (!audit) return null;
+
+  return parseAuditMetadata(audit.metadata, audit.created_at as string);
 }
 
 export async function getUnmatchedCount(subdivisionId: string): Promise<number> {
@@ -694,9 +982,21 @@ export async function addManualBankTransaction(
   return { success: { bankTransactionId: inserted.id, autoMatched, matchedRef } };
 }
 
-interface MappingCollisionPayload {
-  colliding_mappings: CollidingMappingSnapshot[];
-  proposed: { canonical_sender_name: string; lot_id: string };
+/** Payload for the three-way `CollisionResolutionDialog`. Both
+ *  reconcileTransaction (PP4-B/C) and reactivateMappingAction (PP4-D) emit
+ *  this shape — the dialog is flow-agnostic. Lot labels are resolved
+ *  server-side in a single round-trip per call. */
+export interface MappingCollisionPayload {
+  canonical_sender_name: string;
+  proposed_lot_id: string;
+  proposed_lot_label: string;
+  colliding_mappings: Array<{
+    id: string;
+    lot_id: string;
+    lot_label: string;
+    previous_status: MappingStatus;
+    current_status: MappingStatus;
+  }>;
 }
 
 interface MappingResolutionRacePayload {
@@ -707,9 +1007,13 @@ interface MappingResolutionRacePayload {
   details: { expected: string[]; current: string[] };
 }
 
-interface ProposalFlagPayload {
+export interface ProposalFlagPayload {
   canonical_sender_name: string;
   lot_id: string;
+  /** Human-readable lot label resolved server-side ("Lot 7" or
+   *  "Lot 7 (Unit 12)"). The toast on match-detail-content.tsx renders this
+   *  directly — the lot_id UUID is meaningless to the manager. */
+  lot_label: string;
   manual_match_count: number;
 }
 
@@ -848,11 +1152,15 @@ export async function reconcileTransaction(
           });
         }
       } else {
-        // Collision detected — surface the three-way dialog payload.
-        mappingCollision = {
-          colliding_mappings: result.colliding_mappings,
-          proposed: result.proposed,
-        };
+        // Collision detected — surface the three-way dialog payload, with
+        // lot labels resolved server-side so the dialog can render
+        // "Lot N (Unit X)" without per-row lookups.
+        mappingCollision = await buildCollisionPayload(
+          parsed.data.subdivision_id,
+          result.proposed.lot_id,
+          result.proposed.canonical_sender_name,
+          result.colliding_mappings,
+        );
       }
     }
   }
@@ -873,9 +1181,21 @@ export async function reconcileTransaction(
       canonicaliseSender,
     );
     if (detection.proposal_flag) {
+      // Resolve human-readable lot label so the toast doesn't show a UUID slice.
+      const { data: lotRow } = await supabase
+        .from("lots")
+        .select("lot_number, unit_number")
+        .eq("id", singleLotId)
+        .maybeSingle();
+      const lotLabel = lotRow
+        ? lotRow.unit_number
+          ? `Lot ${lotRow.lot_number} (Unit ${lotRow.unit_number})`
+          : `Lot ${lotRow.lot_number}`
+        : "Lot ?";
       proposalFlag = {
         canonical_sender_name: canonical,
         lot_id: singleLotId,
+        lot_label: lotLabel,
         manual_match_count: detection.count,
       };
     }
@@ -973,6 +1293,436 @@ export async function resolvePayerMappingCollision(
       mapping_id: result.mapping_id,
     },
   };
+}
+
+// ============================================================================
+// PP4-D: Mapping management server actions (mappings page)
+// ============================================================================
+
+export interface MappingListRow {
+  id: string;
+  canonical_sender_name: string;
+  lot_id: string;
+  lot_label: string;
+  status: MappingStatus;
+  status_reason: string | null;
+  raw_examples_count: number;
+  /** Derived per Gap 4: raw_examples.length > 0 → 'auto', else 'manual'. */
+  source: "manual" | "auto";
+  created_at: string;
+  updated_at: string;
+}
+
+export async function getMappingsForSubdivision(
+  subdivisionId: string,
+  filter: "active" | "ambiguous" | "disabled" | "all" = "active",
+): Promise<MappingListRow[]> {
+  await requireSubdivisionAccess(subdivisionId);
+  const supabase = createServerClient();
+
+  let query = supabase
+    .from("bank_payer_mappings")
+    .select(
+      "id, canonical_sender_name, lot_id, status, status_reason, raw_examples, created_at, updated_at",
+    )
+    .eq("subdivision_id", subdivisionId);
+  if (filter === "active") query = query.eq("status", "active");
+  else if (filter === "ambiguous") query = query.eq("status", "ambiguous");
+  else if (filter === "disabled") query = query.eq("status", "disabled");
+
+  // Sort: ambiguous first (highest severity), then active, then disabled,
+  // then by canonical name within each status group.
+  const { data: rows } = await query;
+  const mappings = (rows ?? []) as Array<{
+    id: string;
+    canonical_sender_name: string;
+    lot_id: string;
+    status: MappingStatus;
+    status_reason: string | null;
+    raw_examples: unknown;
+    created_at: string;
+    updated_at: string;
+  }>;
+
+  if (mappings.length === 0) return [];
+
+  const lotIds = Array.from(new Set(mappings.map((m) => m.lot_id)));
+  const { data: lots } = await supabase
+    .from("lots")
+    .select("id, lot_number, unit_number")
+    .in("id", lotIds);
+  const lotLabelById = new Map<string, string>();
+  for (const l of lots ?? []) {
+    const label = l.unit_number
+      ? `Lot ${l.lot_number} (Unit ${l.unit_number})`
+      : `Lot ${l.lot_number}`;
+    lotLabelById.set(l.id, label);
+  }
+
+  const STATUS_ORDER: Record<MappingStatus, number> = {
+    ambiguous: 0,
+    active: 1,
+    disabled: 2,
+  };
+
+  const out: MappingListRow[] = mappings.map((m) => {
+    const examples = Array.isArray(m.raw_examples) ? m.raw_examples : [];
+    return {
+      id: m.id,
+      canonical_sender_name: m.canonical_sender_name,
+      lot_id: m.lot_id,
+      lot_label: lotLabelById.get(m.lot_id) ?? "Lot ?",
+      status: m.status,
+      status_reason: m.status_reason,
+      raw_examples_count: examples.length,
+      source: examples.length > 0 ? "auto" : "manual",
+      created_at: m.created_at,
+      updated_at: m.updated_at,
+    };
+  });
+
+  out.sort((a, b) => {
+    const s = STATUS_ORDER[a.status] - STATUS_ORDER[b.status];
+    if (s !== 0) return s;
+    return a.canonical_sender_name.localeCompare(b.canonical_sender_name);
+  });
+
+  return out;
+}
+
+export interface MappingDetail {
+  id: string;
+  canonical_sender_name: string;
+  lot_id: string;
+  lot_label: string;
+  status: MappingStatus;
+  status_reason: string | null;
+  raw_examples: string[];
+  created_at: string;
+  updated_at: string;
+  audit: Array<{
+    id: string;
+    action: string;
+    created_at: string;
+    metadata: Record<string, unknown>;
+  }>;
+}
+
+export async function getMappingDetail(
+  subdivisionId: string,
+  mappingId: string,
+): Promise<MappingDetail | null> {
+  await requireSubdivisionAccess(subdivisionId);
+  const supabase = createServerClient();
+
+  const { data: m } = await supabase
+    .from("bank_payer_mappings")
+    .select(
+      "id, canonical_sender_name, lot_id, status, status_reason, raw_examples, created_at, updated_at",
+    )
+    .eq("id", mappingId)
+    .eq("subdivision_id", subdivisionId)
+    .maybeSingle();
+  if (!m) return null;
+
+  const { data: lot } = await supabase
+    .from("lots")
+    .select("lot_number, unit_number")
+    .eq("id", m.lot_id)
+    .maybeSingle();
+  const lotLabel = lot
+    ? lot.unit_number
+      ? `Lot ${lot.lot_number} (Unit ${lot.unit_number})`
+      : `Lot ${lot.lot_number}`
+    : "Lot ?";
+
+  const { data: auditRows } = await supabase
+    .from("audit_log")
+    .select("id, action, created_at, metadata")
+    .eq("entity_type", "bank_payer_mapping")
+    .eq("entity_id", mappingId)
+    .order("created_at", { ascending: false })
+    .limit(50);
+
+  const examples = Array.isArray(m.raw_examples)
+    ? (m.raw_examples as unknown[]).filter(
+        (s): s is string => typeof s === "string",
+      )
+    : [];
+
+  return {
+    id: m.id,
+    canonical_sender_name: m.canonical_sender_name,
+    lot_id: m.lot_id,
+    lot_label: lotLabel,
+    status: m.status,
+    status_reason: m.status_reason,
+    raw_examples: examples,
+    created_at: m.created_at,
+    updated_at: m.updated_at,
+    audit: (auditRows ?? []).map((r) => ({
+      id: r.id,
+      action: r.action,
+      created_at: r.created_at,
+      metadata: (r.metadata ?? {}) as Record<string, unknown>,
+    })),
+  };
+}
+
+export type DisableMappingResult = {
+  success?: { mapping_id: string };
+  error?: string;
+};
+
+export async function disableMappingAction(
+  input: { mapping_id: string; subdivision_id: string; reason?: string },
+): Promise<DisableMappingResult> {
+  const parsed = disableMappingSchema.safeParse(input);
+  if (!parsed.success) return { error: formatIssues(parsed.error.issues) };
+
+  const profile = await requireCompanyRole();
+  await requireSubdivisionAccess(parsed.data.subdivision_id);
+
+  const result = await libDisableMapping({
+    mapping_id: parsed.data.mapping_id,
+    subdivision_id: parsed.data.subdivision_id,
+    reason: parsed.data.reason,
+    performed_by: profile.id,
+  });
+  if (!result.ok) return { error: result.error };
+
+  revalidatePath(
+    `/subdivisions/${parsed.data.subdivision_id}/finance/reconciliation/mappings`,
+  );
+  return { success: { mapping_id: result.mapping_id } };
+}
+
+export type ReactivateMappingActionResult = {
+  success?: { mapping_id?: string; mappingCollision?: MappingCollisionPayload };
+  error?: string;
+};
+
+async function buildCollisionPayload(
+  subdivisionId: string,
+  proposedLotId: string,
+  canonicalName: string,
+  collidingMappings: CollidingMappingSnapshot[],
+): Promise<MappingCollisionPayload> {
+  const supabase = createServerClient();
+  const allLotIds = Array.from(
+    new Set([proposedLotId, ...collidingMappings.map((m) => m.lot_id)]),
+  );
+  const { data: lots } = await supabase
+    .from("lots")
+    .select("id, lot_number, unit_number")
+    .in("id", allLotIds);
+  const labelById = new Map<string, string>();
+  for (const l of lots ?? []) {
+    labelById.set(
+      l.id,
+      l.unit_number
+        ? `Lot ${l.lot_number} (Unit ${l.unit_number})`
+        : `Lot ${l.lot_number}`,
+    );
+  }
+  return {
+    canonical_sender_name: canonicalName,
+    proposed_lot_id: proposedLotId,
+    proposed_lot_label: labelById.get(proposedLotId) ?? "Lot ?",
+    colliding_mappings: collidingMappings.map((m) => ({
+      id: m.id,
+      lot_id: m.lot_id,
+      lot_label: labelById.get(m.lot_id) ?? "Lot ?",
+      previous_status: m.previous_status,
+      current_status: m.current_status,
+    })),
+  };
+}
+
+export async function reactivateMappingAction(
+  input: { mapping_id: string; subdivision_id: string },
+): Promise<ReactivateMappingActionResult> {
+  const parsed = mappingActionSchema.safeParse(input);
+  if (!parsed.success) return { error: formatIssues(parsed.error.issues) };
+
+  const profile = await requireCompanyRole();
+  await requireSubdivisionAccess(parsed.data.subdivision_id);
+
+  const result = await libReactivateMapping({
+    mapping_id: parsed.data.mapping_id,
+    subdivision_id: parsed.data.subdivision_id,
+    performed_by: profile.id,
+  });
+
+  if (!result.ok && result.kind === "error") {
+    return { error: result.error };
+  }
+  if (!result.ok && result.kind === "collision") {
+    const payload = await buildCollisionPayload(
+      parsed.data.subdivision_id,
+      result.proposed.lot_id,
+      result.proposed.canonical_sender_name,
+      result.colliding_mappings,
+    );
+    return { success: { mappingCollision: payload } };
+  }
+  // ok: true case
+  if (result.ok) {
+    revalidatePath(
+      `/subdivisions/${parsed.data.subdivision_id}/finance/reconciliation/mappings`,
+    );
+    return { success: { mapping_id: result.mapping_id } };
+  }
+  return { error: "Unexpected reactivate state" };
+}
+
+export type DeleteMappingActionResult = {
+  success?: { mapping_id: string };
+  error?: string;
+};
+
+export async function deleteMappingAction(
+  input: { mapping_id: string; subdivision_id: string },
+): Promise<DeleteMappingActionResult> {
+  const parsed = mappingActionSchema.safeParse(input);
+  if (!parsed.success) return { error: formatIssues(parsed.error.issues) };
+
+  const profile = await requireCompanyRole();
+  // Admin-only: super_admin platform role OR strata_manager + admin company_role.
+  if (profile.role !== "super_admin" && profile.company_role !== "admin") {
+    return { error: "Only company admins can delete mappings" };
+  }
+  await requireSubdivisionAccess(parsed.data.subdivision_id);
+
+  const result = await libDeleteMapping({
+    mapping_id: parsed.data.mapping_id,
+    subdivision_id: parsed.data.subdivision_id,
+    performed_by: profile.id,
+  });
+  if (!result.ok) return { error: result.error };
+
+  revalidatePath(
+    `/subdivisions/${parsed.data.subdivision_id}/finance/reconciliation/mappings`,
+  );
+  return { success: { mapping_id: result.mapping_id } };
+}
+
+// PP4-D: collision-resolve action used by the mappings page (re-activate
+// flow). Distinct from `resolvePayerMappingCollision` (reconcile flow):
+// no bank_transaction_id / canonical-name lookup.
+export type ResolveMappingCollisionResult = {
+  success?: {
+    resolution_applied?: "update" | "keep_existing" | "remove";
+    mapping_id?: string | null;
+    race?: {
+      divergence_type:
+        | "mapping_changed"
+        | "mapping_deleted"
+        | "new_active_mapping_appeared";
+      details: { expected: string[]; current: string[] };
+    };
+  };
+  error?: string;
+};
+
+export async function resolveMappingCollision(
+  input: {
+    subdivision_id: string;
+    canonical_sender_name: string;
+    proposed_lot_id: string;
+    resolution: "update" | "keep_existing" | "remove";
+    expected_collisions: CollidingMappingSnapshot[];
+  },
+): Promise<ResolveMappingCollisionResult> {
+  const parsed = resolveMappingCollisionSchema.safeParse(input);
+  if (!parsed.success) return { error: formatIssues(parsed.error.issues) };
+
+  const profile = await requireCompanyRole();
+  await requireSubdivisionAccess(parsed.data.subdivision_id);
+
+  const result = await resolveCollision({
+    subdivision_id: parsed.data.subdivision_id,
+    canonical_sender_name: parsed.data.canonical_sender_name,
+    proposed_lot_id: parsed.data.proposed_lot_id,
+    resolution: parsed.data.resolution,
+    expected_collisions: parsed.data.expected_collisions,
+    performed_by: profile.id,
+  });
+
+  revalidatePath(
+    `/subdivisions/${parsed.data.subdivision_id}/finance/reconciliation/mappings`,
+  );
+
+  if (!result.ok) {
+    return {
+      success: {
+        race: {
+          divergence_type: result.divergence_type,
+          details: result.details,
+        },
+      },
+    };
+  }
+  return {
+    success: {
+      resolution_applied: result.resolution_applied,
+      mapping_id: result.mapping_id,
+    },
+  };
+}
+
+// PP4-D: server-action wrapper for the dialog's "Create new" path after a
+// mapping_deleted race. The colliding row is already gone, so the create
+// should succeed without collision in the common case. We still surface a
+// collision payload if a fresh competitor appeared (extremely unlikely).
+export type CreateMappingDirectResult = {
+  success?: {
+    mapping_id?: string;
+    mappingCollision?: MappingCollisionPayload;
+  };
+  error?: string;
+};
+
+export async function createMappingDirectAction(input: {
+  subdivision_id: string;
+  canonical_sender_name: string;
+  lot_id: string;
+  raw_example?: string;
+}): Promise<CreateMappingDirectResult> {
+  if (
+    !input.subdivision_id ||
+    !input.canonical_sender_name ||
+    !input.lot_id
+  ) {
+    return { error: "Missing required fields" };
+  }
+
+  const profile = await requireCompanyRole();
+  await requireSubdivisionAccess(input.subdivision_id);
+
+  const result = await createBankPayerMapping({
+    subdivision_id: input.subdivision_id,
+    canonical_sender_name: input.canonical_sender_name,
+    lot_id: input.lot_id,
+    raw_example: input.raw_example,
+    created_by: profile.id,
+  });
+
+  revalidatePath(
+    `/subdivisions/${input.subdivision_id}/finance/reconciliation/mappings`,
+  );
+
+  if (result.ok) {
+    return { success: { mapping_id: result.mapping_id } };
+  }
+  // Fresh collision — re-route to the dialog with the new payload.
+  const payload = await buildCollisionPayload(
+    input.subdivision_id,
+    result.proposed.lot_id,
+    result.proposed.canonical_sender_name,
+    result.colliding_mappings,
+  );
+  return { success: { mappingCollision: payload } };
 }
 
 export async function unmatchTransaction(

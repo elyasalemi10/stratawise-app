@@ -142,6 +142,7 @@ function getSubdivisionNavGroups(subdivisionId: string, isLotOwner: boolean) {
         { href: `${base}/finance/insurance`, label: "Insurance", icon: Shield },
         { href: `${base}/finance/bank-account`, label: "Bank account", icon: Landmark },
         { href: `${base}/finance/reconciliation`, label: "Reconciliation", icon: GitMerge, badgeKey: "unmatched_count" as const },
+        { href: `${base}/finance/reconciliation/mappings`, label: "Payer mappings", icon: Users },
       ],
     },
     {
@@ -415,7 +416,27 @@ export function AppSidebar() {
               </SidebarMenu>
             </SidebarGroupContent>
           </SidebarGroup>
-        ) : navGroups.map((group) => (
+        ) : navGroups.map((group) => {
+          // PP4-D: longest-prefix-wins for active highlight, so a child route
+          // (e.g. /reconciliation/mappings) doesn't also light up its parent
+          // (/reconciliation). Prefix-only items still match deeper routes
+          // when they're the longest sibling that does.
+          const longestMatchHref = (() => {
+            let best = "";
+            for (const it of group.items) {
+              const [p, q] = it.href.split("?");
+              if (q) continue; // tab-based items handled below
+              if (
+                (pathname === it.href ||
+                  pathname.startsWith(it.href + "/")) &&
+                p.length > best.length
+              ) {
+                best = it.href;
+              }
+            }
+            return best;
+          })();
+          return (
           <SidebarGroup key={group.label || "_top"}>
             {group.label && <SidebarGroupLabel>{group.label}</SidebarGroupLabel>}
             <SidebarGroupContent>
@@ -429,7 +450,7 @@ export function AppSidebar() {
                     const tab = new URLSearchParams(itemQuery).get("tab");
                     isActive = pathname === itemPath && searchParams.get("tab") === tab;
                   } else {
-                    isActive = pathname === item.href || pathname.startsWith(item.href + "/");
+                    isActive = item.href === longestMatchHref;
                   }
                   const badgeKey = "badgeKey" in item ? item.badgeKey : undefined;
                   const count =
@@ -456,7 +477,8 @@ export function AppSidebar() {
               </SidebarMenu>
             </SidebarGroupContent>
           </SidebarGroup>
-        ))}
+          );
+        })}
       </SidebarContent>
 
       {/* Footer — User profile */}

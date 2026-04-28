@@ -25,11 +25,44 @@ import { Badge } from "@/components/ui/badge";
 import { MatchStatusBadge } from "@/components/shared/match-status-badge";
 import { AddManualTransactionDialog } from "@/components/shared/add-manual-transaction-dialog";
 import { RecordCashReceiptDialog } from "@/components/shared/record-cash-receipt-dialog";
+import { FilterChips } from "@/components/shared/filter-chips";
+import { ReviewSuggestedBadge } from "@/components/shared/review-suggested-badge";
+import { FuzzyHintCell } from "@/components/reconciliation/fuzzy-hint-cell";
+import {
+  MatchMetadataDrawer,
+  type MatchAuditPayload,
+} from "@/components/reconciliation/match-metadata-drawer";
+import { useMultiUrlState } from "@/hooks/use-multi-url-state";
+import { getOrchestratorAuditForTransaction } from "@/lib/actions/reconciliation";
 import type {
   ReconciliationQueueResult,
   ReconciliationQueueRow,
   TransactionSource,
 } from "@/lib/validations/reconciliation";
+
+const MATCH_CONFIDENCE_OPTIONS = [
+  { value: "exact_reference", label: "Exact reference" },
+  { value: "amount_match", label: "Amount match" },
+  { value: "name_match", label: "Name match" },
+  { value: "basiq_auto", label: "BPAY (Basiq)" },
+  { value: "manual", label: "Manual" },
+] as const;
+type MatchConfidenceValue = (typeof MATCH_CONFIDENCE_OPTIONS)[number]["value"];
+const MATCH_CONFIDENCE_ALLOWED = new Set<MatchConfidenceValue>(
+  MATCH_CONFIDENCE_OPTIONS.map((o) => o.value),
+);
+
+const MATCH_METHOD_OPTIONS = [
+  { value: "auto_reference", label: "Auto: reference" },
+  { value: "auto_bpay_crn", label: "Auto: BPAY CRN" },
+  { value: "auto_sender", label: "Auto: known sender" },
+  { value: "auto_amount", label: "Auto: amount" },
+  { value: "manual", label: "Manual" },
+] as const;
+type MatchMethodValue = (typeof MATCH_METHOD_OPTIONS)[number]["value"];
+const MATCH_METHOD_ALLOWED = new Set<MatchMethodValue>(
+  MATCH_METHOD_OPTIONS.map((o) => o.value),
+);
 
 const formatCurrency = (n: number) =>
   new Intl.NumberFormat("en-AU", { style: "currency", currency: "AUD" }).format(n);
@@ -78,6 +111,33 @@ export function ReconciliationQueueContent({
     name: string;
     fund_type: "administrative" | "capital_works";
   } | null>(null);
+
+  // Match-metadata drawer state. We open the drawer at the parent so a single
+  // drawer instance is shared across all rows; the per-row badge fires
+  // `onOpenAuditDrawer(bankTxnId)`.
+  const [auditTxId, setAuditTxId] = useState<string | null>(null);
+  const [auditPayload, setAuditPayload] = useState<
+    MatchAuditPayload | null | undefined
+  >(undefined);
+
+  const openAuditDrawer = (bankTxnId: string) => {
+    setAuditTxId(bankTxnId);
+    setAuditPayload(undefined);
+    void (async () => {
+      const result = await getOrchestratorAuditForTransaction(bankTxnId);
+      setAuditPayload(result);
+    })();
+  };
+
+  // Multi-value chip filters (Match metadata + has-fuzzy-hint).
+  const [matchConfidence, setMatchConfidence] = useMultiUrlState<MatchConfidenceValue>(
+    "mc",
+    { allowed: MATCH_CONFIDENCE_ALLOWED },
+  );
+  const [matchMethod, setMatchMethod] = useMultiUrlState<MatchMethodValue>(
+    "mm",
+    { allowed: MATCH_METHOD_ALLOWED },
+  );
 
   const base = `/subdivisions/${subdivisionId}/finance/reconciliation`;
 
@@ -248,6 +308,21 @@ export function ReconciliationQueueContent({
               </Button>
             )}
           </div>
+
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 pt-4 mt-4 border-t border-border">
+            <FilterChips
+              label="Match confidence"
+              options={MATCH_CONFIDENCE_OPTIONS.map((o) => ({ ...o }))}
+              value={matchConfidence}
+              onChange={setMatchConfidence}
+            />
+            <FilterChips
+              label="Match method"
+              options={MATCH_METHOD_OPTIONS.map((o) => ({ ...o }))}
+              value={matchMethod}
+              onChange={setMatchMethod}
+            />
+          </div>
         </CardContent>
       </Card>
 
@@ -281,6 +356,7 @@ export function ReconciliationQueueContent({
                       key={row.id}
                       row={row}
                       subdivisionId={subdivisionId}
+                      onOpenAuditDrawer={openAuditDrawer}
                     />
                   ))}
                 </tbody>
@@ -334,6 +410,22 @@ export function ReconciliationQueueContent({
           </CardContent>
         </Card>
       )}
+
+      <MatchMetadataDrawer
+        open={auditTxId !== null}
+        onOpenChange={(open) => {
+          if (!open) {
+            setAuditTxId(null);
+            setAuditPayload(undefined);
+          }
+        }}
+        audit={auditPayload}
+        bankTxnDescription={
+          auditTxId
+            ? rows.find((r) => r.id === auditTxId)?.description ?? undefined
+            : undefined
+        }
+      />
 
       {/* Dialogs */}
       {selectedBankAccount && (
@@ -399,9 +491,11 @@ function FilterField({ label, children }: { label: string; children: React.React
 function QueueRow({
   row,
   subdivisionId,
+  onOpenAuditDrawer,
 }: {
   row: ReconciliationQueueRow;
   subdivisionId: string;
+  onOpenAuditDrawer: (bankTxnId: string) => void;
 }) {
   const href = `/subdivisions/${subdivisionId}/finance/reconciliation/${row.id}`;
   const isCredit = row.amount > 0;
@@ -415,18 +509,18 @@ function QueueRow({
         </Badge>
       </td>
       <td className="px-4 py-3 max-w-[32rem]">
-        <Link href={href} className="text-foreground hover:text-primary underline-offset-2 hover:underline">
-          <div className="truncate">{row.description ?? "—"}</div>
-          {row.detected_reference && (
-            <div className="text-xs text-muted-foreground mt-0.5 truncate">
-              Ref {row.detected_reference} · {row.bank_account_name}
-            </div>
-          )}
-          {!row.detected_reference && (
-            <div className="text-xs text-muted-foreground mt-0.5 truncate">
-              {row.bank_account_name}
-            </div>
-          )}
+        <FuzzyHintCell
+          description={row.description}
+          hint={row.fuzzy_hint}
+          detailHref={href}
+        />
+        <Link
+          href={href}
+          className="text-xs text-muted-foreground mt-0.5 inline-block hover:text-foreground hover:underline underline-offset-2"
+        >
+          {row.detected_reference
+            ? `Ref ${row.detected_reference} · ${row.bank_account_name}`
+            : row.bank_account_name}
         </Link>
       </td>
       <td className={`px-4 py-3 text-right tabular-nums ${amountClass}`}>
@@ -439,12 +533,19 @@ function QueueRow({
         {row.remaining > 0 ? formatCurrency(row.remaining) : "—"}
       </td>
       <td className="px-4 py-3">
-        <MatchStatusBadge
-          status={row.match_status}
-          isVoided={row.is_voided}
-          matchedTotal={row.matched_total}
-          amount={row.amount}
-        />
+        <div className="flex items-center gap-2">
+          <MatchStatusBadge
+            status={row.match_status}
+            isVoided={row.is_voided}
+            matchedTotal={row.matched_total}
+            amount={row.amount}
+          />
+          {row.match_summary?.review_required && (
+            <ReviewSuggestedBadge
+              onClick={() => onOpenAuditDrawer(row.id)}
+            />
+          )}
+        </div>
       </td>
       <td className="px-4 py-3 text-right whitespace-nowrap">
         <Link href={href}>

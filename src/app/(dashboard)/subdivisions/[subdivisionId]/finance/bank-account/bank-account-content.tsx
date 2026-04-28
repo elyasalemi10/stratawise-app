@@ -30,7 +30,7 @@ import {
 } from "@/components/ui/form";
 import { cn } from "@/lib/utils";
 import { updateSubdivisionField } from "../../manage/actions";
-import { getBankTransactions } from "@/lib/actions/bank-transactions";
+import { getBankTransactions, updateBankAccount } from "@/lib/actions/bank-transactions";
 import { getUndepositedEntries, voidUndepositedReceipt } from "@/lib/actions/reconciliation";
 import { RecordCashReceiptDialog } from "@/components/shared/record-cash-receipt-dialog";
 import { AddManualTransactionDialog } from "@/components/shared/add-manual-transaction-dialog";
@@ -207,7 +207,38 @@ function BankAccountCard({
   const [manualTxnDialogOpen, setManualTxnDialogOpen] = useState(false);
   const [voidTarget, setVoidTarget] = useState<UndepositedFundsEntry | null>(null);
 
+  const [bpayEditing, setBpayEditing] = useState(false);
+  // Edit-mode draft state. Re-initialised from the latest `account` prop
+  // every time the user clicks Edit (see openBpayEditor below); display path
+  // reads from `account` directly so a parent revalidation flows through
+  // without needing a useEffect resync.
+  const [bpayBillerCode, setBpayBillerCode] = useState(account.bpay_biller_code ?? "");
+  const [bpayCrnPrefix, setBpayCrnPrefix] = useState(account.bpay_crn_prefix ?? "");
+  const [bpaySaving, setBpaySaving] = useState(false);
+
+  const openBpayEditor = () => {
+    setBpayBillerCode(account.bpay_biller_code ?? "");
+    setBpayCrnPrefix(account.bpay_crn_prefix ?? "");
+    setBpayEditing(true);
+  };
+
   const refresh = () => setRefreshToken((n) => n + 1);
+
+  async function handleBpaySave() {
+    setBpaySaving(true);
+    const result = await updateBankAccount({
+      id: account.id,
+      bpay_biller_code: bpayBillerCode.trim() === "" ? null : bpayBillerCode.trim(),
+      bpay_crn_prefix: bpayCrnPrefix.trim() === "" ? null : bpayCrnPrefix.trim(),
+    });
+    setBpaySaving(false);
+    if (result.error) {
+      toast.error(result.error);
+      return;
+    }
+    toast.success("BPAY settings updated");
+    setBpayEditing(false);
+  }
 
   useEffect(() => {
     startTransition(async () => {
@@ -263,6 +294,91 @@ function BankAccountCard({
           subdivisionId={subdivisionId}
           bankAccountId={account.id}
         />
+
+        {/* BPAY settings — per-account, surfaced on bank-account page so the
+            manager configures them alongside the EFT details. Biller code is
+            consumed by Strategy 2 (BPAY CRN auto-match); CRN prefix is
+            documentation-only at present. */}
+        <div className="rounded-md border border-border p-4 mb-5">
+          <div className="flex items-center justify-between mb-3">
+            <div>
+              <div className="text-sm font-semibold text-foreground">BPAY settings</div>
+              <p className="text-xs text-muted-foreground mt-0.5">
+                Biller code is used by the auto-matcher to route incoming BPAY
+                payments. CRN prefix is informational.
+              </p>
+            </div>
+            {bpayEditing ? (
+              <div className="flex items-center gap-2">
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  onClick={() => {
+                    setBpayEditing(false);
+                    setBpayBillerCode(account.bpay_biller_code ?? "");
+                    setBpayCrnPrefix(account.bpay_crn_prefix ?? "");
+                  }}
+                  className="cursor-pointer"
+                >
+                  Cancel
+                </Button>
+                <Button
+                  size="sm"
+                  onClick={handleBpaySave}
+                  disabled={bpaySaving}
+                  className="cursor-pointer"
+                >
+                  <Check className="mr-2 h-3.5 w-3.5" />
+                  {bpaySaving ? "Saving..." : "Save"}
+                </Button>
+              </div>
+            ) : (
+              <Button
+                variant="secondary"
+                size="sm"
+                onClick={openBpayEditor}
+                className="cursor-pointer"
+              >
+                <Pencil className="mr-2 h-3.5 w-3.5" />
+                Edit
+              </Button>
+            )}
+          </div>
+
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+            <div className="space-y-1">
+              <Label className="text-xs text-muted-foreground">Biller code</Label>
+              {bpayEditing ? (
+                <Input
+                  value={bpayBillerCode}
+                  onChange={(e) => setBpayBillerCode(e.target.value)}
+                  placeholder="e.g. 123456"
+                  inputMode="numeric"
+                  className="h-8 text-sm"
+                />
+              ) : (
+                <p className="text-sm font-medium text-foreground">
+                  {account.bpay_biller_code || "Not set"}
+                </p>
+              )}
+            </div>
+            <div className="space-y-1">
+              <Label className="text-xs text-muted-foreground">CRN prefix</Label>
+              {bpayEditing ? (
+                <Input
+                  value={bpayCrnPrefix}
+                  onChange={(e) => setBpayCrnPrefix(e.target.value)}
+                  placeholder="optional"
+                  className="h-8 text-sm"
+                />
+              ) : (
+                <p className="text-sm font-medium text-foreground">
+                  {account.bpay_crn_prefix || "Not set"}
+                </p>
+              )}
+            </div>
+          </div>
+        </div>
 
         <div className="grid grid-cols-3 gap-4 mb-5">
           <Metric label="Current balance" value={formatCurrency(account.current_balance)} primary />
