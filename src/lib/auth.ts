@@ -135,9 +135,19 @@ export async function ensureProfile(): Promise<string | null> {
     return existing.id;
   }
 
-  // Profile doesn't exist — create it from Clerk user data
+  // Profile doesn't exist — create it from Clerk user data.
   const user = await currentUser();
   if (!user) return null;
+
+  // Sign-up persists the user's intended role to Clerk via
+  // `unsafeMetadata.intended_role`. Read it here so a manager who lands
+  // on /onboarding before the Clerk webhook fires doesn't get created as
+  // a lot_owner (which would re-route them to /onboarding/lot-owner).
+  // Fallback: lot_owner — same default as the webhook.
+  const intendedRole =
+    (user.unsafeMetadata?.intended_role as string | undefined) ?? null;
+  const role: "strata_manager" | "lot_owner" =
+    intendedRole === "strata_manager" ? "strata_manager" : "lot_owner";
 
   const { data: created, error } = await supabase
     .from("profiles")
@@ -147,12 +157,31 @@ export async function ensureProfile(): Promise<string | null> {
       first_name: user.firstName ?? null,
       last_name: user.lastName ?? null,
       avatar_url: user.imageUrl ?? null,
-      role: "lot_owner",
+      role,
     })
     .select("id")
     .single();
 
   if (error) {
+    // 23505 = duplicate key. A concurrent caller (typically the Clerk
+    // user.created webhook firing in parallel with this page-load
+    // ensureProfile) committed the insert in the brief window between
+    // our SELECT and INSERT. Recover by re-reading the row.
+    if (error.code === "23505") {
+      console.warn("profiles: concurrent insert race recovered", {
+        path: "ensureProfile",
+        clerk_id: userId,
+      });
+      const { data: raced } = await supabase
+        .from("profiles")
+        .select("id")
+        .eq("clerk_id", userId)
+        .single();
+      if (raced) {
+        await seedNotificationPreferences(supabase, raced.id);
+        return raced.id;
+      }
+    }
     console.error("Failed to create profile:", error.message, error.code);
     throw new Error(`Database error: ${error.message}`);
   }

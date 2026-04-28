@@ -30,6 +30,17 @@ interface ClerkUserEvent {
   first_name: string | null;
   last_name: string | null;
   image_url: string | null;
+  unsafe_metadata?: { intended_role?: string } | null;
+}
+
+type ProfileRole = "super_admin" | "strata_manager" | "lot_owner";
+
+// Map signup-time intended_role to the profiles.role enum. The sign-up page
+// emits "strata_manager" or "lot_owner" directly; anything else (missing,
+// malformed, super_admin attempted) falls back to lot_owner.
+function resolveSignupRole(value: unknown): ProfileRole {
+  if (value === "strata_manager") return "strata_manager";
+  return "lot_owner";
 }
 
 async function verifyWebhook(request: NextRequest) {
@@ -70,29 +81,26 @@ async function handleUserCreated(data: ClerkUserEvent) {
   const supabase = createServerClient();
   const email = getPrimaryEmail(data);
 
-  // Check if profile already exists (may have been created by ensureProfile)
+  // Resolve profileId. Three possible paths:
+  //   1. SELECT finds an existing row → use it (concurrent ensureProfile
+  //      already inserted)
+  //   2. SELECT misses → INSERT succeeds → use the new id
+  //   3. SELECT misses → INSERT loses the race with ensureProfile (Postgres
+  //      23505 unique-constraint violation) → re-SELECT → use existing
+  //
+  // Whichever path lands us with an `existing.id`, fall through to the
+  // single UPDATE branch below — that keeps the "refresh fields from the
+  // Clerk webhook payload" logic in one place.
   const { data: existing } = await supabase
     .from("profiles")
     .select("id")
     .eq("clerk_id", data.id)
     .single();
 
-  let profileId: string;
+  let profileId: string | null = existing?.id ?? null;
 
-  if (existing) {
-    // Update existing profile with latest Clerk data
-    profileId = existing.id;
-    await supabase
-      .from("profiles")
-      .update({
-        email,
-        first_name: data.first_name,
-        last_name: data.last_name,
-        avatar_url: data.image_url,
-      })
-      .eq("id", profileId);
-  } else {
-    // Create new profile
+  if (!profileId) {
+    const role = resolveSignupRole(data.unsafe_metadata?.intended_role);
     const { data: created, error } = await supabase
       .from("profiles")
       .insert({
@@ -101,18 +109,55 @@ async function handleUserCreated(data: ClerkUserEvent) {
         first_name: data.first_name,
         last_name: data.last_name,
         avatar_url: data.image_url,
-        role: "lot_owner",
+        role,
       })
       .select("id")
       .single();
 
-    if (error || !created) {
-      console.error("Failed to create profile:", error);
-      return;
+    if (error) {
+      // 23505 = duplicate key. A concurrent caller (typically ensureProfile
+      // running on a protected page-load right after signup) committed the
+      // insert in the brief window between our SELECT and INSERT. Recover
+      // by re-reading the row and falling through to the UPDATE branch.
+      if (error.code === "23505") {
+        console.warn("profiles: concurrent insert race recovered", {
+          path: "webhook",
+          clerk_id: data.id,
+        });
+        const { data: raced } = await supabase
+          .from("profiles")
+          .select("id")
+          .eq("clerk_id", data.id)
+          .single();
+        profileId = raced?.id ?? null;
+      } else {
+        console.error("Failed to create profile:", error);
+      }
+    } else {
+      profileId = created?.id ?? null;
     }
-
-    profileId = created.id;
   }
+
+  if (!profileId) {
+    // Either the non-23505 INSERT error fired, or the race-recovery SELECT
+    // also turned up empty (extremely unlikely). Bail without seeding —
+    // the next page-load via ensureProfile will retry.
+    return;
+  }
+
+  // Single UPDATE branch — runs whether the row pre-existed (path 1),
+  // was just inserted by us (path 2), or was inserted by ensureProfile
+  // and we recovered after 23505 (path 3). The webhook is the
+  // authoritative refresh point for these Clerk-sourced fields.
+  await supabase
+    .from("profiles")
+    .update({
+      email,
+      first_name: data.first_name,
+      last_name: data.last_name,
+      avatar_url: data.image_url,
+    })
+    .eq("id", profileId);
 
   // Seed default notification preferences
   const preferences = NOTIFICATION_TYPES.flatMap((type) => [

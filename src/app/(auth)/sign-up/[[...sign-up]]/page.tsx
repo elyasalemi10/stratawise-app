@@ -57,18 +57,36 @@ function SignUpContent() {
   const inviteToken = searchParams.get("invite");
   const [selectedRole, setSelectedRole] = useState<string | null>(initialRole);
 
-  // If coming from an invitation link, skip role selection
+  // If coming from an invitation link, the user is always a lot owner —
+  // the inviter is a strata manager creating an account for them. Persist
+  // intended_role to Clerk so the webhook + ensureProfile can read it on
+  // profile creation; otherwise both default to lot_owner regardless of
+  // signup choice.
   if (inviteToken) {
-    return <SignUp fallbackRedirectUrl={`/invite/${inviteToken}`} />;
+    return (
+      <SignUp
+        fallbackRedirectUrl={`/invite/${inviteToken}`}
+        unsafeMetadata={{ intended_role: "lot_owner" }}
+      />
+    );
   }
 
   if (!selectedRole) {
     return <RoleSelector onSelect={setSelectedRole} />;
   }
 
+  // RoleSelector emits "manager" or "lot_owner". The DB enum values are
+  // "strata_manager" / "lot_owner" / "super_admin"; map to the DB shape
+  // here so the webhook can use intended_role verbatim.
+  const intendedRole = selectedRole === "lot_owner" ? "lot_owner" : "strata_manager";
   const redirectUrl = selectedRole === "lot_owner" ? "/onboarding/lot-owner" : "/onboarding";
 
-  return <SignUp fallbackRedirectUrl={redirectUrl} />;
+  return (
+    <SignUp
+      fallbackRedirectUrl={redirectUrl}
+      unsafeMetadata={{ intended_role: intendedRole }}
+    />
+  );
 }
 
 export default function SignUpPage() {
