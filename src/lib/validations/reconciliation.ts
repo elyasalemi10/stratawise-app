@@ -94,6 +94,19 @@ export const reconcileAllocationSchema = z.object({
 });
 export type ReconcileAllocationInput = z.infer<typeof reconcileAllocationSchema>;
 
+// Three-way collision-resolution options for the manual-match
+// "remember this payer" flow. Set in the second call when the manager
+// chooses how to resolve a collision detected on the first call.
+const MAPPING_RESOLUTIONS = ["update", "keep_existing", "remove"] as const;
+export type MappingResolution = (typeof MAPPING_RESOLUTIONS)[number];
+
+const collidingMappingSnapshotSchema = z.object({
+  id: z.string().uuid(),
+  lot_id: z.string().uuid(),
+  previous_status: z.enum(["active", "ambiguous", "disabled"]),
+  current_status: z.enum(["active", "ambiguous", "disabled"]),
+});
+
 export const reconcileTransactionSchema = z.object({
   subdivision_id: z.string().uuid(),
   bank_transaction_id: z.string().uuid(),
@@ -104,8 +117,27 @@ export const reconcileTransactionSchema = z.object({
   match_method: z.enum(RECONCILIATION_MATCH_METHODS),
   match_confidence: z.enum(MATCH_CONFIDENCES),
   notes: z.string().trim().max(500).nullable().optional(),
+  // PP4-B: "Remember this payer for future transactions" checkbox.
+  // Default false at the schema level so existing tests / non-UI callers
+  // don't accidentally create mappings. The UI form sends true explicitly
+  // (matching the spec's default-checked checkbox).
+  remember_payer: z.boolean().default(false),
+  // PP4-B: collision resolution from the three-way dialog. Null on first
+  // call; set to one of update/keep_existing/remove on the resubmit when
+  // the manager has picked a resolution. expected_collisions is the
+  // snapshot returned in the first-call collision payload — used for race
+  // detection (Gap G).
+  mapping_resolution: z.enum(MAPPING_RESOLUTIONS).nullable().optional(),
+  expected_collisions: z
+    .array(collidingMappingSnapshotSchema)
+    .nullable()
+    .optional(),
 });
-export type ReconcileTransactionInput = z.infer<
+// Use z.input rather than z.infer so callers may omit `.default()` fields
+// (remember_payer in particular). The schema applies the default during
+// safeParse; consumers inside the action read parsed.data which has the
+// output type with defaults filled in.
+export type ReconcileTransactionInput = z.input<
   typeof reconcileTransactionSchema
 >;
 

@@ -191,6 +191,26 @@ Small fixes to batch before going live. Non-blocking for feature work.
 
 - **Orchestrator overwrites `bank_transactions.notes` on partial match.** Currently safe because notes is system-written-only in PP4-A. If pre-match manager-edit becomes possible (e.g. a "leave a note before matching" UI in PP4-D or later), change the orchestrator's partial-match branch to append-rather-than-overwrite, or store the auto-match warning in a separate column. Marked with a `TODO(pre-launch)` comment in `src/lib/reconciliation/orchestrator.ts` at the overwrite site.
 
+## From Prompt 4 (PP4-B — strategies 3-6 + canonical + similarity + mappings)
+
+- **Canonicaliser-induced misroute audit query (R1 mitigation):** Strategy 3 records `{raw_description, canonical_sender_name, mapping_id}` in match metadata. Build an audit-log query that finds `name_match` auto-matches where the manager later unmatched within N days (proposed N=7). High recurrence on a specific canonical name is a signal that the canonicaliser is too aggressive (over-stripping legitimate name parts) or that a known payer mapping is misclassified. Run this query before launch and on a recurring weekly cadence post-launch.
+
+- **Ground-truth canonicaliser noise tokens against ≥20 real Basiq sandbox descriptions.** `src/lib/reconciliation/canonical.ts` strips a narrow noise list (LEV refs, BPAY blocks, directional words, BSBs, long digits, dates). Spec earlier cited "TRANSFER FROM, OSKO FROM, EFTPOS, NPP" but real bank descriptions in production may include other tokens (PAY ID, payID, INTERNET TRANSFER, IB DEPOSIT, etc.). Once an OC connects via Basiq, sample ≥20 real descriptions and either widen the noise list or document that the conservative defaults produce acceptable behaviour. Linked corpus item from PP3 (`_basiq_samples.txt`).
+
+- **Sweep on lot ownership UPDATE / DELETE / profile rename.** PP4-B's `sweepMappingsForOwnerChange` is hooked only on `subdivision_members` INSERT (invitation acceptance — Gap D resolution). Manager-edits-owner UPDATE paths and `profiles` first/last-name renames are out-of-scope. Pre-launch: decide whether to add hooks to the manager edit and profile rename flows, or accept that mappings can become stale and rely on manual review. If hooks are added, the sweep function itself doesn't need changes — only call sites do.
+
+- **Lot-owner edit on the non-invite path doesn't trigger sweep.** If a manager directly edits a lot owner via `subdivisions/manage` (or wherever the non-invite owner-mutation flow lands in PP4-D), `sweepMappingsForOwnerChange` is not called. Add the hook in `src/lib/actions/subdivision.ts` (or the relevant action file) wherever lot ownership is mutated outside the invitation-acceptance flow. PP4-D scope; flagged here so it isn't lost.
+
+- **`detectRepeatedManualMatch` performance at scale.** Iterates 30 days of manual matches and canonicalises each linked description in TS. Bounded for typical MSM volumes but unbounded across multi-OC scaling. If verification or production telemetry shows hot-path latency, denormalise canonical_sender_name onto `bank_transactions` at insert time (one TS canonicalisation, cached on the row) so the detection query becomes a SELECT COUNT … WHERE canonical = ?. Schema change deferred until evidence demands it.
+
+- **Strategy 4 keyword input validation not yet enforced at write time.** `src/lib/validations/levy.ts::matchKeywordsSchema` lands in PP4-B (Gap J resolution) but no production write path uses it yet — `levy_batches.match_keywords` is set directly by verification fixtures or future PP4-D batch-creation UI. Pre-launch: confirm the PP4-D server action wires the schema before insert.
+
+- **Three-way collision dialog UI (deferred to PP4-D).** PP4-B's `reconcileTransaction` returns structured `mappingCollision` and `mappingResolutionRace` payloads. UI surfaces the dialog and re-submits with `mapping_resolution`. No UI in PP4-B; verification scenarios exercise the server-side flow only.
+
+- **Multi-lot manual match with `remember_payer=true` silently skips mapping creation (Gap C).** Server writes `bank_payer_mapping.skipped_multi_lot` audit when this happens. UI affordance — greying the checkbox + tooltip "Cannot remember a payer for multi-lot matches" — is PP4-D scope.
+
+- **Strategy 6 hint persistence on already-mapped sender.** When a description's canonical exactly matches an active mapping, Strategy 3 hits and the orchestrator stops. Strategy 6 doesn't run, so no hint is surfaced. When the canonical DOES NOT match exactly, Strategy 6 may still find a high-similarity active mapping. Strategy 6 explicitly skips exact-equality candidates (no value in hinting "did you mean X?" when X is a perfect match — that would have hit Strategy 3). Verified by inspection.
+
 ## From Prompt 8
 
 - **Audit trail in ledger entry drawer — pagination:** Query capped at 100

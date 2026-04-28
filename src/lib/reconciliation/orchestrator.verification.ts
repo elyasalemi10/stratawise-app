@@ -21,6 +21,13 @@ import { createClient } from "@supabase/supabase-js";
 import { randomUUID } from "crypto";
 import { tryAutoMatch } from "./orchestrator";
 import { generateCrn, validateCrn } from "./bpay-crn";
+import { canonicaliseSender } from "./canonical";
+import {
+  createBankPayerMapping,
+  resolveCollision,
+  sweepMappingsForOwnerChange,
+  detectRepeatedManualMatch,
+} from "./mappings";
 
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
 const serviceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
@@ -288,6 +295,15 @@ async function createFixture(): Promise<Fixture> {
     },
   ]);
 
+  // PP4-B fix: bump the per-OC levy counter past the hand-picked fixture
+  // numbers (3, 5, 7, 77, 99) + the inline-inserted scenario numbers
+  // (50, 100, 200, 201) so subsequent next_reference_number calls in
+  // mkOutstandingNotice can't collide with anything pre-created.
+  await supabase
+    .from("subdivisions")
+    .update({ next_levy_number: 1000 })
+    .eq("id", subdivision.id);
+
   return {
     runId,
     companyId: company.id,
@@ -345,7 +361,9 @@ async function fetchTxnState(id: string) {
 async function fetchMatches(bankTxnId: string) {
   const { data } = await supabase
     .from("reconciliation_matches")
-    .select("ledger_entry_id, amount_matched, match_method, match_confidence")
+    .select(
+      "ledger_entry_id, amount_matched, match_method, match_confidence, review_required",
+    )
     .eq("bank_transaction_id", bankTxnId);
   return data ?? [];
 }
@@ -553,11 +571,14 @@ async function scenario4_MultiReferenceFifo(fx: Fixture) {
 async function scenario5_StaleReferenceFallthrough(fx: Fixture) {
   const header = "O5: stale reference (notice fully paid) → audit + fallthrough";
   try {
+    // SG-1 mitigation: use an unusual amount so Strategy 5 (amount-window)
+    // can't match a leftover outstanding notice (e.g. LEV-5's residual $300
+    // from O4's partial allocation) and short-circuit the stale-ref test.
     const { bankTransactionId, outcome } = await runOrchestrator(
       fx,
       fx.adminNoBpayAccountId, // BPAY disabled so stale-ref isn't rescued by Strategy 2
       `Transfer ${fx.staleNotice.reference}`,
-      500,
+      77777.77,
     );
 
     assert(!outcome.matched, `O5 expected !matched`);
@@ -842,6 +863,980 @@ async function scenario10_FallthroughToBpay(fx: Fixture) {
   }
 }
 
+// ─── PP4-B helpers ────────────────────────────────────────────────────────
+
+let _freshLotCounter = 1000;
+async function mkFreshLot(fx: Fixture): Promise<string> {
+  const n = _freshLotCounter++;
+  const { data, error } = await supabase
+    .from("lots")
+    .insert({
+      subdivision_id: fx.subdivisionId,
+      lot_number: n,
+      lot_entitlement: 100,
+      lot_liability: 100,
+    })
+    .select("id")
+    .single();
+  if (error || !data) throw new Error(`mkFreshLot: ${error?.message}`);
+  return data.id;
+}
+
+async function mkOutstandingNotice(
+  fx: Fixture,
+  lotId: string,
+  opts: {
+    levyType?: "regular" | "special";
+    amount?: number;
+    dueDate?: string;
+    periodStart?: string;
+    bpayCrn?: string | null;
+  } = {},
+): Promise<{ id: string; reference: string }> {
+  const { data: refRow } = await supabase.rpc("next_reference_number", {
+    p_prefix: "LEV",
+    p_subdivision_id: fx.subdivisionId,
+  });
+  const reference = String(refRow);
+  const amount = opts.amount ?? 500;
+  const dueDate = opts.dueDate ?? "2026-04-28";
+  const periodStart = opts.periodStart ?? "2026-01-01";
+  const { data: notice, error: noticeErr } = await supabase
+    .from("levy_notices")
+    .insert({
+      subdivision_id: fx.subdivisionId,
+      lot_id: lotId,
+      budget_id: fx.budgetId,
+      reference_number: reference,
+      bpay_crn: opts.bpayCrn ?? null,
+      fund_type: "administrative",
+      levy_type: opts.levyType ?? "regular",
+      period_start: periodStart,
+      period_end: dueDate,
+      amount,
+      due_date: dueDate,
+      status: "draft",
+    })
+    .select("id")
+    .single();
+  if (!notice) {
+    throw new Error(
+      `mkOutstandingNotice: notice insert failed: ${noticeErr?.message ?? "unknown"} (ref=${reference}, lot=${lotId}, amount=${amount})`,
+    );
+  }
+  await supabase.from("lot_ledger_entries").insert({
+    subdivision_id: fx.subdivisionId,
+    lot_id: lotId,
+    fund_type: "administrative",
+    entry_type: "debit",
+    category: opts.levyType === "special" ? "special_levy" : "levy",
+    amount,
+    entry_date: periodStart,
+    reference,
+    levy_notice_id: notice.id,
+    status: "active",
+    created_by: fx.profileId,
+  });
+  return { id: notice.id, reference };
+}
+
+async function mkBatch(
+  fx: Fixture,
+  matchKeywords: string[],
+  label: string,
+): Promise<string> {
+  const { data: batch } = await supabase
+    .from("levy_batches")
+    .insert({
+      subdivision_id: fx.subdivisionId,
+      budget_id: fx.budgetId,
+      financial_year: "2026-2027",
+      fund_type: "administrative",
+      period_start: "2026-04-01",
+      period_end: "2026-06-30",
+      period_label: label,
+      due_date: "2026-04-28",
+      total_amount: 0,
+      levy_count: 0,
+      status: "draft",
+      generated_by: fx.profileId,
+      match_keywords: matchKeywords,
+    })
+    .select("id")
+    .single();
+  if (!batch) throw new Error(`mkBatch: insert failed`);
+  return batch.id;
+}
+
+async function setNoticeBatch(noticeId: string, batchId: string): Promise<void> {
+  await supabase
+    .from("levy_notices")
+    .update({ batch_id: batchId })
+    .eq("id", noticeId);
+}
+
+async function fetchMapping(id: string) {
+  const { data } = await supabase
+    .from("bank_payer_mappings")
+    .select("*")
+    .eq("id", id)
+    .single();
+  return data;
+}
+
+async function fetchAllMappings(subdivisionId: string) {
+  const { data } = await supabase
+    .from("bank_payer_mappings")
+    .select("id, canonical_sender_name, lot_id, status")
+    .eq("subdivision_id", subdivisionId);
+  return data ?? [];
+}
+
+// Direct insert bypassing the createBankPayerMapping collision check.
+// Used to construct fixture states (e.g. ambiguous status) that the
+// public API would refuse to create.
+async function insertMappingDirect(
+  fx: Fixture,
+  canonicalName: string,
+  lotId: string,
+  status: "active" | "ambiguous" | "disabled" = "active",
+): Promise<string> {
+  const { data, error } = await supabase
+    .from("bank_payer_mappings")
+    .insert({
+      subdivision_id: fx.subdivisionId,
+      canonical_sender_name: canonicalName,
+      lot_id: lotId,
+      status,
+      raw_examples: [],
+      created_by: fx.profileId,
+    })
+    .select("id")
+    .single();
+  if (error || !data) throw new Error(`insertMappingDirect: ${error?.message}`);
+  return data.id;
+}
+
+// ─── Strategy 3 — known_payer (O11–O12) ────────────────────────────────────
+
+async function scenario11_KnownPayerUnambiguous(fx: Fixture) {
+  const header = "O11: Strategy 3 unambiguous canonical match → name_match";
+  try {
+    const lotId = await mkFreshLot(fx);
+    const notice = await mkOutstandingNotice(fx, lotId, { amount: 500 });
+    await insertMappingDirect(fx, "JANE BROWN", lotId, "active");
+
+    const { bankTransactionId, outcome } = await runOrchestrator(
+      fx,
+      fx.adminNoBpayAccountId, // BPAY disabled — no Strategy 2 confound
+      "Transfer from Jane Brown",
+      500,
+    );
+
+    assert(outcome.matched, `O11 expected matched`);
+    assert(outcome.strategy === "known_payer", `O11 strategy: ${outcome.strategy}`);
+    assert(outcome.reference === notice.reference, `O11 reference: ${outcome.reference}`);
+
+    const matches = await fetchMatches(bankTransactionId);
+    assert(matches.length === 1, `O11 matches: ${matches.length}`);
+    assert(matches[0].match_method === "auto_sender", `O11 method: ${matches[0].match_method}`);
+    assert(matches[0].match_confidence === "name_match", `O11 confidence: ${matches[0].match_confidence}`);
+
+    record(header, true, `JANE BROWN → lot mapped → ${notice.reference} matched ($500)`);
+  } catch (e) {
+    record(header, false, (e as Error).message);
+  }
+}
+
+async function scenario12_KnownPayerAmbiguousFiltered(fx: Fixture) {
+  const header =
+    "O12: Strategy 3 with ambiguous-status mapping → no_mapping (status filter excludes)";
+  try {
+    // Note: the partial UNIQUE active index makes "≥ 2 active mappings" for the
+    // same canonical name unreachable under normal operation. The defensive
+    // ≥2 branch in known-payer.ts is there for paranoia. This scenario tests
+    // the realistic ambiguous-but-status='ambiguous' case: Strategy 3's
+    // .eq("status", "active") filter excludes ambiguous mappings, returning
+    // 'no_mapping'.
+    const lotId = await mkFreshLot(fx);
+    // SG-1 mitigation: NO outstanding notice on this lot — Strategy 5 has
+    // nothing to match at the unusual amount. Strategy 3 only needs the
+    // mapping (in ambiguous status) to verify the active-status filter
+    // excludes it.
+    await insertMappingDirect(fx, "AMBIGUOUS PAYER", lotId, "ambiguous");
+
+    const { bankTransactionId, outcome } = await runOrchestrator(
+      fx,
+      fx.adminNoBpayAccountId,
+      "Transfer from Ambiguous Payer",
+      33333.33,
+    );
+
+    assert(!outcome.matched, `O12 expected !matched, got ${JSON.stringify(outcome)}`);
+
+    const orch = await fetchOrchestratorAudit(bankTransactionId);
+    const tried = orch?.metadata.strategies_tried as Array<{
+      strategy: string;
+      outcome: string;
+    }>;
+    const knownPayer = tried.find((t) => t.strategy === "known_payer");
+    assert(knownPayer, "O12 missing known_payer entry in strategies_tried");
+    assert(
+      knownPayer.outcome === "no_mapping",
+      `O12 expected known_payer outcome=no_mapping (ambiguous filtered), got ${knownPayer.outcome}`,
+    );
+
+    record(header, true, `ambiguous mapping correctly excluded by Strategy 3's active-status filter`);
+  } catch (e) {
+    record(header, false, (e as Error).message);
+  }
+}
+
+// ─── Strategy 4 — keyword + amount (O13–O14) ──────────────────────────────
+
+async function scenario13_KeywordAmountMatch(fx: Fixture) {
+  const header = "O13: Strategy 4 keyword + exact amount → review_required=true";
+  try {
+    const lotId = await mkFreshLot(fx);
+    const batchId = await mkBatch(fx, ["gardening"], "O13 batch");
+    const notice = await mkOutstandingNotice(fx, lotId, { amount: 750 });
+    await setNoticeBatch(notice.id, batchId);
+
+    const { bankTransactionId, outcome } = await runOrchestrator(
+      fx,
+      fx.adminNoBpayAccountId,
+      "Gardening services Q1",
+      750,
+    );
+    assert(outcome.matched, `O13 expected matched`);
+    assert(
+      outcome.strategy === "keyword_amount",
+      `O13 strategy: ${outcome.strategy}`,
+    );
+
+    const matches = await fetchMatches(bankTransactionId);
+    assert(matches.length === 1, `O13 matches: ${matches.length}`);
+    assert(
+      matches[0].match_confidence === "amount_match",
+      `O13 confidence: ${matches[0].match_confidence}`,
+    );
+    assert(
+      matches[0].review_required === true,
+      `O13 expected review_required=true on the match row`,
+    );
+
+    record(header, true, `keyword 'gardening' + amount $750 matched ${notice.reference}; review_required=true`);
+  } catch (e) {
+    record(header, false, (e as Error).message);
+  }
+}
+
+async function scenario14_KeywordAmountMismatch(fx: Fixture) {
+  const header = "O14: Strategy 4 keyword hits but amount mismatches → no match";
+  try {
+    const lotId = await mkFreshLot(fx);
+    const batchId = await mkBatch(fx, ["painting"], "O14 batch");
+    const notice = await mkOutstandingNotice(fx, lotId, { amount: 500 });
+    await setNoticeBatch(notice.id, batchId);
+
+    // Description has the keyword, but amount is different.
+    const { bankTransactionId, outcome } = await runOrchestrator(
+      fx,
+      fx.adminNoBpayAccountId,
+      "Painting services contractor",
+      999,
+    );
+    assert(!outcome.matched, `O14 expected !matched`);
+
+    const orch = await fetchOrchestratorAudit(bankTransactionId);
+    const tried = orch?.metadata.strategies_tried as Array<{
+      strategy: string;
+      outcome: string;
+    }>;
+    const kw = tried.find((t) => t.strategy === "keyword_amount");
+    assert(kw, "O14 missing keyword_amount entry");
+    assert(
+      kw.outcome === "no_amount_match",
+      `O14 expected keyword_amount outcome=no_amount_match, got ${kw.outcome}`,
+    );
+
+    record(header, true, `keyword hit but amount $999 ≠ notice $500 → no match`);
+  } catch (e) {
+    record(header, false, (e as Error).message);
+  }
+}
+
+// ─── Strategy 5 — amount window (O15–O17) ──────────────────────────────────
+
+async function scenario15_AmountWindowSingleCandidate(fx: Fixture) {
+  const header = "O15: Strategy 5 single amount candidate in window → match (review_required=true)";
+  try {
+    const lotId = await mkFreshLot(fx);
+    const notice = await mkOutstandingNotice(fx, lotId, {
+      amount: 642.50,
+      dueDate: "2026-04-20",
+    });
+
+    const { bankTransactionId, outcome } = await runOrchestrator(
+      fx,
+      fx.adminNoBpayAccountId,
+      "owner payment",
+      642.50,
+    );
+    assert(outcome.matched, `O15 expected matched`);
+    assert(
+      outcome.strategy === "amount_window",
+      `O15 strategy: ${outcome.strategy}`,
+    );
+
+    const matches = await fetchMatches(bankTransactionId);
+    assert(matches.length === 1, `O15 matches: ${matches.length}`);
+    assert(
+      matches[0].review_required === true,
+      `O15 review_required must be true`,
+    );
+
+    record(header, true, `amount $642.50 within ±30d window → matched ${notice.reference}`);
+  } catch (e) {
+    record(header, false, (e as Error).message);
+  }
+}
+
+async function scenario16_AmountWindowMultipleCandidates(fx: Fixture) {
+  const header = "O16: Strategy 5 multiple amount candidates → falls through";
+  try {
+    const lotA = await mkFreshLot(fx);
+    const lotB = await mkFreshLot(fx);
+    await mkOutstandingNotice(fx, lotA, {
+      amount: 333,
+      dueDate: "2026-04-15",
+    });
+    await mkOutstandingNotice(fx, lotB, {
+      amount: 333,
+      dueDate: "2026-04-25",
+    });
+
+    const { bankTransactionId, outcome } = await runOrchestrator(
+      fx,
+      fx.adminNoBpayAccountId,
+      "owner payment",
+      333,
+    );
+    assert(!outcome.matched, `O16 expected !matched`);
+
+    const orch = await fetchOrchestratorAudit(bankTransactionId);
+    const tried = orch?.metadata.strategies_tried as Array<{
+      strategy: string;
+      outcome: string;
+    }>;
+    const aw = tried.find((t) => t.strategy === "amount_window");
+    assert(aw, "O16 missing amount_window entry");
+    assert(
+      aw.outcome === "multiple_candidates",
+      `O16 expected amount_window outcome=multiple_candidates, got ${aw.outcome}`,
+    );
+
+    record(header, true, `2 candidates same amount → strategy skipped (no priority preference)`);
+  } catch (e) {
+    record(header, false, (e as Error).message);
+  }
+}
+
+async function scenario17_AmountWindowOrdinaryAndSpecialNoTiebreak(fx: Fixture) {
+  const header =
+    "O17: Strategy 5 ordinary AND special same amount in window → NO match (Addition 1: no priority preference)";
+  try {
+    const lotA = await mkFreshLot(fx);
+    const lotB = await mkFreshLot(fx);
+    await mkOutstandingNotice(fx, lotA, {
+      amount: 444,
+      dueDate: "2026-04-10",
+      levyType: "regular",
+    });
+    await mkOutstandingNotice(fx, lotB, {
+      amount: 444,
+      dueDate: "2026-04-20",
+      levyType: "special",
+    });
+
+    const { outcome } = await runOrchestrator(
+      fx,
+      fx.adminNoBpayAccountId,
+      "owner payment",
+      444,
+    );
+    assert(!outcome.matched, `O17 expected !matched`);
+    assert(
+      outcome.strategy === null,
+      `O17 expected strategy=null (no match), got ${outcome.strategy}`,
+    );
+
+    record(
+      header,
+      true,
+      `ordinary + special both $444: Strategy 5 returns multiple_candidates with no priority tiebreak`,
+    );
+  } catch (e) {
+    record(header, false, (e as Error).message);
+  }
+}
+
+// ─── Strategy 6 — fuzzy hint (O18–O20) ────────────────────────────────────
+
+// SCENARIO-AUTHORING GUIDANCE for Strategy 6 fuzzy-hint tests:
+//
+// Strategy 6 compares the canonicalised description against EVERY active
+// bank_payer_mapping in the subdivision. The fixture accumulates mappings
+// as PP4-B scenarios run (O11 inserts MARTHA, O18 inserts MARTHA, C1-C9
+// insert C1 PAYER through C9 PAYER, etc). To remain robust as the fixture
+// grows:
+//
+//   - Descriptions for "no hint" tests (e.g. O19) must score < 0.50
+//     against ALL existing fixture mappings to ensure the test stays
+//     green when future scenarios add new mappings. Use deliberately
+//     rare letter sequences like 'Qqq Xxx Yyy Zzz' (no shared characters
+//     with English-letter mappings → JW = 0).
+//
+//   - Descriptions for "hint surfaced" tests (e.g. O18, O20) should
+//     target a SPECIFIC mapping inserted by the same scenario, and use
+//     an unusual tx amount so Strategy 5 doesn't accidentally match
+//     before Strategy 6 fires.
+//
+// Use an unusual amount so prior scenarios' $500/$750/$642.50 notices
+// don't accidentally satisfy Strategy 5's amount-window check, which
+// would short-circuit Strategy 6.
+const FUZZY_TEST_AMOUNT = 77_777.77;
+
+async function scenario18_FuzzyHintAboveThreshold(fx: Fixture) {
+  const header = "O18: Strategy 6 similarity ≥ 0.75 → hint surfaced (no auto)";
+  try {
+    const lotId = await mkFreshLot(fx);
+    await insertMappingDirect(fx, "MARTHA", lotId, "active");
+    // No notice on this lot — Strategies 1-5 must all miss so Strategy 6
+    // gets the chance to fire.
+
+    // Description "Marc" → canonical "MARC". jw("MARC", "MARTHA") = 0.825.
+    const { bankTransactionId, outcome } = await runOrchestrator(
+      fx,
+      fx.adminNoBpayAccountId,
+      "Marc",
+      FUZZY_TEST_AMOUNT,
+    );
+    assert(!outcome.matched, `O18 expected !matched (fuzzy never auto-matches)`);
+
+    const { data: bt } = await supabase
+      .from("bank_transactions")
+      .select("fuzzy_hint_metadata")
+      .eq("id", bankTransactionId)
+      .single();
+    assert(
+      bt?.fuzzy_hint_metadata,
+      `O18 expected fuzzy_hint_metadata to be persisted on the bank_transaction`,
+    );
+    const meta = bt!.fuzzy_hint_metadata as Record<string, unknown>;
+    assert(
+      meta.hint_surfaced === true,
+      `O18 expected hint_surfaced=true, got ${JSON.stringify(meta)}`,
+    );
+    assert(
+      meta.canonical_name === "MARTHA",
+      `O18 canonical_name should be MARTHA, got ${meta.canonical_name}`,
+    );
+    const sim = meta.similarity as number;
+    assert(
+      typeof sim === "number" && sim >= 0.75,
+      `O18 similarity must be ≥ 0.75, got ${sim}`,
+    );
+
+    record(
+      header,
+      true,
+      `'Marc' (canonical=MARC) ~ MARTHA: similarity=${sim}; hint persisted on bank_transaction`,
+    );
+  } catch (e) {
+    record(header, false, (e as Error).message);
+  }
+}
+
+async function scenario19_FuzzyHintBelowThreshold(fx: Fixture) {
+  const header = "O19: Strategy 6 similarity < 0.75 → no hint";
+  try {
+    // No mapping insert needed — Strategy 6 compares against ALL active
+    // mappings in the subdivision (accumulated from prior scenarios).
+    // Description "Qqq Xxx Yyy" — letters not present in any mapping →
+    // jw ≈ 0 against all mappings.
+
+    const { bankTransactionId, outcome } = await runOrchestrator(
+      fx,
+      fx.adminNoBpayAccountId,
+      "Qqq Xxx Yyy Zzz",
+      FUZZY_TEST_AMOUNT,
+    );
+    assert(!outcome.matched, `O19 expected !matched`);
+
+    const { data: bt } = await supabase
+      .from("bank_transactions")
+      .select("fuzzy_hint_metadata")
+      .eq("id", bankTransactionId)
+      .single();
+    assert(
+      !bt?.fuzzy_hint_metadata,
+      `O19 expected fuzzy_hint_metadata to be NULL (no hint), got ${JSON.stringify(bt?.fuzzy_hint_metadata)}`,
+    );
+
+    record(header, true, `low-similarity description produced no hint`);
+  } catch (e) {
+    record(header, false, (e as Error).message);
+  }
+}
+
+async function scenario20_FuzzyHintHighSimilarityNeverAutoMatches(fx: Fixture) {
+  const header =
+    "O20: Strategy 6 high similarity (~0.96) still hint-only — auto requires exact canonical equality";
+  try {
+    // MARTHA mapping inserted in O18 still active. Description canonicalises
+    // to MARHTA. jw(MARHTA, MARTHA) = 0.9611 — well above threshold, but
+    // Strategy 3 misses because canonical strings aren't equal. Strategy 6
+    // surfaces hint without auto-matching.
+    const { bankTransactionId, outcome } = await runOrchestrator(
+      fx,
+      fx.adminNoBpayAccountId,
+      "Marhta",
+      FUZZY_TEST_AMOUNT,
+    );
+    assert(
+      !outcome.matched,
+      `O20 expected !matched even at very high similarity`,
+    );
+
+    const { data: bt } = await supabase
+      .from("bank_transactions")
+      .select("fuzzy_hint_metadata")
+      .eq("id", bankTransactionId)
+      .single();
+    assert(bt?.fuzzy_hint_metadata, `O20 expected fuzzy_hint_metadata`);
+    const meta = bt!.fuzzy_hint_metadata as Record<string, unknown>;
+    assert(meta.hint_surfaced === true, `O20 hint_surfaced=true expected`);
+    const sim = meta.similarity as number;
+    assert(sim >= 0.95, `O20 similarity should be ≥ 0.95 (got ${sim})`);
+
+    record(
+      header,
+      true,
+      `MARHTA ~ MARTHA: similarity=${sim} (very high) but still hint-only — no auto-match`,
+    );
+  } catch (e) {
+    record(header, false, (e as Error).message);
+  }
+}
+
+// ─── Collision scenarios (C1–C9) ───────────────────────────────────────────
+
+async function scenarioC1_CreateMappingNoCollision(fx: Fixture) {
+  const header = "C1: createBankPayerMapping with no collision → succeeds";
+  try {
+    const lotId = await mkFreshLot(fx);
+    const result = await createBankPayerMapping({
+      subdivision_id: fx.subdivisionId,
+      canonical_sender_name: "C1 PAYER",
+      lot_id: lotId,
+      created_by: fx.profileId,
+    });
+    assert(result.ok, `C1 expected ok, got ${JSON.stringify(result)}`);
+    if (!result.ok) return;
+    const m = await fetchMapping(result.mapping_id);
+    assert(m?.status === "active", `C1 expected status=active, got ${m?.status}`);
+    record(header, true, `mapping_id=${result.mapping_id.slice(0, 8)} status=active`);
+  } catch (e) {
+    record(header, false, (e as Error).message);
+  }
+}
+
+async function scenarioC2_CreateMappingNameCollision(fx: Fixture) {
+  const header = "C2: createBankPayerMapping with name collision → returns three-way payload";
+  try {
+    const lotA = await mkFreshLot(fx);
+    const lotB = await mkFreshLot(fx);
+    const m1 = await createBankPayerMapping({
+      subdivision_id: fx.subdivisionId,
+      canonical_sender_name: "C2 PAYER",
+      lot_id: lotA,
+      created_by: fx.profileId,
+    });
+    assert(m1.ok, "C2 first mapping should succeed");
+
+    const m2 = await createBankPayerMapping({
+      subdivision_id: fx.subdivisionId,
+      canonical_sender_name: "C2 PAYER",
+      lot_id: lotB,
+      created_by: fx.profileId,
+    });
+    assert(!m2.ok && m2.kind === "collision", `C2 expected collision`);
+    if (m2.ok) return;
+    assert(
+      m2.colliding_mappings.length === 1,
+      `C2 expected 1 colliding mapping, got ${m2.colliding_mappings.length}`,
+    );
+    assert(
+      m2.colliding_mappings[0].previous_status === "active",
+      `C2 previous_status: ${m2.colliding_mappings[0].previous_status}`,
+    );
+    assert(
+      m2.colliding_mappings[0].current_status === "ambiguous",
+      `C2 current_status: ${m2.colliding_mappings[0].current_status}`,
+    );
+
+    // Verify lotA's mapping is now ambiguous in the DB.
+    if (m1.ok) {
+      const fresh = await fetchMapping(m1.mapping_id);
+      assert(
+        fresh?.status === "ambiguous",
+        `C2 lotA mapping should be ambiguous, got ${fresh?.status}`,
+      );
+    }
+
+    record(header, true, `collision detected; lotA flipped active → ambiguous; new mapping refused`);
+  } catch (e) {
+    record(header, false, (e as Error).message);
+  }
+}
+
+async function scenarioC3_OwnershipChangeFlipsToAmbiguous(fx: Fixture) {
+  const header = "C3: sweepMappingsForOwnerChange flips active mappings on other lots to ambiguous";
+  try {
+    const lotA = await mkFreshLot(fx);
+    const lotB = await mkFreshLot(fx);
+    const mA = await insertMappingDirect(fx, "C3 SHARED NAME", lotA, "active");
+
+    // New owner name on lotB canonicalises to "C3 SHARED NAME" — sweep
+    // should flip lotA's mapping to ambiguous (Addition 2: never auto-promotes).
+    const result = await sweepMappingsForOwnerChange(
+      fx.subdivisionId,
+      lotB,
+      "C3 SHARED NAME",
+      fx.profileId,
+    );
+    assert(result.flipped_count === 1, `C3 expected 1 flipped, got ${result.flipped_count}`);
+    assert(result.flipped_ids.includes(mA), `C3 expected lotA mapping in flipped_ids`);
+
+    const fresh = await fetchMapping(mA);
+    assert(fresh?.status === "ambiguous", `C3 lotA status: ${fresh?.status}`);
+
+    record(header, true, `lotA mapping flipped active → ambiguous on owner-change sweep`);
+  } catch (e) {
+    record(header, false, (e as Error).message);
+  }
+}
+
+async function scenarioC4_KeepExistingRestoresStatus(fx: Fixture) {
+  const header = "C4: resolveCollision('keep_existing') restores mapping to its previous status";
+  try {
+    const lotA = await mkFreshLot(fx);
+    const lotB = await mkFreshLot(fx);
+    const m1 = await createBankPayerMapping({
+      subdivision_id: fx.subdivisionId,
+      canonical_sender_name: "C4 PAYER",
+      lot_id: lotA,
+      created_by: fx.profileId,
+    });
+    assert(m1.ok, "C4 first create");
+
+    const m2 = await createBankPayerMapping({
+      subdivision_id: fx.subdivisionId,
+      canonical_sender_name: "C4 PAYER",
+      lot_id: lotB,
+      created_by: fx.profileId,
+    });
+    assert(!m2.ok && m2.kind === "collision", "C4 expected collision");
+    if (m2.ok) return;
+
+    const r = await resolveCollision({
+      subdivision_id: fx.subdivisionId,
+      canonical_sender_name: "C4 PAYER",
+      proposed_lot_id: lotB,
+      resolution: "keep_existing",
+      expected_collisions: m2.colliding_mappings,
+      performed_by: fx.profileId,
+    });
+    assert(r.ok && r.resolution_applied === "keep_existing", `C4 resolution: ${JSON.stringify(r)}`);
+
+    if (m1.ok) {
+      const fresh = await fetchMapping(m1.mapping_id);
+      assert(fresh?.status === "active", `C4 lotA restored to active, got ${fresh?.status}`);
+    }
+    record(header, true, `lotA mapping restored ambiguous → active`);
+  } catch (e) {
+    record(header, false, (e as Error).message);
+  }
+}
+
+async function scenarioC5_UpdateResolutionDisablesAndCreates(fx: Fixture) {
+  const header = "C5: resolveCollision('update') disables existing + creates proposed as active";
+  try {
+    const lotA = await mkFreshLot(fx);
+    const lotB = await mkFreshLot(fx);
+    const m1 = await createBankPayerMapping({
+      subdivision_id: fx.subdivisionId,
+      canonical_sender_name: "C5 PAYER",
+      lot_id: lotA,
+      created_by: fx.profileId,
+    });
+    assert(m1.ok, "C5 first create");
+    const m2 = await createBankPayerMapping({
+      subdivision_id: fx.subdivisionId,
+      canonical_sender_name: "C5 PAYER",
+      lot_id: lotB,
+      created_by: fx.profileId,
+    });
+    assert(!m2.ok && m2.kind === "collision", "C5 expected collision");
+    if (m2.ok) return;
+
+    const r = await resolveCollision({
+      subdivision_id: fx.subdivisionId,
+      canonical_sender_name: "C5 PAYER",
+      proposed_lot_id: lotB,
+      resolution: "update",
+      expected_collisions: m2.colliding_mappings,
+      performed_by: fx.profileId,
+    });
+    assert(r.ok && r.resolution_applied === "update", `C5 resolution: ${JSON.stringify(r)}`);
+    assert(r.ok && r.mapping_id, "C5 expected new mapping_id");
+
+    if (m1.ok) {
+      const oldMapping = await fetchMapping(m1.mapping_id);
+      assert(
+        oldMapping?.status === "disabled",
+        `C5 lotA expected disabled, got ${oldMapping?.status}`,
+      );
+    }
+    if (r.ok && r.mapping_id) {
+      const newMapping = await fetchMapping(r.mapping_id);
+      assert(
+        newMapping?.status === "active",
+        `C5 lotB expected active, got ${newMapping?.status}`,
+      );
+      assert(newMapping?.lot_id === lotB, `C5 lotB mapping wrong lot`);
+    }
+
+    record(header, true, `lotA disabled, lotB created active`);
+  } catch (e) {
+    record(header, false, (e as Error).message);
+  }
+}
+
+async function scenarioC6_KeepExistingNoMappingCreated(fx: Fixture) {
+  const header =
+    "C6: resolveCollision('keep_existing') returns mapping_id=null (no new mapping created)";
+  try {
+    const lotA = await mkFreshLot(fx);
+    const lotB = await mkFreshLot(fx);
+    const m1 = await createBankPayerMapping({
+      subdivision_id: fx.subdivisionId,
+      canonical_sender_name: "C6 PAYER",
+      lot_id: lotA,
+      created_by: fx.profileId,
+    });
+    assert(m1.ok);
+    const m2 = await createBankPayerMapping({
+      subdivision_id: fx.subdivisionId,
+      canonical_sender_name: "C6 PAYER",
+      lot_id: lotB,
+      created_by: fx.profileId,
+    });
+    assert(!m2.ok && m2.kind === "collision");
+    if (m2.ok) return;
+
+    const r = await resolveCollision({
+      subdivision_id: fx.subdivisionId,
+      canonical_sender_name: "C6 PAYER",
+      proposed_lot_id: lotB,
+      resolution: "keep_existing",
+      expected_collisions: m2.colliding_mappings,
+      performed_by: fx.profileId,
+    });
+    assert(r.ok && r.mapping_id === null, `C6 mapping_id should be null, got ${JSON.stringify(r)}`);
+
+    // Verify NO mapping exists on lotB.
+    const all = await fetchAllMappings(fx.subdivisionId);
+    const lotBMappings = all.filter(
+      (m) => m.lot_id === lotB && m.canonical_sender_name === "C6 PAYER",
+    );
+    assert(lotBMappings.length === 0, `C6 lotB should have no mapping, got ${lotBMappings.length}`);
+    record(header, true, `no mapping created on lotB; lotA restored to active`);
+  } catch (e) {
+    record(header, false, (e as Error).message);
+  }
+}
+
+async function scenarioC7_RemoveResolutionDisablesNoNew(fx: Fixture) {
+  const header = "C7: resolveCollision('remove') disables existing + creates no new mapping";
+  try {
+    const lotA = await mkFreshLot(fx);
+    const lotB = await mkFreshLot(fx);
+    const m1 = await createBankPayerMapping({
+      subdivision_id: fx.subdivisionId,
+      canonical_sender_name: "C7 PAYER",
+      lot_id: lotA,
+      created_by: fx.profileId,
+    });
+    assert(m1.ok);
+    const m2 = await createBankPayerMapping({
+      subdivision_id: fx.subdivisionId,
+      canonical_sender_name: "C7 PAYER",
+      lot_id: lotB,
+      created_by: fx.profileId,
+    });
+    assert(!m2.ok && m2.kind === "collision");
+    if (m2.ok) return;
+
+    const r = await resolveCollision({
+      subdivision_id: fx.subdivisionId,
+      canonical_sender_name: "C7 PAYER",
+      proposed_lot_id: lotB,
+      resolution: "remove",
+      expected_collisions: m2.colliding_mappings,
+      performed_by: fx.profileId,
+    });
+    assert(r.ok && r.mapping_id === null, `C7 mapping_id should be null`);
+
+    if (m1.ok) {
+      const oldMapping = await fetchMapping(m1.mapping_id);
+      assert(
+        oldMapping?.status === "disabled",
+        `C7 lotA expected disabled, got ${oldMapping?.status}`,
+      );
+    }
+    record(header, true, `lotA disabled; no new mapping`);
+  } catch (e) {
+    record(header, false, (e as Error).message);
+  }
+}
+
+async function scenarioC8_DetectRepeatedManualMatch(fx: Fixture) {
+  const header =
+    "C8: detectRepeatedManualMatch returns proposal_flag=true after 3rd manual match in 30d";
+  try {
+    const lotId = await mkFreshLot(fx);
+
+    // Manually insert 3 active credits + 3 reconciliation_matches for this
+    // lot in the 30-day window. Each linked bank_transaction has the same
+    // canonical-sender-name description.
+    const description = "Payment from Repeated Payer";
+    const expectedCanonical = canonicaliseSender(description);
+    assert(expectedCanonical, "C8 canonicalise produced null");
+
+    for (let i = 0; i < 3; i++) {
+      const { data: bt } = await supabase
+        .from("bank_transactions")
+        .insert({
+          bank_account_id: fx.adminNoBpayAccountId,
+          source: "manual",
+          transaction_date: "2026-04-15",
+          amount: 100,
+          description,
+          match_status: "manually_matched",
+        })
+        .select("id")
+        .single();
+      assert(bt, "C8 bt insert failed");
+      const { data: credit } = await supabase
+        .from("lot_ledger_entries")
+        .insert({
+          subdivision_id: fx.subdivisionId,
+          lot_id: lotId,
+          fund_type: "administrative",
+          entry_type: "credit",
+          category: "payment",
+          amount: 100,
+          entry_date: "2026-04-15",
+          status: "active",
+          created_by: fx.profileId,
+        })
+        .select("id")
+        .single();
+      assert(credit, "C8 credit insert failed");
+      await supabase.from("reconciliation_matches").insert({
+        bank_transaction_id: bt.id,
+        ledger_entry_id: credit.id,
+        amount_matched: 100,
+        match_method: "manual",
+        match_confidence: "manual",
+        matched_by: fx.profileId,
+      });
+    }
+
+    const detection = await detectRepeatedManualMatch(
+      fx.subdivisionId,
+      expectedCanonical!,
+      lotId,
+      canonicaliseSender,
+    );
+    assert(detection.count === 3, `C8 count expected 3, got ${detection.count}`);
+    assert(
+      detection.proposal_flag === true,
+      `C8 proposal_flag expected true, got ${detection.proposal_flag}`,
+    );
+    record(
+      header,
+      true,
+      `3 manual matches in 30d for canonical='${expectedCanonical}' → proposal_flag=true`,
+    );
+  } catch (e) {
+    record(header, false, (e as Error).message);
+  }
+}
+
+async function scenarioC9_RaceMappingDeleted(fx: Fixture) {
+  const header =
+    "C9: resolveCollision detects mapping_deleted divergence → returns race error";
+  try {
+    const lotA = await mkFreshLot(fx);
+    const lotB = await mkFreshLot(fx);
+    const m1 = await createBankPayerMapping({
+      subdivision_id: fx.subdivisionId,
+      canonical_sender_name: "C9 PAYER",
+      lot_id: lotA,
+      created_by: fx.profileId,
+    });
+    assert(m1.ok);
+    const m2 = await createBankPayerMapping({
+      subdivision_id: fx.subdivisionId,
+      canonical_sender_name: "C9 PAYER",
+      lot_id: lotB,
+      created_by: fx.profileId,
+    });
+    assert(!m2.ok && m2.kind === "collision");
+    if (m2.ok) return;
+
+    // Simulate concurrent mutation: hard-delete lotA's mapping between
+    // collision detection and resolution. (Production path is rare but
+    // possible if an admin force-deletes.)
+    if (m1.ok) {
+      await supabase.from("bank_payer_mappings").delete().eq("id", m1.mapping_id);
+    }
+
+    const r = await resolveCollision({
+      subdivision_id: fx.subdivisionId,
+      canonical_sender_name: "C9 PAYER",
+      proposed_lot_id: lotB,
+      resolution: "update",
+      expected_collisions: m2.colliding_mappings,
+      performed_by: fx.profileId,
+    });
+    assert(!r.ok, `C9 expected ok=false (race)`);
+    if (r.ok) return;
+    assert(r.kind === "race", `C9 kind: ${r.kind}`);
+    assert(
+      r.divergence_type === "mapping_deleted",
+      `C9 divergence_type: ${r.divergence_type}`,
+    );
+
+    record(header, true, `mapping_deleted divergence detected; race error returned`);
+  } catch (e) {
+    record(header, false, (e as Error).message);
+  }
+}
+
 // ─── Cleanup ──────────────────────────────────────────────────────────────
 
 async function cleanupMarker() {
@@ -924,6 +1919,10 @@ async function cleanupOneCompany(companyId: string) {
       await supabase.from("levy_notices").delete().in("subdivision_id", subIds);
     }
     await supabase.from("levy_batches").delete().in("subdivision_id", subIds);
+    // PP4-B: bank_payer_mappings — cascades on subdivision delete via FK,
+    // but cleaning explicitly guarantees no stale rows linger if cascade
+    // is disabled at the DB level for any reason.
+    await supabase.from("bank_payer_mappings").delete().in("subdivision_id", subIds);
     await supabase.from("audit_log").delete().in("subdivision_id", subIds);
     await supabase.from("subdivisions").delete().in("id", subIds);
   }
@@ -960,6 +1959,27 @@ async function main() {
     await scenario8_InvalidCheckDigit(fx);
     await scenario9_StopAtFirstMatchReference(fx);
     await scenario10_FallthroughToBpay(fx);
+    // PP4-B Strategy scenarios
+    await scenario11_KnownPayerUnambiguous(fx);
+    await scenario12_KnownPayerAmbiguousFiltered(fx);
+    await scenario13_KeywordAmountMatch(fx);
+    await scenario14_KeywordAmountMismatch(fx);
+    await scenario15_AmountWindowSingleCandidate(fx);
+    await scenario16_AmountWindowMultipleCandidates(fx);
+    await scenario17_AmountWindowOrdinaryAndSpecialNoTiebreak(fx);
+    await scenario18_FuzzyHintAboveThreshold(fx);
+    await scenario19_FuzzyHintBelowThreshold(fx);
+    await scenario20_FuzzyHintHighSimilarityNeverAutoMatches(fx);
+    // PP4-B Collision scenarios
+    await scenarioC1_CreateMappingNoCollision(fx);
+    await scenarioC2_CreateMappingNameCollision(fx);
+    await scenarioC3_OwnershipChangeFlipsToAmbiguous(fx);
+    await scenarioC4_KeepExistingRestoresStatus(fx);
+    await scenarioC5_UpdateResolutionDisablesAndCreates(fx);
+    await scenarioC6_KeepExistingNoMappingCreated(fx);
+    await scenarioC7_RemoveResolutionDisablesNoNew(fx);
+    await scenarioC8_DetectRepeatedManualMatch(fx);
+    await scenarioC9_RaceMappingDeleted(fx);
   } catch (e) {
     console.error(`\nFatal in scenarios: ${(e as Error).message}`);
   }

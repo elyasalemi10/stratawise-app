@@ -3,6 +3,8 @@
 import { requireCompanyRole, getCurrentProfile } from "@/lib/auth";
 import { createServerClient } from "@/lib/supabase";
 import { sendInvitationEmail } from "@/lib/email";
+import { canonicaliseSender } from "@/lib/reconciliation/canonical";
+import { sweepMappingsForOwnerChange } from "@/lib/reconciliation/mappings";
 
 export async function inviteStrataManager(data: { email: string; name: string }) {
   const profile = await requireCompanyRole();
@@ -173,6 +175,29 @@ export async function acceptInvitation(token: string) {
       role: "lot_owner",
       is_primary_contact: true,
     });
+
+    // PP4-B: sweep bank_payer_mappings for active mappings on OTHER lots
+    // sharing this owner's canonicalised name. Only flips active→ambiguous
+    // (Addition 2: never auto-promotes). Owner name resolved from the
+    // profile (preferred) with the invitation's `name` field as fallback
+    // for owners whose Clerk profile lacks first/last names.
+    if (invitation.lot_id) {
+      const fromProfile = [profile.first_name, profile.last_name]
+        .filter(Boolean)
+        .join(" ")
+        .trim();
+      const ownerNameRaw =
+        fromProfile.length > 0 ? fromProfile : (invitation.name ?? "").trim();
+      const ownerCanonical = canonicaliseSender(ownerNameRaw);
+      if (ownerCanonical) {
+        await sweepMappingsForOwnerChange(
+          invitation.subdivision_id,
+          invitation.lot_id,
+          ownerCanonical,
+          profile.id,
+        );
+      }
+    }
   }
 
   // Audit

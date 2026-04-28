@@ -1034,6 +1034,243 @@ async function scenario13_PaymentStatusOutstanding(fx: Fixture) {
   }
 }
 
+async function scenario15_KeywordAmountPriorityWalker(fx: Fixture) {
+  const header =
+    "S15: Strategy 4 (keyword+amount) routes $500 to keyword-tagged regular levy; special_levy remains outstanding";
+  try {
+    // Setup:
+    //   - Fresh lot.
+    //   - Bank account (admin fund).
+    //   - Two batches in this subdivision:
+    //       * batch_A with match_keywords=['gardening']
+    //       * batch_B with match_keywords=['painting']
+    //   - Two notices, both $500, both administrative:
+    //       * notice_admin: regular, in batch_A
+    //       * notice_special: special, in batch_B
+    //   - Two debits (regular + special), both outstanding $500.
+    //
+    // Action: insert a manual bank_transaction $500 with description
+    //   "GARDENING SERVICES" and run tryAutoMatch.
+    //
+    // Expectation:
+    //   - Strategy 4 hits batch_A (keyword 'gardening'), narrows to
+    //     notice_admin (amount $500), allocates $500 to it.
+    //   - Outcome: matched=true, strategy='keyword_amount'.
+    //   - notice_admin paid; notice_special still outstanding.
+    //   - Walker computes oldest_unpaid = special's date (the only
+    //     remaining outstanding debit).
+
+    const lotId = await makeFreshLot(fx, 250);
+
+    const { data: bankAccount } = await supabase
+      .from("bank_accounts")
+      .insert({
+        subdivision_id: fx.subdivisionId,
+        account_name: "S15 Admin",
+        bsb: "012-345",
+        account_number: "11111111",
+        fund_type: "administrative",
+      })
+      .select("id")
+      .single();
+    assert(bankAccount, "S15 bank_account insert failed");
+
+    const { data: batchA } = await supabase
+      .from("levy_batches")
+      .insert({
+        subdivision_id: fx.subdivisionId,
+        budget_id: fx.budgetId,
+        financial_year: "2026-2027",
+        fund_type: "administrative",
+        period_start: "2026-04-01",
+        period_end: "2026-06-30",
+        period_label: "S15 Q-A",
+        due_date: "2026-04-28",
+        total_amount: 500,
+        levy_count: 1,
+        status: "draft",
+        generated_by: fx.profileId,
+        match_keywords: ["gardening"],
+      })
+      .select("id")
+      .single();
+    const { data: batchB } = await supabase
+      .from("levy_batches")
+      .insert({
+        subdivision_id: fx.subdivisionId,
+        budget_id: fx.budgetId,
+        financial_year: "2026-2027",
+        fund_type: "administrative",
+        period_start: "2026-01-01",
+        period_end: "2026-03-31",
+        period_label: "S15 Q-B",
+        due_date: "2026-01-28",
+        total_amount: 500,
+        levy_count: 1,
+        status: "draft",
+        generated_by: fx.profileId,
+        match_keywords: ["painting"],
+      })
+      .select("id")
+      .single();
+    assert(batchA && batchB, "S15 batch insert failed");
+
+    const { data: refAdmin } = await supabase.rpc("next_reference_number", {
+      p_prefix: "LEV",
+      p_subdivision_id: fx.subdivisionId,
+    });
+    const { data: refSpecial } = await supabase.rpc("next_reference_number", {
+      p_prefix: "LEV",
+      p_subdivision_id: fx.subdivisionId,
+    });
+    const { data: noticeAdmin } = await supabase
+      .from("levy_notices")
+      .insert({
+        subdivision_id: fx.subdivisionId,
+        lot_id: lotId,
+        budget_id: fx.budgetId,
+        batch_id: batchA.id,
+        reference_number: refAdmin as string,
+        fund_type: "administrative",
+        levy_type: "regular",
+        period_start: "2026-04-01",
+        period_end: "2026-06-30",
+        amount: 500,
+        due_date: "2026-04-28",
+        status: "draft",
+      })
+      .select("id")
+      .single();
+    const { data: noticeSpecial } = await supabase
+      .from("levy_notices")
+      .insert({
+        subdivision_id: fx.subdivisionId,
+        lot_id: lotId,
+        budget_id: fx.budgetId,
+        batch_id: batchB.id,
+        reference_number: refSpecial as string,
+        fund_type: "administrative",
+        levy_type: "special",
+        period_start: "2026-01-01",
+        period_end: "2026-03-31",
+        amount: 500,
+        due_date: "2026-01-28",
+        status: "draft",
+      })
+      .select("id")
+      .single();
+    assert(noticeAdmin && noticeSpecial, "S15 notice insert failed");
+
+    // Debits via direct insert. The PP4-A trigger derives
+    // allocation_priority from category (levy=2, special_levy=3).
+    await supabase.from("lot_ledger_entries").insert([
+      {
+        subdivision_id: fx.subdivisionId,
+        lot_id: lotId,
+        fund_type: "administrative",
+        entry_type: "debit",
+        category: "levy",
+        amount: 500,
+        entry_date: "2026-04-01",
+        reference: refAdmin as string,
+        levy_notice_id: noticeAdmin.id,
+        status: "active",
+        created_by: fx.profileId,
+      },
+      {
+        subdivision_id: fx.subdivisionId,
+        lot_id: lotId,
+        fund_type: "administrative",
+        entry_type: "debit",
+        category: "special_levy",
+        amount: 500,
+        entry_date: "2026-01-01",
+        reference: refSpecial as string,
+        levy_notice_id: noticeSpecial.id,
+        status: "active",
+        created_by: fx.profileId,
+      },
+    ]);
+
+    // Insert bank_transaction (credit, $500).
+    const { data: bt } = await supabase
+      .from("bank_transactions")
+      .insert({
+        bank_account_id: bankAccount.id,
+        source: "manual",
+        transaction_date: "2026-04-15",
+        amount: 500,
+        description: "GARDENING SERVICES PAID",
+        match_status: "unmatched",
+      })
+      .select("id")
+      .single();
+    assert(bt, "S15 bank_transaction insert failed");
+
+    // Run the orchestrator (dynamic import — orchestrator pulls in supabase
+    // client which uses env vars already in scope).
+    const { tryAutoMatch } = await import(
+      "../reconciliation/orchestrator"
+    );
+    const outcome = await tryAutoMatch({
+      bankTransactionId: bt.id,
+      subdivisionId: fx.subdivisionId,
+      bankAccountId: bankAccount.id,
+      description: "GARDENING SERVICES PAID",
+      amount: 500,
+      transactionDate: "2026-04-15",
+      performedBy: fx.profileId,
+    });
+
+    assert(
+      outcome.matched,
+      `S15 expected matched=true, got ${JSON.stringify(outcome)}`,
+    );
+    assert(
+      outcome.strategy === "keyword_amount",
+      `S15 expected strategy=keyword_amount, got ${outcome.strategy}`,
+    );
+
+    // Verify allocation went to noticeAdmin (regular).
+    const { data: matches } = await supabase
+      .from("reconciliation_matches")
+      .select("ledger_entry_id, review_required")
+      .eq("bank_transaction_id", bt.id);
+    assert(matches?.length === 1, `S15 expected 1 match, got ${matches?.length}`);
+    assert(
+      matches[0].review_required === true,
+      `S15 expected review_required=true (amount-based confidence)`,
+    );
+
+    const { data: matchedCredit } = await supabase
+      .from("lot_ledger_entries")
+      .select("levy_notice_id, amount")
+      .eq("id", matches[0].ledger_entry_id)
+      .single();
+    assert(
+      matchedCredit?.levy_notice_id === noticeAdmin.id,
+      `S15 expected match against noticeAdmin (regular), got ${matchedCredit?.levy_notice_id}`,
+    );
+
+    // Walker after match: notice_special is the only outstanding debit;
+    // oldest_unpaid_date = its entry_date (2026-01-01).
+    const state = await fetchState(lotId);
+    assert(state, "S15 state row missing");
+    assert(
+      state.oldest_unpaid_date_admin === "2026-01-01",
+      `S15 expected oldest_unpaid_date_admin=2026-01-01 (special's date), got ${state.oldest_unpaid_date_admin}`,
+    );
+
+    record(
+      header,
+      true,
+      `Strategy 4 routed $500 to regular levy via 'gardening' keyword; special_levy remains outstanding (oldest=2026-01-01)`,
+    );
+  } catch (e) {
+    record(header, false, (e as Error).message);
+  }
+}
+
 async function scenario14_PaymentStatusVoidAfterAsOfDate(fx: Fixture) {
   const header =
     "S14: computeLevyPaymentStatus — credit voided AFTER asOfDate appears active in snapshot";
@@ -1259,6 +1496,7 @@ async function main() {
     await scenario12_PaymentStatusPartial(fx);
     await scenario13_PaymentStatusOutstanding(fx);
     await scenario14_PaymentStatusVoidAfterAsOfDate(fx);
+    await scenario15_KeywordAmountPriorityWalker(fx);
   } catch (e) {
     console.error(`\nFatal in scenarios: ${(e as Error).message}`);
   }
