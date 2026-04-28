@@ -12,6 +12,7 @@ import {
   type ImportTransactionsInput,
 } from "@/lib/validations/bank-transactions";
 import { detectSingleLevyReference } from "@/lib/reconciliation/reference";
+import { tryAutoMatch } from "@/lib/reconciliation/orchestrator";
 
 export async function getBankAccountsForSubdivision(
   subdivisionId: string
@@ -149,38 +150,23 @@ export async function importBankTransactions(
     errors: [],
   };
 
-  // Pre-fetch candidate levy notices by reference for the whole batch.
-  // Outstanding balance is recomputed per-row inside the loop so we only need
-  // the id/lot/fund mapping up-front.
-  const candidateReferences = new Set<string>();
-  for (const row of parsed.data.rows) {
-    const ref = detectSingleLevyReference(row.description);
-    if (ref) candidateReferences.add(ref);
-  }
-
-  const refToLevy = new Map<
-    string,
-    { id: string; lot_id: string; fund_type: "administrative" | "capital_works"; amount: number }
-  >();
-  if (candidateReferences.size > 0) {
-    const { data: levies } = await supabase
-      .from("levy_notices")
-      .select("id, lot_id, reference_number, fund_type, amount, subdivision_id")
-      .eq("subdivision_id", subdivisionId)
-      .in("reference_number", Array.from(candidateReferences));
-    for (const l of levies ?? []) {
-      refToLevy.set(l.reference_number.toUpperCase(), {
-        id: l.id,
-        lot_id: l.lot_id,
-        fund_type: l.fund_type as "administrative" | "capital_works",
-        amount: Number(l.amount),
-      });
-    }
-  }
-
-  // Per-row: insert the bank_transaction; then try a minimal auto-match
-  // against the exact reference. Auto-match failures are tolerated — the row
-  // still imports as 'unmatched', with a warning audit entry.
+  // Per-row: insert the bank_transaction; then run the auto-match orchestrator
+  // (Strategies 1-6 + fuzzy hint surfacing). Auto-match failures are absorbed —
+  // the row still imports as 'unmatched'; the orchestrator records the attempt
+  // and any diagnostic audits (stale_reference_detected etc.) internally.
+  //
+  // PP4-C: bulk import does not propose payer mappings — passing
+  // remember_payer=true would create dozens of mappings per import without
+  // manager review. tryAutoMatch is called without remember_payer (defaults
+  // to false via Zod). Manual entry is the only path that surfaces the
+  // "remember this payer" checkbox.
+  //
+  // PP4-C: the previous inline implementation pre-fetched candidate levy
+  // notices in one batch query for performance. The orchestrator does its
+  // own per-row lookups (~10-15 queries each vs ~3 inline), which is fine
+  // for typical CSV sizes (10-500 rows). PRE_LAUNCH_CLEANUP records the
+  // re-introduction-of-batch-pre-fetch idea if real-world imports exceed
+  // ~1,000 rows.
   for (const row of parsed.data.rows) {
     const key = `${row.transaction_date}|${row.amount.toFixed(2)}|${row.description.trim()}`;
     if (existingKeys.has(key)) {
@@ -209,64 +195,25 @@ export async function importBankTransactions(
     }
     summary.imported += 1;
 
-    // Auto-match eligibility: credit (amount > 0), single levy reference in
-    // description, notice exists in this subdivision, outstanding > 0.
+    // Orchestrator runs on credit-direction rows only; debits never match.
     if (row.amount <= 0) continue;
-    const ref = detectSingleLevyReference(row.description);
-    if (!ref) continue;
-    const notice = refToLevy.get(ref);
-    if (!notice) continue;
 
-    const { data: priorCredits } = await supabase
-      .from("lot_ledger_entries")
-      .select("amount, entry_type, status")
-      .eq("levy_notice_id", notice.id)
-      .eq("status", "active")
-      .eq("entry_type", "credit");
-    const paidSoFar = (priorCredits ?? []).reduce((s, c) => s + Number(c.amount), 0);
-    const outstanding = Math.round((notice.amount - paidSoFar) * 100) / 100;
-    if (outstanding <= 0) continue;
-
-    const allocated = Math.min(row.amount, outstanding);
-
-    const { error: matchErr } = await supabase.rpc("rpc_reconcile_bank_transaction", {
-      p_bank_transaction_id: inserted.id,
-      p_allocations: [
-        {
-          lot_id: notice.lot_id,
-          fund_type: notice.fund_type,
-          amount: allocated,
-          levy_notice_id: notice.id,
-          reference: ref,
-        },
-      ],
-      p_match_method: "auto_reference",
-      p_match_confidence: "exact_reference",
-      p_notes: `CSV auto-match on reference ${ref}`,
-      p_performed_by: profile.id,
+    const result = await tryAutoMatch({
+      bankTransactionId: inserted.id,
+      subdivisionId,
+      bankAccountId: account.id,
+      description: row.description,
+      amount: row.amount,
+      transactionDate: row.transaction_date,
+      performedBy: profile.id,
     });
 
-    if (matchErr) {
-      await supabase.from("audit_log").insert({
-        profile_id: profile.id,
-        subdivision_id: subdivisionId,
-        action: "reconciliation.auto_match_failed",
-        entity_type: "bank_transaction",
-        entity_id: inserted.id,
-        metadata: { reason: matchErr.message, reference: ref, severity: "warning" },
-      });
-      continue;
-    }
-
-    summary.matched += 1;
-
-    if (row.amount > outstanding) {
-      await supabase
-        .from("bank_transactions")
-        .update({
-          notes: `Auto-matched $${allocated.toFixed(2)} against ${ref}; $${(row.amount - outstanding).toFixed(2)} remaining — review manually.`,
-        })
-        .eq("id", inserted.id);
+    // summary.matched counts rows where the orchestrator allocated something —
+    // covers full and partial matches. Strategies that surface a fuzzy hint
+    // (Strategy 6, never matches) are not counted here; the hint is persisted
+    // on the bank_transaction's fuzzy_hint_metadata for the queue UI.
+    if (result.allocatedAmount > 0) {
+      summary.matched += 1;
     }
   }
 

@@ -122,17 +122,27 @@ export const reconcileTransactionSchema = z.object({
   // don't accidentally create mappings. The UI form sends true explicitly
   // (matching the spec's default-checked checkbox).
   remember_payer: z.boolean().default(false),
-  // PP4-B: collision resolution from the three-way dialog. Null on first
-  // call; set to one of update/keep_existing/remove on the resubmit when
-  // the manager has picked a resolution. expected_collisions is the
-  // snapshot returned in the first-call collision payload — used for race
-  // detection (Gap G).
-  mapping_resolution: z.enum(MAPPING_RESOLUTIONS).nullable().optional(),
+});
+
+// PP4-C: collision-resolution moved to its own server action. PP4-B's
+// reconcileTransaction tried to bundle resolution into the same call,
+// but the second call would re-invoke rpc_reconcile_bank_transaction on
+// an already-matched bank_transaction → over-allocation error. Splitting
+// resolution into resolvePayerMappingCollision keeps reconcileTransaction
+// idempotent for its narrow concern (one match, one DB write) and gives
+// the dialog round-trip a clean dedicated endpoint.
+export const resolvePayerMappingCollisionSchema = z.object({
+  subdivision_id: z.string().uuid(),
+  bank_transaction_id: z.string().uuid(), // for canonical-name lookup
+  proposed_lot_id: z.string().uuid(),
+  resolution: z.enum(MAPPING_RESOLUTIONS),
   expected_collisions: z
     .array(collidingMappingSnapshotSchema)
-    .nullable()
-    .optional(),
+    .min(1, "expected_collisions snapshot must come from the first-call collision payload"),
 });
+export type ResolvePayerMappingCollisionInput = z.infer<
+  typeof resolvePayerMappingCollisionSchema
+>;
 // Use z.input rather than z.infer so callers may omit `.default()` fields
 // (remember_payer in particular). The schema applies the default during
 // safeParse; consumers inside the action read parsed.data which has the

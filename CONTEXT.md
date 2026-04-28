@@ -163,6 +163,37 @@ and replaced them with a shared helper — `src/lib/actions/lot-ownership.ts`
 — that returns the active member (or pending invitation, or "unowned") for
 each lot in one batch query.
 
+### 4.6 Remember-payer collision resolution (two-call flow)
+
+Persisting "this canonical sender → this lot" mapping during reconciliation
+is a **two-call flow**, deliberately separated from the matching call:
+
+1. `reconcileTransaction({ remember_payer: true, ... })` — runs the match
+   via `rpc_reconcile_bank_transaction` and atomically inserts a new
+   `bank_payer_mappings` row. If a *different* lot already has an active
+   mapping for this canonical sender, the conflicting rows are flipped to
+   `ambiguous`, the new insert is skipped, and the response carries a
+   `mappingCollision` payload describing the three-way options
+   (update / keep_existing / remove). **The match is committed in this
+   call** (`matchIds.length ≥ 1`) — collision detection runs *after*
+   reconcile and only mutates `bank_payer_mappings`.
+2. If the response contained `mappingCollision`, the UI shows the dialog.
+   The user's choice is submitted via
+   `resolvePayerMappingCollision({ resolution, expected_collisions, ... })`.
+
+`resolvePayerMappingCollision` does **not** touch
+`rpc_reconcile_bank_transaction`. The match was already applied in call 1;
+this server action only mutates `bank_payer_mappings` rows
+(via `resolveCollision` in `src/lib/reconciliation/mappings.ts`).
+
+**Future authors: do not collapse this back into a single-call flow.** The
+original PP4-B implementation accepted `mapping_resolution` as an extension
+of the reconcile schema and re-invoked the RPC on the second call, which
+caused over-allocation against an already-matched transaction (and was
+blocked downstream by the `allocations.min(1)` schema constraint, making an
+empty-allocation re-call impossible too). PP4-C split the contract so each
+server action owns a single concern.
+
 ---
 
 ## 5. Key invariants

@@ -923,6 +923,111 @@ async function scenarioB14(fx: Fixture, connectionId: string) {
   }
 }
 
+async function scenarioB16(fx: Fixture, connectionId: string) {
+  const header =
+    "B16: webhook transactions.updated → orchestrator persists fuzzy_hint_metadata";
+  try {
+    // Re-anchor connection: B13 left last_sync_at 40d in the past, B14 set
+    // consent expiring in 30d. Webhook handler dispatches to
+    // pollConnectionAsSystem, which only fetches if status is active and
+    // consent has not expired. Make both clearly true.
+    await supabase
+      .from("basiq_connections")
+      .update({
+        status: "active",
+        consent_expires_at: new Date(
+          Date.now() + 365 * 24 * 60 * 60 * 1000,
+        ).toISOString(),
+        last_sync_at: new Date(Date.now() - 60 * 60 * 1000).toISOString(),
+      })
+      .eq("id", connectionId);
+
+    // Seed a single active mapping under this subdivision. Strategy 6
+    // (fuzzy_hint) compares canonicalised description against active
+    // mappings; "Marc" canonicalises to MARC, jw(MARC, MARTHA) ≈ 0.825.
+    const { error: mapErr } = await supabase
+      .from("bank_payer_mappings")
+      .insert({
+        subdivision_id: fx.subdivisionId,
+        canonical_sender_name: "MARTHA",
+        lot_id: fx.lotId,
+        status: "active",
+        raw_examples: [],
+        created_by: fx.profileId,
+      });
+    assert(!mapErr, `seed mapping failed: ${mapErr?.message}`);
+
+    // Stub a credit with an amount that no fixture notice can satisfy
+    // ($500 notice exists on fx.lotId). $77,777.77 is far outside the
+    // amount-window tolerance of every active notice → Strategies 1-5
+    // miss, Strategy 6 fires.
+    const basiqTxnId = `btx-b16-${fx.runId}`;
+    stubClient.stubTransactions = [
+      buildStubTxn(
+        basiqTxnId,
+        77777.77,
+        "Marc",
+        "2026-08-08",
+        fx.basiqAccountId,
+      ),
+    ];
+
+    // Resolve the basiq external connection id used in webhook payloads.
+    const conn = await fetchConnection(connectionId);
+    assert(conn?.basiq_external_connection_id, "no external connection id");
+    const beforeCount = await countBankTransactionsFor(fx.adminAccountId);
+
+    const res = await basiq.handleBasiqEvent({
+      eventType: "transactions.updated",
+      payload: { connectionId: conn!.basiq_external_connection_id },
+    });
+    assert(res.handled, `webhook not handled: ${res.reason}`);
+
+    const afterCount = await countBankTransactionsFor(fx.adminAccountId);
+    assert(
+      afterCount - beforeCount === 1,
+      `expected 1 inserted txn, got ${afterCount - beforeCount}`,
+    );
+
+    const { data: bt } = await supabase
+      .from("bank_transactions")
+      .select("id, match_status, fuzzy_hint_metadata")
+      .eq("basiq_transaction_id", basiqTxnId)
+      .single();
+    assert(bt, "B16 bank_transaction row missing");
+    assert(
+      bt!.match_status === "unmatched",
+      `expected unmatched (fuzzy never auto-matches), got ${bt!.match_status}`,
+    );
+    assert(
+      bt!.fuzzy_hint_metadata,
+      "B16 expected fuzzy_hint_metadata to be persisted",
+    );
+    const meta = bt!.fuzzy_hint_metadata as Record<string, unknown>;
+    assert(
+      meta.hint_surfaced === true,
+      `B16 hint_surfaced=true expected, got ${JSON.stringify(meta)}`,
+    );
+    assert(
+      meta.canonical_name === "MARTHA",
+      `B16 canonical_name should be MARTHA, got ${meta.canonical_name}`,
+    );
+    const sim = meta.similarity as number;
+    assert(
+      typeof sim === "number" && sim >= 0.75,
+      `B16 similarity must be ≥ 0.75, got ${sim}`,
+    );
+
+    record(
+      header,
+      true,
+      `webhook ingested 1 txn, fuzzy hint persisted (canonical=MARTHA, sim=${sim})`,
+    );
+  } catch (e) {
+    record(header, false, (e as Error).message);
+  }
+}
+
 async function scenarioB15(fx: Fixture, connectionId: string) {
   const header =
     "B15: disconnectBasiqConnection flips to revoked, keeps transactions";
@@ -1171,6 +1276,7 @@ async function main() {
     await scenarioB12(fx, fxConnectionId);
     await scenarioB13(fx, fxConnectionId);
     await scenarioB14(fx, fxConnectionId);
+    await scenarioB16(fx, fxConnectionId);
     await scenarioB15(fx, fxConnectionId);
     if (live) await runLive();
   } catch (e) {

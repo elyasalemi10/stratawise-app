@@ -51,6 +51,7 @@ import {
   __setUserIdResolverForVerification,
   __getUserIdResolverForVerification,
 } from "@/lib/auth-resolver";
+import { generateCrn } from "@/lib/reconciliation/bpay-crn";
 
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
 const serviceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
@@ -937,6 +938,397 @@ async function scenarioR12_VoidDepositReopensReceipt(fx: Fixture) {
   }
 }
 
+// ───────── PP4-C scenarios ─────────
+
+let _ppFreshLotCounter = 5000;
+async function pp_mkFreshLot(fx: Fixture): Promise<string> {
+  const n = _ppFreshLotCounter++;
+  const { data: lot, error } = await supabase
+    .from("lots")
+    .insert({
+      subdivision_id: fx.subdivisionId,
+      lot_number: n,
+      lot_entitlement: 100,
+      lot_liability: 100,
+    })
+    .select("id")
+    .single();
+  if (error || !lot) throw new Error(`pp_mkFreshLot: ${error?.message}`);
+  return lot.id;
+}
+
+async function pp_mkOutstandingNotice(
+  fx: Fixture,
+  lotId: string,
+  opts: {
+    referenceOverride?: string;
+    bpayCrn?: string | null;
+    amount?: number;
+    fundType?: "administrative" | "capital_works";
+    dueDate?: string;
+    periodStart?: string;
+  } = {},
+): Promise<{ id: string; reference: string }> {
+  let reference = opts.referenceOverride;
+  if (!reference) {
+    const { data: ref } = await supabase.rpc("next_reference_number", {
+      p_prefix: "LEV",
+      p_subdivision_id: fx.subdivisionId,
+    });
+    reference = String(ref);
+  }
+  const amount = opts.amount ?? 500;
+  const fundType = opts.fundType ?? "administrative";
+  const { data: notice, error } = await supabase
+    .from("levy_notices")
+    .insert({
+      subdivision_id: fx.subdivisionId,
+      lot_id: lotId,
+      budget_id: fx.budgetId,
+      reference_number: reference,
+      bpay_crn: opts.bpayCrn ?? null,
+      fund_type: fundType,
+      levy_type: "regular",
+      period_start: opts.periodStart ?? "2026-01-01",
+      period_end: "2026-03-31",
+      amount,
+      due_date: opts.dueDate ?? "2026-04-28",
+      status: "draft",
+    })
+    .select("id")
+    .single();
+  if (error || !notice) {
+    throw new Error(`pp_mkOutstandingNotice: ${error?.message ?? "insert failed"}`);
+  }
+  await supabase.from("lot_ledger_entries").insert({
+    subdivision_id: fx.subdivisionId,
+    lot_id: lotId,
+    fund_type: fundType,
+    entry_type: "debit",
+    category: "levy",
+    amount,
+    entry_date: opts.periodStart ?? "2026-01-01",
+    reference,
+    levy_notice_id: notice.id,
+    status: "active",
+    created_by: fx.profileId,
+  });
+  return { id: notice.id, reference };
+}
+
+async function scenarioR13_RememberPayerCollisionRoundTrip(fx: Fixture) {
+  const header =
+    "R13: rememberPayer + collision returns three-way payload; resolvePayerMappingCollision('update') applies cleanly";
+  try {
+    // Setup:
+    //   - lotA has an active mapping for "ACME PROPERTY" (no notice — Strategy 3
+    //     known_payer falls through cleanly)
+    //   - lotB will get an outstanding notice AFTER we add the bank transaction,
+    //     so addManualBankTransaction's auto-match doesn't pick it up via
+    //     Strategy 5 (amount_window). We need the bank tx to arrive UNMATCHED
+    //     so we can drive reconcileTransaction(rememberPayer) → collision path.
+    //   - Unusual amount $87,654.32 keeps Strategy 5 inert against earlier
+    //     fixture state.
+    //   - First call: rpc_reconcile commits the match; collision payload returned
+    //   - Second call: resolvePayerMappingCollision('update') disables lotA's
+    //     mapping and creates lotB's
+    const lotA = await pp_mkFreshLot(fx);
+    const lotB = await pp_mkFreshLot(fx);
+    const R13_AMOUNT = 87654.32;
+
+    // Direct insert mapping for lotA — bypasses the public createBankPayerMapping
+    // collision check (we WANT collision detection to fire on the second mapping).
+    const { data: mappingA, error: mErr } = await supabase
+      .from("bank_payer_mappings")
+      .insert({
+        subdivision_id: fx.subdivisionId,
+        canonical_sender_name: "ACME PROPERTY",
+        lot_id: lotA,
+        status: "active",
+        raw_examples: [],
+        created_by: fx.profileId,
+      })
+      .select("id")
+      .single();
+    assert(mappingA, `R13 mapping insert: ${mErr?.message}`);
+
+    // Manual bank transaction (no lotB notice exists yet → auto-match misses).
+    const txnRes = await recon.addManualBankTransaction({
+      subdivision_id: fx.subdivisionId,
+      bank_account_id: fx.adminAccountId,
+      transaction_date: "2026-04-15",
+      amount: R13_AMOUNT,
+      direction: "credit",
+      description: "Acme Property",
+    });
+    assert(txnRes.success, `R13 addManualBankTransaction: ${txnRes.error}`);
+    const bankTxnId = txnRes.success!.bankTransactionId;
+
+    // Sanity: confirm auto-match left it unmatched.
+    const { data: btCheck } = await supabase
+      .from("bank_transactions")
+      .select("match_status, matched_total")
+      .eq("id", bankTxnId)
+      .single();
+    assert(
+      btCheck?.match_status === "unmatched" && Number(btCheck.matched_total) === 0,
+      `R13 expected unmatched after addManual, got status=${btCheck?.match_status} matched_total=${btCheck?.matched_total}`,
+    );
+
+    // NOW insert lotB's notice (after the bank tx exists, so Strategy 5 didn't
+    // pre-empt our manual reconcile).
+    const noticeB = await pp_mkOutstandingNotice(fx, lotB, { amount: R13_AMOUNT });
+
+    // First call: rememberPayer=true against lotB → collision detected.
+    const r1 = await recon.reconcileTransaction({
+      subdivision_id: fx.subdivisionId,
+      bank_transaction_id: bankTxnId,
+      allocations: [
+        {
+          lot_id: lotB,
+          fund_type: "administrative",
+          amount: R13_AMOUNT,
+          levy_notice_id: noticeB.id,
+          reference: noticeB.reference,
+        },
+      ],
+      match_method: "manual",
+      match_confidence: "manual",
+      remember_payer: true,
+    });
+    assert(r1.success, `R13 first call success: ${r1.error}`);
+    assert(
+      r1.success!.mappingCollision,
+      `R13 first call expected mappingCollision payload`,
+    );
+    assert(
+      r1.success!.matchIds.length === 1,
+      `R13 first call expected 1 match committed (collision detection runs AFTER reconcile)`,
+    );
+    const collision = r1.success!.mappingCollision!;
+    assert(
+      collision.colliding_mappings.length === 1,
+      `R13 expected 1 colliding mapping`,
+    );
+    assert(
+      collision.colliding_mappings[0].lot_id === lotA,
+      `R13 colliding mapping lot mismatch`,
+    );
+    assert(
+      collision.colliding_mappings[0].current_status === "ambiguous",
+      `R13 lotA should be flipped to ambiguous on collision detection`,
+    );
+
+    // Second call: resolvePayerMappingCollision('update'). Should NOT re-invoke
+    // rpc_reconcile_bank_transaction (the bug PP4-C fixed).
+    const r2 = await recon.resolvePayerMappingCollision({
+      subdivision_id: fx.subdivisionId,
+      bank_transaction_id: bankTxnId,
+      proposed_lot_id: lotB,
+      resolution: "update",
+      expected_collisions: collision.colliding_mappings,
+    });
+    assert(r2.success, `R13 resolvePayerMappingCollision: ${r2.error}`);
+    assert(
+      r2.success!.resolution_applied === "update",
+      `R13 resolution_applied: ${r2.success!.resolution_applied}`,
+    );
+    assert(
+      r2.success!.mapping_id,
+      `R13 expected new mapping_id from 'update' resolution`,
+    );
+    assert(!r2.success!.race, `R13 unexpected race`);
+
+    // Verify DB state.
+    const { data: lotAMapping } = await supabase
+      .from("bank_payer_mappings")
+      .select("status")
+      .eq("id", mappingA.id)
+      .single();
+    assert(
+      lotAMapping?.status === "disabled",
+      `R13 lotA mapping expected disabled, got ${lotAMapping?.status}`,
+    );
+
+    const { data: lotBMapping } = await supabase
+      .from("bank_payer_mappings")
+      .select("status, lot_id")
+      .eq("id", r2.success!.mapping_id!)
+      .single();
+    assert(
+      lotBMapping?.status === "active" && lotBMapping?.lot_id === lotB,
+      `R13 lotB mapping should be active on lotB, got ${JSON.stringify(lotBMapping)}`,
+    );
+
+    record(
+      header,
+      true,
+      `first call: match committed + collision payload returned; second call: 'update' applied; lotA disabled, lotB active`,
+    );
+  } catch (e) {
+    record(header, false, (e as Error).message);
+  }
+}
+
+async function scenarioCSV1_OrchestratorE2E(fx: Fixture) {
+  const header =
+    "CSV-1: 5-row CSV import — Strategies 1, 2, 3 + unmatched + duplicate (orchestrator integration)";
+  try {
+    // Set up a BPAY-enabled bank account on this subdivision for Strategy 2.
+    const { data: bpayAccount } = await supabase
+      .from("bank_accounts")
+      .insert({
+        subdivision_id: fx.subdivisionId,
+        account_name: "CSV-1 BPAY Admin",
+        bsb: "012-345",
+        account_number: "98765432",
+        fund_type: "administrative",
+        bpay_biller_code: "1234567",
+      })
+      .select("id")
+      .single();
+    assert(bpayAccount, "CSV-1 BPAY account insert");
+
+    const lot1 = await pp_mkFreshLot(fx);
+    const lot2 = await pp_mkFreshLot(fx);
+    const lot3 = await pp_mkFreshLot(fx);
+
+    // Notice with hand-picked reference "LEV-7" (PP4-A fixture refs went up to
+    // LEV-99, then per-OC counter at 1000+). Use a uniquely high ref.
+    const lev7 = await pp_mkOutstandingNotice(fx, lot1, {
+      referenceOverride: "LEV-9999",
+      amount: 500,
+    });
+    void lev7;
+
+    // Notice with bpay_crn = generateCrn(100) = "00001008".
+    const lev100Notice = await pp_mkOutstandingNotice(fx, lot2, {
+      amount: 500,
+      bpayCrn: generateCrn(100),
+    });
+    void lev100Notice;
+
+    // Notice on lot3 + active mapping for "JANE BROWN" → lot3.
+    const lev3Notice = await pp_mkOutstandingNotice(fx, lot3, { amount: 500 });
+    void lev3Notice;
+    await supabase.from("bank_payer_mappings").insert({
+      subdivision_id: fx.subdivisionId,
+      canonical_sender_name: "JANE BROWN",
+      lot_id: lot3,
+      status: "active",
+      raw_examples: [],
+      created_by: fx.profileId,
+    });
+
+    // Pre-insert a bank_transaction matching row 5 for duplicate detection.
+    const dupKey = {
+      transaction_date: "2026-04-05",
+      amount: 500,
+      description: "duplicate row description",
+    };
+    await supabase.from("bank_transactions").insert({
+      bank_account_id: bpayAccount.id,
+      source: "manual",
+      transaction_date: dupKey.transaction_date,
+      amount: dupKey.amount,
+      description: dupKey.description,
+      match_status: "unmatched",
+    });
+
+    // Run CSV import via the bank action.
+    const result = await bank.importBankTransactions(fx.subdivisionId, {
+      bank_account_id: bpayAccount.id,
+      rows: [
+        {
+          transaction_date: "2026-04-01",
+          amount: 500,
+          description: "Payment LEV-9999",
+          balance: null,
+        },
+        {
+          transaction_date: "2026-04-02",
+          amount: 500,
+          description: "BPAY 00001008",
+          balance: null,
+        },
+        {
+          transaction_date: "2026-04-03",
+          amount: 500,
+          description: "JANE BROWN",
+          balance: null,
+        },
+        {
+          transaction_date: "2026-04-04",
+          amount: 77777.77,
+          description: "Random unrelated text",
+          balance: null,
+        },
+        {
+          transaction_date: dupKey.transaction_date,
+          amount: dupKey.amount,
+          description: dupKey.description,
+          balance: null,
+        },
+      ],
+    });
+    assert(result.summary, `CSV-1 import error: ${result.error}`);
+    const s = result.summary!;
+    assert(s.imported === 4, `CSV-1 imported expected 4, got ${s.imported}`);
+    assert(s.matched === 3, `CSV-1 matched expected 3, got ${s.matched}`);
+    assert(s.duplicates === 1, `CSV-1 duplicates expected 1, got ${s.duplicates}`);
+    assert(s.errors.length === 0, `CSV-1 errors: ${JSON.stringify(s.errors)}`);
+
+    // Inspect bank_transactions for each imported row's match_status +
+    // reconciliation_matches.match_method.
+    const { data: imported } = await supabase
+      .from("bank_transactions")
+      .select("id, transaction_date, description, match_status")
+      .eq("bank_account_id", bpayAccount.id)
+      .in("transaction_date", ["2026-04-01", "2026-04-02", "2026-04-03", "2026-04-04"])
+      .order("transaction_date");
+    assert(imported && imported.length === 4, `CSV-1 expected 4 imported rows, got ${imported?.length}`);
+
+    // Helper: lookup match_method for a given bank_txn id.
+    async function methodFor(id: string): Promise<string | null> {
+      const { data } = await supabase
+        .from("reconciliation_matches")
+        .select("match_method")
+        .eq("bank_transaction_id", id)
+        .maybeSingle();
+      return data?.match_method ?? null;
+    }
+
+    const [r1Tx, r2Tx, r3Tx, r4Tx] = imported;
+    assert(r1Tx.match_status === "auto_matched", `CSV-1 r1 status: ${r1Tx.match_status}`);
+    assert(
+      (await methodFor(r1Tx.id)) === "auto_reference",
+      `CSV-1 r1 match_method: ${await methodFor(r1Tx.id)}`,
+    );
+    assert(r2Tx.match_status === "auto_matched", `CSV-1 r2 status: ${r2Tx.match_status}`);
+    assert(
+      (await methodFor(r2Tx.id)) === "auto_bpay_crn",
+      `CSV-1 r2 match_method: ${await methodFor(r2Tx.id)}`,
+    );
+    assert(r3Tx.match_status === "auto_matched", `CSV-1 r3 status: ${r3Tx.match_status}`);
+    assert(
+      (await methodFor(r3Tx.id)) === "auto_sender",
+      `CSV-1 r3 match_method: ${await methodFor(r3Tx.id)}`,
+    );
+    assert(
+      r4Tx.match_status === "unmatched",
+      `CSV-1 r4 status expected unmatched, got ${r4Tx.match_status}`,
+    );
+
+    record(
+      header,
+      true,
+      `summary: imported=${s.imported}, matched=${s.matched}, duplicates=${s.duplicates}; methods: r1=auto_reference, r2=auto_bpay_crn, r3=auto_sender, r4=unmatched`,
+    );
+  } catch (e) {
+    record(header, false, (e as Error).message);
+  }
+}
+
 // ───────── Cleanup ─────────
 
 async function cleanupMarker() {
@@ -1127,6 +1519,8 @@ async function main() {
     await scenarioR10_VoidPendingReceipt(fx);
     await scenarioR11_VoidDepositedReceiptBlocked(fx);
     await scenarioR12_VoidDepositReopensReceipt(fx);
+    await scenarioR13_RememberPayerCollisionRoundTrip(fx);
+    await scenarioCSV1_OrchestratorE2E(fx);
   } catch (e) {
     console.error(`\nFatal in scenarios: ${(e as Error).message}`);
   }

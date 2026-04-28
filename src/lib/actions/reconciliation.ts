@@ -13,7 +13,6 @@ import {
   detectRepeatedManualMatch,
   type CollidingMappingSnapshot,
   type CreateMappingResult,
-  type ResolveCollisionResult,
 } from "@/lib/reconciliation/mappings";
 import {
   addManualBankTransactionSchema,
@@ -21,6 +20,7 @@ import {
   excludeTransactionSchema,
   recordCashReceiptSchema,
   reconcileTransactionSchema,
+  resolvePayerMappingCollisionSchema,
   unexcludeTransactionSchema,
   unmatchTransactionSchema,
   voidBankTransactionSchema,
@@ -32,6 +32,7 @@ import {
   type ExcludeTransactionInput,
   type MatchStatus,
   type ReconcileTransactionInput,
+  type ResolvePayerMappingCollisionInput,
   type ReconciliationQueueResult,
   type ReconciliationQueueRow,
   type RecordCashReceiptInput,
@@ -719,15 +720,27 @@ export type ReconcileTransactionResult = {
     remaining: number;
     flags: string[];
     /** PP4-B: collision detected during the "remember this payer" flow.
-     * UI must surface the three-way dialog and re-call with mapping_resolution. */
+     * UI must surface the three-way dialog and call resolvePayerMappingCollision
+     * (a separate server action — PP4-C split). */
     mappingCollision?: MappingCollisionPayload;
-    /** PP4-B: race detected on resubmit (see Gap G). */
-    mappingResolutionRace?: MappingResolutionRacePayload;
     /** PP4-B: detectRepeatedManualMatch returned proposal_flag=true.
      * UI surfaces an inline "Create mapping?" toast (per Gap 11 resolution). */
     proposalFlag?: ProposalFlagPayload;
     /** PP4-B: indicates a mapping was created or re-activated as part of this match. */
     mappingId?: string;
+  };
+  error?: string;
+};
+
+export type ResolvePayerMappingCollisionResult = {
+  success?: {
+    /** Set when the resolution was applied successfully. */
+    resolution_applied?: "update" | "keep_existing" | "remove";
+    /** Set when 'update' resolution created a new mapping. Null otherwise. */
+    mapping_id?: string | null;
+    /** PP4-C: race detected on resubmit (see Gap G). When set, resolution
+     * was NOT applied; the UI must re-fetch the current collision state. */
+    race?: MappingResolutionRacePayload;
   };
   error?: string;
 };
@@ -770,7 +783,6 @@ export async function reconcileTransaction(
 
   // PP4-B: post-match "remember this payer" wiring.
   let mappingCollision: MappingCollisionPayload | undefined = undefined;
-  let mappingResolutionRace: MappingResolutionRacePayload | undefined = undefined;
   let proposalFlag: ProposalFlagPayload | undefined = undefined;
   let mappingId: string | undefined = undefined;
 
@@ -787,33 +799,12 @@ export async function reconcileTransaction(
     .single();
   const canonical = canonicaliseSender(bt?.description ?? null);
 
-  // ── Branch: collision-resolution resubmit ────────────────────────────────
-  if (
-    parsed.data.mapping_resolution &&
-    parsed.data.expected_collisions &&
-    canonical &&
-    isSingleLot &&
-    singleLotId
-  ) {
-    const result: ResolveCollisionResult = await resolveCollision({
-      subdivision_id: parsed.data.subdivision_id,
-      canonical_sender_name: canonical,
-      proposed_lot_id: singleLotId,
-      resolution: parsed.data.mapping_resolution,
-      expected_collisions: parsed.data.expected_collisions,
-      performed_by: profile.id,
-    });
-    if (!result.ok) {
-      mappingResolutionRace = {
-        divergence_type: result.divergence_type,
-        details: result.details,
-      };
-    } else {
-      mappingId = result.mapping_id ?? undefined;
-    }
-  }
   // ── Branch: first-call "remember this payer" ─────────────────────────────
-  else if (parsed.data.remember_payer && canonical) {
+  // Note: PP4-C split out collision resolution into resolvePayerMappingCollision.
+  // This action only handles the FIRST call (commit the match + optionally
+  // create the mapping or detect a collision). The UI's three-way dialog
+  // re-submits the resolution via the dedicated action.
+  if (parsed.data.remember_payer && canonical) {
     if (!isSingleLot || !singleLotId) {
       // Gap C: multi-lot match → silent skip with audit.
       await supabase.from("audit_log").insert({
@@ -870,7 +861,6 @@ export async function reconcileTransaction(
   // is the 3rd manual match for this canonical+lot in 30d → propose mapping.
   if (
     !parsed.data.remember_payer &&
-    !parsed.data.mapping_resolution &&
     canonical &&
     isSingleLot &&
     singleLotId &&
@@ -901,9 +891,86 @@ export async function reconcileTransaction(
       remaining: Number(payload.remaining_unmatched ?? 0),
       flags: payload.flags ?? [],
       ...(mappingCollision ? { mappingCollision } : {}),
-      ...(mappingResolutionRace ? { mappingResolutionRace } : {}),
       ...(proposalFlag ? { proposalFlag } : {}),
       ...(mappingId ? { mappingId } : {}),
+    },
+  };
+}
+
+// ============================================================================
+// PP4-C: resolvePayerMappingCollision — split out from reconcileTransaction.
+// PP4-B's design tried to bundle collision-resolution into the same action
+// as the match commit, but the second call (resolution-only) re-invoked
+// rpc_reconcile_bank_transaction on an already-matched transaction, causing
+// over-allocation errors. Splitting it out keeps reconcileTransaction
+// idempotent for its narrow concern (one match, one DB write) and gives the
+// dialog round-trip a clean dedicated endpoint.
+//
+// Inputs:
+//   - bank_transaction_id: used to look up description for canonicalisation
+//   - proposed_lot_id: the lot the manager originally tried to map to
+//   - resolution: 'update' | 'keep_existing' | 'remove'
+//   - expected_collisions: snapshot from the first-call collision payload
+//
+// Output:
+//   - success.resolution_applied + mapping_id when applied cleanly
+//   - success.race + divergence_type when state diverged between the two calls
+//   - error when validation/auth fails or canonicalisation fails
+// ============================================================================
+export async function resolvePayerMappingCollision(
+  input: ResolvePayerMappingCollisionInput,
+): Promise<ResolvePayerMappingCollisionResult> {
+  const parsed = resolvePayerMappingCollisionSchema.safeParse(input);
+  if (!parsed.success) return { error: formatIssues(parsed.error.issues) };
+
+  const profile = await requireCompanyRole();
+  await requireSubdivisionAccess(parsed.data.subdivision_id);
+  const supabase = createServerClient();
+
+  // Look up description from the bank transaction to canonicalise.
+  const { data: bt } = await supabase
+    .from("bank_transactions")
+    .select("description, bank_account_id")
+    .eq("id", parsed.data.bank_transaction_id)
+    .maybeSingle();
+  if (!bt) {
+    return { error: "Bank transaction not found" };
+  }
+  const canonical = canonicaliseSender(bt.description ?? null);
+  if (!canonical) {
+    return {
+      error:
+        "Bank transaction description has no canonical sender name — cannot resolve a mapping collision",
+    };
+  }
+
+  const result = await resolveCollision({
+    subdivision_id: parsed.data.subdivision_id,
+    canonical_sender_name: canonical,
+    proposed_lot_id: parsed.data.proposed_lot_id,
+    resolution: parsed.data.resolution,
+    expected_collisions: parsed.data.expected_collisions,
+    performed_by: profile.id,
+  });
+
+  await revalidateSidebarForSubdivision(parsed.data.subdivision_id);
+  revalidatePath(`/subdivisions/${parsed.data.subdivision_id}/finance/reconciliation`);
+
+  if (!result.ok) {
+    return {
+      success: {
+        race: {
+          divergence_type: result.divergence_type,
+          details: result.details,
+        },
+      },
+    };
+  }
+
+  return {
+    success: {
+      resolution_applied: result.resolution_applied,
+      mapping_id: result.mapping_id,
     },
   };
 }

@@ -1736,6 +1736,23 @@ $$;
 --   visible, double-counting the credit's reversal at exactly the
 --   wrong moment.
 -- ============================================================================
+-- PP4-C rewrite: single-CTE SQL replacing the per-notice plpgsql FOR loop.
+-- The original implementation issued 1× SUM + 1× chronological FOR-loop per
+-- notice (2× SQL round trips per notice → O(n) per call). With realistic
+-- credit density (~3 credits per paid notice) this hit 546ms cold for a
+-- 100-notice lot — past the 500ms ship gate. The CTE form folds all
+-- aggregation + settling into one planner pass and runs in well under
+-- 100ms on the same fixture.
+--
+-- Semantic invariants preserved exactly:
+--   - Visibility: entry_date <= p_as_of_date AND
+--     (status = 'active' OR (status = 'voided' AND voided_at::date > p_as_of_date))
+--   - Credit-to-notice match: (levy_notice_id = n.id) OR
+--                             (reference = n.reference_number AND fund_type = n.fund_type)
+--   - Settling date = the entry_date of the FIRST credit whose chronological
+--     running total reaches the notice amount (ordered entry_date ASC,
+--     created_at ASC). MIN(entry_date) over rows WHERE running_total >= amount
+--     yields the same date the original plpgsql EXIT branch returned.
 CREATE OR REPLACE FUNCTION _walk_per_notice_status(
   p_lot_id     uuid,
   p_as_of_date date DEFAULT CURRENT_DATE
@@ -1751,92 +1768,80 @@ RETURNS TABLE (
   paid_amount        numeric,
   outstanding_amount numeric
 )
-LANGUAGE plpgsql
+LANGUAGE sql
+STABLE
 AS $$
-DECLARE
-  v_notice         RECORD;
-  v_credit         RECORD;
-  v_paid           numeric;
-  v_settling_date  date;
-  v_running_total  numeric;
-BEGIN
-  FOR v_notice IN
-    SELECT n.id, n.reference_number, n.fund_type, n.due_date, n.amount
+  WITH lot_notices AS (
+    SELECT n.id, n.reference_number, n.fund_type, n.due_date, n.amount, n.created_at
       FROM levy_notices n
      WHERE n.lot_id = p_lot_id
-     ORDER BY n.due_date ASC, n.created_at ASC
-  LOOP
-    -- Total paid = sum of qualifying credits at p_as_of_date.
-    SELECT COALESCE(SUM(c.amount), 0)
-      INTO v_paid
+  ),
+  visible_credits AS (
+    SELECT
+      c.entry_date,
+      c.created_at,
+      c.amount,
+      n.id     AS notice_id,
+      n.amount AS notice_amount
       FROM lot_ledger_entries c
+      JOIN lot_notices n
+        ON n.fund_type = c.fund_type
+       AND (
+         (c.levy_notice_id IS NOT NULL AND c.levy_notice_id = n.id)
+         OR (c.reference IS NOT NULL AND c.reference = n.reference_number)
+       )
      WHERE c.lot_id     = p_lot_id
-       AND c.fund_type  = v_notice.fund_type
        AND c.entry_type = 'credit'
        AND c.entry_date <= p_as_of_date
        AND (
          (c.status = 'active')
          OR (c.status = 'voided' AND c.voided_at::date > p_as_of_date)
        )
-       AND (
-         (c.levy_notice_id IS NOT NULL AND c.levy_notice_id = v_notice.id)
-         OR (c.reference IS NOT NULL AND c.reference = v_notice.reference_number)
-       );
-
-    -- Settling-credit date: walk qualifying credits chronologically and
-    -- return the entry_date of the credit whose cumulative sum first
-    -- reaches notice.amount. Only computed for fully-paid notices.
-    -- (See header comment block §4 for why this is not MAX(entry_date).)
-    v_settling_date := NULL;
-    IF v_paid >= v_notice.amount THEN
-      v_running_total := 0;
-      FOR v_credit IN
-        SELECT c.entry_date, c.amount
-          FROM lot_ledger_entries c
-         WHERE c.lot_id     = p_lot_id
-           AND c.fund_type  = v_notice.fund_type
-           AND c.entry_type = 'credit'
-           AND c.entry_date <= p_as_of_date
-           AND (
-             (c.status = 'active')
-             OR (c.status = 'voided' AND c.voided_at::date > p_as_of_date)
-           )
-           AND (
-             (c.levy_notice_id IS NOT NULL AND c.levy_notice_id = v_notice.id)
-             OR (c.reference IS NOT NULL AND c.reference = v_notice.reference_number)
-           )
-         ORDER BY c.entry_date ASC, c.created_at ASC
-      LOOP
-        v_running_total := v_running_total + v_credit.amount;
-        IF v_running_total >= v_notice.amount THEN
-          v_settling_date := v_credit.entry_date;
-          EXIT;
-        END IF;
-      END LOOP;
-    END IF;
-
-    notice_id          := v_notice.id;
-    reference_number   := v_notice.reference_number;
-    fund_type          := v_notice.fund_type;
-    due_date           := v_notice.due_date;
-    amount             := v_notice.amount;
-    paid_amount        := v_paid;
-    outstanding_amount := GREATEST(v_notice.amount - v_paid, 0);
-
-    IF v_paid >= v_notice.amount THEN
-      status    := 'paid';
-      paid_date := v_settling_date;
-    ELSIF v_paid > 0 THEN
-      status    := 'partially_paid';
-      paid_date := NULL;
-    ELSE
-      status    := 'outstanding';
-      paid_date := NULL;
-    END IF;
-
-    RETURN NEXT;
-  END LOOP;
-END;
+  ),
+  notice_paid AS (
+    SELECT vc.notice_id, SUM(vc.amount) AS paid_amount
+      FROM visible_credits vc
+     GROUP BY vc.notice_id
+  ),
+  notice_running AS (
+    SELECT
+      vc.notice_id,
+      vc.entry_date,
+      vc.notice_amount,
+      SUM(vc.amount) OVER (
+        PARTITION BY vc.notice_id
+        ORDER BY vc.entry_date ASC, vc.created_at ASC
+        ROWS BETWEEN UNBOUNDED PRECEDING AND CURRENT ROW
+      ) AS running_total
+      FROM visible_credits vc
+  ),
+  notice_settled AS (
+    SELECT notice_id, MIN(entry_date) AS settled_date
+      FROM notice_running
+     WHERE running_total >= notice_amount
+     GROUP BY notice_id
+  )
+  SELECT
+    n.id                                                     AS notice_id,
+    n.reference_number,
+    n.fund_type,
+    n.due_date,
+    n.amount,
+    CASE
+      WHEN COALESCE(np.paid_amount, 0) >= n.amount THEN 'paid'
+      WHEN COALESCE(np.paid_amount, 0) > 0         THEN 'partially_paid'
+      ELSE                                              'outstanding'
+    END                                                      AS status,
+    CASE
+      WHEN COALESCE(np.paid_amount, 0) >= n.amount THEN ns.settled_date
+      ELSE NULL
+    END                                                      AS paid_date,
+    COALESCE(np.paid_amount, 0)                              AS paid_amount,
+    GREATEST(n.amount - COALESCE(np.paid_amount, 0), 0)      AS outstanding_amount
+    FROM lot_notices n
+    LEFT JOIN notice_paid    np ON np.notice_id = n.id
+    LEFT JOIN notice_settled ns ON ns.notice_id = n.id
+   ORDER BY n.due_date ASC, n.created_at ASC;
 $$;
 
 -- Recompute lot_ledger_state from scratch for one lot. Called by every

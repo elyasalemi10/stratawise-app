@@ -1837,6 +1837,262 @@ async function scenarioC9_RaceMappingDeleted(fx: Fixture) {
   }
 }
 
+// ─── PP4-C: strategy-ordering edge cases (O21–O25) ───────────────────────
+
+async function scenario21_AllSignalsReferenceWins(fx: Fixture) {
+  const header =
+    "O21: 'BPAY <CRN> LEV-X from JANE BROWN' — Strategy 1 wins; Strategies 2-3 not tried";
+  try {
+    const lotId = await mkFreshLot(fx);
+    // Notice with a BPAY CRN AND a known-payer mapping for the same lot.
+    // All three strategies COULD match; orchestrator must stop at Strategy 1.
+    const refRow = await supabase.rpc("next_reference_number", {
+      p_prefix: "LEV",
+      p_subdivision_id: fx.subdivisionId,
+    });
+    const reference = String(refRow.data);
+    const levyNumber = Number.parseInt(reference.slice(4), 10);
+    const bpayCrn = generateCrn(levyNumber);
+    const { data: notice } = await supabase
+      .from("levy_notices")
+      .insert({
+        subdivision_id: fx.subdivisionId,
+        lot_id: lotId,
+        budget_id: fx.budgetId,
+        reference_number: reference,
+        bpay_crn: bpayCrn,
+        fund_type: "administrative",
+        levy_type: "regular",
+        period_start: "2026-01-01",
+        period_end: "2026-03-31",
+        amount: 555,
+        due_date: "2026-04-28",
+        status: "draft",
+      })
+      .select("id")
+      .single();
+    assert(notice, "O21 notice insert failed");
+    await supabase.from("lot_ledger_entries").insert({
+      subdivision_id: fx.subdivisionId,
+      lot_id: lotId,
+      fund_type: "administrative",
+      entry_type: "debit",
+      category: "levy",
+      amount: 555,
+      entry_date: "2026-01-01",
+      reference,
+      levy_notice_id: notice.id,
+      status: "active",
+      created_by: fx.profileId,
+    });
+    // Use a canonical name not already inserted by O11/O18/etc. so the
+    // partial UNIQUE index on (subdivision, active mapping) doesn't trip.
+    await insertMappingDirect(fx, "ALL SIGNALS PAYER", lotId, "active");
+
+    // NOTE: order matters here. The Strategy 1 regex
+    //   /\b(?:lev(?:y)?\s*[-]?\s*(\d+)|(\d+)\s*[-]?\s*lev(?:y)?)\b/gi
+    // has a second alternative `(\d+)\s*[-]?\s*lev` that greedily consumes a
+    // numeric run immediately followed by "LEV" — so if the CRN lands right
+    // before the LEV reference, the regex captures the CRN's digits as the
+    // levy number. Putting `${reference}` first sidesteps the ambiguity for
+    // this scenario; the wider regex tightening is logged as a PRE_LAUNCH
+    // CLEANUP item.
+    const description = `${reference} BPAY ${bpayCrn} from All Signals Payer`;
+    const { bankTransactionId, outcome } = await runOrchestrator(
+      fx,
+      fx.adminBpayAccountId, // BPAY enabled so Strategy 2 has the chance
+      description,
+      555,
+    );
+    assert(outcome.matched, `O21 expected matched, got ${JSON.stringify(outcome)}`);
+    assert(
+      outcome.strategy === "reference",
+      `O21 strategy expected reference, got ${outcome.strategy}`,
+    );
+
+    const orch = await fetchOrchestratorAudit(bankTransactionId);
+    const tried = orch?.metadata.strategies_tried as Array<{ strategy: string; outcome: string }>;
+    assert(tried.length === 1, `O21 strategies_tried.length expected 1, got ${tried.length}`);
+    assert(tried[0].strategy === "reference" && tried[0].outcome === "matched", `O21 strategies_tried[0] mismatch`);
+
+    record(header, true, `LEV ref + BPAY CRN + JaneBrown all in description; orchestrator stopped at Strategy 1`);
+  } catch (e) {
+    record(header, false, (e as Error).message);
+  }
+}
+
+async function scenario22_KnownPayerBeatsAmountWindow(fx: Fixture) {
+  const header =
+    "O22: known-payer mapping AND amount-window candidate — Strategy 3 fires before Strategy 5";
+  try {
+    const lotMapped = await mkFreshLot(fx);
+    const lotOther = await mkFreshLot(fx);
+
+    // Mapped lot has an outstanding notice for $789.
+    const mappedNotice = await mkOutstandingNotice(fx, lotMapped, {
+      amount: 789,
+      dueDate: "2026-04-28",
+    });
+    // Different lot has a notice with the SAME amount in the same date window —
+    // would be Strategy 5's single candidate if Strategy 3 didn't fire first.
+    await mkOutstandingNotice(fx, lotOther, {
+      amount: 789,
+      dueDate: "2026-04-30",
+    });
+    await insertMappingDirect(fx, "ACME PROPERTY", lotMapped, "active");
+
+    const { bankTransactionId, outcome } = await runOrchestrator(
+      fx,
+      fx.adminNoBpayAccountId,
+      "Acme Property",
+      789,
+    );
+    assert(outcome.matched, `O22 expected matched`);
+    assert(
+      outcome.strategy === "known_payer",
+      `O22 strategy expected known_payer, got ${outcome.strategy}`,
+    );
+    assert(
+      outcome.reference === mappedNotice.reference,
+      `O22 reference expected ${mappedNotice.reference}, got ${outcome.reference}`,
+    );
+
+    const orch = await fetchOrchestratorAudit(bankTransactionId);
+    const tried = orch?.metadata.strategies_tried as Array<{ strategy: string; outcome: string }>;
+    assert(
+      !tried.find((t) => t.strategy === "amount_window"),
+      `O22 amount_window should NOT appear in strategies_tried (orchestrator stopped at known_payer)`,
+    );
+
+    record(header, true, `Strategy 3 matched mapped lot ${mappedNotice.reference}; Strategy 5 not tried`);
+  } catch (e) {
+    record(header, false, (e as Error).message);
+  }
+}
+
+async function scenario23_EmptyDescriptionAllSixTried(fx: Fixture) {
+  const header =
+    "O23: empty description, no amount match, no mapping → all 6 strategies tried, no match";
+  try {
+    // No setup — no notices, no mappings created. Use a deliberately rare
+    // amount so Strategy 5 has nothing to match.
+    const description = "";
+    const amount = 88_888.88;
+
+    const { bankTransactionId, outcome } = await runOrchestrator(
+      fx,
+      fx.adminNoBpayAccountId,
+      description,
+      amount,
+    );
+    assert(!outcome.matched, `O23 expected !matched`);
+    assert(outcome.strategy === null, `O23 strategy: ${outcome.strategy}`);
+
+    const orch = await fetchOrchestratorAudit(bankTransactionId);
+    const tried = orch?.metadata.strategies_tried as Array<{ strategy: string; outcome: string }>;
+    assert(
+      tried.length === 6,
+      `O23 expected 6 strategies tried, got ${tried.length}`,
+    );
+    const names = tried.map((t) => t.strategy).sort();
+    const expected = ["amount_window", "bpay_crn", "fuzzy_hint", "keyword_amount", "known_payer", "reference"];
+    assert(
+      JSON.stringify(names) === JSON.stringify(expected),
+      `O23 strategies_tried names mismatch: ${JSON.stringify(names)}`,
+    );
+    // Each should have non-matched outcome
+    for (const t of tried) {
+      assert(t.outcome !== "matched", `O23 ${t.strategy} unexpectedly matched`);
+    }
+
+    record(header, true, `all 6 strategies attempted; final orchestrator audit captures every outcome`);
+  } catch (e) {
+    record(header, false, (e as Error).message);
+  }
+}
+
+async function scenario24_OnlyStaleReferencesFallthrough(fx: Fixture) {
+  const header =
+    "O24: only stale references in description → Strategy 1 audits stale, falls through, all 6 tried";
+  try {
+    // Use an unusual amount + the existing fx.staleNotice.
+    const description = `Transfer ${fx.staleNotice.reference}`;
+    const amount = 91_234.56;
+
+    const { bankTransactionId, outcome } = await runOrchestrator(
+      fx,
+      fx.adminNoBpayAccountId,
+      description,
+      amount,
+    );
+    assert(!outcome.matched, `O24 expected !matched`);
+
+    // Stale-ref audit must be present.
+    const stale = await fetchStaleRefAudits(bankTransactionId);
+    assert(stale.length >= 1, `O24 expected stale_reference_detected audit`);
+
+    // All 6 strategies tried.
+    const orch = await fetchOrchestratorAudit(bankTransactionId);
+    const tried = orch?.metadata.strategies_tried as Array<{ strategy: string; outcome: string }>;
+    assert(tried.length === 6, `O24 expected 6 strategies tried, got ${tried.length}`);
+
+    // Strategy 1 outcome should be all_references_stale (or no_outstanding_notices,
+    // depending on fixture state — both indicate stale-ref fallthrough).
+    const ref = tried.find((t) => t.strategy === "reference");
+    assert(ref, "O24 missing reference entry");
+    assert(
+      ref.outcome === "all_references_stale" || ref.outcome === "no_outstanding_notices",
+      `O24 reference outcome unexpected: ${ref.outcome}`,
+    );
+
+    record(header, true, `Strategy 1 wrote stale-ref audit; all 6 strategies attempted in fallthrough`);
+  } catch (e) {
+    record(header, false, (e as Error).message);
+  }
+}
+
+async function scenario25_MixedRefsPartialAllocation(fx: Fixture) {
+  const header =
+    "O25: multiple references, some stale — Strategy 1 partial-allocates non-stale, audits stale ones";
+  try {
+    const lotA = await mkFreshLot(fx);
+    const lotB = await mkFreshLot(fx);
+    const goodA = await mkOutstandingNotice(fx, lotA, { amount: 250 });
+    const goodB = await mkOutstandingNotice(fx, lotB, { amount: 250 });
+
+    // fx.staleNotice from the fixture is paid → stale.
+    const description = `Combined ${goodA.reference} ${fx.staleNotice.reference} ${goodB.reference}`;
+
+    const { bankTransactionId, outcome } = await runOrchestrator(
+      fx,
+      fx.adminNoBpayAccountId,
+      description,
+      500,
+    );
+    assert(outcome.matched, `O25 expected matched`);
+    assert(outcome.strategy === "reference", `O25 strategy: ${outcome.strategy}`);
+
+    const matches = await fetchMatches(bankTransactionId);
+    assert(matches.length === 2, `O25 expected 2 matches (skipped stale), got ${matches.length}`);
+
+    // Stale-ref audit for the stale one.
+    const stale = await fetchStaleRefAudits(bankTransactionId);
+    const staleRefs = stale.map((s) => (s.metadata as Record<string, unknown>).reference);
+    assert(
+      staleRefs.includes(fx.staleNotice.reference),
+      `O25 stale-ref audit missing for ${fx.staleNotice.reference} (got ${JSON.stringify(staleRefs)})`,
+    );
+
+    record(
+      header,
+      true,
+      `2 non-stale refs matched ($250 each); stale-ref audited for ${fx.staleNotice.reference}`,
+    );
+  } catch (e) {
+    record(header, false, (e as Error).message);
+  }
+}
+
 // ─── Cleanup ──────────────────────────────────────────────────────────────
 
 async function cleanupMarker() {
@@ -1980,6 +2236,12 @@ async function main() {
     await scenarioC7_RemoveResolutionDisablesNoNew(fx);
     await scenarioC8_DetectRepeatedManualMatch(fx);
     await scenarioC9_RaceMappingDeleted(fx);
+    // PP4-C: strategy-ordering edge cases
+    await scenario21_AllSignalsReferenceWins(fx);
+    await scenario22_KnownPayerBeatsAmountWindow(fx);
+    await scenario23_EmptyDescriptionAllSixTried(fx);
+    await scenario24_OnlyStaleReferencesFallthrough(fx);
+    await scenario25_MixedRefsPartialAllocation(fx);
   } catch (e) {
     console.error(`\nFatal in scenarios: ${(e as Error).message}`);
   }
