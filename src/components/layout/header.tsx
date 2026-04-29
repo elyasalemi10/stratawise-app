@@ -19,6 +19,7 @@ const routeLabels: Record<string, string> = {
   insurance: "Insurance",
   "bank-account": "Bank account",
   reconciliation: "Reconciliation",
+  mappings: "Payer mappings",
   "gap-reports": "Gap report",
   reports: "Reports",
   inbox: "Inbox",
