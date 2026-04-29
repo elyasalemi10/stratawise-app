@@ -22,6 +22,7 @@ config({ path: ".env.local" });
 import { createClient } from "@supabase/supabase-js";
 import { randomUUID } from "crypto";
 import { computeLevyPaymentStatus } from "./payment-status";
+import { generateSubdivisionCode } from "@/lib/subdivision-code";
 
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
 const serviceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
@@ -100,6 +101,7 @@ async function createFixture(): Promise<Fixture> {
       management_company_id: company.id,
       name,
       plan_number: `PLAN-${runId}`,
+      short_code: generateSubdivisionCode(),
       address: "1 PS Verify St, Melbourne VIC 3000",
       total_lots: 1,
       created_by: profile.id,

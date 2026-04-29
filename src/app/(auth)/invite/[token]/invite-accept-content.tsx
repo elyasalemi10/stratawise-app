@@ -82,11 +82,7 @@ export function InviteAcceptContent({ invitation, token, isLoggedIn }: InviteAcc
 
     toast.success("Invitation accepted");
 
-    if (result.subdivisionId) {
-      router.push(`/subdivisions/${result.subdivisionId}/dashboard`);
-    } else {
-      router.push("/dashboard");
-    }
+    router.push(result.subdivisionUrl ?? "/dashboard");
   }
 
   return (

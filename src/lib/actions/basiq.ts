@@ -3,6 +3,7 @@
 import { revalidatePath } from "next/cache";
 import { requireCompanyRole, requireSubdivisionAccess } from "@/lib/auth";
 import { createServerClient } from "@/lib/supabase";
+import { buildSubdivisionUrl } from "@/lib/subdivision-resolver";
 import { revalidateSidebarForSubdivision } from "./subdivision";
 import {
   BasiqApiError,
@@ -317,7 +318,7 @@ export async function completeBasiqConsent(args: {
       },
     });
 
-    revalidatePath(`/subdivisions/${conn.subdivision_id}/bank-account`);
+    revalidatePath("/subdivisions/[subdivisionCode]/bank-account", "page");
     return { success: true };
   } catch (e) {
     return { error: (e as Error).message };
@@ -589,7 +590,7 @@ export async function releaseBankAccountFromConnection(
       metadata: { reason: "manual reconnect" },
     });
 
-    revalidatePath(`/subdivisions/${acct.subdivision_id}/bank-account`);
+    revalidatePath("/subdivisions/[subdivisionCode]/bank-account", "page");
     return { success: true };
   } catch (e) {
     return { error: (e as Error).message };
@@ -695,9 +696,7 @@ export async function disconnectBasiqConnection(
       after_state: { status: "revoked" },
     });
 
-    revalidatePath(
-      `/subdivisions/${conn.subdivision_id}/bank-account`,
-    );
+    revalidatePath("/subdivisions/[subdivisionCode]/bank-account", "page");
     return { success: true };
   } catch (e) {
     return { error: (e as Error).message };
@@ -798,12 +797,8 @@ export async function forceSyncBasiqConnection(args: {
       totalNew += res.inserted;
       if (res.error) errors.push(`${c.id}: ${res.error}`);
     }
-    revalidatePath(
-      `/subdivisions/${args.subdivisionId}/bank-account`,
-    );
-    revalidatePath(
-      `/subdivisions/${args.subdivisionId}/reconciliation`,
-    );
+    revalidatePath("/subdivisions/[subdivisionCode]/bank-account", "page");
+    revalidatePath("/subdivisions/[subdivisionCode]/reconciliation", "page");
     return {
       success: {
         syncedCount: conns.length,
@@ -1004,7 +999,7 @@ async function sendGapEmails(args: {
       backfilledCount: args.backfilledCount,
       autoMatchedCount: args.autoMatchedCount,
       manualReviewCount: args.manualReviewCount,
-      reportUrl: `${process.env.NEXT_PUBLIC_APP_URL ?? ""}/subdivisions/${args.subdivisionId}/bank-account`,
+      reportUrl: `${process.env.NEXT_PUBLIC_APP_URL ?? ""}${(await buildSubdivisionUrl(args.subdivisionId, "/bank-account")) ?? ""}`,
     });
     if (args.committeeNotified) {
       await sendBasiqCommitteeGapNotificationEmail({
@@ -1486,9 +1481,7 @@ export async function dismissGapReport(
       entity_id: reportId,
     });
 
-    revalidatePath(
-      `/subdivisions/${report.subdivision_id}/bank-account`,
-    );
+    revalidatePath("/subdivisions/[subdivisionCode]/bank-account", "page");
     return { success: true };
   } catch (e) {
     return { error: (e as Error).message };

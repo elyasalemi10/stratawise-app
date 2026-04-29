@@ -129,7 +129,11 @@ export async function recordAdjustment(
 
   if (error) return { error: error.message };
 
-  revalidatePath(`/subdivisions/${parsed.data.subdivision_id}/finance`);
+  // Ledger entry adjustments may affect any /levies, /budgets, /reconciliation
+  // page in the subdivision; broad pattern invalidation is the simplest correct.
+  revalidatePath("/subdivisions/[subdivisionCode]/levies", "page");
+  revalidatePath("/subdivisions/[subdivisionCode]/reconciliation", "page");
+  revalidatePath("/subdivisions/[subdivisionCode]/lots/[lotId]", "page");
   return { entryId: data as string };
 }
 
@@ -164,7 +168,9 @@ export async function voidLedgerEntry(
 
   if (error) return { error: error.message };
 
-  revalidatePath(`/subdivisions/${entry.subdivision_id}/finance`);
+  revalidatePath("/subdivisions/[subdivisionCode]/levies", "page");
+  revalidatePath("/subdivisions/[subdivisionCode]/reconciliation", "page");
+  revalidatePath("/subdivisions/[subdivisionCode]/lots/[lotId]", "page");
   return { offsetId: data as string };
 }
 

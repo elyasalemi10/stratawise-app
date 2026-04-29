@@ -55,7 +55,7 @@ export default async function SubdivisionsPage() {
           {subdivisions.map((sub) => (
             <Link
               key={sub.id}
-              href={`/subdivisions/${sub.id}/dashboard`}
+              href={`/subdivisions/${sub.short_code}`}
               className="block"
             >
               <Card className="transition-colors hover:border-primary/30 cursor-pointer">

@@ -246,6 +246,12 @@ CREATE INDEX idx_notification_prefs_profile ON notification_preferences(profile_
 -- ============================================================================
 CREATE TABLE subdivisions (
   id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+  -- 8-char Crockford-32 code (alphabet: ABCDEFGHJKLMNPQRSTUVWXYZ23456789;
+  -- drops 0/O/1/I for transcription safety). URL-facing identifier
+  -- (/subdivisions/<short_code>/...); internal queries still use `id`.
+  -- Generated app-side via src/lib/subdivision-code.ts on insert with
+  -- 23505-retry on collision.
+  short_code TEXT NOT NULL,
   management_company_id UUID NOT NULL REFERENCES management_companies(id),
   name TEXT NOT NULL,
   plan_number TEXT NOT NULL,
@@ -309,6 +315,7 @@ CREATE TABLE subdivisions (
 
 CREATE INDEX idx_subdivisions_company ON subdivisions(management_company_id);
 CREATE INDEX idx_subdivisions_status ON subdivisions(status);
+CREATE UNIQUE INDEX idx_subdivisions_short_code ON subdivisions(short_code);
 
 -- ============================================================================
 -- 6. LOTS

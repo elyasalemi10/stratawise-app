@@ -92,15 +92,15 @@ const lotOwnerMainNavGroups = [
   },
 ];
 
-function getSubdivisionNavGroups(subdivisionId: string, isLotOwner: boolean) {
-  const base = `/subdivisions/${subdivisionId}`;
+function getSubdivisionNavGroups(subdivisionCode: string, isLotOwner: boolean) {
+  const base = `/subdivisions/${subdivisionCode}`;
 
   if (isLotOwner) {
     return [
       {
         label: "Overview",
         items: [
-          { href: `${base}/dashboard`, label: "Dashboard", icon: LayoutDashboard },
+          { href: base, label: "Dashboard", icon: LayoutDashboard },
           { href: `${base}/my-levies`, label: "My levies", icon: Receipt },
         ],
       },
@@ -121,7 +121,7 @@ function getSubdivisionNavGroups(subdivisionId: string, isLotOwner: boolean) {
     {
       label: "Overview",
       items: [
-        { href: `${base}/dashboard`, label: "Dashboard", icon: LayoutDashboard },
+        { href: base, label: "Dashboard", icon: LayoutDashboard },
       ],
     },
     {
@@ -283,32 +283,35 @@ export function AppSidebar() {
     return () => window.removeEventListener(SIDEBAR_REFRESH_EVENT, onRefresh);
   }, []);
 
-  // Detect subdivision context from URL
+  // Detect subdivision context from URL. The URL segment is the 8-char
+  // short_code (post-rename); the variable suffix "Code" makes the shape
+  // obvious to future readers.
   const subdivisionMatch = pathname.match(/^\/subdivisions\/([^/]+)/);
-  const currentSubdivisionId = subdivisionMatch?.[1] ?? null;
-  const isInSubdivision = currentSubdivisionId !== null && currentSubdivisionId !== "new";
+  const currentSubdivisionCode = subdivisionMatch?.[1] ?? null;
+  const isInSubdivision = currentSubdivisionCode !== null && currentSubdivisionCode !== "new";
 
-  // Find current subdivision name
-  const currentSubdivision = subdivisions.find((s) => s.id === currentSubdivisionId);
+  // Find current subdivision via its code
+  const currentSubdivision = subdivisions.find((s) => s.short_code === currentSubdivisionCode);
 
   // Pick nav items based on context and role
   const isLotOwner = profile?.userRole === "lot_owner";
   const mainNavGroups = isLotOwner ? lotOwnerMainNavGroups : managerMainNavGroups;
-  const navGroups = isInSubdivision && currentSubdivisionId
-    ? getSubdivisionNavGroups(currentSubdivisionId, isLotOwner)
+  const navGroups = isInSubdivision && currentSubdivisionCode
+    ? getSubdivisionNavGroups(currentSubdivisionCode, isLotOwner)
     : mainNavGroups;
 
   // Smart subdivision switching — preserve current sub-page
-  function switchSubdivision(newId: string | null) {
-    if (newId === null) {
+  function switchSubdivision(newCode: string | null) {
+    if (newCode === null) {
       router.push("/dashboard");
       return;
     }
-    if (currentSubdivisionId) {
-      const subPage = pathname.replace(`/subdivisions/${currentSubdivisionId}`, "");
-      router.push(`/subdivisions/${newId}${subPage || "/dashboard"}`);
+    // The subdivision index page IS the dashboard now — no /dashboard segment.
+    if (currentSubdivisionCode) {
+      const subPage = pathname.replace(`/subdivisions/${currentSubdivisionCode}`, "");
+      router.push(`/subdivisions/${newCode}${subPage}`);
     } else {
-      router.push(`/subdivisions/${newId}/dashboard`);
+      router.push(`/subdivisions/${newCode}`);
     }
   }
 
@@ -364,7 +367,7 @@ export function AppSidebar() {
               {subdivisions.map((sub) => (
                 <DropdownItem
                   key={sub.id}
-                  onClick={() => switchSubdivision(sub.id)}
+                  onClick={() => switchSubdivision(sub.short_code)}
                 >
                   <div className="flex size-6 items-center justify-center rounded-md border border-border shrink-0">
                     <Building2 className="size-3.5 shrink-0" />
@@ -377,7 +380,7 @@ export function AppSidebar() {
                       </span>
                     )}
                   </div>
-                  {sub.id === currentSubdivisionId && (
+                  {sub.short_code === currentSubdivisionCode && (
                     <Check className="ml-auto h-4 w-4 text-primary shrink-0" />
                   )}
                 </DropdownItem>

@@ -5,6 +5,7 @@ import { createServerClient } from "@/lib/supabase";
 import { sendInvitationEmail } from "@/lib/email";
 import { canonicaliseSender } from "@/lib/reconciliation/canonical";
 import { sweepMappingsForOwnerChange } from "@/lib/reconciliation/mappings";
+import { buildSubdivisionUrl } from "@/lib/subdivision-resolver";
 
 export async function inviteStrataManager(data: { email: string; name: string }) {
   const profile = await requireCompanyRole();
@@ -210,9 +211,13 @@ export async function acceptInvitation(token: string) {
     after_state: { role: invitation.role, lot_id: invitation.lot_id },
   });
 
+  // Resolve the short_code so the client can redirect to the code-shaped URL.
+  const subdivisionUrl = await buildSubdivisionUrl(invitation.subdivision_id, "");
+
   return {
     success: true,
     subdivisionId: invitation.subdivision_id,
+    subdivisionUrl: subdivisionUrl ?? "/dashboard",
     role: invitation.role,
   };
 }

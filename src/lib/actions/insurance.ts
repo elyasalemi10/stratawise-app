@@ -81,7 +81,7 @@ export async function createInsurancePolicy(
     after_state: data,
   });
 
-  revalidatePath(`/subdivisions/${subdivisionId}/finance`);
+  revalidatePath("/subdivisions/[subdivisionCode]/insurance", "page");
   return { success: true };
 }
 
@@ -134,7 +134,7 @@ export async function updateInsurancePolicy(
     after_state: data,
   });
 
-  revalidatePath(`/subdivisions/${subdivisionId}/finance`);
+  revalidatePath("/subdivisions/[subdivisionCode]/insurance", "page");
   return { success: true };
 }
 
@@ -159,6 +159,6 @@ export async function deleteInsurancePolicy(subdivisionId: string, policyId: str
     entity_id: policyId,
   });
 
-  revalidatePath(`/subdivisions/${subdivisionId}/finance`);
+  revalidatePath("/subdivisions/[subdivisionCode]/insurance", "page");
   return { success: true };
 }

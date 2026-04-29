@@ -4,6 +4,7 @@ import { createContext, useContext } from "react";
 
 export interface SubdivisionData {
   id: string;
+  short_code: string;
   name: string;
   plan_number: string;
   address: string;
@@ -46,4 +47,9 @@ export function useSubdivision() {
 
 export function useOptionalSubdivision() {
   return useContext(SubdivisionContext);
+}
+
+/** Convenience for client components that just need the URL code. */
+export function useSubdivisionCode(): string {
+  return useSubdivision().short_code;
 }

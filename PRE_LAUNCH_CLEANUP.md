@@ -245,6 +245,17 @@ Small fixes to batch before going live. Non-blocking for feature work.
   - `/subdivisions/[id]/reconciliation/gap-reports/[reportId]` — renders `[Reconciliation > Gap report]` with neither marked terminal.
   - `/subdivisions/[id]/lots/[lotId]` is correctly handled via the explicit special-case branch — extend that pattern to cover the others, or post-loop promote the final pushed crumb to `isLast=true` when the actual last segment was a UUID. Pre-existed before the route-flattening refactor; surfaced during the breadcrumb walk-through.
 
+## From URL-restructure refactor
+
+- **Five sub-components have unused `subdivisionId` props with `void subdivisionId;` no-ops.** All five have access to the URL code via either `useSubdivisionCode()` (4 client components) or an already-plumbed `subdivisionCode` prop (1 server sub-fn). The `subdivisionId` prop is dead weight kept only for caller-contract stability during the URL-rename commit. Cleanup task: remove the prop + update callers (no behavior change, just removes the void-no-op idiom).
+  Files:
+  - `src/app/(dashboard)/subdivisions/[subdivisionCode]/bank-account/bank-account-content.tsx` (`TransactionsTable`)
+  - `src/app/(dashboard)/subdivisions/[subdivisionCode]/lots/[lotId]/lot-ledger-drawer.tsx` (`LedgerEntryDrawer`)
+  - `src/app/(dashboard)/subdivisions/[subdivisionCode]/reconciliation/gap-reports/[reportId]/page.tsx` (`TransactionRow`)
+  - `src/app/(dashboard)/subdivisions/[subdivisionCode]/reconciliation/reconciliation-queue-content.tsx` (`QueueRow` and `EmptyState` — two sites in one file)
+
+- **`computeLevyPaymentStatus` PERF benchmark variance.** Occasional cold-start hits >500ms (e.g. C-3 first run at 592ms, immediate re-test 321ms — same fixture, same query plan). Same-process variance, not a regression. If frequency increases in CI or in real usage telemetry, investigate query-planner cache warmup (try `pg_prewarm` on `lot_ledger_entries`/`levy_notices` indexes) or pursue the M1 cleanup item — denormalise `paid_amount` onto `levy_notices` via an `AFTER INSERT/UPDATE/DELETE` trigger so the function reads precomputed columns instead of aggregating per call.
+
 ## From Prompt 8
 
 - **Audit trail in ledger entry drawer — pagination:** Query capped at 100

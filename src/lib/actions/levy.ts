@@ -9,6 +9,7 @@ import { formatDateLong } from "@/lib/utils";
 import { notifySubdivisionLotOwners } from "@/lib/actions/notifications";
 import { getLotOwners } from "@/lib/actions/lot-ownership";
 import { generateCrn } from "@/lib/reconciliation/bpay-crn";
+import { buildSubdivisionUrl } from "@/lib/subdivision-resolver";
 import { matchKeywordsSchema } from "@/lib/validations/levy";
 import type { LevyNoticeProps } from "@/lib/pdf/types";
 
@@ -687,7 +688,7 @@ export async function createLevyBatch(
     },
   });
 
-  revalidatePath(`/subdivisions/${subdivisionId}/finance`);
+  revalidatePath("/subdivisions/[subdivisionCode]/levies", "page");
 
   return { batchId: batch.id };
 }
@@ -816,7 +817,7 @@ export async function markBatchSent(subdivisionId: string, batchId: string) {
     entity_id: batchId,
   });
 
-  revalidatePath(`/subdivisions/${subdivisionId}/finance`);
+  revalidatePath("/subdivisions/[subdivisionCode]/levies", "page");
 
   return { success: true };
 }
@@ -860,7 +861,7 @@ export async function markLevySent(subdivisionId: string, levyId: string) {
     }
   }
 
-  revalidatePath(`/subdivisions/${subdivisionId}/finance`);
+  revalidatePath("/subdivisions/[subdivisionCode]/levies", "page");
   return { success: true };
 }
 
@@ -913,7 +914,7 @@ export async function cancelBatch(subdivisionId: string, batchId: string) {
     entity_id: batchId,
   });
 
-  revalidatePath(`/subdivisions/${subdivisionId}/finance`);
+  revalidatePath("/subdivisions/[subdivisionCode]/levies", "page");
   return { success: true };
 }
 
@@ -1025,7 +1026,7 @@ export async function regenerateBatch(subdivisionId: string, batchId: string, ne
     after_state: { new_due_date: newDueDate },
   });
 
-  revalidatePath(`/subdivisions/${subdivisionId}/finance`);
+  revalidatePath("/subdivisions/[subdivisionCode]/levies", "page");
   return { success: true };
 }
 
@@ -1067,7 +1068,7 @@ export async function recallBatch(subdivisionId: string, batchId: string) {
     entity_id: batchId,
   });
 
-  revalidatePath(`/subdivisions/${subdivisionId}/finance`);
+  revalidatePath("/subdivisions/[subdivisionCode]/levies", "page");
   return { success: true };
 }
 
@@ -1156,7 +1157,7 @@ export async function markBatchPaid(subdivisionId: string, batchId: string) {
       : null,
   });
 
-  revalidatePath(`/subdivisions/${subdivisionId}/finance`);
+  revalidatePath("/subdivisions/[subdivisionCode]/levies", "page");
   return { success: true };
 }
 
@@ -1324,11 +1325,11 @@ export async function sendBatchEmails(subdivisionId: string, batchId: string) {
       type: "levy_issued",
       title: "New levy notice",
       message: `A levy notice for ${batch?.period_label ?? "this period"} has been issued. Check your levies for details.`,
-      link: `/subdivisions/${subdivisionId}/my-levies`,
+      link: (await buildSubdivisionUrl(subdivisionId, "/my-levies")) ?? "/dashboard",
     });
   }
 
-  revalidatePath(`/subdivisions/${subdivisionId}/finance`);
+  revalidatePath("/subdivisions/[subdivisionCode]/levies", "page");
 
   return { success: true, sentCount };
 }
@@ -1457,6 +1458,6 @@ export async function resendBatchEmails(subdivisionId: string, batchId: string) 
     after_state: { sent_count: sentCount },
   });
 
-  revalidatePath(`/subdivisions/${subdivisionId}/finance`);
+  revalidatePath("/subdivisions/[subdivisionCode]/levies", "page");
   return { success: true, sentCount };
 }

@@ -21,6 +21,7 @@ import { createClient } from "@supabase/supabase-js";
 import { randomUUID } from "crypto";
 import { tryAutoMatch } from "./orchestrator";
 import { generateCrn, validateCrn } from "./bpay-crn";
+import { generateSubdivisionCode } from "@/lib/subdivision-code";
 import { canonicaliseSender } from "./canonical";
 import {
   createBankPayerMapping,
@@ -119,6 +120,7 @@ async function createFixture(): Promise<Fixture> {
       management_company_id: company.id,
       name: companyName,
       plan_number: `PLAN-${runId}`,
+      short_code: generateSubdivisionCode(),
       address: "1 Orch Verify St, Melbourne VIC 3000",
       total_lots: 5,
       created_by: profile.id,

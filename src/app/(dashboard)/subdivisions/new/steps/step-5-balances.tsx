@@ -21,7 +21,7 @@ export function Step5Balances({
   initialData,
 }: {
   subdivisionId: string;
-  onComplete: () => void;
+  onComplete: (redirectUrl: string) => void;
   onBack: () => void;
   initialData?: any[];
 }) {
@@ -68,7 +68,7 @@ export function Step5Balances({
     }
 
     toast.success("Subdivision created successfully");
-    onComplete();
+    onComplete(result.redirectUrl ?? "/dashboard");
   }
 
   return (

@@ -2,6 +2,8 @@
 
 import { requireCompanyRole } from "@/lib/auth";
 import { createServerClient } from "@/lib/supabase";
+import { insertSubdivisionWithCode } from "@/lib/subdivision-code";
+import { buildSubdivisionUrl } from "@/lib/subdivision-resolver";
 import { sendInvitationEmail } from "@/lib/email";
 import {
   step1Schema,
@@ -48,33 +50,33 @@ export async function createSubdivisionStep1(data: Step1Values) {
 
     const supabase = createServerClient();
 
-    const { data: subdivision, error } = await supabase
-      .from("subdivisions")
-      .insert({
-        management_company_id: profile.management_company_id,
-        subdivision_type: v.subdivision_type,
-        plan_number: v.plan_number,
-        management_start_date: v.management_start_date,
-        name: v.name,
-        street_number: v.street_number,
-        street_name: v.street_name,
-        suburb: v.suburb,
-        state: v.state,
-        address,
-        common_property_description: v.common_property_description || null,
-        abn: v.abn || null,
-        tfn: v.tfn || null,
-        total_lots: 0,
-        setup_step: 1,
-        created_by: profile.id,
-      })
-      .select("id")
-      .single();
+    // Allocate a unique short_code app-side with 23505-retry on collision
+    // (alphabet ABCDEFGHJKLMNPQRSTUVWXYZ23456789, 8 chars). The DB UNIQUE
+    // constraint is the source of truth; the helper retries on collision.
+    const insertResult = await insertSubdivisionWithCode(supabase, {
+      management_company_id: profile.management_company_id,
+      subdivision_type: v.subdivision_type,
+      plan_number: v.plan_number,
+      management_start_date: v.management_start_date,
+      name: v.name,
+      street_number: v.street_number,
+      street_name: v.street_name,
+      suburb: v.suburb,
+      state: v.state,
+      address,
+      common_property_description: v.common_property_description || null,
+      abn: v.abn || null,
+      tfn: v.tfn || null,
+      total_lots: 0,
+      setup_step: 1,
+      created_by: profile.id,
+    });
 
-    if (error) {
-      console.error("Step 1 error:", error);
+    if (insertResult.error) {
+      console.error("Step 1 error:", insertResult.error);
       return { error: "Failed to create subdivision" };
     }
+    const subdivision = { id: insertResult.success!.id, short_code: insertResult.success!.short_code };
 
     // Add creator as subdivision member
     await supabase.from("subdivision_members").insert({
@@ -94,7 +96,7 @@ export async function createSubdivisionStep1(data: Step1Values) {
       after_state: { step: 1, name: v.name, plan_number: v.plan_number },
     });
 
-    return { subdivisionId: subdivision.id };
+    return { subdivisionId: subdivision.id, subdivisionCode: subdivision.short_code };
   } catch (err) {
     return { error: err instanceof Error ? err.message : "Unexpected error" };
   }
@@ -507,7 +509,11 @@ export async function completeSubdivisionSetup(subdivisionId: string, data: Step
       },
     });
 
-    return { success: true };
+    // Look up the short_code so the wizard can redirect to the code-shaped
+    // URL (/subdivisions/<short_code>) instead of the now-stale UUID URL.
+    const subdivisionUrl = (await buildSubdivisionUrl(subdivisionId, "")) ?? "/dashboard";
+
+    return { success: true, redirectUrl: subdivisionUrl };
   } catch (err) {
     return { error: err instanceof Error ? err.message : "Unexpected error" };
   }

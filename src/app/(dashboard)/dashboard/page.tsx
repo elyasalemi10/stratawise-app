@@ -74,7 +74,7 @@ export default async function DashboardPage() {
     const [subsResult, lotsResult, leviesResult, paymentsResult] = await Promise.all([
       supabase
         .from("subdivisions")
-        .select("id, name, address, plan_number")
+        .select("id, short_code, name, address, plan_number")
         .in("id", subIds),
       lotIds.length > 0
         ? supabase
@@ -149,7 +149,7 @@ export default async function DashboardPage() {
             const subOwing = subLevies.reduce((s, l) => s + Number(l.amount), 0) - subPayments.reduce((s, p) => s + Number(p.amount), 0);
 
             return (
-              <Link key={sub.id} href={`/subdivisions/${sub.id}/dashboard`} className="block">
+              <Link key={sub.id} href={`/subdivisions/${sub.short_code}`} className="block">
                 <Card className="transition-colors hover:border-primary/30 cursor-pointer">
                   <CardContent className="pt-5">
                     <div className="flex items-start justify-between">
@@ -269,7 +269,7 @@ export default async function DashboardPage() {
           {subdivisions.map((sub) => (
             <Link
               key={sub.id}
-              href={`/subdivisions/${sub.id}/dashboard`}
+              href={`/subdivisions/${sub.short_code}`}
               className="block"
             >
               <Card className="transition-colors hover:border-primary/30 cursor-pointer">

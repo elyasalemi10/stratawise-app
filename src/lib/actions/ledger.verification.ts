@@ -18,6 +18,7 @@
 import { createClient } from "@supabase/supabase-js";
 import { config } from "dotenv";
 import { randomUUID } from "crypto";
+import { generateSubdivisionCode } from "@/lib/subdivision-code";
 
 config({ path: ".env.local" });
 
@@ -91,6 +92,7 @@ async function createFixture(): Promise<Fixture> {
       management_company_id: company.id,
       name: companyName,
       plan_number: `PLAN-${runId}`,
+      short_code: generateSubdivisionCode(),
       address: "1 Ledger Verify St, Melbourne VIC 3000",
       total_lots: 3,
       created_by: profile.id,

@@ -35,6 +35,7 @@ export interface SidebarLot {
 
 export interface SidebarSubdivision {
   id: string;
+  short_code: string;
   name: string;
   address: string;
   plan_number: string;
@@ -82,7 +83,7 @@ export async function getSidebarSubdivisions(): Promise<SidebarSubdivision[]> {
         const sb = createServerClient();
         const { data: subs } = await sb
           .from("subdivisions")
-          .select("id, name, address, plan_number, total_lots, status")
+          .select("id, short_code, name, address, plan_number, total_lots, status")
           .eq("management_company_id", cid)
           .eq("status", "active")
           .order("name");
@@ -141,7 +142,7 @@ export async function getSidebarSubdivisions(): Promise<SidebarSubdivision[]> {
   const [subsResult, lotsResult] = await Promise.all([
     supabase
       .from("subdivisions")
-      .select("id, name, address, plan_number, total_lots, status")
+      .select("id, short_code, name, address, plan_number, total_lots, status")
       .in("id", ids)
       .eq("status", "active")
       .order("name"),
@@ -330,7 +331,7 @@ export async function getCompanySubdivisionSummary() {
 
   const { data: subdivisions, count } = await supabase
     .from("subdivisions")
-    .select("id, name, plan_number, address, total_lots, status, created_at", { count: "exact" })
+    .select("id, short_code, name, plan_number, address, total_lots, status, created_at", { count: "exact" })
     .eq("management_company_id", profile.management_company_id)
     .eq("status", "active")
     .order("name");

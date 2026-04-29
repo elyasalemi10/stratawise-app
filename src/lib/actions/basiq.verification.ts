@@ -45,6 +45,7 @@ import {
   type BasiqApiClient,
 } from "@/lib/basiq/client";
 import { verifyBasiqWebhookSignature } from "@/lib/basiq/webhook-signature";
+import { generateSubdivisionCode } from "@/lib/subdivision-code";
 import type {
   BasiqAccountApi,
   BasiqConnectionApi,
@@ -239,6 +240,7 @@ async function createFixture(): Promise<Fixture> {
       management_company_id: company.id,
       name: companyName,
       plan_number: `PLAN-${runId}`,
+      short_code: generateSubdivisionCode(),
       address: "1 Basiq Verify St, Melbourne VIC 3000",
       total_lots: 1,
       created_by: profile.id,

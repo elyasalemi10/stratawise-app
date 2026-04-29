@@ -19,6 +19,7 @@
 // ============================================================================
 
 import { createServerClient } from "@/lib/supabase";
+import { buildSubdivisionUrl } from "@/lib/subdivision-resolver";
 import { tryAutoMatch } from "@/lib/reconciliation/orchestrator";
 import {
   BasiqApiError,
@@ -329,7 +330,7 @@ export async function sendPendingReauthNotificationsJob(): Promise<{
       .single();
     if (!rep || !sub) continue;
 
-    const reauthUrl = `${process.env.NEXT_PUBLIC_APP_URL ?? ""}/subdivisions/${conn.subdivision_id}/bank-account`;
+    const reauthUrl = `${process.env.NEXT_PUBLIC_APP_URL ?? ""}${(await buildSubdivisionUrl(conn.subdivision_id, "/bank-account")) ?? ""}`;
 
     await sendBasiqReauthReminderEmail({
       to: (rep as { email: string }).email,
@@ -410,7 +411,7 @@ export async function sweepExpiredConnectionsJob(): Promise<{
         .eq("id", row.subdivision_id)
         .single();
       if (rep && sub) {
-        const reauthUrl = `${process.env.NEXT_PUBLIC_APP_URL ?? ""}/subdivisions/${row.subdivision_id}/bank-account`;
+        const reauthUrl = `${process.env.NEXT_PUBLIC_APP_URL ?? ""}${(await buildSubdivisionUrl(row.subdivision_id, "/bank-account")) ?? ""}`;
         await sendBasiqConsentExpiredEmail({
           to: (rep as { email: string }).email,
           subdivisionName: (sub as { name: string }).name,

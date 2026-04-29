@@ -6,6 +6,7 @@ import {
 } from "@/lib/actions/basiq";
 import { verifyStateToken } from "@/lib/basiq/state";
 import { createServerClient } from "@/lib/supabase";
+import { buildSubdivisionUrl } from "@/lib/subdivision-resolver";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -67,7 +68,7 @@ export async function GET(req: Request): Promise<Response> {
     const target =
       returnTo ??
       (priorConn
-        ? `/subdivisions/${priorConn.subdivision_id}/bank-account`
+        ? ((await buildSubdivisionUrl(priorConn.subdivision_id, "/bank-account")) ?? "/")
         : "/");
     const sep = target.includes("?") ? "&" : "?";
     return NextResponse.redirect(

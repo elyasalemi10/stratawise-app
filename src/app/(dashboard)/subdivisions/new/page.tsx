@@ -136,7 +136,7 @@ function WizardContent() {
               {currentStep === 6 && subdivisionId && (
                 <Step5Balances
                   subdivisionId={subdivisionId}
-                  onComplete={() => router.push(`/subdivisions/${subdivisionId}/dashboard`)}
+                  onComplete={(url) => router.push(url)}
                   onBack={() => goToStep(5)}
                   initialData={wizardData?.bankAccounts}
                 />

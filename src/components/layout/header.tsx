@@ -31,6 +31,13 @@ function isUUID(s: string): boolean {
   return /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(s);
 }
 
+// Subdivision URL segments are now 8-char Crockford-32 codes (post-rename),
+// not UUIDs. Same role in the breadcrumb logic — distinguish a real
+// subdivision context from a literal route token like "new".
+function isSubdivisionCode(s: string): boolean {
+  return /^[ABCDEFGHJKLMNPQRSTUVWXYZ23456789]{8}$/.test(s);
+}
+
 interface Crumb {
   label: string;
   href: string | null;
@@ -40,15 +47,15 @@ interface Crumb {
 function buildBreadcrumbs(pathname: string): Crumb[] {
   const segments = pathname.split("/").filter(Boolean);
 
-  // Inside a subdivision (/subdivisions/[uuid]/...)
+  // Inside a subdivision (/subdivisions/[code]/...)
   if (
     segments.length >= 3 &&
     segments[0] === "subdivisions" &&
-    isUUID(segments[1])
+    isSubdivisionCode(segments[1])
   ) {
-    const subdivisionId = segments[1];
+    const subdivisionCode = segments[1];
     const subPages = segments.slice(2);
-    const base = `/subdivisions/${subdivisionId}`;
+    const base = `/subdivisions/${subdivisionCode}`;
 
     // Special case: /lots/[lotId] — show "Lots & owners > Owner details"
     if (subPages.length === 2 && subPages[0] === "lots" && isUUID(subPages[1])) {

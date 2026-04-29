@@ -191,7 +191,7 @@ export async function createBudget(
     after_state: { financial_year: data.financial_year, fund_type: data.fund_type, total_amount: totalAmount },
   });
 
-  revalidatePath(`/subdivisions/${subdivisionId}/manage`);
+  revalidatePath("/subdivisions/[subdivisionCode]/manage", "page");
 
   return { success: true, budgetId: budget.id };
 }
@@ -217,7 +217,7 @@ export async function approveBudget(subdivisionId: string, budgetId: string) {
     entity_id: budgetId,
   });
 
-  revalidatePath(`/subdivisions/${subdivisionId}/manage`);
+  revalidatePath("/subdivisions/[subdivisionCode]/manage", "page");
 
   return { success: true };
 }
