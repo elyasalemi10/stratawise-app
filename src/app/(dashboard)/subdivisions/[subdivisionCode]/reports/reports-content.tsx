@@ -84,6 +84,8 @@ export function ReportsContent({
   const [certBillingCycle, setCertBillingCycle] = useState("quarterly");
   const [certFeesPaidUpTo, setCertFeesPaidUpTo] = useState("n/a");
   const [certUnpaidFees, setCertUnpaidFees] = useState("0.00");
+  const [certLastAgm, setCertLastAgm] = useState<Date | undefined>(undefined);
+  const [certLastAgmOpen, setCertLastAgmOpen] = useState(false);
   const [prefilling, setPrefilling] = useState(false);
   const [generating, setGenerating] = useState(false);
   const [pdfUrl, setPdfUrl] = useState<string | null>(null);
@@ -100,6 +102,7 @@ export function ReportsContent({
         setCertBillingCycle(data.billingCycle);
         setCertFeesPaidUpTo(data.feesPaidUpTo);
         setCertUnpaidFees(Number(data.unpaidFeesTotal).toFixed(2));
+        setCertLastAgm(data.lastAgmDate ? new Date(data.lastAgmDate) : undefined);
       })
       .finally(() => { if (!cancelled) setPrefilling(false); });
     return () => { cancelled = true; };
@@ -187,6 +190,7 @@ export function ReportsContent({
           certData.serviceAgreements = certServices;
           certData.noticesOrders = certNotices;
           certData.legalProceedings = certLegal;
+          certData.lastAgmDate = certLastAgm ? format(certLastAgm, "yyyy-MM-dd") : "";
           // Proxy logo and signature for client-side PDF
           const certLogo = certData.logoUrl ? await getLogoDataUrl() : null;
           let certSig: string | null = null;
@@ -348,7 +352,10 @@ export function ReportsContent({
                 </div>
                 <div className="space-y-1.5">
                   <Label className="text-xs">8. Total funds held</Label>
-                  <Input value={certFunds} onChange={(e) => setCertFunds(e.target.value)} placeholder="e.g. Admin: $12,450, Capital: $8,200" className="h-8 text-sm" />
+                  <div className="relative">
+                    <span className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-sm text-muted-foreground">$</span>
+                    <Input value={certFunds} onChange={(e) => setCertFunds(e.target.value)} placeholder="20,650.00" className="h-8 text-sm pl-6" />
+                  </div>
                 </div>
                 <div className="space-y-1.5">
                   <Label className="text-xs">9. Liabilities</Label>
@@ -369,6 +376,29 @@ export function ReportsContent({
                 <div className="space-y-1.5 sm:col-span-2">
                   <Label className="text-xs">13. Legal proceedings</Label>
                   <Input value={certLegal} onChange={(e) => setCertLegal(e.target.value)} className="h-8 text-sm" />
+                </div>
+                <div className="space-y-1.5">
+                  <Label className="text-xs">16. Last AGM date</Label>
+                  <Popover open={certLastAgmOpen} onOpenChange={setCertLastAgmOpen}>
+                    <PopoverTrigger className="flex h-8 w-full items-center gap-2 rounded-md border border-border bg-background px-3 text-sm cursor-pointer">
+                      <CalendarIcon className="h-3.5 w-3.5 text-muted-foreground" />
+                      {certLastAgm ? format(certLastAgm, "d MMM yyyy") : <span className="text-muted-foreground">Select date or leave blank</span>}
+                    </PopoverTrigger>
+                    <PopoverContent className="w-auto p-2" align="start">
+                      <Calendar mode="single" selected={certLastAgm} onSelect={(d) => { setCertLastAgm(d); setCertLastAgmOpen(false); }} />
+                      {certLastAgm && (
+                        <div className="border-t border-border pt-2 mt-2">
+                          <button
+                            type="button"
+                            onClick={() => { setCertLastAgm(undefined); setCertLastAgmOpen(false); }}
+                            className="w-full text-xs text-muted-foreground hover:text-foreground cursor-pointer"
+                          >
+                            Clear date
+                          </button>
+                        </div>
+                      )}
+                    </PopoverContent>
+                  </Popover>
                 </div>
               </div>
             )}

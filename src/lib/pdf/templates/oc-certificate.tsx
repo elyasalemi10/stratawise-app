@@ -197,7 +197,7 @@ export function OCCertificate(props: OCCertificateProps) {
 
           <View style={s.item}>
             <Text style={s.itemNumber}>3. Unpaid fees</Text>
-            <Text style={s.itemText}>The total of any unpaid fees or charges for the lot is: {unpaidFeesTotal > 0 ? fmt(unpaidFeesTotal) : "Nil"}</Text>
+            <Text style={s.itemText}>The total of any unpaid fees or charges for the lot is: {fmt(unpaidFeesTotal)}</Text>
           </View>
 
           <View style={s.item}>
@@ -242,7 +242,7 @@ export function OCCertificate(props: OCCertificateProps) {
 
           <View style={s.item}>
             <Text style={s.itemNumber}>8. Total funds held</Text>
-            <Text style={s.itemText}>{totalFundsHeld || "n/a"}</Text>
+            <Text style={s.itemText}>{totalFundsHeld && totalFundsHeld.trim() && totalFundsHeld !== "n/a" ? `$${totalFundsHeld.replace(/^\$/, "")}` : "n/a"}</Text>
           </View>
 
           <View style={s.item}>
