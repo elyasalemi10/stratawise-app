@@ -74,8 +74,18 @@ export function AddManualTransactionDialog({
   const onSubmit = async (data: FormInput) => {
     setIsSubmitting(true);
     try {
-      await addManualBankTransaction(data as FormOutput);
-      toast.success("Transaction added successfully");
+      const result = await addManualBankTransaction(data as FormOutput);
+      if (result.error) {
+        toast.error(result.error);
+        return;
+      }
+      if (result.success?.duplicateSuspected) {
+        toast.warning(
+          "Transaction added — flagged as a possible duplicate of an existing transaction. Review in the reconciliation queue.",
+        );
+      } else {
+        toast.success("Transaction added successfully");
+      }
       form.reset();
       onOpenChange(false);
       onSuccess();

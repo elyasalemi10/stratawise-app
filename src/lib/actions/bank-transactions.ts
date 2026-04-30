@@ -15,6 +15,10 @@ import {
 } from "@/lib/validations/bank-transactions";
 import { detectSingleLevyReference } from "@/lib/reconciliation/reference";
 import { tryAutoMatch } from "@/lib/reconciliation/orchestrator";
+import {
+  detectDuplicate,
+  markDuplicate,
+} from "@/lib/reconciliation/duplicate-detection";
 
 export async function getBankAccountsForSubdivision(
   subdivisionId: string
@@ -151,15 +155,19 @@ export async function importBankTransactions(
 
   const summary: ImportSummary = {
     imported: 0,
-    duplicates: 0,
+    exact_duplicates_dropped: 0,
+    cross_source_duplicates_flagged: 0,
     matched: 0,
     errors: [],
   };
 
-  // Per-row: insert the bank_transaction; then run the auto-match orchestrator
-  // (Strategies 1-6 + fuzzy hint surfacing). Auto-match failures are absorbed —
-  // the row still imports as 'unmatched'; the orchestrator records the attempt
-  // and any diagnostic audits (stale_reference_detected etc.) internally.
+  // Per-row flow (PP5-A):
+  //   1. Exact-key dedup → silently drop (intra-batch + prior-import).
+  //      Increments summary.exact_duplicates_dropped.
+  //   2. Insert the row.
+  //   3. Cross-source detector → if flagged, markDuplicate + skip
+  //      tryAutoMatch. Increments summary.cross_source_duplicates_flagged.
+  //   4. Otherwise run the orchestrator on credits.
   //
   // PP4-C: bulk import does not propose payer mappings — passing
   // remember_payer=true would create dozens of mappings per import without
@@ -176,7 +184,7 @@ export async function importBankTransactions(
   for (const row of parsed.data.rows) {
     const key = `${row.transaction_date}|${row.amount.toFixed(2)}|${row.description.trim()}`;
     if (existingKeys.has(key)) {
-      summary.duplicates += 1;
+      summary.exact_duplicates_dropped += 1;
       continue;
     }
     existingKeys.add(key);
@@ -200,6 +208,51 @@ export async function importBankTransactions(
       continue;
     }
     summary.imported += 1;
+
+    // PP5-A: cross-source detection. Runs on every successfully-inserted
+    // row (both credits and debits — debits never reach tryAutoMatch
+    // anyway, but a flagged debit duplicate still gets the badge).
+    const detection = await detectDuplicate(
+      {
+        id: inserted.id,
+        bank_account_id: account.id,
+        transaction_date: row.transaction_date,
+        amount: row.amount,
+        description: row.description,
+        source: "csv",
+      },
+      supabase,
+    );
+    if (detection.flagged) {
+      const marked = await markDuplicate({
+        bank_transaction_id: inserted.id,
+        subdivision_id: subdivisionId,
+        duplicate_of: detection.duplicate_of,
+        metadata: detection.metadata,
+        performedBy: profile.id,
+        supabase,
+      });
+      if (marked.ok) {
+        summary.cross_source_duplicates_flagged += 1;
+      } else {
+        // PP5-A ratification: don't compound a DB issue with allocation
+        // work. Row stays unmatched + unmarked; surface the error so the
+        // manager can investigate (also logged for Sentry).
+        console.error(
+          `[duplicate-detection] markDuplicate failed`,
+          {
+            bank_transaction_id: inserted.id,
+            subdivision_id: subdivisionId,
+            duplicate_of: detection.duplicate_of,
+            error: marked.error,
+          },
+        );
+        summary.errors.push(
+          `${row.transaction_date} ${row.description}: detected as duplicate but mark failed (${marked.error})`,
+        );
+      }
+      continue; // skip tryAutoMatch on detection.flagged (regardless of mark outcome)
+    }
 
     // Orchestrator runs on credit-direction rows only; debits never match.
     if (row.amount <= 0) continue;
@@ -233,7 +286,8 @@ export async function importBankTransactions(
       bank_account_id: account.id,
       fund_type: account.fund_type,
       imported: summary.imported,
-      duplicates: summary.duplicates,
+      exact_duplicates_dropped: summary.exact_duplicates_dropped,
+      cross_source_duplicates_flagged: summary.cross_source_duplicates_flagged,
       matched: summary.matched,
       errors: summary.errors.length,
     },

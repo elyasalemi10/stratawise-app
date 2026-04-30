@@ -22,6 +22,10 @@ import { createServerClient } from "@/lib/supabase";
 import { buildSubdivisionUrl } from "@/lib/subdivision-resolver";
 import { tryAutoMatch } from "@/lib/reconciliation/orchestrator";
 import {
+  detectDuplicate,
+  markDuplicate,
+} from "@/lib/reconciliation/duplicate-detection";
+import {
   BasiqApiError,
   getBasiqApiClient,
 } from "@/lib/basiq/client";
@@ -63,6 +67,7 @@ export async function pollConnectionAsSystem(
       inserted: 0,
       duplicates: 0,
       autoMatched: 0,
+      crossSourceDuplicatesFlagged: 0,
       error: "connection not found",
     };
   }
@@ -77,6 +82,7 @@ export async function pollConnectionAsSystem(
       inserted: 0,
       duplicates: 0,
       autoMatched: 0,
+      crossSourceDuplicatesFlagged: 0,
       error: "consent_required",
     };
   }
@@ -90,6 +96,7 @@ export async function pollConnectionAsSystem(
   let inserted = 0;
   let duplicates = 0;
   let autoMatched = 0;
+  let crossSourceDuplicatesFlagged = 0;
 
   try {
     const sinceIso = conn.last_sync_at ?? conn.consent_expires_at ?? undefined;
@@ -139,6 +146,50 @@ export async function pollConnectionAsSystem(
       }
       inserted += 1;
 
+      // PP5-A: cross-source duplicate detection. Runs on every freshly
+      // inserted Basiq row before the orchestrator. If the detector finds
+      // an existing manual/CSV/Basiq row (different basiq_transaction_id —
+      // RPC-level idempotency already prevented same-Basiq-id reinserts)
+      // that hash-matches within the +/-2-day window, the row is flagged
+      // and tryAutoMatch is skipped.
+      const detection = await detectDuplicate(
+        {
+          id: result.bank_transaction_id,
+          bank_account_id: bankAccountId,
+          transaction_date: date,
+          amount: signed,
+          description: parsed.cleaned_description,
+          source: "basiq",
+        },
+        supabase,
+      );
+      if (detection.flagged) {
+        const marked = await markDuplicate({
+          bank_transaction_id: result.bank_transaction_id,
+          subdivision_id: conn.subdivision_id,
+          duplicate_of: detection.duplicate_of,
+          metadata: detection.metadata,
+          performedBy,
+          supabase,
+        });
+        if (marked.ok) {
+          crossSourceDuplicatesFlagged += 1;
+        } else {
+          // PP5-A ratification: row stays unmatched + unmarked. Logged for
+          // Sentry; manager investigates via audit gap.
+          console.error(
+            `[duplicate-detection] markDuplicate failed`,
+            {
+              bank_transaction_id: result.bank_transaction_id,
+              subdivision_id: conn.subdivision_id,
+              duplicate_of: detection.duplicate_of,
+              error: marked.error,
+            },
+          );
+        }
+        continue; // skip tryAutoMatch on detection.flagged regardless of mark outcome
+      }
+
       // Run the orchestrator on every credit-direction Basiq insert,
       // not just those with a parsed levy reference — Strategy 2 (BPAY
       // CRN) reads the description independently of the parser's
@@ -177,6 +228,7 @@ export async function pollConnectionAsSystem(
       inserted,
       duplicates,
       autoMatched,
+      crossSourceDuplicatesFlagged,
       error: null,
     };
   } catch (e) {
@@ -196,6 +248,7 @@ export async function pollConnectionAsSystem(
         inserted,
         duplicates,
         autoMatched,
+        crossSourceDuplicatesFlagged,
         error: "consent_required",
       };
     }
@@ -212,6 +265,7 @@ export async function pollConnectionAsSystem(
       inserted,
       duplicates,
       autoMatched,
+      crossSourceDuplicatesFlagged,
       error: err.message,
     };
   }

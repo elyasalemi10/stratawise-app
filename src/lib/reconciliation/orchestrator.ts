@@ -118,6 +118,12 @@ export interface AutoMatchOutcome {
   partial: boolean;
   allocatedAmount: number;
   warning: string | null;
+  /** PP5-A: set true when the orchestrator early-outs because the row's
+   *  duplicate_status is 'suspected' or 'confirmed'. No strategies were
+   *  attempted; no orchestrator-summary audit was written (the
+   *  bank_transaction.duplicate_detected audit from the detector is the
+   *  audit-of-record). Callers should NOT treat this as a generic failure. */
+  duplicate_skipped?: boolean;
 }
 
 export interface StrategyAttempt {
@@ -146,21 +152,51 @@ export async function tryAutoMatch(
 ): Promise<AutoMatchOutcome> {
   const supabase = createServerClient();
 
-  // Augment ctx from bank_accounts (fund + biller code).
-  const { data: bankAccount } = await supabase
-    .from("bank_accounts")
-    .select("fund_type, bpay_biller_code")
-    .eq("id", input.bankAccountId)
-    .single();
+  // PP5-A: combined fetch — bank_account derivatives + this row's
+  // duplicate_status. Same query count as before (one round-trip);
+  // we just select more columns. The Supabase JS client returns the
+  // joined bank_accounts as a nested object on a single (!inner) join.
+  const { data: rowRaw } = await supabase
+    .from("bank_transactions")
+    .select(
+      "duplicate_status, bank_accounts!inner(fund_type, bpay_biller_code)",
+    )
+    .eq("id", input.bankTransactionId)
+    .maybeSingle();
 
-  if (!bankAccount) {
-    return failureOutcome(`bank_account ${input.bankAccountId} not found`);
+  if (!rowRaw) {
+    return failureOutcome(`bank_transaction ${input.bankTransactionId} not found`);
+  }
+
+  const row = rowRaw as unknown as {
+    duplicate_status: "suspected" | "confirmed" | "rejected" | null;
+    bank_accounts: { fund_type: FundType; bpay_biller_code: string | null };
+  };
+
+  // PP5-A: early-out before strategies if this row is a suspected or
+  // confirmed duplicate. No strategies attempted; no orchestrator-summary
+  // audit written (the detector's bank_transaction.duplicate_detected
+  // audit is the audit-of-record). The 'rejected' state proceeds normally
+  // — manager confirmed-not-duplicate and explicitly wants matching to run.
+  if (
+    row.duplicate_status === "suspected" ||
+    row.duplicate_status === "confirmed"
+  ) {
+    return {
+      matched: false,
+      strategy: null,
+      reference: null,
+      partial: false,
+      allocatedAmount: 0,
+      warning: `Duplicate ${row.duplicate_status}; auto-match skipped`,
+      duplicate_skipped: true,
+    };
   }
 
   const ctx: AutoMatchContext = {
     ...input,
-    bankAccountFundType: bankAccount.fund_type as FundType,
-    bpayBillerCode: bankAccount.bpay_biller_code ?? null,
+    bankAccountFundType: row.bank_accounts.fund_type,
+    bpayBillerCode: row.bank_accounts.bpay_biller_code ?? null,
   };
 
   // Run strategies in order; stop at first match. fuzzy_hint never matches

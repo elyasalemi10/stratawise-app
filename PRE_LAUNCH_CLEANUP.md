@@ -270,3 +270,51 @@ Small fixes to batch before going live. Non-blocking for feature work.
   is inconsistent with the rest of the UI. Polish path: replace with a
   shadcn-styled Collapsible or a Chevron-icon toggle button for visual
   consistency.
+
+## From Prompt 5 (PP5-A — Bank-side duplicate detection)
+
+- **DD-15 Basiq e2e mock caveat.** The duplicate-detection verification
+  scenario DD-15 tests detection on a `source='basiq'` bank_transactions row
+  but does **not** drive the full `pollConnectionAsSystem` pipeline (which
+  would require mocking the Basiq API client). The integration line in
+  `pollConnectionAsSystem` is identical in shape to what DD-15 exercises
+  (insert -> detectDuplicate -> markDuplicate -> continue). Pre-launch:
+  consider an additional mock-Basiq-client scaffold so the full poll path is
+  e2e-tested end-to-end.
+
+- **Detection race silent-miss.** Two transactions inserted in concurrent
+  uncommitted DB transactions can both be saved as originals (each
+  detector sees the other as not-yet-committed). Low frequency in
+  production (Basiq polls 1/min, CSV is human-driven). If real-world telemetry
+  shows missed cross-source duplicates, add a periodic sweeper that re-runs
+  detection over rows from the last N hours. Trade-off accepted in PP5-A
+  planning — see CONTEXT.md PP5 §Duplicates ratification (a).
+
+- **Voided-parent freeze.** When the older row a `bank_transactions.duplicate_of`
+  points to gets manually voided (`is_voided=true`) or excluded
+  (`match_status='excluded'`), the dependent newer row's `duplicate_status`
+  stays `'suspected'` — no auto-mutation. The PP5-D review dialog should
+  display a warning banner indicating the parent's state (voided / excluded /
+  rejected) at the top of the dialog so the manager has full context before
+  acting. Tracked separately because the dialog work is PP5-D scope.
+
+- **`confirmDuplicate` / `rejectDuplicate` non-idempotent at the server.**
+  Both gate on `duplicate_status === 'suspected'` and return
+  `errorCode='NOT_SUSPECTED'` if called on a row whose status has already
+  moved. The UI must debounce double-clicks; the server is intentionally
+  not idempotent so a stale tab doesn't accidentally toggle a manager's
+  earlier decision. Pre-launch QA: confirm the dialog implementations
+  disable submit buttons immediately on click and surface a clear error if
+  a 2nd call sneaks through.
+
+- **PP5-A schema-delta scratch file.** `_prompt5_a_schema_delta.sql` was
+  applied via Supabase SQL Editor; the file is gitignored per repo
+  convention. PRE_LAUNCH_CLEANUP step before launch: confirm the
+  production database state matches the scratch file (probe with the same
+  queries listed in the file's "PROBE FIRST" comment block).
+
+- **`bank_transaction.csv_imported` audit forensics.** Pre-PP5-A audit rows
+  have `after_state.duplicates: <number>`; post-PP5-A rows have
+  `after_state.exact_duplicates_dropped` + `after_state.cross_source_duplicates_flagged`.
+  Forensics queries that span the deploy boundary must check both shapes.
+  Document in any analytics dashboards that read this audit's after_state.

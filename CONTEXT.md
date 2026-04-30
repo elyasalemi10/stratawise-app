@@ -194,6 +194,111 @@ blocked downstream by the `allocations.min(1)` schema constraint, making an
 empty-allocation re-call impossible too). PP4-C split the contract so each
 server action owns a single concern.
 
+### 4.7 Bank-side duplicate detection (PP5-A)
+
+Detection runs synchronously after every successful insert into
+`bank_transactions` from the three sources (CSV import, manual entry,
+Basiq poll). Helper lives at
+`src/lib/reconciliation/duplicate-detection.ts` — pure functions, no
+`"use server"`. Callers invoke `detectDuplicate` then, on flagged=true,
+`markDuplicate`, then **skip** `tryAutoMatch`. The orchestrator also
+self-defends — it reads `duplicate_status` in its combined fetch and
+early-outs for `'suspected'` and `'confirmed'` rows, returning
+`duplicate_skipped: true` and writing **no** orchestrator-summary
+audit. The `bank_transaction.duplicate_detected` audit from the detector
+is the audit-of-record.
+
+**Detection scope is per `bank_account_id`.** Cross-account (admin x
+capital_works in the same subdivision) and cross-subdivision matches are
+intentionally out of scope — different accounts cannot legitimately
+receive the same payment, and a hash-equal cross-account match is far more
+likely a coincidence than a duplicate.
+
+**Detection key**: hash equality on the normalised description, equal
+amount, same bank_account, within +/-2 days. Voided rows
+(`is_voided=true`), excluded rows (`match_status='excluded'`), and
+already-suspected rows (`duplicate_of` non-null) are excluded from the
+candidate pool — voided/excluded can't anchor a duplicate; the
+`duplicate_of` filter is **chain prevention** so a third-arrival doesn't
+re-anchor on a row that already points elsewhere.
+
+**Description normaliser**: `normaliseDescription` uppercases, strips MSM
+reference tokens (`LEV-`, `RCP-`, `PAY-`, `MSM-{PREFIX}-{YYYY}-{NNNN}`),
+strips non-word characters, collapses whitespace, trims. Reference
+tokens are stripped because two sources may format them differently
+("LEV-12" vs "Ref:LEV-12" vs "lev12") — the normaliser collapses these
+so the hash is source-agnostic. **Empty-after-normalise descriptions DO
+flag** — two amount-equal rows on the same day whose descriptions
+normalise to "" hash-collide and the detector flags them. Documented
+behaviour; recovery path is fast (manager rejects via the review action).
+
+**`description_hash`**: SHA-256 truncated to **16 hex chars (64 bits)**.
+Stored in `duplicate_metadata` for forensics. Collision risk in a single
+bank_account ±2-day candidate pool is ~10^-19 — negligible. The hash is
+not the storage key (the detector recomputes both sides in memory at
+detection time); the stored hash exists so support can grep `audit_log`
+metadata for forensic recovery.
+
+**`duplicate_status` × `match_status` are orthogonal.** `confirmDuplicate`
+moves status to `'confirmed'` but does **not** touch `match_status`.
+Queue queries that should hide confirmed duplicates filter
+`WHERE duplicate_status IS DISTINCT FROM 'confirmed'`. Future authors:
+do **not** collapse this back to "confirmed-duplicate sets
+match_status='excluded'" — the chk_bt_excluded_reason constraint
+requires `excluded_reason`, and overloading `excluded` with two distinct
+semantic flavours destroys forensics.
+
+**Detection runs on debits too.** The orchestrator-skip rule is
+credits-only (orchestrator already early-outs on `amount <= 0`), but the
+detection rule is direction-agnostic — flagged debit duplicates (e.g. a
+bank fee imported twice) get the badge for manager review even though
+auto-match was never going to run.
+
+**markDuplicate failure handling.** If the UPDATE or audit INSERT inside
+`markDuplicate` fails, the row stays `unmatched + unmarked` in the DB.
+Callers (CSV import, manual entry, Basiq poll) **still skip
+`tryAutoMatch`** in this case — don't compound a DB issue with allocation
+work. The failure is logged via `console.error` with
+`{ bank_transaction_id, subdivision_id, duplicate_of, error }` for
+Sentry. Manager investigates via the audit-gap or the Sentry alert; the
+row will reappear in the next detection run if a re-trigger path is
+introduced.
+
+**Backfill not in PP5-A.** Pre-existing rows have `duplicate_status=NULL`
+and are never retroactively scanned. New rows post-deploy go through the
+detector. PRE_LAUNCH_CLEANUP records the option of a one-shot CLI
+sweeper if a real-world need emerges.
+
+**`bank_transaction.csv_imported` audit shape change.** The old
+`after_state.duplicates` key is gone; new keys are
+`after_state.exact_duplicates_dropped` and
+`after_state.cross_source_duplicates_flagged`. Forensics queries that
+look for `after_state->>'duplicates'` will not find post-PP5-A rows.
+audit_log is append-only so old rows still carry the old shape — query
+both for cross-period forensics.
+
+**Per-`ImportSummary` field semantics**:
+- `exact_duplicates_dropped`: silently dropped before insert via the
+  exact-key set `(transaction_date|amount|description-trimmed)`. Catches
+  intra-batch (same CSV uploads the row twice) **and** prior-import
+  (the row was already in the DB from an earlier import). Soft-renamed
+  from `duplicates` so the dual nature is explicit.
+- `cross_source_duplicates_flagged`: row was inserted, then flagged by
+  the bank-side detector. Distinct from `exact_duplicates_dropped`;
+  these rows persist in the DB with `duplicate_status='suspected'` for
+  manager review.
+
+**Manager review actions** (`confirmDuplicate`, `rejectDuplicate`):
+- Both gate on `duplicate_status === 'suspected'` and return
+  `errorCode='NOT_SUSPECTED'` if called on a non-suspected row. Action
+  is **not idempotent at the server** — the UI must debounce.
+- `confirmDuplicate` blocks with `errorCode='MATCH_ACTIVE'` if the row
+  has `match_status IN ('auto_matched','manually_matched')` or
+  `matched_total > 0`. Manager must undo the match first.
+- `rejectDuplicate` runs `tryAutoMatch` retroactively (Q3 resolution).
+  Returns `matchOutcome` so the UI can toast match-vs-no-match.
+- Both accept optional `notes` written to `audit_log.metadata`.
+
 ---
 
 ## 5. Key invariants

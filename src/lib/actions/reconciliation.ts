@@ -8,6 +8,10 @@ import { tryAutoMatch } from "@/lib/reconciliation/orchestrator";
 import { detectSingleLevyReference } from "@/lib/reconciliation/reference";
 import { canonicaliseSender } from "@/lib/reconciliation/canonical";
 import {
+  detectDuplicate,
+  markDuplicate,
+} from "@/lib/reconciliation/duplicate-detection";
+import {
   createBankPayerMapping,
   resolveCollision,
   detectRepeatedManualMatch,
@@ -22,6 +26,7 @@ import {
   addManualBankTransactionSchema,
   depositUndepositedFundsSchema,
   disableMappingSchema,
+  duplicateReviewSchema,
   excludeTransactionSchema,
   mappingActionSchema,
   recordCashReceiptSchema,
@@ -36,6 +41,7 @@ import {
   type AddManualBankTransactionInput,
   type BankTransactionDetail,
   type DepositUndepositedFundsInput,
+  type DuplicateReviewInput,
   type ExcludeTransactionInput,
   type MatchStatus,
   type ReconcileTransactionInput,
@@ -905,7 +911,17 @@ export async function getSubdivisionLotsForAllocation(
 
 export async function addManualBankTransaction(
   input: AddManualBankTransactionInput,
-): Promise<{ success?: { bankTransactionId: string; autoMatched: boolean; matchedRef: string | null }; error?: string }> {
+): Promise<{
+  success?: {
+    bankTransactionId: string;
+    autoMatched: boolean;
+    matchedRef: string | null;
+    /** PP5-A: set when the bank-side detector flagged this row as a
+     *  suspected cross-source duplicate. Auto-match was skipped. */
+    duplicateSuspected: boolean;
+  };
+  error?: string;
+}> {
   const parsed = addManualBankTransactionSchema.safeParse(input);
   if (!parsed.success) return { error: formatIssues(parsed.error.issues) };
 
@@ -960,9 +976,51 @@ export async function addManualBankTransaction(
     },
   });
 
+  // PP5-A: cross-source duplicate detection. Runs before tryAutoMatch so a
+  // flagged row never gets allocated.
+  const detection = await detectDuplicate(
+    {
+      id: inserted.id,
+      bank_account_id: account.id,
+      transaction_date: parsed.data.transaction_date,
+      amount: signedAmount,
+      description: descriptionWithRef,
+      source: "manual",
+    },
+    supabase,
+  );
+  let duplicateSuspected = false;
+  if (detection.flagged) {
+    const marked = await markDuplicate({
+      bank_transaction_id: inserted.id,
+      subdivision_id: parsed.data.subdivision_id,
+      duplicate_of: detection.duplicate_of,
+      metadata: detection.metadata,
+      performedBy: profile.id,
+      supabase,
+    });
+    if (marked.ok) {
+      duplicateSuspected = true;
+    } else {
+      // PP5-A ratification: row stays unmatched + unmarked; UI does NOT
+      // claim duplicate (DB doesn't reflect it). Logged for Sentry.
+      console.error(
+        `[duplicate-detection] markDuplicate failed`,
+        {
+          bank_transaction_id: inserted.id,
+          subdivision_id: parsed.data.subdivision_id,
+          duplicate_of: detection.duplicate_of,
+          error: marked.error,
+        },
+      );
+    }
+  }
+
   let autoMatched = false;
   let matchedRef: string | null = null;
-  if (signedAmount > 0) {
+  // PP5-A ratification: skip tryAutoMatch when detection fired, regardless
+  // of mark outcome. Don't compound a DB issue with allocation work.
+  if (!detection.flagged && signedAmount > 0) {
     const result = await tryAutoMatch({
       bankTransactionId: inserted.id,
       subdivisionId: parsed.data.subdivision_id,
@@ -979,7 +1037,224 @@ export async function addManualBankTransaction(
   await revalidateSidebarForSubdivision(parsed.data.subdivision_id);
   revalidatePath("/subdivisions/[subdivisionCode]/reconciliation", "page");
   revalidatePath("/subdivisions/[subdivisionCode]/bank-account", "page");
-  return { success: { bankTransactionId: inserted.id, autoMatched, matchedRef } };
+  return {
+    success: {
+      bankTransactionId: inserted.id,
+      autoMatched,
+      matchedRef,
+      duplicateSuspected,
+    },
+  };
+}
+
+// ============================================================================
+// PP5-A: duplicate review (manager-side)
+// ----------------------------------------------------------------------------
+// Two server actions move a `bank_transactions.duplicate_status='suspected'`
+// row to a terminal state:
+//   - confirmDuplicate:  status -> 'confirmed' (excludes from ledger; orchestrator
+//                        early-outs forever).
+//   - rejectDuplicate:   status -> 'rejected' (legitimate, run auto-match
+//                        retroactively).
+//
+// confirmDuplicate's MATCH_ACTIVE guard returns a structured `errorCode` so
+// the UI can dispatch on it (avoids fragile string matching on `error`).
+// match_status × duplicate_status remain orthogonal — confirm does NOT
+// touch match_status (CONTEXT.md PP5 §Duplicates).
+// ============================================================================
+
+export type DuplicateReviewErrorCode =
+  | "NOT_FOUND"
+  | "NOT_SUSPECTED"
+  | "MATCH_ACTIVE"
+  | "FORBIDDEN";
+
+export type ConfirmDuplicateResult = {
+  success?: { confirmed: true };
+  error?: string;
+  errorCode?: DuplicateReviewErrorCode;
+};
+
+export type RejectDuplicateResult = {
+  success?: {
+    rejected: true;
+    /** PP5-A Q3 resolution: rejectDuplicate re-runs tryAutoMatch on the row.
+     *  Outcome surfaced so the UI can toast match-vs-no-match. Null when
+     *  the row is a debit (auto-match never runs on debits). */
+    matchOutcome: {
+      matched: boolean;
+      strategy: string | null;
+      reference: string | null;
+      partial: boolean;
+      allocatedAmount: number;
+      warning: string | null;
+    } | null;
+  };
+  error?: string;
+  errorCode?: DuplicateReviewErrorCode;
+};
+
+export async function confirmDuplicate(
+  input: DuplicateReviewInput,
+): Promise<ConfirmDuplicateResult> {
+  const parsed = duplicateReviewSchema.safeParse(input);
+  if (!parsed.success) return { error: formatIssues(parsed.error.issues) };
+
+  const profile = await requireCompanyRole();
+  await requireSubdivisionAccess(parsed.data.subdivision_id);
+  const supabase = createServerClient();
+
+  const { data: row } = await supabase
+    .from("bank_transactions")
+    .select(
+      "id, duplicate_status, match_status, matched_total, bank_accounts!inner(subdivision_id)",
+    )
+    .eq("id", parsed.data.bank_transaction_id)
+    .maybeSingle();
+  if (!row) {
+    return { error: "Transaction not found", errorCode: "NOT_FOUND" };
+  }
+
+  const r = row as unknown as {
+    id: string;
+    duplicate_status: "suspected" | "confirmed" | "rejected" | null;
+    match_status: MatchStatus;
+    matched_total: number | string;
+    bank_accounts: { subdivision_id: string };
+  };
+
+  if (r.bank_accounts.subdivision_id !== parsed.data.subdivision_id) {
+    return { error: "Transaction not found", errorCode: "FORBIDDEN" };
+  }
+
+  if (r.duplicate_status !== "suspected") {
+    return {
+      error: "Transaction is not flagged as a suspected duplicate",
+      errorCode: "NOT_SUSPECTED",
+    };
+  }
+
+  if (
+    r.match_status === "auto_matched" ||
+    r.match_status === "manually_matched" ||
+    Number(r.matched_total) > 0
+  ) {
+    return {
+      error:
+        "Transaction is currently allocated. Undo the match first, then mark as duplicate.",
+      errorCode: "MATCH_ACTIVE",
+    };
+  }
+
+  const { error: updErr } = await supabase
+    .from("bank_transactions")
+    .update({ duplicate_status: "confirmed" })
+    .eq("id", parsed.data.bank_transaction_id);
+  if (updErr) return { error: updErr.message };
+
+  await supabase.from("audit_log").insert({
+    profile_id: profile.id,
+    subdivision_id: parsed.data.subdivision_id,
+    action: "bank_transaction.duplicate_confirmed",
+    entity_type: "bank_transaction",
+    entity_id: parsed.data.bank_transaction_id,
+    before_state: { duplicate_status: "suspected" },
+    after_state: { duplicate_status: "confirmed" },
+    metadata: parsed.data.notes ? { notes: parsed.data.notes } : null,
+  });
+
+  revalidatePath("/subdivisions/[subdivisionCode]/reconciliation", "page");
+  revalidatePath("/subdivisions/[subdivisionCode]/bank-account", "page");
+  return { success: { confirmed: true } };
+}
+
+export async function rejectDuplicate(
+  input: DuplicateReviewInput,
+): Promise<RejectDuplicateResult> {
+  const parsed = duplicateReviewSchema.safeParse(input);
+  if (!parsed.success) return { error: formatIssues(parsed.error.issues) };
+
+  const profile = await requireCompanyRole();
+  await requireSubdivisionAccess(parsed.data.subdivision_id);
+  const supabase = createServerClient();
+
+  const { data: row } = await supabase
+    .from("bank_transactions")
+    .select(
+      "id, bank_account_id, transaction_date, amount, description, duplicate_status, bank_accounts!inner(subdivision_id)",
+    )
+    .eq("id", parsed.data.bank_transaction_id)
+    .maybeSingle();
+  if (!row) {
+    return { error: "Transaction not found", errorCode: "NOT_FOUND" };
+  }
+
+  const r = row as unknown as {
+    id: string;
+    bank_account_id: string;
+    transaction_date: string;
+    amount: number | string;
+    description: string | null;
+    duplicate_status: "suspected" | "confirmed" | "rejected" | null;
+    bank_accounts: { subdivision_id: string };
+  };
+
+  if (r.bank_accounts.subdivision_id !== parsed.data.subdivision_id) {
+    return { error: "Transaction not found", errorCode: "FORBIDDEN" };
+  }
+
+  if (r.duplicate_status !== "suspected") {
+    return {
+      error: "Transaction is not flagged as a suspected duplicate",
+      errorCode: "NOT_SUSPECTED",
+    };
+  }
+
+  const { error: updErr } = await supabase
+    .from("bank_transactions")
+    .update({ duplicate_status: "rejected" })
+    .eq("id", parsed.data.bank_transaction_id);
+  if (updErr) return { error: updErr.message };
+
+  await supabase.from("audit_log").insert({
+    profile_id: profile.id,
+    subdivision_id: parsed.data.subdivision_id,
+    action: "bank_transaction.duplicate_rejected",
+    entity_type: "bank_transaction",
+    entity_id: parsed.data.bank_transaction_id,
+    before_state: { duplicate_status: "suspected" },
+    after_state: { duplicate_status: "rejected" },
+    metadata: parsed.data.notes ? { notes: parsed.data.notes } : null,
+  });
+
+  // PP5-A Q3: re-run tryAutoMatch retroactively. Skips internally for
+  // debits (amount <= 0) — caller surfaces matchOutcome=null in that case.
+  const amount = Number(r.amount);
+  type MatchOutcomeShape = NonNullable<RejectDuplicateResult["success"]>["matchOutcome"];
+  let matchOutcome: MatchOutcomeShape = null;
+  if (amount > 0) {
+    const result = await tryAutoMatch({
+      bankTransactionId: parsed.data.bank_transaction_id,
+      subdivisionId: parsed.data.subdivision_id,
+      bankAccountId: r.bank_account_id,
+      description: r.description ?? "",
+      amount,
+      transactionDate: r.transaction_date,
+      performedBy: profile.id,
+    });
+    matchOutcome = {
+      matched: result.matched,
+      strategy: result.strategy,
+      reference: result.reference,
+      partial: result.partial,
+      allocatedAmount: result.allocatedAmount,
+      warning: result.warning,
+    };
+  }
+
+  revalidatePath("/subdivisions/[subdivisionCode]/reconciliation", "page");
+  revalidatePath("/subdivisions/[subdivisionCode]/bank-account", "page");
+  return { success: { rejected: true, matchOutcome } };
 }
 
 /** Payload for the three-way `CollisionResolutionDialog`. Both

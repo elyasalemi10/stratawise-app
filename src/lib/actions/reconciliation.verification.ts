@@ -1277,7 +1277,10 @@ async function scenarioCSV1_OrchestratorE2E(fx: Fixture) {
     const s = result.summary!;
     assert(s.imported === 4, `CSV-1 imported expected 4, got ${s.imported}`);
     assert(s.matched === 3, `CSV-1 matched expected 3, got ${s.matched}`);
-    assert(s.duplicates === 1, `CSV-1 duplicates expected 1, got ${s.duplicates}`);
+    assert(
+      s.exact_duplicates_dropped === 1,
+      `CSV-1 exact_duplicates_dropped expected 1, got ${s.exact_duplicates_dropped}`,
+    );
     assert(s.errors.length === 0, `CSV-1 errors: ${JSON.stringify(s.errors)}`);
 
     // Inspect bank_transactions for each imported row's match_status +
@@ -1324,7 +1327,7 @@ async function scenarioCSV1_OrchestratorE2E(fx: Fixture) {
     record(
       header,
       true,
-      `summary: imported=${s.imported}, matched=${s.matched}, duplicates=${s.duplicates}; methods: r1=auto_reference, r2=auto_bpay_crn, r3=auto_sender, r4=unmatched`,
+      `summary: imported=${s.imported}, matched=${s.matched}, exact_duplicates_dropped=${s.exact_duplicates_dropped}, cross_source_duplicates_flagged=${s.cross_source_duplicates_flagged}; methods: r1=auto_reference, r2=auto_bpay_crn, r3=auto_sender, r4=unmatched`,
     );
   } catch (e) {
     record(header, false, (e as Error).message);

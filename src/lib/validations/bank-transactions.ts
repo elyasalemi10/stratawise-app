@@ -85,7 +85,20 @@ export interface BankTransactionRecord {
 
 export interface ImportSummary {
   imported: number;
-  duplicates: number;
+  /** PP5-A renamed from `duplicates`. Catches both intra-batch duplicates
+   *  (same CSV uploads the same row twice) AND prior-import duplicates
+   *  (the row was already in the DB from an earlier import). Detection key
+   *  is exact `(transaction_date|amount|description-trimmed)`; matching rows
+   *  are silently dropped before insert. Distinct from the cross-source
+   *  flow below — see CONTEXT.md PP5 §Duplicates. */
+  exact_duplicates_dropped: number;
+  /** PP5-A new field. Set when a row was successfully inserted but the
+   *  bank-side detector subsequently flagged it as a suspected cross-source
+   *  duplicate of an existing row (different source, +/-2-day window,
+   *  hash-equal description). The row is persisted with
+   *  duplicate_status='suspected' for manager review; the orchestrator was
+   *  skipped for this row. */
+  cross_source_duplicates_flagged: number;
   matched: number;
   errors: string[];
 }

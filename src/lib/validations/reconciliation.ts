@@ -36,6 +36,13 @@ export type MatchStatus = (typeof MATCH_STATUSES)[number];
 export const TRANSACTION_SOURCES = ["manual", "csv", "basiq"] as const;
 export type TransactionSource = (typeof TRANSACTION_SOURCES)[number];
 
+// PP5-A: bank_transactions.duplicate_status enum values. Status is orthogonal
+// to match_status (CONTEXT.md PP5 §Duplicates) — confirm/reject does NOT
+// touch match_status. Detection writes 'suspected'; manager review moves it
+// to 'confirmed' or 'rejected'.
+export const DUPLICATE_STATUSES = ["suspected", "confirmed", "rejected"] as const;
+export type DuplicateStatus = (typeof DUPLICATE_STATUSES)[number];
+
 export const RECEIPT_PAYMENT_METHODS = ["cash", "cheque"] as const;
 export type ReceiptPaymentMethod = (typeof RECEIPT_PAYMENT_METHODS)[number];
 
@@ -179,6 +186,38 @@ export type ResolveMappingCollisionInput = z.infer<
 export type ReconcileTransactionInput = z.input<
   typeof reconcileTransactionSchema
 >;
+
+// ─── Duplicate detection (PP5-A) ───────────────────────────────
+//
+// duplicate_metadata JSONB shape. Detector writes this on the *newer*
+// (suspected) row when it finds a hash-equal candidate within +/-2 days.
+// UI consumers parse via the same schema — shape-drift insurance.
+//
+// description_hash is SHA-256 truncated to 16 hex chars (64-bit; collision
+// risk ~10^-19 in a single bank_account candidate pool — see
+// CONTEXT.md PP5 §Duplicates). Stored for forensics; not the primary
+// detection key (the detector recomputes hashes in-memory).
+
+export const duplicateMetadataSchema = z.object({
+  matched_against: z.string().uuid(),
+  older_source: z.enum(TRANSACTION_SOURCES),
+  newer_source: z.enum(TRANSACTION_SOURCES),
+  day_delta: z.number().int().min(0).max(2),
+  amount: z.number(),
+  normalised_description: z.string(),
+  description_hash: z.string().length(16),
+});
+export type DuplicateMetadata = z.infer<typeof duplicateMetadataSchema>;
+
+// Manager-review server actions: confirm = "yes, duplicate, exclude from
+// ledger" (status='confirmed'); reject = "no, legitimate, run auto-match"
+// (status='rejected' + tryAutoMatch retry).
+export const duplicateReviewSchema = z.object({
+  subdivision_id: z.string().uuid(),
+  bank_transaction_id: z.string().uuid(),
+  notes: z.string().trim().max(500).nullable().optional(),
+});
+export type DuplicateReviewInput = z.infer<typeof duplicateReviewSchema>;
 
 // ─── Unmatch ───────────────────────────────────────────────────
 

@@ -160,8 +160,16 @@ export interface PollResult {
   connectionId: string;
   fetched: number;
   inserted: number;
+  /** Basiq-side idempotency: rpc_insert_basiq_transaction returned
+   *  was_duplicate=true (basiq_transaction_id already in DB). Distinct
+   *  from the cross-source flag below. */
   duplicates: number;
   autoMatched: number;
+  /** PP5-A: rows that were inserted, then flagged by the bank-side detector
+   *  as a suspected cross-source duplicate of an existing row (different
+   *  source, +/-2-day window, hash-equal description). Auto-match was
+   *  skipped for these rows. */
+  crossSourceDuplicatesFlagged: number;
   error: string | null;
 }
 

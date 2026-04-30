@@ -368,16 +368,34 @@ function DoneStage({ summary, fundLabel }: { summary: ImportSummary; fundLabel: 
         </div>
       </div>
 
-      <div className="grid grid-cols-3 gap-3">
+      <div className="grid grid-cols-2 gap-3">
         <SummaryCard label="Imported" value={summary.imported} />
         <SummaryCard label="Auto-matched to levies" value={summary.matched} />
-        <SummaryCard label="Duplicates skipped" value={summary.duplicates} muted />
+        <SummaryCard
+          label="Already in records"
+          value={summary.exact_duplicates_dropped}
+          muted
+        />
+        <SummaryCard
+          label="Flagged for review"
+          value={summary.cross_source_duplicates_flagged}
+          muted
+        />
       </div>
 
       {summary.matched > 0 && (
         <Badge className="rounded-full">
           {summary.matched} {summary.matched === 1 ? "payment" : "payments"} identified by reference number
         </Badge>
+      )}
+
+      {summary.cross_source_duplicates_flagged > 0 && (
+        <div className="text-sm text-muted-foreground">
+          {summary.cross_source_duplicates_flagged}{" "}
+          {summary.cross_source_duplicates_flagged === 1 ? "row" : "rows"} flagged
+          as a possible duplicate of an existing transaction. Review them in the
+          reconciliation queue.
+        </div>
       )}
     </div>
   );
