@@ -282,7 +282,7 @@ export function OCCertificate(props: OCCertificateProps) {
 
           <View style={s.item}>
             <Text style={s.itemNumber}>16. Last AGM</Text>
-            <Text style={s.itemText}>{lastAgmDate ? `A copy of the minutes of the most recent annual general meeting held on ${fmtDate(lastAgmDate)}.` : "n/a"}</Text>
+            <Text style={s.itemText}>{lastAgmDate ? fmtDate(lastAgmDate) : "n/a"}</Text>
           </View>
 
           <View style={s.item}>
@@ -332,7 +332,11 @@ export function OCCertificate(props: OCCertificateProps) {
               <Text style={{ fontSize: 7, color: c.muted }}>(signature)</Text>
             </View>
           )}
-          <Text style={s.sigName}>{registeredName || companyName}</Text>
+          <Text style={s.sigName}>
+            {registeredName && registeredName !== companyName
+              ? `${registeredName} trading as ${companyName}`
+              : companyName}
+          </Text>
         </View>
 
         {/* Footer */}
