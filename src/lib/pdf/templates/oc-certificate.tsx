@@ -188,6 +188,7 @@ export function OCCertificate(props: OCCertificateProps) {
           <View style={s.item}>
             <Text style={s.itemNumber}>1. Current fees</Text>
             <Text style={s.itemText}>The current fees for {lotLabel} are: {currentFees} payable {billingCycle}.</Text>
+            <Text style={[s.itemText, { marginTop: 2 }]}>A special levy 1 quarter prior to the expiry of the current insurance will be struck to cover insurance costs for the next year.</Text>
           </View>
 
           <View style={s.item}>

@@ -216,9 +216,15 @@ export async function getOCCertificateData(subdivisionId: string, lotId: string,
   const unpaidTotal = (levies ?? []).reduce((sum, l) => sum + (Number(l.amount) - Number(l.amount_paid)), 0);
 
   // Insurance summary
+  const fmtAU = (d: string | null | undefined) => {
+    if (!d) return "";
+    const dt = d.includes("T") ? new Date(d) : new Date(d + "T00:00:00");
+    return dt.toLocaleDateString("en-AU", { day: "numeric", month: "long", year: "numeric" });
+  };
   const insuranceSummary = (insurance ?? []).length > 0
     ? (insurance ?? []).map((p) => {
-        return `${p.provider}${p.policy_number ? ` (Policy #: ${p.policy_number})` : ""}`;
+        const period = p.start_date && p.end_date ? ` (${fmtAU(p.start_date)} - ${fmtAU(p.end_date)})` : "";
+        return `${p.provider}${p.policy_number ? ` (Policy #: ${p.policy_number})` : ""}${period}`;
       }).join(", ")
     : "n/a";
 
