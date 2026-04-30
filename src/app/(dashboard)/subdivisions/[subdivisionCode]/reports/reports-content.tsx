@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { Download, Loader2, CalendarIcon } from "lucide-react";
 import { format } from "date-fns";
 import { Calendar } from "@/components/ui/calendar";
@@ -79,8 +79,32 @@ export function ReportsContent({
   const [certServices, setCertServices] = useState("n/a");
   const [certNotices, setCertNotices] = useState("n/a");
   const [certLegal, setCertLegal] = useState("n/a");
+  // Editable fee fields (prefilled from server on lot select)
+  const [certCurrentFees, setCertCurrentFees] = useState("n/a");
+  const [certBillingCycle, setCertBillingCycle] = useState("quarterly");
+  const [certFeesPaidUpTo, setCertFeesPaidUpTo] = useState("n/a");
+  const [certUnpaidFees, setCertUnpaidFees] = useState("0.00");
+  const [prefilling, setPrefilling] = useState(false);
   const [generating, setGenerating] = useState(false);
   const [pdfUrl, setPdfUrl] = useState<string | null>(null);
+
+  // Prefill fee fields when lot changes
+  useEffect(() => {
+    if (reportType !== "oc_certificate" || !certLotId) return;
+    let cancelled = false;
+    setPrefilling(true);
+    getOCCertificateData(subdivisionId, certLotId, certApplicant || "", certEmail || "")
+      .then((data) => {
+        if (cancelled || !data) return;
+        setCertCurrentFees(data.currentFees);
+        setCertBillingCycle(data.billingCycle);
+        setCertFeesPaidUpTo(data.feesPaidUpTo);
+        setCertUnpaidFees(Number(data.unpaidFeesTotal).toFixed(2));
+      })
+      .finally(() => { if (!cancelled) setPrefilling(false); });
+    return () => { cancelled = true; };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [certLotId, reportType, subdivisionId]);
 
   const availableReports = REPORTS.filter((r) => !r.managerOnly || !isLotOwner);
 
@@ -152,6 +176,10 @@ export function ReportsContent({
           if (!certData) { toast.error("Failed to load certificate data"); setGenerating(false); return; }
           // Override with form values
           certData.applicationDate = format(certAppDate, "yyyy-MM-dd");
+          certData.currentFees = certCurrentFees;
+          certData.billingCycle = certBillingCycle;
+          certData.feesPaidUpTo = certFeesPaidUpTo;
+          certData.unpaidFeesTotal = Number(certUnpaidFees) || 0;
           certData.repairsInfo = certRepairs;
           certData.totalFundsHeld = certFunds;
           certData.liabilities = certLiabilities;
@@ -289,6 +317,31 @@ export function ReportsContent({
             {/* OC Certificate detail fields */}
             {reportType === "oc_certificate" && certLotId && (
               <div className="w-full border-t border-border pt-4 mt-2 grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <div className="space-y-1.5">
+                  <Label className="text-xs">1. Current fees{prefilling ? " (loading…)" : ""}</Label>
+                  <Input value={certCurrentFees} onChange={(e) => setCertCurrentFees(e.target.value)} placeholder="$0.00" className="h-8 text-sm" />
+                </div>
+                <div className="space-y-1.5">
+                  <Label className="text-xs">Billing cycle</Label>
+                  <select
+                    value={certBillingCycle}
+                    onChange={(e) => setCertBillingCycle(e.target.value)}
+                    className="h-8 w-full rounded-md border border-border bg-background px-3 text-sm outline-none focus:border-primary focus:ring-2 focus:ring-primary/20"
+                  >
+                    <option value="monthly">monthly</option>
+                    <option value="quarterly">quarterly</option>
+                    <option value="half_yearly">half-yearly</option>
+                    <option value="annually">annually</option>
+                  </select>
+                </div>
+                <div className="space-y-1.5">
+                  <Label className="text-xs">2. Fees paid up to</Label>
+                  <Input value={certFeesPaidUpTo} onChange={(e) => setCertFeesPaidUpTo(e.target.value)} placeholder="YYYY-MM-DD or n/a" className="h-8 text-sm" />
+                </div>
+                <div className="space-y-1.5">
+                  <Label className="text-xs">3. Unpaid fees total ($)</Label>
+                  <Input value={certUnpaidFees} onChange={(e) => setCertUnpaidFees(e.target.value)} placeholder="0.00" className="h-8 text-sm" inputMode="decimal" />
+                </div>
                 <div className="space-y-1.5">
                   <Label className="text-xs">5. Repairs / maintenance</Label>
                   <Input value={certRepairs} onChange={(e) => setCertRepairs(e.target.value)} className="h-8 text-sm" />

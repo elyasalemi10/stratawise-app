@@ -184,6 +184,13 @@ export async function getAuditTrail(subdivisionId: string) {
 
 // ─── OC Certificate data ───────────────────────────────────
 
+const BILLING_PERIODS: Record<string, number> = {
+  monthly: 12,
+  quarterly: 4,
+  half_yearly: 2,
+  annually: 1,
+};
+
 export async function getOCCertificateData(subdivisionId: string, lotId: string, applicantName: string, applicantEmail: string) {
   await requireSubdivisionAccess(subdivisionId);
   const supabase = createServerClient();
@@ -215,9 +222,39 @@ export async function getOCCertificateData(subdivisionId: string, lotId: string,
       }).join(", ")
     : "n/a";
 
-  // Current fees
+  // Current fees — prefer most recent issued levy, fall back to approved admin budget
+  let currentFees = "n/a";
   const latestLevy = (levies ?? [])[0];
-  const currentFees = latestLevy ? `$${Number(latestLevy.amount).toFixed(2)}` : "n/a";
+  if (latestLevy) {
+    currentFees = `$${Number(latestLevy.amount).toFixed(2)}`;
+  } else {
+    const { data: budget } = await supabase
+      .from("budgets")
+      .select("total_amount")
+      .eq("subdivision_id", subdivisionId)
+      .eq("fund_type", "administrative")
+      .eq("status", "approved")
+      .order("approved_at", { ascending: false, nullsFirst: false })
+      .limit(1)
+      .maybeSingle();
+
+    if (budget) {
+      const { data: allLots } = await supabase
+        .from("lots")
+        .select("id, lot_entitlement, lot_liability")
+        .eq("subdivision_id", subdivisionId);
+
+      const periodsPerYear = BILLING_PERIODS[subdivision.billing_cycle ?? "quarterly"] ?? 4;
+      const totalEntitlement = (allLots ?? []).reduce((sum, l) => {
+        const ue = Number(l.lot_liability) > 0 ? Number(l.lot_liability) : (Number(l.lot_entitlement) > 0 ? Number(l.lot_entitlement) : 1);
+        return sum + ue;
+      }, 0);
+      const lotUE = Number(lot.lot_liability) > 0 ? Number(lot.lot_liability) : (Number(lot.lot_entitlement) > 0 ? Number(lot.lot_entitlement) : 1);
+      const proportion = totalEntitlement > 0 ? lotUE / totalEntitlement : 0;
+      const lotPeriodTotal = Math.round((Number(budget.total_amount) / periodsPerYear) * proportion * 100) / 100;
+      currentFees = `$${lotPeriodTotal.toFixed(2)}`;
+    }
+  }
 
   // Fees paid up to — find latest fully paid levy period
   const sortedByPeriod = [...(levies ?? [])].sort((a, b) => new Date(b.period_end).getTime() - new Date(a.period_end).getTime());
