@@ -102,6 +102,7 @@ function getSubdivisionNavGroups(subdivisionCode: string, isLotOwner: boolean) {
         items: [
           { href: base, label: "Dashboard", icon: LayoutDashboard },
           { href: `${base}/my-levies`, label: "My levies", icon: Receipt },
+          { href: `${base}/my-payments`, label: "My payments", icon: Wallet },
         ],
       },
       {
@@ -143,6 +144,7 @@ function getSubdivisionNavGroups(subdivisionCode: string, isLotOwner: boolean) {
         { href: `${base}/bank-account`, label: "Bank account", icon: Landmark },
         { href: `${base}/reconciliation`, label: "Reconciliation", icon: GitMerge, badgeKey: "unmatched_count" as const },
         { href: `${base}/reconciliation/mappings`, label: "Payer mappings", icon: Users },
+        { href: `${base}/reconciliation/claims`, label: "Payment claims", icon: Receipt },
       ],
     },
     {

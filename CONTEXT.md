@@ -422,6 +422,143 @@ credits before LD-17 ran, causing the orchestrator to fall through.
 Fix was to inline a fresh `LEV-1017` notice + debit specific to the
 scenario. Apply the same discipline in future verification work.
 
+**Hash-equal descriptions for PP5-A integration tests.** When a
+verification scenario expects PP5-A's bank-side detector to flag a
+freshly-inserted bank tx as a suspected duplicate, both the candidate
+(pre-existing bank tx) and the new bank tx must produce the same
+description hash — i.e. either identical raw descriptions or differing
+only in normaliser-stripped tokens (`LEV-`, `RCP-`, `PAY-`,
+`MSM-{PREFIX}-{YYYY}-{NNNN}`). Distinct descriptions correctly produce
+no detector flag; that's not a bug, it's the spec. PP5-C's OPC-9 hit
+this during first execution — candidate `"OPC-9 candidate"` vs new
+`"OPC-9 manual bank tx (override candidate)"` didn't hash-match, so
+the detector (correctly) didn't flag. Fix: make both descriptions the
+same string. When you write a flag-expected scenario, double-check the
+description hashes will collide.
+
+---
+
+### 4.10 Owner self-report payment claim flow (PP5-C)
+
+Owner submits a claim ("I paid $X on date D for lot L via method M
+with reference R"). Manager reviews via the queue and either confirms
++ matches (linking the claim to a bank tx + ledger credit) or rejects
+(with reason ≥10 chars). Helper lives at
+`src/lib/actions/owner-payment-claims.ts` and the table is
+`owner_payment_claims` (PP5-C schema delta).
+
+**Detection scope is per `bank_account_id`** when path (ii) of the
+manager confirm flow runs its LIKELY_DUPLICATE pre-check. Same
+scoping discipline as PP5-A bank-side detection (per
+[CONTEXT.md §4.7](#47-bank-side-duplicate-detection-pp5-a)). Cross-
+account, cross-fund, and cross-subdivision matches are intentionally
+out of scope at all three layers (bank-side detection, ledger-side
+detection, claim-confirm pre-check).
+
+**Manager confirm hybrid (PP5-C Gap C ratification):**
+
+- **Path (iii) PRIMARY** — link the claim to an already-existing bank
+  tx. `confirmAndMatchClaimViaExistingBankTx` calls
+  `reconcileTransaction` internally (PP5-B ledger detector runs on the
+  credit it creates) and then UPDATEs the claim. Encouraged when the
+  bank tx is already in the queue.
+- **Path (ii) FALLBACK** — create a new manual bank tx for the claim.
+  `confirmAndMatchClaimViaNewBankTx` runs a LIKELY_DUPLICATE pre-check
+  (same `bank_account_id`, ±2 days from `claim_date`, equal `amount`).
+  If candidates exist and `override_likely_duplicate` is `false`,
+  returns `errorCode='LIKELY_DUPLICATE'` with `likely_duplicate_bank_tx_ids[]`.
+  Manager can switch to path (iii) or pass override. With override:
+  `addManualBankTransaction` runs (PP5-A bank-side detector fires on
+  the new row; if a real duplicate exists, the new row gets
+  `duplicate_status='suspected'` AND auto-allocation skipped — the
+  manager-confirm flow then explicitly allocates via
+  `reconcileTransaction`). Then PP5-B ledger detector runs on the
+  credit. Then the claim is UPDATED.
+
+**Bank tx description vs claim notes split (Spec gap K):**
+- `description` on the new manual bank tx (path ii) is **manager-supplied**
+  at confirm time — typed by the manager into the confirm form.
+- `notes` on the claim is **owner-supplied** at submission and is
+  read-only after submission. It surfaces in the manager queue for
+  context but does NOT become part of the bank tx description.
+- Owner's notes go into `audit_log.metadata` only when the manager
+  rejects (rejection_reason is the owner-visible field).
+- This split is deliberate — the bank tx description is forensically
+  authoritative (matches reality of what the manager-on-the-day
+  recorded); owner notes are subjective context that helps the
+  manager identify the payment but isn't load-bearing.
+
+**Server action composition pattern (Spec gap H):**
+Path (ii) chains three server actions:
+1. `confirmAndMatchClaimViaNewBankTx` (auth: `requireCompanyRole` +
+   `requireSubdivisionAccess`)
+2. → `addManualBankTransaction` (auth re-checks; PP5-A detector runs;
+   writes `bank_transaction.added_manually` audit)
+3. → `reconcileTransaction` (auth re-checks; PP5-B detector runs;
+   writes `reconciliation.matched` audit)
+4. → claim UPDATE (writes `owner_payment_claim.matched` audit)
+
+**Three audit log entries land per path-(ii) confirm**, all linked by
+foreign keys (the audit's `entity_id` chain spans bank_transaction,
+reconciliation_match-equivalent, lot_ledger_entry, and
+owner_payment_claim). Forensics walks the chain. The double-auth
+overhead is the cost of keeping the action layer composable; cleaner
+than factoring helpers out of those actions for one-time PP5-C use.
+
+**Void-cascade orphan (PP5-C MEDIUM-risk documented behaviour):**
+When a manager voids a bank tx (via the production
+`voidBankTransaction` action — UPDATE `is_voided=true`, NOT DELETE),
+the FK `ON DELETE SET NULL` on `owner_payment_claims.bank_transaction_id`
+**does not fire** (the row is preserved). Same for
+`ledger_entry_id` (the linked credit is voided via offset, not
+deleted). Result:
+- `claim.bank_transaction_id` stays SET, pointing at a now-voided tx
+- `claim.ledger_entry_id` stays SET, pointing at a voided credit
+- `claim.claim_status` stays `'matched'` (no auto-update)
+
+**Stale-link, not null-link.** Manager queue should surface this in
+PP5-D as a "matched but underlying bank tx voided" filter. Real fix
+options: (a) trigger to flip `claim_status='pending'` on bank tx
+void cascade, (b) manager queue filter, (c) DB view that flags
+orphans. Decision deferred to PP5-D or post-launch. OPC-16 verifies
+the current behaviour.
+
+**`payment_method` enum reuse (Spec gap B):**
+Owner UI exposes a subset: `eft`, `bpay`, `stripe_card`, `cash`,
+`cheque`, `other`. UI labels are mapped via
+`OWNER_CLAIM_PAYMENT_METHOD_LABELS`:
+- `eft` → "Bank transfer"
+- `bpay` → "BPAY"
+- `stripe_card` → "Card"
+- `cash` → "Cash"
+- `cheque` → "Cheque"
+- `other` → "Other"
+**`direct_debit` is hidden from owner UI** (manager-controlled; the
+owner doesn't initiate direct debits). The pg enum still includes
+`direct_debit`; managers and future flows can write that value. Map
+is centralised to keep server-side audit + client-side display in
+agreement.
+
+**Lot picker visibility:**
+Owners with multiple active lots in a subdivision (multiple active
+`subdivision_members` rows with `role='lot_owner'` AND `left_at IS
+NULL`) see a lot picker on the owner submission form. Owners with
+exactly one lot have the picker hidden — `lot_id` defaults to that
+single lot.
+
+**RLS:** ENABLE only, **no policies** — matches existing codebase
+convention (only `audit_log` has explicit policies, three minimal
+write-locks). Service-role bypass is the only access path; auth is
+enforced at the action layer via `src/lib/auth.ts` guards
+(`requireRole`, subdivision_members membership check on submission,
+`requireCompanyRole` + `requireSubdivisionAccess` on review actions,
+`claimed_by_profile_id` server-enforcement on submission). Future
+hardening pass may add explicit policies across all owner-data tables
+consistently — see PRE_LAUNCH_CLEANUP.
+
+**Backfill not in PP5-C.** No `withdrawn` state, no claim TTL — both
+deferred to PRE_LAUNCH_CLEANUP per ratification.
+
 ---
 
 ## 5. Key invariants

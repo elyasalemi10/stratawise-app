@@ -367,3 +367,69 @@ Small fixes to batch before going live. Non-blocking for feature work.
   convention. Pre-launch: confirm the production database state matches
   the scratch file (probe with the same queries listed in the file's
   "PROBE FIRST" comment block).
+
+## From Prompt 5 (PP5-C — Owner self-report payment claim flow)
+
+- **Owner withdraw not implemented (Gap G).** Owners cannot withdraw
+  a `pending` claim once submitted. If real-world signal indicates
+  owners need this (e.g. they realise they typed the wrong amount or
+  date), add a `'withdrawn'` `claim_status` value + a
+  `withdrawPaymentClaim` server action gated on
+  `claim_status === 'pending'` AND `claimed_by_profile_id ===
+  caller`. Also add a DELETE/withdraw policy if RLS hardening (below)
+  has landed by then.
+
+- **Claim TTL not implemented (Gap H).** Pending claims can sit in
+  the queue indefinitely. If real-world telemetry shows the queue
+  growing unmanageably (>100 stale pending claims per subdivision),
+  add a cron-based auto-rejection after N days with manager
+  notification. PP5-0 ratification deferred this; PP5-C maintains
+  the deferral.
+
+- **Void-cascade orphan: stale-link condition (PP5-C MEDIUM risk).**
+  When a matched claim's bank tx is voided via `voidBankTransaction`
+  (UPDATE `is_voided=true`, not DELETE), the FK `ON DELETE SET NULL`
+  on `owner_payment_claims.bank_transaction_id` does NOT fire — the
+  link stays set, pointing at a now-voided row. Same for
+  `ledger_entry_id` (linked credit is voided via offset, not deleted).
+  `claim_status` stays `'matched'`. Stale state, not null state. OPC-16
+  verifies the current behaviour. Real fix options:
+  - (a) Trigger on `bank_transactions.is_voided` UPDATE that flips
+    `claim_status='pending'` for any matched claim pointing at the
+    voided tx (most automated).
+  - (b) Manager queue filter that surfaces "matched but underlying
+    bank tx voided" claims for re-review (least invasive).
+  - (c) DB view (`v_orphaned_matched_claims`) that joins
+    `owner_payment_claims` to `bank_transactions` and flags the
+    `claim_status='matched' AND bank_transactions.is_voided=true`
+    rows — manager queue page consumes the view (cleanest separation
+    of concerns).
+  Decision deferred to PP5-D or post-launch.
+
+- **No RLS policies on `owner_payment_claims`.** Matches existing
+  codebase convention (only `audit_log` has explicit policies);
+  service-role bypass is the only access path; auth enforced at the
+  action layer. Future hardening pass should add explicit policies
+  across all owner-data tables (`owner_payment_claims`, `lots`,
+  `subdivision_members`, `levy_notices`, etc.) consistently — not
+  piecemeal. The PP5-C planning included three policies but they
+  were stripped at apply time per existing convention.
+
+- **Server action composition writes 3 audit entries per path-(ii)
+  confirm (Spec gap H).** A successful
+  `confirmAndMatchClaimViaNewBankTx` writes
+  `bank_transaction.added_manually` + `reconciliation.matched` +
+  `owner_payment_claim.matched` audits, all linked by foreign keys
+  but appearing in three separate `entity_id` rows. Forensics queries
+  must walk the chain. Acceptable trade-off (action composition vs
+  helper-extraction) but worth documenting for future-Claude or
+  forensics dashboards. CONTEXT.md §4.10 captures the chain shape.
+
+- **PP5-C schema-delta scratch file.** `_prompt5_c_schema_delta.sql`
+  was applied via Supabase SQL Editor; the file is gitignored per
+  repo convention. Pre-launch: confirm the production database
+  state matches the scratch file (probe queries: `\d
+  owner_payment_claims`, `pg_indexes WHERE tablename='...'`,
+  `pg_constraint WHERE conrelid='...'::regclass`,
+  `pg_trigger WHERE tgrelid='...'::regclass`,
+  `pg_class.relrowsecurity`, `pg_policy WHERE polrelid='...'`).
