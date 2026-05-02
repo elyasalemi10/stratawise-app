@@ -377,6 +377,15 @@ export interface ReconciliationQueueRow {
   /** Populated when bank_transactions.fuzzy_hint_metadata is non-null AND
    *  the match_status is unmatched. */
   fuzzy_hint: QueueFuzzyHint | null;
+  /** PP5-D-A: bank-side duplicate review state. NULL = no flag.
+   *  'suspected' = badge surfaced; click → BankDuplicateReviewDialog.
+   *  'rejected' = manager said not-a-duplicate; row renders normally.
+   *  'confirmed' rows are excluded from default queue queries — see
+   *  CONTEXT.md PP5 §4.7 default-queue-behaviour. */
+  duplicate_status: DuplicateStatus | null;
+  /** PP5-D-A: detection metadata (older row id, source pair, day delta,
+   *  normalised description, hash) — opens in the review dialog. */
+  duplicate_metadata: DuplicateMetadata | null;
 }
 
 export interface BankAccountOption {
@@ -427,6 +436,9 @@ export interface BankTransactionDetail {
   excluded_reason: string | null;
   detected_reference: string | null;
   imported_at: string;
+  /** PP5-D-A: duplicate review surface on the bank tx detail page. */
+  duplicate_status: DuplicateStatus | null;
+  duplicate_metadata: DuplicateMetadata | null;
   matches: Array<{
     id: string;
     ledger_entry_id: string;

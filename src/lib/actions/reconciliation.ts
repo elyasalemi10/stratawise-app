@@ -43,7 +43,9 @@ import {
   type AddManualBankTransactionInput,
   type BankTransactionDetail,
   type DepositUndepositedFundsInput,
+  type DuplicateMetadata,
   type DuplicateReviewInput,
+  type DuplicateStatus,
   type ExcludeTransactionInput,
   type LedgerDuplicateReviewInput,
   type MatchStatus,
@@ -100,6 +102,11 @@ interface QueueOptions {
   reviewRequired?: boolean;
   /** Single boolean: only show transactions with a fuzzy hint persisted. */
   hasFuzzyHint?: boolean;
+  /** PP5-D-A: chip filter "Possible duplicate". When true, only return
+   *  rows with duplicate_status='suspected'. When false/undefined, the
+   *  default-queue-behaviour applies (hide 'confirmed', show 'suspected'
+   *  with badge, show 'rejected' as normal). See CONTEXT.md §4.7. */
+  dupSuspected?: boolean;
 }
 
 export async function getReconciliationQueue(
@@ -212,7 +219,7 @@ export async function getReconciliationQueue(
   let q = supabase
     .from("bank_transactions")
     .select(
-      "id, bank_account_id, source, transaction_date, amount, description, matched_total, match_status, is_voided, excluded_reason, imported_at, fuzzy_hint_metadata",
+      "id, bank_account_id, source, transaction_date, amount, description, matched_total, match_status, is_voided, excluded_reason, imported_at, fuzzy_hint_metadata, duplicate_status, duplicate_metadata",
       { count: "exact" },
     )
     .in("bank_account_id", accountIds);
@@ -223,6 +230,17 @@ export async function getReconciliationQueue(
   if (opts.source && opts.source !== "all") q = q.eq("source", opts.source);
   if (opts.hasFuzzyHint === true) {
     q = q.not("fuzzy_hint_metadata", "is", null);
+  }
+
+  // PP5-D-A: duplicate-status default-queue-behaviour.
+  // - dupSuspected=true: ONLY 'suspected' rows.
+  // - default: hide 'confirmed' rows; show 'suspected' (badge) + 'rejected'
+  //   (normal) + null. Rejected rows render as normal because the manager
+  //   already said not-a-duplicate.
+  if (opts.dupSuspected === true) {
+    q = q.eq("duplicate_status", "suspected");
+  } else {
+    q = q.or("duplicate_status.is.null,duplicate_status.neq.confirmed");
   }
 
   const statusFilter = opts.status ?? "unmatched";
@@ -353,6 +371,8 @@ export async function getReconciliationQueue(
       imported_at: r.imported_at,
       match_summary: matchSummary,
       fuzzy_hint: fuzzyHint,
+      duplicate_status: (r.duplicate_status as DuplicateStatus | null) ?? null,
+      duplicate_metadata: (r.duplicate_metadata as DuplicateMetadata | null) ?? null,
     };
   });
 
@@ -552,7 +572,7 @@ export async function getBankTransactionDetail(
   const { data: bt, error: btErr } = await supabase
     .from("bank_transactions")
     .select(
-      "id, bank_account_id, source, transaction_date, amount, description, balance, matched_total, match_status, is_voided, voided_at, voided_by, void_reason, excluded_reason, imported_at",
+      "id, bank_account_id, source, transaction_date, amount, description, balance, matched_total, match_status, is_voided, voided_at, voided_by, void_reason, excluded_reason, imported_at, duplicate_status, duplicate_metadata",
     )
     .eq("id", bankTransactionId)
     .single();
@@ -666,6 +686,8 @@ export async function getBankTransactionDetail(
     excluded_reason: bt.excluded_reason,
     detected_reference: detectedReference,
     imported_at: bt.imported_at,
+    duplicate_status: (bt.duplicate_status as DuplicateStatus | null) ?? null,
+    duplicate_metadata: (bt.duplicate_metadata as DuplicateMetadata | null) ?? null,
     matches: matchRows.map((m) => {
       const led = ledgerMap.get(m.ledger_entry_id);
       const lot = led ? lotMap.get(led.lot_id) : undefined;

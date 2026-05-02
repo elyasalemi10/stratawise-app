@@ -32,6 +32,8 @@ interface Props {
     rr?: string;
     /** "1" → has fuzzy hint */
     fh?: string;
+    /** PP5-D-A: "1" → only show duplicate_status='suspected' rows */
+    dup?: string;
   }>;
 }
 
@@ -67,6 +69,7 @@ export default async function ReconciliationPage({ params, searchParams }: Props
   const matchMethod = parseCsv(sp.mm);
   const reviewRequired = sp.rr === "1";
   const hasFuzzyHint = sp.fh === "1";
+  const dupSuspected = sp.dup === "1";
 
   const queue = await getReconciliationQueue(subdivisionId, {
     bankAccountId: sp.bank ?? null,
@@ -78,6 +81,7 @@ export default async function ReconciliationPage({ params, searchParams }: Props
     matchMethod: matchMethod.length > 0 ? matchMethod : undefined,
     reviewRequired: reviewRequired ? true : undefined,
     hasFuzzyHint: hasFuzzyHint ? true : undefined,
+    dupSuspected: dupSuspected ? true : undefined,
   });
 
   return (

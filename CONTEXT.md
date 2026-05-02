@@ -248,6 +248,21 @@ match_status='excluded'" — the chk_bt_excluded_reason constraint
 requires `excluded_reason`, and overloading `excluded` with two distinct
 semantic flavours destroys forensics.
 
+**Default queue behaviour (PP5-D-A clarification):**
+The reconciliation queue (`getReconciliationQueue` →
+`/reconciliation` page) applies the following filter on the
+`duplicate_status` axis by default:
+- `null` (no flag): visible
+- `'suspected'`: visible **with `<DuplicateBadge />`**; click → `<BankDuplicateReviewDialog />`
+- `'rejected'`: visible **as a normal row** (manager already said
+  not-a-duplicate; no badge needed)
+- `'confirmed'`: **hidden**
+
+The `?dup=1` URL param ("Possible duplicate" chip filter, surfaced as
+a single-bool toggle in the queue's filter card) narrows the result
+set to ONLY `'suspected'` rows. Queue verification scenario PD-1 in
+`reconciliation.verification.ts` exercises both branches.
+
 **Detection runs on debits too.** The orchestrator-skip rule is
 credits-only (orchestrator already early-outs on `amount <= 0`), but the
 detection rule is direction-agnostic — flagged debit duplicates (e.g. a

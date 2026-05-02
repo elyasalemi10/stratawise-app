@@ -18,6 +18,11 @@ import { MatchExcludeDialog } from "@/components/shared/match-exclude-dialog";
 import { UnmatchDialog } from "@/components/shared/unmatch-dialog";
 import { VoidCascadeConfirmDialog } from "@/components/shared/void-cascade-confirm-dialog";
 import { CollisionResolutionDialog } from "@/components/reconciliation/collision-resolution-dialog";
+import {
+  BankDuplicateReviewDialog,
+  type BankDuplicateReviewPayload,
+} from "@/components/reconciliation/bank-duplicate-review-dialog";
+import { DuplicateBadge } from "@/components/shared/duplicate-badge";
 import { useDismissalFlag } from "@/hooks/use-dismissal-flag";
 import type { VoidCascadePreview } from "@/lib/validations/reconciliation";
 import { TransactionCard } from "./transaction-card";
@@ -47,6 +52,7 @@ export function MatchDetailContent({
   const [excludeDialogOpen, setExcludeDialogOpen] = useState(false);
   const [voidDialogOpen, setVoidDialogOpen] = useState(false);
   const [unmatchDialogOpen, setUnmatchDialogOpen] = useState(false);
+  const [duplicateDialogOpen, setDuplicateDialogOpen] = useState(false);
   const [voidPreview, setVoidPreview] = useState<VoidCascadePreview | null>(null);
   const [unmatchPrefillId, setUnmatchPrefillId] = useState<string | null>(null);
   const [isLoadingVoidPreview, setIsLoadingVoidPreview] = useState(false);
@@ -177,6 +183,10 @@ export function MatchDetailContent({
 
         {/* Action buttons */}
         <div className="flex items-center gap-2">
+          {transaction.duplicate_status === "suspected" &&
+            transaction.duplicate_metadata && (
+              <DuplicateBadge onClick={() => setDuplicateDialogOpen(true)} />
+            )}
           <Button
             variant="outline"
             size="sm"
@@ -334,6 +344,31 @@ export function MatchDetailContent({
         subdivisionId={subdivisionId}
         bankTransactionId={transaction.id}
       />
+
+      {/* PP5-D-A: bank-side duplicate review dialog. Mounted only when this
+          tx has duplicate_metadata (i.e. detector flagged it as suspected). */}
+      {transaction.duplicate_metadata && transaction.duplicate_status && (
+        <BankDuplicateReviewDialog
+          open={duplicateDialogOpen}
+          onOpenChange={setDuplicateDialogOpen}
+          payload={{
+            bank_transaction_id: transaction.id,
+            subdivision_id: subdivisionId,
+            current: {
+              transaction_date: transaction.transaction_date,
+              amount: transaction.amount,
+              description: transaction.description,
+              source: transaction.source,
+            },
+            duplicate_metadata: transaction.duplicate_metadata,
+            candidate: null,
+            duplicate_status: transaction.duplicate_status,
+            match_status: transaction.match_status,
+            matched_total: transaction.matched_total,
+          } satisfies BankDuplicateReviewPayload}
+          subdivisionCode={subdivisionCode}
+        />
+      )}
     </div>
   );
 }

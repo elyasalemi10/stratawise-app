@@ -1334,6 +1334,208 @@ async function scenarioCSV1_OrchestratorE2E(fx: Fixture) {
   }
 }
 
+// ─── PD-1: queue ?dup=1 filter (PP5-D-A) ──────────────────────────────────
+// Verifies the reconciliation queue's URL-param-to-query mapping for the
+// "Possible duplicate" chip. Default queue must HIDE 'confirmed' and
+// SHOW 'suspected' + 'rejected' + null. ?dup=1 narrows to ONLY 'suspected'.
+async function scenarioPD1_QueueDupSuspectedFilter(fx: Fixture) {
+  const header = "PD-1: queue dupSuspected filter — default hides confirmed; dupSuspected=true narrows to suspected only";
+  try {
+    // Insert a fresh bank account for PD-1 (dedicated, no contamination from
+    // earlier scenarios that may have produced their own duplicate rows).
+    const { data: pd1Account } = await supabase
+      .from("bank_accounts")
+      .insert({
+        subdivision_id: fx.subdivisionId,
+        account_name: "PD-1 Admin",
+        bsb: "012-345",
+        account_number: "99999111",
+        fund_type: "administrative",
+      })
+      .select("id")
+      .single();
+    assert(pd1Account, "PD-1 setup: account insert failed");
+
+    // Build a small set of bank txs covering each duplicate_status path.
+    const baseInsert = {
+      bank_account_id: pd1Account.id,
+      source: "manual" as const,
+      transaction_date: "2026-09-01",
+      description: "PD-1 fixture row",
+      match_status: "unmatched" as const,
+    };
+    const { data: txNull } = await supabase
+      .from("bank_transactions")
+      .insert({ ...baseInsert, amount: 11 })
+      .select("id")
+      .single();
+    const { data: txSuspectedAnchor } = await supabase
+      .from("bank_transactions")
+      .insert({ ...baseInsert, amount: 22, transaction_date: "2026-09-02" })
+      .select("id")
+      .single();
+    const { data: txSuspected } = await supabase
+      .from("bank_transactions")
+      .insert({ ...baseInsert, amount: 22, transaction_date: "2026-09-03" })
+      .select("id")
+      .single();
+    const { data: txConfirmedAnchor } = await supabase
+      .from("bank_transactions")
+      .insert({ ...baseInsert, amount: 33, transaction_date: "2026-09-04" })
+      .select("id")
+      .single();
+    const { data: txConfirmed } = await supabase
+      .from("bank_transactions")
+      .insert({ ...baseInsert, amount: 33, transaction_date: "2026-09-05" })
+      .select("id")
+      .single();
+    const { data: txRejectedAnchor } = await supabase
+      .from("bank_transactions")
+      .insert({ ...baseInsert, amount: 44, transaction_date: "2026-09-06" })
+      .select("id")
+      .single();
+    const { data: txRejected } = await supabase
+      .from("bank_transactions")
+      .insert({ ...baseInsert, amount: 44, transaction_date: "2026-09-07" })
+      .select("id")
+      .single();
+    assert(
+      txNull && txSuspectedAnchor && txSuspected && txConfirmedAnchor && txConfirmed && txRejectedAnchor && txRejected,
+      "PD-1 setup: txn inserts failed",
+    );
+
+    const meta = {
+      matched_against: "00000000-0000-0000-0000-000000000000",
+      older_source: "manual",
+      newer_source: "manual",
+      day_delta: 1,
+      amount: 22,
+      normalised_description: "PD1",
+      description_hash: "abcdef1234567890",
+    };
+
+    await supabase
+      .from("bank_transactions")
+      .update({ duplicate_of: txSuspectedAnchor.id, duplicate_status: "suspected", duplicate_metadata: meta })
+      .eq("id", txSuspected.id);
+    await supabase
+      .from("bank_transactions")
+      .update({ duplicate_of: txConfirmedAnchor.id, duplicate_status: "confirmed", duplicate_metadata: { ...meta, amount: 33 } })
+      .eq("id", txConfirmed.id);
+    await supabase
+      .from("bank_transactions")
+      .update({ duplicate_of: txRejectedAnchor.id, duplicate_status: "rejected", duplicate_metadata: { ...meta, amount: 44 } })
+      .eq("id", txRejected.id);
+
+    // DEFAULT queue: hides 'confirmed', shows the rest.
+    const defaultQueue = await recon.getReconciliationQueue(fx.subdivisionId, {
+      bankAccountId: pd1Account.id,
+      status: "all",
+      pageSize: 200,
+    });
+    const defaultIds = new Set(defaultQueue.rows.map((r) => r.id));
+    const defaultOk =
+      defaultIds.has(txNull.id) &&
+      defaultIds.has(txSuspectedAnchor.id) &&
+      defaultIds.has(txSuspected.id) &&
+      !defaultIds.has(txConfirmed.id) &&
+      defaultIds.has(txRejected.id);
+
+    // ?dup=1 (dupSuspected=true): only 'suspected'.
+    const suspectedQueue = await recon.getReconciliationQueue(fx.subdivisionId, {
+      bankAccountId: pd1Account.id,
+      status: "all",
+      pageSize: 200,
+      dupSuspected: true,
+    });
+    const suspIds = new Set(suspectedQueue.rows.map((r) => r.id));
+    const suspectedOk =
+      suspIds.has(txSuspected.id) &&
+      !suspIds.has(txNull.id) &&
+      !suspIds.has(txSuspectedAnchor.id) &&
+      !suspIds.has(txConfirmed.id) &&
+      !suspIds.has(txRejected.id);
+
+    record(
+      header,
+      defaultOk && suspectedOk,
+      `default ok=${defaultOk} (count=${defaultQueue.rows.length}, confirmed_hidden=${!defaultIds.has(txConfirmed.id)}); dupSuspected ok=${suspectedOk} (count=${suspectedQueue.rows.length}, only_suspected=${suspectedQueue.rows.every((r) => r.duplicate_status === "suspected")})`,
+    );
+
+    // ─── PD-1b: SQL composition with concurrent filters ─────────────────
+    // Locks in that the .or() group for duplicate_status correctly ANDs
+    // with .eq("match_status", ...) — Supabase's .or() must wrap in parens
+    // so the OR doesn't widen the result set.
+    const compHeader =
+      "PD-1b: queue dupSuspected AND match_status compose correctly (parenthesised OR group)";
+    try {
+      // New tx with match_status='excluded' AND duplicate_status='suspected'.
+      // (Manager would have to explicitly exclude this; rare but possible.)
+      const { data: txExcludedSuspectedAnchor } = await supabase
+        .from("bank_transactions")
+        .insert({ ...baseInsert, amount: 55, transaction_date: "2026-09-08" })
+        .select("id")
+        .single();
+      const { data: txExcludedSuspected } = await supabase
+        .from("bank_transactions")
+        .insert({
+          ...baseInsert,
+          amount: 55,
+          transaction_date: "2026-09-09",
+          match_status: "excluded",
+          excluded_reason: "PD-1b test: excluded with suspected duplicate flag",
+        })
+        .select("id")
+        .single();
+      assert(
+        txExcludedSuspectedAnchor && txExcludedSuspected,
+        "PD-1b setup: txn inserts failed",
+      );
+      await supabase
+        .from("bank_transactions")
+        .update({
+          duplicate_of: txExcludedSuspectedAnchor.id,
+          duplicate_status: "suspected",
+          duplicate_metadata: { ...meta, amount: 55 },
+        })
+        .eq("id", txExcludedSuspected.id);
+
+      // status=unmatched + dupSuspected=true → should NOT include the excluded row.
+      const unmatchedDup = await recon.getReconciliationQueue(fx.subdivisionId, {
+        bankAccountId: pd1Account.id,
+        status: "unmatched",
+        pageSize: 200,
+        dupSuspected: true,
+      });
+      const unmatchedDupIds = new Set(unmatchedDup.rows.map((r) => r.id));
+
+      // status=all + dupSuspected=true → SHOULD include the excluded row.
+      const allDup = await recon.getReconciliationQueue(fx.subdivisionId, {
+        bankAccountId: pd1Account.id,
+        status: "all",
+        pageSize: 200,
+        dupSuspected: true,
+      });
+      const allDupIds = new Set(allDup.rows.map((r) => r.id));
+
+      const compositionOk =
+        unmatchedDupIds.has(txSuspected.id) &&
+        !unmatchedDupIds.has(txExcludedSuspected.id) &&
+        allDupIds.has(txSuspected.id) &&
+        allDupIds.has(txExcludedSuspected.id);
+      record(
+        compHeader,
+        compositionOk,
+        `unmatched+dup count=${unmatchedDup.rows.length} (excluded_suspected_excluded=${!unmatchedDupIds.has(txExcludedSuspected.id)}); all+dup count=${allDup.rows.length} (excluded_suspected_included=${allDupIds.has(txExcludedSuspected.id)})`,
+      );
+    } catch (e) {
+      record(compHeader, false, (e as Error).message);
+    }
+  } catch (e) {
+    record(header, false, (e as Error).message);
+  }
+}
+
 // ───────── Cleanup ─────────
 
 async function cleanupMarker() {
@@ -1526,6 +1728,7 @@ async function main() {
     await scenarioR12_VoidDepositReopensReceipt(fx);
     await scenarioR13_RememberPayerCollisionRoundTrip(fx);
     await scenarioCSV1_OrchestratorE2E(fx);
+    await scenarioPD1_QueueDupSuspectedFilter(fx);
   } catch (e) {
     console.error(`\nFatal in scenarios: ${(e as Error).message}`);
   }

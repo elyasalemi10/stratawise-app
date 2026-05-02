@@ -1,6 +1,6 @@
 "use client";
 
-import { useRouter } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 import Link from "next/link";
 import { useState, useTransition } from "react";
 import { useSubdivisionCode } from "@/lib/subdivision-context";
@@ -13,6 +13,7 @@ import {
   Plus,
   Upload,
 } from "lucide-react";
+import { cn } from "@/lib/utils";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import {
@@ -28,7 +29,12 @@ import { AddManualTransactionDialog } from "@/components/shared/add-manual-trans
 import { RecordCashReceiptDialog } from "@/components/shared/record-cash-receipt-dialog";
 import { FilterChips } from "@/components/shared/filter-chips";
 import { ReviewSuggestedBadge } from "@/components/shared/review-suggested-badge";
+import { DuplicateBadge } from "@/components/shared/duplicate-badge";
 import { FuzzyHintCell } from "@/components/reconciliation/fuzzy-hint-cell";
+import {
+  BankDuplicateReviewDialog,
+  type BankDuplicateReviewPayload,
+} from "@/components/reconciliation/bank-duplicate-review-dialog";
 import {
   MatchMetadataDrawer,
   type MatchAuditPayload,
@@ -142,6 +148,53 @@ export function ReconciliationQueueContent({
   );
 
   const base = `/subdivisions/${subdivisionCode}/reconciliation`;
+
+  // PP5-D-A: single-bool chip toggle for ?dup=1 (Possible duplicate filter).
+  // Custom toggle (vs FilterChips) to preserve the rr/fh-style "=1" URL
+  // convention rather than the comma-csv pattern useMultiUrlState writes.
+  const searchParams = useSearchParams();
+  const dupActive = searchParams.get("dup") === "1";
+  function toggleDupChip() {
+    const params = new URLSearchParams(searchParams.toString());
+    if (dupActive) {
+      params.delete("dup");
+    } else {
+      params.set("dup", "1");
+    }
+    const qs = params.toString();
+    startTransition(() => {
+      router.replace(qs ? `${base}?${qs}` : base);
+    });
+  }
+
+  // PP5-D-A: bank-side duplicate review dialog mount state. Single instance
+  // shared across all rows; per-row badges fire openDuplicateDialog(row).
+  const [duplicateDialogPayload, setDuplicateDialogPayload] = useState<
+    BankDuplicateReviewPayload | null
+  >(null);
+  const [duplicateDialogOpen, setDuplicateDialogOpen] = useState(false);
+
+  function openDuplicateDialog(row: ReconciliationQueueRow) {
+    if (!row.duplicate_metadata || !row.duplicate_status) return;
+    setDuplicateDialogPayload({
+      bank_transaction_id: row.id,
+      subdivision_id: subdivisionId,
+      current: {
+        transaction_date: row.transaction_date,
+        amount: row.amount,
+        description: row.description,
+        source: row.source,
+      },
+      duplicate_metadata: row.duplicate_metadata,
+      // No candidate snapshot — the matched_against id surfaces in metadata.
+      // Future PP5-D-A++: pre-fetch candidate snapshot server-side.
+      candidate: null,
+      duplicate_status: row.duplicate_status,
+      match_status: row.match_status,
+      matched_total: row.matched_total,
+    });
+    setDuplicateDialogOpen(true);
+  }
 
   function updateFilter(key: "bank" | "status" | "source", value: string | null) {
     const params = new URLSearchParams();
@@ -325,6 +378,29 @@ export function ReconciliationQueueContent({
               onChange={setMatchMethod}
             />
           </div>
+
+          {/* PP5-D-A: single-bool toggle chip styled to match FilterChips. */}
+          <div className="pt-4 mt-4 border-t border-border space-y-1.5">
+            <div className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
+              Review surface
+            </div>
+            <div className="flex flex-wrap gap-2">
+              <button
+                type="button"
+                aria-pressed={dupActive}
+                onClick={toggleDupChip}
+                className={cn(
+                  "inline-flex items-center gap-1.5 rounded-full border px-3 py-1 text-xs font-medium",
+                  "transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-1",
+                  dupActive
+                    ? "border-primary bg-primary text-primary-foreground hover:bg-primary/90"
+                    : "border-border bg-background text-foreground hover:bg-muted",
+                )}
+              >
+                Possible duplicate
+              </button>
+            </div>
+          </div>
         </CardContent>
       </Card>
 
@@ -359,6 +435,7 @@ export function ReconciliationQueueContent({
                       row={row}
                       subdivisionId={subdivisionId}
                       onOpenAuditDrawer={openAuditDrawer}
+                      onOpenDuplicateDialog={openDuplicateDialog}
                     />
                   ))}
                 </tbody>
@@ -429,6 +506,22 @@ export function ReconciliationQueueContent({
         }
       />
 
+      {/* PP5-D-A: bank-side duplicate review dialog (single shared instance). */}
+      <BankDuplicateReviewDialog
+        open={duplicateDialogOpen}
+        onOpenChange={(open) => {
+          setDuplicateDialogOpen(open);
+          if (!open) setDuplicateDialogPayload(null);
+        }}
+        payload={duplicateDialogPayload}
+        subdivisionCode={subdivisionCode}
+        onResolved={() => {
+          startTransition(() => {
+            router.refresh();
+          });
+        }}
+      />
+
       {/* Dialogs */}
       {selectedBankAccount && (
         <>
@@ -494,16 +587,26 @@ function QueueRow({
   row,
   subdivisionId,
   onOpenAuditDrawer,
+  onOpenDuplicateDialog,
 }: {
   row: ReconciliationQueueRow;
   subdivisionId: string;
   onOpenAuditDrawer: (bankTxnId: string) => void;
+  onOpenDuplicateDialog: (row: ReconciliationQueueRow) => void;
 }) {
   void subdivisionId;
   const subdivisionCode = useSubdivisionCode();
   const href = `/subdivisions/${subdivisionCode}/reconciliation/${row.id}`;
   const isCredit = row.amount > 0;
   const amountClass = isCredit ? "text-[hsl(160,100%,37%)]" : "text-destructive";
+
+  // PP5-D-A priority rule (per PP5-D-0 ratification):
+  // when a row has BOTH duplicate_status='suspected' AND a fuzzy hint,
+  // suppress the FuzzyHintCell — duplicate review takes precedence.
+  // Both surface UI affordances; rendering both creates conflicting CTAs.
+  const showFuzzyHint = row.duplicate_status !== "suspected" && !!row.fuzzy_hint;
+  const showDuplicateBadge = row.duplicate_status === "suspected" && !!row.duplicate_metadata;
+
   return (
     <tr className="border-t border-border hover:bg-muted/30 transition-colors">
       <td className="px-4 py-3 whitespace-nowrap">{formatDate(row.transaction_date)}</td>
@@ -515,7 +618,7 @@ function QueueRow({
       <td className="px-4 py-3 max-w-[32rem]">
         <FuzzyHintCell
           description={row.description}
-          hint={row.fuzzy_hint}
+          hint={showFuzzyHint ? row.fuzzy_hint : null}
           detailHref={href}
         />
         <Link
@@ -544,6 +647,9 @@ function QueueRow({
             matchedTotal={row.matched_total}
             amount={row.amount}
           />
+          {showDuplicateBadge && (
+            <DuplicateBadge onClick={() => onOpenDuplicateDialog(row)} />
+          )}
           {row.match_summary?.review_required && (
             <ReviewSuggestedBadge
               onClick={() => onOpenAuditDrawer(row.id)}

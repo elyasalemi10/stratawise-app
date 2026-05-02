@@ -433,3 +433,16 @@ Small fixes to batch before going live. Non-blocking for feature work.
   `pg_constraint WHERE conrelid='...'::regclass`,
   `pg_trigger WHERE tgrelid='...'::regclass`,
   `pg_class.relrowsecurity`, `pg_policy WHERE polrelid='...'`).
+
+## From Prompt 5 (PP5-D-A — Bank-side duplicate review UI)
+
+- **`<BankDuplicateReviewDialog />` candidate row not pre-fetched.**
+  The dialog renders the older (matched_against) row's id only — it
+  doesn't show the candidate's transaction_date, amount, description,
+  or source. Manager has to navigate to the older row separately to
+  see context. PP5-D++ enhancement: lightweight server action
+  `getBankDuplicateCandidateSnapshot(bank_transaction_id)` that returns
+  the candidate's display fields, fetched on dialog open. Mirrors the
+  pattern proposed for PP5-D-C's `getNearbyBankTxsForClaim`. Low
+  priority — the manager can still make the review decision from the
+  metadata (day_delta, amount, source pair, hash) shown today.
