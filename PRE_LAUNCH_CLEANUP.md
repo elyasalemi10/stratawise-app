@@ -318,3 +318,52 @@ Small fixes to batch before going live. Non-blocking for feature work.
   `after_state.exact_duplicates_dropped` + `after_state.cross_source_duplicates_flagged`.
   Forensics queries that span the deploy boundary must check both shapes.
   Document in any analytics dashboards that read this audit's after_state.
+
+## From Prompt 5 (PP5-B — Ledger-side duplicate detection)
+
+- **Ledger detection on cash receipts requires notice-linkage support.**
+  `rpc_record_cash_receipt` creates ledger credits with
+  `levy_notice_id = NULL` (untargeted at receipt time; the notice gets
+  linked later when `rpc_deposit_undeposited_funds` matches the receipt
+  to a bank tx). PP5-B's eligibility predicate excludes untargeted
+  credits, so receipts are deliberately NOT integrated into the
+  ledger-duplicate-detection helper. When (if ever) the receipt-to-notice
+  linkage feature lands — either by extending `rpc_record_cash_receipt`
+  with an optional `p_levy_notice_id` parameter or by running detection
+  inside `rpc_deposit_undeposited_funds` against the now-linked credits —
+  re-introduce the integration site in `recordCashReceipt` (or in the
+  deposit action) and add a verification scenario for the targeted-receipt
+  duplicate path.
+
+- **`rpc_ledger_void` cascade architectural cleanup (lower priority).**
+  PP5-B's `voidAsLedgerDuplicate` cascades correctly via
+  `rpc_unmatch_bank_transaction` for linked credits and
+  `rpc_ledger_void` for unlinked credits — verified by LD-14, LD-19,
+  LD-20. The architectural cleanup that would benefit ALL callers of
+  `rpc_ledger_void` (e.g. direct calls from a hypothetical future
+  manager UI that voids ledger entries without going through the unmatch
+  flow) is to push the unmatch cascade into `rpc_ledger_void` itself —
+  on void, look up `reconciliation_matches` linked to the entry, DELETE
+  them, and recompute `bank_transactions.matched_total` +
+  `match_status` for each affected bank tx. Lower priority because
+  `voidAsLedgerDuplicate` is the only PP5-era caller that needs this and
+  it's handled at the action layer.
+
+- **`MULTI_LINKED` guard architectural assumption (PP5-B).**
+  `voidAsLedgerDuplicate` hard-errors with `errorCode='MULTI_LINKED'` if
+  a credit is linked to >1 distinct bank tx. Currently impossible via
+  any normal MSM flow but allowed by the
+  `UNIQUE(bank_transaction_id, ledger_entry_id)` constraint (which only
+  blocks same-pair duplicates). LD-21 verifies the guard by hand-crafting
+  the impossible state. If a future flow legitimately creates this
+  multi-linked state (e.g. a "merge two bank txs into the same credit"
+  feature), the guard needs a coordinated lift: either drop into
+  manual-cleanup logic (with full audit-log fidelity) or extend
+  `rpc_unmatch_bank_transaction` to handle credit-already-voided
+  internally so multiple consecutive calls are safe.
+
+- **PP5-B schema-delta scratch file.** `_prompt5_b_schema_delta.sql` was
+  applied via Supabase SQL Editor; the file is gitignored per repo
+  convention. Pre-launch: confirm the production database state matches
+  the scratch file (probe with the same queries listed in the file's
+  "PROBE FIRST" comment block).

@@ -299,6 +299,129 @@ both for cross-period forensics.
   Returns `matchOutcome` so the UI can toast match-vs-no-match.
 - Both accept optional `notes` written to `audit_log.metadata`.
 
+### 4.8 Ledger-side duplicate detection (PP5-B)
+
+Detects when the same payment is recorded twice on a lot — typically
+when an owner pays via two methods (e.g. card + bank transfer) and both
+end up posting credits against the same levy notice. Detection runs
+synchronously after every successful payment-category credit insert via
+two integration sites. Helper lives at
+`src/lib/reconciliation/ledger-duplicate-detection.ts`.
+
+**Detection scope** is **per (lot_id, levy_notice_id)**. Cross-lot
+matches are out of scope (different lots' credits can't be duplicates).
+Cross-account / cross-fund matches are out of scope by construction
+(each `levy_notice_id` is fund-typed). Cross-subdivision: never.
+
+**Detection key** is structural — no description normalisation
+(ledger entries don't have free-form description noise like bank
+transactions): same `lot_id` + same `levy_notice_id` + same `amount` +
+both `entry_type='credit'` + both `category='payment'` + `entry_date`
+within ±7 days. Voided rows (`status='voided'`), already-suspected
+rows (`duplicate_of` non-null), and non-payment categories are excluded
+from the candidate pool.
+
+**±7 day window vs bank-side ±2 day window:**
+- Bank-side reflects bank-settlement tightness (OSKO same-day, T+1
+  typical, T+2 rare).
+- Ledger-side reflects payment-cycle reality — an owner can pay via
+  card today and the bank-side OSKO entry can land days later; two
+  manually-recorded receipts can drift further.
+- **Known false-positive surface**: instalment plans where an owner
+  pays $X today + $X in 5 days against the same notice get flagged.
+  Manager has a clean reject path via `keepAsOverpayment`. PRE_LAUNCH_CLEANUP
+  records the option of tightening to ±3d or adding an instalment-plan
+  flag on `levy_notices` if production reveals noise.
+
+**Eligibility predicate (which `category` values trigger detection):**
+
+| Category | entry_type | Detector behaviour |
+|---|---|---|
+| `payment` | credit | **DETECTS** — the only category in scope; spec key |
+| `levy` / `special_levy` / `interest` / `adjustment_debit` / `refund` | debit | does not detect (predicate excludes non-credits) |
+| `writeoff` | credit | does not detect (not a real-money payment) |
+| `adjustment_credit` | credit | does not detect (manual adjustment, not duplicate-class) |
+| `void_offset` | credit/debit | **CRITICAL EXCLUSION** — same lot/notice/amount as the entry it voids; without this exclusion every void would generate a false flag |
+
+Untargeted credits (`levy_notice_id IS NULL`) are out of scope by the
+detection key — receipts and other unlinked credits never trigger.
+
+**Two integration sites** (`detectAndMarkLedgerDuplicates` helper):
+- `orchestrator.tryAutoMatch` — after `rpc_reconcile_bank_transaction`.
+- `reconcileTransaction` (manual match) — after the same RPC.
+
+**`recordCashReceipt` is intentionally NOT integrated.**
+`rpc_record_cash_receipt` creates credits with `levy_notice_id = NULL`
+(untargeted at receipt time; notice linkage happens later when
+`rpc_deposit_undeposited_funds` matches the receipt to a bank tx).
+Eligibility predicate excludes untargeted credits, so calling the
+helper from `recordCashReceipt` would be dead code. PRE_LAUNCH_CLEANUP
+records the option of revisiting once the receipt-to-notice linkage
+feature lands.
+
+**Manager review actions** (symmetric verb pair):
+
+| Action | Final state | Side effects |
+|---|---|---|
+| `voidAsLedgerDuplicate` | `duplicate_status='confirmed'` + `status='voided'` | offsetting `void_offset` entry; cascade through `rpc_unmatch_bank_transaction` if linked (matches deleted, bank `matched_total`/`match_status` updated) |
+| `keepAsOverpayment` | `duplicate_status='rejected'`; entry stays `'active'` | none — balance reflects overpayment |
+
+**`voidAsLedgerDuplicate` linked vs unlinked branching:**
+- **Unlinked credit** (no `reconciliation_matches` rows): direct
+  `rpc_ledger_void` call. Returns the void offset id directly.
+- **Linked credit** (1+ matches): goes through `rpc_unmatch_bank_transaction`
+  which deletes matches, calls `rpc_ledger_void` internally, and
+  recomputes `bank_transactions.matched_total` + `match_status` — full
+  cascade, no stale fields.
+- **Multi-linked credit** (>1 distinct bank txs via partial-allocation
+  matches): hard error `errorCode='MULTI_LINKED'`. Currently impossible
+  via any normal MSM flow but allowed by the
+  `UNIQUE(bank_transaction_id, ledger_entry_id)` constraint (only blocks
+  same-pair duplicates). Hard-erroring keeps financial-state writes
+  inside RPC contracts and surfaces any future architectural shift
+  loudly. **Future authors:** if a flow legitimately creates this
+  multi-linked state, lift the guard with a coordinated change — the
+  manual-cleanup branch (DELETE matches + recompute) was deliberately
+  removed because direct UPDATE bypassing the RPC contract drops
+  audit-log entries (no `reconciliation.unmatched` rows for the manual
+  cleanups).
+
+**`markLedgerDuplicate` failure handling.** Same pattern as bank-side:
+if the UPDATE or audit INSERT fails inside the marker, the row stays
+`unmarked` in the DB. Callers (orchestrator, reconcileTransaction) **do
+not roll back the credit** — it's already committed. The failure is
+logged via `console.error` with `{ ledger_entry_id, subdivision_id,
+duplicate_of, error }` for Sentry. Manager investigates via the
+audit-gap or the Sentry alert.
+
+**Bank-side ↔ ledger-side double-flag:** in the manual-match path, a
+single conceptual problem (a manually-allocated second payment) can
+trigger BOTH the bank-side detector (suspected duplicate bank tx) AND
+the ledger-side detector (suspected duplicate ledger credit). Manager
+acts on either; `voidAsLedgerDuplicate` cascades through the unmatch
+flow (full bank state cleanup); bank-side `confirmDuplicate` is
+separately gated by `MATCH_ACTIVE` until the manager unmatches. Slight
+UX redundancy — acceptable; documented as known interaction.
+
+**Backfill not in PP5-B.** Pre-existing rows have `duplicate_status=NULL`
+and are never retroactively scanned. New rows post-deploy go through
+the detector. PRE_LAUNCH_CLEANUP records the option of a one-shot
+sweeper if a real-world need emerges.
+
+### 4.9 Verification suite practices (lessons learned)
+
+**Fresh notices for orchestrator-auto-match scenarios.** Verification
+scenarios that rely on the orchestrator auto-matching against a levy
+notice MUST create a fresh dedicated notice per scenario, unless the
+test explicitly validates over-allocation behaviour. Cumulative credits
+from prior scenarios on shared fixture notices can flip outstanding
+balances negative, at which point the orchestrator (correctly) rejects
+the auto-match as `stale_reference_detected`. PP5-B's LD-17 hit this
+during execution: noticeC had been depleted by LD-2 / LD-15 / LD-16
+credits before LD-17 ran, causing the orchestrator to fall through.
+Fix was to inline a fresh `LEV-1017` notice + debit specific to the
+scenario. Apply the same discipline in future verification work.
+
 ---
 
 ## 5. Key invariants

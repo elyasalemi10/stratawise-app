@@ -11,6 +11,7 @@ import {
   detectDuplicate,
   markDuplicate,
 } from "@/lib/reconciliation/duplicate-detection";
+import { detectAndMarkLedgerDuplicates } from "@/lib/reconciliation/ledger-duplicate-detection";
 import {
   createBankPayerMapping,
   resolveCollision,
@@ -28,6 +29,7 @@ import {
   disableMappingSchema,
   duplicateReviewSchema,
   excludeTransactionSchema,
+  ledgerDuplicateReviewSchema,
   mappingActionSchema,
   recordCashReceiptSchema,
   reconcileTransactionSchema,
@@ -43,6 +45,7 @@ import {
   type DepositUndepositedFundsInput,
   type DuplicateReviewInput,
   type ExcludeTransactionInput,
+  type LedgerDuplicateReviewInput,
   type MatchStatus,
   type ReconcileTransactionInput,
   type ResolvePayerMappingCollisionInput,
@@ -1257,6 +1260,261 @@ export async function rejectDuplicate(
   return { success: { rejected: true, matchOutcome } };
 }
 
+// ============================================================================
+// PP5-B: ledger-side duplicate review (manager-side)
+// ----------------------------------------------------------------------------
+// Symmetric verb pair on a 'suspected' lot_ledger_entry:
+//   - voidAsLedgerDuplicate: status -> 'confirmed'; rpc_ledger_void creates
+//                            offsetting void_offset entry; balance restored.
+//   - keepAsOverpayment:     status -> 'rejected'; entry stays active;
+//                            balance reflects overpayment.
+//
+// duplicate_status x lot_ledger_entries.status remain orthogonal — the void
+// path goes through rpc_ledger_void (existing PP1 contract), not via direct
+// status mutation. The status='active' guard here is a pre-flight check;
+// rpc_ledger_void itself raises if the entry is already voided through some
+// other path.
+// ============================================================================
+
+export type LedgerDuplicateReviewErrorCode =
+  | "NOT_FOUND"
+  | "NOT_SUSPECTED"
+  | "ALREADY_VOIDED"
+  | "FORBIDDEN"
+  /** PP5-B: credit is linked to >1 bank tx via partial-allocation
+   *  matches. Currently impossible via any normal MSM flow but allowed
+   *  by the UNIQUE(bank_transaction_id, ledger_entry_id) constraint
+   *  (which only blocks same-pair duplicates). Hard-erroring keeps
+   *  financial state writes inside the RPC contracts and surfaces any
+   *  future architectural shift loudly. Manual investigation required. */
+  | "MULTI_LINKED";
+
+export type VoidAsLedgerDuplicateResult = {
+  success?: {
+    voided: true;
+    void_offset_id: string;
+    /** PP5-B Path B: bank txs whose match was cascaded as part of the
+     *  void. Empty when the credit was unlinked (e.g. cash-receipt path).
+     *  UI can use this to render "Voided as duplicate; unmatched from N
+     *  bank transactions." Length > 1 only in the rare case that a single
+     *  credit was matched against multiple bank txs via partial alloc. */
+    unmatched_bank_tx_ids: string[];
+  };
+  error?: string;
+  errorCode?: LedgerDuplicateReviewErrorCode;
+};
+
+export type KeepAsOverpaymentResult = {
+  success?: { kept: true };
+  error?: string;
+  errorCode?: LedgerDuplicateReviewErrorCode;
+};
+
+export async function voidAsLedgerDuplicate(
+  input: LedgerDuplicateReviewInput,
+): Promise<VoidAsLedgerDuplicateResult> {
+  const parsed = ledgerDuplicateReviewSchema.safeParse(input);
+  if (!parsed.success) return { error: formatIssues(parsed.error.issues) };
+
+  const profile = await requireCompanyRole();
+  await requireSubdivisionAccess(parsed.data.subdivision_id);
+  const supabase = createServerClient();
+
+  const { data: entry } = await supabase
+    .from("lot_ledger_entries")
+    .select("id, subdivision_id, status, duplicate_status")
+    .eq("id", parsed.data.lot_ledger_entry_id)
+    .maybeSingle();
+  if (!entry) {
+    return { error: "Ledger entry not found", errorCode: "NOT_FOUND" };
+  }
+  const e = entry as {
+    id: string;
+    subdivision_id: string;
+    status: "active" | "voided";
+    duplicate_status: "suspected" | "confirmed" | "rejected" | null;
+  };
+
+  if (e.subdivision_id !== parsed.data.subdivision_id) {
+    return { error: "Ledger entry not found", errorCode: "FORBIDDEN" };
+  }
+  if (e.duplicate_status !== "suspected") {
+    return {
+      error: "Entry is not flagged as a suspected duplicate",
+      errorCode: "NOT_SUSPECTED",
+    };
+  }
+  if (e.status !== "active") {
+    return {
+      error: "Entry has already been voided through another path",
+      errorCode: "ALREADY_VOIDED",
+    };
+  }
+
+  const reasonNotes = parsed.data.notes?.trim();
+  const voidReason = reasonNotes
+    ? `Confirmed as duplicate: ${reasonNotes}`
+    : "Confirmed as duplicate";
+
+  // PP5-B Path B: route through rpc_unmatch_bank_transaction when the credit
+  // is linked to bank txs (cascades match deletion + matched_total/
+  // match_status update + ledger void). Fall back to rpc_ledger_void when
+  // the credit is unlinked (e.g. cash-receipt-pending-deposit path).
+  const { data: matches } = await supabase
+    .from("reconciliation_matches")
+    .select("id, bank_transaction_id")
+    .eq("ledger_entry_id", parsed.data.lot_ledger_entry_id);
+  const matchRows = (matches ?? []) as Array<{ id: string; bank_transaction_id: string }>;
+
+  let voidOffsetId: string;
+  const unmatchedBankTxIds: string[] = [];
+
+  if (matchRows.length === 0) {
+    // Unlinked credit — direct rpc_ledger_void.
+    const { data: voidData, error: voidErr } = await supabase.rpc("rpc_ledger_void", {
+      p_entry_id: parsed.data.lot_ledger_entry_id,
+      p_reason: voidReason,
+      p_voided_by: profile.id,
+    });
+    if (voidErr) return { error: voidErr.message };
+    voidOffsetId = voidData as string;
+  } else {
+    // Linked credit. Pre-check for the multi-link case (>1 distinct bank tx)
+    // BEFORE any mutating RPC. Currently impossible via any normal MSM flow
+    // but the UNIQUE(bank_transaction_id, ledger_entry_id) constraint only
+    // blocks same-pair duplicates, so the state is allowable at the DB
+    // level. Hard-erroring keeps financial-state writes inside RPC
+    // contracts (no direct UPDATE bypassing rpc_unmatch_bank_transaction)
+    // and surfaces any future architectural shift loudly.
+    const distinctBankTxIds = new Set(matchRows.map((m) => m.bank_transaction_id));
+    if (distinctBankTxIds.size > 1) {
+      return {
+        error: "Credit linked to multiple bank transactions — manual investigation required",
+        errorCode: "MULTI_LINKED",
+      };
+    }
+
+    // Single bank tx — UNIQUE constraint guarantees one match between this
+    // (bank_tx, credit) pair, so matchIds will have length 1 in practice;
+    // we pass the array anyway since rpc_unmatch_bank_transaction's contract
+    // is array-typed.
+    const bankTxId = matchRows[0].bank_transaction_id;
+    const matchIds = matchRows.map((m) => m.id);
+    const { error: unmatchErr } = await supabase.rpc("rpc_unmatch_bank_transaction", {
+      p_bank_transaction_id: bankTxId,
+      p_match_ids: matchIds,
+      p_reason: voidReason,
+      p_performed_by: profile.id,
+    });
+    if (unmatchErr) return { error: unmatchErr.message };
+    unmatchedBankTxIds.push(bankTxId);
+
+    // Locate the void_offset row created by rpc_ledger_void during the
+    // cascade. No DB-level UNIQUE on voids_entry_id, so order by created_at
+    // desc + limit(1) for defensiveness even though the RPC's
+    // already-voided guard makes multi-offset impossible in practice.
+    const { data: offsetRows } = await supabase
+      .from("lot_ledger_entries")
+      .select("id")
+      .eq("voids_entry_id", parsed.data.lot_ledger_entry_id)
+      .order("created_at", { ascending: false })
+      .limit(1);
+    const offsetRow = (offsetRows ?? [])[0] as { id: string } | undefined;
+    if (!offsetRow) {
+      return { error: "void_offset row not found after cascade — unexpected state" };
+    }
+    voidOffsetId = offsetRow.id;
+  }
+
+  const { error: updErr } = await supabase
+    .from("lot_ledger_entries")
+    .update({ duplicate_status: "confirmed" })
+    .eq("id", parsed.data.lot_ledger_entry_id);
+  if (updErr) return { error: updErr.message };
+
+  await supabase.from("audit_log").insert({
+    profile_id: profile.id,
+    subdivision_id: parsed.data.subdivision_id,
+    action: "lot_ledger_entry.duplicate_voided",
+    entity_type: "lot_ledger_entry",
+    entity_id: parsed.data.lot_ledger_entry_id,
+    before_state: { duplicate_status: "suspected", status: "active" },
+    after_state: { duplicate_status: "confirmed", status: "voided" },
+    metadata: {
+      ...(parsed.data.notes ? { notes: parsed.data.notes } : {}),
+      void_offset_id: voidOffsetId,
+      unmatched_bank_tx_ids: unmatchedBankTxIds,
+    },
+  });
+
+  revalidatePath("/subdivisions/[subdivisionCode]/reconciliation", "page");
+  revalidatePath("/subdivisions/[subdivisionCode]/bank-account", "page");
+  revalidatePath("/subdivisions/[subdivisionCode]/lots/[lotId]", "page");
+  return {
+    success: {
+      voided: true,
+      void_offset_id: voidOffsetId,
+      unmatched_bank_tx_ids: unmatchedBankTxIds,
+    },
+  };
+}
+
+export async function keepAsOverpayment(
+  input: LedgerDuplicateReviewInput,
+): Promise<KeepAsOverpaymentResult> {
+  const parsed = ledgerDuplicateReviewSchema.safeParse(input);
+  if (!parsed.success) return { error: formatIssues(parsed.error.issues) };
+
+  const profile = await requireCompanyRole();
+  await requireSubdivisionAccess(parsed.data.subdivision_id);
+  const supabase = createServerClient();
+
+  const { data: entry } = await supabase
+    .from("lot_ledger_entries")
+    .select("id, subdivision_id, duplicate_status")
+    .eq("id", parsed.data.lot_ledger_entry_id)
+    .maybeSingle();
+  if (!entry) {
+    return { error: "Ledger entry not found", errorCode: "NOT_FOUND" };
+  }
+  const e = entry as {
+    id: string;
+    subdivision_id: string;
+    duplicate_status: "suspected" | "confirmed" | "rejected" | null;
+  };
+
+  if (e.subdivision_id !== parsed.data.subdivision_id) {
+    return { error: "Ledger entry not found", errorCode: "FORBIDDEN" };
+  }
+  if (e.duplicate_status !== "suspected") {
+    return {
+      error: "Entry is not flagged as a suspected duplicate",
+      errorCode: "NOT_SUSPECTED",
+    };
+  }
+
+  const { error: updErr } = await supabase
+    .from("lot_ledger_entries")
+    .update({ duplicate_status: "rejected" })
+    .eq("id", parsed.data.lot_ledger_entry_id);
+  if (updErr) return { error: updErr.message };
+
+  await supabase.from("audit_log").insert({
+    profile_id: profile.id,
+    subdivision_id: parsed.data.subdivision_id,
+    action: "lot_ledger_entry.duplicate_kept_as_overpayment",
+    entity_type: "lot_ledger_entry",
+    entity_id: parsed.data.lot_ledger_entry_id,
+    before_state: { duplicate_status: "suspected" },
+    after_state: { duplicate_status: "rejected" },
+    metadata: parsed.data.notes ? { notes: parsed.data.notes } : null,
+  });
+
+  revalidatePath("/subdivisions/[subdivisionCode]/reconciliation", "page");
+  revalidatePath("/subdivisions/[subdivisionCode]/lots/[lotId]", "page");
+  return { success: { kept: true } };
+}
+
 /** Payload for the three-way `CollisionResolutionDialog`. Both
  *  reconcileTransaction (PP4-B/C) and reactivateMappingAction (PP4-D) emit
  *  this shape — the dialog is flow-agnostic. Lot labels are resolved
@@ -1359,6 +1617,18 @@ export async function reconcileTransaction(
     remaining_unmatched?: number | string;
     flags?: string[];
   };
+
+  // PP5-B: ledger-side duplicate detection on each created credit.
+  // Mirrors the orchestrator integration; flagged credits get
+  // duplicate_status='suspected' for manager review.
+  if ((payload.created_credit_ids ?? []).length > 0) {
+    await detectAndMarkLedgerDuplicates({
+      creditIds: payload.created_credit_ids ?? [],
+      subdivisionId: parsed.data.subdivision_id,
+      performedBy: profile.id,
+      supabase,
+    });
+  }
 
   // PP4-B: post-match "remember this payer" wiring.
   let mappingCollision: MappingCollisionPayload | undefined = undefined;
@@ -2054,6 +2324,16 @@ export async function recordCashReceipt(
 
   if (error) return { error: error.message };
   const payload = (data ?? {}) as { receipt_id?: string; receipt_number?: string; ledger_entry_id?: string };
+
+  // PP5-B: ledger-side duplicate detection is intentionally NOT invoked on
+  // cash receipts. rpc_record_cash_receipt creates the credit with
+  // levy_notice_id = NULL (untargeted) — receipts don't carry notice
+  // linkage at receipt time; that gets attached later when
+  // rpc_deposit_undeposited_funds matches the receipt to a bank tx.
+  // The detector's eligibility predicate (levy_notice_id IS NOT NULL) would
+  // skip every receipt credit, so calling the helper would be dead code.
+  // PRE_LAUNCH_CLEANUP records the option of extending detection to
+  // receipts once notice-linkage support lands.
 
   await revalidateSidebarForSubdivision(parsed.data.subdivision_id);
   revalidatePath("/subdivisions/[subdivisionCode]/reconciliation", "page");

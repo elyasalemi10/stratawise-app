@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { FUND_TYPES, type FundType } from "./ledger";
+import { FUND_TYPES, LEDGER_ENTRY_CATEGORIES, type FundType } from "./ledger";
 
 // ─── Shared constants ──────────────────────────────────────────
 
@@ -218,6 +218,40 @@ export const duplicateReviewSchema = z.object({
   notes: z.string().trim().max(500).nullable().optional(),
 });
 export type DuplicateReviewInput = z.infer<typeof duplicateReviewSchema>;
+
+// ─── Ledger-side duplicate detection (PP5-B) ───────────────────
+//
+// Parallel structure to PP5-A bank-side. duplicate_metadata JSONB shape
+// for lot_ledger_entries. Detector writes this on the *newer* (suspected)
+// credit when it finds a matching candidate within ±7 days on entry_date.
+//
+// No description hash — ledger entries don't have free-form description
+// noise like bank txs. Detection key is structural: same lot_id +
+// levy_notice_id + amount, both category='payment' credits.
+//
+// day_delta capped at 7 (the PP5-B window — see CONTEXT.md PP5
+// §Duplicates rationale).
+
+export const ledgerDuplicateMetadataSchema = z.object({
+  matched_against: z.string().uuid(),
+  lot_id: z.string().uuid(),
+  levy_notice_id: z.string().uuid(),
+  amount: z.number(),
+  day_delta: z.number().int().min(0).max(7),
+  older_category: z.enum(LEDGER_ENTRY_CATEGORIES),
+  newer_category: z.enum(LEDGER_ENTRY_CATEGORIES),
+});
+export type LedgerDuplicateMetadata = z.infer<typeof ledgerDuplicateMetadataSchema>;
+
+// Manager-review server actions for ledger-side. Symmetric verb pair:
+//   voidAsLedgerDuplicate    → status='confirmed', creates void_offset
+//   keepAsOverpayment        → status='rejected', entry stays active
+export const ledgerDuplicateReviewSchema = z.object({
+  subdivision_id: z.string().uuid(),
+  lot_ledger_entry_id: z.string().uuid(),
+  notes: z.string().trim().max(500).nullable().optional(),
+});
+export type LedgerDuplicateReviewInput = z.infer<typeof ledgerDuplicateReviewSchema>;
 
 // ─── Unmatch ───────────────────────────────────────────────────
 

@@ -40,6 +40,7 @@ import { tryKnownPayerMatch } from "./strategies/known-payer";
 import { tryKeywordAmountMatch } from "./strategies/keyword-amount";
 import { tryAmountWindowMatch } from "./strategies/amount-window";
 import { tryFuzzySenderMatch } from "./strategies/fuzzy-hint";
+import { detectAndMarkLedgerDuplicates } from "./ledger-duplicate-detection";
 
 // ─── Types ────────────────────────────────────────────────────────────────
 
@@ -245,7 +246,7 @@ export async function tryAutoMatch(
       matchedOutcome.allocations.reduce((s, a) => s + a.amount, 0),
     );
 
-    const { error: matchErr } = await supabase.rpc(
+    const { data: rpcData, error: matchErr } = await supabase.rpc(
       "rpc_reconcile_bank_transaction",
       {
         p_bank_transaction_id: ctx.bankTransactionId,
@@ -295,6 +296,20 @@ export async function tryAutoMatch(
         .from("reconciliation_matches")
         .update({ review_required: true })
         .eq("bank_transaction_id", ctx.bankTransactionId);
+    }
+
+    // PP5-B: ledger-side duplicate detection. Iterate the credit ids the RPC
+    // just created and flag any that match an existing payment on the same
+    // (lot_id, levy_notice_id, amount) within +/-7 days.
+    const createdCreditIds = ((rpcData ?? {}) as { created_credit_ids?: string[] })
+      .created_credit_ids ?? [];
+    if (createdCreditIds.length > 0) {
+      await detectAndMarkLedgerDuplicates({
+        creditIds: createdCreditIds,
+        subdivisionId: ctx.subdivisionId,
+        performedBy: ctx.performedBy,
+        supabase,
+      });
     }
 
     allocatedAmount = allocSum;
