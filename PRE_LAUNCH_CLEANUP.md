@@ -446,3 +446,31 @@ Small fixes to batch before going live. Non-blocking for feature work.
   pattern proposed for PP5-D-C's `getNearbyBankTxsForClaim`. Low
   priority — the manager can still make the review decision from the
   metadata (day_delta, amount, source pair, hash) shown today.
+
+## From Prompt 5 (PP5-D-B — Ledger-side duplicate review UI)
+
+- **`LedgerDuplicateMetadata` defensive narrowing duplicated across
+  two surfaces.** The JSONB metadata's structured shape is narrowed
+  inline at the use site in both
+  [`lot-ledger-tab.tsx`](src/app/(dashboard)/subdivisions/[subdivisionCode]/lots/[lotId]/lot-ledger-tab.tsx)
+  (the `openLedgerDup` function) and
+  [`lot-ledger-drawer.tsx`](src/app/(dashboard)/subdivisions/[subdivisionCode]/lots/[lotId]/lot-ledger-drawer.tsx)
+  (the dialog-mount IIFE). The shape validation is identical; the
+  duplication is acceptable at 2 sites. **If a third surface adds the
+  same review affordance** — e.g. a top-level "all flagged ledger
+  duplicates in this subdivision" listing per Q5.1 deferred — factor
+  to a `narrowLedgerDuplicateMetadata(raw): LedgerDuplicateMetadata |
+  null` helper in `src/lib/validations/reconciliation.ts` (or a new
+  `src/lib/reconciliation/ledger-duplicate-metadata.ts`) to avoid the
+  third copy.
+
+- **Sheet+Dialog stacking validation deferred to PP5-D-D.** The
+  `LedgerDuplicateReviewDialog` mounts as a sibling to the lot ledger
+  drawer's `Sheet` (not nested). Both shadcn primitives portal at
+  z-index 50; PP4-D's `CollisionResolutionDialog` already coexists
+  with `MappingDetailDrawer` Sheet contexts in production without
+  conflict, so precedent says this works. PP5-D-D's smoke walkthrough
+  will hand-test the lot detail page → drawer open → "Review duplicate"
+  → dialog stacking. If conflicts surface, fallback is to close the
+  Sheet on dialog open via the existing `onResolved` chain — trivial
+  one-line change.

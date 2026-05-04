@@ -114,6 +114,23 @@ export interface LotLedgerEntry {
   voids_entry_id: string | null;
   created_at: string;
   created_by: string;
+  /** PP5-D-B: ledger-side duplicate review state. NULL = no flag.
+   *  'suspected' = badge surfaced; click → LedgerDuplicateReviewDialog.
+   *  'rejected' = manager said keep-as-overpayment; entry stays active.
+   *  'confirmed' = manager voided as duplicate; entry's status='voided'.
+   *  Type imported from validations/reconciliation.ts (PP5-A enum). */
+  duplicate_of: string | null;
+  duplicate_status: "suspected" | "confirmed" | "rejected" | null;
+  /** PP5-B detection metadata (older entry id, lot/notice, amount,
+   *  day_delta, category pair). Stored as JSONB; loosely-typed here
+   *  to avoid a circular import from validations/reconciliation.ts.
+   *  UI consumers cast to LedgerDuplicateMetadata at use site. */
+  duplicate_metadata: Record<string, unknown> | null;
+  /** PP5-D-B parent-status pre-fetch (per planning Gap I). When this row
+   *  has duplicate_of set, this is the parent entry's `status` —
+   *  surfaces as a "voided parent" warning banner in the review dialog
+   *  (parent already voided post-detection, per PP5-B planning rat. (d)). */
+  parent_status: LedgerEntryStatus | null;
 }
 
 export interface SubdivisionArrearsSummary {

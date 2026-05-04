@@ -18,6 +18,11 @@ import { cn } from "@/lib/utils";
 import { getLedgerEntryDetail } from "@/lib/actions/ledger";
 import type { LedgerEntryDetail, LotLedgerEntry } from "@/lib/validations/ledger";
 import { useSubdivisionCode } from "@/lib/subdivision-context";
+import { AlertTriangle } from "lucide-react";
+import {
+  LedgerDuplicateReviewDialog,
+  type LedgerDuplicateReviewPayload,
+} from "@/components/reconciliation/ledger-duplicate-review-dialog";
 
 const formatCurrency = (n: number) =>
   new Intl.NumberFormat("en-AU", { style: "currency", currency: "AUD" }).format(n);
@@ -127,6 +132,9 @@ export function LedgerEntryDrawer({
   const [detail, setDetail] = useState<LedgerEntryDetail | null>(null);
   const [isPending, startTransition] = useTransition();
 
+  // PP5-D-B: ledger-side duplicate review dialog state for the drawer.
+  const [ledgerDupOpen, setLedgerDupOpen] = useState(false);
+
   useEffect(() => {
     if (!entryId || !open) return;
     setDetail(null);
@@ -149,6 +157,7 @@ export function LedgerEntryDrawer({
   const isLoading = isPending || (open && !detail && !!entryId);
 
   return (
+    <>
     <Sheet open={open} onOpenChange={onOpenChange}>
       <SheetContent
         side="right"
@@ -227,6 +236,34 @@ export function LedgerEntryDrawer({
               <DetailRow label="Entry ID">
                 <span className="font-mono text-[10px] text-muted-foreground">{entry.id}</span>
               </DetailRow>
+
+              {/* PP5-D-B: ledger-side duplicate review affordance.
+                  Surfaces only on entries flagged duplicate_status='suspected'
+                  with detection metadata. Click → LedgerDuplicateReviewDialog. */}
+              {entry.duplicate_status === "suspected" && entry.duplicate_metadata && (
+                <>
+                  <SectionHeading>Possible duplicate</SectionHeading>
+                  <div className="rounded-md border border-amber-200 bg-amber-50 p-3">
+                    <div className="flex items-start gap-2">
+                      <AlertTriangle className="h-4 w-4 mt-0.5 shrink-0 text-amber-700" />
+                      <div className="text-xs text-amber-900 space-y-2">
+                        <p>
+                          The detector flagged this credit as a possible duplicate of an earlier
+                          payment on the same levy notice.
+                        </p>
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          className="h-7 px-2 text-xs"
+                          onClick={() => setLedgerDupOpen(true)}
+                        >
+                          Review duplicate
+                        </Button>
+                      </div>
+                    </div>
+                  </div>
+                </>
+              )}
 
               {/* ── Source chain ─────────────────────────── */}
               {sourceLink && (
@@ -384,5 +421,68 @@ export function LedgerEntryDrawer({
         </SheetFooter>
       </SheetContent>
     </Sheet>
+
+    {/* PP5-D-B: ledger-side duplicate review dialog. Mounted as a sibling
+        to the Sheet (not nested) so the Dialog primitive's portal is
+        independent. onResolved closes the Sheet too — the entry's state
+        has changed and stale drawer data shouldn't persist (Gap J). */}
+    {entry && entry.duplicate_metadata && entry.duplicate_status && (() => {
+      const meta = entry.duplicate_metadata as {
+        matched_against?: string;
+        lot_id?: string;
+        levy_notice_id?: string;
+        amount?: number;
+        day_delta?: number;
+        older_category?: string;
+        newer_category?: string;
+      };
+      if (
+        !meta.matched_against ||
+        !meta.lot_id ||
+        !meta.levy_notice_id ||
+        typeof meta.amount !== "number" ||
+        typeof meta.day_delta !== "number" ||
+        !meta.older_category ||
+        !meta.newer_category
+      ) {
+        return null;
+      }
+      const dialogPayload: LedgerDuplicateReviewPayload = {
+        lot_ledger_entry_id: entry.id,
+        subdivision_id: entry.subdivision_id,
+        current: {
+          entry_date: entry.entry_date,
+          amount: entry.amount,
+          fund_type: entry.fund_type,
+          levy_notice_id: entry.levy_notice_id,
+          description: entry.description,
+        },
+        duplicate_metadata: {
+          matched_against: meta.matched_against,
+          lot_id: meta.lot_id,
+          levy_notice_id: meta.levy_notice_id,
+          amount: meta.amount,
+          day_delta: meta.day_delta,
+          older_category: meta.older_category,
+          newer_category: meta.newer_category,
+        },
+        duplicate_status: entry.duplicate_status,
+        parent_status: entry.parent_status,
+      };
+      return (
+        <LedgerDuplicateReviewDialog
+          open={ledgerDupOpen}
+          onOpenChange={setLedgerDupOpen}
+          payload={dialogPayload}
+          onResolved={() => {
+            // Auto-close the drawer Sheet after a successful action — the
+            // entry's state has changed and the drawer's stale data
+            // shouldn't persist (PP5-D-B Gap J ratification).
+            onOpenChange(false);
+          }}
+        />
+      );
+    })()}
+    </>
   );
 }

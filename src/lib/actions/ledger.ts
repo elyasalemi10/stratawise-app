@@ -83,9 +83,12 @@ export async function getLotLedgerEntries(
   // null = no status filter (return all); undefined = default to "active"
   const statusFilter = opts.status === undefined ? "active" : opts.status;
 
+  // PP5-D-B: pre-fetch the parent entry's status via self-join on
+  // duplicate_of. The dialog uses parent_status to render the
+  // "voided parent" warning banner without an extra round-trip.
   let q = supabase
     .from("lot_ledger_entries")
-    .select("*")
+    .select("*, parent:lot_ledger_entries!duplicate_of(status)")
     .eq("lot_id", lotId)
     .order("entry_date", { ascending: false })
     .order("created_at", { ascending: false })
@@ -319,6 +322,12 @@ function mapLedgerState(r: any): LotLedgerState {
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 function mapLedgerEntry(r: any): LotLedgerEntry {
+  // PP5-D-B: parent self-join may come back as either a single object
+  // (single FK relation) or an array (PostgREST's default for embedded
+  // resources). Handle both shapes defensively.
+  const parentRaw = r.parent;
+  const parentRow = Array.isArray(parentRaw) ? parentRaw[0] : parentRaw;
+  const parentStatus: LedgerEntryStatus | null = parentRow?.status ?? null;
   return {
     id: r.id,
     subdivision_id: r.subdivision_id,
@@ -339,6 +348,11 @@ function mapLedgerEntry(r: any): LotLedgerEntry {
     voids_entry_id: r.voids_entry_id,
     created_at: r.created_at,
     created_by: r.created_by,
+    duplicate_of: r.duplicate_of ?? null,
+    duplicate_status: r.duplicate_status ?? null,
+    duplicate_metadata:
+      (r.duplicate_metadata as Record<string, unknown> | null) ?? null,
+    parent_status: parentStatus,
   };
 }
 
@@ -411,9 +425,11 @@ export async function getLedgerEntryDetail(
 ): Promise<LedgerEntryDetail> {
   const supabase = createServerClient();
 
+  // PP5-D-B: pre-fetch parent.status via self-join — surfaces in the
+  // drawer's duplicate review banner without an extra round-trip.
   const { data: entry, error: entryErr } = await supabase
     .from("lot_ledger_entries")
-    .select("*")
+    .select("*, parent:lot_ledger_entries!duplicate_of(status)")
     .eq("id", entryId)
     .single();
   if (entryErr || !entry) throw new Error("Ledger entry not found");

@@ -46,6 +46,11 @@ import { getLotBalance, getLotLedgerEntries, getLedgerPaymentSourceLinks, voidLe
 import { getBankAccountsForSubdivision } from "@/lib/actions/bank-transactions";
 import { RecordCashReceiptDialog } from "@/components/shared/record-cash-receipt-dialog";
 import { RecordAdjustmentDialog } from "@/components/shared/record-adjustment-dialog";
+import { DuplicateBadge } from "@/components/shared/duplicate-badge";
+import {
+  LedgerDuplicateReviewDialog,
+  type LedgerDuplicateReviewPayload,
+} from "@/components/reconciliation/ledger-duplicate-review-dialog";
 import { LedgerEntryDrawer } from "./lot-ledger-drawer";
 import type { LotLedgerState, LotLedgerEntry, LedgerEntryCategory, FundType, LedgerSourceLink } from "@/lib/validations/ledger";
 import type { BankAccountSummary } from "@/lib/validations/bank-transactions";
@@ -298,6 +303,61 @@ export function LedgerTab({
   const [voidTarget, setVoidTarget] = useState<LotLedgerEntry | null>(null);
   const [drawerEntryId, setDrawerEntryId] = useState<string | null>(null);
   const [drawerOpen, setDrawerOpen] = useState(false);
+
+  // PP5-D-B: ledger-side duplicate review dialog mount state. Single
+  // shared instance for the whole tab; per-row badges fire openLedgerDup(entry).
+  const [ledgerDupOpen, setLedgerDupOpen] = useState(false);
+  const [ledgerDupPayload, setLedgerDupPayload] =
+    useState<LedgerDuplicateReviewPayload | null>(null);
+
+  function openLedgerDup(entry: LotLedgerEntry) {
+    if (!entry.duplicate_metadata || !entry.duplicate_status) return;
+    // The detector's metadata shape (from PP5-B). Defensive cast — Zod
+    // schema source-of-truth lives in validations/reconciliation.ts.
+    const meta = entry.duplicate_metadata as {
+      matched_against?: string;
+      lot_id?: string;
+      levy_notice_id?: string;
+      amount?: number;
+      day_delta?: number;
+      older_category?: string;
+      newer_category?: string;
+    };
+    if (
+      !meta.matched_against ||
+      !meta.lot_id ||
+      !meta.levy_notice_id ||
+      typeof meta.amount !== "number" ||
+      typeof meta.day_delta !== "number" ||
+      !meta.older_category ||
+      !meta.newer_category
+    ) {
+      return;
+    }
+    setLedgerDupPayload({
+      lot_ledger_entry_id: entry.id,
+      subdivision_id: entry.subdivision_id,
+      current: {
+        entry_date: entry.entry_date,
+        amount: entry.amount,
+        fund_type: entry.fund_type,
+        levy_notice_id: entry.levy_notice_id,
+        description: entry.description,
+      },
+      duplicate_metadata: {
+        matched_against: meta.matched_against,
+        lot_id: meta.lot_id,
+        levy_notice_id: meta.levy_notice_id,
+        amount: meta.amount,
+        day_delta: meta.day_delta,
+        older_category: meta.older_category,
+        newer_category: meta.newer_category,
+      },
+      duplicate_status: entry.duplicate_status,
+      parent_status: entry.parent_status,
+    });
+    setLedgerDupOpen(true);
+  }
 
   const refresh = () => setRefreshToken((n) => n + 1);
 
@@ -611,15 +671,21 @@ export function LedgerTab({
                         </td>
                       )}
                       <td className="px-3 py-2">
-                        {voided ? (
-                          <Badge className="rounded-full bg-muted text-muted-foreground hover:bg-muted">
-                            Voided
-                          </Badge>
-                        ) : (
-                          <Badge className="rounded-full bg-secondary/10 text-secondary hover:bg-secondary/10">
-                            Active
-                          </Badge>
-                        )}
+                        <div className="flex items-center gap-1.5 flex-wrap">
+                          {voided ? (
+                            <Badge className="rounded-full bg-muted text-muted-foreground hover:bg-muted">
+                              Voided
+                            </Badge>
+                          ) : (
+                            <Badge className="rounded-full bg-secondary/10 text-secondary hover:bg-secondary/10">
+                              Active
+                            </Badge>
+                          )}
+                          {entry.duplicate_status === "suspected" &&
+                            entry.duplicate_metadata && (
+                              <DuplicateBadge onClick={() => openLedgerDup(entry)} />
+                            )}
+                        </div>
                       </td>
                       <td className="px-3 py-2">
                         <div className="flex items-center gap-1 justify-end">
@@ -716,6 +782,21 @@ export function LedgerTab({
           subdivisionId={subdivisionId}
           open={drawerOpen}
           onOpenChange={setDrawerOpen}
+        />
+
+        {/* PP5-D-B: ledger-side duplicate review dialog (single shared instance). */}
+        <LedgerDuplicateReviewDialog
+          open={ledgerDupOpen}
+          onOpenChange={(open) => {
+            setLedgerDupOpen(open);
+            if (!open) setLedgerDupPayload(null);
+          }}
+          payload={ledgerDupPayload}
+          onResolved={() => {
+            startTransition(() => {
+              refresh();
+            });
+          }}
         />
       </div>
     </TooltipProvider>
