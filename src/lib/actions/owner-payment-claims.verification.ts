@@ -411,9 +411,12 @@ async function opc7_listPendingClaims(
   opc: typeof import("./owner-payment-claims"),
 ) {
   asUser(fx.companyA.managerClerkId);
-  const result = await opc.listPendingPaymentClaims(fx.companyA.subdivisionId);
+  // PP5-D-C-A: action renamed to listManagerPaymentClaims with optional
+  // { orphan?: boolean }. Default behaviour (no opts) returns pending —
+  // OPC-7 covers that branch; PD-2 covers the orphan branch.
+  const result = await opc.listManagerPaymentClaims(fx.companyA.subdivisionId);
   record(
-    "OPC-7: listPendingPaymentClaims returns claims for the manager's subdivision",
+    "OPC-7: listManagerPaymentClaims (default) returns pending claims for the manager's subdivision",
     result.rows.length >= 2 && result.rows.every((r) => r.claim_status === "pending"),
     `count=${result.rows.length}, all pending=${result.rows.every((r) => r.claim_status === "pending")}`,
   );
@@ -941,6 +944,199 @@ async function opc16_voidCascadeOrphan(
   );
 }
 
+// ─── PD-2: orphan filter on listManagerPaymentClaims (PP5-D-C-A) ─────────
+// Sets up matched claims in each of the four orphan triggers + a healthy
+// matched control row. Asserts:
+//   - listManagerPaymentClaims (default) returns NEITHER (all are matched
+//     not pending). Sanity check.
+//   - listManagerPaymentClaims with orphan=true returns ONLY the four
+//     orphans, excluding the healthy control.
+
+async function pd2_orphanFilter(
+  fx: Fixture,
+  opc: typeof import("./owner-payment-claims"),
+) {
+  const header =
+    "PD-2: listManagerPaymentClaims orphan filter — returns matched claims with any of 4 orphan triggers; default returns pending only";
+  try {
+    // Build a dedicated lot for PD-2 to avoid contamination from earlier
+    // OPC scenarios (which used companyA.lotOwnedId for many setups).
+    const { data: pd2Lot } = await supabase
+      .from("lots")
+      .insert({
+        subdivision_id: fx.companyA.subdivisionId,
+        lot_number: 99,
+        lot_entitlement: 100,
+        lot_liability: 100,
+      })
+      .select("id")
+      .single();
+    assert(pd2Lot, "PD-2 setup: lot insert failed");
+    const pd2LotId = pd2Lot.id;
+    await supabase.from("subdivision_members").insert({
+      subdivision_id: fx.companyA.subdivisionId,
+      profile_id: fx.companyA.ownerProfileId,
+      lot_id: pd2LotId,
+      role: "lot_owner",
+      is_primary_contact: false,
+      is_financial: true,
+    });
+
+    // Build a notice + outstanding $500 debit on the new lot so confirm
+    // paths can allocate.
+    const { data: pd2Notice } = await supabase
+      .from("levy_notices")
+      .insert({
+        subdivision_id: fx.companyA.subdivisionId,
+        lot_id: pd2LotId,
+        budget_id: fx.companyA.budgetId,
+        reference_number: "LEV-PD2",
+        bpay_crn: "00000018",
+        fund_type: "administrative",
+        levy_type: "regular",
+        period_start: "2026-04-01",
+        period_end: "2026-06-30",
+        amount: 500,
+        due_date: "2026-07-28",
+        status: "draft",
+      })
+      .select("id")
+      .single();
+    assert(pd2Notice, "PD-2 setup: notice insert failed");
+    const pd2NoticeId = pd2Notice.id;
+    await supabase.from("lot_ledger_entries").insert({
+      subdivision_id: fx.companyA.subdivisionId,
+      lot_id: pd2LotId,
+      fund_type: "administrative",
+      entry_type: "debit",
+      category: "levy",
+      amount: 500,
+      entry_date: "2026-04-01",
+      reference: "LEV-PD2",
+      levy_notice_id: pd2NoticeId,
+      status: "active",
+      created_by: fx.companyA.managerProfileId,
+    });
+
+    // Helper: submit + confirm-via-existing for a $X claim. Returns the
+    // claim_id and the matched bank_tx_id + ledger_entry_id.
+    async function submitAndMatchExisting(amount: number, claimDate: string, txDate: string) {
+      asUser(fx.companyA.ownerClerkId);
+      const submit = await opc.submitOwnerPaymentClaim({
+        subdivision_id: fx.companyA.subdivisionId,
+        lot_id: pd2LotId,
+        amount,
+        claim_date: claimDate,
+        payment_method: "eft",
+      });
+      assert(submit.success, `PD-2 submit failed: ${submit.error}`);
+      asUser(fx.companyA.managerClerkId);
+      const { data: bankTx } = await supabase
+        .from("bank_transactions")
+        .insert({
+          bank_account_id: fx.companyA.bankAccountId,
+          source: "manual",
+          transaction_date: txDate,
+          amount,
+          description: `PD-2 setup ${amount}`,
+          match_status: "unmatched",
+        })
+        .select("id")
+        .single();
+      assert(bankTx, "PD-2 bank_transaction insert failed");
+      const matchRes = await opc.confirmAndMatchClaimViaExistingBankTx({
+        claim_id: submit.success!.claim_id,
+        bank_transaction_id: bankTx.id,
+        allocations: [
+          {
+            lot_id: pd2LotId,
+            fund_type: "administrative",
+            amount,
+            levy_notice_id: pd2NoticeId,
+          },
+        ],
+      });
+      assert(matchRes.success, `PD-2 match failed: ${matchRes.error}`);
+      return {
+        claim_id: submit.success!.claim_id,
+        bank_tx_id: bankTx.id,
+        ledger_entry_id: matchRes.success!.ledger_entry_id,
+      };
+    }
+
+    // (a) bank_transaction_id IS NULL — hand-craft the FK SET NULL state.
+    const a = await submitAndMatchExisting(11, "2026-05-01", "2026-05-01");
+    await supabase
+      .from("owner_payment_claims")
+      .update({ bank_transaction_id: null })
+      .eq("id", a.claim_id);
+
+    // (b) bt.is_voided=true — production void via voidBankTransaction.
+    const b = await submitAndMatchExisting(22, "2026-05-02", "2026-05-02");
+    const recon = await import("./reconciliation");
+    asUser(fx.companyA.managerClerkId);
+    const voidRes = await recon.voidBankTransaction({
+      subdivision_id: fx.companyA.subdivisionId,
+      bank_transaction_id: b.bank_tx_id,
+      reason: "PD-2 orphan trigger (b): production void path",
+    });
+    assert(voidRes.success, `PD-2 (b) void failed: ${voidRes.error}`);
+
+    // (c) ledger_entry_id IS NULL — hand-craft the FK SET NULL state.
+    const c = await submitAndMatchExisting(33, "2026-05-03", "2026-05-03");
+    await supabase
+      .from("owner_payment_claims")
+      .update({ ledger_entry_id: null })
+      .eq("id", c.claim_id);
+
+    // (d) ledger_entry status='voided' — production rpc_ledger_void.
+    // The match was via confirmAndMatchClaimViaExistingBankTx which created
+    // a credit ledger entry. Void it via rpc_ledger_void directly.
+    const d = await submitAndMatchExisting(44, "2026-05-04", "2026-05-04");
+    await supabase.rpc("rpc_ledger_void", {
+      p_entry_id: d.ledger_entry_id,
+      p_reason: "PD-2 orphan trigger (d): direct ledger void",
+      p_voided_by: fx.companyA.managerProfileId,
+    });
+
+    // (e) Healthy matched control — no orphan trigger.
+    const e = await submitAndMatchExisting(55, "2026-05-05", "2026-05-05");
+
+    // Default branch (orphan=undefined): pending claims only. None of our
+    // 5 setups are pending — so they should NOT appear in the result.
+    asUser(fx.companyA.managerClerkId);
+    const pendingOnly = await opc.listManagerPaymentClaims(fx.companyA.subdivisionId);
+    const pendingIds = new Set(pendingOnly.rows.map((r) => r.id));
+    const allFiveExcludedFromPending =
+      !pendingIds.has(a.claim_id) &&
+      !pendingIds.has(b.claim_id) &&
+      !pendingIds.has(c.claim_id) &&
+      !pendingIds.has(d.claim_id) &&
+      !pendingIds.has(e.claim_id);
+
+    // Orphan branch: matched + any of (a,b,c,d) — but NOT (e).
+    const orphans = await opc.listManagerPaymentClaims(fx.companyA.subdivisionId, {
+      orphan: true,
+    });
+    const orphanIds = new Set(orphans.rows.map((r) => r.id));
+    const fourOrphansIncluded =
+      orphanIds.has(a.claim_id) &&
+      orphanIds.has(b.claim_id) &&
+      orphanIds.has(c.claim_id) &&
+      orphanIds.has(d.claim_id);
+    const healthyExcluded = !orphanIds.has(e.claim_id);
+
+    const ok = allFiveExcludedFromPending && fourOrphansIncluded && healthyExcluded;
+    record(
+      header,
+      ok,
+      `pending excludes all 5: ${allFiveExcludedFromPending} (count=${pendingOnly.rows.length}); orphan includes 4: ${fourOrphansIncluded} (count=${orphans.rows.length}); healthy excluded: ${healthyExcluded}`,
+    );
+  } catch (e) {
+    record(header, false, (e as Error).message);
+  }
+}
+
 // ─── Cleanup ──────────────────────────────────────────────────────────────
 
 async function cleanupMarker(): Promise<void> {
@@ -1071,6 +1267,7 @@ async function main() {
   await opc14_rejectIsReadOnlyOnFinancials(fx, opc);
   await opc15_likelyDuplicateThenOverride(fx, opc);
   await opc16_voidCascadeOrphan(fx, opc, recon);
+  await pd2_orphanFilter(fx, opc);
 
   if (!noCleanup) {
     console.log("\nCleaning up");

@@ -574,6 +574,42 @@ consistently — see PRE_LAUNCH_CLEANUP.
 **Backfill not in PP5-C.** No `withdrawn` state, no claim TTL — both
 deferred to PRE_LAUNCH_CLEANUP per ratification.
 
+**Two distinct nearby-bank-tx queries (PP5-D-C-A — don't unify):**
+
+| Action | Scope | Window | Amount | Purpose |
+|---|---|---|---|---|
+| `getNearbyBankTxsForClaim(claimId)` | Subdivision-wide | ±7 days | ±$0.01 | **SHOWING candidates** in the manager-claim-review dialog's match-existing stage. Sorted exact-amount-first, then date-proximity. UI consumer renders a list with "Use this one" CTAs per row. |
+| LIKELY_DUPLICATE pre-check inside `confirmAndMatchClaimViaNewBankTx` | Single bank_account | ±2 days | exact match | **BLOCKING** new manual bank tx creation that would duplicate an existing one. Returns `errorCode='LIKELY_DUPLICATE'` + `likely_duplicate_bank_tx_ids[]` for the dialog to hydrate via `getBankTxSnapshotsByIds`. |
+
+Two distinct semantics, two distinct entry points. The first is
+**discoverability** (manager wants to find a likely match); the second
+is **defensive guardrail** (action refuses to compound a duplicate
+without explicit override). Don't unify them — different scoping +
+different tolerances + different consumers.
+
+`getBankTxSnapshotsByIds(ids[], anchorClaimId)` is the small companion
+that hydrates display fields for the LIKELY_DUPLICATE response IDs (the
+atomic snapshot from the action — Q5.6 ratification). Cross-subdivision
+IDs return `errorCode='FORBIDDEN'`; the anchor claim's subdivision is
+authoritative.
+
+**`?orphan=1` filter on the manager claims queue (PP5-D-C-A):**
+The manager queue page has two mutually exclusive lists:
+- **Default** (no `?orphan`): `claim_status='pending'` only.
+- **`?orphan=1`**: `claim_status='matched'` AND any of the four orphan
+  triggers fires:
+  1. `bank_transaction_id IS NULL` (FK SET NULL fired)
+  2. linked bank tx `is_voided = true` (production void path)
+  3. `ledger_entry_id IS NULL`
+  4. linked ledger entry `status = 'voided'`
+
+`listManagerPaymentClaims(subdivisionId, { orphan: true })` is the
+action; `listPendingPaymentClaims` is preserved as a backwards-compat
+alias during the rename and removed on the next pass. Header copy on
+the queue page reflects which list is active ("Pending claims" vs
+"Matched but orphaned"). PD-2 verification scenario covers all four
+orphan triggers + a healthy negative control.
+
 ---
 
 ## 5. Key invariants

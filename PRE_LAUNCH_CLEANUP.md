@@ -474,3 +474,37 @@ Small fixes to batch before going live. Non-blocking for feature work.
   → dialog stacking. If conflicts surface, fallback is to close the
   Sheet on dialog open via the existing `onResolved` chain — trivial
   one-line change.
+
+## From Prompt 5 (PP5-D-C-A — Claims queue backend + orphan filter)
+
+- **PostgREST single-row joined relation array-or-object pattern
+  duplicated across 2 surfaces.** PP5-D-B's `mapLedgerEntry`
+  (lot-ledger parent_status JOIN) and PP5-D-C-A's
+  `listManagerPaymentClaims` orphan branch (claims orphan filter `bt`
+  and `le` joins) both flatten the same shape: PostgREST returns a
+  single-row joined relation as either `T | T[] | null` depending on
+  whether it's an embedded resource or a single FK relation. **If a
+  fourth instance lands**, factor to a tiny shared helper:
+
+  ```ts
+  function flattenSingleRelation<T>(raw: T | T[] | null | undefined): T | null {
+    if (raw === null || raw === undefined) return null;
+    return Array.isArray(raw) ? (raw[0] ?? null) : raw;
+  }
+  ```
+
+  Place in `src/lib/supabase.ts` or a new `src/lib/postgrest-helpers.ts`.
+  Two sites is acceptable; three or more justifies the helper.
+
+- **Custom toggle chip styling for URL boolean filters duplicated
+  across 2 sites.** PP5-D-A's `?dup=1` chip in the reconciliation
+  queue and PP5-D-C-A's `?orphan=1` chip in the claims queue both
+  re-implement `FilterChips`'s visual primitive inline (rounded-full
+  border + primary-when-active, with `aria-pressed` + URL-state
+  toggle). The duplication is acceptable at 2 sites because the
+  alternative (FilterChips with a single-option Set) doesn't preserve
+  the `?<key>=1` URL convention used for `rr`, `fh`, `dup`, `orphan`.
+  **If a third site lands** (or `FilterChips` evolves visually),
+  extract `<UrlBoolFilterChip label key>` primitive that wraps the
+  URL state pattern and uses the same Tailwind classes as
+  `FilterChips`'s rendered chips. Defer until needed.

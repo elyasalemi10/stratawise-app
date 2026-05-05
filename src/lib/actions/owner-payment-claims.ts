@@ -45,6 +45,7 @@ import {
   type ManagerClaimQueueRow,
 } from "@/lib/validations/owner-payment-claims";
 import { addManualBankTransaction, reconcileTransaction } from "./reconciliation";
+import type { MatchStatus } from "@/lib/validations/reconciliation";
 
 function formatIssues(issues: { message: string }[]): string {
   return issues.map((i) => i.message).join("; ");
@@ -65,6 +66,20 @@ export type ListMyPaymentClaimsResult = {
 export type ListPendingPaymentClaimsResult = {
   rows: ManagerClaimQueueRow[];
 };
+
+/** PP5-D-C-A: alias of {@link ListPendingPaymentClaimsResult} for the
+ *  renamed `listManagerPaymentClaims` (which optionally returns orphaned
+ *  claims via { orphan: true } per Gap Q ratification). The row shape is
+ *  identical — only the query branch differs. */
+export type ListManagerPaymentClaimsResult = ListPendingPaymentClaimsResult;
+
+export interface ListManagerPaymentClaimsOptions {
+  /** When true: return MATCHED claims that are orphaned — bank tx voided
+   *  or ledger entry voided, OR FK SET NULL fired. Mutually exclusive with
+   *  the default (returns pending claims).
+   *  See CONTEXT.md PP5 §4.10 (orphan filter). */
+  orphan?: boolean;
+}
 
 export type ConfirmClaimResult = {
   success?: {
@@ -239,13 +254,66 @@ export async function listMyPaymentClaims(
 // MANAGER-SIDE ACTIONS
 // ============================================================================
 
-export async function listPendingPaymentClaims(
+/**
+ * PP5-D-C-A: renamed from listPendingPaymentClaims. Default behaviour
+ * returns pending claims (preserves PP5-C semantics). With { orphan: true }
+ * returns MATCHED claims that are orphaned per the four orphan triggers
+ * (Gap D ratification):
+ *   1. bank_transaction_id IS NULL (FK SET NULL fired post-match)
+ *   2. linked bank tx is_voided = true (production void path)
+ *   3. ledger_entry_id IS NULL
+ *   4. linked ledger entry status = 'voided'
+ *
+ * Pending and orphaned are mutually exclusive lists. The page-level
+ * `?orphan=1` chip pivots between them; header copy reflects which list
+ * is active.
+ */
+export async function listManagerPaymentClaims(
   subdivisionId: string,
-): Promise<ListPendingPaymentClaimsResult> {
+  opts: ListManagerPaymentClaimsOptions = {},
+): Promise<ListManagerPaymentClaimsResult> {
   await requireCompanyRole();
   await requireSubdivisionAccess(subdivisionId);
   const supabase = createServerClient();
 
+  if (opts.orphan === true) {
+    // Orphan branch: matched claims with at least one orphan trigger.
+    // PostgREST embedded relations expose nullable single-row joins for
+    // FKs that are SET NULL on cascade — bt and le may come back as null
+    // or as a single object. We do the orphan-condition test in TS after
+    // the LEFT-joined fetch so the SQL stays simple + the filter logic
+    // is expressible without OR-on-nested-fields.
+    const { data: rawRows } = await supabase
+      .from("owner_payment_claims")
+      .select(
+        "id, subdivision_id, lot_id, claimed_by_profile_id, amount, claim_date, payment_method, reference, notes, claim_status, created_at, bank_transaction_id, ledger_entry_id, bt:bank_transactions!bank_transaction_id(is_voided), le:lot_ledger_entries!ledger_entry_id(status)",
+      )
+      .eq("subdivision_id", subdivisionId)
+      .eq("claim_status", "matched")
+      .order("created_at", { ascending: false });
+
+    const orphans = (rawRows ?? []).filter((r) => {
+      const row = r as {
+        bank_transaction_id: string | null;
+        ledger_entry_id: string | null;
+        bt: { is_voided: boolean } | Array<{ is_voided: boolean }> | null;
+        le: { status: string } | Array<{ status: string }> | null;
+      };
+      const btShape = Array.isArray(row.bt) ? row.bt[0] ?? null : row.bt;
+      const leShape = Array.isArray(row.le) ? row.le[0] ?? null : row.le;
+      return (
+        row.bank_transaction_id === null ||
+        row.ledger_entry_id === null ||
+        btShape?.is_voided === true ||
+        leShape?.status === "voided"
+      );
+    });
+    if (orphans.length === 0) return { rows: [] };
+
+    return await hydrateManagerClaimRows(supabase, orphans);
+  }
+
+  // Default branch: pending claims (PP5-C behaviour preserved).
   const { data: rows } = await supabase
     .from("owner_payment_claims")
     .select(
@@ -256,7 +324,29 @@ export async function listPendingPaymentClaims(
     .order("created_at", { ascending: false });
 
   if (!rows || rows.length === 0) return { rows: [] };
+  return await hydrateManagerClaimRows(supabase, rows);
+}
 
+/** PP5-D-C-A: backwards-compat alias preserved during the rename. New
+ *  callers should use listManagerPaymentClaims directly. Remove on the
+ *  next pass through this file. */
+export async function listPendingPaymentClaims(
+  subdivisionId: string,
+): Promise<ListPendingPaymentClaimsResult> {
+  return listManagerPaymentClaims(subdivisionId);
+}
+
+// ─── hydrateManagerClaimRows shared helper ────────────────────────────────
+//
+// Resolves lot labels + owner names via two batched queries; returns the
+// full ManagerClaimQueueRow[] shape. Used by both branches of
+// listManagerPaymentClaims (pending + orphan) so the row-display
+// resolution is single-sourced.
+
+async function hydrateManagerClaimRows(
+  supabase: ReturnType<typeof createServerClient>,
+  rows: Array<Record<string, unknown>>,
+): Promise<ListManagerPaymentClaimsResult> {
   // Resolve lot labels + owner names in two batched queries.
   const lotIds = Array.from(new Set(rows.map((r) => r.lot_id as string)));
   const profileIds = Array.from(new Set(rows.map((r) => r.claimed_by_profile_id as string)));
@@ -318,6 +408,223 @@ export async function listPendingPaymentClaims(
       };
     }),
   };
+}
+
+// ─── Nearby bank tx lookups (PP5-D-C-A) ───────────────────────────────────
+//
+// Two distinct entry points, two distinct semantics. Don't unify.
+//
+// 1. getNearbyBankTxsForClaim — BROAD lookup for SHOWING candidates in the
+//    manager-claim-review dialog's match-existing stage. Subdivision-wide,
+//    +/-7 days from claim_date, +/-$0.01 amount tolerance. Returns sorted:
+//    exact-amount first, then date-proximity. UI consumer is a candidate
+//    list with "Use this one" CTAs per row.
+//
+// 2. getBankTxSnapshotsByIds — NARROW lookup for HYDRATING the IDs that
+//    PP5-C's LIKELY_DUPLICATE pre-check returned. Atomic-snapshot semantic
+//    (Q5.6 ratification) — the IDs returned by the action ARE the
+//    snapshot; we just need their display fields. Subdivision check
+//    enforced via sample bank tx → bank_account.subdivision_id chain;
+//    cross-subdivision IDs cause a FORBIDDEN-style error.
+//
+// CONTEXT.md PP5 §4.10 documents the two-query distinction.
+
+export interface NearbyBankTxRow {
+  id: string;
+  bank_account_id: string;
+  bank_account_name: string;
+  fund_type: "administrative" | "capital_works";
+  source: "manual" | "csv" | "basiq";
+  transaction_date: string;
+  amount: number;
+  description: string | null;
+  match_status: MatchStatus;
+  /** Signed day delta (positive = bank tx is AFTER claim date). */
+  day_delta_from_claim_date: number;
+  /** True when bt.amount === claim.amount exactly. Helps the UI sort
+   *  and visually distinguish exact-match candidates. */
+  is_amount_exact_match: boolean;
+}
+
+export type GetNearbyBankTxsForClaimResult =
+  | { ok: true; rows: NearbyBankTxRow[]; claim_amount: number; claim_date: string }
+  | { ok: false; error: string; errorCode: OwnerPaymentClaimErrorCode };
+
+export async function getNearbyBankTxsForClaim(
+  claimId: string,
+): Promise<GetNearbyBankTxsForClaimResult> {
+  await requireCompanyRole();
+  const supabase = createServerClient();
+
+  const { data: claim } = await supabase
+    .from("owner_payment_claims")
+    .select("id, subdivision_id, amount, claim_date")
+    .eq("id", claimId)
+    .maybeSingle();
+  if (!claim) {
+    return { ok: false, error: "Claim not found", errorCode: "NOT_FOUND" };
+  }
+  const c = claim as {
+    id: string;
+    subdivision_id: string;
+    amount: number | string;
+    claim_date: string;
+  };
+
+  try {
+    await requireSubdivisionAccess(c.subdivision_id);
+  } catch {
+    return { ok: false, error: "Claim not found", errorCode: "FORBIDDEN" };
+  }
+
+  const claimAmount = Number(c.amount);
+  const minAmount = claimAmount - 0.01;
+  const maxAmount = claimAmount + 0.01;
+  const minDate = shiftDate(c.claim_date, -7);
+  const maxDate = shiftDate(c.claim_date, +7);
+
+  // Find all bank accounts in this subdivision (scopes the query).
+  const { data: accounts } = await supabase
+    .from("bank_accounts")
+    .select("id, account_name, fund_type")
+    .eq("subdivision_id", c.subdivision_id);
+  const accountIds = (accounts ?? []).map((a) => (a as { id: string }).id);
+  if (accountIds.length === 0) {
+    return { ok: true, rows: [], claim_amount: claimAmount, claim_date: c.claim_date };
+  }
+  const accountMap = new Map<string, { name: string; fund_type: "administrative" | "capital_works" }>();
+  for (const a of accounts ?? []) {
+    const row = a as { id: string; account_name: string; fund_type: "administrative" | "capital_works" };
+    accountMap.set(row.id, { name: row.account_name, fund_type: row.fund_type });
+  }
+
+  const { data: candidates } = await supabase
+    .from("bank_transactions")
+    .select(
+      "id, bank_account_id, source, transaction_date, amount, description, match_status",
+    )
+    .in("bank_account_id", accountIds)
+    .eq("is_voided", false)
+    .gte("transaction_date", minDate)
+    .lte("transaction_date", maxDate)
+    .gte("amount", minAmount)
+    .lte("amount", maxAmount);
+
+  const rows: NearbyBankTxRow[] = (candidates ?? []).map((r) => {
+    const row = r as {
+      id: string;
+      bank_account_id: string;
+      source: "manual" | "csv" | "basiq";
+      transaction_date: string;
+      amount: number | string;
+      description: string | null;
+      match_status: MatchStatus;
+    };
+    const acct = accountMap.get(row.bank_account_id);
+    const amt = Number(row.amount);
+    return {
+      id: row.id,
+      bank_account_id: row.bank_account_id,
+      bank_account_name: acct?.name ?? "",
+      fund_type: acct?.fund_type ?? "administrative",
+      source: row.source,
+      transaction_date: row.transaction_date,
+      amount: amt,
+      description: row.description,
+      match_status: row.match_status,
+      day_delta_from_claim_date: daysBetween(row.transaction_date, c.claim_date),
+      is_amount_exact_match: amt === claimAmount,
+    };
+  });
+
+  // Sort: exact-amount first; then date-proximity (|delta| asc); then date asc.
+  rows.sort((a, b) => {
+    if (a.is_amount_exact_match !== b.is_amount_exact_match) {
+      return a.is_amount_exact_match ? -1 : 1;
+    }
+    const ad = Math.abs(a.day_delta_from_claim_date);
+    const bd = Math.abs(b.day_delta_from_claim_date);
+    if (ad !== bd) return ad - bd;
+    return a.transaction_date.localeCompare(b.transaction_date);
+  });
+
+  return { ok: true, rows, claim_amount: claimAmount, claim_date: c.claim_date };
+}
+
+export type GetBankTxSnapshotsByIdsResult =
+  | { ok: true; rows: NearbyBankTxRow[] }
+  | { ok: false; error: string; errorCode: OwnerPaymentClaimErrorCode };
+
+export async function getBankTxSnapshotsByIds(
+  ids: string[],
+  /** Anchor claim id — provides the claim_date for day_delta computation
+   *  and the subdivision for the access check. The IDs must all belong
+   *  to that subdivision (cross-subdivision leakage = FORBIDDEN). */
+  anchorClaimId: string,
+): Promise<GetBankTxSnapshotsByIdsResult> {
+  await requireCompanyRole();
+  const supabase = createServerClient();
+
+  if (ids.length === 0) return { ok: true, rows: [] };
+
+  const { data: claim } = await supabase
+    .from("owner_payment_claims")
+    .select("subdivision_id, amount, claim_date")
+    .eq("id", anchorClaimId)
+    .maybeSingle();
+  if (!claim) {
+    return { ok: false, error: "Claim not found", errorCode: "NOT_FOUND" };
+  }
+  const c = claim as { subdivision_id: string; amount: number | string; claim_date: string };
+
+  try {
+    await requireSubdivisionAccess(c.subdivision_id);
+  } catch {
+    return { ok: false, error: "Claim not found", errorCode: "FORBIDDEN" };
+  }
+
+  // Fetch bank txs joined with their bank_account so we can verify each
+  // is in the claim's subdivision (no cross-subdivision leakage).
+  const { data: rows } = await supabase
+    .from("bank_transactions")
+    .select(
+      "id, bank_account_id, source, transaction_date, amount, description, match_status, bank_accounts!inner(subdivision_id, account_name, fund_type)",
+    )
+    .in("id", ids);
+
+  const claimAmount = Number(c.amount);
+  const out: NearbyBankTxRow[] = [];
+  for (const r of rows ?? []) {
+    const row = r as unknown as {
+      id: string;
+      bank_account_id: string;
+      source: "manual" | "csv" | "basiq";
+      transaction_date: string;
+      amount: number | string;
+      description: string | null;
+      match_status: MatchStatus;
+      bank_accounts: { subdivision_id: string; account_name: string; fund_type: "administrative" | "capital_works" };
+    };
+    if (row.bank_accounts.subdivision_id !== c.subdivision_id) {
+      // Refuse to leak any out-of-subdivision rows. Whole call returns FORBIDDEN.
+      return { ok: false, error: "Cross-subdivision id supplied", errorCode: "FORBIDDEN" };
+    }
+    const amt = Number(row.amount);
+    out.push({
+      id: row.id,
+      bank_account_id: row.bank_account_id,
+      bank_account_name: row.bank_accounts.account_name,
+      fund_type: row.bank_accounts.fund_type,
+      source: row.source,
+      transaction_date: row.transaction_date,
+      amount: amt,
+      description: row.description,
+      match_status: row.match_status,
+      day_delta_from_claim_date: daysBetween(row.transaction_date, c.claim_date),
+      is_amount_exact_match: amt === claimAmount,
+    });
+  }
+  return { ok: true, rows: out };
 }
 
 // ─── Manager-confirm shared loader ────────────────────────────────────────
@@ -634,4 +941,13 @@ function shiftDate(iso: string, days: number): string {
   const d = new Date(`${iso}T00:00:00Z`);
   d.setUTCDate(d.getUTCDate() + days);
   return d.toISOString().slice(0, 10);
+}
+
+/** Signed day delta between two ISO YYYY-MM-DD dates. Positive when `a`
+ *  is AFTER `b`. Used by getNearbyBankTxsForClaim + getBankTxSnapshotsByIds
+ *  to compute day_delta_from_claim_date. */
+function daysBetween(a: string, b: string): number {
+  const da = new Date(`${a}T00:00:00Z`).getTime();
+  const db = new Date(`${b}T00:00:00Z`).getTime();
+  return Math.round((da - db) / (24 * 60 * 60 * 1000));
 }
