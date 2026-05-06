@@ -1081,6 +1081,120 @@ smoke testing.
   help doc.
 - Pre-launch RPC security-model audit (`SECURITY DEFINER` opt-in).
 
+### What Prompt 5 added
+
+**Scope.** Three independent but related capabilities — bank-side
+duplicate detection, ledger-side duplicate detection, and an owner
+self-report payment claim flow — plus the four UI surfaces that let
+managers triage detected duplicates and review owner claims. Architectural
+detail for each capability already lives at:
+- §4.7 Bank-side duplicate detection (PP5-A)
+- §4.8 Ledger-side duplicate detection (PP5-B)
+- §4.10 Owner self-report payment claim flow (PP5-C)
+
+**Sub-pause shipping order (7 commits, all on `main`, all Vercel-green
+at deploy):**
+1. PP5-A bank-side detection — commit `68b52cc`
+2. PP5-B ledger-side detection — commit `e309894`
+3. PP5-C owner self-report claims — commit `35d175a`
+4. PP5-D-A bank-side review dialog — commit `8c6ddad`
+5. PP5-D-B ledger-side review dialog — commit `1919355`
+6. PP5-D-C-A claims queue backend + orphan filter — commit `29c5ff9`
+7. PP5-D-C-B manager claim review dialog — commit `81b70ac`
+
+**Schema deltas applied (3, all gitignored scratch files at repo root).**
+- `_prompt5_a_schema_delta.sql` — `bank_transactions` duplicate-detection
+  columns (`duplicate_status`, `duplicate_of`, `duplicate_metadata`,
+  partial indexes, `audit_log` event-type expansion).
+- `_prompt5_b_schema_delta.sql` — `lot_ledger_entries` duplicate-detection
+  columns (mirrors PP5-A on the ledger side).
+- `_prompt5_c_schema_delta.sql` — new `owner_payment_claims` table,
+  enums, indexes, FKs (with `ON DELETE SET NULL` from
+  `bank_transactions` and `lot_ledger_entries`).
+Each scratch file carries a "PROBE FIRST" probe block so the production
+state can be verified against the file. Rolled-up production probe
+listed under "From Prompt 5" in `PRE_LAUNCH_CLEANUP.md`.
+
+**Verification.** 172 scenarios across 10 suites green at the close of
+each sub-pause and at PP5-D-C-B sanity:
+- `similarity.verification.ts` — 8/8 (PP4 carry)
+- `canonical.verification.ts` — 12/12 (PP4 carry)
+- `payment-status.verification.ts` — 6/6 (PP1 carry; touched by PP5-B
+  reads)
+- `duplicate-detection.verification.ts` — 27/27 (PP5-A)
+- `ledger-duplicate-detection.verification.ts` — 21/21 (PP5-B)
+- `orchestrator.verification.ts` — 34/34 (PP4 carry; PP5-A
+  cross-source duplicate flag interaction tested)
+- `actions/reconciliation.verification.ts` — 16/16 (PP4 carry; PP5-A
+  PD-1/PD-1b queue filter scenarios added)
+- `actions/owner-payment-claims.verification.ts` — 17/17 (PP5-C +
+  PP5-D-C-A PD-2 orphan filter)
+- `actions/ledger.verification.ts` — 15/15 (PP1 carry; PP5-B `S-`
+  scenarios stable)
+- `actions/basiq.verification.ts` — 16/16 (PP3 carry)
+
+**UI surfaces shipped.**
+- `<DuplicateBadge />` — bank-side `Suspected duplicate` / `Confirmed
+  duplicate` / `Not a duplicate` chip, rendered in queue table rows
+  and the bank tx detail page header. Priority over `FuzzyHintCell`
+  when both apply.
+- `<BankDuplicateReviewDialog />` — confirm / reject path with
+  `MATCH_ACTIVE` pre-disable + inline error + detail-page CTA when the
+  newer row is already matched. `?dup=1` chip filters the queue to
+  suspected-only.
+- `<LedgerDuplicateReviewDialog />` — void / keep-as-overpayment two-verb
+  pattern. Path B routes through `rpc_unmatch_bank_transaction` to
+  cascade-detach matches; toast wording reports the cascaded count.
+  `MULTI_LINKED` cancel-only error stage. Voided-parent warning banner.
+  Mounted as a sibling to the lot-ledger drawer's Sheet (stacking
+  validation deferred — see PRE_LAUNCH_CLEANUP).
+- Lot ledger surfaces — Status column badge alongside `Active`/`Voided`
+  + drawer banner section with Review CTA for `'flagged'` rows.
+- `/reconciliation/claims` queue — pending OR matched-but-orphaned
+  list (mutually exclusive via `?orphan=1` chip toggle). Header copy
+  switches between "Pending claims" and "Matched but orphaned".
+  Review button on pending rows only (orphan-mode action affordance
+  deferred per Gap JJ).
+- `<ManagerClaimReviewDialog />` — multi-stage state machine (7 stages
+  × 13 events) with reducer-driven `returnToStage` error tracking.
+  Match-existing path with candidate list (`getNearbyBankTxsForClaim`,
+  ±7d × ±$0.01, subdivision-wide). Match-new path with single
+  allocation row (locked lot/fund/amount, optional reference) +
+  `LIKELY_DUPLICATE` special transition (not an error stage; hydrates
+  candidates via `getBankTxSnapshotsByIds`, offers "Use this one" /
+  "Proceed anyway" CTAs). Empty-match-existing → match-new auto-pivot
+  at 1.2s with 5-path cleanup. Reject path with rejection-reason ≥10
+  char gate.
+- Owner portal `/my-payments` — list of own claims with status
+  badges, manager rejection-reason visible inline, "Submit a payment
+  claim" CTA gated on `manager_claim_review_enabled` per subdivision.
+
+**Smoke walkthrough deliberately skipped.** PP5-D-D was scoped as a
+read-only hand-test report covering each UI surface (happy / error /
+edge paths, plus Sheet+Dialog stacking validation deferred from
+PP5-D-B), parallel to PP4-D-6's discipline. Skipped per user direction
+to proceed to Prompt 5 close. The state-machine bugs and z-index/stacking
+issues that the smoke walk would have surfaced are NOT validated by the
+verification suite; if hand-test or production telemetry surfaces UI
+bugs in any PP5-D dialog, smoke-walking the affected surface is the
+recovery path. Logged as a carryforward concern in PRE_LAUNCH_CLEANUP.
+
+**What Prompt 5 did NOT do (rolled up in `PRE_LAUNCH_CLEANUP.md`
+under "From Prompt 5").**
+- Owner withdraw of pending claims (Gap G).
+- Claim TTL / auto-rejection cron (Gap H).
+- Void-cascade orphan resolution (trigger / queue filter / DB view —
+  3 options, decision deferred). PP5-D-C-A shipped option (b)
+  partially via the orphan filter chip; trigger or view still
+  outstanding.
+- Sheet+Dialog stacking real-browser validation.
+- Bank duplicate review dialog candidate snapshot pre-fetch (today
+  the dialog shows the older row's id only).
+- Manager claim review dialog: orphan re-confirm action, multi-allocation
+  row support, file split candidates.
+- RLS policies on `owner_payment_claims` (deferred; service-role
+  bypass + action-layer auth enforced in the meantime).
+
 ---
 
 ## 8. What comes next
@@ -1092,9 +1206,9 @@ the reconciliation feature progressively on top of the now-stable schema.
 - [x] Prompt 1 — Lot ledger foundation + RPC functions + levy generation rewrite
 - [x] Prompt 2 — Manual bank transaction entry + manual matching UI + cash/cheque receipts + undeposited funds + void/reversal
 - [x] Prompt 3 — Basiq integration (connect, consent, polling, webhook, reauth, gap reconciliation)
-- [ ] Prompt 4 — Auto-matching pipeline (levy ref, BPAY CRN, sender identity, confidence, auto-learn)
-- [ ] Prompt 5 — Duplicate detection + owner self-report
-- [ ] Prompt 6 — Notifications + interest/arrears/penalty
+- [x] Prompt 4 — Auto-matching pipeline (levy ref, BPAY CRN, sender identity, confidence, auto-learn)
+- [x] Prompt 5 — Duplicate detection + owner self-report
+- [ ] Prompt 6 — Notifications + interest/arrears/penalty (next)
 - [ ] Prompt 7 — Reporting, exports, owner portal, polish
 
 Each subsequent prompt should read this file and `CLAUDE.md` first, then

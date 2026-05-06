@@ -271,7 +271,35 @@ Small fixes to batch before going live. Non-blocking for feature work.
   shadcn-styled Collapsible or a Chevron-icon toggle button for visual
   consistency.
 
-## From Prompt 5 (PP5-A — Bank-side duplicate detection)
+## From Prompt 5
+
+Closes 7 sub-pauses (PP5-A bank-side detection, PP5-B ledger-side
+detection, PP5-C owner self-report claims, PP5-D-A bank-side review
+dialog, PP5-D-B ledger-side review dialog, PP5-D-C-A claims queue
+backend + orphan filter, PP5-D-C-B manager claim review dialog).
+PP5-D-D smoke walkthrough deliberately skipped — see carryforward
+note at the end of this section.
+
+### Prompt 5 schema deltas (3 scratch files, all gitignored)
+
+- `_prompt5_a_schema_delta.sql` — `bank_transactions` duplicate columns
+  (`duplicate_status`, `duplicate_of`, `duplicate_metadata`, partial
+  indexes, audit-log event-type expansion).
+- `_prompt5_b_schema_delta.sql` — `lot_ledger_entries` duplicate columns
+  (mirrors PP5-A on the ledger side).
+- `_prompt5_c_schema_delta.sql` — new `owner_payment_claims` table,
+  enums, indexes, FKs (`ON DELETE SET NULL` from
+  `bank_transactions` and `lot_ledger_entries`).
+
+Pre-launch action: confirm production state matches each file's
+"PROBE FIRST" comment block. Probe queries (`\d <table>`,
+`pg_indexes WHERE tablename='...'`,
+`pg_constraint WHERE conrelid='...'::regclass`,
+`pg_trigger WHERE tgrelid='...'::regclass`,
+`pg_class.relrowsecurity`,
+`pg_policy WHERE polrelid='...'`) listed in each file.
+
+### PP5-A — Bank-side duplicate detection
 
 - **DD-15 Basiq e2e mock caveat.** The duplicate-detection verification
   scenario DD-15 tests detection on a `source='basiq'` bank_transactions row
@@ -307,19 +335,13 @@ Small fixes to batch before going live. Non-blocking for feature work.
   disable submit buttons immediately on click and surface a clear error if
   a 2nd call sneaks through.
 
-- **PP5-A schema-delta scratch file.** `_prompt5_a_schema_delta.sql` was
-  applied via Supabase SQL Editor; the file is gitignored per repo
-  convention. PRE_LAUNCH_CLEANUP step before launch: confirm the
-  production database state matches the scratch file (probe with the same
-  queries listed in the file's "PROBE FIRST" comment block).
-
 - **`bank_transaction.csv_imported` audit forensics.** Pre-PP5-A audit rows
   have `after_state.duplicates: <number>`; post-PP5-A rows have
   `after_state.exact_duplicates_dropped` + `after_state.cross_source_duplicates_flagged`.
   Forensics queries that span the deploy boundary must check both shapes.
   Document in any analytics dashboards that read this audit's after_state.
 
-## From Prompt 5 (PP5-B — Ledger-side duplicate detection)
+### PP5-B — Ledger-side duplicate detection
 
 - **Ledger detection on cash receipts requires notice-linkage support.**
   `rpc_record_cash_receipt` creates ledger credits with
@@ -362,13 +384,7 @@ Small fixes to batch before going live. Non-blocking for feature work.
   `rpc_unmatch_bank_transaction` to handle credit-already-voided
   internally so multiple consecutive calls are safe.
 
-- **PP5-B schema-delta scratch file.** `_prompt5_b_schema_delta.sql` was
-  applied via Supabase SQL Editor; the file is gitignored per repo
-  convention. Pre-launch: confirm the production database state matches
-  the scratch file (probe with the same queries listed in the file's
-  "PROBE FIRST" comment block).
-
-## From Prompt 5 (PP5-C — Owner self-report payment claim flow)
+### PP5-C — Owner self-report payment claim flow
 
 - **Owner withdraw not implemented (Gap G).** Owners cannot withdraw
   a `pending` claim once submitted. If real-world signal indicates
@@ -425,16 +441,7 @@ Small fixes to batch before going live. Non-blocking for feature work.
   helper-extraction) but worth documenting for future-Claude or
   forensics dashboards. CONTEXT.md §4.10 captures the chain shape.
 
-- **PP5-C schema-delta scratch file.** `_prompt5_c_schema_delta.sql`
-  was applied via Supabase SQL Editor; the file is gitignored per
-  repo convention. Pre-launch: confirm the production database
-  state matches the scratch file (probe queries: `\d
-  owner_payment_claims`, `pg_indexes WHERE tablename='...'`,
-  `pg_constraint WHERE conrelid='...'::regclass`,
-  `pg_trigger WHERE tgrelid='...'::regclass`,
-  `pg_class.relrowsecurity`, `pg_policy WHERE polrelid='...'`).
-
-## From Prompt 5 (PP5-D-A — Bank-side duplicate review UI)
+### PP5-D-A — Bank-side duplicate review UI
 
 - **`<BankDuplicateReviewDialog />` candidate row not pre-fetched.**
   The dialog renders the older (matched_against) row's id only — it
@@ -447,7 +454,7 @@ Small fixes to batch before going live. Non-blocking for feature work.
   priority — the manager can still make the review decision from the
   metadata (day_delta, amount, source pair, hash) shown today.
 
-## From Prompt 5 (PP5-D-B — Ledger-side duplicate review UI)
+### PP5-D-B — Ledger-side duplicate review UI
 
 - **`LedgerDuplicateMetadata` defensive narrowing duplicated across
   two surfaces.** The JSONB metadata's structured shape is narrowed
@@ -464,18 +471,20 @@ Small fixes to batch before going live. Non-blocking for feature work.
   `src/lib/reconciliation/ledger-duplicate-metadata.ts`) to avoid the
   third copy.
 
-- **Sheet+Dialog stacking validation deferred to PP5-D-D.** The
-  `LedgerDuplicateReviewDialog` mounts as a sibling to the lot ledger
-  drawer's `Sheet` (not nested). Both shadcn primitives portal at
-  z-index 50; PP4-D's `CollisionResolutionDialog` already coexists
+- **Sheet+Dialog stacking validation NOT performed (PP5-D-D skipped).**
+  The `LedgerDuplicateReviewDialog` mounts as a sibling to the lot
+  ledger drawer's `Sheet` (not nested). Both shadcn primitives portal
+  at z-index 50; PP4-D's `CollisionResolutionDialog` already coexists
   with `MappingDetailDrawer` Sheet contexts in production without
-  conflict, so precedent says this works. PP5-D-D's smoke walkthrough
-  will hand-test the lot detail page → drawer open → "Review duplicate"
-  → dialog stacking. If conflicts surface, fallback is to close the
-  Sheet on dialog open via the existing `onResolved` chain — trivial
-  one-line change.
+  conflict, so precedent says this works — but the PP5-D-D smoke
+  walkthrough that would have hand-tested it (lot detail page →
+  drawer open → "Review duplicate" → dialog stacking) was skipped per
+  user direction at PP5-D-E close. Concern carries forward: if
+  stacking conflicts surface in real-browser usage, the fallback is
+  to close the Sheet on dialog open via the existing `onResolved`
+  chain — trivial one-line change.
 
-## From Prompt 5 (PP5-D-C-A — Claims queue backend + orphan filter)
+### PP5-D-C-A — Claims queue backend + orphan filter
 
 - **PostgREST single-row joined relation array-or-object pattern
   duplicated across 2 surfaces.** PP5-D-B's `mapLedgerEntry`
@@ -509,15 +518,67 @@ Small fixes to batch before going live. Non-blocking for feature work.
   URL state pattern and uses the same Tailwind classes as
   `FilterChips`'s rendered chips. Defer until needed.
 
-## From Prompt 5 (PP5-D-C-B — Manager claim review dialog)
+### PP5-D-C-B — Manager claim review dialog
 
 - **`manager-claim-review-dialog.tsx` shipped as 1200-line
   monolithic-but-cohesive single file.** Split candidates:
   `CandidateRow` (~70 LOC, purely presentational), `classifyErrorCode`
   (~30 LOC, pure function), form schemas + state-machine types
   (~50 LOC). Net split would drop ~250 LOC out of dialog. **Defer
-  until** (a) split improves debuggability evidenced during PP5-D-D
-  smoke walkthrough, OR (b) post-launch when the file becomes a
-  friction point. Cohesion (reducer + types + render branches tightly
-  coupled) makes the single-file shape defensible until friction
-  surfaces.
+  until** (a) split improves debuggability evidenced when the file
+  becomes a friction point, OR (b) post-launch UX iteration adds new
+  stages or candidate-list variants. Cohesion (reducer + types +
+  render branches tightly coupled) makes the single-file shape
+  defensible until friction surfaces. (PP5-D-D smoke walkthrough
+  skipped — see carryforward note below.)
+
+- **Orphan-mode review action affordance not implemented (Gap JJ).**
+  Orphan rows on `/reconciliation/claims?orphan=1` render no Review
+  button — managers can see the orphaned claim but cannot directly
+  re-confirm or re-link it from the queue. Action options for a
+  future enhancement:
+  - "Re-confirm" — re-runs the original allocation against the
+    current state (likely a no-op if nothing else has changed; useful
+    when the bank tx was un-voided).
+  - "Re-link to a different bank tx" — opens a flow similar to the
+    pending-claim review with the existing allocation pre-populated.
+  - "Re-pend" — flips `claim_status` back to `'pending'` so it
+    re-enters the standard review queue.
+  Defer until real-world manager telemetry indicates which (or all)
+  affordances are needed.
+
+- **Manager claim review dialog: multi-allocation row support.**
+  `<ManagerClaimReviewDialog />` ships with a single locked allocation
+  row (lot pre-filled from `claim.lot_id`, fund_type derived from
+  selected bank account, amount locked to `claim.amount`). The
+  underlying server action `confirmAndMatchClaimViaNewBankTx`
+  accepts an `allocations` array. Future enhancement: allow managers
+  to split a single owner claim across multiple lots (rare but
+  possible — e.g. an owner pays for two of their lots in one bank
+  transfer). UI cost is non-trivial (need add/remove rows, sum-to-claim
+  validation, fund-type-per-row resolution). Defer until a manager
+  reports the need.
+
+### PP5-D-D — Smoke walkthrough (skipped)
+
+- **PP5-D-D smoke walkthrough skipped at Prompt 5 close.** PP5-D-D was
+  scoped as a read-only hand-test report covering each PP5-D UI
+  surface in a real browser:
+  - Bank-side duplicate review dialog (PP5-D-A) — confirm / reject /
+    `MATCH_ACTIVE` paths, queue chip, badge priority over
+    `FuzzyHintCell`, bank tx detail page badge.
+  - Ledger-side duplicate review dialog (PP5-D-B) — void / keep /
+    `MULTI_LINKED` paths, voided-parent banner, lot ledger tab badge,
+    drawer banner + Review button, **Sheet+Dialog stacking
+    validation**.
+  - Manager claim review dialog (PP5-D-C-B) — default / match-existing
+    / match-new / reject / submitting / done / error paths,
+    `LIKELY_DUPLICATE` special transition, empty-state pivot,
+    rejection-reason gate, error retry, toast wording.
+  Skipped per user direction to proceed to Prompt 5 close. The
+  state-machine bugs and z-index/stacking issues that the smoke
+  walk would have surfaced are NOT validated by the verification
+  suite. Recovery path if UI bugs surface post-launch: smoke-walk
+  the affected surface using PP4-D-6's discipline (the gate that
+  caught DoneFlashView and ProposalFlagPayload.lot_label issues that
+  Prompt 4's verification suite missed).
