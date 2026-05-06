@@ -322,8 +322,18 @@ function ReviewForm(props: {
           <div className="min-w-0 flex-1">
             <p className="text-sm font-medium text-foreground truncate">{review.documentName}</p>
             <div className="mt-1 flex flex-wrap gap-3 text-xs text-muted-foreground">
-              <MatchPill label="Lot number" expected={String(lotNumber)} actual={review.parsed.lotNumber == null ? null : String(review.parsed.lotNumber)} match={review.matches.lotNumber} />
-              <MatchPill label="Plan" expected={review.parsed.planNumber ?? "—"} actual={review.parsed.planNumber} match={review.matches.planNumber} />
+              <MatchPill
+                label="Lot number"
+                expected={String(review.expected.lotNumber ?? lotNumber)}
+                actual={review.parsed.lotNumber == null ? null : String(review.parsed.lotNumber)}
+                match={review.matches.lotNumber}
+              />
+              <MatchPill
+                label="Plan"
+                expected={review.expected.planNumberNormalized ?? review.expected.planNumber ?? "—"}
+                actual={review.parsed.planNumber}
+                match={review.matches.planNumber}
+              />
             </div>
           </div>
         </div>

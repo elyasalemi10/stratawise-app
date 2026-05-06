@@ -11,6 +11,8 @@ import {
   type OwnershipHistoryEntry,
 } from "@/lib/validations/settlement";
 
+import { normalizePlanNumber } from "@/lib/settlements/plan-number";
+
 // ─── R2 helper ─────────────────────────────────────────────────
 
 const R2 = new S3Client({
@@ -41,6 +43,11 @@ export interface SettlementReview {
   matches: {
     lotNumber: boolean | null;   // null = couldn't be checked (missing data)
     planNumber: boolean | null;
+  };
+  expected: {
+    lotNumber: number | null;
+    planNumber: string | null;     // raw DB value (may carry "Plan ..." prefix)
+    planNumberNormalized: string | null;  // bare ID for comparison/display
   };
   currentOwner: {
     profileId: string | null;
@@ -87,20 +94,23 @@ export async function parseSettlementForReview(
   let parsed: ParsedSettlement;
   try {
     const bytes = await fetchDocumentBytes(doc.file_path);
-    parsed = await parseSettlementPdf(bytes);
-  } catch {
-    return { error: "Failed to read the uploaded PDF. Please re-upload or assign the owner manually." };
+    parsed = await parseSettlementPdf(bytes, doc.mime_type ?? "application/pdf");
+  } catch (err) {
+    console.error("parseSettlementForReview: parser failed:", err);
+    return { error: "Failed to read the uploaded document. Please re-upload or assign the owner manually." };
   }
 
+  const expectedPlanNorm = normalizePlanNumber(planNumber);
+  const parsedPlanNorm = normalizePlanNumber(parsed.planNumber);
   const matches = {
     lotNumber:
       parsed.lotNumber == null
         ? null
         : Number(parsed.lotNumber) === Number(lot.lot_number),
     planNumber:
-      !planNumber || !parsed.planNumber
+      !expectedPlanNorm || !parsedPlanNorm
         ? null
-        : parsed.planNumber.toUpperCase() === planNumber.toUpperCase(),
+        : parsedPlanNorm === expectedPlanNorm,
   };
 
   // Current active owner (will be ended on confirm).
@@ -143,6 +153,11 @@ export async function parseSettlementForReview(
     data: {
       parsed: display,
       matches,
+      expected: {
+        lotNumber: lot.lot_number,
+        planNumber,
+        planNumberNormalized: expectedPlanNorm,
+      },
       currentOwner,
       pendingInvitationId: pendingInv?.id ?? null,
       documentName: doc.file_name,
@@ -179,9 +194,10 @@ export async function parseSettlementAndMatchLot(
   let parsed: ParsedSettlement;
   try {
     const bytes = await fetchDocumentBytes(doc.file_path);
-    parsed = await parseSettlementPdf(bytes);
-  } catch {
-    return { error: "Failed to read the uploaded PDF. Please re-upload or assign the owner manually." };
+    parsed = await parseSettlementPdf(bytes, doc.mime_type ?? "application/pdf");
+  } catch (err) {
+    console.error("parseSettlementAndMatchLot: parser failed:", err);
+    return { error: "Failed to read the uploaded document. Please re-upload or assign the owner manually." };
   }
 
   if (parsed.lotNumber == null) {
@@ -209,12 +225,14 @@ export async function parseSettlementAndMatchLot(
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const planNumber: string | null = (lot as any).subdivisions?.plan_number ?? null;
 
+  const expectedPlanNorm = normalizePlanNumber(planNumber);
+  const parsedPlanNorm = normalizePlanNumber(parsed.planNumber);
   const matches = {
     lotNumber: true,                   // we matched on it, so it's true
     planNumber:
-      !planNumber || !parsed.planNumber
+      !expectedPlanNorm || !parsedPlanNorm
         ? null
-        : parsed.planNumber.toUpperCase() === planNumber.toUpperCase(),
+        : parsedPlanNorm === expectedPlanNorm,
   };
 
   // Attach the document to the matched lot so the existing applySettlementToLot
@@ -261,6 +279,11 @@ export async function parseSettlementAndMatchLot(
     data: {
       parsed: display,
       matches,
+      expected: {
+        lotNumber: lot.lot_number,
+        planNumber,
+        planNumberNormalized: expectedPlanNorm,
+      },
       currentOwner,
       pendingInvitationId: pendingInv?.id ?? null,
       documentName: doc.file_name,

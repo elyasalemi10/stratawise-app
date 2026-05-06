@@ -1,12 +1,13 @@
-// Server-only: parses a Victorian "Notice of Acquisition of an Interest in Land"
-// PDF (the standard SAI Global / PEXA conveyancer output) into structured fields.
-// The form has consistent labels, so we extract via labelled regex on the
-// concatenated text layer rather than relying on positional layout.
+// Server-only: parses a Victorian "Notice of Acquisition of an Interest in
+// Land" PDF (or scan/screenshot of one) into structured fields.
 //
-// We use `unpdf` — a serverless-friendly fork of pdfjs that bakes in the DOM
-// polyfills (DOMMatrix/ImageData/Path2D) needed in Node. Plain pdfjs-dist
-// crashes on Vercel's serverless runtime with "DOMMatrix is not defined"
-// because @napi-rs/canvas isn't installed and pdfjs's own polyfill fails.
+// Strategy: Amazon Textract → key-value pairs + lines, then we map known field
+// aliases onto our internal shape. KV extraction handles format variations
+// (different conveyancers reorder/relabel fields); a line-based regex fallback
+// catches things Textract didn't surface as KV (e.g. "Lot N on Plan of
+// Subdivision XXXX." which is a sentence, not a labelled form field).
+
+import { analyzeDocument, type OcrResult } from "@/lib/ocr/textract";
 
 export interface ParsedTransferee {
   kind: "individual" | "organisation" | null;
@@ -27,17 +28,17 @@ export interface ParsedTransferor {
 
 export interface ParsedSettlement {
   ok: boolean;                           // false = couldn't parse anything useful
-  rawText: string;
+  rawText: string;                       // joined lines, useful for debugging
   transferor: ParsedTransferor;
   transferee: ParsedTransferee;
   additionalTransferees: ParsedTransferee[];
   lotNumber: number | null;
-  planNumber: string | null;             // e.g. "932352U"
+  planNumber: string | null;             // bare ID, e.g. "932352U"
   volume: string | null;
   folio: string | null;
   propertyAddress: string | null;
   municipality: string | null;
-  settlementDate: string | null;         // ISO yyyy-mm-dd, from "Date of possession/transfer"
+  settlementDate: string | null;         // ISO yyyy-mm-dd
   contractDate: string | null;           // ISO yyyy-mm-dd
   salePriceCents: number | null;
   conveyancer: {
@@ -48,6 +49,8 @@ export interface ParsedSettlement {
   };
 }
 
+// ─── Helpers ───────────────────────────────────────────────────
+
 const MONTHS: Record<string, number> = {
   january: 0, february: 1, march: 2, april: 3, may: 4, june: 5,
   july: 6, august: 7, september: 8, october: 9, november: 10, december: 11,
@@ -55,21 +58,40 @@ const MONTHS: Record<string, number> = {
   sept: 8, oct: 9, nov: 10, dec: 11,
 };
 
-function parseAusDate(input: string | null): string | null {
+function parseAusDate(input: string | null | undefined): string | null {
   if (!input) return null;
-  // Accepts "04 May 2026", "4 May 2026", "13 May 1995"
-  const m = input.trim().match(/^(\d{1,2})\s+([A-Za-z]+)\s+(\d{4})$/);
-  if (!m) return null;
-  const day = Number(m[1]);
-  const month = MONTHS[m[2].toLowerCase()];
-  const year = Number(m[3]);
-  if (month === undefined || !Number.isFinite(day) || !Number.isFinite(year)) return null;
-  const d = new Date(Date.UTC(year, month, day));
-  if (d.getUTCFullYear() !== year || d.getUTCMonth() !== month || d.getUTCDate() !== day) return null;
-  return d.toISOString().slice(0, 10);
+  const trimmed = input.trim();
+  // "04 May 2026", "4 May 2026", "13 May 1995"
+  const m = trimmed.match(/(\d{1,2})\s+([A-Za-z]+)\s+(\d{4})/);
+  if (m) {
+    const day = Number(m[1]);
+    const month = MONTHS[m[2].toLowerCase()];
+    const year = Number(m[3]);
+    if (month !== undefined && Number.isFinite(day) && Number.isFinite(year)) {
+      const d = new Date(Date.UTC(year, month, day));
+      if (d.getUTCFullYear() === year && d.getUTCMonth() === month && d.getUTCDate() === day) {
+        return d.toISOString().slice(0, 10);
+      }
+    }
+  }
+  // dd/mm/yyyy or d/m/yyyy
+  const slash = trimmed.match(/^(\d{1,2})[/-](\d{1,2})[/-](\d{4})$/);
+  if (slash) {
+    const day = Number(slash[1]);
+    const month = Number(slash[2]) - 1;
+    const year = Number(slash[3]);
+    const d = new Date(Date.UTC(year, month, day));
+    if (d.getUTCFullYear() === year && d.getUTCMonth() === month && d.getUTCDate() === day) {
+      return d.toISOString().slice(0, 10);
+    }
+  }
+  // yyyy-mm-dd already
+  const iso = trimmed.match(/^(\d{4})-(\d{2})-(\d{2})$/);
+  if (iso) return trimmed;
+  return null;
 }
 
-function parsePriceCents(input: string | null): number | null {
+function parsePriceCents(input: string | null | undefined): number | null {
   if (!input) return null;
   const cleaned = input.replace(/[$,\s]/g, "");
   if (!cleaned) return null;
@@ -78,203 +100,30 @@ function parsePriceCents(input: string | null): number | null {
   return Math.round(n * 100);
 }
 
+/**
+ * Look up a field value using a list of possible label aliases. Returns the
+ * first non-empty match. Keys are lowercased + space-collapsed in OcrResult,
+ * so aliases here should be in that same canonical form.
+ */
+function pickField(kv: Record<string, string>, aliases: string[]): string | null {
+  for (const alias of aliases) {
+    const v = kv[alias];
+    if (v && v.trim().length > 0) return v.trim();
+  }
+  // Fuzzy fallback: any key that *contains* one of the aliases.
+  for (const alias of aliases) {
+    for (const [k, v] of Object.entries(kv)) {
+      if (k.includes(alias) && v && v.trim().length > 0) return v.trim();
+    }
+  }
+  return null;
+}
+
 function emptyTransferee(): ParsedTransferee {
   return {
     kind: null, name: null, dateOfBirth: null, email: null, phone: null,
     addressAtTransfer: null, postalAddress: null, shareHolding: null, isLeadOwner: false,
   };
-}
-
-function takeSection(text: string, startLabel: RegExp, endLabel: RegExp): string | null {
-  const start = text.search(startLabel);
-  if (start < 0) return null;
-  const after = text.slice(start);
-  const endRel = after.slice(1).search(endLabel);
-  if (endRel < 0) return after;
-  return after.slice(0, endRel + 1);
-}
-
-function firstMatch(text: string, re: RegExp): string | null {
-  const m = text.match(re);
-  return m ? (m[1] ?? "").trim() || null : null;
-}
-
-function parseTransfereeBlock(block: string): ParsedTransferee {
-  const out = emptyTransferee();
-
-  const indiv = firstMatch(block, /Individual:\s*([^\n]+)/i);
-  const org = firstMatch(block, /Organisation:\s*([^\n]+)/i);
-  if (indiv) {
-    out.kind = "individual";
-    out.name = indiv;
-  } else if (org) {
-    out.kind = "organisation";
-    out.name = org;
-  }
-
-  out.dateOfBirth = parseAusDate(firstMatch(block, /Date of Birth:\s*([^\n]+)/i));
-  out.shareHolding = firstMatch(block, /Share Holding:\s*([^\n]+)/i);
-  out.isLeadOwner = /Lead Owner:\s*Yes/i.test(block);
-
-  // Same line: "Phone: 0421 448 689 \tEmail: foo@bar.com" — phone may be empty.
-  // Non-greedy phone capture stops at the "Email:" label whether there's a tab,
-  // multiple spaces, or just a single space between them.
-  const phoneEmail = block.match(/Phone:\s*([^\n]*?)\s*(?:\t|\s)+Email:\s*([^\s\n]*)/i);
-  if (phoneEmail) {
-    const phone = phoneEmail[1].trim();
-    const email = phoneEmail[2].trim();
-    if (phone) out.phone = phone;
-    if (email) out.email = email;
-  } else {
-    const phoneOnly = firstMatch(block, /Phone:\s*([^\n\t]+)/i);
-    if (phoneOnly && !/Email:/i.test(phoneOnly)) out.phone = phoneOnly;
-    out.email = firstMatch(block, /Email:\s*([^\s\n]+)/i);
-  }
-
-  // Two address fields: at-time-of-transfer and future correspondence.
-  const addrAtTransfer = block.match(/Address at time of transfer:\s*([^\n]+)/i);
-  if (addrAtTransfer) out.addressAtTransfer = addrAtTransfer[1].trim();
-  const postal = block.match(/Address for future correspondence:\s*([^\n]+)/i);
-  if (postal) out.postalAddress = postal[1].trim();
-
-  return out;
-}
-
-export async function parseSettlementPdf(buffer: Buffer): Promise<ParsedSettlement> {
-  const result = emptyResult();
-  let text = "";
-  try {
-    text = await extractText(buffer);
-  } catch (err) {
-    // Corrupt or scanned PDF — return ok:false; callers surface a manual-fill prompt.
-    console.error("parseSettlementPdf: pdfjs-dist failed:", err);
-    result.rawText = "";
-    return result;
-  }
-
-  result.rawText = text;
-  if (!text.trim()) return result;
-
-  // ─ Sections ────────────────────────────────────────────────
-  const transferorBlock = takeSection(text, /Transferor\(s\):/i, /Transferee\(s\):/i) ?? "";
-  const transfereeBlock = takeSection(text, /Transferee\(s\):/i, /Details of Title:/i) ?? "";
-  const titleBlock = takeSection(text, /Details of Title:/i, /Details of Transaction:/i) ?? "";
-  const transactionBlock = takeSection(text, /Details of Transaction:/i, /Certification:/i) ?? "";
-  const certificationBlock = takeSection(text, /Certification:/i, /Subscriber Certifications:/i) ?? text.slice(text.search(/Certification:/i));
-
-  // ─ Transferor ─────────────────────────────────────────────
-  if (transferorBlock) {
-    const indiv = firstMatch(transferorBlock, /Individual:\s*([^\n]+)/i);
-    const org = firstMatch(transferorBlock, /Organisation:\s*([^\n]+)/i);
-    if (indiv) result.transferor = { kind: "individual", name: indiv };
-    else if (org) result.transferor = { kind: "organisation", name: org };
-  }
-
-  // ─ Transferees (one or many, all under the same heading) ───
-  if (transfereeBlock) {
-    // Split into per-transferee chunks at each Individual:/Organisation: header.
-    const chunks: string[] = [];
-    const headerRe = /(?:^|\n)(?:Individual|Organisation):/gi;
-    const indices: number[] = [];
-    let m: RegExpExecArray | null;
-    while ((m = headerRe.exec(transfereeBlock))) indices.push(m.index);
-    if (indices.length === 0) {
-      chunks.push(transfereeBlock);
-    } else {
-      for (let i = 0; i < indices.length; i++) {
-        const start = indices[i];
-        const end = i + 1 < indices.length ? indices[i + 1] : transfereeBlock.length;
-        chunks.push(transfereeBlock.slice(start, end));
-      }
-    }
-    const parsed = chunks.map(parseTransfereeBlock).filter((t) => t.name);
-    if (parsed.length > 0) {
-      const lead = parsed.find((p) => p.isLeadOwner) ?? parsed[0];
-      result.transferee = lead;
-      result.additionalTransferees = parsed.filter((p) => p !== lead);
-    }
-  }
-
-  // ─ Title ──────────────────────────────────────────────────
-  if (titleBlock) {
-    const lotPlan = titleBlock.match(/Lot\s+(\d+)\s+on\s+Plan\s+of\s+Subdivision\s+([A-Za-z0-9]+)/i);
-    if (lotPlan) {
-      result.lotNumber = Number(lotPlan[1]);
-      result.planNumber = lotPlan[2];
-    }
-    const volFolio = titleBlock.match(/Volume\s+(\w+)\s+Folio\s+(\w+)/i);
-    if (volFolio) {
-      result.volume = volFolio[1];
-      result.folio = volFolio[2];
-    }
-    result.propertyAddress = firstMatch(titleBlock, /Address of property:\s*([^\n]+)/i);
-    result.municipality = firstMatch(titleBlock, /Municipality:\s*([^\n]+)/i);
-    // Sale price sometimes appears here on its own line as "Sale Price:\n$615000.00".
-    const inlinePrice = titleBlock.match(/Sale Price:\s*\$?([\d,.]+)/i);
-    if (inlinePrice) result.salePriceCents = parsePriceCents(inlinePrice[1]);
-  }
-
-  // ─ Transaction ────────────────────────────────────────────
-  if (transactionBlock) {
-    const totalPrice = transactionBlock.match(/Total Sale Price[^:]*:\s*\$?([\d,.]+)/i);
-    if (totalPrice) result.salePriceCents = parsePriceCents(totalPrice[1]);
-    result.contractDate = parseAusDate(firstMatch(transactionBlock, /Date of Contract:\s*([^\n]+)/i));
-    result.settlementDate = parseAusDate(firstMatch(transactionBlock, /Date of possession\/transfer:\s*([^\n]+)/i));
-  }
-
-  // ─ Conveyancer (transferee solicitor/agent) ───────────────
-  if (certificationBlock) {
-    result.conveyancer.name = firstMatch(certificationBlock, /Name:\s*([^\n]+)/i);
-    const phoneEmail = certificationBlock.match(/Phone:\s*([^\n]*?)\s*(?:\t|\s)+Email:\s*([^\s\n]*)/i);
-    if (phoneEmail) {
-      result.conveyancer.phone = phoneEmail[1].trim() || null;
-      result.conveyancer.email = phoneEmail[2].trim() || null;
-    } else {
-      result.conveyancer.phone = firstMatch(certificationBlock, /Phone:\s*([^\n\t]+)/i);
-      result.conveyancer.email = firstMatch(certificationBlock, /Email:\s*([^\s\n]+)/i);
-    }
-    result.conveyancer.reference = firstMatch(certificationBlock, /Reference:\s*([^\n]+)/i);
-  }
-
-  result.ok = Boolean(
-    result.transferee.name || result.lotNumber || result.settlementDate || result.salePriceCents,
-  );
-  return result;
-}
-
-async function extractText(buffer: Buffer): Promise<string> {
-  // Lazy-imported so the lot detail page (which transitively imports this
-  // module) doesn't pay the pdfjs cost. unpdf bundles its own pdfjs build
-  // pre-configured for serverless runtimes — no worker, no DOM polyfills,
-  // no native canvas dependency.
-  //
-  // We use extractTextItems (not extractText) because the merged-text path
-  // strips line breaks, which kills our labelled regex extraction. Items give
-  // us positional info; we reassemble lines by Y-coordinate.
-  const { extractTextItems } = await import("unpdf");
-  const result = await extractTextItems(new Uint8Array(buffer));
-
-  const out: string[] = [];
-  for (const pageItems of result.items) {
-    let line = "";
-    let lastY: number | null = null;
-    const sorted = [...pageItems].sort((a, b) => {
-      // Top-to-bottom (PDF Y origin is bottom-left, so larger Y is higher).
-      if (Math.abs(a.y - b.y) > 1) return b.y - a.y;
-      return a.x - b.x;
-    });
-    for (const item of sorted) {
-      if (typeof item.str !== "string") continue;
-      if (lastY !== null && Math.abs(item.y - lastY) > 1) {
-        if (line.trim().length) out.push(line);
-        line = "";
-      }
-      line += item.str;
-      lastY = item.y;
-    }
-    if (line.trim().length) out.push(line);
-  }
-  return out.join("\n");
 }
 
 function emptyResult(): ParsedSettlement {
@@ -295,4 +144,251 @@ function emptyResult(): ParsedSettlement {
     salePriceCents: null,
     conveyancer: { name: null, email: null, phone: null, reference: null },
   };
+}
+
+// ─── Main ─────────────────────────────────────────────────────
+
+export async function parseSettlementPdf(
+  buffer: Buffer,
+  mimeType: string = "application/pdf",
+): Promise<ParsedSettlement> {
+  const result = emptyResult();
+
+  let ocr: OcrResult;
+  try {
+    ocr = await analyzeDocument(buffer, mimeType);
+  } catch (err) {
+    console.error("parseSettlementPdf: Textract failed:", err);
+    return result;
+  }
+
+  result.rawText = ocr.lines.join("\n");
+  if (ocr.lines.length === 0 && Object.keys(ocr.keyValuePairs).length === 0) {
+    return result;
+  }
+
+  const kv = ocr.keyValuePairs;
+  const text = result.rawText;
+
+  // ─── Transferee ───────────────────────────────────────────
+  // KV-first, then fall back to scanning the text under the "Transferee(s):"
+  // section header.
+  result.transferee.name = pickField(kv, [
+    "individual",
+    "transferee individual",
+    "transferee name",
+    "buyer name",
+    "purchaser name",
+    "purchaser",
+    "buyer",
+  ]);
+  if (result.transferee.name) {
+    result.transferee.kind = "individual";
+  } else {
+    const orgName = pickField(kv, [
+      "organisation",
+      "organization",
+      "transferee organisation",
+      "transferee organization",
+      "company",
+    ]);
+    if (orgName) {
+      result.transferee.name = orgName;
+      result.transferee.kind = "organisation";
+    }
+  }
+
+  // If KV missed the transferee name, slice the section out of the lines and
+  // pull the first "Individual:" / "Organisation:" line under "Transferee(s):".
+  if (!result.transferee.name) {
+    const transfereeBlock = sliceSection(text, /Transferee\(s\)/i, /(Details of Title|Property|Certification)/i);
+    if (transfereeBlock) {
+      const indiv = transfereeBlock.match(/Individual\s*:\s*([^\n]+)/i);
+      const org = transfereeBlock.match(/Organisation\s*:\s*([^\n]+)/i);
+      if (indiv) {
+        result.transferee.kind = "individual";
+        result.transferee.name = indiv[1].trim();
+      } else if (org) {
+        result.transferee.kind = "organisation";
+        result.transferee.name = org[1].trim();
+      }
+    }
+  }
+
+  result.transferee.email = pickField(kv, ["email", "transferee email", "buyer email"])
+    ?? extractEmailNear(text, /Transferee\(s\)/i);
+  result.transferee.phone = pickField(kv, ["phone", "telephone", "mobile", "transferee phone"])
+    ?? extractPhoneNear(text, /Transferee\(s\)/i);
+  result.transferee.dateOfBirth = parseAusDate(pickField(kv, ["date of birth", "dob"]));
+  result.transferee.addressAtTransfer = pickField(kv, [
+    "address at time of transfer",
+    "current address",
+  ]);
+  result.transferee.postalAddress = pickField(kv, [
+    "address for future correspondence",
+    "postal address",
+    "future correspondence address",
+    "correspondence address",
+  ]);
+  result.transferee.shareHolding = pickField(kv, ["share holding", "share"]);
+  const lead = pickField(kv, ["lead owner"]);
+  result.transferee.isLeadOwner = lead != null && /yes/i.test(lead);
+
+  // ─── Transferor ───────────────────────────────────────────
+  const transferorIndiv = pickField(kv, ["transferor individual", "vendor name", "seller name"]);
+  const transferorOrg = pickField(kv, [
+    "transferor organisation", "transferor organization", "vendor organisation", "seller",
+  ]);
+  if (transferorIndiv) {
+    result.transferor = { kind: "individual", name: transferorIndiv };
+  } else if (transferorOrg) {
+    result.transferor = { kind: "organisation", name: transferorOrg };
+  } else {
+    const transferorBlock = sliceSection(text, /Transferor\(s\)/i, /Transferee\(s\)/i);
+    if (transferorBlock) {
+      const indiv = transferorBlock.match(/Individual\s*:\s*([^\n]+)/i);
+      const org = transferorBlock.match(/Organisation\s*:\s*([^\n]+)/i);
+      if (indiv) result.transferor = { kind: "individual", name: indiv[1].trim() };
+      else if (org) result.transferor = { kind: "organisation", name: org[1].trim() };
+    }
+  }
+
+  // ─── Lot / Plan ───────────────────────────────────────────
+  // "Lot 4 on Plan of Subdivision 932352U." appears as a sentence in the
+  // "Parts of Title" block, not a KV pair. Scan all lines.
+  const lotPlan = text.match(/Lot\s+(\d+)\s+on\s+Plan(?:\s+of\s+Subdivision)?\s+([A-Za-z0-9]+)/i);
+  if (lotPlan) {
+    result.lotNumber = Number(lotPlan[1]);
+    result.planNumber = lotPlan[2].toUpperCase();
+  }
+  // KV fallback if the sentence form isn't there.
+  if (result.lotNumber == null) {
+    const lotKv = pickField(kv, ["lot number", "lot", "lot no"]);
+    if (lotKv) {
+      const n = Number(lotKv.replace(/\D/g, ""));
+      if (Number.isFinite(n)) result.lotNumber = n;
+    }
+  }
+  if (!result.planNumber) {
+    const planKv = pickField(kv, [
+      "plan of subdivision", "plan number", "plan", "ps", "lp",
+    ]);
+    if (planKv) {
+      const tail = planKv.match(/[A-Za-z0-9]+$/);
+      result.planNumber = (tail?.[0] ?? planKv).toUpperCase();
+    }
+  }
+
+  // Volume / Folio
+  const volFolio = text.match(/Volume\s+(\w+)\s+Folio\s+(\w+)/i);
+  if (volFolio) {
+    result.volume = volFolio[1];
+    result.folio = volFolio[2];
+  }
+
+  // ─── Property ─────────────────────────────────────────────
+  result.propertyAddress = pickField(kv, [
+    "address of property", "property address", "address",
+  ]) ?? extractAfterLabel(text, /Address of property\s*:?/i);
+  result.municipality = pickField(kv, ["municipality", "council"])
+    ?? extractAfterLabel(text, /Municipality\s*:?/i);
+
+  // ─── Dates ─────────────────────────────────────────────────
+  result.settlementDate = parseAusDate(pickField(kv, [
+    "date of possession/transfer",
+    "date of possession / transfer",
+    "date of possession",
+    "settlement date",
+    "possession date",
+    "date of transfer",
+    "transfer date",
+  ]));
+  result.contractDate = parseAusDate(pickField(kv, [
+    "date of contract", "contract date",
+  ]));
+  // Regex fallback on the text in case Textract truncated the slash.
+  if (!result.settlementDate) {
+    const m = text.match(/(?:Date of possession[^:\n]*|Settlement\s+Date|Possession\s+Date)\s*:?\s*([^\n]+)/i);
+    result.settlementDate = parseAusDate(m?.[1]);
+  }
+  if (!result.contractDate) {
+    const m = text.match(/(?:Date of Contract|Contract\s+Date)\s*:?\s*([^\n]+)/i);
+    result.contractDate = parseAusDate(m?.[1]);
+  }
+
+  // ─── Sale price ────────────────────────────────────────────
+  const priceStr = pickField(kv, [
+    "total sale price (gst inclusive)",
+    "total sale price",
+    "sale price",
+    "purchase price",
+    "price",
+  ]);
+  result.salePriceCents = parsePriceCents(priceStr);
+  if (result.salePriceCents == null) {
+    const m = text.match(/(?:Total Sale Price[^:]*|Sale Price)\s*:?\s*\$?\s*([\d,.]+)/i);
+    result.salePriceCents = parsePriceCents(m?.[1]);
+  }
+
+  // ─── Conveyancer ──────────────────────────────────────────
+  const certBlock = sliceSection(text, /Certification\b|Subscriber\s+Certifications/i, /$/);
+  if (certBlock) {
+    result.conveyancer.name = pickField(kv, ["name"])
+      ?? extractAfterLabel(certBlock, /Name\s*:?/i);
+    result.conveyancer.email = pickField(kv, ["email"])
+      ?? extractEmail(certBlock);
+    result.conveyancer.phone = pickField(kv, ["phone"])
+      ?? extractPhone(certBlock);
+    result.conveyancer.reference = pickField(kv, ["reference", "ref"])
+      ?? extractAfterLabel(certBlock, /Reference\s*:?/i);
+  }
+
+  result.ok = Boolean(
+    result.transferee.name ||
+    result.lotNumber ||
+    result.settlementDate ||
+    result.salePriceCents,
+  );
+  return result;
+}
+
+// ─── Text-extraction helpers ─────────────────────────────────
+
+function sliceSection(text: string, start: RegExp, end: RegExp): string | null {
+  const startIdx = text.search(start);
+  if (startIdx < 0) return null;
+  const after = text.slice(startIdx);
+  const endRel = after.slice(1).search(end);
+  if (endRel < 0) return after;
+  return after.slice(0, endRel + 1);
+}
+
+function extractAfterLabel(text: string, label: RegExp): string | null {
+  const re = new RegExp(label.source + "\\s*([^\\n]+)", label.flags);
+  const m = text.match(re);
+  return m?.[1]?.trim() || null;
+}
+
+function extractEmail(text: string): string | null {
+  const m = text.match(/[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}/);
+  return m?.[0] ?? null;
+}
+
+function extractPhone(text: string): string | null {
+  // AU phone: 04xx xxx xxx, +61 ..., (03) ...
+  const m = text.match(/(?:\+61\s*)?(?:\(0\d\)\s*)?\d[\d\s-]{6,}\d/);
+  return m?.[0]?.trim() ?? null;
+}
+
+function extractEmailNear(text: string, anchor: RegExp): string | null {
+  const idx = text.search(anchor);
+  if (idx < 0) return extractEmail(text);
+  // Look in the 800 chars after the anchor — that's roughly one section.
+  return extractEmail(text.slice(idx, idx + 800)) ?? extractEmail(text);
+}
+
+function extractPhoneNear(text: string, anchor: RegExp): string | null {
+  const idx = text.search(anchor);
+  if (idx < 0) return extractPhone(text);
+  return extractPhone(text.slice(idx, idx + 800)) ?? extractPhone(text);
 }
