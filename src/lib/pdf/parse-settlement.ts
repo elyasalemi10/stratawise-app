@@ -3,11 +3,10 @@
 // The form has consistent labels, so we extract via labelled regex on the
 // concatenated text layer rather than relying on positional layout.
 //
-// We use pdfjs-dist directly via its legacy ESM build (Node-friendly, no DOM
-// globals). pdf-parse v2's worker setup doesn't survive Next.js bundling
-// (it tries to import pdf.worker.mjs from a path that doesn't exist after
-// Turbopack rewrites), so we run pdfjs synchronously with the worker disabled.
-// The legacy build supports inline parsing via `disableWorker: true`.
+// We use `unpdf` — a serverless-friendly fork of pdfjs that bakes in the DOM
+// polyfills (DOMMatrix/ImageData/Path2D) needed in Node. Plain pdfjs-dist
+// crashes on Vercel's serverless runtime with "DOMMatrix is not defined"
+// because @napi-rs/canvas isn't installed and pdfjs's own polyfill fails.
 
 export interface ParsedTransferee {
   kind: "individual" | "organisation" | null;
@@ -244,56 +243,38 @@ export async function parseSettlementPdf(buffer: Buffer): Promise<ParsedSettleme
 }
 
 async function extractText(buffer: Buffer): Promise<string> {
-  // Legacy ESM build is the Node-compatible distribution. Lazy-imported so the
-  // lot detail page (which pulls in this action module transitively) doesn't
-  // load pdfjs at all — it's >2MB. pdfjs-dist is listed in
-  // next.config.ts#serverExternalPackages so Turbopack leaves it as a plain
-  // Node import and the worker file resolves correctly from node_modules.
-  const pdfjs = await import("pdfjs-dist/legacy/build/pdf.mjs");
+  // Lazy-imported so the lot detail page (which transitively imports this
+  // module) doesn't pay the pdfjs cost. unpdf bundles its own pdfjs build
+  // pre-configured for serverless runtimes — no worker, no DOM polyfills,
+  // no native canvas dependency.
+  //
+  // We use extractTextItems (not extractText) because the merged-text path
+  // strips line breaks, which kills our labelled regex extraction. Items give
+  // us positional info; we reassemble lines by Y-coordinate.
+  const { extractTextItems } = await import("unpdf");
+  const result = await extractTextItems(new Uint8Array(buffer));
 
-  const loadingTask = pdfjs.getDocument({
-    data: new Uint8Array(buffer),
-    useSystemFonts: true,
-    useWorkerFetch: false,
-  });
-
-  const doc = await loadingTask.promise;
-  try {
-    const pages: string[] = [];
-    for (let i = 1; i <= doc.numPages; i++) {
-      const page = await doc.getPage(i);
-      const content = await page.getTextContent();
-      // Reassemble lines from positioned text items. pdfjs gives each glyph
-      // run a position; items with hasEOL or significant Y-jumps end the line.
-      let line = "";
-      const lines: string[] = [];
-      let lastY: number | null = null;
-      for (const item of content.items) {
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        const it = item as any;
-        if (typeof it.str !== "string") continue;
-        const y = it.transform?.[5];
-        if (lastY !== null && y !== undefined && Math.abs(y - lastY) > 1) {
-          if (line.length) lines.push(line);
-          line = "";
-        }
-        line += it.str;
-        if (it.hasEOL) {
-          lines.push(line);
-          line = "";
-          lastY = null;
-        } else if (y !== undefined) {
-          lastY = y;
-        }
+  const out: string[] = [];
+  for (const pageItems of result.items) {
+    let line = "";
+    let lastY: number | null = null;
+    const sorted = [...pageItems].sort((a, b) => {
+      // Top-to-bottom (PDF Y origin is bottom-left, so larger Y is higher).
+      if (Math.abs(a.y - b.y) > 1) return b.y - a.y;
+      return a.x - b.x;
+    });
+    for (const item of sorted) {
+      if (typeof item.str !== "string") continue;
+      if (lastY !== null && Math.abs(item.y - lastY) > 1) {
+        if (line.trim().length) out.push(line);
+        line = "";
       }
-      if (line.length) lines.push(line);
-      pages.push(lines.join("\n"));
-      page.cleanup();
+      line += item.str;
+      lastY = item.y;
     }
-    return pages.join("\n");
-  } finally {
-    await doc.destroy();
+    if (line.trim().length) out.push(line);
   }
+  return out.join("\n");
 }
 
 function emptyResult(): ParsedSettlement {
