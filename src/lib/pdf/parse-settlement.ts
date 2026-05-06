@@ -2,8 +2,10 @@
 // PDF (the standard SAI Global / PEXA conveyancer output) into structured fields.
 // The form has consistent labels, so we extract via labelled regex on the
 // concatenated text layer rather than relying on positional layout.
-
-import { PDFParse } from "pdf-parse";
+//
+// pdf-parse is ESM-only and pulls in pdfjs-dist at module load — we lazy-import
+// it inside parseSettlementPdf so unrelated callers (e.g. the lot detail page
+// pulling getLotOwnershipHistory from settlements.ts) don't pay that cost.
 
 export interface ParsedTransferee {
   kind: "individual" | "organisation" | null;
@@ -141,6 +143,7 @@ export async function parseSettlementPdf(buffer: Buffer): Promise<ParsedSettleme
   const result = emptyResult();
   let text = "";
   try {
+    const { PDFParse } = await import("pdf-parse");
     const parser = new PDFParse({ data: buffer });
     const out = await parser.getText();
     text = out.text ?? "";

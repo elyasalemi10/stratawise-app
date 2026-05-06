@@ -50,6 +50,11 @@ export interface SettlementReview {
   } | null;
   pendingInvitationId: string | null;  // existing pending invite that would be replaced
   documentName: string;
+  matchedLot: {
+    id: string;
+    lotNumber: number;
+    unitNumber: string | null;
+  } | null;                            // populated only by parseAndMatchSettlement
 }
 
 export async function parseSettlementForReview(
@@ -141,6 +146,129 @@ export async function parseSettlementForReview(
       currentOwner,
       pendingInvitationId: pendingInv?.id ?? null,
       documentName: doc.file_name,
+      matchedLot: null,
+    },
+  };
+}
+
+// ─── parseSettlementAndMatchLot ──────────────────────────────
+// Bulk-upload entry point. The manager drops a PDF on the subdivision-level
+// lots page; we parse it, look up the lot in *this* subdivision by parsed lot
+// number + plan number, and if found update the document to attach it to the
+// lot. The manager confirms a single subsequent applySettlementToLot call.
+
+export async function parseSettlementAndMatchLot(
+  documentId: string,
+  subdivisionId: string,
+): Promise<{ data?: SettlementReview; error?: string }> {
+  await requireCompanyRole();
+  await requireSubdivisionAccess(subdivisionId);
+  const supabase = createServerClient();
+
+  const { data: doc } = await supabase
+    .from("documents")
+    .select("id, subdivision_id, lot_id, file_name, file_path, mime_type")
+    .eq("id", documentId)
+    .single();
+
+  if (!doc) return { error: "Document not found" };
+  if (doc.subdivision_id !== subdivisionId) {
+    return { error: "Document is not in this subdivision" };
+  }
+
+  let parsed: ParsedSettlement;
+  try {
+    const bytes = await fetchDocumentBytes(doc.file_path);
+    parsed = await parseSettlementPdf(bytes);
+  } catch {
+    return { error: "Failed to read the uploaded PDF. Please re-upload or assign the owner manually." };
+  }
+
+  if (parsed.lotNumber == null) {
+    return {
+      error: "Could not find a lot number in the document. Open the lot manually and upload from there.",
+    };
+  }
+
+  // Look up the lot in this subdivision by lot number. Plan number is verified
+  // as a match indicator, but lot number is the matching key — multiple
+  // subdivisions never share both within the same management company.
+  const { data: candidateLots } = await supabase
+    .from("lots")
+    .select("id, lot_number, unit_number, subdivisions!inner(id, plan_number)")
+    .eq("subdivision_id", subdivisionId)
+    .eq("lot_number", parsed.lotNumber);
+
+  const lot = (candidateLots ?? [])[0];
+  if (!lot) {
+    return {
+      error: `No lot ${parsed.lotNumber} found in this subdivision. Verify the document matches and assign manually.`,
+    };
+  }
+
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const planNumber: string | null = (lot as any).subdivisions?.plan_number ?? null;
+
+  const matches = {
+    lotNumber: true,                   // we matched on it, so it's true
+    planNumber:
+      !planNumber || !parsed.planNumber
+        ? null
+        : parsed.planNumber.toUpperCase() === planNumber.toUpperCase(),
+  };
+
+  // Attach the document to the matched lot so the existing applySettlementToLot
+  // path works unchanged. Skip the update if it's already pointing at this lot.
+  if (doc.lot_id !== lot.id) {
+    await supabase.from("documents").update({ lot_id: lot.id }).eq("id", doc.id);
+  }
+
+  // Current active owner of the matched lot.
+  const { data: activeMember } = await supabase
+    .from("subdivision_members")
+    .select("profile_id, joined_at, profiles(first_name, last_name, email)")
+    .eq("lot_id", lot.id)
+    .eq("role", "lot_owner")
+    .is("left_at", null)
+    .maybeSingle();
+
+  let currentOwner: SettlementReview["currentOwner"] = null;
+  if (activeMember) {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const p = (activeMember as any).profiles;
+    const name = [p?.first_name, p?.last_name].filter(Boolean).join(" ").trim() || null;
+    currentOwner = {
+      profileId: activeMember.profile_id,
+      name,
+      email: p?.email ?? null,
+      joinedAt: activeMember.joined_at,
+    };
+  }
+
+  const { data: pendingInv } = await supabase
+    .from("invitations")
+    .select("id")
+    .eq("lot_id", lot.id)
+    .eq("status", "pending")
+    .order("created_at", { ascending: false })
+    .limit(1)
+    .maybeSingle();
+
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
+  const { rawText: _rawText, ...display } = parsed;
+
+  return {
+    data: {
+      parsed: display,
+      matches,
+      currentOwner,
+      pendingInvitationId: pendingInv?.id ?? null,
+      documentName: doc.file_name,
+      matchedLot: {
+        id: lot.id,
+        lotNumber: lot.lot_number,
+        unitNumber: lot.unit_number,
+      },
     },
   };
 }
@@ -301,17 +429,29 @@ export async function applySettlementToLot(input: ApplySettlementInput) {
 export async function getLotOwnershipHistory(
   lotId: string,
 ): Promise<OwnershipHistoryEntry[]> {
+  try {
+    return await getLotOwnershipHistoryInner(lotId);
+  } catch (err) {
+    console.error("getLotOwnershipHistory failed:", err);
+    return [];
+  }
+}
+
+async function getLotOwnershipHistoryInner(
+  lotId: string,
+): Promise<OwnershipHistoryEntry[]> {
   const supabase = createServerClient();
 
-  const { data: members } = await supabase
+  const { data: members, error } = await supabase
     .from("subdivision_members")
     .select(
-      "id, profile_id, joined_at, left_at, is_primary_contact, is_financial, profiles!inner(first_name, last_name, email)",
+      "id, profile_id, joined_at, left_at, is_primary_contact, is_financial, profiles(first_name, last_name, email)",
     )
     .eq("lot_id", lotId)
     .eq("role", "lot_owner")
     .order("joined_at", { ascending: false });
 
+  if (error) throw new Error(`subdivision_members query failed: ${error.message}`);
   if (!members || members.length === 0) return [];
 
   // Pull audit_log rows that reference these member rows so we can show the

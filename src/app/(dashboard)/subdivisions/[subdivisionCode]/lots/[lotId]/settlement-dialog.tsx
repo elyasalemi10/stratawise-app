@@ -14,11 +14,12 @@ import {
 } from "@/components/ui/dialog";
 import {
   parseSettlementForReview,
+  parseSettlementAndMatchLot,
   applySettlementToLot,
   type SettlementReview,
 } from "@/lib/actions/settlements";
 
-interface Props {
+interface PropsLotMode {
   open: boolean;
   onClose: () => void;
   subdivisionId: string;
@@ -27,11 +28,24 @@ interface Props {
   onApplied?: () => void;
 }
 
+interface PropsSubdivisionMode {
+  open: boolean;
+  onClose: () => void;
+  subdivisionId: string;
+  lotId?: undefined;
+  lotNumber?: undefined;
+  onApplied?: () => void;
+}
+
+type Props = PropsLotMode | PropsSubdivisionMode;
+
 type Stage = "upload" | "parsing" | "review" | "submitting";
 
-export function SettlementDialog({
-  open, onClose, subdivisionId, lotId, lotNumber, onApplied,
-}: Props) {
+export function SettlementDialog(props: Props) {
+  const { open, onClose, subdivisionId, onApplied } = props;
+  const knownLotId = props.lotId ?? null;
+  const knownLotNumber = props.lotNumber ?? null;
+
   const [stage, setStage] = useState<Stage>("upload");
   const [documentId, setDocumentId] = useState<string | null>(null);
   const [review, setReview] = useState<SettlementReview | null>(null);
@@ -70,7 +84,7 @@ export function SettlementDialog({
       const formData = new FormData();
       formData.append("file", file);
       formData.append("subdivision_id", subdivisionId);
-      formData.append("lot_id", lotId);
+      if (knownLotId) formData.append("lot_id", knownLotId);
       formData.append("category", "settlement");
 
       const uploadRes = await fetch("/api/documents", { method: "POST", body: formData });
@@ -81,7 +95,10 @@ export function SettlementDialog({
       const docId: string = uploadJson.id;
       setDocumentId(docId);
 
-      const reviewRes = await parseSettlementForReview(docId, lotId);
+      const reviewRes = knownLotId
+        ? await parseSettlementForReview(docId, knownLotId)
+        : await parseSettlementAndMatchLot(docId, subdivisionId);
+
       if (reviewRes.error || !reviewRes.data) {
         throw new Error(reviewRes.error ?? "Could not parse PDF");
       }
@@ -102,10 +119,15 @@ export function SettlementDialog({
       });
       reset();
     }
-  }, [subdivisionId, lotId, reset]);
+  }, [subdivisionId, knownLotId, reset]);
+
+  // Resolve the lot we're applying to: either the one passed in (per-lot mode)
+  // or the one the parser matched (subdivision mode).
+  const targetLotId = knownLotId ?? review?.matchedLot?.id ?? null;
+  const targetLotNumber = knownLotNumber ?? review?.matchedLot?.lotNumber ?? null;
 
   const handleConfirm = useCallback(async () => {
-    if (!documentId) return;
+    if (!documentId || !targetLotId) return;
     if (!name.trim() || !email.trim() || !settlementDate) {
       toast.error("Name, email and settlement date are required.");
       return;
@@ -113,7 +135,7 @@ export function SettlementDialog({
     setStage("submitting");
     const result = await applySettlementToLot({
       documentId,
-      lotId,
+      lotId: targetLotId,
       newOwner: {
         name: name.trim(),
         email: email.trim(),
@@ -132,12 +154,12 @@ export function SettlementDialog({
     }
 
     toast.success("Settlement recorded", {
-      description: `New owner ${name.trim()} is now pending acceptance for Lot ${lotNumber}.`,
+      description: `New owner ${name.trim()} is now pending acceptance${targetLotNumber != null ? ` for Lot ${targetLotNumber}` : ""}.`,
     });
     reset();
     onClose();
     onApplied?.();
-  }, [documentId, lotId, name, email, phone, postalAddress, dateOfBirth, settlementDate, review, lotNumber, reset, onClose, onApplied]);
+  }, [documentId, targetLotId, name, email, phone, postalAddress, dateOfBirth, settlementDate, review, targetLotNumber, reset, onClose, onApplied]);
 
   // ─── Render ───────────────────────────────────────────────────
 
@@ -159,10 +181,11 @@ export function SettlementDialog({
 
         {stage === "parsing" && <ParsingSkeleton />}
 
-        {stage === "review" && review && (
+        {stage === "review" && review && targetLotNumber != null && (
           <ReviewForm
             review={review}
-            lotNumber={lotNumber}
+            lotNumber={targetLotNumber}
+            isMatched={!knownLotId}
             name={name} setName={setName}
             email={email} setEmail={setEmail}
             phone={phone} setPhone={setPhone}
@@ -270,6 +293,7 @@ function ParsingSkeleton({ message = "Reading the settlement document..." }: { m
 function ReviewForm(props: {
   review: SettlementReview;
   lotNumber: number;
+  isMatched: boolean;
   name: string; setName: (v: string) => void;
   email: string; setEmail: (v: string) => void;
   phone: string; setPhone: (v: string) => void;
@@ -277,11 +301,20 @@ function ReviewForm(props: {
   dateOfBirth: string; setDateOfBirth: (v: string) => void;
   settlementDate: string; setSettlementDate: (v: string) => void;
 }) {
-  const { review, lotNumber } = props;
+  const { review, lotNumber, isMatched } = props;
   const couldNotExtract = !review.parsed.transferee.name && !review.parsed.lotNumber && !review.parsed.settlementDate;
 
   return (
     <div className="space-y-4 max-h-[60vh] overflow-y-auto pr-1">
+      {isMatched && review.matchedLot && (
+        <div className="flex items-start gap-2 rounded-md border border-[hsl(160,100%,37%)]/30 bg-[hsl(160,100%,37%)]/10 px-3 py-2 text-xs text-[hsl(160,100%,30%)]">
+          <Check className="h-4 w-4 shrink-0 mt-0.5" />
+          <span>
+            Matched <span className="font-medium">Lot {review.matchedLot.lotNumber}{review.matchedLot.unitNumber ? ` (Unit ${review.matchedLot.unitNumber})` : ""}</span> in this subdivision based on the lot and plan numbers in the PDF.
+          </span>
+        </div>
+      )}
+
       {/* Document + match summary */}
       <div className="rounded-md border border-border bg-muted/20 p-3">
         <div className="flex items-start gap-3">
