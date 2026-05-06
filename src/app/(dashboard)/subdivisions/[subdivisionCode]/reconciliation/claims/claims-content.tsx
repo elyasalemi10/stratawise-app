@@ -1,33 +1,32 @@
 "use client";
 
 // ============================================================================
-// PaymentClaimsContent (PP5-D-C-A)
+// PaymentClaimsContent (PP5-D-C-A → PP5-D-C-B)
 // ----------------------------------------------------------------------------
-// Client wrapper for the manager payment-claims queue. Splits out the
-// previously inline page rendering so the orphan chip toggle (?orphan=1)
-// can drive client-side URL updates via router.replace, and so the future
-// PP5-D-C-B Review action button + dialog can mount alongside per-row
-// state.
+// Client wrapper for the manager payment-claims queue. Splits out page
+// rendering so the orphan chip toggle (?orphan=1) can drive client-side
+// URL updates via router.replace, and so the Review action button +
+// ManagerClaimReviewDialog can mount alongside per-row state.
 //
-// PP5-D-C-A scope:
-//   - Renders pending OR orphaned claims (mutually exclusive lists; chip
-//     pivots between them; header copy reflects which list is showing).
-//   - NO Review button or dialog yet — deferred to PP5-D-C-B per
-//     CLAUDE.md "no half-finished UI affordances".
+// Review button is rendered ONLY on pending claims (NOT orphan rows) per
+// Gap JJ — orphan-mode review actions are deferred to PRE_LAUNCH_CLEANUP.
 // ============================================================================
 
-import { useTransition } from "react";
+import { useState, useTransition } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { format } from "date-fns";
+import { ChevronRight } from "lucide-react";
 
 import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 import { useSubdivisionCode } from "@/lib/subdivision-context";
 import {
   OWNER_CLAIM_PAYMENT_METHOD_LABELS,
   type ManagerClaimQueueRow,
 } from "@/lib/validations/owner-payment-claims";
+import { ManagerClaimReviewDialog } from "@/components/reconciliation/manager-claim-review-dialog";
 
 const formatCurrency = (n: number) =>
   new Intl.NumberFormat("en-AU", { style: "currency", currency: "AUD" }).format(n);
@@ -43,6 +42,9 @@ export function ClaimsContent({ rows, orphanMode }: Props) {
   const searchParams = useSearchParams();
   const [, startTransition] = useTransition();
 
+  const [reviewDialogOpen, setReviewDialogOpen] = useState(false);
+  const [reviewPayload, setReviewPayload] = useState<ManagerClaimQueueRow | null>(null);
+
   const base = `/subdivisions/${subdivisionCode}/reconciliation/claims`;
 
   function toggleOrphanChip() {
@@ -55,6 +57,17 @@ export function ClaimsContent({ rows, orphanMode }: Props) {
     const qs = params.toString();
     startTransition(() => {
       router.replace(qs ? `${base}?${qs}` : base);
+    });
+  }
+
+  function openReviewDialog(claim: ManagerClaimQueueRow) {
+    setReviewPayload(claim);
+    setReviewDialogOpen(true);
+  }
+
+  function handleReviewResolved() {
+    startTransition(() => {
+      router.refresh();
     });
   }
 
@@ -147,15 +160,26 @@ export function ClaimsContent({ rows, orphanMode }: Props) {
                           </div>
                         )}
                       </div>
-                      <div className="shrink-0">
+                      <div className="shrink-0 flex items-center gap-2">
                         {orphanMode ? (
                           <Badge className="rounded-full bg-rose-100 text-rose-900 hover:bg-rose-100">
                             Orphaned
                           </Badge>
                         ) : (
-                          <Badge className="rounded-full bg-amber-100 text-amber-900 hover:bg-amber-100">
-                            Pending review
-                          </Badge>
+                          <>
+                            <Badge className="rounded-full bg-amber-100 text-amber-900 hover:bg-amber-100">
+                              Pending review
+                            </Badge>
+                            <Button
+                              variant="outline"
+                              size="sm"
+                              className="h-8 px-3"
+                              onClick={() => openReviewDialog(claim)}
+                            >
+                              Review
+                              <ChevronRight className="h-3.5 w-3.5 ml-1" />
+                            </Button>
+                          </>
                         )}
                       </div>
                     </div>
@@ -166,6 +190,13 @@ export function ClaimsContent({ rows, orphanMode }: Props) {
           </CardContent>
         </Card>
       </div>
+
+      <ManagerClaimReviewDialog
+        open={reviewDialogOpen}
+        onOpenChange={setReviewDialogOpen}
+        payload={reviewPayload}
+        onResolved={handleReviewResolved}
+      />
     </div>
   );
 }

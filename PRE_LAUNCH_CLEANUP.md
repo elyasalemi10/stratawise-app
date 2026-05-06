@@ -508,3 +508,16 @@ Small fixes to batch before going live. Non-blocking for feature work.
   extract `<UrlBoolFilterChip label key>` primitive that wraps the
   URL state pattern and uses the same Tailwind classes as
   `FilterChips`'s rendered chips. Defer until needed.
+
+## From Prompt 5 (PP5-D-C-B — Manager claim review dialog)
+
+- **`manager-claim-review-dialog.tsx` shipped as 1200-line
+  monolithic-but-cohesive single file.** Split candidates:
+  `CandidateRow` (~70 LOC, purely presentational), `classifyErrorCode`
+  (~30 LOC, pure function), form schemas + state-machine types
+  (~50 LOC). Net split would drop ~250 LOC out of dialog. **Defer
+  until** (a) split improves debuggability evidenced during PP5-D-D
+  smoke walkthrough, OR (b) post-launch when the file becomes a
+  friction point. Cohesion (reducer + types + render branches tightly
+  coupled) makes the single-file shape defensible until friction
+  surfaces.

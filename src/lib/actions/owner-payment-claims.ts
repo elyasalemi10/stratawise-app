@@ -327,15 +327,6 @@ export async function listManagerPaymentClaims(
   return await hydrateManagerClaimRows(supabase, rows);
 }
 
-/** PP5-D-C-A: backwards-compat alias preserved during the rename. New
- *  callers should use listManagerPaymentClaims directly. Remove on the
- *  next pass through this file. */
-export async function listPendingPaymentClaims(
-  subdivisionId: string,
-): Promise<ListPendingPaymentClaimsResult> {
-  return listManagerPaymentClaims(subdivisionId);
-}
-
 // ─── hydrateManagerClaimRows shared helper ────────────────────────────────
 //
 // Resolves lot labels + owner names via two batched queries; returns the
