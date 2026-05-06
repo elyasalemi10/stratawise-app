@@ -3,9 +3,11 @@
 // The form has consistent labels, so we extract via labelled regex on the
 // concatenated text layer rather than relying on positional layout.
 //
-// pdf-parse is ESM-only and pulls in pdfjs-dist at module load — we lazy-import
-// it inside parseSettlementPdf so unrelated callers (e.g. the lot detail page
-// pulling getLotOwnershipHistory from settlements.ts) don't pay that cost.
+// We use pdfjs-dist directly via its legacy ESM build (Node-friendly, no DOM
+// globals). pdf-parse v2's worker setup doesn't survive Next.js bundling
+// (it tries to import pdf.worker.mjs from a path that doesn't exist after
+// Turbopack rewrites), so we run pdfjs synchronously with the worker disabled.
+// The legacy build supports inline parsing via `disableWorker: true`.
 
 export interface ParsedTransferee {
   kind: "individual" | "organisation" | null;
@@ -143,12 +145,10 @@ export async function parseSettlementPdf(buffer: Buffer): Promise<ParsedSettleme
   const result = emptyResult();
   let text = "";
   try {
-    const { PDFParse } = await import("pdf-parse");
-    const parser = new PDFParse({ data: buffer });
-    const out = await parser.getText();
-    text = out.text ?? "";
-  } catch {
+    text = await extractText(buffer);
+  } catch (err) {
     // Corrupt or scanned PDF — return ok:false; callers surface a manual-fill prompt.
+    console.error("parseSettlementPdf: pdfjs-dist failed:", err);
     result.rawText = "";
     return result;
   }
@@ -241,6 +241,59 @@ export async function parseSettlementPdf(buffer: Buffer): Promise<ParsedSettleme
     result.transferee.name || result.lotNumber || result.settlementDate || result.salePriceCents,
   );
   return result;
+}
+
+async function extractText(buffer: Buffer): Promise<string> {
+  // Legacy ESM build is the Node-compatible distribution. Lazy-imported so the
+  // lot detail page (which pulls in this action module transitively) doesn't
+  // load pdfjs at all — it's >2MB. pdfjs-dist is listed in
+  // next.config.ts#serverExternalPackages so Turbopack leaves it as a plain
+  // Node import and the worker file resolves correctly from node_modules.
+  const pdfjs = await import("pdfjs-dist/legacy/build/pdf.mjs");
+
+  const loadingTask = pdfjs.getDocument({
+    data: new Uint8Array(buffer),
+    useSystemFonts: true,
+    useWorkerFetch: false,
+  });
+
+  const doc = await loadingTask.promise;
+  try {
+    const pages: string[] = [];
+    for (let i = 1; i <= doc.numPages; i++) {
+      const page = await doc.getPage(i);
+      const content = await page.getTextContent();
+      // Reassemble lines from positioned text items. pdfjs gives each glyph
+      // run a position; items with hasEOL or significant Y-jumps end the line.
+      let line = "";
+      const lines: string[] = [];
+      let lastY: number | null = null;
+      for (const item of content.items) {
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        const it = item as any;
+        if (typeof it.str !== "string") continue;
+        const y = it.transform?.[5];
+        if (lastY !== null && y !== undefined && Math.abs(y - lastY) > 1) {
+          if (line.length) lines.push(line);
+          line = "";
+        }
+        line += it.str;
+        if (it.hasEOL) {
+          lines.push(line);
+          line = "";
+          lastY = null;
+        } else if (y !== undefined) {
+          lastY = y;
+        }
+      }
+      if (line.length) lines.push(line);
+      pages.push(lines.join("\n"));
+      page.cleanup();
+    }
+    return pages.join("\n");
+  } finally {
+    await doc.destroy();
+  }
 }
 
 function emptyResult(): ParsedSettlement {
