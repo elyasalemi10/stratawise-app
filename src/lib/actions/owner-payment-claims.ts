@@ -45,6 +45,10 @@ import {
   type ManagerClaimQueueRow,
 } from "@/lib/validations/owner-payment-claims";
 import { addManualBankTransaction, reconcileTransaction } from "./reconciliation";
+import {
+  emitClaimMatchedEmail,
+  emitClaimRejectedEmail,
+} from "@/lib/notifications";
 import type { MatchStatus } from "@/lib/validations/reconciliation";
 
 function formatIssues(issues: { message: string }[]): string {
@@ -692,6 +696,17 @@ export async function confirmAndMatchClaimViaExistingBankTx(
   const { claim, profileId } = loaded;
   const supabase = createServerClient();
 
+  // PP6-C-1 spec gap 2: STAMP payment_received_email_sent_at BEFORE
+  // delegating to reconcileTransaction. The action's internal
+  // emitPaymentReceivedEmail call sees the non-null sentinel and
+  // short-circuits — owner gets the claim_matched email instead of
+  // the generic payment_received email (avoids double-emailing the
+  // same event). Ordering invariant: stamp must precede the delegate.
+  await supabase
+    .from("bank_transactions")
+    .update({ payment_received_email_sent_at: new Date().toISOString() })
+    .eq("id", parsed.data.bank_transaction_id);
+
   // Delegate the match to the existing reconcileTransaction action — it
   // runs PP5-B's ledger detector hook on the credits it creates and
   // writes the reconciliation.matched audit chain.
@@ -741,6 +756,12 @@ export async function confirmAndMatchClaimViaExistingBankTx(
       path: "existing_bank_tx",
       ...(parsed.data.notes ? { notes: parsed.data.notes } : {}),
     },
+  });
+
+  // PP6-C-1: claim-matched email to the owner.
+  await emitClaimMatchedEmail(supabase, {
+    claimId: claim.id,
+    performedBy: profileId,
   });
 
   revalidatePath("/subdivisions/[subdivisionCode]/reconciliation", "page");
@@ -822,6 +843,16 @@ export async function confirmAndMatchClaimViaNewBankTx(
   }
   const bankTransactionId = addResult.success.bankTransactionId;
 
+  // PP6-C-1 spec gap 2: STAMP payment_received_email_sent_at BEFORE
+  // delegating to reconcileTransaction. Same invariant as the
+  // existing-bank-tx path; the just-created bank tx's column is NULL
+  // by default, so this stamp is the suppression mechanism for the
+  // generic payment_received email.
+  await supabase
+    .from("bank_transactions")
+    .update({ payment_received_email_sent_at: new Date().toISOString() })
+    .eq("id", bankTransactionId);
+
   // Step 2 — allocate via reconcileTransaction (PP5-B detector runs).
   const matchResult = await reconcileTransaction({
     subdivision_id: claim.subdivision_id,
@@ -872,6 +903,12 @@ export async function confirmAndMatchClaimViaNewBankTx(
     },
   });
 
+  // PP6-C-1: claim-matched email to the owner.
+  await emitClaimMatchedEmail(supabase, {
+    claimId: claim.id,
+    performedBy: profileId,
+  });
+
   revalidatePath("/subdivisions/[subdivisionCode]/reconciliation", "page");
   revalidatePath("/subdivisions/[subdivisionCode]/reconciliation/claims", "page");
   revalidatePath("/subdivisions/[subdivisionCode]/bank-account", "page");
@@ -919,6 +956,13 @@ export async function rejectPaymentClaim(
     before_state: { claim_status: "pending" },
     after_state: { claim_status: "rejected" },
     metadata: { rejection_reason: parsed.data.rejection_reason },
+  });
+
+  // PP6-C-1: claim-rejected email to the owner with rejection_reason in body.
+  await emitClaimRejectedEmail(supabase, {
+    claimId: claim.id,
+    rejectionReason: parsed.data.rejection_reason,
+    performedBy: profileId,
   });
 
   revalidatePath("/subdivisions/[subdivisionCode]/reconciliation/claims", "page");

@@ -8,6 +8,22 @@ const FROM_INVITES = process.env.RESEND_INVITES_FROM ?? "My Strata Management <n
 const FROM_LEVIES = process.env.RESEND_LEVIES_FROM ?? "My Strata Management <noreply@myocm.com.au>";
 const FROM_SYSTEM = process.env.RESEND_SYSTEM_FROM ?? "My Strata Management <noreply@myocm.com.au>";
 
+// EMAIL_DRY_RUN gate (PP6-C-1 retrofit). Set EMAIL_DRY_RUN=true in dev/staging
+// .env.local to short-circuit all sends with a console.log; production leaves
+// it unset (defaults to false → real sends). Replaces the older
+// `!RESEND_API_KEY` gate which doesn't work in dev where the key is set.
+function isDryRun(): boolean {
+  return process.env.EMAIL_DRY_RUN === "true";
+}
+
+// Uniform result type for the 4 new owner-facing senders introduced in
+// PP6-C-1. Existing 5 senders (invitation/levy/basiq×3) keep their original
+// `{ success } | { error }` shape — retrofit is limited to the DRY_RUN gate.
+export type EmailSendResult =
+  | { success: true; id: string | null }
+  | { dryRun: true }
+  | { error: string };
+
 interface SendInvitationEmailParams {
   to: string;
   inviteeName: string | null;
@@ -33,6 +49,11 @@ export async function sendInvitationEmail({
   const greeting = inviteeName ? `Hi ${inviteeName},` : "Hi,";
   const lotLine = lotNumber ? `<p style="margin:0 0 8px;color:#6b7280;font-size:14px;">Lot: <strong>${lotNumber}</strong></p>` : "";
   const invitedByLine = invitedByName ? ` by ${invitedByName}` : "";
+
+  if (isDryRun()) {
+    console.log(`[email-dry-run] type=invitation to=${to} subject="You've been invited to ${subdivisionName}"`);
+    return { success: true };
+  }
 
   const { error } = await getResend().emails.send({
     from: FROM_INVITES,
@@ -101,6 +122,11 @@ export async function sendLevyEmail({
     ? `<img src="${companyLogoUrl}" alt="" style="max-height:48px;max-width:160px;margin-bottom:16px;" />`
     : "";
 
+  if (isDryRun()) {
+    console.log(`[email-dry-run] type=levy_notice to=${to} ref=${referenceNumber} subject="Levy Notice — ${subdivisionName} — ${periodLabel}"`);
+    return { success: true };
+  }
+
   const { error } = await getResend().emails.send({
     from: FROM_LEVIES,
     to,
@@ -157,8 +183,10 @@ async function sendSystemEmail(
   subject: string,
   bodyHtml: string,
 ): Promise<BasiqEmailResult> {
-  // In dev with no RESEND_API_KEY, log instead of sending.
-  if (!process.env.RESEND_API_KEY) {
+  // Dry-run gate (PP6-C-1) — also covers the original "no API key in dev"
+  // case for backward compatibility (an unset key is still treated as
+  // dry-run, so existing dev workflows without a key keep working).
+  if (isDryRun() || !process.env.RESEND_API_KEY) {
     console.log(`[email-stub] to=${to} subject="${subject}"`);
     return { success: true };
   }
@@ -282,4 +310,268 @@ export async function sendBasiqCommitteeGapNotificationEmail(params: {
     </div>
   `;
   return sendSystemEmail(to, subject, html);
+}
+
+// ─── PP6-C-1: owner-facing transactional emails ──────────────────────────
+// Inline HTML template literals (per PP6-0 ratification). Each sender
+// returns the uniform EmailSendResult so emit helpers in
+// src/lib/notifications.ts can persist the Resend message id into
+// communication_log.external_id.
+
+interface SharedSenderHeader {
+  to: string;
+  ownerName: string | null;
+  subdivisionName: string;
+  subdivisionAddress: string;
+}
+
+function greeting(ownerName: string | null): string {
+  return ownerName ? `Hi ${ownerName},` : "Hi,";
+}
+
+function brandShell(innerHtml: string): string {
+  return `
+    <div style="font-family:'Inter',system-ui,sans-serif;max-width:520px;margin:0 auto;padding:32px 0;">
+      ${innerHtml}
+    </div>
+  `;
+}
+
+// ─── sendPaymentReceivedEmail ──────────────────────────────────────────
+
+export interface SendPaymentReceivedEmailParams extends SharedSenderHeader {
+  amount: number;
+  paymentDate: string;
+  description: string;
+  lotLabel: string;
+  reference: string | null;
+}
+
+export async function sendPaymentReceivedEmail(
+  params: SendPaymentReceivedEmailParams,
+): Promise<EmailSendResult> {
+  const { to, ownerName, subdivisionName, subdivisionAddress, amount, paymentDate, description, lotLabel, reference } = params;
+  const subject = `Payment received — ${subdivisionName}`;
+
+  if (isDryRun()) {
+    console.log(`[email-dry-run] type=payment_received to=${to} amount=${amount.toFixed(2)} subject="${subject}"`);
+    return { dryRun: true };
+  }
+
+  const refLine = reference
+    ? `<p style="margin:0 0 4px;font-size:13px;color:#6b7280;">Reference</p><p style="margin:0 0 12px;font-size:14px;color:#1a1f2e;">${escapeHtml(reference)}</p>`
+    : "";
+
+  const html = brandShell(`
+    <h2 style="margin:0 0 16px;font-size:20px;font-weight:600;color:#1a1f2e;">Payment received</h2>
+    <p style="margin:0 0 20px;color:#1a1f2e;font-size:14px;line-height:1.6;">
+      ${greeting(ownerName)} we've recorded a payment against your account at <strong>${escapeHtml(subdivisionAddress)}</strong>.
+    </p>
+    <div style="background:#f8f9fb;border:1px solid #e2e5ea;border-radius:6px;padding:16px;margin:0 0 24px;">
+      <p style="margin:0 0 4px;font-size:13px;color:#6b7280;">Lot</p>
+      <p style="margin:0 0 12px;font-size:14px;color:#1a1f2e;">${escapeHtml(lotLabel)}</p>
+      <p style="margin:0 0 4px;font-size:13px;color:#6b7280;">Amount</p>
+      <p style="margin:0 0 12px;font-size:18px;font-weight:700;color:#00bd7d;">$${amount.toFixed(2)}</p>
+      <p style="margin:0 0 4px;font-size:13px;color:#6b7280;">Date</p>
+      <p style="margin:0 0 12px;font-size:14px;color:#1a1f2e;">${escapeHtml(paymentDate)}</p>
+      ${refLine}
+      ${description ? `<p style="margin:0 0 4px;font-size:13px;color:#6b7280;">Description</p><p style="margin:0;font-size:14px;color:#1a1f2e;">${escapeHtml(description)}</p>` : ""}
+    </div>
+    <p style="margin:0;color:#6b7280;font-size:12px;line-height:1.5;">
+      You can view your full payment history in the MSM owner portal.
+    </p>
+  `);
+
+  const { data, error } = await getResend().emails.send({
+    from: FROM_LEVIES,
+    to,
+    subject,
+    html,
+  });
+  if (error) {
+    console.error("Failed to send payment_received email:", error);
+    return { error: error.message };
+  }
+  return { success: true, id: data?.id ?? null };
+}
+
+// ─── sendOverdueReminderEmail (PP6-C-1 step 1) ─────────────────────────
+
+export interface SendOverdueReminderEmailParams extends SharedSenderHeader {
+  referenceNumber: string;
+  amountOutstanding: number;
+  daysOverdue: number;
+  dueDate: string;
+  penaltyInterestAccrued: number; // 0 if no accrual yet
+}
+
+export async function sendOverdueReminderEmail(
+  params: SendOverdueReminderEmailParams,
+): Promise<EmailSendResult> {
+  const { to, ownerName, subdivisionName, subdivisionAddress, referenceNumber, amountOutstanding, daysOverdue, dueDate, penaltyInterestAccrued } = params;
+  const subject = `Your levy is overdue — ${subdivisionName}`;
+
+  if (isDryRun()) {
+    console.log(`[email-dry-run] type=overdue_reminder to=${to} ref=${referenceNumber} days=${daysOverdue} interest=${penaltyInterestAccrued.toFixed(2)} subject="${subject}"`);
+    return { dryRun: true };
+  }
+
+  const interestLine = penaltyInterestAccrued > 0
+    ? `<p style="margin:0 0 4px;font-size:13px;color:#6b7280;">Interest accrued</p><p style="margin:0 0 12px;font-size:14px;font-weight:600;color:#dc2626;">$${penaltyInterestAccrued.toFixed(2)}</p>`
+    : "";
+
+  const html = brandShell(`
+    <h2 style="margin:0 0 16px;font-size:20px;font-weight:600;color:#1a1f2e;">Levy overdue — friendly reminder</h2>
+    <p style="margin:0 0 20px;color:#1a1f2e;font-size:14px;line-height:1.6;">
+      ${greeting(ownerName)} our records show a levy at <strong>${escapeHtml(subdivisionAddress)}</strong> is now <strong>${daysOverdue} days</strong> past its due date. If you've already paid, you can disregard this notice — it may take a day or two to reflect on our system.
+    </p>
+    <div style="background:#fef9f3;border:1px solid #fde7d0;border-radius:6px;padding:16px;margin:0 0 24px;">
+      <p style="margin:0 0 4px;font-size:13px;color:#6b7280;">Reference</p>
+      <p style="margin:0 0 12px;font-size:14px;font-weight:600;color:#1a1f2e;">${escapeHtml(referenceNumber)}</p>
+      <p style="margin:0 0 4px;font-size:13px;color:#6b7280;">Original due date</p>
+      <p style="margin:0 0 12px;font-size:14px;color:#1a1f2e;">${escapeHtml(dueDate)}</p>
+      <p style="margin:0 0 4px;font-size:13px;color:#6b7280;">Amount outstanding</p>
+      <p style="margin:0 0 12px;font-size:18px;font-weight:700;color:#1a1f2e;">$${amountOutstanding.toFixed(2)}</p>
+      ${interestLine}
+    </div>
+    <p style="margin:0 0 8px;color:#1a1f2e;font-size:14px;">
+      Please log in to the MSM owner portal for payment instructions and your full ledger.
+    </p>
+    <p style="margin:0;color:#6b7280;font-size:12px;line-height:1.5;">
+      Continued non-payment may result in further reminders and late fees in line with your strata rules.
+    </p>
+  `);
+
+  const { data, error } = await getResend().emails.send({
+    from: FROM_LEVIES,
+    to,
+    subject,
+    html,
+  });
+  if (error) {
+    console.error("Failed to send overdue_reminder email:", error);
+    return { error: error.message };
+  }
+  return { success: true, id: data?.id ?? null };
+}
+
+// ─── sendClaimMatchedEmail ─────────────────────────────────────────────
+
+export interface SendClaimMatchedEmailParams extends SharedSenderHeader {
+  amount: number;
+  claimDate: string;
+  paymentMethod: string;
+  lotLabel: string;
+}
+
+export async function sendClaimMatchedEmail(
+  params: SendClaimMatchedEmailParams,
+): Promise<EmailSendResult> {
+  const { to, ownerName, subdivisionName, subdivisionAddress, amount, claimDate, paymentMethod, lotLabel } = params;
+  const subject = `Your payment has been confirmed — ${subdivisionName}`;
+
+  if (isDryRun()) {
+    console.log(`[email-dry-run] type=claim_matched to=${to} amount=${amount.toFixed(2)} subject="${subject}"`);
+    return { dryRun: true };
+  }
+
+  const html = brandShell(`
+    <h2 style="margin:0 0 16px;font-size:20px;font-weight:600;color:#1a1f2e;">Payment confirmed</h2>
+    <p style="margin:0 0 20px;color:#1a1f2e;font-size:14px;line-height:1.6;">
+      ${greeting(ownerName)} the payment claim you submitted for <strong>${escapeHtml(subdivisionAddress)}</strong> has been matched and applied to your account.
+    </p>
+    <div style="background:#f0fdf4;border:1px solid #bbf7d0;border-radius:6px;padding:16px;margin:0 0 24px;">
+      <p style="margin:0 0 4px;font-size:13px;color:#6b7280;">Lot</p>
+      <p style="margin:0 0 12px;font-size:14px;color:#1a1f2e;">${escapeHtml(lotLabel)}</p>
+      <p style="margin:0 0 4px;font-size:13px;color:#6b7280;">Amount</p>
+      <p style="margin:0 0 12px;font-size:18px;font-weight:700;color:#00bd7d;">$${amount.toFixed(2)}</p>
+      <p style="margin:0 0 4px;font-size:13px;color:#6b7280;">Claimed date</p>
+      <p style="margin:0 0 12px;font-size:14px;color:#1a1f2e;">${escapeHtml(claimDate)}</p>
+      <p style="margin:0 0 4px;font-size:13px;color:#6b7280;">Method</p>
+      <p style="margin:0;font-size:14px;color:#1a1f2e;">${escapeHtml(paymentMethod)}</p>
+    </div>
+    <p style="margin:0;color:#6b7280;font-size:12px;line-height:1.5;">
+      You can view your full payment history in the MSM owner portal.
+    </p>
+  `);
+
+  const { data, error } = await getResend().emails.send({
+    from: FROM_LEVIES,
+    to,
+    subject,
+    html,
+  });
+  if (error) {
+    console.error("Failed to send claim_matched email:", error);
+    return { error: error.message };
+  }
+  return { success: true, id: data?.id ?? null };
+}
+
+// ─── sendClaimRejectedEmail ────────────────────────────────────────────
+
+export interface SendClaimRejectedEmailParams extends SharedSenderHeader {
+  amount: number;
+  claimDate: string;
+  rejectionReason: string;
+  lotLabel: string;
+}
+
+export async function sendClaimRejectedEmail(
+  params: SendClaimRejectedEmailParams,
+): Promise<EmailSendResult> {
+  const { to, ownerName, subdivisionName, subdivisionAddress, amount, claimDate, rejectionReason, lotLabel } = params;
+  const subject = `Update on your payment claim — ${subdivisionName}`;
+
+  if (isDryRun()) {
+    console.log(`[email-dry-run] type=claim_rejected to=${to} amount=${amount.toFixed(2)} subject="${subject}"`);
+    return { dryRun: true };
+  }
+
+  const html = brandShell(`
+    <h2 style="margin:0 0 16px;font-size:20px;font-weight:600;color:#1a1f2e;">Update on your payment claim</h2>
+    <p style="margin:0 0 20px;color:#1a1f2e;font-size:14px;line-height:1.6;">
+      ${greeting(ownerName)} after review, the payment claim you submitted for <strong>${escapeHtml(subdivisionAddress)}</strong> has not been matched. The details and the manager's note are below.
+    </p>
+    <div style="background:#fef2f2;border:1px solid #fecaca;border-radius:6px;padding:16px;margin:0 0 16px;">
+      <p style="margin:0 0 4px;font-size:13px;color:#6b7280;">Lot</p>
+      <p style="margin:0 0 12px;font-size:14px;color:#1a1f2e;">${escapeHtml(lotLabel)}</p>
+      <p style="margin:0 0 4px;font-size:13px;color:#6b7280;">Amount</p>
+      <p style="margin:0 0 12px;font-size:18px;font-weight:700;color:#1a1f2e;">$${amount.toFixed(2)}</p>
+      <p style="margin:0 0 4px;font-size:13px;color:#6b7280;">Claimed date</p>
+      <p style="margin:0;font-size:14px;color:#1a1f2e;">${escapeHtml(claimDate)}</p>
+    </div>
+    <div style="background:#f8f9fb;border:1px solid #e2e5ea;border-radius:6px;padding:16px;margin:0 0 24px;">
+      <p style="margin:0 0 4px;font-size:13px;color:#6b7280;">Reason from your strata manager</p>
+      <p style="margin:0;font-size:14px;line-height:1.5;color:#1a1f2e;">${escapeHtml(rejectionReason)}</p>
+    </div>
+    <p style="margin:0;color:#1a1f2e;font-size:14px;">
+      If you believe this is incorrect, please contact your strata manager directly with proof of payment.
+    </p>
+  `);
+
+  const { data, error } = await getResend().emails.send({
+    from: FROM_LEVIES,
+    to,
+    subject,
+    html,
+  });
+  if (error) {
+    console.error("Failed to send claim_rejected email:", error);
+    return { error: error.message };
+  }
+  return { success: true, id: data?.id ?? null };
+}
+
+// ─── HTML escape helper ────────────────────────────────────────────────
+// Applied to user-controlled string interpolations in the new senders to
+// guard against accidental injection from owner names, subdivision
+// addresses, or rejection-reason free text.
+function escapeHtml(s: string): string {
+  return s
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;")
+    .replace(/'/g, "&#039;");
 }

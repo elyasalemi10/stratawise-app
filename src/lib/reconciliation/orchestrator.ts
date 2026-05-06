@@ -41,6 +41,7 @@ import { tryKeywordAmountMatch } from "./strategies/keyword-amount";
 import { tryAmountWindowMatch } from "./strategies/amount-window";
 import { tryFuzzySenderMatch } from "./strategies/fuzzy-hint";
 import { detectAndMarkLedgerDuplicates } from "./ledger-duplicate-detection";
+import { emitPaymentReceivedEmail } from "@/lib/notifications";
 
 // ─── Types ────────────────────────────────────────────────────────────────
 
@@ -309,6 +310,16 @@ export async function tryAutoMatch(
         subdivisionId: ctx.subdivisionId,
         performedBy: ctx.performedBy,
         supabase,
+      });
+    }
+
+    // PP6-C-1: payment-received owner email for auto-matched bank txs.
+    // Same per-bank-tx sentinel pattern as reconcileTransaction; runs
+    // here so basiq cron auto-matches notify owners too.
+    for (const creditId of createdCreditIds) {
+      await emitPaymentReceivedEmail(supabase, {
+        ledgerCreditId: creditId,
+        performedBy: ctx.performedBy,
       });
     }
 

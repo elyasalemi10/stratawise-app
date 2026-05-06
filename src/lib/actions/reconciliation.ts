@@ -12,6 +12,7 @@ import {
   markDuplicate,
 } from "@/lib/reconciliation/duplicate-detection";
 import { detectAndMarkLedgerDuplicates } from "@/lib/reconciliation/ledger-duplicate-detection";
+import { emitPaymentReceivedEmail } from "@/lib/notifications";
 import {
   createBankPayerMapping,
   resolveCollision,
@@ -1652,6 +1653,20 @@ export async function reconcileTransaction(
     });
   }
 
+  // PP6-C-1: payment-received owner email. Per-bank-tx sentinel on
+  // bank_transactions.payment_received_email_sent_at — first call stamps;
+  // subsequent calls (multi-allocation, unmatch+rematch) short-circuit.
+  // Multi-allocation undercount: only the first allocation's owner is
+  // emailed — see notifications.ts header for trade-off.
+  // Suppressed by claim flows that stamp the column before invoking
+  // reconcileTransaction (PP6-C-0 spec gap 2 ratification).
+  for (const creditId of payload.created_credit_ids ?? []) {
+    await emitPaymentReceivedEmail(supabase, {
+      ledgerCreditId: creditId,
+      performedBy: profile.id,
+    });
+  }
+
   // PP4-B: post-match "remember this payer" wiring.
   let mappingCollision: MappingCollisionPayload | undefined = undefined;
   let proposalFlag: ProposalFlagPayload | undefined = undefined;
@@ -2388,6 +2403,30 @@ export async function depositUndepositedFunds(
 
   if (error) return { error: error.message };
   const payload = (data ?? {}) as { cleared_receipt_numbers?: string[]; match_ids?: string[] };
+
+  // PP6-C-1: payment-received emit for each linked ledger credit. The
+  // RPC returns match_ids; resolve each to its ledger_entry_id and call
+  // the shared helper. Per-bank-tx sentinel ensures only one email per
+  // bank tx (matches the receipt-deposit semantics: cash receipts get
+  // their owner-facing email at deposit time, not record-cash time —
+  // recordCashReceipt is intentionally NOT a payment-received site
+  // because no bank_transaction_id exists at receipt time. See
+  // PP6-C-1 code review pause for the deferral rationale).
+  if ((payload.match_ids ?? []).length > 0) {
+    const { data: matchRows } = await supabase
+      .from("reconciliation_matches")
+      .select("ledger_entry_id")
+      .in("id", payload.match_ids ?? []);
+    const creditIds = (matchRows ?? []).map(
+      (r) => (r as { ledger_entry_id: string }).ledger_entry_id,
+    );
+    for (const creditId of creditIds) {
+      await emitPaymentReceivedEmail(supabase, {
+        ledgerCreditId: creditId,
+        performedBy: profile.id,
+      });
+    }
+  }
 
   await revalidateSidebarForSubdivision(parsed.data.subdivision_id);
   revalidatePath("/subdivisions/[subdivisionCode]/reconciliation", "page");
