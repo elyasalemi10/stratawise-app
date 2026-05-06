@@ -2,6 +2,7 @@ import { redirect } from "next/navigation";
 import { getCurrentProfile } from "@/lib/auth";
 import { createServerClient } from "@/lib/supabase";
 import { getLotOwner } from "@/lib/actions/lot-ownership";
+import { getLotOwnershipHistory } from "@/lib/actions/settlements";
 import { LotDetailContent } from "./lot-detail-content";
 import type { DocumentRecord } from "@/lib/validations/documents";
 
@@ -65,7 +66,10 @@ export default async function LotDetailPage({
 
   const documents = (documentsResult.data as DocumentRecord[]) ?? [];
 
-  const owner = await getLotOwner(supabase, lotId);
+  const [owner, ownershipHistory] = await Promise.all([
+    getLotOwner(supabase, lotId),
+    getLotOwnershipHistory(lotId),
+  ]);
 
   return (
     <LotDetailContent
@@ -74,6 +78,7 @@ export default async function LotDetailPage({
       subdivisionId={subdivisionId}
       balance={balance}
       documents={documents}
+      ownershipHistory={ownershipHistory}
     />
   );
 }

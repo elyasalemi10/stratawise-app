@@ -1,10 +1,10 @@
 "use client";
 
 import { useState, useRef, useEffect, useCallback } from "react";
-import { useSearchParams } from "next/navigation";
+import { useSearchParams, useRouter } from "next/navigation";
 import { LedgerTab } from "./lot-ledger-tab";
 import Link from "next/link";
-import { ChevronLeft, Building2, DollarSign, Users, Pencil, Check } from "lucide-react";
+import { ChevronLeft, Building2, DollarSign, Users, Pencil, Check, FileSignature } from "lucide-react";
 import { toast } from "sonner";
 import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
@@ -15,8 +15,11 @@ import { FileText } from "lucide-react";
 import { updateLotField } from "../../manage/actions";
 import { DocumentManager } from "@/components/shared/document-manager";
 import type { DocumentRecord } from "@/lib/validations/documents";
+import type { OwnershipHistoryEntry } from "@/lib/validations/settlement";
 import type { LotOwnerInfo } from "@/lib/actions/lot-ownership";
 import { useSubdivisionCode } from "@/lib/subdivision-context";
+import { SettlementDialog } from "./settlement-dialog";
+import { OwnershipHistory } from "./ownership-history";
 
 interface LotDetailContentProps {
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -25,6 +28,7 @@ interface LotDetailContentProps {
   subdivisionId: string;
   balance: number;
   documents: DocumentRecord[];
+  ownershipHistory: OwnershipHistoryEntry[];
 }
 
 const TABS = [
@@ -146,15 +150,17 @@ function PlaceholderTab({ name }: { name: string }) {
 
 // ─── Main component ─────────────────────────────────────────────
 
-export function LotDetailContent({ lot: initialLot, owner, subdivisionId, balance, documents }: LotDetailContentProps) {
+export function LotDetailContent({ lot: initialLot, owner, subdivisionId, balance, documents, ownershipHistory }: LotDetailContentProps) {
   const subdivisionCode = useSubdivisionCode();
   const searchParams = useSearchParams();
+  const router = useRouter();
   const rawTab = searchParams.get("tab") ?? "general";
   // ?tab=payments is a legacy URL — shim silently to ledger
   const initialTab = rawTab === "payments" ? "ledger" : rawTab;
   const [activeTab, setActiveTab] = useState(initialTab);
   const [isEditing, setIsEditing] = useState(false);
   const [lot, setLot] = useState(initialLot);
+  const [settlementOpen, setSettlementOpen] = useState(false);
 
   // Silently rewrite the URL when the payments→ledger shim fires
   useEffect(() => {
@@ -292,7 +298,13 @@ export function LotDetailContent({ lot: initialLot, owner, subdivisionId, balanc
 
           <Card>
             <CardContent className="pt-5">
-              <h3 className="text-sm font-semibold text-foreground mb-3">Owner details</h3>
+              <div className="flex items-center justify-between mb-3">
+                <h3 className="text-sm font-semibold text-foreground">Owner details</h3>
+                <Button variant="secondary" size="sm" onClick={() => setSettlementOpen(true)}>
+                  <FileSignature className="h-3.5 w-3.5" />
+                  Record settlement
+                </Button>
+              </div>
               <ReadOnlyInfoRow
                 label="Status"
                 value={isMember ? "Active member" : isPending ? "Pending invitation" : "Unassigned"}
@@ -302,13 +314,26 @@ export function LotDetailContent({ lot: initialLot, owner, subdivisionId, balanc
               <ReadOnlyInfoRow label="Phone" value={owner.owner_contact_phone ?? "—"} />
               <p className="mt-3 text-xs text-muted-foreground">
                 Owner details come from the accepted invitation + linked profile.
-                Change them via the Invite flow on the Manage page, or ask the
-                owner to update their profile.
+                Upload the Notice of Acquisition PDF via <span className="font-medium">Record settlement</span> to
+                transfer ownership automatically.
               </p>
             </CardContent>
           </Card>
         </div>
+
+        <div className="mt-4">
+          <OwnershipHistory history={ownershipHistory} />
+        </div>
       </div>
+
+      <SettlementDialog
+        open={settlementOpen}
+        onClose={() => setSettlementOpen(false)}
+        subdivisionId={subdivisionId}
+        lotId={lot.id}
+        lotNumber={Number(lot.lot_number)}
+        onApplied={() => router.refresh()}
+      />
 
       <div className={activeTab === "documents" ? "" : "hidden"}>
         <DocumentManager subdivisionId={subdivisionId} lotId={lot.id} initialDocuments={documents} />

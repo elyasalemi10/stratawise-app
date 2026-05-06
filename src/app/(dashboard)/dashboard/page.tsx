@@ -1,6 +1,6 @@
 import { redirect } from "next/navigation";
 import Link from "next/link";
-import { Building2, DollarSign, Users, Plus, MapPin, AlertTriangle, CheckCircle2, ArrowRight } from "lucide-react";
+import { Building2, DollarSign, Users, Plus, MapPin, AlertTriangle, CheckCircle2, ArrowRight, History } from "lucide-react";
 import { InviteTeamButton } from "./_components/invite-team-button";
 import { getCurrentProfile } from "@/lib/auth";
 import { getCompanySubdivisionSummary } from "@/lib/actions/subdivision";
@@ -14,6 +14,82 @@ interface KPICardProps {
   value: string;
   description: string;
   icon: React.ReactNode;
+}
+
+interface PastMembershipRow {
+  lot_id: string | null;
+  subdivision_id: string;
+  joined_at: string;
+  left_at: string | null;
+}
+
+interface PastLotRow {
+  id: string;
+  lot_number: number;
+  unit_number: string | null;
+}
+
+interface PastSubRow {
+  id: string;
+  name: string;
+  address: string;
+  plan_number: string;
+}
+
+function PastLotsGrid({
+  pastMemberships,
+  pastLots,
+  pastSubs,
+}: {
+  pastMemberships: PastMembershipRow[];
+  pastLots: PastLotRow[];
+  pastSubs: PastSubRow[];
+}) {
+  const formatDate = (iso: string | null) =>
+    iso
+      ? new Date(iso).toLocaleDateString("en-AU", { day: "numeric", month: "short", year: "numeric" })
+      : "—";
+
+  return (
+    <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
+      {pastMemberships.map((m) => {
+        const lot = m.lot_id ? pastLots.find((l) => l.id === m.lot_id) : null;
+        const sub = pastSubs.find((s) => s.id === m.subdivision_id);
+        if (!lot || !sub) return null;
+        return (
+          <Link key={`${m.lot_id}-${m.left_at}`} href={`/dashboard/past-lots/${m.lot_id}`} className="block">
+            <Card className="transition-colors hover:border-primary/30 cursor-pointer">
+              <CardContent className="pt-5">
+                <div className="flex items-start justify-between">
+                  <div className="flex-1 min-w-0">
+                    <h3 className="text-sm font-semibold text-foreground truncate">{sub.name}</h3>
+                    <p className="mt-1 text-xs text-muted-foreground">
+                      Lot {lot.lot_number}{lot.unit_number ? ` · Unit ${lot.unit_number}` : ""}
+                    </p>
+                  </div>
+                  <Badge variant="neutral" className="shrink-0">Past</Badge>
+                </div>
+
+                <div className="mt-3 flex items-center gap-1 text-xs text-muted-foreground">
+                  <MapPin className="h-3 w-3" />
+                  <span className="truncate">{sub.address}</span>
+                </div>
+
+                <div className="mt-3 flex items-center gap-1 text-xs text-muted-foreground border-t border-border pt-3">
+                  <History className="h-3 w-3" />
+                  <span>{formatDate(m.joined_at)} → {formatDate(m.left_at)}</span>
+                </div>
+
+                <div className="mt-3 flex items-center justify-end text-xs text-primary">
+                  View records <ArrowRight className="ml-1 h-3 w-3" />
+                </div>
+              </CardContent>
+            </Card>
+          </Link>
+        );
+      })}
+    </div>
+  );
 }
 
 function KPICard({ label, value, description, icon }: KPICardProps) {
@@ -46,13 +122,41 @@ export default async function DashboardPage() {
   // Lot owner main dashboard — unified view across all subdivisions
   if (profile.role === "lot_owner") {
     const supabase = createServerClient();
-    const { data: memberships } = await supabase
-      .from("subdivision_members")
-      .select("subdivision_id, lot_id")
-      .eq("profile_id", profile.id)
-      .is("left_at", null);
+    const [activeMembershipsResult, pastMembershipsResult] = await Promise.all([
+      supabase
+        .from("subdivision_members")
+        .select("subdivision_id, lot_id")
+        .eq("profile_id", profile.id)
+        .is("left_at", null),
+      supabase
+        .from("subdivision_members")
+        .select("lot_id, subdivision_id, joined_at, left_at")
+        .eq("profile_id", profile.id)
+        .not("left_at", "is", null)
+        .order("left_at", { ascending: false }),
+    ]);
 
-    if (!memberships || memberships.length === 0) {
+    const memberships = activeMembershipsResult.data;
+    const pastMemberships = pastMembershipsResult.data ?? [];
+
+    // Resolve subdivision + lot details for past memberships in one go.
+    const pastLotIds = pastMemberships.map((m) => m.lot_id).filter(Boolean) as string[];
+    const pastSubIds = pastMemberships.map((m) => m.subdivision_id);
+    const [pastLotsResult, pastSubsResult] = pastLotIds.length > 0 || pastSubIds.length > 0
+      ? await Promise.all([
+          pastLotIds.length > 0
+            ? supabase.from("lots").select("id, lot_number, unit_number").in("id", pastLotIds)
+            : Promise.resolve({ data: [] }),
+          pastSubIds.length > 0
+            ? supabase.from("subdivisions").select("id, name, address, plan_number").in("id", pastSubIds)
+            : Promise.resolve({ data: [] }),
+        ])
+      : [{ data: [] }, { data: [] }];
+
+    const pastLots = pastLotsResult.data ?? [];
+    const pastSubs = pastSubsResult.data ?? [];
+
+    if ((!memberships || memberships.length === 0) && pastMemberships.length === 0) {
       return (
         <div className="flex flex-col items-center justify-center py-20 text-center">
           <Building2 className="h-12 w-12 text-muted-foreground/30" />
@@ -63,6 +167,16 @@ export default async function DashboardPage() {
             Your strata manager hasn&apos;t assigned you to a subdivision yet.
             Check your email for an invitation link, or contact your strata manager.
           </p>
+        </div>
+      );
+    }
+
+    // If they only have past memberships, jump straight to the past-lots block.
+    if (!memberships || memberships.length === 0) {
+      return (
+        <div className="space-y-6">
+          <h2 className="text-base font-semibold text-foreground">Past lots</h2>
+          <PastLotsGrid pastMemberships={pastMemberships} pastLots={pastLots} pastSubs={pastSubs} />
         </div>
       );
     }
@@ -193,6 +307,13 @@ export default async function DashboardPage() {
             );
           })}
         </div>
+
+        {pastMemberships.length > 0 && (
+          <>
+            <h2 className="text-base font-semibold text-foreground pt-2">Past lots</h2>
+            <PastLotsGrid pastMemberships={pastMemberships} pastLots={pastLots} pastSubs={pastSubs} />
+          </>
+        )}
       </div>
     );
   }
