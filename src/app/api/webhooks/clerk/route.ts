@@ -4,11 +4,19 @@ import { createServerClient } from "@/lib/supabase";
 
 const WEBHOOK_SECRET = process.env.CLERK_WEBHOOK_SECRET;
 
-// Default notification types to seed for new users
+// Default notification types to seed for new users.
+// PP6-C-2 SG-3 ratification: rename payment_overdue → overdue_reminder
+// (matches PP6-C-1 sender's notification_type) and add the three new
+// PP6-C-1 + PP6-C-2 types. Existing users created before PP6-C-2 still
+// have the old payment_overdue row; one-time UPDATE migration to rename
+// is logged in PRE_LAUNCH_CLEANUP.
 const NOTIFICATION_TYPES = [
   "levy_issued",
   "payment_received",
-  "payment_overdue",
+  "overdue_reminder",
+  "claim_matched",
+  "claim_rejected",
+  "new_claim_submitted",
   "meeting_notice",
   "meeting_minutes",
   "maintenance_update",

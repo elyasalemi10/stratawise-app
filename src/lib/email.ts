@@ -563,6 +563,79 @@ export async function sendClaimRejectedEmail(
   return { success: true, id: data?.id ?? null };
 }
 
+// ─── PP6-C-2: manager-facing transactional email ─────────────────────────
+
+export interface SendNewClaimSubmittedEmailParams {
+  to: string;
+  managerName: string | null;
+  subdivisionName: string;
+  lotLabel: string;
+  ownerName: string | null;
+  amount: number;
+  claimDate: string;
+  paymentMethod: string;
+  notes: string | null;
+  reviewLink: string;
+}
+
+export async function sendNewClaimSubmittedEmail(
+  params: SendNewClaimSubmittedEmailParams,
+): Promise<EmailSendResult> {
+  const { to, managerName, subdivisionName, lotLabel, ownerName, amount, claimDate, paymentMethod, notes, reviewLink } = params;
+  const subject = `New owner payment claim — ${subdivisionName} ${lotLabel}`;
+
+  if (isDryRun()) {
+    console.log(`[email-dry-run] type=new_claim_submitted to=${to} amount=${amount.toFixed(2)} subject="${subject}"`);
+    return { dryRun: true };
+  }
+
+  const greetingLine = managerName ? `Hi ${managerName},` : "Hi,";
+  const ownerLabel = ownerName ?? "An owner";
+  const notesBlock = notes && notes.trim().length > 0
+    ? `<p style="margin:0 0 4px;font-size:13px;color:#6b7280;">Owner notes</p><p style="margin:0;font-size:14px;line-height:1.5;color:#1a1f2e;">${escapeHtml(notes)}</p>`
+    : "";
+
+  const html = brandShell(`
+    <h2 style="margin:0 0 16px;font-size:20px;font-weight:600;color:#1a1f2e;">New payment claim</h2>
+    <p style="margin:0 0 20px;color:#1a1f2e;font-size:14px;line-height:1.6;">
+      ${greetingLine} ${escapeHtml(ownerLabel)} has submitted a payment claim for <strong>${escapeHtml(subdivisionName)}</strong> that needs your review.
+    </p>
+    <div style="background:#f8f9fb;border:1px solid #e2e5ea;border-radius:6px;padding:16px;margin:0 0 16px;">
+      <p style="margin:0 0 4px;font-size:13px;color:#6b7280;">Lot</p>
+      <p style="margin:0 0 12px;font-size:14px;color:#1a1f2e;">${escapeHtml(lotLabel)}</p>
+      <p style="margin:0 0 4px;font-size:13px;color:#6b7280;">Amount</p>
+      <p style="margin:0 0 12px;font-size:18px;font-weight:700;color:#1a1f2e;">$${amount.toFixed(2)}</p>
+      <p style="margin:0 0 4px;font-size:13px;color:#6b7280;">Claimed date</p>
+      <p style="margin:0 0 12px;font-size:14px;color:#1a1f2e;">${escapeHtml(claimDate)}</p>
+      <p style="margin:0 0 4px;font-size:13px;color:#6b7280;">Method</p>
+      <p style="margin:0;font-size:14px;color:#1a1f2e;">${escapeHtml(paymentMethod)}</p>
+    </div>
+    ${notesBlock ? `<div style="background:#f8f9fb;border:1px solid #e2e5ea;border-radius:6px;padding:16px;margin:0 0 24px;">${notesBlock}</div>` : ""}
+    <a href="${reviewLink}" style="display:inline-block;background:#2b7fff;color:#ffffff;font-size:14px;font-weight:600;text-decoration:none;padding:10px 24px;border-radius:6px;">
+      Review claim
+    </a>
+    <p style="margin:24px 0 0;color:#6b7280;font-size:12px;line-height:1.5;">
+      You're receiving this because you're a strata manager for ${escapeHtml(subdivisionName)}.
+    </p>
+  `);
+
+  // Use FROM_SYSTEM for managerial system-generated notifications.
+  // Currently both FROM_LEVIES and FROM_SYSTEM resolve to the same address
+  // in env config, but the semantic split matters for future per-domain
+  // sender identity (e.g. system@myocm.com.au vs payments@myocm.com.au).
+  const { data, error } = await getResend().emails.send({
+    from: FROM_SYSTEM,
+    to,
+    subject,
+    html,
+  });
+  if (error) {
+    console.error("Failed to send new_claim_submitted email:", error);
+    return { error: error.message };
+  }
+  return { success: true, id: data?.id ?? null };
+}
+
 // ─── HTML escape helper ────────────────────────────────────────────────
 // Applied to user-controlled string interpolations in the new senders to
 // guard against accidental injection from owner names, subdivision

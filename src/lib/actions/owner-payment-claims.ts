@@ -48,6 +48,7 @@ import { addManualBankTransaction, reconcileTransaction } from "./reconciliation
 import {
   emitClaimMatchedEmail,
   emitClaimRejectedEmail,
+  emitNewClaimSubmitted,
 } from "@/lib/notifications";
 import type { MatchStatus } from "@/lib/validations/reconciliation";
 
@@ -176,6 +177,15 @@ export async function submitOwnerPaymentClaim(
       claim_date: parsed.data.claim_date,
       payment_method: parsed.data.payment_method,
     },
+  });
+
+  // PP6-C-2: notify all active strata managers (email + in-app) that
+  // a new claim is awaiting review. Fan-out is per-manager; email path
+  // respects per-manager notification_preferences opt-out, in-app row
+  // is always written for this operational signal (PP6-C-0 SG-2).
+  await emitNewClaimSubmitted(supabase, {
+    claimId: inserted.id,
+    performedBy: profile.id,
   });
 
   revalidatePath("/subdivisions/[subdivisionCode]/my-payments", "page");

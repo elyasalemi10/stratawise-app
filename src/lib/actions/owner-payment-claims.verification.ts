@@ -15,6 +15,12 @@
 import { config } from "dotenv";
 config({ path: ".env.local" });
 
+// PP6-C-2: every submitOwnerPaymentClaim call now fans out via
+// emitNewClaimSubmitted. Force EMAIL_DRY_RUN=true so existing PP5-C
+// scenarios + new M-* scenarios don't issue real Resend sends. Set
+// BEFORE @/lib/email is imported (transitively via the action).
+process.env.EMAIL_DRY_RUN = "true";
+
 // ─── next/cache stub ─────────────────────────────────────────────────────
 import { createRequire } from "node:module";
 const scriptRequire = createRequire(import.meta.url);
@@ -197,6 +203,19 @@ async function createCompanyFixture(suffix: string): Promise<CompanyFixture> {
     role: "lot_owner",
     is_primary_contact: true,
     is_financial: true,
+  });
+
+  // PP6-C-2: emitNewClaimSubmitted resolves manager recipients via
+  // subdivision_members WHERE role='strata_manager'. Manager-of-company
+  // is the access-control path elsewhere; subdivision_members is the
+  // notification-recipient path. Add an explicit manager membership row
+  // so the manager fan-out scenarios resolve them as recipients.
+  await supabase.from("subdivision_members").insert({
+    subdivision_id: subdivision.id,
+    profile_id: manager.id,
+    role: "strata_manager",
+    is_primary_contact: false,
+    is_financial: false,
   });
 
   const { data: bankAccount } = await supabase
@@ -1137,6 +1156,255 @@ async function pd2_orphanFilter(
   }
 }
 
+// ─── PP6-C-2: emitNewClaimSubmitted manager fan-out scenarios ────────────
+
+// Add a second strata_manager profile to the given company so we can
+// assert multi-manager fan-out + per-manager opt-out independence.
+async function addSecondManager(
+  fx: Fixture,
+): Promise<{ profileId: string; clerkId: string }> {
+  const tag = `${fx.runId}_2`;
+  const clerkId = `${VERIFY_MARKER}_MGR2_${tag}`;
+  const { data: manager } = await supabase
+    .from("profiles")
+    .insert({
+      clerk_id: clerkId,
+      email: `${VERIFY_MARKER.toLowerCase()}${tag}_mgr2@opc.test`,
+      first_name: "OPC",
+      last_name: "Mgr2",
+      role: "strata_manager",
+      company_role: "admin",
+      management_company_id: fx.companyA.companyId,
+    })
+    .select("id")
+    .single();
+  const profileId = (manager as { id: string }).id;
+
+  await supabase.from("subdivision_members").insert({
+    subdivision_id: fx.companyA.subdivisionId,
+    profile_id: profileId,
+    role: "strata_manager",
+    is_primary_contact: false,
+    is_financial: false,
+  });
+
+  return { profileId, clerkId };
+}
+
+async function m1_fanOutToAllManagers(
+  fx: Fixture,
+  opc: typeof import("./owner-payment-claims"),
+  secondMgrId: string,
+) {
+  asUser(fx.companyA.ownerClerkId);
+  const submitted = await opc.submitOwnerPaymentClaim({
+    subdivision_id: fx.companyA.subdivisionId,
+    lot_id: fx.companyA.lotOwnedId,
+    amount: 175,
+    claim_date: "2026-04-21",
+    payment_method: "eft",
+    notes: "M-1 fan-out test",
+  });
+  if (!submitted.success) {
+    record("M-1: fan-out skipped", false, `submit failed: ${submitted.error}`);
+    return;
+  }
+  const claimId = submitted.success.claim_id;
+
+  // communication_log row per active manager (the existing manager + the
+  // newly-added second manager) for type='new_claim_submitted'.
+  const { data: rows } = await supabase
+    .from("communication_log")
+    .select("recipient_id, type, status, related_entity_id")
+    .eq("related_entity_id", claimId)
+    .eq("type", "new_claim_submitted");
+  const list = (rows ?? []) as Array<{
+    recipient_id: string;
+    type: string;
+    status: string;
+    related_entity_id: string;
+  }>;
+  const recipientSet = new Set(list.map((r) => r.recipient_id));
+  const ok =
+    list.length === 2 &&
+    recipientSet.has(fx.companyA.managerProfileId) &&
+    recipientSet.has(secondMgrId);
+  record(
+    "M-1: submitOwnerPaymentClaim fans out new_claim_submitted to all active managers",
+    ok,
+    `count=${list.length} mgr1_in=${recipientSet.has(fx.companyA.managerProfileId)} mgr2_in=${recipientSet.has(secondMgrId)}`,
+  );
+}
+
+async function m2_inAppNotificationsRow(
+  fx: Fixture,
+  opc: typeof import("./owner-payment-claims"),
+  secondMgrId: string,
+) {
+  asUser(fx.companyA.ownerClerkId);
+  const submitted = await opc.submitOwnerPaymentClaim({
+    subdivision_id: fx.companyA.subdivisionId,
+    lot_id: fx.companyA.lotOwnedId,
+    amount: 185,
+    claim_date: "2026-04-22",
+    payment_method: "bpay",
+  });
+  if (!submitted.success) {
+    record("M-2: notifications-row skipped", false, `submit failed: ${submitted.error}`);
+    return;
+  }
+  const claimId = submitted.success.claim_id;
+
+  const { data: rows } = await supabase
+    .from("notifications")
+    .select("profile_id, type, link")
+    .eq("subdivision_id", fx.companyA.subdivisionId)
+    .eq("type", "new_claim_submitted");
+  const list = (rows ?? []) as Array<{ profile_id: string; type: string; link: string | null }>;
+  // Should include rows for BOTH managers (this submission's fan-out)
+  // plus possibly residual rows from M-1 (also for both managers).
+  const recipientSet = new Set(list.map((r) => r.profile_id));
+  const linkLooksRight = list.every((r) =>
+    !!r.link && r.link.includes("/reconciliation/claims"),
+  );
+  const ok =
+    recipientSet.has(fx.companyA.managerProfileId) &&
+    recipientSet.has(secondMgrId) &&
+    linkLooksRight;
+  record(
+    "M-2: emitNewClaimSubmitted writes notifications row per manager (link points to claims queue)",
+    ok,
+    `count=${list.length} mgr1=${recipientSet.has(fx.companyA.managerProfileId)} mgr2=${recipientSet.has(secondMgrId)} link_ok=${linkLooksRight} (claim=${claimId.slice(0, 8)})`,
+  );
+}
+
+async function m3_perManagerOptOut(
+  fx: Fixture,
+  opc: typeof import("./owner-payment-claims"),
+  secondMgrId: string,
+) {
+  // Mgr2 opts out of email channel for new_claim_submitted; Mgr1 stays opt-in.
+  await supabase.from("notification_preferences").insert({
+    profile_id: secondMgrId,
+    notification_type: "new_claim_submitted",
+    channel: "email",
+    enabled: false,
+  });
+
+  asUser(fx.companyA.ownerClerkId);
+  const submitted = await opc.submitOwnerPaymentClaim({
+    subdivision_id: fx.companyA.subdivisionId,
+    lot_id: fx.companyA.lotOwnedId,
+    amount: 195,
+    claim_date: "2026-04-23",
+    payment_method: "eft",
+  });
+  if (!submitted.success) {
+    record("M-3: opt-out skipped", false, `submit failed: ${submitted.error}`);
+    await supabase
+      .from("notification_preferences")
+      .delete()
+      .eq("profile_id", secondMgrId)
+      .eq("notification_type", "new_claim_submitted");
+    return;
+  }
+  const claimId = submitted.success.claim_id;
+
+  const { data: rows } = await supabase
+    .from("communication_log")
+    .select("recipient_id")
+    .eq("related_entity_id", claimId)
+    .eq("type", "new_claim_submitted");
+  const recipients = new Set(
+    (rows ?? []).map((r) => (r as { recipient_id: string }).recipient_id),
+  );
+
+  // In-app notifications row STILL written for both managers (managerial
+  // events bypass in-app opt-out per PP6-C-0 SG-2).
+  const { data: notifRows } = await supabase
+    .from("notifications")
+    .select("profile_id")
+    .eq("subdivision_id", fx.companyA.subdivisionId)
+    .eq("type", "new_claim_submitted");
+  const notifRecipients = new Set(
+    (notifRows ?? []).map((r) => (r as { profile_id: string }).profile_id),
+  );
+
+  await supabase
+    .from("notification_preferences")
+    .delete()
+    .eq("profile_id", secondMgrId)
+    .eq("notification_type", "new_claim_submitted");
+
+  const ok =
+    recipients.has(fx.companyA.managerProfileId) &&
+    !recipients.has(secondMgrId) &&
+    notifRecipients.has(fx.companyA.managerProfileId) &&
+    notifRecipients.has(secondMgrId);
+  record(
+    "M-3: per-manager email opt-out respected (mgr2 skipped); in-app row still written for both",
+    ok,
+    `email_recipients=${recipients.size} mgr2_email_skipped=${!recipients.has(secondMgrId)} mgr2_inapp_present=${notifRecipients.has(secondMgrId)}`,
+  );
+}
+
+async function m4_dryRunBehavior(
+  fx: Fixture,
+  opc: typeof import("./owner-payment-claims"),
+) {
+  // The whole suite runs with EMAIL_DRY_RUN=true, so any submitOwnerPaymentClaim
+  // here fans out via dry-run. Confirm: communication_log rows land in
+  // 'queued' state (not 'sent'), audit log records the dry_run action,
+  // and the in-app notifications row is unaffected.
+  asUser(fx.companyA.ownerClerkId);
+  const submitted = await opc.submitOwnerPaymentClaim({
+    subdivision_id: fx.companyA.subdivisionId,
+    lot_id: fx.companyA.lotOwnedId,
+    amount: 205,
+    claim_date: "2026-04-24",
+    payment_method: "cash",
+  });
+  if (!submitted.success) {
+    record("M-4: dry-run skipped", false, `submit failed: ${submitted.error}`);
+    return;
+  }
+  const claimId = submitted.success.claim_id;
+
+  const { data: log } = await supabase
+    .from("communication_log")
+    .select("status")
+    .eq("related_entity_id", claimId)
+    .eq("type", "new_claim_submitted")
+    .limit(1)
+    .maybeSingle();
+  const l = log as { status: string } | null;
+
+  const { data: audit } = await supabase
+    .from("audit_log")
+    .select("action")
+    .eq("entity_id", claimId)
+    .eq("action", "communication.new_claim_submitted.dry_run")
+    .limit(1)
+    .maybeSingle();
+
+  const { count: notifCount } = await supabase
+    .from("notifications")
+    .select("id", { count: "exact", head: true })
+    .eq("subdivision_id", fx.companyA.subdivisionId)
+    .eq("type", "new_claim_submitted");
+
+  const ok =
+    !!l &&
+    l.status === "queued" &&
+    !!audit &&
+    (notifCount ?? 0) > 0;
+  record(
+    "M-4: dry-run leaves comm_log queued + writes dry_run audit + in-app notifications unaffected",
+    ok,
+    `log_status=${l?.status} audit=${audit ? "yes" : "no"} notif_count=${notifCount}`,
+  );
+}
+
 // ─── Cleanup ──────────────────────────────────────────────────────────────
 
 async function cleanupMarker(): Promise<void> {
@@ -1220,9 +1488,22 @@ async function cleanupCompany(companyId: string): Promise<void> {
     }
     await supabase.from("levy_batches").delete().in("subdivision_id", subIds);
     await supabase.from("budgets").delete().in("subdivision_id", subIds);
+    // PP6-C-2: emitNewClaimSubmitted writes to communication_log + notifications.
+    await supabase.from("communication_log").delete().in("subdivision_id", subIds);
+    await supabase.from("notifications").delete().in("subdivision_id", subIds);
     await supabase.from("audit_log").delete().in("subdivision_id", subIds);
     await supabase.from("subdivision_members").delete().in("subdivision_id", subIds);
     await supabase.from("subdivisions").delete().in("id", subIds);
+  }
+  // PP6-C-2: notification_preferences rows for this company's profiles
+  // (auto-opt-out from M-3 + Clerk-seeded rows for new test profiles).
+  const { data: profileRows } = await supabase
+    .from("profiles")
+    .select("id")
+    .eq("management_company_id", companyId);
+  const profileIds = (profileRows ?? []).map((p) => (p as { id: string }).id);
+  if (profileIds.length > 0) {
+    await supabase.from("notification_preferences").delete().in("profile_id", profileIds);
   }
   await supabase.from("profiles").delete().eq("management_company_id", companyId);
   await supabase.from("management_companies").delete().eq("id", companyId);
@@ -1268,6 +1549,14 @@ async function main() {
   await opc15_likelyDuplicateThenOverride(fx, opc);
   await opc16_voidCascadeOrphan(fx, opc, recon);
   await pd2_orphanFilter(fx, opc);
+
+  // PP6-C-2 manager fan-out scenarios (M-1..M-4). Add a second strata
+  // manager to companyA so multi-manager fan-out can be observed.
+  const secondMgr = await addSecondManager(fx);
+  await m1_fanOutToAllManagers(fx, opc, secondMgr.profileId);
+  await m2_inAppNotificationsRow(fx, opc, secondMgr.profileId);
+  await m3_perManagerOptOut(fx, opc, secondMgr.profileId);
+  await m4_dryRunBehavior(fx, opc);
 
   if (!noCleanup) {
     console.log("\nCleaning up");

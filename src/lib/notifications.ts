@@ -20,9 +20,11 @@ import {
   sendPaymentReceivedEmail,
   sendClaimMatchedEmail,
   sendClaimRejectedEmail,
+  sendNewClaimSubmittedEmail,
   type SendPaymentReceivedEmailParams,
   type SendClaimMatchedEmailParams,
   type SendClaimRejectedEmailParams,
+  type SendNewClaimSubmittedEmailParams,
 } from "@/lib/email";
 
 // Statutory non-opt-outable notification types. Currently only the levy
@@ -478,6 +480,153 @@ export async function emitClaimRejectedEmail(
       rejection_reason: input.rejectionReason,
     },
   });
+}
+
+// ─── emitNewClaimSubmitted (PP6-C-2) ────────────────────────────────────
+//
+// Fan-out to all active strata managers of the claim's subdivision. Per
+// manager: sends sendNewClaimSubmittedEmail (opt-out-respecting) AND
+// writes a notifications row (always — managerial events are not
+// in-app-opt-outable per PP6-C-0 SG-2 ratification).
+//
+// Email path uses the existing sender → communication_log → audit chain.
+// In-app path uses createNotification() from src/lib/actions/notifications.ts
+// (already exported there for cross-action callers).
+
+export interface EmitNewClaimSubmittedInput {
+  claimId: string;
+  performedBy: string;
+}
+
+export async function emitNewClaimSubmitted(
+  supabase: SupabaseClient,
+  input: EmitNewClaimSubmittedInput,
+): Promise<void> {
+  const ctx = await loadClaimContext(supabase, input.claimId);
+  if (!ctx) return;
+  const { claim, ownerName, subdivisionName, lotLabel } = ctx;
+
+  // Resolve subdivision short_code for the review link.
+  const { data: subRow } = await supabase
+    .from("subdivisions")
+    .select("short_code")
+    .eq("id", claim.subdivision_id)
+    .single();
+  const shortCode =
+    (subRow as { short_code: string } | null)?.short_code ?? "";
+  const reviewPath = shortCode
+    ? `/subdivisions/${shortCode}/reconciliation/claims`
+    : "/reconciliation/claims";
+  const appBaseUrl =
+    process.env.NEXT_PUBLIC_APP_URL?.replace(/\/$/, "") ?? "";
+  const reviewLink = `${appBaseUrl}${reviewPath}`;
+
+  // Active managers for this subdivision.
+  const { data: managerRows } = await supabase
+    .from("subdivision_members")
+    .select("profile_id")
+    .eq("subdivision_id", claim.subdivision_id)
+    .eq("role", "strata_manager")
+    .is("left_at", null);
+  const managerProfileIds = Array.from(
+    new Set(
+      (managerRows ?? []).map(
+        (r) => (r as { profile_id: string }).profile_id,
+      ),
+    ),
+  );
+  if (managerProfileIds.length === 0) return;
+
+  // Hydrate manager profiles in one round-trip.
+  const { data: profiles } = await supabase
+    .from("profiles")
+    .select("id, email, first_name, last_name")
+    .in("id", managerProfileIds);
+  const managers = (profiles ?? []) as Array<{
+    id: string;
+    email: string;
+    first_name: string | null;
+    last_name: string | null;
+  }>;
+
+  for (const m of managers) {
+    // ─── In-app notification (always written for managerial events) ─
+    // Per PP6-C-0 SG-2 ratification: in-app is not opt-out-able for
+    // operational manager signals; only the email channel respects
+    // notification_preferences. Inlined INSERT (not via the
+    // src/lib/actions/notifications.ts createNotification helper) because
+    // this module is framework-agnostic and must not import "use server"
+    // actions — same boundary rule as PP6-C-1.
+    await supabase.from("notifications").insert({
+      profile_id: m.id,
+      subdivision_id: claim.subdivision_id,
+      type: "new_claim_submitted",
+      title: `New payment claim — ${lotLabel}`,
+      body: `${ownerName ?? "An owner"} submitted a payment claim of $${Number(claim.amount).toFixed(2)} for ${lotLabel}.`,
+      link: reviewPath,
+    });
+
+    // ─── Email path (opt-out-respecting) ────────────────────────────
+    const optedOut = await isNotificationOptedOut(
+      supabase,
+      m.id,
+      "new_claim_submitted",
+      "email",
+    );
+    if (optedOut || !m.email) continue;
+
+    const params: SendNewClaimSubmittedEmailParams = {
+      to: m.email,
+      managerName: formatOwnerName({
+        first_name: m.first_name,
+        last_name: m.last_name,
+      }),
+      subdivisionName,
+      lotLabel,
+      ownerName,
+      amount: Number(claim.amount),
+      claimDate: claim.claim_date,
+      paymentMethod: claim.payment_method ?? "",
+      notes: null,
+      reviewLink,
+    };
+
+    const { data: logRow } = await supabase
+      .from("communication_log")
+      .insert({
+        subdivision_id: claim.subdivision_id,
+        recipient_id: m.id,
+        recipient_email: m.email,
+        channel: "email",
+        type: "new_claim_submitted",
+        subject: `New owner payment claim — ${subdivisionName} ${lotLabel}`,
+        body_preview: `${ownerName ?? "An owner"} submitted a $${Number(claim.amount).toFixed(2)} claim for ${lotLabel}.`.slice(0, 300),
+        status: "queued",
+        related_entity_type: "owner_payment_claim",
+        related_entity_id: claim.id,
+      })
+      .select("id")
+      .single();
+    const communicationLogId = (logRow as { id: string } | null)?.id;
+    if (!communicationLogId) {
+      console.error(
+        "emitNewClaimSubmitted: communication_log insert failed",
+      );
+      continue;
+    }
+
+    const result = await sendNewClaimSubmittedEmail(params);
+    await persistSenderResult(supabase, {
+      communicationLogId,
+      result,
+      auditAction: "communication.new_claim_submitted",
+      auditEntityType: "owner_payment_claim",
+      auditEntityId: claim.id,
+      subdivisionId: claim.subdivision_id,
+      performedBy: input.performedBy,
+      metadata: { recipient_profile_id: m.id },
+    });
+  }
 }
 
 // ─── Internal helpers ──────────────────────────────────────────────────
