@@ -460,6 +460,33 @@ export function LedgerTab({
           />
         </div>
 
+        {/* PP6-D-A: lifetime interest accrued summary. Uses
+            lot_ledger_entries.category='interest' SUM (already-indexed) per
+            PP6-D-0 SG-D6. Renders only when at least one ACTIVE INTEREST
+            DEBIT exists — predicate matches the reduce filter exactly so a
+            lot with only credits / voided debits doesn't render an empty
+            $0.00 card. */}
+        {(() => {
+          const isActiveInterestDebit = (e: LotLedgerEntry) =>
+            e.category === "interest" &&
+            e.entry_type === "debit" &&
+            e.status === "active";
+          if (!entries || !entries.some(isActiveInterestDebit)) return null;
+          const total = entries
+            .filter(isActiveInterestDebit)
+            .reduce((s, e) => s + Number(e.amount), 0);
+          return (
+            <div className="flex items-center gap-2 rounded-md border border-border bg-muted/30 px-4 py-2.5">
+              <span className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
+                Total interest accrued (lifetime)
+              </span>
+              <span className="text-sm font-semibold tabular-nums text-foreground">
+                {formatCurrency(total)}
+              </span>
+            </div>
+          );
+        })()}
+
         {/* Action row */}
         <div className="flex items-center gap-3">
           {receiptBankAccount ? (

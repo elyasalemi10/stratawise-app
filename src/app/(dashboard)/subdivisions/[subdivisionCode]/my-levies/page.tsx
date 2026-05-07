@@ -52,10 +52,24 @@ export default async function MyLeviesPage({
     paymentsByLevy.set(p.levy_notice_id, (paymentsByLevy.get(p.levy_notice_id) ?? 0) + Number(p.amount));
   });
 
-  // Enrich levies with paid amount
+  // PP6-D-A: per-levy reminder_sent flag from escalation_instances.
+  const { data: escalations } = levyIds.length > 0
+    ? await supabase
+        .from("escalation_instances")
+        .select("levy_notice_id, current_step")
+        .in("levy_notice_id", levyIds)
+    : { data: [] };
+  const reminderSentLevyIds = new Set(
+    (escalations ?? [])
+      .filter((e) => (e as { current_step: number }).current_step >= 1)
+      .map((e) => (e as { levy_notice_id: string }).levy_notice_id),
+  );
+
+  // Enrich levies with paid amount + reminder_sent flag.
   const enrichedLevies = (levies ?? []).map((l) => ({
     ...l,
     amount_paid: paymentsByLevy.get(l.id) ?? 0,
+    reminder_sent: reminderSentLevyIds.has(l.id),
   }));
 
   return <MyLeviesContent levies={enrichedLevies} />;

@@ -3,8 +3,8 @@ import { FileText, DollarSign, AlertTriangle, CheckCircle2 } from "lucide-react"
 import { getCurrentProfile } from "@/lib/auth";
 import { createServerClient } from "@/lib/supabase";
 import { Card, CardContent } from "@/components/ui/card";
-import { Badge } from "@/components/ui/badge";
 import { PageHeader } from "@/components/shared/page-header";
+import { LevyStatusBadge } from "@/components/shared/levy-status-badge";
 
 const formatCurrency = (n: number) =>
   new Intl.NumberFormat("en-AU", { style: "currency", currency: "AUD" }).format(n);
@@ -78,6 +78,21 @@ export default async function LeviesPage() {
   (allPayments ?? []).forEach((p) => {
     paymentsByLevy.set(p.levy_notice_id, (paymentsByLevy.get(p.levy_notice_id) ?? 0) + Number(p.amount));
   });
+
+  // PP6-D-A: per-levy reminder_sent flag for the LevyStatusBadge.
+  // Single LEFT JOIN-style lookup against escalation_instances; row presence
+  // with current_step >= 1 indicates PP6-C-1's overdue cron fired step 1.
+  const { data: escalations } = levyIds.length > 0
+    ? await supabase
+        .from("escalation_instances")
+        .select("levy_notice_id, current_step")
+        .in("levy_notice_id", levyIds)
+    : { data: [] };
+  const reminderSentLevyIds = new Set(
+    (escalations ?? [])
+      .filter((e) => (e as { current_step: number }).current_step >= 1)
+      .map((e) => (e as { levy_notice_id: string }).levy_notice_id),
+  );
 
   // Lot lookup
   const lotMap = new Map(lots.map((l) => [l.id, l]));
@@ -154,9 +169,11 @@ export default async function LeviesPage() {
                           <p className="text-xs text-destructive tabular-nums">{formatCurrency(remaining)} remaining</p>
                         )}
                       </div>
-                      <Badge variant={levy.status === "paid" ? "success" : levy.status === "overdue" ? "destructive" : "info"}>
-                        {levy.status}
-                      </Badge>
+                      <LevyStatusBadge
+                        status={levy.status as "draft" | "issued" | "partially_paid" | "paid" | "overdue" | "written_off"}
+                        dueDate={levy.due_date}
+                        reminderSent={reminderSentLevyIds.has(levy.id)}
+                      />
                     </div>
                   </div>
                 );

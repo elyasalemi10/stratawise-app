@@ -6,6 +6,7 @@ import { formatDateLong } from "@/lib/utils";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { LevyStatusBadge } from "@/components/shared/levy-status-badge";
 
 const formatCurrency = (n: number) =>
   new Intl.NumberFormat("en-AU", { style: "currency", currency: "AUD" }).format(n);
@@ -21,6 +22,7 @@ interface Levy {
   due_date: string;
   pdf_url: string | null;
   issued_at: string | null;
+  reminder_sent?: boolean;
 }
 
 export function MyLeviesContent({ levies }: { levies: Levy[] }) {
@@ -77,6 +79,7 @@ export function MyLeviesContent({ levies }: { levies: Levy[] }) {
                     <th className="px-4 py-2.5 text-left">Period</th>
                     <th className="px-4 py-2.5 text-left">Reference</th>
                     <th className="px-4 py-2.5 text-left">Due date</th>
+                    <th className="px-4 py-2.5 text-left">Status</th>
                     <th className="px-4 py-2.5 text-right">Amount</th>
                     <th className="px-4 py-2.5 text-right w-24"></th>
                   </tr>
@@ -96,6 +99,13 @@ export function MyLeviesContent({ levies }: { levies: Levy[] }) {
                         </td>
                         <td className="px-4 py-3 text-foreground font-medium">{levy.reference_number}</td>
                         <td className="px-4 py-3 text-foreground">{formatDateLong(levy.due_date)}</td>
+                        <td className="px-4 py-3">
+                          <LevyStatusBadge
+                            status={levy.status as "draft" | "issued" | "partially_paid" | "paid" | "overdue" | "written_off"}
+                            dueDate={levy.due_date}
+                            reminderSent={levy.reminder_sent}
+                          />
+                        </td>
                         <td className="px-4 py-3 text-right">
                           <span className="font-semibold tabular-nums">{formatCurrency(levy.amount)}</span>
                           {isPaid && <span className="ml-2 text-xs text-[hsl(160,100%,37%)]">Paid</span>}

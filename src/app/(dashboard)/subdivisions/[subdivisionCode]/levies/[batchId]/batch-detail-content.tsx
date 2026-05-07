@@ -10,6 +10,7 @@ import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
 import { Badge } from "@/components/ui/badge";
+import { LevyStatusBadge } from "@/components/shared/levy-status-badge";
 import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import {
   AlertDialog,
@@ -50,13 +51,16 @@ const formatCurrency = (n: number) =>
 export function BatchDetailContent({
   subdivisionId,
   batch: initialBatch,
+  reminderSentLevyIds = [],
 }: {
   subdivisionId: string;
   batch: LevyBatchDetail;
+  reminderSentLevyIds?: string[];
 }) {
   const subdivisionCode = useSubdivisionCode();
   const router = useRouter();
   const [batch, setBatch] = useState(initialBatch);
+  const reminderSentSet = new Set(reminderSentLevyIds);
   const [sendingAll, setSendingAll] = useState(false);
   const [emailingAll, setEmailingAll] = useState(false);
   const [sendingIds, setSendingIds] = useState<Set<string>>(new Set());
@@ -431,9 +435,11 @@ export function BatchDetailContent({
                   </div>
                   <div className="flex items-center gap-3">
                     <span className="font-semibold tabular-nums">{formatCurrency(levy.amount)}</span>
-                    <Badge variant={levy.status === "issued" ? "success" : levy.status === "paid" ? "success" : "neutral"}>
-                      {levy.status === "issued" ? "Sent" : levy.status}
-                    </Badge>
+                    <LevyStatusBadge
+                      status={levy.status as "draft" | "issued" | "partially_paid" | "paid" | "overdue" | "written_off"}
+                      dueDate={batch.due_date}
+                      reminderSent={reminderSentSet.has(levy.id)}
+                    />
                   </div>
                 </button>
 
