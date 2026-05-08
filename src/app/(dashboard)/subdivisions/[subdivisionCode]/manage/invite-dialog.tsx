@@ -8,8 +8,8 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
-import { inviteLotOwnerSchema, type InviteLotOwnerValues } from "@/lib/validations/invitations";
-import { inviteLotOwner } from "./invitation-actions";
+import { lotOwnerDetailsSchema, type LotOwnerDetailsValues } from "@/lib/validations/invitations";
+import { inviteLotOwner, updateLotOwnerDetails } from "./invitation-actions";
 
 interface InviteDialogProps {
   open: boolean;
@@ -19,6 +19,7 @@ interface InviteDialogProps {
   lotNumber: number;
   prefillEmail?: string;
   prefillName?: string;
+  prefillPhone?: string;
 }
 
 export function InviteDialog({
@@ -29,32 +30,65 @@ export function InviteDialog({
   lotNumber,
   prefillEmail,
   prefillName,
+  prefillPhone,
 }: InviteDialogProps) {
-  const [pending, setPending] = useState(false);
+  const [savingOnly, setSavingOnly] = useState(false);
+  const [sending, setSending] = useState(false);
 
   const {
     register,
     handleSubmit,
+    watch,
     formState: { errors },
     reset,
-  } = useForm<InviteLotOwnerValues>({
+  } = useForm<LotOwnerDetailsValues>({
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    resolver: zodResolver(inviteLotOwnerSchema) as any,
+    resolver: zodResolver(lotOwnerDetailsSchema) as any,
     defaultValues: {
       email: prefillEmail ?? "",
       name: prefillName ?? "",
-      phone: "",
+      phone: prefillPhone ?? "",
     },
   });
 
-  async function onSubmit(data: InviteLotOwnerValues) {
-    setPending(true);
+  const emailValue = watch("email");
+  const hasEmail = (emailValue ?? "").trim().length > 0;
+
+  function close() {
+    reset();
+    onClose();
+  }
+
+  async function handleSave(data: LotOwnerDetailsValues) {
+    setSavingOnly(true);
+    const result = await updateLotOwnerDetails(subdivisionId, lotId, {
+      name: data.name,
+      email: data.email || null,
+      phone: data.phone || null,
+    });
+    setSavingOnly(false);
+
+    if (result.error) {
+      toast.error(result.error);
+      return;
+    }
+
+    toast.success("Owner details saved");
+    close();
+  }
+
+  async function handleSend(data: LotOwnerDetailsValues) {
+    if (!data.email) {
+      toast.error("Add an email address before sending an invitation");
+      return;
+    }
+    setSending(true);
     const result = await inviteLotOwner(subdivisionId, lotId, {
       email: data.email,
       name: data.name,
       phone: data.phone,
     });
-    setPending(false);
+    setSending(false);
 
     if (result.error) {
       toast.error(result.error);
@@ -64,34 +98,17 @@ export function InviteDialog({
     toast.success("Invitation sent", {
       description: `An email has been sent to ${data.email}.`,
     });
-
-    reset();
-    onClose();
+    close();
   }
 
   return (
-    <Dialog open={open} onOpenChange={() => { reset(); onClose(); }}>
+    <Dialog open={open} onOpenChange={() => close()}>
       <DialogContent>
         <DialogHeader>
-          <DialogTitle>Invite lot owner — Lot {lotNumber}</DialogTitle>
+          <DialogTitle>Owner — Lot {lotNumber}</DialogTitle>
         </DialogHeader>
 
-        <form onSubmit={handleSubmit(onSubmit)} className="space-y-4">
-          <div className="space-y-1.5">
-            <Label htmlFor="invite-email">
-              Email <span className="text-destructive">*</span>
-            </Label>
-            <Input
-              id="invite-email"
-              type="email"
-              placeholder="owner@example.com"
-              {...register("email")}
-            />
-            {errors.email && (
-              <p className="text-xs text-destructive">{errors.email.message}</p>
-            )}
-          </div>
-
+        <form className="space-y-4">
           <div className="space-y-1.5">
             <Label htmlFor="invite-name">
               Full name <span className="text-destructive">*</span>
@@ -104,6 +121,22 @@ export function InviteDialog({
             {errors.name && (
               <p className="text-xs text-destructive">{errors.name.message}</p>
             )}
+          </div>
+
+          <div className="space-y-1.5">
+            <Label htmlFor="invite-email">Email</Label>
+            <Input
+              id="invite-email"
+              type="email"
+              placeholder="owner@example.com"
+              {...register("email")}
+            />
+            {errors.email && (
+              <p className="text-xs text-destructive">{errors.email.message}</p>
+            )}
+            <p className="text-xs text-muted-foreground">
+              Optional when saving. Required to send the invitation email.
+            </p>
           </div>
 
           <div className="space-y-1.5">
@@ -121,11 +154,23 @@ export function InviteDialog({
           </div>
 
           <DialogFooter>
-            <Button type="button" variant="ghost" onClick={() => { reset(); onClose(); }}>
+            <Button type="button" variant="ghost" onClick={close}>
               Cancel
             </Button>
-            <Button type="submit" disabled={pending}>
-              {pending ? "Sending..." : "Send invitation"}
+            <Button
+              type="button"
+              variant="outline"
+              onClick={handleSubmit(handleSave)}
+              disabled={savingOnly || sending}
+            >
+              {savingOnly ? "Saving..." : "Save"}
+            </Button>
+            <Button
+              type="button"
+              onClick={handleSubmit(handleSend)}
+              disabled={!hasEmail || savingOnly || sending}
+            >
+              {sending ? "Sending..." : "Save & invite"}
             </Button>
           </DialogFooter>
         </form>

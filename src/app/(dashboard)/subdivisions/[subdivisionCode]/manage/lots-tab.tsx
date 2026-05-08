@@ -2,7 +2,7 @@
 
 import { useState, useCallback, useEffect } from "react";
 import { useRouter } from "next/navigation";
-import { Mail } from "lucide-react";
+import { Mail, UserPlus, Pencil } from "lucide-react";
 import { toast } from "sonner";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -122,6 +122,7 @@ export function LotsTab({ lots, subdivisionId, isEditing, onLotUpdated, totalEnt
     const status = inviteStatus.get(lotId);
     if (status === "accepted") return <Badge variant="success">Accepted</Badge>;
     if (status === "pending") return <Badge variant="warning">Pending</Badge>;
+    if (status === "noted") return <Badge variant="info">Owner noted</Badge>;
     return <Badge variant="neutral">Not invited</Badge>;
   }
 
@@ -158,9 +159,22 @@ export function LotsTab({ lots, subdivisionId, isEditing, onLotUpdated, totalEnt
           <tbody>
             {sortedLots.map((lot) => {
               const status = inviteStatus.get(lot.id);
-              const canInvite = status !== "accepted" && status !== "pending";
+              const isAccepted = status === "accepted";
               const ownerLabel = lot.owner_display_name
                 ?? (lot.owner_status === "pending_invitation" ? "Pending invitation" : null);
+
+              let buttonLabel: string;
+              let ButtonIcon: typeof Mail;
+              if (status === "pending") {
+                buttonLabel = "Edit / resend";
+                ButtonIcon = Mail;
+              } else if (status === "noted") {
+                buttonLabel = "Edit owner";
+                ButtonIcon = Pencil;
+              } else {
+                buttonLabel = "Add owner";
+                ButtonIcon = UserPlus;
+              }
 
               return (
                 <tr
@@ -220,15 +234,15 @@ export function LotsTab({ lots, subdivisionId, isEditing, onLotUpdated, totalEnt
                   )}
                   {!isEditing && !isLotOwner && (
                     <td className="px-4 text-right" onClick={(e) => e.stopPropagation()}>
-                      {canInvite && (
+                      {!isAccepted && (
                         <Button
                           variant="ghost"
                           size="sm"
                           className="h-7 text-xs"
                           onClick={() => setInviteLot(lot)}
                         >
-                          <Mail className="mr-1 h-3 w-3" />
-                          Invite
+                          <ButtonIcon className="mr-1 h-3 w-3" />
+                          {buttonLabel}
                         </Button>
                       )}
                     </td>
@@ -247,16 +261,20 @@ export function LotsTab({ lots, subdivisionId, isEditing, onLotUpdated, totalEnt
         </table>
       </div>
 
-      {/* Invite dialog */}
+      {/* Owner / invite dialog */}
       {inviteLot && (
         <InviteDialog
           open={!!inviteLot}
-          onClose={() => setInviteLot(null)}
+          onClose={() => {
+            setInviteLot(null);
+            router.refresh();
+          }}
           subdivisionId={subdivisionId}
           lotId={inviteLot.id}
           lotNumber={inviteLot.lot_number}
           prefillEmail={inviteLot.owner_contact_email ?? undefined}
           prefillName={inviteLot.owner_display_name ?? undefined}
+          prefillPhone={inviteLot.owner_contact_phone ?? undefined}
         />
       )}
     </div>

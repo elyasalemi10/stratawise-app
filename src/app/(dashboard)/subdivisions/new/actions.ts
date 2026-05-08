@@ -354,27 +354,29 @@ export async function updateSubdivisionStep4(subdivisionId: string, data: Step4V
       return { error: "Failed to create lots" };
     }
 
-    // Pre-create pending invitations for lots that provided owner contact
-    // details. Invitation emails are NOT sent here — they're sent when the
-    // wizard completes (see completeSubdivisionSetup). Until then, the
-    // subdivision is in setup mode and the pending invitations are the
-    // canonical pre-acceptance identity for each lot.
+    // Pre-create pending invitation rows for lots whose manager noted any
+    // owner contact details (name OR email OR phone). No emails are sent
+    // here or at the end of setup — they fire only when the manager
+    // explicitly clicks "Invite" on the manage page. Until then, the row
+    // is the canonical pre-acceptance owner record for the lot.
     const lotByNumber = new Map<number, string>();
     for (const l of insertedLots ?? []) lotByNumber.set(l.lot_number, l.id);
 
     const invitationsToInsert = v.lots
       .map((lot, idx) => {
         const email = (lot.invitee_email ?? "").trim();
-        if (!email) return null;
+        const name = lot.invitee_name?.trim() ?? "";
+        const phone = lot.invitee_phone?.trim() ?? "";
+        if (!email && !name && !phone) return null;
         const lotNumber = parseInt(lot.lot_number, 10) || (idx + 1);
         const lotId = lotByNumber.get(lotNumber);
         if (!lotId) return null;
         return {
           subdivision_id: subdivisionId,
           lot_id: lotId,
-          email,
-          name: lot.invitee_name?.trim() || null,
-          phone: lot.invitee_phone?.trim() || null,
+          email: email || null,
+          name: name || null,
+          phone: phone || null,
           role: "lot_owner" as const,
           status: "pending" as const,
           invited_by: profile.id,
