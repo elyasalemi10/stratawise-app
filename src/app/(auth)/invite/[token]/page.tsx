@@ -1,5 +1,3 @@
-import { redirect } from "next/navigation";
-import { auth } from "@clerk/nextjs/server";
 import { getInvitationByToken } from "@/lib/actions/invitations";
 import { InviteAcceptContent } from "./invite-accept-content";
 
@@ -22,14 +20,5 @@ export default async function InviteAcceptPage({
     );
   }
 
-  const { userId } = await auth();
-  const isLoggedIn = !!userId;
-
-  return (
-    <InviteAcceptContent
-      invitation={invitation}
-      token={token}
-      isLoggedIn={isLoggedIn}
-    />
-  );
+  return <InviteAcceptContent invitation={invitation} />;
 }

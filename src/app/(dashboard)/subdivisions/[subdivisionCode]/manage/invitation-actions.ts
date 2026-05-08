@@ -27,44 +27,66 @@ export async function inviteLotOwner(
     return { error: "This lot already has an accepted invitation" };
   }
 
-  // Check for pending invitation to same email
+  // Reuse any pending invitation for this lot (queued during subdivision
+  // setup or a prior manual invite). Refresh its contact fields + expiry so
+  // the manager can correct details on resend without creating duplicates.
   const { data: existingPending } = await supabase
     .from("invitations")
-    .select("id")
+    .select("id, token")
     .eq("lot_id", lotId)
-    .eq("email", data.email)
     .eq("status", "pending")
-    .single();
+    .order("created_at", { ascending: false })
+    .limit(1)
+    .maybeSingle();
+
+  let invitation: { id: string; token: string };
+  let isResend = false;
 
   if (existingPending) {
-    return { error: "A pending invitation already exists for this email and lot" };
+    const newExpiry = new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString();
+    const { data: updated, error: updateError } = await supabase
+      .from("invitations")
+      .update({
+        email: data.email,
+        name: data.name,
+        phone: data.phone || null,
+        invited_by: profile.id,
+        expires_at: newExpiry,
+      })
+      .eq("id", existingPending.id)
+      .select("id, token")
+      .single();
+
+    if (updateError || !updated) return { error: updateError?.message ?? "Failed to update invitation" };
+    invitation = updated;
+    isResend = true;
+  } else {
+    const { data: created, error } = await supabase
+      .from("invitations")
+      .insert({
+        subdivision_id: subdivisionId,
+        lot_id: lotId,
+        email: data.email,
+        name: data.name,
+        phone: data.phone || null,
+        role: "lot_owner",
+        invited_by: profile.id,
+      })
+      .select("id, token")
+      .single();
+
+    if (error || !created) return { error: error?.message ?? "Failed to create invitation" };
+    invitation = created;
   }
-
-  // Create invitation
-  const { data: invitation, error } = await supabase
-    .from("invitations")
-    .insert({
-      subdivision_id: subdivisionId,
-      lot_id: lotId,
-      email: data.email,
-      name: data.name,
-      phone: data.phone || null,
-      role: "lot_owner",
-      invited_by: profile.id,
-    })
-    .select("id, token")
-    .single();
-
-  if (error) return { error: error.message };
 
   // Audit log
   await supabase.from("audit_log").insert({
     profile_id: profile.id,
     subdivision_id: subdivisionId,
-    action: "create",
+    action: isResend ? "update" : "create",
     entity_type: "invitation",
     entity_id: invitation.id,
-    after_state: { email: data.email, name: data.name, lot_id: lotId },
+    after_state: { email: data.email, name: data.name, lot_id: lotId, resend: isResend },
   });
 
   // Send invitation email

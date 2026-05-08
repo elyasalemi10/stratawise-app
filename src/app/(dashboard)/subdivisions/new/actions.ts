@@ -4,7 +4,6 @@ import { requireCompanyRole } from "@/lib/auth";
 import { createServerClient } from "@/lib/supabase";
 import { insertSubdivisionWithCode } from "@/lib/subdivision-code";
 import { buildSubdivisionUrl } from "@/lib/subdivision-resolver";
-import { sendInvitationEmail } from "@/lib/email";
 import {
   step1Schema,
   step2Schema,
@@ -459,41 +458,9 @@ export async function completeSubdivisionSetup(subdivisionId: string, data: Step
       })
       .eq("id", subdivisionId);
 
-    // Dispatch any pending lot-owner invitations that were queued during
-    // step 4. Emails are only sent now — at the end of setup — so the
-    // manager isn't firing invitations while they're still editing the lot
-    // list. Each send failure is logged but doesn't abort completion.
-    const { data: subdivisionRow } = await supabase
-      .from("subdivisions")
-      .select("name, address")
-      .eq("id", subdivisionId)
-      .single();
-
-    const { data: pendingInvitations } = await supabase
-      .from("invitations")
-      .select("id, token, email, name, lot_id, lots(lot_number)")
-      .eq("subdivision_id", subdivisionId)
-      .eq("status", "pending")
-      .eq("role", "lot_owner");
-
-    const baseUrl = process.env.APP_URL ?? "http://localhost:3000";
-    for (const inv of pendingInvitations ?? []) {
-      try {
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        const lot = (inv as any).lots;
-        await sendInvitationEmail({
-          to: inv.email,
-          inviteeName: inv.name ?? "",
-          role: "lot_owner",
-          subdivisionName: subdivisionRow?.name ?? "Your subdivision",
-          subdivisionAddress: subdivisionRow?.address ?? "",
-          lotNumber: lot?.lot_number ?? null,
-          inviteUrl: `${baseUrl}/invite/${inv.token}`,
-        });
-      } catch (err) {
-        console.error("Failed to send wizard invitation:", inv.email, err);
-      }
-    }
+    // Lot-owner invitation emails are NOT dispatched at the end of setup.
+    // Pending invitation rows queued in step 4 stay queued until the manager
+    // explicitly clicks "Invite" on a lot from the manage page.
 
     // Audit log — full setup completed
     await supabase.from("audit_log").insert({
@@ -505,7 +472,6 @@ export async function completeSubdivisionSetup(subdivisionId: string, data: Step
       after_state: { step: 5, status: "active" },
       metadata: {
         source: "subdivision_wizard_complete",
-        invitations_sent: pendingInvitations?.length ?? 0,
       },
     });
 
