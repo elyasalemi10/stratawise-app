@@ -75,7 +75,7 @@ export async function getLotOwners(
     .from("invitations")
     .select("id, lot_id, email, name, phone, created_at")
     .in("lot_id", lotsStillUnowned)
-    .eq("status", "pending")
+    .in("status", ["pending", "noted"])
     .order("created_at", { ascending: false });
 
   for (const inv of invites ?? []) {

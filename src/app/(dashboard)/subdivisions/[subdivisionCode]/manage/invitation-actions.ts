@@ -24,15 +24,17 @@ async function ensureNotAccepted(
   return !data;
 }
 
-async function findPendingInvitation(
+async function findOpenInvitation(
   supabase: ReturnType<typeof createServerClient>,
   lotId: string,
 ) {
+  // "Open" = pre-acceptance: either noted (saved, no email sent) or pending
+  // (invite email sent, awaiting accept). Either is reusable on edit/resend.
   const { data } = await supabase
     .from("invitations")
-    .select("id, token, email")
+    .select("id, token, email, status")
     .eq("lot_id", lotId)
-    .eq("status", "pending")
+    .in("status", ["pending", "noted"])
     .order("created_at", { ascending: false })
     .limit(1)
     .maybeSingle();
@@ -65,9 +67,11 @@ export async function updateLotOwnerDetails(
   const email = data.email?.trim() || null;
   const phone = data.phone?.trim() || null;
 
-  const existing = await findPendingInvitation(supabase, lotId);
+  const existing = await findOpenInvitation(supabase, lotId);
 
   if (existing) {
+    // Don't downgrade status: a row that's already 'pending' (email sent)
+    // stays 'pending' on edit. Only contact details are refreshed.
     const { error } = await supabase
       .from("invitations")
       .update({ name, email, phone, invited_by: profile.id })
@@ -80,9 +84,11 @@ export async function updateLotOwnerDetails(
       action: "update",
       entity_type: "invitation",
       entity_id: existing.id,
-      after_state: { name, email, lot_id: lotId },
+      after_state: { name, email, lot_id: lotId, status: existing.status },
     });
   } else {
+    // No open row yet: create a 'noted' row. No email goes out and the
+    // status badge will reflect "Owner noted" until inviteLotOwner runs.
     const { data: created, error } = await supabase
       .from("invitations")
       .insert({
@@ -92,6 +98,7 @@ export async function updateLotOwnerDetails(
         name,
         phone,
         role: "lot_owner",
+        status: "noted",
         invited_by: profile.id,
       })
       .select("id")
@@ -104,7 +111,7 @@ export async function updateLotOwnerDetails(
       action: "create",
       entity_type: "invitation",
       entity_id: created.id,
-      after_state: { name, email, lot_id: lotId, source: "owner_noted" },
+      after_state: { name, email, lot_id: lotId, status: "noted" },
     });
   }
 
@@ -130,15 +137,15 @@ export async function inviteLotOwner(
     return { error: "This lot already has an accepted invitation" };
   }
 
-  // Reuse any pending invitation for this lot (queued during subdivision
-  // setup or a prior save). Refresh contact fields + expiry on resend so
-  // the manager can correct details without creating duplicates.
-  const existingPending = await findPendingInvitation(supabase, lotId);
+  // Reuse any open invitation row for this lot (noted from setup or a
+  // prior save, or pending from a previous send). Flip to 'pending' here
+  // since we're now sending the email. Refresh contact fields + expiry.
+  const existingOpen = await findOpenInvitation(supabase, lotId);
 
   let invitation: { id: string; token: string };
   let isResend = false;
 
-  if (existingPending) {
+  if (existingOpen) {
     const newExpiry = new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString();
     const { data: updated, error: updateError } = await supabase
       .from("invitations")
@@ -146,10 +153,11 @@ export async function inviteLotOwner(
         email: data.email,
         name: data.name,
         phone: data.phone || null,
+        status: "pending",
         invited_by: profile.id,
         expires_at: newExpiry,
       })
-      .eq("id", existingPending.id)
+      .eq("id", existingOpen.id)
       .select("id, token")
       .single();
 
@@ -220,30 +228,19 @@ export async function getLotInvitationStatus(subdivisionId: string, lotIds: stri
 
   const { data } = await supabase
     .from("invitations")
-    .select("lot_id, status, email")
+    .select("lot_id, status")
     .eq("subdivision_id", subdivisionId)
     .in("lot_id", lotIds)
-    .in("status", ["pending", "accepted"]);
+    .in("status", ["noted", "pending", "accepted"]);
 
-  // Build a map: lot_id -> { status, hasEmail }
-  // The `noted` status (no email captured) is distinct from `pending` (email
-  // captured but invitation has not been sent — we no longer auto-send, so
-  // any pending row with email implies the manager has clicked Invite).
+  // Precedence when a lot has multiple rows: accepted > pending > noted.
+  const rank: Record<string, number> = { accepted: 3, pending: 2, noted: 1 };
   const statusMap = new Map<string, "accepted" | "pending" | "noted">();
   data?.forEach((inv) => {
     if (!inv.lot_id) return;
+    const next = inv.status as "accepted" | "pending" | "noted";
     const current = statusMap.get(inv.lot_id);
-    if (current === "accepted") return;
-    if (inv.status === "accepted") {
-      statusMap.set(inv.lot_id, "accepted");
-      return;
-    }
-    if (inv.status === "pending") {
-      const isNoted = !inv.email;
-      const next = isNoted ? "noted" : "pending";
-      // Pending takes priority over noted (newer info wins)
-      if (current !== "pending") statusMap.set(inv.lot_id, next);
-    }
+    if (!current || rank[next] > rank[current]) statusMap.set(inv.lot_id, next);
   });
 
   return statusMap;

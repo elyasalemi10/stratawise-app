@@ -378,7 +378,7 @@ export async function updateSubdivisionStep4(subdivisionId: string, data: Step4V
           name: name || null,
           phone: phone || null,
           role: "lot_owner" as const,
-          status: "pending" as const,
+          status: "noted" as const,
           invited_by: profile.id,
         };
       })
