@@ -18,6 +18,11 @@
 import { config } from "dotenv";
 config({ path: ".env.local" });
 
+// PP6-D-D-fix: gate Resend sends. reconcileTransaction +
+// depositUndepositedFunds both invoke emitPaymentReceivedEmail per
+// created credit (PP6-C-1 integration).
+process.env.EMAIL_DRY_RUN = "true";
+
 // ─── next/cache stub (Variant A) ───────────────────────────────
 // Pre-populate Node's CommonJS require cache with a no-op stub for `next/cache`
 // BEFORE any server-action module is imported. Server actions end with a call

@@ -22,6 +22,11 @@ import { generateSubdivisionCode } from "@/lib/subdivision-code";
 
 config({ path: ".env.local" });
 
+// PP6-D-D-fix: gate Resend sends. Some scenarios dynamic-import tryAutoMatch
+// from the orchestrator, which triggers emitPaymentReceivedEmail on
+// auto-match success (PP6-C-1 integration).
+process.env.EMAIL_DRY_RUN = "true";
+
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
 const serviceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
 

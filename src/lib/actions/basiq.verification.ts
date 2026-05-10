@@ -15,6 +15,12 @@
 import { config } from "dotenv";
 config({ path: ".env.local" });
 
+// PP6-D-D-fix: gate Resend sends. sendPendingReauthNotifications fires
+// real basiq system emails (reauth reminder / consent expired / gap
+// report) when RESEND_API_KEY is set in .env.local. B16's orchestrator
+// integration path also triggers emitPaymentReceivedEmail.
+process.env.EMAIL_DRY_RUN = "true";
+
 // ─── next/cache stub (Variant A) — see PRE_LAUNCH_CLEANUP.md ──
 import { createRequire } from "node:module";
 const scriptRequire = createRequire(import.meta.url);

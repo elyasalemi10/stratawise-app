@@ -17,6 +17,12 @@
 import { config } from "dotenv";
 config({ path: ".env.local" });
 
+// PP6-D-D-fix: gate Resend sends. This suite calls tryAutoMatch via the
+// orchestrator, which triggers emitPaymentReceivedEmail on auto-match
+// success. Without this gate, real emails fire when RESEND_API_KEY is
+// present in .env.local.
+process.env.EMAIL_DRY_RUN = "true";
+
 // ─── next/cache stub ─────────────────────────────────────────────────────
 // Pre-populate Node's CommonJS require cache with a no-op stub for `next/cache`
 // BEFORE any server-action module is imported. The shim must be installed

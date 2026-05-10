@@ -19,6 +19,10 @@
 import { config } from "dotenv";
 config({ path: ".env.local" });
 
+// PP6-D-D-fix: gate Resend sends. This suite calls reconcileTransaction
+// which triggers emitPaymentReceivedEmail on each created credit.
+process.env.EMAIL_DRY_RUN = "true";
+
 // ─── next/cache stub ─────────────────────────────────────────────────────
 import { createRequire } from "node:module";
 const scriptRequire = createRequire(import.meta.url);

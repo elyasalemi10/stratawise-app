@@ -17,6 +17,10 @@
 import { config } from "dotenv";
 config({ path: ".env.local" });
 
+// PP6-D-D-fix: gate Resend sends. tryAutoMatch's success path now invokes
+// emitPaymentReceivedEmail via the PP6-C-1 integration.
+process.env.EMAIL_DRY_RUN = "true";
+
 import { createClient } from "@supabase/supabase-js";
 import { randomUUID } from "crypto";
 import { tryAutoMatch } from "./orchestrator";
