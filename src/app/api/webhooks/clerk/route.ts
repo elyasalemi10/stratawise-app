@@ -1,30 +1,14 @@
 import { NextRequest, NextResponse } from "next/server";
 import { Webhook } from "svix";
 import { createServerClient } from "@/lib/supabase";
+import { NOTIFICATION_TYPES } from "@/lib/notifications";
 
 const WEBHOOK_SECRET = process.env.CLERK_WEBHOOK_SECRET;
 
-// Default notification types to seed for new users.
-// PP6-C-2 SG-3 ratification: rename payment_overdue → overdue_reminder
-// (matches PP6-C-1 sender's notification_type) and add the three new
-// PP6-C-1 + PP6-C-2 types. Existing users created before PP6-C-2 still
-// have the old payment_overdue row; one-time UPDATE migration to rename
-// is logged in PRE_LAUNCH_CLEANUP.
-const NOTIFICATION_TYPES = [
-  "levy_issued",
-  "payment_received",
-  "overdue_reminder",
-  "claim_matched",
-  "claim_rejected",
-  "new_claim_submitted",
-  "meeting_notice",
-  "meeting_minutes",
-  "maintenance_update",
-  "announcement",
-  "complaint_update",
-  "escalation_step",
-  "document_uploaded",
-];
+// PP6-D-B: NOTIFICATION_TYPES moved to src/lib/notifications.ts as a
+// single source of truth. The Clerk webhook seeds new users with this
+// canonical list; the updateNotificationPreferences action validates
+// against the same list. Renaming or adding a type is now a single edit.
 
 interface ClerkEmailAddress {
   email_address: string;

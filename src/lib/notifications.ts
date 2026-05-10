@@ -27,12 +27,43 @@ import {
   type SendNewClaimSubmittedEmailParams,
 } from "@/lib/email";
 
+// Canonical list of notification types seeded for new users by the Clerk
+// webhook (src/app/api/webhooks/clerk/route.ts) and validated by the
+// updateNotificationPreferences action (PP6-D-B). Single source of truth —
+// changes here propagate to both seed + validation paths.
+export const NOTIFICATION_TYPES = [
+  "levy_issued",
+  "payment_received",
+  "overdue_reminder",
+  "claim_matched",
+  "claim_rejected",
+  "new_claim_submitted",
+  "meeting_notice",
+  "meeting_minutes",
+  "maintenance_update",
+  "announcement",
+  "complaint_update",
+  "escalation_step",
+  "document_uploaded",
+] as const;
+
+export type NotificationType = (typeof NOTIFICATION_TYPES)[number];
+
 // Statutory non-opt-outable notification types. Currently only the levy
 // final notice (PP6-C-3 step 3 — gated; ships if PP6-C-1+C-2 leave headroom).
 // Owner-facing types in PP6-C-1 (overdue step 1, payment_received,
 // claim_matched, claim_rejected) are all opt-outable.
 export const MANDATORY_NOTIFICATION_TYPES: ReadonlySet<string> = new Set([
   "levy_final_notice",
+]);
+
+// PP6-D-B: managerial-event types. In-app channel is non-toggleable for
+// these — operational signals must always reach the manager's inbox even
+// if email is opted out. Email channel remains opt-outable.
+// Used by /settings/notifications-tab.tsx UI + updateNotificationPreferences
+// action validation.
+export const MANAGERIAL_NOTIFICATION_TYPES: ReadonlySet<string> = new Set([
+  "new_claim_submitted",
 ]);
 
 export async function isNotificationOptedOut(

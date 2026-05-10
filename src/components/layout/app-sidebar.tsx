@@ -23,6 +23,7 @@ import {
   ClipboardList,
   Landmark,
   GitMerge,
+  AlertTriangle,
 } from "lucide-react";
 
 import {
@@ -103,6 +104,7 @@ function getSubdivisionNavGroups(subdivisionCode: string, isLotOwner: boolean) {
           { href: base, label: "Dashboard", icon: LayoutDashboard },
           { href: `${base}/my-levies`, label: "My levies", icon: Receipt },
           { href: `${base}/my-payments`, label: "My payments", icon: Wallet },
+          { href: `${base}/my-arrears`, label: "My arrears", icon: AlertTriangle },
         ],
       },
       {

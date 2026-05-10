@@ -10,6 +10,7 @@ import { CompanyTab } from "./company-tab";
 import { TeamTab } from "./team-tab";
 import type { Profile } from "@/lib/auth";
 import type { TeamMember } from "@/lib/actions/team";
+import type { NotificationPrefRow, AutoOptOutEntry } from "./page";
 
 interface CompanyData {
   id: string;
@@ -27,10 +28,14 @@ function TabsInner({
   profile,
   company,
   teamMembers,
+  currentPreferences,
+  autoOptOuts,
 }: {
   profile: Profile;
   company: CompanyData | null;
   teamMembers: TeamMember[];
+  currentPreferences: NotificationPrefRow[];
+  autoOptOuts: AutoOptOutEntry[];
 }) {
   const searchParams = useSearchParams();
   const initialTab = searchParams.get("tab") ?? "profile";
@@ -78,7 +83,10 @@ function TabsInner({
           <SecurityTab />
         </div>
         <div className={activeTab === "notifications" ? "" : "hidden"}>
-          <NotificationsTab />
+          <NotificationsTab
+            currentPreferences={currentPreferences}
+            autoOptOuts={autoOptOuts}
+          />
         </div>
       </div>
     </div>
@@ -89,14 +97,24 @@ export function SettingsTabs({
   profile,
   company,
   teamMembers,
+  currentPreferences,
+  autoOptOuts,
 }: {
   profile: Profile;
   company: CompanyData | null;
   teamMembers: TeamMember[];
+  currentPreferences: NotificationPrefRow[];
+  autoOptOuts: AutoOptOutEntry[];
 }) {
   return (
     <Suspense>
-      <TabsInner profile={profile} company={company} teamMembers={teamMembers} />
+      <TabsInner
+        profile={profile}
+        company={company}
+        teamMembers={teamMembers}
+        currentPreferences={currentPreferences}
+        autoOptOuts={autoOptOuts}
+      />
     </Suspense>
   );
 }
