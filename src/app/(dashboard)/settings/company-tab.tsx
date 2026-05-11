@@ -7,7 +7,8 @@ import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { updateCompanyField, uploadCompanyLogo } from "./actions";
+import { updateCompanyField, uploadCompanySignature } from "./actions";
+import { updateCompanyLogo, MAX_LOGO_BYTES, MAX_LOGO_WIDTH, MAX_LOGO_HEIGHT } from "@/lib/actions/company-branding";
 
 interface CompanyData {
   id: string;
@@ -87,9 +88,33 @@ export function CompanyTab({ company }: { company: CompanyData | null }) {
     const file = e.target.files?.[0];
     if (!file) return;
 
-    if (file.size > 2 * 1024 * 1024) {
-      toast.error("Logo must be under 2MB");
+    // Client-side guard: matches the server-side validateLogoFile shape so
+    // users get fast feedback on obvious rejects without burning a round
+    // trip. Server still enforces canonically.
+    if (file.size > MAX_LOGO_BYTES) {
+      toast.error(`Logo must be under ${MAX_LOGO_BYTES / 1024 / 1024}MB`);
       return;
+    }
+
+    // Probe dimensions client-side for raster types (skip SVG).
+    if (file.type !== "image/svg+xml") {
+      const ok = await new Promise<boolean>((resolve) => {
+        const img = new Image();
+        img.onload = () => {
+          if (img.width > MAX_LOGO_WIDTH || img.height > MAX_LOGO_HEIGHT) {
+            toast.error(`Logo must be ≤${MAX_LOGO_WIDTH}×${MAX_LOGO_HEIGHT}px (got ${img.width}×${img.height})`);
+            resolve(false);
+          } else {
+            resolve(true);
+          }
+        };
+        img.onerror = () => {
+          toast.error("Could not read image. File may be corrupted.");
+          resolve(false);
+        };
+        img.src = URL.createObjectURL(file);
+      });
+      if (!ok) return;
     }
 
     setUploading(true);
@@ -97,12 +122,12 @@ export function CompanyTab({ company }: { company: CompanyData | null }) {
     formData.append("file", file);
     formData.append("company_id", company!.id);
 
-    const result = await uploadCompanyLogo(formData);
+    const result = await updateCompanyLogo(formData);
     setUploading(false);
 
-    if (result.error) {
+    if ("error" in result) {
       toast.error(result.error);
-    } else if (result.url) {
+    } else {
       setLogoUrl(result.url);
       toast.success("Logo updated");
     }
@@ -137,11 +162,11 @@ export function CompanyTab({ company }: { company: CompanyData | null }) {
                 <Upload className="mr-2 h-3.5 w-3.5" />
                 {uploading ? "Uploading..." : "Upload logo"}
               </Button>
-              <p className="mt-1 text-xs text-muted-foreground">PNG or JPG, max 2MB. Used on levy notices.</p>
+              <p className="mt-1 text-xs text-muted-foreground">PNG, JPG, or SVG. Max 1MB, 800×400px. Used on levy notices and emails.</p>
               <input
                 ref={fileInputRef}
                 type="file"
-                accept="image/png,image/jpeg"
+                accept="image/png,image/jpeg,image/svg+xml"
                 onChange={handleLogoUpload}
                 className="hidden"
               />
@@ -190,8 +215,7 @@ export function CompanyTab({ company }: { company: CompanyData | null }) {
                   const formData = new FormData();
                   formData.append("file", file);
                   formData.append("company_id", company.id);
-                  formData.append("type", "signature");
-                  const result = await uploadCompanyLogo(formData);
+                  const result = await uploadCompanySignature(formData);
                   setUploadingSig(false);
                   if (result.error) { toast.error(result.error); }
                   else if (result.url) { setSignatureUrl(result.url); toast.success("Signature updated"); }

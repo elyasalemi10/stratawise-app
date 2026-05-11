@@ -435,16 +435,21 @@ export interface SendOverdueReminderEmailParams extends SharedSenderHeader {
   dueDate: string;
   penaltyInterestAccrued: number; // 0 if no accrual yet
   subdivisionShortCode: string;   // for /my-arrears CTA link
+  // PP7-A: optional PDF attachment. When set, attached via Resend
+  // attachments[]. Caller (escalation engine) resolves the buffer via
+  // getLevyNoticePdfBuffer(levyId, supabase); null means body-only fallback.
+  pdfBuffer?: Buffer | null;
+  pdfFilename?: string;
 }
 
 export async function sendOverdueReminderEmail(
   params: SendOverdueReminderEmailParams,
 ): Promise<EmailSendResult> {
-  const { to, ownerName, subdivisionName, subdivisionAddress, referenceNumber, amountOutstanding, daysOverdue, dueDate, penaltyInterestAccrued, subdivisionShortCode, companyLogoUrl } = params;
+  const { to, ownerName, subdivisionName, subdivisionAddress, referenceNumber, amountOutstanding, daysOverdue, dueDate, penaltyInterestAccrued, subdivisionShortCode, companyLogoUrl, pdfBuffer, pdfFilename } = params;
   const subject = `Your levy is overdue — ${subdivisionName}`;
 
   if (isDryRun()) {
-    console.log(`[email-dry-run] type=overdue_reminder to=${to} ref=${referenceNumber} days=${daysOverdue} interest=${penaltyInterestAccrued.toFixed(2)} subject="${subject}"`);
+    console.log(`[email-dry-run] type=overdue_reminder to=${to} ref=${referenceNumber} days=${daysOverdue} interest=${penaltyInterestAccrued.toFixed(2)} pdf=${pdfBuffer ? "yes" : "no"} subject="${subject}"`);
     return { dryRun: true };
   }
 
@@ -492,6 +497,17 @@ export async function sendOverdueReminderEmail(
     to,
     subject,
     html,
+    ...(pdfBuffer
+      ? {
+          attachments: [
+            {
+              filename: pdfFilename ?? `${referenceNumber}.pdf`,
+              content: pdfBuffer,
+              contentType: "application/pdf",
+            },
+          ],
+        }
+      : {}),
   });
   if (error) {
     console.error("Failed to send overdue_reminder email:", error);
@@ -744,6 +760,8 @@ export interface SendSecondReminderEmailParams extends SharedSenderHeader {
   dueDate: string;
   penaltyInterestAccrued: number;
   subdivisionShortCode: string;
+  pdfBuffer?: Buffer | null;
+  pdfFilename?: string;
 }
 
 export async function sendSecondReminderEmail(
@@ -753,11 +771,12 @@ export async function sendSecondReminderEmail(
     to, ownerName, subdivisionName, subdivisionAddress,
     referenceNumber, amountOutstanding, daysOverdue, dueDate,
     penaltyInterestAccrued, subdivisionShortCode, companyLogoUrl,
+    pdfBuffer, pdfFilename,
   } = params;
   const subject = `Second reminder — levy overdue ${daysOverdue}+ days — ${subdivisionName}`;
 
   if (isDryRun()) {
-    console.log(`[email-dry-run] type=second_reminder to=${to} ref=${referenceNumber} days=${daysOverdue} subject="${subject}"`);
+    console.log(`[email-dry-run] type=second_reminder to=${to} ref=${referenceNumber} days=${daysOverdue} pdf=${pdfBuffer ? "yes" : "no"} subject="${subject}"`);
     return { dryRun: true };
   }
 
@@ -797,6 +816,17 @@ export async function sendSecondReminderEmail(
     to,
     subject,
     html,
+    ...(pdfBuffer
+      ? {
+          attachments: [
+            {
+              filename: pdfFilename ?? `${referenceNumber}.pdf`,
+              content: pdfBuffer,
+              contentType: "application/pdf",
+            },
+          ],
+        }
+      : {}),
   });
   if (error) {
     console.error("Failed to send second_reminder email:", error);
@@ -812,6 +842,11 @@ export interface SendFinalNoticeEmailParams extends SharedSenderHeader {
   dueDate: string;
   penaltyInterestAccrued: number;
   subdivisionShortCode: string;
+  // Final notice attaches a MERGED PDF: cover page (rendered via
+  // sendFinalNoticeEmail's caller) + original levy notice. Caller builds
+  // the merged buffer via src/lib/pdf/merge.ts.
+  pdfBuffer?: Buffer | null;
+  pdfFilename?: string;
 }
 
 export async function sendFinalNoticeEmail(
@@ -821,11 +856,12 @@ export async function sendFinalNoticeEmail(
     to, ownerName, subdivisionName, subdivisionAddress,
     referenceNumber, amountOutstanding, daysOverdue, dueDate,
     penaltyInterestAccrued, subdivisionShortCode, companyLogoUrl,
+    pdfBuffer, pdfFilename,
   } = params;
   const subject = `FINAL NOTICE — outstanding levy — ${subdivisionName}`;
 
   if (isDryRun()) {
-    console.log(`[email-dry-run] type=levy_final_notice to=${to} ref=${referenceNumber} days=${daysOverdue} subject="${subject}"`);
+    console.log(`[email-dry-run] type=levy_final_notice to=${to} ref=${referenceNumber} days=${daysOverdue} pdf=${pdfBuffer ? "yes" : "no"} subject="${subject}"`);
     return { dryRun: true };
   }
 
@@ -868,6 +904,17 @@ export async function sendFinalNoticeEmail(
     to,
     subject,
     html,
+    ...(pdfBuffer
+      ? {
+          attachments: [
+            {
+              filename: pdfFilename ?? `final-notice-${referenceNumber}.pdf`,
+              content: pdfBuffer,
+              contentType: "application/pdf",
+            },
+          ],
+        }
+      : {}),
   });
   if (error) {
     console.error("Failed to send levy_final_notice email:", error);

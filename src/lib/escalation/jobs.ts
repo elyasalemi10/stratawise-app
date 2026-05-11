@@ -46,6 +46,8 @@ import {
   type SendFinalNoticeEmailParams,
 } from "@/lib/email";
 import { isNotificationOptedOut, resolveCompanyLogo } from "@/lib/notifications";
+import { getLevyNoticePdfBuffer } from "@/lib/pdf/render";
+import { renderFinalNoticeCoverPdf, mergePdfs } from "@/lib/pdf/merge";
 
 export type EscalationStepOutcome =
   | "advanced"
@@ -283,6 +285,75 @@ async function processEscalationInstance(
     Number(levy.amount) - Number(levy.amount_paid);
   const daysOverdue = daysBetween(levy.due_date, runDate);
 
+  // ─── PDF attachment resolution (PP7-A) ───────────────────────────
+  // Step 2 (second reminder): attach the levy notice PDF as-is.
+  // Step 3 (final notice): render cover page + merge with levy PDF.
+  // Both paths gracefully fall back to body-only if PDF resolution fails.
+  const levyPdf = await getLevyNoticePdfBuffer(levy.id, supabase);
+  let attachmentBuffer: Buffer | null = null;
+  let attachmentFilename: string | undefined;
+  if (levyPdf) {
+    if (nextStep === 2) {
+      attachmentBuffer = levyPdf;
+      attachmentFilename = `${levy.reference_number}.pdf`;
+    } else {
+      // Step 3 final notice: render the cover page + merge.
+      try {
+        const { data: mcRow } = await supabase
+          .from("management_companies")
+          .select("name, registered_name, signature_url, logo_url")
+          .eq(
+            "id",
+            (
+              await supabase
+                .from("subdivisions")
+                .select("management_company_id")
+                .eq("id", levy.subdivision_id)
+                .single()
+            ).data?.management_company_id ?? "",
+          )
+          .single();
+        const mc = (mcRow as {
+          name: string;
+          registered_name: string | null;
+          signature_url: string | null;
+          logo_url: string | null;
+        } | null) ?? {
+          name: "",
+          registered_name: null,
+          signature_url: null,
+          logo_url: companyLogoUrl,
+        };
+        const cover = await renderFinalNoticeCoverPdf({
+          managementCompany: {
+            name: mc.name,
+            logo_url: mc.logo_url ?? companyLogoUrl,
+            registered_name: mc.registered_name,
+          },
+          managerName: null,
+          signatureUrl: mc.signature_url,
+          recipientName: ownerName ?? "Lot Owner",
+          subdivisionAddress,
+          lotLabel,
+          referenceNumber: levy.reference_number,
+          dueDate: formatDateLong(levy.due_date),
+          amountOutstanding,
+          penaltyInterestAccrued,
+          daysOverdue,
+          issuedDate: formatDateLong(runDate),
+        });
+        attachmentBuffer = await mergePdfs(cover, levyPdf);
+        attachmentFilename = `final-notice-${levy.reference_number}.pdf`;
+      } catch (mergeErr) {
+        console.warn(
+          `processEscalationInstance: final-notice merge failed for instance ${instance.id}; falling back to body-only`,
+          mergeErr instanceof Error ? mergeErr.message : mergeErr,
+        );
+        attachmentBuffer = null;
+      }
+    }
+  }
+
   // ─── communication_log queued ────────────────────────────────────
   const subjectPreview =
     nextStep === 2
@@ -332,6 +403,8 @@ async function processEscalationInstance(
       penaltyInterestAccrued,
       subdivisionShortCode,
       companyLogoUrl,
+      pdfBuffer: attachmentBuffer,
+      pdfFilename: attachmentFilename,
     },
   });
 
@@ -488,6 +561,15 @@ function computeNextActionAt(
   const base = due.getTime() > run.getTime() ? due : run;
   base.setUTCDate(base.getUTCDate() + 14);
   return base.toISOString();
+}
+
+function formatDateLong(iso: string): string {
+  const d = new Date(iso + (iso.length === 10 ? "T00:00:00Z" : ""));
+  return d.toLocaleDateString("en-AU", {
+    day: "2-digit",
+    month: "long",
+    year: "numeric",
+  });
 }
 
 function formatOwnerName(profile: {

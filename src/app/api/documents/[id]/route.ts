@@ -1,18 +1,8 @@
 import { NextRequest, NextResponse } from "next/server";
-import { S3Client, DeleteObjectCommand, GetObjectCommand } from "@aws-sdk/client-s3";
 import { createServerClient } from "@/lib/supabase";
 import { getCurrentProfile, requireCompanyRole, requireSubdivisionAccess } from "@/lib/auth";
+import { fetchObject, deleteObject } from "@/lib/storage/r2";
 
-const R2 = new S3Client({
-  region: "auto",
-  endpoint: process.env.R2_ENDPOINT!,
-  credentials: {
-    accessKeyId: process.env.R2_ACCESS_KEY_ID!,
-    secretAccessKey: process.env.R2_SECRET_ACCESS_KEY!,
-  },
-});
-
-const BUCKET = process.env.R2_BUCKET_NAME ?? "msm-company-logos";
 const UUID_REGEX = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 async function loadDocument(id: string) {
@@ -54,22 +44,17 @@ export async function GET(
     return NextResponse.json({ error: "Forbidden" }, { status: 403 });
   }
 
-  const response = await R2.send(
-    new GetObjectCommand({
-      Bucket: BUCKET,
-      Key: doc.file_path,
-    })
-  );
-
-  if (!response.Body) {
+  let body: Buffer;
+  try {
+    body = await fetchObject(doc.file_path);
+  } catch {
     return NextResponse.json({ error: "File not found in storage" }, { status: 404 });
   }
 
-  const bytes = await response.Body.transformToByteArray();
   const isView = request.nextUrl.searchParams.get("view") === "true";
   const disposition = isView ? "inline" : `attachment; filename="${encodeURIComponent(doc.file_name)}"`;
 
-  return new NextResponse(Buffer.from(bytes), {
+  return new NextResponse(new Uint8Array(body), {
     headers: {
       "Content-Type": doc.mime_type || "application/octet-stream",
       "Content-Disposition": disposition,
@@ -159,12 +144,7 @@ export async function DELETE(
   }
 
   try {
-    await R2.send(
-      new DeleteObjectCommand({
-        Bucket: BUCKET,
-        Key: doc.file_path,
-      })
-    );
+    await deleteObject(doc.file_path);
   } catch {
     // Continue even if R2 delete fails — DB is source of truth
   }

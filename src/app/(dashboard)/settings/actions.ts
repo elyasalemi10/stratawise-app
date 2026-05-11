@@ -1,10 +1,10 @@
 "use server";
 
 import { auth, clerkClient } from "@clerk/nextjs/server";
-import { S3Client, PutObjectCommand } from "@aws-sdk/client-s3";
 import { createServerClient } from "@/lib/supabase";
 import { getCurrentProfile } from "@/lib/auth";
 import { profileSchema } from "@/lib/validations/settings";
+import { uploadObject } from "@/lib/storage/r2";
 
 export async function updateProfile(formData: {
   phone?: string;
@@ -110,7 +110,11 @@ export async function updateCompanyField(companyId: string, field: string, value
   return { success: true };
 }
 
-export async function uploadCompanyLogo(formData: FormData): Promise<{ url?: string; error?: string }> {
+// PP7-A: signature upload kept here; logo upload moved to
+// src/lib/actions/company-branding.ts with hardened validation (1MB cap,
+// 800×400 dimensions, PNG/JPG/SVG types). The UI calls the new action for
+// logo and this one for signature.
+export async function uploadCompanySignature(formData: FormData): Promise<{ url?: string; error?: string }> {
   const profile = await getCurrentProfile();
   if (!profile?.management_company_id) return { error: "Unauthorized" };
 
@@ -122,38 +126,15 @@ export async function uploadCompanyLogo(formData: FormData): Promise<{ url?: str
   }
 
   const buffer = Buffer.from(await file.arrayBuffer());
-  const uploadType = (formData.get("type") as string) ?? "logo";
   const ext = file.type === "image/png" ? "png" : "jpg";
-  const key = uploadType === "signature"
-    ? `logos/${companyId}/signature.${ext}`
-    : `logos/${companyId}/logo.${ext}`;
+  const key = `logos/${companyId}/signature.${ext}`;
 
-  const r2 = new S3Client({
-    region: "auto",
-    endpoint: process.env.R2_ENDPOINT!,
-    credentials: {
-      accessKeyId: process.env.R2_ACCESS_KEY_ID!,
-      secretAccessKey: process.env.R2_SECRET_ACCESS_KEY!,
-    },
-  });
+  const { publicUrl } = await uploadObject(key, buffer, file.type);
 
-  await r2.send(
-    new PutObjectCommand({
-      Bucket: process.env.R2_BUCKET_NAME ?? "msm-company-logos",
-      Key: key,
-      Body: buffer,
-      ContentType: file.type,
-    })
-  );
-
-  const publicUrl = `${process.env.R2_PUBLIC_URL}/${key}`;
-
-  // Update management company
   const supabase = createServerClient();
-  const updateField = uploadType === "signature" ? "signature_url" : "logo_url";
   await supabase
     .from("management_companies")
-    .update({ [updateField]: publicUrl })
+    .update({ signature_url: publicUrl })
     .eq("id", companyId);
 
   return { url: publicUrl };

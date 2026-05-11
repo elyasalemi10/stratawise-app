@@ -1,19 +1,9 @@
 import { NextRequest, NextResponse } from "next/server";
-import { S3Client, PutObjectCommand } from "@aws-sdk/client-s3";
 import { createServerClient } from "@/lib/supabase";
 import { requireCompanyRole, requireSubdivisionAccess } from "@/lib/auth";
 import { ALLOWED_DOCUMENT_TYPES, MAX_DOCUMENT_SIZE } from "@/lib/validations/documents";
+import { uploadObject, publicUrlFor } from "@/lib/storage/r2";
 
-const R2 = new S3Client({
-  region: "auto",
-  endpoint: process.env.R2_ENDPOINT!,
-  credentials: {
-    accessKeyId: process.env.R2_ACCESS_KEY_ID!,
-    secretAccessKey: process.env.R2_SECRET_ACCESS_KEY!,
-  },
-});
-
-const BUCKET = process.env.R2_BUCKET_NAME ?? "msm-company-logos";
 const UUID_REGEX = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 function sanitiseFileName(name: string): string {
@@ -87,15 +77,7 @@ export async function POST(request: NextRequest) {
   const folder = lotId || "subdivision";
   const key = `documents/${subdivisionId}/${folder}/${uuid}-${safeName}`;
   const buffer = Buffer.from(await file.arrayBuffer());
-
-  await R2.send(
-    new PutObjectCommand({
-      Bucket: BUCKET,
-      Key: key,
-      Body: buffer,
-      ContentType: file.type,
-    })
-  );
+  await uploadObject(key, buffer, file.type);
 
   const { data: doc, error } = await supabase
     .from("documents")
@@ -126,10 +108,8 @@ export async function POST(request: NextRequest) {
     after_state: { file_name: safeName, category, lot_id: lotId || null },
   });
 
-  const publicUrl = `${process.env.R2_PUBLIC_URL}/${key}`;
-
   return NextResponse.json({
     ...doc,
-    public_url: publicUrl,
+    public_url: publicUrlFor(key),
   });
 }
