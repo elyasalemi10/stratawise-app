@@ -19,6 +19,7 @@ import {
   sendBasiqCommitteeGapNotificationEmail,
   sendBasiqGapReconciliationEmail,
 } from "@/lib/email";
+import { resolveCompanyLogo } from "@/lib/notifications";
 import {
   BASIQ_WEBHOOK_EVENTS,
   basiqTransactionPayloadSchema,
@@ -992,6 +993,9 @@ async function sendGapEmails(args: {
       .eq("id", repId)
       .single();
     if (!rep) return;
+    const companyLogoUrl = await resolveCompanyLogo(supabase, {
+      subdivisionId: args.subdivisionId,
+    });
     await sendBasiqGapReconciliationEmail({
       to: (rep as { email: string }).email,
       subdivisionName: name,
@@ -1000,12 +1004,14 @@ async function sendGapEmails(args: {
       autoMatchedCount: args.autoMatchedCount,
       manualReviewCount: args.manualReviewCount,
       reportUrl: `${process.env.NEXT_PUBLIC_APP_URL ?? ""}${(await buildSubdivisionUrl(args.subdivisionId, "/bank-account")) ?? ""}`,
+      companyLogoUrl,
     });
     if (args.committeeNotified) {
       await sendBasiqCommitteeGapNotificationEmail({
         to: (rep as { email: string }).email,
         subdivisionName: name,
         gapHours: args.gapHours,
+        companyLogoUrl,
       });
     }
   } catch (e) {

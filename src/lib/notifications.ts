@@ -66,6 +66,52 @@ export const MANAGERIAL_NOTIFICATION_TYPES: ReadonlySet<string> = new Set([
   "new_claim_submitted",
 ]);
 
+// ─── resolveCompanyLogo (PP6-D-D-fix-logo) ──────────────────────────────
+//
+// Returns the management_companies.logo_url for a subdivision or company.
+// Single round-trip per call. Two overloads via discriminated input:
+//   - { subdivisionId } → subdivision.management_company_id → logo_url
+//   - { managementCompanyId } → direct lookup
+//
+// Returns null when:
+//   - input has neither id
+//   - subdivision/company not found
+//   - logo_url is NULL (current default until manager-side upload UI ships
+//     in Prompt 6.5)
+//
+// Callers pass the resolved URL to senders that accept companyLogoUrl;
+// senders render <img> when present and text-only header when null
+// (logoImg helper in src/lib/email.ts).
+
+export async function resolveCompanyLogo(
+  supabase: SupabaseClient,
+  input: { subdivisionId: string } | { managementCompanyId: string },
+): Promise<string | null> {
+  if ("managementCompanyId" in input) {
+    const { data } = await supabase
+      .from("management_companies")
+      .select("logo_url")
+      .eq("id", input.managementCompanyId)
+      .maybeSingle();
+    return (data as { logo_url: string | null } | null)?.logo_url ?? null;
+  }
+  // subdivisionId path — single JOIN-shaped fetch.
+  const { data } = await supabase
+    .from("subdivisions")
+    .select("management_companies(logo_url)")
+    .eq("id", input.subdivisionId)
+    .maybeSingle();
+  if (!data) return null;
+  // PostgREST returns the embedded relation as either an object or an
+  // array depending on whether the join is many-to-one or one-to-many.
+  // management_companies is the parent side here, so it should be a
+  // single object — but defensively narrow either shape.
+  const rel = (data as { management_companies: { logo_url: string | null } | { logo_url: string | null }[] | null }).management_companies;
+  if (!rel) return null;
+  if (Array.isArray(rel)) return rel[0]?.logo_url ?? null;
+  return rel.logo_url ?? null;
+}
+
 export async function isNotificationOptedOut(
   supabase: SupabaseClient,
   profileId: string,
@@ -244,6 +290,9 @@ export async function emitPaymentReceivedEmail(
   const lotLabel = formatLotLabel(
     lot as { lot_number: number; unit_number: string | null } | null,
   );
+  const companyLogoUrl = await resolveCompanyLogo(supabase, {
+    subdivisionId: cr.subdivision_id,
+  });
 
   const params: SendPaymentReceivedEmailParams = {
     to: ownerEmail,
@@ -255,6 +304,7 @@ export async function emitPaymentReceivedEmail(
     description: tx.description ?? "",
     lotLabel,
     reference: cr.reference,
+    companyLogoUrl,
   };
 
   // Step 6: communication_log insert (queued state).
@@ -390,6 +440,10 @@ export async function emitClaimMatchedEmail(
   );
   if (optedOut) return;
 
+  const companyLogoUrl = await resolveCompanyLogo(supabase, {
+    subdivisionId: claim.subdivision_id,
+  });
+
   const params: SendClaimMatchedEmailParams = {
     to: ownerEmail,
     ownerName,
@@ -399,6 +453,7 @@ export async function emitClaimMatchedEmail(
     claimDate: claim.claim_date,
     paymentMethod: claim.payment_method ?? "",
     lotLabel,
+    companyLogoUrl,
   };
 
   const { data: logRow } = await supabase
@@ -464,6 +519,10 @@ export async function emitClaimRejectedEmail(
   );
   if (optedOut) return;
 
+  const companyLogoUrl = await resolveCompanyLogo(supabase, {
+    subdivisionId: claim.subdivision_id,
+  });
+
   const params: SendClaimRejectedEmailParams = {
     to: ownerEmail,
     ownerName,
@@ -473,6 +532,7 @@ export async function emitClaimRejectedEmail(
     claimDate: claim.claim_date,
     rejectionReason: input.rejectionReason,
     lotLabel,
+    companyLogoUrl,
   };
 
   const { data: logRow } = await supabase
@@ -568,6 +628,12 @@ export async function emitNewClaimSubmitted(
   );
   if (managerProfileIds.length === 0) return;
 
+  // Resolve company logo once for the fanout — same subdivision → same logo
+  // for every manager.
+  const companyLogoUrl = await resolveCompanyLogo(supabase, {
+    subdivisionId: claim.subdivision_id,
+  });
+
   // Hydrate manager profiles in one round-trip.
   const { data: profiles } = await supabase
     .from("profiles")
@@ -620,6 +686,7 @@ export async function emitNewClaimSubmitted(
       paymentMethod: claim.payment_method ?? "",
       notes: null,
       reviewLink,
+      companyLogoUrl,
     };
 
     const { data: logRow } = await supabase

@@ -34,6 +34,7 @@ import {
   sendBasiqConsentExpiredEmail,
   sendBasiqReauthReminderEmail,
 } from "@/lib/email";
+import { resolveCompanyLogo } from "@/lib/notifications";
 import type {
   BasiqReauthNotificationType,
   BasiqTransactionPayload,
@@ -385,12 +386,16 @@ export async function sendPendingReauthNotificationsJob(): Promise<{
     if (!rep || !sub) continue;
 
     const reauthUrl = `${process.env.NEXT_PUBLIC_APP_URL ?? ""}${(await buildSubdivisionUrl(conn.subdivision_id, "/bank-account")) ?? ""}`;
+    const companyLogoUrl = await resolveCompanyLogo(supabase, {
+      subdivisionId: conn.subdivision_id,
+    });
 
     await sendBasiqReauthReminderEmail({
       to: (rep as { email: string }).email,
       subdivisionName: (sub as { name: string }).name,
       daysRemaining: daysLeft,
       reauthUrl,
+      companyLogoUrl,
     });
 
     await supabase.from("basiq_reauth_notifications").insert({
@@ -466,10 +471,14 @@ export async function sweepExpiredConnectionsJob(): Promise<{
         .single();
       if (rep && sub) {
         const reauthUrl = `${process.env.NEXT_PUBLIC_APP_URL ?? ""}${(await buildSubdivisionUrl(row.subdivision_id, "/bank-account")) ?? ""}`;
+        const companyLogoUrl = await resolveCompanyLogo(supabase, {
+          subdivisionId: row.subdivision_id,
+        });
         await sendBasiqConsentExpiredEmail({
           to: (rep as { email: string }).email,
           subdivisionName: (sub as { name: string }).name,
           reauthUrl,
+          companyLogoUrl,
         });
         await supabase
           .from("basiq_reauth_notifications")

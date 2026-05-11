@@ -30,7 +30,7 @@ import {
   sendOverdueReminderEmail,
   type SendOverdueReminderEmailParams,
 } from "@/lib/email";
-import { isNotificationOptedOut } from "@/lib/notifications";
+import { isNotificationOptedOut, resolveCompanyLogo } from "@/lib/notifications";
 
 const NOTIFICATION_TYPE = "overdue_reminder";
 const DEFAULT_WORKFLOW_NAME = "Standard Overdue Levy";
@@ -255,6 +255,11 @@ async function processOverdueLevy(
     levy.id,
   );
 
+  // ─── Company logo (null until manager UI lands in Prompt 6.5) ────
+  const companyLogoUrl = await resolveCompanyLogo(supabase, {
+    subdivisionId: levy.subdivision_id,
+  });
+
   const amountOutstanding =
     Number(levy.amount) - Number(levy.amount_paid);
 
@@ -269,6 +274,7 @@ async function processOverdueLevy(
     dueDate: levy.due_date,
     penaltyInterestAccrued,
     subdivisionShortCode,
+    companyLogoUrl,
   };
 
   // ─── communication_log queued ────────────────────────────────────

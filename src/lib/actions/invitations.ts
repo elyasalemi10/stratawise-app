@@ -3,6 +3,7 @@
 import { requireCompanyRole, getCurrentProfile } from "@/lib/auth";
 import { createServerClient } from "@/lib/supabase";
 import { sendInvitationEmail } from "@/lib/email";
+import { resolveCompanyLogo } from "@/lib/notifications";
 import { canonicaliseSender } from "@/lib/reconciliation/canonical";
 import { sweepMappingsForOwnerChange } from "@/lib/reconciliation/mappings";
 import { buildSubdivisionUrl } from "@/lib/subdivision-resolver";
@@ -67,6 +68,9 @@ export async function inviteStrataManager(data: { email: string; name: string })
   // Send invitation email
   const baseUrl = process.env.APP_URL ?? "http://localhost:3000";
   const inviteUrl = `${baseUrl}/invite/${invitation.token}`;
+  const companyLogoUrl = await resolveCompanyLogo(supabase, {
+    managementCompanyId: profile.management_company_id,
+  });
   await sendInvitationEmail({
     to: data.email,
     inviteeName: data.name,
@@ -74,6 +78,7 @@ export async function inviteStrataManager(data: { email: string; name: string })
     subdivisionName: "Your management company",
     subdivisionAddress: "",
     inviteUrl,
+    companyLogoUrl,
   });
 
   return { success: true, token: invitation.token };

@@ -4,6 +4,7 @@ import { requireCompanyRole, requireSubdivisionAccess } from "@/lib/auth";
 import { createServerClient } from "@/lib/supabase";
 import { revalidatePath } from "next/cache";
 import { sendInvitationEmail } from "@/lib/email";
+import { resolveCompanyLogo } from "@/lib/notifications";
 
 type LotOwnerInput = {
   name: string;
@@ -208,6 +209,9 @@ export async function inviteLotOwner(
 
   const baseUrl = process.env.APP_URL ?? "http://localhost:3000";
   const inviteUrl = `${baseUrl}/invite/${invitation.token}`;
+  const companyLogoUrl = await resolveCompanyLogo(supabase, {
+    subdivisionId,
+  });
   await sendInvitationEmail({
     to: data.email,
     inviteeName: data.name,
@@ -216,6 +220,7 @@ export async function inviteLotOwner(
     subdivisionAddress: sub?.address ?? "",
     lotNumber: lot?.lot_number ?? null,
     inviteUrl,
+    companyLogoUrl,
   });
 
   revalidatePath("/subdivisions/[subdivisionCode]/manage", "page");

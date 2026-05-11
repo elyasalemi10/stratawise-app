@@ -33,6 +33,7 @@ interface SendInvitationEmailParams {
   lotNumber?: number | null;
   inviteUrl: string;
   invitedByName?: string;
+  companyLogoUrl?: string | null;
 }
 
 export async function sendInvitationEmail({
@@ -44,6 +45,7 @@ export async function sendInvitationEmail({
   lotNumber,
   inviteUrl,
   invitedByName,
+  companyLogoUrl,
 }: SendInvitationEmailParams) {
   const roleLabel = role === "lot_owner" ? "lot owner" : "strata manager";
   const greeting = inviteeName ? `Hi ${inviteeName},` : "Hi,";
@@ -61,6 +63,7 @@ export async function sendInvitationEmail({
     subject: `You've been invited to ${subdivisionName}`,
     html: `
       <div style="font-family:'Inter',system-ui,sans-serif;max-width:520px;margin:0 auto;padding:32px 0;">
+        ${logoImg(companyLogoUrl)}
         <h2 style="margin:0 0 16px;font-size:20px;font-weight:600;color:#1a1f2e;">You've been invited</h2>
         <p style="margin:0 0 20px;color:#1a1f2e;font-size:14px;line-height:1.6;">
           ${greeting} you've been invited${invitedByLine} to join as a <strong>${roleLabel}</strong>.
@@ -118,9 +121,7 @@ export async function sendLevyEmail({
   pdfFilename,
 }: SendLevyEmailParams) {
   const greeting = ownerName ? `Hi ${ownerName},` : "Hi,";
-  const logoHtml = companyLogoUrl
-    ? `<img src="${companyLogoUrl}" alt="" style="max-height:48px;max-width:160px;margin-bottom:16px;" />`
-    : "";
+  const logoHtml = logoImg(companyLogoUrl);
 
   if (isDryRun()) {
     console.log(`[email-dry-run] type=levy_notice to=${to} ref=${referenceNumber} subject="Levy Notice — ${subdivisionName} — ${periodLabel}"`);
@@ -208,11 +209,13 @@ export async function sendBasiqReauthReminderEmail(params: {
   subdivisionName: string;
   daysRemaining: number;
   reauthUrl: string;
+  companyLogoUrl?: string | null;
 }): Promise<BasiqEmailResult> {
-  const { to, subdivisionName, daysRemaining, reauthUrl } = params;
+  const { to, subdivisionName, daysRemaining, reauthUrl, companyLogoUrl } = params;
   const subject = `Bank feed reauthorisation required in ${daysRemaining} day${daysRemaining === 1 ? "" : "s"} — ${subdivisionName}`;
   const html = `
     <div style="font-family:'Inter',system-ui,sans-serif;max-width:520px;margin:0 auto;padding:24px 0;">
+      ${logoImg(companyLogoUrl)}
       <h2 style="margin:0 0 12px;font-size:18px;font-weight:600;color:#1a1f2e;">Bank feed expiring soon</h2>
       <p style="margin:0 0 16px;color:#1a1f2e;font-size:14px;line-height:1.5;">
         The automatic bank feed for <strong>${subdivisionName}</strong> will expire in
@@ -231,11 +234,13 @@ export async function sendBasiqConsentExpiredEmail(params: {
   to: string;
   subdivisionName: string;
   reauthUrl: string;
+  companyLogoUrl?: string | null;
 }): Promise<BasiqEmailResult> {
-  const { to, subdivisionName, reauthUrl } = params;
+  const { to, subdivisionName, reauthUrl, companyLogoUrl } = params;
   const subject = `Bank feed disconnected — ${subdivisionName}`;
   const html = `
     <div style="font-family:'Inter',system-ui,sans-serif;max-width:520px;margin:0 auto;padding:24px 0;">
+      ${logoImg(companyLogoUrl)}
       <h2 style="margin:0 0 12px;font-size:18px;font-weight:600;color:#b91c1c;">Bank feed disconnected</h2>
       <p style="margin:0 0 16px;color:#1a1f2e;font-size:14px;line-height:1.5;">
         The automatic bank feed for <strong>${subdivisionName}</strong> has expired. New transactions will not be imported until you reauthorise.
@@ -257,6 +262,7 @@ export async function sendBasiqGapReconciliationEmail(params: {
   autoMatchedCount: number;
   manualReviewCount: number;
   reportUrl: string;
+  companyLogoUrl?: string | null;
 }): Promise<BasiqEmailResult> {
   const {
     to,
@@ -266,10 +272,12 @@ export async function sendBasiqGapReconciliationEmail(params: {
     autoMatchedCount,
     manualReviewCount,
     reportUrl,
+    companyLogoUrl,
   } = params;
   const subject = `Bank feed reconnected — reconciliation gap report for ${subdivisionName}`;
   const html = `
     <div style="font-family:'Inter',system-ui,sans-serif;max-width:520px;margin:0 auto;padding:24px 0;">
+      ${logoImg(companyLogoUrl)}
       <h2 style="margin:0 0 12px;font-size:18px;font-weight:600;color:#1a1f2e;">Bank feed reconnected</h2>
       <p style="margin:0 0 12px;color:#1a1f2e;font-size:14px;line-height:1.5;">
         The bank feed for <strong>${subdivisionName}</strong> was disconnected for <strong>${gapHours} hour${gapHours === 1 ? "" : "s"}</strong>.
@@ -294,12 +302,14 @@ export async function sendBasiqCommitteeGapNotificationEmail(params: {
   to: string;
   subdivisionName: string;
   gapHours: number;
+  companyLogoUrl?: string | null;
 }): Promise<BasiqEmailResult> {
-  const { to, subdivisionName, gapHours } = params;
+  const { to, subdivisionName, gapHours, companyLogoUrl } = params;
   const days = Math.round(gapHours / 24);
   const subject = `Extended bank-feed outage — ${subdivisionName}`;
   const html = `
     <div style="font-family:'Inter',system-ui,sans-serif;max-width:520px;margin:0 auto;padding:24px 0;">
+      ${logoImg(companyLogoUrl)}
       <h2 style="margin:0 0 12px;font-size:18px;font-weight:600;color:#b45309;">Extended bank-feed outage</h2>
       <p style="margin:0 0 12px;color:#1a1f2e;font-size:14px;line-height:1.5;">
         The automatic bank feed for <strong>${subdivisionName}</strong> was disconnected for approximately <strong>${days} days</strong>.
@@ -323,15 +333,30 @@ interface SharedSenderHeader {
   ownerName: string | null;
   subdivisionName: string;
   subdivisionAddress: string;
+  // PP6-D-D-fix-logo: company logo URL resolved via the helper in
+  // src/lib/notifications.ts:resolveCompanyLogo. Null/undefined →
+  // text-only header (current management_companies typically have
+  // logo_url=NULL until the manager UI for upload ships in 6.5).
+  companyLogoUrl?: string | null;
 }
 
 function greeting(ownerName: string | null): string {
   return ownerName ? `Hi ${ownerName},` : "Hi,";
 }
 
-function brandShell(innerHtml: string): string {
+// PP6-D-D-fix-logo: shared <img> renderer for the company logo. Returns
+// empty string when no logo is configured — callers can inline this at
+// the top of any email body without conditionals.
+function logoImg(url: string | null | undefined): string {
+  return url
+    ? `<img src="${url}" alt="" style="max-height:48px;max-width:160px;margin-bottom:16px;" />`
+    : "";
+}
+
+function brandShell(innerHtml: string, logoUrl?: string | null): string {
   return `
     <div style="font-family:'Inter',system-ui,sans-serif;max-width:520px;margin:0 auto;padding:32px 0;">
+      ${logoImg(logoUrl)}
       ${innerHtml}
     </div>
   `;
@@ -350,7 +375,7 @@ export interface SendPaymentReceivedEmailParams extends SharedSenderHeader {
 export async function sendPaymentReceivedEmail(
   params: SendPaymentReceivedEmailParams,
 ): Promise<EmailSendResult> {
-  const { to, ownerName, subdivisionName, subdivisionAddress, amount, paymentDate, description, lotLabel, reference } = params;
+  const { to, ownerName, subdivisionName, subdivisionAddress, amount, paymentDate, description, lotLabel, reference, companyLogoUrl } = params;
   const subject = `Payment received — ${subdivisionName}`;
 
   if (isDryRun()) {
@@ -380,7 +405,7 @@ export async function sendPaymentReceivedEmail(
     <p style="margin:0;color:#6b7280;font-size:12px;line-height:1.5;">
       You can view your full payment history in the MSM owner portal.
     </p>
-  `);
+  `, companyLogoUrl);
 
   const { data, error } = await getResend().emails.send({
     from: FROM_LEVIES,
@@ -409,7 +434,7 @@ export interface SendOverdueReminderEmailParams extends SharedSenderHeader {
 export async function sendOverdueReminderEmail(
   params: SendOverdueReminderEmailParams,
 ): Promise<EmailSendResult> {
-  const { to, ownerName, subdivisionName, subdivisionAddress, referenceNumber, amountOutstanding, daysOverdue, dueDate, penaltyInterestAccrued, subdivisionShortCode } = params;
+  const { to, ownerName, subdivisionName, subdivisionAddress, referenceNumber, amountOutstanding, daysOverdue, dueDate, penaltyInterestAccrued, subdivisionShortCode, companyLogoUrl } = params;
   const subject = `Your levy is overdue — ${subdivisionName}`;
 
   if (isDryRun()) {
@@ -454,7 +479,7 @@ export async function sendOverdueReminderEmail(
     <p style="margin:0;color:#6b7280;font-size:12px;line-height:1.5;">
       Continued non-payment may result in further reminders and late fees in line with your strata rules.
     </p>
-  `);
+  `, companyLogoUrl);
 
   const { data, error } = await getResend().emails.send({
     from: FROM_LEVIES,
@@ -481,7 +506,7 @@ export interface SendClaimMatchedEmailParams extends SharedSenderHeader {
 export async function sendClaimMatchedEmail(
   params: SendClaimMatchedEmailParams,
 ): Promise<EmailSendResult> {
-  const { to, ownerName, subdivisionName, subdivisionAddress, amount, claimDate, paymentMethod, lotLabel } = params;
+  const { to, ownerName, subdivisionName, subdivisionAddress, amount, claimDate, paymentMethod, lotLabel, companyLogoUrl } = params;
   const subject = `Your payment has been confirmed — ${subdivisionName}`;
 
   if (isDryRun()) {
@@ -507,7 +532,7 @@ export async function sendClaimMatchedEmail(
     <p style="margin:0;color:#6b7280;font-size:12px;line-height:1.5;">
       You can view your full payment history in the MSM owner portal.
     </p>
-  `);
+  `, companyLogoUrl);
 
   const { data, error } = await getResend().emails.send({
     from: FROM_LEVIES,
@@ -534,7 +559,7 @@ export interface SendClaimRejectedEmailParams extends SharedSenderHeader {
 export async function sendClaimRejectedEmail(
   params: SendClaimRejectedEmailParams,
 ): Promise<EmailSendResult> {
-  const { to, ownerName, subdivisionName, subdivisionAddress, amount, claimDate, rejectionReason, lotLabel } = params;
+  const { to, ownerName, subdivisionName, subdivisionAddress, amount, claimDate, rejectionReason, lotLabel, companyLogoUrl } = params;
   const subject = `Update on your payment claim — ${subdivisionName}`;
 
   if (isDryRun()) {
@@ -562,7 +587,7 @@ export async function sendClaimRejectedEmail(
     <p style="margin:0;color:#1a1f2e;font-size:14px;">
       If you believe this is incorrect, please contact your strata manager directly with proof of payment.
     </p>
-  `);
+  `, companyLogoUrl);
 
   const { data, error } = await getResend().emails.send({
     from: FROM_LEVIES,
@@ -590,12 +615,13 @@ export interface SendNewClaimSubmittedEmailParams {
   paymentMethod: string;
   notes: string | null;
   reviewLink: string;
+  companyLogoUrl?: string | null;
 }
 
 export async function sendNewClaimSubmittedEmail(
   params: SendNewClaimSubmittedEmailParams,
 ): Promise<EmailSendResult> {
-  const { to, managerName, subdivisionName, lotLabel, ownerName, amount, claimDate, paymentMethod, notes, reviewLink } = params;
+  const { to, managerName, subdivisionName, lotLabel, ownerName, amount, claimDate, paymentMethod, notes, reviewLink, companyLogoUrl } = params;
   const subject = `New owner payment claim — ${subdivisionName} ${lotLabel}`;
 
   if (isDryRun()) {
@@ -631,7 +657,7 @@ export async function sendNewClaimSubmittedEmail(
     <p style="margin:24px 0 0;color:#6b7280;font-size:12px;line-height:1.5;">
       You're receiving this because you're a strata manager for ${escapeHtml(subdivisionName)}.
     </p>
-  `);
+  `, companyLogoUrl);
 
   // Use FROM_SYSTEM for managerial system-generated notifications.
   // Currently both FROM_LEVIES and FROM_SYSTEM resolve to the same address
