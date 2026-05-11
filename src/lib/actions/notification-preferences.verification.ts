@@ -156,16 +156,17 @@ async function np2_mandatoryDisableRejected(
     updates: [
       { type: "levy_final_notice", channel: "email", enabled: false },
     ],
-  } as never); // levy_final_notice is NOT in NOTIFICATION_TYPES, so Zod
-                // rejects at the .enum() validation — verifies the
-                // Zod-shape rejection path. Mandatory-type runtime guard
-                // (errorCode='MANDATORY_DISABLE') only fires if the type
-                // were both in NOTIFICATION_TYPES AND in MANDATORY_NOTIFICATION_TYPES.
+  });
+  // PP6.5: levy_final_notice was added to NOTIFICATION_TYPES so it passes
+  // the Zod .enum() validation. The application-layer guard then rejects
+  // with errorCode='MANDATORY_DISABLE' because the type is in
+  // MANDATORY_NOTIFICATION_TYPES. This is the canonical rejection path
+  // for any future MANDATORY type.
 
   const ok =
     "error" in result &&
     "errorCode" in result &&
-    result.errorCode === "VALIDATION";
+    result.errorCode === "MANDATORY_DISABLE";
 
   // Confirm no row was created (defence-in-depth).
   const { count } = await supabase
@@ -175,7 +176,7 @@ async function np2_mandatoryDisableRejected(
     .eq("notification_type", "levy_final_notice");
 
   record(
-    "NP-2: levy_final_notice (mandatory, not in seed list) rejected at Zod with errorCode='VALIDATION'; no row written",
+    "NP-2: levy_final_notice (MANDATORY) email disable rejected at app layer with errorCode='MANDATORY_DISABLE'; no row written",
     ok && (count ?? 0) === 0,
     `errorCode=${"errorCode" in result ? result.errorCode : "?"} rows=${count}`,
   );

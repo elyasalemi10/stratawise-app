@@ -20,6 +20,8 @@ const TYPE_LABELS: Record<NotificationType, string> = {
   levy_issued: "Levy issued",
   payment_received: "Payment received",
   overdue_reminder: "Overdue reminder",
+  second_reminder: "Second reminder",
+  levy_final_notice: "Final notice (statutory)",
   claim_matched: "Claim matched",
   claim_rejected: "Claim rejected",
   new_claim_submitted: "New claim submitted (manager)",

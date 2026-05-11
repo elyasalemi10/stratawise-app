@@ -35,6 +35,8 @@ export const NOTIFICATION_TYPES = [
   "levy_issued",
   "payment_received",
   "overdue_reminder",
+  "second_reminder",
+  "levy_final_notice",
   "claim_matched",
   "claim_rejected",
   "new_claim_submitted",
@@ -266,7 +268,7 @@ export async function emitPaymentReceivedEmail(
       .single(),
     supabase
       .from("subdivisions")
-      .select("name, address")
+      .select("name, address, short_code")
       .eq("id", cr.subdivision_id)
       .single(),
     supabase
@@ -290,6 +292,8 @@ export async function emitPaymentReceivedEmail(
   const lotLabel = formatLotLabel(
     lot as { lot_number: number; unit_number: string | null } | null,
   );
+  const subdivisionShortCode =
+    (sub as { short_code: string } | null)?.short_code ?? "";
   const companyLogoUrl = await resolveCompanyLogo(supabase, {
     subdivisionId: cr.subdivision_id,
   });
@@ -304,6 +308,7 @@ export async function emitPaymentReceivedEmail(
     description: tx.description ?? "",
     lotLabel,
     reference: cr.reference,
+    subdivisionShortCode,
     companyLogoUrl,
   };
 
@@ -430,7 +435,7 @@ export async function emitClaimMatchedEmail(
 ): Promise<void> {
   const ctx = await loadClaimContext(supabase, input.claimId);
   if (!ctx) return;
-  const { claim, ownerEmail, ownerProfileId, ownerName, subdivisionName, subdivisionAddress, lotLabel } = ctx;
+  const { claim, ownerEmail, ownerProfileId, ownerName, subdivisionName, subdivisionAddress, subdivisionShortCode, lotLabel } = ctx;
 
   const optedOut = await isNotificationOptedOut(
     supabase,
@@ -453,6 +458,7 @@ export async function emitClaimMatchedEmail(
     claimDate: claim.claim_date,
     paymentMethod: claim.payment_method ?? "",
     lotLabel,
+    subdivisionShortCode,
     companyLogoUrl,
   };
 
@@ -509,7 +515,7 @@ export async function emitClaimRejectedEmail(
 ): Promise<void> {
   const ctx = await loadClaimContext(supabase, input.claimId);
   if (!ctx) return;
-  const { claim, ownerEmail, ownerProfileId, ownerName, subdivisionName, subdivisionAddress, lotLabel } = ctx;
+  const { claim, ownerEmail, ownerProfileId, ownerName, subdivisionName, subdivisionAddress, subdivisionShortCode, lotLabel } = ctx;
 
   const optedOut = await isNotificationOptedOut(
     supabase,
@@ -532,6 +538,7 @@ export async function emitClaimRejectedEmail(
     claimDate: claim.claim_date,
     rejectionReason: input.rejectionReason,
     lotLabel,
+    subdivisionShortCode,
     companyLogoUrl,
   };
 
@@ -595,22 +602,14 @@ export async function emitNewClaimSubmitted(
 ): Promise<void> {
   const ctx = await loadClaimContext(supabase, input.claimId);
   if (!ctx) return;
-  const { claim, ownerName, subdivisionName, lotLabel } = ctx;
+  const { claim, ownerName, subdivisionName, subdivisionShortCode, lotLabel } = ctx;
 
-  // Resolve subdivision short_code for the review link.
-  const { data: subRow } = await supabase
-    .from("subdivisions")
-    .select("short_code")
-    .eq("id", claim.subdivision_id)
-    .single();
-  const shortCode =
-    (subRow as { short_code: string } | null)?.short_code ?? "";
-  const reviewPath = shortCode
-    ? `/subdivisions/${shortCode}/reconciliation/claims`
+  // In-app link is always a relative path (rendered inside the dashboard,
+  // not in email); email CTA URL is built by the sender via
+  // NEXT_PUBLIC_APP_URL + subdivisionShortCode.
+  const reviewPath = subdivisionShortCode
+    ? `/subdivisions/${subdivisionShortCode}/reconciliation/claims`
     : "/reconciliation/claims";
-  const appBaseUrl =
-    process.env.NEXT_PUBLIC_APP_URL?.replace(/\/$/, "") ?? "";
-  const reviewLink = `${appBaseUrl}${reviewPath}`;
 
   // Active managers for this subdivision.
   const { data: managerRows } = await supabase
@@ -685,7 +684,7 @@ export async function emitNewClaimSubmitted(
       claimDate: claim.claim_date,
       paymentMethod: claim.payment_method ?? "",
       notes: null,
-      reviewLink,
+      subdivisionShortCode,
       companyLogoUrl,
     };
 
@@ -744,6 +743,7 @@ interface ClaimContext {
   ownerName: string | null;
   subdivisionName: string;
   subdivisionAddress: string;
+  subdivisionShortCode: string;
   lotLabel: string;
 }
 
@@ -769,7 +769,7 @@ async function loadClaimContext(
       .single(),
     supabase
       .from("subdivisions")
-      .select("name, address")
+      .select("name, address, short_code")
       .eq("id", c.subdivision_id)
       .single(),
     supabase
@@ -790,6 +790,7 @@ async function loadClaimContext(
     ),
     subdivisionName: (sub as { name: string } | null)?.name ?? "Your subdivision",
     subdivisionAddress: (sub as { address: string } | null)?.address ?? "",
+    subdivisionShortCode: (sub as { short_code: string } | null)?.short_code ?? "",
     lotLabel: formatLotLabel(
       lot as { lot_number: number; unit_number: string | null } | null,
     ),

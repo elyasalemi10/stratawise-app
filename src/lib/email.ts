@@ -370,12 +370,13 @@ export interface SendPaymentReceivedEmailParams extends SharedSenderHeader {
   description: string;
   lotLabel: string;
   reference: string | null;
+  subdivisionShortCode: string;
 }
 
 export async function sendPaymentReceivedEmail(
   params: SendPaymentReceivedEmailParams,
 ): Promise<EmailSendResult> {
-  const { to, ownerName, subdivisionName, subdivisionAddress, amount, paymentDate, description, lotLabel, reference, companyLogoUrl } = params;
+  const { to, ownerName, subdivisionName, subdivisionAddress, amount, paymentDate, description, lotLabel, reference, subdivisionShortCode, companyLogoUrl } = params;
   const subject = `Payment received — ${subdivisionName}`;
 
   if (isDryRun()) {
@@ -386,6 +387,13 @@ export async function sendPaymentReceivedEmail(
   const refLine = reference
     ? `<p style="margin:0 0 4px;font-size:13px;color:#6b7280;">Reference</p><p style="margin:0 0 12px;font-size:14px;color:#1a1f2e;">${escapeHtml(reference)}</p>`
     : "";
+
+  const ctaBlock = buildCtaBlock(
+    subdivisionShortCode,
+    "my-payments",
+    "View payment history",
+    "Log in to MSM to view your full payment history.",
+  );
 
   const html = brandShell(`
     <h2 style="margin:0 0 16px;font-size:20px;font-weight:600;color:#1a1f2e;">Payment received</h2>
@@ -402,9 +410,7 @@ export async function sendPaymentReceivedEmail(
       ${refLine}
       ${description ? `<p style="margin:0 0 4px;font-size:13px;color:#6b7280;">Description</p><p style="margin:0;font-size:14px;color:#1a1f2e;">${escapeHtml(description)}</p>` : ""}
     </div>
-    <p style="margin:0;color:#6b7280;font-size:12px;line-height:1.5;">
-      You can view your full payment history in the MSM owner portal.
-    </p>
+    ${ctaBlock}
   `, companyLogoUrl);
 
   const { data, error } = await getResend().emails.send({
@@ -501,18 +507,26 @@ export interface SendClaimMatchedEmailParams extends SharedSenderHeader {
   claimDate: string;
   paymentMethod: string;
   lotLabel: string;
+  subdivisionShortCode: string;
 }
 
 export async function sendClaimMatchedEmail(
   params: SendClaimMatchedEmailParams,
 ): Promise<EmailSendResult> {
-  const { to, ownerName, subdivisionName, subdivisionAddress, amount, claimDate, paymentMethod, lotLabel, companyLogoUrl } = params;
+  const { to, ownerName, subdivisionName, subdivisionAddress, amount, claimDate, paymentMethod, lotLabel, subdivisionShortCode, companyLogoUrl } = params;
   const subject = `Your payment has been confirmed — ${subdivisionName}`;
 
   if (isDryRun()) {
     console.log(`[email-dry-run] type=claim_matched to=${to} amount=${amount.toFixed(2)} subject="${subject}"`);
     return { dryRun: true };
   }
+
+  const ctaBlock = buildCtaBlock(
+    subdivisionShortCode,
+    "my-payments",
+    "View payment confirmation",
+    "Log in to MSM to view this confirmed payment.",
+  );
 
   const html = brandShell(`
     <h2 style="margin:0 0 16px;font-size:20px;font-weight:600;color:#1a1f2e;">Payment confirmed</h2>
@@ -529,9 +543,7 @@ export async function sendClaimMatchedEmail(
       <p style="margin:0 0 4px;font-size:13px;color:#6b7280;">Method</p>
       <p style="margin:0;font-size:14px;color:#1a1f2e;">${escapeHtml(paymentMethod)}</p>
     </div>
-    <p style="margin:0;color:#6b7280;font-size:12px;line-height:1.5;">
-      You can view your full payment history in the MSM owner portal.
-    </p>
+    ${ctaBlock}
   `, companyLogoUrl);
 
   const { data, error } = await getResend().emails.send({
@@ -554,18 +566,26 @@ export interface SendClaimRejectedEmailParams extends SharedSenderHeader {
   claimDate: string;
   rejectionReason: string;
   lotLabel: string;
+  subdivisionShortCode: string;
 }
 
 export async function sendClaimRejectedEmail(
   params: SendClaimRejectedEmailParams,
 ): Promise<EmailSendResult> {
-  const { to, ownerName, subdivisionName, subdivisionAddress, amount, claimDate, rejectionReason, lotLabel, companyLogoUrl } = params;
+  const { to, ownerName, subdivisionName, subdivisionAddress, amount, claimDate, rejectionReason, lotLabel, subdivisionShortCode, companyLogoUrl } = params;
   const subject = `Update on your payment claim — ${subdivisionName}`;
 
   if (isDryRun()) {
     console.log(`[email-dry-run] type=claim_rejected to=${to} amount=${amount.toFixed(2)} subject="${subject}"`);
     return { dryRun: true };
   }
+
+  const ctaBlock = buildCtaBlock(
+    subdivisionShortCode,
+    "my-arrears",
+    "Resubmit or view details",
+    "Log in to MSM to view your outstanding balance and resubmit the claim.",
+  );
 
   const html = brandShell(`
     <h2 style="margin:0 0 16px;font-size:20px;font-weight:600;color:#1a1f2e;">Update on your payment claim</h2>
@@ -584,9 +604,7 @@ export async function sendClaimRejectedEmail(
       <p style="margin:0 0 4px;font-size:13px;color:#6b7280;">Reason from your strata manager</p>
       <p style="margin:0;font-size:14px;line-height:1.5;color:#1a1f2e;">${escapeHtml(rejectionReason)}</p>
     </div>
-    <p style="margin:0;color:#1a1f2e;font-size:14px;">
-      If you believe this is incorrect, please contact your strata manager directly with proof of payment.
-    </p>
+    ${ctaBlock}
   `, companyLogoUrl);
 
   const { data, error } = await getResend().emails.send({
@@ -614,14 +632,14 @@ export interface SendNewClaimSubmittedEmailParams {
   claimDate: string;
   paymentMethod: string;
   notes: string | null;
-  reviewLink: string;
+  subdivisionShortCode: string;
   companyLogoUrl?: string | null;
 }
 
 export async function sendNewClaimSubmittedEmail(
   params: SendNewClaimSubmittedEmailParams,
 ): Promise<EmailSendResult> {
-  const { to, managerName, subdivisionName, lotLabel, ownerName, amount, claimDate, paymentMethod, notes, reviewLink, companyLogoUrl } = params;
+  const { to, managerName, subdivisionName, lotLabel, ownerName, amount, claimDate, paymentMethod, notes, subdivisionShortCode, companyLogoUrl } = params;
   const subject = `New owner payment claim — ${subdivisionName} ${lotLabel}`;
 
   if (isDryRun()) {
@@ -634,6 +652,13 @@ export async function sendNewClaimSubmittedEmail(
   const notesBlock = notes && notes.trim().length > 0
     ? `<p style="margin:0 0 4px;font-size:13px;color:#6b7280;">Owner notes</p><p style="margin:0;font-size:14px;line-height:1.5;color:#1a1f2e;">${escapeHtml(notes)}</p>`
     : "";
+
+  const ctaBlock = buildCtaBlock(
+    subdivisionShortCode,
+    "reconciliation/claims",
+    "Review claim",
+    "Log in to MSM to review this claim in the reconciliation queue.",
+  );
 
   const html = brandShell(`
     <h2 style="margin:0 0 16px;font-size:20px;font-weight:600;color:#1a1f2e;">New payment claim</h2>
@@ -651,9 +676,7 @@ export async function sendNewClaimSubmittedEmail(
       <p style="margin:0;font-size:14px;color:#1a1f2e;">${escapeHtml(paymentMethod)}</p>
     </div>
     ${notesBlock ? `<div style="background:#f8f9fb;border:1px solid #e2e5ea;border-radius:6px;padding:16px;margin:0 0 24px;">${notesBlock}</div>` : ""}
-    <a href="${reviewLink}" style="display:inline-block;background:#2b7fff;color:#ffffff;font-size:14px;font-weight:600;text-decoration:none;padding:10px 24px;border-radius:6px;">
-      Review claim
-    </a>
+    ${ctaBlock}
     <p style="margin:24px 0 0;color:#6b7280;font-size:12px;line-height:1.5;">
       You're receiving this because you're a strata manager for ${escapeHtml(subdivisionName)}.
     </p>
@@ -687,4 +710,168 @@ function escapeHtml(s: string): string {
     .replace(/>/g, "&gt;")
     .replace(/"/g, "&quot;")
     .replace(/'/g, "&#039;");
+}
+
+// ─── CTA hyperlink helper (PP6.5) ─────────────────────────────────────
+// Builds an HTML CTA block to a dashboard path. Falls back to a plain-
+// text instruction when NEXT_PUBLIC_APP_URL is unset (avoids broken
+// anchors with relative hrefs in inline-HTML mail clients).
+function buildCtaBlock(
+  subdivisionShortCode: string,
+  path: string,
+  ctaLabel: string,
+  fallbackText: string,
+): string {
+  const appBaseUrl = process.env.NEXT_PUBLIC_APP_URL?.replace(/\/$/, "") ?? "";
+  if (!appBaseUrl) {
+    return `<p style="margin:0 0 24px;color:#1a1f2e;font-size:14px;">${escapeHtml(fallbackText)}</p>`;
+  }
+  return `<a href="${appBaseUrl}/subdivisions/${escapeHtml(subdivisionShortCode)}/${path}" style="display:inline-block;background:#2b7fff;color:#ffffff;font-size:14px;font-weight:600;text-decoration:none;padding:10px 24px;border-radius:6px;margin:0 0 24px;">
+    ${escapeHtml(ctaLabel)}
+  </a>`;
+}
+
+// ─── PP6.5: escalation step senders ────────────────────────────────────
+// Step 2 (second reminder; 28+ days overdue; opt-out-able via
+// notification_preferences.notification_type='second_reminder') and
+// step 3 (final notice; mandatory; bypasses opt-out via
+// MANDATORY_NOTIFICATION_TYPES = { 'levy_final_notice' }).
+
+export interface SendSecondReminderEmailParams extends SharedSenderHeader {
+  referenceNumber: string;
+  amountOutstanding: number;
+  daysOverdue: number;
+  dueDate: string;
+  penaltyInterestAccrued: number;
+  subdivisionShortCode: string;
+}
+
+export async function sendSecondReminderEmail(
+  params: SendSecondReminderEmailParams,
+): Promise<EmailSendResult> {
+  const {
+    to, ownerName, subdivisionName, subdivisionAddress,
+    referenceNumber, amountOutstanding, daysOverdue, dueDate,
+    penaltyInterestAccrued, subdivisionShortCode, companyLogoUrl,
+  } = params;
+  const subject = `Second reminder — levy overdue ${daysOverdue}+ days — ${subdivisionName}`;
+
+  if (isDryRun()) {
+    console.log(`[email-dry-run] type=second_reminder to=${to} ref=${referenceNumber} days=${daysOverdue} subject="${subject}"`);
+    return { dryRun: true };
+  }
+
+  const interestLine = penaltyInterestAccrued > 0
+    ? `<p style="margin:0 0 4px;font-size:13px;color:#6b7280;">Interest accrued</p><p style="margin:0 0 12px;font-size:14px;font-weight:600;color:#dc2626;">$${penaltyInterestAccrued.toFixed(2)}</p>`
+    : "";
+
+  const ctaBlock = buildCtaBlock(
+    subdivisionShortCode,
+    "my-arrears",
+    "View outstanding balance",
+    "Log in to MSM to view your outstanding balance and payment options.",
+  );
+
+  const html = brandShell(`
+    <h2 style="margin:0 0 16px;font-size:20px;font-weight:600;color:#b45309;">Second reminder — levy ${daysOverdue}+ days overdue</h2>
+    <p style="margin:0 0 20px;color:#1a1f2e;font-size:14px;line-height:1.6;">
+      ${greeting(ownerName)} our records still show an unpaid levy at <strong>${escapeHtml(subdivisionAddress)}</strong>. It is now more than <strong>${daysOverdue} days</strong> overdue and penalty interest is accruing.
+    </p>
+    <div style="background:#fef3c7;border:1px solid #fde68a;border-radius:6px;padding:16px;margin:0 0 24px;">
+      <p style="margin:0 0 4px;font-size:13px;color:#6b7280;">Reference</p>
+      <p style="margin:0 0 12px;font-size:14px;font-weight:600;color:#1a1f2e;">${escapeHtml(referenceNumber)}</p>
+      <p style="margin:0 0 4px;font-size:13px;color:#6b7280;">Original due date</p>
+      <p style="margin:0 0 12px;font-size:14px;color:#1a1f2e;">${escapeHtml(dueDate)}</p>
+      <p style="margin:0 0 4px;font-size:13px;color:#6b7280;">Amount outstanding</p>
+      <p style="margin:0 0 12px;font-size:18px;font-weight:700;color:#1a1f2e;">$${amountOutstanding.toFixed(2)}</p>
+      ${interestLine}
+    </div>
+    ${ctaBlock}
+    <p style="margin:0;color:#6b7280;font-size:12px;line-height:1.5;">
+      If payment is not received, the matter may proceed to a final notice and further recovery action under your strata rules.
+    </p>
+  `, companyLogoUrl);
+
+  const { data, error } = await getResend().emails.send({
+    from: FROM_LEVIES,
+    to,
+    subject,
+    html,
+  });
+  if (error) {
+    console.error("Failed to send second_reminder email:", error);
+    return { error: error.message };
+  }
+  return { success: true, id: data?.id ?? null };
+}
+
+export interface SendFinalNoticeEmailParams extends SharedSenderHeader {
+  referenceNumber: string;
+  amountOutstanding: number;
+  daysOverdue: number;
+  dueDate: string;
+  penaltyInterestAccrued: number;
+  subdivisionShortCode: string;
+}
+
+export async function sendFinalNoticeEmail(
+  params: SendFinalNoticeEmailParams,
+): Promise<EmailSendResult> {
+  const {
+    to, ownerName, subdivisionName, subdivisionAddress,
+    referenceNumber, amountOutstanding, daysOverdue, dueDate,
+    penaltyInterestAccrued, subdivisionShortCode, companyLogoUrl,
+  } = params;
+  const subject = `FINAL NOTICE — outstanding levy — ${subdivisionName}`;
+
+  if (isDryRun()) {
+    console.log(`[email-dry-run] type=levy_final_notice to=${to} ref=${referenceNumber} days=${daysOverdue} subject="${subject}"`);
+    return { dryRun: true };
+  }
+
+  const interestLine = penaltyInterestAccrued > 0
+    ? `<p style="margin:0 0 4px;font-size:13px;color:#6b7280;">Interest accrued</p><p style="margin:0 0 12px;font-size:14px;font-weight:600;color:#dc2626;">$${penaltyInterestAccrued.toFixed(2)}</p>`
+    : "";
+
+  const ctaBlock = buildCtaBlock(
+    subdivisionShortCode,
+    "my-arrears",
+    "View outstanding balance",
+    "Log in to MSM to view your outstanding balance and pay the levy immediately.",
+  );
+
+  const html = brandShell(`
+    <h2 style="margin:0 0 16px;font-size:20px;font-weight:700;color:#b91c1c;">FINAL NOTICE — levy outstanding</h2>
+    <p style="margin:0 0 20px;color:#1a1f2e;font-size:14px;line-height:1.6;">
+      ${greeting(ownerName)} this is a <strong>final notice</strong> for the unpaid levy at <strong>${escapeHtml(subdivisionAddress)}</strong>. The levy is now more than <strong>${daysOverdue} days</strong> overdue.
+    </p>
+    <div style="background:#fef2f2;border:1px solid #fecaca;border-radius:6px;padding:16px;margin:0 0 24px;">
+      <p style="margin:0 0 4px;font-size:13px;color:#6b7280;">Reference</p>
+      <p style="margin:0 0 12px;font-size:14px;font-weight:600;color:#1a1f2e;">${escapeHtml(referenceNumber)}</p>
+      <p style="margin:0 0 4px;font-size:13px;color:#6b7280;">Original due date</p>
+      <p style="margin:0 0 12px;font-size:14px;color:#1a1f2e;">${escapeHtml(dueDate)}</p>
+      <p style="margin:0 0 4px;font-size:13px;color:#6b7280;">Amount outstanding</p>
+      <p style="margin:0 0 12px;font-size:18px;font-weight:700;color:#b91c1c;">$${amountOutstanding.toFixed(2)}</p>
+      ${interestLine}
+    </div>
+    ${ctaBlock}
+    <p style="margin:0 0 8px;color:#1a1f2e;font-size:14px;line-height:1.5;">
+      If full payment is not received promptly, the owners' corporation may commence recovery action — including, where appropriate, an application to VCAT or referral to a debt-recovery agent. Costs of recovery may be added to the debt under section 32 of the Owners Corporations Act 2006 (Vic).
+    </p>
+    <p style="margin:0;color:#6b7280;font-size:12px;line-height:1.5;">
+      This notice is sent as a statutory communication and cannot be opted out of.
+    </p>
+  `, companyLogoUrl);
+
+  const { data, error } = await getResend().emails.send({
+    from: FROM_LEVIES,
+    to,
+    subject,
+    html,
+  });
+  if (error) {
+    console.error("Failed to send levy_final_notice email:", error);
+    return { error: error.message };
+  }
+  return { success: true, id: data?.id ?? null };
 }
