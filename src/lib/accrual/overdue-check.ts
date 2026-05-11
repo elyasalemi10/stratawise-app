@@ -227,7 +227,7 @@ async function processOverdueLevy(
       .single(),
     supabase
       .from("subdivisions")
-      .select("name, address")
+      .select("name, address, short_code")
       .eq("id", levy.subdivision_id)
       .single(),
     supabase
@@ -241,10 +241,10 @@ async function processOverdueLevy(
   const ownerName = formatOwnerName(
     owner as { first_name: string | null; last_name: string | null } | null,
   );
-  const subdivisionName =
-    (sub as { name: string } | null)?.name ?? "Your subdivision";
-  const subdivisionAddress =
-    (sub as { address: string } | null)?.address ?? "";
+  const subRow = sub as { name: string; address: string; short_code: string } | null;
+  const subdivisionName = subRow?.name ?? "Your subdivision";
+  const subdivisionAddress = subRow?.address ?? "";
+  const subdivisionShortCode = subRow?.short_code ?? "";
   const lotLabel = formatLotLabel(
     lot as { lot_number: number; unit_number: string | null } | null,
   );
@@ -268,6 +268,7 @@ async function processOverdueLevy(
     daysOverdue: 14,
     dueDate: levy.due_date,
     penaltyInterestAccrued,
+    subdivisionShortCode,
   };
 
   // ─── communication_log queued ────────────────────────────────────

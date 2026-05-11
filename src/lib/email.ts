@@ -403,12 +403,13 @@ export interface SendOverdueReminderEmailParams extends SharedSenderHeader {
   daysOverdue: number;
   dueDate: string;
   penaltyInterestAccrued: number; // 0 if no accrual yet
+  subdivisionShortCode: string;   // for /my-arrears CTA link
 }
 
 export async function sendOverdueReminderEmail(
   params: SendOverdueReminderEmailParams,
 ): Promise<EmailSendResult> {
-  const { to, ownerName, subdivisionName, subdivisionAddress, referenceNumber, amountOutstanding, daysOverdue, dueDate, penaltyInterestAccrued } = params;
+  const { to, ownerName, subdivisionName, subdivisionAddress, referenceNumber, amountOutstanding, daysOverdue, dueDate, penaltyInterestAccrued, subdivisionShortCode } = params;
   const subject = `Your levy is overdue — ${subdivisionName}`;
 
   if (isDryRun()) {
@@ -419,6 +420,21 @@ export async function sendOverdueReminderEmail(
   const interestLine = penaltyInterestAccrued > 0
     ? `<p style="margin:0 0 4px;font-size:13px;color:#6b7280;">Interest accrued</p><p style="margin:0 0 12px;font-size:14px;font-weight:600;color:#dc2626;">$${penaltyInterestAccrued.toFixed(2)}</p>`
     : "";
+
+  // PP6-D-D-fix: CTA hyperlink to the owner's my-arrears page. Fallback to
+  // plain text when NEXT_PUBLIC_APP_URL is unset (avoids rendering a broken
+  // anchor with a relative href).
+  const appBaseUrl = process.env.NEXT_PUBLIC_APP_URL?.replace(/\/$/, "") ?? "";
+  const ctaBlock = appBaseUrl
+    ? `<p style="margin:0 0 16px;color:#1a1f2e;font-size:14px;line-height:1.6;">
+        Click below to see your arrears, payment options, and full ledger.
+      </p>
+      <a href="${appBaseUrl}/subdivisions/${escapeHtml(subdivisionShortCode)}/my-arrears" style="display:inline-block;background:#2b7fff;color:#ffffff;font-size:14px;font-weight:600;text-decoration:none;padding:10px 24px;border-radius:6px;margin:0 0 24px;">
+        View outstanding balance
+      </a>`
+    : `<p style="margin:0 0 24px;color:#1a1f2e;font-size:14px;">
+        Log in to MSM to view your outstanding balance, payment options, and full ledger.
+      </p>`;
 
   const html = brandShell(`
     <h2 style="margin:0 0 16px;font-size:20px;font-weight:600;color:#1a1f2e;">Levy overdue — friendly reminder</h2>
@@ -434,9 +450,7 @@ export async function sendOverdueReminderEmail(
       <p style="margin:0 0 12px;font-size:18px;font-weight:700;color:#1a1f2e;">$${amountOutstanding.toFixed(2)}</p>
       ${interestLine}
     </div>
-    <p style="margin:0 0 8px;color:#1a1f2e;font-size:14px;">
-      Please log in to the MSM owner portal for payment instructions and your full ledger.
-    </p>
+    ${ctaBlock}
     <p style="margin:0;color:#6b7280;font-size:12px;line-height:1.5;">
       Continued non-payment may result in further reminders and late fees in line with your strata rules.
     </p>
