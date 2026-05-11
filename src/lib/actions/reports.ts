@@ -327,3 +327,488 @@ export async function getSubdivisionLots(subdivisionId: string) {
     owner_display_name: owners.get(l.id)?.owner_display_name ?? null,
   }));
 }
+
+// ============================================================================
+// PP7-B: new manager reports
+// ----------------------------------------------------------------------------
+// Three reports added in PP7-B that don't duplicate the existing 6:
+//   - Outstanding arrears (per-lot aggregate; principal + interest + ageing)
+//   - Owner statement (per-lot ledger over a date range)
+//   - Trust account summary (per-bank-account inflows/outflows + reconciled)
+// ============================================================================
+
+// ─── Outstanding Arrears ───────────────────────────────────
+
+export interface OutstandingArrearsRow {
+  lot_id: string;
+  lot_number: number;
+  unit_number: string | null;
+  owner_display_name: string | null;
+  principal_outstanding: number;
+  interest_outstanding: number;
+  total_outstanding: number;
+  oldest_due_date: string | null;
+  days_overdue: number; // 0 when nothing overdue (i.e. earliest still future)
+  bucket: "current" | "0_30" | "31_60" | "61_plus";
+}
+
+export async function getOutstandingArrearsReport(
+  subdivisionId: string,
+  asOfDateIso?: string,
+): Promise<OutstandingArrearsRow[]> {
+  // Manager-only: requireSubdivisionAccess is sufficient (it gates on
+  // role + company membership). Owner role doesn't reach here from the
+  // UI (managerOnly: true on the report card).
+  await requireSubdivisionAccess(subdivisionId);
+  const supabase = createServerClient();
+
+  const asOf = asOfDateIso ?? new Date().toISOString().slice(0, 10);
+
+  // Pull all unpaid levy_notices for the subdivision. Includes
+  // penalty_interest sub-rows; we'll split them out per lot.
+  const { data: noticesData } = await supabase
+    .from("levy_notices")
+    .select(
+      "id, lot_id, amount, amount_paid, due_date, status, levy_type, linked_levy_id",
+    )
+    .eq("subdivision_id", subdivisionId)
+    .in("status", ["issued", "partially_paid", "overdue"]);
+
+  const notices = (noticesData ?? []) as Array<{
+    id: string;
+    lot_id: string;
+    amount: number | string;
+    amount_paid: number | string;
+    due_date: string;
+    status: string;
+    levy_type: string;
+    linked_levy_id: string | null;
+  }>;
+
+  // Aggregate per-lot.
+  type Agg = {
+    principal: number;
+    interest: number;
+    oldestDue: string | null;
+  };
+  const perLot = new Map<string, Agg>();
+  for (const n of notices) {
+    const outstanding = Number(n.amount) - Number(n.amount_paid);
+    if (outstanding <= 0) continue;
+    const entry = perLot.get(n.lot_id) ?? {
+      principal: 0,
+      interest: 0,
+      oldestDue: null,
+    };
+    if (n.levy_type === "penalty_interest") {
+      entry.interest += outstanding;
+    } else {
+      entry.principal += outstanding;
+    }
+    // Track oldest due_date across principal notices only (interest's
+    // due_date is its own accrual date; not meaningful for ageing).
+    if (n.levy_type !== "penalty_interest") {
+      if (!entry.oldestDue || n.due_date < entry.oldestDue) {
+        entry.oldestDue = n.due_date;
+      }
+    }
+    perLot.set(n.lot_id, entry);
+  }
+
+  const lotIds = Array.from(perLot.keys());
+  if (lotIds.length === 0) return [];
+
+  // Hydrate lot metadata + owners.
+  const { data: lotsData } = await supabase
+    .from("lots")
+    .select("id, lot_number, unit_number")
+    .in("id", lotIds)
+    .order("lot_number");
+  const lots = (lotsData ?? []) as Array<{
+    id: string;
+    lot_number: number;
+    unit_number: string | null;
+  }>;
+  const owners = await getLotOwners(supabase, lotIds);
+
+  const rows: OutstandingArrearsRow[] = lots.map((lot) => {
+    const agg = perLot.get(lot.id)!;
+    const total = round2(agg.principal + agg.interest);
+    const daysOverdue = agg.oldestDue
+      ? Math.max(0, daysBetweenIso(agg.oldestDue, asOf))
+      : 0;
+    const bucket: OutstandingArrearsRow["bucket"] =
+      daysOverdue === 0
+        ? "current"
+        : daysOverdue <= 30
+        ? "0_30"
+        : daysOverdue <= 60
+        ? "31_60"
+        : "61_plus";
+    return {
+      lot_id: lot.id,
+      lot_number: lot.lot_number,
+      unit_number: lot.unit_number,
+      owner_display_name: owners.get(lot.id)?.owner_display_name ?? null,
+      principal_outstanding: round2(agg.principal),
+      interest_outstanding: round2(agg.interest),
+      total_outstanding: total,
+      oldest_due_date: agg.oldestDue,
+      days_overdue: daysOverdue,
+      bucket,
+    };
+  });
+
+  // Sort by total outstanding desc — managers want the biggest arrears first.
+  rows.sort((a, b) => b.total_outstanding - a.total_outstanding);
+  return rows;
+}
+
+// ─── Owner Statement (per-lot ledger over a date range) ────
+
+export interface OwnerStatementEntry {
+  entry_date: string;
+  category: string;
+  description: string | null;
+  debit: number;     // 0 when entry is a credit
+  credit: number;    // 0 when entry is a debit
+  reference: string | null;
+  balance_after: number;
+}
+
+export interface OwnerStatementReport {
+  lot_id: string;
+  lot_number: number;
+  unit_number: string | null;
+  owner_display_name: string | null;
+  from_date: string;
+  to_date: string;
+  opening_balance: number;
+  closing_balance: number;
+  entries: OwnerStatementEntry[];
+}
+
+export async function getOwnerStatement(
+  subdivisionId: string,
+  lotId: string,
+  fromDateIso: string,
+  toDateIso: string,
+): Promise<OwnerStatementReport> {
+  // Authz: owners can pull their own; managers can pull any. requireSubdivisionAccess
+  // gates company membership; we add a per-lot check for lot_owner role.
+  const profile = await getCurrentProfile();
+  if (!profile) throw new Error("Not authenticated");
+  await requireSubdivisionAccess(subdivisionId);
+
+  const supabase = createServerClient();
+
+  if (profile.role === "lot_owner") {
+    const { data: memberRow } = await supabase
+      .from("subdivision_members")
+      .select("id")
+      .eq("subdivision_id", subdivisionId)
+      .eq("profile_id", profile.id)
+      .eq("lot_id", lotId)
+      .is("left_at", null)
+      .maybeSingle();
+    if (!memberRow) throw new Error("Forbidden");
+  }
+
+  // Hydrate lot + owner.
+  const { data: lotRow } = await supabase
+    .from("lots")
+    .select("id, lot_number, unit_number")
+    .eq("id", lotId)
+    .single();
+  if (!lotRow) throw new Error("Lot not found");
+  const lot = lotRow as { id: string; lot_number: number; unit_number: string | null };
+  const owners = await getLotOwners(supabase, [lot.id]);
+
+  // Opening balance = sum of (credit − debit) across active entries with
+  // entry_date < fromDate. (Voided entries cancel via their void_offset
+  // counterpart; both stay active per the ledger model so the SUM still
+  // nets to zero.)
+  const { data: openingRows } = await supabase
+    .from("lot_ledger_entries")
+    .select("entry_type, amount")
+    .eq("lot_id", lotId)
+    .lt("entry_date", fromDateIso)
+    .eq("status", "active");
+  const opening = (openingRows ?? []).reduce((acc: number, r: { entry_type: string; amount: number | string }) => {
+    const v = Number(r.amount);
+    return r.entry_type === "credit" ? acc + v : acc - v;
+  }, 0);
+
+  // Window entries.
+  const { data: windowRows } = await supabase
+    .from("lot_ledger_entries")
+    .select("id, entry_date, entry_type, category, amount, reference, description")
+    .eq("lot_id", lotId)
+    .gte("entry_date", fromDateIso)
+    .lte("entry_date", toDateIso)
+    .eq("status", "active")
+    .order("entry_date", { ascending: true })
+    .order("created_at", { ascending: true });
+
+  let running = opening;
+  const entries: OwnerStatementEntry[] = (windowRows ?? []).map((r: {
+    entry_date: string;
+    entry_type: string;
+    category: string;
+    amount: number | string;
+    reference: string | null;
+    description: string | null;
+  }) => {
+    const v = Number(r.amount);
+    const debit = r.entry_type === "debit" ? v : 0;
+    const credit = r.entry_type === "credit" ? v : 0;
+    running = round2(running + (credit - debit));
+    return {
+      entry_date: r.entry_date,
+      category: r.category,
+      description: r.description,
+      debit: round2(debit),
+      credit: round2(credit),
+      reference: r.reference,
+      balance_after: running,
+    };
+  });
+
+  return {
+    lot_id: lot.id,
+    lot_number: lot.lot_number,
+    unit_number: lot.unit_number,
+    owner_display_name: owners.get(lot.id)?.owner_display_name ?? null,
+    from_date: fromDateIso,
+    to_date: toDateIso,
+    opening_balance: round2(opening),
+    closing_balance: round2(running),
+    entries,
+  };
+}
+
+// ─── Trust Account Summary ─────────────────────────────────
+
+export interface TrustAccountSummaryRow {
+  bank_account_id: string;
+  account_name: string;
+  bsb: string;
+  account_number: string;
+  fund_type: string;
+  bank_name: string | null;
+  opening_balance: number;
+  inflows: number;
+  outflows: number;
+  closing_balance: number;
+  transaction_count: number;
+  reconciled_count: number;
+  unreconciled_count: number;
+  last_sync_at: string | null;
+}
+
+export async function getTrustAccountSummary(
+  subdivisionId: string,
+  fromDateIso: string,
+  toDateIso: string,
+): Promise<TrustAccountSummaryRow[]> {
+  await requireSubdivisionAccess(subdivisionId);
+  const supabase = createServerClient();
+
+  const { data: accountsData } = await supabase
+    .from("bank_accounts")
+    .select(
+      "id, account_name, bsb, account_number, fund_type, bank_name, opening_balance, opening_balance_date, last_sync_at",
+    )
+    .eq("subdivision_id", subdivisionId)
+    .order("account_name");
+  const accounts = (accountsData ?? []) as Array<{
+    id: string;
+    account_name: string;
+    bsb: string;
+    account_number: string;
+    fund_type: string;
+    bank_name: string | null;
+    opening_balance: number | string;
+    opening_balance_date: string | null;
+    last_sync_at: string | null;
+  }>;
+
+  const rows: TrustAccountSummaryRow[] = [];
+  for (const acc of accounts) {
+    // Bank txns: opening (from opening_balance + everything before fromDate),
+    // window (between fromDate and toDate inclusive).
+    const { data: priorTxns } = await supabase
+      .from("bank_transactions")
+      .select("amount, match_status")
+      .eq("bank_account_id", acc.id)
+      .lt("transaction_date", fromDateIso);
+    const { data: windowTxns } = await supabase
+      .from("bank_transactions")
+      .select("amount, match_status")
+      .eq("bank_account_id", acc.id)
+      .gte("transaction_date", fromDateIso)
+      .lte("transaction_date", toDateIso);
+
+    const opening = Number(acc.opening_balance ?? 0)
+      + (priorTxns ?? []).reduce((s: number, t: { amount: number | string }) => s + Number(t.amount), 0);
+    const win = (windowTxns ?? []) as Array<{ amount: number | string; match_status: string }>;
+    let inflows = 0;
+    let outflows = 0;
+    let reconciled = 0;
+    let unreconciled = 0;
+    for (const t of win) {
+      const v = Number(t.amount);
+      if (v >= 0) inflows += v;
+      else outflows += -v;
+      if (t.match_status === "auto_matched" || t.match_status === "manually_matched") {
+        reconciled += 1;
+      } else if (t.match_status === "unmatched") {
+        unreconciled += 1;
+      }
+    }
+    const closing = opening + inflows - outflows;
+
+    rows.push({
+      bank_account_id: acc.id,
+      account_name: acc.account_name,
+      bsb: acc.bsb,
+      account_number: acc.account_number,
+      fund_type: acc.fund_type,
+      bank_name: acc.bank_name,
+      opening_balance: round2(opening),
+      inflows: round2(inflows),
+      outflows: round2(outflows),
+      closing_balance: round2(closing),
+      transaction_count: win.length,
+      reconciled_count: reconciled,
+      unreconciled_count: unreconciled,
+      last_sync_at: acc.last_sync_at,
+    });
+  }
+  return rows;
+}
+
+// ─── CSV export helpers (PP7-B) ───────────────────────────
+
+function csvEscape(value: string | number | null | undefined): string {
+  if (value === null || value === undefined) return "";
+  const s = String(value);
+  if (s.includes(",") || s.includes('"') || s.includes("\n")) {
+    return `"${s.replace(/"/g, '""')}"`;
+  }
+  return s;
+}
+
+function csvRow(values: Array<string | number | null | undefined>): string {
+  return values.map(csvEscape).join(",");
+}
+
+export function outstandingArrearsToCsv(rows: OutstandingArrearsRow[]): string {
+  const header = csvRow([
+    "Lot",
+    "Unit",
+    "Owner",
+    "Principal outstanding",
+    "Interest outstanding",
+    "Total outstanding",
+    "Oldest due date",
+    "Days overdue",
+    "Ageing bucket",
+  ]);
+  const body = rows.map((r) =>
+    csvRow([
+      r.lot_number,
+      r.unit_number ?? "",
+      r.owner_display_name ?? "",
+      r.principal_outstanding.toFixed(2),
+      r.interest_outstanding.toFixed(2),
+      r.total_outstanding.toFixed(2),
+      r.oldest_due_date ?? "",
+      r.days_overdue,
+      r.bucket,
+    ]),
+  );
+  return [header, ...body].join("\n");
+}
+
+export function ownerStatementToCsv(report: OwnerStatementReport): string {
+  const meta = [
+    csvRow(["Lot", report.lot_number]),
+    csvRow(["Unit", report.unit_number ?? ""]),
+    csvRow(["Owner", report.owner_display_name ?? ""]),
+    csvRow(["From", report.from_date]),
+    csvRow(["To", report.to_date]),
+    csvRow(["Opening balance", report.opening_balance.toFixed(2)]),
+    csvRow(["Closing balance", report.closing_balance.toFixed(2)]),
+    "",
+  ];
+  const header = csvRow([
+    "Date",
+    "Category",
+    "Description",
+    "Reference",
+    "Debit",
+    "Credit",
+    "Balance after",
+  ]);
+  const body = report.entries.map((e) =>
+    csvRow([
+      e.entry_date,
+      e.category,
+      e.description ?? "",
+      e.reference ?? "",
+      e.debit > 0 ? e.debit.toFixed(2) : "",
+      e.credit > 0 ? e.credit.toFixed(2) : "",
+      e.balance_after.toFixed(2),
+    ]),
+  );
+  return [...meta, header, ...body].join("\n");
+}
+
+export function trustAccountSummaryToCsv(rows: TrustAccountSummaryRow[]): string {
+  const header = csvRow([
+    "Account name",
+    "BSB",
+    "Account number",
+    "Fund type",
+    "Bank",
+    "Opening balance",
+    "Inflows",
+    "Outflows",
+    "Closing balance",
+    "Transactions",
+    "Reconciled",
+    "Unreconciled",
+    "Last sync",
+  ]);
+  const body = rows.map((r) =>
+    csvRow([
+      r.account_name,
+      r.bsb,
+      r.account_number,
+      r.fund_type,
+      r.bank_name ?? "",
+      r.opening_balance.toFixed(2),
+      r.inflows.toFixed(2),
+      r.outflows.toFixed(2),
+      r.closing_balance.toFixed(2),
+      r.transaction_count,
+      r.reconciled_count,
+      r.unreconciled_count,
+      r.last_sync_at ?? "",
+    ]),
+  );
+  return [header, ...body].join("\n");
+}
+
+// ─── Internal helpers ─────────────────────────────────────
+
+function round2(n: number): number {
+  return Math.round(n * 100) / 100;
+}
+
+function daysBetweenIso(fromIso: string, toIso: string): number {
+  const a = new Date(fromIso + "T00:00:00Z").getTime();
+  const b = new Date(toIso + "T00:00:00Z").getTime();
+  return Math.floor((b - a) / (1000 * 60 * 60 * 24));
+}

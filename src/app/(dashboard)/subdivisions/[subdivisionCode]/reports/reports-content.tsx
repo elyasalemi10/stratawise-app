@@ -19,6 +19,12 @@ import {
   getCommunicationLog,
   getAuditTrail,
   getOCCertificateData,
+  getOutstandingArrearsReport,
+  getOwnerStatement,
+  getTrustAccountSummary,
+  outstandingArrearsToCsv,
+  ownerStatementToCsv,
+  trustAccountSummaryToCsv,
 } from "@/lib/actions/reports";
 import {
   LevyHistoryReport,
@@ -26,6 +32,9 @@ import {
   LotRegisterReport,
   CommLogReport,
   AuditTrailReport,
+  OutstandingArrearsReport,
+  OwnerStatementReportPdf,
+  TrustAccountSummaryReport,
 } from "@/lib/pdf/templates/report";
 import { OCCertificate } from "@/lib/pdf/templates/oc-certificate";
 
@@ -36,10 +45,22 @@ interface LotOption {
   owner_display_name: string | null;
 }
 
-type ReportType = "levy_history" | "insurance_status" | "lot_register" | "communication_log" | "audit_trail" | "oc_certificate";
+type ReportType =
+  | "levy_history"
+  | "insurance_status"
+  | "lot_register"
+  | "communication_log"
+  | "audit_trail"
+  | "oc_certificate"
+  | "outstanding_arrears"
+  | "owner_statement"
+  | "trust_account_summary";
 
 const REPORTS: { id: ReportType; label: string; managerOnly: boolean }[] = [
   { id: "oc_certificate", label: "Owners Corporation Certificate", managerOnly: true },
+  { id: "outstanding_arrears", label: "Outstanding arrears", managerOnly: true },
+  { id: "owner_statement", label: "Owner statement", managerOnly: false },
+  { id: "trust_account_summary", label: "Trust account summary", managerOnly: true },
   { id: "levy_history", label: "Levy history", managerOnly: false },
   { id: "insurance_status", label: "Insurance status", managerOnly: false },
   { id: "lot_register", label: "Lot owner register", managerOnly: false },
@@ -89,6 +110,17 @@ export function ReportsContent({
   const [prefilling, setPrefilling] = useState(false);
   const [generating, setGenerating] = useState(false);
   const [pdfUrl, setPdfUrl] = useState<string | null>(null);
+  // PP7-B: shared date-range state for outstanding_arrears (as-of) +
+  // owner_statement / trust_account_summary (from/to range).
+  const todayIso = new Date().toISOString().slice(0, 10);
+  const ninetyDaysAgoIso = new Date(Date.now() - 90 * 86400000)
+    .toISOString()
+    .slice(0, 10);
+  const [asOfDate, setAsOfDate] = useState<string>(todayIso);
+  const [rangeFrom, setRangeFrom] = useState<string>(ninetyDaysAgoIso);
+  const [rangeTo, setRangeTo] = useState<string>(todayIso);
+  // CSV holder for the 3 new reports (PDF holder is pdfUrl).
+  const [csvBlobUrl, setCsvBlobUrl] = useState<string | null>(null);
 
   // Prefill fee fields when lot changes
   useEffect(() => {
@@ -133,6 +165,7 @@ export function ReportsContent({
 
     setGenerating(true);
     setPdfUrl(null);
+    setCsvBlobUrl(null);
 
     try {
       const subName = `${subdivisionName} · ${subdivisionPlanNumber}`;
@@ -140,6 +173,9 @@ export function ReportsContent({
       const logoDataUrl = await getLogoDataUrl();
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       let element: any;
+      // PP7-B: holds CSV string for the 3 new reports; converted to a blob
+      // URL after the switch.
+      let csvString: string | null = null;
 
       switch (reportType) {
         case "levy_history": {
@@ -206,13 +242,59 @@ export function ReportsContent({
           element = createElement(OCCertificate, { ...certData, logoUrl: certLogo, signatureUrl: certSig });
           break;
         }
+        case "outstanding_arrears": {
+          const data = await getOutstandingArrearsReport(subdivisionId, asOfDate);
+          element = createElement(OutstandingArrearsReport, {
+            data,
+            title: "Outstanding Arrears Report",
+            subtitle: subName,
+            address: subAddr,
+            logoUrl: logoDataUrl,
+            asOfDate,
+          });
+          csvString = outstandingArrearsToCsv(data);
+          break;
+        }
+        case "owner_statement": {
+          if (!selectedLotId) { toast.error("Select a lot"); setGenerating(false); return; }
+          const report = await getOwnerStatement(subdivisionId, selectedLotId, rangeFrom, rangeTo);
+          element = createElement(OwnerStatementReportPdf, {
+            report,
+            title: "Owner Statement",
+            subtitle: subName,
+            address: subAddr,
+            logoUrl: logoDataUrl,
+          });
+          csvString = ownerStatementToCsv(report);
+          break;
+        }
+        case "trust_account_summary": {
+          const data = await getTrustAccountSummary(subdivisionId, rangeFrom, rangeTo);
+          element = createElement(TrustAccountSummaryReport, {
+            data,
+            title: "Trust Account Summary",
+            subtitle: subName,
+            address: subAddr,
+            logoUrl: logoDataUrl,
+            fromDate: rangeFrom,
+            toDate: rangeTo,
+          });
+          csvString = trustAccountSummaryToCsv(data);
+          break;
+        }
       }
 
       const blob = await pdf(element).toBlob();
       const url = URL.createObjectURL(blob);
       setPdfUrl(url);
+
+      if (csvString) {
+        const csvBlob = new Blob([csvString], { type: "text/csv;charset=utf-8" });
+        setCsvBlobUrl(URL.createObjectURL(csvBlob));
+      }
     } catch (err) {
       console.error("Failed to generate report:", err);
+      toast.error(`Failed to generate report: ${err instanceof Error ? err.message : String(err)}`);
     }
 
     setGenerating(false);
@@ -229,6 +311,9 @@ export function ReportsContent({
       lot_register: "Lot-Owner-Register",
       communication_log: "Communication-Log",
       audit_trail: "Audit-Trail",
+      outstanding_arrears: "Outstanding-Arrears",
+      owner_statement: "Owner-Statement",
+      trust_account_summary: "Trust-Account-Summary",
     };
     const dateStr = new Date().toISOString().split("T")[0];
     const subSlug = subdivisionName.replace(/\s+/g, "-");
@@ -275,6 +360,57 @@ export function ReportsContent({
                   ))}
                 </select>
               </div>
+            )}
+
+            {/* PP7-B: As-of date for Outstanding arrears */}
+            {reportType === "outstanding_arrears" && (
+              <div className="space-y-1.5 min-w-[160px]">
+                <Label>As of</Label>
+                <Input type="date" value={asOfDate} onChange={(e) => setAsOfDate(e.target.value)} className="h-9" />
+              </div>
+            )}
+
+            {/* PP7-B: Lot + date range for Owner statement */}
+            {reportType === "owner_statement" && (
+              <>
+                <div className="space-y-1.5 min-w-[200px]">
+                  <Label>Lot</Label>
+                  <select
+                    value={selectedLotId}
+                    onChange={(e) => setSelectedLotId(e.target.value)}
+                    className="h-9 w-full rounded-md border border-border bg-background px-3 text-sm outline-none focus:border-primary focus:ring-2 focus:ring-primary/20"
+                  >
+                    <option value="">Select lot...</option>
+                    {lots.map((lot) => (
+                      <option key={lot.id} value={lot.id}>
+                        Lot {lot.lot_number}{lot.owner_display_name ? ` — ${lot.owner_display_name}` : ""}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+                <div className="space-y-1.5 min-w-[140px]">
+                  <Label>From</Label>
+                  <Input type="date" value={rangeFrom} onChange={(e) => setRangeFrom(e.target.value)} className="h-9" />
+                </div>
+                <div className="space-y-1.5 min-w-[140px]">
+                  <Label>To</Label>
+                  <Input type="date" value={rangeTo} onChange={(e) => setRangeTo(e.target.value)} className="h-9" />
+                </div>
+              </>
+            )}
+
+            {/* PP7-B: Date range for Trust account summary */}
+            {reportType === "trust_account_summary" && (
+              <>
+                <div className="space-y-1.5 min-w-[140px]">
+                  <Label>From</Label>
+                  <Input type="date" value={rangeFrom} onChange={(e) => setRangeFrom(e.target.value)} className="h-9" />
+                </div>
+                <div className="space-y-1.5 min-w-[140px]">
+                  <Label>To</Label>
+                  <Input type="date" value={rangeTo} onChange={(e) => setRangeTo(e.target.value)} className="h-9" />
+                </div>
+              </>
             )}
 
             {/* OC Certificate fields */}
@@ -422,6 +558,29 @@ export function ReportsContent({
               <Button variant="outline" onClick={handleDownload} className="cursor-pointer">
                 <Download className="mr-2 h-4 w-4" />
                 Download PDF
+              </Button>
+            )}
+
+            {csvBlobUrl && (
+              <Button
+                variant="outline"
+                onClick={() => {
+                  const a = document.createElement("a");
+                  a.href = csvBlobUrl;
+                  const reportNames: Record<string, string> = {
+                    outstanding_arrears: "Outstanding-Arrears",
+                    owner_statement: "Owner-Statement",
+                    trust_account_summary: "Trust-Account-Summary",
+                  };
+                  const dateStr = new Date().toISOString().split("T")[0];
+                  const subSlug = subdivisionName.replace(/\s+/g, "-");
+                  a.download = `${reportNames[reportType] ?? reportType}-${subSlug}-${dateStr}.csv`;
+                  a.click();
+                }}
+                className="cursor-pointer"
+              >
+                <Download className="mr-2 h-4 w-4" />
+                Download CSV
               </Button>
             )}
           </div>

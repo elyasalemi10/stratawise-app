@@ -416,3 +416,293 @@ export function AuditTrailReport({ data, title, subtitle, address, logoUrl }: { 
     </Document>
   );
 }
+
+// ─── PP7-B: Outstanding Arrears Report ────────────────────
+
+export interface OutstandingArrearsRowData {
+  lot_number: number;
+  unit_number: string | null;
+  owner_display_name: string | null;
+  principal_outstanding: number;
+  interest_outstanding: number;
+  total_outstanding: number;
+  oldest_due_date: string | null;
+  days_overdue: number;
+  bucket: "current" | "0_30" | "31_60" | "61_plus";
+}
+
+export function OutstandingArrearsReport({
+  data,
+  title,
+  subtitle,
+  address,
+  logoUrl,
+  asOfDate,
+}: {
+  data: OutstandingArrearsRowData[];
+  title: string;
+  subtitle: string;
+  address?: string;
+  logoUrl?: string | null;
+  asOfDate: string;
+}) {
+  const total = data.reduce((sum, r) => sum + r.total_outstanding, 0);
+  const principal = data.reduce((sum, r) => sum + r.principal_outstanding, 0);
+  const interest = data.reduce((sum, r) => sum + r.interest_outstanding, 0);
+
+  const info = [
+    { label: "Subdivision", value: subtitle },
+    ...(address ? [{ label: "Address", value: address }] : []),
+    { label: "As of", value: fmtDate(asOfDate) },
+    { label: "Lots in arrears", value: String(data.length) },
+  ];
+
+  return (
+    <Document>
+      <Page size="A4" style={s.page} wrap>
+        <ReportHeader title={title} logoUrl={logoUrl} info={info} />
+        <View style={s.tableHeader}>
+          <Text style={[s.th, { width: "8%" }]}>Lot</Text>
+          <Text style={[s.th, { width: "22%" }]}>Owner</Text>
+          <Text style={[s.th, { width: "14%" }]}>Oldest due</Text>
+          <Text style={[s.th, { width: "10%", textAlign: "right" as const }]}>Days</Text>
+          <Text style={[s.th, { width: "14%", textAlign: "right" as const }]}>Principal</Text>
+          <Text style={[s.th, { width: "14%", textAlign: "right" as const }]}>Interest</Text>
+          <Text style={[s.th, { width: "18%", textAlign: "right" as const }]}>Total outstanding</Text>
+        </View>
+        {data.map((r, i) => (
+          <View key={i} style={i % 2 === 0 ? s.rowStriped : s.row} wrap={false}>
+            <Text style={[s.td, { width: "8%" }]}>{r.lot_number}{r.unit_number ? ` / ${r.unit_number}` : ""}</Text>
+            <Text style={[s.td, { width: "22%" }]}>{r.owner_display_name ?? "—"}</Text>
+            <Text style={[s.tdMuted, { width: "14%" }]}>{r.oldest_due_date ? fmtDate(r.oldest_due_date) : "—"}</Text>
+            <Text style={[s.tdRight, { width: "10%" }]}>{r.days_overdue}</Text>
+            <Text style={[s.tdRight, { width: "14%" }]}>{fmt(r.principal_outstanding)}</Text>
+            <Text style={[s.tdRight, { width: "14%" }]}>{fmt(r.interest_outstanding)}</Text>
+            <Text style={[s.tdRight, { width: "18%", fontWeight: 700 }]}>{fmt(r.total_outstanding)}</Text>
+          </View>
+        ))}
+        <View style={s.summarySection}>
+          <View style={s.summaryRow}>
+            <Text style={s.summaryLabel}>Principal outstanding</Text>
+            <Text style={s.summaryValue}>{fmt(principal)}</Text>
+          </View>
+          <View style={s.summaryRow}>
+            <Text style={s.summaryLabel}>Interest outstanding</Text>
+            <Text style={s.summaryValue}>{fmt(interest)}</Text>
+          </View>
+          <View style={s.summaryRow}>
+            <Text style={s.summaryLabel}>Total outstanding</Text>
+            <Text style={[s.summaryValue, { color: c.red }]}>{fmt(total)}</Text>
+          </View>
+        </View>
+        <ReportFooter label="Outstanding Arrears" />
+      </Page>
+    </Document>
+  );
+}
+
+// ─── PP7-B: Owner Statement Report ────────────────────────
+
+export interface OwnerStatementEntryData {
+  entry_date: string;
+  category: string;
+  description: string | null;
+  debit: number;
+  credit: number;
+  reference: string | null;
+  balance_after: number;
+}
+
+export interface OwnerStatementReportData {
+  lot_number: number;
+  unit_number: string | null;
+  owner_display_name: string | null;
+  from_date: string;
+  to_date: string;
+  opening_balance: number;
+  closing_balance: number;
+  entries: OwnerStatementEntryData[];
+}
+
+export function OwnerStatementReportPdf({
+  report,
+  title,
+  subtitle,
+  address,
+  logoUrl,
+}: {
+  report: OwnerStatementReportData;
+  title: string;
+  subtitle: string;
+  address?: string;
+  logoUrl?: string | null;
+}) {
+  const lotLabel = `${report.lot_number}${report.unit_number ? ` / ${report.unit_number}` : ""}`;
+  const info = [
+    { label: "Subdivision", value: subtitle },
+    ...(address ? [{ label: "Address", value: address }] : []),
+    { label: "Lot", value: lotLabel },
+    ...(report.owner_display_name ? [{ label: "Owner", value: report.owner_display_name }] : []),
+    { label: "Period", value: `${fmtDate(report.from_date)} – ${fmtDate(report.to_date)}` },
+  ];
+
+  return (
+    <Document>
+      <Page size="A4" style={s.page} wrap>
+        <ReportHeader title={title} logoUrl={logoUrl} info={info} />
+        <View style={[s.summaryRow, { marginBottom: 10, paddingHorizontal: 0 }]}>
+          <Text style={s.summaryLabel}>Opening balance</Text>
+          <Text style={s.summaryValue}>{fmt(report.opening_balance)}</Text>
+        </View>
+        <View style={s.tableHeader}>
+          <Text style={[s.th, { width: "12%" }]}>Date</Text>
+          <Text style={[s.th, { width: "16%" }]}>Category</Text>
+          <Text style={[s.th, { width: "30%" }]}>Description</Text>
+          <Text style={[s.th, { width: "12%" }]}>Reference</Text>
+          <Text style={[s.th, { width: "10%", textAlign: "right" as const }]}>Debit</Text>
+          <Text style={[s.th, { width: "10%", textAlign: "right" as const }]}>Credit</Text>
+          <Text style={[s.th, { width: "10%", textAlign: "right" as const }]}>Balance</Text>
+        </View>
+        {report.entries.length === 0 ? (
+          <View style={s.row} wrap={false}>
+            <Text style={[s.tdMuted, { width: "100%", textAlign: "center" as const, paddingVertical: 12 }]}>
+              No entries in this period.
+            </Text>
+          </View>
+        ) : (
+          report.entries.map((e, i) => (
+            <View key={i} style={i % 2 === 0 ? s.rowStriped : s.row} wrap={false}>
+              <Text style={[s.tdMuted, { width: "12%" }]}>{fmtDate(e.entry_date)}</Text>
+              <Text style={[s.td, { width: "16%" }]}>{capitalize(e.category)}</Text>
+              <Text style={[s.td, { width: "30%" }]}>{e.description ?? "—"}</Text>
+              <Text style={[s.tdMuted, { width: "12%" }]}>{e.reference ?? "—"}</Text>
+              <Text style={[s.tdRight, { width: "10%" }]}>{e.debit > 0 ? fmt(e.debit) : ""}</Text>
+              <Text style={[s.tdGreen, { width: "10%" }]}>{e.credit > 0 ? fmt(e.credit) : ""}</Text>
+              <Text style={[s.tdRight, { width: "10%", fontWeight: 600 }]}>{fmt(e.balance_after)}</Text>
+            </View>
+          ))
+        )}
+        <View style={s.summarySection}>
+          <View style={s.summaryRow}>
+            <Text style={s.summaryLabel}>Closing balance</Text>
+            <Text style={[s.summaryValue, { color: report.closing_balance < 0 ? c.red : c.foreground }]}>
+              {fmt(report.closing_balance)}
+            </Text>
+          </View>
+        </View>
+        <ReportFooter label="Owner Statement" />
+      </Page>
+    </Document>
+  );
+}
+
+// ─── PP7-B: Trust Account Summary Report ──────────────────
+
+export interface TrustAccountSummaryRowData {
+  account_name: string;
+  bsb: string;
+  account_number: string;
+  fund_type: string;
+  bank_name: string | null;
+  opening_balance: number;
+  inflows: number;
+  outflows: number;
+  closing_balance: number;
+  transaction_count: number;
+  reconciled_count: number;
+  unreconciled_count: number;
+  last_sync_at: string | null;
+}
+
+export function TrustAccountSummaryReport({
+  data,
+  title,
+  subtitle,
+  address,
+  logoUrl,
+  fromDate,
+  toDate,
+}: {
+  data: TrustAccountSummaryRowData[];
+  title: string;
+  subtitle: string;
+  address?: string;
+  logoUrl?: string | null;
+  fromDate: string;
+  toDate: string;
+}) {
+  const totalIn = data.reduce((sum, r) => sum + r.inflows, 0);
+  const totalOut = data.reduce((sum, r) => sum + r.outflows, 0);
+  const totalClosing = data.reduce((sum, r) => sum + r.closing_balance, 0);
+  const totalUnreconciled = data.reduce((sum, r) => sum + r.unreconciled_count, 0);
+
+  const info = [
+    { label: "Subdivision", value: subtitle },
+    ...(address ? [{ label: "Address", value: address }] : []),
+    { label: "Period", value: `${fmtDate(fromDate)} – ${fmtDate(toDate)}` },
+    { label: "Accounts", value: String(data.length) },
+  ];
+
+  return (
+    <Document>
+      <Page size="A4" style={s.page} orientation="landscape" wrap>
+        <ReportHeader title={title} logoUrl={logoUrl} info={info} />
+        <View style={s.tableHeader}>
+          <Text style={[s.th, { width: "20%" }]}>Account</Text>
+          <Text style={[s.th, { width: "10%" }]}>Fund</Text>
+          <Text style={[s.th, { width: "12%" }]}>BSB / Acct</Text>
+          <Text style={[s.th, { width: "11%", textAlign: "right" as const }]}>Opening</Text>
+          <Text style={[s.th, { width: "10%", textAlign: "right" as const }]}>Inflows</Text>
+          <Text style={[s.th, { width: "10%", textAlign: "right" as const }]}>Outflows</Text>
+          <Text style={[s.th, { width: "11%", textAlign: "right" as const }]}>Closing</Text>
+          <Text style={[s.th, { width: "8%", textAlign: "right" as const }]}>Txns</Text>
+          <Text style={[s.th, { width: "8%", textAlign: "right" as const }]}>Unrec.</Text>
+        </View>
+        {data.length === 0 ? (
+          <View style={s.row} wrap={false}>
+            <Text style={[s.tdMuted, { width: "100%", textAlign: "center" as const, paddingVertical: 12 }]}>
+              No bank accounts configured for this subdivision.
+            </Text>
+          </View>
+        ) : (
+          data.map((r, i) => (
+            <View key={i} style={i % 2 === 0 ? s.rowStriped : s.row} wrap={false}>
+              <Text style={[s.td, { width: "20%" }]}>{r.account_name}{r.bank_name ? ` (${r.bank_name})` : ""}</Text>
+              <Text style={[s.tdMuted, { width: "10%" }]}>{capitalize(r.fund_type)}</Text>
+              <Text style={[s.tdMuted, { width: "12%" }]}>{r.bsb} {r.account_number}</Text>
+              <Text style={[s.tdRight, { width: "11%" }]}>{fmt(r.opening_balance)}</Text>
+              <Text style={[s.tdGreen, { width: "10%" }]}>{fmt(r.inflows)}</Text>
+              <Text style={[s.tdRight, { width: "10%", color: c.red }]}>{fmt(r.outflows)}</Text>
+              <Text style={[s.tdRight, { width: "11%", fontWeight: 700 }]}>{fmt(r.closing_balance)}</Text>
+              <Text style={[s.tdRight, { width: "8%" }]}>{r.transaction_count}</Text>
+              <Text style={[s.tdRight, { width: "8%", color: r.unreconciled_count > 0 ? c.red : c.foreground }]}>
+                {r.unreconciled_count}
+              </Text>
+            </View>
+          ))
+        )}
+        <View style={s.summarySection}>
+          <View style={s.summaryRow}>
+            <Text style={s.summaryLabel}>Total inflows</Text>
+            <Text style={s.summaryValue}>{fmt(totalIn)}</Text>
+          </View>
+          <View style={s.summaryRow}>
+            <Text style={s.summaryLabel}>Total outflows</Text>
+            <Text style={s.summaryValue}>{fmt(totalOut)}</Text>
+          </View>
+          <View style={s.summaryRow}>
+            <Text style={s.summaryLabel}>Combined closing balance</Text>
+            <Text style={[s.summaryValue, { color: c.foreground }]}>{fmt(totalClosing)}</Text>
+          </View>
+          {totalUnreconciled > 0 ? (
+            <View style={s.summaryRow}>
+              <Text style={s.summaryLabel}>Unreconciled transactions</Text>
+              <Text style={[s.summaryValue, { color: c.red }]}>{totalUnreconciled}</Text>
+            </View>
+          ) : null}
+        </View>
+        <ReportFooter label="Trust Account Summary" />
+      </Page>
+    </Document>
+  );
+}
