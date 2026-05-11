@@ -1195,6 +1195,236 @@ under "From Prompt 5").**
 - RLS policies on `owner_payment_claims` (deferred; service-role
   bypass + action-layer auth enforced in the meantime).
 
+### What Prompt 6 added
+
+**Scope.** Notifications + interest accrual + owner-facing email surfaces.
+Schema deltas in two stages (PP6-A daily accrual; PP6-C webhook idempotency
+sentinel). Six new owner-facing email senders plus a manager fan-out.
+Settings surface for notification preferences and an owner my-arrears page.
+Resend webhook handler with svix verification and auto-opt-out on
+complaints. Daily overdue-reminder cron + daily interest accrual cron, both
+framework-agnostic (callable from Trigger.dev when the account is
+provisioned, but invocable today via `tsx` scripts and the verification
+harness). PP6-C-3 escalation engine (steps 2 + 3 + final notice) deferred
+to Prompt 6.5 due to headroom — only step 1 of the escalation ladder
+ships in Prompt 6.
+
+**Sub-pause shipping order (11 commits, all on `main`, all Vercel-green
+at deploy; 3 parallel invitation commits from a non-MSM-architect session
+also landed during this window):**
+
+1. PP6-B-A daily interest accrual cron + jobs — commit `463d4d1`
+2. PP6-B-B accrual verification suite (15 IA scenarios) — commit `7569f29`
+3. PP6-C-1 owner email senders + overdue cron + opt-out — commit `9a511ff`
+4. PP6-C-2 Resend webhook + manager claim email + in-app — commit `ec24a57`
+5. PP6-D-A overdue badges + lot ledger interest summary — commit `e4a896f`
+6. PP6-D-B settings notifications + owner my-arrears — commit `6a59d3b`
+7. PP6-D-D-fix-email-leak — verification EMAIL_DRY_RUN gate — commit `b2a723b`
+8. PP6-D-D-fix-overdue-link — hyperlink CTA — commit `81d8b3c`
+9. PP6-D-D-fix-logo — company logo plumbing across all 11 senders — commit `114defa`
+
+**Schema deltas applied (2 stages, both via Supabase SQL Editor with
+line-by-line review).**
+- **PP6-A** — `interest_accrual_runs` table (one row per
+  `(subdivision_id, run_date)` pair; `UNIQUE` guarantee on the pair gives
+  the cron its idempotency sentinel) plus `rpc_accrue_interest_for_subdivision`
+  RPC (atomic per-lot walk: reads oldest-unpaid debits, computes monthly
+  interest at the subdivision's `penalty_interest_rate`, writes
+  `penalty_interest`-category levy notices with `linked_levy_id` back to
+  the originating debit, and inserts the `interest_accrual_runs` row in
+  the same transaction). System profile bootstrap: a permanent row in
+  `profiles` with `clerk_id='system_accrual_cron'` provides the
+  `performed_by` FK target for cron-attributed ledger writes (NOT NULL
+  audit_log.profile_id constraint preserved).
+- **PP6-C** — `bank_transactions.payment_received_email_sent_at TIMESTAMPTZ`
+  nullable sentinel column. Sentinel is the per-bank-tx idempotency guard
+  for `emitPaymentReceivedEmail`: first emission stamps the column;
+  subsequent calls short-circuit. Multi-allocation undercount documented
+  in PRE_LAUNCH_CLEANUP (only first owner emailed when one bank tx pays
+  multiple lots with different owners).
+
+**Framework-agnostic accrual modules.** Same boundary rule as
+`src/lib/basiq/jobs.ts` — no `"use server"` directive, no imports from
+`next/cache` / `@clerk/*` / `@/lib/auth`. Callers pass an explicit
+`SupabaseClient`.
+- `src/lib/accrual/jobs.ts::accrueInterestForSubdivisionJob` — wraps the
+  RPC, returns `{ run_date, lots_processed, total_interest_accrued }`.
+  Idempotent at the RPC layer via the UNIQUE pair.
+- `src/lib/accrual/overdue-check.ts::checkOverdueLeviesJob` — eligibility:
+  `due_date + 14 = runDate`, status in (`issued`, `partially_paid`,
+  `overdue`), `levy_type <> 'penalty_interest'`, outstanding > 0, no
+  pre-existing `escalation_instances` row. Per qualifying levy: opt-out
+  check via `isNotificationOptedOut`, send via `sendOverdueReminderEmail`
+  (respects `EMAIL_DRY_RUN`), insert `communication_log`, create
+  `escalation_instances` row at `current_step=1` with
+  `next_action_at = due_date + 28d` (dormant in this prompt; provides the
+  per-levy idempotency sentinel either way), audit log. The
+  `escalation_instances` row IS the idempotency guard — re-runs filter
+  on `levy_notice_id IN (existing rows)` and skip.
+
+**Notification primitives (`src/lib/notifications.ts`).** Framework-
+agnostic, single source of truth.
+- `NOTIFICATION_TYPES` — canonical list of 13 types. Imported by the
+  Clerk webhook seed path and by `updateNotificationPreferences` action
+  validation; eliminates the prior drift (Clerk seeded `payment_overdue`
+  while PP6-C-1 introduced `overdue_reminder`).
+- `MANDATORY_NOTIFICATION_TYPES` — `Set` of types that bypass per-user
+  opt-out (currently `{ 'levy_final_notice' }`; PP6-C-3-gated).
+- `MANAGERIAL_NOTIFICATION_TYPES` — `Set` of operational manager types
+  whose in-app channel is non-toggleable (currently
+  `{ 'new_claim_submitted' }`). Email channel remains opt-out-able.
+- `isNotificationOptedOut(supabase, profileId, type, channel)` —
+  default-opt-in lookup (row absence = enabled); MANDATORY types
+  short-circuit to false (not opted out).
+- `resolveCompanyLogo(supabase, input)` — discriminated-union overload
+  (`{ subdivisionId }` or `{ managementCompanyId }`) returning
+  `management_companies.logo_url`. Single PostgREST round-trip per call;
+  defensively narrows the embedded-relation shape (object | array | null).
+- `emitPaymentReceivedEmail`, `emitClaimMatchedEmail`,
+  `emitClaimRejectedEmail`, `emitNewClaimSubmitted` — shared per-event
+  helpers called from every reconciliation/claims emission site.
+  `emitPaymentReceivedEmail` stamps the bank-tx sentinel BEFORE
+  transitioning the comm_log to `'sent'` (stamp-before-helper invariant
+  SG-2; verified end-to-end in PP6-D-D smoke walk Step 3).
+  `emitNewClaimSubmitted` fans out to all active strata managers,
+  resolves the company logo once outside the per-manager loop, writes
+  the in-app notification unconditionally (managerial in-app is
+  non-toggleable) and the email opt-out-respectingly.
+
+**Email senders (`src/lib/email.ts`) — 11 total after PP6.**
+- `logoImg(url)` + `brandShell(innerHtml, logoUrl?)` shared helpers.
+  All senders accept `companyLogoUrl?: string | null`; render `<img>`
+  when present, text-only header when null.
+- New PP6-C-1 owner senders (4): `sendOverdueReminderEmail` (with
+  hyperlink CTA to `/subdivisions/{shortCode}/my-arrears` and plain-text
+  fallback when `NEXT_PUBLIC_APP_URL` unset), `sendPaymentReceivedEmail`,
+  `sendClaimMatchedEmail`, `sendClaimRejectedEmail`.
+- New PP6-C-2 manager sender (1): `sendNewClaimSubmittedEmail` (separate
+  param interface; not extending `SharedSenderHeader` because it carries
+  no `subdivisionAddress`).
+- Retrofitted (6): `sendInvitationEmail`, `sendLevyEmail`, 4 basiq
+  senders (reauth reminder, consent expired, gap reconciliation,
+  committee gap notification). Each now accepts `companyLogoUrl` via
+  PP6-D-D-fix-logo; the retrofit kept the `escapeHtml` and
+  `communication_log` carryforward items intact for Prompt 6.5.
+- `EMAIL_DRY_RUN=1` env gate: when set, every sender returns
+  `{ dryRun: true }` without dispatching to Resend. Used by all
+  verification suites.
+
+**Resend webhook (`src/app/api/webhooks/resend/route.ts`).**
+- `POST` only; svix.Webhook.verify (Standard Webhooks format) against
+  `RESEND_WEBHOOK_SECRET`. Bad signature → 400 + audit entry. Missing
+  secret → 400 (fail-closed).
+- Handled events: `email.sent`, `email.delivered`, `email.opened`,
+  `email.bounced`, `email.complained`, `email.delivery_delayed`,
+  `email.failed`.
+- Match strategy: external_id → `communication_log` row. Orphan events
+  (no matching log row) audit-skip and 200-OK so Resend stops retrying.
+- Status-priority guard: `queued < sent < delivered < opened`;
+  `bounced` / `failed` are terminal. Out-of-order webhook events (e.g.
+  delivered arriving before sent) never downgrade the comm_log row.
+- Auto-opt-out: `email.complained` events insert a
+  `notification_preferences` row with `enabled=false` for the email
+  channel of the affected notification type — recipient won't receive
+  that type again until they re-enable explicitly. Manager surface to
+  reverse this is a PRE_LAUNCH_CLEANUP carryforward.
+
+**UI surfaces.**
+- `/settings?tab=notifications` — 13 types × 2 channels matrix.
+  MANDATORY rows render disabled-checked with "Required by law" helper
+  copy; MANAGERIAL in-app rows render disabled-checked with "Always on
+  for managers" helper copy. Channel-specific auto-opt-out banner when
+  a recent complaint event flipped a row. Saves go through
+  `updateNotificationPreferences` (dual-validated: Zod shape +
+  application-layer `MANDATORY_DISABLE` + `MANAGERIAL_INAPP_DISABLE`
+  guards).
+- `/subdivisions/{shortCode}/my-arrears` (owner) — per-lot grouping of
+  outstanding levies with indented penalty_interest sub-rows beneath
+  their parent, KPI card for total outstanding, empty state when nothing
+  owed. Sidebar entry under owner's portal with `AlertTriangle` icon.
+  Data via `getMyArrears` server action — two `IN`-clause queries
+  (parents + penalty_interest children keyed by `linked_levy_id`),
+  client-side stitching.
+- PP6-D-A overdue badges across 3 levy list views (cross-OC global view,
+  per-OC batch detail, per-OC levies list). Lot ledger drawer footer
+  adds a lifetime-interest summary line via an `isActiveInterestDebit`
+  lambda (filters active penalty_interest entries; sums amount).
+
+**Verification ladder.** 227 scenarios across 16 suites, EMAIL_DRY_RUN=1
+gated:
+- `similarity.verification.ts` — 8/8 (carry)
+- `canonical.verification.ts` — 12/12 (carry)
+- `payment-status.verification.ts` — 6/6 (carry; cold-cache PERF spike
+  observed in batched runs, stable at warm=297ms standalone)
+- `duplicate-detection.verification.ts` — 27/27 (carry)
+- `ledger-duplicate-detection.verification.ts` — 21/21 (carry)
+- `orchestrator.verification.ts` — 34/34 (carry)
+- `actions/reconciliation.verification.ts` — 16/16 (carry)
+- `actions/owner-payment-claims.verification.ts` — 21/21 (extended by
+  PP6-C-1 + PP6-C-2 emit-helper paths)
+- `actions/ledger.verification.ts` — 15/15 (carry)
+- `actions/basiq.verification.ts` — 16/16 (carry)
+- `accrual/accrual.verification.ts` — 15/15 (PP6-B-B, new)
+- `email.verification.ts` — 12/12 (PP6-C-1, new — `escapeHtml`
+  enforcement, EMAIL_DRY_RUN gate, attachment-shape contract)
+- `accrual/overdue-check.verification.ts` — 7/7 (PP6-C-1, new)
+- `app/api/webhooks/resend/route.verification.ts` — 9/9 (PP6-C-2, new)
+- `actions/notification-preferences.verification.ts` — 4/4 (PP6-D-B, new)
+- `actions/my-arrears.verification.ts` — 4/4 (PP6-D-B, new)
+
+All suites run via `EMAIL_DRY_RUN=1 npx tsx <path>`. Six pre-PP6-C-1
+suites were leaking real Resend dispatches before PP6-D-D-fix-email-leak
+(`b2a723b`) retrofit; gate is now load-bearing across the entire ladder.
+
+**Verification harness conventions.** `__VERIFY_*__` fixture marker on
+top-level rows (e.g. `__VERIFY_OVERDUE__` on subdivisions),
+`createRequire`-based `next/cache` stub injection so `revalidatePath`
+can be safely called from a standalone `tsx` context, and the
+`__setUserIdResolverForVerification` seam in `src/lib/auth-resolver.ts`
+for actions that resolve performer via Clerk in production.
+
+**PP6-D-D smoke walk (record).** Real-send walk against
+`elyasalemi10@gmail.com` (single recipient gate; SMOKE_MARKER namespace
+`__SMOKE_PP6DD__`). Fixture-creation scripts at `tmp-smoke/` (gitignored
+via this commit's `.gitignore` fold-in). Production database; cleanup
+script at `tmp-smoke/cleanup.ts`.
+
+- **Step 1 — overdue reminder.** PASS. Three runs total: baseline run
+  (text-only header, no CTA), post-hyperlink-fix run (plain-text URL
+  fallback because `NEXT_PUBLIC_APP_URL` was unset in Vercel), final
+  run (CTA hyperlink + logo text-only fallback both verified after
+  env var set + `PP6-D-D-fix-logo` retrofit).
+- **Step 2 — payment received.** PASS. Sentinel
+  (`payment_received_email_sent_at`) stamped; comm_log transitioned
+  `queued → sent` with `external_id`; audit chain clean
+  (`communication.payment_received.sent`).
+- **Step 3 — claim matched.** PASS. SG-2 stamp-before-helper invariant
+  verified end-to-end: a confirmed-and-matched owner claim emits the
+  `claim_matched` email but NOT the `payment_received` email (which
+  would double-notify the owner). Production assertion: 0
+  `payment_received` rows + 1 `claim_matched` row + sentinel non-null
+  on the linked bank transaction.
+- **Steps 4 (claim rejected), 5 (new claim fanout), 6 (multi-allocation),
+  7 (bounce path).** SKIPPED per user directive — unit tests cover
+  happy paths (`email.verification.ts` E-3 through E-7) and bounce
+  handler logic (`route.verification.ts` W-3, W-4), and SG-2 verified
+  in Step 3 is the only invariant uniquely surfaced by real-send.
+- **Webhook propagation.** DEFERRED — `RESEND_WEBHOOK_SECRET` is unset
+  and the Resend dashboard endpoint isn't configured this sitting. The
+  handler returns 400 (no secret) for any inbound event during this
+  window; comm_log rows stamp `sent` from the sender call but don't
+  progress to `delivered`/`opened` until webhook is wired pre-launch.
+- **Cleanup.** Ran clean — 5 smoke companies + 5 orphan owners removed.
+  No residual `__SMOKE_PP6DD__` rows in production after cleanup.
+
+**What Prompt 6 did NOT do (rolled up in `PRE_LAUNCH_CLEANUP.md` under
+"From Prompt 6").** Escalation engine (steps 2 + 3 + final notice) and
+PDF attachment for overdue reminder are the largest carryforward items;
+Trigger.dev cron deployment + webhook secret configuration are
+pre-launch operational tasks. Manager-side logo upload UI defers to
+Prompt 6.5; until it ships, `logo_url` stays NULL for every management
+company and all senders render the text-only header in production.
+
 ---
 
 ## 8. What comes next
@@ -1208,8 +1438,9 @@ the reconciliation feature progressively on top of the now-stable schema.
 - [x] Prompt 3 — Basiq integration (connect, consent, polling, webhook, reauth, gap reconciliation)
 - [x] Prompt 4 — Auto-matching pipeline (levy ref, BPAY CRN, sender identity, confidence, auto-learn)
 - [x] Prompt 5 — Duplicate detection + owner self-report
-- [ ] Prompt 6 — Notifications + interest/arrears/penalty (next)
-- [ ] Prompt 7 — Reporting, exports, owner portal, polish
+- [x] Prompt 6 — Notifications + interest/arrears/penalty (escalation steps 2 + 3 + final notice deferred to 6.5)
+- [ ] Prompt 6.5 — Escalation engine + PDF attachments + manager logo upload UI + remaining hyperlink retrofits
+- [ ] Prompt 7 — Reporting, exports, owner portal, polish (incl. owner-side in-app notifications)
 
 Each subsequent prompt should read this file and `CLAUDE.md` first, then
 the relevant sections of `project-context.md`.

@@ -52,3 +52,7 @@ next-env.d.ts
 # canonical. Canonical files (database-schema.sql, CONTEXT.md, CLAUDE.md,
 # PRE_LAUNCH_CLEANUP.md, etc.) never use this prefix.
 _*
+
+# PP6-D-D smoke harness — ephemeral tsx scripts run pre-launch + deleted
+# post-walk. No commit.
+tmp-smoke/

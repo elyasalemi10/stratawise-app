@@ -128,7 +128,7 @@ src/types/               — TypeScript types
 src/components/layout/   — sidebar, header, breadcrumbs
 src/components/ui/       — shadcn components
 src/components/shared/   — page-header, badges, KPI cards, empty states
-src/trigger/             — Trigger.dev job definitions
+trigger/                 — Trigger.dev job definitions (top-level, not under src/)
 ```
 
 ## When In Doubt
