@@ -42,6 +42,7 @@ export async function sendVerificationCode(): Promise<{ ok: true } | { error: st
     .from("email_verification_codes")
     .select("created_at")
     .eq("profile_id", profile.id)
+    .eq("purpose", "email_verify")
     .is("used_at", null)
     .order("created_at", { ascending: false })
     .limit(1)
@@ -55,11 +56,14 @@ export async function sendVerificationCode(): Promise<{ ok: true } | { error: st
     }
   }
 
-  // Invalidate any pending codes for this profile so only the new one works.
+  // Invalidate any pending email-verify codes for this profile so only
+  // the new one works. (Password-reset codes are kept separate via
+  // purpose='password_reset'.)
   await admin
     .from("email_verification_codes")
     .update({ used_at: new Date().toISOString() })
     .eq("profile_id", profile.id)
+    .eq("purpose", "email_verify")
     .is("used_at", null);
 
   const code = generate6DigitCode();
@@ -72,6 +76,7 @@ export async function sendVerificationCode(): Promise<{ ok: true } | { error: st
       email: profile.email,
       code,
       expires_at: expiresAt,
+      purpose: "email_verify",
     });
 
   if (insertErr) {
@@ -128,6 +133,7 @@ export async function verifyEmailCode(
     .from("email_verification_codes")
     .select("id, code, expires_at, used_at, attempts")
     .eq("profile_id", profile.id)
+    .eq("purpose", "email_verify")
     .is("used_at", null)
     .order("created_at", { ascending: false })
     .limit(1)

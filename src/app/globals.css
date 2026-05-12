@@ -186,18 +186,40 @@
      5000s delay on the transition is the well-known hack — autofill
      fires before the transition can complete, so the background never
      repaints. */
+  /* Autofill defeat — Chrome / Edge / Safari paint a yellow-blue
+     background on autofilled inputs. The two-pronged defeat:
+       1. Huge inset box-shadow masks the native fill with our paper
+          white. text-fill-color forces the visible text colour.
+       2. A 0s animation fires immediately on autofill, overriding
+          whatever style the browser applies. This catches edge cases
+          where the box-shadow alone isn't enough (Safari, some Chrome
+          versions on hover/focus). */
+  @keyframes autofill-defeat {
+    to {
+      box-shadow: 0 0 0 1000px hsl(0, 0%, 100%) inset;
+      -webkit-text-fill-color: hsl(208, 70%, 18%);
+      color: hsl(208, 70%, 18%);
+    }
+  }
   input:-webkit-autofill,
   input:-webkit-autofill:hover,
   input:-webkit-autofill:focus,
-  input:-webkit-autofill:active {
+  input:-webkit-autofill:active,
+  input:autofill,
+  input:autofill:hover,
+  input:autofill:focus {
     -webkit-box-shadow: 0 0 0 1000px hsl(0, 0%, 100%) inset !important;
+    box-shadow: 0 0 0 1000px hsl(0, 0%, 100%) inset !important;
     -webkit-text-fill-color: hsl(208, 70%, 18%) !important;
-    /* Lock font + size so the input doesn't subtly resize when Chrome
-       swaps in its autofill text. Without these the input grows ~1px
-       and looks jumpy when you focus a previously-autofilled field. */
+    color: hsl(208, 70%, 18%) !important;
+    background-color: hsl(0, 0%, 100%) !important;
+    background-image: none !important;
     font: inherit !important;
     font-size: inherit !important;
-    transition: background-color 5000s ease-in-out 0s;
+    transition: background-color 5000s ease-in-out 0s,
+      color 5000s ease-in-out 0s,
+      -webkit-text-fill-color 5000s ease-in-out 0s;
+    animation: autofill-defeat 0s forwards;
     caret-color: hsl(208, 70%, 18%);
   }
 }

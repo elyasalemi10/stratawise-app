@@ -225,6 +225,7 @@ CREATE TABLE email_verification_codes (
   expires_at TIMESTAMPTZ NOT NULL,                  -- typically NOW() + 10 min
   used_at TIMESTAMPTZ,
   attempts INTEGER NOT NULL DEFAULT 0,              -- rate limit: code is marked used after 5 wrong attempts
+  purpose TEXT NOT NULL DEFAULT 'email_verify',     -- 'email_verify' | 'password_reset'
   created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 

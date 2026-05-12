@@ -37,6 +37,7 @@
 - ALL button loading states use an inline spinning circle (Loader2 from lucide). The button TEXT must stay the same — never replace with "Saving..." or "Loading..." (which causes layout shift). Disable the button while pending so it's not double-clickable.
 - ALL buttons show the clicking-hand cursor (`cursor: pointer`) on hover. globals.css applies this site-wide via `button:not(:disabled)` and `[role="button"]`, so you don't need `cursor-pointer` on every Button — but if you build a custom non-button clickable (e.g. a `<div onClick>` or a Radix trigger), add `cursor-pointer` explicitly.
 - ALL toasts use Sonner, positioned **top-right**. Errors don't auto-dismiss.
+- ALL form validation checks EVERY field, never short-circuits on the first failure. Collect every invalid field, set `aria-invalid` on each (Input already styles `aria-invalid:border-destructive`), then toast a summary. Pattern: a `problems: string[]` array — push every issue, set the matching `*Invalid` flag, then `if (problems.length) toast.error(problems.length === 1 ? problems[0] : "Fix the highlighted fields.")` before returning. NEVER write `if (!x) { toast(...); return; } if (!y) ...` — the user only sees one error at a time, fixes it, hits submit, sees the next, and gets frustrated.
 - ALL pages use the PageHeader shared component for title/back link/actions.
 - ALL tabs persist state in URL via ?tab= searchParam.
 - ALL outbound communications logged to communication_log table.

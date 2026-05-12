@@ -274,6 +274,17 @@ function NavUser({
     };
   }, []);
 
+  // Detect mobile via media query so we can pop downwards on small screens.
+  const [isMobile, setIsMobile] = useState(false);
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    const mq = window.matchMedia("(max-width: 768px)");
+    setIsMobile(mq.matches);
+    const handler = (e: MediaQueryListEvent) => setIsMobile(e.matches);
+    mq.addEventListener("change", handler);
+    return () => mq.removeEventListener("change", handler);
+  }, []);
+
   return (
     <div ref={wrapperRef} className="relative">
       <button
@@ -282,7 +293,8 @@ function NavUser({
         aria-expanded={open}
         className={cn(
           "flex h-14 w-full items-center gap-2 overflow-hidden rounded-lg border p-2 text-left text-sm text-sidebar-foreground transition-colors outline-none",
-          "border-sidebar-border/40 hover:bg-sidebar-accent hover:text-sidebar-accent-foreground",
+          // Thin grey outline — visible on the midnight sidebar bg.
+          "border-sidebar-foreground/20 hover:bg-sidebar-accent hover:text-sidebar-accent-foreground",
           "focus-visible:ring-2 focus-visible:ring-sidebar-ring",
           open && "bg-sidebar-accent text-sidebar-accent-foreground",
         )}
@@ -319,15 +331,35 @@ function NavUser({
       </button>
 
       {open && (
-        <div className="absolute bottom-full left-0 right-0 mb-1 z-50 rounded-lg border border-border bg-popover p-1 shadow-md">
-          <div className="px-2 py-2 border-b border-border mb-1">
-            <p className="truncate text-sm font-medium text-foreground">
-              {profile?.companyName ?? "My Company"}
-            </p>
-            <p className="truncate text-xs text-muted-foreground">
-              {profile?.userEmail ?? ""}
-            </p>
+        <div
+          className={cn(
+            "absolute z-50 w-56 rounded-lg border border-border bg-popover p-1 shadow-md animate-in fade-in-0 zoom-in-95 duration-100",
+            // Pops right on desktop, up on mobile — matches v0 template behaviour.
+            isMobile
+              ? "bottom-full left-0 right-0 mb-2"
+              : "left-full bottom-0 ml-2",
+          )}
+        >
+          {/* Header — avatar + company name + email, mirrors template */}
+          <div className="flex items-center gap-2 px-1 py-1.5 text-left text-sm">
+            <Avatar className="h-8 w-8 rounded-lg shrink-0">
+              {profile?.userAvatarUrl ? (
+                <AvatarImage src={profile.userAvatarUrl} alt="Avatar" />
+              ) : null}
+              <AvatarFallback className="rounded-lg">
+                {profile?.userInitials ?? "?"}
+              </AvatarFallback>
+            </Avatar>
+            <div className="grid flex-1 text-left text-sm leading-tight min-w-0">
+              <span className="truncate font-medium text-foreground">
+                {profile?.companyName ?? "My Company"}
+              </span>
+              <span className="truncate text-xs text-muted-foreground">
+                {profile?.userEmail ?? ""}
+              </span>
+            </div>
           </div>
+          <div className="-mx-1 my-1 h-px bg-border" />
           <button
             type="button"
             onClick={() => {
@@ -339,6 +371,7 @@ function NavUser({
             <Settings className="h-4 w-4" />
             Settings
           </button>
+          <div className="-mx-1 my-1 h-px bg-border" />
           <button
             type="button"
             onClick={() => {

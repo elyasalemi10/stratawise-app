@@ -16,14 +16,16 @@ export default async function SubdivisionsPage() {
 
   return (
     <div className="space-y-6">
-      {/* Actions bar */}
+      {/* Actions bar — hide the 0/0 count when there's nothing to count yet */}
       <div className="flex items-center justify-between">
         <div>
-          <p className="text-sm text-muted-foreground">
-            {subdivisions.length} subdivision{subdivisions.length !== 1 ? "s" : ""}
-            {" · "}
-            {summary?.totalLots ?? 0} total lots
-          </p>
+          {subdivisions.length > 0 && (
+            <p className="text-sm text-muted-foreground">
+              {subdivisions.length} subdivision{subdivisions.length !== 1 ? "s" : ""}
+              {" · "}
+              {summary?.totalLots ?? 0} total lots
+            </p>
+          )}
         </div>
         <Link href="/subdivisions/new">
           <Button>

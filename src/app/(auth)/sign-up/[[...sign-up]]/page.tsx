@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, Suspense } from "react";
-import { useSearchParams } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 import Link from "next/link";
 import { toast } from "sonner";
 import { Building2, Home, Loader2, Eye, EyeOff } from "lucide-react";
@@ -83,6 +83,7 @@ const PASSWORD_RULE = /^(?=.*[A-Za-z])(?=.*[^A-Za-z0-9]).{8,}$/;
 const PASSWORD_HINT = "8+ characters, one letter, one special symbol.";
 
 function SignUpForm({ role, inviteCode: prefillInvite }: { role: Role; inviteCode: string | null }) {
+  const router = useRouter();
   const emailLabel = role === "strata_manager" ? "Business email" : "Email";
   const isLotOwner = role === "lot_owner";
 
@@ -100,38 +101,42 @@ function SignUpForm({ role, inviteCode: prefillInvite }: { role: Role; inviteCod
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
 
-    if (!PASSWORD_RULE.test(password)) {
-      setPasswordInvalid(true);
-      toast.error(`Password too weak. ${PASSWORD_HINT}`);
+    // Multi-error validation: collect ALL problems then surface them at once.
+    const problems: string[] = [];
+    const passwordOk = PASSWORD_RULE.test(password);
+    if (!passwordOk) problems.push(`Password too weak — ${PASSWORD_HINT}`);
+
+    let candidateCode = "";
+    let inviteShapeOk = true;
+    if (isLotOwner) {
+      candidateCode = normaliseInviteCode(inviteCode);
+      inviteShapeOk = isInviteCodeShape(candidateCode);
+      if (!inviteShapeOk) problems.push("Enter the 10-character invite code from your email.");
+    }
+
+    setPasswordInvalid(!passwordOk);
+    setInviteInvalid(isLotOwner && !inviteShapeOk);
+    setEmailInvalid(false);
+
+    if (problems.length > 0) {
+      toast.error(problems.length === 1 ? problems[0] : "Fix the highlighted fields.");
       return;
     }
 
-    // Lot owners MUST provide a valid invite code before we'll create
-    // their account. The validation calls a rate-limited server action
-    // (10 lookups per IP per 10 min) so brute-forcing is impractical.
+    setPending(true);
+
+    // Server-side invite-code validation (rate-limited at 10 lookups/IP/10min)
     let normalisedCode: string | null = null;
     if (isLotOwner) {
-      const candidate = normaliseInviteCode(inviteCode);
-      if (!isInviteCodeShape(candidate)) {
-        setInviteInvalid(true);
-        toast.error("Enter the 10-character invite code from your email.");
-        return;
-      }
-      setPending(true);
-      const invitation = await getInvitationByCode(candidate);
+      const invitation = await getInvitationByCode(candidateCode);
       if (!invitation || invitation.isExpired || invitation.status !== "pending") {
         setPending(false);
         setInviteInvalid(true);
         toast.error("Invite code is invalid or has expired.");
         return;
       }
-      normalisedCode = candidate;
-    } else {
-      setPending(true);
+      normalisedCode = candidateCode;
     }
-    setEmailInvalid(false);
-    setPasswordInvalid(false);
-    setInviteInvalid(false);
 
     const supabase = getSupabaseClient();
     const { data, error } = await supabase.auth.signUp({
@@ -166,12 +171,16 @@ function SignUpForm({ role, inviteCode: prefillInvite }: { role: Role; inviteCod
       return;
     }
 
-    // Land on /verify-email — page auto-sends a 6-digit code on mount,
-    // user enters it, then continues to /onboarding (or invite flow).
+    // Soft-navigate to /verify-email so the (auth) layout stays mounted
+    // — no logo flash between routes. Stash the email so the OTP page
+    // can show it inline without re-querying.
     sessionStorage.removeItem("verifyEmail.codeSent");
-    window.location.href = normalisedCode
-      ? `/verify-email?next=/invite/${normalisedCode}`
-      : "/verify-email";
+    sessionStorage.setItem("verifyEmail.email", email);
+    router.push(
+      normalisedCode
+        ? `/verify-email?next=/invite/${normalisedCode}`
+        : "/verify-email",
+    );
   }
 
   return (

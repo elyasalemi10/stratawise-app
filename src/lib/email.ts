@@ -47,6 +47,45 @@ interface SendVerificationCodeEmailParams {
   code: string;
 }
 
+export async function sendPasswordResetCodeEmail({
+  to,
+  name,
+  code,
+}: SendVerificationCodeEmailParams): Promise<{ success: true } | { error: string }> {
+  const greeting = name ? `Hi ${name},` : "Hi,";
+
+  if (isDryRun()) {
+    console.log(`[email-dry-run] type=password_reset to=${to} code=${code}`);
+    return { success: true };
+  }
+
+  const { error } = await getResend().emails.send({
+    from: FROM_SYSTEM,
+    to,
+    subject: `Your StrataWise password reset code: ${code}`,
+    html: `
+      <div style="font-family:'Geist',-apple-system,BlinkMacSystemFont,'Segoe UI',Helvetica,Arial,sans-serif;max-width:520px;margin:0 auto;padding:32px 0;">
+        <h2 style="margin:0 0 16px;font-size:20px;font-weight:600;color:#0E314C;">Reset your password</h2>
+        <p style="margin:0 0 20px;color:#0E314C;font-size:14px;line-height:1.6;">
+          ${greeting} use the code below on the StrataWise password-reset page to set a new password. It expires in 10 minutes.
+        </p>
+        <div style="background:#FAF7F0;border:1px solid #E5E0D3;border-radius:6px;padding:24px;margin:0 0 24px;text-align:center;">
+          <p style="margin:0;font-size:40px;font-weight:700;letter-spacing:14px;color:#0E314C;font-family:'Geist',-apple-system,BlinkMacSystemFont,'Segoe UI',Helvetica,Arial,sans-serif;font-variant-numeric:tabular-nums;">${code}</p>
+        </div>
+        <p style="margin:24px 0 0;color:#4A5868;font-size:12px;line-height:1.5;">
+          If you didn't request a password reset, you can safely ignore this email — your password won't change.
+        </p>
+      </div>
+    `,
+  });
+
+  if (error) {
+    console.error("Failed to send password reset email:", error);
+    return { error: error.message ?? "Failed to send email" };
+  }
+  return { success: true as const };
+}
+
 export async function sendVerificationCodeEmail({
   to,
   name,

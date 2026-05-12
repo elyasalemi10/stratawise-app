@@ -11,7 +11,7 @@ const buttonVariants = cva(
     variants: {
       variant: {
         default:
-          "bg-primary text-primary-foreground shadow-sm rounded-md hover:bg-primary/90",
+          "bg-primary text-primary-foreground shadow-sm rounded-md hover:bg-primary/90 hover:ring-2 hover:ring-[var(--brand-gold)]/40 transition-shadow",
         secondary:
           "bg-transparent border border-border text-foreground rounded-md hover:bg-muted",
         destructive:

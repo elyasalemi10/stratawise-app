@@ -59,35 +59,32 @@ export function StepCompany({ onNext }: { onNext: () => void }) {
   });
 
   async function onSubmit(data: CompanyFormValues) {
-    if (!agreed) {
-      setConsentError(true);
-      toast.error("Accept the terms to continue.");
-      return;
-    }
-    setConsentError(false);
+    // Multi-error validation — collect EVERY problem so the user can fix
+    // all of them in one pass (per CLAUDE.md form-validation rule).
+    const problems: string[] = [];
 
-    if (!phone || phone.replace(/\s/g, "").length < 6) {
-      setPhoneInvalid(true);
-      toast.error("Please enter a valid phone number");
-      return;
-    }
-    setPhoneInvalid(false);
+    const phoneOk = !!phone && phone.replace(/\s/g, "").length >= 6;
+    if (!phoneOk) problems.push("Enter a valid phone number");
 
-    // ABN — optional but if present must be exactly 11 digits
     const abnDigits = abn.replace(/\D/g, "");
-    if (abnDigits.length > 0 && abnDigits.length !== 11) {
-      setAbnInvalid(true);
-      toast.error("ABN must be 11 digits.");
-      return;
-    }
-    setAbnInvalid(false);
+    const abnOk = abnDigits.length === 0 || abnDigits.length === 11;
+    if (!abnOk) problems.push("ABN must be 11 digits");
 
-    if (address.trim().length < 3) {
-      setAddressInvalid(true);
-      toast.error("Address is required.");
+    const addressOk = address.trim().length >= 3;
+    if (!addressOk) problems.push("Address is required");
+
+    const consentOk = agreed;
+    if (!consentOk) problems.push("Accept the terms to continue");
+
+    setPhoneInvalid(!phoneOk);
+    setAbnInvalid(!abnOk);
+    setAddressInvalid(!addressOk);
+    setConsentError(!consentOk);
+
+    if (problems.length > 0) {
+      toast.error(problems.length === 1 ? problems[0] : "Fix the highlighted fields.");
       return;
     }
-    setAddressInvalid(false);
 
     setPending(true);
     const result = await createCompany({

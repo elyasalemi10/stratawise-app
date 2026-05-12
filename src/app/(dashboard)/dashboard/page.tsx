@@ -2,7 +2,6 @@ import { redirect } from "next/navigation";
 import { Suspense } from "react";
 import Link from "next/link";
 import { Building2, DollarSign, Users, Plus, MapPin, AlertTriangle, CheckCircle2, ArrowRight, History } from "lucide-react";
-import { InviteTeamButton } from "./_components/invite-team-button";
 import { WelcomeConfetti } from "./_components/welcome-confetti";
 import { getCurrentProfile } from "@/lib/auth";
 import { getCompanySubdivisionSummary } from "@/lib/actions/subdivision";
@@ -363,7 +362,6 @@ export default async function DashboardPage() {
       <div className="flex items-center justify-between">
         <h2 className="text-base font-semibold text-foreground">Subdivisions</h2>
         <div className="flex items-center gap-2">
-          <InviteTeamButton />
           <Link href="/subdivisions/new">
             <Button size="sm">
               <Plus className="mr-2 h-4 w-4" />

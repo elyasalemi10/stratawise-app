@@ -31,44 +31,47 @@ export function WelcomeConfetti() {
     if (fired.current) return;
     fired.current = true;
 
-    // 1) Full-screen confetti shower over ~2.5s, mixing edge bursts with a
-    //    continuous fall so it covers the whole viewport.
-    const duration = 2800;
-    const end = Date.now() + duration;
+    // Less confetti, bigger pieces. ~1.6s total. Two side cannons + a
+    // sparse top sprinkle so it feels celebratory but not overwhelming.
+    confetti({
+      particleCount: 35,
+      angle: 60,
+      spread: 65,
+      origin: { x: 0, y: 0.65 },
+      colors: RAINBOW,
+      startVelocity: 55,
+      scalar: 1.6,
+      ticks: 220,
+      gravity: 0.8,
+    });
+    confetti({
+      particleCount: 35,
+      angle: 120,
+      spread: 65,
+      origin: { x: 1, y: 0.65 },
+      colors: RAINBOW,
+      startVelocity: 55,
+      scalar: 1.6,
+      ticks: 220,
+      gravity: 0.8,
+    });
 
+    // Sparse top sprinkle over ~1.4s
+    const sprinkleEnd = Date.now() + 1400;
     const tick = () => {
-      // Random bursts from the top edge so particles fall across the screen
       confetti({
-        particleCount: 4,
-        startVelocity: 30,
+        particleCount: 2,
+        startVelocity: 22,
         spread: 360,
-        ticks: 200,
-        origin: { x: Math.random(), y: Math.random() * 0.3 },
+        ticks: 180,
+        origin: { x: Math.random(), y: Math.random() * 0.2 },
         colors: RAINBOW,
-        scalar: 0.9,
+        scalar: 1.5,
         gravity: 0.7,
       });
-      if (Date.now() < end) requestAnimationFrame(tick);
+      if (Date.now() < sprinkleEnd) requestAnimationFrame(tick);
     };
     tick();
-
-    // Initial side cannons for impact
-    confetti({
-      particleCount: 100,
-      angle: 60,
-      spread: 70,
-      origin: { x: 0, y: 0.6 },
-      colors: RAINBOW,
-      startVelocity: 60,
-    });
-    confetti({
-      particleCount: 100,
-      angle: 120,
-      spread: 70,
-      origin: { x: 1, y: 0.6 },
-      colors: RAINBOW,
-      startVelocity: 60,
-    });
 
     // 2) Welcome overlay: slide-up + fade-in for 100ms, hold 1.4s, then
     //    fade-out + slide-down for 600ms. Total ~2.1s.
