@@ -173,6 +173,23 @@
   a[href] {
     cursor: pointer;
   }
+
+  /* Chrome / Edge / Safari paint a yellow-ish or blue-ish background on
+     autofilled inputs which clashes with the brand palette. The
+     transition + huge inset shadow trick effectively masks the native
+     fill with the paper background and forces our midnight text colour.
+     5000s delay on the transition is the well-known hack — autofill
+     fires before the transition can complete, so the background never
+     repaints. */
+  input:-webkit-autofill,
+  input:-webkit-autofill:hover,
+  input:-webkit-autofill:focus,
+  input:-webkit-autofill:active {
+    -webkit-box-shadow: 0 0 0 1000px hsl(0, 0%, 100%) inset !important;
+    -webkit-text-fill-color: hsl(208, 70%, 18%) !important;
+    transition: background-color 5000s ease-in-out 0s;
+    caret-color: hsl(208, 70%, 18%);
+  }
 }
 
 /* ============================================

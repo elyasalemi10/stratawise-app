@@ -69,7 +69,7 @@ function VerifyEmailContent() {
   }
 
   return (
-    <div className="w-full max-w-sm space-y-6">
+    <div className="w-full space-y-8">
       <div>
         <h1 className="text-2xl font-semibold tracking-tight text-foreground">
           Verify your email

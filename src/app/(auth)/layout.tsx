@@ -17,22 +17,23 @@ export default function AuthLayout({
           sizes="50vw"
           className="object-cover"
         />
-        {/* Subtle midnight gradient overlay — darker at top, fades down.
-            Improves visual hierarchy without flattening the photo. */}
+        {/* Subtle midnight gradient overlay — darker at top, fades down. */}
         <div className="absolute inset-0 bg-gradient-to-b from-foreground/40 via-foreground/15 to-foreground/30 pointer-events-none" />
       </div>
 
-      {/* Right panel — white bg, logo near top-ish + auth content */}
-      <div className="flex w-full lg:w-1/2 flex-col items-center bg-card px-6 pt-28 pb-12">
-        <Image
-          src="/stratawise-logo.webp"
-          alt="Strata Wise"
-          width={260}
-          height={56}
-          priority
-          className="mb-8 h-14 w-auto"
-        />
-        <div className="flex w-full flex-1 flex-col items-center">
+      {/* Right panel — white bg. The favicon + form sit in a single
+          horizontally-centred block (mx-auto), so they always align as
+          one column regardless of viewport width. */}
+      <div className="flex w-full lg:w-1/2 flex-col bg-card px-6 pt-28 pb-12">
+        <div className="mx-auto flex w-full max-w-lg flex-col items-center">
+          <Image
+            src="/stratawise-favicon.webp"
+            alt="StrataWise"
+            width={120}
+            height={120}
+            priority
+            className="mb-8 h-16 w-auto"
+          />
           {children}
         </div>
       </div>

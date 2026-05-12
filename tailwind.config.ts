@@ -1,7 +1,7 @@
 import type { Config } from "tailwindcss";
 
 /**
- * Strata Wise Tailwind Configuration
+ * StrataWise Tailwind Configuration
  *
  * NOTE: With Tailwind CSS v4, the primary theme configuration lives in
  * src/app/globals.css via CSS variables and @theme blocks.

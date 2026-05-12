@@ -37,7 +37,7 @@ import {
  *
  * Pipeline (exact spec from PP5-0 user resolution):
  *   1. Uppercase
- *   2. Strip Strata Wise reference tokens (LEV-/RCP-/PAY-/SW-{PREFIX}-{YYYY}-{NNNN})
+ *   2. Strip StrataWise reference tokens (LEV-/RCP-/PAY-/SW-{PREFIX}-{YYYY}-{NNNN})
  *   3. Strip non-word chars (replace with space)
  *   4. Collapse whitespace, trim
  *

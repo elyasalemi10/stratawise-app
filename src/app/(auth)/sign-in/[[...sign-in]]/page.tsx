@@ -41,19 +41,20 @@ function SignInContent() {
   }
 
   return (
-    <div className="w-full max-w-sm space-y-6">
+    <div className="w-full space-y-8">
       <div className="text-center">
         <h1 className="text-3xl font-semibold tracking-tight text-foreground">
           Welcome back!
         </h1>
-        <p className="mt-2 text-sm text-muted-foreground leading-relaxed">
+        <p className="mt-3 text-base text-muted-foreground leading-relaxed whitespace-nowrap">
           Every building tells a story. You&apos;re the one keeping it on track.
-          <br />
+        </p>
+        <p className="mt-1 text-base text-muted-foreground leading-relaxed">
           Sign in to continue.
         </p>
       </div>
 
-      <form onSubmit={handleSubmit} className="space-y-4">
+      <form onSubmit={handleSubmit} className="mx-auto w-full max-w-sm space-y-4">
         <div className="space-y-1.5">
           <Label htmlFor="email">Email</Label>
           <Input

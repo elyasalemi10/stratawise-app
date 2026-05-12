@@ -36,7 +36,7 @@ export default function LotOwnerOnboardingPage() {
   return (
     <div className="max-w-lg mx-auto py-12 px-4">
       <h1 className="text-2xl font-semibold tracking-tight text-foreground">
-        Welcome to Strata Wise
+        Welcome to StrataWise
       </h1>
       <p className="mt-2 text-sm text-muted-foreground">
         Before you get started, please review and accept our terms.

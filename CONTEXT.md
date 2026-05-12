@@ -1,4 +1,4 @@
-# Strata Wise Build Context — Handoff for Subsequent Prompts
+# StrataWise Build Context — Handoff for Subsequent Prompts
 
 Every prompt in the reconciliation build reads this file first. It captures
 the invariants, architecture, and current state of the codebase after the
@@ -8,7 +8,7 @@ Prompt 0 consolidation. Treat it as the authoritative starting point.
 
 ## 1. Product overview
 
-Strata Wise (SW) is a company-focused strata management platform
+StrataWise (SW) is a company-focused strata management platform
 for Victorian owners' corporations (OCs). Management company staff operate
 subdivisions on behalf of lot owners — levies, budgets, meetings, minutes,
 insurance, maintenance, complaints, and compliance evidence trails all live
@@ -222,7 +222,7 @@ candidate pool — voided/excluded can't anchor a duplicate; the
 `duplicate_of` filter is **chain prevention** so a third-arrival doesn't
 re-anchor on a row that already points elsewhere.
 
-**Description normaliser**: `normaliseDescription` uppercases, strips Strata Wise
+**Description normaliser**: `normaliseDescription` uppercases, strips StrataWise
 reference tokens (`LEV-`, `RCP-`, `PAY-`, `SW-{PREFIX}-{YYYY}-{NNNN}`),
 strips non-word characters, collapses whitespace, trims. Reference
 tokens are stripped because two sources may format them differently
@@ -390,7 +390,7 @@ feature lands.
   cascade, no stale fields.
 - **Multi-linked credit** (>1 distinct bank txs via partial-allocation
   matches): hard error `errorCode='MULTI_LINKED'`. Currently impossible
-  via any normal Strata Wise flow but allowed by the
+  via any normal StrataWise flow but allowed by the
   `UNIQUE(bank_transaction_id, ledger_entry_id)` constraint (only blocks
   same-pair duplicates). Hard-erroring keeps financial-state writes
   inside RPC contracts and surfaces any future architectural shift
@@ -908,7 +908,7 @@ receipt (pending and deposited). Runs clean with 12/12 pass.
 
 **Deferred to later prompts.**
 - Basiq bank feed connection and webhook ingestion → Prompt 3.
-- Auto-matching beyond Strata Wise-LEV reference (BPAY CRN, sender identity,
+- Auto-matching beyond StrataWise-LEV reference (BPAY CRN, sender identity,
   confidence scoring) → Prompt 4.
 - Owner self-report and duplicate detection → Prompt 5.
 - Lot statement PDF (`getLotStatement` data is ready; PDF template
@@ -1210,7 +1210,7 @@ to Prompt 6.5 due to headroom — only step 1 of the escalation ladder
 ships in Prompt 6.
 
 **Sub-pause shipping order (11 commits, all on `main`, all Vercel-green
-at deploy; 3 parallel invitation commits from a non-Strata Wise-architect session
+at deploy; 3 parallel invitation commits from a non-StrataWise-architect session
 also landed during this window):**
 
 1. PP6-B-A daily interest accrual cron + jobs — commit `463d4d1`

@@ -1,9 +1,9 @@
 import { StyleSheet } from "@react-pdf/renderer";
 
 /**
- * Shared PDF styles for all Strata Wise document templates.
+ * Shared PDF styles for all StrataWise document templates.
  * Uses Helvetica (built-in) as the base font.
- * Colour palette matches the Strata Wise design system.
+ * Colour palette matches the StrataWise design system.
  */
 
 export const colors = {

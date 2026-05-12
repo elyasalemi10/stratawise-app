@@ -16,7 +16,7 @@
 // Pipeline (order matters):
 //   1. null/empty fast-path
 //   2. uppercase
-//   3. strip Strata Wise levy refs (LEV-7, LEV7, LEV 7 etc.)
+//   3. strip StrataWise levy refs (LEV-7, LEV7, LEV 7 etc.)
 //   4. strip BPAY blocks (BPAY + non-uppercase chars + digit runs)
 //   5. strip directional noise (TRANSFER FROM, FROM, OSKO FROM, etc.)
 //   6. strip BSB strings (DDD-DDD)

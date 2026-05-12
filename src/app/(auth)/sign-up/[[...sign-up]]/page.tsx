@@ -14,19 +14,20 @@ type Role = "strata_manager" | "lot_owner";
 
 function RoleSelector({ onSelect }: { onSelect: (role: Role) => void }) {
   return (
-    <div className="w-full max-w-md space-y-6">
+    <div className="w-full space-y-8">
       <div className="text-center">
         <h1 className="text-3xl font-semibold tracking-tight text-foreground">
           Create your account.
         </h1>
-        <p className="mt-2 text-sm text-muted-foreground leading-relaxed">
+        <p className="mt-3 text-base text-muted-foreground leading-relaxed">
           Strata works when everyone&apos;s on the same page.
-          <br />
+        </p>
+        <p className="mt-1 text-base text-muted-foreground leading-relaxed">
           Choose your role to begin.
         </p>
       </div>
 
-      <div className="space-y-3">
+      <div className="mx-auto w-full max-w-md space-y-3">
         <button
           type="button"
           onClick={() => onSelect("strata_manager")}
@@ -129,17 +130,17 @@ function SignUpForm({ role, inviteToken }: { role: Role; inviteToken: string | n
   }
 
   return (
-    <div className="w-full max-w-sm space-y-6">
+    <div className="w-full space-y-8">
       <div className="text-center">
         <h1 className="text-3xl font-semibold tracking-tight text-foreground">
           Create your account.
         </h1>
-        <p className="mt-2 text-sm text-muted-foreground leading-relaxed">
+        <p className="mt-3 text-base text-muted-foreground leading-relaxed">
           Signing up as a {role === "strata_manager" ? "strata manager" : "lot owner"}.
         </p>
       </div>
 
-      <form onSubmit={handleSubmit} className="space-y-4">
+      <form onSubmit={handleSubmit} className="mx-auto w-full max-w-sm space-y-4">
         <div className="grid grid-cols-2 gap-3">
           <div className="space-y-1.5">
             <Label htmlFor="firstName">First name</Label>

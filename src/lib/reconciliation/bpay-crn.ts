@@ -1,7 +1,7 @@
 // ============================================================================
 // BPAY CRN — MOD10V01 generator + validator
 // ----------------------------------------------------------------------------
-// Strata Wise-issued CRN format: 8 digits = 7-digit zero-padded levy number + 1
+// StrataWise-issued CRN format: 8 digits = 7-digit zero-padded levy number + 1
 // MOD10V01 check digit. Generated at notice creation time (createLevyBatch)
 // regardless of whether the OC has registered a biller code; opt-in BPAY
 // later requires no backfill.
@@ -24,7 +24,7 @@
 const MAX_LEVY_NUMBER = 9_999_999; // 7 digits
 
 /**
- * Generate the 8-digit Strata Wise BPAY CRN for a given levy number.
+ * Generate the 8-digit StrataWise BPAY CRN for a given levy number.
  * Throws if the levy number is non-integer, < 1, or > 9,999,999.
  */
 export function generateCrn(levyNumber: number): string {
@@ -42,7 +42,7 @@ export function generateCrn(levyNumber: number): string {
 }
 
 /**
- * Validate that an 8-digit string is a well-formed Strata Wise BPAY CRN.
+ * Validate that an 8-digit string is a well-formed StrataWise BPAY CRN.
  * Returns false on malformed input or check-digit mismatch.
  */
 export function validateCrn(crn: string): boolean {

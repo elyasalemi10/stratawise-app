@@ -75,7 +75,7 @@ After the rebuild, run each query in the SQL editor and confirm the result:
 | 2 | `SELECT COUNT(*) FROM pg_type WHERE typnamespace = 'public'::regnamespace AND typtype = 'e';` | **33** |
 | 3 | `SELECT COUNT(*) FROM information_schema.sequences WHERE sequence_schema = 'public';` | **11** |
 | 3a | `SELECT sequence_name FROM information_schema.sequences WHERE sequence_schema = 'public' ORDER BY sequence_name;` | `sw_clm_seq, sw_cmp_seq, sw_esc_seq, sw_inv_seq, sw_lev_seq, sw_min_seq, sw_mnt_seq, sw_mtg_seq, sw_pay_seq, sw_pol_seq, sw_slev_seq` |
-| 3b | `SELECT next_reference_number('LEV');` | `SW-LEV-2026-000001` (the `Strata Wise-` prefix is now applied inside the function) |
+| 3b | `SELECT next_reference_number('LEV');` | `SW-LEV-2026-000001` (the `StrataWise-` prefix is now applied inside the function) |
 | 4 | `SELECT COUNT(*) FROM state_compliance_rules WHERE state = 'VIC';` | **14** |
 | 5 | `SELECT COUNT(*) FROM budget_categories;` | **23** |
 | 6 | `SELECT COUNT(*) FROM escalation_workflows WHERE is_default;` | **1** |

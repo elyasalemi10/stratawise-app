@@ -9,9 +9,9 @@ interface BaseTemplateProps extends BaseDocumentProps {
 }
 
 /**
- * Base PDF template for all Strata Wise documents.
+ * Base PDF template for all StrataWise documents.
  *
- * Renders the management company's branding (not Strata Wise branding).
+ * Renders the management company's branding (not StrataWise branding).
  * Provides consistent header, document title, and footer across all PDFs.
  *
  * For simple single-page documents, use this directly:

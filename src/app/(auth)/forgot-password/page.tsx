@@ -36,7 +36,7 @@ export default function ForgotPasswordPage() {
 
   if (sent) {
     return (
-      <div className="w-full max-w-sm space-y-6">
+      <div className="w-full space-y-8">
         <div className="text-center">
           <h1 className="text-3xl font-semibold tracking-tight text-foreground">
             Check your email
@@ -57,7 +57,7 @@ export default function ForgotPasswordPage() {
   }
 
   return (
-    <div className="w-full max-w-sm space-y-6">
+    <div className="w-full space-y-8">
       <div className="text-center">
         <h1 className="text-3xl font-semibold tracking-tight text-foreground">
           Forgot password?
@@ -69,7 +69,7 @@ export default function ForgotPasswordPage() {
         </p>
       </div>
 
-      <form onSubmit={handleSubmit} className="space-y-4">
+      <form onSubmit={handleSubmit} className="mx-auto w-full max-w-sm space-y-4">
         <div className="space-y-1.5">
           <Label htmlFor="email">Email</Label>
           <Input

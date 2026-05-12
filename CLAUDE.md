@@ -1,4 +1,4 @@
-# Strata Wise (SW) — Claude Code Rules
+# StrataWise (SW) — Claude Code Rules
 
 ## Git
 - Always commit and push to origin after completing changes. Do not wait for the user to ask.
@@ -9,7 +9,7 @@
 - Use our own settings page at /settings for profile/password management, NOT Clerk's UserButton or UserProfile popups.
 
 ## Brand
-- Full name: "Strata Wise" (two words for display). One-word identifier: "StrataWise". Abbreviated: "SW". Never "MSM" or "My Strata Management" (legacy).
+- Brand name: "StrataWise" — always one word, no space. Abbreviated: "SW". Never "Strata Wise" (legacy two-word form), never "MSM" or "My Strata Management" (older legacy).
 - Brand palette (light mode only):
   - Midnight (text):  #0E314C  — used for foreground, sidebar bg
   - Paper (cards):    #FFFFFF
@@ -97,7 +97,7 @@
 
 ## Roles
 - Three platform roles: super_admin, strata_manager, lot_owner.
-- super_admin: Strata Wise platform team. Full access to everything.
+- super_admin: StrataWise platform team. Full access to everything.
 - strata_manager: Management company staff. Full CRUD on assigned subdivisions.
 - lot_owner: Invited portal user. View own lot, pay levies, vote, chat, submit requests.
 - Every server action checks role + management_company_id match before mutations. UI hides elements, server enforces.
@@ -121,7 +121,7 @@
 - Penalty interest configurable per subdivision (0-2.5%/month VIC cap).
 - Notice period blocking: meeting dates grey out within 14 days, levy due dates within 28 days.
 - Stripe Connect optional. Default is BPAY/EFT display only. Card payments are an upgrade.
-- Strata Wise never holds OC funds. Stripe Connect sends payments directly to OC's bank.
+- StrataWise never holds OC funds. Stripe Connect sends payments directly to OC's bank.
 - Profile pictures stored in R2 (or Supabase Storage for MVP).
 
 ## File Structure

@@ -2,7 +2,7 @@
 
 > **Purpose of this file:** Give this entire file to a new Claude session (Claude.ai or Claude Code) so it has full context of every decision made, every piece of research done, and every spec created for this project. Nothing is lost between sessions.
 >
-> **Brand:** "Strata Wise" (full name) / "Strata Wise" (abbreviated). Never "StrataOS".
+> **Brand:** "StrataWise" (full name) / "StrataWise" (abbreviated). Never "StrataOS".
 
 ---
 
@@ -14,7 +14,7 @@ Elyas — Melbourne-based property developer running an integrated Australian pr
 
 ## WHAT WE'RE BUILDING
 
-**Strata Wise (SW)** — a SaaS platform for professional strata management companies to manage multiple subdivisions. Strata managers sign up with their company, assign themselves to subdivisions, and use Strata Wise to automate tedious tasks: levy generation, escalation workflows, meeting notices, bank reconciliation, compliance tracking. Lot owners get invited to a limited portal where they can view their levies, pay, chat with their manager, submit maintenance requests, and vote at meetings. This is professional management software, not self-management software.
+**StrataWise (SW)** — a SaaS platform for professional strata management companies to manage multiple subdivisions. Strata managers sign up with their company, assign themselves to subdivisions, and use StrataWise to automate tedious tasks: levy generation, escalation workflows, meeting notices, bank reconciliation, compliance tracking. Lot owners get invited to a limited portal where they can view their levies, pay, chat with their manager, submit maintenance requests, and vote at meetings. This is professional management software, not self-management software.
 
 **Target users (in priority order):**
 - Strata management companies (PRIMARY — they pay the subscription)
@@ -128,7 +128,7 @@ building_valuation_cycle_years: 5
 
 ## DESIGN SYSTEM
 
-### Brand: "Strata Wise" / "Strata Wise"
+### Brand: "StrataWise" / "StrataWise"
 
 ### Colour palette (HSL CSS variables):
 ```
@@ -311,7 +311,7 @@ CHARGE GROUPS & ADVANCED FINANCIAL:
 
 ### Platform-level roles (profiles table):
 ```
-super_admin  — Strata Wise platform team (Elyas). Can see everything across all management companies.
+super_admin  — StrataWise platform team (Elyas). Can see everything across all management companies.
 
 strata_manager — Staff at a strata management company. Manages assigned subdivisions. Full CRUD on their subdivisions.
 
@@ -439,7 +439,7 @@ Lot owners have FIXED, LIMITED access (see LOT OWNER VISIBILITY section for full
 - **v2 Escalation channels:** SMS via Twilio/MessageBird, voice calls via Vapi voice agents for overdue levy follow-ups
 - **v2 Live bank feeds:** Basiq or Yodlee integration for real-time bank transaction import (replaces CSV upload)
 - **v2 Hybrid management tier:** self-managed lot owners with optional strata manager support (mix of both models)
-- **v3 Fully self-managed tier:** self-management platform for lot owners (original Strata Wise vision)
+- **v3 Fully self-managed tier:** self-management platform for lot owners (original StrataWise vision)
 - **v2 Multi-tenancy:** multiple strata management companies on the platform with complete isolation
 - Mobile app (iOS/Android) with push notifications
 - AI-assisted document drafting (minutes, notices)
@@ -472,19 +472,19 @@ Lot owners have FIXED, LIMITED access (see LOT OWNER VISIBILITY section for full
 | Charge groups | Optional charge_group_id on budget_items | Per-item lot overrides | Clean separation: define groups once, reference in budgets. Supports differential levies (driveway, pool, lift). |
 | Settings split | Account (/settings) + Subdivision (/subdivisions/[id]/settings) | Single settings page | Account = per-user (profile, notifications). Subdivision = per-OC (financial config, charge groups, bank accounts). |
 | Bank reconciliation | Manual entry primary, CSV secondary, PDF reference only | CSV primary | Members with manage_banking may not be tech-savvy. Manual entry with lot owner dropdown is most accessible. |
-| Role model | super_admin + lot_owner + granular responsibilities | Fixed committee titles or Strata Wise coordinator | Task-based, not title-based. Subdivision creator assigns manage_meetings, manage_finances, etc. No coordinator in the loop. |
+| Role model | super_admin + lot_owner + granular responsibilities | Fixed committee titles or StrataWise coordinator | Task-based, not title-based. Subdivision creator assigns manage_meetings, manage_finances, etc. No coordinator in the loop. |
 | Reference numbers | Global Postgres SEQUENCE per type | Per-subdivision counter | Two levies from different subdivisions must NEVER share a reference. Global sequence guarantees uniqueness across the entire platform. |
 | AGM tracking | last_agm_date + next_agm_due on subdivisions table | Calculate from meetings table | Explicit fields are more reliable and visible. Auto-updated when AGM is closed. |
 | Public levy payments | /pay page with Stripe + BPAY/EFT display | Login-required payments only | Frictionless: scan QR code on levy PDF → pay instantly. No account needed. |
 | Card surcharge | NO surcharges. OC absorbs Stripe fees. | Surcharge to payer | RBA banning surcharges from 2026-2027. OC budgets for "Payment processing fees" line item. |
-| Stripe model | Stripe Connect (destination charges) | Direct Stripe on Strata Wise | Funds go directly to OC's connected Stripe account. Strata Wise never holds levy money. Platform fee billed separately. |
+| Stripe model | Stripe Connect (destination charges) | Direct Stripe on StrataWise | Funds go directly to OC's connected Stripe account. StrataWise never holds levy money. Platform fee billed separately. |
 | BPAY | Display biller code + CRN on /pay page (MVP). API integration via Monoova v2. | Full API from start | BPAY is bank-side — owners pay in their own banking app. MVP just displays details. |
 | Chart of accounts | Simplified categories with hidden COA codes | Full double-entry accounting | Users see "Gardening", auditors see [200400]. Export button generates COA-coded report. |
 | Smart blocking | Locked feature cards with CTAs when prerequisites missing | Show empty/broken data | Progressive disclosure: don't show Financials until entitlements set, don't show Levies until budget approved. |
 | Onboarding | 4-step wizard for first user, invited users skip it | Dump on empty dashboard | First person (usually chair) guided through setup. Everyone else joins via invitation link. |
-| Platform fee in budgets | Mandatory, auto-inserted, non-removable by committee | Optional line item | Guarantees Strata Wise fee is always included in levies. Committee sees it but can't delete it. |
-| Strata Wise billing | Stripe Subscription on OC's connected account | Invoice/manual | Automatic monthly billing. Failed payment → suspension. Clean revenue collection. |
-| Bank accounts | OC brings their own. Strata Wise doesn't create bank accounts. | Strata Wise creates accounts | OC already has a bank account. Treasurer enters details. Stripe Connect links to it for payouts. |
+| Platform fee in budgets | Mandatory, auto-inserted, non-removable by committee | Optional line item | Guarantees StrataWise fee is always included in levies. Committee sees it but can't delete it. |
+| StrataWise billing | Stripe Subscription on OC's connected account | Invoice/manual | Automatic monthly billing. Failed payment → suspension. Clean revenue collection. |
+| Bank accounts | OC brings their own. StrataWise doesn't create bank accounts. | StrataWise creates accounts | OC already has a bank account. Treasurer enters details. Stripe Connect links to it for payouts. |
 | Payment portal 2FA | Email verification code before showing levy details | No verification | Prevents random reference guessing. 6-digit code to owner's email. Skip if no email on file. |
 | Interest customization | Committee chooses: enabled/disabled, rate (0-2.5%), accrual day, grace period | Fixed 2.5% from day 1 | Flexibility within VIC cap. Some OCs prefer lower rate or grace period for good relations. |
 | Notice period blocking | Date pickers grey out dates within 14 days (meetings) / 28 days (levies) | Validate on submit only | Prevents mistakes before they happen. Tooltip explains the legal requirement. |
@@ -540,7 +540,7 @@ Better Auth (MIT license, 26K GitHub stars, YC-backed, $5M raised) is the top op
 
 ### Subdivision states:
 - **active**: normal usage
-- **suspended**: non-payment of Strata Wise subscription. Read-only — 30-day grace period.
+- **suspended**: non-payment of StrataWise subscription. Read-only — 30-day grace period.
 - **archived**: OC dissolved or permanently closed. All data retained read-only.
 
 ### Retention rules (Victorian compliance):
@@ -596,7 +596,7 @@ Complaints:        SW-CMP-{YYYY}-{NNNNNN}     e.g., SW-CMP-2026-000003
 Escalation:        SW-ESC-{YYYY}-{NNNNNN}     e.g., SW-ESC-2026-000012
 
 {NNNNNN} is a GLOBAL auto-incrementing sequence per type — NEVER per-subdivision. Two levies from different subdivisions must never share a reference number. Reset to 000001 each January 1st.
-Use a Postgres SEQUENCE per type: CREATE SEQUENCE sw_lev_seq; CREATE SEQUENCE sw_mtg_seq; etc. (names are short-form matching the prefix passed to `next_reference_number()` — e.g. `LEV` → `sw_lev_seq`). Generate via Supabase RPC; the function prepends `Strata Wise-` and returns `SW-<PREFIX>-YYYY-NNNNNN`. A single global sequence per entity type ensures uniqueness across the entire platform.
+Use a Postgres SEQUENCE per type: CREATE SEQUENCE sw_lev_seq; CREATE SEQUENCE sw_mtg_seq; etc. (names are short-form matching the prefix passed to `next_reference_number()` — e.g. `LEV` → `sw_lev_seq`). Generate via Supabase RPC; the function prepends `StrataWise-` and returns `SW-<PREFIX>-YYYY-NNNNNN`. A single global sequence per entity type ensures uniqueness across the entire platform.
 
 === PDF FILE NAMES (when downloaded/generated) ===
 
@@ -678,7 +678,7 @@ NOTIFICATION EDGE CASES:
 
 SUBDIVISION LIFECYCLE EDGE CASES:
 - Subdivision archived but has unpaid levies: Archive proceeds, outstanding levies remain on record.
-- Subdivision suspended (non-payment of Strata Wise fee): Banner shown to all members. All data read-only. Escalations paused.
+- Subdivision suspended (non-payment of StrataWise fee): Banner shown to all members. All data read-only. Escalations paused.
 - Reactivation after suspension: All data preserved, escalations can resume.
 - Developer period ending: Developer must hand over to OC. Add "developer handover checklist" compliance item.
 - Rules change (model to custom): Requires special resolution. Record registration date and reference.
@@ -717,7 +717,7 @@ TIER 2 — STRIPE CONNECT (card payments enabled):
   Budget line item: "Payment Processing Fees" to cover this.
 
 TIER 3 — BPAY API (future, v2):
-  Strata Wise gets a biller code via Monoova/Ezidebit. Webhook auto-matches BPAY payments.
+  StrataWise gets a biller code via Monoova/Ezidebit. Webhook auto-matches BPAY payments.
   Cost to OC: ~$0.20-0.85 per BPAY transaction.
 
 UI IN SUBDIVISION SETTINGS → BANK ACCOUNTS TAB:
@@ -859,7 +859,7 @@ SETTINGS: Upload/change in /settings?tab=profile. Drag-and-drop zone or click to
           "Remove photo" link returns to initials.
 
 Clerk UserButton already shows Clerk's avatar — sync is optional.
-For simplicity, store Strata Wise avatar separately (not dependent on Clerk).
+For simplicity, store StrataWise avatar separately (not dependent on Clerk).
 
 Add avatar_url column to profiles table.
 ```
@@ -872,15 +872,15 @@ Every email the platform sends. All use Resend + React Email templates. All logg
 
 ```
 AUTHENTICATION & ACCOUNT:
-  1. Invitation email       → "You've been invited to join {subdivision_name} on Strata Wise"
+  1. Invitation email       → "You've been invited to join {subdivision_name} on StrataWise"
                               Contains: accept link (/invite/{token}), subdivision name, lot number, role info
                               Trigger: member with manage_members sends invitation (Step 3.1)
 
-  2. Welcome email          → "Welcome to Strata Wise"
+  2. Welcome email          → "Welcome to StrataWise"
                               Contains: getting started guide, link to dashboard
                               Trigger: user accepts invitation and completes sign-up
 
-  3. Account deactivated    → "Your Strata Wise account has been deactivated"
+  3. Account deactivated    → "Your StrataWise account has been deactivated"
                               Contains: what this means, how to reactivate, data retention note
                               Trigger: user deactivates own account (Step 3.3)
 
@@ -943,11 +943,11 @@ GENERAL:
                               Trigger: compliance check finds red item
 
 PAYMENT PORTAL:
-  17. 2FA verification      → "Your Strata Wise verification code: {code}"
+  17. 2FA verification      → "Your StrataWise verification code: {code}"
                               Contains: 6-digit code, expires in 10 minutes
                               Trigger: /pay page lookup (Step 15.4)
 
-  18. Portal payment receipt → "Payment received via Strata Wise portal"
+  18. Portal payment receipt → "Payment received via StrataWise portal"
                               Contains: levy reference, amount, confirmation number
                               Trigger: Stripe webhook on /pay success
 
@@ -973,7 +973,7 @@ All emails:
 - From: notifications@mystratamanagement.com.au (Resend verified domain)
 - Reply-to: support@mystratamanagement.com.au
 - Unsubscribe link: links to /settings?tab=notifications
-- Footer: "Strata Wise — ABN XXXXXXX"
+- Footer: "StrataWise — ABN XXXXXXX"
 - Respect notification_preferences: if user disabled email for that type, DON'T send (except legal requirements like levy notices)
 - Legal requirement emails (levy notices, meeting notices): ALWAYS send regardless of preferences, per Victorian legislation
 ```
@@ -1056,7 +1056,7 @@ Hide this card once all steps are complete. It's a gentle onboarding guide, not 
 
 ## CHART OF ACCOUNTS (SIMPLIFIED)
 
-Strata Wise uses friendly category names for users but maps them to standard strata chart of accounts (COA) codes for auditors and accountants.
+StrataWise uses friendly category names for users but maps them to standard strata chart of accounts (COA) codes for auditors and accountants.
 
 ```
 === BUDGET CATEGORY MAPPING ===

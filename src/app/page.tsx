@@ -15,7 +15,7 @@ export default async function LandingPage() {
       <div className="text-center">
         <Image
           src="/stratawise-logo.webp"
-          alt="Strata Wise"
+          alt="StrataWise"
           width={220}
           height={48}
           priority
