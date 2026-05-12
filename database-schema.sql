@@ -172,15 +172,22 @@ $$;
 -- ============================================================================
 CREATE TABLE management_companies (
   id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
-  name TEXT NOT NULL,
+  name TEXT NOT NULL,                               -- legal company name
+  trading_as TEXT,                                  -- optional "trading as" (e.g. legal: ACN Pty Ltd, trading: "Strata Group")
   registered_name TEXT,
   abn TEXT,
-  address TEXT,
-  phone TEXT,
+  address TEXT,                                     -- company address (single line; Google Places autocomplete supplies it)
+  phone TEXT,                                       -- company phone (separate from each user's personal profile.phone)
   email TEXT,
   logo_url TEXT,
   signature_url TEXT,
   brand_color TEXT,                                 -- #RRGGBB; used by levy PDFs etc, not app UI
+  -- Operating account — where the management company receives its fees
+  -- from each OC's trust account. Filled in during step 2 of onboarding.
+  operating_account_name TEXT,
+  operating_bsb TEXT,
+  operating_account_number TEXT,
+  operating_bank_name TEXT,
   subscription_status subscription_status NOT NULL DEFAULT 'active',
   created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
   updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()

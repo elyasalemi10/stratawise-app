@@ -31,6 +31,13 @@ export function WelcomeConfetti() {
     if (fired.current) return;
     fired.current = true;
 
+    // Wait for the dashboard to settle first — confetti firing on the same
+    // frame as the page mount feels rushed and the user misses the visual
+    // payoff. 700ms gives the dashboard time to render + the user time to
+    // see "where am I" before the celebration triggers.
+    const startTimer = setTimeout(() => fireCelebration(), 700);
+
+    function fireCelebration() {
     // Less confetti, bigger pieces. ~1.6s total. Two side cannons + a
     // sparse top sprinkle so it feels celebratory but not overwhelming.
     confetti({
@@ -73,12 +80,13 @@ export function WelcomeConfetti() {
     };
     tick();
 
-    // 2) Welcome overlay: slide-up + fade-in for 100ms, hold 1.4s, then
-    //    fade-out + slide-down for 600ms. Total ~2.1s.
-    setShowOverlay(true);
-    setOverlayState("enter");
-    const exitAt = setTimeout(() => setOverlayState("exit"), 1500);
-    const hideAt = setTimeout(() => setShowOverlay(false), 2100);
+      // 2) Welcome overlay: slide-up + fade-in for 100ms, hold 1.4s, then
+      //    fade-out + slide-down for 600ms. Total ~2.1s.
+      setShowOverlay(true);
+      setOverlayState("enter");
+      setTimeout(() => setOverlayState("exit"), 1500);
+      setTimeout(() => setShowOverlay(false), 2100);
+    }
 
     // 3) Strip the query param so refresh doesn't replay the animation
     const params = new URLSearchParams(searchParams.toString());
@@ -87,8 +95,7 @@ export function WelcomeConfetti() {
     router.replace(`/dashboard${next ? `?${next}` : ""}`, { scroll: false });
 
     return () => {
-      clearTimeout(exitAt);
-      clearTimeout(hideAt);
+      clearTimeout(startTimer);
     };
   }, [welcome, router, searchParams]);
 

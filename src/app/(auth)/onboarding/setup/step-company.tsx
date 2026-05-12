@@ -89,6 +89,7 @@ export function StepCompany({ onNext }: { onNext: () => void }) {
     setPending(true);
     const result = await createCompany({
       name: data.name,
+      trading_as: data.trading_as || undefined,
       abn: abnDigits || undefined,
       address,
       phone: phone.trim(),
@@ -153,7 +154,7 @@ export function StepCompany({ onNext }: { onNext: () => void }) {
           </Label>
           <Input
             id="company-name"
-            placeholder="ABC Strata Management"
+            placeholder="ABC Strata Management Pty Ltd"
             autoComplete="off"
             aria-invalid={!!errors.name}
             {...register("name")}
@@ -164,7 +165,17 @@ export function StepCompany({ onNext }: { onNext: () => void }) {
         </div>
 
         <div className="space-y-1.5">
-          <Label htmlFor="company-abn">ABN</Label>
+          <Label htmlFor="trading-as">Trading as</Label>
+          <Input
+            id="trading-as"
+            placeholder={'Optional — e.g. "ABC Strata"'}
+            autoComplete="off"
+            {...register("trading_as")}
+          />
+        </div>
+
+        <div className="space-y-1.5">
+          <Label htmlFor="company-abn">Company ABN</Label>
           <Input
             id="company-abn"
             placeholder="12 345 678 901"
@@ -189,7 +200,7 @@ export function StepCompany({ onNext }: { onNext: () => void }) {
 
         <div className="space-y-1.5">
           <Label htmlFor="company-address">
-            Address <span className="text-destructive">*</span>
+            Company address <span className="text-destructive">*</span>
           </Label>
           <PlacesAutocomplete
             id="company-address"
@@ -213,7 +224,7 @@ export function StepCompany({ onNext }: { onNext: () => void }) {
 
         <div className="space-y-1.5">
           <Label htmlFor="company-phone">
-            Phone <span className="text-destructive">*</span>
+            Company phone <span className="text-destructive">*</span>
           </Label>
           <PhoneInput
             id="company-phone"
