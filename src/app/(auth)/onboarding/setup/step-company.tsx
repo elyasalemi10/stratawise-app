@@ -124,7 +124,14 @@ export function StepCompany({ onNext }: { onNext: () => void }) {
       <form onSubmit={handleSubmit(onSubmit)} autoComplete="off" className="space-y-4">
         <div className="space-y-1.5">
           <Label>Company logo</Label>
-          <LogoUpload value={logoUrl} onChange={setLogoUrl} />
+          <LogoUpload
+            value={logoUrl}
+            onChange={setLogoUrl}
+            onColourExtracted={(hex) => {
+              // Only pre-fill if the user hasn't already chosen a colour
+              if (hex && !brandColour) setBrandColour(hex);
+            }}
+          />
           <p className="text-xs text-muted-foreground">
             Recommended: 800×400 PNG with transparent background.
           </p>
@@ -136,11 +143,10 @@ export function StepCompany({ onNext }: { onNext: () => void }) {
             id="brand-colour"
             value={brandColour}
             onChange={setBrandColour}
-            logoUrl={logoUrl || undefined}
           />
           <p className="text-xs text-muted-foreground">
             Used on levy notices and other documents — not on the app UI.
-            {logoUrl ? " We'll try to pull it from your logo automatically." : ""}
+            We&apos;ll try to pull it from your logo automatically.
           </p>
         </div>
 

@@ -46,9 +46,10 @@
 
 ## Colour Palette
 ```
---primary: hsl(40, 57%, 57%)          /* gold #CFA753 (accent) */
---primary-hover: hsl(40, 57%, 47%)
---primary-foreground: hsl(208, 70%, 18%)  /* midnight on gold */
+--primary: hsl(208, 70%, 18%)         /* midnight #0E314C — main button colour */
+--primary-hover: hsl(208, 70%, 26%)
+--primary-foreground: hsl(0, 0%, 100%)
+--brand-gold: hsl(40, 57%, 57%)       /* #CFA753 — sidebar-active + PDF accents */
 --secondary: hsl(42, 32%, 86%)        /* stone #E5E0D3 */
 --secondary-hover: hsl(42, 32%, 78%)
 --destructive: hsl(0, 72%, 51%)       /* red */

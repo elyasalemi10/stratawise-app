@@ -89,10 +89,15 @@
    ============================================ */
 
 :root {
-  /* Primary — Gold #CFA753 */
-  --primary: hsl(40, 57%, 57%);
-  --primary-hover: hsl(40, 57%, 47%);
-  --primary-foreground: hsl(208, 70%, 18%);   /* midnight on gold for AA contrast */
+  /* Primary — Midnight #0E314C (action colour for buttons + focus) */
+  --primary: hsl(208, 70%, 18%);
+  --primary-hover: hsl(208, 70%, 26%);
+  --primary-foreground: hsl(0, 0%, 100%);
+
+  /* Brand-gold #CFA753 stays available for badges, sidebar-active,
+     PDF accents, etc. Not the default button colour any more. */
+  --brand-gold: hsl(40, 57%, 57%);
+  --brand-gold-hover: hsl(40, 57%, 47%);
 
   /* Secondary — Stone #E5E0D3 (subtle button bg) */
   --secondary: hsl(42, 32%, 86%);
@@ -126,7 +131,7 @@
   /* Border / Input / Ring */
   --border: hsl(42, 32%, 86%);                 /* stone #E5E0D3 */
   --input: hsl(42, 32%, 86%);
-  --ring: hsl(40, 57%, 57%);                   /* gold ring on focus */
+  --ring: hsl(208, 70%, 18%);                  /* midnight ring on focus */
 
   /* Sidebar — midnight bg + paper text + gold active */
   --sidebar: hsl(208, 70%, 18%);
@@ -216,6 +221,35 @@
       background-position: 200% 0;
     }
   }
+  /* Welcome overlay animations — used by WelcomeConfetti on ?welcome=1.
+     Enter: slide up + fade in. Exit: fade out + drift up. */
+  @keyframes welcome-in {
+    0% {
+      opacity: 0;
+      transform: translateY(24px) scale(0.96);
+    }
+    100% {
+      opacity: 1;
+      transform: translateY(0) scale(1);
+    }
+  }
+  @keyframes welcome-out {
+    0% {
+      opacity: 1;
+      transform: translateY(0) scale(1);
+    }
+    100% {
+      opacity: 0;
+      transform: translateY(-40px) scale(1.02);
+    }
+  }
+  .animate-welcome-in {
+    animation: welcome-in 320ms cubic-bezier(0.16, 1, 0.3, 1) both;
+  }
+  .animate-welcome-out {
+    animation: welcome-out 600ms cubic-bezier(0.4, 0, 0.6, 1) both;
+  }
+
   .animate-shimmer {
     background: linear-gradient(
       90deg,

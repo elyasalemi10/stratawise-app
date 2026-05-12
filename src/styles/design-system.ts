@@ -18,9 +18,15 @@
 
 export const colors = {
   primary: {
+    DEFAULT: "hsl(208, 70%, 18%)",       // midnight — buttons + focus rings
+    hover: "hsl(208, 70%, 26%)",
+    foreground: "hsl(0, 0%, 100%)",
+    hex: "#0E314C",
+  },
+  // Gold stays available for badges, sidebar-active, PDF accents.
+  brandGold: {
     DEFAULT: "hsl(40, 57%, 57%)",
     hover: "hsl(40, 57%, 47%)",
-    foreground: "hsl(208, 70%, 18%)",   // midnight on gold
     hex: "#CFA753",
   },
   secondary: {
