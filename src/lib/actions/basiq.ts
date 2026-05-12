@@ -1,10 +1,10 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
-import { requireCompanyRole, requireSubdivisionAccess } from "@/lib/auth";
+import { requireCompanyRole, requireOCAccess } from "@/lib/auth";
 import { createServerClient } from "@/lib/supabase";
-import { buildSubdivisionUrl } from "@/lib/subdivision-resolver";
-import { revalidateSidebarForSubdivision } from "./subdivision";
+import { buildOCUrl } from "@/lib/oc-resolver";
+import { revalidateSidebarForOC } from "./oc";
 import {
   BasiqApiError,
   getBasiqApiClient,
@@ -87,35 +87,35 @@ function buildConsentUrl(args: {
 // ============================================================================
 
 export async function createBasiqUser(
-  subdivisionId: string,
+  ocId: string,
 ): Promise<{ success?: { basiqUserId: string }; error?: string }> {
   try {
     const profile = await requireCompanyRole();
-    await requireSubdivisionAccess(subdivisionId);
+    await requireOCAccess(ocId);
     const supabase = createServerClient();
 
     // Idempotent: return the existing basiq_user_id if any connection exists.
     const { data: existing } = await supabase
       .from("basiq_connections")
       .select("basiq_user_id")
-      .eq("subdivision_id", subdivisionId)
+      .eq("oc_id", ocId)
       .limit(1)
       .maybeSingle();
     if (existing?.basiq_user_id) {
       return { success: { basiqUserId: existing.basiq_user_id } };
     }
 
-    // Fetch the subdivision to source an email + phone for the Basiq user
+    // Fetch the oc to source an email + phone for the Basiq user
     // record. Basiq requires at least email.
     const { data: sub } = await supabase
-      .from("subdivisions")
+      .from("owners_corporations")
       .select("name, manager_contact_email, manager_contact_phone")
-      .eq("id", subdivisionId)
+      .eq("id", ocId)
       .single();
 
     const fallbackEmail =
       (sub as { manager_contact_email?: string } | null)
-        ?.manager_contact_email ?? `oc+${subdivisionId}@myocm.com.au`;
+        ?.manager_contact_email ?? `oc+${ocId}@myocm.com.au`;
     const mobile =
       (sub as { manager_contact_phone?: string } | null)
         ?.manager_contact_phone ?? undefined;
@@ -144,12 +144,12 @@ export async function startBasiqConsent(
   }
   try {
     const profile = await requireCompanyRole();
-    await requireSubdivisionAccess(parsed.data.subdivision_id);
+    await requireOCAccess(parsed.data.oc_id);
     const supabase = createServerClient();
     const client = getBasiqApiClient();
 
     // 1. Ensure we have a Basiq user for this OC.
-    const userRes = await createBasiqUser(parsed.data.subdivision_id);
+    const userRes = await createBasiqUser(parsed.data.oc_id);
     if (userRes.error || !userRes.success) {
       return { error: userRes.error ?? "failed to get basiq user" };
     }
@@ -168,7 +168,7 @@ export async function startBasiqConsent(
     const { data: conn, error: connErr } = await supabase
       .from("basiq_connections")
       .insert({
-        subdivision_id: parsed.data.subdivision_id,
+        oc_id: parsed.data.oc_id,
         basiq_user_id: basiqUserId,
         basiq_external_connection_id: `pending-${crypto.randomUUID()}`,
         basiq_institution_id: parsed.data.institution_id,
@@ -203,7 +203,7 @@ export async function startBasiqConsent(
     // Audit
     await supabase.from("audit_log").insert({
       profile_id: profile.id,
-      subdivision_id: parsed.data.subdivision_id,
+      oc_id: parsed.data.oc_id,
       action: "basiq_connection.consent_started",
       entity_type: "basiq_connection",
       entity_id: conn.id,
@@ -235,7 +235,7 @@ export async function completeBasiqConsent(args: {
       .single();
     if (!conn) return { error: "connection not found" };
 
-    const profile = await requireSubdivisionAccess(conn.subdivision_id);
+    const profile = await requireOCAccess(conn.oc_id);
 
     // Optional job poll — drop through if no jobId provided (some callbacks
     // may not carry one in all paths).
@@ -279,7 +279,7 @@ export async function completeBasiqConsent(args: {
       const { data: existing } = await supabase
         .from("basiq_connections")
         .select("basiq_external_connection_id")
-        .eq("subdivision_id", conn.subdivision_id)
+        .eq("oc_id", conn.oc_id)
         .neq("id", conn.id);
       const tracked = new Set(
         (existing ?? []).map(
@@ -308,7 +308,7 @@ export async function completeBasiqConsent(args: {
 
     await supabase.from("audit_log").insert({
       profile_id: profile.id,
-      subdivision_id: conn.subdivision_id,
+      oc_id: conn.oc_id,
       action: "basiq_connection.consent_completed",
       entity_type: "basiq_connection",
       entity_id: args.connectionId,
@@ -319,7 +319,7 @@ export async function completeBasiqConsent(args: {
       },
     });
 
-    revalidatePath("/subdivisions/[subdivisionCode]/bank-account", "page");
+    revalidatePath("/ocs/[ocCode]/bank-account", "page");
     return { success: true };
   } catch (e) {
     return { error: (e as Error).message };
@@ -350,16 +350,16 @@ export interface WizardBankAccountRow {
 }
 
 export async function getBankAccountsForWizardStep(
-  subdivisionId: string,
+  ocId: string,
 ): Promise<WizardBankAccountRow[]> {
-  await requireSubdivisionAccess(subdivisionId);
+  await requireOCAccess(ocId);
   const supabase = createServerClient();
   const { data } = await supabase
     .from("bank_accounts")
     .select(
       "id, account_name, fund_type, bsb, account_number, bank_name, basiq_connection_id, basiq_account_id, created_at",
     )
-    .eq("subdivision_id", subdivisionId)
+    .eq("oc_id", ocId)
     .order("created_at", { ascending: true });
   return (data ?? []).map((r) => {
     const row = r as {
@@ -387,17 +387,17 @@ export async function getBankAccountsForWizardStep(
   });
 }
 
-export async function listBasiqConnectionsForSubdivision(
-  subdivisionId: string,
+export async function listBasiqConnectionsForOC(
+  ocId: string,
 ): Promise<BasiqConnectionListItem[]> {
-  await requireSubdivisionAccess(subdivisionId);
+  await requireOCAccess(ocId);
   const supabase = createServerClient();
   const { data } = await supabase
     .from("basiq_connections")
     .select(
       "id, status, institution_name, institution_short_name, basiq_institution_id, consent_expires_at, last_sync_at, created_at",
     )
-    .eq("subdivision_id", subdivisionId)
+    .eq("oc_id", ocId)
     .order("created_at", { ascending: false });
   return (data ?? []).map((r) => {
     const row = r as {
@@ -462,7 +462,7 @@ export async function getFeedStateForBankAccount(
   const supabase = createServerClient();
   const { data: account } = await supabase
     .from("bank_accounts")
-    .select("id, subdivision_id, basiq_connection_id")
+    .select("id, oc_id, basiq_connection_id")
     .eq("id", bankAccountId)
     .single();
   if (!account) {
@@ -472,7 +472,7 @@ export async function getFeedStateForBankAccount(
       linkedBankAccounts: [],
     };
   }
-  await requireSubdivisionAccess(account.subdivision_id);
+  await requireOCAccess(account.oc_id);
 
   if (!account.basiq_connection_id) {
     return {
@@ -569,12 +569,12 @@ export async function releaseBankAccountFromConnection(
     const supabase = createServerClient();
     const { data: acct } = await supabase
       .from("bank_accounts")
-      .select("subdivision_id")
+      .select("oc_id")
       .eq("id", bankAccountId)
       .single();
     if (!acct) return { error: "bank account not found" };
     const profile = await requireCompanyRole();
-    await requireSubdivisionAccess(acct.subdivision_id);
+    await requireOCAccess(acct.oc_id);
 
     const { error } = await supabase
       .from("bank_accounts")
@@ -584,14 +584,14 @@ export async function releaseBankAccountFromConnection(
 
     await supabase.from("audit_log").insert({
       profile_id: profile.id,
-      subdivision_id: acct.subdivision_id,
+      oc_id: acct.oc_id,
       action: "bank_account.released_from_basiq_connection",
       entity_type: "bank_account",
       entity_id: bankAccountId,
       metadata: { reason: "manual reconnect" },
     });
 
-    revalidatePath("/subdivisions/[subdivisionCode]/bank-account", "page");
+    revalidatePath("/ocs/[ocCode]/bank-account", "page");
     return { success: true };
   } catch (e) {
     return { error: (e as Error).message };
@@ -599,16 +599,16 @@ export async function releaseBankAccountFromConnection(
 }
 
 export async function getBasiqConnectionStatus(
-  subdivisionId: string,
+  ocId: string,
 ): Promise<BasiqConnectionStatusResult> {
-  await requireSubdivisionAccess(subdivisionId);
+  await requireOCAccess(ocId);
   const supabase = createServerClient();
   const { data: rows } = await supabase
     .from("basiq_connections")
     .select(
       "id, status, institution_name, institution_short_name, last_sync_at, last_sync_error, consent_expires_at, nominated_representative_name, created_at",
     )
-    .eq("subdivision_id", subdivisionId)
+    .eq("oc_id", ocId)
     .order("created_at", { ascending: false })
     .limit(1);
   const row = rows?.[0];
@@ -661,7 +661,7 @@ export async function disconnectBasiqConnection(
     if (!conn) return { error: "connection not found" };
 
     const profile = await requireCompanyRole();
-    await requireSubdivisionAccess(conn.subdivision_id);
+    await requireOCAccess(conn.oc_id);
 
     // Best-effort remote revoke. If Basiq returns 404 the connection is
     // already gone; still proceed to mark locally.
@@ -690,14 +690,14 @@ export async function disconnectBasiqConnection(
 
     await supabase.from("audit_log").insert({
       profile_id: profile.id,
-      subdivision_id: conn.subdivision_id,
+      oc_id: conn.oc_id,
       action: "basiq_connection.disconnected",
       entity_type: "basiq_connection",
       entity_id: connectionId,
       after_state: { status: "revoked" },
     });
 
-    revalidatePath("/subdivisions/[subdivisionCode]/bank-account", "page");
+    revalidatePath("/ocs/[ocCode]/bank-account", "page");
     return { success: true };
   } catch (e) {
     return { error: (e as Error).message };
@@ -719,7 +719,7 @@ export async function initiateReauth(
     if (!conn) return { error: "connection not found" };
 
     await requireCompanyRole();
-    await requireSubdivisionAccess(conn.subdivision_id);
+    await requireOCAccess(conn.oc_id);
 
     const tok = await client.generateClientToken({
       basiqUserId: conn.basiq_user_id,
@@ -745,18 +745,18 @@ export async function initiateReauth(
 // ============================================================================
 
 export async function forceSyncBasiqConnection(args: {
-  subdivisionId: string;
+  ocId: string;
   bypassRateLimit?: boolean;
 }): Promise<{ success?: ForceSyncResult; error?: string }> {
   try {
     const supabase = createServerClient();
     const profile = await requireCompanyRole();
-    await requireSubdivisionAccess(args.subdivisionId);
+    await requireOCAccess(args.ocId);
 
     const { data: conns } = await supabase
       .from("basiq_connections")
       .select("id, last_sync_at, status")
-      .eq("subdivision_id", args.subdivisionId)
+      .eq("oc_id", args.ocId)
       .in("status", ["active", "syncing"]);
     if (!conns || conns.length === 0) {
       return {
@@ -798,8 +798,8 @@ export async function forceSyncBasiqConnection(args: {
       totalNew += res.inserted;
       if (res.error) errors.push(`${c.id}: ${res.error}`);
     }
-    revalidatePath("/subdivisions/[subdivisionCode]/bank-account", "page");
-    revalidatePath("/subdivisions/[subdivisionCode]/reconciliation", "page");
+    revalidatePath("/ocs/[ocCode]/bank-account", "page");
+    revalidatePath("/ocs/[ocCode]/reconciliation", "page");
     return {
       success: {
         syncedCount: conns.length,
@@ -824,13 +824,13 @@ export async function pollBasiqConnection(
     const supabase = createServerClient();
     const { data: conn } = await supabase
       .from("basiq_connections")
-      .select("subdivision_id")
+      .select("oc_id")
       .eq("id", connectionId)
       .single();
     if (!conn) return { error: "connection not found" };
 
     const profile = await requireCompanyRole();
-    await requireSubdivisionAccess(conn.subdivision_id);
+    await requireOCAccess(conn.oc_id);
 
     const res = await pollConnectionAsSystem(connectionId, profile.id);
     return { success: res };
@@ -852,7 +852,7 @@ export async function runGapReconciliation(
     if (!conn) return { error: "connection not found" };
 
     const profile = await requireCompanyRole();
-    await requireSubdivisionAccess(conn.subdivision_id);
+    await requireOCAccess(conn.oc_id);
 
     const gapStart = conn.consent_expires_at ?? conn.last_sync_at;
     const gapEnd = new Date().toISOString();
@@ -877,7 +877,7 @@ export async function runGapReconciliation(
       .from("basiq_gap_reports")
       .insert({
         basiq_connection_id: connectionId,
-        subdivision_id: conn.subdivision_id,
+        oc_id: conn.oc_id,
         gap_start_at: gapStart,
         gap_end_at: gapEnd,
         backfilled_transaction_count: pollRes.inserted,
@@ -896,8 +896,8 @@ export async function runGapReconciliation(
     const suppressionUntil = new Date(
       Date.now() + GAP_SUPPRESSION_HOURS * 60 * 60 * 1000,
     ).toISOString();
-    await supabase.from("subdivision_notification_suppressions").insert({
-      subdivision_id: conn.subdivision_id,
+    await supabase.from("oc_notification_suppressions").insert({
+      oc_id: conn.oc_id,
       suppression_type: "arrears_post_gap_reauth",
       suppressed_until: suppressionUntil,
       reason: `Gap reconciliation after ${gapHours}h outage`,
@@ -905,8 +905,8 @@ export async function runGapReconciliation(
 
     // Emails: best-effort, don't fail the flow.
     await sendGapEmails({
-      subdivisionId: conn.subdivision_id,
-      subdivisionName: "", // filled inside sendGapEmails
+      ocId: conn.oc_id,
+      ocName: "", // filled inside sendGapEmails
       connectionId,
       gapHours,
       backfilledCount: pollRes.inserted,
@@ -929,7 +929,7 @@ export async function runGapReconciliation(
 
     await supabase.from("audit_log").insert({
       profile_id: profile.id,
-      subdivision_id: conn.subdivision_id,
+      oc_id: conn.oc_id,
       action: "basiq_connection.gap_reconciled",
       entity_type: "basiq_gap_report",
       entity_id: report.id,
@@ -958,8 +958,8 @@ export async function runGapReconciliation(
 }
 
 async function sendGapEmails(args: {
-  subdivisionId: string;
-  subdivisionName: string;
+  ocId: string;
+  ocName: string;
   connectionId: string;
   gapHours: number;
   backfilledCount: number;
@@ -972,14 +972,14 @@ async function sendGapEmails(args: {
     const { data: conn } = await supabase
       .from("basiq_connections")
       .select(
-        "nominated_representative_profile_id, subdivision_id, id",
+        "nominated_representative_profile_id, oc_id, id",
       )
       .eq("id", args.connectionId)
       .single();
     const { data: sub } = await supabase
-      .from("subdivisions")
+      .from("owners_corporations")
       .select("name")
-      .eq("id", args.subdivisionId)
+      .eq("id", args.ocId)
       .single();
     if (!sub) return;
     const name = (sub as { name: string }).name;
@@ -994,22 +994,22 @@ async function sendGapEmails(args: {
       .single();
     if (!rep) return;
     const companyLogoUrl = await resolveCompanyLogo(supabase, {
-      subdivisionId: args.subdivisionId,
+      ocId: args.ocId,
     });
     await sendBasiqGapReconciliationEmail({
       to: (rep as { email: string }).email,
-      subdivisionName: name,
+      ocName: name,
       gapHours: args.gapHours,
       backfilledCount: args.backfilledCount,
       autoMatchedCount: args.autoMatchedCount,
       manualReviewCount: args.manualReviewCount,
-      reportUrl: `${process.env.NEXT_PUBLIC_APP_URL ?? ""}${(await buildSubdivisionUrl(args.subdivisionId, "/bank-account")) ?? ""}`,
+      reportUrl: `${process.env.NEXT_PUBLIC_APP_URL ?? ""}${(await buildOCUrl(args.ocId, "/bank-account")) ?? ""}`,
       companyLogoUrl,
     });
     if (args.committeeNotified) {
       await sendBasiqCommitteeGapNotificationEmail({
         to: (rep as { email: string }).email,
-        subdivisionName: name,
+        ocName: name,
         gapHours: args.gapHours,
         companyLogoUrl,
       });
@@ -1048,7 +1048,7 @@ export async function autoBindBankAccountsForConnection(
     const { data: conn } = await supabase
       .from("basiq_connections")
       .select(
-        "id, subdivision_id, basiq_user_id, basiq_external_connection_id",
+        "id, oc_id, basiq_user_id, basiq_external_connection_id",
       )
       .eq("id", connectionId)
       .single();
@@ -1060,11 +1060,11 @@ export async function autoBindBankAccountsForConnection(
       connectionId: conn.basiq_external_connection_id,
     });
 
-    // Fetch all bank_accounts for this subdivision that aren't yet bound.
+    // Fetch all bank_accounts for this oc that aren't yet bound.
     const { data: ourAccounts } = await supabase
       .from("bank_accounts")
       .select("id, bsb, account_number, basiq_connection_id")
-      .eq("subdivision_id", conn.subdivision_id);
+      .eq("oc_id", conn.oc_id);
     const unbound = (ourAccounts ?? []).filter(
       (a) =>
         !(a as { basiq_connection_id: string | null }).basiq_connection_id,
@@ -1184,13 +1184,13 @@ export async function sweepExpiredConnections(): Promise<{
 // ============================================================================
 
 export async function isArrearsNotificationSuppressed(
-  subdivisionId: string,
+  ocId: string,
 ): Promise<boolean> {
   const supabase = createServerClient();
   const { data } = await supabase
-    .from("subdivision_notification_suppressions")
+    .from("oc_notification_suppressions")
     .select("id")
-    .eq("subdivision_id", subdivisionId)
+    .eq("oc_id", ocId)
     .eq("suppression_type", "arrears_post_gap_reauth")
     .gt("suppressed_until", new Date().toISOString())
     .limit(1)
@@ -1213,7 +1213,7 @@ export async function getBasiqConnectionDetails(
     .single();
   if (!conn) return null;
 
-  await requireSubdivisionAccess(conn.subdivision_id);
+  await requireOCAccess(conn.oc_id);
 
   const { data: accounts } = await supabase
     .from("bank_accounts")
@@ -1223,7 +1223,7 @@ export async function getBasiqConnectionDetails(
 
   return {
     id: conn.id,
-    subdivisionId: conn.subdivision_id,
+    ocId: conn.oc_id,
     basiqUserId: conn.basiq_user_id,
     basiqExternalConnectionId: conn.basiq_external_connection_id,
     basiqInstitutionId: conn.basiq_institution_id,
@@ -1270,10 +1270,10 @@ export interface GapReportBannerData {
   suppressionUntil: string | null;
 }
 
-export async function getActiveGapReportForSubdivision(
-  subdivisionId: string,
+export async function getActiveGapReportForOC(
+  ocId: string,
 ): Promise<GapReportBannerData | null> {
-  await requireSubdivisionAccess(subdivisionId);
+  await requireOCAccess(ocId);
   const supabase = createServerClient();
 
   const { data } = await supabase
@@ -1281,7 +1281,7 @@ export async function getActiveGapReportForSubdivision(
     .select(
       "id, gap_start_at, gap_end_at, gap_duration_hours, backfilled_transaction_count, auto_matched_count, manual_review_count",
     )
-    .eq("subdivision_id", subdivisionId)
+    .eq("oc_id", ocId)
     .is("dismissed_at", null)
     .order("created_at", { ascending: false })
     .limit(1)
@@ -1291,9 +1291,9 @@ export async function getActiveGapReportForSubdivision(
   // Also fetch the current arrears suppression expiry (the banner tells the
   // manager when arrears notifications resume).
   const { data: suppression } = await supabase
-    .from("subdivision_notification_suppressions")
+    .from("oc_notification_suppressions")
     .select("suppressed_until")
-    .eq("subdivision_id", subdivisionId)
+    .eq("oc_id", ocId)
     .eq("suppression_type", "arrears_post_gap_reauth")
     .gt("suppressed_until", new Date().toISOString())
     .order("created_at", { ascending: false })
@@ -1326,7 +1326,7 @@ export async function getActiveGapReportForSubdivision(
 export interface GapReportPageData {
   report: {
     id: string;
-    subdivisionId: string;
+    ocId: string;
     connectionId: string;
     institutionName: string;
     nominatedRepresentativeName: string | null;
@@ -1354,16 +1354,16 @@ export interface GapReportPageData {
 
 export async function getGapReportPageData(
   reportId: string,
-  subdivisionId: string,
+  ocId: string,
 ): Promise<GapReportPageData | null> {
-  await requireSubdivisionAccess(subdivisionId);
+  await requireOCAccess(ocId);
   const supabase = createServerClient();
 
   const { data: report } = await supabase
     .from("basiq_gap_reports")
     .select("*")
     .eq("id", reportId)
-    .eq("subdivision_id", subdivisionId) // scope guard — 404 if wrong subdivision
+    .eq("oc_id", ocId) // scope guard — 404 if wrong oc
     .single();
   if (!report) return null;
 
@@ -1380,7 +1380,7 @@ export async function getGapReportPageData(
   const { data: accountIds } = await supabase
     .from("bank_accounts")
     .select("id")
-    .eq("subdivision_id", subdivisionId)
+    .eq("oc_id", ocId)
     .eq("basiq_connection_id", report.basiq_connection_id);
   const ids = (accountIds ?? []).map((a) => (a as { id: string }).id);
 
@@ -1417,9 +1417,9 @@ export async function getGapReportPageData(
   }
 
   const { data: suppression } = await supabase
-    .from("subdivision_notification_suppressions")
+    .from("oc_notification_suppressions")
     .select("suppressed_until")
-    .eq("subdivision_id", subdivisionId)
+    .eq("oc_id", ocId)
     .eq("suppression_type", "arrears_post_gap_reauth")
     .order("created_at", { ascending: false })
     .limit(1)
@@ -1428,7 +1428,7 @@ export async function getGapReportPageData(
   return {
     report: {
       id: report.id,
-      subdivisionId: report.subdivision_id,
+      ocId: report.oc_id,
       connectionId: report.basiq_connection_id,
       institutionName:
         (conn as { institution_name?: string } | null)?.institution_name ??
@@ -1461,14 +1461,14 @@ export async function dismissGapReport(
     const supabase = createServerClient();
     const { data: report } = await supabase
       .from("basiq_gap_reports")
-      .select("subdivision_id, dismissed_at")
+      .select("oc_id, dismissed_at")
       .eq("id", reportId)
       .single();
     if (!report) return { error: "gap report not found" };
     if (report.dismissed_at) return { success: true }; // idempotent
 
     const profile = await requireCompanyRole();
-    await requireSubdivisionAccess(report.subdivision_id);
+    await requireOCAccess(report.oc_id);
 
     const { error } = await supabase
       .from("basiq_gap_reports")
@@ -1481,13 +1481,13 @@ export async function dismissGapReport(
 
     await supabase.from("audit_log").insert({
       profile_id: profile.id,
-      subdivision_id: report.subdivision_id,
+      oc_id: report.oc_id,
       action: "basiq_gap_report.dismissed",
       entity_type: "basiq_gap_report",
       entity_id: reportId,
     });
 
-    revalidatePath("/subdivisions/[subdivisionCode]/bank-account", "page");
+    revalidatePath("/ocs/[ocCode]/bank-account", "page");
     return { success: true };
   } catch (e) {
     return { error: (e as Error).message };
@@ -1544,7 +1544,7 @@ export async function handleBasiqEvent(args: {
       if (!ext) return { handled: false, reason: "no connection id" };
       const { data: row } = await supabase
         .from("basiq_connections")
-        .select("id, basiq_user_id, subdivision_id, created_by")
+        .select("id, basiq_user_id, oc_id, created_by")
         .eq("basiq_external_connection_id", ext)
         .maybeSingle();
       if (!row) return { handled: false, reason: "connection not tracked" };
@@ -1577,7 +1577,7 @@ export async function handleBasiqEvent(args: {
 
       await supabase.from("audit_log").insert({
         profile_id: (row as { created_by: string }).created_by,
-        subdivision_id: (row as { subdivision_id: string }).subdivision_id,
+        oc_id: (row as { oc_id: string }).oc_id,
         action: "basiq_connection.invalidated",
         entity_type: "basiq_connection",
         entity_id: (row as { id: string }).id,
@@ -1615,10 +1615,10 @@ function extractExternalConnectionId(payload: unknown): string | null {
 // 8. INTERNAL: parse + test helpers (keep re-exports minimal)
 // ============================================================================
 
-export async function revalidateSidebarForBasiqSubdivision(
-  subdivisionId: string,
+export async function revalidateSidebarForBasiqOC(
+  ocId: string,
 ): Promise<void> {
-  await revalidateSidebarForSubdivision(subdivisionId);
+  await revalidateSidebarForOC(ocId);
 }
 
 // Re-export the transaction schema so the webhook route can validate

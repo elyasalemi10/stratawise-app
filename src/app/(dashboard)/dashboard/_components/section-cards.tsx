@@ -49,9 +49,9 @@ export function SectionCards() {
         icon={<AlertTriangle className="h-5 w-5" />}
       />
       <KPICard
-        label="Subdivisions"
+        label="OCs"
         value="0"
-        description="Create your first subdivision"
+        description="Create your first oc"
         icon={<Building2 className="h-5 w-5" />}
       />
       <KPICard

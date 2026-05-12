@@ -156,6 +156,7 @@ export async function ensureProfile(): Promise<string | null> {
       email: user.email ?? "",
       first_name: (user.user_metadata?.first_name as string | undefined) ?? null,
       last_name: (user.user_metadata?.last_name as string | undefined) ?? null,
+      phone: (user.user_metadata?.phone as string | undefined) ?? null,
       role,
     })
     .select("id")
@@ -209,10 +210,10 @@ async function seedNotificationPreferences(supabase: any, profileId: string) {
     .upsert(preferences, { onConflict: "profile_id,notification_type,channel" });
 }
 
-// ─── requireSubdivisionAccess ───────────────────────────────────
+// ─── requireOCAccess ───────────────────────────────────
 
-export async function requireSubdivisionAccess(
-  subdivisionId: string,
+export async function requireOCAccess(
+  ocId: string,
 ): Promise<Profile> {
   const profile = await getCurrentProfile();
   if (!profile) throw new Error("Not authenticated");
@@ -222,15 +223,15 @@ export async function requireSubdivisionAccess(
   const supabase = createServerClient();
 
   if (profile.role === "strata_manager") {
-    const { data: subdivision } = await supabase
-      .from("subdivisions")
+    const { data: oc } = await supabase
+      .from("owners_corporations")
       .select("management_company_id")
-      .eq("id", subdivisionId)
+      .eq("id", ocId)
       .single();
 
     if (
-      !subdivision ||
-      subdivision.management_company_id !== profile.management_company_id
+      !oc ||
+      oc.management_company_id !== profile.management_company_id
     ) {
       throw new Error("Access denied");
     }
@@ -238,9 +239,9 @@ export async function requireSubdivisionAccess(
   }
 
   const { data: membership } = await supabase
-    .from("subdivision_members")
+    .from("oc_members")
     .select("id")
-    .eq("subdivision_id", subdivisionId)
+    .eq("oc_id", ocId)
     .eq("profile_id", profile.id)
     .is("left_at", null)
     .single();

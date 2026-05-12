@@ -47,7 +47,7 @@ export async function tryKnownPayerMatch(
   const { data: mappings } = await supabase
     .from("bank_payer_mappings")
     .select("id, lot_id")
-    .eq("subdivision_id", ctx.subdivisionId)
+    .eq("oc_id", ctx.ocId)
     .eq("canonical_sender_name", canonical)
     .eq("status", "active");
 
@@ -74,7 +74,7 @@ export async function tryKnownPayerMatch(
     .from("levy_notices")
     .select("id, lot_id, fund_type, amount, reference_number, due_date")
     .eq("lot_id", mappedLotId)
-    .eq("subdivision_id", ctx.subdivisionId)
+    .eq("oc_id", ctx.ocId)
     .eq("fund_type", ctx.bankAccountFundType);
 
   if (!notices || notices.length === 0) {

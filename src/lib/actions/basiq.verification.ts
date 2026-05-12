@@ -51,7 +51,7 @@ import {
   type BasiqApiClient,
 } from "@/lib/basiq/client";
 import { verifyBasiqWebhookSignature } from "@/lib/basiq/webhook-signature";
-import { generateSubdivisionCode } from "@/lib/subdivision-code";
+import { generateOCCode } from "@/lib/oc-code";
 import type {
   BasiqAccountApi,
   BasiqConnectionApi,
@@ -203,7 +203,7 @@ function assert(cond: unknown, msg = "assertion failed"): asserts cond {
 interface Fixture {
   runId: string;
   companyId: string;
-  subdivisionId: string;
+  ocId: string;
   profileId: string;
   adminAccountId: string;
   basiqAccountId: string; // the Basiq-side account id we stubbed
@@ -240,25 +240,25 @@ async function createFixture(): Promise<Fixture> {
     .single();
   if (profileErr || !profile) throw new Error(`fixture: profile: ${profileErr?.message}`);
 
-  const { data: subdivision, error: subErr } = await supabase
-    .from("subdivisions")
+  const { data: oc, error: subErr } = await supabase
+    .from("owners_corporations")
     .insert({
       management_company_id: company.id,
       name: companyName,
       plan_number: `PLAN-${runId}`,
-      short_code: generateSubdivisionCode(),
+      short_code: generateOCCode(),
       address: "1 Basiq Verify St, Melbourne VIC 3000",
       total_lots: 1,
       created_by: profile.id,
     })
     .select("id")
     .single();
-  if (subErr || !subdivision) throw new Error(`fixture: subdivision: ${subErr?.message}`);
+  if (subErr || !oc) throw new Error(`fixture: oc: ${subErr?.message}`);
 
   const { data: lot, error: lotErr } = await supabase
     .from("lots")
     .insert({
-      subdivision_id: subdivision.id,
+      oc_id: oc.id,
       lot_number: 1,
       lot_entitlement: 100,
       lot_liability: 100,
@@ -271,7 +271,7 @@ async function createFixture(): Promise<Fixture> {
   const { data: account, error: acctErr } = await supabase
     .from("bank_accounts")
     .insert({
-      subdivision_id: subdivision.id,
+      oc_id: oc.id,
       account_name: "Admin",
       bsb: "083-001",
       account_number: "12345678",
@@ -288,7 +288,7 @@ async function createFixture(): Promise<Fixture> {
   const { data: budget } = await supabase
     .from("budgets")
     .insert({
-      subdivision_id: subdivision.id,
+      oc_id: oc.id,
       financial_year: "2026-2027",
       fund_type: "administrative",
       total_amount: 12000,
@@ -303,7 +303,7 @@ async function createFixture(): Promise<Fixture> {
   const { data: batch } = await supabase
     .from("levy_batches")
     .insert({
-      subdivision_id: subdivision.id,
+      oc_id: oc.id,
       budget_id: budget.id,
       financial_year: "2026-2027",
       fund_type: "administrative",
@@ -322,14 +322,14 @@ async function createFixture(): Promise<Fixture> {
 
   const { data: ref } = await supabase.rpc("next_reference_number", {
     p_prefix: "LEV",
-    p_subdivision_id: subdivision.id,
+    p_oc_id: oc.id,
   });
   if (!ref) throw new Error("fixture: next_reference_number");
 
   const { data: notice } = await supabase
     .from("levy_notices")
     .insert({
-      subdivision_id: subdivision.id,
+      oc_id: oc.id,
       lot_id: lot.id,
       budget_id: budget.id,
       batch_id: batch.id,
@@ -354,7 +354,7 @@ async function createFixture(): Promise<Fixture> {
   return {
     runId,
     companyId: company.id,
-    subdivisionId: subdivision.id,
+    ocId: oc.id,
     profileId: profile.id,
     adminAccountId: account.id,
     basiqAccountId,
@@ -415,7 +415,7 @@ async function linkAccountToConnection(connectionId: string, accountId: string, 
 async function scenarioB1(fx: Fixture) {
   const header = "B1: createBasiqUser is idempotent";
   try {
-    const first = await basiq.createBasiqUser(fx.subdivisionId);
+    const first = await basiq.createBasiqUser(fx.ocId);
     assert(first.success, `first call error: ${first.error}`);
     const firstId = first.success!.basiqUserId;
 
@@ -424,7 +424,7 @@ async function scenarioB1(fx: Fixture) {
     await supabase
       .from("basiq_connections")
       .insert({
-        subdivision_id: fx.subdivisionId,
+        oc_id: fx.ocId,
         basiq_user_id: firstId,
         basiq_external_connection_id: `scaffold-${fx.runId}`,
         basiq_institution_id: "AU00000",
@@ -434,7 +434,7 @@ async function scenarioB1(fx: Fixture) {
       });
 
     stubClient.calls.createUser = 0;
-    const second = await basiq.createBasiqUser(fx.subdivisionId);
+    const second = await basiq.createBasiqUser(fx.ocId);
     assert(second.success, `second call error: ${second.error}`);
     assert(
       second.success!.basiqUserId === firstId,
@@ -449,7 +449,7 @@ async function scenarioB1(fx: Fixture) {
     await supabase
       .from("basiq_connections")
       .delete()
-      .eq("subdivision_id", fx.subdivisionId);
+      .eq("oc_id", fx.ocId);
 
     record(header, true, `userId=${firstId}, no extra API call on 2nd invocation`);
   } catch (e) {
@@ -463,9 +463,9 @@ async function scenarioB2(fx: Fixture): Promise<{ connectionId: string } | null>
     const accountsBefore = await supabase
       .from("bank_accounts")
       .select("id, basiq_connection_id")
-      .eq("subdivision_id", fx.subdivisionId);
+      .eq("oc_id", fx.ocId);
     const res = await basiq.startBasiqConsent({
-      subdivision_id: fx.subdivisionId,
+      oc_id: fx.ocId,
       institution_id: "AU00000",
       nominated_rep_name: "Jane Manager",
     });
@@ -488,7 +488,7 @@ async function scenarioB2(fx: Fixture): Promise<{ connectionId: string } | null>
     const accountsAfter = await supabase
       .from("bank_accounts")
       .select("id, basiq_connection_id")
-      .eq("subdivision_id", fx.subdivisionId);
+      .eq("oc_id", fx.ocId);
     const mutated = (accountsAfter.data ?? []).some(
       (a) =>
         (a as { basiq_connection_id: string | null }).basiq_connection_id !==
@@ -578,7 +578,7 @@ async function scenarioB4(fx: Fixture, connectionId: string) {
 
     const before = await countBankTransactionsFor(fx.adminAccountId);
     const res = await basiq.forceSyncBasiqConnection({
-      subdivisionId: fx.subdivisionId,
+      ocId: fx.ocId,
     });
     assert(res.success, `unexpected error: ${res.error}`);
     const after = await countBankTransactionsFor(fx.adminAccountId);
@@ -621,7 +621,7 @@ async function scenarioB5(fx: Fixture) {
     ];
     const before = await countBankTransactionsFor(fx.adminAccountId);
     const res = await basiq.forceSyncBasiqConnection({
-      subdivisionId: fx.subdivisionId,
+      ocId: fx.ocId,
       bypassRateLimit: true,
     });
     assert(res.success, `unexpected error: ${res.error}`);
@@ -638,16 +638,16 @@ async function scenarioB6(fx: Fixture) {
   try {
     stubClient.stubTransactions = [];
     const first = await basiq.forceSyncBasiqConnection({
-      subdivisionId: fx.subdivisionId,
+      ocId: fx.ocId,
     });
     assert(first.success, `first error: ${first.error}`);
     const second = await basiq.forceSyncBasiqConnection({
-      subdivisionId: fx.subdivisionId,
+      ocId: fx.ocId,
     });
     assert(second.success, `second error: ${second.error}`);
     assert(second.success!.rateLimited, "second call should be rate-limited");
     const bypass = await basiq.forceSyncBasiqConnection({
-      subdivisionId: fx.subdivisionId,
+      ocId: fx.ocId,
       bypassRateLimit: true,
     });
     assert(bypass.success, `bypass error: ${bypass.error}`);
@@ -792,7 +792,7 @@ async function scenarioB10(fx: Fixture, connectionId: string) {
     // Force-sync should treat expired connections as a no-op (the loop
     // only picks active/syncing).
     const res = await basiq.forceSyncBasiqConnection({
-      subdivisionId: fx.subdivisionId,
+      ocId: fx.ocId,
       bypassRateLimit: true,
     });
     assert(res.success, `error: ${res.error}`);
@@ -856,9 +856,9 @@ async function scenarioB12(fx: Fixture, connectionId: string) {
     assert(!gap.committeeNotified, "5-day gap should not notify committee");
 
     const { data: suppression } = await supabase
-      .from("subdivision_notification_suppressions")
+      .from("oc_notification_suppressions")
       .select("suppressed_until")
-      .eq("subdivision_id", fx.subdivisionId)
+      .eq("oc_id", fx.ocId)
       .eq("suppression_type", "arrears_post_gap_reauth")
       .order("created_at", { ascending: false })
       .limit(1);
@@ -950,13 +950,13 @@ async function scenarioB16(fx: Fixture, connectionId: string) {
       })
       .eq("id", connectionId);
 
-    // Seed a single active mapping under this subdivision. Strategy 6
+    // Seed a single active mapping under this oc. Strategy 6
     // (fuzzy_hint) compares canonicalised description against active
     // mappings; "Marc" canonicalises to MARC, jw(MARC, MARTHA) ≈ 0.825.
     const { error: mapErr } = await supabase
       .from("bank_payer_mappings")
       .insert({
-        subdivision_id: fx.subdivisionId,
+        oc_id: fx.ocId,
         canonical_sender_name: "MARTHA",
         lot_id: fx.lotId,
         status: "active",
@@ -1075,7 +1075,7 @@ async function cleanupMarker(): Promise<void> {
 
 async function cleanupOneCompany(companyId: string): Promise<void> {
   const { data: subs } = await supabase
-    .from("subdivisions")
+    .from("owners_corporations")
     .select("id")
     .eq("management_company_id", companyId);
   const subIds = (subs ?? []).map((s) => (s as { id: string }).id);
@@ -1086,7 +1086,7 @@ async function cleanupOneCompany(companyId: string): Promise<void> {
   const profIds = (profs ?? []).map((p) => (p as { id: string }).id);
 
   if (subIds.length > 0) {
-    await supabase.from("audit_log").delete().in("subdivision_id", subIds);
+    await supabase.from("audit_log").delete().in("oc_id", subIds);
   }
   if (profIds.length > 0) {
     await supabase.from("audit_log").delete().in("profile_id", profIds);
@@ -1096,7 +1096,7 @@ async function cleanupOneCompany(companyId: string): Promise<void> {
     const { data: conns } = await supabase
       .from("basiq_connections")
       .select("id")
-      .in("subdivision_id", subIds);
+      .in("oc_id", subIds);
     const connIds = (conns ?? []).map((c) => (c as { id: string }).id);
     if (connIds.length > 0) {
       await supabase
@@ -1109,31 +1109,31 @@ async function cleanupOneCompany(companyId: string): Promise<void> {
         .in("basiq_connection_id", connIds);
     }
     await supabase
-      .from("subdivision_notification_suppressions")
+      .from("oc_notification_suppressions")
       .delete()
-      .in("subdivision_id", subIds);
+      .in("oc_id", subIds);
 
     // Null out bank_accounts.basiq_connection_id before deleting connections.
     await supabase
       .from("bank_accounts")
       .update({ basiq_connection_id: null })
-      .in("subdivision_id", subIds);
+      .in("oc_id", subIds);
 
     await supabase
       .from("basiq_connections")
       .delete()
-      .in("subdivision_id", subIds);
+      .in("oc_id", subIds);
 
     const { data: lots } = await supabase
       .from("lots")
       .select("id")
-      .in("subdivision_id", subIds);
+      .in("oc_id", subIds);
     const lotIds = (lots ?? []).map((l) => (l as { id: string }).id);
 
     const { data: accounts } = await supabase
       .from("bank_accounts")
       .select("id")
-      .in("subdivision_id", subIds);
+      .in("oc_id", subIds);
     const accountIds = (accounts ?? []).map((a) => (a as { id: string }).id);
 
     if (lotIds.length > 0) {
@@ -1181,12 +1181,12 @@ async function cleanupOneCompany(companyId: string): Promise<void> {
         .in("bank_account_id", accountIds);
     }
 
-    await supabase.from("payments").delete().in("subdivision_id", subIds);
+    await supabase.from("payments").delete().in("oc_id", subIds);
 
     const { data: notices } = await supabase
       .from("levy_notices")
       .select("id")
-      .in("subdivision_id", subIds);
+      .in("oc_id", subIds);
     const noticeIds = (notices ?? []).map((n) => (n as { id: string }).id);
     if (noticeIds.length > 0) {
       await supabase
@@ -1196,12 +1196,12 @@ async function cleanupOneCompany(companyId: string): Promise<void> {
       await supabase
         .from("levy_notices")
         .update({ linked_levy_id: null })
-        .in("subdivision_id", subIds);
-      await supabase.from("levy_notices").delete().in("subdivision_id", subIds);
+        .in("oc_id", subIds);
+      await supabase.from("levy_notices").delete().in("oc_id", subIds);
     }
-    await supabase.from("levy_batches").delete().in("subdivision_id", subIds);
+    await supabase.from("levy_batches").delete().in("oc_id", subIds);
 
-    await supabase.from("subdivisions").delete().in("id", subIds);
+    await supabase.from("owners_corporations").delete().in("id", subIds);
   }
 
   await supabase.from("profiles").delete().eq("management_company_id", companyId);

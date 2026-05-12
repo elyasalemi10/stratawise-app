@@ -48,7 +48,7 @@ import {
   __setUserIdResolverForVerification,
   __getUserIdResolverForVerification,
 } from "@/lib/auth-resolver";
-import { generateSubdivisionCode } from "@/lib/subdivision-code";
+import { generateOCCode } from "@/lib/oc-code";
 import {
   detectLedgerDuplicate,
   markLedgerDuplicate,
@@ -89,7 +89,7 @@ function assert(cond: unknown, msg = "assertion failed"): asserts cond {
 interface Fixture {
   runId: string;
   companyId: string;
-  subdivisionId: string;
+  ocId: string;
   profileId: string;
   budgetId: string;
   bankAccountId: string;
@@ -127,25 +127,25 @@ async function createFixture(): Promise<Fixture> {
     .single();
   assert(profile, "fixture: profile insert failed");
 
-  const { data: subdivision } = await supabase
-    .from("subdivisions")
+  const { data: oc } = await supabase
+    .from("owners_corporations")
     .insert({
       management_company_id: company.id,
       name: companyName,
       plan_number: `PLAN-${runId}`,
-      short_code: generateSubdivisionCode(),
+      short_code: generateOCCode(),
       address: "1 LDup Verify St, Melbourne VIC 3000",
       total_lots: 2,
       created_by: profile.id,
     })
     .select("id")
     .single();
-  assert(subdivision, "fixture: subdivision insert failed");
+  assert(oc, "fixture: oc insert failed");
 
   const { data: budget } = await supabase
     .from("budgets")
     .insert({
-      subdivision_id: subdivision.id,
+      oc_id: oc.id,
       financial_year: "2026-2027",
       fund_type: "administrative",
       total_amount: 12000,
@@ -160,8 +160,8 @@ async function createFixture(): Promise<Fixture> {
   const { data: lots } = await supabase
     .from("lots")
     .insert([
-      { subdivision_id: subdivision.id, lot_number: 1, lot_entitlement: 100, lot_liability: 100 },
-      { subdivision_id: subdivision.id, lot_number: 2, lot_entitlement: 100, lot_liability: 100 },
+      { oc_id: oc.id, lot_number: 1, lot_entitlement: 100, lot_liability: 100 },
+      { oc_id: oc.id, lot_number: 2, lot_entitlement: 100, lot_liability: 100 },
     ])
     .select("id, lot_number")
     .order("lot_number", { ascending: true });
@@ -170,7 +170,7 @@ async function createFixture(): Promise<Fixture> {
   const { data: bankAccount } = await supabase
     .from("bank_accounts")
     .insert({
-      subdivision_id: subdivision.id,
+      oc_id: oc.id,
       account_name: "Admin Account",
       bsb: "012-345",
       account_number: "33333333",
@@ -184,7 +184,7 @@ async function createFixture(): Promise<Fixture> {
   const { data: noticeA } = await supabase
     .from("levy_notices")
     .insert({
-      subdivision_id: subdivision.id,
+      oc_id: oc.id,
       lot_id: lots[0].id,
       budget_id: budget.id,
       reference_number: "LEV-1001",
@@ -204,7 +204,7 @@ async function createFixture(): Promise<Fixture> {
   const { data: noticeB } = await supabase
     .from("levy_notices")
     .insert({
-      subdivision_id: subdivision.id,
+      oc_id: oc.id,
       lot_id: lots[1].id,
       budget_id: budget.id,
       reference_number: "LEV-1002",
@@ -224,7 +224,7 @@ async function createFixture(): Promise<Fixture> {
   const { data: noticeC } = await supabase
     .from("levy_notices")
     .insert({
-      subdivision_id: subdivision.id,
+      oc_id: oc.id,
       lot_id: lots[0].id,
       budget_id: budget.id,
       reference_number: "LEV-1003",
@@ -244,7 +244,7 @@ async function createFixture(): Promise<Fixture> {
   // Outstanding debits so RPCs have something to credit against.
   await supabase.from("lot_ledger_entries").insert([
     {
-      subdivision_id: subdivision.id,
+      oc_id: oc.id,
       lot_id: lots[0].id,
       fund_type: "administrative",
       entry_type: "debit",
@@ -257,7 +257,7 @@ async function createFixture(): Promise<Fixture> {
       created_by: profile.id,
     },
     {
-      subdivision_id: subdivision.id,
+      oc_id: oc.id,
       lot_id: lots[1].id,
       fund_type: "administrative",
       entry_type: "debit",
@@ -270,7 +270,7 @@ async function createFixture(): Promise<Fixture> {
       created_by: profile.id,
     },
     {
-      subdivision_id: subdivision.id,
+      oc_id: oc.id,
       lot_id: lots[0].id,
       fund_type: "administrative",
       entry_type: "debit",
@@ -287,7 +287,7 @@ async function createFixture(): Promise<Fixture> {
   return {
     runId,
     companyId: company.id,
-    subdivisionId: subdivision.id,
+    ocId: oc.id,
     profileId: profile.id,
     budgetId: budget.id,
     bankAccountId: bankAccount.id,
@@ -315,7 +315,7 @@ async function insertCredit(opts: CreditOpts): Promise<string> {
   const { fx } = opts;
   const status = opts.status ?? "active";
   const payload: Record<string, unknown> = {
-    subdivision_id: fx.subdivisionId,
+    oc_id: fx.ocId,
     lot_id: opts.lotId,
     fund_type: "administrative",
     entry_type: "credit",
@@ -532,7 +532,7 @@ async function ld7_chainPrevention(fx: Fixture) {
   assert(det2.flagged && det2.duplicate_of === firstId, "LD-7 setup: detection failed on second");
   await markLedgerDuplicate({
     lot_ledger_entry_id: secondId,
-    subdivision_id: fx.subdivisionId,
+    oc_id: fx.ocId,
     duplicate_of: det2.duplicate_of,
     metadata: det2.metadata,
     performedBy: fx.profileId,
@@ -706,7 +706,7 @@ async function ld11_voidAsLedgerDuplicate(
   assert(det.flagged, "LD-11 setup: detection failed");
   await markLedgerDuplicate({
     lot_ledger_entry_id: newerId,
-    subdivision_id: fx.subdivisionId,
+    oc_id: fx.ocId,
     duplicate_of: det.duplicate_of,
     metadata: det.metadata,
     performedBy: fx.profileId,
@@ -714,7 +714,7 @@ async function ld11_voidAsLedgerDuplicate(
   });
 
   const result = await recon.voidAsLedgerDuplicate({
-    subdivision_id: fx.subdivisionId,
+    oc_id: fx.ocId,
     lot_ledger_entry_id: newerId,
   });
   const state = await fetchEntryState(newerId);
@@ -763,7 +763,7 @@ async function ld12_voidAlreadyVoided(
   assert(det.flagged && det.duplicate_of === olderId, "LD-12 setup: detection failed");
   await markLedgerDuplicate({
     lot_ledger_entry_id: newerId,
-    subdivision_id: fx.subdivisionId,
+    oc_id: fx.ocId,
     duplicate_of: det.duplicate_of,
     metadata: det.metadata,
     performedBy: fx.profileId,
@@ -777,7 +777,7 @@ async function ld12_voidAlreadyVoided(
   });
 
   const result = await recon.voidAsLedgerDuplicate({
-    subdivision_id: fx.subdivisionId,
+    oc_id: fx.ocId,
     lot_ledger_entry_id: newerId,
   });
   record(
@@ -808,7 +808,7 @@ async function ld13_keepAsOverpayment(
   assert(det.flagged, "LD-13 setup: detection failed");
   await markLedgerDuplicate({
     lot_ledger_entry_id: newerId,
-    subdivision_id: fx.subdivisionId,
+    oc_id: fx.ocId,
     duplicate_of: det.duplicate_of,
     metadata: det.metadata,
     performedBy: fx.profileId,
@@ -816,7 +816,7 @@ async function ld13_keepAsOverpayment(
   });
 
   const result = await recon.keepAsOverpayment({
-    subdivision_id: fx.subdivisionId,
+    oc_id: fx.ocId,
     lot_ledger_entry_id: newerId,
   });
   const state = await fetchEntryState(newerId);
@@ -896,7 +896,7 @@ async function ld14_voidCascadesMatches(
     .eq("id", creditId);
 
   const result = await recon.voidAsLedgerDuplicate({
-    subdivision_id: fx.subdivisionId,
+    oc_id: fx.ocId,
     lot_ledger_entry_id: creditId,
   });
 
@@ -954,7 +954,7 @@ async function ld15_reconcileTransactionIntegration(
   assert(bankTx, "LD-15 setup: bank_transaction insert failed");
 
   const matchRes = await recon.reconcileTransaction({
-    subdivision_id: fx.subdivisionId,
+    oc_id: fx.ocId,
     bank_transaction_id: bankTx.id,
     allocations: [
       {
@@ -1008,7 +1008,7 @@ async function ld16_recordCashReceiptBoundary(
     levy_notice_id: fx.noticeCId,
   });
   const receiptRes = await recon.recordCashReceipt({
-    subdivision_id: fx.subdivisionId,
+    oc_id: fx.ocId,
     lot_id: fx.lotAId,
     bank_account_id: fx.bankAccountId,
     fund_type: "administrative",
@@ -1051,7 +1051,7 @@ async function ld17_orchestratorIntegration(
   const { data: ld17Notice } = await supabase
     .from("levy_notices")
     .insert({
-      subdivision_id: fx.subdivisionId,
+      oc_id: fx.ocId,
       lot_id: fx.lotAId,
       budget_id: fx.budgetId,
       reference_number: "LEV-1017",
@@ -1068,7 +1068,7 @@ async function ld17_orchestratorIntegration(
     .single();
   assert(ld17Notice, "LD-17 setup: notice insert failed");
   await supabase.from("lot_ledger_entries").insert({
-    subdivision_id: fx.subdivisionId,
+    oc_id: fx.ocId,
     lot_id: fx.lotAId,
     fund_type: "administrative",
     entry_type: "debit",
@@ -1112,7 +1112,7 @@ async function ld17_orchestratorIntegration(
   const { tryAutoMatch } = await import("./orchestrator");
   const matchRes = await tryAutoMatch({
     bankTransactionId: bankTx.id,
-    subdivisionId: fx.subdivisionId,
+    ocId: fx.ocId,
     bankAccountId: fx.bankAccountId,
     description: "Auto-match candidate LEV-1017",
     amount: 250,
@@ -1164,7 +1164,7 @@ async function ld19_voidLinkedCreditEndState(
   assert(bankTx, "LD-19 setup: bank_transaction insert failed");
 
   const matchRes = await recon.reconcileTransaction({
-    subdivision_id: fx.subdivisionId,
+    oc_id: fx.ocId,
     bank_transaction_id: bankTx.id,
     allocations: [
       {
@@ -1220,7 +1220,7 @@ async function ld19_voidLinkedCreditEndState(
     .eq("id", creditId);
 
   const result = await recon.voidAsLedgerDuplicate({
-    subdivision_id: fx.subdivisionId,
+    oc_id: fx.ocId,
     lot_ledger_entry_id: creditId,
   });
   assert(result.success?.voided === true, `LD-19 void failed: ${result.error}`);
@@ -1303,7 +1303,7 @@ async function ld20_voidUnlinkedCredit(
     .eq("id", creditId);
 
   const result = await recon.voidAsLedgerDuplicate({
-    subdivision_id: fx.subdivisionId,
+    oc_id: fx.ocId,
     lot_ledger_entry_id: creditId,
   });
   assert(result.success?.voided === true, `LD-20 void failed: ${result.error}`);
@@ -1421,7 +1421,7 @@ async function ld21_voidMultiLinkedFails(
     .eq("id", creditId);
 
   const result = await recon.voidAsLedgerDuplicate({
-    subdivision_id: fx.subdivisionId,
+    oc_id: fx.ocId,
     lot_ledger_entry_id: creditId,
   });
 
@@ -1465,7 +1465,7 @@ async function cleanupMarker(): Promise<void> {
 
 async function cleanupCompany(companyId: string): Promise<void> {
   const { data: subs } = await supabase
-    .from("subdivisions")
+    .from("owners_corporations")
     .select("id")
     .eq("management_company_id", companyId);
   const subIds = (subs ?? []).map((s) => s.id);
@@ -1478,7 +1478,7 @@ async function cleanupCompany(companyId: string): Promise<void> {
   const { data: accounts } = await supabase
     .from("bank_accounts")
     .select("id")
-    .in("subdivision_id", subIds);
+    .in("oc_id", subIds);
   const accountIds = (accounts ?? []).map((a) => a.id);
   if (accountIds.length > 0) {
     const { data: txns } = await supabase
@@ -1494,7 +1494,7 @@ async function cleanupCompany(companyId: string): Promise<void> {
   const { data: lots } = await supabase
     .from("lots")
     .select("id")
-    .in("subdivision_id", subIds);
+    .in("oc_id", subIds);
   const lotIds = (lots ?? []).map((l) => l.id);
   if (lotIds.length > 0) {
     const { data: entries } = await supabase
@@ -1523,24 +1523,24 @@ async function cleanupCompany(companyId: string): Promise<void> {
   if (accountIds.length > 0) {
     await supabase.from("bank_transactions").delete().in("bank_account_id", accountIds);
   }
-  await supabase.from("undeposited_funds").delete().in("subdivision_id", subIds).then(
+  await supabase.from("undeposited_funds").delete().in("oc_id", subIds).then(
     () => null,
     () => null,
   );
   const { data: notices } = await supabase
     .from("levy_notices")
     .select("id")
-    .in("subdivision_id", subIds);
+    .in("oc_id", subIds);
   const noticeIds = (notices ?? []).map((n) => n.id);
   if (noticeIds.length > 0) {
     await supabase.from("levy_notice_items").delete().in("levy_notice_id", noticeIds);
-    await supabase.from("levy_notices").update({ linked_levy_id: null }).in("subdivision_id", subIds);
-    await supabase.from("levy_notices").delete().in("subdivision_id", subIds);
+    await supabase.from("levy_notices").update({ linked_levy_id: null }).in("oc_id", subIds);
+    await supabase.from("levy_notices").delete().in("oc_id", subIds);
   }
-  await supabase.from("levy_batches").delete().in("subdivision_id", subIds);
-  await supabase.from("budgets").delete().in("subdivision_id", subIds);
-  await supabase.from("audit_log").delete().in("subdivision_id", subIds);
-  await supabase.from("subdivisions").delete().in("id", subIds);
+  await supabase.from("levy_batches").delete().in("oc_id", subIds);
+  await supabase.from("budgets").delete().in("oc_id", subIds);
+  await supabase.from("audit_log").delete().in("oc_id", subIds);
+  await supabase.from("owners_corporations").delete().in("id", subIds);
   await supabase.from("profiles").delete().eq("management_company_id", companyId);
   await supabase.from("management_companies").delete().eq("id", companyId);
 }

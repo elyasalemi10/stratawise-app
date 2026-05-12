@@ -12,7 +12,7 @@
 //
 // Collision design (resolved Gap 1, Gap E):
 //   - createBankPayerMapping checks COLLISION first.
-//   - Collision = OTHER lots in the same subdivision with the same
+//   - Collision = OTHER lots in the same oc with the same
 //     canonical_sender_name in status active OR ambiguous.
 //   - On collision: refuse new mapping, flip any active collisions to
 //     ambiguous (audit each), return collision payload for the three-way
@@ -38,7 +38,7 @@ export type MappingStatus = "active" | "ambiguous" | "disabled";
 
 export interface BankPayerMapping {
   id: string;
-  subdivision_id: string;
+  oc_id: string;
   canonical_sender_name: string;
   lot_id: string;
   status: MappingStatus;
@@ -51,7 +51,7 @@ export interface BankPayerMapping {
 }
 
 export interface CreateMappingInput {
-  subdivision_id: string;
+  oc_id: string;
   canonical_sender_name: string;
   lot_id: string;
   raw_example?: string; // raw description that prompted this mapping
@@ -82,7 +82,7 @@ export type CollisionDivergenceType =
   | "new_active_mapping_appeared";
 
 export interface ResolveCollisionInput {
-  subdivision_id: string;
+  oc_id: string;
   canonical_sender_name: string;
   proposed_lot_id: string;
   resolution: "update" | "keep_existing" | "remove";
@@ -118,7 +118,7 @@ export interface DetectRepeatedResult {
 // ─── Internal helpers ─────────────────────────────────────────────────────
 
 async function fetchCollidingMappings(
-  subdivisionId: string,
+  ocId: string,
   canonicalName: string,
   excludeLotId: string,
 ): Promise<Array<{ id: string; lot_id: string; status: MappingStatus }>> {
@@ -126,7 +126,7 @@ async function fetchCollidingMappings(
   const { data } = await supabase
     .from("bank_payer_mappings")
     .select("id, lot_id, status")
-    .eq("subdivision_id", subdivisionId)
+    .eq("oc_id", ocId)
     .eq("canonical_sender_name", canonicalName)
     .neq("lot_id", excludeLotId)
     .in("status", ["active", "ambiguous"]);
@@ -155,7 +155,7 @@ async function appendRawExample(
 
 async function auditMapping(
   performedBy: string,
-  subdivisionId: string,
+  ocId: string,
   mappingId: string,
   action: string,
   metadata: Record<string, unknown>,
@@ -163,7 +163,7 @@ async function auditMapping(
   const supabase = createServerClient();
   await supabase.from("audit_log").insert({
     profile_id: performedBy,
-    subdivision_id: subdivisionId,
+    oc_id: ocId,
     action,
     entity_type: "bank_payer_mapping",
     entity_id: mappingId,
@@ -189,13 +189,13 @@ export async function createBankPayerMapping(
 
   // 1. Collision check — other lots, same canonical name, active or ambiguous.
   const colliding = await fetchCollidingMappings(
-    input.subdivision_id,
+    input.oc_id,
     input.canonical_sender_name,
     input.lot_id,
   );
 
   if (colliding.length > 0) {
-    const reasonText = `Another lot in this subdivision shares the canonical name '${input.canonical_sender_name}'`;
+    const reasonText = `Another lot in this oc shares the canonical name '${input.canonical_sender_name}'`;
     const previousStatuses = new Map(colliding.map((m) => [m.id, m.status]));
     const stillActive = colliding.filter((m) => m.status === "active");
 
@@ -214,7 +214,7 @@ export async function createBankPayerMapping(
       for (const m of stillActive) {
         await auditMapping(
           input.created_by,
-          input.subdivision_id,
+          input.oc_id,
           m.id,
           "bank_payer_mapping.flipped_ambiguous",
           {
@@ -249,7 +249,7 @@ export async function createBankPayerMapping(
   const { data: existing } = await supabase
     .from("bank_payer_mappings")
     .select("id, status")
-    .eq("subdivision_id", input.subdivision_id)
+    .eq("oc_id", input.oc_id)
     .eq("canonical_sender_name", input.canonical_sender_name)
     .eq("lot_id", input.lot_id)
     .maybeSingle();
@@ -272,7 +272,7 @@ export async function createBankPayerMapping(
     if (input.raw_example) await appendRawExample(existing.id, input.raw_example);
     await auditMapping(
       input.created_by,
-      input.subdivision_id,
+      input.oc_id,
       existing.id,
       "bank_payer_mapping.reactivated",
       { from_status: existing.status, to_status: "active" },
@@ -284,7 +284,7 @@ export async function createBankPayerMapping(
   const { data: created, error } = await supabase
     .from("bank_payer_mappings")
     .insert({
-      subdivision_id: input.subdivision_id,
+      oc_id: input.oc_id,
       canonical_sender_name: input.canonical_sender_name,
       lot_id: input.lot_id,
       status: "active",
@@ -301,7 +301,7 @@ export async function createBankPayerMapping(
 
   await auditMapping(
     input.created_by,
-    input.subdivision_id,
+    input.oc_id,
     created.id,
     "bank_payer_mapping.created",
     {
@@ -333,7 +333,7 @@ export async function resolveCollision(
   const supabase = createServerClient();
 
   const current = await fetchCollidingMappings(
-    input.subdivision_id,
+    input.oc_id,
     input.canonical_sender_name,
     input.proposed_lot_id,
   );
@@ -372,7 +372,7 @@ export async function resolveCollision(
         for (const id of currentIds) {
           await auditMapping(
             input.performed_by,
-            input.subdivision_id,
+            input.oc_id,
             id,
             "bank_payer_mapping.disabled",
             {
@@ -383,7 +383,7 @@ export async function resolveCollision(
         }
       }
       const created = await createBankPayerMapping({
-        subdivision_id: input.subdivision_id,
+        oc_id: input.oc_id,
         canonical_sender_name: input.canonical_sender_name,
         lot_id: input.proposed_lot_id,
         created_by: input.performed_by,
@@ -424,7 +424,7 @@ export async function resolveCollision(
           .eq("id", m.id);
         await auditMapping(
           input.performed_by,
-          input.subdivision_id,
+          input.oc_id,
           m.id,
           "bank_payer_mapping.restored",
           {
@@ -454,7 +454,7 @@ export async function resolveCollision(
         for (const id of currentIds) {
           await auditMapping(
             input.performed_by,
-            input.subdivision_id,
+            input.oc_id,
             id,
             "bank_payer_mapping.disabled",
             { triggered_by: "collision_resolution_remove" },
@@ -475,12 +475,12 @@ export async function resolveCollision(
  * (Addition 2: never auto-promotes). Disambiguation requires manager
  * action via the mapping management page.
  *
- * Algorithm: find active mappings on OTHER lots in this subdivision whose
+ * Algorithm: find active mappings on OTHER lots in this oc whose
  * canonical_sender_name equals the new owner's canonicalised name; flip
  * each to ambiguous with audit.
  */
 export async function sweepMappingsForOwnerChange(
-  subdivisionId: string,
+  ocId: string,
   affectedLotId: string,
   newOwnerCanonicalName: string | null,
   performedBy: string,
@@ -492,7 +492,7 @@ export async function sweepMappingsForOwnerChange(
   const { data: collidingActive } = await supabase
     .from("bank_payer_mappings")
     .select("id, lot_id")
-    .eq("subdivision_id", subdivisionId)
+    .eq("oc_id", ocId)
     .eq("canonical_sender_name", newOwnerCanonicalName)
     .neq("lot_id", affectedLotId)
     .eq("status", "active");
@@ -515,7 +515,7 @@ export async function sweepMappingsForOwnerChange(
   for (const m of collidingActive) {
     await auditMapping(
       performedBy,
-      subdivisionId,
+      ocId,
       m.id,
       "bank_payer_mapping.flipped_ambiguous",
       {
@@ -537,14 +537,14 @@ export async function sweepMappingsForOwnerChange(
  * transaction's canonicalised description equals canonicalSenderName and
  * the match links to a credit on lotId. Returns proposal_flag = true when
  * count == 3 AND no existing (active|ambiguous|disabled) mapping for
- * (subdivision, canonical, lot).
+ * (oc, canonical, lot).
  *
  * Performance: bounded by 30-day window. Per-row canonicalisation in TS;
  * acceptable at StrataWise scale per Gap B resolution. PRE_LAUNCH_CLEANUP item
  * tracks if cost becomes meaningful at scale.
  */
 export async function detectRepeatedManualMatch(
-  subdivisionId: string,
+  ocId: string,
   canonicalSenderName: string,
   lotId: string,
   canonicaliseFn: (raw: string | null | undefined) => string | null,
@@ -555,7 +555,7 @@ export async function detectRepeatedManualMatch(
   const { data: existingMapping } = await supabase
     .from("bank_payer_mappings")
     .select("id")
-    .eq("subdivision_id", subdivisionId)
+    .eq("oc_id", ocId)
     .eq("canonical_sender_name", canonicalSenderName)
     .eq("lot_id", lotId)
     .maybeSingle();
@@ -609,7 +609,7 @@ export async function detectRepeatedManualMatch(
 }
 
 /**
- * List bank_payer_mappings for a subdivision. Optional status filter; when
+ * List bank_payer_mappings for a oc. Optional status filter; when
  * omitted, returns active + ambiguous (the management page's default view —
  * disabled rows hidden unless explicitly requested).
  */
@@ -617,7 +617,7 @@ export async function detectRepeatedManualMatch(
 
 export interface DisableMappingInput {
   mapping_id: string;
-  subdivision_id: string;
+  oc_id: string;
   reason?: string;
   performed_by: string;
 }
@@ -634,7 +634,7 @@ export async function disableMapping(
     .from("bank_payer_mappings")
     .select("id, status, canonical_sender_name, lot_id")
     .eq("id", input.mapping_id)
-    .eq("subdivision_id", input.subdivision_id)
+    .eq("oc_id", input.oc_id)
     .maybeSingle();
   if (!existing) return { ok: false, error: "Mapping not found" };
   if (existing.status === "disabled") {
@@ -654,7 +654,7 @@ export async function disableMapping(
 
   await auditMapping(
     input.performed_by,
-    input.subdivision_id,
+    input.oc_id,
     input.mapping_id,
     "bank_payer_mapping.disabled",
     {
@@ -670,7 +670,7 @@ export async function disableMapping(
 
 export interface ReactivateMappingInput {
   mapping_id: string;
-  subdivision_id: string;
+  oc_id: string;
   performed_by: string;
 }
 
@@ -695,7 +695,7 @@ export async function reactivateMapping(
     .from("bank_payer_mappings")
     .select("id, status, canonical_sender_name, lot_id")
     .eq("id", input.mapping_id)
-    .eq("subdivision_id", input.subdivision_id)
+    .eq("oc_id", input.oc_id)
     .maybeSingle();
   if (!existing) return { ok: false, kind: "error", error: "Mapping not found" };
   if (existing.status === "active") {
@@ -706,7 +706,7 @@ export async function reactivateMapping(
   // would block our update via the partial UNIQUE index. Detect explicitly
   // so the UI can route to CollisionResolutionDialog.
   const colliders = await fetchCollidingMappings(
-    input.subdivision_id,
+    input.oc_id,
     existing.canonical_sender_name,
     existing.lot_id,
   );
@@ -741,7 +741,7 @@ export async function reactivateMapping(
 
   await auditMapping(
     input.performed_by,
-    input.subdivision_id,
+    input.oc_id,
     input.mapping_id,
     "bank_payer_mapping.reactivated",
     {
@@ -756,7 +756,7 @@ export async function reactivateMapping(
 
 export interface DeleteMappingInput {
   mapping_id: string;
-  subdivision_id: string;
+  oc_id: string;
   performed_by: string;
 }
 
@@ -772,14 +772,14 @@ export async function deleteMapping(
     .from("bank_payer_mappings")
     .select("id, status, canonical_sender_name, lot_id, raw_examples")
     .eq("id", input.mapping_id)
-    .eq("subdivision_id", input.subdivision_id)
+    .eq("oc_id", input.oc_id)
     .maybeSingle();
   if (!existing) return { ok: false, error: "Mapping not found" };
 
   // Audit BEFORE delete so the metadata captures the row's final state.
   await auditMapping(
     input.performed_by,
-    input.subdivision_id,
+    input.oc_id,
     input.mapping_id,
     "bank_payer_mapping.deleted",
     {
@@ -802,14 +802,14 @@ export async function deleteMapping(
 }
 
 export async function listBankPayerMappings(
-  subdivisionId: string,
+  ocId: string,
   filter?: "active" | "ambiguous" | "disabled" | "all",
 ): Promise<BankPayerMapping[]> {
   const supabase = createServerClient();
   let query = supabase
     .from("bank_payer_mappings")
     .select("*")
-    .eq("subdivision_id", subdivisionId)
+    .eq("oc_id", ocId)
     .order("created_at", { ascending: false });
 
   if (filter === "active") query = query.eq("status", "active");

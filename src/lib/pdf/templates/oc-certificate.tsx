@@ -70,9 +70,9 @@ export interface OCCertificateProps {
   logoUrl?: string | null;
   signatureUrl?: string | null;
 
-  // Subdivision
+  // OC
   planNumber: string;
-  subdivisionAddress: string;
+  ocAddress: string;
   lotNumber: number;
   lotUnitNumber?: string | null;
 
@@ -114,7 +114,7 @@ export interface OCCertificateProps {
 
 export function OCCertificate(props: OCCertificateProps) {
   const {
-    logoUrl, signatureUrl, planNumber, subdivisionAddress, lotNumber, lotUnitNumber,
+    logoUrl, signatureUrl, planNumber, ocAddress, lotNumber, lotUnitNumber,
     applicantName, applicantEmail, applicationDate, certificateDate,
     currentFees, billingCycle, feesPaidUpTo, unpaidFeesTotal, levies,
     repairsInfo, insuranceCover, totalFundsHeld, liabilities, currentContracts,
@@ -148,11 +148,11 @@ export function OCCertificate(props: OCCertificateProps) {
           </View>
           <View style={s.infoRow}>
             <Text style={s.infoLabel}>Address</Text>
-            <Text style={s.infoValue}>{subdivisionAddress}</Text>
+            <Text style={s.infoValue}>{ocAddress}</Text>
           </View>
           <View style={s.infoRow}>
             <Text style={s.infoLabel}>Certificate for</Text>
-            <Text style={s.infoValue}>{lotLabel} on plan of subdivision {planNumber}</Text>
+            <Text style={s.infoValue}>{lotLabel} on plan of oc {planNumber}</Text>
           </View>
           <View style={s.infoRow}>
             <Text style={s.infoLabel}>Applicant</Text>

@@ -146,7 +146,7 @@ export function LevyHistoryReport({ data, title, subtitle, address, logoUrl, lot
   const total = data.reduce((sum, l) => sum + l.amount, 0);
   const totalPaid = data.reduce((sum, l) => sum + l.amount_paid, 0);
   const info = [
-    { label: "Subdivision", value: subtitle },
+    { label: "OC", value: subtitle },
     ...(address ? [{ label: "Address", value: address }] : []),
     ...(lotOwnerName ? [{ label: "Lot owner", value: lotOwnerName }] : []),
   ];
@@ -216,7 +216,7 @@ export function InsuranceStatusReport({ data, title, subtitle, address, logoUrl 
   const totalPremium = data.filter((p) => !p.is_expired).reduce((sum, p) => sum + (p.premium ?? 0), 0);
   const totalInsured = data.filter((p) => !p.is_expired).reduce((sum, p) => sum + (p.sum_insured ?? 0), 0);
   const info = [
-    { label: "Subdivision", value: subtitle },
+    { label: "OC", value: subtitle },
     ...(address ? [{ label: "Address", value: address }] : []),
   ];
 
@@ -278,7 +278,7 @@ export function LotRegisterReport({ data, title, subtitle, address, logoUrl, sho
   const totalLiability = data.reduce((sum, lot) => sum + (lot.lot_liability || 0), 0);
   const assignedCount = data.filter((lot) => lot.owner_status === "member").length;
   const info = [
-    { label: "Subdivision", value: subtitle },
+    { label: "OC", value: subtitle },
     ...(address ? [{ label: "Address", value: address }] : []),
   ];
 
@@ -349,7 +349,7 @@ export interface CommLogData {
 
 export function CommLogReport({ data, title, subtitle, address, logoUrl }: { data: CommLogData[]; title: string; subtitle: string; address?: string; logoUrl?: string | null }) {
   const info = [
-    { label: "Subdivision", value: subtitle },
+    { label: "OC", value: subtitle },
     ...(address ? [{ label: "Address", value: address }] : []),
     { label: "Total entries", value: String(data.length) },
   ];
@@ -387,7 +387,7 @@ export interface AuditTrailData {
 
 export function AuditTrailReport({ data, title, subtitle, address, logoUrl }: { data: AuditTrailData[]; title: string; subtitle: string; address?: string; logoUrl?: string | null }) {
   const info = [
-    { label: "Subdivision", value: subtitle },
+    { label: "OC", value: subtitle },
     ...(address ? [{ label: "Address", value: address }] : []),
     { label: "Total entries", value: String(data.length) },
   ];
@@ -451,7 +451,7 @@ export function OutstandingArrearsReport({
   const interest = data.reduce((sum, r) => sum + r.interest_outstanding, 0);
 
   const info = [
-    { label: "Subdivision", value: subtitle },
+    { label: "OC", value: subtitle },
     ...(address ? [{ label: "Address", value: address }] : []),
     { label: "As of", value: fmtDate(asOfDate) },
     { label: "Lots in arrears", value: String(data.length) },
@@ -539,7 +539,7 @@ export function OwnerStatementReportPdf({
 }) {
   const lotLabel = `${report.lot_number}${report.unit_number ? ` / ${report.unit_number}` : ""}`;
   const info = [
-    { label: "Subdivision", value: subtitle },
+    { label: "OC", value: subtitle },
     ...(address ? [{ label: "Address", value: address }] : []),
     { label: "Lot", value: lotLabel },
     ...(report.owner_display_name ? [{ label: "Owner", value: report.owner_display_name }] : []),
@@ -637,7 +637,7 @@ export function TrustAccountSummaryReport({
   const totalUnreconciled = data.reduce((sum, r) => sum + r.unreconciled_count, 0);
 
   const info = [
-    { label: "Subdivision", value: subtitle },
+    { label: "OC", value: subtitle },
     ...(address ? [{ label: "Address", value: address }] : []),
     { label: "Period", value: `${fmtDate(fromDate)} – ${fmtDate(toDate)}` },
     { label: "Accounts", value: String(data.length) },
@@ -661,7 +661,7 @@ export function TrustAccountSummaryReport({
         {data.length === 0 ? (
           <View style={s.row} wrap={false}>
             <Text style={[s.tdMuted, { width: "100%", textAlign: "center" as const, paddingVertical: 12 }]}>
-              No bank accounts configured for this subdivision.
+              No bank accounts configured for this oc.
             </Text>
           </View>
         ) : (

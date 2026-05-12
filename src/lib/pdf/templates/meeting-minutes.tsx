@@ -35,7 +35,7 @@ function AttendanceSection({
 
 export function MeetingMinutes({
   managementCompany,
-  subdivision,
+  oc,
   referenceNumber,
   date,
   meetingType,
@@ -60,7 +60,7 @@ export function MeetingMinutes({
       <Page size="A4" style={baseStyles.page} wrap>
         <PDFHeader
           managementCompany={managementCompany}
-          subdivision={subdivision}
+          oc={oc}
           date={date}
         />
 

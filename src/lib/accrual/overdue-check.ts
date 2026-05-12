@@ -90,7 +90,7 @@ export async function checkOverdueLeviesJob(
   const { data: leviesData, error: leviesErr } = await supabase
     .from("levy_notices")
     .select(
-      "id, lot_id, subdivision_id, fund_type, reference_number, amount, amount_paid, due_date",
+      "id, lot_id, oc_id, fund_type, reference_number, amount, amount_paid, due_date",
     )
     .eq("due_date", targetDueDate)
     .in("status", ["issued", "partially_paid", "overdue"])
@@ -105,7 +105,7 @@ export async function checkOverdueLeviesJob(
   const allEligible = (leviesData ?? []) as Array<{
     id: string;
     lot_id: string;
-    subdivision_id: string;
+    oc_id: string;
     fund_type: "administrative" | "capital_works";
     reference_number: string;
     amount: number | string;
@@ -178,7 +178,7 @@ interface ProcessLevyContext {
   levy: {
     id: string;
     lot_id: string;
-    subdivision_id: string;
+    oc_id: string;
     fund_type: "administrative" | "capital_works";
     reference_number: string;
     amount: number | string;
@@ -198,9 +198,9 @@ async function processOverdueLevy(
 
   // ─── Owner resolution ────────────────────────────────────────────
   const { data: memberRow } = await supabase
-    .from("subdivision_members")
+    .from("oc_members")
     .select("profile_id")
-    .eq("subdivision_id", levy.subdivision_id)
+    .eq("oc_id", levy.oc_id)
     .eq("lot_id", levy.lot_id)
     .eq("role", "lot_owner")
     .eq("is_primary_contact", true)
@@ -218,7 +218,7 @@ async function processOverdueLevy(
   );
   if (optedOut) return "skipped_opted_out";
 
-  // ─── Owner email + subdivision context ───────────────────────────
+  // ─── Owner email + oc context ───────────────────────────
   const [{ data: owner }, { data: sub }, { data: lot }] = await Promise.all([
     supabase
       .from("profiles")
@@ -226,9 +226,9 @@ async function processOverdueLevy(
       .eq("id", ownerProfileId)
       .single(),
     supabase
-      .from("subdivisions")
+      .from("owners_corporations")
       .select("name, address, short_code")
-      .eq("id", levy.subdivision_id)
+      .eq("id", levy.oc_id)
       .single(),
     supabase
       .from("lots")
@@ -242,9 +242,9 @@ async function processOverdueLevy(
     owner as { first_name: string | null; last_name: string | null } | null,
   );
   const subRow = sub as { name: string; address: string; short_code: string } | null;
-  const subdivisionName = subRow?.name ?? "Your subdivision";
-  const subdivisionAddress = subRow?.address ?? "";
-  const subdivisionShortCode = subRow?.short_code ?? "";
+  const ocName = subRow?.name ?? "Your oc";
+  const ocAddress = subRow?.address ?? "";
+  const ocShortCode = subRow?.short_code ?? "";
   const lotLabel = formatLotLabel(
     lot as { lot_number: number; unit_number: string | null } | null,
   );
@@ -257,7 +257,7 @@ async function processOverdueLevy(
 
   // ─── Company logo (null until manager UI lands in Prompt 6.5) ────
   const companyLogoUrl = await resolveCompanyLogo(supabase, {
-    subdivisionId: levy.subdivision_id,
+    ocId: levy.oc_id,
   });
 
   const amountOutstanding =
@@ -266,14 +266,14 @@ async function processOverdueLevy(
   const params: SendOverdueReminderEmailParams = {
     to: ownerEmail,
     ownerName,
-    subdivisionName,
-    subdivisionAddress,
+    ocName,
+    ocAddress,
     referenceNumber: levy.reference_number,
     amountOutstanding,
     daysOverdue: 14,
     dueDate: levy.due_date,
     penaltyInterestAccrued,
-    subdivisionShortCode,
+    ocShortCode,
     companyLogoUrl,
   };
 
@@ -282,12 +282,12 @@ async function processOverdueLevy(
   const { data: logRow, error: logErr } = await supabase
     .from("communication_log")
     .insert({
-      subdivision_id: levy.subdivision_id,
+      oc_id: levy.oc_id,
       recipient_id: ownerProfileId,
       recipient_email: ownerEmail,
       channel: "email",
       type: NOTIFICATION_TYPE,
-      subject: `Your levy is overdue — ${subdivisionName}`,
+      subject: `Your levy is overdue — ${ocName}`,
       body_preview: subjectPreview.slice(0, 300),
       status: "queued",
       related_entity_type: "levy_notice",
@@ -310,7 +310,7 @@ async function processOverdueLevy(
   if ("dryRun" in sendResult) {
     await supabase.from("audit_log").insert({
       profile_id: systemProfileId,
-      subdivision_id: levy.subdivision_id,
+      oc_id: levy.oc_id,
       action: "communication.overdue_reminder.dry_run",
       entity_type: "levy_notice",
       entity_id: levy.id,
@@ -339,7 +339,7 @@ async function processOverdueLevy(
   // Reference number is operational — uses next_reference_number('ESC').
   const { data: refData, error: refErr } = await supabase.rpc(
     "next_reference_number",
-    { p_prefix: "ESC", p_subdivision_id: null },
+    { p_prefix: "ESC", p_oc_id: null },
   );
   if (refErr || !refData) {
     // Treat ref-allocation failure as send-failure (we already sent the
@@ -399,7 +399,7 @@ async function processOverdueLevy(
       .eq("id", communicationLogId),
     supabase.from("audit_log").insert({
       profile_id: systemProfileId,
-      subdivision_id: levy.subdivision_id,
+      oc_id: levy.oc_id,
       action: "communication.overdue_reminder.sent",
       entity_type: "levy_notice",
       entity_id: levy.id,

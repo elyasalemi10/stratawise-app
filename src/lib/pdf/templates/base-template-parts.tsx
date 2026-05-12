@@ -1,7 +1,7 @@
 import React from "react";
 import { View, Text, Image } from "@react-pdf/renderer";
 import { baseStyles } from "../styles";
-import type { ManagementCompany, Subdivision } from "../types";
+import type { ManagementCompany, OC } from "../types";
 
 function formatDate(date: Date): string {
   return date.toLocaleDateString("en-AU", {
@@ -21,15 +21,15 @@ function formatTime(date: Date): string {
 
 /**
  * Reusable PDF header block.
- * Renders management company logo/name, subdivision details, and date.
+ * Renders management company logo/name, oc details, and date.
  */
 export function PDFHeader({
   managementCompany,
-  subdivision,
+  oc,
   date,
 }: {
   managementCompany: ManagementCompany;
-  subdivision: Subdivision;
+  oc: OC;
   date: Date;
 }) {
   return (
@@ -46,19 +46,19 @@ export function PDFHeader({
             <Text style={baseStyles.companyName}>
               {managementCompany.name}
             </Text>
-            <Text style={baseStyles.subdivisionDetails}>
-              {subdivision.name}
+            <Text style={baseStyles.ocDetails}>
+              {oc.name}
             </Text>
-            <Text style={baseStyles.subdivisionDetails}>
-              {subdivision.address}
+            <Text style={baseStyles.ocDetails}>
+              {oc.address}
             </Text>
-            {subdivision.abn ? (
-              <Text style={baseStyles.subdivisionDetails}>
-                ABN: {subdivision.abn}
+            {oc.abn ? (
+              <Text style={baseStyles.ocDetails}>
+                ABN: {oc.abn}
               </Text>
             ) : null}
-            <Text style={baseStyles.subdivisionDetails}>
-              Plan: {subdivision.plan_number}
+            <Text style={baseStyles.ocDetails}>
+              Plan: {oc.plan_number}
             </Text>
           </View>
         </View>

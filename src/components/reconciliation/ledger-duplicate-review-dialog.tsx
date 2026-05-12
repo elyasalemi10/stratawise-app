@@ -55,7 +55,7 @@ const MAX_NOTES_LEN = 500;
 export interface LedgerDuplicateReviewPayload {
   /** The ledger entry under review (suspected duplicate). */
   lot_ledger_entry_id: string;
-  subdivision_id: string;
+  oc_id: string;
   /** Display fields for the entry. */
   current: {
     entry_date: string;
@@ -228,12 +228,12 @@ export function LedgerDuplicateReviewDialog({
       const result =
         action === "void"
           ? await voidAsLedgerDuplicate({
-              subdivision_id: payload.subdivision_id,
+              oc_id: payload.oc_id,
               lot_ledger_entry_id: payload.lot_ledger_entry_id,
               notes: trimmedNotes,
             })
           : await keepAsOverpayment({
-              subdivision_id: payload.subdivision_id,
+              oc_id: payload.oc_id,
               lot_ledger_entry_id: payload.lot_ledger_entry_id,
               notes: trimmedNotes,
             });

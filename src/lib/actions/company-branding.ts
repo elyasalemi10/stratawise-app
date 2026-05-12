@@ -165,7 +165,7 @@ export async function updateCompanyLogo(
 
   await supabase.from("audit_log").insert({
     profile_id: profile.id,
-    subdivision_id: null,
+    oc_id: null,
     action: "update_company_logo",
     entity_type: "management_company",
     entity_id: companyId,

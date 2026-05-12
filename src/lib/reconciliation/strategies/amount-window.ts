@@ -1,7 +1,7 @@
 // ============================================================================
 // Strategy 5 — amount window
 // ----------------------------------------------------------------------------
-// Looks up outstanding notices in this subdivision/fund whose amount equals
+// Looks up outstanding notices in this oc/fund whose amount equals
 // tx.amount (within $0.01 tolerance) AND whose due_date sits within ±30
 // days of the transaction date. If EXACTLY ONE candidate remains: match.
 // Multiple candidates → no_match (Addition 1: NO priority preference at the
@@ -38,7 +38,7 @@ export async function tryAmountWindowMatch(
   const { data: notices } = await supabase
     .from("levy_notices")
     .select("id, lot_id, fund_type, amount, reference_number, due_date")
-    .eq("subdivision_id", ctx.subdivisionId)
+    .eq("oc_id", ctx.ocId)
     .eq("fund_type", ctx.bankAccountFundType)
     .gte("amount", ctx.amount - AMOUNT_TOLERANCE)
     .lte("amount", ctx.amount + AMOUNT_TOLERANCE)

@@ -37,7 +37,7 @@ const nextCachePath = scriptRequire.resolve("next/cache");
 
 import { createClient } from "@supabase/supabase-js";
 import { randomUUID } from "crypto";
-import { generateSubdivisionCode } from "@/lib/subdivision-code";
+import { generateOCCode } from "@/lib/oc-code";
 import {
   __setUserIdResolverForVerification,
 } from "@/lib/auth-resolver";
@@ -69,7 +69,7 @@ interface FixtureContext {
   managerProfileId: string;
   ownerProfileId: string;
   ownerClerkId: string;
-  subdivisionId: string;
+  ocId: string;
   lotAId: string;
   lotBId: string;
 }
@@ -114,25 +114,25 @@ async function createFixture(): Promise<FixtureContext> {
   const ownerProfileId = (owner as { id: string }).id;
 
   const { data: sub } = await supabase
-    .from("subdivisions")
+    .from("owners_corporations")
     .insert({
       management_company_id: companyId,
       name: `${VERIFY_MARKER}${runId}`,
       plan_number: `PLAN-${runId}`,
-      short_code: generateSubdivisionCode(),
+      short_code: generateOCCode(),
       address: `${runId} MA Test St, Melbourne VIC 3000`,
       total_lots: 2,
       created_by: managerProfileId,
     })
     .select("id")
     .single();
-  const subdivisionId = (sub as { id: string }).id;
+  const ocId = (sub as { id: string }).id;
 
   const { data: lots } = await supabase
     .from("lots")
     .insert([
-      { subdivision_id: subdivisionId, lot_number: 1, lot_entitlement: 100, lot_liability: 100 },
-      { subdivision_id: subdivisionId, lot_number: 2, lot_entitlement: 100, lot_liability: 100 },
+      { oc_id: ocId, lot_number: 1, lot_entitlement: 100, lot_liability: 100 },
+      { oc_id: ocId, lot_number: 2, lot_entitlement: 100, lot_liability: 100 },
     ])
     .select("id, lot_number")
     .order("lot_number", { ascending: true });
@@ -140,9 +140,9 @@ async function createFixture(): Promise<FixtureContext> {
   const lotBId = (lots as { id: string }[])[1].id;
 
   // Owner active on BOTH lots.
-  await supabase.from("subdivision_members").insert([
+  await supabase.from("oc_members").insert([
     {
-      subdivision_id: subdivisionId,
+      oc_id: ocId,
       profile_id: ownerProfileId,
       lot_id: lotAId,
       role: "lot_owner",
@@ -150,7 +150,7 @@ async function createFixture(): Promise<FixtureContext> {
       is_financial: true,
     },
     {
-      subdivision_id: subdivisionId,
+      oc_id: ocId,
       profile_id: ownerProfileId,
       lot_id: lotBId,
       role: "lot_owner",
@@ -164,7 +164,7 @@ async function createFixture(): Promise<FixtureContext> {
     managerProfileId,
     ownerProfileId,
     ownerClerkId,
-    subdivisionId,
+    ocId,
     lotAId,
     lotBId,
   };
@@ -187,7 +187,7 @@ async function createLevy(
   const { data } = await supabase
     .from("levy_notices")
     .insert({
-      subdivision_id: ctx.subdivisionId,
+      oc_id: ctx.ocId,
       lot_id: lotId,
       reference_number: `LEV-MA-${opts.refSuffix}`,
       fund_type: "administrative",
@@ -214,7 +214,7 @@ async function ma1_emptyState(
 ) {
   // No levies yet — fresh fixture.
   activeClerkId = ctx.ownerClerkId;
-  const result = await ma.getMyArrears(ctx.subdivisionId);
+  const result = await ma.getMyArrears(ctx.ocId);
   const ok = result.rows.length === 0 && result.outstandingTotal === 0;
   record(
     "MA-1: empty state — owner with no overdue levies returns empty result",
@@ -240,7 +240,7 @@ async function ma2_multiLotOwner(
   });
 
   activeClerkId = ctx.ownerClerkId;
-  const result = await ma.getMyArrears(ctx.subdivisionId);
+  const result = await ma.getMyArrears(ctx.ocId);
 
   const lotsSeen = new Set(result.rows.map((r) => r.lot_id));
   const ok =
@@ -281,7 +281,7 @@ async function ma3_penaltyInterestLinkage(
   });
 
   activeClerkId = ctx.ownerClerkId;
-  const result = await ma.getMyArrears(ctx.subdivisionId);
+  const result = await ma.getMyArrears(ctx.ocId);
 
   const parentRow = result.rows.find((r) => r.id === parentId);
   // Parent row exists; 2 penalty children attached; total includes parent
@@ -320,7 +320,7 @@ async function ma4_statusFilterExcludes(
   });
 
   activeClerkId = ctx.ownerClerkId;
-  const result = await ma.getMyArrears(ctx.subdivisionId);
+  const result = await ma.getMyArrears(ctx.ocId);
 
   // None of the just-created excluded-status rows should be in result.
   const excluded = result.rows.find(
@@ -346,7 +346,7 @@ async function cleanupMarker() {
   const companyIds = (companies ?? []).map((c) => (c as { id: string }).id);
   for (const cid of companyIds) {
     const { data: subs } = await supabase
-      .from("subdivisions")
+      .from("owners_corporations")
       .select("id")
       .eq("management_company_id", cid);
     const subIds = (subs ?? []).map((s) => (s as { id: string }).id);
@@ -354,21 +354,21 @@ async function cleanupMarker() {
       await supabase
         .from("levy_notices")
         .update({ linked_levy_id: null })
-        .in("subdivision_id", subIds);
-      await supabase.from("levy_notices").delete().in("subdivision_id", subIds);
-      await supabase.from("subdivision_members").delete().in("subdivision_id", subIds);
-      await supabase.from("audit_log").delete().in("subdivision_id", subIds);
+        .in("oc_id", subIds);
+      await supabase.from("levy_notices").delete().in("oc_id", subIds);
+      await supabase.from("oc_members").delete().in("oc_id", subIds);
+      await supabase.from("audit_log").delete().in("oc_id", subIds);
       const { data: lots } = await supabase
         .from("lots")
         .select("id")
-        .in("subdivision_id", subIds);
+        .in("oc_id", subIds);
       const lotIds = (lots ?? []).map((l) => (l as { id: string }).id);
       if (lotIds.length > 0) {
         await supabase.from("lot_ledger_state").delete().in("lot_id", lotIds);
         await supabase.from("lot_ledger_entries").delete().in("lot_id", lotIds);
       }
-      await supabase.from("lots").delete().in("subdivision_id", subIds);
-      await supabase.from("subdivisions").delete().in("id", subIds);
+      await supabase.from("lots").delete().in("oc_id", subIds);
+      await supabase.from("owners_corporations").delete().in("id", subIds);
     }
     await supabase.from("profiles").delete().eq("management_company_id", cid);
     await supabase.from("management_companies").delete().eq("id", cid);

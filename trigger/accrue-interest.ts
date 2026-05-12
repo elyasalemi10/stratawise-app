@@ -1,6 +1,6 @@
 import { schedules } from "@trigger.dev/sdk";
 import {
-  accrueInterestForSubdivisionJob,
+  accrueInterestForOCJob,
   resolveSystemProfileId,
 } from "@/lib/accrual/jobs";
 import { createServerClient } from "@/lib/supabase";
@@ -14,7 +14,7 @@ import { createServerClient } from "@/lib/supabase";
 //       grep -n "from.*actions" trigger/accrue-interest.ts → zero matches
 //   - Promise.allSettled for partial-failure tolerance — one stuck OC must
 //     not starve the batch.
-//   - withTimeout per subdivision (5s; accrual is local DB, much faster
+//   - withTimeout per oc (5s; accrual is local DB, much faster
 //     than basiq's 15s for external API calls).
 //   - Aggregate audit_log row at end (no per-OC spam).
 //
@@ -24,7 +24,7 @@ import { createServerClient } from "@/lib/supabase";
 // fires same wall-clock hour) are accepted as benign:
 //   - Accrual is monthly cadence at the per-levy level (last_accrual_date
 //     guards repeat charges).
-//   - The run-row UNIQUE(subdivision_id, run_date) constraint dedupes the
+//   - The run-row UNIQUE(oc_id, run_date) constraint dedupes the
 //     fall-back double-fire — second invocation gets unique_violation,
 //     classified as 'skipped_already_accrued'.
 //
@@ -40,7 +40,7 @@ export const dailyAccrueInterest = schedules.task({
     const supabase = createServerClient();
 
     // Resolve system profile id once — hard-fail if missing (deploy-ordering
-    // bug surfaces immediately rather than as per-subdivision FK failures).
+    // bug surfaces immediately rather than as per-oc FK failures).
     const systemProfileId = await resolveSystemProfileId(supabase);
 
     // ─── run_date ────────────────────────────────────────────────────
@@ -62,16 +62,16 @@ export const dailyAccrueInterest = schedules.task({
       timeZone: "Australia/Melbourne",
     }).format(new Date());
 
-    // ─── List eligible subdivisions ──────────────────────────────────
-    const { data: subdivisions, error: listErr } = await supabase
-      .from("subdivisions")
+    // ─── List eligible ocs ──────────────────────────────────
+    const { data: ocs, error: listErr } = await supabase
+      .from("owners_corporations")
       .select("id")
       .eq("interest_enabled", true)
       .eq("status", "active");
 
     if (listErr) {
       console.error(
-        "daily-accrue-interest: failed to list subdivisions",
+        "daily-accrue-interest: failed to list ocs",
         listErr,
       );
       return {
@@ -85,7 +85,7 @@ export const dailyAccrueInterest = schedules.task({
         totalInterest: 0,
       };
     }
-    if (!subdivisions || subdivisions.length === 0) {
+    if (!ocs || ocs.length === 0) {
       return {
         timestamp: payload.timestamp,
         runDate,
@@ -98,12 +98,12 @@ export const dailyAccrueInterest = schedules.task({
       };
     }
 
-    // ─── Fan out per subdivision ─────────────────────────────────────
+    // ─── Fan out per oc ─────────────────────────────────────
     const results = await Promise.allSettled(
-      subdivisions.map((sub) =>
+      ocs.map((sub) =>
         withTimeout(
-          accrueInterestForSubdivisionJob({
-            subdivisionId: (sub as { id: string }).id,
+          accrueInterestForOCJob({
+            ocId: (sub as { id: string }).id,
             runDate,
             systemProfileId,
             supabase,
@@ -124,7 +124,7 @@ export const dailyAccrueInterest = schedules.task({
     // bucket for the four non-error no-op outcomes):
     //   - ok:      outcome === 'completed' (work done, penalty notices written)
     //   - skipped: outcome ∈ {skipped_no_eligible, skipped_already_accrued,
-    //              skipped_subdivision_missing}
+    //              skipped_oc_missing}
     //   - errors:  outcome === 'failed' OR allSettled rejection (e.g. timeout)
     // processed = ok + skipped + errors (mutually exclusive).
     for (const r of results) {
@@ -141,7 +141,7 @@ export const dailyAccrueInterest = schedules.task({
         } else {
           errs += 1;
           console.error(
-            "daily-accrue-interest per-subdivision failure:",
+            "daily-accrue-interest per-oc failure:",
             v.errorMessage,
           );
         }
@@ -157,13 +157,13 @@ export const dailyAccrueInterest = schedules.task({
     // ─── Aggregate audit row ─────────────────────────────────────────
     const { error: auditErr } = await supabase.from("audit_log").insert({
       profile_id: null,
-      subdivision_id: null,
+      oc_id: null,
       action: "interest_accrual_cron.run",
       entity_type: "interest_accrual_cron",
       entity_id: null,
       metadata: {
         run_date: runDate,
-        processed: subdivisions.length,
+        processed: ocs.length,
         ok,
         skipped,
         errors: errs,
@@ -181,7 +181,7 @@ export const dailyAccrueInterest = schedules.task({
     return {
       timestamp: payload.timestamp,
       runDate,
-      processed: subdivisions.length,
+      processed: ocs.length,
       ok,
       skipped,
       errors: errs,

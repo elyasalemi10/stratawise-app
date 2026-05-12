@@ -54,7 +54,7 @@ const MAX_NOTES_LEN = 500;
 export interface BankDuplicateReviewPayload {
   /** The currently-open bank tx (the suspected row). */
   bank_transaction_id: string;
-  subdivision_id: string;
+  oc_id: string;
   /** Display fields for the suspected row. */
   current: {
     transaction_date: string;
@@ -89,9 +89,9 @@ interface Props {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   payload: BankDuplicateReviewPayload | null;
-  /** Subdivision short code for the in-error CTA link to the bank tx
+  /** OC short code for the in-error CTA link to the bank tx
    *  detail page where the manager can undo the match. */
-  subdivisionCode: string;
+  ocCode: string;
   /** Fired after a successful confirm or reject. Parent typically
    *  refreshes (router.refresh) and updates its open state. */
   onResolved?: () => void;
@@ -166,7 +166,7 @@ export function BankDuplicateReviewDialog({
   open,
   onOpenChange,
   payload,
-  subdivisionCode,
+  ocCode,
   onResolved,
 }: Props) {
   const router = useRouter();
@@ -196,12 +196,12 @@ export function BankDuplicateReviewDialog({
       const result =
         action === "confirm"
           ? await confirmDuplicate({
-              subdivision_id: payload.subdivision_id,
+              oc_id: payload.oc_id,
               bank_transaction_id: payload.bank_transaction_id,
               notes: trimmedNotes,
             })
           : await rejectDuplicate({
-              subdivision_id: payload.subdivision_id,
+              oc_id: payload.oc_id,
               bank_transaction_id: payload.bank_transaction_id,
               notes: trimmedNotes,
             });
@@ -356,7 +356,7 @@ export function BankDuplicateReviewDialog({
                 size="sm"
                 onClick={() =>
                   router.push(
-                    `/subdivisions/${subdivisionCode}/reconciliation/${payload.bank_transaction_id}`,
+                    `/ocs/${ocCode}/reconciliation/${payload.bank_transaction_id}`,
                   )
                 }
                 className="gap-1.5"

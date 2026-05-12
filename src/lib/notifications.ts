@@ -70,14 +70,14 @@ export const MANAGERIAL_NOTIFICATION_TYPES: ReadonlySet<string> = new Set([
 
 // ─── resolveCompanyLogo (PP6-D-D-fix-logo) ──────────────────────────────
 //
-// Returns the management_companies.logo_url for a subdivision or company.
+// Returns the management_companies.logo_url for a oc or company.
 // Single round-trip per call. Two overloads via discriminated input:
-//   - { subdivisionId } → subdivision.management_company_id → logo_url
+//   - { ocId } → oc.management_company_id → logo_url
 //   - { managementCompanyId } → direct lookup
 //
 // Returns null when:
 //   - input has neither id
-//   - subdivision/company not found
+//   - oc/company not found
 //   - logo_url is NULL (current default until manager-side upload UI ships
 //     in Prompt 6.5)
 //
@@ -87,7 +87,7 @@ export const MANAGERIAL_NOTIFICATION_TYPES: ReadonlySet<string> = new Set([
 
 export async function resolveCompanyLogo(
   supabase: SupabaseClient,
-  input: { subdivisionId: string } | { managementCompanyId: string },
+  input: { ocId: string } | { managementCompanyId: string },
 ): Promise<string | null> {
   if ("managementCompanyId" in input) {
     const { data } = await supabase
@@ -97,11 +97,11 @@ export async function resolveCompanyLogo(
       .maybeSingle();
     return (data as { logo_url: string | null } | null)?.logo_url ?? null;
   }
-  // subdivisionId path — single JOIN-shaped fetch.
+  // ocId path — single JOIN-shaped fetch.
   const { data } = await supabase
-    .from("subdivisions")
+    .from("owners_corporations")
     .select("management_companies(logo_url)")
-    .eq("id", input.subdivisionId)
+    .eq("id", input.ocId)
     .maybeSingle();
   if (!data) return null;
   // PostgREST returns the embedded relation as either an object or an
@@ -202,7 +202,7 @@ export async function emitPaymentReceivedEmail(
       .single(),
     supabase
       .from("lot_ledger_entries")
-      .select("id, lot_id, subdivision_id, fund_type, amount, levy_notice_id, reference")
+      .select("id, lot_id, oc_id, fund_type, amount, levy_notice_id, reference")
       .eq("id", ledgerCreditId)
       .single(),
   ]);
@@ -221,7 +221,7 @@ export async function emitPaymentReceivedEmail(
   const cr = credit as {
     id: string;
     lot_id: string;
-    subdivision_id: string;
+    oc_id: string;
     fund_type: string;
     amount: number | string;
     levy_notice_id: string | null;
@@ -233,11 +233,11 @@ export async function emitPaymentReceivedEmail(
     return { skipped: true, reason: "already_sent" };
   }
 
-  // Step 3: resolve owner via subdivision_members (active, lot-scoped).
+  // Step 3: resolve owner via oc_members (active, lot-scoped).
   const { data: memberRow } = await supabase
-    .from("subdivision_members")
+    .from("oc_members")
     .select("profile_id")
-    .eq("subdivision_id", cr.subdivision_id)
+    .eq("oc_id", cr.oc_id)
     .eq("lot_id", cr.lot_id)
     .eq("role", "lot_owner")
     .eq("is_primary_contact", true)
@@ -259,7 +259,7 @@ export async function emitPaymentReceivedEmail(
     return { skipped: true, reason: "opted_out" };
   }
 
-  // Step 5: load owner email + name + subdivision context for body shape.
+  // Step 5: load owner email + name + oc context for body shape.
   const [{ data: owner }, { data: sub }, { data: lot }] = await Promise.all([
     supabase
       .from("profiles")
@@ -267,9 +267,9 @@ export async function emitPaymentReceivedEmail(
       .eq("id", ownerProfileId)
       .single(),
     supabase
-      .from("subdivisions")
+      .from("owners_corporations")
       .select("name, address, short_code")
-      .eq("id", cr.subdivision_id)
+      .eq("id", cr.oc_id)
       .single(),
     supabase
       .from("lots")
@@ -285,30 +285,30 @@ export async function emitPaymentReceivedEmail(
   const ownerName = formatOwnerName(
     owner as { first_name: string | null; last_name: string | null } | null,
   );
-  const subdivisionName =
-    (sub as { name: string } | null)?.name ?? "Your subdivision";
-  const subdivisionAddress =
+  const ocName =
+    (sub as { name: string } | null)?.name ?? "Your oc";
+  const ocAddress =
     (sub as { address: string } | null)?.address ?? "";
   const lotLabel = formatLotLabel(
     lot as { lot_number: number; unit_number: string | null } | null,
   );
-  const subdivisionShortCode =
+  const ocShortCode =
     (sub as { short_code: string } | null)?.short_code ?? "";
   const companyLogoUrl = await resolveCompanyLogo(supabase, {
-    subdivisionId: cr.subdivision_id,
+    ocId: cr.oc_id,
   });
 
   const params: SendPaymentReceivedEmailParams = {
     to: ownerEmail,
     ownerName,
-    subdivisionName,
-    subdivisionAddress,
+    ocName,
+    ocAddress,
     amount: Number(cr.amount),
     paymentDate: tx.transaction_date,
     description: tx.description ?? "",
     lotLabel,
     reference: cr.reference,
-    subdivisionShortCode,
+    ocShortCode,
     companyLogoUrl,
   };
 
@@ -316,12 +316,12 @@ export async function emitPaymentReceivedEmail(
   const { data: logRow, error: logErr } = await supabase
     .from("communication_log")
     .insert({
-      subdivision_id: cr.subdivision_id,
+      oc_id: cr.oc_id,
       recipient_id: ownerProfileId,
       recipient_email: ownerEmail,
       channel: "email",
       type: "payment_received",
-      subject: `Payment received — ${subdivisionName}`,
+      subject: `Payment received — ${ocName}`,
       body_preview: buildBodyPreview(params),
       status: "queued",
       related_entity_type: "bank_transaction",
@@ -349,7 +349,7 @@ export async function emitPaymentReceivedEmail(
     // 'queued' so re-runs in real-send mode can pick up. Audit the dry-run.
     await supabase.from("audit_log").insert({
       profile_id: performedBy,
-      subdivision_id: cr.subdivision_id,
+      oc_id: cr.oc_id,
       action: "communication.payment_received.dry_run",
       entity_type: "bank_transaction",
       entity_id: tx.id,
@@ -401,7 +401,7 @@ export async function emitPaymentReceivedEmail(
 
   await supabase.from("audit_log").insert({
     profile_id: performedBy,
-    subdivision_id: cr.subdivision_id,
+    oc_id: cr.oc_id,
     action: "communication.payment_received.sent",
     entity_type: "bank_transaction",
     entity_id: tx.id,
@@ -419,7 +419,7 @@ export async function emitPaymentReceivedEmail(
 //
 // Called from confirmAndMatchClaimViaExistingBankTx and
 // confirmAndMatchClaimViaNewBankTx after the match commits. Looks up the
-// claim, owner, subdivision, lot; sends sendClaimMatchedEmail. Writes
+// claim, owner, oc, lot; sends sendClaimMatchedEmail. Writes
 // communication_log + audit_log. No idempotency sentinel — the claim
 // terminal state ('matched') is the de-facto idempotency guard (the
 // confirmAndMatch* actions hard-error if claim_status !== 'pending').
@@ -435,7 +435,7 @@ export async function emitClaimMatchedEmail(
 ): Promise<void> {
   const ctx = await loadClaimContext(supabase, input.claimId);
   if (!ctx) return;
-  const { claim, ownerEmail, ownerProfileId, ownerName, subdivisionName, subdivisionAddress, subdivisionShortCode, lotLabel } = ctx;
+  const { claim, ownerEmail, ownerProfileId, ownerName, ocName, ocAddress, ocShortCode, lotLabel } = ctx;
 
   const optedOut = await isNotificationOptedOut(
     supabase,
@@ -446,31 +446,31 @@ export async function emitClaimMatchedEmail(
   if (optedOut) return;
 
   const companyLogoUrl = await resolveCompanyLogo(supabase, {
-    subdivisionId: claim.subdivision_id,
+    ocId: claim.oc_id,
   });
 
   const params: SendClaimMatchedEmailParams = {
     to: ownerEmail,
     ownerName,
-    subdivisionName,
-    subdivisionAddress,
+    ocName,
+    ocAddress,
     amount: Number(claim.amount),
     claimDate: claim.claim_date,
     paymentMethod: claim.payment_method ?? "",
     lotLabel,
-    subdivisionShortCode,
+    ocShortCode,
     companyLogoUrl,
   };
 
   const { data: logRow } = await supabase
     .from("communication_log")
     .insert({
-      subdivision_id: claim.subdivision_id,
+      oc_id: claim.oc_id,
       recipient_id: ownerProfileId,
       recipient_email: ownerEmail,
       channel: "email",
       type: "claim_matched",
-      subject: `Your payment has been confirmed — ${subdivisionName}`,
+      subject: `Your payment has been confirmed — ${ocName}`,
       body_preview: `Your payment claim of $${Number(claim.amount).toFixed(2)} for ${lotLabel} has been confirmed.`.slice(0, 300),
       status: "queued",
       related_entity_type: "owner_payment_claim",
@@ -491,7 +491,7 @@ export async function emitClaimMatchedEmail(
     auditAction: "communication.claim_matched",
     auditEntityType: "owner_payment_claim",
     auditEntityId: claim.id,
-    subdivisionId: claim.subdivision_id,
+    ocId: claim.oc_id,
     performedBy: input.performedBy,
     metadata: { recipient_profile_id: ownerProfileId },
   });
@@ -515,7 +515,7 @@ export async function emitClaimRejectedEmail(
 ): Promise<void> {
   const ctx = await loadClaimContext(supabase, input.claimId);
   if (!ctx) return;
-  const { claim, ownerEmail, ownerProfileId, ownerName, subdivisionName, subdivisionAddress, subdivisionShortCode, lotLabel } = ctx;
+  const { claim, ownerEmail, ownerProfileId, ownerName, ocName, ocAddress, ocShortCode, lotLabel } = ctx;
 
   const optedOut = await isNotificationOptedOut(
     supabase,
@@ -526,31 +526,31 @@ export async function emitClaimRejectedEmail(
   if (optedOut) return;
 
   const companyLogoUrl = await resolveCompanyLogo(supabase, {
-    subdivisionId: claim.subdivision_id,
+    ocId: claim.oc_id,
   });
 
   const params: SendClaimRejectedEmailParams = {
     to: ownerEmail,
     ownerName,
-    subdivisionName,
-    subdivisionAddress,
+    ocName,
+    ocAddress,
     amount: Number(claim.amount),
     claimDate: claim.claim_date,
     rejectionReason: input.rejectionReason,
     lotLabel,
-    subdivisionShortCode,
+    ocShortCode,
     companyLogoUrl,
   };
 
   const { data: logRow } = await supabase
     .from("communication_log")
     .insert({
-      subdivision_id: claim.subdivision_id,
+      oc_id: claim.oc_id,
       recipient_id: ownerProfileId,
       recipient_email: ownerEmail,
       channel: "email",
       type: "claim_rejected",
-      subject: `Update on your payment claim — ${subdivisionName}`,
+      subject: `Update on your payment claim — ${ocName}`,
       body_preview: `Your payment claim of $${Number(claim.amount).toFixed(2)} for ${lotLabel} was not matched.`.slice(0, 300),
       status: "queued",
       related_entity_type: "owner_payment_claim",
@@ -571,7 +571,7 @@ export async function emitClaimRejectedEmail(
     auditAction: "communication.claim_rejected",
     auditEntityType: "owner_payment_claim",
     auditEntityId: claim.id,
-    subdivisionId: claim.subdivision_id,
+    ocId: claim.oc_id,
     performedBy: input.performedBy,
     metadata: {
       recipient_profile_id: ownerProfileId,
@@ -582,7 +582,7 @@ export async function emitClaimRejectedEmail(
 
 // ─── emitNewClaimSubmitted (PP6-C-2) ────────────────────────────────────
 //
-// Fan-out to all active strata managers of the claim's subdivision. Per
+// Fan-out to all active strata managers of the claim's oc. Per
 // manager: sends sendNewClaimSubmittedEmail (opt-out-respecting) AND
 // writes a notifications row (always — managerial events are not
 // in-app-opt-outable per PP6-C-0 SG-2 ratification).
@@ -602,20 +602,20 @@ export async function emitNewClaimSubmitted(
 ): Promise<void> {
   const ctx = await loadClaimContext(supabase, input.claimId);
   if (!ctx) return;
-  const { claim, ownerName, subdivisionName, subdivisionShortCode, lotLabel } = ctx;
+  const { claim, ownerName, ocName, ocShortCode, lotLabel } = ctx;
 
   // In-app link is always a relative path (rendered inside the dashboard,
   // not in email); email CTA URL is built by the sender via
-  // NEXT_PUBLIC_APP_URL + subdivisionShortCode.
-  const reviewPath = subdivisionShortCode
-    ? `/subdivisions/${subdivisionShortCode}/reconciliation/claims`
+  // NEXT_PUBLIC_APP_URL + ocShortCode.
+  const reviewPath = ocShortCode
+    ? `/ocs/${ocShortCode}/reconciliation/claims`
     : "/reconciliation/claims";
 
-  // Active managers for this subdivision.
+  // Active managers for this oc.
   const { data: managerRows } = await supabase
-    .from("subdivision_members")
+    .from("oc_members")
     .select("profile_id")
-    .eq("subdivision_id", claim.subdivision_id)
+    .eq("oc_id", claim.oc_id)
     .eq("role", "strata_manager")
     .is("left_at", null);
   const managerProfileIds = Array.from(
@@ -627,10 +627,10 @@ export async function emitNewClaimSubmitted(
   );
   if (managerProfileIds.length === 0) return;
 
-  // Resolve company logo once for the fanout — same subdivision → same logo
+  // Resolve company logo once for the fanout — same oc → same logo
   // for every manager.
   const companyLogoUrl = await resolveCompanyLogo(supabase, {
-    subdivisionId: claim.subdivision_id,
+    ocId: claim.oc_id,
   });
 
   // Hydrate manager profiles in one round-trip.
@@ -655,7 +655,7 @@ export async function emitNewClaimSubmitted(
     // actions — same boundary rule as PP6-C-1.
     await supabase.from("notifications").insert({
       profile_id: m.id,
-      subdivision_id: claim.subdivision_id,
+      oc_id: claim.oc_id,
       type: "new_claim_submitted",
       title: `New payment claim — ${lotLabel}`,
       body: `${ownerName ?? "An owner"} submitted a payment claim of $${Number(claim.amount).toFixed(2)} for ${lotLabel}.`,
@@ -677,26 +677,26 @@ export async function emitNewClaimSubmitted(
         first_name: m.first_name,
         last_name: m.last_name,
       }),
-      subdivisionName,
+      ocName,
       lotLabel,
       ownerName,
       amount: Number(claim.amount),
       claimDate: claim.claim_date,
       paymentMethod: claim.payment_method ?? "",
       notes: null,
-      subdivisionShortCode,
+      ocShortCode,
       companyLogoUrl,
     };
 
     const { data: logRow } = await supabase
       .from("communication_log")
       .insert({
-        subdivision_id: claim.subdivision_id,
+        oc_id: claim.oc_id,
         recipient_id: m.id,
         recipient_email: m.email,
         channel: "email",
         type: "new_claim_submitted",
-        subject: `New owner payment claim — ${subdivisionName} ${lotLabel}`,
+        subject: `New owner payment claim — ${ocName} ${lotLabel}`,
         body_preview: `${ownerName ?? "An owner"} submitted a $${Number(claim.amount).toFixed(2)} claim for ${lotLabel}.`.slice(0, 300),
         status: "queued",
         related_entity_type: "owner_payment_claim",
@@ -719,7 +719,7 @@ export async function emitNewClaimSubmitted(
       auditAction: "communication.new_claim_submitted",
       auditEntityType: "owner_payment_claim",
       auditEntityId: claim.id,
-      subdivisionId: claim.subdivision_id,
+      ocId: claim.oc_id,
       performedBy: input.performedBy,
       metadata: { recipient_profile_id: m.id },
     });
@@ -731,7 +731,7 @@ export async function emitNewClaimSubmitted(
 interface ClaimContext {
   claim: {
     id: string;
-    subdivision_id: string;
+    oc_id: string;
     lot_id: string;
     claimed_by_profile_id: string;
     amount: number | string;
@@ -741,9 +741,9 @@ interface ClaimContext {
   ownerEmail: string;
   ownerProfileId: string;
   ownerName: string | null;
-  subdivisionName: string;
-  subdivisionAddress: string;
-  subdivisionShortCode: string;
+  ocName: string;
+  ocAddress: string;
+  ocShortCode: string;
   lotLabel: string;
 }
 
@@ -754,7 +754,7 @@ async function loadClaimContext(
   const { data: claim } = await supabase
     .from("owner_payment_claims")
     .select(
-      "id, subdivision_id, lot_id, claimed_by_profile_id, amount, claim_date, payment_method",
+      "id, oc_id, lot_id, claimed_by_profile_id, amount, claim_date, payment_method",
     )
     .eq("id", claimId)
     .single();
@@ -768,9 +768,9 @@ async function loadClaimContext(
       .eq("id", c.claimed_by_profile_id)
       .single(),
     supabase
-      .from("subdivisions")
+      .from("owners_corporations")
       .select("name, address, short_code")
-      .eq("id", c.subdivision_id)
+      .eq("id", c.oc_id)
       .single(),
     supabase
       .from("lots")
@@ -788,9 +788,9 @@ async function loadClaimContext(
     ownerName: formatOwnerName(
       owner as { first_name: string | null; last_name: string | null } | null,
     ),
-    subdivisionName: (sub as { name: string } | null)?.name ?? "Your subdivision",
-    subdivisionAddress: (sub as { address: string } | null)?.address ?? "",
-    subdivisionShortCode: (sub as { short_code: string } | null)?.short_code ?? "",
+    ocName: (sub as { name: string } | null)?.name ?? "Your oc",
+    ocAddress: (sub as { address: string } | null)?.address ?? "",
+    ocShortCode: (sub as { short_code: string } | null)?.short_code ?? "",
     lotLabel: formatLotLabel(
       lot as { lot_number: number; unit_number: string | null } | null,
     ),
@@ -806,7 +806,7 @@ interface PersistSenderResultArgs {
   auditAction: string;
   auditEntityType: string;
   auditEntityId: string;
-  subdivisionId: string;
+  ocId: string;
   performedBy: string | null;
   metadata: Record<string, unknown>;
 }
@@ -815,12 +815,12 @@ async function persistSenderResult(
   supabase: SupabaseClient,
   args: PersistSenderResultArgs,
 ): Promise<void> {
-  const { communicationLogId, result, auditAction, auditEntityType, auditEntityId, subdivisionId, performedBy, metadata } = args;
+  const { communicationLogId, result, auditAction, auditEntityType, auditEntityId, ocId, performedBy, metadata } = args;
 
   if ("dryRun" in result) {
     await supabase.from("audit_log").insert({
       profile_id: performedBy,
-      subdivision_id: subdivisionId,
+      oc_id: ocId,
       action: `${auditAction}.dry_run`,
       entity_type: auditEntityType,
       entity_id: auditEntityId,
@@ -851,7 +851,7 @@ async function persistSenderResult(
       .eq("id", communicationLogId),
     supabase.from("audit_log").insert({
       profile_id: performedBy,
-      subdivision_id: subdivisionId,
+      oc_id: ocId,
       action: `${auditAction}.sent`,
       entity_type: auditEntityType,
       entity_id: auditEntityId,

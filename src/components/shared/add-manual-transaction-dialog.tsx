@@ -36,7 +36,7 @@ import { z } from "zod";
 interface Props {
   open: boolean;
   onOpenChange: (open: boolean) => void;
-  subdivisionId: string;
+  ocId: string;
   bankAccountId: string;
   bankAccountName: string;
   onSuccess: () => void;
@@ -51,7 +51,7 @@ type FormOutput = z.infer<typeof addManualBankTransactionSchema>;
 export function AddManualTransactionDialog({
   open,
   onOpenChange,
-  subdivisionId,
+  ocId,
   bankAccountId,
   bankAccountName,
   onSuccess,
@@ -61,7 +61,7 @@ export function AddManualTransactionDialog({
   const form = useForm<FormInput>({
     resolver: zodResolver(addManualBankTransactionSchema),
     defaultValues: {
-      subdivision_id: subdivisionId,
+      oc_id: ocId,
       bank_account_id: bankAccountId,
       transaction_date: new Date().toISOString().slice(0, 10),
       amount: 0,

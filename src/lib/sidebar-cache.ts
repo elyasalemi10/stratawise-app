@@ -1,8 +1,8 @@
 import type { SidebarProfile } from "@/lib/actions/profile";
-import type { SidebarSubdivision } from "@/lib/actions/subdivision";
+import type { SidebarOC } from "@/lib/actions/oc";
 
 const PROFILE_KEY = "stratawise_sidebar_profile";
-const SUBDIVISIONS_KEY = "stratawise_sidebar_subdivisions";
+const SUBDIVISIONS_KEY = "stratawise_sidebar_ocs";
 const MAX_AGE_MS = 5 * 60 * 1000; // 5 minutes
 
 interface CachedData<T> {
@@ -39,11 +39,11 @@ export function setCachedProfile(data: SidebarProfile): void {
   setCache(PROFILE_KEY, data);
 }
 
-export function getCachedSubdivisions(): SidebarSubdivision[] | null {
-  return getCache<SidebarSubdivision[]>(SUBDIVISIONS_KEY);
+export function getCachedOCs(): SidebarOC[] | null {
+  return getCache<SidebarOC[]>(SUBDIVISIONS_KEY);
 }
 
-export function setCachedSubdivisions(data: SidebarSubdivision[]): void {
+export function setCachedOCs(data: SidebarOC[]): void {
   setCache(SUBDIVISIONS_KEY, data);
 }
 
@@ -69,7 +69,7 @@ export const SIDEBAR_REFRESH_EVENT = "stratawise-sidebar:refresh";
  *   2. Fires a custom event the mounted sidebar listens for, triggering an
  *      immediate server-action re-fetch without a page reload.
  * The corresponding server-side revalidateTag is the responsibility of each
- * mutation server action — see revalidateSidebarForSubdivision.
+ * mutation server action — see revalidateSidebarForOC.
  */
 export function revalidateSidebarFromClient(): void {
   clearSidebarCache();

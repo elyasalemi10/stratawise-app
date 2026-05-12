@@ -1,6 +1,6 @@
 "use server";
 
-import { requireCompanyRole, requireSubdivisionAccess } from "@/lib/auth";
+import { requireCompanyRole, requireOCAccess } from "@/lib/auth";
 import { createServerClient } from "@/lib/supabase";
 import { revalidatePath } from "next/cache";
 
@@ -20,7 +20,7 @@ export interface BudgetItemData {
 
 export interface BudgetWithItems {
   id: string;
-  subdivision_id: string;
+  oc_id: string;
   financial_year: string;
   fund_type: "administrative" | "capital_works";
   total_amount: number;
@@ -88,14 +88,14 @@ export async function createBudgetCategory(
   return { id: newCat.id };
 }
 
-export async function getSubdivisionBudgets(subdivisionId: string): Promise<BudgetWithItems[]> {
-  await requireSubdivisionAccess(subdivisionId);
+export async function getOCBudgets(ocId: string): Promise<BudgetWithItems[]> {
+  await requireOCAccess(ocId);
   const supabase = createServerClient();
 
   const { data: budgets } = await supabase
     .from("budgets")
     .select("*")
-    .eq("subdivision_id", subdivisionId)
+    .eq("oc_id", ocId)
     .order("financial_year", { ascending: false });
 
   if (!budgets || budgets.length === 0) return [];
@@ -124,7 +124,7 @@ export async function getSubdivisionBudgets(subdivisionId: string): Promise<Budg
 }
 
 export async function createBudget(
-  subdivisionId: string,
+  ocId: string,
   data: {
     financial_year: string;
     fund_type: "administrative" | "capital_works";
@@ -132,14 +132,14 @@ export async function createBudget(
   }
 ) {
   const profile = await requireCompanyRole();
-  await requireSubdivisionAccess(subdivisionId);
+  await requireOCAccess(ocId);
   const supabase = createServerClient();
 
   // Check if budget already exists for this year + fund type
   const { data: existing } = await supabase
     .from("budgets")
     .select("id")
-    .eq("subdivision_id", subdivisionId)
+    .eq("oc_id", ocId)
     .eq("financial_year", data.financial_year)
     .eq("fund_type", data.fund_type)
     .single();
@@ -154,7 +154,7 @@ export async function createBudget(
   const { data: budget, error } = await supabase
     .from("budgets")
     .insert({
-      subdivision_id: subdivisionId,
+      oc_id: ocId,
       financial_year: data.financial_year,
       fund_type: data.fund_type,
       total_amount: totalAmount,
@@ -184,40 +184,40 @@ export async function createBudget(
   // Audit log
   await supabase.from("audit_log").insert({
     profile_id: profile.id,
-    subdivision_id: subdivisionId,
+    oc_id: ocId,
     action: "create",
     entity_type: "budget",
     entity_id: budget.id,
     after_state: { financial_year: data.financial_year, fund_type: data.fund_type, total_amount: totalAmount },
   });
 
-  revalidatePath("/subdivisions/[subdivisionCode]/manage", "page");
+  revalidatePath("/ocs/[ocCode]/manage", "page");
 
   return { success: true, budgetId: budget.id };
 }
 
-export async function approveBudget(subdivisionId: string, budgetId: string) {
+export async function approveBudget(ocId: string, budgetId: string) {
   const profile = await requireCompanyRole();
-  await requireSubdivisionAccess(subdivisionId);
+  await requireOCAccess(ocId);
   const supabase = createServerClient();
 
   const { error } = await supabase
     .from("budgets")
     .update({ status: "approved", approved_at: new Date().toISOString(), approved_by: profile.id })
     .eq("id", budgetId)
-    .eq("subdivision_id", subdivisionId);
+    .eq("oc_id", ocId);
 
   if (error) return { error: error.message };
 
   await supabase.from("audit_log").insert({
     profile_id: profile.id,
-    subdivision_id: subdivisionId,
+    oc_id: ocId,
     action: "approve",
     entity_type: "budget",
     entity_id: budgetId,
   });
 
-  revalidatePath("/subdivisions/[subdivisionCode]/manage", "page");
+  revalidatePath("/ocs/[ocCode]/manage", "page");
 
   return { success: true };
 }

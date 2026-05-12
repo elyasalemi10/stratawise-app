@@ -34,7 +34,7 @@ const ISO_DATE = /^\d{4}-\d{2}-\d{2}$/;
 
 export const ledgerAdjustmentSchema = z
   .object({
-    subdivision_id: z.string().uuid(),
+    oc_id: z.string().uuid(),
     lot_id: z.string().uuid(),
     fund_type: z.enum(FUND_TYPES),
     entry_type: z.enum(LEDGER_ENTRY_TYPES),
@@ -84,7 +84,7 @@ export type LotStatementQuery = z.infer<typeof lotStatementQuerySchema>;
 
 export interface LotLedgerState {
   lot_id: string;
-  subdivision_id: string;
+  oc_id: string;
   admin_balance: number;
   capital_balance: number;
   total_balance: number;
@@ -96,7 +96,7 @@ export interface LotLedgerState {
 
 export interface LotLedgerEntry {
   id: string;
-  subdivision_id: string;
+  oc_id: string;
   lot_id: string;
   fund_type: FundType;
   entry_type: LedgerEntryType;
@@ -133,8 +133,8 @@ export interface LotLedgerEntry {
   parent_status: LedgerEntryStatus | null;
 }
 
-export interface SubdivisionArrearsSummary {
-  subdivision_id: string;
+export interface OCArrearsSummary {
+  oc_id: string;
   lots_in_arrears: number;
   lots_total: number;
   total_arrears_admin: number;
@@ -145,7 +145,7 @@ export interface SubdivisionArrearsSummary {
 
 export interface LotStatement {
   lot_id: string;
-  subdivision_id: string;
+  oc_id: string;
   fromDate: string;
   toDate: string;
   opening_balance_admin: number;

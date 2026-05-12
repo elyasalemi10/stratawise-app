@@ -35,18 +35,18 @@ import { Skeleton } from "@/components/ui/skeleton";
 // ============================================
 // SAMPLE FORM SCHEMA
 // ============================================
-const subdivisionSchema = z.object({
+const ocSchema = z.object({
   name: z.string().min(2, "Name must be at least 2 characters"),
   planNumber: z.string().min(1, "Plan number is required"),
   totalLots: z.coerce.number().min(1, "Must have at least 1 lot").max(999, "Maximum 999 lots"),
 });
 
-type SubdivisionForm = z.infer<typeof subdivisionSchema>;
+type OCForm = z.infer<typeof ocSchema>;
 
 // ============================================
 // SAMPLE TABLE DATA
 // ============================================
-const sampleSubdivisions = [
+const sampleOCs = [
   { id: 1, name: "Harbour View Towers", plan: "PS 123456", lots: 42, status: "Active", balance: "$125,430.00" },
   { id: 2, name: "Riverside Gardens", plan: "PS 234567", lots: 18, status: "Active", balance: "$43,210.00" },
   { id: 3, name: "Carlton Residences", plan: "PS 345678", lots: 86, status: "Compliant", balance: "$312,000.00" },
@@ -62,13 +62,13 @@ export default function ComponentShowcase() {
     register,
     handleSubmit,
     formState: { errors },
-  } = useForm<SubdivisionForm>({
+  } = useForm<OCForm>({
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    resolver: zodResolver(subdivisionSchema) as any,
+    resolver: zodResolver(ocSchema) as any,
   });
 
-  const onSubmit = (data: SubdivisionForm) => {
-    toast.success(`Subdivision "${data.name}" created successfully`);
+  const onSubmit = (data: OCForm) => {
+    toast.success(`OC "${data.name}" created successfully`);
   };
 
   return (
@@ -91,7 +91,7 @@ export default function ComponentShowcase() {
             <Card>
               <CardContent className="pt-5">
                 <PageHeader
-                  backLink={{ href: "/subdivisions", label: "Back to Subdivisions" }}
+                  backLink={{ href: "/ocs", label: "Back to OCs" }}
                   title="Harbour View Towers"
                   subtitle="PS 123456 — 42 lots — Melbourne VIC 3000"
                   badge={<Badge variant="success">Active</Badge>}
@@ -140,7 +140,7 @@ export default function ComponentShowcase() {
                   <div className="flex flex-wrap items-center gap-3">
                     <Button>
                       <Plus className="mr-2 h-4 w-4" />
-                      Create subdivision
+                      Create oc
                     </Button>
                     <Button variant="secondary">
                       <Download className="mr-2 h-4 w-4" />
@@ -229,7 +229,7 @@ export default function ComponentShowcase() {
               <Card>
                 <CardContent className="pt-5">
                   <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
-                    Subdivisions
+                    OCs
                   </p>
                   <p className="mt-2 text-[1.75rem] font-bold tabular-nums text-foreground">
                     156
@@ -263,10 +263,10 @@ export default function ComponentShowcase() {
             <Card>
               <CardHeader>
                 <div className="flex items-center justify-between">
-                  <CardTitle>Subdivisions</CardTitle>
+                  <CardTitle>OCs</CardTitle>
                   <Button size="sm">
                     <Plus className="mr-2 h-3.5 w-3.5" />
-                    Add subdivision
+                    Add oc
                   </Button>
                 </div>
               </CardHeader>
@@ -281,7 +281,7 @@ export default function ComponentShowcase() {
                   </TableRow>
                 </TableHeader>
                 <TableBody>
-                  {sampleSubdivisions.map((sub) => (
+                  {sampleOCs.map((sub) => (
                     <TableRow key={sub.id}>
                       <TableCell className="font-medium">{sub.name}</TableCell>
                       <TableCell className="text-muted-foreground">{sub.plan}</TableCell>
@@ -314,13 +314,13 @@ export default function ComponentShowcase() {
             <h2 className="text-lg font-semibold text-foreground">Form with Zod validation</h2>
             <Card>
               <CardHeader>
-                <CardTitle>Create subdivision</CardTitle>
+                <CardTitle>Create oc</CardTitle>
               </CardHeader>
               <CardContent>
                 <form onSubmit={handleSubmit(onSubmit)} className="space-y-4">
                   <div className="space-y-1.5">
                     <Label htmlFor="name">
-                      Subdivision name <span className="text-destructive">*</span>
+                      OC name <span className="text-destructive">*</span>
                     </Label>
                     <Input
                       id="name"
@@ -365,7 +365,7 @@ export default function ComponentShowcase() {
                   </div>
 
                   <div className="flex items-center gap-2 pt-2">
-                    <Button type="submit">Create subdivision</Button>
+                    <Button type="submit">Create oc</Button>
                     <Button type="button" variant="ghost">
                       Cancel
                     </Button>

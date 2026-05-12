@@ -28,19 +28,19 @@ export default function DashboardLoading() {
     <div className="space-y-6">
       {/* KPI cards — labels + icons visible, values shimmer */}
       <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
-        <KPICardSkeleton label="Subdivisions" icon={<Building2 className="h-5 w-5" />} />
+        <KPICardSkeleton label="OCs" icon={<Building2 className="h-5 w-5" />} />
         <KPICardSkeleton label="Total lots" icon={<Users className="h-5 w-5" />} />
         <KPICardSkeleton label="Total levied" icon={<DollarSign className="h-5 w-5" />} />
         <KPICardSkeleton label="Outstanding" icon={<DollarSign className="h-5 w-5" />} />
       </div>
 
-      {/* Subdivisions section header */}
+      {/* OCs section header */}
       <div className="flex items-center justify-between">
-        <h2 className="text-base font-semibold text-foreground">Subdivisions</h2>
+        <h2 className="text-base font-semibold text-foreground">OCs</h2>
         <Skeleton className="h-8 w-40 rounded-md" />
       </div>
 
-      {/* Subdivision cards skeleton */}
+      {/* OC cards skeleton */}
       <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
         {Array.from({ length: 3 }).map((_, i) => (
           <Card key={i}>

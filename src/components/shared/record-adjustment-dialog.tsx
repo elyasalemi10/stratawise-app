@@ -47,7 +47,7 @@ import { Button } from "@/components/ui/button";
 import { Check } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { recordAdjustment } from "@/lib/actions/ledger";
-import { getSubdivisionLotsForAllocation } from "@/lib/actions/reconciliation";
+import { getOCLotsForAllocation } from "@/lib/actions/reconciliation";
 import { ledgerAdjustmentSchema } from "@/lib/validations/ledger";
 
 type FormInput = z.infer<typeof ledgerAdjustmentSchema>;
@@ -55,7 +55,7 @@ type FormInput = z.infer<typeof ledgerAdjustmentSchema>;
 interface Props {
   open: boolean;
   onOpenChange: (open: boolean) => void;
-  subdivisionId: string;
+  ocId: string;
   defaultLotId?: string;
   onSuccess: () => void;
 }
@@ -63,19 +63,19 @@ interface Props {
 export function RecordAdjustmentDialog({
   open,
   onOpenChange,
-  subdivisionId,
+  ocId,
   defaultLotId,
   onSuccess,
 }: Props) {
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [lotsLoading, setLotsLoading] = useState(true);
-  const [lots, setLots] = useState<Awaited<ReturnType<typeof getSubdivisionLotsForAllocation>>>([]);
+  const [lots, setLots] = useState<Awaited<ReturnType<typeof getOCLotsForAllocation>>>([]);
   const [lotOpen, setLotOpen] = useState(false);
 
   const form = useForm<FormInput>({
     resolver: zodResolver(ledgerAdjustmentSchema),
     defaultValues: {
-      subdivision_id: subdivisionId,
+      oc_id: ocId,
       lot_id: defaultLotId ?? "",
       fund_type: "administrative",
       entry_type: "credit",
@@ -102,7 +102,7 @@ export function RecordAdjustmentDialog({
     const loadLots = async () => {
       try {
         setLotsLoading(true);
-        const data = await getSubdivisionLotsForAllocation(subdivisionId);
+        const data = await getOCLotsForAllocation(ocId);
         setLots(data);
       } catch {
         toast.error("Failed to load lots");
@@ -111,7 +111,7 @@ export function RecordAdjustmentDialog({
       }
     };
     loadLots();
-  }, [open, subdivisionId]);
+  }, [open, ocId]);
 
   const onSubmit = async (data: FormInput) => {
     setIsSubmitting(true);

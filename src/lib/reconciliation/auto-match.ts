@@ -18,7 +18,7 @@ import { tryAutoMatch } from "./orchestrator";
 
 export interface AutoMatchArgs {
   bankTransactionId: string;
-  subdivisionId: string;
+  ocId: string;
   description: string;
   amount: number;
   performedBy: string;
@@ -59,7 +59,7 @@ export async function tryAutoMatchByReference(
 
   const outcome = await tryAutoMatch({
     bankTransactionId: args.bankTransactionId,
-    subdivisionId: args.subdivisionId,
+    ocId: args.ocId,
     bankAccountId: bt.bank_account_id,
     description: args.description,
     amount: args.amount,

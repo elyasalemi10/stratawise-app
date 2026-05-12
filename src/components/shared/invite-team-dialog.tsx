@@ -86,7 +86,7 @@ export function InviteTeamDialog({ open, onClose }: InviteTeamDialogProps) {
           </div>
 
           <p className="text-xs text-muted-foreground">
-            They will receive a link to join your management company and access all its subdivisions.
+            They will receive a link to join your management company and access all its ocs.
           </p>
 
           <DialogFooter>

@@ -3,7 +3,7 @@
 // ----------------------------------------------------------------------------
 // NEVER auto-matches. Computes Jaro-Winkler similarity between the
 // canonicalised sender name and every active bank_payer_mapping in the
-// subdivision; when max similarity ≥ 0.75, returns
+// oc; when max similarity ≥ 0.75, returns
 // metadata.hint_surfaced = true with { lot_id, canonical_name, similarity,
 // raw_canonical }. The orchestrator persists this onto
 // bank_transactions.fuzzy_hint_metadata so the queue UI can render
@@ -33,7 +33,7 @@ export async function tryFuzzySenderMatch(
   const { data: mappings } = await supabase
     .from("bank_payer_mappings")
     .select("id, lot_id, canonical_sender_name")
-    .eq("subdivision_id", ctx.subdivisionId)
+    .eq("oc_id", ctx.ocId)
     .eq("status", "active");
 
   if (!mappings || mappings.length === 0) {

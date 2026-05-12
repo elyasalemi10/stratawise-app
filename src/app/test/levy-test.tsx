@@ -17,7 +17,7 @@ const DEFAULT_DATA: LevyNoticeProps = {
     name: "MyOCM",
     logo_url: null,
   },
-  subdivision: {
+  oc: {
     name: "Grace Avenue Townhouses",
     address: "12 - 14 Grace Avenue, Dandenong VIC 3175",
     abn: null,
@@ -266,14 +266,14 @@ export default function LevyTestPage() {
               </CardContent>
             </Card>
 
-            {/* Subdivision */}
+            {/* OC */}
             <Card>
               <CardContent className="pt-5 space-y-3">
-                <Section title="Subdivision">
-                  <Field label="Name" value={data.subdivision.name} onChange={(v) => update("subdivision.name", v)} />
-                  <Field label="Address" value={data.subdivision.address} onChange={(v) => update("subdivision.address", v)} />
-                  <Field label="ABN" value={data.subdivision.abn ?? ""} onChange={(v) => update("subdivision.abn", v)} />
-                  <Field label="Plan number" value={data.subdivision.plan_number} onChange={(v) => update("subdivision.plan_number", v)} />
+                <Section title="OC">
+                  <Field label="Name" value={data.oc.name} onChange={(v) => update("oc.name", v)} />
+                  <Field label="Address" value={data.oc.address} onChange={(v) => update("oc.address", v)} />
+                  <Field label="ABN" value={data.oc.abn ?? ""} onChange={(v) => update("oc.abn", v)} />
+                  <Field label="Plan number" value={data.oc.plan_number} onChange={(v) => update("oc.plan_number", v)} />
                 </Section>
               </CardContent>
             </Card>

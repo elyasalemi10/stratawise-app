@@ -18,7 +18,7 @@
 // Per qualifying instance:
 //   1. Re-resolve linked levy_notice. Skip if paid (amount_paid >= amount) —
 //      manager may have paid in interim; engine should not nag a paid debt.
-//   2. Resolve owner via subdivision_members (primary contact). Skip
+//   2. Resolve owner via oc_members (primary contact). Skip
 //      if no owner.
 //   3. Compute next step (current_step + 1).
 //   4. Opt-out check via isNotificationOptedOut. Step 2 (second_reminder)
@@ -181,7 +181,7 @@ async function processEscalationInstance(
   const { data: levyRow } = await supabase
     .from("levy_notices")
     .select(
-      "id, lot_id, subdivision_id, fund_type, reference_number, amount, amount_paid, due_date, status",
+      "id, lot_id, oc_id, fund_type, reference_number, amount, amount_paid, due_date, status",
     )
     .eq("id", instance.levy_notice_id)
     .single();
@@ -191,7 +191,7 @@ async function processEscalationInstance(
   const levy = levyRow as {
     id: string;
     lot_id: string;
-    subdivision_id: string;
+    oc_id: string;
     fund_type: string;
     reference_number: string;
     amount: number | string;
@@ -214,11 +214,11 @@ async function processEscalationInstance(
   const notificationType =
     nextStep === 2 ? "second_reminder" : "levy_final_notice";
 
-  // ─── Resolve owner via subdivision_members (primary contact) ─────
+  // ─── Resolve owner via oc_members (primary contact) ─────
   const { data: memberRow } = await supabase
-    .from("subdivision_members")
+    .from("oc_members")
     .select("profile_id")
-    .eq("subdivision_id", levy.subdivision_id)
+    .eq("oc_id", levy.oc_id)
     .eq("lot_id", levy.lot_id)
     .eq("role", "lot_owner")
     .eq("is_primary_contact", true)
@@ -239,7 +239,7 @@ async function processEscalationInstance(
   );
   if (optedOut) return "skipped_opted_out";
 
-  // ─── Owner email + subdivision + lot context ──────────────────────
+  // ─── Owner email + oc + lot context ──────────────────────
   const [{ data: owner }, { data: sub }, { data: lot }] = await Promise.all([
     supabase
       .from("profiles")
@@ -247,9 +247,9 @@ async function processEscalationInstance(
       .eq("id", ownerProfileId)
       .single(),
     supabase
-      .from("subdivisions")
+      .from("owners_corporations")
       .select("name, address, short_code")
-      .eq("id", levy.subdivision_id)
+      .eq("id", levy.oc_id)
       .single(),
     supabase
       .from("lots")
@@ -263,9 +263,9 @@ async function processEscalationInstance(
     owner as { first_name: string | null; last_name: string | null } | null,
   );
   const subRow = sub as { name: string; address: string; short_code: string } | null;
-  const subdivisionName = subRow?.name ?? "Your subdivision";
-  const subdivisionAddress = subRow?.address ?? "";
-  const subdivisionShortCode = subRow?.short_code ?? "";
+  const ocName = subRow?.name ?? "Your oc";
+  const ocAddress = subRow?.address ?? "";
+  const ocShortCode = subRow?.short_code ?? "";
   const lotLabel = formatLotLabel(
     lot as { lot_number: number; unit_number: string | null } | null,
   );
@@ -278,7 +278,7 @@ async function processEscalationInstance(
 
   // ─── Company logo ────────────────────────────────────────────────
   const companyLogoUrl = await resolveCompanyLogo(supabase, {
-    subdivisionId: levy.subdivision_id,
+    ocId: levy.oc_id,
   });
 
   const amountOutstanding =
@@ -306,9 +306,9 @@ async function processEscalationInstance(
             "id",
             (
               await supabase
-                .from("subdivisions")
+                .from("owners_corporations")
                 .select("management_company_id")
-                .eq("id", levy.subdivision_id)
+                .eq("id", levy.oc_id)
                 .single()
             ).data?.management_company_id ?? "",
           )
@@ -333,7 +333,7 @@ async function processEscalationInstance(
           managerName: null,
           signatureUrl: mc.signature_url,
           recipientName: ownerName ?? "Lot Owner",
-          subdivisionAddress,
+          ocAddress,
           lotLabel,
           referenceNumber: levy.reference_number,
           dueDate: formatDateLong(levy.due_date),
@@ -361,12 +361,12 @@ async function processEscalationInstance(
       : `FINAL NOTICE ${levy.reference_number} (${lotLabel})`;
   const subject =
     nextStep === 2
-      ? `Second reminder — levy overdue ${daysOverdue}+ days — ${subdivisionName}`
-      : `FINAL NOTICE — outstanding levy — ${subdivisionName}`;
+      ? `Second reminder — levy overdue ${daysOverdue}+ days — ${ocName}`
+      : `FINAL NOTICE — outstanding levy — ${ocName}`;
   const { data: logRow, error: logErr } = await supabase
     .from("communication_log")
     .insert({
-      subdivision_id: levy.subdivision_id,
+      oc_id: levy.oc_id,
       recipient_id: ownerProfileId,
       recipient_email: ownerEmail,
       channel: "email",
@@ -394,14 +394,14 @@ async function processEscalationInstance(
     params: {
       to: ownerEmail,
       ownerName,
-      subdivisionName,
-      subdivisionAddress,
+      ocName,
+      ocAddress,
       referenceNumber: levy.reference_number,
       amountOutstanding,
       daysOverdue,
       dueDate: levy.due_date,
       penaltyInterestAccrued,
-      subdivisionShortCode,
+      ocShortCode,
       companyLogoUrl,
       pdfBuffer: attachmentBuffer,
       pdfFilename: attachmentFilename,
@@ -414,7 +414,7 @@ async function processEscalationInstance(
     // eligibility query).
     await supabase.from("audit_log").insert({
       profile_id: systemProfileId,
-      subdivision_id: levy.subdivision_id,
+      oc_id: levy.oc_id,
       action:
         nextStep === 2
           ? "communication.second_reminder.dry_run"
@@ -481,7 +481,7 @@ async function processEscalationInstance(
       .eq("id", communicationLogId),
     supabase.from("audit_log").insert({
       profile_id: systemProfileId,
-      subdivision_id: levy.subdivision_id,
+      oc_id: levy.oc_id,
       action:
         nextStep === 2
           ? "communication.second_reminder.sent"

@@ -36,7 +36,7 @@ function fmtDate(date: Date): string {
 
 export function LevyNotice({
   managementCompany,
-  subdivision,
+  oc,
   documentTitle,
   referenceNumber,
   date,
@@ -225,16 +225,16 @@ export function LevyNotice({
           <View style={s.infoLeft}>
             <View style={s.infoLine}>
               <Text style={s.infoLabel}>Issued for</Text>
-              <Text style={s.infoValueBold}>{subdivision.name} {subdivision.plan_number}</Text>
+              <Text style={s.infoValueBold}>{oc.name} {oc.plan_number}</Text>
             </View>
             <View style={s.infoLine}>
               <Text style={s.infoLabel}>Address</Text>
-              <Text style={s.infoValue}>{subdivision.address}</Text>
+              <Text style={s.infoValue}>{oc.address}</Text>
             </View>
-            {subdivision.abn ? (
+            {oc.abn ? (
               <View style={s.infoLine}>
                 <Text style={s.infoLabel}>ABN</Text>
-                <Text style={s.infoValue}>{subdivision.abn}</Text>
+                <Text style={s.infoValue}>{oc.abn}</Text>
               </View>
             ) : null}
             <View style={s.infoLine}>
@@ -347,7 +347,7 @@ export function LevyNotice({
               {managementCompany.name}
             </Text>
             <Text style={[s.ownerDetail, { marginTop: 3, textAlign: "left" as const }]}>Lot {lotOwner.lot_number}</Text>
-            <Text style={[s.ownerDetail, { textAlign: "left" as const }]}>{subdivision.address}</Text>
+            <Text style={[s.ownerDetail, { textAlign: "left" as const }]}>{oc.address}</Text>
 
             <View style={{ marginTop: 8, borderTopWidth: 0.5, borderTopColor: c.border, paddingTop: 6 }}>
               <View style={s.slipRow}>

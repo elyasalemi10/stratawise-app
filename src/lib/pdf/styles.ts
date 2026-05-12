@@ -49,7 +49,7 @@ export const baseStyles = StyleSheet.create({
     fontFamily: "Helvetica-Bold",
     color: colors.foreground,
   },
-  subdivisionDetails: {
+  ocDetails: {
     fontSize: 9,
     color: colors.muted,
     marginTop: 2,

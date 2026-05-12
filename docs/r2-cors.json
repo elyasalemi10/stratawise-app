@@ -1,0 +1,27 @@
+[
+  {
+    "AllowedOrigins": [
+      "http://localhost:3000",
+      "https://stratawise.com.au",
+      "https://*.stratawise.com.au",
+      "https://stratawise.vercel.app",
+      "https://*.vercel.app"
+    ],
+    "AllowedMethods": [
+      "GET",
+      "PUT",
+      "POST",
+      "DELETE",
+      "HEAD"
+    ],
+    "AllowedHeaders": [
+      "*"
+    ],
+    "ExposeHeaders": [
+      "ETag",
+      "Content-Length",
+      "Content-Type"
+    ],
+    "MaxAgeSeconds": 3600
+  }
+]

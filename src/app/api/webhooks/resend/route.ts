@@ -91,7 +91,7 @@ export async function POST(request: NextRequest): Promise<Response> {
   if ("invalid" in result) {
     await supabase.from("audit_log").insert({
       profile_id: null,
-      subdivision_id: null,
+      oc_id: null,
       action: "communication.webhook_invalid_signature",
       entity_type: "resend_webhook",
       entity_id: null,
@@ -113,7 +113,7 @@ export async function POST(request: NextRequest): Promise<Response> {
   // Look up the communication_log row this event refers to.
   const { data: logRow } = await supabase
     .from("communication_log")
-    .select("id, status, recipient_id, type, subdivision_id")
+    .select("id, status, recipient_id, type, oc_id")
     .eq("external_id", externalId)
     .maybeSingle();
   if (!logRow) {
@@ -127,7 +127,7 @@ export async function POST(request: NextRequest): Promise<Response> {
     status: string;
     recipient_id: string | null;
     type: string;
-    subdivision_id: string | null;
+    oc_id: string | null;
   };
 
   switch (event.type) {
@@ -198,7 +198,7 @@ export async function POST(request: NextRequest): Promise<Response> {
 
         await supabase.from("audit_log").insert({
           profile_id: log.recipient_id,
-          subdivision_id: log.subdivision_id,
+          oc_id: log.oc_id,
           action: "communication.opt_out_auto",
           entity_type: "communication_log",
           entity_id: log.id,

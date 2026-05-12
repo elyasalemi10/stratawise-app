@@ -25,7 +25,7 @@ import { createClient } from "@supabase/supabase-js";
 import { randomUUID } from "crypto";
 import { tryAutoMatch } from "./orchestrator";
 import { generateCrn, validateCrn } from "./bpay-crn";
-import { generateSubdivisionCode } from "@/lib/subdivision-code";
+import { generateOCCode } from "@/lib/oc-code";
 import { canonicaliseSender } from "./canonical";
 import {
   createBankPayerMapping,
@@ -74,7 +74,7 @@ interface NoticeFixture {
 interface Fixture {
   runId: string;
   companyId: string;
-  subdivisionId: string;
+  ocId: string;
   budgetId: string;
   profileId: string;
   /** Admin-fund bank account WITH bpay_biller_code set. */
@@ -118,25 +118,25 @@ async function createFixture(): Promise<Fixture> {
     .single();
   assert(profile, "fixture: profile insert failed");
 
-  const { data: subdivision } = await supabase
-    .from("subdivisions")
+  const { data: oc } = await supabase
+    .from("owners_corporations")
     .insert({
       management_company_id: company.id,
       name: companyName,
       plan_number: `PLAN-${runId}`,
-      short_code: generateSubdivisionCode(),
+      short_code: generateOCCode(),
       address: "1 Orch Verify St, Melbourne VIC 3000",
       total_lots: 5,
       created_by: profile.id,
     })
     .select("id")
     .single();
-  assert(subdivision, "fixture: subdivision insert failed");
+  assert(oc, "fixture: oc insert failed");
 
   const { data: budget } = await supabase
     .from("budgets")
     .insert({
-      subdivision_id: subdivision.id,
+      oc_id: oc.id,
       financial_year: "2026-2027",
       fund_type: "administrative",
       total_amount: 12000,
@@ -153,7 +153,7 @@ async function createFixture(): Promise<Fixture> {
     .from("lots")
     .insert(
       [1, 2, 3, 4, 5].map((n) => ({
-        subdivision_id: subdivision.id,
+        oc_id: oc.id,
         lot_number: n,
         lot_entitlement: 100,
         lot_liability: 100,
@@ -168,7 +168,7 @@ async function createFixture(): Promise<Fixture> {
   const { data: bpayAcct } = await supabase
     .from("bank_accounts")
     .insert({
-      subdivision_id: subdivision.id,
+      oc_id: oc.id,
       account_name: "BPAY Admin",
       bsb: "012-345",
       account_number: "12345678",
@@ -182,7 +182,7 @@ async function createFixture(): Promise<Fixture> {
   const { data: noBpayAcct } = await supabase
     .from("bank_accounts")
     .insert({
-      subdivision_id: subdivision.id,
+      oc_id: oc.id,
       account_name: "No-BPAY Admin",
       bsb: "012-345",
       account_number: "87654321",
@@ -204,7 +204,7 @@ async function createFixture(): Promise<Fixture> {
     const { data: notice } = await supabase
       .from("levy_notices")
       .insert({
-        subdivision_id: subdivision.id,
+        oc_id: oc.id,
         lot_id: lotId,
         budget_id: budget.id,
         reference_number: reference,
@@ -224,7 +224,7 @@ async function createFixture(): Promise<Fixture> {
     // Outstanding-debit row so the orchestrator's "compute outstanding" step
     // sees a positive amount.
     await supabase.from("lot_ledger_entries").insert({
-      subdivision_id: subdivision.id,
+      oc_id: oc.id,
       lot_id: lotId,
       fund_type: "administrative",
       entry_type: "debit",
@@ -255,7 +255,7 @@ async function createFixture(): Promise<Fixture> {
   const { data: staleNotice } = await supabase
     .from("levy_notices")
     .insert({
-      subdivision_id: subdivision.id,
+      oc_id: oc.id,
       lot_id: staleLotId,
       budget_id: budget.id,
       reference_number: staleReference,
@@ -274,7 +274,7 @@ async function createFixture(): Promise<Fixture> {
 
   await supabase.from("lot_ledger_entries").insert([
     {
-      subdivision_id: subdivision.id,
+      oc_id: oc.id,
       lot_id: staleLotId,
       fund_type: "administrative",
       entry_type: "debit",
@@ -287,7 +287,7 @@ async function createFixture(): Promise<Fixture> {
       created_by: profile.id,
     },
     {
-      subdivision_id: subdivision.id,
+      oc_id: oc.id,
       lot_id: staleLotId,
       fund_type: "administrative",
       entry_type: "credit",
@@ -306,14 +306,14 @@ async function createFixture(): Promise<Fixture> {
   // (50, 100, 200, 201) so subsequent next_reference_number calls in
   // mkOutstandingNotice can't collide with anything pre-created.
   await supabase
-    .from("subdivisions")
+    .from("owners_corporations")
     .update({ next_levy_number: 1000 })
-    .eq("id", subdivision.id);
+    .eq("id", oc.id);
 
   return {
     runId,
     companyId: company.id,
-    subdivisionId: subdivision.id,
+    ocId: oc.id,
     budgetId: budget.id,
     profileId: profile.id,
     adminBpayAccountId: bpayAcct.id,
@@ -408,7 +408,7 @@ async function runOrchestrator(
   );
   const outcome = await tryAutoMatch({
     bankTransactionId,
-    subdivisionId: fx.subdivisionId,
+    ocId: fx.ocId,
     bankAccountId,
     description,
     amount,
@@ -474,7 +474,7 @@ async function scenario2_LevyVariant(fx: Fixture) {
     const { data: notice } = await supabase
       .from("levy_notices")
       .insert({
-        subdivision_id: fx.subdivisionId,
+        oc_id: fx.ocId,
         lot_id: fx.lotIds[0],
         budget_id: fx.budgetId,
         reference_number: reference,
@@ -491,7 +491,7 @@ async function scenario2_LevyVariant(fx: Fixture) {
       .single();
     assert(notice, "O2 inline notice insert failed");
     await supabase.from("lot_ledger_entries").insert({
-      subdivision_id: fx.subdivisionId,
+      oc_id: fx.ocId,
       lot_id: fx.lotIds[0],
       fund_type: "administrative",
       entry_type: "debit",
@@ -617,7 +617,7 @@ async function scenario6_BpayCrnMatch(fx: Fixture) {
     const { data: notice } = await supabase
       .from("levy_notices")
       .insert({
-        subdivision_id: fx.subdivisionId,
+        oc_id: fx.ocId,
         lot_id: fx.lotIds[0],
         budget_id: fx.budgetId,
         reference_number: reference,
@@ -634,7 +634,7 @@ async function scenario6_BpayCrnMatch(fx: Fixture) {
       .single();
     assert(notice, "O6 inline notice insert failed");
     await supabase.from("lot_ledger_entries").insert({
-      subdivision_id: fx.subdivisionId,
+      oc_id: fx.ocId,
       lot_id: fx.lotIds[0],
       fund_type: "administrative",
       entry_type: "debit",
@@ -742,7 +742,7 @@ async function scenario9_StopAtFirstMatchReference(fx: Fixture) {
     const { data: notice } = await supabase
       .from("levy_notices")
       .insert({
-        subdivision_id: fx.subdivisionId,
+        oc_id: fx.ocId,
         lot_id: fx.lotIds[1],
         budget_id: fx.budgetId,
         reference_number: reference,
@@ -759,7 +759,7 @@ async function scenario9_StopAtFirstMatchReference(fx: Fixture) {
       .single();
     assert(notice, "O9 notice insert failed");
     await supabase.from("lot_ledger_entries").insert({
-      subdivision_id: fx.subdivisionId,
+      oc_id: fx.ocId,
       lot_id: fx.lotIds[1],
       fund_type: "administrative",
       entry_type: "debit",
@@ -812,7 +812,7 @@ async function scenario10_FallthroughToBpay(fx: Fixture) {
     const { data: notice } = await supabase
       .from("levy_notices")
       .insert({
-        subdivision_id: fx.subdivisionId,
+        oc_id: fx.ocId,
         lot_id: fx.lotIds[2],
         budget_id: fx.budgetId,
         reference_number: reference,
@@ -829,7 +829,7 @@ async function scenario10_FallthroughToBpay(fx: Fixture) {
       .single();
     assert(notice, "O10 notice insert failed");
     await supabase.from("lot_ledger_entries").insert({
-      subdivision_id: fx.subdivisionId,
+      oc_id: fx.ocId,
       lot_id: fx.lotIds[2],
       fund_type: "administrative",
       entry_type: "debit",
@@ -877,7 +877,7 @@ async function mkFreshLot(fx: Fixture): Promise<string> {
   const { data, error } = await supabase
     .from("lots")
     .insert({
-      subdivision_id: fx.subdivisionId,
+      oc_id: fx.ocId,
       lot_number: n,
       lot_entitlement: 100,
       lot_liability: 100,
@@ -901,7 +901,7 @@ async function mkOutstandingNotice(
 ): Promise<{ id: string; reference: string }> {
   const { data: refRow } = await supabase.rpc("next_reference_number", {
     p_prefix: "LEV",
-    p_subdivision_id: fx.subdivisionId,
+    p_oc_id: fx.ocId,
   });
   const reference = String(refRow);
   const amount = opts.amount ?? 500;
@@ -910,7 +910,7 @@ async function mkOutstandingNotice(
   const { data: notice, error: noticeErr } = await supabase
     .from("levy_notices")
     .insert({
-      subdivision_id: fx.subdivisionId,
+      oc_id: fx.ocId,
       lot_id: lotId,
       budget_id: fx.budgetId,
       reference_number: reference,
@@ -931,7 +931,7 @@ async function mkOutstandingNotice(
     );
   }
   await supabase.from("lot_ledger_entries").insert({
-    subdivision_id: fx.subdivisionId,
+    oc_id: fx.ocId,
     lot_id: lotId,
     fund_type: "administrative",
     entry_type: "debit",
@@ -954,7 +954,7 @@ async function mkBatch(
   const { data: batch } = await supabase
     .from("levy_batches")
     .insert({
-      subdivision_id: fx.subdivisionId,
+      oc_id: fx.ocId,
       budget_id: fx.budgetId,
       financial_year: "2026-2027",
       fund_type: "administrative",
@@ -990,11 +990,11 @@ async function fetchMapping(id: string) {
   return data;
 }
 
-async function fetchAllMappings(subdivisionId: string) {
+async function fetchAllMappings(ocId: string) {
   const { data } = await supabase
     .from("bank_payer_mappings")
     .select("id, canonical_sender_name, lot_id, status")
-    .eq("subdivision_id", subdivisionId);
+    .eq("oc_id", ocId);
   return data ?? [];
 }
 
@@ -1010,7 +1010,7 @@ async function insertMappingDirect(
   const { data, error } = await supabase
     .from("bank_payer_mappings")
     .insert({
-      subdivision_id: fx.subdivisionId,
+      oc_id: fx.ocId,
       canonical_sender_name: canonicalName,
       lot_id: lotId,
       status,
@@ -1292,7 +1292,7 @@ async function scenario17_AmountWindowOrdinaryAndSpecialNoTiebreak(fx: Fixture) 
 // SCENARIO-AUTHORING GUIDANCE for Strategy 6 fuzzy-hint tests:
 //
 // Strategy 6 compares the canonicalised description against EVERY active
-// bank_payer_mapping in the subdivision. The fixture accumulates mappings
+// bank_payer_mapping in the oc. The fixture accumulates mappings
 // as PP4-B scenarios run (O11 inserts MARTHA, O18 inserts MARTHA, C1-C9
 // insert C1 PAYER through C9 PAYER, etc). To remain robust as the fixture
 // grows:
@@ -1368,7 +1368,7 @@ async function scenario19_FuzzyHintBelowThreshold(fx: Fixture) {
   const header = "O19: Strategy 6 similarity < 0.75 → no hint";
   try {
     // No mapping insert needed — Strategy 6 compares against ALL active
-    // mappings in the subdivision (accumulated from prior scenarios).
+    // mappings in the oc (accumulated from prior scenarios).
     // Description "Qqq Xxx Yyy" — letters not present in any mapping →
     // jw ≈ 0 against all mappings.
 
@@ -1443,7 +1443,7 @@ async function scenarioC1_CreateMappingNoCollision(fx: Fixture) {
   try {
     const lotId = await mkFreshLot(fx);
     const result = await createBankPayerMapping({
-      subdivision_id: fx.subdivisionId,
+      oc_id: fx.ocId,
       canonical_sender_name: "C1 PAYER",
       lot_id: lotId,
       created_by: fx.profileId,
@@ -1464,7 +1464,7 @@ async function scenarioC2_CreateMappingNameCollision(fx: Fixture) {
     const lotA = await mkFreshLot(fx);
     const lotB = await mkFreshLot(fx);
     const m1 = await createBankPayerMapping({
-      subdivision_id: fx.subdivisionId,
+      oc_id: fx.ocId,
       canonical_sender_name: "C2 PAYER",
       lot_id: lotA,
       created_by: fx.profileId,
@@ -1472,7 +1472,7 @@ async function scenarioC2_CreateMappingNameCollision(fx: Fixture) {
     assert(m1.ok, "C2 first mapping should succeed");
 
     const m2 = await createBankPayerMapping({
-      subdivision_id: fx.subdivisionId,
+      oc_id: fx.ocId,
       canonical_sender_name: "C2 PAYER",
       lot_id: lotB,
       created_by: fx.profileId,
@@ -1517,7 +1517,7 @@ async function scenarioC3_OwnershipChangeFlipsToAmbiguous(fx: Fixture) {
     // New owner name on lotB canonicalises to "C3 SHARED NAME" — sweep
     // should flip lotA's mapping to ambiguous (Addition 2: never auto-promotes).
     const result = await sweepMappingsForOwnerChange(
-      fx.subdivisionId,
+      fx.ocId,
       lotB,
       "C3 SHARED NAME",
       fx.profileId,
@@ -1540,7 +1540,7 @@ async function scenarioC4_KeepExistingRestoresStatus(fx: Fixture) {
     const lotA = await mkFreshLot(fx);
     const lotB = await mkFreshLot(fx);
     const m1 = await createBankPayerMapping({
-      subdivision_id: fx.subdivisionId,
+      oc_id: fx.ocId,
       canonical_sender_name: "C4 PAYER",
       lot_id: lotA,
       created_by: fx.profileId,
@@ -1548,7 +1548,7 @@ async function scenarioC4_KeepExistingRestoresStatus(fx: Fixture) {
     assert(m1.ok, "C4 first create");
 
     const m2 = await createBankPayerMapping({
-      subdivision_id: fx.subdivisionId,
+      oc_id: fx.ocId,
       canonical_sender_name: "C4 PAYER",
       lot_id: lotB,
       created_by: fx.profileId,
@@ -1557,7 +1557,7 @@ async function scenarioC4_KeepExistingRestoresStatus(fx: Fixture) {
     if (m2.ok) return;
 
     const r = await resolveCollision({
-      subdivision_id: fx.subdivisionId,
+      oc_id: fx.ocId,
       canonical_sender_name: "C4 PAYER",
       proposed_lot_id: lotB,
       resolution: "keep_existing",
@@ -1582,14 +1582,14 @@ async function scenarioC5_UpdateResolutionDisablesAndCreates(fx: Fixture) {
     const lotA = await mkFreshLot(fx);
     const lotB = await mkFreshLot(fx);
     const m1 = await createBankPayerMapping({
-      subdivision_id: fx.subdivisionId,
+      oc_id: fx.ocId,
       canonical_sender_name: "C5 PAYER",
       lot_id: lotA,
       created_by: fx.profileId,
     });
     assert(m1.ok, "C5 first create");
     const m2 = await createBankPayerMapping({
-      subdivision_id: fx.subdivisionId,
+      oc_id: fx.ocId,
       canonical_sender_name: "C5 PAYER",
       lot_id: lotB,
       created_by: fx.profileId,
@@ -1598,7 +1598,7 @@ async function scenarioC5_UpdateResolutionDisablesAndCreates(fx: Fixture) {
     if (m2.ok) return;
 
     const r = await resolveCollision({
-      subdivision_id: fx.subdivisionId,
+      oc_id: fx.ocId,
       canonical_sender_name: "C5 PAYER",
       proposed_lot_id: lotB,
       resolution: "update",
@@ -1637,14 +1637,14 @@ async function scenarioC6_KeepExistingNoMappingCreated(fx: Fixture) {
     const lotA = await mkFreshLot(fx);
     const lotB = await mkFreshLot(fx);
     const m1 = await createBankPayerMapping({
-      subdivision_id: fx.subdivisionId,
+      oc_id: fx.ocId,
       canonical_sender_name: "C6 PAYER",
       lot_id: lotA,
       created_by: fx.profileId,
     });
     assert(m1.ok);
     const m2 = await createBankPayerMapping({
-      subdivision_id: fx.subdivisionId,
+      oc_id: fx.ocId,
       canonical_sender_name: "C6 PAYER",
       lot_id: lotB,
       created_by: fx.profileId,
@@ -1653,7 +1653,7 @@ async function scenarioC6_KeepExistingNoMappingCreated(fx: Fixture) {
     if (m2.ok) return;
 
     const r = await resolveCollision({
-      subdivision_id: fx.subdivisionId,
+      oc_id: fx.ocId,
       canonical_sender_name: "C6 PAYER",
       proposed_lot_id: lotB,
       resolution: "keep_existing",
@@ -1663,7 +1663,7 @@ async function scenarioC6_KeepExistingNoMappingCreated(fx: Fixture) {
     assert(r.ok && r.mapping_id === null, `C6 mapping_id should be null, got ${JSON.stringify(r)}`);
 
     // Verify NO mapping exists on lotB.
-    const all = await fetchAllMappings(fx.subdivisionId);
+    const all = await fetchAllMappings(fx.ocId);
     const lotBMappings = all.filter(
       (m) => m.lot_id === lotB && m.canonical_sender_name === "C6 PAYER",
     );
@@ -1680,14 +1680,14 @@ async function scenarioC7_RemoveResolutionDisablesNoNew(fx: Fixture) {
     const lotA = await mkFreshLot(fx);
     const lotB = await mkFreshLot(fx);
     const m1 = await createBankPayerMapping({
-      subdivision_id: fx.subdivisionId,
+      oc_id: fx.ocId,
       canonical_sender_name: "C7 PAYER",
       lot_id: lotA,
       created_by: fx.profileId,
     });
     assert(m1.ok);
     const m2 = await createBankPayerMapping({
-      subdivision_id: fx.subdivisionId,
+      oc_id: fx.ocId,
       canonical_sender_name: "C7 PAYER",
       lot_id: lotB,
       created_by: fx.profileId,
@@ -1696,7 +1696,7 @@ async function scenarioC7_RemoveResolutionDisablesNoNew(fx: Fixture) {
     if (m2.ok) return;
 
     const r = await resolveCollision({
-      subdivision_id: fx.subdivisionId,
+      oc_id: fx.ocId,
       canonical_sender_name: "C7 PAYER",
       proposed_lot_id: lotB,
       resolution: "remove",
@@ -1748,7 +1748,7 @@ async function scenarioC8_DetectRepeatedManualMatch(fx: Fixture) {
       const { data: credit } = await supabase
         .from("lot_ledger_entries")
         .insert({
-          subdivision_id: fx.subdivisionId,
+          oc_id: fx.ocId,
           lot_id: lotId,
           fund_type: "administrative",
           entry_type: "credit",
@@ -1772,7 +1772,7 @@ async function scenarioC8_DetectRepeatedManualMatch(fx: Fixture) {
     }
 
     const detection = await detectRepeatedManualMatch(
-      fx.subdivisionId,
+      fx.ocId,
       expectedCanonical!,
       lotId,
       canonicaliseSender,
@@ -1799,14 +1799,14 @@ async function scenarioC9_RaceMappingDeleted(fx: Fixture) {
     const lotA = await mkFreshLot(fx);
     const lotB = await mkFreshLot(fx);
     const m1 = await createBankPayerMapping({
-      subdivision_id: fx.subdivisionId,
+      oc_id: fx.ocId,
       canonical_sender_name: "C9 PAYER",
       lot_id: lotA,
       created_by: fx.profileId,
     });
     assert(m1.ok);
     const m2 = await createBankPayerMapping({
-      subdivision_id: fx.subdivisionId,
+      oc_id: fx.ocId,
       canonical_sender_name: "C9 PAYER",
       lot_id: lotB,
       created_by: fx.profileId,
@@ -1822,7 +1822,7 @@ async function scenarioC9_RaceMappingDeleted(fx: Fixture) {
     }
 
     const r = await resolveCollision({
-      subdivision_id: fx.subdivisionId,
+      oc_id: fx.ocId,
       canonical_sender_name: "C9 PAYER",
       proposed_lot_id: lotB,
       resolution: "update",
@@ -1854,7 +1854,7 @@ async function scenario21_AllSignalsReferenceWins(fx: Fixture) {
     // All three strategies COULD match; orchestrator must stop at Strategy 1.
     const refRow = await supabase.rpc("next_reference_number", {
       p_prefix: "LEV",
-      p_subdivision_id: fx.subdivisionId,
+      p_oc_id: fx.ocId,
     });
     const reference = String(refRow.data);
     const levyNumber = Number.parseInt(reference.slice(4), 10);
@@ -1862,7 +1862,7 @@ async function scenario21_AllSignalsReferenceWins(fx: Fixture) {
     const { data: notice } = await supabase
       .from("levy_notices")
       .insert({
-        subdivision_id: fx.subdivisionId,
+        oc_id: fx.ocId,
         lot_id: lotId,
         budget_id: fx.budgetId,
         reference_number: reference,
@@ -1879,7 +1879,7 @@ async function scenario21_AllSignalsReferenceWins(fx: Fixture) {
       .single();
     assert(notice, "O21 notice insert failed");
     await supabase.from("lot_ledger_entries").insert({
-      subdivision_id: fx.subdivisionId,
+      oc_id: fx.ocId,
       lot_id: lotId,
       fund_type: "administrative",
       entry_type: "debit",
@@ -1892,7 +1892,7 @@ async function scenario21_AllSignalsReferenceWins(fx: Fixture) {
       created_by: fx.profileId,
     });
     // Use a canonical name not already inserted by O11/O18/etc. so the
-    // partial UNIQUE index on (subdivision, active mapping) doesn't trip.
+    // partial UNIQUE index on (oc, active mapping) doesn't trip.
     await insertMappingDirect(fx, "ALL SIGNALS PAYER", lotId, "active");
 
     // NOTE: order matters here. The Strategy 1 regex
@@ -2119,7 +2119,7 @@ async function cleanupMarker() {
 
 async function cleanupOneCompany(companyId: string) {
   const { data: subs } = await supabase
-    .from("subdivisions")
+    .from("owners_corporations")
     .select("id")
     .eq("management_company_id", companyId);
   const subIds = (subs ?? []).map((s) => s.id);
@@ -2128,7 +2128,7 @@ async function cleanupOneCompany(companyId: string) {
     const { data: accounts } = await supabase
       .from("bank_accounts")
       .select("id")
-      .in("subdivision_id", subIds);
+      .in("oc_id", subIds);
     const accountIds = (accounts ?? []).map((a) => a.id);
 
     if (accountIds.length > 0) {
@@ -2145,7 +2145,7 @@ async function cleanupOneCompany(companyId: string) {
     const { data: lots } = await supabase
       .from("lots")
       .select("id")
-      .in("subdivision_id", subIds);
+      .in("oc_id", subIds);
     const lotIds = (lots ?? []).map((l) => l.id);
 
     if (lotIds.length > 0) {
@@ -2168,25 +2168,25 @@ async function cleanupOneCompany(companyId: string) {
     if (accountIds.length > 0) {
       await supabase.from("bank_transactions").delete().in("bank_account_id", accountIds);
     }
-    await supabase.from("payments").delete().in("subdivision_id", subIds);
+    await supabase.from("payments").delete().in("oc_id", subIds);
 
     const { data: notices } = await supabase
       .from("levy_notices")
       .select("id")
-      .in("subdivision_id", subIds);
+      .in("oc_id", subIds);
     const noticeIds = (notices ?? []).map((n) => n.id);
     if (noticeIds.length > 0) {
       await supabase.from("levy_notice_items").delete().in("levy_notice_id", noticeIds);
-      await supabase.from("levy_notices").update({ linked_levy_id: null }).in("subdivision_id", subIds);
-      await supabase.from("levy_notices").delete().in("subdivision_id", subIds);
+      await supabase.from("levy_notices").update({ linked_levy_id: null }).in("oc_id", subIds);
+      await supabase.from("levy_notices").delete().in("oc_id", subIds);
     }
-    await supabase.from("levy_batches").delete().in("subdivision_id", subIds);
-    // PP4-B: bank_payer_mappings — cascades on subdivision delete via FK,
+    await supabase.from("levy_batches").delete().in("oc_id", subIds);
+    // PP4-B: bank_payer_mappings — cascades on oc delete via FK,
     // but cleaning explicitly guarantees no stale rows linger if cascade
     // is disabled at the DB level for any reason.
-    await supabase.from("bank_payer_mappings").delete().in("subdivision_id", subIds);
-    await supabase.from("audit_log").delete().in("subdivision_id", subIds);
-    await supabase.from("subdivisions").delete().in("id", subIds);
+    await supabase.from("bank_payer_mappings").delete().in("oc_id", subIds);
+    await supabase.from("audit_log").delete().in("oc_id", subIds);
+    await supabase.from("owners_corporations").delete().in("id", subIds);
   }
 
   await supabase.from("profiles").delete().eq("management_company_id", companyId);

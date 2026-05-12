@@ -47,7 +47,7 @@ export const dailyCheckOverdueLevies = schedules.task({
       console.error("daily-check-overdue-levies: job threw:", msg);
       await supabase.from("audit_log").insert({
         profile_id: systemProfileId,
-        subdivision_id: null,
+        oc_id: null,
         action: "overdue_check_cron.failed",
         entity_type: "overdue_check_cron",
         entity_id: null,
@@ -65,7 +65,7 @@ export const dailyCheckOverdueLevies = schedules.task({
 
     await supabase.from("audit_log").insert({
       profile_id: systemProfileId,
-      subdivision_id: null,
+      oc_id: null,
       action: "overdue_check_cron.run",
       entity_type: "overdue_check_cron",
       entity_id: null,

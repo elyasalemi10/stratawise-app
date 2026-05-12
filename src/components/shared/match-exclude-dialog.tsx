@@ -29,7 +29,7 @@ interface Props {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   bankTxnId: string;
-  subdivisionId: string;
+  ocId: string;
   onSuccess: () => void;
 }
 
@@ -39,7 +39,7 @@ export function MatchExcludeDialog({
   open,
   onOpenChange,
   bankTxnId,
-  subdivisionId,
+  ocId,
   onSuccess,
 }: Props) {
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -47,7 +47,7 @@ export function MatchExcludeDialog({
   const form = useForm<ExcludeTransactionInput>({
     resolver: zodResolver(excludeTransactionSchema),
     defaultValues: {
-      subdivision_id: subdivisionId,
+      oc_id: ocId,
       bank_transaction_id: bankTxnId,
       reason: "",
     },

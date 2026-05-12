@@ -1,7 +1,7 @@
 // ============================================================================
 // Strategy 4 — keyword + amount
 // ----------------------------------------------------------------------------
-// Looks up batches in this subdivision with non-empty match_keywords; tests
+// Looks up batches in this oc with non-empty match_keywords; tests
 // each keyword against the description (case-insensitive prefix-within-word
 // match \bkeyword\w*\b — so "garden" matches "gardening" and "gardens" but
 // not "regarden"); narrows to outstanding notices in those batches whose
@@ -33,11 +33,11 @@ export async function tryKeywordAmountMatch(
 ): Promise<StrategyOutcome> {
   const supabase = createServerClient();
 
-  // Find batches in this subdivision with non-empty match_keywords.
+  // Find batches in this oc with non-empty match_keywords.
   const { data: batches } = await supabase
     .from("levy_batches")
     .select("id, match_keywords")
-    .eq("subdivision_id", ctx.subdivisionId);
+    .eq("oc_id", ctx.ocId);
 
   const candidateBatches = (batches ?? []).filter(
     (b) => Array.isArray(b.match_keywords) && b.match_keywords.length > 0,
@@ -69,7 +69,7 @@ export async function tryKeywordAmountMatch(
     .from("levy_notices")
     .select("id, lot_id, fund_type, amount, reference_number, batch_id")
     .in("batch_id", hitBatchIds)
-    .eq("subdivision_id", ctx.subdivisionId)
+    .eq("oc_id", ctx.ocId)
     .eq("fund_type", ctx.bankAccountFundType)
     .eq("amount", ctx.amount);
 

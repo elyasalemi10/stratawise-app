@@ -11,7 +11,7 @@
 -- Roles:     super_admin, strata_manager, lot_owner
 -- Funds:     administrative, capital_works
 -- State:     VIC only for MVP (multi-state via state_compliance_rules)
--- Ownership: Canonical ownership = subdivision_members + profiles.
+-- Ownership: Canonical ownership = oc_members + profiles.
 --            Pre-acceptance identity = invitations (email/name/phone).
 --            The lots table is deliberately owner-field-free.
 -- ============================================================================
@@ -28,7 +28,7 @@ CREATE EXTENSION IF NOT EXISTS "pgcrypto";
 CREATE TYPE profile_role AS ENUM ('super_admin', 'strata_manager', 'lot_owner');
 CREATE TYPE profile_status AS ENUM ('active', 'deactivated', 'anonymised');
 CREATE TYPE company_role AS ENUM ('admin', 'manager', 'viewer');
-CREATE TYPE subdivision_status AS ENUM ('active', 'archived', 'suspended');
+CREATE TYPE oc_status AS ENUM ('active', 'archived', 'suspended');
 CREATE TYPE subscription_status AS ENUM ('active', 'suspended', 'cancelled');
 CREATE TYPE fund_type AS ENUM ('administrative', 'capital_works');
 CREATE TYPE member_role AS ENUM ('strata_manager', 'lot_owner');
@@ -85,11 +85,11 @@ CREATE TYPE reconciliation_match_method AS ENUM (
 --   1. Operational prefixes (MTG, MIN, SLEV, INV, POL, CLM, MNT, CMP, ESC)
 --      use global Postgres sequences declared below. Format:
 --      "SW-{PREFIX}-{YYYY}-{NNNNNN}". next_reference_number(prefix) — the
---      p_subdivision_id arg is accepted but ignored.
+--      p_oc_id arg is accepted but ignored.
 --   2. Financial prefixes (LEV, RCP, PAY) use per-OC integer counters on
---      subdivisions.next_{levy,receipt,payment}_number. Format: "{PREFIX}-{n}".
---      next_reference_number(prefix, subdivision_id) — subdivision_id required.
--- Two OCs can each have LEV-1; downstream matching is always subdivision-
+--      owners_corporations.next_{levy,receipt,payment}_number. Format: "{PREFIX}-{n}".
+--      next_reference_number(prefix, oc_id) — oc_id required.
+-- Two OCs can each have LEV-1; downstream matching is always oc-
 -- scoped so collisions are not possible.
 -- ============================================================================
 CREATE SEQUENCE sw_slev_seq START 1;   -- SLEV — Special levies
@@ -104,8 +104,8 @@ CREATE SEQUENCE sw_esc_seq  START 1;   -- ESC  — Escalation instances
 
 -- Prefix-aware reference number generator.
 -- Usage:
---   SELECT next_reference_number('LEV', '<subdivision-uuid>');  →  'LEV-1'
---   SELECT next_reference_number('RCP', '<subdivision-uuid>');  →  'RCP-1'
+--   SELECT next_reference_number('LEV', '<oc-uuid>');  →  'LEV-1'
+--   SELECT next_reference_number('RCP', '<oc-uuid>');  →  'RCP-1'
 --   SELECT next_reference_number('MTG');                        →  'SW-MTG-2026-000001'
 -- Financial prefixes (LEV, RCP, PAY) atomically bump the OC's counter column
 -- and return '{PREFIX}-{n}'. Operational prefixes use the global sequence and
@@ -113,7 +113,7 @@ CREATE SEQUENCE sw_esc_seq  START 1;   -- ESC  — Escalation instances
 -- normalised to uppercase — callers may pass either case.
 CREATE FUNCTION next_reference_number(
   p_prefix         TEXT,
-  p_subdivision_id UUID DEFAULT NULL
+  p_oc_id UUID DEFAULT NULL
 )
 RETURNS TEXT
 LANGUAGE plpgsql
@@ -126,39 +126,39 @@ DECLARE
   v_year     TEXT;
 BEGIN
   IF v_prefix IN ('LEV', 'RCP', 'PAY') THEN
-    IF p_subdivision_id IS NULL THEN
-      RAISE EXCEPTION 'next_reference_number: subdivision_id is required for financial prefix %', v_prefix;
+    IF p_oc_id IS NULL THEN
+      RAISE EXCEPTION 'next_reference_number: oc_id is required for financial prefix %', v_prefix;
     END IF;
 
     -- Atomic increment-and-return on the per-OC counter.
     -- RETURNING (column - 1) gives the value consumed by THIS call;
     -- concurrent callers get consecutive values by row-lock semantics.
     IF v_prefix = 'LEV' THEN
-      UPDATE subdivisions
+      UPDATE owners_corporations
          SET next_levy_number = next_levy_number + 1
-       WHERE id = p_subdivision_id
+       WHERE id = p_oc_id
       RETURNING next_levy_number - 1 INTO v_n;
     ELSIF v_prefix = 'RCP' THEN
-      UPDATE subdivisions
+      UPDATE owners_corporations
          SET next_receipt_number = next_receipt_number + 1
-       WHERE id = p_subdivision_id
+       WHERE id = p_oc_id
       RETURNING next_receipt_number - 1 INTO v_n;
     ELSE -- PAY
-      UPDATE subdivisions
+      UPDATE owners_corporations
          SET next_payment_number = next_payment_number + 1
-       WHERE id = p_subdivision_id
+       WHERE id = p_oc_id
       RETURNING next_payment_number - 1 INTO v_n;
     END IF;
 
     IF v_n IS NULL THEN
-      RAISE EXCEPTION 'next_reference_number: subdivision % not found', p_subdivision_id;
+      RAISE EXCEPTION 'next_reference_number: oc % not found', p_oc_id;
     END IF;
 
     RETURN v_prefix || '-' || v_n::TEXT;
 
   ELSE
     -- Operational prefix: global sequence, format SW-{PREFIX}-{YYYY}-{NNNNNN}.
-    -- p_subdivision_id is accepted but ignored for these prefixes.
+    -- p_oc_id is accepted but ignored for these prefixes.
     v_seq_name := 'sw_' || lower(v_prefix) || '_seq';
     EXECUTE format('SELECT nextval(%L)', v_seq_name) INTO v_seq_val;
     v_year := extract(year FROM now())::TEXT;
@@ -323,23 +323,23 @@ CREATE INDEX idx_notification_prefs_profile ON notification_preferences(profile_
 -- ============================================================================
 -- 5. SUBDIVISIONS
 -- ============================================================================
-CREATE TABLE subdivisions (
+CREATE TABLE owners_corporations (
   id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
   -- 8-char Crockford-32 code (alphabet: ABCDEFGHJKLMNPQRSTUVWXYZ23456789;
   -- drops 0/O/1/I for transcription safety). URL-facing identifier
-  -- (/subdivisions/<short_code>/...); internal queries still use `id`.
-  -- Generated app-side via src/lib/subdivision-code.ts on insert with
+  -- (/owners_corporations/<short_code>/...); internal queries still use `id`.
+  -- Generated app-side via src/lib/oc-code.ts on insert with
   -- 23505-retry on collision.
   short_code TEXT NOT NULL,
   management_company_id UUID NOT NULL REFERENCES management_companies(id),
   name TEXT NOT NULL,
   plan_number TEXT NOT NULL,
-  subdivision_type TEXT NOT NULL DEFAULT 'strata',
   address TEXT NOT NULL,
   street_number TEXT,
   street_name TEXT,
   suburb TEXT,
   state TEXT NOT NULL DEFAULT 'VIC',
+  postcode TEXT,
   total_lots INTEGER NOT NULL DEFAULT 0,
   common_property_description TEXT,
   oc_tier INTEGER,                                  -- auto-calculated 1–5
@@ -367,7 +367,7 @@ CREATE TABLE subdivisions (
   interest_accrual_day INTEGER NOT NULL DEFAULT 1,  -- 1, 15, or 0 (last day)
   interest_grace_period_days INTEGER NOT NULL DEFAULT 0,
   -- Per-OC reference counters (LEV/RCP/PAY). Financial references are
-  -- subdivision-scoped, not globally unique — see §REFERENCE NUMBER
+  -- oc-scoped, not globally unique — see §REFERENCE NUMBER
   -- SEQUENCES at file top. Counter column is the NEXT value to hand out;
   -- next_reference_number increments atomically and returns (value - 1).
   next_levy_number    INTEGER NOT NULL DEFAULT 1,
@@ -380,45 +380,44 @@ CREATE TABLE subdivisions (
   administrator_appointed BOOLEAN DEFAULT false,
   -- Wizard state
   setup_step INTEGER NOT NULL DEFAULT 1,
-  status subdivision_status NOT NULL DEFAULT 'active',
+  status oc_status NOT NULL DEFAULT 'active',
   archived_at TIMESTAMPTZ,
   archived_reason TEXT,
   created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
   updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
   created_by UUID REFERENCES profiles(id),
-  CONSTRAINT chk_subdivision_type CHECK (subdivision_type IN ('strata', 'company', 'neighbourhood_association')),
   CONSTRAINT chk_levy_year_start_month CHECK (levy_year_start_month BETWEEN 1 AND 12),
   CONSTRAINT chk_levies_per_year CHECK (levies_per_year IN (1, 2, 4, 6, 12)),
   CONSTRAINT chk_bank_connection_type CHECK (bank_connection_type IN ('basiq', 'manual'))
 );
 
-CREATE INDEX idx_subdivisions_company ON subdivisions(management_company_id);
-CREATE INDEX idx_subdivisions_status ON subdivisions(status);
-CREATE UNIQUE INDEX idx_subdivisions_short_code ON subdivisions(short_code);
+CREATE INDEX idx_owners_corporations_company ON owners_corporations(management_company_id);
+CREATE INDEX idx_owners_corporations_status ON owners_corporations(status);
+CREATE UNIQUE INDEX idx_owners_corporations_short_code ON owners_corporations(short_code);
 
 -- ============================================================================
 -- 6. LOTS
--- Ownership is modelled via subdivision_members + profiles. This table is
+-- Ownership is modelled via oc_members + profiles. This table is
 -- deliberately owner-field-free — pre-acceptance identity lives on invitations.
 -- ============================================================================
 CREATE TABLE lots (
   id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
-  subdivision_id UUID NOT NULL REFERENCES subdivisions(id) ON DELETE CASCADE,
+  oc_id UUID NOT NULL REFERENCES owners_corporations(id) ON DELETE CASCADE,
   lot_number INTEGER NOT NULL,
   unit_number TEXT,
   lot_entitlement DECIMAL(10,4) NOT NULL DEFAULT 0,
   lot_liability DECIMAL(10,4) NOT NULL DEFAULT 0,
-  UNIQUE(subdivision_id, lot_number)
+  UNIQUE(oc_id, lot_number)
 );
 
-CREATE INDEX idx_lots_subdivision ON lots(subdivision_id);
+CREATE INDEX idx_lots_oc ON lots(oc_id);
 
 -- ============================================================================
 -- 7. SUBDIVISION MEMBERS
 -- ============================================================================
-CREATE TABLE subdivision_members (
+CREATE TABLE oc_members (
   id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
-  subdivision_id UUID NOT NULL REFERENCES subdivisions(id) ON DELETE CASCADE,
+  oc_id UUID NOT NULL REFERENCES owners_corporations(id) ON DELETE CASCADE,
   profile_id UUID NOT NULL REFERENCES profiles(id),
   lot_id UUID REFERENCES lots(id),
   role member_role NOT NULL DEFAULT 'lot_owner',
@@ -429,9 +428,9 @@ CREATE TABLE subdivision_members (
   left_at TIMESTAMPTZ
 );
 
-CREATE INDEX idx_members_subdivision ON subdivision_members(subdivision_id);
-CREATE INDEX idx_members_profile ON subdivision_members(profile_id);
-CREATE INDEX idx_members_lot ON subdivision_members(lot_id);
+CREATE INDEX idx_members_oc ON oc_members(oc_id);
+CREATE INDEX idx_members_profile ON oc_members(profile_id);
+CREATE INDEX idx_members_lot ON oc_members(lot_id);
 
 -- ============================================================================
 -- 8. STATE COMPLIANCE RULES
@@ -451,7 +450,7 @@ CREATE TABLE state_compliance_rules (
 -- ============================================================================
 CREATE TABLE invitations (
   id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
-  subdivision_id UUID NOT NULL REFERENCES subdivisions(id) ON DELETE CASCADE,
+  oc_id UUID NOT NULL REFERENCES owners_corporations(id) ON DELETE CASCADE,
   lot_id UUID REFERENCES lots(id),
   email TEXT NOT NULL,
   name TEXT,
@@ -470,7 +469,7 @@ CREATE TABLE invitations (
 );
 
 CREATE INDEX idx_invitations_code ON invitations(code);
-CREATE INDEX idx_invitations_subdivision ON invitations(subdivision_id);
+CREATE INDEX idx_invitations_oc ON invitations(oc_id);
 CREATE INDEX idx_invitations_email ON invitations(email);
 CREATE INDEX idx_invitations_lot_status ON invitations(lot_id, status) WHERE lot_id IS NOT NULL;
 
@@ -490,7 +489,7 @@ CREATE TABLE budget_categories (
 -- ============================================================================
 CREATE TABLE budgets (
   id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
-  subdivision_id UUID NOT NULL REFERENCES subdivisions(id) ON DELETE CASCADE,
+  oc_id UUID NOT NULL REFERENCES owners_corporations(id) ON DELETE CASCADE,
   financial_year TEXT NOT NULL,
   fund_type fund_type NOT NULL,
   total_amount DECIMAL(12,2) NOT NULL DEFAULT 0,
@@ -499,10 +498,10 @@ CREATE TABLE budgets (
   approved_by UUID REFERENCES profiles(id),
   created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
   updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-  UNIQUE(subdivision_id, financial_year, fund_type)
+  UNIQUE(oc_id, financial_year, fund_type)
 );
 
-CREATE INDEX idx_budgets_subdivision ON budgets(subdivision_id);
+CREATE INDEX idx_budgets_oc ON budgets(oc_id);
 
 -- ============================================================================
 -- 12. BUDGET ITEMS
@@ -525,7 +524,7 @@ CREATE INDEX idx_budget_items_budget ON budget_items(budget_id);
 -- ============================================================================
 CREATE TABLE levy_batches (
   id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
-  subdivision_id UUID NOT NULL REFERENCES subdivisions(id) ON DELETE CASCADE,
+  oc_id UUID NOT NULL REFERENCES owners_corporations(id) ON DELETE CASCADE,
   budget_id UUID NOT NULL REFERENCES budgets(id),
   financial_year TEXT NOT NULL,
   fund_type fund_type NOT NULL,
@@ -545,23 +544,23 @@ CREATE TABLE levy_batches (
   created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 
-CREATE INDEX idx_levy_batches_subdivision ON levy_batches(subdivision_id);
+CREATE INDEX idx_levy_batches_oc ON levy_batches(oc_id);
 
 -- ============================================================================
 -- 14. LEVY NOTICES
 -- ============================================================================
 CREATE TABLE levy_notices (
   id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
-  subdivision_id UUID NOT NULL REFERENCES subdivisions(id),
+  oc_id UUID NOT NULL REFERENCES owners_corporations(id),
   lot_id UUID NOT NULL REFERENCES lots(id),
   budget_id UUID REFERENCES budgets(id),
   batch_id UUID REFERENCES levy_batches(id),
-  reference_number TEXT NOT NULL,                   -- "LEV-{n}"; per-OC via next_reference_number('LEV', subdivision_id)
+  reference_number TEXT NOT NULL,                   -- "LEV-{n}"; per-OC via next_reference_number('LEV', oc_id)
   -- BPAY CRN (Prompt 4): 7-digit zero-padded levy number + MOD10V01 check
   -- digit (8 chars total), generated at notice creation in TS via
   -- generateCrn() in src/lib/reconciliation/bpay-crn.ts. Always populated
   -- regardless of whether the OC has a registered biller code — opt-in BPAY
-  -- later requires no backfill. Composite UNIQUE (subdivision_id, bpay_crn)
+  -- later requires no backfill. Composite UNIQUE (oc_id, bpay_crn)
   -- below ensures intra-OC uniqueness.
   bpay_crn TEXT,
   fund_type fund_type NOT NULL,
@@ -578,17 +577,17 @@ CREATE TABLE levy_notices (
   linked_levy_id UUID REFERENCES levy_notices(id),  -- penalty_interest → original
   created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
   updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-  CONSTRAINT levy_notices_subdivision_reference_key UNIQUE (subdivision_id, reference_number)
+  CONSTRAINT levy_notices_oc_reference_key UNIQUE (oc_id, reference_number)
 );
 
-CREATE INDEX idx_levy_notices_subdivision ON levy_notices(subdivision_id);
+CREATE INDEX idx_levy_notices_oc ON levy_notices(oc_id);
 CREATE INDEX idx_levy_notices_lot ON levy_notices(lot_id);
 CREATE INDEX idx_levy_notices_reference ON levy_notices(reference_number);
 CREATE INDEX idx_levy_notices_status ON levy_notices(status);
 CREATE INDEX idx_levy_notices_due_date ON levy_notices(due_date);
 CREATE INDEX idx_levy_notices_batch ON levy_notices(batch_id);
 CREATE UNIQUE INDEX idx_levy_notices_bpay_crn
-  ON levy_notices (subdivision_id, bpay_crn)
+  ON levy_notices (oc_id, bpay_crn)
   WHERE bpay_crn IS NOT NULL;
 
 -- ============================================================================
@@ -612,7 +611,7 @@ CREATE INDEX idx_levy_notice_items_levy ON levy_notice_items(levy_notice_id);
 -- ============================================================================
 CREATE TABLE payments (
   id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
-  subdivision_id UUID NOT NULL REFERENCES subdivisions(id),
+  oc_id UUID NOT NULL REFERENCES owners_corporations(id),
   lot_id UUID NOT NULL REFERENCES lots(id),
   levy_notice_id UUID REFERENCES levy_notices(id),
   reference_number TEXT UNIQUE,                     -- SW-PAY-YYYY-NNNNNN
@@ -628,7 +627,7 @@ CREATE TABLE payments (
   created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 
-CREATE INDEX idx_payments_subdivision ON payments(subdivision_id);
+CREATE INDEX idx_payments_oc ON payments(oc_id);
 CREATE INDEX idx_payments_lot ON payments(lot_id);
 CREATE INDEX idx_payments_levy ON payments(levy_notice_id);
 
@@ -637,7 +636,7 @@ CREATE INDEX idx_payments_levy ON payments(levy_notice_id);
 -- ============================================================================
 CREATE TABLE bank_accounts (
   id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
-  subdivision_id UUID NOT NULL REFERENCES subdivisions(id) ON DELETE CASCADE,
+  oc_id UUID NOT NULL REFERENCES owners_corporations(id) ON DELETE CASCADE,
   account_name TEXT NOT NULL,
   bsb TEXT NOT NULL,
   account_number TEXT NOT NULL,
@@ -660,7 +659,7 @@ CREATE TABLE bank_accounts (
   updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 
-CREATE INDEX idx_bank_accounts_subdivision ON bank_accounts(subdivision_id);
+CREATE INDEX idx_bank_accounts_oc ON bank_accounts(oc_id);
 CREATE INDEX idx_bank_accounts_basiq_connection ON bank_accounts(basiq_connection_id)
   WHERE basiq_connection_id IS NOT NULL;
 
@@ -715,7 +714,7 @@ ALTER TABLE payments ADD CONSTRAINT fk_payments_bank_transaction
 -- ============================================================================
 CREATE TABLE meetings (
   id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
-  subdivision_id UUID NOT NULL REFERENCES subdivisions(id) ON DELETE CASCADE,
+  oc_id UUID NOT NULL REFERENCES owners_corporations(id) ON DELETE CASCADE,
   reference_number TEXT UNIQUE,                     -- SW-MTG-YYYY-NNNNNN
   meeting_type meeting_type NOT NULL,
   title TEXT NOT NULL,
@@ -731,7 +730,7 @@ CREATE TABLE meetings (
   updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 
-CREATE INDEX idx_meetings_subdivision ON meetings(subdivision_id);
+CREATE INDEX idx_meetings_oc ON meetings(oc_id);
 CREATE INDEX idx_meetings_date ON meetings(date_time);
 
 -- ============================================================================
@@ -836,7 +835,7 @@ CREATE TABLE committee_nominations (
 -- ============================================================================
 CREATE TABLE insurance_policies (
   id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
-  subdivision_id UUID NOT NULL REFERENCES subdivisions(id) ON DELETE CASCADE,
+  oc_id UUID NOT NULL REFERENCES owners_corporations(id) ON DELETE CASCADE,
   reference_number TEXT UNIQUE,                     -- SW-POL-YYYY-NNNNNN
   policy_type TEXT NOT NULL,
   provider TEXT NOT NULL,
@@ -851,7 +850,7 @@ CREATE TABLE insurance_policies (
   updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 
-CREATE INDEX idx_insurance_subdivision ON insurance_policies(subdivision_id);
+CREATE INDEX idx_insurance_oc ON insurance_policies(oc_id);
 
 -- ============================================================================
 -- 27. INSURANCE CLAIMS
@@ -874,7 +873,7 @@ CREATE TABLE insurance_claims (
 -- ============================================================================
 CREATE TABLE maintenance_requests (
   id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
-  subdivision_id UUID NOT NULL REFERENCES subdivisions(id) ON DELETE CASCADE,
+  oc_id UUID NOT NULL REFERENCES owners_corporations(id) ON DELETE CASCADE,
   reference_number TEXT UNIQUE,                     -- SW-MNT-YYYY-NNNNNN
   title TEXT NOT NULL,
   description TEXT NOT NULL,
@@ -890,14 +889,14 @@ CREATE TABLE maintenance_requests (
   updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 
-CREATE INDEX idx_maintenance_subdivision ON maintenance_requests(subdivision_id);
+CREATE INDEX idx_maintenance_oc ON maintenance_requests(oc_id);
 
 -- ============================================================================
 -- 29. ANNOUNCEMENTS
 -- ============================================================================
 CREATE TABLE announcements (
   id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
-  subdivision_id UUID NOT NULL REFERENCES subdivisions(id) ON DELETE CASCADE,
+  oc_id UUID NOT NULL REFERENCES owners_corporations(id) ON DELETE CASCADE,
   title TEXT NOT NULL,
   content TEXT NOT NULL,
   priority TEXT NOT NULL DEFAULT 'normal',
@@ -906,15 +905,15 @@ CREATE TABLE announcements (
   created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 
-CREATE INDEX idx_announcements_subdivision ON announcements(subdivision_id);
+CREATE INDEX idx_announcements_oc ON announcements(oc_id);
 
 -- ============================================================================
--- 30. DOCUMENTS (subdivision-scoped or lot-scoped)
+-- 30. DOCUMENTS (oc-scoped or lot-scoped)
 -- ============================================================================
 CREATE TABLE documents (
   id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
-  subdivision_id UUID NOT NULL REFERENCES subdivisions(id) ON DELETE CASCADE,
-  lot_id UUID REFERENCES lots(id) ON DELETE CASCADE, -- null = subdivision-level
+  oc_id UUID NOT NULL REFERENCES owners_corporations(id) ON DELETE CASCADE,
+  lot_id UUID REFERENCES lots(id) ON DELETE CASCADE, -- null = oc-level
   category TEXT NOT NULL,
   file_name TEXT NOT NULL,
   file_path TEXT NOT NULL,
@@ -925,17 +924,17 @@ CREATE TABLE documents (
   created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 
-CREATE INDEX idx_documents_subdivision ON documents(subdivision_id);
+CREATE INDEX idx_documents_oc ON documents(oc_id);
 CREATE INDEX idx_documents_category ON documents(category);
 CREATE INDEX idx_documents_lot_id ON documents(lot_id) WHERE lot_id IS NOT NULL;
-CREATE INDEX idx_documents_subdivision_no_lot ON documents(subdivision_id) WHERE lot_id IS NULL;
+CREATE INDEX idx_documents_oc_no_lot ON documents(oc_id) WHERE lot_id IS NULL;
 
 -- ============================================================================
 -- 31. COMMUNICATION LOG (evidence trail — ALL outbound comms)
 -- ============================================================================
 CREATE TABLE communication_log (
   id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
-  subdivision_id UUID REFERENCES subdivisions(id),
+  oc_id UUID REFERENCES owners_corporations(id),
   recipient_id UUID REFERENCES profiles(id),
   recipient_email TEXT,
   channel communication_channel NOT NULL,
@@ -953,7 +952,7 @@ CREATE TABLE communication_log (
   created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 
-CREATE INDEX idx_comms_subdivision ON communication_log(subdivision_id);
+CREATE INDEX idx_comms_oc ON communication_log(oc_id);
 CREATE INDEX idx_comms_recipient ON communication_log(recipient_id);
 CREATE INDEX idx_comms_type ON communication_log(type);
 CREATE INDEX idx_comms_status ON communication_log(status);
@@ -963,7 +962,7 @@ CREATE INDEX idx_comms_status ON communication_log(status);
 -- ============================================================================
 CREATE TABLE complaints (
   id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
-  subdivision_id UUID NOT NULL REFERENCES subdivisions(id) ON DELETE CASCADE,
+  oc_id UUID NOT NULL REFERENCES owners_corporations(id) ON DELETE CASCADE,
   reference_number TEXT UNIQUE,                     -- SW-CMP-YYYY-NNNNNN
   category TEXT NOT NULL,
   description TEXT NOT NULL,
@@ -975,7 +974,7 @@ CREATE TABLE complaints (
   updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 
-CREATE INDEX idx_complaints_subdivision ON complaints(subdivision_id);
+CREATE INDEX idx_complaints_oc ON complaints(oc_id);
 
 -- ============================================================================
 -- 33. NOTIFICATIONS (in-app)
@@ -984,7 +983,7 @@ CREATE INDEX idx_complaints_subdivision ON complaints(subdivision_id);
 CREATE TABLE notifications (
   id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
   profile_id UUID NOT NULL REFERENCES profiles(id) ON DELETE CASCADE,
-  subdivision_id UUID REFERENCES subdivisions(id) ON DELETE CASCADE,
+  oc_id UUID REFERENCES owners_corporations(id) ON DELETE CASCADE,
   type TEXT NOT NULL,
   title TEXT NOT NULL,
   body TEXT,
@@ -995,7 +994,7 @@ CREATE TABLE notifications (
 
 CREATE INDEX idx_notifications_profile_id ON notifications(profile_id);
 CREATE INDEX idx_notifications_profile_unread ON notifications(profile_id) WHERE read_at IS NULL;
-CREATE INDEX idx_notifications_subdivision_id ON notifications(subdivision_id);
+CREATE INDEX idx_notifications_oc_id ON notifications(oc_id);
 CREATE INDEX idx_notifications_inbox ON notifications(profile_id, created_at DESC);
 
 -- ============================================================================
@@ -1004,7 +1003,7 @@ CREATE INDEX idx_notifications_inbox ON notifications(profile_id, created_at DES
 CREATE TABLE audit_log (
   id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
   profile_id UUID REFERENCES profiles(id),
-  subdivision_id UUID REFERENCES subdivisions(id),
+  oc_id UUID REFERENCES owners_corporations(id),
   action TEXT NOT NULL,
   entity_type TEXT NOT NULL,
   entity_id UUID,
@@ -1015,7 +1014,7 @@ CREATE TABLE audit_log (
   created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 
-CREATE INDEX idx_audit_subdivision ON audit_log(subdivision_id);
+CREATE INDEX idx_audit_oc ON audit_log(oc_id);
 CREATE INDEX idx_audit_entity ON audit_log(entity_type, entity_id);
 CREATE INDEX idx_audit_created ON audit_log(created_at);
 
@@ -1024,7 +1023,7 @@ CREATE INDEX idx_audit_created ON audit_log(created_at);
 -- ============================================================================
 CREATE TABLE escalation_workflows (
   id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
-  subdivision_id UUID REFERENCES subdivisions(id),
+  oc_id UUID REFERENCES owners_corporations(id),
   name TEXT NOT NULL,
   description TEXT,
   is_default BOOLEAN NOT NULL DEFAULT false,
@@ -1077,7 +1076,7 @@ CREATE INDEX idx_escalation_next ON escalation_instances(next_action_at);
 -- ============================================================================
 CREATE TABLE charge_groups (
   id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
-  subdivision_id UUID NOT NULL REFERENCES subdivisions(id) ON DELETE CASCADE,
+  oc_id UUID NOT NULL REFERENCES owners_corporations(id) ON DELETE CASCADE,
   name TEXT NOT NULL,
   description TEXT,
   created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
@@ -1102,7 +1101,7 @@ CREATE TABLE charge_group_lots (
 -- ============================================================================
 CREATE TABLE contractors (
   id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
-  subdivision_id UUID NOT NULL REFERENCES subdivisions(id) ON DELETE CASCADE,
+  oc_id UUID NOT NULL REFERENCES owners_corporations(id) ON DELETE CASCADE,
   name TEXT NOT NULL,
   company TEXT,
   phone TEXT,
@@ -1125,7 +1124,7 @@ CREATE TABLE payment_plans (
   id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
   levy_notice_id UUID NOT NULL REFERENCES levy_notices(id),
   lot_id UUID NOT NULL REFERENCES lots(id),
-  subdivision_id UUID NOT NULL REFERENCES subdivisions(id),
+  oc_id UUID NOT NULL REFERENCES owners_corporations(id),
   total_amount DECIMAL(12,2) NOT NULL,
   installment_amount DECIMAL(12,2) NOT NULL,
   installment_frequency TEXT NOT NULL,              -- weekly | fortnightly | monthly
@@ -1143,7 +1142,7 @@ CREATE TABLE payment_plans (
 -- ============================================================================
 CREATE TABLE reserve_fund_items (
   id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
-  subdivision_id UUID NOT NULL REFERENCES subdivisions(id) ON DELETE CASCADE,
+  oc_id UUID NOT NULL REFERENCES owners_corporations(id) ON DELETE CASCADE,
   description TEXT NOT NULL,
   estimated_cost DECIMAL(12,2) NOT NULL,
   estimated_year INTEGER NOT NULL,
@@ -1160,7 +1159,7 @@ CREATE TABLE reserve_fund_items (
 -- ============================================================================
 CREATE TABLE chat_messages (
   id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
-  subdivision_id UUID NOT NULL REFERENCES subdivisions(id) ON DELETE CASCADE,
+  oc_id UUID NOT NULL REFERENCES owners_corporations(id) ON DELETE CASCADE,
   profile_id UUID NOT NULL REFERENCES profiles(id),
   content TEXT NOT NULL,
   created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
@@ -1168,7 +1167,7 @@ CREATE TABLE chat_messages (
   deleted_at TIMESTAMPTZ
 );
 
-CREATE INDEX idx_chat_messages_subdivision ON chat_messages(subdivision_id);
+CREATE INDEX idx_chat_messages_oc ON chat_messages(oc_id);
 CREATE INDEX idx_chat_messages_created ON chat_messages(created_at);
 
 -- ============================================================================
@@ -1189,10 +1188,10 @@ CREATE TABLE chat_attachments (
 -- ============================================================================
 CREATE TABLE chat_read_status (
   id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
-  subdivision_id UUID NOT NULL REFERENCES subdivisions(id) ON DELETE CASCADE,
+  oc_id UUID NOT NULL REFERENCES owners_corporations(id) ON DELETE CASCADE,
   profile_id UUID NOT NULL REFERENCES profiles(id),
   last_read_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-  UNIQUE(subdivision_id, profile_id)
+  UNIQUE(oc_id, profile_id)
 );
 
 -- ============================================================================
@@ -1204,7 +1203,7 @@ CREATE TABLE chat_read_status (
 -- ============================================================================
 CREATE TABLE lot_ledger_entries (
   id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
-  subdivision_id UUID NOT NULL REFERENCES subdivisions(id),
+  oc_id UUID NOT NULL REFERENCES owners_corporations(id),
   lot_id UUID NOT NULL REFERENCES lots(id),
   fund_type fund_type NOT NULL,
   entry_type ledger_entry_type NOT NULL,
@@ -1243,7 +1242,7 @@ CREATE TABLE lot_ledger_entries (
   CONSTRAINT chk_ledger_voids_requires_offset CHECK (voids_entry_id IS NULL OR category = 'void_offset')
 );
 
-CREATE INDEX idx_ledger_entries_subdivision ON lot_ledger_entries(subdivision_id);
+CREATE INDEX idx_ledger_entries_oc ON lot_ledger_entries(oc_id);
 CREATE INDEX idx_ledger_entries_lot         ON lot_ledger_entries(lot_id);
 CREATE INDEX idx_ledger_entries_lot_date    ON lot_ledger_entries(lot_id, entry_date);
 CREATE INDEX idx_ledger_entries_active_lot  ON lot_ledger_entries(lot_id) WHERE status = 'active';
@@ -1257,7 +1256,7 @@ CREATE INDEX idx_ledger_entries_levy_notice ON lot_ledger_entries(levy_notice_id
 -- ============================================================================
 CREATE TABLE lot_ledger_state (
   lot_id UUID PRIMARY KEY REFERENCES lots(id) ON DELETE CASCADE,
-  subdivision_id UUID NOT NULL REFERENCES subdivisions(id),
+  oc_id UUID NOT NULL REFERENCES owners_corporations(id),
   admin_balance DECIMAL(12,2) NOT NULL DEFAULT 0,
   capital_balance DECIMAL(12,2) NOT NULL DEFAULT 0,
   total_balance DECIMAL(12,2) NOT NULL DEFAULT 0,
@@ -1267,7 +1266,7 @@ CREATE TABLE lot_ledger_state (
   updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 
-CREATE INDEX idx_ledger_state_subdivision ON lot_ledger_state(subdivision_id);
+CREATE INDEX idx_ledger_state_oc ON lot_ledger_state(oc_id);
 
 -- ============================================================================
 -- 48. RECONCILIATION MATCHES  (Prompt 1 scaffold — writes arrive in Prompt 2+)
@@ -1300,7 +1299,7 @@ CREATE INDEX idx_recon_matches_ledger   ON reconciliation_matches(ledger_entry_i
 
 -- ============================================================================
 -- 49. UNDEPOSITED FUNDS ENTRIES  (Prompt 2)
--- Per-subdivision clearing account for cash/cheque receipts recorded against
+-- Per-oc clearing account for cash/cheque receipts recorded against
 -- a lot but not yet deposited to the bank. Receipt entry credits the lot's
 -- ledger AND creates a pending_deposit row here. When the real bank deposit
 -- arrives, depositUndepositedFunds links the existing credit to the bank
@@ -1308,7 +1307,7 @@ CREATE INDEX idx_recon_matches_ledger   ON reconciliation_matches(ledger_entry_i
 -- ============================================================================
 CREATE TABLE undeposited_funds_entries (
   id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
-  subdivision_id UUID NOT NULL REFERENCES subdivisions(id),
+  oc_id UUID NOT NULL REFERENCES owners_corporations(id),
   lot_id UUID NOT NULL REFERENCES lots(id),
   bank_account_id UUID NOT NULL REFERENCES bank_accounts(id),       -- where this will be deposited
   fund_type fund_type NOT NULL,
@@ -1316,7 +1315,7 @@ CREATE TABLE undeposited_funds_entries (
   received_date DATE NOT NULL,
   payment_method payment_method NOT NULL,                           -- constrained to cash|cheque below
   cheque_number TEXT,                                               -- required iff payment_method='cheque'
-  receipt_number TEXT NOT NULL,                                     -- "RCP-{n}" via next_reference_number('RCP', subdivision_id)
+  receipt_number TEXT NOT NULL,                                     -- "RCP-{n}" via next_reference_number('RCP', oc_id)
   description TEXT,
   status TEXT NOT NULL DEFAULT 'pending_deposit',                   -- pending_deposit | deposited | voided
   deposited_at TIMESTAMPTZ,
@@ -1339,11 +1338,11 @@ CREATE TABLE undeposited_funds_entries (
            = (deposited_at IS NOT NULL AND deposited_by_bank_transaction_id IS NOT NULL)),
   CONSTRAINT chk_uf_voided_fields
     CHECK ((status = 'voided') = (voided_at IS NOT NULL)),
-  CONSTRAINT undeposited_funds_entries_subdivision_receipt_key
-    UNIQUE (subdivision_id, receipt_number)
+  CONSTRAINT undeposited_funds_entries_oc_receipt_key
+    UNIQUE (oc_id, receipt_number)
 );
 
-CREATE INDEX idx_uf_subdivision  ON undeposited_funds_entries(subdivision_id);
+CREATE INDEX idx_uf_oc  ON undeposited_funds_entries(oc_id);
 CREATE INDEX idx_uf_bank_account ON undeposited_funds_entries(bank_account_id);
 CREATE INDEX idx_uf_lot          ON undeposited_funds_entries(lot_id);
 CREATE INDEX idx_uf_pending      ON undeposited_funds_entries(bank_account_id, status)
@@ -1363,7 +1362,7 @@ CREATE INDEX idx_uf_pending      ON undeposited_funds_entries(bank_account_id, s
 -- ============================================================================
 CREATE TABLE basiq_connections (
   id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
-  subdivision_id UUID NOT NULL REFERENCES subdivisions(id) ON DELETE CASCADE,
+  oc_id UUID NOT NULL REFERENCES owners_corporations(id) ON DELETE CASCADE,
 
   -- Basiq-side identifiers (external, issued by Basiq).
   basiq_user_id                TEXT NOT NULL,       -- Basiq's user ID for this OC
@@ -1423,7 +1422,7 @@ CREATE TABLE basiq_connections (
   updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 
-CREATE INDEX idx_basiq_connections_subdivision ON basiq_connections(subdivision_id);
+CREATE INDEX idx_basiq_connections_oc ON basiq_connections(oc_id);
 CREATE INDEX idx_basiq_connections_status      ON basiq_connections(status)
   WHERE status IN ('active', 'pending');
 CREATE INDEX idx_basiq_connections_expires     ON basiq_connections(consent_expires_at)
@@ -1462,7 +1461,7 @@ CREATE INDEX idx_basiq_reauth_notifications_connection
 CREATE TABLE basiq_gap_reports (
   id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
   basiq_connection_id UUID NOT NULL REFERENCES basiq_connections(id) ON DELETE CASCADE,
-  subdivision_id      UUID NOT NULL REFERENCES subdivisions(id) ON DELETE CASCADE,
+  oc_id      UUID NOT NULL REFERENCES owners_corporations(id) ON DELETE CASCADE,
 
   gap_start_at TIMESTAMPTZ NOT NULL,
   gap_end_at   TIMESTAMPTZ NOT NULL,
@@ -1477,7 +1476,7 @@ CREATE TABLE basiq_gap_reports (
   committee_notified               BOOLEAN DEFAULT FALSE,  -- set when gap > 30 days
 
   -- Dismissal is team-wide (per-report, not per-user): clicking Dismiss
-  -- on the bank-account banner hides it for everyone on the subdivision.
+  -- on the bank-account banner hides it for everyone on the oc.
   -- dismissed_by records the actor for audit.
   dismissed_at TIMESTAMPTZ,
   dismissed_by UUID REFERENCES profiles(id),
@@ -1485,22 +1484,22 @@ CREATE TABLE basiq_gap_reports (
   created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 
-CREATE INDEX idx_basiq_gap_reports_subdivision ON basiq_gap_reports(subdivision_id);
+CREATE INDEX idx_basiq_gap_reports_oc ON basiq_gap_reports(oc_id);
 CREATE INDEX idx_basiq_gap_reports_connection  ON basiq_gap_reports(basiq_connection_id);
 CREATE INDEX idx_basiq_gap_reports_undismissed
-  ON basiq_gap_reports(subdivision_id, created_at DESC)
+  ON basiq_gap_reports(oc_id, created_at DESC)
   WHERE dismissed_at IS NULL;
 
 -- ============================================================================
 -- 53. SUBDIVISION NOTIFICATION SUPPRESSIONS  (Prompt 3 — 48h arrears pause etc.)
 -- ----------------------------------------------------------------------------
 -- Queried by arrears-email flows (Prompt 6 consumers) before sending.
--- Multiple active rows per subdivision are legitimate (overlapping
+-- Multiple active rows per oc are legitimate (overlapping
 -- suppressions); readers filter WHERE suppressed_until > NOW().
 -- ============================================================================
-CREATE TABLE subdivision_notification_suppressions (
+CREATE TABLE oc_notification_suppressions (
   id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
-  subdivision_id UUID NOT NULL REFERENCES subdivisions(id) ON DELETE CASCADE,
+  oc_id UUID NOT NULL REFERENCES owners_corporations(id) ON DELETE CASCADE,
   suppression_type TEXT NOT NULL CHECK (suppression_type IN (
     'arrears_post_gap_reauth',
     'other_placeholder'
@@ -1514,8 +1513,8 @@ CREATE TABLE subdivision_notification_suppressions (
 -- in index predicates (must be IMMUTABLE). Indexing every row is cheap for
 -- this table and the planner still uses the index efficiently for the
 -- query-time filter `WHERE suppressed_until > NOW()`.
-CREATE INDEX idx_suppressions_subdivision_active
-  ON subdivision_notification_suppressions(subdivision_id, suppressed_until);
+CREATE INDEX idx_suppressions_oc_active
+  ON oc_notification_suppressions(oc_id, suppressed_until);
 
 -- ============================================================================
 -- 54. BANK PAYER MAPPINGS  (Prompt 4 PP4-A — canonical sender → lot mapping)
@@ -1529,13 +1528,13 @@ CREATE INDEX idx_suppressions_subdivision_active
 --                "active per canonical_name" slot
 --
 -- Constraint design (resolved Gap 1):
---   - Composite UNIQUE (subdivision_id, canonical_sender_name, lot_id):
+--   - Composite UNIQUE (oc_id, canonical_sender_name, lot_id):
 --     one row per (sub, name, lot) tuple. Allows multiple lots to share
 --     a canonical name (the ambiguous case) and multiple statuses across
 --     time for a given (sub, name, lot).
---   - Partial UNIQUE INDEX on (subdivision_id, canonical_sender_name)
+--   - Partial UNIQUE INDEX on (oc_id, canonical_sender_name)
 --     WHERE status = 'active': enforces at-most-one ACTIVE mapping per
---     canonical name per subdivision. Disabled / ambiguous rows don't
+--     canonical name per oc. Disabled / ambiguous rows don't
 --     occupy this slot, so collision detection can flip both old and
 --     new mappings to ambiguous and have all three rows coexist.
 --
@@ -1545,7 +1544,7 @@ CREATE INDEX idx_suppressions_subdivision_active
 -- ============================================================================
 CREATE TABLE bank_payer_mappings (
   id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
-  subdivision_id UUID NOT NULL REFERENCES subdivisions(id) ON DELETE CASCADE,
+  oc_id UUID NOT NULL REFERENCES owners_corporations(id) ON DELETE CASCADE,
   canonical_sender_name TEXT NOT NULL,
   lot_id UUID NOT NULL REFERENCES lots(id) ON DELETE CASCADE,
   status TEXT NOT NULL DEFAULT 'active'
@@ -1556,12 +1555,12 @@ CREATE TABLE bank_payer_mappings (
   created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
   updated_by UUID REFERENCES profiles(id),
   updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-  CONSTRAINT bank_payer_mappings_subdivision_canonical_lot_key
-    UNIQUE (subdivision_id, canonical_sender_name, lot_id)
+  CONSTRAINT bank_payer_mappings_oc_canonical_lot_key
+    UNIQUE (oc_id, canonical_sender_name, lot_id)
 );
 
-CREATE UNIQUE INDEX idx_payer_mappings_subdivision_active
-  ON bank_payer_mappings (subdivision_id, canonical_sender_name)
+CREATE UNIQUE INDEX idx_payer_mappings_oc_active
+  ON bank_payer_mappings (oc_id, canonical_sender_name)
   WHERE status = 'active';
 
 CREATE INDEX idx_payer_mappings_lot
@@ -1587,7 +1586,7 @@ END;
 $$ LANGUAGE plpgsql;
 
 CREATE TRIGGER trg_calculate_oc_tier
-  BEFORE INSERT OR UPDATE OF total_lots ON subdivisions
+  BEFORE INSERT OR UPDATE OF total_lots ON owners_corporations
   FOR EACH ROW EXECUTE FUNCTION calculate_oc_tier();
 
 -- Auto-calculate next AGM due.
@@ -1602,7 +1601,7 @@ END;
 $$ LANGUAGE plpgsql;
 
 CREATE TRIGGER trg_calculate_next_agm_due
-  BEFORE INSERT OR UPDATE OF last_agm_date ON subdivisions
+  BEFORE INSERT OR UPDATE OF last_agm_date ON owners_corporations
   FOR EACH ROW EXECUTE FUNCTION calculate_next_agm_due();
 
 -- Generic updated_at trigger.
@@ -1616,7 +1615,7 @@ $$ LANGUAGE plpgsql;
 
 CREATE TRIGGER trg_updated_at_management_companies BEFORE UPDATE ON management_companies FOR EACH ROW EXECUTE FUNCTION update_updated_at();
 CREATE TRIGGER trg_updated_at_profiles            BEFORE UPDATE ON profiles            FOR EACH ROW EXECUTE FUNCTION update_updated_at();
-CREATE TRIGGER trg_updated_at_subdivisions        BEFORE UPDATE ON subdivisions        FOR EACH ROW EXECUTE FUNCTION update_updated_at();
+CREATE TRIGGER trg_updated_at_owners_corporations        BEFORE UPDATE ON owners_corporations        FOR EACH ROW EXECUTE FUNCTION update_updated_at();
 CREATE TRIGGER trg_updated_at_budgets             BEFORE UPDATE ON budgets             FOR EACH ROW EXECUTE FUNCTION update_updated_at();
 CREATE TRIGGER trg_updated_at_levy_notices        BEFORE UPDATE ON levy_notices        FOR EACH ROW EXECUTE FUNCTION update_updated_at();
 CREATE TRIGGER trg_updated_at_bank_accounts       BEFORE UPDATE ON bank_accounts       FOR EACH ROW EXECUTE FUNCTION update_updated_at();
@@ -1634,8 +1633,8 @@ CREATE TRIGGER trg_updated_at_bank_payer_mappings BEFORE UPDATE ON bank_payer_ma
 CREATE OR REPLACE FUNCTION create_lot_trigger_ledger_state()
 RETURNS TRIGGER AS $$
 BEGIN
-  INSERT INTO lot_ledger_state (lot_id, subdivision_id, admin_balance, capital_balance, total_balance)
-  VALUES (NEW.id, NEW.subdivision_id, 0, 0, 0)
+  INSERT INTO lot_ledger_state (lot_id, oc_id, admin_balance, capital_balance, total_balance)
+  VALUES (NEW.id, NEW.oc_id, 0, 0, 0)
   ON CONFLICT (lot_id) DO NOTHING;
   RETURN NEW;
 END;
@@ -1941,15 +1940,15 @@ RETURNS void
 LANGUAGE plpgsql
 AS $$
 DECLARE
-  v_subdivision uuid;
+  v_oc uuid;
   v_admin decimal(12,2);
   v_capital decimal(12,2);
   v_oldest_admin date;
   v_oldest_capital date;
   v_last_entry timestamptz;
 BEGIN
-  SELECT subdivision_id INTO v_subdivision FROM lots WHERE id = p_lot_id;
-  IF v_subdivision IS NULL THEN
+  SELECT oc_id INTO v_oc FROM lots WHERE id = p_lot_id;
+  IF v_oc IS NULL THEN
     RAISE EXCEPTION 'recompute_lot_ledger_state: lot % not found', p_lot_id;
   END IF;
 
@@ -1980,14 +1979,14 @@ BEGIN
    WHERE lot_id = p_lot_id;
 
   INSERT INTO lot_ledger_state (
-    lot_id, subdivision_id, admin_balance, capital_balance, total_balance,
+    lot_id, oc_id, admin_balance, capital_balance, total_balance,
     oldest_unpaid_date_admin, oldest_unpaid_date_capital, last_entry_at, updated_at
   ) VALUES (
-    p_lot_id, v_subdivision, v_admin, v_capital, v_admin + v_capital,
+    p_lot_id, v_oc, v_admin, v_capital, v_admin + v_capital,
     v_oldest_admin, v_oldest_capital, v_last_entry, NOW()
   )
   ON CONFLICT (lot_id) DO UPDATE SET
-    subdivision_id             = EXCLUDED.subdivision_id,
+    oc_id             = EXCLUDED.oc_id,
     admin_balance              = EXCLUDED.admin_balance,
     capital_balance            = EXCLUDED.capital_balance,
     total_balance              = EXCLUDED.total_balance,
@@ -2002,7 +2001,7 @@ $$;
 -- (levy_notice_id, status='active'): if an active debit already exists,
 -- returns that id without inserting.
 CREATE OR REPLACE FUNCTION rpc_levy_debit(
-  p_subdivision_id uuid,
+  p_oc_id uuid,
   p_lot_id uuid,
   p_fund_type fund_type,
   p_amount decimal,
@@ -2051,11 +2050,11 @@ BEGIN
   END IF;
 
   INSERT INTO lot_ledger_entries (
-    subdivision_id, lot_id, fund_type, entry_type, category,
+    oc_id, lot_id, fund_type, entry_type, category,
     amount, entry_date, description, reference, levy_notice_id,
     status, created_by
   ) VALUES (
-    p_subdivision_id, p_lot_id, p_fund_type, 'debit', p_category,
+    p_oc_id, p_lot_id, p_fund_type, 'debit', p_category,
     p_amount, p_entry_date, p_description, p_reference, p_levy_notice_id,
     'active', p_created_by
   ) RETURNING id INTO v_new_id;
@@ -2063,8 +2062,8 @@ BEGIN
   PERFORM recompute_lot_ledger_state(p_lot_id);
 
   SELECT to_jsonb(e) INTO v_after FROM lot_ledger_entries e WHERE id = v_new_id;
-  INSERT INTO audit_log (profile_id, subdivision_id, action, entity_type, entity_id, after_state)
-  VALUES (p_created_by, p_subdivision_id, 'ledger.debit.created', 'lot_ledger_entry', v_new_id, v_after);
+  INSERT INTO audit_log (profile_id, oc_id, action, entity_type, entity_id, after_state)
+  VALUES (p_created_by, p_oc_id, 'ledger.debit.created', 'lot_ledger_entry', v_new_id, v_after);
 
   RETURN v_new_id;
 END;
@@ -2073,7 +2072,7 @@ $$;
 -- rpc_payment_credit: write a payment credit. Does NOT create
 -- reconciliation_matches rows (that is a separate concern owned by Prompt 2+).
 CREATE OR REPLACE FUNCTION rpc_payment_credit(
-  p_subdivision_id uuid,
+  p_oc_id uuid,
   p_lot_id uuid,
   p_fund_type fund_type,
   p_amount decimal,
@@ -2095,11 +2094,11 @@ BEGIN
   END IF;
 
   INSERT INTO lot_ledger_entries (
-    subdivision_id, lot_id, fund_type, entry_type, category,
+    oc_id, lot_id, fund_type, entry_type, category,
     amount, entry_date, description, reference, levy_notice_id,
     status, created_by
   ) VALUES (
-    p_subdivision_id, p_lot_id, p_fund_type, 'credit', 'payment',
+    p_oc_id, p_lot_id, p_fund_type, 'credit', 'payment',
     p_amount, p_entry_date, p_description, p_reference, p_levy_notice_id,
     'active', p_created_by
   ) RETURNING id INTO v_new_id;
@@ -2107,8 +2106,8 @@ BEGIN
   PERFORM recompute_lot_ledger_state(p_lot_id);
 
   SELECT to_jsonb(e) INTO v_after FROM lot_ledger_entries e WHERE id = v_new_id;
-  INSERT INTO audit_log (profile_id, subdivision_id, action, entity_type, entity_id, after_state)
-  VALUES (p_created_by, p_subdivision_id, 'ledger.credit.created', 'lot_ledger_entry', v_new_id, v_after);
+  INSERT INTO audit_log (profile_id, oc_id, action, entity_type, entity_id, after_state)
+  VALUES (p_created_by, p_oc_id, 'ledger.credit.created', 'lot_ledger_entry', v_new_id, v_after);
 
   RETURN v_new_id;
 END;
@@ -2117,7 +2116,7 @@ $$;
 -- rpc_ledger_adjustment: operator-entered debit or credit for
 -- writeoff / refund / adjustment. Description is mandatory.
 CREATE OR REPLACE FUNCTION rpc_ledger_adjustment(
-  p_subdivision_id uuid,
+  p_oc_id uuid,
   p_lot_id uuid,
   p_fund_type fund_type,
   p_entry_type ledger_entry_type,
@@ -2151,18 +2150,18 @@ BEGIN
   END IF;
 
   INSERT INTO lot_ledger_entries (
-    subdivision_id, lot_id, fund_type, entry_type, category,
+    oc_id, lot_id, fund_type, entry_type, category,
     amount, entry_date, description, status, created_by
   ) VALUES (
-    p_subdivision_id, p_lot_id, p_fund_type, p_entry_type, p_category,
+    p_oc_id, p_lot_id, p_fund_type, p_entry_type, p_category,
     p_amount, p_entry_date, p_description, 'active', p_created_by
   ) RETURNING id INTO v_new_id;
 
   PERFORM recompute_lot_ledger_state(p_lot_id);
 
   SELECT to_jsonb(e) INTO v_after FROM lot_ledger_entries e WHERE id = v_new_id;
-  INSERT INTO audit_log (profile_id, subdivision_id, action, entity_type, entity_id, after_state)
-  VALUES (p_created_by, p_subdivision_id, 'ledger.adjustment.created', 'lot_ledger_entry', v_new_id, v_after);
+  INSERT INTO audit_log (profile_id, oc_id, action, entity_type, entity_id, after_state)
+  VALUES (p_created_by, p_oc_id, 'ledger.adjustment.created', 'lot_ledger_entry', v_new_id, v_after);
 
   RETURN v_new_id;
 END;
@@ -2214,11 +2213,11 @@ BEGIN
                         ELSE 'debit'::ledger_entry_type END;
 
   INSERT INTO lot_ledger_entries (
-    subdivision_id, lot_id, fund_type, entry_type, category,
+    oc_id, lot_id, fund_type, entry_type, category,
     amount, entry_date, description, reference, levy_notice_id,
     voids_entry_id, status, created_by
   ) VALUES (
-    v_original.subdivision_id, v_original.lot_id, v_original.fund_type, v_offset_type, 'void_offset',
+    v_original.oc_id, v_original.lot_id, v_original.fund_type, v_offset_type, 'void_offset',
     v_original.amount, CURRENT_DATE,
     'Void of entry ' || p_entry_id::text || ': ' || p_reason,
     v_original.reference, v_original.levy_notice_id,
@@ -2236,8 +2235,8 @@ BEGIN
   IF v_original.category IN ('levy', 'special_levy') AND v_original.levy_notice_id IS NOT NULL THEN
     SELECT status INTO v_old_notice_status FROM levy_notices WHERE id = v_original.levy_notice_id;
     UPDATE levy_notices SET status = 'written_off', updated_at = NOW() WHERE id = v_original.levy_notice_id;
-    INSERT INTO audit_log (profile_id, subdivision_id, action, entity_type, entity_id, before_state, after_state, metadata)
-    VALUES (p_voided_by, v_original.subdivision_id, 'levy_notice.written_off', 'levy_notice', v_original.levy_notice_id,
+    INSERT INTO audit_log (profile_id, oc_id, action, entity_type, entity_id, before_state, after_state, metadata)
+    VALUES (p_voided_by, v_original.oc_id, 'levy_notice.written_off', 'levy_notice', v_original.levy_notice_id,
             jsonb_build_object('status', v_old_notice_status),
             jsonb_build_object('status', 'written_off'),
             jsonb_build_object('caused_by_ledger_void_id', p_entry_id, 'offset_entry_id', v_offset_id));
@@ -2250,8 +2249,8 @@ BEGIN
    WHERE ledger_entry_id = p_entry_id;
 
   SELECT to_jsonb(e) INTO v_after FROM lot_ledger_entries e WHERE id = p_entry_id;
-  INSERT INTO audit_log (profile_id, subdivision_id, action, entity_type, entity_id, before_state, after_state, metadata)
-  VALUES (p_voided_by, v_original.subdivision_id, 'ledger.entry.voided', 'lot_ledger_entry', p_entry_id,
+  INSERT INTO audit_log (profile_id, oc_id, action, entity_type, entity_id, before_state, after_state, metadata)
+  VALUES (p_voided_by, v_original.oc_id, 'ledger.entry.voided', 'lot_ledger_entry', p_entry_id,
           v_before, v_after,
           jsonb_build_object(
             'reason', p_reason,
@@ -2297,7 +2296,7 @@ BEGIN
   END IF;
 
   FOR v_notice IN
-    SELECT id, subdivision_id, lot_id, fund_type, amount, period_start, reference_number, levy_type
+    SELECT id, oc_id, lot_id, fund_type, amount, period_start, reference_number, levy_type
       FROM levy_notices
      WHERE batch_id = p_batch_id
   LOOP
@@ -2317,11 +2316,11 @@ BEGIN
                        ELSE 'levy'::ledger_entry_category END;
 
     INSERT INTO lot_ledger_entries (
-      subdivision_id, lot_id, fund_type, entry_type, category,
+      oc_id, lot_id, fund_type, entry_type, category,
       amount, entry_date, description, reference, levy_notice_id,
       status, created_by
     ) VALUES (
-      v_notice.subdivision_id, v_notice.lot_id, v_notice.fund_type, 'debit', v_category,
+      v_notice.oc_id, v_notice.lot_id, v_notice.fund_type, 'debit', v_category,
       v_notice.amount, v_notice.period_start,
       'Levy ' || v_notice.reference_number, v_notice.reference_number, v_notice.id,
       'active', p_created_by
@@ -2339,8 +2338,8 @@ BEGIN
 
   UPDATE levy_batches SET status = 'ledger_written' WHERE id = p_batch_id;
 
-  INSERT INTO audit_log (profile_id, subdivision_id, action, entity_type, entity_id, metadata)
-  VALUES (p_created_by, v_batch.subdivision_id, 'ledger.levy_batch.generated', 'levy_batch', p_batch_id,
+  INSERT INTO audit_log (profile_id, oc_id, action, entity_type, entity_id, metadata)
+  VALUES (p_created_by, v_batch.oc_id, 'ledger.levy_batch.generated', 'levy_batch', p_batch_id,
           jsonb_build_object('created', v_created, 'skipped_existing', v_skipped));
 
   RETURN jsonb_build_object('created', v_created, 'skipped_existing', v_skipped);
@@ -2376,7 +2375,7 @@ LANGUAGE plpgsql
 AS $$
 DECLARE
   v_bt                   bank_transactions%ROWTYPE;
-  v_bt_subdivision_id    uuid;
+  v_bt_oc_id    uuid;
   v_bt_bank_fund_type    fund_type;
   v_before               jsonb;
   v_after                jsonb;
@@ -2387,7 +2386,7 @@ DECLARE
   v_amount               decimal(12,2);
   v_levy_notice_id       uuid;
   v_reference            text;
-  v_lot_subdivision_id   uuid;
+  v_lot_oc_id   uuid;
   v_ln_lot_id            uuid;
   v_ln_fund_type         fund_type;
   v_ln_reference         text;
@@ -2421,8 +2420,8 @@ BEGIN
     RAISE EXCEPTION 'rpc_reconcile_bank_transaction: only credit-direction (amount > 0) transactions can be matched; got %', v_bt.amount;
   END IF;
 
-  SELECT ba.subdivision_id, ba.fund_type
-    INTO v_bt_subdivision_id, v_bt_bank_fund_type
+  SELECT ba.oc_id, ba.fund_type
+    INTO v_bt_oc_id, v_bt_bank_fund_type
     FROM bank_accounts ba WHERE ba.id = v_bt.bank_account_id;
 
   v_before := to_jsonb(v_bt);
@@ -2443,12 +2442,12 @@ BEGIN
       RAISE EXCEPTION 'rpc_reconcile_bank_transaction: allocation amount must be positive (got %)', v_amount;
     END IF;
 
-    SELECT l.subdivision_id INTO v_lot_subdivision_id FROM lots l WHERE l.id = v_lot_id;
-    IF v_lot_subdivision_id IS NULL THEN
+    SELECT l.oc_id INTO v_lot_oc_id FROM lots l WHERE l.id = v_lot_id;
+    IF v_lot_oc_id IS NULL THEN
       RAISE EXCEPTION 'rpc_reconcile_bank_transaction: lot % not found', v_lot_id;
     END IF;
-    IF v_lot_subdivision_id <> v_bt_subdivision_id THEN
-      RAISE EXCEPTION 'rpc_reconcile_bank_transaction: lot % does not belong to bank transaction subdivision %', v_lot_id, v_bt_subdivision_id;
+    IF v_lot_oc_id <> v_bt_oc_id THEN
+      RAISE EXCEPTION 'rpc_reconcile_bank_transaction: lot % does not belong to bank transaction oc %', v_lot_id, v_bt_oc_id;
     END IF;
 
     IF v_levy_notice_id IS NOT NULL THEN
@@ -2502,11 +2501,11 @@ BEGIN
 
     -- Inline rpc_payment_credit logic (per Prompt 2 spec: don't cross-RPC — one transaction, one audit scope).
     INSERT INTO lot_ledger_entries (
-      subdivision_id, lot_id, fund_type, entry_type, category,
+      oc_id, lot_id, fund_type, entry_type, category,
       amount, entry_date, description, reference, levy_notice_id,
       status, created_by
     ) VALUES (
-      v_bt_subdivision_id, v_lot_id, v_fund_type, 'credit', 'payment',
+      v_bt_oc_id, v_lot_id, v_fund_type, 'credit', 'payment',
       v_amount, v_bt.transaction_date, v_description, v_reference, v_levy_notice_id,
       'active', p_performed_by
     ) RETURNING id INTO v_credit_id;
@@ -2552,8 +2551,8 @@ BEGIN
   END LOOP;
 
   SELECT to_jsonb(bt) INTO v_after FROM bank_transactions bt WHERE bt.id = p_bank_transaction_id;
-  INSERT INTO audit_log (profile_id, subdivision_id, action, entity_type, entity_id, before_state, after_state, metadata)
-  VALUES (p_performed_by, v_bt_subdivision_id, 'reconciliation.matched', 'bank_transaction', p_bank_transaction_id,
+  INSERT INTO audit_log (profile_id, oc_id, action, entity_type, entity_id, before_state, after_state, metadata)
+  VALUES (p_performed_by, v_bt_oc_id, 'reconciliation.matched', 'bank_transaction', p_bank_transaction_id,
           v_before, v_after,
           jsonb_build_object(
             'allocations', p_allocations,
@@ -2606,7 +2605,7 @@ LANGUAGE plpgsql
 AS $$
 DECLARE
   v_bt                   bank_transactions%ROWTYPE;
-  v_bt_subdivision_id    uuid;
+  v_bt_oc_id    uuid;
   v_before               jsonb;
   v_after                jsonb;
   v_match                reconciliation_matches%ROWTYPE;
@@ -2628,7 +2627,7 @@ BEGIN
     RAISE EXCEPTION 'rpc_unmatch_bank_transaction: bank_transaction % not found', p_bank_transaction_id;
   END IF;
 
-  SELECT ba.subdivision_id INTO v_bt_subdivision_id
+  SELECT ba.oc_id INTO v_bt_oc_id
     FROM bank_accounts ba WHERE ba.id = v_bt.bank_account_id;
 
   v_before := to_jsonb(v_bt);
@@ -2696,8 +2695,8 @@ BEGIN
    WHERE id = p_bank_transaction_id;
 
   SELECT to_jsonb(bt) INTO v_after FROM bank_transactions bt WHERE bt.id = p_bank_transaction_id;
-  INSERT INTO audit_log (profile_id, subdivision_id, action, entity_type, entity_id, before_state, after_state, metadata)
-  VALUES (p_performed_by, v_bt_subdivision_id, 'reconciliation.unmatched', 'bank_transaction', p_bank_transaction_id,
+  INSERT INTO audit_log (profile_id, oc_id, action, entity_type, entity_id, before_state, after_state, metadata)
+  VALUES (p_performed_by, v_bt_oc_id, 'reconciliation.unmatched', 'bank_transaction', p_bank_transaction_id,
           v_before, v_after,
           jsonb_build_object(
             'reason', p_reason,
@@ -2724,7 +2723,7 @@ $$;
 -- Strict fund-type rule: p_fund_type MUST equal bank_account.fund_type. Cash
 -- is earmarked to the destination account's fund at receipt time.
 CREATE OR REPLACE FUNCTION rpc_record_cash_receipt(
-  p_subdivision_id uuid,
+  p_oc_id uuid,
   p_lot_id uuid,
   p_bank_account_id uuid,
   p_fund_type fund_type,
@@ -2739,8 +2738,8 @@ RETURNS jsonb
 LANGUAGE plpgsql
 AS $$
 DECLARE
-  v_lot_subdivision_id uuid;
-  v_ba_subdivision_id  uuid;
+  v_lot_oc_id uuid;
+  v_ba_oc_id  uuid;
   v_ba_fund_type       fund_type;
   v_receipt_number     text;
   v_credit_id          uuid;
@@ -2762,29 +2761,29 @@ BEGIN
     RAISE EXCEPTION 'rpc_record_cash_receipt: cheque_number must be null when payment_method = cash';
   END IF;
 
-  SELECT subdivision_id INTO v_lot_subdivision_id FROM lots WHERE id = p_lot_id;
-  IF v_lot_subdivision_id IS NULL THEN
+  SELECT oc_id INTO v_lot_oc_id FROM lots WHERE id = p_lot_id;
+  IF v_lot_oc_id IS NULL THEN
     RAISE EXCEPTION 'rpc_record_cash_receipt: lot % not found', p_lot_id;
   END IF;
-  IF v_lot_subdivision_id <> p_subdivision_id THEN
-    RAISE EXCEPTION 'rpc_record_cash_receipt: lot % does not belong to subdivision %', p_lot_id, p_subdivision_id;
+  IF v_lot_oc_id <> p_oc_id THEN
+    RAISE EXCEPTION 'rpc_record_cash_receipt: lot % does not belong to oc %', p_lot_id, p_oc_id;
   END IF;
 
-  SELECT subdivision_id, fund_type
-    INTO v_ba_subdivision_id, v_ba_fund_type
+  SELECT oc_id, fund_type
+    INTO v_ba_oc_id, v_ba_fund_type
     FROM bank_accounts WHERE id = p_bank_account_id;
-  IF v_ba_subdivision_id IS NULL THEN
+  IF v_ba_oc_id IS NULL THEN
     RAISE EXCEPTION 'rpc_record_cash_receipt: bank_account % not found', p_bank_account_id;
   END IF;
-  IF v_ba_subdivision_id <> p_subdivision_id THEN
-    RAISE EXCEPTION 'rpc_record_cash_receipt: bank_account % does not belong to subdivision %', p_bank_account_id, p_subdivision_id;
+  IF v_ba_oc_id <> p_oc_id THEN
+    RAISE EXCEPTION 'rpc_record_cash_receipt: bank_account % does not belong to oc %', p_bank_account_id, p_oc_id;
   END IF;
   IF v_ba_fund_type <> p_fund_type THEN
     RAISE EXCEPTION 'rpc_record_cash_receipt: fund_type mismatch — receipt %, bank account %', p_fund_type, v_ba_fund_type;
   END IF;
 
-  -- Financial prefix: must pass subdivision_id. 'RCP' (was 'RCPT' pre-PP4-0).
-  v_receipt_number := next_reference_number('RCP', p_subdivision_id);
+  -- Financial prefix: must pass oc_id. 'RCP' (was 'RCPT' pre-PP4-0).
+  v_receipt_number := next_reference_number('RCP', p_oc_id);
   v_method_enum := p_payment_method::payment_method;
 
   IF p_payment_method = 'cheque' THEN
@@ -2798,21 +2797,21 @@ BEGIN
 
   -- Inline payment-credit insert (avoids cross-RPC audit duplication).
   INSERT INTO lot_ledger_entries (
-    subdivision_id, lot_id, fund_type, entry_type, category,
+    oc_id, lot_id, fund_type, entry_type, category,
     amount, entry_date, description, reference,
     status, created_by
   ) VALUES (
-    p_subdivision_id, p_lot_id, p_fund_type, 'credit', 'payment',
+    p_oc_id, p_lot_id, p_fund_type, 'credit', 'payment',
     p_amount, p_received_date, v_description, v_receipt_number,
     'active', p_performed_by
   ) RETURNING id INTO v_credit_id;
 
   INSERT INTO undeposited_funds_entries (
-    subdivision_id, lot_id, bank_account_id, fund_type, amount, received_date,
+    oc_id, lot_id, bank_account_id, fund_type, amount, received_date,
     payment_method, cheque_number, receipt_number, description,
     status, linked_ledger_credit_id, created_by
   ) VALUES (
-    p_subdivision_id, p_lot_id, p_bank_account_id, p_fund_type, p_amount, p_received_date,
+    p_oc_id, p_lot_id, p_bank_account_id, p_fund_type, p_amount, p_received_date,
     v_method_enum, p_cheque_number, v_receipt_number, p_description,
     'pending_deposit', v_credit_id, p_performed_by
   ) RETURNING id INTO v_receipt_id;
@@ -2820,8 +2819,8 @@ BEGIN
   PERFORM recompute_lot_ledger_state(p_lot_id);
 
   SELECT to_jsonb(u) INTO v_after FROM undeposited_funds_entries u WHERE u.id = v_receipt_id;
-  INSERT INTO audit_log (profile_id, subdivision_id, action, entity_type, entity_id, after_state, metadata)
-  VALUES (p_performed_by, p_subdivision_id, 'receipt.recorded', 'undeposited_funds_entry', v_receipt_id,
+  INSERT INTO audit_log (profile_id, oc_id, action, entity_type, entity_id, after_state, metadata)
+  VALUES (p_performed_by, p_oc_id, 'receipt.recorded', 'undeposited_funds_entry', v_receipt_id,
           v_after,
           jsonb_build_object(
             'receipt_number', v_receipt_number,
@@ -2853,7 +2852,7 @@ LANGUAGE plpgsql
 AS $$
 DECLARE
   v_bt                 bank_transactions%ROWTYPE;
-  v_bt_subdivision_id  uuid;
+  v_bt_oc_id  uuid;
   v_before             jsonb;
   v_after              jsonb;
   v_uf                 undeposited_funds_entries%ROWTYPE;
@@ -2883,7 +2882,7 @@ BEGIN
     RAISE EXCEPTION 'rpc_deposit_undeposited_funds: only credit-direction transactions can clear receipts';
   END IF;
 
-  SELECT ba.subdivision_id INTO v_bt_subdivision_id
+  SELECT ba.oc_id INTO v_bt_oc_id
     FROM bank_accounts ba WHERE ba.id = v_bt.bank_account_id;
 
   v_before := to_jsonb(v_bt);
@@ -2954,8 +2953,8 @@ BEGIN
   END LOOP;
 
   SELECT to_jsonb(bt) INTO v_after FROM bank_transactions bt WHERE bt.id = p_bank_transaction_id;
-  INSERT INTO audit_log (profile_id, subdivision_id, action, entity_type, entity_id, before_state, after_state, metadata)
-  VALUES (p_performed_by, v_bt_subdivision_id, 'reconciliation.deposited_receipts', 'bank_transaction', p_bank_transaction_id,
+  INSERT INTO audit_log (profile_id, oc_id, action, entity_type, entity_id, before_state, after_state, metadata)
+  VALUES (p_performed_by, v_bt_oc_id, 'reconciliation.deposited_receipts', 'bank_transaction', p_bank_transaction_id,
           v_before, v_after,
           jsonb_build_object(
             'cleared_receipt_numbers', to_jsonb(v_cleared_numbers),
@@ -2983,7 +2982,7 @@ LANGUAGE plpgsql
 AS $$
 DECLARE
   v_bt                bank_transactions%ROWTYPE;
-  v_bt_subdivision_id uuid;
+  v_bt_oc_id uuid;
   v_before            jsonb;
   v_after             jsonb;
 BEGIN
@@ -3002,7 +3001,7 @@ BEGIN
     RAISE EXCEPTION 'rpc_exclude_bank_transaction: can only exclude an unmatched transaction with matched_total=0';
   END IF;
 
-  SELECT ba.subdivision_id INTO v_bt_subdivision_id FROM bank_accounts ba WHERE ba.id = v_bt.bank_account_id;
+  SELECT ba.oc_id INTO v_bt_oc_id FROM bank_accounts ba WHERE ba.id = v_bt.bank_account_id;
   v_before := to_jsonb(v_bt);
 
   UPDATE bank_transactions
@@ -3011,8 +3010,8 @@ BEGIN
    WHERE id = p_bank_transaction_id;
 
   SELECT to_jsonb(bt) INTO v_after FROM bank_transactions bt WHERE bt.id = p_bank_transaction_id;
-  INSERT INTO audit_log (profile_id, subdivision_id, action, entity_type, entity_id, before_state, after_state, metadata)
-  VALUES (p_performed_by, v_bt_subdivision_id, 'reconciliation.excluded', 'bank_transaction', p_bank_transaction_id,
+  INSERT INTO audit_log (profile_id, oc_id, action, entity_type, entity_id, before_state, after_state, metadata)
+  VALUES (p_performed_by, v_bt_oc_id, 'reconciliation.excluded', 'bank_transaction', p_bank_transaction_id,
           v_before, v_after,
           jsonb_build_object('reason', p_reason));
 
@@ -3030,7 +3029,7 @@ LANGUAGE plpgsql
 AS $$
 DECLARE
   v_bt                bank_transactions%ROWTYPE;
-  v_bt_subdivision_id uuid;
+  v_bt_oc_id uuid;
   v_before            jsonb;
   v_after             jsonb;
 BEGIN
@@ -3042,7 +3041,7 @@ BEGIN
     RAISE EXCEPTION 'rpc_unexclude_bank_transaction: transaction is not excluded (status=%)', v_bt.match_status;
   END IF;
 
-  SELECT ba.subdivision_id INTO v_bt_subdivision_id FROM bank_accounts ba WHERE ba.id = v_bt.bank_account_id;
+  SELECT ba.oc_id INTO v_bt_oc_id FROM bank_accounts ba WHERE ba.id = v_bt.bank_account_id;
   v_before := to_jsonb(v_bt);
 
   UPDATE bank_transactions
@@ -3051,8 +3050,8 @@ BEGIN
    WHERE id = p_bank_transaction_id;
 
   SELECT to_jsonb(bt) INTO v_after FROM bank_transactions bt WHERE bt.id = p_bank_transaction_id;
-  INSERT INTO audit_log (profile_id, subdivision_id, action, entity_type, entity_id, before_state, after_state)
-  VALUES (p_performed_by, v_bt_subdivision_id, 'reconciliation.unexcluded', 'bank_transaction', p_bank_transaction_id,
+  INSERT INTO audit_log (profile_id, oc_id, action, entity_type, entity_id, before_state, after_state)
+  VALUES (p_performed_by, v_bt_oc_id, 'reconciliation.unexcluded', 'bank_transaction', p_bank_transaction_id,
           v_before, v_after);
 
   RETURN jsonb_build_object('ok', true);
@@ -3092,7 +3091,7 @@ AS $$
 DECLARE
   v_existing_id    uuid;
   v_inserted_id    uuid;
-  v_subdivision_id uuid;
+  v_oc_id uuid;
 BEGIN
   IF p_basiq_transaction_id IS NULL OR length(trim(p_basiq_transaction_id)) = 0 THEN
     RAISE EXCEPTION 'rpc_insert_basiq_transaction: basiq_transaction_id is required';
@@ -3120,10 +3119,10 @@ BEGIN
     );
   END IF;
 
-  SELECT subdivision_id INTO v_subdivision_id
+  SELECT oc_id INTO v_oc_id
     FROM bank_accounts
    WHERE id = p_bank_account_id;
-  IF v_subdivision_id IS NULL THEN
+  IF v_oc_id IS NULL THEN
     RAISE EXCEPTION 'rpc_insert_basiq_transaction: bank_account % not found', p_bank_account_id;
   END IF;
 
@@ -3138,11 +3137,11 @@ BEGIN
   RETURNING id INTO v_inserted_id;
 
   INSERT INTO audit_log (
-    profile_id, subdivision_id, action, entity_type, entity_id, after_state, metadata
+    profile_id, oc_id, action, entity_type, entity_id, after_state, metadata
   )
   VALUES (
     p_performed_by,
-    v_subdivision_id,
+    v_oc_id,
     'bank_transaction.imported_from_basiq',
     'bank_transaction',
     v_inserted_id,
@@ -3201,12 +3200,12 @@ BEGIN
   SELECT to_jsonb(c) INTO v_after FROM basiq_connections c WHERE c.id = p_basiq_connection_id;
 
   INSERT INTO audit_log (
-    profile_id, subdivision_id, action, entity_type, entity_id,
+    profile_id, oc_id, action, entity_type, entity_id,
     before_state, after_state, metadata
   )
   VALUES (
     p_performed_by,
-    v_conn.subdivision_id,
+    v_conn.oc_id,
     'basiq_connection.marked_expired',
     'basiq_connection',
     p_basiq_connection_id,
@@ -3252,7 +3251,7 @@ voided_debits AS (
 )
 SELECT
   n.id,
-  n.subdivision_id,
+  n.oc_id,
   n.lot_id,
   n.reference_number,
   n.amount,
@@ -3282,9 +3281,9 @@ ALTER TABLE management_companies         ENABLE ROW LEVEL SECURITY;
 ALTER TABLE profiles                     ENABLE ROW LEVEL SECURITY;
 ALTER TABLE user_consents                ENABLE ROW LEVEL SECURITY;
 ALTER TABLE notification_preferences     ENABLE ROW LEVEL SECURITY;
-ALTER TABLE subdivisions                 ENABLE ROW LEVEL SECURITY;
+ALTER TABLE owners_corporations                 ENABLE ROW LEVEL SECURITY;
 ALTER TABLE lots                         ENABLE ROW LEVEL SECURITY;
-ALTER TABLE subdivision_members          ENABLE ROW LEVEL SECURITY;
+ALTER TABLE oc_members          ENABLE ROW LEVEL SECURITY;
 ALTER TABLE invitations                  ENABLE ROW LEVEL SECURITY;
 ALTER TABLE budgets                      ENABLE ROW LEVEL SECURITY;
 ALTER TABLE budget_items                 ENABLE ROW LEVEL SECURITY;
@@ -3326,7 +3325,7 @@ ALTER TABLE undeposited_funds_entries    ENABLE ROW LEVEL SECURITY;
 ALTER TABLE basiq_connections                     ENABLE ROW LEVEL SECURITY;
 ALTER TABLE basiq_reauth_notifications            ENABLE ROW LEVEL SECURITY;
 ALTER TABLE basiq_gap_reports                     ENABLE ROW LEVEL SECURITY;
-ALTER TABLE subdivision_notification_suppressions ENABLE ROW LEVEL SECURITY;
+ALTER TABLE oc_notification_suppressions ENABLE ROW LEVEL SECURITY;
 ALTER TABLE bank_payer_mappings                   ENABLE ROW LEVEL SECURITY;
 
 -- Audit log is immutable — INSERT only.

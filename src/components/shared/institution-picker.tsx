@@ -30,7 +30,7 @@ import { cn } from "@/lib/utils";
 interface Props {
   open: boolean;
   onOpenChange: (v: boolean) => void;
-  subdivisionId: string;
+  ocId: string;
   /** Full path (with querystring) the user returns to after consent. */
   returnToPath: string;
   /** Optional initial value for the nominated-rep name — e.g. the manager's
@@ -41,7 +41,7 @@ interface Props {
 export function InstitutionPicker({
   open,
   onOpenChange,
-  subdivisionId,
+  ocId,
   returnToPath,
   defaultNominatedRep,
 }: Props) {
@@ -91,7 +91,7 @@ export function InstitutionPicker({
     setBusyId(inst.id);
     setError(null);
     const res = await startBasiqConsent({
-      subdivision_id: subdivisionId,
+      oc_id: ocId,
       institution_id: inst.id,
       nominated_rep_name: nominatedRep.trim(),
       return_to: returnToPath,

@@ -56,11 +56,11 @@ export async function tryReferenceMatch(
 
   const supabase = createServerClient();
 
-  // Look up notices in this subdivision + bank account fund.
+  // Look up notices in this oc + bank account fund.
   const { data: notices } = await supabase
     .from("levy_notices")
-    .select("id, lot_id, subdivision_id, fund_type, amount, reference_number")
-    .eq("subdivision_id", ctx.subdivisionId)
+    .select("id, lot_id, oc_id, fund_type, amount, reference_number")
+    .eq("oc_id", ctx.ocId)
     .eq("fund_type", ctx.bankAccountFundType)
     .in("reference_number", orderedRefs);
 
@@ -127,7 +127,7 @@ export async function tryReferenceMatch(
   if (staleRefs.length > 0) {
     const rows = staleRefs.map((ref) => ({
       profile_id: ctx.performedBy,
-      subdivision_id: ctx.subdivisionId,
+      oc_id: ctx.ocId,
       action: "reconciliation.stale_reference_detected",
       entity_type: "bank_transaction" as const,
       entity_id: ctx.bankTransactionId,

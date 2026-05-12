@@ -10,7 +10,7 @@
 //     the bootstrap row keyed by auth_user_id='system_accrual_cron' (PP6-A).
 //
 // The verification harness (PP6-B-B src/lib/accrual/accrual.verification.ts)
-// will call accrueInterestForSubdivisionJob directly with deterministic
+// will call accrueInterestForOCJob directly with deterministic
 // runDate fixtures. The Trigger.dev cron at trigger/accrue-interest.ts
 // resolves runDate via Australia/Melbourne timezone math.
 // ============================================================================
@@ -20,7 +20,7 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 const SYSTEM_ACCRUAL_CLERK_ID = "system_accrual_cron";
 
 export interface AccrualJobInput {
-  subdivisionId: string;
+  ocId: string;
   runDate: string;            // 'YYYY-MM-DD' — date interpreted in AEST/AEDT
   systemProfileId: string;
   supabase: SupabaseClient;
@@ -35,7 +35,7 @@ export type AccrualJobResult =
       totalInterest: number;
     }
   | { ok: true; outcome: "skipped_already_accrued" }
-  | { ok: true; outcome: "skipped_subdivision_missing" }
+  | { ok: true; outcome: "skipped_oc_missing" }
   | { ok: false; outcome: "failed"; errorMessage: string };
 
 // ─── resolveSystemProfileId ────────────────────────────────────────
@@ -63,16 +63,16 @@ export async function resolveSystemProfileId(
   return (data as { id: string }).id;
 }
 
-// ─── accrueInterestForSubdivisionJob ───────────────────────────────
-// Per-subdivision wrapper around rpc_accrue_interest_for_subdivision.
+// ─── accrueInterestForOCJob ───────────────────────────────
+// Per-oc wrapper around rpc_accrue_interest_for_oc.
 // Classifies errors into three outcomes per PP6-B-0 ratification:
 //
 //   - SQLSTATE 23505 (unique_violation) → 'skipped_already_accrued'
-//     Run-row UNIQUE(subdivision_id, run_date) tripped, meaning the cron
+//     Run-row UNIQUE(oc_id, run_date) tripped, meaning the cron
 //     already ran for this date. Benign no-op.
 //
-//   - 'subdivision % not found' → 'skipped_subdivision_missing'
-//     Subdivision was deleted between the cron's iteration query and
+//   - 'oc % not found' → 'skipped_oc_missing'
+//     OC was deleted between the cron's iteration query and
 //     this per-sub call. Transient race, not the cron's fault.
 //
 //   - Any other error → 'failed'
@@ -84,15 +84,15 @@ export async function resolveSystemProfileId(
 // run row to surface accrued_count / total_interest for cron telemetry.
 // Cheap (single PK lookup); RPC contract returns the run id only.
 
-export async function accrueInterestForSubdivisionJob(
+export async function accrueInterestForOCJob(
   input: AccrualJobInput,
 ): Promise<AccrualJobResult> {
-  const { subdivisionId, runDate, systemProfileId, supabase } = input;
+  const { ocId, runDate, systemProfileId, supabase } = input;
 
   const { data: runIdRaw, error } = await supabase.rpc(
-    "rpc_accrue_interest_for_subdivision",
+    "rpc_accrue_interest_for_oc",
     {
-      p_subdivision_id: subdivisionId,
+      p_oc_id: ocId,
       p_run_date: runDate,
       p_created_by: systemProfileId,
     },
@@ -103,11 +103,11 @@ export async function accrueInterestForSubdivisionJob(
     if (klass === "skip_already_accrued") {
       return { ok: true, outcome: "skipped_already_accrued" };
     }
-    if (klass === "skip_subdivision_missing") {
-      return { ok: true, outcome: "skipped_subdivision_missing" };
+    if (klass === "skip_oc_missing") {
+      return { ok: true, outcome: "skipped_oc_missing" };
     }
     const errorMessage = error.message ?? "unknown error";
-    await writeFailedRunRow(supabase, subdivisionId, runDate, errorMessage);
+    await writeFailedRunRow(supabase, ocId, runDate, errorMessage);
     return { ok: false, outcome: "failed", errorMessage };
   }
 
@@ -115,8 +115,8 @@ export async function accrueInterestForSubdivisionJob(
   if (!runId) {
     // Defensive: RPC contract returns a UUID. If null surfaces, treat as fail.
     const errorMessage =
-      "rpc_accrue_interest_for_subdivision returned null run id";
-    await writeFailedRunRow(supabase, subdivisionId, runDate, errorMessage);
+      "rpc_accrue_interest_for_oc returned null run id";
+    await writeFailedRunRow(supabase, ocId, runDate, errorMessage);
     return { ok: false, outcome: "failed", errorMessage };
   }
 
@@ -132,7 +132,7 @@ export async function accrueInterestForSubdivisionJob(
     // even though the RPC succeeded; investigations later have a
     // breadcrumb.
     console.warn(
-      `accrueInterestForSubdivisionJob: telemetry hydration failed for runId=${runId}`,
+      `accrueInterestForOCJob: telemetry hydration failed for runId=${runId}`,
       runRowErr,
     );
   }
@@ -168,7 +168,7 @@ export async function accrueInterestForSubdivisionJob(
 
 type AccrualErrorClass =
   | "skip_already_accrued"
-  | "skip_subdivision_missing"
+  | "skip_oc_missing"
   | "fail";
 
 function classifyAccrualError(err: {
@@ -179,18 +179,18 @@ function classifyAccrualError(err: {
   const message = err.message ?? "";
   if (code === "23505") return "skip_already_accrued";
   if (
-    message.includes("rpc_accrue_interest_for_subdivision") &&
-    message.includes("subdivision") &&
+    message.includes("rpc_accrue_interest_for_oc") &&
+    message.includes("oc") &&
     message.includes("not found")
   ) {
-    return "skip_subdivision_missing";
+    return "skip_oc_missing";
   }
   return "fail";
 }
 
 async function writeFailedRunRow(
   supabase: SupabaseClient,
-  subdivisionId: string,
+  ocId: string,
   runDate: string,
   errorMessage: string,
 ): Promise<void> {
@@ -202,7 +202,7 @@ async function writeFailedRunRow(
     errorMessage?.trim() || "(unknown failure — empty error message)";
 
   const { error } = await supabase.from("interest_accrual_runs").insert({
-    subdivision_id: subdivisionId,
+    oc_id: ocId,
     run_date: runDate,
     status: "failed",
     error_message: safeErrorMessage,
@@ -212,7 +212,7 @@ async function writeFailedRunRow(
     // If even the failed-row write fails, log loudly and proceed —
     // surfacing a real failure shouldn't be blocked by telemetry plumbing.
     console.error(
-      "accrueInterestForSubdivisionJob: failed to write failed run row",
+      "accrueInterestForOCJob: failed to write failed run row",
       error,
     );
   }

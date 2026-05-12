@@ -22,7 +22,7 @@ config({ path: ".env.local" });
 import { createClient } from "@supabase/supabase-js";
 import { randomUUID } from "crypto";
 import { computeLevyPaymentStatus } from "./payment-status";
-import { generateSubdivisionCode } from "@/lib/subdivision-code";
+import { generateOCCode } from "@/lib/oc-code";
 
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
 const serviceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
@@ -59,7 +59,7 @@ function assert(cond: unknown, msg = "assertion failed"): asserts cond {
 interface Fixture {
   runId: string;
   companyId: string;
-  subdivisionId: string;
+  ocId: string;
   budgetId: string;
   capitalBudgetId: string;
   profileId: string;
@@ -95,25 +95,25 @@ async function createFixture(): Promise<Fixture> {
     .single();
   assert(profile, "fixture: profile");
 
-  const { data: subdivision } = await supabase
-    .from("subdivisions")
+  const { data: oc } = await supabase
+    .from("owners_corporations")
     .insert({
       management_company_id: company.id,
       name,
       plan_number: `PLAN-${runId}`,
-      short_code: generateSubdivisionCode(),
+      short_code: generateOCCode(),
       address: "1 PS Verify St, Melbourne VIC 3000",
       total_lots: 1,
       created_by: profile.id,
     })
     .select("id")
     .single();
-  assert(subdivision, "fixture: subdivision");
+  assert(oc, "fixture: oc");
 
   const { data: budget } = await supabase
     .from("budgets")
     .insert({
-      subdivision_id: subdivision.id,
+      oc_id: oc.id,
       financial_year: "2026-2027",
       fund_type: "administrative",
       total_amount: 12000,
@@ -128,7 +128,7 @@ async function createFixture(): Promise<Fixture> {
   const { data: capitalBudget } = await supabase
     .from("budgets")
     .insert({
-      subdivision_id: subdivision.id,
+      oc_id: oc.id,
       financial_year: "2026-2027",
       fund_type: "capital_works",
       total_amount: 8000,
@@ -143,7 +143,7 @@ async function createFixture(): Promise<Fixture> {
   return {
     runId,
     companyId: company.id,
-    subdivisionId: subdivision.id,
+    ocId: oc.id,
     budgetId: budget.id,
     capitalBudgetId: capitalBudget.id,
     profileId: profile.id,
@@ -158,7 +158,7 @@ async function makeLot(fx: Fixture): Promise<string> {
   const { data: lot } = await supabase
     .from("lots")
     .insert({
-      subdivision_id: fx.subdivisionId,
+      oc_id: fx.ocId,
       lot_number: n,
       lot_entitlement: 100,
       lot_liability: 100,
@@ -183,14 +183,14 @@ async function makeNotice(
 ): Promise<{ id: string; reference: string }> {
   const { data: ref } = await supabase.rpc("next_reference_number", {
     p_prefix: "LEV",
-    p_subdivision_id: fx.subdivisionId,
+    p_oc_id: fx.ocId,
   });
   const reference = String(ref);
   const fundType = opts.fundType ?? "administrative";
   const { data: notice, error } = await supabase
     .from("levy_notices")
     .insert({
-      subdivision_id: fx.subdivisionId,
+      oc_id: fx.ocId,
       lot_id: lotId,
       budget_id: fundType === "capital_works" ? fx.capitalBudgetId : fx.budgetId,
       reference_number: reference,
@@ -225,7 +225,7 @@ async function makeDebit(
   const { data, error } = await supabase
     .from("lot_ledger_entries")
     .insert({
-      subdivision_id: fx.subdivisionId,
+      oc_id: fx.ocId,
       lot_id: lotId,
       fund_type: opts.fundType ?? "administrative",
       entry_type: "debit",
@@ -260,7 +260,7 @@ async function makeCredit(
   const { data, error } = await supabase
     .from("lot_ledger_entries")
     .insert({
-      subdivision_id: fx.subdivisionId,
+      oc_id: fx.ocId,
       lot_id: lotId,
       fund_type: opts.fundType ?? "administrative",
       entry_type: "credit",
@@ -663,7 +663,7 @@ async function cleanupMarker() {
 
 async function cleanupOneCompany(companyId: string) {
   const { data: subs } = await supabase
-    .from("subdivisions")
+    .from("owners_corporations")
     .select("id")
     .eq("management_company_id", companyId);
   const subIds = (subs ?? []).map((s) => s.id);
@@ -672,7 +672,7 @@ async function cleanupOneCompany(companyId: string) {
     const { data: lots } = await supabase
       .from("lots")
       .select("id")
-      .in("subdivision_id", subIds);
+      .in("oc_id", subIds);
     const lotIds = (lots ?? []).map((l) => l.id);
     if (lotIds.length > 0) {
       await supabase
@@ -686,14 +686,14 @@ async function cleanupOneCompany(companyId: string) {
     const { data: notices } = await supabase
       .from("levy_notices")
       .select("id")
-      .in("subdivision_id", subIds);
+      .in("oc_id", subIds);
     const noticeIds = (notices ?? []).map((n) => n.id);
     if (noticeIds.length > 0) {
       await supabase.from("levy_notice_items").delete().in("levy_notice_id", noticeIds);
-      await supabase.from("levy_notices").delete().in("subdivision_id", subIds);
+      await supabase.from("levy_notices").delete().in("oc_id", subIds);
     }
-    await supabase.from("audit_log").delete().in("subdivision_id", subIds);
-    await supabase.from("subdivisions").delete().in("id", subIds);
+    await supabase.from("audit_log").delete().in("oc_id", subIds);
+    await supabase.from("owners_corporations").delete().in("id", subIds);
   }
   await supabase.from("profiles").delete().eq("management_company_id", companyId);
   await supabase.from("management_companies").delete().eq("id", companyId);

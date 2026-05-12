@@ -106,7 +106,7 @@ export interface FinalNoticeCoverProps {
   managerName?: string | null;
   signatureUrl?: string | null;
   recipientName: string;
-  subdivisionAddress: string;
+  ocAddress: string;
   lotLabel: string;
   referenceNumber: string;
   dueDate: string;            // formatted, e.g. "15 April 2026"
@@ -126,7 +126,7 @@ export function FinalNoticeCover(props: FinalNoticeCoverProps) {
     managerName,
     signatureUrl,
     recipientName,
-    subdivisionAddress,
+    ocAddress,
     lotLabel,
     referenceNumber,
     dueDate,
@@ -163,7 +163,7 @@ export function FinalNoticeCover(props: FinalNoticeCoverProps) {
           <Text style={styles.toLabel}>To</Text>
           <Text style={styles.toValue}>{recipientName}</Text>
           <Text style={{ fontSize: 11, color: c.foreground, marginTop: 2 }}>{lotLabel}</Text>
-          <Text style={{ fontSize: 11, color: c.foreground }}>{subdivisionAddress}</Text>
+          <Text style={{ fontSize: 11, color: c.foreground }}>{ocAddress}</Text>
         </View>
 
         <Text style={styles.body}>

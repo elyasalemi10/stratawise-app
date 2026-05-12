@@ -1,6 +1,6 @@
 "use server";
 
-import { requireCompanyRole, requireSubdivisionAccess } from "@/lib/auth";
+import { requireCompanyRole, requireOCAccess } from "@/lib/auth";
 import { createServerClient } from "@/lib/supabase";
 import { revalidatePath } from "next/cache";
 import {
@@ -16,7 +16,7 @@ import {
   type LotLedgerEntry,
   type LotLedgerState,
   type LotStatement,
-  type SubdivisionArrearsSummary,
+  type OCArrearsSummary,
 } from "@/lib/validations/ledger";
 
 // ─── getLotBalance ──────────────────────────────────────────────
@@ -28,12 +28,12 @@ export async function getLotBalance(lotId: string): Promise<LotLedgerState> {
 
   const { data: lot } = await supabase
     .from("lots")
-    .select("subdivision_id")
+    .select("oc_id")
     .eq("id", lotId)
     .single();
 
   if (!lot) throw new Error(`Lot ${lotId} not found`);
-  await requireSubdivisionAccess(lot.subdivision_id);
+  await requireOCAccess(lot.oc_id);
 
   const { data } = await supabase
     .from("lot_ledger_state")
@@ -72,12 +72,12 @@ export async function getLotLedgerEntries(
 
   const { data: lot } = await supabase
     .from("lots")
-    .select("subdivision_id")
+    .select("oc_id")
     .eq("id", lotId)
     .single();
 
   if (!lot) throw new Error(`Lot ${lotId} not found`);
-  await requireSubdivisionAccess(lot.subdivision_id);
+  await requireOCAccess(lot.oc_id);
 
   const limit = Math.min(Math.max(opts.limit ?? 50, 1), 500);
   // null = no status filter (return all); undefined = default to "active"
@@ -115,11 +115,11 @@ export async function recordAdjustment(
   }
 
   const profile = await requireCompanyRole();
-  await requireSubdivisionAccess(parsed.data.subdivision_id);
+  await requireOCAccess(parsed.data.oc_id);
   const supabase = createServerClient();
 
   const { data, error } = await supabase.rpc("rpc_ledger_adjustment", {
-    p_subdivision_id: parsed.data.subdivision_id,
+    p_oc_id: parsed.data.oc_id,
     p_lot_id: parsed.data.lot_id,
     p_fund_type: parsed.data.fund_type,
     p_entry_type: parsed.data.entry_type,
@@ -133,10 +133,10 @@ export async function recordAdjustment(
   if (error) return { error: error.message };
 
   // Ledger entry adjustments may affect any /levies, /budgets, /reconciliation
-  // page in the subdivision; broad pattern invalidation is the simplest correct.
-  revalidatePath("/subdivisions/[subdivisionCode]/levies", "page");
-  revalidatePath("/subdivisions/[subdivisionCode]/reconciliation", "page");
-  revalidatePath("/subdivisions/[subdivisionCode]/lots/[lotId]", "page");
+  // page in the oc; broad pattern invalidation is the simplest correct.
+  revalidatePath("/ocs/[ocCode]/levies", "page");
+  revalidatePath("/ocs/[ocCode]/reconciliation", "page");
+  revalidatePath("/ocs/[ocCode]/lots/[lotId]", "page");
   return { entryId: data as string };
 }
 
@@ -156,12 +156,12 @@ export async function voidLedgerEntry(
 
   const { data: entry } = await supabase
     .from("lot_ledger_entries")
-    .select("subdivision_id")
+    .select("oc_id")
     .eq("id", parsed.data.entry_id)
     .single();
 
   if (!entry) return { error: "Ledger entry not found" };
-  await requireSubdivisionAccess(entry.subdivision_id);
+  await requireOCAccess(entry.oc_id);
 
   const { data, error } = await supabase.rpc("rpc_ledger_void", {
     p_entry_id: parsed.data.entry_id,
@@ -171,25 +171,25 @@ export async function voidLedgerEntry(
 
   if (error) return { error: error.message };
 
-  revalidatePath("/subdivisions/[subdivisionCode]/levies", "page");
-  revalidatePath("/subdivisions/[subdivisionCode]/reconciliation", "page");
-  revalidatePath("/subdivisions/[subdivisionCode]/lots/[lotId]", "page");
+  revalidatePath("/ocs/[ocCode]/levies", "page");
+  revalidatePath("/ocs/[ocCode]/reconciliation", "page");
+  revalidatePath("/ocs/[ocCode]/lots/[lotId]", "page");
   return { offsetId: data as string };
 }
 
-// ─── getSubdivisionArrearsSummary ──────────────────────────────
+// ─── getOCArrearsSummary ──────────────────────────────
 // Queries lot_ledger_state only (never re-walks the ledger). Arrears = lots
 // with total_balance < 0.
-export async function getSubdivisionArrearsSummary(
-  subdivisionId: string,
-): Promise<SubdivisionArrearsSummary> {
-  await requireSubdivisionAccess(subdivisionId);
+export async function getOCArrearsSummary(
+  ocId: string,
+): Promise<OCArrearsSummary> {
+  await requireOCAccess(ocId);
   const supabase = createServerClient();
 
   const { data: states, error } = await supabase
     .from("lot_ledger_state")
     .select("admin_balance, capital_balance, total_balance, oldest_unpaid_date_admin, oldest_unpaid_date_capital")
-    .eq("subdivision_id", subdivisionId);
+    .eq("oc_id", ocId);
 
   if (error) throw new Error(`Failed to load arrears summary: ${error.message}`);
 
@@ -214,7 +214,7 @@ export async function getSubdivisionArrearsSummary(
   }
 
   return {
-    subdivision_id: subdivisionId,
+    oc_id: ocId,
     lots_in_arrears: arrearsCount,
     lots_total: rows.length,
     total_arrears_admin: round2(totalAdmin),
@@ -242,12 +242,12 @@ export async function getLotStatement(
 
   const { data: lot } = await supabase
     .from("lots")
-    .select("subdivision_id")
+    .select("oc_id")
     .eq("id", parsed.data.lot_id)
     .single();
 
   if (!lot) throw new Error(`Lot ${parsed.data.lot_id} not found`);
-  await requireSubdivisionAccess(lot.subdivision_id);
+  await requireOCAccess(lot.oc_id);
 
   const [openingRes, rangeRes] = await Promise.all([
     supabase
@@ -290,7 +290,7 @@ export async function getLotStatement(
 
   return {
     lot_id: parsed.data.lot_id,
-    subdivision_id: lot.subdivision_id,
+    oc_id: lot.oc_id,
     fromDate: parsed.data.fromDate,
     toDate: parsed.data.toDate,
     opening_balance_admin: round2(openAdmin),
@@ -309,7 +309,7 @@ export async function getLotStatement(
 function mapLedgerState(r: any): LotLedgerState {
   return {
     lot_id: r.lot_id,
-    subdivision_id: r.subdivision_id,
+    oc_id: r.oc_id,
     admin_balance: Number(r.admin_balance),
     capital_balance: Number(r.capital_balance),
     total_balance: Number(r.total_balance),
@@ -330,7 +330,7 @@ function mapLedgerEntry(r: any): LotLedgerEntry {
   const parentStatus: LedgerEntryStatus | null = parentRow?.status ?? null;
   return {
     id: r.id,
-    subdivision_id: r.subdivision_id,
+    oc_id: r.oc_id,
     lot_id: r.lot_id,
     fund_type: r.fund_type,
     entry_type: r.entry_type,
@@ -370,11 +370,11 @@ export async function getLedgerPaymentSourceLinks(
 
   const { data: lot } = await supabase
     .from("lots")
-    .select("subdivision_id")
+    .select("oc_id")
     .eq("id", lotId)
     .single();
   if (!lot) throw new Error(`Lot ${lotId} not found`);
-  await requireSubdivisionAccess(lot.subdivision_id);
+  await requireOCAccess(lot.oc_id);
 
   // Step 1: get payment credit entry IDs for this lot
   const { data: paymentEntries } = await supabase
@@ -433,7 +433,7 @@ export async function getLedgerEntryDetail(
     .eq("id", entryId)
     .single();
   if (entryErr || !entry) throw new Error("Ledger entry not found");
-  await requireSubdivisionAccess(entry.subdivision_id);
+  await requireOCAccess(entry.oc_id);
 
   const mappedEntry = mapLedgerEntry(entry);
 

@@ -3,8 +3,8 @@
 // ----------------------------------------------------------------------------
 // Extracts the BPAY Customer Reference Number from the description, validates
 // the MOD10V01 check digit, and looks up the matching levy_notice on this
-// subdivision via levy_notices.bpay_crn (composite UNIQUE on
-// (subdivision_id, bpay_crn) WHERE bpay_crn IS NOT NULL).
+// oc via levy_notices.bpay_crn (composite UNIQUE on
+// (oc_id, bpay_crn) WHERE bpay_crn IS NOT NULL).
 //
 // Behaviour (resolved spec):
 //   - Skip if bank_account.bpay_biller_code IS NULL (BPAY not enabled).
@@ -57,8 +57,8 @@ export async function tryBpayCrnMatch(
 
   const { data: notice } = await supabase
     .from("levy_notices")
-    .select("id, lot_id, subdivision_id, fund_type, amount, reference_number, bpay_crn")
-    .eq("subdivision_id", ctx.subdivisionId)
+    .select("id, lot_id, oc_id, fund_type, amount, reference_number, bpay_crn")
+    .eq("oc_id", ctx.ocId)
     .eq("bpay_crn", crn)
     .maybeSingle();
 

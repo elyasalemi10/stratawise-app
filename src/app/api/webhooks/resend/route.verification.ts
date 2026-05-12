@@ -75,7 +75,7 @@ function buildSignedRequest(event: MockEvent, opts: { tamperSig?: boolean } = {}
 interface FixtureContext {
   companyId: string;
   managerProfileId: string;
-  subdivisionId: string;
+  ocId: string;
   ownerProfileId: string;
 }
 
@@ -118,7 +118,7 @@ async function createFixture(): Promise<FixtureContext> {
   const ownerProfileId = (owner as { id: string }).id;
 
   const { data: sub } = await supabase
-    .from("subdivisions")
+    .from("owners_corporations")
     .insert({
       management_company_id: companyId,
       name: `${VERIFY_MARKER}${runId}`,
@@ -130,9 +130,9 @@ async function createFixture(): Promise<FixtureContext> {
     })
     .select("id")
     .single();
-  const subdivisionId = (sub as { id: string }).id;
+  const ocId = (sub as { id: string }).id;
 
-  return { companyId, managerProfileId, subdivisionId, ownerProfileId };
+  return { companyId, managerProfileId, ocId, ownerProfileId };
 }
 
 interface CommLogFixture {
@@ -149,7 +149,7 @@ async function createQueuedLog(
   const { data } = await supabase
     .from("communication_log")
     .insert({
-      subdivision_id: ctx.subdivisionId,
+      oc_id: ctx.ocId,
       recipient_id: ctx.ownerProfileId,
       recipient_email: `inbox@${VERIFY_MARKER.toLowerCase()}.test`,
       channel: "email",
@@ -446,24 +446,24 @@ async function cleanupMarker() {
 
 async function cleanupCompany(companyId: string) {
   const { data: subs } = await supabase
-    .from("subdivisions")
+    .from("owners_corporations")
     .select("id")
     .eq("management_company_id", companyId);
   const subIds = (subs ?? []).map((s) => (s as { id: string }).id);
 
   if (subIds.length > 0) {
-    await supabase.from("communication_log").delete().in("subdivision_id", subIds);
-    await supabase.from("audit_log").delete().in("subdivision_id", subIds);
-    await supabase.from("subdivisions").delete().in("id", subIds);
+    await supabase.from("communication_log").delete().in("oc_id", subIds);
+    await supabase.from("audit_log").delete().in("oc_id", subIds);
+    await supabase.from("owners_corporations").delete().in("id", subIds);
   }
 
-  // Webhook signature-rejection audit rows have subdivision_id=NULL — clean
+  // Webhook signature-rejection audit rows have oc_id=NULL — clean
   // by entity_type/action.
   await supabase
     .from("audit_log")
     .delete()
     .eq("entity_type", "resend_webhook")
-    .is("subdivision_id", null);
+    .is("oc_id", null);
 
   const { data: profileRows } = await supabase
     .from("profiles")
@@ -476,7 +476,7 @@ async function cleanupCompany(companyId: string) {
       .from("audit_log")
       .delete()
       .in("profile_id", profileIds)
-      .is("subdivision_id", null);
+      .is("oc_id", null);
     await supabase.from("profiles").delete().in("id", profileIds);
   }
 

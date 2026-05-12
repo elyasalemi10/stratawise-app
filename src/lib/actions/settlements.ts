@@ -2,7 +2,7 @@
 
 import { revalidatePath } from "next/cache";
 import { S3Client, GetObjectCommand } from "@aws-sdk/client-s3";
-import { requireCompanyRole, requireSubdivisionAccess } from "@/lib/auth";
+import { requireCompanyRole, requireOCAccess } from "@/lib/auth";
 import { createServerClient } from "@/lib/supabase";
 import { parseSettlementPdf, type ParsedSettlement } from "@/lib/pdf/parse-settlement";
 import {
@@ -74,23 +74,23 @@ export async function parseSettlementForReview(
 
   const { data: doc } = await supabase
     .from("documents")
-    .select("id, subdivision_id, lot_id, file_name, file_path, mime_type")
+    .select("id, oc_id, lot_id, file_name, file_path, mime_type")
     .eq("id", documentId)
     .single();
 
   if (!doc) return { error: "Document not found" };
   if (doc.lot_id !== lotId) return { error: "Document is not attached to this lot" };
-  await requireSubdivisionAccess(doc.subdivision_id);
+  await requireOCAccess(doc.oc_id);
 
   const { data: lot } = await supabase
     .from("lots")
-    .select("id, lot_number, subdivisions:subdivisions!inner(id, plan_number)")
+    .select("id, lot_number, ocs:ocs!inner(id, plan_number)")
     .eq("id", lotId)
     .single();
 
   if (!lot) return { error: "Lot not found" };
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const planNumber: string | null = (lot as any).subdivisions?.plan_number ?? null;
+  const planNumber: string | null = (lot as any).ocs?.plan_number ?? null;
 
   let parsed: ParsedSettlement;
   try {
@@ -116,7 +116,7 @@ export async function parseSettlementForReview(
 
   // Current active owner (will be ended on confirm).
   const { data: activeMember } = await supabase
-    .from("subdivision_members")
+    .from("oc_members")
     .select("profile_id, joined_at, profiles!inner(first_name, last_name, email)")
     .eq("lot_id", lotId)
     .eq("role", "lot_owner")
@@ -168,28 +168,28 @@ export async function parseSettlementForReview(
 }
 
 // ─── parseSettlementAndMatchLot ──────────────────────────────
-// Bulk-upload entry point. The manager drops a PDF on the subdivision-level
-// lots page; we parse it, look up the lot in *this* subdivision by parsed lot
+// Bulk-upload entry point. The manager drops a PDF on the oc-level
+// lots page; we parse it, look up the lot in *this* oc by parsed lot
 // number + plan number, and if found update the document to attach it to the
 // lot. The manager confirms a single subsequent applySettlementToLot call.
 
 export async function parseSettlementAndMatchLot(
   documentId: string,
-  subdivisionId: string,
+  ocId: string,
 ): Promise<{ data?: SettlementReview; error?: string }> {
   await requireCompanyRole();
-  await requireSubdivisionAccess(subdivisionId);
+  await requireOCAccess(ocId);
   const supabase = createServerClient();
 
   const { data: doc } = await supabase
     .from("documents")
-    .select("id, subdivision_id, lot_id, file_name, file_path, mime_type")
+    .select("id, oc_id, lot_id, file_name, file_path, mime_type")
     .eq("id", documentId)
     .single();
 
   if (!doc) return { error: "Document not found" };
-  if (doc.subdivision_id !== subdivisionId) {
-    return { error: "Document is not in this subdivision" };
+  if (doc.oc_id !== ocId) {
+    return { error: "Document is not in this oc" };
   }
 
   let parsed: ParsedSettlement;
@@ -207,24 +207,24 @@ export async function parseSettlementAndMatchLot(
     };
   }
 
-  // Look up the lot in this subdivision by lot number. Plan number is verified
+  // Look up the lot in this oc by lot number. Plan number is verified
   // as a match indicator, but lot number is the matching key — multiple
-  // subdivisions never share both within the same management company.
+  // ocs never share both within the same management company.
   const { data: candidateLots } = await supabase
     .from("lots")
-    .select("id, lot_number, unit_number, subdivisions!inner(id, plan_number)")
-    .eq("subdivision_id", subdivisionId)
+    .select("id, lot_number, unit_number, ocs!inner(id, plan_number)")
+    .eq("oc_id", ocId)
     .eq("lot_number", parsed.lotNumber);
 
   const lot = (candidateLots ?? [])[0];
   if (!lot) {
     return {
-      error: `No lot ${parsed.lotNumber} found in this subdivision. Verify the document matches and assign manually.`,
+      error: `No lot ${parsed.lotNumber} found in this oc. Verify the document matches and assign manually.`,
     };
   }
 
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const planNumber: string | null = (lot as any).subdivisions?.plan_number ?? null;
+  const planNumber: string | null = (lot as any).ocs?.plan_number ?? null;
 
   const expectedPlanNorm = normalizePlanNumber(planNumber);
   const parsedPlanNorm = normalizePlanNumber(parsed.planNumber);
@@ -244,7 +244,7 @@ export async function parseSettlementAndMatchLot(
 
   // Current active owner of the matched lot.
   const { data: activeMember } = await supabase
-    .from("subdivision_members")
+    .from("oc_members")
     .select("profile_id, joined_at, profiles(first_name, last_name, email)")
     .eq("lot_id", lot.id)
     .eq("role", "lot_owner")
@@ -311,28 +311,28 @@ export async function applySettlementToLot(input: ApplySettlementInput) {
 
   const { data: doc } = await supabase
     .from("documents")
-    .select("id, subdivision_id, lot_id, file_name")
+    .select("id, oc_id, lot_id, file_name")
     .eq("id", documentId)
     .single();
 
   if (!doc) return { error: "Document not found" };
   if (doc.lot_id !== lotId) return { error: "Document is not attached to this lot" };
-  await requireSubdivisionAccess(doc.subdivision_id);
+  await requireOCAccess(doc.oc_id);
 
   const { data: lot } = await supabase
     .from("lots")
     .select("id, lot_number")
     .eq("id", lotId)
-    .eq("subdivision_id", doc.subdivision_id)
+    .eq("oc_id", doc.oc_id)
     .single();
 
-  if (!lot) return { error: "Lot not found in this subdivision" };
+  if (!lot) return { error: "Lot not found in this oc" };
 
   const settlementTimestamp = new Date(`${settlementDate}T00:00:00Z`).toISOString();
 
   // 1. End the current active member, if any.
   const { data: activeMember } = await supabase
-    .from("subdivision_members")
+    .from("oc_members")
     .select("id, profile_id, joined_at, role, is_primary_contact, is_financial")
     .eq("lot_id", lotId)
     .eq("role", "lot_owner")
@@ -341,16 +341,16 @@ export async function applySettlementToLot(input: ApplySettlementInput) {
 
   if (activeMember) {
     const { error: updErr } = await supabase
-      .from("subdivision_members")
+      .from("oc_members")
       .update({ left_at: settlementTimestamp })
       .eq("id", activeMember.id);
     if (updErr) return { error: `Could not end existing ownership: ${updErr.message}` };
 
     await supabase.from("audit_log").insert({
       profile_id: profile.id,
-      subdivision_id: doc.subdivision_id,
+      oc_id: doc.oc_id,
       action: "ownership_transfer",
-      entity_type: "subdivision_member",
+      entity_type: "oc_member",
       entity_id: activeMember.id,
       before_state: { left_at: null },
       after_state: { left_at: settlementTimestamp },
@@ -380,7 +380,7 @@ export async function applySettlementToLot(input: ApplySettlementInput) {
   const { data: invitation, error: invErr } = await supabase
     .from("invitations")
     .insert({
-      subdivision_id: doc.subdivision_id,
+      oc_id: doc.oc_id,
       lot_id: lotId,
       email: newOwner.email,
       name: newOwner.name,
@@ -399,7 +399,7 @@ export async function applySettlementToLot(input: ApplySettlementInput) {
   // 4. Audit-log the new invitation side of the transfer.
   await supabase.from("audit_log").insert({
     profile_id: profile.id,
-    subdivision_id: doc.subdivision_id,
+    oc_id: doc.oc_id,
     action: "ownership_transfer",
     entity_type: "invitation",
     entity_id: invitation.id,
@@ -420,16 +420,16 @@ export async function applySettlementToLot(input: ApplySettlementInput) {
 
   // 5. Notify the outgoing owner in-app (no email).
   if (activeMember?.profile_id) {
-    const { data: subdivision } = await supabase
-      .from("subdivisions")
+    const { data: oc } = await supabase
+      .from("owners_corporations")
       .select("name, address")
-      .eq("id", doc.subdivision_id)
+      .eq("id", doc.oc_id)
       .single();
 
-    const lotLabel = subdivision?.address ?? subdivision?.name ?? `Lot ${lot.lot_number}`;
+    const lotLabel = oc?.address ?? oc?.name ?? `Lot ${lot.lot_number}`;
     await supabase.from("notifications").insert({
       profile_id: activeMember.profile_id,
-      subdivision_id: doc.subdivision_id,
+      oc_id: doc.oc_id,
       type: "ownership_ended",
       title: "Ownership transferred",
       body: `Your ownership of ${lotLabel} ended on ${settlementDate}. Your historical records remain available under Past lots.`,
@@ -437,8 +437,8 @@ export async function applySettlementToLot(input: ApplySettlementInput) {
     });
   }
 
-  revalidatePath("/subdivisions/[subdivisionCode]/lots/[lotId]", "page");
-  revalidatePath("/subdivisions/[subdivisionCode]/manage", "page");
+  revalidatePath("/ocs/[ocCode]/lots/[lotId]", "page");
+  revalidatePath("/ocs/[ocCode]/manage", "page");
   revalidatePath("/dashboard", "page");
 
   return {
@@ -468,7 +468,7 @@ async function getLotOwnershipHistoryInner(
   const supabase = createServerClient();
 
   const { data: members, error } = await supabase
-    .from("subdivision_members")
+    .from("oc_members")
     .select(
       "id, profile_id, joined_at, left_at, is_primary_contact, is_financial, profiles(first_name, last_name, email)",
     )
@@ -476,7 +476,7 @@ async function getLotOwnershipHistoryInner(
     .eq("role", "lot_owner")
     .order("joined_at", { ascending: false });
 
-  if (error) throw new Error(`subdivision_members query failed: ${error.message}`);
+  if (error) throw new Error(`oc_members query failed: ${error.message}`);
   if (!members || members.length === 0) return [];
 
   // Pull audit_log rows that reference these member rows so we can show the
@@ -485,7 +485,7 @@ async function getLotOwnershipHistoryInner(
   const { data: auditRows } = await supabase
     .from("audit_log")
     .select("entity_id, metadata")
-    .eq("entity_type", "subdivision_member")
+    .eq("entity_type", "oc_member")
     .eq("action", "ownership_transfer")
     .in("entity_id", memberIds);
 

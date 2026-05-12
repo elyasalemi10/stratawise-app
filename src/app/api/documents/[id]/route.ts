@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createServerClient } from "@/lib/supabase";
-import { getCurrentProfile, requireCompanyRole, requireSubdivisionAccess } from "@/lib/auth";
+import { getCurrentProfile, requireCompanyRole, requireOCAccess } from "@/lib/auth";
 import { fetchObject, deleteObject } from "@/lib/storage/r2";
 
 const UUID_REGEX = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
@@ -10,7 +10,7 @@ async function loadDocument(id: string) {
   const supabase = createServerClient();
   const { data } = await supabase
     .from("documents")
-    .select("id, subdivision_id, lot_id, file_path, file_name, mime_type, is_confidential")
+    .select("id, oc_id, lot_id, file_path, file_name, mime_type, is_confidential")
     .eq("id", id)
     .single();
   return data;
@@ -34,7 +34,7 @@ export async function GET(
   }
 
   try {
-    await requireSubdivisionAccess(doc.subdivision_id);
+    await requireOCAccess(doc.oc_id);
   } catch {
     return NextResponse.json({ error: "Forbidden" }, { status: 403 });
   }
@@ -82,7 +82,7 @@ export async function PATCH(
   }
 
   try {
-    await requireSubdivisionAccess(doc.subdivision_id);
+    await requireOCAccess(doc.oc_id);
   } catch {
     return NextResponse.json({ error: "Forbidden" }, { status: 403 });
   }
@@ -108,7 +108,7 @@ export async function PATCH(
 
   await supabase.from("audit_log").insert({
     profile_id: profile.id,
-    subdivision_id: doc.subdivision_id,
+    oc_id: doc.oc_id,
     action: "rename",
     entity_type: "document",
     entity_id: id,
@@ -138,7 +138,7 @@ export async function DELETE(
   }
 
   try {
-    await requireSubdivisionAccess(doc.subdivision_id);
+    await requireOCAccess(doc.oc_id);
   } catch {
     return NextResponse.json({ error: "Forbidden" }, { status: 403 });
   }
@@ -161,7 +161,7 @@ export async function DELETE(
 
   await supabase.from("audit_log").insert({
     profile_id: profile.id,
-    subdivision_id: doc.subdivision_id,
+    oc_id: doc.oc_id,
     action: "delete",
     entity_type: "document",
     entity_id: id,

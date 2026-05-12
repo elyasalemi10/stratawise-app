@@ -11,7 +11,7 @@ export interface Notification {
   link: string | null;
   read_at: string | null;
   created_at: string;
-  subdivision_id: string | null;
+  oc_id: string | null;
 }
 
 export async function getNotifications(limit = 20): Promise<Notification[]> {
@@ -21,7 +21,7 @@ export async function getNotifications(limit = 20): Promise<Notification[]> {
   const supabase = createServerClient();
   const { data } = await supabase
     .from("notifications")
-    .select("id, type, title, body, link, read_at, created_at, subdivision_id")
+    .select("id, type, title, body, link, read_at, created_at, oc_id")
     .eq("profile_id", profile.id)
     .order("created_at", { ascending: false })
     .limit(limit);
@@ -35,7 +35,7 @@ export async function getNotifications(limit = 20): Promise<Notification[]> {
     link: n.link,
     read_at: n.read_at,
     created_at: n.created_at,
-    subdivision_id: n.subdivision_id,
+    oc_id: n.oc_id,
   }));
 }
 
@@ -81,7 +81,7 @@ export async function markAllAsRead() {
 
 export async function createNotification(params: {
   recipientId: string;
-  subdivisionId?: string;
+  ocId?: string;
   type: string;
   title: string;
   message: string;
@@ -90,7 +90,7 @@ export async function createNotification(params: {
   const supabase = createServerClient();
   await supabase.from("notifications").insert({
     profile_id: params.recipientId,
-    subdivision_id: params.subdivisionId ?? null,
+    oc_id: params.ocId ?? null,
     type: params.type,
     title: params.title,
     body: params.message,
@@ -98,9 +98,9 @@ export async function createNotification(params: {
   });
 }
 
-// Notify all lot owners in a subdivision
-export async function notifySubdivisionLotOwners(params: {
-  subdivisionId: string;
+// Notify all lot owners in a oc
+export async function notifyOCLotOwners(params: {
+  ocId: string;
   type: string;
   title: string;
   message: string;
@@ -109,9 +109,9 @@ export async function notifySubdivisionLotOwners(params: {
   const supabase = createServerClient();
 
   const { data: members } = await supabase
-    .from("subdivision_members")
+    .from("oc_members")
     .select("profile_id")
-    .eq("subdivision_id", params.subdivisionId)
+    .eq("oc_id", params.ocId)
     .eq("role", "lot_owner")
     .is("left_at", null);
 
@@ -119,7 +119,7 @@ export async function notifySubdivisionLotOwners(params: {
 
   const inserts = members.map((m) => ({
     profile_id: m.profile_id,
-    subdivision_id: params.subdivisionId,
+    oc_id: params.ocId,
     type: params.type,
     title: params.title,
     body: params.message,

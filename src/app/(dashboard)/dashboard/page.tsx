@@ -4,7 +4,7 @@ import Link from "next/link";
 import { Building2, DollarSign, Users, Plus, MapPin, AlertTriangle, CheckCircle2, ArrowRight, History } from "lucide-react";
 import { WelcomeConfetti } from "./_components/welcome-confetti";
 import { getCurrentProfile } from "@/lib/auth";
-import { getCompanySubdivisionSummary } from "@/lib/actions/subdivision";
+import { getCompanyOCSummary } from "@/lib/actions/oc";
 import { createServerClient } from "@/lib/supabase";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -19,7 +19,7 @@ interface KPICardProps {
 
 interface PastMembershipRow {
   lot_id: string | null;
-  subdivision_id: string;
+  oc_id: string;
   joined_at: string;
   left_at: string | null;
 }
@@ -55,7 +55,7 @@ function PastLotsGrid({
     <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
       {pastMemberships.map((m) => {
         const lot = m.lot_id ? pastLots.find((l) => l.id === m.lot_id) : null;
-        const sub = pastSubs.find((s) => s.id === m.subdivision_id);
+        const sub = pastSubs.find((s) => s.id === m.oc_id);
         if (!lot || !sub) return null;
         return (
           <Link key={`${m.lot_id}-${m.left_at}`} href={`/dashboard/past-lots/${m.lot_id}`} className="block">
@@ -120,18 +120,18 @@ export default async function DashboardPage() {
   const profile = await getCurrentProfile();
   if (!profile) redirect("/sign-in");
 
-  // Lot owner main dashboard — unified view across all subdivisions
+  // Lot owner main dashboard — unified view across all ocs
   if (profile.role === "lot_owner") {
     const supabase = createServerClient();
     const [activeMembershipsResult, pastMembershipsResult] = await Promise.all([
       supabase
-        .from("subdivision_members")
-        .select("subdivision_id, lot_id")
+        .from("oc_members")
+        .select("oc_id, lot_id")
         .eq("profile_id", profile.id)
         .is("left_at", null),
       supabase
-        .from("subdivision_members")
-        .select("lot_id, subdivision_id, joined_at, left_at")
+        .from("oc_members")
+        .select("lot_id, oc_id, joined_at, left_at")
         .eq("profile_id", profile.id)
         .not("left_at", "is", null)
         .order("left_at", { ascending: false }),
@@ -140,16 +140,16 @@ export default async function DashboardPage() {
     const memberships = activeMembershipsResult.data;
     const pastMemberships = pastMembershipsResult.data ?? [];
 
-    // Resolve subdivision + lot details for past memberships in one go.
+    // Resolve oc + lot details for past memberships in one go.
     const pastLotIds = pastMemberships.map((m) => m.lot_id).filter(Boolean) as string[];
-    const pastSubIds = pastMemberships.map((m) => m.subdivision_id);
+    const pastSubIds = pastMemberships.map((m) => m.oc_id);
     const [pastLotsResult, pastSubsResult] = pastLotIds.length > 0 || pastSubIds.length > 0
       ? await Promise.all([
           pastLotIds.length > 0
             ? supabase.from("lots").select("id, lot_number, unit_number").in("id", pastLotIds)
             : Promise.resolve({ data: [] }),
           pastSubIds.length > 0
-            ? supabase.from("subdivisions").select("id, name, address, plan_number").in("id", pastSubIds)
+            ? supabase.from("owners_corporations").select("id, name, address, plan_number").in("id", pastSubIds)
             : Promise.resolve({ data: [] }),
         ])
       : [{ data: [] }, { data: [] }];
@@ -162,10 +162,10 @@ export default async function DashboardPage() {
         <div className="flex flex-col items-center justify-center py-20 text-center">
           <Building2 className="h-12 w-12 text-muted-foreground/30" />
           <p className="mt-4 text-base font-medium text-foreground">
-            No subdivisions assigned
+            No ocs assigned
           </p>
           <p className="mt-1 text-sm text-muted-foreground max-w-sm">
-            Your strata manager hasn&apos;t assigned you to a subdivision yet.
+            Your strata manager hasn&apos;t assigned you to a oc yet.
             Check your email for an invitation link, or contact your strata manager.
           </p>
         </div>
@@ -182,19 +182,19 @@ export default async function DashboardPage() {
       );
     }
 
-    // Fetch subdivisions, lots, and financial data
-    const subIds = memberships.map((m) => m.subdivision_id);
+    // Fetch ocs, lots, and financial data
+    const subIds = memberships.map((m) => m.oc_id);
     const lotIds = memberships.map((m) => m.lot_id).filter(Boolean);
 
     const [subsResult, lotsResult, leviesResult, paymentsResult] = await Promise.all([
       supabase
-        .from("subdivisions")
+        .from("owners_corporations")
         .select("id, short_code, name, address, plan_number")
         .in("id", subIds),
       lotIds.length > 0
         ? supabase
             .from("lots")
-            .select("id, subdivision_id, lot_number, unit_number, lot_entitlement")
+            .select("id, oc_id, lot_number, unit_number, lot_entitlement")
             .in("id", lotIds)
         : Promise.resolve({ data: [] }),
       lotIds.length > 0
@@ -229,9 +229,9 @@ export default async function DashboardPage() {
         {/* KPIs */}
         <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
           <KPICard
-            label="Subdivisions"
+            label="OCs"
             value={String(subs.length)}
-            description={subs.length === 1 ? "You are a member of 1 subdivision" : `You are a member of ${subs.length} subdivisions`}
+            description={subs.length === 1 ? "You are a member of 1 oc" : `You are a member of ${subs.length} ocs`}
             icon={<Building2 className="h-5 w-5" />}
           />
           <KPICard
@@ -254,17 +254,17 @@ export default async function DashboardPage() {
           />
         </div>
 
-        {/* Subdivisions */}
-        <h2 className="text-base font-semibold text-foreground">Your subdivisions</h2>
+        {/* OCs */}
+        <h2 className="text-base font-semibold text-foreground">Your ocs</h2>
         <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
           {subs.map((sub) => {
-            const subLots = lots.filter((l) => l.subdivision_id === sub.id);
+            const subLots = lots.filter((l) => l.oc_id === sub.id);
             const subLevies = leviesResult.data?.filter((l) => subLots.some((sl) => sl.id === l.lot_id)) ?? [];
             const subPayments = paymentsResult.data?.filter((p) => subLots.some((sl) => sl.id === p.lot_id)) ?? [];
             const subOwing = subLevies.reduce((s, l) => s + Number(l.amount), 0) - subPayments.reduce((s, p) => s + Number(p.amount), 0);
 
             return (
-              <Link key={sub.id} href={`/subdivisions/${sub.short_code}`} className="block">
+              <Link key={sub.id} href={`/ocs/${sub.short_code}`} className="block">
                 <Card className="transition-colors hover:border-primary/30 cursor-pointer">
                   <CardContent className="pt-5">
                     <div className="flex items-start justify-between">
@@ -319,9 +319,9 @@ export default async function DashboardPage() {
     );
   }
 
-  const summary = await getCompanySubdivisionSummary();
-  const subdivisions = summary?.subdivisions ?? [];
-  const totalSubdivisions = summary?.totalSubdivisions ?? 0;
+  const summary = await getCompanyOCSummary();
+  const ocs = summary?.ocs ?? [];
+  const totalOCs = summary?.totalOCs ?? 0;
   const totalLots = summary?.totalLots ?? 0;
 
   return (
@@ -333,15 +333,15 @@ export default async function DashboardPage() {
       {/* Company KPIs */}
       <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
         <KPICard
-          label="Subdivisions"
-          value={String(totalSubdivisions)}
-          description={totalSubdivisions === 0 ? "Create your first subdivision" : "Active subdivisions"}
+          label="OCs"
+          value={String(totalOCs)}
+          description={totalOCs === 0 ? "Create your first oc" : "Active ocs"}
           icon={<Building2 className="h-5 w-5" />}
         />
         <KPICard
           label="Total lots"
           value={String(totalLots)}
-          description="Across all subdivisions"
+          description="Across all ocs"
           icon={<Users className="h-5 w-5" />}
         />
         <KPICard
@@ -358,43 +358,43 @@ export default async function DashboardPage() {
         />
       </div>
 
-      {/* Subdivisions section */}
+      {/* OCs section */}
       <div className="flex items-center justify-between">
-        <h2 className="text-base font-semibold text-foreground">Subdivisions</h2>
+        <h2 className="text-base font-semibold text-foreground">OCs</h2>
         <div className="flex items-center gap-2">
-          <Link href="/subdivisions/new">
+          <Link href="/ocs/new">
             <Button size="sm">
               <Plus className="mr-2 h-4 w-4" />
-              Create subdivision
+              Create oc
             </Button>
           </Link>
         </div>
       </div>
 
-      {subdivisions.length === 0 ? (
+      {ocs.length === 0 ? (
         <Card>
           <CardContent className="flex flex-col items-center justify-center py-16 text-center">
             <Building2 className="h-12 w-12 text-muted-foreground/30" />
             <p className="mt-4 text-base font-medium text-foreground">
-              No subdivisions yet
+              No ocs yet
             </p>
             <p className="mt-1 text-sm text-muted-foreground max-w-sm">
-              Create your first subdivision to start managing lots, levies, and meetings.
+              Create your first oc to start managing lots, levies, and meetings.
             </p>
-            <Link href="/subdivisions/new">
+            <Link href="/ocs/new">
               <Button className="mt-4">
                 <Plus className="mr-2 h-4 w-4" />
-                Create subdivision
+                Create oc
               </Button>
             </Link>
           </CardContent>
         </Card>
       ) : (
         <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
-          {subdivisions.map((sub) => (
+          {ocs.map((sub) => (
             <Link
               key={sub.id}
-              href={`/subdivisions/${sub.short_code}`}
+              href={`/ocs/${sub.short_code}`}
               className="block"
             >
               <Card className="transition-colors hover:border-primary/30 cursor-pointer">

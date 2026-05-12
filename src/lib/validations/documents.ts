@@ -27,7 +27,7 @@ export const MAX_DOCUMENT_SIZE = 25 * 1024 * 1024; // 25MB
 
 export interface DocumentRecord {
   id: string;
-  subdivision_id: string;
+  oc_id: string;
   lot_id: string | null;
   category: string;
   file_name: string;

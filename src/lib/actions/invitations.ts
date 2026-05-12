@@ -6,7 +6,7 @@ import { sendInvitationEmail } from "@/lib/email";
 import { resolveCompanyLogo } from "@/lib/notifications";
 import { canonicaliseSender } from "@/lib/reconciliation/canonical";
 import { sweepMappingsForOwnerChange } from "@/lib/reconciliation/mappings";
-import { buildSubdivisionUrl } from "@/lib/subdivision-resolver";
+import { buildOCUrl } from "@/lib/oc-resolver";
 import { generateInviteCode, normaliseInviteCode } from "@/lib/invite-code";
 import { rateLimitCheck, getClientIp } from "@/lib/rate-limit";
 import { headers } from "next/headers";
@@ -33,9 +33,9 @@ export async function inviteStrataManager(data: { email: string; name: string })
     return { error: "A pending invitation already exists for this email" };
   }
 
-  // Need a subdivision_id for the FK — use any active subdivision from the company
+  // Need a oc_id for the FK — use any active oc from the company
   const { data: anySub } = await supabase
-    .from("subdivisions")
+    .from("owners_corporations")
     .select("id")
     .eq("management_company_id", profile.management_company_id)
     .eq("status", "active")
@@ -43,13 +43,13 @@ export async function inviteStrataManager(data: { email: string; name: string })
     .single();
 
   if (!anySub) {
-    return { error: "Create at least one subdivision before inviting team members" };
+    return { error: "Create at least one oc before inviting team members" };
   }
 
   const { data: invitation, error } = await supabase
     .from("invitations")
     .insert({
-      subdivision_id: anySub.id,
+      oc_id: anySub.id,
       email: data.email,
       name: data.name,
       role: "strata_manager",
@@ -79,8 +79,8 @@ export async function inviteStrataManager(data: { email: string; name: string })
     to: data.email,
     inviteeName: data.name,
     role: "strata_manager",
-    subdivisionName: "Your management company",
-    subdivisionAddress: "",
+    ocName: "Your management company",
+    ocAddress: "",
     inviteUrl,
     companyLogoUrl,
   });
@@ -115,7 +115,7 @@ export async function getInvitationByCode(rawCode: string) {
     .from("invitations")
     .select(`
       *,
-      subdivisions:subdivision_id (id, name, address, plan_number),
+      ocs:oc_id (id, name, address, plan_number),
       lots:lot_id (lot_number, unit_number)
     `)
     .eq("code", code)
@@ -125,7 +125,7 @@ export async function getInvitationByCode(rawCode: string) {
 
   return {
     ...invitation,
-    subdivision: invitation.subdivisions,
+    oc: invitation.ocs,
     lot: invitation.lots,
     isExpired: new Date(invitation.expires_at) < new Date(),
   };
@@ -155,7 +155,7 @@ export async function acceptInvitation(rawCode: string) {
   // Check lot isn't already claimed (for lot_owner invitations)
   if (invitation.lot_id) {
     const { data: existingMember } = await supabase
-      .from("subdivision_members")
+      .from("oc_members")
       .select("id")
       .eq("lot_id", invitation.lot_id)
       .eq("role", "lot_owner")
@@ -174,11 +174,11 @@ export async function acceptInvitation(rawCode: string) {
     .eq("id", invitation.id);
 
   if (invitation.role === "strata_manager") {
-    // Get the management company from the subdivision
+    // Get the management company from the oc
     const { data: sub } = await supabase
-      .from("subdivisions")
+      .from("owners_corporations")
       .select("management_company_id")
-      .eq("id", invitation.subdivision_id)
+      .eq("id", invitation.oc_id)
       .single();
 
     if (sub) {
@@ -195,14 +195,14 @@ export async function acceptInvitation(rawCode: string) {
         .eq("id", profile.id);
     }
   } else {
-    // Lot owner — create subdivision member
+    // Lot owner — create oc member
     await supabase
       .from("profiles")
       .update({ role: "lot_owner" })
       .eq("id", profile.id);
 
-    await supabase.from("subdivision_members").insert({
-      subdivision_id: invitation.subdivision_id,
+    await supabase.from("oc_members").insert({
+      oc_id: invitation.oc_id,
       profile_id: profile.id,
       lot_id: invitation.lot_id,
       role: "lot_owner",
@@ -224,7 +224,7 @@ export async function acceptInvitation(rawCode: string) {
       const ownerCanonical = canonicaliseSender(ownerNameRaw);
       if (ownerCanonical) {
         await sweepMappingsForOwnerChange(
-          invitation.subdivision_id,
+          invitation.oc_id,
           invitation.lot_id,
           ownerCanonical,
           profile.id,
@@ -236,7 +236,7 @@ export async function acceptInvitation(rawCode: string) {
   // Audit
   await supabase.from("audit_log").insert({
     profile_id: profile.id,
-    subdivision_id: invitation.subdivision_id,
+    oc_id: invitation.oc_id,
     action: "accept",
     entity_type: "invitation",
     entity_id: invitation.id,
@@ -244,12 +244,12 @@ export async function acceptInvitation(rawCode: string) {
   });
 
   // Resolve the short_code so the client can redirect to the code-shaped URL.
-  const subdivisionUrl = await buildSubdivisionUrl(invitation.subdivision_id, "");
+  const ocUrl = await buildOCUrl(invitation.oc_id, "");
 
   return {
     success: true,
-    subdivisionId: invitation.subdivision_id,
-    subdivisionUrl: subdivisionUrl ?? "/dashboard",
+    ocId: invitation.oc_id,
+    ocUrl: ocUrl ?? "/dashboard",
     role: invitation.role,
   };
 }

@@ -1,15 +1,15 @@
 "use server";
 
-import { requireCompanyRole, requireSubdivisionAccess } from "@/lib/auth";
+import { requireCompanyRole, requireOCAccess } from "@/lib/auth";
 import { createServerClient } from "@/lib/supabase";
 import { revalidatePath } from "next/cache";
 import { generateAndUploadLevyPDF, generateLevyPDFBuffer } from "@/lib/levy-pdf";
 import { sendLevyEmail } from "@/lib/email";
 import { formatDateLong } from "@/lib/utils";
-import { notifySubdivisionLotOwners } from "@/lib/actions/notifications";
+import { notifyOCLotOwners } from "@/lib/actions/notifications";
 import { getLotOwners } from "@/lib/actions/lot-ownership";
 import { generateCrn } from "@/lib/reconciliation/bpay-crn";
-import { buildSubdivisionUrl } from "@/lib/subdivision-resolver";
+import { buildOCUrl } from "@/lib/oc-resolver";
 import { matchKeywordsSchema } from "@/lib/validations/levy";
 import type { LevyNoticeProps } from "@/lib/pdf/types";
 
@@ -180,22 +180,22 @@ async function rollbackBatchInsert(
 
 // ─── Get next period to generate ───────────────────────────
 
-export async function getNextPeriod(subdivisionId: string, budgetId: string) {
-  await requireSubdivisionAccess(subdivisionId);
+export async function getNextPeriod(ocId: string, budgetId: string) {
+  await requireOCAccess(ocId);
   const supabase = createServerClient();
 
-  // Get budget + subdivision info
-  const [{ data: budget }, { data: subdivision }] = await Promise.all([
+  // Get budget + oc info
+  const [{ data: budget }, { data: oc }] = await Promise.all([
     supabase.from("budgets").select("*").eq("id", budgetId).single(),
-    supabase.from("subdivisions").select("financial_year_start_month, billing_cycle").eq("id", subdivisionId).single(),
+    supabase.from("owners_corporations").select("financial_year_start_month, billing_cycle").eq("id", ocId).single(),
   ]);
 
-  if (!budget || !subdivision) return null;
+  if (!budget || !oc) return null;
 
-  const periodsPerYear = getPeriodsForCycle(subdivision.billing_cycle);
+  const periodsPerYear = getPeriodsForCycle(oc.billing_cycle);
   const fyParts = budget.financial_year.split("-");
   const fyStartYear = parseInt(fyParts[0]);
-  const fyStartMonth = subdivision.financial_year_start_month ?? 7;
+  const fyStartMonth = oc.financial_year_start_month ?? 7;
 
   // Check which periods already have batches
   const { data: existingBatches } = await supabase
@@ -214,7 +214,7 @@ export async function getNextPeriod(subdivisionId: string, budgetId: string) {
         ...period,
         label: `${period.label} ${budget.financial_year}`,
         due_date: calculateDueDate(period.start),
-        billing_cycle: subdivision.billing_cycle,
+        billing_cycle: oc.billing_cycle,
         periods_per_year: periodsPerYear,
       };
     }
@@ -234,21 +234,21 @@ export interface AvailablePeriod {
   already_generated: boolean;
 }
 
-export async function getAvailablePeriods(subdivisionId: string, budgetId: string): Promise<AvailablePeriod[]> {
-  await requireSubdivisionAccess(subdivisionId);
+export async function getAvailablePeriods(ocId: string, budgetId: string): Promise<AvailablePeriod[]> {
+  await requireOCAccess(ocId);
   const supabase = createServerClient();
 
-  const [{ data: budget }, { data: subdivision }] = await Promise.all([
+  const [{ data: budget }, { data: oc }] = await Promise.all([
     supabase.from("budgets").select("*").eq("id", budgetId).single(),
-    supabase.from("subdivisions").select("financial_year_start_month, billing_cycle").eq("id", subdivisionId).single(),
+    supabase.from("owners_corporations").select("financial_year_start_month, billing_cycle").eq("id", ocId).single(),
   ]);
 
-  if (!budget || !subdivision) return [];
+  if (!budget || !oc) return [];
 
-  const periodsPerYear = getPeriodsForCycle(subdivision.billing_cycle);
+  const periodsPerYear = getPeriodsForCycle(oc.billing_cycle);
   const fyParts = budget.financial_year.split("-");
   const fyStartYear = parseInt(fyParts[0]);
-  const fyStartMonth = subdivision.financial_year_start_month ?? 7;
+  const fyStartMonth = oc.financial_year_start_month ?? 7;
 
   const { data: existingBatches } = await supabase
     .from("levy_batches")
@@ -276,11 +276,11 @@ export async function getAvailablePeriods(subdivisionId: string, budgetId: strin
 // ─── Generate levy preview ─────────────────────────────────
 
 export async function generateLevyPreview(
-  subdivisionId: string,
+  ocId: string,
   budgetId: string,
   periodIndex?: number,
 ): Promise<{ data?: LevyPreviewData; error?: string }> {
-  await requireSubdivisionAccess(subdivisionId);
+  await requireOCAccess(ocId);
   const supabase = createServerClient();
 
   // Get budget with items
@@ -299,33 +299,33 @@ export async function generateLevyPreview(
     .eq("budget_id", budgetId)
     .order("sort_order");
 
-  // Get subdivision settings
-  const { data: subdivision } = await supabase
-    .from("subdivisions")
+  // Get oc settings
+  const { data: oc } = await supabase
+    .from("owners_corporations")
     .select("financial_year_start_month, billing_cycle")
-    .eq("id", subdivisionId)
+    .eq("id", ocId)
     .single();
 
-  if (!subdivision) return { error: "Subdivision not found" };
+  if (!oc) return { error: "OC not found" };
 
   // Get period — either specific index or auto-detect next
   let nextPeriod;
   if (periodIndex !== undefined) {
-    const periodsPerYear = getPeriodsForCycle(subdivision.billing_cycle);
+    const periodsPerYear = getPeriodsForCycle(oc.billing_cycle);
     const fyParts = budget.financial_year.split("-");
     const fyStartYear = parseInt(fyParts[0]);
-    const fyStartMonth = subdivision.financial_year_start_month ?? 7;
+    const fyStartMonth = oc.financial_year_start_month ?? 7;
     const period = getPeriodDates(fyStartMonth, fyStartYear, periodIndex, periodsPerYear);
     nextPeriod = {
       periodIndex,
       ...period,
       label: `${period.label} ${budget.financial_year}`,
       due_date: calculateDueDate(period.start),
-      billing_cycle: subdivision.billing_cycle,
+      billing_cycle: oc.billing_cycle,
       periods_per_year: periodsPerYear,
     };
   } else {
-    nextPeriod = await getNextPeriod(subdivisionId, budgetId);
+    nextPeriod = await getNextPeriod(ocId, budgetId);
     if (!nextPeriod) return { error: "All periods for this financial year have been generated" };
   }
 
@@ -333,14 +333,14 @@ export async function generateLevyPreview(
   const { data: lots } = await supabase
     .from("lots")
     .select("id, lot_number, unit_number, lot_entitlement, lot_liability")
-    .eq("subdivision_id", subdivisionId)
+    .eq("oc_id", ocId)
     .order("lot_number");
 
-  if (!lots || lots.length === 0) return { error: "No lots found in this subdivision" };
+  if (!lots || lots.length === 0) return { error: "No lots found in this oc" };
 
   const owners = await getLotOwners(supabase, lots.map((l) => l.id));
 
-  const periodsPerYear = getPeriodsForCycle(subdivision.billing_cycle);
+  const periodsPerYear = getPeriodsForCycle(oc.billing_cycle);
   const periodAmount = Number(budget.total_amount) / periodsPerYear;
 
   // Calculate total entitlement (use lot_liability if available, else lot_entitlement)
@@ -396,7 +396,7 @@ export async function generateLevyPreview(
       period_amount: periodAmount,
       total_entitlement: totalEntitlement,
       lots: previewLots,
-      billing_cycle: subdivision.billing_cycle,
+      billing_cycle: oc.billing_cycle,
     },
   };
 }
@@ -421,7 +421,7 @@ export async function generateLevyPreview(
 // Not using a single monolithic RPC because PDF generation + R2 uploads
 // live in JS and would require base64-shuttling through SQL.
 export async function createLevyBatch(
-  subdivisionId: string,
+  ocId: string,
   data: {
     budget_id: string;
     financial_year: string;
@@ -439,7 +439,7 @@ export async function createLevyBatch(
   },
 ): Promise<{ batchId?: string; error?: string }> {
   const profile = await requireCompanyRole();
-  await requireSubdivisionAccess(subdivisionId);
+  await requireOCAccess(ocId);
   const supabase = createServerClient();
 
   const totalAmount = data.lots.reduce((sum, lot) => sum + lot.amount, 0);
@@ -463,7 +463,7 @@ export async function createLevyBatch(
   const { data: batch, error: batchError } = await supabase
     .from("levy_batches")
     .insert({
-      subdivision_id: subdivisionId,
+      oc_id: ocId,
       budget_id: data.budget_id,
       financial_year: data.financial_year,
       fund_type: data.fund_type,
@@ -482,19 +482,19 @@ export async function createLevyBatch(
 
   if (batchError) return { error: batchError.message };
 
-  // Fetch subdivision + management company for PDF generation
-  const { data: subdivision } = await supabase
-    .from("subdivisions")
+  // Fetch oc + management company for PDF generation
+  const { data: oc } = await supabase
+    .from("owners_corporations")
     .select("name, address, abn, plan_number, bank_bsb, bank_account_number, bank_account_name, management_company_id")
-    .eq("id", subdivisionId)
+    .eq("id", ocId)
     .single();
 
   let managementCompany = { name: "", logo_url: null as string | null };
-  if (subdivision?.management_company_id) {
+  if (oc?.management_company_id) {
     const { data: mc } = await supabase
       .from("management_companies")
       .select("name, logo_url")
-      .eq("id", subdivision.management_company_id)
+      .eq("id", oc.management_company_id)
       .single();
     if (mc) managementCompany = mc;
   }
@@ -508,8 +508,8 @@ export async function createLevyBatch(
   const lotMap = new Map((lotsData ?? []).map((l) => [l.id, l]));
   const ownerMap = await getLotOwners(supabase, lotIds);
 
-  // Build payment instructions (EFT from subdivision, no BPAY if not configured)
-  const hasEft = subdivision?.bank_bsb && subdivision?.bank_account_number;
+  // Build payment instructions (EFT from oc, no BPAY if not configured)
+  const hasEft = oc?.bank_bsb && oc?.bank_account_number;
 
   // Step 1: Create all levy notices in DB (sequential for reference numbers)
   const createdLevies: { id: string; lotId: string; refNum: string; items: typeof data.lots[0]["items"] }[] = [];
@@ -517,7 +517,7 @@ export async function createLevyBatch(
   for (const lot of data.lots) {
     const { data: refNum } = await supabase.rpc("next_reference_number", {
       p_prefix: "LEV",
-      p_subdivision_id: subdivisionId,
+      p_oc_id: ocId,
     });
     if (!refNum) continue;
 
@@ -530,7 +530,7 @@ export async function createLevyBatch(
     const { data: levy, error: levyError } = await supabase
       .from("levy_notices")
       .insert({
-        subdivision_id: subdivisionId,
+        oc_id: ocId,
         lot_id: lot.lot_id,
         budget_id: data.budget_id,
         batch_id: batch.id,
@@ -572,7 +572,7 @@ export async function createLevyBatch(
   if (createdLevies.length !== data.lots.length) {
     await supabase.from("audit_log").insert({
       profile_id: profile.id,
-      subdivision_id: subdivisionId,
+      oc_id: ocId,
       action: "levy_batch.notice_insert.partial",
       entity_type: "levy_batch",
       entity_id: batch.id,
@@ -606,7 +606,7 @@ export async function createLevyBatch(
     if (!rollback.clean) {
       await supabase.from("audit_log").insert({
         profile_id: profile.id,
-        subdivision_id: subdivisionId,
+        oc_id: ocId,
         action: "levy_batch.rollback.failed",
         entity_type: "levy_batch",
         entity_id: batch.id,
@@ -634,11 +634,11 @@ export async function createLevyBatch(
       const ownerInfo = ownerMap.get(levy.lotId);
       const pdfProps: LevyNoticeProps = {
         managementCompany,
-        subdivision: {
-          name: subdivision?.name ?? "",
-          address: subdivision?.address ?? "",
-          abn: subdivision?.abn ?? null,
-          plan_number: subdivision?.plan_number ?? "",
+        oc: {
+          name: oc?.name ?? "",
+          address: oc?.address ?? "",
+          abn: oc?.abn ?? null,
+          plan_number: oc?.plan_number ?? "",
         },
         documentTitle: "Levy Notice",
         referenceNumber: levy.refNum,
@@ -646,7 +646,7 @@ export async function createLevyBatch(
         lotOwner: {
           name: ownerInfo?.owner_display_name ?? "Lot Owner",
           lot_number: `${lotInfo?.lot_number ?? ""}${lotInfo?.unit_number ? ` Unit ${lotInfo.unit_number}` : ""}`,
-          address: subdivision?.address ?? "",
+          address: oc?.address ?? "",
         },
         levyPeriod: { start: formatDateLong(data.period_start), end: formatDateLong(data.period_end) },
         lineItems: levy.items
@@ -657,15 +657,15 @@ export async function createLevyBatch(
         paymentInstructions: {
           bpay: null,
           eft: hasEft ? {
-            bsb: subdivision!.bank_bsb!,
-            account_number: subdivision!.bank_account_number!,
-            account_name: subdivision!.bank_account_name ?? subdivision!.name ?? "",
+            bsb: oc!.bank_bsb!,
+            account_number: oc!.bank_account_number!,
+            account_name: oc!.bank_account_name ?? oc!.name ?? "",
             reference: levy.refNum,
           } : { bsb: "", account_number: "", account_name: "", reference: levy.refNum },
         },
       };
 
-      const pdfUrl = await generateAndUploadLevyPDF(pdfProps, subdivisionId, levy.refNum);
+      const pdfUrl = await generateAndUploadLevyPDF(pdfProps, ocId, levy.refNum);
       await supabase.from("levy_notices").update({ pdf_url: pdfUrl }).eq("id", levy.id);
     } catch (err) {
       console.error("PDF generation failed for", levy.refNum, err);
@@ -677,7 +677,7 @@ export async function createLevyBatch(
   // Audit log
   await supabase.from("audit_log").insert({
     profile_id: profile.id,
-    subdivision_id: subdivisionId,
+    oc_id: ocId,
     action: "create",
     entity_type: "levy_batch",
     entity_id: batch.id,
@@ -688,21 +688,21 @@ export async function createLevyBatch(
     },
   });
 
-  revalidatePath("/subdivisions/[subdivisionCode]/levies", "page");
+  revalidatePath("/ocs/[ocCode]/levies", "page");
 
   return { batchId: batch.id };
 }
 
-// ─── Get levy batches for subdivision ──────────────────────
+// ─── Get levy batches for oc ──────────────────────
 
-export async function getLevyBatches(subdivisionId: string): Promise<LevyBatchSummary[]> {
-  await requireSubdivisionAccess(subdivisionId);
+export async function getLevyBatches(ocId: string): Promise<LevyBatchSummary[]> {
+  await requireOCAccess(ocId);
   const supabase = createServerClient();
 
   const { data } = await supabase
     .from("levy_batches")
     .select("*")
-    .eq("subdivision_id", subdivisionId)
+    .eq("oc_id", ocId)
     .order("created_at", { ascending: false });
 
   return (data ?? []).map((b) => ({
@@ -722,15 +722,15 @@ export async function getLevyBatches(subdivisionId: string): Promise<LevyBatchSu
 
 // ─── Get single batch with levy details ────────────────────
 
-export async function getLevyBatchDetail(subdivisionId: string, batchId: string): Promise<LevyBatchDetail | null> {
-  await requireSubdivisionAccess(subdivisionId);
+export async function getLevyBatchDetail(ocId: string, batchId: string): Promise<LevyBatchDetail | null> {
+  await requireOCAccess(ocId);
   const supabase = createServerClient();
 
   const { data: batch } = await supabase
     .from("levy_batches")
     .select("*")
     .eq("id", batchId)
-    .eq("subdivision_id", subdivisionId)
+    .eq("oc_id", ocId)
     .single();
 
   if (!batch) return null;
@@ -791,9 +791,9 @@ export async function getLevyBatchDetail(subdivisionId: string, batchId: string)
 
 // ─── Mark batch as sent ────────────────────────────────────
 
-export async function markBatchSent(subdivisionId: string, batchId: string) {
+export async function markBatchSent(ocId: string, batchId: string) {
   const profile = await requireCompanyRole();
-  await requireSubdivisionAccess(subdivisionId);
+  await requireOCAccess(ocId);
   const supabase = createServerClient();
 
   // Update all draft levies to issued
@@ -811,22 +811,22 @@ export async function markBatchSent(subdivisionId: string, batchId: string) {
 
   await supabase.from("audit_log").insert({
     profile_id: profile.id,
-    subdivision_id: subdivisionId,
+    oc_id: ocId,
     action: "send",
     entity_type: "levy_batch",
     entity_id: batchId,
   });
 
-  revalidatePath("/subdivisions/[subdivisionCode]/levies", "page");
+  revalidatePath("/ocs/[ocCode]/levies", "page");
 
   return { success: true };
 }
 
 // ─── Mark individual levy as sent ──────────────────────────
 
-export async function markLevySent(subdivisionId: string, levyId: string) {
+export async function markLevySent(ocId: string, levyId: string) {
   await requireCompanyRole();
-  await requireSubdivisionAccess(subdivisionId);
+  await requireOCAccess(ocId);
   const supabase = createServerClient();
 
   await supabase
@@ -861,15 +861,15 @@ export async function markLevySent(subdivisionId: string, levyId: string) {
     }
   }
 
-  revalidatePath("/subdivisions/[subdivisionCode]/levies", "page");
+  revalidatePath("/ocs/[ocCode]/levies", "page");
   return { success: true };
 }
 
 // ─── Cancel batch ──────────────────────────────────────────
 
-export async function cancelBatch(subdivisionId: string, batchId: string) {
+export async function cancelBatch(ocId: string, batchId: string) {
   const profile = await requireCompanyRole();
-  await requireSubdivisionAccess(subdivisionId);
+  await requireOCAccess(ocId);
   const supabase = createServerClient();
 
   // Only allow cancelling draft batches (not sent ones)
@@ -877,7 +877,7 @@ export async function cancelBatch(subdivisionId: string, batchId: string) {
     .from("levy_batches")
     .select("status")
     .eq("id", batchId)
-    .eq("subdivision_id", subdivisionId)
+    .eq("oc_id", ocId)
     .single();
 
   if (!batch) return { error: "Batch not found" };
@@ -908,21 +908,21 @@ export async function cancelBatch(subdivisionId: string, batchId: string) {
 
   await supabase.from("audit_log").insert({
     profile_id: profile.id,
-    subdivision_id: subdivisionId,
+    oc_id: ocId,
     action: "cancel",
     entity_type: "levy_batch",
     entity_id: batchId,
   });
 
-  revalidatePath("/subdivisions/[subdivisionCode]/levies", "page");
+  revalidatePath("/ocs/[ocCode]/levies", "page");
   return { success: true };
 }
 
 // ─── Regenerate batch (new due date, new PDFs) ────────────
 
-export async function regenerateBatch(subdivisionId: string, batchId: string, newDueDate: string) {
+export async function regenerateBatch(ocId: string, batchId: string, newDueDate: string) {
   const profile = await requireCompanyRole();
-  await requireSubdivisionAccess(subdivisionId);
+  await requireOCAccess(ocId);
   const supabase = createServerClient();
 
   // Update batch due date
@@ -938,23 +938,23 @@ export async function regenerateBatch(subdivisionId: string, batchId: string, ne
     .eq("batch_id", batchId);
 
   // Fetch data for PDF regeneration
-  const { data: subdivision } = await supabase
-    .from("subdivisions")
+  const { data: oc } = await supabase
+    .from("owners_corporations")
     .select("name, address, abn, plan_number, bank_bsb, bank_account_number, bank_account_name, management_company_id")
-    .eq("id", subdivisionId)
+    .eq("id", ocId)
     .single();
 
   let managementCompany = { name: "", logo_url: null as string | null };
-  if (subdivision?.management_company_id) {
+  if (oc?.management_company_id) {
     const { data: mc } = await supabase
       .from("management_companies")
       .select("name, logo_url")
-      .eq("id", subdivision.management_company_id)
+      .eq("id", oc.management_company_id)
       .single();
     if (mc) managementCompany = mc;
   }
 
-  const hasEft = subdivision?.bank_bsb && subdivision?.bank_account_number;
+  const hasEft = oc?.bank_bsb && oc?.bank_account_number;
 
   // Get levies with lot info and items
   const { data: levies } = await supabase
@@ -979,11 +979,11 @@ export async function regenerateBatch(subdivisionId: string, batchId: string, ne
 
       const pdfProps: LevyNoticeProps = {
         managementCompany,
-        subdivision: {
-          name: subdivision?.name ?? "",
-          address: subdivision?.address ?? "",
-          abn: subdivision?.abn ?? null,
-          plan_number: subdivision?.plan_number ?? "",
+        oc: {
+          name: oc?.name ?? "",
+          address: oc?.address ?? "",
+          abn: oc?.abn ?? null,
+          plan_number: oc?.plan_number ?? "",
         },
         documentTitle: "Levy Notice",
         referenceNumber: levy.reference_number,
@@ -991,7 +991,7 @@ export async function regenerateBatch(subdivisionId: string, batchId: string, ne
         lotOwner: {
           name: owner?.owner_display_name ?? "Lot Owner",
           lot_number: `${lot?.lot_number ?? ""}${lot?.unit_number ? ` Unit ${lot.unit_number}` : ""}`,
-          address: subdivision?.address ?? "",
+          address: oc?.address ?? "",
         },
         levyPeriod: { start: formatDateLong(levy.period_start), end: formatDateLong(levy.period_end) },
         lineItems: (items ?? []).map((i) => ({ description: i.description, amount: Number(i.amount) })),
@@ -1000,15 +1000,15 @@ export async function regenerateBatch(subdivisionId: string, batchId: string, ne
         paymentInstructions: {
           bpay: null,
           eft: hasEft ? {
-            bsb: subdivision!.bank_bsb!,
-            account_number: subdivision!.bank_account_number!,
-            account_name: subdivision!.bank_account_name ?? subdivision!.name ?? "",
+            bsb: oc!.bank_bsb!,
+            account_number: oc!.bank_account_number!,
+            account_name: oc!.bank_account_name ?? oc!.name ?? "",
             reference: levy.reference_number,
           } : { bsb: "", account_number: "", account_name: "", reference: levy.reference_number },
         },
       };
 
-      const pdfUrl = await generateAndUploadLevyPDF(pdfProps, subdivisionId, levy.reference_number);
+      const pdfUrl = await generateAndUploadLevyPDF(pdfProps, ocId, levy.reference_number);
       await supabase.from("levy_notices").update({ pdf_url: pdfUrl }).eq("id", levy.id);
     } catch (err) {
       console.error("PDF regeneration failed for", levy.reference_number, err);
@@ -1019,22 +1019,22 @@ export async function regenerateBatch(subdivisionId: string, batchId: string, ne
 
   await supabase.from("audit_log").insert({
     profile_id: profile.id,
-    subdivision_id: subdivisionId,
+    oc_id: ocId,
     action: "regenerate",
     entity_type: "levy_batch",
     entity_id: batchId,
     after_state: { new_due_date: newDueDate },
   });
 
-  revalidatePath("/subdivisions/[subdivisionCode]/levies", "page");
+  revalidatePath("/ocs/[ocCode]/levies", "page");
   return { success: true };
 }
 
 // ─── Recall batch (unsend — revert to draft) ──────────────
 
-export async function recallBatch(subdivisionId: string, batchId: string) {
+export async function recallBatch(ocId: string, batchId: string) {
   const profile = await requireCompanyRole();
-  await requireSubdivisionAccess(subdivisionId);
+  await requireOCAccess(ocId);
   const supabase = createServerClient();
 
   // Can't recall if any levy is already paid
@@ -1062,21 +1062,21 @@ export async function recallBatch(subdivisionId: string, batchId: string) {
 
   await supabase.from("audit_log").insert({
     profile_id: profile.id,
-    subdivision_id: subdivisionId,
+    oc_id: ocId,
     action: "recall",
     entity_type: "levy_batch",
     entity_id: batchId,
   });
 
-  revalidatePath("/subdivisions/[subdivisionCode]/levies", "page");
+  revalidatePath("/ocs/[ocCode]/levies", "page");
   return { success: true };
 }
 
 // ─── Mark batch as paid ────────────────────────────────────
 
-export async function markBatchPaid(subdivisionId: string, batchId: string) {
+export async function markBatchPaid(ocId: string, batchId: string) {
   const profile = await requireCompanyRole();
-  await requireSubdivisionAccess(subdivisionId);
+  await requireOCAccess(ocId);
   const supabase = createServerClient();
 
   // Update all levies in batch to paid
@@ -1144,7 +1144,7 @@ export async function markBatchPaid(subdivisionId: string, batchId: string) {
 
   await supabase.from("audit_log").insert({
     profile_id: profile.id,
-    subdivision_id: subdivisionId,
+    oc_id: ocId,
     action: "mark_paid",
     entity_type: "levy_batch",
     entity_id: batchId,
@@ -1157,15 +1157,15 @@ export async function markBatchPaid(subdivisionId: string, batchId: string) {
       : null,
   });
 
-  revalidatePath("/subdivisions/[subdivisionCode]/levies", "page");
+  revalidatePath("/ocs/[ocCode]/levies", "page");
   return { success: true };
 }
 
 // ─── Send batch emails ─────────────────────────────────────
 
-export async function sendBatchEmails(subdivisionId: string, batchId: string) {
+export async function sendBatchEmails(ocId: string, batchId: string) {
   const profile = await requireCompanyRole();
-  await requireSubdivisionAccess(subdivisionId);
+  await requireOCAccess(ocId);
   const supabase = createServerClient();
 
   // Get batch info
@@ -1175,19 +1175,19 @@ export async function sendBatchEmails(subdivisionId: string, batchId: string) {
     .eq("id", batchId)
     .single();
 
-  // Get subdivision name
-  const { data: subdivision } = await supabase
-    .from("subdivisions")
+  // Get oc name
+  const { data: oc } = await supabase
+    .from("owners_corporations")
     .select("name, bank_bsb, bank_account_number, bank_account_name, plan_number, address, abn, management_company_id")
-    .eq("id", subdivisionId)
+    .eq("id", ocId)
     .single();
 
   let managementCompany = { name: "", logo_url: null as string | null };
-  if (subdivision?.management_company_id) {
+  if (oc?.management_company_id) {
     const { data: mc } = await supabase
       .from("management_companies")
       .select("name, logo_url")
-      .eq("id", subdivision.management_company_id)
+      .eq("id", oc.management_company_id)
       .single();
     if (mc) managementCompany = mc;
   }
@@ -1204,7 +1204,7 @@ export async function sendBatchEmails(subdivisionId: string, batchId: string) {
   const sendLotIds = levies.map((l) => l.lot_id).filter(Boolean) as string[];
   const sendOwners = await getLotOwners(supabase, sendLotIds);
 
-  const hasEft = subdivision?.bank_bsb && subdivision?.bank_account_number;
+  const hasEft = oc?.bank_bsb && oc?.bank_account_number;
 
   let sentCount = 0;
   for (const levy of levies) {
@@ -1219,11 +1219,11 @@ export async function sendBatchEmails(subdivisionId: string, batchId: string) {
       // Generate PDF buffer for email attachment
       const pdfProps: LevyNoticeProps = {
         managementCompany,
-        subdivision: {
-          name: subdivision?.name ?? "",
-          address: subdivision?.address ?? "",
-          abn: subdivision?.abn ?? null,
-          plan_number: subdivision?.plan_number ?? "",
+        oc: {
+          name: oc?.name ?? "",
+          address: oc?.address ?? "",
+          abn: oc?.abn ?? null,
+          plan_number: oc?.plan_number ?? "",
         },
         documentTitle: "Levy Notice",
         referenceNumber: levy.reference_number,
@@ -1231,7 +1231,7 @@ export async function sendBatchEmails(subdivisionId: string, batchId: string) {
         lotOwner: {
           name: owner?.owner_display_name ?? "Lot Owner",
           lot_number: `${lot?.lot_number ?? ""}${lot?.unit_number ? ` Unit ${lot.unit_number}` : ""}`,
-          address: subdivision?.address ?? "",
+          address: oc?.address ?? "",
         },
         levyPeriod: { start: formatDateLong(levy.period_start), end: formatDateLong(levy.period_end) },
         lineItems: [], // We'll fetch items
@@ -1240,9 +1240,9 @@ export async function sendBatchEmails(subdivisionId: string, batchId: string) {
         paymentInstructions: {
           bpay: null,
           eft: hasEft ? {
-            bsb: subdivision!.bank_bsb!,
-            account_number: subdivision!.bank_account_number!,
-            account_name: subdivision!.bank_account_name ?? subdivision!.name ?? "",
+            bsb: oc!.bank_bsb!,
+            account_number: oc!.bank_account_number!,
+            account_name: oc!.bank_account_name ?? oc!.name ?? "",
             reference: levy.reference_number,
           } : {
             bsb: "",
@@ -1273,8 +1273,8 @@ export async function sendBatchEmails(subdivisionId: string, batchId: string) {
       await sendLevyEmail({
         to: email,
         ownerName: owner?.owner_display_name ?? null,
-        subdivisionName: subdivision?.name ?? "",
-        subdivisionAddress: subdivision?.address ?? "",
+        ocName: oc?.name ?? "",
+        ocAddress: oc?.address ?? "",
         companyLogoUrl: managementCompany.logo_url,
         referenceNumber: levy.reference_number,
         dueDate: formatDateLong(levy.due_date),
@@ -1311,7 +1311,7 @@ export async function sendBatchEmails(subdivisionId: string, batchId: string) {
 
   await supabase.from("audit_log").insert({
     profile_id: profile.id,
-    subdivision_id: subdivisionId,
+    oc_id: ocId,
     action: "send_emails",
     entity_type: "levy_batch",
     entity_id: batchId,
@@ -1320,25 +1320,25 @@ export async function sendBatchEmails(subdivisionId: string, batchId: string) {
 
   // Notify lot owners
   if (sentCount > 0) {
-    await notifySubdivisionLotOwners({
-      subdivisionId,
+    await notifyOCLotOwners({
+      ocId,
       type: "levy_issued",
       title: "New levy notice",
       message: `A levy notice for ${batch?.period_label ?? "this period"} has been issued. Check your levies for details.`,
-      link: (await buildSubdivisionUrl(subdivisionId, "/my-levies")) ?? "/dashboard",
+      link: (await buildOCUrl(ocId, "/my-levies")) ?? "/dashboard",
     });
   }
 
-  revalidatePath("/subdivisions/[subdivisionCode]/levies", "page");
+  revalidatePath("/ocs/[ocCode]/levies", "page");
 
   return { success: true, sentCount };
 }
 
 // ─── Resend batch emails (for already-sent batches) ────────
 
-export async function resendBatchEmails(subdivisionId: string, batchId: string) {
+export async function resendBatchEmails(ocId: string, batchId: string) {
   const profile = await requireCompanyRole();
-  await requireSubdivisionAccess(subdivisionId);
+  await requireOCAccess(ocId);
   const supabase = createServerClient();
 
   const { data: batch } = await supabase
@@ -1347,18 +1347,18 @@ export async function resendBatchEmails(subdivisionId: string, batchId: string) 
     .eq("id", batchId)
     .single();
 
-  const { data: subdivision } = await supabase
-    .from("subdivisions")
+  const { data: oc } = await supabase
+    .from("owners_corporations")
     .select("name, bank_bsb, bank_account_number, bank_account_name, plan_number, address, abn, management_company_id")
-    .eq("id", subdivisionId)
+    .eq("id", ocId)
     .single();
 
   let managementCompany = { name: "", logo_url: null as string | null };
-  if (subdivision?.management_company_id) {
+  if (oc?.management_company_id) {
     const { data: mc } = await supabase
       .from("management_companies")
       .select("name, logo_url")
-      .eq("id", subdivision.management_company_id)
+      .eq("id", oc.management_company_id)
       .single();
     if (mc) managementCompany = mc;
   }
@@ -1374,7 +1374,7 @@ export async function resendBatchEmails(subdivisionId: string, batchId: string) 
   const resendLotIds = levies.map((l) => l.lot_id).filter(Boolean) as string[];
   const resendOwners = await getLotOwners(supabase, resendLotIds);
 
-  const hasEft = subdivision?.bank_bsb && subdivision?.bank_account_number;
+  const hasEft = oc?.bank_bsb && oc?.bank_account_number;
   let sentCount = 0;
 
   for (const levy of levies) {
@@ -1387,11 +1387,11 @@ export async function resendBatchEmails(subdivisionId: string, batchId: string) 
     try {
       const pdfProps: LevyNoticeProps = {
         managementCompany,
-        subdivision: {
-          name: subdivision?.name ?? "",
-          address: subdivision?.address ?? "",
-          abn: subdivision?.abn ?? null,
-          plan_number: subdivision?.plan_number ?? "",
+        oc: {
+          name: oc?.name ?? "",
+          address: oc?.address ?? "",
+          abn: oc?.abn ?? null,
+          plan_number: oc?.plan_number ?? "",
         },
         documentTitle: "Levy Notice",
         referenceNumber: levy.reference_number,
@@ -1399,7 +1399,7 @@ export async function resendBatchEmails(subdivisionId: string, batchId: string) 
         lotOwner: {
           name: owner?.owner_display_name ?? "Lot Owner",
           lot_number: `${lot?.lot_number ?? ""}${lot?.unit_number ? ` Unit ${lot.unit_number}` : ""}`,
-          address: subdivision?.address ?? "",
+          address: oc?.address ?? "",
         },
         levyPeriod: { start: formatDateLong(levy.period_start), end: formatDateLong(levy.period_end) },
         lineItems: [],
@@ -1408,9 +1408,9 @@ export async function resendBatchEmails(subdivisionId: string, batchId: string) 
         paymentInstructions: {
           bpay: null,
           eft: hasEft ? {
-            bsb: subdivision!.bank_bsb!,
-            account_number: subdivision!.bank_account_number!,
-            account_name: subdivision!.bank_account_name ?? subdivision!.name ?? "",
+            bsb: oc!.bank_bsb!,
+            account_number: oc!.bank_account_number!,
+            account_name: oc!.bank_account_name ?? oc!.name ?? "",
             reference: levy.reference_number,
           } : { bsb: "", account_number: "", account_name: "", reference: levy.reference_number },
         },
@@ -1432,8 +1432,8 @@ export async function resendBatchEmails(subdivisionId: string, batchId: string) 
       await sendLevyEmail({
         to: email,
         ownerName: owner?.owner_display_name ?? null,
-        subdivisionName: subdivision?.name ?? "",
-        subdivisionAddress: subdivision?.address ?? "",
+        ocName: oc?.name ?? "",
+        ocAddress: oc?.address ?? "",
         companyLogoUrl: managementCompany.logo_url,
         referenceNumber: levy.reference_number,
         dueDate: formatDateLong(levy.due_date),
@@ -1451,13 +1451,13 @@ export async function resendBatchEmails(subdivisionId: string, batchId: string) 
 
   await supabase.from("audit_log").insert({
     profile_id: profile.id,
-    subdivision_id: subdivisionId,
+    oc_id: ocId,
     action: "resend_emails",
     entity_type: "levy_batch",
     entity_id: batchId,
     after_state: { sent_count: sentCount },
   });
 
-  revalidatePath("/subdivisions/[subdivisionCode]/levies", "page");
+  revalidatePath("/ocs/[ocCode]/levies", "page");
   return { success: true, sentCount };
 }

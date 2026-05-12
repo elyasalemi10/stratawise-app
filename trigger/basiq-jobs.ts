@@ -41,7 +41,7 @@ export const midnightBasiqPoll = schedules.task({
     const supabase = createServerClient();
     const { data: connections, error } = await supabase
       .from("basiq_connections")
-      .select("id, created_by, subdivision_id")
+      .select("id, created_by, oc_id")
       .eq("status", "active");
 
     if (error) {
@@ -83,7 +83,7 @@ export const midnightBasiqPoll = schedules.task({
     // One aggregate audit_log entry per batch run (per spec — no per-OC spam).
     const { error: auditErr } = await supabase.from("audit_log").insert({
       profile_id: null,
-      subdivision_id: null,
+      oc_id: null,
       action: "basiq_cron.midnight_poll_run",
       entity_type: "basiq_cron",
       entity_id: null,
@@ -129,7 +129,7 @@ export const dailyReauthNotifications = schedules.task({
     const supabase = createServerClient();
     const { error: auditErr } = await supabase.from("audit_log").insert({
       profile_id: null,
-      subdivision_id: null,
+      oc_id: null,
       action: "basiq_cron.reauth_notifications_run",
       entity_type: "basiq_cron",
       entity_id: null,
@@ -164,7 +164,7 @@ export const hourlyExpiryCheck = schedules.task({
       const supabase = createServerClient();
       const { error: auditErr } = await supabase.from("audit_log").insert({
         profile_id: null,
-        subdivision_id: null,
+        oc_id: null,
         action: "basiq_cron.expiry_sweep_run",
         entity_type: "basiq_cron",
         entity_id: null,

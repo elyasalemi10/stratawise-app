@@ -1,9 +1,9 @@
 "use server";
 
-import { requireCompanyRole, requireSubdivisionAccess } from "@/lib/auth";
+import { requireCompanyRole, requireOCAccess } from "@/lib/auth";
 import { createServerClient } from "@/lib/supabase";
 import { revalidatePath } from "next/cache";
-import { revalidateSidebarForSubdivision } from "./subdivision";
+import { revalidateSidebarForOC } from "./oc";
 import {
   bankAccountUpdateSchema,
   importTransactionsSchema,
@@ -20,18 +20,18 @@ import {
   markDuplicate,
 } from "@/lib/reconciliation/duplicate-detection";
 
-export async function getBankAccountsForSubdivision(
-  subdivisionId: string
+export async function getBankAccountsForOC(
+  ocId: string
 ): Promise<BankAccountSummary[]> {
-  await requireSubdivisionAccess(subdivisionId);
+  await requireOCAccess(ocId);
   const supabase = createServerClient();
 
   const { data: accounts } = await supabase
     .from("bank_accounts")
     .select(
-      "id, subdivision_id, fund_type, account_name, bsb, account_number, bank_name, opening_balance, opening_balance_date, bpay_biller_code, bpay_crn_prefix",
+      "id, oc_id, fund_type, account_name, bsb, account_number, bank_name, opening_balance, opening_balance_date, bpay_biller_code, bpay_crn_prefix",
     )
-    .eq("subdivision_id", subdivisionId)
+    .eq("oc_id", ocId)
     .order("fund_type");
 
   if (!accounts || accounts.length === 0) return [];
@@ -55,7 +55,7 @@ export async function getBankAccountsForSubdivision(
     const agg = byAccount.get(a.id) ?? { sum: 0, count: 0, latest: null };
     return {
       id: a.id,
-      subdivision_id: a.subdivision_id,
+      oc_id: a.oc_id,
       fund_type: a.fund_type,
       account_name: a.account_name,
       bsb: a.bsb,
@@ -73,21 +73,21 @@ export async function getBankAccountsForSubdivision(
 }
 
 export async function getBankTransactions(
-  subdivisionId: string,
+  ocId: string,
   bankAccountId: string,
   limit = 100
 ): Promise<BankTransactionRecord[]> {
-  await requireSubdivisionAccess(subdivisionId);
+  await requireOCAccess(ocId);
   const supabase = createServerClient();
 
-  // Verify the bank account belongs to this subdivision
+  // Verify the bank account belongs to this oc
   const { data: account } = await supabase
     .from("bank_accounts")
-    .select("subdivision_id")
+    .select("oc_id")
     .eq("id", bankAccountId)
     .single();
 
-  if (!account || account.subdivision_id !== subdivisionId) {
+  if (!account || account.oc_id !== ocId) {
     throw new Error("Bank account not found");
   }
 
@@ -119,11 +119,11 @@ export async function getBankTransactions(
 }
 
 export async function importBankTransactions(
-  subdivisionId: string,
+  ocId: string,
   input: ImportTransactionsInput
 ): Promise<{ error?: string; summary?: ImportSummary }> {
   const profile = await requireCompanyRole();
-  await requireSubdivisionAccess(subdivisionId);
+  await requireOCAccess(ocId);
 
   const parsed = importTransactionsSchema.safeParse(input);
   if (!parsed.success) {
@@ -134,11 +134,11 @@ export async function importBankTransactions(
 
   const { data: account } = await supabase
     .from("bank_accounts")
-    .select("id, subdivision_id, fund_type")
+    .select("id, oc_id, fund_type")
     .eq("id", parsed.data.bank_account_id)
     .single();
 
-  if (!account || account.subdivision_id !== subdivisionId) {
+  if (!account || account.oc_id !== ocId) {
     return { error: "Bank account not found" };
   }
 
@@ -226,7 +226,7 @@ export async function importBankTransactions(
     if (detection.flagged) {
       const marked = await markDuplicate({
         bank_transaction_id: inserted.id,
-        subdivision_id: subdivisionId,
+        oc_id: ocId,
         duplicate_of: detection.duplicate_of,
         metadata: detection.metadata,
         performedBy: profile.id,
@@ -242,7 +242,7 @@ export async function importBankTransactions(
           `[duplicate-detection] markDuplicate failed`,
           {
             bank_transaction_id: inserted.id,
-            subdivision_id: subdivisionId,
+            oc_id: ocId,
             duplicate_of: detection.duplicate_of,
             error: marked.error,
           },
@@ -259,7 +259,7 @@ export async function importBankTransactions(
 
     const result = await tryAutoMatch({
       bankTransactionId: inserted.id,
-      subdivisionId,
+      ocId,
       bankAccountId: account.id,
       description: row.description,
       amount: row.amount,
@@ -278,7 +278,7 @@ export async function importBankTransactions(
 
   await supabase.from("audit_log").insert({
     profile_id: profile.id,
-    subdivision_id: subdivisionId,
+    oc_id: ocId,
     action: "bank_transaction.csv_imported",
     entity_type: "bank_account",
     entity_id: account.id,
@@ -293,9 +293,9 @@ export async function importBankTransactions(
     },
   });
 
-  await revalidateSidebarForSubdivision(subdivisionId);
-  revalidatePath("/subdivisions/[subdivisionCode]/bank-account", "page");
-  revalidatePath("/subdivisions/[subdivisionCode]/reconciliation", "page");
+  await revalidateSidebarForOC(ocId);
+  revalidatePath("/ocs/[ocCode]/bank-account", "page");
+  revalidatePath("/ocs/[ocCode]/reconciliation", "page");
   return { summary };
 }
 
@@ -307,9 +307,9 @@ export async function importBankTransactions(
 // signature changes required.
 //
 // Auth: requireCompanyRole gates on (super_admin | manager-with-role); we
-// then look up the bank account, derive its subdivision, and run
-// requireSubdivisionAccess to enforce the manager's company owns it. The
-// bank_accounts table has subdivision_id NOT NULL FK so the lookup is
+// then look up the bank account, derive its oc, and run
+// requireOCAccess to enforce the manager's company owns it. The
+// bank_accounts table has oc_id NOT NULL FK so the lookup is
 // always definitive.
 export async function updateBankAccount(
   input: BankAccountUpdateInput,
@@ -328,14 +328,14 @@ export async function updateBankAccount(
   const { data: existing, error: lookupErr } = await supabase
     .from("bank_accounts")
     .select(
-      "id, subdivision_id, bpay_biller_code, bpay_crn_prefix",
+      "id, oc_id, bpay_biller_code, bpay_crn_prefix",
     )
     .eq("id", id)
     .maybeSingle();
   if (lookupErr) return { error: lookupErr.message };
   if (!existing) return { error: "Bank account not found" };
 
-  await requireSubdivisionAccess(existing.subdivision_id);
+  await requireOCAccess(existing.oc_id);
 
   // Build the update payload with only the keys the caller actually sent.
   // `null` is a meaningful clear value, distinct from `undefined` (no-op).
@@ -360,7 +360,7 @@ export async function updateBankAccount(
 
   await supabase.from("audit_log").insert({
     profile_id: profile.id,
-    subdivision_id: existing.subdivision_id,
+    oc_id: existing.oc_id,
     action: "bank_account.updated",
     entity_type: "bank_account",
     entity_id: id,
@@ -371,6 +371,6 @@ export async function updateBankAccount(
     after_state: payload,
   });
 
-  revalidatePath("/subdivisions/[subdivisionCode]/bank-account", "page");
+  revalidatePath("/ocs/[ocCode]/bank-account", "page");
   return { success: { id } };
 }

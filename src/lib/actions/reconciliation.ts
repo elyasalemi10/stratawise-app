@@ -1,9 +1,9 @@
 "use server";
 
-import { requireCompanyRole, requireSubdivisionAccess } from "@/lib/auth";
+import { requireCompanyRole, requireOCAccess } from "@/lib/auth";
 import { createServerClient } from "@/lib/supabase";
 import { revalidatePath } from "next/cache";
-import { revalidateSidebarForSubdivision } from "./subdivision";
+import { revalidateSidebarForOC } from "./oc";
 import { tryAutoMatch } from "@/lib/reconciliation/orchestrator";
 import { detectSingleLevyReference } from "@/lib/reconciliation/reference";
 import { canonicaliseSender } from "@/lib/reconciliation/canonical";
@@ -111,10 +111,10 @@ interface QueueOptions {
 }
 
 export async function getReconciliationQueue(
-  subdivisionId: string,
+  ocId: string,
   opts: QueueOptions = {},
 ): Promise<ReconciliationQueueResult> {
-  await requireSubdivisionAccess(subdivisionId);
+  await requireOCAccess(ocId);
   const supabase = createServerClient();
 
   const page = Math.max(opts.page ?? 1, 1);
@@ -124,7 +124,7 @@ export async function getReconciliationQueue(
   const { data: accounts } = await supabase
     .from("bank_accounts")
     .select("id, account_name, fund_type")
-    .eq("subdivision_id", subdivisionId)
+    .eq("oc_id", ocId)
     .order("fund_type");
 
   const accountIds = (accounts ?? []).map((a) => a.id);
@@ -152,7 +152,7 @@ export async function getReconciliationQueue(
     };
   }
 
-  // Distinct sources across all (non-voided) transactions in this subdivision.
+  // Distinct sources across all (non-voided) transactions in this oc.
   // Filter-agnostic so the dropdown shows every source ever seen, regardless
   // of the currently-applied filters.
   const { data: sourceRows } = await supabase
@@ -515,19 +515,19 @@ export async function getOrchestratorAuditForTransaction(
 ): Promise<OrchestratorAuditPayload | null> {
   const supabase = createServerClient();
 
-  // Resolve subdivision via the bank transaction → bank account → subdivision
-  // chain, then enforce access. Audit_log rows are subdivision-scoped, so
+  // Resolve oc via the bank transaction → bank account → oc
+  // chain, then enforce access. Audit_log rows are oc-scoped, so
   // RLS-equivalent check belongs here.
   const { data: bt } = await supabase
     .from("bank_transactions")
-    .select("id, bank_account_id, bank_accounts!inner(subdivision_id)")
+    .select("id, bank_account_id, bank_accounts!inner(oc_id)")
     .eq("id", bankTransactionId)
     .maybeSingle();
   if (!bt) return null;
-  const subdivisionId = (
-    bt as unknown as { bank_accounts: { subdivision_id: string } }
-  ).bank_accounts.subdivision_id;
-  await requireSubdivisionAccess(subdivisionId);
+  const ocId = (
+    bt as unknown as { bank_accounts: { oc_id: string } }
+  ).bank_accounts.oc_id;
+  await requireOCAccess(ocId);
 
   const { data: audit } = await supabase
     .from("audit_log")
@@ -543,14 +543,14 @@ export async function getOrchestratorAuditForTransaction(
   return parseAuditMetadata(audit.metadata, audit.created_at as string);
 }
 
-export async function getUnmatchedCount(subdivisionId: string): Promise<number> {
-  await requireSubdivisionAccess(subdivisionId);
+export async function getUnmatchedCount(ocId: string): Promise<number> {
+  await requireOCAccess(ocId);
   const supabase = createServerClient();
 
   const { data: accounts } = await supabase
     .from("bank_accounts")
     .select("id")
-    .eq("subdivision_id", subdivisionId);
+    .eq("oc_id", ocId);
 
   const accountIds = (accounts ?? []).map((a) => a.id);
   if (accountIds.length === 0) return 0;
@@ -581,12 +581,12 @@ export async function getBankTransactionDetail(
 
   const { data: account } = await supabase
     .from("bank_accounts")
-    .select("id, account_name, fund_type, subdivision_id")
+    .select("id, account_name, fund_type, oc_id")
     .eq("id", bt.bank_account_id)
     .single();
   if (!account) throw new Error("Bank account not found");
 
-  await requireSubdivisionAccess(account.subdivision_id);
+  await requireOCAccess(account.oc_id);
 
   const [{ data: matches }, { data: undeposited }] = await Promise.all([
     supabase
@@ -671,7 +671,7 @@ export async function getBankTransactionDetail(
     bank_account_id: bt.bank_account_id,
     bank_account_name: account.account_name,
     bank_account_fund_type: account.fund_type as FundType,
-    subdivision_id: account.subdivision_id,
+    oc_id: account.oc_id,
     source: bt.source as TransactionSource,
     transaction_date: bt.transaction_date,
     amount,
@@ -723,18 +723,18 @@ export async function getBankTransactionDetail(
 }
 
 export async function getUndepositedEntries(
-  subdivisionId: string,
+  ocId: string,
   bankAccountId?: string | null,
 ): Promise<UndepositedFundsEntry[]> {
-  await requireSubdivisionAccess(subdivisionId);
+  await requireOCAccess(ocId);
   const supabase = createServerClient();
 
   let q = supabase
     .from("undeposited_funds_entries")
     .select(
-      "id, subdivision_id, lot_id, bank_account_id, fund_type, amount, received_date, payment_method, cheque_number, receipt_number, description, status, deposited_at, deposited_by_bank_transaction_id, linked_ledger_credit_id, created_at",
+      "id, oc_id, lot_id, bank_account_id, fund_type, amount, received_date, payment_method, cheque_number, receipt_number, description, status, deposited_at, deposited_by_bank_transaction_id, linked_ledger_credit_id, created_at",
     )
-    .eq("subdivision_id", subdivisionId)
+    .eq("oc_id", ocId)
     .eq("status", "pending_deposit")
     .order("received_date", { ascending: true });
 
@@ -761,7 +761,7 @@ export async function getUndepositedEntries(
 
   return rows.map((r) => ({
     id: r.id,
-    subdivision_id: r.subdivision_id,
+    oc_id: r.oc_id,
     lot_id: r.lot_id,
     lot_number: lotMap.get(r.lot_id)?.lot_number ?? "",
     unit_number: lotMap.get(r.lot_id)?.unit_number ?? null,
@@ -781,8 +781,8 @@ export async function getUndepositedEntries(
   }));
 }
 
-export async function getSubdivisionLotsForAllocation(
-  subdivisionId: string,
+export async function getOCLotsForAllocation(
+  ocId: string,
 ): Promise<
   Array<{
     id: string;
@@ -797,14 +797,14 @@ export async function getSubdivisionLotsForAllocation(
     }>;
   }>
 > {
-  await requireSubdivisionAccess(subdivisionId);
+  await requireOCAccess(ocId);
   const supabase = createServerClient();
 
-  // Get all lots in the subdivision
+  // Get all lots in the oc
   const { data: lots, error: lotsErr } = await supabase
     .from("lots")
-    .select("id, lot_number, unit_number, subdivision_id")
-    .eq("subdivision_id", subdivisionId)
+    .select("id, lot_number, unit_number, oc_id")
+    .eq("oc_id", ocId)
     .order("lot_number", { ascending: true });
 
   if (lotsErr || !lots) throw new Error("Failed to fetch lots");
@@ -813,7 +813,7 @@ export async function getSubdivisionLotsForAllocation(
 
   // Get lot owners (members + pending invitations)
   const { data: members } = await supabase
-    .from("subdivision_members")
+    .from("oc_members")
     .select("lot_id, profile_id, profiles!inner(id, first_name, last_name)")
     .in("lot_id", lotIds)
     .eq("role", "lot_owner")
@@ -952,15 +952,15 @@ export async function addManualBankTransaction(
   if (!parsed.success) return { error: formatIssues(parsed.error.issues) };
 
   const profile = await requireCompanyRole();
-  await requireSubdivisionAccess(parsed.data.subdivision_id);
+  await requireOCAccess(parsed.data.oc_id);
   const supabase = createServerClient();
 
   const { data: account } = await supabase
     .from("bank_accounts")
-    .select("id, subdivision_id")
+    .select("id, oc_id")
     .eq("id", parsed.data.bank_account_id)
     .single();
-  if (!account || account.subdivision_id !== parsed.data.subdivision_id) {
+  if (!account || account.oc_id !== parsed.data.oc_id) {
     return { error: "Bank account not found" };
   }
 
@@ -990,7 +990,7 @@ export async function addManualBankTransaction(
 
   await supabase.from("audit_log").insert({
     profile_id: profile.id,
-    subdivision_id: parsed.data.subdivision_id,
+    oc_id: parsed.data.oc_id,
     action: "bank_transaction.added_manually",
     entity_type: "bank_transaction",
     entity_id: inserted.id,
@@ -1019,7 +1019,7 @@ export async function addManualBankTransaction(
   if (detection.flagged) {
     const marked = await markDuplicate({
       bank_transaction_id: inserted.id,
-      subdivision_id: parsed.data.subdivision_id,
+      oc_id: parsed.data.oc_id,
       duplicate_of: detection.duplicate_of,
       metadata: detection.metadata,
       performedBy: profile.id,
@@ -1034,7 +1034,7 @@ export async function addManualBankTransaction(
         `[duplicate-detection] markDuplicate failed`,
         {
           bank_transaction_id: inserted.id,
-          subdivision_id: parsed.data.subdivision_id,
+          oc_id: parsed.data.oc_id,
           duplicate_of: detection.duplicate_of,
           error: marked.error,
         },
@@ -1049,7 +1049,7 @@ export async function addManualBankTransaction(
   if (!detection.flagged && signedAmount > 0) {
     const result = await tryAutoMatch({
       bankTransactionId: inserted.id,
-      subdivisionId: parsed.data.subdivision_id,
+      ocId: parsed.data.oc_id,
       bankAccountId: account.id,
       description: descriptionWithRef,
       amount: signedAmount,
@@ -1060,9 +1060,9 @@ export async function addManualBankTransaction(
     matchedRef = result.reference;
   }
 
-  await revalidateSidebarForSubdivision(parsed.data.subdivision_id);
-  revalidatePath("/subdivisions/[subdivisionCode]/reconciliation", "page");
-  revalidatePath("/subdivisions/[subdivisionCode]/bank-account", "page");
+  await revalidateSidebarForOC(parsed.data.oc_id);
+  revalidatePath("/ocs/[ocCode]/reconciliation", "page");
+  revalidatePath("/ocs/[ocCode]/bank-account", "page");
   return {
     success: {
       bankTransactionId: inserted.id,
@@ -1127,13 +1127,13 @@ export async function confirmDuplicate(
   if (!parsed.success) return { error: formatIssues(parsed.error.issues) };
 
   const profile = await requireCompanyRole();
-  await requireSubdivisionAccess(parsed.data.subdivision_id);
+  await requireOCAccess(parsed.data.oc_id);
   const supabase = createServerClient();
 
   const { data: row } = await supabase
     .from("bank_transactions")
     .select(
-      "id, duplicate_status, match_status, matched_total, bank_accounts!inner(subdivision_id)",
+      "id, duplicate_status, match_status, matched_total, bank_accounts!inner(oc_id)",
     )
     .eq("id", parsed.data.bank_transaction_id)
     .maybeSingle();
@@ -1146,10 +1146,10 @@ export async function confirmDuplicate(
     duplicate_status: "suspected" | "confirmed" | "rejected" | null;
     match_status: MatchStatus;
     matched_total: number | string;
-    bank_accounts: { subdivision_id: string };
+    bank_accounts: { oc_id: string };
   };
 
-  if (r.bank_accounts.subdivision_id !== parsed.data.subdivision_id) {
+  if (r.bank_accounts.oc_id !== parsed.data.oc_id) {
     return { error: "Transaction not found", errorCode: "FORBIDDEN" };
   }
 
@@ -1180,7 +1180,7 @@ export async function confirmDuplicate(
 
   await supabase.from("audit_log").insert({
     profile_id: profile.id,
-    subdivision_id: parsed.data.subdivision_id,
+    oc_id: parsed.data.oc_id,
     action: "bank_transaction.duplicate_confirmed",
     entity_type: "bank_transaction",
     entity_id: parsed.data.bank_transaction_id,
@@ -1189,8 +1189,8 @@ export async function confirmDuplicate(
     metadata: parsed.data.notes ? { notes: parsed.data.notes } : null,
   });
 
-  revalidatePath("/subdivisions/[subdivisionCode]/reconciliation", "page");
-  revalidatePath("/subdivisions/[subdivisionCode]/bank-account", "page");
+  revalidatePath("/ocs/[ocCode]/reconciliation", "page");
+  revalidatePath("/ocs/[ocCode]/bank-account", "page");
   return { success: { confirmed: true } };
 }
 
@@ -1201,13 +1201,13 @@ export async function rejectDuplicate(
   if (!parsed.success) return { error: formatIssues(parsed.error.issues) };
 
   const profile = await requireCompanyRole();
-  await requireSubdivisionAccess(parsed.data.subdivision_id);
+  await requireOCAccess(parsed.data.oc_id);
   const supabase = createServerClient();
 
   const { data: row } = await supabase
     .from("bank_transactions")
     .select(
-      "id, bank_account_id, transaction_date, amount, description, duplicate_status, bank_accounts!inner(subdivision_id)",
+      "id, bank_account_id, transaction_date, amount, description, duplicate_status, bank_accounts!inner(oc_id)",
     )
     .eq("id", parsed.data.bank_transaction_id)
     .maybeSingle();
@@ -1222,10 +1222,10 @@ export async function rejectDuplicate(
     amount: number | string;
     description: string | null;
     duplicate_status: "suspected" | "confirmed" | "rejected" | null;
-    bank_accounts: { subdivision_id: string };
+    bank_accounts: { oc_id: string };
   };
 
-  if (r.bank_accounts.subdivision_id !== parsed.data.subdivision_id) {
+  if (r.bank_accounts.oc_id !== parsed.data.oc_id) {
     return { error: "Transaction not found", errorCode: "FORBIDDEN" };
   }
 
@@ -1244,7 +1244,7 @@ export async function rejectDuplicate(
 
   await supabase.from("audit_log").insert({
     profile_id: profile.id,
-    subdivision_id: parsed.data.subdivision_id,
+    oc_id: parsed.data.oc_id,
     action: "bank_transaction.duplicate_rejected",
     entity_type: "bank_transaction",
     entity_id: parsed.data.bank_transaction_id,
@@ -1261,7 +1261,7 @@ export async function rejectDuplicate(
   if (amount > 0) {
     const result = await tryAutoMatch({
       bankTransactionId: parsed.data.bank_transaction_id,
-      subdivisionId: parsed.data.subdivision_id,
+      ocId: parsed.data.oc_id,
       bankAccountId: r.bank_account_id,
       description: r.description ?? "",
       amount,
@@ -1278,8 +1278,8 @@ export async function rejectDuplicate(
     };
   }
 
-  revalidatePath("/subdivisions/[subdivisionCode]/reconciliation", "page");
-  revalidatePath("/subdivisions/[subdivisionCode]/bank-account", "page");
+  revalidatePath("/ocs/[ocCode]/reconciliation", "page");
+  revalidatePath("/ocs/[ocCode]/bank-account", "page");
   return { success: { rejected: true, matchOutcome } };
 }
 
@@ -1340,12 +1340,12 @@ export async function voidAsLedgerDuplicate(
   if (!parsed.success) return { error: formatIssues(parsed.error.issues) };
 
   const profile = await requireCompanyRole();
-  await requireSubdivisionAccess(parsed.data.subdivision_id);
+  await requireOCAccess(parsed.data.oc_id);
   const supabase = createServerClient();
 
   const { data: entry } = await supabase
     .from("lot_ledger_entries")
-    .select("id, subdivision_id, status, duplicate_status")
+    .select("id, oc_id, status, duplicate_status")
     .eq("id", parsed.data.lot_ledger_entry_id)
     .maybeSingle();
   if (!entry) {
@@ -1353,12 +1353,12 @@ export async function voidAsLedgerDuplicate(
   }
   const e = entry as {
     id: string;
-    subdivision_id: string;
+    oc_id: string;
     status: "active" | "voided";
     duplicate_status: "suspected" | "confirmed" | "rejected" | null;
   };
 
-  if (e.subdivision_id !== parsed.data.subdivision_id) {
+  if (e.oc_id !== parsed.data.oc_id) {
     return { error: "Ledger entry not found", errorCode: "FORBIDDEN" };
   }
   if (e.duplicate_status !== "suspected") {
@@ -1457,7 +1457,7 @@ export async function voidAsLedgerDuplicate(
 
   await supabase.from("audit_log").insert({
     profile_id: profile.id,
-    subdivision_id: parsed.data.subdivision_id,
+    oc_id: parsed.data.oc_id,
     action: "lot_ledger_entry.duplicate_voided",
     entity_type: "lot_ledger_entry",
     entity_id: parsed.data.lot_ledger_entry_id,
@@ -1470,9 +1470,9 @@ export async function voidAsLedgerDuplicate(
     },
   });
 
-  revalidatePath("/subdivisions/[subdivisionCode]/reconciliation", "page");
-  revalidatePath("/subdivisions/[subdivisionCode]/bank-account", "page");
-  revalidatePath("/subdivisions/[subdivisionCode]/lots/[lotId]", "page");
+  revalidatePath("/ocs/[ocCode]/reconciliation", "page");
+  revalidatePath("/ocs/[ocCode]/bank-account", "page");
+  revalidatePath("/ocs/[ocCode]/lots/[lotId]", "page");
   return {
     success: {
       voided: true,
@@ -1489,12 +1489,12 @@ export async function keepAsOverpayment(
   if (!parsed.success) return { error: formatIssues(parsed.error.issues) };
 
   const profile = await requireCompanyRole();
-  await requireSubdivisionAccess(parsed.data.subdivision_id);
+  await requireOCAccess(parsed.data.oc_id);
   const supabase = createServerClient();
 
   const { data: entry } = await supabase
     .from("lot_ledger_entries")
-    .select("id, subdivision_id, duplicate_status")
+    .select("id, oc_id, duplicate_status")
     .eq("id", parsed.data.lot_ledger_entry_id)
     .maybeSingle();
   if (!entry) {
@@ -1502,11 +1502,11 @@ export async function keepAsOverpayment(
   }
   const e = entry as {
     id: string;
-    subdivision_id: string;
+    oc_id: string;
     duplicate_status: "suspected" | "confirmed" | "rejected" | null;
   };
 
-  if (e.subdivision_id !== parsed.data.subdivision_id) {
+  if (e.oc_id !== parsed.data.oc_id) {
     return { error: "Ledger entry not found", errorCode: "FORBIDDEN" };
   }
   if (e.duplicate_status !== "suspected") {
@@ -1524,7 +1524,7 @@ export async function keepAsOverpayment(
 
   await supabase.from("audit_log").insert({
     profile_id: profile.id,
-    subdivision_id: parsed.data.subdivision_id,
+    oc_id: parsed.data.oc_id,
     action: "lot_ledger_entry.duplicate_kept_as_overpayment",
     entity_type: "lot_ledger_entry",
     entity_id: parsed.data.lot_ledger_entry_id,
@@ -1533,8 +1533,8 @@ export async function keepAsOverpayment(
     metadata: parsed.data.notes ? { notes: parsed.data.notes } : null,
   });
 
-  revalidatePath("/subdivisions/[subdivisionCode]/reconciliation", "page");
-  revalidatePath("/subdivisions/[subdivisionCode]/lots/[lotId]", "page");
+  revalidatePath("/ocs/[ocCode]/reconciliation", "page");
+  revalidatePath("/ocs/[ocCode]/lots/[lotId]", "page");
   return { success: { kept: true } };
 }
 
@@ -1612,7 +1612,7 @@ export async function reconcileTransaction(
   if (!parsed.success) return { error: formatIssues(parsed.error.issues) };
 
   const profile = await requireCompanyRole();
-  await requireSubdivisionAccess(parsed.data.subdivision_id);
+  await requireOCAccess(parsed.data.oc_id);
   const supabase = createServerClient();
 
   const allocations = parsed.data.allocations.map((a) => ({
@@ -1647,7 +1647,7 @@ export async function reconcileTransaction(
   if ((payload.created_credit_ids ?? []).length > 0) {
     await detectAndMarkLedgerDuplicates({
       creditIds: payload.created_credit_ids ?? [],
-      subdivisionId: parsed.data.subdivision_id,
+      ocId: parsed.data.oc_id,
       performedBy: profile.id,
       supabase,
     });
@@ -1695,7 +1695,7 @@ export async function reconcileTransaction(
       // Gap C: multi-lot match → silent skip with audit.
       await supabase.from("audit_log").insert({
         profile_id: profile.id,
-        subdivision_id: parsed.data.subdivision_id,
+        oc_id: parsed.data.oc_id,
         action: "bank_payer_mapping.skipped_multi_lot",
         entity_type: "bank_transaction",
         entity_id: parsed.data.bank_transaction_id,
@@ -1706,7 +1706,7 @@ export async function reconcileTransaction(
       });
     } else {
       const result: CreateMappingResult = await createBankPayerMapping({
-        subdivision_id: parsed.data.subdivision_id,
+        oc_id: parsed.data.oc_id,
         canonical_sender_name: canonical,
         lot_id: singleLotId,
         raw_example: bt?.description ?? undefined,
@@ -1721,7 +1721,7 @@ export async function reconcileTransaction(
         if (result.was_reactivated) {
           await supabase.from("audit_log").insert({
             profile_id: profile.id,
-            subdivision_id: parsed.data.subdivision_id,
+            oc_id: parsed.data.oc_id,
             action: "reconciliation.mapping_reactivated_during_match",
             entity_type: "bank_transaction",
             entity_id: parsed.data.bank_transaction_id,
@@ -1738,7 +1738,7 @@ export async function reconcileTransaction(
         // lot labels resolved server-side so the dialog can render
         // "Lot N (Unit X)" without per-row lookups.
         mappingCollision = await buildCollisionPayload(
-          parsed.data.subdivision_id,
+          parsed.data.oc_id,
           result.proposed.lot_id,
           result.proposed.canonical_sender_name,
           result.colliding_mappings,
@@ -1757,7 +1757,7 @@ export async function reconcileTransaction(
     parsed.data.match_method === "manual"
   ) {
     const detection = await detectRepeatedManualMatch(
-      parsed.data.subdivision_id,
+      parsed.data.oc_id,
       canonical,
       singleLotId,
       canonicaliseSender,
@@ -1783,8 +1783,8 @@ export async function reconcileTransaction(
     }
   }
 
-  await revalidateSidebarForSubdivision(parsed.data.subdivision_id);
-  revalidatePath("/subdivisions/[subdivisionCode]/reconciliation", "page");
+  await revalidateSidebarForOC(parsed.data.oc_id);
+  revalidatePath("/ocs/[ocCode]/reconciliation", "page");
 
   return {
     success: {
@@ -1826,7 +1826,7 @@ export async function resolvePayerMappingCollision(
   if (!parsed.success) return { error: formatIssues(parsed.error.issues) };
 
   const profile = await requireCompanyRole();
-  await requireSubdivisionAccess(parsed.data.subdivision_id);
+  await requireOCAccess(parsed.data.oc_id);
   const supabase = createServerClient();
 
   // Look up description from the bank transaction to canonicalise.
@@ -1847,7 +1847,7 @@ export async function resolvePayerMappingCollision(
   }
 
   const result = await resolveCollision({
-    subdivision_id: parsed.data.subdivision_id,
+    oc_id: parsed.data.oc_id,
     canonical_sender_name: canonical,
     proposed_lot_id: parsed.data.proposed_lot_id,
     resolution: parsed.data.resolution,
@@ -1855,8 +1855,8 @@ export async function resolvePayerMappingCollision(
     performed_by: profile.id,
   });
 
-  await revalidateSidebarForSubdivision(parsed.data.subdivision_id);
-  revalidatePath("/subdivisions/[subdivisionCode]/reconciliation", "page");
+  await revalidateSidebarForOC(parsed.data.oc_id);
+  revalidatePath("/ocs/[ocCode]/reconciliation", "page");
 
   if (!result.ok) {
     return {
@@ -1895,11 +1895,11 @@ export interface MappingListRow {
   updated_at: string;
 }
 
-export async function getMappingsForSubdivision(
-  subdivisionId: string,
+export async function getMappingsForOC(
+  ocId: string,
   filter: "active" | "ambiguous" | "disabled" | "all" = "active",
 ): Promise<MappingListRow[]> {
-  await requireSubdivisionAccess(subdivisionId);
+  await requireOCAccess(ocId);
   const supabase = createServerClient();
 
   let query = supabase
@@ -1907,7 +1907,7 @@ export async function getMappingsForSubdivision(
     .select(
       "id, canonical_sender_name, lot_id, status, status_reason, raw_examples, created_at, updated_at",
     )
-    .eq("subdivision_id", subdivisionId);
+    .eq("oc_id", ocId);
   if (filter === "active") query = query.eq("status", "active");
   else if (filter === "ambiguous") query = query.eq("status", "ambiguous");
   else if (filter === "disabled") query = query.eq("status", "disabled");
@@ -1991,10 +1991,10 @@ export interface MappingDetail {
 }
 
 export async function getMappingDetail(
-  subdivisionId: string,
+  ocId: string,
   mappingId: string,
 ): Promise<MappingDetail | null> {
-  await requireSubdivisionAccess(subdivisionId);
+  await requireOCAccess(ocId);
   const supabase = createServerClient();
 
   const { data: m } = await supabase
@@ -2003,7 +2003,7 @@ export async function getMappingDetail(
       "id, canonical_sender_name, lot_id, status, status_reason, raw_examples, created_at, updated_at",
     )
     .eq("id", mappingId)
-    .eq("subdivision_id", subdivisionId)
+    .eq("oc_id", ocId)
     .maybeSingle();
   if (!m) return null;
 
@@ -2057,23 +2057,23 @@ export type DisableMappingResult = {
 };
 
 export async function disableMappingAction(
-  input: { mapping_id: string; subdivision_id: string; reason?: string },
+  input: { mapping_id: string; oc_id: string; reason?: string },
 ): Promise<DisableMappingResult> {
   const parsed = disableMappingSchema.safeParse(input);
   if (!parsed.success) return { error: formatIssues(parsed.error.issues) };
 
   const profile = await requireCompanyRole();
-  await requireSubdivisionAccess(parsed.data.subdivision_id);
+  await requireOCAccess(parsed.data.oc_id);
 
   const result = await libDisableMapping({
     mapping_id: parsed.data.mapping_id,
-    subdivision_id: parsed.data.subdivision_id,
+    oc_id: parsed.data.oc_id,
     reason: parsed.data.reason,
     performed_by: profile.id,
   });
   if (!result.ok) return { error: result.error };
 
-  revalidatePath("/subdivisions/[subdivisionCode]/reconciliation/mappings", "page");
+  revalidatePath("/ocs/[ocCode]/reconciliation/mappings", "page");
   return { success: { mapping_id: result.mapping_id } };
 }
 
@@ -2083,7 +2083,7 @@ export type ReactivateMappingActionResult = {
 };
 
 async function buildCollisionPayload(
-  subdivisionId: string,
+  ocId: string,
   proposedLotId: string,
   canonicalName: string,
   collidingMappings: CollidingMappingSnapshot[],
@@ -2120,17 +2120,17 @@ async function buildCollisionPayload(
 }
 
 export async function reactivateMappingAction(
-  input: { mapping_id: string; subdivision_id: string },
+  input: { mapping_id: string; oc_id: string },
 ): Promise<ReactivateMappingActionResult> {
   const parsed = mappingActionSchema.safeParse(input);
   if (!parsed.success) return { error: formatIssues(parsed.error.issues) };
 
   const profile = await requireCompanyRole();
-  await requireSubdivisionAccess(parsed.data.subdivision_id);
+  await requireOCAccess(parsed.data.oc_id);
 
   const result = await libReactivateMapping({
     mapping_id: parsed.data.mapping_id,
-    subdivision_id: parsed.data.subdivision_id,
+    oc_id: parsed.data.oc_id,
     performed_by: profile.id,
   });
 
@@ -2139,7 +2139,7 @@ export async function reactivateMappingAction(
   }
   if (!result.ok && result.kind === "collision") {
     const payload = await buildCollisionPayload(
-      parsed.data.subdivision_id,
+      parsed.data.oc_id,
       result.proposed.lot_id,
       result.proposed.canonical_sender_name,
       result.colliding_mappings,
@@ -2149,7 +2149,7 @@ export async function reactivateMappingAction(
   // ok: true case
   if (result.ok) {
     revalidatePath(
-      "/subdivisions/[subdivisionCode]/reconciliation/mappings", "page")
+      "/ocs/[ocCode]/reconciliation/mappings", "page")
     return { success: { mapping_id: result.mapping_id } };
   }
   return { error: "Unexpected reactivate state" };
@@ -2161,7 +2161,7 @@ export type DeleteMappingActionResult = {
 };
 
 export async function deleteMappingAction(
-  input: { mapping_id: string; subdivision_id: string },
+  input: { mapping_id: string; oc_id: string },
 ): Promise<DeleteMappingActionResult> {
   const parsed = mappingActionSchema.safeParse(input);
   if (!parsed.success) return { error: formatIssues(parsed.error.issues) };
@@ -2171,16 +2171,16 @@ export async function deleteMappingAction(
   if (profile.role !== "super_admin" && profile.company_role !== "admin") {
     return { error: "Only company admins can delete mappings" };
   }
-  await requireSubdivisionAccess(parsed.data.subdivision_id);
+  await requireOCAccess(parsed.data.oc_id);
 
   const result = await libDeleteMapping({
     mapping_id: parsed.data.mapping_id,
-    subdivision_id: parsed.data.subdivision_id,
+    oc_id: parsed.data.oc_id,
     performed_by: profile.id,
   });
   if (!result.ok) return { error: result.error };
 
-  revalidatePath("/subdivisions/[subdivisionCode]/reconciliation/mappings", "page");
+  revalidatePath("/ocs/[ocCode]/reconciliation/mappings", "page");
   return { success: { mapping_id: result.mapping_id } };
 }
 
@@ -2204,7 +2204,7 @@ export type ResolveMappingCollisionResult = {
 
 export async function resolveMappingCollision(
   input: {
-    subdivision_id: string;
+    oc_id: string;
     canonical_sender_name: string;
     proposed_lot_id: string;
     resolution: "update" | "keep_existing" | "remove";
@@ -2215,10 +2215,10 @@ export async function resolveMappingCollision(
   if (!parsed.success) return { error: formatIssues(parsed.error.issues) };
 
   const profile = await requireCompanyRole();
-  await requireSubdivisionAccess(parsed.data.subdivision_id);
+  await requireOCAccess(parsed.data.oc_id);
 
   const result = await resolveCollision({
-    subdivision_id: parsed.data.subdivision_id,
+    oc_id: parsed.data.oc_id,
     canonical_sender_name: parsed.data.canonical_sender_name,
     proposed_lot_id: parsed.data.proposed_lot_id,
     resolution: parsed.data.resolution,
@@ -2226,7 +2226,7 @@ export async function resolveMappingCollision(
     performed_by: profile.id,
   });
 
-  revalidatePath("/subdivisions/[subdivisionCode]/reconciliation/mappings", "page");
+  revalidatePath("/ocs/[ocCode]/reconciliation/mappings", "page");
 
   if (!result.ok) {
     return {
@@ -2259,13 +2259,13 @@ export type CreateMappingDirectResult = {
 };
 
 export async function createMappingDirectAction(input: {
-  subdivision_id: string;
+  oc_id: string;
   canonical_sender_name: string;
   lot_id: string;
   raw_example?: string;
 }): Promise<CreateMappingDirectResult> {
   if (
-    !input.subdivision_id ||
+    !input.oc_id ||
     !input.canonical_sender_name ||
     !input.lot_id
   ) {
@@ -2273,24 +2273,24 @@ export async function createMappingDirectAction(input: {
   }
 
   const profile = await requireCompanyRole();
-  await requireSubdivisionAccess(input.subdivision_id);
+  await requireOCAccess(input.oc_id);
 
   const result = await createBankPayerMapping({
-    subdivision_id: input.subdivision_id,
+    oc_id: input.oc_id,
     canonical_sender_name: input.canonical_sender_name,
     lot_id: input.lot_id,
     raw_example: input.raw_example,
     created_by: profile.id,
   });
 
-  revalidatePath("/subdivisions/[subdivisionCode]/reconciliation/mappings", "page");
+  revalidatePath("/ocs/[ocCode]/reconciliation/mappings", "page");
 
   if (result.ok) {
     return { success: { mapping_id: result.mapping_id } };
   }
   // Fresh collision — re-route to the dialog with the new payload.
   const payload = await buildCollisionPayload(
-    input.subdivision_id,
+    input.oc_id,
     result.proposed.lot_id,
     result.proposed.canonical_sender_name,
     result.colliding_mappings,
@@ -2305,7 +2305,7 @@ export async function unmatchTransaction(
   if (!parsed.success) return { error: formatIssues(parsed.error.issues) };
 
   const profile = await requireCompanyRole();
-  await requireSubdivisionAccess(parsed.data.subdivision_id);
+  await requireOCAccess(parsed.data.oc_id);
   const supabase = createServerClient();
 
   const { data, error } = await supabase.rpc("rpc_unmatch_bank_transaction", {
@@ -2324,8 +2324,8 @@ export async function unmatchTransaction(
     new_matched_total?: number | string;
   };
 
-  await revalidateSidebarForSubdivision(parsed.data.subdivision_id);
-  revalidatePath("/subdivisions/[subdivisionCode]/reconciliation", "page");
+  await revalidateSidebarForOC(parsed.data.oc_id);
+  revalidatePath("/ocs/[ocCode]/reconciliation", "page");
   return {
     success: {
       voidedCreditIds: payload.voided_credit_ids ?? [],
@@ -2343,11 +2343,11 @@ export async function recordCashReceipt(
   if (!parsed.success) return { error: formatIssues(parsed.error.issues) };
 
   const profile = await requireCompanyRole();
-  await requireSubdivisionAccess(parsed.data.subdivision_id);
+  await requireOCAccess(parsed.data.oc_id);
   const supabase = createServerClient();
 
   const { data, error } = await supabase.rpc("rpc_record_cash_receipt", {
-    p_subdivision_id: parsed.data.subdivision_id,
+    p_oc_id: parsed.data.oc_id,
     p_lot_id: parsed.data.lot_id,
     p_bank_account_id: parsed.data.bank_account_id,
     p_fund_type: parsed.data.fund_type,
@@ -2372,10 +2372,10 @@ export async function recordCashReceipt(
   // PRE_LAUNCH_CLEANUP records the option of extending detection to
   // receipts once notice-linkage support lands.
 
-  await revalidateSidebarForSubdivision(parsed.data.subdivision_id);
-  revalidatePath("/subdivisions/[subdivisionCode]/reconciliation", "page");
-  revalidatePath("/subdivisions/[subdivisionCode]/bank-account", "page");
-  revalidatePath("/subdivisions/[subdivisionCode]/lots/[lotId]", "page");
+  await revalidateSidebarForOC(parsed.data.oc_id);
+  revalidatePath("/ocs/[ocCode]/reconciliation", "page");
+  revalidatePath("/ocs/[ocCode]/bank-account", "page");
+  revalidatePath("/ocs/[ocCode]/lots/[lotId]", "page");
   return {
     success: {
       receiptId: payload.receipt_id ?? "",
@@ -2392,7 +2392,7 @@ export async function depositUndepositedFunds(
   if (!parsed.success) return { error: formatIssues(parsed.error.issues) };
 
   const profile = await requireCompanyRole();
-  await requireSubdivisionAccess(parsed.data.subdivision_id);
+  await requireOCAccess(parsed.data.oc_id);
   const supabase = createServerClient();
 
   const { data, error } = await supabase.rpc("rpc_deposit_undeposited_funds", {
@@ -2428,9 +2428,9 @@ export async function depositUndepositedFunds(
     }
   }
 
-  await revalidateSidebarForSubdivision(parsed.data.subdivision_id);
-  revalidatePath("/subdivisions/[subdivisionCode]/reconciliation", "page");
-  revalidatePath("/subdivisions/[subdivisionCode]/bank-account", "page");
+  await revalidateSidebarForOC(parsed.data.oc_id);
+  revalidatePath("/ocs/[ocCode]/reconciliation", "page");
+  revalidatePath("/ocs/[ocCode]/bank-account", "page");
   return {
     success: {
       clearedReceiptNumbers: payload.cleared_receipt_numbers ?? [],
@@ -2446,7 +2446,7 @@ export async function excludeTransaction(
   if (!parsed.success) return { error: formatIssues(parsed.error.issues) };
 
   const profile = await requireCompanyRole();
-  await requireSubdivisionAccess(parsed.data.subdivision_id);
+  await requireOCAccess(parsed.data.oc_id);
   const supabase = createServerClient();
 
   const { error } = await supabase.rpc("rpc_exclude_bank_transaction", {
@@ -2457,8 +2457,8 @@ export async function excludeTransaction(
 
   if (error) return { error: error.message };
 
-  await revalidateSidebarForSubdivision(parsed.data.subdivision_id);
-  revalidatePath("/subdivisions/[subdivisionCode]/reconciliation", "page");
+  await revalidateSidebarForOC(parsed.data.oc_id);
+  revalidatePath("/ocs/[ocCode]/reconciliation", "page");
   return { success: true };
 }
 
@@ -2469,7 +2469,7 @@ export async function unexcludeTransaction(
   if (!parsed.success) return { error: formatIssues(parsed.error.issues) };
 
   const profile = await requireCompanyRole();
-  await requireSubdivisionAccess(parsed.data.subdivision_id);
+  await requireOCAccess(parsed.data.oc_id);
   const supabase = createServerClient();
 
   const { error } = await supabase.rpc("rpc_unexclude_bank_transaction", {
@@ -2479,8 +2479,8 @@ export async function unexcludeTransaction(
 
   if (error) return { error: error.message };
 
-  await revalidateSidebarForSubdivision(parsed.data.subdivision_id);
-  revalidatePath("/subdivisions/[subdivisionCode]/reconciliation", "page");
+  await revalidateSidebarForOC(parsed.data.oc_id);
+  revalidatePath("/ocs/[ocCode]/reconciliation", "page");
   return { success: true };
 }
 
@@ -2491,7 +2491,7 @@ export async function voidBankTransaction(
   if (!parsed.success) return { error: formatIssues(parsed.error.issues) };
 
   const profile = await requireCompanyRole();
-  await requireSubdivisionAccess(parsed.data.subdivision_id);
+  await requireOCAccess(parsed.data.oc_id);
   const supabase = createServerClient();
 
   const { data: bt, error: btErr } = await supabase
@@ -2567,7 +2567,7 @@ export async function voidBankTransaction(
 
   await supabase.from("audit_log").insert({
     profile_id: profile.id,
-    subdivision_id: parsed.data.subdivision_id,
+    oc_id: parsed.data.oc_id,
     action: "bank_transaction.voided",
     entity_type: "bank_transaction",
     entity_id: parsed.data.bank_transaction_id,
@@ -2578,9 +2578,9 @@ export async function voidBankTransaction(
     },
   });
 
-  await revalidateSidebarForSubdivision(parsed.data.subdivision_id);
-  revalidatePath("/subdivisions/[subdivisionCode]/reconciliation", "page");
-  revalidatePath("/subdivisions/[subdivisionCode]/bank-account", "page");
+  await revalidateSidebarForOC(parsed.data.oc_id);
+  revalidatePath("/ocs/[ocCode]/reconciliation", "page");
+  revalidatePath("/ocs/[ocCode]/bank-account", "page");
   return { success: { voidedCreditIds, reopenedReceiptIds } };
 }
 
@@ -2591,16 +2591,16 @@ export async function voidUndepositedReceipt(
   if (!parsed.success) return { error: formatIssues(parsed.error.issues) };
 
   const profile = await requireCompanyRole();
-  await requireSubdivisionAccess(parsed.data.subdivision_id);
+  await requireOCAccess(parsed.data.oc_id);
   const supabase = createServerClient();
 
   const { data: uf, error: ufErr } = await supabase
     .from("undeposited_funds_entries")
-    .select("id, status, linked_ledger_credit_id, subdivision_id")
+    .select("id, status, linked_ledger_credit_id, oc_id")
     .eq("id", parsed.data.receipt_id)
     .single();
   if (ufErr || !uf) return { error: "Receipt not found" };
-  if (uf.subdivision_id !== parsed.data.subdivision_id) return { error: "Receipt does not belong to this subdivision" };
+  if (uf.oc_id !== parsed.data.oc_id) return { error: "Receipt does not belong to this oc" };
   if (uf.status === "voided") return { error: "Receipt is already voided" };
   if (uf.status === "deposited") {
     return {
@@ -2630,16 +2630,16 @@ export async function voidUndepositedReceipt(
 
   await supabase.from("audit_log").insert({
     profile_id: profile.id,
-    subdivision_id: parsed.data.subdivision_id,
+    oc_id: parsed.data.oc_id,
     action: "receipt.voided",
     entity_type: "undeposited_funds_entry",
     entity_id: parsed.data.receipt_id,
     metadata: { reason: parsed.data.reason, voided_credit_id: uf.linked_ledger_credit_id },
   });
 
-  revalidatePath("/subdivisions/[subdivisionCode]/bank-account", "page");
-  await revalidateSidebarForSubdivision(parsed.data.subdivision_id);
-  revalidatePath("/subdivisions/[subdivisionCode]/reconciliation", "page");
+  revalidatePath("/ocs/[ocCode]/bank-account", "page");
+  await revalidateSidebarForOC(parsed.data.oc_id);
+  revalidatePath("/ocs/[ocCode]/reconciliation", "page");
   return { success: { voidedCreditId: uf.linked_ledger_credit_id } };
 }
 
@@ -2648,10 +2648,10 @@ export async function voidUndepositedReceipt(
 // ============================================================================
 
 export async function previewVoidBankTransaction(
-  subdivisionId: string,
+  ocId: string,
   bankTransactionId: string,
 ): Promise<VoidCascadePreview> {
-  await requireSubdivisionAccess(subdivisionId);
+  await requireOCAccess(ocId);
   const supabase = createServerClient();
 
   const { data: bt } = await supabase
@@ -2773,18 +2773,18 @@ export async function previewVoidBankTransaction(
 }
 
 export async function previewVoidLedgerEntry(
-  subdivisionId: string,
+  ocId: string,
   entryId: string,
 ): Promise<VoidCascadePreview> {
-  await requireSubdivisionAccess(subdivisionId);
+  await requireOCAccess(ocId);
   const supabase = createServerClient();
 
   const { data: entry } = await supabase
     .from("lot_ledger_entries")
-    .select("id, lot_id, subdivision_id, amount, category, status, entry_type, description")
+    .select("id, lot_id, oc_id, amount, category, status, entry_type, description")
     .eq("id", entryId)
     .single();
-  if (!entry || entry.subdivision_id !== subdivisionId) throw new Error("Ledger entry not found");
+  if (!entry || entry.oc_id !== ocId) throw new Error("Ledger entry not found");
 
   let blocker: string | null = null;
   if (entry.status === "voided") blocker = "Entry is already voided.";
@@ -2834,20 +2834,20 @@ export async function previewVoidLedgerEntry(
 }
 
 export async function previewVoidUndepositedReceipt(
-  subdivisionId: string,
+  ocId: string,
   receiptId: string,
 ): Promise<VoidCascadePreview> {
-  await requireSubdivisionAccess(subdivisionId);
+  await requireOCAccess(ocId);
   const supabase = createServerClient();
 
   const { data: uf } = await supabase
     .from("undeposited_funds_entries")
     .select(
-      "id, receipt_number, lot_id, amount, status, linked_ledger_credit_id, subdivision_id, payment_method, cheque_number",
+      "id, receipt_number, lot_id, amount, status, linked_ledger_credit_id, oc_id, payment_method, cheque_number",
     )
     .eq("id", receiptId)
     .single();
-  if (!uf || uf.subdivision_id !== subdivisionId) throw new Error("Receipt not found");
+  if (!uf || uf.oc_id !== ocId) throw new Error("Receipt not found");
 
   let blocker: string | null = null;
   if (uf.status === "voided") blocker = "Receipt is already voided.";

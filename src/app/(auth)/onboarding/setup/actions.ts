@@ -111,7 +111,7 @@ export async function createCompany(formData: {
   return { companyId: company.id };
 }
 
-export async function createSubdivision(formData: {
+export async function createOC(formData: {
   plan_number: string;
   name: string;
   address: string;
@@ -132,9 +132,9 @@ export async function createSubdivision(formData: {
 
   const supabase = createServerClient();
 
-  // Create subdivision
-  const { data: subdivision, error: subError } = await supabase
-    .from("subdivisions")
+  // Create oc
+  const { data: oc, error: subError } = await supabase
+    .from("owners_corporations")
     .insert({
       management_company_id: profile.management_company_id,
       name: formData.name,
@@ -147,14 +147,14 @@ export async function createSubdivision(formData: {
     .select("id")
     .single();
 
-  if (subError || !subdivision) {
-    console.error("Failed to create subdivision:", subError);
-    return { error: "Failed to create subdivision. Please try again." };
+  if (subError || !oc) {
+    console.error("Failed to create oc:", subError);
+    return { error: "Failed to create oc. Please try again." };
   }
 
   // Create lots
   const lots = Array.from({ length: formData.total_lots }, (_, i) => ({
-    subdivision_id: subdivision.id,
+    oc_id: oc.id,
     lot_number: i + 1,
     lot_entitlement: 0,
     lot_liability: 0,
@@ -164,14 +164,14 @@ export async function createSubdivision(formData: {
 
   if (lotsError) {
     console.error("Failed to create lots:", lotsError);
-    return { error: "Subdivision created but failed to create lots." };
+    return { error: "OC created but failed to create lots." };
   }
 
-  // Add creator as subdivision member
+  // Add creator as oc member
   const { error: memberError } = await supabase
-    .from("subdivision_members")
+    .from("oc_members")
     .insert({
-      subdivision_id: subdivision.id,
+      oc_id: oc.id,
       profile_id: profile.id,
       role: "strata_manager",
       is_primary_contact: true,
@@ -181,7 +181,7 @@ export async function createSubdivision(formData: {
     console.error("Failed to add member:", memberError);
   }
 
-  return { subdivisionId: subdivision.id };
+  return { ocId: oc.id };
 }
 
 export async function sendInvitations(invites: { email: string; name: string }[]) {
@@ -195,16 +195,16 @@ export async function sendInvitations(invites: { email: string; name: string }[]
 
   const supabase = createServerClient();
 
-  // Get the first subdivision for this company
-  const { data: subdivision } = await supabase
-    .from("subdivisions")
+  // Get the first oc for this company
+  const { data: oc } = await supabase
+    .from("owners_corporations")
     .select("id")
     .eq("management_company_id", profile.management_company_id)
     .limit(1)
     .single();
 
-  if (!subdivision) {
-    return { error: "No subdivision found. Please complete Step 2 first." };
+  if (!oc) {
+    return { error: "No oc found. Please complete Step 2 first." };
   }
 
   const validInvites = invites.filter((inv) => {
@@ -217,7 +217,7 @@ export async function sendInvitations(invites: { email: string; name: string }[]
   }
 
   const invitationRows = validInvites.map((inv) => ({
-    subdivision_id: subdivision.id,
+    oc_id: oc.id,
     email: inv.email,
     name: inv.name,
     role: "strata_manager" as const,
@@ -264,15 +264,15 @@ export async function getOnboardingState() {
     return { state: "needs-setup" as const };
   }
 
-  // Check if they have any subdivisions
-  const { data: subdivisions } = await supabase
-    .from("subdivisions")
+  // Check if they have any ocs
+  const { data: ocs } = await supabase
+    .from("owners_corporations")
     .select("id")
     .eq("management_company_id", profile.management_company_id)
     .limit(1);
 
-  if (!subdivisions || subdivisions.length === 0) {
-    return { state: "needs-subdivision" as const };
+  if (!ocs || ocs.length === 0) {
+    return { state: "needs-oc" as const };
   }
 
   return { state: "complete" as const };
@@ -298,8 +298,8 @@ export async function getSetupSummary() {
     .eq("id", profile.management_company_id)
     .single();
 
-  const { data: subdivision } = await supabase
-    .from("subdivisions")
+  const { data: oc } = await supabase
+    .from("owners_corporations")
     .select("name, total_lots")
     .eq("management_company_id", profile.management_company_id)
     .limit(1)
@@ -307,8 +307,8 @@ export async function getSetupSummary() {
 
   return {
     companyName: company?.name ?? "",
-    subdivisionName: subdivision?.name ?? "",
-    totalLots: subdivision?.total_lots ?? 0,
+    ocName: oc?.name ?? "",
+    totalLots: oc?.total_lots ?? 0,
   };
 }
 

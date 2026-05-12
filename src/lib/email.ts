@@ -28,8 +28,8 @@ interface SendInvitationEmailParams {
   to: string;
   inviteeName: string | null;
   role: "lot_owner" | "strata_manager";
-  subdivisionName: string;
-  subdivisionAddress: string;
+  ocName: string;
+  ocAddress: string;
   lotNumber?: number | null;
   inviteUrl: string;
   invitedByName?: string;
@@ -129,8 +129,8 @@ export async function sendInvitationEmail({
   to,
   inviteeName,
   role,
-  subdivisionName,
-  subdivisionAddress,
+  ocName,
+  ocAddress,
   lotNumber,
   inviteUrl,
   invitedByName,
@@ -142,14 +142,14 @@ export async function sendInvitationEmail({
   const invitedByLine = invitedByName ? ` by ${invitedByName}` : "";
 
   if (isDryRun()) {
-    console.log(`[email-dry-run] type=invitation to=${to} subject="You've been invited to ${subdivisionName}"`);
+    console.log(`[email-dry-run] type=invitation to=${to} subject="You've been invited to ${ocName}"`);
     return { success: true };
   }
 
   const { error } = await getResend().emails.send({
     from: FROM_INVITES,
     to,
-    subject: `You've been invited to ${subdivisionName}`,
+    subject: `You've been invited to ${ocName}`,
     html: `
       <div style="font-family:'Inter',system-ui,sans-serif;max-width:520px;margin:0 auto;padding:32px 0;">
         ${logoImg(companyLogoUrl)}
@@ -158,8 +158,8 @@ export async function sendInvitationEmail({
           ${greeting} you've been invited${invitedByLine} to join as a <strong>${roleLabel}</strong>.
         </p>
         <div style="background:#FAF7F0;border:1px solid #E5E0D3;border-radius:6px;padding:16px;margin:0 0 24px;">
-          <p style="margin:0 0 4px;font-size:15px;font-weight:600;color:#0E314C;">${subdivisionName}</p>
-          <p style="margin:0 0 8px;color:#4A5868;font-size:14px;">${subdivisionAddress}</p>
+          <p style="margin:0 0 4px;font-size:15px;font-weight:600;color:#0E314C;">${ocName}</p>
+          <p style="margin:0 0 8px;color:#4A5868;font-size:14px;">${ocAddress}</p>
           ${lotLine}
         </div>
         <a href="${inviteUrl}" style="display:inline-block;background:#CFA753;color:#ffffff;font-size:14px;font-weight:600;text-decoration:none;padding:10px 24px;border-radius:6px;">
@@ -185,8 +185,8 @@ export async function sendInvitationEmail({
 interface SendLevyEmailParams {
   to: string;
   ownerName: string | null;
-  subdivisionName: string;
-  subdivisionAddress: string;
+  ocName: string;
+  ocAddress: string;
   companyLogoUrl?: string | null;
   referenceNumber: string;
   dueDate: string;
@@ -199,8 +199,8 @@ interface SendLevyEmailParams {
 export async function sendLevyEmail({
   to,
   ownerName,
-  subdivisionName,
-  subdivisionAddress,
+  ocName,
+  ocAddress,
   companyLogoUrl,
   referenceNumber,
   dueDate,
@@ -213,20 +213,20 @@ export async function sendLevyEmail({
   const logoHtml = logoImg(companyLogoUrl);
 
   if (isDryRun()) {
-    console.log(`[email-dry-run] type=levy_notice to=${to} ref=${referenceNumber} subject="Levy Notice — ${subdivisionName} — ${periodLabel}"`);
+    console.log(`[email-dry-run] type=levy_notice to=${to} ref=${referenceNumber} subject="Levy Notice — ${ocName} — ${periodLabel}"`);
     return { success: true };
   }
 
   const { error } = await getResend().emails.send({
     from: FROM_LEVIES,
     to,
-    subject: `Levy Notice — ${subdivisionName} — ${periodLabel}`,
+    subject: `Levy Notice — ${ocName} — ${periodLabel}`,
     html: `
       <div style="font-family:'Inter',system-ui,sans-serif;max-width:520px;margin:0 auto;padding:32px 0;">
         ${logoHtml}
         <h2 style="margin:0 0 16px;font-size:20px;font-weight:600;color:#0E314C;">Levy Notice</h2>
         <p style="margin:0 0 20px;color:#0E314C;font-size:14px;line-height:1.6;">
-          ${greeting} a new levy notice has been issued for <strong>${subdivisionAddress}</strong>.
+          ${greeting} a new levy notice has been issued for <strong>${ocAddress}</strong>.
         </p>
         <div style="background:#FAF7F0;border:1px solid #E5E0D3;border-radius:6px;padding:16px;margin:0 0 24px;">
           <p style="margin:0 0 4px;font-size:13px;color:#4A5868;">Reference</p>
@@ -295,19 +295,19 @@ async function sendSystemEmail(
 
 export async function sendBasiqReauthReminderEmail(params: {
   to: string;
-  subdivisionName: string;
+  ocName: string;
   daysRemaining: number;
   reauthUrl: string;
   companyLogoUrl?: string | null;
 }): Promise<BasiqEmailResult> {
-  const { to, subdivisionName, daysRemaining, reauthUrl, companyLogoUrl } = params;
-  const subject = `Bank feed reauthorisation required in ${daysRemaining} day${daysRemaining === 1 ? "" : "s"} — ${subdivisionName}`;
+  const { to, ocName, daysRemaining, reauthUrl, companyLogoUrl } = params;
+  const subject = `Bank feed reauthorisation required in ${daysRemaining} day${daysRemaining === 1 ? "" : "s"} — ${ocName}`;
   const html = `
     <div style="font-family:'Inter',system-ui,sans-serif;max-width:520px;margin:0 auto;padding:24px 0;">
       ${logoImg(companyLogoUrl)}
       <h2 style="margin:0 0 12px;font-size:18px;font-weight:600;color:#0E314C;">Bank feed expiring soon</h2>
       <p style="margin:0 0 16px;color:#0E314C;font-size:14px;line-height:1.5;">
-        The automatic bank feed for <strong>${subdivisionName}</strong> will expire in
+        The automatic bank feed for <strong>${ocName}</strong> will expire in
         <strong>${daysRemaining} day${daysRemaining === 1 ? "" : "s"}</strong>. Reauthorise to keep transactions syncing.
       </p>
       <a href="${reauthUrl}" style="display:inline-block;background:#CFA753;color:#ffffff;font-size:14px;font-weight:600;text-decoration:none;padding:10px 20px;border-radius:6px;">
@@ -321,18 +321,18 @@ export async function sendBasiqReauthReminderEmail(params: {
 
 export async function sendBasiqConsentExpiredEmail(params: {
   to: string;
-  subdivisionName: string;
+  ocName: string;
   reauthUrl: string;
   companyLogoUrl?: string | null;
 }): Promise<BasiqEmailResult> {
-  const { to, subdivisionName, reauthUrl, companyLogoUrl } = params;
-  const subject = `Bank feed disconnected — ${subdivisionName}`;
+  const { to, ocName, reauthUrl, companyLogoUrl } = params;
+  const subject = `Bank feed disconnected — ${ocName}`;
   const html = `
     <div style="font-family:'Inter',system-ui,sans-serif;max-width:520px;margin:0 auto;padding:24px 0;">
       ${logoImg(companyLogoUrl)}
       <h2 style="margin:0 0 12px;font-size:18px;font-weight:600;color:#b91c1c;">Bank feed disconnected</h2>
       <p style="margin:0 0 16px;color:#0E314C;font-size:14px;line-height:1.5;">
-        The automatic bank feed for <strong>${subdivisionName}</strong> has expired. New transactions will not be imported until you reauthorise.
+        The automatic bank feed for <strong>${ocName}</strong> has expired. New transactions will not be imported until you reauthorise.
       </p>
       <a href="${reauthUrl}" style="display:inline-block;background:#CFA753;color:#ffffff;font-size:14px;font-weight:600;text-decoration:none;padding:10px 20px;border-radius:6px;">
         Reauthorise now
@@ -345,7 +345,7 @@ export async function sendBasiqConsentExpiredEmail(params: {
 
 export async function sendBasiqGapReconciliationEmail(params: {
   to: string;
-  subdivisionName: string;
+  ocName: string;
   gapHours: number;
   backfilledCount: number;
   autoMatchedCount: number;
@@ -355,7 +355,7 @@ export async function sendBasiqGapReconciliationEmail(params: {
 }): Promise<BasiqEmailResult> {
   const {
     to,
-    subdivisionName,
+    ocName,
     gapHours,
     backfilledCount,
     autoMatchedCount,
@@ -363,13 +363,13 @@ export async function sendBasiqGapReconciliationEmail(params: {
     reportUrl,
     companyLogoUrl,
   } = params;
-  const subject = `Bank feed reconnected — reconciliation gap report for ${subdivisionName}`;
+  const subject = `Bank feed reconnected — reconciliation gap report for ${ocName}`;
   const html = `
     <div style="font-family:'Inter',system-ui,sans-serif;max-width:520px;margin:0 auto;padding:24px 0;">
       ${logoImg(companyLogoUrl)}
       <h2 style="margin:0 0 12px;font-size:18px;font-weight:600;color:#0E314C;">Bank feed reconnected</h2>
       <p style="margin:0 0 12px;color:#0E314C;font-size:14px;line-height:1.5;">
-        The bank feed for <strong>${subdivisionName}</strong> was disconnected for <strong>${gapHours} hour${gapHours === 1 ? "" : "s"}</strong>.
+        The bank feed for <strong>${ocName}</strong> was disconnected for <strong>${gapHours} hour${gapHours === 1 ? "" : "s"}</strong>.
       </p>
       <ul style="margin:0 0 16px;padding-left:20px;color:#0E314C;font-size:14px;line-height:1.6;">
         <li>${backfilledCount} transaction${backfilledCount === 1 ? "" : "s"} imported during reconnection</li>
@@ -389,19 +389,19 @@ export async function sendBasiqGapReconciliationEmail(params: {
 
 export async function sendBasiqCommitteeGapNotificationEmail(params: {
   to: string;
-  subdivisionName: string;
+  ocName: string;
   gapHours: number;
   companyLogoUrl?: string | null;
 }): Promise<BasiqEmailResult> {
-  const { to, subdivisionName, gapHours, companyLogoUrl } = params;
+  const { to, ocName, gapHours, companyLogoUrl } = params;
   const days = Math.round(gapHours / 24);
-  const subject = `Extended bank-feed outage — ${subdivisionName}`;
+  const subject = `Extended bank-feed outage — ${ocName}`;
   const html = `
     <div style="font-family:'Inter',system-ui,sans-serif;max-width:520px;margin:0 auto;padding:24px 0;">
       ${logoImg(companyLogoUrl)}
       <h2 style="margin:0 0 12px;font-size:18px;font-weight:600;color:#b45309;">Extended bank-feed outage</h2>
       <p style="margin:0 0 12px;color:#0E314C;font-size:14px;line-height:1.5;">
-        The automatic bank feed for <strong>${subdivisionName}</strong> was disconnected for approximately <strong>${days} days</strong>.
+        The automatic bank feed for <strong>${ocName}</strong> was disconnected for approximately <strong>${days} days</strong>.
       </p>
       <p style="margin:0 0 0;color:#0E314C;font-size:14px;line-height:1.5;">
         During this time, arrears notifications may have been issued based on stale reconciliation state. A detailed gap report is available in the StrataWise dashboard.
@@ -420,8 +420,8 @@ export async function sendBasiqCommitteeGapNotificationEmail(params: {
 interface SharedSenderHeader {
   to: string;
   ownerName: string | null;
-  subdivisionName: string;
-  subdivisionAddress: string;
+  ocName: string;
+  ocAddress: string;
   // PP6-D-D-fix-logo: company logo URL resolved via the helper in
   // src/lib/notifications.ts:resolveCompanyLogo. Null/undefined →
   // text-only header (current management_companies typically have
@@ -459,14 +459,14 @@ export interface SendPaymentReceivedEmailParams extends SharedSenderHeader {
   description: string;
   lotLabel: string;
   reference: string | null;
-  subdivisionShortCode: string;
+  ocShortCode: string;
 }
 
 export async function sendPaymentReceivedEmail(
   params: SendPaymentReceivedEmailParams,
 ): Promise<EmailSendResult> {
-  const { to, ownerName, subdivisionName, subdivisionAddress, amount, paymentDate, description, lotLabel, reference, subdivisionShortCode, companyLogoUrl } = params;
-  const subject = `Payment received — ${subdivisionName}`;
+  const { to, ownerName, ocName, ocAddress, amount, paymentDate, description, lotLabel, reference, ocShortCode, companyLogoUrl } = params;
+  const subject = `Payment received — ${ocName}`;
 
   if (isDryRun()) {
     console.log(`[email-dry-run] type=payment_received to=${to} amount=${amount.toFixed(2)} subject="${subject}"`);
@@ -478,7 +478,7 @@ export async function sendPaymentReceivedEmail(
     : "";
 
   const ctaBlock = buildCtaBlock(
-    subdivisionShortCode,
+    ocShortCode,
     "my-payments",
     "View payment history",
     "Log in to StrataWise to view your full payment history.",
@@ -487,7 +487,7 @@ export async function sendPaymentReceivedEmail(
   const html = brandShell(`
     <h2 style="margin:0 0 16px;font-size:20px;font-weight:600;color:#0E314C;">Payment received</h2>
     <p style="margin:0 0 20px;color:#0E314C;font-size:14px;line-height:1.6;">
-      ${greeting(ownerName)} we've recorded a payment against your account at <strong>${escapeHtml(subdivisionAddress)}</strong>.
+      ${greeting(ownerName)} we've recorded a payment against your account at <strong>${escapeHtml(ocAddress)}</strong>.
     </p>
     <div style="background:#FAF7F0;border:1px solid #E5E0D3;border-radius:6px;padding:16px;margin:0 0 24px;">
       <p style="margin:0 0 4px;font-size:13px;color:#4A5868;">Lot</p>
@@ -523,7 +523,7 @@ export interface SendOverdueReminderEmailParams extends SharedSenderHeader {
   daysOverdue: number;
   dueDate: string;
   penaltyInterestAccrued: number; // 0 if no accrual yet
-  subdivisionShortCode: string;   // for /my-arrears CTA link
+  ocShortCode: string;   // for /my-arrears CTA link
   // PP7-A: optional PDF attachment. When set, attached via Resend
   // attachments[]. Caller (escalation engine) resolves the buffer via
   // getLevyNoticePdfBuffer(levyId, supabase); null means body-only fallback.
@@ -534,8 +534,8 @@ export interface SendOverdueReminderEmailParams extends SharedSenderHeader {
 export async function sendOverdueReminderEmail(
   params: SendOverdueReminderEmailParams,
 ): Promise<EmailSendResult> {
-  const { to, ownerName, subdivisionName, subdivisionAddress, referenceNumber, amountOutstanding, daysOverdue, dueDate, penaltyInterestAccrued, subdivisionShortCode, companyLogoUrl, pdfBuffer, pdfFilename } = params;
-  const subject = `Your levy is overdue — ${subdivisionName}`;
+  const { to, ownerName, ocName, ocAddress, referenceNumber, amountOutstanding, daysOverdue, dueDate, penaltyInterestAccrued, ocShortCode, companyLogoUrl, pdfBuffer, pdfFilename } = params;
+  const subject = `Your levy is overdue — ${ocName}`;
 
   if (isDryRun()) {
     console.log(`[email-dry-run] type=overdue_reminder to=${to} ref=${referenceNumber} days=${daysOverdue} interest=${penaltyInterestAccrued.toFixed(2)} pdf=${pdfBuffer ? "yes" : "no"} subject="${subject}"`);
@@ -554,7 +554,7 @@ export async function sendOverdueReminderEmail(
     ? `<p style="margin:0 0 16px;color:#0E314C;font-size:14px;line-height:1.6;">
         Click below to see your arrears, payment options, and full ledger.
       </p>
-      <a href="${appBaseUrl}/subdivisions/${escapeHtml(subdivisionShortCode)}/my-arrears" style="display:inline-block;background:#CFA753;color:#ffffff;font-size:14px;font-weight:600;text-decoration:none;padding:10px 24px;border-radius:6px;margin:0 0 24px;">
+      <a href="${appBaseUrl}/ocs/${escapeHtml(ocShortCode)}/my-arrears" style="display:inline-block;background:#CFA753;color:#ffffff;font-size:14px;font-weight:600;text-decoration:none;padding:10px 24px;border-radius:6px;margin:0 0 24px;">
         View outstanding balance
       </a>`
     : `<p style="margin:0 0 24px;color:#0E314C;font-size:14px;">
@@ -564,7 +564,7 @@ export async function sendOverdueReminderEmail(
   const html = brandShell(`
     <h2 style="margin:0 0 16px;font-size:20px;font-weight:600;color:#0E314C;">Levy overdue — friendly reminder</h2>
     <p style="margin:0 0 20px;color:#0E314C;font-size:14px;line-height:1.6;">
-      ${greeting(ownerName)} our records show a levy at <strong>${escapeHtml(subdivisionAddress)}</strong> is now <strong>${daysOverdue} days</strong> past its due date. If you've already paid, you can disregard this notice — it may take a day or two to reflect on our system.
+      ${greeting(ownerName)} our records show a levy at <strong>${escapeHtml(ocAddress)}</strong> is now <strong>${daysOverdue} days</strong> past its due date. If you've already paid, you can disregard this notice — it may take a day or two to reflect on our system.
     </p>
     <div style="background:#fef9f3;border:1px solid #fde7d0;border-radius:6px;padding:16px;margin:0 0 24px;">
       <p style="margin:0 0 4px;font-size:13px;color:#4A5868;">Reference</p>
@@ -612,14 +612,14 @@ export interface SendClaimMatchedEmailParams extends SharedSenderHeader {
   claimDate: string;
   paymentMethod: string;
   lotLabel: string;
-  subdivisionShortCode: string;
+  ocShortCode: string;
 }
 
 export async function sendClaimMatchedEmail(
   params: SendClaimMatchedEmailParams,
 ): Promise<EmailSendResult> {
-  const { to, ownerName, subdivisionName, subdivisionAddress, amount, claimDate, paymentMethod, lotLabel, subdivisionShortCode, companyLogoUrl } = params;
-  const subject = `Your payment has been confirmed — ${subdivisionName}`;
+  const { to, ownerName, ocName, ocAddress, amount, claimDate, paymentMethod, lotLabel, ocShortCode, companyLogoUrl } = params;
+  const subject = `Your payment has been confirmed — ${ocName}`;
 
   if (isDryRun()) {
     console.log(`[email-dry-run] type=claim_matched to=${to} amount=${amount.toFixed(2)} subject="${subject}"`);
@@ -627,7 +627,7 @@ export async function sendClaimMatchedEmail(
   }
 
   const ctaBlock = buildCtaBlock(
-    subdivisionShortCode,
+    ocShortCode,
     "my-payments",
     "View payment confirmation",
     "Log in to StrataWise to view this confirmed payment.",
@@ -636,7 +636,7 @@ export async function sendClaimMatchedEmail(
   const html = brandShell(`
     <h2 style="margin:0 0 16px;font-size:20px;font-weight:600;color:#0E314C;">Payment confirmed</h2>
     <p style="margin:0 0 20px;color:#0E314C;font-size:14px;line-height:1.6;">
-      ${greeting(ownerName)} the payment claim you submitted for <strong>${escapeHtml(subdivisionAddress)}</strong> has been matched and applied to your account.
+      ${greeting(ownerName)} the payment claim you submitted for <strong>${escapeHtml(ocAddress)}</strong> has been matched and applied to your account.
     </p>
     <div style="background:#f0fdf4;border:1px solid #bbf7d0;border-radius:6px;padding:16px;margin:0 0 24px;">
       <p style="margin:0 0 4px;font-size:13px;color:#4A5868;">Lot</p>
@@ -671,14 +671,14 @@ export interface SendClaimRejectedEmailParams extends SharedSenderHeader {
   claimDate: string;
   rejectionReason: string;
   lotLabel: string;
-  subdivisionShortCode: string;
+  ocShortCode: string;
 }
 
 export async function sendClaimRejectedEmail(
   params: SendClaimRejectedEmailParams,
 ): Promise<EmailSendResult> {
-  const { to, ownerName, subdivisionName, subdivisionAddress, amount, claimDate, rejectionReason, lotLabel, subdivisionShortCode, companyLogoUrl } = params;
-  const subject = `Update on your payment claim — ${subdivisionName}`;
+  const { to, ownerName, ocName, ocAddress, amount, claimDate, rejectionReason, lotLabel, ocShortCode, companyLogoUrl } = params;
+  const subject = `Update on your payment claim — ${ocName}`;
 
   if (isDryRun()) {
     console.log(`[email-dry-run] type=claim_rejected to=${to} amount=${amount.toFixed(2)} subject="${subject}"`);
@@ -686,7 +686,7 @@ export async function sendClaimRejectedEmail(
   }
 
   const ctaBlock = buildCtaBlock(
-    subdivisionShortCode,
+    ocShortCode,
     "my-arrears",
     "Resubmit or view details",
     "Log in to StrataWise to view your outstanding balance and resubmit the claim.",
@@ -695,7 +695,7 @@ export async function sendClaimRejectedEmail(
   const html = brandShell(`
     <h2 style="margin:0 0 16px;font-size:20px;font-weight:600;color:#0E314C;">Update on your payment claim</h2>
     <p style="margin:0 0 20px;color:#0E314C;font-size:14px;line-height:1.6;">
-      ${greeting(ownerName)} after review, the payment claim you submitted for <strong>${escapeHtml(subdivisionAddress)}</strong> has not been matched. The details and the manager's note are below.
+      ${greeting(ownerName)} after review, the payment claim you submitted for <strong>${escapeHtml(ocAddress)}</strong> has not been matched. The details and the manager's note are below.
     </p>
     <div style="background:#fef2f2;border:1px solid #fecaca;border-radius:6px;padding:16px;margin:0 0 16px;">
       <p style="margin:0 0 4px;font-size:13px;color:#4A5868;">Lot</p>
@@ -730,22 +730,22 @@ export async function sendClaimRejectedEmail(
 export interface SendNewClaimSubmittedEmailParams {
   to: string;
   managerName: string | null;
-  subdivisionName: string;
+  ocName: string;
   lotLabel: string;
   ownerName: string | null;
   amount: number;
   claimDate: string;
   paymentMethod: string;
   notes: string | null;
-  subdivisionShortCode: string;
+  ocShortCode: string;
   companyLogoUrl?: string | null;
 }
 
 export async function sendNewClaimSubmittedEmail(
   params: SendNewClaimSubmittedEmailParams,
 ): Promise<EmailSendResult> {
-  const { to, managerName, subdivisionName, lotLabel, ownerName, amount, claimDate, paymentMethod, notes, subdivisionShortCode, companyLogoUrl } = params;
-  const subject = `New owner payment claim — ${subdivisionName} ${lotLabel}`;
+  const { to, managerName, ocName, lotLabel, ownerName, amount, claimDate, paymentMethod, notes, ocShortCode, companyLogoUrl } = params;
+  const subject = `New owner payment claim — ${ocName} ${lotLabel}`;
 
   if (isDryRun()) {
     console.log(`[email-dry-run] type=new_claim_submitted to=${to} amount=${amount.toFixed(2)} subject="${subject}"`);
@@ -759,7 +759,7 @@ export async function sendNewClaimSubmittedEmail(
     : "";
 
   const ctaBlock = buildCtaBlock(
-    subdivisionShortCode,
+    ocShortCode,
     "reconciliation/claims",
     "Review claim",
     "Log in to StrataWise to review this claim in the reconciliation queue.",
@@ -768,7 +768,7 @@ export async function sendNewClaimSubmittedEmail(
   const html = brandShell(`
     <h2 style="margin:0 0 16px;font-size:20px;font-weight:600;color:#0E314C;">New payment claim</h2>
     <p style="margin:0 0 20px;color:#0E314C;font-size:14px;line-height:1.6;">
-      ${greetingLine} ${escapeHtml(ownerLabel)} has submitted a payment claim for <strong>${escapeHtml(subdivisionName)}</strong> that needs your review.
+      ${greetingLine} ${escapeHtml(ownerLabel)} has submitted a payment claim for <strong>${escapeHtml(ocName)}</strong> that needs your review.
     </p>
     <div style="background:#FAF7F0;border:1px solid #E5E0D3;border-radius:6px;padding:16px;margin:0 0 16px;">
       <p style="margin:0 0 4px;font-size:13px;color:#4A5868;">Lot</p>
@@ -783,7 +783,7 @@ export async function sendNewClaimSubmittedEmail(
     ${notesBlock ? `<div style="background:#FAF7F0;border:1px solid #E5E0D3;border-radius:6px;padding:16px;margin:0 0 24px;">${notesBlock}</div>` : ""}
     ${ctaBlock}
     <p style="margin:24px 0 0;color:#4A5868;font-size:12px;line-height:1.5;">
-      You're receiving this because you're a strata manager for ${escapeHtml(subdivisionName)}.
+      You're receiving this because you're a strata manager for ${escapeHtml(ocName)}.
     </p>
   `, companyLogoUrl);
 
@@ -806,7 +806,7 @@ export async function sendNewClaimSubmittedEmail(
 
 // ─── HTML escape helper ────────────────────────────────────────────────
 // Applied to user-controlled string interpolations in the new senders to
-// guard against accidental injection from owner names, subdivision
+// guard against accidental injection from owner names, oc
 // addresses, or rejection-reason free text.
 function escapeHtml(s: string): string {
   return s
@@ -822,7 +822,7 @@ function escapeHtml(s: string): string {
 // text instruction when NEXT_PUBLIC_APP_URL is unset (avoids broken
 // anchors with relative hrefs in inline-HTML mail clients).
 function buildCtaBlock(
-  subdivisionShortCode: string,
+  ocShortCode: string,
   path: string,
   ctaLabel: string,
   fallbackText: string,
@@ -831,7 +831,7 @@ function buildCtaBlock(
   if (!appBaseUrl) {
     return `<p style="margin:0 0 24px;color:#0E314C;font-size:14px;">${escapeHtml(fallbackText)}</p>`;
   }
-  return `<a href="${appBaseUrl}/subdivisions/${escapeHtml(subdivisionShortCode)}/${path}" style="display:inline-block;background:#CFA753;color:#ffffff;font-size:14px;font-weight:600;text-decoration:none;padding:10px 24px;border-radius:6px;margin:0 0 24px;">
+  return `<a href="${appBaseUrl}/ocs/${escapeHtml(ocShortCode)}/${path}" style="display:inline-block;background:#CFA753;color:#ffffff;font-size:14px;font-weight:600;text-decoration:none;padding:10px 24px;border-radius:6px;margin:0 0 24px;">
     ${escapeHtml(ctaLabel)}
   </a>`;
 }
@@ -848,7 +848,7 @@ export interface SendSecondReminderEmailParams extends SharedSenderHeader {
   daysOverdue: number;
   dueDate: string;
   penaltyInterestAccrued: number;
-  subdivisionShortCode: string;
+  ocShortCode: string;
   pdfBuffer?: Buffer | null;
   pdfFilename?: string;
 }
@@ -857,12 +857,12 @@ export async function sendSecondReminderEmail(
   params: SendSecondReminderEmailParams,
 ): Promise<EmailSendResult> {
   const {
-    to, ownerName, subdivisionName, subdivisionAddress,
+    to, ownerName, ocName, ocAddress,
     referenceNumber, amountOutstanding, daysOverdue, dueDate,
-    penaltyInterestAccrued, subdivisionShortCode, companyLogoUrl,
+    penaltyInterestAccrued, ocShortCode, companyLogoUrl,
     pdfBuffer, pdfFilename,
   } = params;
-  const subject = `Second reminder — levy overdue ${daysOverdue}+ days — ${subdivisionName}`;
+  const subject = `Second reminder — levy overdue ${daysOverdue}+ days — ${ocName}`;
 
   if (isDryRun()) {
     console.log(`[email-dry-run] type=second_reminder to=${to} ref=${referenceNumber} days=${daysOverdue} pdf=${pdfBuffer ? "yes" : "no"} subject="${subject}"`);
@@ -874,7 +874,7 @@ export async function sendSecondReminderEmail(
     : "";
 
   const ctaBlock = buildCtaBlock(
-    subdivisionShortCode,
+    ocShortCode,
     "my-arrears",
     "View outstanding balance",
     "Log in to StrataWise to view your outstanding balance and payment options.",
@@ -883,7 +883,7 @@ export async function sendSecondReminderEmail(
   const html = brandShell(`
     <h2 style="margin:0 0 16px;font-size:20px;font-weight:600;color:#b45309;">Second reminder — levy ${daysOverdue}+ days overdue</h2>
     <p style="margin:0 0 20px;color:#0E314C;font-size:14px;line-height:1.6;">
-      ${greeting(ownerName)} our records still show an unpaid levy at <strong>${escapeHtml(subdivisionAddress)}</strong>. It is now more than <strong>${daysOverdue} days</strong> overdue and penalty interest is accruing.
+      ${greeting(ownerName)} our records still show an unpaid levy at <strong>${escapeHtml(ocAddress)}</strong>. It is now more than <strong>${daysOverdue} days</strong> overdue and penalty interest is accruing.
     </p>
     <div style="background:#fef3c7;border:1px solid #fde68a;border-radius:6px;padding:16px;margin:0 0 24px;">
       <p style="margin:0 0 4px;font-size:13px;color:#4A5868;">Reference</p>
@@ -930,7 +930,7 @@ export interface SendFinalNoticeEmailParams extends SharedSenderHeader {
   daysOverdue: number;
   dueDate: string;
   penaltyInterestAccrued: number;
-  subdivisionShortCode: string;
+  ocShortCode: string;
   // Final notice attaches a MERGED PDF: cover page (rendered via
   // sendFinalNoticeEmail's caller) + original levy notice. Caller builds
   // the merged buffer via src/lib/pdf/merge.ts.
@@ -942,12 +942,12 @@ export async function sendFinalNoticeEmail(
   params: SendFinalNoticeEmailParams,
 ): Promise<EmailSendResult> {
   const {
-    to, ownerName, subdivisionName, subdivisionAddress,
+    to, ownerName, ocName, ocAddress,
     referenceNumber, amountOutstanding, daysOverdue, dueDate,
-    penaltyInterestAccrued, subdivisionShortCode, companyLogoUrl,
+    penaltyInterestAccrued, ocShortCode, companyLogoUrl,
     pdfBuffer, pdfFilename,
   } = params;
-  const subject = `FINAL NOTICE — outstanding levy — ${subdivisionName}`;
+  const subject = `FINAL NOTICE — outstanding levy — ${ocName}`;
 
   if (isDryRun()) {
     console.log(`[email-dry-run] type=levy_final_notice to=${to} ref=${referenceNumber} days=${daysOverdue} pdf=${pdfBuffer ? "yes" : "no"} subject="${subject}"`);
@@ -959,7 +959,7 @@ export async function sendFinalNoticeEmail(
     : "";
 
   const ctaBlock = buildCtaBlock(
-    subdivisionShortCode,
+    ocShortCode,
     "my-arrears",
     "View outstanding balance",
     "Log in to StrataWise to view your outstanding balance and pay the levy immediately.",
@@ -968,7 +968,7 @@ export async function sendFinalNoticeEmail(
   const html = brandShell(`
     <h2 style="margin:0 0 16px;font-size:20px;font-weight:700;color:#b91c1c;">FINAL NOTICE — levy outstanding</h2>
     <p style="margin:0 0 20px;color:#0E314C;font-size:14px;line-height:1.6;">
-      ${greeting(ownerName)} this is a <strong>final notice</strong> for the unpaid levy at <strong>${escapeHtml(subdivisionAddress)}</strong>. The levy is now more than <strong>${daysOverdue} days</strong> overdue.
+      ${greeting(ownerName)} this is a <strong>final notice</strong> for the unpaid levy at <strong>${escapeHtml(ocAddress)}</strong>. The levy is now more than <strong>${daysOverdue} days</strong> overdue.
     </p>
     <div style="background:#fef2f2;border:1px solid #fecaca;border-radius:6px;padding:16px;margin:0 0 24px;">
       <p style="margin:0 0 4px;font-size:13px;color:#4A5868;">Reference</p>

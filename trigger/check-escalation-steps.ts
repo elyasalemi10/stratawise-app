@@ -49,7 +49,7 @@ export const dailyCheckEscalationSteps = schedules.task({
       console.error("daily-check-escalation-steps: job threw:", msg);
       await supabase.from("audit_log").insert({
         profile_id: systemProfileId,
-        subdivision_id: null,
+        oc_id: null,
         action: "escalation_step_cron.failed",
         entity_type: "escalation_step_cron",
         entity_id: null,
@@ -67,7 +67,7 @@ export const dailyCheckEscalationSteps = schedules.task({
 
     await supabase.from("audit_log").insert({
       profile_id: systemProfileId,
-      subdivision_id: null,
+      oc_id: null,
       action: "escalation_step_cron.run",
       entity_type: "escalation_step_cron",
       entity_id: null,

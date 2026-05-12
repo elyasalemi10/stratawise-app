@@ -6,16 +6,16 @@ import { createServerClient } from "@/lib/supabase";
 // ============================================================================
 // getMyArrears (PP6-D-B)
 // ----------------------------------------------------------------------------
-// Owner-facing data loader for /subdivisions/[subdivisionCode]/my-arrears.
+// Owner-facing data loader for /ocs/[ocCode]/my-arrears.
 // Returns all overdue / partially-paid / outstanding parent levies for
-// the caller's lots in the given subdivision, with linked penalty_interest
+// the caller's lots in the given oc, with linked penalty_interest
 // levies grouped under each parent.
 //
 // Two IN-clause queries (parent levies + linked penalty levies),
 // JS-side group + outstanding compute. No per-row fan-out.
 //
 // Eligibility for inclusion:
-//   - lot_id IN owner's active subdivision_members for this subdivision
+//   - lot_id IN owner's active oc_members for this oc
 //   - status IN ('issued','partially_paid','overdue')
 //   - levy_type <> 'penalty_interest' (penalty levies appear nested
 //     under their parent, not as top-level rows)
@@ -52,7 +52,7 @@ export interface MyArrearsResult {
 }
 
 export async function getMyArrears(
-  subdivisionId: string,
+  ocId: string,
 ): Promise<MyArrearsResult> {
   const profile = await getCurrentProfile();
   if (!profile) return { rows: [], outstandingTotal: 0 };
@@ -60,11 +60,11 @@ export async function getMyArrears(
 
   const supabase = createServerClient();
 
-  // ─── Step 1: Resolve owner's lots in this subdivision ──────────────
+  // ─── Step 1: Resolve owner's lots in this oc ──────────────
   const { data: memberships } = await supabase
-    .from("subdivision_members")
+    .from("oc_members")
     .select("lot_id")
-    .eq("subdivision_id", subdivisionId)
+    .eq("oc_id", ocId)
     .eq("profile_id", profile.id)
     .eq("role", "lot_owner")
     .is("left_at", null);

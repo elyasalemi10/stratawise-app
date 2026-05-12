@@ -7,11 +7,11 @@
 // Manager-side: list-pending + confirmAndMatchClaim* (two paths) + reject.
 //
 // Auth boundaries (per PP5-C scope):
-// - Owner actions: requireRole(['lot_owner']) + subdivision_members
+// - Owner actions: requireRole(['lot_owner']) + oc_members
 //   ownership check + claimed_by_profile_id server-enforced (input value
 //   is ignored; profile.id from auth wins).
-// - Manager actions: requireCompanyRole() + requireSubdivisionAccess
-//   (claim.subdivision_id) for cross-company isolation.
+// - Manager actions: requireCompanyRole() + requireOCAccess
+//   (claim.oc_id) for cross-company isolation.
 //
 // Manager-confirm hybrid (PP5-C Gap C ratification):
 // - Path (iii) PRIMARY: link to existing bank tx; calls
@@ -27,7 +27,7 @@ import { createServerClient } from "@/lib/supabase";
 import {
   requireCompanyRole,
   requireRole,
-  requireSubdivisionAccess,
+  requireOCAccess,
 } from "@/lib/auth";
 import {
   submitOwnerPaymentClaimSchema,
@@ -127,14 +127,14 @@ export async function submitOwnerPaymentClaim(
   const profile = await requireRole(["lot_owner"]);
   const supabase = createServerClient();
 
-  // Ownership check — active membership for (profile, subdivision, lot).
+  // Ownership check — active membership for (profile, oc, lot).
   // claimed_by_profile_id is taken from `profile.id` (server-enforced),
   // ignoring any client-sent value. PP5-C OPC-3 verifies this.
   const { data: membership } = await supabase
-    .from("subdivision_members")
+    .from("oc_members")
     .select("id")
     .eq("profile_id", profile.id)
-    .eq("subdivision_id", parsed.data.subdivision_id)
+    .eq("oc_id", parsed.data.oc_id)
     .eq("lot_id", parsed.data.lot_id)
     .eq("role", "lot_owner")
     .is("left_at", null)
@@ -150,7 +150,7 @@ export async function submitOwnerPaymentClaim(
   const { data: inserted, error: insErr } = await supabase
     .from("owner_payment_claims")
     .insert({
-      subdivision_id: parsed.data.subdivision_id,
+      oc_id: parsed.data.oc_id,
       lot_id: parsed.data.lot_id,
       claimed_by_profile_id: profile.id,
       amount: parsed.data.amount,
@@ -166,7 +166,7 @@ export async function submitOwnerPaymentClaim(
 
   await supabase.from("audit_log").insert({
     profile_id: profile.id,
-    subdivision_id: parsed.data.subdivision_id,
+    oc_id: parsed.data.oc_id,
     action: "owner_payment_claim.submitted",
     entity_type: "owner_payment_claim",
     entity_id: inserted.id,
@@ -188,12 +188,12 @@ export async function submitOwnerPaymentClaim(
     performedBy: profile.id,
   });
 
-  revalidatePath("/subdivisions/[subdivisionCode]/my-payments", "page");
+  revalidatePath("/ocs/[ocCode]/my-payments", "page");
   return { success: { claim_id: inserted.id } };
 }
 
 export async function listMyPaymentClaims(
-  subdivisionId?: string,
+  ocId?: string,
 ): Promise<ListMyPaymentClaimsResult> {
   const profile = await requireRole(["lot_owner"]);
   const supabase = createServerClient();
@@ -201,11 +201,11 @@ export async function listMyPaymentClaims(
   let query = supabase
     .from("owner_payment_claims")
     .select(
-      "id, subdivision_id, lot_id, amount, claim_date, payment_method, reference, notes, claim_status, rejection_reason, bank_transaction_id, ledger_entry_id, reviewed_at, created_at",
+      "id, oc_id, lot_id, amount, claim_date, payment_method, reference, notes, claim_status, rejection_reason, bank_transaction_id, ledger_entry_id, reviewed_at, created_at",
     )
     .eq("claimed_by_profile_id", profile.id)
     .order("created_at", { ascending: false });
-  if (subdivisionId) query = query.eq("subdivision_id", subdivisionId);
+  if (ocId) query = query.eq("oc_id", ocId);
 
   const { data: rows } = await query;
   if (!rows || rows.length === 0) return { rows: [] };
@@ -228,7 +228,7 @@ export async function listMyPaymentClaims(
     rows: rows.map((r) => {
       const row = r as {
         id: string;
-        subdivision_id: string;
+        oc_id: string;
         lot_id: string;
         amount: number | string;
         claim_date: string;
@@ -245,7 +245,7 @@ export async function listMyPaymentClaims(
       const lot = lotMap.get(row.lot_id);
       return {
         id: row.id,
-        subdivision_id: row.subdivision_id,
+        oc_id: row.oc_id,
         lot_id: row.lot_id,
         lot_label: lot ? lotLabel(lot) : "Lot ?",
         amount: Number(row.amount),
@@ -283,11 +283,11 @@ export async function listMyPaymentClaims(
  * is active.
  */
 export async function listManagerPaymentClaims(
-  subdivisionId: string,
+  ocId: string,
   opts: ListManagerPaymentClaimsOptions = {},
 ): Promise<ListManagerPaymentClaimsResult> {
   await requireCompanyRole();
-  await requireSubdivisionAccess(subdivisionId);
+  await requireOCAccess(ocId);
   const supabase = createServerClient();
 
   if (opts.orphan === true) {
@@ -300,9 +300,9 @@ export async function listManagerPaymentClaims(
     const { data: rawRows } = await supabase
       .from("owner_payment_claims")
       .select(
-        "id, subdivision_id, lot_id, claimed_by_profile_id, amount, claim_date, payment_method, reference, notes, claim_status, created_at, bank_transaction_id, ledger_entry_id, bt:bank_transactions!bank_transaction_id(is_voided), le:lot_ledger_entries!ledger_entry_id(status)",
+        "id, oc_id, lot_id, claimed_by_profile_id, amount, claim_date, payment_method, reference, notes, claim_status, created_at, bank_transaction_id, ledger_entry_id, bt:bank_transactions!bank_transaction_id(is_voided), le:lot_ledger_entries!ledger_entry_id(status)",
       )
-      .eq("subdivision_id", subdivisionId)
+      .eq("oc_id", ocId)
       .eq("claim_status", "matched")
       .order("created_at", { ascending: false });
 
@@ -331,9 +331,9 @@ export async function listManagerPaymentClaims(
   const { data: rows } = await supabase
     .from("owner_payment_claims")
     .select(
-      "id, subdivision_id, lot_id, claimed_by_profile_id, amount, claim_date, payment_method, reference, notes, claim_status, created_at",
+      "id, oc_id, lot_id, claimed_by_profile_id, amount, claim_date, payment_method, reference, notes, claim_status, created_at",
     )
-    .eq("subdivision_id", subdivisionId)
+    .eq("oc_id", ocId)
     .eq("claim_status", "pending")
     .order("created_at", { ascending: false });
 
@@ -381,7 +381,7 @@ async function hydrateManagerClaimRows(
     rows: rows.map((r) => {
       const row = r as {
         id: string;
-        subdivision_id: string;
+        oc_id: string;
         lot_id: string;
         claimed_by_profile_id: string;
         amount: number | string;
@@ -399,7 +399,7 @@ async function hydrateManagerClaimRows(
         : "Unknown";
       return {
         id: row.id,
-        subdivision_id: row.subdivision_id,
+        oc_id: row.oc_id,
         lot_id: row.lot_id,
         lot_label: lot ? lotLabel(lot) : "Lot ?",
         owner_display_name: ownerDisplayName,
@@ -420,7 +420,7 @@ async function hydrateManagerClaimRows(
 // Two distinct entry points, two distinct semantics. Don't unify.
 //
 // 1. getNearbyBankTxsForClaim — BROAD lookup for SHOWING candidates in the
-//    manager-claim-review dialog's match-existing stage. Subdivision-wide,
+//    manager-claim-review dialog's match-existing stage. OC-wide,
 //    +/-7 days from claim_date, +/-$0.01 amount tolerance. Returns sorted:
 //    exact-amount first, then date-proximity. UI consumer is a candidate
 //    list with "Use this one" CTAs per row.
@@ -428,9 +428,9 @@ async function hydrateManagerClaimRows(
 // 2. getBankTxSnapshotsByIds — NARROW lookup for HYDRATING the IDs that
 //    PP5-C's LIKELY_DUPLICATE pre-check returned. Atomic-snapshot semantic
 //    (Q5.6 ratification) — the IDs returned by the action ARE the
-//    snapshot; we just need their display fields. Subdivision check
-//    enforced via sample bank tx → bank_account.subdivision_id chain;
-//    cross-subdivision IDs cause a FORBIDDEN-style error.
+//    snapshot; we just need their display fields. OC check
+//    enforced via sample bank tx → bank_account.oc_id chain;
+//    cross-oc IDs cause a FORBIDDEN-style error.
 //
 // CONTEXT.md PP5 §4.10 documents the two-query distinction.
 
@@ -463,7 +463,7 @@ export async function getNearbyBankTxsForClaim(
 
   const { data: claim } = await supabase
     .from("owner_payment_claims")
-    .select("id, subdivision_id, amount, claim_date")
+    .select("id, oc_id, amount, claim_date")
     .eq("id", claimId)
     .maybeSingle();
   if (!claim) {
@@ -471,13 +471,13 @@ export async function getNearbyBankTxsForClaim(
   }
   const c = claim as {
     id: string;
-    subdivision_id: string;
+    oc_id: string;
     amount: number | string;
     claim_date: string;
   };
 
   try {
-    await requireSubdivisionAccess(c.subdivision_id);
+    await requireOCAccess(c.oc_id);
   } catch {
     return { ok: false, error: "Claim not found", errorCode: "FORBIDDEN" };
   }
@@ -488,11 +488,11 @@ export async function getNearbyBankTxsForClaim(
   const minDate = shiftDate(c.claim_date, -7);
   const maxDate = shiftDate(c.claim_date, +7);
 
-  // Find all bank accounts in this subdivision (scopes the query).
+  // Find all bank accounts in this oc (scopes the query).
   const { data: accounts } = await supabase
     .from("bank_accounts")
     .select("id, account_name, fund_type")
-    .eq("subdivision_id", c.subdivision_id);
+    .eq("oc_id", c.oc_id);
   const accountIds = (accounts ?? []).map((a) => (a as { id: string }).id);
   if (accountIds.length === 0) {
     return { ok: true, rows: [], claim_amount: claimAmount, claim_date: c.claim_date };
@@ -563,8 +563,8 @@ export type GetBankTxSnapshotsByIdsResult =
 export async function getBankTxSnapshotsByIds(
   ids: string[],
   /** Anchor claim id — provides the claim_date for day_delta computation
-   *  and the subdivision for the access check. The IDs must all belong
-   *  to that subdivision (cross-subdivision leakage = FORBIDDEN). */
+   *  and the oc for the access check. The IDs must all belong
+   *  to that oc (cross-oc leakage = FORBIDDEN). */
   anchorClaimId: string,
 ): Promise<GetBankTxSnapshotsByIdsResult> {
   await requireCompanyRole();
@@ -574,26 +574,26 @@ export async function getBankTxSnapshotsByIds(
 
   const { data: claim } = await supabase
     .from("owner_payment_claims")
-    .select("subdivision_id, amount, claim_date")
+    .select("oc_id, amount, claim_date")
     .eq("id", anchorClaimId)
     .maybeSingle();
   if (!claim) {
     return { ok: false, error: "Claim not found", errorCode: "NOT_FOUND" };
   }
-  const c = claim as { subdivision_id: string; amount: number | string; claim_date: string };
+  const c = claim as { oc_id: string; amount: number | string; claim_date: string };
 
   try {
-    await requireSubdivisionAccess(c.subdivision_id);
+    await requireOCAccess(c.oc_id);
   } catch {
     return { ok: false, error: "Claim not found", errorCode: "FORBIDDEN" };
   }
 
   // Fetch bank txs joined with their bank_account so we can verify each
-  // is in the claim's subdivision (no cross-subdivision leakage).
+  // is in the claim's oc (no cross-oc leakage).
   const { data: rows } = await supabase
     .from("bank_transactions")
     .select(
-      "id, bank_account_id, source, transaction_date, amount, description, match_status, bank_accounts!inner(subdivision_id, account_name, fund_type)",
+      "id, bank_account_id, source, transaction_date, amount, description, match_status, bank_accounts!inner(oc_id, account_name, fund_type)",
     )
     .in("id", ids);
 
@@ -608,11 +608,11 @@ export async function getBankTxSnapshotsByIds(
       amount: number | string;
       description: string | null;
       match_status: MatchStatus;
-      bank_accounts: { subdivision_id: string; account_name: string; fund_type: "administrative" | "capital_works" };
+      bank_accounts: { oc_id: string; account_name: string; fund_type: "administrative" | "capital_works" };
     };
-    if (row.bank_accounts.subdivision_id !== c.subdivision_id) {
-      // Refuse to leak any out-of-subdivision rows. Whole call returns FORBIDDEN.
-      return { ok: false, error: "Cross-subdivision id supplied", errorCode: "FORBIDDEN" };
+    if (row.bank_accounts.oc_id !== c.oc_id) {
+      // Refuse to leak any out-of-oc rows. Whole call returns FORBIDDEN.
+      return { ok: false, error: "Cross-oc id supplied", errorCode: "FORBIDDEN" };
     }
     const amt = Number(row.amount);
     out.push({
@@ -636,7 +636,7 @@ export async function getBankTxSnapshotsByIds(
 
 interface ClaimRowForReview {
   id: string;
-  subdivision_id: string;
+  oc_id: string;
   lot_id: string;
   amount: number;
   claim_date: string;
@@ -654,7 +654,7 @@ async function loadClaimForReview(
 
   const { data: claim } = await supabase
     .from("owner_payment_claims")
-    .select("id, subdivision_id, lot_id, amount, claim_date, claim_status")
+    .select("id, oc_id, lot_id, amount, claim_date, claim_status")
     .eq("id", claimId)
     .maybeSingle();
   if (!claim) {
@@ -662,18 +662,18 @@ async function loadClaimForReview(
   }
   const c = claim as {
     id: string;
-    subdivision_id: string;
+    oc_id: string;
     lot_id: string;
     amount: number | string;
     claim_date: string;
     claim_status: ClaimStatus;
   };
 
-  // Cross-company isolation: requireSubdivisionAccess returns truthy for
-  // managers whose company owns this subdivision. Wrap in try/catch since
+  // Cross-company isolation: requireOCAccess returns truthy for
+  // managers whose company owns this oc. Wrap in try/catch since
   // the helper throws.
   try {
-    await requireSubdivisionAccess(c.subdivision_id);
+    await requireOCAccess(c.oc_id);
   } catch {
     return { ok: false, error: "Claim not found", errorCode: "FORBIDDEN" };
   }
@@ -721,7 +721,7 @@ export async function confirmAndMatchClaimViaExistingBankTx(
   // runs PP5-B's ledger detector hook on the credits it creates and
   // writes the reconciliation.matched audit chain.
   const matchResult = await reconcileTransaction({
-    subdivision_id: claim.subdivision_id,
+    oc_id: claim.oc_id,
     bank_transaction_id: parsed.data.bank_transaction_id,
     allocations: parsed.data.allocations,
     match_method: "manual",
@@ -752,7 +752,7 @@ export async function confirmAndMatchClaimViaExistingBankTx(
 
   await supabase.from("audit_log").insert({
     profile_id: profileId,
-    subdivision_id: claim.subdivision_id,
+    oc_id: claim.oc_id,
     action: "owner_payment_claim.matched",
     entity_type: "owner_payment_claim",
     entity_id: claim.id,
@@ -774,9 +774,9 @@ export async function confirmAndMatchClaimViaExistingBankTx(
     performedBy: profileId,
   });
 
-  revalidatePath("/subdivisions/[subdivisionCode]/reconciliation", "page");
-  revalidatePath("/subdivisions/[subdivisionCode]/reconciliation/claims", "page");
-  revalidatePath("/subdivisions/[subdivisionCode]/my-payments", "page");
+  revalidatePath("/ocs/[ocCode]/reconciliation", "page");
+  revalidatePath("/ocs/[ocCode]/reconciliation/claims", "page");
+  revalidatePath("/ocs/[ocCode]/my-payments", "page");
   return {
     success: {
       claim_id: claim.id,
@@ -799,13 +799,13 @@ export async function confirmAndMatchClaimViaNewBankTx(
   const { claim, profileId } = loaded;
   const supabase = createServerClient();
 
-  // Verify the chosen bank account belongs to the claim's subdivision.
+  // Verify the chosen bank account belongs to the claim's oc.
   const { data: bankAccount } = await supabase
     .from("bank_accounts")
-    .select("id, subdivision_id")
+    .select("id, oc_id")
     .eq("id", parsed.data.bank_account_id)
     .maybeSingle();
-  if (!bankAccount || (bankAccount as { subdivision_id: string }).subdivision_id !== claim.subdivision_id) {
+  if (!bankAccount || (bankAccount as { oc_id: string }).oc_id !== claim.oc_id) {
     return { error: "Bank account not found", errorCode: "FORBIDDEN" };
   }
 
@@ -841,7 +841,7 @@ export async function confirmAndMatchClaimViaNewBankTx(
   // which bypasses the orchestrator's early-out — manager has chosen to
   // proceed despite the override).
   const addResult = await addManualBankTransaction({
-    subdivision_id: claim.subdivision_id,
+    oc_id: claim.oc_id,
     bank_account_id: parsed.data.bank_account_id,
     transaction_date: parsed.data.transaction_date,
     amount: claim.amount,
@@ -865,7 +865,7 @@ export async function confirmAndMatchClaimViaNewBankTx(
 
   // Step 2 — allocate via reconcileTransaction (PP5-B detector runs).
   const matchResult = await reconcileTransaction({
-    subdivision_id: claim.subdivision_id,
+    oc_id: claim.oc_id,
     bank_transaction_id: bankTransactionId,
     allocations: parsed.data.allocations,
     match_method: "manual",
@@ -896,7 +896,7 @@ export async function confirmAndMatchClaimViaNewBankTx(
 
   await supabase.from("audit_log").insert({
     profile_id: profileId,
-    subdivision_id: claim.subdivision_id,
+    oc_id: claim.oc_id,
     action: "owner_payment_claim.matched",
     entity_type: "owner_payment_claim",
     entity_id: claim.id,
@@ -919,10 +919,10 @@ export async function confirmAndMatchClaimViaNewBankTx(
     performedBy: profileId,
   });
 
-  revalidatePath("/subdivisions/[subdivisionCode]/reconciliation", "page");
-  revalidatePath("/subdivisions/[subdivisionCode]/reconciliation/claims", "page");
-  revalidatePath("/subdivisions/[subdivisionCode]/bank-account", "page");
-  revalidatePath("/subdivisions/[subdivisionCode]/my-payments", "page");
+  revalidatePath("/ocs/[ocCode]/reconciliation", "page");
+  revalidatePath("/ocs/[ocCode]/reconciliation/claims", "page");
+  revalidatePath("/ocs/[ocCode]/bank-account", "page");
+  revalidatePath("/ocs/[ocCode]/my-payments", "page");
   return {
     success: {
       claim_id: claim.id,
@@ -959,7 +959,7 @@ export async function rejectPaymentClaim(
 
   await supabase.from("audit_log").insert({
     profile_id: profileId,
-    subdivision_id: claim.subdivision_id,
+    oc_id: claim.oc_id,
     action: "owner_payment_claim.rejected",
     entity_type: "owner_payment_claim",
     entity_id: claim.id,
@@ -975,8 +975,8 @@ export async function rejectPaymentClaim(
     performedBy: profileId,
   });
 
-  revalidatePath("/subdivisions/[subdivisionCode]/reconciliation/claims", "page");
-  revalidatePath("/subdivisions/[subdivisionCode]/my-payments", "page");
+  revalidatePath("/ocs/[ocCode]/reconciliation/claims", "page");
+  revalidatePath("/ocs/[ocCode]/my-payments", "page");
   return { success: { claim_id: claim.id } };
 }
 

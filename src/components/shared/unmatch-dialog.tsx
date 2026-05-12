@@ -36,7 +36,7 @@ interface Props {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   bankTxnId: string;
-  subdivisionId: string;
+  ocId: string;
   matches: Match[];
   prefillMatchId?: string | null;
   onSuccess: () => void;
@@ -51,7 +51,7 @@ export function UnmatchDialog({
   open,
   onOpenChange,
   bankTxnId,
-  subdivisionId,
+  ocId,
   matches,
   prefillMatchId,
   onSuccess,
@@ -64,7 +64,7 @@ export function UnmatchDialog({
   const form = useForm<UnmatchTransactionInput>({
     resolver: zodResolver(unmatchTransactionSchema),
     defaultValues: {
-      subdivision_id: subdivisionId,
+      oc_id: ocId,
       bank_transaction_id: bankTxnId,
       match_ids: prefillMatchId ? [prefillMatchId] : [],
       reason: "",

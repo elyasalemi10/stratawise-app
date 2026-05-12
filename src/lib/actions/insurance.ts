@@ -1,12 +1,12 @@
 "use server";
 
-import { requireCompanyRole, requireSubdivisionAccess } from "@/lib/auth";
+import { requireCompanyRole, requireOCAccess } from "@/lib/auth";
 import { createServerClient } from "@/lib/supabase";
 import { revalidatePath } from "next/cache";
 
 export interface InsurancePolicy {
   id: string;
-  subdivision_id: string;
+  oc_id: string;
   policy_type: string;
   provider: string;
   policy_number: string | null;
@@ -19,14 +19,14 @@ export interface InsurancePolicy {
   created_at: string;
 }
 
-export async function getInsurancePolicies(subdivisionId: string): Promise<InsurancePolicy[]> {
-  await requireSubdivisionAccess(subdivisionId);
+export async function getInsurancePolicies(ocId: string): Promise<InsurancePolicy[]> {
+  await requireOCAccess(ocId);
   const supabase = createServerClient();
 
   const { data } = await supabase
     .from("insurance_policies")
     .select("*")
-    .eq("subdivision_id", subdivisionId)
+    .eq("oc_id", ocId)
     .order("start_date", { ascending: false });
 
   return (data ?? []).map((p) => ({
@@ -37,7 +37,7 @@ export async function getInsurancePolicies(subdivisionId: string): Promise<Insur
 }
 
 export async function createInsurancePolicy(
-  subdivisionId: string,
+  ocId: string,
   data: {
     policy_type: string;
     provider: string;
@@ -50,12 +50,12 @@ export async function createInsurancePolicy(
   }
 ) {
   const profile = await requireCompanyRole();
-  await requireSubdivisionAccess(subdivisionId);
+  await requireOCAccess(ocId);
   const supabase = createServerClient();
 
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const insertData: Record<string, any> = {
-    subdivision_id: subdivisionId,
+    oc_id: ocId,
     policy_type: data.policy_type,
     provider: data.provider,
     policy_number: data.policy_number || null,
@@ -75,18 +75,18 @@ export async function createInsurancePolicy(
 
   await supabase.from("audit_log").insert({
     profile_id: profile.id,
-    subdivision_id: subdivisionId,
+    oc_id: ocId,
     action: "create",
     entity_type: "insurance_policy",
     after_state: data,
   });
 
-  revalidatePath("/subdivisions/[subdivisionCode]/insurance", "page");
+  revalidatePath("/ocs/[ocCode]/insurance", "page");
   return { success: true };
 }
 
 export async function updateInsurancePolicy(
-  subdivisionId: string,
+  ocId: string,
   policyId: string,
   data: {
     policy_type?: string;
@@ -100,7 +100,7 @@ export async function updateInsurancePolicy(
   }
 ) {
   const profile = await requireCompanyRole();
-  await requireSubdivisionAccess(subdivisionId);
+  await requireOCAccess(ocId);
   const supabase = createServerClient();
 
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -121,44 +121,44 @@ export async function updateInsurancePolicy(
     .from("insurance_policies")
     .update(updateData)
     .eq("id", policyId)
-    .eq("subdivision_id", subdivisionId);
+    .eq("oc_id", ocId);
 
   if (error) return { error: error.message };
 
   await supabase.from("audit_log").insert({
     profile_id: profile.id,
-    subdivision_id: subdivisionId,
+    oc_id: ocId,
     action: "update",
     entity_type: "insurance_policy",
     entity_id: policyId,
     after_state: data,
   });
 
-  revalidatePath("/subdivisions/[subdivisionCode]/insurance", "page");
+  revalidatePath("/ocs/[ocCode]/insurance", "page");
   return { success: true };
 }
 
-export async function deleteInsurancePolicy(subdivisionId: string, policyId: string) {
+export async function deleteInsurancePolicy(ocId: string, policyId: string) {
   const profile = await requireCompanyRole();
-  await requireSubdivisionAccess(subdivisionId);
+  await requireOCAccess(ocId);
   const supabase = createServerClient();
 
   const { error } = await supabase
     .from("insurance_policies")
     .delete()
     .eq("id", policyId)
-    .eq("subdivision_id", subdivisionId);
+    .eq("oc_id", ocId);
 
   if (error) return { error: error.message };
 
   await supabase.from("audit_log").insert({
     profile_id: profile.id,
-    subdivision_id: subdivisionId,
+    oc_id: ocId,
     action: "delete",
     entity_type: "insurance_policy",
     entity_id: policyId,
   });
 
-  revalidatePath("/subdivisions/[subdivisionCode]/insurance", "page");
+  revalidatePath("/ocs/[ocCode]/insurance", "page");
   return { success: true };
 }

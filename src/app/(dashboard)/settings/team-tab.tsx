@@ -15,8 +15,8 @@ import {
 
 const ROLE_CONFIG = {
   admin: { label: "Admin", variant: "info" as const, icon: Shield, description: "Full access. Can manage roles and company settings." },
-  manager: { label: "Manager", variant: "success" as const, icon: Pencil, description: "Can manage subdivisions, levies, and documents." },
-  viewer: { label: "Viewer", variant: "neutral" as const, icon: Eye, description: "Read-only access to all subdivisions." },
+  manager: { label: "Manager", variant: "success" as const, icon: Pencil, description: "Can manage ocs, levies, and documents." },
+  viewer: { label: "Viewer", variant: "neutral" as const, icon: Eye, description: "Read-only access to all ocs." },
 };
 
 function MemberRow({
@@ -53,7 +53,7 @@ function MemberRow({
   }
 
   async function handleRemove() {
-    if (!confirm(`Remove ${member.email} from the team? They will lose access to all subdivisions.`)) return;
+    if (!confirm(`Remove ${member.email} from the team? They will lose access to all ocs.`)) return;
     setRemoving(true);
     const result = await removeMember(member.id);
     setRemoving(false);

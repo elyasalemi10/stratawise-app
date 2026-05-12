@@ -5,7 +5,7 @@
 // aliases onto our internal shape. KV extraction handles format variations
 // (different conveyancers reorder/relabel fields); a line-based regex fallback
 // catches things Textract didn't surface as KV (e.g. "Lot N on Plan of
-// Subdivision XXXX." which is a sentence, not a labelled form field).
+// OC XXXX." which is a sentence, not a labelled form field).
 
 import { analyzeDocument, type OcrResult } from "@/lib/ocr/textract";
 
@@ -254,9 +254,9 @@ export async function parseSettlementPdf(
   }
 
   // ─── Lot / Plan ───────────────────────────────────────────
-  // "Lot 4 on Plan of Subdivision 932352U." appears as a sentence in the
+  // "Lot 4 on Plan of OC 932352U." appears as a sentence in the
   // "Parts of Title" block, not a KV pair. Scan all lines.
-  const lotPlan = text.match(/Lot\s+(\d+)\s+on\s+Plan(?:\s+of\s+Subdivision)?\s+([A-Za-z0-9]+)/i);
+  const lotPlan = text.match(/Lot\s+(\d+)\s+on\s+Plan(?:\s+of\s+OC)?\s+([A-Za-z0-9]+)/i);
   if (lotPlan) {
     result.lotNumber = Number(lotPlan[1]);
     result.planNumber = lotPlan[2].toUpperCase();
@@ -271,7 +271,7 @@ export async function parseSettlementPdf(
   }
   if (!result.planNumber) {
     const planKv = pickField(kv, [
-      "plan of subdivision", "plan number", "plan", "ps", "lp",
+      "plan of oc", "plan number", "plan", "ps", "lp",
     ]);
     if (planKv) {
       const tail = planKv.match(/[A-Za-z0-9]+$/);

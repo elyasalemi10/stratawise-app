@@ -11,7 +11,7 @@
 //
 // No `"use server"` directive — pure helper. Auth is the caller's job
 // (server actions invoking this should already have called
-// requireSubdivisionAccess on the lot's subdivision).
+// requireOCAccess on the lot's oc).
 // ============================================================================
 
 import { createServerClient } from "@/lib/supabase";

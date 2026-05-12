@@ -16,10 +16,10 @@ export default async function LeviesPage() {
 
   const supabase = createServerClient();
 
-  // Get lot owner's lots across all subdivisions
+  // Get lot owner's lots across all ocs
   const { data: memberships } = await supabase
-    .from("subdivision_members")
-    .select("subdivision_id, lot_id")
+    .from("oc_members")
+    .select("oc_id, lot_id")
     .eq("profile_id", profile.id)
     .eq("role", "lot_owner")
     .is("left_at", null);
@@ -43,7 +43,7 @@ export default async function LeviesPage() {
     );
   }
 
-  // Fetch levies, lots, subdivisions, and payments
+  // Fetch levies, lots, ocs, and payments
   const [leviesResult, lotsResult, paymentsResult] = await Promise.all([
     supabase
       .from("levy_notices")
@@ -53,7 +53,7 @@ export default async function LeviesPage() {
       .order("due_date", { ascending: false }),
     supabase
       .from("lots")
-      .select("id, subdivision_id, lot_number, unit_number, subdivisions:subdivision_id (name)")
+      .select("id, oc_id, lot_number, unit_number, ocs:oc_id (name)")
       .in("id", lotIds),
     supabase
       .from("payments")
@@ -103,7 +103,7 @@ export default async function LeviesPage() {
 
   return (
     <div className="space-y-6">
-      <PageHeader title="Levies" subtitle="View all your levy notices across all subdivisions" />
+      <PageHeader title="Levies" subtitle="View all your levy notices across all ocs" />
 
       {/* Summary cards */}
       <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
@@ -147,7 +147,7 @@ export default async function LeviesPage() {
                 const paid = paymentsByLevy.get(levy.id) ?? 0;
                 const remaining = (levy.amount ?? 0) - paid;
                 // eslint-disable-next-line @typescript-eslint/no-explicit-any
-                const subdivisionName = (lot as any)?.subdivisions?.name ?? "";
+                const ocName = (lot as any)?.ocs?.name ?? "";
 
                 return (
                   <div key={levy.id} className="flex items-center justify-between py-4">
@@ -158,7 +158,7 @@ export default async function LeviesPage() {
                       <div>
                         <p className="text-sm font-medium text-foreground">{levy.reference_number}</p>
                         <p className="text-xs text-muted-foreground">
-                          {subdivisionName}{lot ? ` · Lot ${lot.lot_number}` : ""} · Due {levy.due_date}
+                          {ocName}{lot ? ` · Lot ${lot.lot_number}` : ""} · Due {levy.due_date}
                         </p>
                       </div>
                     </div>

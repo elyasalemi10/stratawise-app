@@ -59,7 +59,7 @@ const MAX_REFERENCE_LEN = 100;
 // ─── Owner-side: submitOwnerPaymentClaim ──────────────────────────────────
 
 export const submitOwnerPaymentClaimSchema = z.object({
-  subdivision_id: z.string().uuid(),
+  oc_id: z.string().uuid(),
   lot_id: z.string().uuid(),
   amount: z.number().positive("Amount must be positive").finite(),
   claim_date: z.string().regex(ISO_DATE, "Date must be YYYY-MM-DD"),
@@ -145,7 +145,7 @@ export type OwnerPaymentClaimErrorCode =
   | "FORBIDDEN"
   /** Claim is no longer 'pending' — already matched or rejected. Idempotency guard. */
   | "NOT_PENDING"
-  /** Submission references a lot the owner doesn't own (no active subdivision_members row). */
+  /** Submission references a lot the owner doesn't own (no active oc_members row). */
   | "LOT_OWNERSHIP_INVALID"
   /** Path-(ii) confirm sees one or more existing bank txs that look like the new
    *  manual one (same account, +/-2 days, same amount). UI should let the manager
@@ -157,7 +157,7 @@ export type OwnerPaymentClaimErrorCode =
 /** Owner-facing list row. Only the owner's own claims, all statuses. */
 export interface MyPaymentClaimRow {
   id: string;
-  subdivision_id: string;
+  oc_id: string;
   lot_id: string;
   lot_label: string; // resolved server-side ("Lot 7" or "Lot 7 (Unit 12)")
   amount: number;
@@ -173,11 +173,11 @@ export interface MyPaymentClaimRow {
   created_at: string;
 }
 
-/** Manager queue row. Pending claims for a subdivision. Includes the
+/** Manager queue row. Pending claims for a oc. Includes the
  *  submitting owner's name + lot label for at-a-glance scanning. */
 export interface ManagerClaimQueueRow {
   id: string;
-  subdivision_id: string;
+  oc_id: string;
   lot_id: string;
   lot_label: string;
   owner_display_name: string; // first_name last_name OR email fallback

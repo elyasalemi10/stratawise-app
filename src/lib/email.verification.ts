@@ -26,7 +26,7 @@ process.env.EMAIL_DRY_RUN = "true";
 
 import { createClient } from "@supabase/supabase-js";
 import { randomUUID } from "crypto";
-import { generateSubdivisionCode } from "@/lib/subdivision-code";
+import { generateOCCode } from "@/lib/oc-code";
 import {
   emitPaymentReceivedEmail,
   emitClaimMatchedEmail,
@@ -59,7 +59,7 @@ interface FixtureContext {
   companyId: string;
   managerProfileId: string;
   ownerProfileId: string;
-  subdivisionId: string;
+  ocId: string;
   lotId: string;
   bankAccountId: string;
 }
@@ -102,25 +102,25 @@ async function createFixture(): Promise<FixtureContext> {
     .single();
   const ownerProfileId = (owner as { id: string }).id;
 
-  const { data: subdivision } = await supabase
-    .from("subdivisions")
+  const { data: oc } = await supabase
+    .from("owners_corporations")
     .insert({
       management_company_id: companyId,
       name: `${VERIFY_MARKER}${runId}`,
       plan_number: `PLAN-${runId}`,
-      short_code: generateSubdivisionCode(),
+      short_code: generateOCCode(),
       address: `${runId} Email Test St, Melbourne VIC 3000`,
       total_lots: 1,
       created_by: managerProfileId,
     })
     .select("id")
     .single();
-  const subdivisionId = (subdivision as { id: string }).id;
+  const ocId = (oc as { id: string }).id;
 
   const { data: lot } = await supabase
     .from("lots")
     .insert({
-      subdivision_id: subdivisionId,
+      oc_id: ocId,
       lot_number: 1,
       lot_entitlement: 100,
       lot_liability: 100,
@@ -129,8 +129,8 @@ async function createFixture(): Promise<FixtureContext> {
     .single();
   const lotId = (lot as { id: string }).id;
 
-  await supabase.from("subdivision_members").insert({
-    subdivision_id: subdivisionId,
+  await supabase.from("oc_members").insert({
+    oc_id: ocId,
     profile_id: ownerProfileId,
     lot_id: lotId,
     role: "lot_owner",
@@ -141,7 +141,7 @@ async function createFixture(): Promise<FixtureContext> {
   const { data: bankAccount } = await supabase
     .from("bank_accounts")
     .insert({
-      subdivision_id: subdivisionId,
+      oc_id: ocId,
       account_name: `Email Admin ${runId}`,
       bsb: "012-345",
       account_number: `${runId.slice(-8)}`,
@@ -155,7 +155,7 @@ async function createFixture(): Promise<FixtureContext> {
     companyId,
     managerProfileId,
     ownerProfileId,
-    subdivisionId,
+    ocId,
     lotId,
     bankAccountId,
   };
@@ -191,7 +191,7 @@ async function createMatchedBankTxFixture(
   const { data: credit } = await supabase
     .from("lot_ledger_entries")
     .insert({
-      subdivision_id: ctx.subdivisionId,
+      oc_id: ctx.ocId,
       lot_id: ctx.lotId,
       fund_type: "administrative",
       entry_type: "credit",
@@ -230,7 +230,7 @@ async function createPendingClaimFixture(
   const { data: claim } = await supabase
     .from("owner_payment_claims")
     .insert({
-      subdivision_id: ctx.subdivisionId,
+      oc_id: ctx.ocId,
       lot_id: ctx.lotId,
       claimed_by_profile_id: ctx.ownerProfileId,
       amount,
@@ -413,7 +413,7 @@ async function e7_emitPaymentNoBankTx(ctx: FixtureContext) {
   const { data: credit } = await supabase
     .from("lot_ledger_entries")
     .insert({
-      subdivision_id: ctx.subdivisionId,
+      oc_id: ctx.ocId,
       lot_id: ctx.lotId,
       fund_type: "administrative",
       entry_type: "credit",
@@ -445,7 +445,7 @@ async function e8_emitPaymentNoOwner(ctx: FixtureContext) {
   const { data: orphanLot } = await supabase
     .from("lots")
     .insert({
-      subdivision_id: ctx.subdivisionId,
+      oc_id: ctx.ocId,
       lot_number: 99,
       lot_entitlement: 100,
       lot_liability: 100,
@@ -472,7 +472,7 @@ async function e8_emitPaymentNoOwner(ctx: FixtureContext) {
   const { data: credit } = await supabase
     .from("lot_ledger_entries")
     .insert({
-      subdivision_id: ctx.subdivisionId,
+      oc_id: ctx.ocId,
       lot_id: orphanLotId,
       fund_type: "administrative",
       entry_type: "credit",
@@ -655,7 +655,7 @@ async function cleanupMarker() {
 
 async function cleanupCompany(companyId: string) {
   const { data: subs } = await supabase
-    .from("subdivisions")
+    .from("owners_corporations")
     .select("id")
     .eq("management_company_id", companyId);
   const subIds = (subs ?? []).map((s) => (s as { id: string }).id);
@@ -664,7 +664,7 @@ async function cleanupCompany(companyId: string) {
     const { data: lots } = await supabase
       .from("lots")
       .select("id")
-      .in("subdivision_id", subIds);
+      .in("oc_id", subIds);
     const lotIds = (lots ?? []).map((l) => (l as { id: string }).id);
 
     if (lotIds.length > 0) {
@@ -683,19 +683,19 @@ async function cleanupCompany(companyId: string) {
     const { data: accts } = await supabase
       .from("bank_accounts")
       .select("id")
-      .in("subdivision_id", subIds);
+      .in("oc_id", subIds);
     const acctIds = (accts ?? []).map((a) => (a as { id: string }).id);
     if (acctIds.length > 0) {
       await supabase.from("bank_transactions").delete().in("bank_account_id", acctIds);
       await supabase.from("bank_accounts").delete().in("id", acctIds);
     }
 
-    await supabase.from("communication_log").delete().in("subdivision_id", subIds);
-    await supabase.from("owner_payment_claims").delete().in("subdivision_id", subIds);
-    await supabase.from("audit_log").delete().in("subdivision_id", subIds);
-    await supabase.from("subdivision_members").delete().in("subdivision_id", subIds);
-    await supabase.from("lots").delete().in("subdivision_id", subIds);
-    await supabase.from("subdivisions").delete().in("id", subIds);
+    await supabase.from("communication_log").delete().in("oc_id", subIds);
+    await supabase.from("owner_payment_claims").delete().in("oc_id", subIds);
+    await supabase.from("audit_log").delete().in("oc_id", subIds);
+    await supabase.from("oc_members").delete().in("oc_id", subIds);
+    await supabase.from("lots").delete().in("oc_id", subIds);
+    await supabase.from("owners_corporations").delete().in("id", subIds);
   }
 
   // Notification prefs cleanup keyed on profiles within this company.
@@ -719,7 +719,7 @@ async function cleanupCompany(companyId: string) {
       .from("audit_log")
       .delete()
       .in("profile_id", allProfileIds)
-      .is("subdivision_id", null);
+      .is("oc_id", null);
     await supabase.from("profiles").delete().in("id", allProfileIds);
   }
 

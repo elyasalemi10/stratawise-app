@@ -19,7 +19,7 @@
 // ============================================================================
 
 import { createServerClient } from "@/lib/supabase";
-import { buildSubdivisionUrl } from "@/lib/subdivision-resolver";
+import { buildOCUrl } from "@/lib/oc-resolver";
 import { tryAutoMatch } from "@/lib/reconciliation/orchestrator";
 import {
   detectDuplicate,
@@ -57,7 +57,7 @@ export async function pollConnectionAsSystem(
   const { data: conn } = await supabase
     .from("basiq_connections")
     .select(
-      "id, subdivision_id, basiq_user_id, basiq_external_connection_id, basiq_institution_id, last_sync_at, status, consent_expires_at",
+      "id, oc_id, basiq_user_id, basiq_external_connection_id, basiq_institution_id, last_sync_at, status, consent_expires_at",
     )
     .eq("id", connectionId)
     .single();
@@ -109,7 +109,7 @@ export async function pollConnectionAsSystem(
     fetched = txns.length;
 
     const accountMap = await resolveAccountMap(
-      conn.subdivision_id,
+      conn.oc_id,
       conn.id,
       txns,
     );
@@ -167,7 +167,7 @@ export async function pollConnectionAsSystem(
       if (detection.flagged) {
         const marked = await markDuplicate({
           bank_transaction_id: result.bank_transaction_id,
-          subdivision_id: conn.subdivision_id,
+          oc_id: conn.oc_id,
           duplicate_of: detection.duplicate_of,
           metadata: detection.metadata,
           performedBy,
@@ -182,7 +182,7 @@ export async function pollConnectionAsSystem(
             `[duplicate-detection] markDuplicate failed`,
             {
               bank_transaction_id: result.bank_transaction_id,
-              subdivision_id: conn.subdivision_id,
+              oc_id: conn.oc_id,
               duplicate_of: detection.duplicate_of,
               error: marked.error,
             },
@@ -198,7 +198,7 @@ export async function pollConnectionAsSystem(
       if (signed > 0) {
         const m = await tryAutoMatch({
           bankTransactionId: result.bank_transaction_id,
-          subdivisionId: conn.subdivision_id,
+          ocId: conn.oc_id,
           bankAccountId,
           description: parsed.cleaned_description,
           amount: signed,
@@ -273,7 +273,7 @@ export async function pollConnectionAsSystem(
 }
 
 async function resolveAccountMap(
-  subdivisionId: string,
+  ocId: string,
   connectionId: string,
   txns: BasiqTransactionPayload[],
 ): Promise<Map<string, string>> {
@@ -287,7 +287,7 @@ async function resolveAccountMap(
   const { data: accounts } = await supabase
     .from("bank_accounts")
     .select("id, basiq_account_id")
-    .eq("subdivision_id", subdivisionId)
+    .eq("oc_id", ocId)
     .eq("basiq_connection_id", connectionId);
   for (const a of (accounts ?? []) as {
     id: string;
@@ -335,7 +335,7 @@ export async function sendPendingReauthNotificationsJob(): Promise<{
   const { data: active } = await supabase
     .from("basiq_connections")
     .select(
-      "id, subdivision_id, consent_expires_at, nominated_representative_profile_id, institution_name",
+      "id, oc_id, consent_expires_at, nominated_representative_profile_id, institution_name",
     )
     .eq("status", "active");
   if (!active || active.length === 0) return { sentCount: 0 };
@@ -344,7 +344,7 @@ export async function sendPendingReauthNotificationsJob(): Promise<{
 
   for (const conn of active as {
     id: string;
-    subdivision_id: string;
+    oc_id: string;
     consent_expires_at: string | null;
     nominated_representative_profile_id: string | null;
     institution_name: string;
@@ -379,20 +379,20 @@ export async function sendPendingReauthNotificationsJob(): Promise<{
       .eq("id", conn.nominated_representative_profile_id)
       .single();
     const { data: sub } = await supabase
-      .from("subdivisions")
+      .from("owners_corporations")
       .select("name")
-      .eq("id", conn.subdivision_id)
+      .eq("id", conn.oc_id)
       .single();
     if (!rep || !sub) continue;
 
-    const reauthUrl = `${process.env.NEXT_PUBLIC_APP_URL ?? ""}${(await buildSubdivisionUrl(conn.subdivision_id, "/bank-account")) ?? ""}`;
+    const reauthUrl = `${process.env.NEXT_PUBLIC_APP_URL ?? ""}${(await buildOCUrl(conn.oc_id, "/bank-account")) ?? ""}`;
     const companyLogoUrl = await resolveCompanyLogo(supabase, {
-      subdivisionId: conn.subdivision_id,
+      ocId: conn.oc_id,
     });
 
     await sendBasiqReauthReminderEmail({
       to: (rep as { email: string }).email,
-      subdivisionName: (sub as { name: string }).name,
+      ocName: (sub as { name: string }).name,
       daysRemaining: daysLeft,
       reauthUrl,
       companyLogoUrl,
@@ -431,7 +431,7 @@ export async function sweepExpiredConnectionsJob(): Promise<{
   const { data: due } = await supabase
     .from("basiq_connections")
     .select(
-      "id, nominated_representative_profile_id, subdivision_id, created_by",
+      "id, nominated_representative_profile_id, oc_id, created_by",
     )
     .eq("status", "active")
     .lte("consent_expires_at", nowIso);
@@ -441,7 +441,7 @@ export async function sweepExpiredConnectionsJob(): Promise<{
   for (const row of due as {
     id: string;
     nominated_representative_profile_id: string | null;
-    subdivision_id: string;
+    oc_id: string;
     created_by: string;
   }[]) {
     const performer =
@@ -465,18 +465,18 @@ export async function sweepExpiredConnectionsJob(): Promise<{
         .eq("id", row.nominated_representative_profile_id)
         .single();
       const { data: sub } = await supabase
-        .from("subdivisions")
+        .from("owners_corporations")
         .select("name")
-        .eq("id", row.subdivision_id)
+        .eq("id", row.oc_id)
         .single();
       if (rep && sub) {
-        const reauthUrl = `${process.env.NEXT_PUBLIC_APP_URL ?? ""}${(await buildSubdivisionUrl(row.subdivision_id, "/bank-account")) ?? ""}`;
+        const reauthUrl = `${process.env.NEXT_PUBLIC_APP_URL ?? ""}${(await buildOCUrl(row.oc_id, "/bank-account")) ?? ""}`;
         const companyLogoUrl = await resolveCompanyLogo(supabase, {
-          subdivisionId: row.subdivision_id,
+          ocId: row.oc_id,
         });
         await sendBasiqConsentExpiredEmail({
           to: (rep as { email: string }).email,
-          subdivisionName: (sub as { name: string }).name,
+          ocName: (sub as { name: string }).name,
           reauthUrl,
           companyLogoUrl,
         });

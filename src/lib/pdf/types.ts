@@ -7,7 +7,7 @@ export interface ManagementCompany {
   logo_url?: string | null;
 }
 
-export interface Subdivision {
+export interface OC {
   name: string;
   address: string;
   abn?: string | null;
@@ -16,7 +16,7 @@ export interface Subdivision {
 
 export interface BaseDocumentProps {
   managementCompany: ManagementCompany;
-  subdivision: Subdivision;
+  oc: OC;
   documentTitle: string;
   referenceNumber: string;
   date: Date;

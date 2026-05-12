@@ -23,7 +23,7 @@ process.env.EMAIL_DRY_RUN = "true";
 
 import { createClient } from "@supabase/supabase-js";
 import { randomUUID } from "crypto";
-import { generateSubdivisionCode } from "@/lib/subdivision-code";
+import { generateOCCode } from "@/lib/oc-code";
 import { runEscalationStepCheck } from "./jobs";
 import { resolveSystemProfileId } from "@/lib/accrual/jobs";
 
@@ -64,7 +64,7 @@ function daysAfterIso(iso: string, n: number): string {
 interface FixtureContext {
   companyId: string;
   managerProfileId: string;
-  subdivisionId: string;
+  ocId: string;
   systemProfileId: string;
   workflowId: string;
 }
@@ -94,20 +94,20 @@ async function createFixtureContext(): Promise<FixtureContext> {
     .single();
   const managerProfileId = (manager as { id: string }).id;
 
-  const { data: subdivision } = await supabase
-    .from("subdivisions")
+  const { data: oc } = await supabase
+    .from("owners_corporations")
     .insert({
       management_company_id: companyId,
       name: `${VERIFY_MARKER}${runId}`,
       plan_number: `PLAN-${runId}`,
-      short_code: generateSubdivisionCode(),
+      short_code: generateOCCode(),
       address: `${runId} Esc Test St, Melbourne VIC 3000`,
       total_lots: 1,
       created_by: managerProfileId,
     })
     .select("id")
     .single();
-  const subdivisionId = (subdivision as { id: string }).id;
+  const ocId = (oc as { id: string }).id;
 
   const systemProfileId = await resolveSystemProfileId(supabase);
 
@@ -119,7 +119,7 @@ async function createFixtureContext(): Promise<FixtureContext> {
     .single();
   const workflowId = (workflow as { id: string }).id;
 
-  return { companyId, managerProfileId, subdivisionId, systemProfileId, workflowId };
+  return { companyId, managerProfileId, ocId, systemProfileId, workflowId };
 }
 
 async function createLotWithOwner(
@@ -144,7 +144,7 @@ async function createLotWithOwner(
   const { data: lot } = await supabase
     .from("lots")
     .insert({
-      subdivision_id: ctx.subdivisionId,
+      oc_id: ctx.ocId,
       lot_number: lotNumber,
       lot_entitlement: 100,
       lot_liability: 100,
@@ -153,8 +153,8 @@ async function createLotWithOwner(
     .single();
   const lotId = (lot as { id: string }).id;
 
-  await supabase.from("subdivision_members").insert({
-    subdivision_id: ctx.subdivisionId,
+  await supabase.from("oc_members").insert({
+    oc_id: ctx.ocId,
     profile_id: ownerProfileId,
     lot_id: lotId,
     role: "lot_owner",
@@ -182,7 +182,7 @@ async function createLevy(
   const { data } = await supabase
     .from("levy_notices")
     .insert({
-      subdivision_id: ctx.subdivisionId,
+      oc_id: ctx.ocId,
       lot_id: lotId,
       reference_number: `LEV-ESC-${refSuffix}`,
       fund_type: "administrative",
@@ -213,7 +213,7 @@ async function createEscalationInstance(
 ): Promise<string> {
   const { data: refData } = await supabase.rpc("next_reference_number", {
     p_prefix: "ESC",
-    p_subdivision_id: null,
+    p_oc_id: null,
   });
   const { data } = await supabase
     .from("escalation_instances")
@@ -607,7 +607,7 @@ async function cleanupMarker() {
 
 async function cleanupCompany(companyId: string) {
   const { data: subs } = await supabase
-    .from("subdivisions")
+    .from("owners_corporations")
     .select("id")
     .eq("management_company_id", companyId);
   const subIds = (subs ?? []).map((s) => (s as { id: string }).id);
@@ -616,7 +616,7 @@ async function cleanupCompany(companyId: string) {
     const { data: lots } = await supabase
       .from("lots")
       .select("id")
-      .in("subdivision_id", subIds);
+      .in("oc_id", subIds);
     const lotIds = (lots ?? []).map((l) => (l as { id: string }).id);
 
     if (lotIds.length > 0) {
@@ -627,7 +627,7 @@ async function cleanupCompany(companyId: string) {
     const { data: levies } = await supabase
       .from("levy_notices")
       .select("id")
-      .in("subdivision_id", subIds);
+      .in("oc_id", subIds);
     const levyIds = (levies ?? []).map((l) => (l as { id: string }).id);
     if (levyIds.length > 0) {
       await supabase.from("escalation_instances").delete().in("levy_notice_id", levyIds);
@@ -635,14 +635,14 @@ async function cleanupCompany(companyId: string) {
     await supabase
       .from("levy_notices")
       .update({ linked_levy_id: null })
-      .in("subdivision_id", subIds);
-    await supabase.from("levy_notices").delete().in("subdivision_id", subIds);
+      .in("oc_id", subIds);
+    await supabase.from("levy_notices").delete().in("oc_id", subIds);
 
-    await supabase.from("communication_log").delete().in("subdivision_id", subIds);
-    await supabase.from("subdivision_members").delete().in("subdivision_id", subIds);
-    await supabase.from("audit_log").delete().in("subdivision_id", subIds);
-    await supabase.from("lots").delete().in("subdivision_id", subIds);
-    await supabase.from("subdivisions").delete().in("id", subIds);
+    await supabase.from("communication_log").delete().in("oc_id", subIds);
+    await supabase.from("oc_members").delete().in("oc_id", subIds);
+    await supabase.from("audit_log").delete().in("oc_id", subIds);
+    await supabase.from("lots").delete().in("oc_id", subIds);
+    await supabase.from("owners_corporations").delete().in("id", subIds);
   }
 
   const { data: profileRows } = await supabase
@@ -656,7 +656,7 @@ async function cleanupCompany(companyId: string) {
       .from("audit_log")
       .delete()
       .in("profile_id", profileIds)
-      .is("subdivision_id", null);
+      .is("oc_id", null);
     await supabase.from("profiles").delete().in("id", profileIds);
   }
 

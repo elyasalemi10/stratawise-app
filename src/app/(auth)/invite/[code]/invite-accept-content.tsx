@@ -9,7 +9,7 @@ interface InviteAcceptContentProps {
     role: string;
     status: string;
     isExpired: boolean;
-    subdivision: { id: string; name: string; address: string; plan_number: string } | null;
+    oc: { id: string; name: string; address: string; plan_number: string } | null;
     lot: { lot_number: number; unit_number: string | null } | null;
   };
 }
@@ -33,18 +33,18 @@ export function InviteAcceptContent({ invitation }: InviteAcceptContentProps) {
 
       <Card>
         <CardContent className="pt-5 space-y-3">
-          {invitation.subdivision && (
+          {invitation.oc && (
             <>
               <div className="flex items-center gap-2">
                 <Building2 className="h-4 w-4 text-muted-foreground" />
                 <span className="text-sm font-medium text-foreground">
-                  {invitation.subdivision.name}
+                  {invitation.oc.name}
                 </span>
               </div>
               <div className="flex items-center gap-2">
                 <MapPin className="h-4 w-4 text-muted-foreground" />
                 <span className="text-sm text-muted-foreground">
-                  {invitation.subdivision.address}
+                  {invitation.oc.address}
                 </span>
               </div>
             </>

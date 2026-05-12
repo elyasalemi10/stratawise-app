@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createServerClient } from "@/lib/supabase";
-import { requireCompanyRole, requireSubdivisionAccess } from "@/lib/auth";
+import { requireCompanyRole, requireOCAccess } from "@/lib/auth";
 import { ALLOWED_DOCUMENT_TYPES, MAX_DOCUMENT_SIZE } from "@/lib/validations/documents";
 import { uploadObject, publicUrlFor } from "@/lib/storage/r2";
 
@@ -22,7 +22,7 @@ export async function POST(request: NextRequest) {
 
   const formData = await request.formData();
   const file = formData.get("file") as File | null;
-  const subdivisionId = formData.get("subdivision_id") as string | null;
+  const ocId = formData.get("oc_id") as string | null;
   const lotId = formData.get("lot_id") as string | null;
   const category = (formData.get("category") as string) || "other";
 
@@ -30,8 +30,8 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: "No file provided" }, { status: 400 });
   }
 
-  if (!subdivisionId || !UUID_REGEX.test(subdivisionId)) {
-    return NextResponse.json({ error: "Valid subdivision_id is required" }, { status: 400 });
+  if (!ocId || !UUID_REGEX.test(ocId)) {
+    return NextResponse.json({ error: "Valid oc_id is required" }, { status: 400 });
   }
 
   if (lotId && !UUID_REGEX.test(lotId)) {
@@ -39,7 +39,7 @@ export async function POST(request: NextRequest) {
   }
 
   try {
-    await requireSubdivisionAccess(subdivisionId);
+    await requireOCAccess(ocId);
   } catch {
     return NextResponse.json({ error: "Forbidden" }, { status: 403 });
   }
@@ -60,29 +60,29 @@ export async function POST(request: NextRequest) {
 
   const supabase = createServerClient();
 
-  // If uploading against a lot, ensure the lot belongs to this subdivision.
+  // If uploading against a lot, ensure the lot belongs to this oc.
   if (lotId) {
     const { data: lot } = await supabase
       .from("lots")
-      .select("id, subdivision_id")
+      .select("id, oc_id")
       .eq("id", lotId)
       .single();
-    if (!lot || lot.subdivision_id !== subdivisionId) {
-      return NextResponse.json({ error: "Lot does not belong to this subdivision" }, { status: 400 });
+    if (!lot || lot.oc_id !== ocId) {
+      return NextResponse.json({ error: "Lot does not belong to this oc" }, { status: 400 });
     }
   }
 
   const safeName = sanitiseFileName(file.name);
   const uuid = crypto.randomUUID();
-  const folder = lotId || "subdivision";
-  const key = `documents/${subdivisionId}/${folder}/${uuid}-${safeName}`;
+  const folder = lotId || "oc";
+  const key = `documents/${ocId}/${folder}/${uuid}-${safeName}`;
   const buffer = Buffer.from(await file.arrayBuffer());
   await uploadObject(key, buffer, file.type);
 
   const { data: doc, error } = await supabase
     .from("documents")
     .insert({
-      subdivision_id: subdivisionId,
+      oc_id: ocId,
       lot_id: lotId || null,
       category,
       file_name: safeName,
@@ -101,7 +101,7 @@ export async function POST(request: NextRequest) {
 
   await supabase.from("audit_log").insert({
     profile_id: profile.id,
-    subdivision_id: subdivisionId,
+    oc_id: ocId,
     action: "upload",
     entity_type: "document",
     entity_id: doc.id,

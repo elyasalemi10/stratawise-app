@@ -33,7 +33,7 @@ function emptyOwner(lotId: string): LotOwnerInfo {
 
 /**
  * Resolve the current owner of each supplied lot, in one round-trip pair of
- * queries. Precedence: active subdivision_members row wins; otherwise the most
+ * queries. Precedence: active oc_members row wins; otherwise the most
  * recent pending invitation; otherwise "unowned". Use this everywhere the UI
  * or a PDF previously read `lots.owner_*` columns.
  */
@@ -47,7 +47,7 @@ export async function getLotOwners(
   for (const id of lotIds) result.set(id, emptyOwner(id));
 
   const { data: members } = await supabase
-    .from("subdivision_members")
+    .from("oc_members")
     .select("lot_id, profile_id, profiles!inner(id, first_name, last_name, email, phone)")
     .in("lot_id", lotIds)
     .eq("role", "lot_owner")
@@ -105,17 +105,17 @@ export async function getLotOwner(
 }
 
 /**
- * Count lots in a subdivision that have an active member row (the canonical
+ * Count lots in a oc that have an active member row (the canonical
  * "assigned / has an owner" check, replacing the old denormalised column).
  */
 export async function countLotsWithOwner(
   supabase: SupabaseClient,
-  subdivisionId: string,
+  ocId: string,
 ): Promise<number> {
   const { data } = await supabase
-    .from("subdivision_members")
+    .from("oc_members")
     .select("lot_id")
-    .eq("subdivision_id", subdivisionId)
+    .eq("oc_id", ocId)
     .eq("role", "lot_owner")
     .is("left_at", null)
     .not("lot_id", "is", null);

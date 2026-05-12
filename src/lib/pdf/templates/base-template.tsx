@@ -23,7 +23,7 @@ interface BaseTemplateProps extends BaseDocumentProps {
  */
 export function BaseTemplate({
   managementCompany,
-  subdivision,
+  oc,
   documentTitle,
   referenceNumber,
   date,
@@ -34,7 +34,7 @@ export function BaseTemplate({
       <Page size="A4" style={baseStyles.page}>
         <PDFHeader
           managementCompany={managementCompany}
-          subdivision={subdivision}
+          oc={oc}
           date={date}
         />
 

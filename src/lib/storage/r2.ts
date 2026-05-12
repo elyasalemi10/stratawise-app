@@ -16,8 +16,8 @@
 // Path-prefix convention inside the single bucket:
 //   logos/{managementCompanyId}/logo.{ext}
 //   logos/{managementCompanyId}/signature.{ext}
-//   documents/{subdivisionId}/{documentId}.{ext}
-//   levies/{subdivisionId}/{referenceNumber}.pdf
+//   documents/{ocId}/{documentId}.{ext}
+//   levies/{ocId}/{referenceNumber}.pdf
 //
 // Bucket public access: the bucket is fronted by a public CDN custom domain
 // (R2_PUBLIC_URL). Objects can be fetched anonymously via that domain —

@@ -1,29 +1,29 @@
 "use server";
 
-import { getCurrentProfile, requireSubdivisionAccess } from "@/lib/auth";
+import { getCurrentProfile, requireOCAccess } from "@/lib/auth";
 import { createServerClient } from "@/lib/supabase";
 import { getLotOwners } from "@/lib/actions/lot-ownership";
 
 // ─── Levy History ──────────────────────────────────────────
 
-export async function getLevyHistory(subdivisionId: string, lotId?: string) {
+export async function getLevyHistory(ocId: string, lotId?: string) {
   const profile = await getCurrentProfile();
   if (!profile) return [];
-  await requireSubdivisionAccess(subdivisionId);
+  await requireOCAccess(ocId);
 
   const supabase = createServerClient();
   let query = supabase
     .from("levy_notices")
     .select("id, lot_id, reference_number, period_start, period_end, amount, amount_paid, status, due_date, issued_at, pdf_url, lots!inner(lot_number, unit_number)")
-    .eq("subdivision_id", subdivisionId)
+    .eq("oc_id", ocId)
     .order("due_date", { ascending: false });
 
   // Lot owners can only see their own levies
   if (profile.role === "lot_owner") {
     const { data: memberships } = await supabase
-      .from("subdivision_members")
+      .from("oc_members")
       .select("lot_id")
-      .eq("subdivision_id", subdivisionId)
+      .eq("oc_id", ocId)
       .eq("profile_id", profile.id)
       .is("left_at", null);
     const myLotIds = (memberships ?? []).map((m) => m.lot_id).filter(Boolean);
@@ -58,14 +58,14 @@ export async function getLevyHistory(subdivisionId: string, lotId?: string) {
 
 // ─── Insurance Status ──────────────────────────────────────
 
-export async function getInsuranceStatus(subdivisionId: string) {
-  await requireSubdivisionAccess(subdivisionId);
+export async function getInsuranceStatus(ocId: string) {
+  await requireOCAccess(ocId);
   const supabase = createServerClient();
 
   const { data } = await supabase
     .from("insurance_policies")
     .select("*")
-    .eq("subdivision_id", subdivisionId)
+    .eq("oc_id", ocId)
     .order("end_date", { ascending: false });
 
   return (data ?? []).map((p) => ({
@@ -79,16 +79,16 @@ export async function getInsuranceStatus(subdivisionId: string) {
 
 // ─── Lot Owner Register ────────────────────────────────────
 
-export async function getLotOwnerRegister(subdivisionId: string) {
+export async function getLotOwnerRegister(ocId: string) {
   const profile = await getCurrentProfile();
   if (!profile) return [];
-  await requireSubdivisionAccess(subdivisionId);
+  await requireOCAccess(ocId);
 
   const supabase = createServerClient();
   const { data } = await supabase
     .from("lots")
     .select("id, lot_number, unit_number, lot_entitlement, lot_liability")
-    .eq("subdivision_id", subdivisionId)
+    .eq("oc_id", ocId)
     .order("lot_number");
 
   const lots = data ?? [];
@@ -113,23 +113,23 @@ export async function getLotOwnerRegister(subdivisionId: string) {
 
 // ─── Communication Log ─────────────────────────────────────
 
-export async function getCommunicationLog(subdivisionId: string) {
-  await requireSubdivisionAccess(subdivisionId);
+export async function getCommunicationLog(ocId: string) {
+  await requireOCAccess(ocId);
   const supabase = createServerClient();
 
-  // Get notifications sent to this subdivision's lot owners
+  // Get notifications sent to this oc's lot owners
   const { data: notifications } = await supabase
     .from("notifications")
     .select("id, type, title, body, created_at")
-    .eq("subdivision_id", subdivisionId)
+    .eq("oc_id", ocId)
     .order("created_at", { ascending: false })
     .limit(100);
 
-  // Get invitations for this subdivision
+  // Get invitations for this oc
   const { data: invitations } = await supabase
     .from("invitations")
     .select("id, email, name, role, status, created_at")
-    .eq("subdivision_id", subdivisionId)
+    .eq("oc_id", ocId)
     .order("created_at", { ascending: false })
     .limit(50);
 
@@ -157,14 +157,14 @@ export async function getCommunicationLog(subdivisionId: string) {
 
 // ─── Audit Trail ───────────────────────────────────────────
 
-export async function getAuditTrail(subdivisionId: string) {
-  await requireSubdivisionAccess(subdivisionId);
+export async function getAuditTrail(ocId: string) {
+  await requireOCAccess(ocId);
   const supabase = createServerClient();
 
   const { data } = await supabase
     .from("audit_log")
     .select("id, action, entity_type, entity_id, before_state, after_state, created_at, profiles!inner(email, first_name, last_name)")
-    .eq("subdivision_id", subdivisionId)
+    .eq("oc_id", ocId)
     .order("created_at", { ascending: false })
     .limit(100);
 
@@ -191,26 +191,26 @@ const BILLING_PERIODS: Record<string, number> = {
   annually: 1,
 };
 
-export async function getOCCertificateData(subdivisionId: string, lotId: string, applicantName: string, applicantEmail: string) {
-  await requireSubdivisionAccess(subdivisionId);
+export async function getOCCertificateData(ocId: string, lotId: string, applicantName: string, applicantEmail: string) {
+  await requireOCAccess(ocId);
   const supabase = createServerClient();
 
   const [
-    { data: subdivision },
+    { data: oc },
     { data: lot },
     { data: levies },
     { data: insurance },
   ] = await Promise.all([
-    supabase.from("subdivisions").select("*, management_companies!inner(name, address, logo_url, registered_name, signature_url)").eq("id", subdivisionId).single(),
+    supabase.from("owners_corporations").select("*, management_companies!inner(name, address, logo_url, registered_name, signature_url)").eq("id", ocId).single(),
     supabase.from("lots").select("*").eq("id", lotId).single(),
     supabase.from("levy_notices").select("*").eq("lot_id", lotId).in("status", ["issued", "partially_paid", "paid", "overdue"]).order("due_date", { ascending: true }),
-    supabase.from("insurance_policies").select("*").eq("subdivision_id", subdivisionId).eq("status", "active"),
+    supabase.from("insurance_policies").select("*").eq("oc_id", ocId).eq("status", "active"),
   ]);
 
-  if (!subdivision || !lot) return null;
+  if (!oc || !lot) return null;
 
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const company = (subdivision as any).management_companies;
+  const company = (oc as any).management_companies;
 
   // Calculate unpaid total
   const unpaidTotal = (levies ?? []).reduce((sum, l) => sum + (Number(l.amount) - Number(l.amount_paid)), 0);
@@ -237,7 +237,7 @@ export async function getOCCertificateData(subdivisionId: string, lotId: string,
     const { data: budget } = await supabase
       .from("budgets")
       .select("total_amount")
-      .eq("subdivision_id", subdivisionId)
+      .eq("oc_id", ocId)
       .eq("fund_type", "administrative")
       .eq("status", "approved")
       .order("approved_at", { ascending: false, nullsFirst: false })
@@ -248,9 +248,9 @@ export async function getOCCertificateData(subdivisionId: string, lotId: string,
       const { data: allLots } = await supabase
         .from("lots")
         .select("id, lot_entitlement, lot_liability")
-        .eq("subdivision_id", subdivisionId);
+        .eq("oc_id", ocId);
 
-      const periodsPerYear = BILLING_PERIODS[subdivision.billing_cycle ?? "quarterly"] ?? 4;
+      const periodsPerYear = BILLING_PERIODS[oc.billing_cycle ?? "quarterly"] ?? 4;
       const totalEntitlement = (allLots ?? []).reduce((sum, l) => {
         const ue = Number(l.lot_liability) > 0 ? Number(l.lot_liability) : (Number(l.lot_entitlement) > 0 ? Number(l.lot_entitlement) : 1);
         return sum + ue;
@@ -268,8 +268,8 @@ export async function getOCCertificateData(subdivisionId: string, lotId: string,
   const feesPaidUpTo = latestPaid?.period_end ?? "n/a";
 
   return {
-    planNumber: subdivision.plan_number,
-    subdivisionAddress: subdivision.address,
+    planNumber: oc.plan_number,
+    ocAddress: oc.address,
     lotNumber: lot.lot_number,
     lotUnitNumber: lot.unit_number,
     applicantName,
@@ -277,7 +277,7 @@ export async function getOCCertificateData(subdivisionId: string, lotId: string,
     applicationDate: new Date().toISOString().split("T")[0],
     certificateDate: new Date().toISOString().split("T")[0],
     currentFees,
-    billingCycle: subdivision.billing_cycle ?? "quarterly",
+    billingCycle: oc.billing_cycle ?? "quarterly",
     feesPaidUpTo: feesPaidUpTo ?? "n/a",
     unpaidFeesTotal: Math.max(0, unpaidTotal),
     levies: (levies ?? []).map((l) => ({
@@ -295,29 +295,29 @@ export async function getOCCertificateData(subdivisionId: string, lotId: string,
     serviceAgreements: "n/a",
     noticesOrders: "n/a",
     legalProceedings: "n/a",
-    managerAppointed: subdivision.manager_appointed ?? true,
-    administratorAppointed: subdivision.administrator_appointed ?? false,
+    managerAppointed: oc.manager_appointed ?? true,
+    administratorAppointed: oc.administrator_appointed ?? false,
     lastAgmDate: "",
     companyName: company?.name ?? "",
     registeredName: company?.registered_name ?? company?.name ?? "",
     companyAddress: company?.address ?? "",
     logoUrl: company?.logo_url ?? null,
     signatureUrl: company?.signature_url ?? null,
-    commonSealText: subdivision.common_seal_text ?? "",
-    inspectionAddress: subdivision.inspection_address ?? company?.address ?? "",
+    commonSealText: oc.common_seal_text ?? "",
+    inspectionAddress: oc.inspection_address ?? company?.address ?? "",
   };
 }
 
 // ─── Get lots for filter dropdown ──────────────────────────
 
-export async function getSubdivisionLots(subdivisionId: string) {
-  await requireSubdivisionAccess(subdivisionId);
+export async function getOCLots(ocId: string) {
+  await requireOCAccess(ocId);
   const supabase = createServerClient();
 
   const { data } = await supabase
     .from("lots")
     .select("id, lot_number, unit_number")
-    .eq("subdivision_id", subdivisionId)
+    .eq("oc_id", ocId)
     .order("lot_number");
 
   const lots = data ?? [];
@@ -353,25 +353,25 @@ export interface OutstandingArrearsRow {
 }
 
 export async function getOutstandingArrearsReport(
-  subdivisionId: string,
+  ocId: string,
   asOfDateIso?: string,
 ): Promise<OutstandingArrearsRow[]> {
-  // Manager-only: requireSubdivisionAccess is sufficient (it gates on
+  // Manager-only: requireOCAccess is sufficient (it gates on
   // role + company membership). Owner role doesn't reach here from the
   // UI (managerOnly: true on the report card).
-  await requireSubdivisionAccess(subdivisionId);
+  await requireOCAccess(ocId);
   const supabase = createServerClient();
 
   const asOf = asOfDateIso ?? new Date().toISOString().slice(0, 10);
 
-  // Pull all unpaid levy_notices for the subdivision. Includes
+  // Pull all unpaid levy_notices for the oc. Includes
   // penalty_interest sub-rows; we'll split them out per lot.
   const { data: noticesData } = await supabase
     .from("levy_notices")
     .select(
       "id, lot_id, amount, amount_paid, due_date, status, levy_type, linked_levy_id",
     )
-    .eq("subdivision_id", subdivisionId)
+    .eq("oc_id", ocId)
     .in("status", ["issued", "partially_paid", "overdue"]);
 
   const notices = (noticesData ?? []) as Array<{
@@ -489,24 +489,24 @@ export interface OwnerStatementReport {
 }
 
 export async function getOwnerStatement(
-  subdivisionId: string,
+  ocId: string,
   lotId: string,
   fromDateIso: string,
   toDateIso: string,
 ): Promise<OwnerStatementReport> {
-  // Authz: owners can pull their own; managers can pull any. requireSubdivisionAccess
+  // Authz: owners can pull their own; managers can pull any. requireOCAccess
   // gates company membership; we add a per-lot check for lot_owner role.
   const profile = await getCurrentProfile();
   if (!profile) throw new Error("Not authenticated");
-  await requireSubdivisionAccess(subdivisionId);
+  await requireOCAccess(ocId);
 
   const supabase = createServerClient();
 
   if (profile.role === "lot_owner") {
     const { data: memberRow } = await supabase
-      .from("subdivision_members")
+      .from("oc_members")
       .select("id")
-      .eq("subdivision_id", subdivisionId)
+      .eq("oc_id", ocId)
       .eq("profile_id", profile.id)
       .eq("lot_id", lotId)
       .is("left_at", null)
@@ -607,11 +607,11 @@ export interface TrustAccountSummaryRow {
 }
 
 export async function getTrustAccountSummary(
-  subdivisionId: string,
+  ocId: string,
   fromDateIso: string,
   toDateIso: string,
 ): Promise<TrustAccountSummaryRow[]> {
-  await requireSubdivisionAccess(subdivisionId);
+  await requireOCAccess(ocId);
   const supabase = createServerClient();
 
   const { data: accountsData } = await supabase
@@ -619,7 +619,7 @@ export async function getTrustAccountSummary(
     .select(
       "id, account_name, bsb, account_number, fund_type, bank_name, opening_balance, opening_balance_date, last_sync_at",
     )
-    .eq("subdivision_id", subdivisionId)
+    .eq("oc_id", ocId)
     .order("account_name");
   const accounts = (accountsData ?? []) as Array<{
     id: string;

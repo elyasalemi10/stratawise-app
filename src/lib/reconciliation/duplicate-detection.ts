@@ -14,7 +14,7 @@
 // rows are ineligible parents (see candidate-pool predicates below).
 //
 // Scope: per bank_account_id. Cross-account (admin x capital_works) and
-// cross-subdivision matches are intentionally out of scope — see
+// cross-oc matches are intentionally out of scope — see
 // CONTEXT.md PP5 §Duplicates.
 //
 // Empty-after-normalise descriptions: two amount-equal rows on the same day
@@ -174,13 +174,13 @@ export async function detectDuplicate(
  */
 export async function markDuplicate(args: {
   bank_transaction_id: string;
-  subdivision_id: string;
+  oc_id: string;
   duplicate_of: string;
   metadata: DuplicateMetadata;
   performedBy: string;
   supabase: SupabaseClient;
 }): Promise<{ ok: true } | { ok: false; error: string }> {
-  const { bank_transaction_id, subdivision_id, duplicate_of, metadata, performedBy, supabase } = args;
+  const { bank_transaction_id, oc_id, duplicate_of, metadata, performedBy, supabase } = args;
 
   const { error: updErr } = await supabase
     .from("bank_transactions")
@@ -194,7 +194,7 @@ export async function markDuplicate(args: {
 
   const { error: auditErr } = await supabase.from("audit_log").insert({
     profile_id: performedBy,
-    subdivision_id,
+    oc_id,
     action: "bank_transaction.duplicate_detected",
     entity_type: "bank_transaction",
     entity_id: bank_transaction_id,

@@ -185,7 +185,7 @@ export interface GapReportResult {
 
 export interface BasiqConnectionDetail {
   id: string;
-  subdivisionId: string;
+  ocId: string;
   basiqUserId: string;
   basiqExternalConnectionId: string;
   basiqInstitutionId: string;
@@ -211,7 +211,7 @@ export interface BasiqConnectionDetail {
 // ─── Form schemas ──────────────────────────────────────────────
 
 export const startBasiqConsentSchema = z.object({
-  subdivision_id: z.string().uuid(),
+  oc_id: z.string().uuid(),
   institution_id: z.string().min(1),
   nominated_rep_name: z.string().min(1).max(200),
   return_to: z.string().optional().nullable(),
@@ -227,7 +227,7 @@ export type CompleteBasiqConsentInput = z.infer<
 >;
 
 export const forceSyncBasiqConnectionSchema = z.object({
-  subdivision_id: z.string().uuid(),
+  oc_id: z.string().uuid(),
 });
 export type ForceSyncBasiqConnectionInput = z.infer<
   typeof forceSyncBasiqConnectionSchema

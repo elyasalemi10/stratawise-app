@@ -75,7 +75,7 @@ export type MatchMethod =
 /** Minimal input from callers — orchestrator augments to AutoMatchContext. */
 export interface AutoMatchInput {
   bankTransactionId: string;
-  subdivisionId: string;
+  ocId: string;
   bankAccountId: string;
   description: string;
   amount: number;
@@ -264,7 +264,7 @@ export async function tryAutoMatch(
       // orchestrator summary below) so the cause is visible.
       await supabase.from("audit_log").insert({
         profile_id: ctx.performedBy,
-        subdivision_id: ctx.subdivisionId,
+        oc_id: ctx.ocId,
         action: "reconciliation.auto_match_failed",
         entity_type: "bank_transaction",
         entity_id: ctx.bankTransactionId,
@@ -307,7 +307,7 @@ export async function tryAutoMatch(
     if (createdCreditIds.length > 0) {
       await detectAndMarkLedgerDuplicates({
         creditIds: createdCreditIds,
-        subdivisionId: ctx.subdivisionId,
+        ocId: ctx.ocId,
         performedBy: ctx.performedBy,
         supabase,
       });
@@ -377,7 +377,7 @@ async function writeOrchestratorAudit(
 ): Promise<void> {
   await supabase.from("audit_log").insert({
     profile_id: ctx.performedBy,
-    subdivision_id: ctx.subdivisionId,
+    oc_id: ctx.ocId,
     action: "reconciliation.auto_match_attempted",
     entity_type: "bank_transaction",
     entity_id: ctx.bankTransactionId,

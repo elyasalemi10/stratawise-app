@@ -243,7 +243,7 @@ type CollisionResolutionDialogProps = {
   onOpenChange: (open: boolean) => void;
   payload: MappingCollisionPayload | null;
   flow: CollisionFlow;
-  subdivisionId: string;
+  ocId: string;
   /** Required when flow="reconcile_remember_payer". */
   bankTransactionId?: string;
   onResolved?: (outcome: {
@@ -258,7 +258,7 @@ export function CollisionResolutionDialog({
   onOpenChange,
   payload,
   flow,
-  subdivisionId,
+  ocId,
   bankTransactionId,
   onResolved,
 }: CollisionResolutionDialogProps) {
@@ -281,7 +281,7 @@ export function CollisionResolutionDialog({
         flow === "reconcile_remember_payer"
           ? { flow, bankTransactionId: bankTransactionId ?? "" }
           : { flow };
-      submitResolution(state.payload, state.resolution, ctx, subdivisionId)
+      submitResolution(state.payload, state.resolution, ctx, ocId)
         .then((outcome) => {
           if (outcome.race) {
             if (outcome.race.divergence_type === "mapping_deleted") {
@@ -319,7 +319,7 @@ export function CollisionResolutionDialog({
       const p = state.payload;
       void (async () => {
         const result = await createMappingDirectAction({
-          subdivision_id: subdivisionId,
+          oc_id: ocId,
           canonical_sender_name: p.canonical_sender_name,
           lot_id: p.proposed_lot_id,
         });
@@ -372,7 +372,7 @@ export function CollisionResolutionDialog({
     state,
     flow,
     bankTransactionId,
-    subdivisionId,
+    ocId,
     onOpenChange,
     onResolved,
   ]);
@@ -697,7 +697,7 @@ async function submitResolution(
   payload: MappingCollisionPayload,
   resolution: Resolution,
   ctx: ResolveContext,
-  subdivisionId: string,
+  ocId: string,
 ): Promise<ResolveOutcome> {
   if (ctx.flow === "reconcile_remember_payer") {
     if (!ctx.bankTransactionId) {
@@ -707,7 +707,7 @@ async function submitResolution(
       };
     }
     const result = await resolvePayerMappingCollision({
-      subdivision_id: subdivisionId,
+      oc_id: ocId,
       bank_transaction_id: ctx.bankTransactionId,
       proposed_lot_id: payload.proposed_lot_id,
       resolution,
@@ -735,7 +735,7 @@ async function submitResolution(
 
   // mapping_reactivate flow
   const result = await resolveMappingCollision({
-    subdivision_id: subdivisionId,
+    oc_id: ocId,
     canonical_sender_name: payload.canonical_sender_name,
     proposed_lot_id: payload.proposed_lot_id,
     resolution,

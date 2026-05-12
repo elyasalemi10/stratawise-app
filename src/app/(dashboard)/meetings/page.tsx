@@ -11,7 +11,7 @@ export default async function MeetingsPage() {
 
   return (
     <div className="space-y-6">
-      <PageHeader title="Meetings" subtitle="View meeting notices and minutes across all your subdivisions" />
+      <PageHeader title="Meetings" subtitle="View meeting notices and minutes across all your ocs" />
 
       <Card>
         <CardContent className="flex flex-col items-center justify-center py-16 text-center">

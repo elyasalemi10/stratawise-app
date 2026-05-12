@@ -45,12 +45,12 @@ import { Button } from "@/components/ui/button";
 import { Check } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { recordCashReceiptSchema, type RecordCashReceiptInput } from "@/lib/validations/reconciliation";
-import { recordCashReceipt, getSubdivisionLotsForAllocation } from "@/lib/actions/reconciliation";
+import { recordCashReceipt, getOCLotsForAllocation } from "@/lib/actions/reconciliation";
 
 interface Props {
   open: boolean;
   onOpenChange: (open: boolean) => void;
-  subdivisionId: string;
+  ocId: string;
   bankAccountId: string;
   bankAccountName: string;
   fundType: "administrative" | "capital_works";
@@ -61,7 +61,7 @@ interface Props {
 export function RecordCashReceiptDialog({
   open,
   onOpenChange,
-  subdivisionId,
+  ocId,
   bankAccountId,
   bankAccountName,
   fundType,
@@ -70,13 +70,13 @@ export function RecordCashReceiptDialog({
 }: Props) {
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [lotsLoading, setLotsLoading] = useState(true);
-  const [lots, setLots] = useState<Awaited<ReturnType<typeof getSubdivisionLotsForAllocation>>>([]);
+  const [lots, setLots] = useState<Awaited<ReturnType<typeof getOCLotsForAllocation>>>([]);
   const [lotOpen, setLotOpen] = useState(false);
 
   const form = useForm<RecordCashReceiptInput>({
     resolver: zodResolver(recordCashReceiptSchema),
     defaultValues: {
-      subdivision_id: subdivisionId,
+      oc_id: ocId,
       lot_id: defaultLotId ?? "",
       bank_account_id: bankAccountId,
       fund_type: fundType,
@@ -111,7 +111,7 @@ export function RecordCashReceiptDialog({
     const loadLots = async () => {
       try {
         setLotsLoading(true);
-        const data = await getSubdivisionLotsForAllocation(subdivisionId);
+        const data = await getOCLotsForAllocation(ocId);
         setLots(data);
       } catch {
         toast.error("Failed to load lots");
@@ -120,7 +120,7 @@ export function RecordCashReceiptDialog({
       }
     };
     loadLots();
-  }, [open, subdivisionId]);
+  }, [open, ocId]);
 
   const selectedLotId = form.watch("lot_id");
   const selectedLot = lots.find((l) => l.id === selectedLotId);

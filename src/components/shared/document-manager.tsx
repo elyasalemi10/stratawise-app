@@ -26,7 +26,7 @@ interface DocWithUrl extends DocumentRecord {
 }
 
 interface DocumentManagerProps {
-  subdivisionId: string;
+  ocId: string;
   lotId?: string;
   initialDocuments: DocumentRecord[];
   readOnly?: boolean;
@@ -67,7 +67,7 @@ function formatDate(dateStr: string): string {
 // Build accept string for file input
 const ACCEPT_STRING = ALLOWED_EXTENSIONS.join(",");
 
-export function DocumentManager({ subdivisionId, lotId, initialDocuments, readOnly }: DocumentManagerProps) {
+export function DocumentManager({ ocId, lotId, initialDocuments, readOnly }: DocumentManagerProps) {
   const [documents, setDocuments] = useState<DocWithUrl[]>(initialDocuments);
   const [uploads, setUploads] = useState<UploadProgress[]>([]);
   const [dragging, setDragging] = useState(false);
@@ -86,7 +86,7 @@ export function DocumentManager({ subdivisionId, lotId, initialDocuments, readOn
     const xhr = new XMLHttpRequest();
     const formData = new FormData();
     formData.append("file", file);
-    formData.append("subdivision_id", subdivisionId);
+    formData.append("oc_id", ocId);
     formData.append("category", selectedCategory);
     if (lotId) formData.append("lot_id", lotId);
 
@@ -123,7 +123,7 @@ export function DocumentManager({ subdivisionId, lotId, initialDocuments, readOn
 
     xhr.open("POST", "/api/documents");
     xhr.send(formData);
-  }, [subdivisionId, lotId, selectedCategory]);
+  }, [ocId, lotId, selectedCategory]);
 
   function handleFiles(files: FileList | File[]) {
     Array.from(files).forEach(uploadFile);

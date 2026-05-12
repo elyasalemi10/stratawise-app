@@ -42,7 +42,7 @@ export async function POST(req: Request): Promise<Response> {
       const supabase = createServerClient();
       await supabase.from("audit_log").insert({
         profile_id: null,
-        subdivision_id: null,
+        oc_id: null,
         action: "basiq_webhook.signature_rejected",
         entity_type: "basiq_webhook",
         entity_id: null,

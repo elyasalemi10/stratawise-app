@@ -1,8 +1,8 @@
 /**
  * Interest accrual verification (PP6-B-B).
  *
- * Exercises rpc_accrue_interest_for_subdivision (PP6-A) end-to-end via the
- * accrueInterestForSubdivisionJob wrapper (PP6-B-A) against the live Supabase
+ * Exercises rpc_accrue_interest_for_oc (PP6-A) end-to-end via the
+ * accrueInterestForOCJob wrapper (PP6-B-A) against the live Supabase
  * dev DB. 15 scenarios IA-1..IA-15 covering eligibility, idempotency, field
  * shape, and the FK-violation defensive path.
  *
@@ -21,9 +21,9 @@ config({ path: ".env.local" });
 
 import { createClient } from "@supabase/supabase-js";
 import { randomUUID } from "crypto";
-import { generateSubdivisionCode } from "@/lib/subdivision-code";
+import { generateOCCode } from "@/lib/oc-code";
 import {
-  accrueInterestForSubdivisionJob,
+  accrueInterestForOCJob,
   resolveSystemProfileId,
 } from "./jobs";
 
@@ -69,8 +69,8 @@ interface ScenarioContext {
   managerProfileId: string; // for created_by on parent ledger debits if needed
 }
 
-interface SubdivisionFixture {
-  subdivisionId: string;
+interface OCFixture {
+  ocId: string;
 }
 
 interface LotFixture {
@@ -115,24 +115,24 @@ async function createManagerProfile(companyId: string): Promise<string> {
   return (data as { id: string }).id;
 }
 
-interface SubdivisionOpts {
+interface OCOpts {
   interestEnabled?: boolean;
   interestRateMonthly?: number; // percent (e.g. 2.0 = 2%)
   interestGracePeriodDays?: number;
 }
 
-async function createSubdivisionFixture(
+async function createOCFixture(
   ctx: ScenarioContext,
-  opts: SubdivisionOpts = {},
-): Promise<SubdivisionFixture> {
+  opts: OCOpts = {},
+): Promise<OCFixture> {
   const runId = `${Date.now()}_${randomUUID().slice(0, 6)}`;
   const { data, error } = await supabase
-    .from("subdivisions")
+    .from("owners_corporations")
     .insert({
       management_company_id: ctx.companyId,
       name: `${VERIFY_MARKER}${runId}`,
       plan_number: `PLAN-${runId}`,
-      short_code: generateSubdivisionCode(),
+      short_code: generateOCCode(),
       address: `${runId} Accrual Test St, Melbourne VIC 3000`,
       total_lots: 1,
       created_by: ctx.managerProfileId,
@@ -143,18 +143,18 @@ async function createSubdivisionFixture(
     .select("id")
     .single();
   if (error || !data)
-    throw new Error(`createSubdivisionFixture: ${error?.message}`);
-  return { subdivisionId: (data as { id: string }).id };
+    throw new Error(`createOCFixture: ${error?.message}`);
+  return { ocId: (data as { id: string }).id };
 }
 
 async function createLotFixture(
-  sub: SubdivisionFixture,
+  sub: OCFixture,
   lotNumber: number,
 ): Promise<LotFixture> {
   const { data, error } = await supabase
     .from("lots")
     .insert({
-      subdivision_id: sub.subdivisionId,
+      oc_id: sub.ocId,
       lot_number: lotNumber,
       lot_entitlement: 100,
       lot_liability: 100,
@@ -178,7 +178,7 @@ interface LevyOpts {
 }
 
 async function createLevyNoticeFixture(
-  sub: SubdivisionFixture,
+  sub: OCFixture,
   lot: LotFixture,
   opts: LevyOpts,
   refSuffix: string,
@@ -187,7 +187,7 @@ async function createLevyNoticeFixture(
   const { data, error } = await supabase
     .from("levy_notices")
     .insert({
-      subdivision_id: sub.subdivisionId,
+      oc_id: sub.ocId,
       lot_id: lot.lotId,
       reference_number: `LEV-T-${refSuffix}`,
       bpay_crn: opts.bpayCrn ?? null,
@@ -218,7 +218,7 @@ async function createLevyNoticeFixture(
 // ─── Scenarios ──────────────────────────────────────────────────────────
 
 async function ia1_singleEligibleAccrued(ctx: ScenarioContext) {
-  const sub = await createSubdivisionFixture(ctx);
+  const sub = await createOCFixture(ctx);
   const lot = await createLotFixture(sub, 1);
   const levy = await createLevyNoticeFixture(
     sub,
@@ -227,8 +227,8 @@ async function ia1_singleEligibleAccrued(ctx: ScenarioContext) {
     "ia1",
   );
 
-  const result = await accrueInterestForSubdivisionJob({
-    subdivisionId: sub.subdivisionId,
+  const result = await accrueInterestForOCJob({
+    ocId: sub.ocId,
     runDate: RUN_DATE,
     systemProfileId: ctx.systemProfileId,
     supabase,
@@ -252,7 +252,7 @@ async function ia1_singleEligibleAccrued(ctx: ScenarioContext) {
 }
 
 async function ia2_interestDisabledSkips(ctx: ScenarioContext) {
-  const sub = await createSubdivisionFixture(ctx, { interestEnabled: false });
+  const sub = await createOCFixture(ctx, { interestEnabled: false });
   const lot = await createLotFixture(sub, 1);
   await createLevyNoticeFixture(
     sub,
@@ -261,8 +261,8 @@ async function ia2_interestDisabledSkips(ctx: ScenarioContext) {
     "ia2",
   );
 
-  const result = await accrueInterestForSubdivisionJob({
-    subdivisionId: sub.subdivisionId,
+  const result = await accrueInterestForOCJob({
+    ocId: sub.ocId,
     runDate: RUN_DATE,
     systemProfileId: ctx.systemProfileId,
     supabase,
@@ -271,13 +271,13 @@ async function ia2_interestDisabledSkips(ctx: ScenarioContext) {
   const { count: penaltyCount } = await supabase
     .from("levy_notices")
     .select("id", { count: "exact", head: true })
-    .eq("subdivision_id", sub.subdivisionId)
+    .eq("oc_id", sub.ocId)
     .eq("levy_type", "penalty_interest");
 
   const { data: runRow } = await supabase
     .from("interest_accrual_runs")
     .select("status, completed_at")
-    .eq("subdivision_id", sub.subdivisionId)
+    .eq("oc_id", sub.ocId)
     .eq("run_date", RUN_DATE)
     .single();
   const r = runRow as { status: string; completed_at: string | null } | null;
@@ -296,7 +296,7 @@ async function ia2_interestDisabledSkips(ctx: ScenarioContext) {
 }
 
 async function ia3_paidInFullSkipped(ctx: ScenarioContext) {
-  const sub = await createSubdivisionFixture(ctx);
+  const sub = await createOCFixture(ctx);
   const lot = await createLotFixture(sub, 1);
   await createLevyNoticeFixture(
     sub,
@@ -310,8 +310,8 @@ async function ia3_paidInFullSkipped(ctx: ScenarioContext) {
     "ia3",
   );
 
-  const result = await accrueInterestForSubdivisionJob({
-    subdivisionId: sub.subdivisionId,
+  const result = await accrueInterestForOCJob({
+    ocId: sub.ocId,
     runDate: RUN_DATE,
     systemProfileId: ctx.systemProfileId,
     supabase,
@@ -320,7 +320,7 @@ async function ia3_paidInFullSkipped(ctx: ScenarioContext) {
   const { count: penaltyCount } = await supabase
     .from("levy_notices")
     .select("id", { count: "exact", head: true })
-    .eq("subdivision_id", sub.subdivisionId)
+    .eq("oc_id", sub.ocId)
     .eq("levy_type", "penalty_interest");
 
   const ok =
@@ -334,7 +334,7 @@ async function ia3_paidInFullSkipped(ctx: ScenarioContext) {
 
 async function ia4_withinGraceSkipped(ctx: ScenarioContext) {
   // Grace = 10 days; due 5 days ago (still within grace).
-  const sub = await createSubdivisionFixture(ctx, {
+  const sub = await createOCFixture(ctx, {
     interestGracePeriodDays: 10,
   });
   const lot = await createLotFixture(sub, 1);
@@ -345,8 +345,8 @@ async function ia4_withinGraceSkipped(ctx: ScenarioContext) {
     "ia4",
   );
 
-  const result = await accrueInterestForSubdivisionJob({
-    subdivisionId: sub.subdivisionId,
+  const result = await accrueInterestForOCJob({
+    ocId: sub.ocId,
     runDate: RUN_DATE,
     systemProfileId: ctx.systemProfileId,
     supabase,
@@ -355,7 +355,7 @@ async function ia4_withinGraceSkipped(ctx: ScenarioContext) {
   const { count: penaltyCount } = await supabase
     .from("levy_notices")
     .select("id", { count: "exact", head: true })
-    .eq("subdivision_id", sub.subdivisionId)
+    .eq("oc_id", sub.ocId)
     .eq("levy_type", "penalty_interest");
 
   const ok =
@@ -369,7 +369,7 @@ async function ia4_withinGraceSkipped(ctx: ScenarioContext) {
 
 async function ia5_recentlyAccruedSkipped(ctx: ScenarioContext) {
   // last_accrual_date 15 days ago — within the 1-month per-levy idempotency.
-  const sub = await createSubdivisionFixture(ctx);
+  const sub = await createOCFixture(ctx);
   const lot = await createLotFixture(sub, 1);
   await createLevyNoticeFixture(
     sub,
@@ -383,8 +383,8 @@ async function ia5_recentlyAccruedSkipped(ctx: ScenarioContext) {
     "ia5",
   );
 
-  const result = await accrueInterestForSubdivisionJob({
-    subdivisionId: sub.subdivisionId,
+  const result = await accrueInterestForOCJob({
+    ocId: sub.ocId,
     runDate: RUN_DATE,
     systemProfileId: ctx.systemProfileId,
     supabase,
@@ -393,7 +393,7 @@ async function ia5_recentlyAccruedSkipped(ctx: ScenarioContext) {
   const { count: penaltyCount } = await supabase
     .from("levy_notices")
     .select("id", { count: "exact", head: true })
-    .eq("subdivision_id", sub.subdivisionId)
+    .eq("oc_id", sub.ocId)
     .eq("levy_type", "penalty_interest");
 
   const ok =
@@ -406,7 +406,7 @@ async function ia5_recentlyAccruedSkipped(ctx: ScenarioContext) {
 }
 
 async function ia6_sequentialRetryUniqueViolation(ctx: ScenarioContext) {
-  const sub = await createSubdivisionFixture(ctx);
+  const sub = await createOCFixture(ctx);
   const lot = await createLotFixture(sub, 1);
   await createLevyNoticeFixture(
     sub,
@@ -415,14 +415,14 @@ async function ia6_sequentialRetryUniqueViolation(ctx: ScenarioContext) {
     "ia6",
   );
 
-  const first = await accrueInterestForSubdivisionJob({
-    subdivisionId: sub.subdivisionId,
+  const first = await accrueInterestForOCJob({
+    ocId: sub.ocId,
     runDate: RUN_DATE,
     systemProfileId: ctx.systemProfileId,
     supabase,
   });
-  const second = await accrueInterestForSubdivisionJob({
-    subdivisionId: sub.subdivisionId,
+  const second = await accrueInterestForOCJob({
+    ocId: sub.ocId,
     runDate: RUN_DATE,
     systemProfileId: ctx.systemProfileId,
     supabase,
@@ -434,7 +434,7 @@ async function ia6_sequentialRetryUniqueViolation(ctx: ScenarioContext) {
     second.ok &&
     second.outcome === "skipped_already_accrued";
   record(
-    "IA-6: sequential retry on same (subdivision_id, run_date) → skipped_already_accrued",
+    "IA-6: sequential retry on same (oc_id, run_date) → skipped_already_accrued",
     ok,
     `first=${first.outcome} second=${second.outcome}`,
   );
@@ -451,13 +451,13 @@ async function ia7_failedRowSatisfiesCheckConstraint(ctx: ScenarioContext) {
   //
   // Two direct INSERTs: (a) whitespace-only message must trip the CHECK;
   // (b) the actual sentinel string must satisfy it.
-  const sub = await createSubdivisionFixture(ctx);
+  const sub = await createOCFixture(ctx);
 
   // (a) Pure-whitespace message must trip chk_iar_failed_pair.
   const { error: emptyErr } = await supabase
     .from("interest_accrual_runs")
     .insert({
-      subdivision_id: sub.subdivisionId,
+      oc_id: sub.ocId,
       run_date: RUN_DATE,
       status: "failed",
       error_message: "   ",
@@ -468,7 +468,7 @@ async function ia7_failedRowSatisfiesCheckConstraint(ctx: ScenarioContext) {
   const { error: sentinelErr } = await supabase
     .from("interest_accrual_runs")
     .insert({
-      subdivision_id: sub.subdivisionId,
+      oc_id: sub.ocId,
       run_date: daysBefore(RUN_DATE, 1),
       status: "failed",
       error_message: "(unknown failure — empty error message)",
@@ -484,7 +484,7 @@ async function ia7_failedRowSatisfiesCheckConstraint(ctx: ScenarioContext) {
 }
 
 async function ia8_multipleEligibleAggregated(ctx: ScenarioContext) {
-  const sub = await createSubdivisionFixture(ctx);
+  const sub = await createOCFixture(ctx);
   const lot = await createLotFixture(sub, 1);
   await createLevyNoticeFixture(
     sub,
@@ -499,8 +499,8 @@ async function ia8_multipleEligibleAggregated(ctx: ScenarioContext) {
     "ia8b",
   );
 
-  const result = await accrueInterestForSubdivisionJob({
-    subdivisionId: sub.subdivisionId,
+  const result = await accrueInterestForOCJob({
+    ocId: sub.ocId,
     runDate: RUN_DATE,
     systemProfileId: ctx.systemProfileId,
     supabase,
@@ -523,7 +523,7 @@ async function ia8_multipleEligibleAggregated(ctx: ScenarioContext) {
 }
 
 async function ia9_penaltyNoticeFields(ctx: ScenarioContext) {
-  const sub = await createSubdivisionFixture(ctx);
+  const sub = await createOCFixture(ctx);
   const lot = await createLotFixture(sub, 1);
   const parent = await createLevyNoticeFixture(
     sub,
@@ -538,8 +538,8 @@ async function ia9_penaltyNoticeFields(ctx: ScenarioContext) {
     "ia9",
   );
 
-  await accrueInterestForSubdivisionJob({
-    subdivisionId: sub.subdivisionId,
+  await accrueInterestForOCJob({
+    ocId: sub.ocId,
     runDate: RUN_DATE,
     systemProfileId: ctx.systemProfileId,
     supabase,
@@ -550,7 +550,7 @@ async function ia9_penaltyNoticeFields(ctx: ScenarioContext) {
     .select(
       "linked_levy_id, levy_type, bpay_crn, period_start, period_end, due_date, fund_type, last_accrual_date, batch_id, status",
     )
-    .eq("subdivision_id", sub.subdivisionId)
+    .eq("oc_id", sub.ocId)
     .eq("levy_type", "penalty_interest")
     .single();
   const p = penalty as {
@@ -595,7 +595,7 @@ async function ia9_penaltyNoticeFields(ctx: ScenarioContext) {
 }
 
 async function ia10_ledgerDebitFields(ctx: ScenarioContext) {
-  const sub = await createSubdivisionFixture(ctx);
+  const sub = await createOCFixture(ctx);
   const lot = await createLotFixture(sub, 1);
   await createLevyNoticeFixture(
     sub,
@@ -604,8 +604,8 @@ async function ia10_ledgerDebitFields(ctx: ScenarioContext) {
     "ia10",
   );
 
-  await accrueInterestForSubdivisionJob({
-    subdivisionId: sub.subdivisionId,
+  await accrueInterestForOCJob({
+    ocId: sub.ocId,
     runDate: RUN_DATE,
     systemProfileId: ctx.systemProfileId,
     supabase,
@@ -646,7 +646,7 @@ async function ia10_ledgerDebitFields(ctx: ScenarioContext) {
 }
 
 async function ia11_parentLastAccrualDateStamped(ctx: ScenarioContext) {
-  const sub = await createSubdivisionFixture(ctx);
+  const sub = await createOCFixture(ctx);
   const lot = await createLotFixture(sub, 1);
   const parent = await createLevyNoticeFixture(
     sub,
@@ -655,8 +655,8 @@ async function ia11_parentLastAccrualDateStamped(ctx: ScenarioContext) {
     "ia11",
   );
 
-  await accrueInterestForSubdivisionJob({
-    subdivisionId: sub.subdivisionId,
+  await accrueInterestForOCJob({
+    ocId: sub.ocId,
     runDate: RUN_DATE,
     systemProfileId: ctx.systemProfileId,
     supabase,
@@ -678,7 +678,7 @@ async function ia11_parentLastAccrualDateStamped(ctx: ScenarioContext) {
 }
 
 async function ia12_penaltyTypeDoesNotCompound(ctx: ScenarioContext) {
-  const sub = await createSubdivisionFixture(ctx);
+  const sub = await createOCFixture(ctx);
   const lot = await createLotFixture(sub, 1);
   // Seed an EXISTING penalty_interest levy as if a prior accrual ran.
   // It must NOT be re-accrued on (eligibility predicate excludes
@@ -695,8 +695,8 @@ async function ia12_penaltyTypeDoesNotCompound(ctx: ScenarioContext) {
     "ia12",
   );
 
-  const result = await accrueInterestForSubdivisionJob({
-    subdivisionId: sub.subdivisionId,
+  const result = await accrueInterestForOCJob({
+    ocId: sub.ocId,
     runDate: RUN_DATE,
     systemProfileId: ctx.systemProfileId,
     supabase,
@@ -705,7 +705,7 @@ async function ia12_penaltyTypeDoesNotCompound(ctx: ScenarioContext) {
   const { count } = await supabase
     .from("levy_notices")
     .select("id", { count: "exact", head: true })
-    .eq("subdivision_id", sub.subdivisionId)
+    .eq("oc_id", sub.ocId)
     .eq("levy_type", "penalty_interest");
 
   // Only the seeded penalty notice should exist (count=1). No new
@@ -720,7 +720,7 @@ async function ia12_penaltyTypeDoesNotCompound(ctx: ScenarioContext) {
 }
 
 async function ia13_tinyOutstandingRoundsToZero(ctx: ScenarioContext) {
-  const sub = await createSubdivisionFixture(ctx);
+  const sub = await createOCFixture(ctx);
   const lot = await createLotFixture(sub, 1);
   // Outstanding = 0.01; 0.01 * 2% = 0.0002 → ROUND to 0.00 → CONTINUE.
   const parent = await createLevyNoticeFixture(
@@ -735,8 +735,8 @@ async function ia13_tinyOutstandingRoundsToZero(ctx: ScenarioContext) {
     "ia13",
   );
 
-  const result = await accrueInterestForSubdivisionJob({
-    subdivisionId: sub.subdivisionId,
+  const result = await accrueInterestForOCJob({
+    ocId: sub.ocId,
     runDate: RUN_DATE,
     systemProfileId: ctx.systemProfileId,
     supabase,
@@ -745,7 +745,7 @@ async function ia13_tinyOutstandingRoundsToZero(ctx: ScenarioContext) {
   const { count: penaltyCount } = await supabase
     .from("levy_notices")
     .select("id", { count: "exact", head: true })
-    .eq("subdivision_id", sub.subdivisionId)
+    .eq("oc_id", sub.ocId)
     .eq("levy_type", "penalty_interest");
 
   const { data: parentLevy } = await supabase
@@ -771,7 +771,7 @@ async function ia13_tinyOutstandingRoundsToZero(ctx: ScenarioContext) {
 }
 
 async function ia14_multipleLotsRecomputed(ctx: ScenarioContext) {
-  const sub = await createSubdivisionFixture(ctx);
+  const sub = await createOCFixture(ctx);
   const lot1 = await createLotFixture(sub, 1);
   const lot2 = await createLotFixture(sub, 2);
   await createLevyNoticeFixture(
@@ -787,8 +787,8 @@ async function ia14_multipleLotsRecomputed(ctx: ScenarioContext) {
     "ia14b",
   );
 
-  const result = await accrueInterestForSubdivisionJob({
-    subdivisionId: sub.subdivisionId,
+  const result = await accrueInterestForOCJob({
+    ocId: sub.ocId,
     runDate: RUN_DATE,
     systemProfileId: ctx.systemProfileId,
     supabase,
@@ -820,7 +820,7 @@ async function ia14_multipleLotsRecomputed(ctx: ScenarioContext) {
 }
 
 async function ia15_systemProfileFkViolation(ctx: ScenarioContext) {
-  const sub = await createSubdivisionFixture(ctx);
+  const sub = await createOCFixture(ctx);
   const lot = await createLotFixture(sub, 1);
   const parent = await createLevyNoticeFixture(
     sub,
@@ -834,8 +834,8 @@ async function ia15_systemProfileFkViolation(ctx: ScenarioContext) {
   // transaction rolls back; caller writes a failed run row.
   const fakeProfileId = randomUUID();
 
-  const result = await accrueInterestForSubdivisionJob({
-    subdivisionId: sub.subdivisionId,
+  const result = await accrueInterestForOCJob({
+    ocId: sub.ocId,
     runDate: RUN_DATE,
     systemProfileId: fakeProfileId,
     supabase,
@@ -844,14 +844,14 @@ async function ia15_systemProfileFkViolation(ctx: ScenarioContext) {
   const { data: runRows } = await supabase
     .from("interest_accrual_runs")
     .select("status, error_message")
-    .eq("subdivision_id", sub.subdivisionId)
+    .eq("oc_id", sub.ocId)
     .eq("run_date", RUN_DATE);
   const rows = (runRows ?? []) as { status: string; error_message: string | null }[];
 
   const { count: penaltyCount } = await supabase
     .from("levy_notices")
     .select("id", { count: "exact", head: true })
-    .eq("subdivision_id", sub.subdivisionId)
+    .eq("oc_id", sub.ocId)
     .eq("levy_type", "penalty_interest");
 
   const { data: parentLevy } = await supabase
@@ -896,7 +896,7 @@ async function cleanupMarker() {
 
 async function cleanupCompany(companyId: string) {
   const { data: subs } = await supabase
-    .from("subdivisions")
+    .from("owners_corporations")
     .select("id")
     .eq("management_company_id", companyId);
   const subIds = (subs ?? []).map((s) => (s as { id: string }).id);
@@ -905,7 +905,7 @@ async function cleanupCompany(companyId: string) {
     const { data: lots } = await supabase
       .from("lots")
       .select("id")
-      .in("subdivision_id", subIds);
+      .in("oc_id", subIds);
     const lotIds = (lots ?? []).map((l) => (l as { id: string }).id);
 
     if (lotIds.length > 0) {
@@ -922,22 +922,22 @@ async function cleanupCompany(companyId: string) {
     await supabase
       .from("levy_notices")
       .update({ linked_levy_id: null })
-      .in("subdivision_id", subIds);
-    await supabase.from("levy_notices").delete().in("subdivision_id", subIds);
+      .in("oc_id", subIds);
+    await supabase.from("levy_notices").delete().in("oc_id", subIds);
 
-    await supabase.from("interest_accrual_runs").delete().in("subdivision_id", subIds);
+    await supabase.from("interest_accrual_runs").delete().in("oc_id", subIds);
 
-    await supabase.from("audit_log").delete().in("subdivision_id", subIds);
-    await supabase.from("lots").delete().in("subdivision_id", subIds);
-    await supabase.from("subdivisions").delete().in("id", subIds);
+    await supabase.from("audit_log").delete().in("oc_id", subIds);
+    await supabase.from("lots").delete().in("oc_id", subIds);
+    await supabase.from("owners_corporations").delete().in("id", subIds);
   }
 
   // audit_log.profile_id has no ON DELETE clause (defaults to NO ACTION /
-  // RESTRICT) — cross-subdivision audit rows authored by this fixture's
-  // profiles would block the profiles DELETE. The subdivision-keyed delete
-  // above already handles in-subdivision audit; this catches anything else
+  // RESTRICT) — cross-oc audit rows authored by this fixture's
+  // profiles would block the profiles DELETE. The oc-keyed delete
+  // above already handles in-oc audit; this catches anything else
   // (e.g. future fixture writes that audit at the company level with
-  // subdivision_id=NULL).
+  // oc_id=NULL).
   const { data: profileRows } = await supabase
     .from("profiles")
     .select("id")
@@ -950,7 +950,7 @@ async function cleanupCompany(companyId: string) {
       .from("audit_log")
       .delete()
       .in("profile_id", profileIds)
-      .is("subdivision_id", null);
+      .is("oc_id", null);
   }
 
   await supabase.from("profiles").delete().eq("management_company_id", companyId);

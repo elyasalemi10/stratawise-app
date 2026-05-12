@@ -21,8 +21,8 @@ export default async function PastLotPage({
   // managers (super_admin) can preview, and so an owner who briefly re-bought
   // the same lot can still see their old tenure.
   const { data: membership } = await supabase
-    .from("subdivision_members")
-    .select("id, subdivision_id, joined_at, left_at")
+    .from("oc_members")
+    .select("id, oc_id, joined_at, left_at")
     .eq("lot_id", lotId)
     .eq("profile_id", profile.id)
     .order("joined_at", { ascending: false })
@@ -31,10 +31,10 @@ export default async function PastLotPage({
 
   if (!membership) notFound();
 
-  const { joined_at, left_at, subdivision_id } = membership;
+  const { joined_at, left_at, oc_id } = membership;
 
   const [subResult, lotResult, leviesResult, paymentsResult, commsResult] = await Promise.all([
-    supabase.from("subdivisions").select("id, short_code, name, address, plan_number").eq("id", subdivision_id).single(),
+    supabase.from("owners_corporations").select("id, short_code, name, address, plan_number").eq("id", oc_id).single(),
     supabase.from("lots").select("id, lot_number, unit_number").eq("id", lotId).single(),
     supabase
       .from("levy_notices")

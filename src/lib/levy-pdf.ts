@@ -13,14 +13,14 @@ import { uploadObject } from "@/lib/storage/r2";
  */
 export async function generateAndUploadLevyPDF(
   props: LevyNoticeProps,
-  subdivisionId: string,
+  ocId: string,
   referenceNumber: string,
 ): Promise<string> {
   const element = createElement(LevyNotice, props);
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const buffer = await renderToBuffer(element as any);
 
-  const key = `levies/${subdivisionId}/${referenceNumber}.pdf`;
+  const key = `levies/${ocId}/${referenceNumber}.pdf`;
   const { publicUrl } = await uploadObject(key, buffer, "application/pdf");
   return publicUrl;
 }

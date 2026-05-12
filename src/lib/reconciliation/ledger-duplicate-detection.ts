@@ -157,13 +157,13 @@ export async function detectLedgerDuplicate(
  */
 export async function markLedgerDuplicate(args: {
   lot_ledger_entry_id: string;
-  subdivision_id: string;
+  oc_id: string;
   duplicate_of: string;
   metadata: LedgerDuplicateMetadata;
   performedBy: string;
   supabase: SupabaseClient;
 }): Promise<{ ok: true } | { ok: false; error: string }> {
-  const { lot_ledger_entry_id, subdivision_id, duplicate_of, metadata, performedBy, supabase } = args;
+  const { lot_ledger_entry_id, oc_id, duplicate_of, metadata, performedBy, supabase } = args;
 
   const { error: updErr } = await supabase
     .from("lot_ledger_entries")
@@ -177,7 +177,7 @@ export async function markLedgerDuplicate(args: {
 
   const { error: auditErr } = await supabase.from("audit_log").insert({
     profile_id: performedBy,
-    subdivision_id,
+    oc_id,
     action: "lot_ledger_entry.duplicate_detected",
     entity_type: "lot_ledger_entry",
     entity_id: lot_ledger_entry_id,
@@ -203,11 +203,11 @@ export async function markLedgerDuplicate(args: {
  */
 export async function detectAndMarkLedgerDuplicates(args: {
   creditIds: string[];
-  subdivisionId: string;
+  ocId: string;
   performedBy: string;
   supabase: SupabaseClient;
 }): Promise<{ flagged: number; mark_failures: number }> {
-  const { creditIds, subdivisionId, performedBy, supabase } = args;
+  const { creditIds, ocId, performedBy, supabase } = args;
   if (creditIds.length === 0) return { flagged: 0, mark_failures: 0 };
 
   const { data: rows, error } = await supabase
@@ -244,7 +244,7 @@ export async function detectAndMarkLedgerDuplicates(args: {
 
     const marked = await markLedgerDuplicate({
       lot_ledger_entry_id: row.id,
-      subdivision_id: subdivisionId,
+      oc_id: ocId,
       duplicate_of: detection.duplicate_of,
       metadata: detection.metadata,
       performedBy,
@@ -259,7 +259,7 @@ export async function detectAndMarkLedgerDuplicates(args: {
       // active — we don't roll it back.
       console.error(`[ledger-duplicate-detection] markLedgerDuplicate failed`, {
         ledger_entry_id: row.id,
-        subdivision_id: subdivisionId,
+        oc_id: ocId,
         duplicate_of: detection.duplicate_of,
         error: marked.error,
       });

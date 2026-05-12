@@ -57,7 +57,7 @@ import {
   __getUserIdResolverForVerification,
 } from "@/lib/auth-resolver";
 import { generateCrn } from "@/lib/reconciliation/bpay-crn";
-import { generateSubdivisionCode } from "@/lib/subdivision-code";
+import { generateOCCode } from "@/lib/oc-code";
 
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
 const serviceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
@@ -111,7 +111,7 @@ function approx(a: number, b: number, tol = 0.001): boolean {
 interface Fixture {
   runId: string;
   companyId: string;
-  subdivisionId: string;
+  ocId: string;
   budgetId: string;
   profileId: string;
   clerkId: string;
@@ -150,25 +150,25 @@ async function createFixture(): Promise<Fixture> {
     .single();
   if (profileErr || !profile) throw new Error(`Fixture: profile insert failed: ${profileErr?.message}`);
 
-  const { data: subdivision, error: subErr } = await supabase
-    .from("subdivisions")
+  const { data: oc, error: subErr } = await supabase
+    .from("owners_corporations")
     .insert({
       management_company_id: company.id,
       name: companyName,
       plan_number: `PLAN-${runId}`,
-      short_code: generateSubdivisionCode(),
+      short_code: generateOCCode(),
       address: "1 Recon Verify St, Melbourne VIC 3000",
       total_lots: 3,
       created_by: profile.id,
     })
     .select("id")
     .single();
-  if (subErr || !subdivision) throw new Error(`Fixture: subdivision: ${subErr?.message}`);
+  if (subErr || !oc) throw new Error(`Fixture: oc: ${subErr?.message}`);
 
   const { data: budget, error: budgetErr } = await supabase
     .from("budgets")
     .insert({
-      subdivision_id: subdivision.id,
+      oc_id: oc.id,
       financial_year: "2026-2027",
       fund_type: "administrative",
       total_amount: 12000,
@@ -181,7 +181,7 @@ async function createFixture(): Promise<Fixture> {
   if (budgetErr || !budget) throw new Error(`Fixture: budget: ${budgetErr?.message}`);
 
   const lotRows = [1, 2, 3].map((n) => ({
-    subdivision_id: subdivision.id,
+    oc_id: oc.id,
     lot_number: n,
     lot_entitlement: 100,
     lot_liability: 100,
@@ -197,7 +197,7 @@ async function createFixture(): Promise<Fixture> {
   const { data: adminAcct, error: adminErr } = await supabase
     .from("bank_accounts")
     .insert({
-      subdivision_id: subdivision.id,
+      oc_id: oc.id,
       account_name: "Admin Account",
       bsb: "083-001",
       account_number: "12345678",
@@ -212,7 +212,7 @@ async function createFixture(): Promise<Fixture> {
   const { data: capitalAcct, error: capErr } = await supabase
     .from("bank_accounts")
     .insert({
-      subdivision_id: subdivision.id,
+      oc_id: oc.id,
       account_name: "Capital Account",
       bsb: "083-001",
       account_number: "87654321",
@@ -229,7 +229,7 @@ async function createFixture(): Promise<Fixture> {
   const { data: batch, error: batchErr } = await supabase
     .from("levy_batches")
     .insert({
-      subdivision_id: subdivision.id,
+      oc_id: oc.id,
       budget_id: budget.id,
       financial_year: "2026-2027",
       fund_type: "administrative",
@@ -250,13 +250,13 @@ async function createFixture(): Promise<Fixture> {
   for (const lotId of lotIds) {
     const { data: ref } = await supabase.rpc("next_reference_number", {
       p_prefix: "LEV",
-      p_subdivision_id: subdivision.id,
+      p_oc_id: oc.id,
     });
     if (!ref) throw new Error("next_reference_number returned null");
     const { data: notice, error: nErr } = await supabase
       .from("levy_notices")
       .insert({
-        subdivision_id: subdivision.id,
+        oc_id: oc.id,
         lot_id: lotId,
         budget_id: budget.id,
         batch_id: batch.id,
@@ -284,7 +284,7 @@ async function createFixture(): Promise<Fixture> {
   return {
     runId,
     companyId: company.id,
-    subdivisionId: subdivision.id,
+    ocId: oc.id,
     budgetId: budget.id,
     profileId: profile.id,
     clerkId: VERIFY_CLERK_ID,
@@ -359,7 +359,7 @@ async function scenarioR1_ManualNoAutoMatch(fx: Fixture) {
   const header = "R1: manual bank transaction, no reference → stays unmatched";
   try {
     const res = await recon.addManualBankTransaction({
-      subdivision_id: fx.subdivisionId,
+      oc_id: fx.ocId,
       bank_account_id: fx.adminAccountId,
       transaction_date: "2026-08-01",
       amount: 100,
@@ -387,7 +387,7 @@ async function scenarioR2_ReferenceExactAutoMatch(fx: Fixture) {
     const balanceBefore = Number(stateBefore?.admin_balance ?? 0);
 
     const res = await recon.addManualBankTransaction({
-      subdivision_id: fx.subdivisionId,
+      oc_id: fx.ocId,
       bank_account_id: fx.adminAccountId,
       transaction_date: "2026-08-02",
       amount: notice.amount,
@@ -424,7 +424,7 @@ async function scenarioR3_ReferencePartialAutoMatch(fx: Fixture) {
     const sent = notice.amount + overshoot;
 
     const res = await recon.addManualBankTransaction({
-      subdivision_id: fx.subdivisionId,
+      oc_id: fx.ocId,
       bank_account_id: fx.adminAccountId,
       transaction_date: "2026-08-03",
       amount: sent,
@@ -468,7 +468,7 @@ async function scenarioR4_ManualMatchTwoLots(fx: Fixture): Promise<{ bankTxnId: 
     const lotBBefore = Number(stateBBefore?.admin_balance ?? 0);
 
     const addRes = await recon.addManualBankTransaction({
-      subdivision_id: fx.subdivisionId,
+      oc_id: fx.ocId,
       bank_account_id: fx.adminAccountId,
       transaction_date: "2026-08-04",
       amount: total,
@@ -479,7 +479,7 @@ async function scenarioR4_ManualMatchTwoLots(fx: Fixture): Promise<{ bankTxnId: 
     const bankTxnId = addRes.success!.bankTransactionId;
 
     const matchRes = await recon.reconcileTransaction({
-      subdivision_id: fx.subdivisionId,
+      oc_id: fx.ocId,
       bank_transaction_id: bankTxnId,
       allocations: [
         { lot_id: lotA, fund_type: "administrative", amount: allocA },
@@ -520,7 +520,7 @@ async function scenarioR5_UnmatchRestoresState(
   try {
     const sinceIso = new Date().toISOString();
     const res = await recon.unmatchTransaction({
-      subdivision_id: fx.subdivisionId,
+      oc_id: fx.ocId,
       bank_transaction_id: s4.bankTxnId,
       match_ids: null,
       reason: "R5 verification unmatch",
@@ -560,7 +560,7 @@ async function scenarioR6_CashReceiptDeposit(fx: Fixture) {
     const balBefore = Number(stateBefore?.admin_balance ?? 0);
 
     const receiptRes = await recon.recordCashReceipt({
-      subdivision_id: fx.subdivisionId,
+      oc_id: fx.ocId,
       lot_id: lotId,
       bank_account_id: fx.adminAccountId,
       fund_type: "administrative",
@@ -580,7 +580,7 @@ async function scenarioR6_CashReceiptDeposit(fx: Fixture) {
 
     // Deposit the bank transaction.
     const depositTxn = await recon.addManualBankTransaction({
-      subdivision_id: fx.subdivisionId,
+      oc_id: fx.ocId,
       bank_account_id: fx.adminAccountId,
       transaction_date: "2026-08-06",
       amount: AMOUNT,
@@ -591,7 +591,7 @@ async function scenarioR6_CashReceiptDeposit(fx: Fixture) {
     assert(!depositTxn.success!.autoMatched, "deposit txn should not auto-match (no reference)");
 
     const clearRes = await recon.depositUndepositedFunds({
-      subdivision_id: fx.subdivisionId,
+      oc_id: fx.ocId,
       bank_transaction_id: depositTxn.success!.bankTransactionId,
       undeposited_entry_ids: [receiptRes.success!.receiptId],
     });
@@ -638,7 +638,7 @@ async function scenarioR7_DepositSumMismatchRejected(fx: Fixture) {
   try {
     const lotId = fx.lotIds[1];
     const r1 = await recon.recordCashReceipt({
-      subdivision_id: fx.subdivisionId,
+      oc_id: fx.ocId,
       lot_id: lotId,
       bank_account_id: fx.adminAccountId,
       fund_type: "administrative",
@@ -648,7 +648,7 @@ async function scenarioR7_DepositSumMismatchRejected(fx: Fixture) {
     });
     assert(r1.success, `r1: ${r1.error}`);
     const r2 = await recon.recordCashReceipt({
-      subdivision_id: fx.subdivisionId,
+      oc_id: fx.ocId,
       lot_id: lotId,
       bank_account_id: fx.adminAccountId,
       fund_type: "administrative",
@@ -659,7 +659,7 @@ async function scenarioR7_DepositSumMismatchRejected(fx: Fixture) {
     assert(r2.success, `r2: ${r2.error}`);
 
     const depositTxn = await recon.addManualBankTransaction({
-      subdivision_id: fx.subdivisionId,
+      oc_id: fx.ocId,
       bank_account_id: fx.adminAccountId,
       transaction_date: "2026-08-08",
       amount: 200,
@@ -669,7 +669,7 @@ async function scenarioR7_DepositSumMismatchRejected(fx: Fixture) {
     assert(depositTxn.success, `deposit: ${depositTxn.error}`);
 
     const depositRes = await recon.depositUndepositedFunds({
-      subdivision_id: fx.subdivisionId,
+      oc_id: fx.ocId,
       bank_transaction_id: depositTxn.success!.bankTransactionId,
       undeposited_entry_ids: [r1.success!.receiptId, r2.success!.receiptId],
     });
@@ -694,7 +694,7 @@ async function scenarioR8_ExcludeUnexclude(fx: Fixture) {
   const header = "R8: exclude / unexclude round-trip";
   try {
     const feeTxn = await recon.addManualBankTransaction({
-      subdivision_id: fx.subdivisionId,
+      oc_id: fx.ocId,
       bank_account_id: fx.adminAccountId,
       transaction_date: "2026-08-09",
       amount: 50,
@@ -705,7 +705,7 @@ async function scenarioR8_ExcludeUnexclude(fx: Fixture) {
     const bankTxnId = feeTxn.success!.bankTransactionId;
 
     const exRes = await recon.excludeTransaction({
-      subdivision_id: fx.subdivisionId,
+      oc_id: fx.ocId,
       bank_transaction_id: bankTxnId,
       reason: "Bank fee — not a lot payment",
     });
@@ -715,7 +715,7 @@ async function scenarioR8_ExcludeUnexclude(fx: Fixture) {
     assert(btEx!.excluded_reason === "Bank fee — not a lot payment", `excluded_reason mismatch: ${btEx!.excluded_reason}`);
 
     const unexRes = await recon.unexcludeTransaction({
-      subdivision_id: fx.subdivisionId,
+      oc_id: fx.ocId,
       bank_transaction_id: bankTxnId,
     });
     assert(unexRes.success, `unexclude: ${unexRes.error}`);
@@ -737,7 +737,7 @@ async function scenarioR9_VoidBankCascadesUnmatch(fx: Fixture) {
 
     // Build a manual match.
     const addRes = await recon.addManualBankTransaction({
-      subdivision_id: fx.subdivisionId,
+      oc_id: fx.ocId,
       bank_account_id: fx.adminAccountId,
       transaction_date: "2026-08-10",
       amount: 100,
@@ -747,7 +747,7 @@ async function scenarioR9_VoidBankCascadesUnmatch(fx: Fixture) {
     assert(addRes.success);
     const bankTxnId = addRes.success!.bankTransactionId;
     const matchRes = await recon.reconcileTransaction({
-      subdivision_id: fx.subdivisionId,
+      oc_id: fx.ocId,
       bank_transaction_id: bankTxnId,
       allocations: [{ lot_id: lotId, fund_type: "administrative", amount: 100 }],
       match_method: "manual",
@@ -760,7 +760,7 @@ async function scenarioR9_VoidBankCascadesUnmatch(fx: Fixture) {
     assert(approx(balAfterMatch - balBefore, 100), `post-match delta expected +100, got ${balAfterMatch - balBefore}`);
 
     const voidRes = await recon.voidBankTransaction({
-      subdivision_id: fx.subdivisionId,
+      oc_id: fx.ocId,
       bank_transaction_id: bankTxnId,
       reason: "R9 verification void",
     });
@@ -790,7 +790,7 @@ async function scenarioR10_VoidPendingReceipt(fx: Fixture) {
     const balBefore = Number(stateBefore?.admin_balance ?? 0);
 
     const rRes = await recon.recordCashReceipt({
-      subdivision_id: fx.subdivisionId,
+      oc_id: fx.ocId,
       lot_id: lotId,
       bank_account_id: fx.adminAccountId,
       fund_type: "administrative",
@@ -803,7 +803,7 @@ async function scenarioR10_VoidPendingReceipt(fx: Fixture) {
     const creditId = rRes.success!.ledgerEntryId;
 
     const voidRes = await recon.voidUndepositedReceipt({
-      subdivision_id: fx.subdivisionId,
+      oc_id: fx.ocId,
       receipt_id: receiptId,
       reason: "R10 entered in error",
     });
@@ -830,7 +830,7 @@ async function scenarioR11_VoidDepositedReceiptBlocked(fx: Fixture) {
     const lotId = fx.lotIds[1];
     const AMOUNT = 60;
     const rRes = await recon.recordCashReceipt({
-      subdivision_id: fx.subdivisionId,
+      oc_id: fx.ocId,
       lot_id: lotId,
       bank_account_id: fx.adminAccountId,
       fund_type: "administrative",
@@ -840,7 +840,7 @@ async function scenarioR11_VoidDepositedReceiptBlocked(fx: Fixture) {
     });
     assert(rRes.success);
     const dep = await recon.addManualBankTransaction({
-      subdivision_id: fx.subdivisionId,
+      oc_id: fx.ocId,
       bank_account_id: fx.adminAccountId,
       transaction_date: "2026-08-13",
       amount: AMOUNT,
@@ -849,14 +849,14 @@ async function scenarioR11_VoidDepositedReceiptBlocked(fx: Fixture) {
     });
     assert(dep.success);
     const clr = await recon.depositUndepositedFunds({
-      subdivision_id: fx.subdivisionId,
+      oc_id: fx.ocId,
       bank_transaction_id: dep.success!.bankTransactionId,
       undeposited_entry_ids: [rRes.success!.receiptId],
     });
     assert(clr.success);
 
     const voidRes = await recon.voidUndepositedReceipt({
-      subdivision_id: fx.subdivisionId,
+      oc_id: fx.ocId,
       receipt_id: rRes.success!.receiptId,
       reason: "R11 try to void after deposit",
     });
@@ -880,7 +880,7 @@ async function scenarioR12_VoidDepositReopensReceipt(fx: Fixture) {
     const balBefore = Number(stateBefore?.admin_balance ?? 0);
 
     const rRes = await recon.recordCashReceipt({
-      subdivision_id: fx.subdivisionId,
+      oc_id: fx.ocId,
       lot_id: lotId,
       bank_account_id: fx.adminAccountId,
       fund_type: "administrative",
@@ -893,7 +893,7 @@ async function scenarioR12_VoidDepositReopensReceipt(fx: Fixture) {
     const creditId = rRes.success!.ledgerEntryId;
 
     const dep = await recon.addManualBankTransaction({
-      subdivision_id: fx.subdivisionId,
+      oc_id: fx.ocId,
       bank_account_id: fx.adminAccountId,
       transaction_date: "2026-08-15",
       amount: AMOUNT,
@@ -902,7 +902,7 @@ async function scenarioR12_VoidDepositReopensReceipt(fx: Fixture) {
     });
     assert(dep.success);
     const clr = await recon.depositUndepositedFunds({
-      subdivision_id: fx.subdivisionId,
+      oc_id: fx.ocId,
       bank_transaction_id: dep.success!.bankTransactionId,
       undeposited_entry_ids: [rRes.success!.receiptId],
     });
@@ -913,7 +913,7 @@ async function scenarioR12_VoidDepositReopensReceipt(fx: Fixture) {
     assert(approx(balAfterDeposit - balBefore, AMOUNT), `deposit-phase delta expected +${AMOUNT}, got ${balAfterDeposit - balBefore}`);
 
     const voidRes = await recon.voidBankTransaction({
-      subdivision_id: fx.subdivisionId,
+      oc_id: fx.ocId,
       bank_transaction_id: dep.success!.bankTransactionId,
       reason: "R12 deposit bounced",
     });
@@ -953,7 +953,7 @@ async function pp_mkFreshLot(fx: Fixture): Promise<string> {
   const { data: lot, error } = await supabase
     .from("lots")
     .insert({
-      subdivision_id: fx.subdivisionId,
+      oc_id: fx.ocId,
       lot_number: n,
       lot_entitlement: 100,
       lot_liability: 100,
@@ -980,7 +980,7 @@ async function pp_mkOutstandingNotice(
   if (!reference) {
     const { data: ref } = await supabase.rpc("next_reference_number", {
       p_prefix: "LEV",
-      p_subdivision_id: fx.subdivisionId,
+      p_oc_id: fx.ocId,
     });
     reference = String(ref);
   }
@@ -989,7 +989,7 @@ async function pp_mkOutstandingNotice(
   const { data: notice, error } = await supabase
     .from("levy_notices")
     .insert({
-      subdivision_id: fx.subdivisionId,
+      oc_id: fx.ocId,
       lot_id: lotId,
       budget_id: fx.budgetId,
       reference_number: reference,
@@ -1008,7 +1008,7 @@ async function pp_mkOutstandingNotice(
     throw new Error(`pp_mkOutstandingNotice: ${error?.message ?? "insert failed"}`);
   }
   await supabase.from("lot_ledger_entries").insert({
-    subdivision_id: fx.subdivisionId,
+    oc_id: fx.ocId,
     lot_id: lotId,
     fund_type: fundType,
     entry_type: "debit",
@@ -1048,7 +1048,7 @@ async function scenarioR13_RememberPayerCollisionRoundTrip(fx: Fixture) {
     const { data: mappingA, error: mErr } = await supabase
       .from("bank_payer_mappings")
       .insert({
-        subdivision_id: fx.subdivisionId,
+        oc_id: fx.ocId,
         canonical_sender_name: "ACME PROPERTY",
         lot_id: lotA,
         status: "active",
@@ -1061,7 +1061,7 @@ async function scenarioR13_RememberPayerCollisionRoundTrip(fx: Fixture) {
 
     // Manual bank transaction (no lotB notice exists yet → auto-match misses).
     const txnRes = await recon.addManualBankTransaction({
-      subdivision_id: fx.subdivisionId,
+      oc_id: fx.ocId,
       bank_account_id: fx.adminAccountId,
       transaction_date: "2026-04-15",
       amount: R13_AMOUNT,
@@ -1088,7 +1088,7 @@ async function scenarioR13_RememberPayerCollisionRoundTrip(fx: Fixture) {
 
     // First call: rememberPayer=true against lotB → collision detected.
     const r1 = await recon.reconcileTransaction({
-      subdivision_id: fx.subdivisionId,
+      oc_id: fx.ocId,
       bank_transaction_id: bankTxnId,
       allocations: [
         {
@@ -1129,7 +1129,7 @@ async function scenarioR13_RememberPayerCollisionRoundTrip(fx: Fixture) {
     // Second call: resolvePayerMappingCollision('update'). Should NOT re-invoke
     // rpc_reconcile_bank_transaction (the bug PP4-C fixed).
     const r2 = await recon.resolvePayerMappingCollision({
-      subdivision_id: fx.subdivisionId,
+      oc_id: fx.ocId,
       bank_transaction_id: bankTxnId,
       proposed_lot_id: lotB,
       resolution: "update",
@@ -1181,11 +1181,11 @@ async function scenarioCSV1_OrchestratorE2E(fx: Fixture) {
   const header =
     "CSV-1: 5-row CSV import — Strategies 1, 2, 3 + unmatched + duplicate (orchestrator integration)";
   try {
-    // Set up a BPAY-enabled bank account on this subdivision for Strategy 2.
+    // Set up a BPAY-enabled bank account on this oc for Strategy 2.
     const { data: bpayAccount } = await supabase
       .from("bank_accounts")
       .insert({
-        subdivision_id: fx.subdivisionId,
+        oc_id: fx.ocId,
         account_name: "CSV-1 BPAY Admin",
         bsb: "012-345",
         account_number: "98765432",
@@ -1219,7 +1219,7 @@ async function scenarioCSV1_OrchestratorE2E(fx: Fixture) {
     const lev3Notice = await pp_mkOutstandingNotice(fx, lot3, { amount: 500 });
     void lev3Notice;
     await supabase.from("bank_payer_mappings").insert({
-      subdivision_id: fx.subdivisionId,
+      oc_id: fx.ocId,
       canonical_sender_name: "JANE BROWN",
       lot_id: lot3,
       status: "active",
@@ -1243,7 +1243,7 @@ async function scenarioCSV1_OrchestratorE2E(fx: Fixture) {
     });
 
     // Run CSV import via the bank action.
-    const result = await bank.importBankTransactions(fx.subdivisionId, {
+    const result = await bank.importBankTransactions(fx.ocId, {
       bank_account_id: bpayAccount.id,
       rows: [
         {
@@ -1351,7 +1351,7 @@ async function scenarioPD1_QueueDupSuspectedFilter(fx: Fixture) {
     const { data: pd1Account } = await supabase
       .from("bank_accounts")
       .insert({
-        subdivision_id: fx.subdivisionId,
+        oc_id: fx.ocId,
         account_name: "PD-1 Admin",
         bsb: "012-345",
         account_number: "99999111",
@@ -1433,7 +1433,7 @@ async function scenarioPD1_QueueDupSuspectedFilter(fx: Fixture) {
       .eq("id", txRejected.id);
 
     // DEFAULT queue: hides 'confirmed', shows the rest.
-    const defaultQueue = await recon.getReconciliationQueue(fx.subdivisionId, {
+    const defaultQueue = await recon.getReconciliationQueue(fx.ocId, {
       bankAccountId: pd1Account.id,
       status: "all",
       pageSize: 200,
@@ -1447,7 +1447,7 @@ async function scenarioPD1_QueueDupSuspectedFilter(fx: Fixture) {
       defaultIds.has(txRejected.id);
 
     // ?dup=1 (dupSuspected=true): only 'suspected'.
-    const suspectedQueue = await recon.getReconciliationQueue(fx.subdivisionId, {
+    const suspectedQueue = await recon.getReconciliationQueue(fx.ocId, {
       bankAccountId: pd1Account.id,
       status: "all",
       pageSize: 200,
@@ -1506,7 +1506,7 @@ async function scenarioPD1_QueueDupSuspectedFilter(fx: Fixture) {
         .eq("id", txExcludedSuspected.id);
 
       // status=unmatched + dupSuspected=true → should NOT include the excluded row.
-      const unmatchedDup = await recon.getReconciliationQueue(fx.subdivisionId, {
+      const unmatchedDup = await recon.getReconciliationQueue(fx.ocId, {
         bankAccountId: pd1Account.id,
         status: "unmatched",
         pageSize: 200,
@@ -1515,7 +1515,7 @@ async function scenarioPD1_QueueDupSuspectedFilter(fx: Fixture) {
       const unmatchedDupIds = new Set(unmatchedDup.rows.map((r) => r.id));
 
       // status=all + dupSuspected=true → SHOULD include the excluded row.
-      const allDup = await recon.getReconciliationQueue(fx.subdivisionId, {
+      const allDup = await recon.getReconciliationQueue(fx.ocId, {
         bankAccountId: pd1Account.id,
         status: "all",
         pageSize: 200,
@@ -1561,29 +1561,29 @@ async function cleanupMarker() {
 }
 
 async function cleanupOneCompany(companyId: string) {
-  const { data: subs } = await supabase.from("subdivisions").select("id").eq("management_company_id", companyId);
+  const { data: subs } = await supabase.from("owners_corporations").select("id").eq("management_company_id", companyId);
   const subIds = (subs ?? []).map((s) => s.id);
 
   const { data: profs } = await supabase.from("profiles").select("id").eq("management_company_id", companyId);
   const profIds = (profs ?? []).map((p) => p.id);
 
   // audit_log holds RESTRICT-style FKs to profiles.profile_id and
-  // subdivisions.subdivision_id. Must be deleted before any parent row.
+  // ocs.oc_id. Must be deleted before any parent row.
   // Keeping these deletes at the top is crucial — without them, downstream
   // delete calls silently no-op on FK violation (PostgREST returns the error
   // in the response; .delete() without .error-check surfaces nothing).
   if (subIds.length > 0) {
-    await supabase.from("audit_log").delete().in("subdivision_id", subIds);
+    await supabase.from("audit_log").delete().in("oc_id", subIds);
   }
   if (profIds.length > 0) {
     await supabase.from("audit_log").delete().in("profile_id", profIds);
   }
 
   if (subIds.length > 0) {
-    const { data: lots } = await supabase.from("lots").select("id").in("subdivision_id", subIds);
+    const { data: lots } = await supabase.from("lots").select("id").in("oc_id", subIds);
     const lotIds = (lots ?? []).map((l) => l.id);
 
-    const { data: accounts } = await supabase.from("bank_accounts").select("id").in("subdivision_id", subIds);
+    const { data: accounts } = await supabase.from("bank_accounts").select("id").in("oc_id", subIds);
     const accountIds = (accounts ?? []).map((a) => a.id);
 
     // undeposited_funds_entries must be deleted BEFORE lot_ledger_entries (FK)
@@ -1622,19 +1622,19 @@ async function cleanupOneCompany(companyId: string) {
       await supabase.from("bank_transactions").delete().in("bank_account_id", accountIds);
     }
 
-    await supabase.from("payments").delete().in("subdivision_id", subIds);
+    await supabase.from("payments").delete().in("oc_id", subIds);
 
-    const { data: notices } = await supabase.from("levy_notices").select("id").in("subdivision_id", subIds);
+    const { data: notices } = await supabase.from("levy_notices").select("id").in("oc_id", subIds);
     const noticeIds = (notices ?? []).map((n) => n.id);
     if (noticeIds.length > 0) {
       await supabase.from("levy_notice_items").delete().in("levy_notice_id", noticeIds);
-      await supabase.from("levy_notices").update({ linked_levy_id: null }).in("subdivision_id", subIds);
-      await supabase.from("levy_notices").delete().in("subdivision_id", subIds);
+      await supabase.from("levy_notices").update({ linked_levy_id: null }).in("oc_id", subIds);
+      await supabase.from("levy_notices").delete().in("oc_id", subIds);
     }
-    await supabase.from("levy_batches").delete().in("subdivision_id", subIds);
+    await supabase.from("levy_batches").delete().in("oc_id", subIds);
 
-    const subDelErr = (await supabase.from("subdivisions").delete().in("id", subIds)).error;
-    if (subDelErr) console.warn(`  cleanup: subdivisions delete error: ${subDelErr.message}`);
+    const subDelErr = (await supabase.from("owners_corporations").delete().in("id", subIds)).error;
+    if (subDelErr) console.warn(`  cleanup: ocs delete error: ${subDelErr.message}`);
   }
 
   const profDelErr = (await supabase.from("profiles").delete().eq("management_company_id", companyId)).error;

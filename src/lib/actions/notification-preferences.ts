@@ -119,7 +119,7 @@ export async function updateNotificationPreferences(
   );
   await supabase.from("audit_log").insert({
     profile_id: profile.id,
-    subdivision_id: null,
+    oc_id: null,
     action: "communication.preferences_updated",
     entity_type: "notification_preferences",
     entity_id: profile.id,

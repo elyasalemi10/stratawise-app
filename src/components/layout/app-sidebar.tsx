@@ -43,12 +43,12 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { cn } from "@/lib/utils";
 import { getSidebarProfile, type SidebarProfile } from "@/lib/actions/profile";
 import {
-  getSidebarSubdivisions,
-  type SidebarSubdivision,
-} from "@/lib/actions/subdivision";
+  getSidebarOCs,
+  type SidebarOC,
+} from "@/lib/actions/oc";
 import {
   setCachedProfile,
-  setCachedSubdivisions,
+  setCachedOCs,
   SIDEBAR_REFRESH_EVENT,
 } from "@/lib/sidebar-cache";
 
@@ -70,7 +70,7 @@ const managerMainNavGroups = [
   {
     label: "Management",
     items: [
-      { href: "/subdivisions", label: "Subdivisions", icon: Building2 },
+      { href: "/ocs", label: "OCs", icon: Building2 },
     ],
   },
 ];
@@ -92,8 +92,8 @@ const lotOwnerMainNavGroups = [
   },
 ];
 
-function getSubdivisionNavGroups(subdivisionCode: string, isLotOwner: boolean) {
-  const base = `/subdivisions/${subdivisionCode}`;
+function getOCNavGroups(ocCode: string, isLotOwner: boolean) {
+  const base = `/ocs/${ocCode}`;
 
   if (isLotOwner) {
     return [
@@ -107,7 +107,7 @@ function getSubdivisionNavGroups(subdivisionCode: string, isLotOwner: boolean) {
         ],
       },
       {
-        label: "Subdivision",
+        label: "OC",
         items: [
           { href: `${base}/lots`, label: "Lot owners", icon: Users },
           { href: `${base}/meetings`, label: "Meetings", icon: CalendarCheck },
@@ -151,7 +151,7 @@ function getSubdivisionNavGroups(subdivisionCode: string, isLotOwner: boolean) {
     {
       label: "Settings",
       items: [
-        { href: `${base}/settings`, label: "Subdivision settings", icon: Settings },
+        { href: `${base}/settings`, label: "OC settings", icon: Settings },
       ],
     },
   ];
@@ -393,12 +393,12 @@ function NavUser({
 
 interface AppSidebarProps extends React.ComponentProps<typeof Sidebar> {
   initialProfile: SidebarProfile | null;
-  initialSubdivisions: SidebarSubdivision[];
+  initialOCs: SidebarOC[];
 }
 
 export function AppSidebar({
   initialProfile,
-  initialSubdivisions,
+  initialOCs,
   ...props
 }: AppSidebarProps) {
   const pathname = usePathname();
@@ -409,7 +409,7 @@ export function AppSidebar({
   // sometimes runs faster than a server roundtrip for repeat nav across
   // tabs) and as a fallback for the refresh-event handler.
   const [profile, setProfile] = useState<SidebarProfile | null>(initialProfile);
-  const [subdivisions, setSubdivisions] = useState<SidebarSubdivision[]>(initialSubdivisions);
+  const [ocs, setOCs] = useState<SidebarOC[]>(initialOCs);
   const loaded = true;
 
   // Refresh listener — fires after mutations (revalidateSidebarFromClient).
@@ -418,51 +418,51 @@ export function AppSidebar({
   // full nav.
   useEffect(() => {
     if (initialProfile) setCachedProfile(initialProfile);
-    setCachedSubdivisions(initialSubdivisions);
+    setCachedOCs(initialOCs);
 
     function onRefresh() {
-      Promise.all([getSidebarProfile(), getSidebarSubdivisions()])
+      Promise.all([getSidebarProfile(), getSidebarOCs()])
         .then(([p, s]) => {
           setProfile(p);
-          setSubdivisions(s);
+          setOCs(s);
           if (p) setCachedProfile(p);
-          setCachedSubdivisions(s);
+          setCachedOCs(s);
         })
         .catch(() => {});
     }
     window.addEventListener(SIDEBAR_REFRESH_EVENT, onRefresh);
     return () => window.removeEventListener(SIDEBAR_REFRESH_EVENT, onRefresh);
-  }, [initialProfile, initialSubdivisions]);
+  }, [initialProfile, initialOCs]);
 
-  // Detect subdivision context from URL. The URL segment is the 8-char
+  // Detect oc context from URL. The URL segment is the 8-char
   // short_code (post-rename); the variable suffix "Code" makes the shape
   // obvious to future readers.
-  const subdivisionMatch = pathname.match(/^\/subdivisions\/([^/]+)/);
-  const currentSubdivisionCode = subdivisionMatch?.[1] ?? null;
-  const isInSubdivision = currentSubdivisionCode !== null && currentSubdivisionCode !== "new";
+  const ocMatch = pathname.match(/^\/ocs\/([^/]+)/);
+  const currentOCCode = ocMatch?.[1] ?? null;
+  const isInOC = currentOCCode !== null && currentOCCode !== "new";
 
-  // Find current subdivision via its code
-  const currentSubdivision = subdivisions.find((s) => s.short_code === currentSubdivisionCode);
+  // Find current oc via its code
+  const currentOC = ocs.find((s) => s.short_code === currentOCCode);
 
   // Pick nav items based on context and role
   const isLotOwner = profile?.userRole === "lot_owner";
   const mainNavGroups = isLotOwner ? lotOwnerMainNavGroups : managerMainNavGroups;
-  const navGroups = isInSubdivision && currentSubdivisionCode
-    ? getSubdivisionNavGroups(currentSubdivisionCode, isLotOwner)
+  const navGroups = isInOC && currentOCCode
+    ? getOCNavGroups(currentOCCode, isLotOwner)
     : mainNavGroups;
 
-  // Smart subdivision switching — preserve current sub-page
-  function switchSubdivision(newCode: string | null) {
+  // Smart oc switching — preserve current sub-page
+  function switchOC(newCode: string | null) {
     if (newCode === null) {
       router.push("/dashboard");
       return;
     }
-    // The subdivision index page IS the dashboard now — no /dashboard segment.
-    if (currentSubdivisionCode) {
-      const subPage = pathname.replace(`/subdivisions/${currentSubdivisionCode}`, "");
-      router.push(`/subdivisions/${newCode}${subPage}`);
+    // The oc index page IS the dashboard now — no /dashboard segment.
+    if (currentOCCode) {
+      const subPage = pathname.replace(`/ocs/${currentOCCode}`, "");
+      router.push(`/ocs/${newCode}${subPage}`);
     } else {
-      router.push(`/subdivisions/${newCode}`);
+      router.push(`/ocs/${newCode}`);
     }
   }
 
@@ -484,17 +484,17 @@ export function AppSidebar({
                   </div>
                   <div className="grid flex-1 text-left text-sm leading-tight">
                     <span className="truncate font-medium">
-                      {isInSubdivision
-                        ? (currentSubdivision?.name ?? "Subdivision")
+                      {isInOC
+                        ? (currentOC?.name ?? "OC")
                         : "Main dashboard"}
                     </span>
                     <span className="truncate text-xs text-sidebar-foreground/50">
                       {!loaded ? (
                         <Skeleton className="h-3 w-20 mt-0.5" />
-                      ) : isInSubdivision ? (
-                        currentSubdivision?.plan_number ?? ""
+                      ) : isInOC ? (
+                        currentOC?.plan_number ?? ""
                       ) : (
-                        `${subdivisions.length} subdivision${subdivisions.length !== 1 ? "s" : ""}`
+                        `${ocs.length} oc${ocs.length !== 1 ? "s" : ""}`
                       )}
                     </span>
                   </div>
@@ -505,20 +505,20 @@ export function AppSidebar({
               <DropdownLabel>Dashboards</DropdownLabel>
               <DropdownSeparator />
 
-              <DropdownItem onClick={() => switchSubdivision(null)}>
+              <DropdownItem onClick={() => switchOC(null)}>
                 <div className="flex size-6 items-center justify-center rounded-md border border-border">
                   <LayoutDashboard className="size-3.5 shrink-0" />
                 </div>
                 <span className="flex-1">{"Main dashboard"}</span>
-                {!isInSubdivision && <Check className="ml-auto h-4 w-4 text-primary" />}
+                {!isInOC && <Check className="ml-auto h-4 w-4 text-primary" />}
               </DropdownItem>
 
-              {subdivisions.length > 0 && <DropdownSeparator />}
+              {ocs.length > 0 && <DropdownSeparator />}
 
-              {subdivisions.map((sub) => (
+              {ocs.map((sub) => (
                 <DropdownItem
                   key={sub.id}
-                  onClick={() => switchSubdivision(sub.short_code)}
+                  onClick={() => switchOC(sub.short_code)}
                 >
                   <div className="flex size-6 items-center justify-center rounded-md border border-border shrink-0">
                     <Building2 className="size-3.5 shrink-0" />
@@ -531,7 +531,7 @@ export function AppSidebar({
                       </span>
                     )}
                   </div>
-                  {sub.short_code === currentSubdivisionCode && (
+                  {sub.short_code === currentOCCode && (
                     <Check className="ml-auto h-4 w-4 text-primary shrink-0" />
                   )}
                 </DropdownItem>
@@ -540,11 +540,11 @@ export function AppSidebar({
               {!isLotOwner && (
                 <>
                   <DropdownSeparator />
-                  <DropdownItem onClick={() => router.push("/subdivisions/new")}>
+                  <DropdownItem onClick={() => router.push("/ocs/new")}>
                     <div className="flex size-6 items-center justify-center rounded-md border border-border bg-transparent">
                       <Plus className="size-4" />
                     </div>
-                    <span className="text-muted-foreground font-medium">Create subdivision</span>
+                    <span className="text-muted-foreground font-medium">Create oc</span>
                   </DropdownItem>
                 </>
               )}
@@ -609,7 +609,7 @@ export function AppSidebar({
                   const badgeKey = "badgeKey" in item ? item.badgeKey : undefined;
                   const count =
                     badgeKey === "unmatched_count"
-                      ? currentSubdivision?.unmatched_count ?? 0
+                      ? currentOC?.unmatched_count ?? 0
                       : 0;
                   return (
                     <SidebarMenuItem key={item.href}>

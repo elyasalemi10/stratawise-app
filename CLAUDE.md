@@ -3,6 +3,12 @@
 ## Git
 - Always commit and push to origin after completing changes. Do not wait for the user to ask.
 
+## Domain Nomenclature
+- An "Owners Corporation" (abbreviated "OC") is the legal entity that owns and manages common property — what's commonly called a "strata" in NSW or "body corporate" in QLD. Victoria uses "Owners Corporation" (Owners Corporations Act 2006).
+- Always use "Owners Corporation" / "OC" in UI labels and prose. NEVER "subdivision", "strata", "body corporate" — these are legacy and incorrect for our jurisdiction.
+- DB tables, routes, variables: use `oc` / `ocs` (e.g. table `owners_corporations`, column `oc_id`, route `/ocs/`, variable `ocCode`).
+- Display singular: "Owners Corporation" / "OC". Plural: "Owners Corporations" / "OCs".
+
 ## UI Rules
 - Do NOT add page titles (PageHeader) inside page content. The header breadcrumb already shows the page name.
 - This is a company-focused platform, not user-focused. Show company name, not first/last name, in the UI.

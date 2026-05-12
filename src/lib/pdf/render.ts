@@ -61,7 +61,7 @@ export async function renderLevyNoticePdf(
   const props = await assembleLevyNoticeProps(supabase, levyId);
   const publicUrl = await generateAndUploadLevyPDF(
     props,
-    props._subdivisionId,
+    props._ocId,
     props.referenceNumber,
   );
   await supabase
@@ -100,7 +100,7 @@ export async function getLevyNoticePdfBuffer(
 // Extracted here so escalation senders + future call sites share one path.
 
 interface AssembledLevyProps extends LevyNoticeProps {
-  _subdivisionId: string; // used only for the R2 key prefix
+  _ocId: string; // used only for the R2 key prefix
 }
 
 async function assembleLevyNoticeProps(
@@ -110,7 +110,7 @@ async function assembleLevyNoticeProps(
   const { data: levyData, error: levyErr } = await supabase
     .from("levy_notices")
     .select(
-      "id, reference_number, amount, due_date, period_start, period_end, lot_id, subdivision_id",
+      "id, reference_number, amount, due_date, period_start, period_end, lot_id, oc_id",
     )
     .eq("id", levyId)
     .single();
@@ -127,7 +127,7 @@ async function assembleLevyNoticeProps(
     period_start: string;
     period_end: string;
     lot_id: string;
-    subdivision_id: string;
+    oc_id: string;
   };
 
   const [
@@ -137,11 +137,11 @@ async function assembleLevyNoticeProps(
     { data: memberRow },
   ] = await Promise.all([
     supabase
-      .from("subdivisions")
+      .from("owners_corporations")
       .select(
         "id, name, address, abn, plan_number, management_company_id, bank_bsb, bank_account_number, bank_account_name",
       )
-      .eq("id", levy.subdivision_id)
+      .eq("id", levy.oc_id)
       .single(),
     supabase
       .from("lots")
@@ -154,9 +154,9 @@ async function assembleLevyNoticeProps(
       .eq("levy_notice_id", levy.id)
       .order("sort_order"),
     supabase
-      .from("subdivision_members")
+      .from("oc_members")
       .select("profile_id, profiles!inner(first_name, last_name)")
-      .eq("subdivision_id", levy.subdivision_id)
+      .eq("oc_id", levy.oc_id)
       .eq("lot_id", levy.lot_id)
       .eq("role", "lot_owner")
       .eq("is_primary_contact", true)
@@ -175,7 +175,7 @@ async function assembleLevyNoticeProps(
     bank_account_name: string | null;
   } | null;
   if (!sub) {
-    throw new Error(`assembleLevyNoticeProps: subdivision missing for levy ${levyId}`);
+    throw new Error(`assembleLevyNoticeProps: oc missing for levy ${levyId}`);
   }
   const lot = lotRow as { lot_number: number; unit_number: string | null } | null;
 
@@ -213,9 +213,9 @@ async function assembleLevyNoticeProps(
   const items = (itemsRow ?? []) as Array<{ description: string; amount: number | string }>;
 
   const props: AssembledLevyProps = {
-    _subdivisionId: sub.id,
+    _ocId: sub.id,
     managementCompany,
-    subdivision: {
+    oc: {
       name: sub.name,
       address: sub.address,
       abn: sub.abn,

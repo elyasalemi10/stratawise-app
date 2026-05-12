@@ -41,15 +41,15 @@ export type OperatingAccountFormValues = z.infer<typeof operatingAccountSchema>;
 
 export type CompanyFormValues = z.infer<typeof companySchema>;
 
-export const subdivisionSchema = z.object({
+export const ocSchema = z.object({
   plan_number: z.string().min(1, "Plan number is required"),
-  name: z.string().min(2, "Subdivision name is required"),
+  name: z.string().min(2, "OC name is required"),
   street: z.string().min(3, "Street address is required"),
   total_lots: z.coerce.number().min(2, "Minimum 2 lots required"),
   state: z.string().default("VIC"),
 });
 
-export type SubdivisionFormValues = z.infer<typeof subdivisionSchema>;
+export type OCFormValues = z.infer<typeof ocSchema>;
 
 export const inviteRowSchema = z.object({
   email: z.string().email("Valid email required"),

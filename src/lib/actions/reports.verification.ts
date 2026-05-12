@@ -39,7 +39,7 @@ const nextCachePath = scriptRequire.resolve("next/cache");
 
 import { createClient } from "@supabase/supabase-js";
 import { randomUUID } from "crypto";
-import { generateSubdivisionCode } from "@/lib/subdivision-code";
+import { generateOCCode } from "@/lib/oc-code";
 import { __setUserIdResolverForVerification } from "@/lib/auth-resolver";
 
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
@@ -74,7 +74,7 @@ interface FixtureContext {
   companyId: string;
   managerProfileId: string;
   managerClerkId: string;
-  subdivisionId: string;
+  ocId: string;
   lotAId: string;
   lotBId: string;
   ownerAProfileId: string;
@@ -108,24 +108,24 @@ async function createFixture(): Promise<FixtureContext> {
     .single();
   const managerProfileId = (manager as { id: string }).id;
 
-  const { data: subdivision } = await supabase
-    .from("subdivisions")
+  const { data: oc } = await supabase
+    .from("owners_corporations")
     .insert({
       management_company_id: companyId,
       name: `${VERIFY_MARKER}${runId}`,
       plan_number: `PLAN-${runId}`,
-      short_code: generateSubdivisionCode(),
+      short_code: generateOCCode(),
       address: `${runId} Reports Test St, Melbourne VIC 3000`,
       total_lots: 2,
       created_by: managerProfileId,
     })
     .select("id")
     .single();
-  const subdivisionId = (subdivision as { id: string }).id;
+  const ocId = (oc as { id: string }).id;
 
-  // Add manager to subdivision_members so requireSubdivisionAccess passes.
-  await supabase.from("subdivision_members").insert({
-    subdivision_id: subdivisionId,
+  // Add manager to oc_members so requireOCAccess passes.
+  await supabase.from("oc_members").insert({
+    oc_id: ocId,
     profile_id: managerProfileId,
     role: "strata_manager",
     is_primary_contact: false,
@@ -152,7 +152,7 @@ async function createFixture(): Promise<FixtureContext> {
     const { data: lot } = await supabase
       .from("lots")
       .insert({
-        subdivision_id: subdivisionId,
+        oc_id: ocId,
         lot_number: num,
         lot_entitlement: 100,
         lot_liability: 100,
@@ -162,8 +162,8 @@ async function createFixture(): Promise<FixtureContext> {
     const lotId = (lot as { id: string }).id;
     lotIds.push(lotId);
 
-    await supabase.from("subdivision_members").insert({
-      subdivision_id: subdivisionId,
+    await supabase.from("oc_members").insert({
+      oc_id: ocId,
       profile_id: ownerIds[num - 1],
       lot_id: lotId,
       role: "lot_owner",
@@ -176,7 +176,7 @@ async function createFixture(): Promise<FixtureContext> {
   const { data: bank } = await supabase
     .from("bank_accounts")
     .insert({
-      subdivision_id: subdivisionId,
+      oc_id: ocId,
       account_name: `Admin Fund Trust ${runId}`,
       bsb: "063000",
       account_number: `1234${runId.slice(-4)}`,
@@ -194,7 +194,7 @@ async function createFixture(): Promise<FixtureContext> {
     companyId,
     managerProfileId,
     managerClerkId,
-    subdivisionId,
+    ocId,
     lotAId: lotIds[0],
     lotBId: lotIds[1],
     ownerAProfileId: ownerIds[0],
@@ -224,7 +224,7 @@ async function insertLevy(
   const { data } = await supabase
     .from("levy_notices")
     .insert({
-      subdivision_id: ctx.subdivisionId,
+      oc_id: ctx.ocId,
       lot_id: lotId,
       reference_number: `LEV-RP-${refSuffix}`,
       fund_type: "administrative",
@@ -253,7 +253,7 @@ async function insertLedger(
   reference?: string | null,
 ): Promise<void> {
   const { error } = await supabase.from("lot_ledger_entries").insert({
-    subdivision_id: ctx.subdivisionId,
+    oc_id: ctx.ocId,
     lot_id: lotId,
     fund_type: "administrative",
     entry_type: entryType,
@@ -287,15 +287,15 @@ async function insertBankTx(
 
 // ─── Scenarios ─────────────────────────────────────────────────────────
 
-async function rp1_outstandingArrearsEmptySubdivision(
+async function rp1_outstandingArrearsEmptyOC(
   ctx: FixtureContext,
   reports: typeof import("./reports"),
 ) {
   activeClerkId = ctx.managerClerkId;
-  const data = await reports.getOutstandingArrearsReport(ctx.subdivisionId);
+  const data = await reports.getOutstandingArrearsReport(ctx.ocId);
   const ok = Array.isArray(data) && data.length === 0;
   record(
-    "RP-1: subdivision with no unpaid levies → empty array",
+    "RP-1: oc with no unpaid levies → empty array",
     ok,
     `len=${data.length}`,
   );
@@ -322,7 +322,7 @@ async function rp2_outstandingArrearsPrincipalPlusInterest(
   });
 
   activeClerkId = ctx.managerClerkId;
-  const data = await reports.getOutstandingArrearsReport(ctx.subdivisionId);
+  const data = await reports.getOutstandingArrearsReport(ctx.ocId);
   const lotARow = data.find((r) => r.lot_id === ctx.lotAId);
   const ok =
     !!lotARow &&
@@ -350,7 +350,7 @@ async function rp3_outstandingArrearsAgeingBuckets(
     dueDate: daysBefore(todayIso(), 65),
   });
   activeClerkId = ctx.managerClerkId;
-  const data = await reports.getOutstandingArrearsReport(ctx.subdivisionId);
+  const data = await reports.getOutstandingArrearsReport(ctx.ocId);
   const lotBRow = data.find((r) => r.lot_id === ctx.lotBId);
   const ok = !!lotBRow && lotBRow.bucket === "61_plus" && lotBRow.days_overdue === 65;
   record(
@@ -374,7 +374,7 @@ async function rp4_ownerStatementOpeningAndClosing(
   await insertLedger(ctx, ctx.lotAId, "debit", "adjustment_debit", 100, daysBefore(toDate, 10), "ADJ-1");
 
   activeClerkId = ctx.managerClerkId;
-  const report = await reports.getOwnerStatement(ctx.subdivisionId, ctx.lotAId, fromDate, toDate);
+  const report = await reports.getOwnerStatement(ctx.ocId, ctx.lotAId, fromDate, toDate);
   const ok =
     Math.abs(report.opening_balance - -500) < 0.01 &&
     Math.abs(report.closing_balance - -400) < 0.01 &&
@@ -394,7 +394,7 @@ async function rp5_ownerStatementOutOfWindowExcluded(
   const toDate = todayIso();
   // Pre-window entries already inserted in RP-4 should be in opening, not entries.
   activeClerkId = ctx.managerClerkId;
-  const report = await reports.getOwnerStatement(ctx.subdivisionId, ctx.lotAId, fromDate, toDate);
+  const report = await reports.getOwnerStatement(ctx.ocId, ctx.lotAId, fromDate, toDate);
   // Only the ADJ-1 entry (10 days ago) lands in the window for lot A.
   const inWindow = report.entries.every((e) => e.entry_date >= fromDate && e.entry_date <= toDate);
   const ok = inWindow && report.entries.length === 1 && report.entries[0].reference === "ADJ-1";
@@ -417,7 +417,7 @@ async function rp6_trustAccountSummaryInflowsOutflowsAndReconciled(
   await insertBankTx(ctx, -150, daysBefore(toDate, 3), "unmatched");
 
   activeClerkId = ctx.managerClerkId;
-  const rows = await reports.getTrustAccountSummary(ctx.subdivisionId, fromDate, toDate);
+  const rows = await reports.getTrustAccountSummary(ctx.ocId, fromDate, toDate);
   const acc = rows.find((r) => r.bank_account_id === ctx.bankAccountId);
   // opening = 10000 (no pre-window txns), inflows=800, outflows=150,
   // closing=10000+800-150=10650; reconciled=1, unreconciled=2, count=3.
@@ -459,29 +459,29 @@ async function cleanupMarker() {
 
 async function cleanupCompany(companyId: string) {
   const { data: subs } = await supabase
-    .from("subdivisions")
+    .from("owners_corporations")
     .select("id")
     .eq("management_company_id", companyId);
   const subIds = (subs ?? []).map((s) => (s as { id: string }).id);
   if (subIds.length > 0) {
-    const { data: lots } = await supabase.from("lots").select("id").in("subdivision_id", subIds);
+    const { data: lots } = await supabase.from("lots").select("id").in("oc_id", subIds);
     const lotIds = (lots ?? []).map((l) => (l as { id: string }).id);
     if (lotIds.length > 0) {
       await supabase.from("lot_ledger_state").delete().in("lot_id", lotIds);
       await supabase.from("lot_ledger_entries").delete().in("lot_id", lotIds);
     }
-    await supabase.from("levy_notices").update({ linked_levy_id: null }).in("subdivision_id", subIds);
-    await supabase.from("levy_notices").delete().in("subdivision_id", subIds);
-    const { data: banks } = await supabase.from("bank_accounts").select("id").in("subdivision_id", subIds);
+    await supabase.from("levy_notices").update({ linked_levy_id: null }).in("oc_id", subIds);
+    await supabase.from("levy_notices").delete().in("oc_id", subIds);
+    const { data: banks } = await supabase.from("bank_accounts").select("id").in("oc_id", subIds);
     const bankIds = (banks ?? []).map((b) => (b as { id: string }).id);
     if (bankIds.length > 0) {
       await supabase.from("bank_transactions").delete().in("bank_account_id", bankIds);
       await supabase.from("bank_accounts").delete().in("id", bankIds);
     }
-    await supabase.from("subdivision_members").delete().in("subdivision_id", subIds);
-    await supabase.from("audit_log").delete().in("subdivision_id", subIds);
-    await supabase.from("lots").delete().in("subdivision_id", subIds);
-    await supabase.from("subdivisions").delete().in("id", subIds);
+    await supabase.from("oc_members").delete().in("oc_id", subIds);
+    await supabase.from("audit_log").delete().in("oc_id", subIds);
+    await supabase.from("lots").delete().in("oc_id", subIds);
+    await supabase.from("owners_corporations").delete().in("id", subIds);
   }
   const { data: profileRows } = await supabase
     .from("profiles")
@@ -489,7 +489,7 @@ async function cleanupCompany(companyId: string) {
     .eq("management_company_id", companyId);
   const profileIds = (profileRows ?? []).map((p) => (p as { id: string }).id);
   if (profileIds.length > 0) {
-    await supabase.from("audit_log").delete().in("profile_id", profileIds).is("subdivision_id", null);
+    await supabase.from("audit_log").delete().in("profile_id", profileIds).is("oc_id", null);
     await supabase.from("profiles").delete().in("id", profileIds);
   }
   await supabase.from("management_companies").delete().eq("id", companyId);
@@ -514,7 +514,7 @@ async function main() {
 
   console.log("[3/3] Running scenarios\n");
   const reports = await import("./reports");
-  await rp1_outstandingArrearsEmptySubdivision(ctx, reports);
+  await rp1_outstandingArrearsEmptyOC(ctx, reports);
   await rp2_outstandingArrearsPrincipalPlusInterest(ctx, reports);
   await rp3_outstandingArrearsAgeingBuckets(ctx, reports);
   await rp4_ownerStatementOpeningAndClosing(ctx, reports);

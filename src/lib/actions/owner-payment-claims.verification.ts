@@ -46,7 +46,7 @@ import {
   __setUserIdResolverForVerification,
   __getUserIdResolverForVerification,
 } from "@/lib/auth-resolver";
-import { generateSubdivisionCode } from "@/lib/subdivision-code";
+import { generateOCCode } from "@/lib/oc-code";
 
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
 const serviceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
@@ -94,7 +94,7 @@ interface CompanyFixture {
   managerClerkId: string;
   ownerProfileId: string;
   ownerClerkId: string;
-  subdivisionId: string;
+  ocId: string;
   budgetId: string;
   bankAccountId: string;
   /** Lot the owner owns (active membership). */
@@ -153,25 +153,25 @@ async function createCompanyFixture(suffix: string): Promise<CompanyFixture> {
     .single();
   assert(owner, "fixture: owner profile insert failed");
 
-  const { data: subdivision } = await supabase
-    .from("subdivisions")
+  const { data: oc } = await supabase
+    .from("owners_corporations")
     .insert({
       management_company_id: company.id,
       name: companyName,
       plan_number: `PLAN-${runId}`,
-      short_code: generateSubdivisionCode(),
+      short_code: generateOCCode(),
       address: `1 OPC Verify ${suffix} St, Melbourne VIC 3000`,
       total_lots: 2,
       created_by: manager.id,
     })
     .select("id")
     .single();
-  assert(subdivision, "fixture: subdivision insert failed");
+  assert(oc, "fixture: oc insert failed");
 
   const { data: budget } = await supabase
     .from("budgets")
     .insert({
-      subdivision_id: subdivision.id,
+      oc_id: oc.id,
       financial_year: "2026-2027",
       fund_type: "administrative",
       total_amount: 12000,
@@ -186,8 +186,8 @@ async function createCompanyFixture(suffix: string): Promise<CompanyFixture> {
   const { data: lots } = await supabase
     .from("lots")
     .insert([
-      { subdivision_id: subdivision.id, lot_number: 1, lot_entitlement: 100, lot_liability: 100 },
-      { subdivision_id: subdivision.id, lot_number: 2, lot_entitlement: 100, lot_liability: 100 },
+      { oc_id: oc.id, lot_number: 1, lot_entitlement: 100, lot_liability: 100 },
+      { oc_id: oc.id, lot_number: 2, lot_entitlement: 100, lot_liability: 100 },
     ])
     .select("id, lot_number")
     .order("lot_number", { ascending: true });
@@ -196,8 +196,8 @@ async function createCompanyFixture(suffix: string): Promise<CompanyFixture> {
   const lotUnownedId = lots[1].id;
 
   // Owner owns lot 1 only.
-  await supabase.from("subdivision_members").insert({
-    subdivision_id: subdivision.id,
+  await supabase.from("oc_members").insert({
+    oc_id: oc.id,
     profile_id: owner.id,
     lot_id: lotOwnedId,
     role: "lot_owner",
@@ -206,12 +206,12 @@ async function createCompanyFixture(suffix: string): Promise<CompanyFixture> {
   });
 
   // PP6-C-2: emitNewClaimSubmitted resolves manager recipients via
-  // subdivision_members WHERE role='strata_manager'. Manager-of-company
-  // is the access-control path elsewhere; subdivision_members is the
+  // oc_members WHERE role='strata_manager'. Manager-of-company
+  // is the access-control path elsewhere; oc_members is the
   // notification-recipient path. Add an explicit manager membership row
   // so the manager fan-out scenarios resolve them as recipients.
-  await supabase.from("subdivision_members").insert({
-    subdivision_id: subdivision.id,
+  await supabase.from("oc_members").insert({
+    oc_id: oc.id,
     profile_id: manager.id,
     role: "strata_manager",
     is_primary_contact: false,
@@ -221,7 +221,7 @@ async function createCompanyFixture(suffix: string): Promise<CompanyFixture> {
   const { data: bankAccount } = await supabase
     .from("bank_accounts")
     .insert({
-      subdivision_id: subdivision.id,
+      oc_id: oc.id,
       account_name: `OPC Admin ${suffix}`,
       bsb: "012-345",
       account_number: `${suffix === "A" ? "10001000" : "20002000"}`,
@@ -236,7 +236,7 @@ async function createCompanyFixture(suffix: string): Promise<CompanyFixture> {
   const { data: notice } = await supabase
     .from("levy_notices")
     .insert({
-      subdivision_id: subdivision.id,
+      oc_id: oc.id,
       lot_id: lotOwnedId,
       budget_id: budget.id,
       reference_number: `LEV-${suffix === "A" ? "5001" : "6001"}`,
@@ -254,7 +254,7 @@ async function createCompanyFixture(suffix: string): Promise<CompanyFixture> {
   assert(notice, "fixture: notice insert failed");
 
   await supabase.from("lot_ledger_entries").insert({
-    subdivision_id: subdivision.id,
+    oc_id: oc.id,
     lot_id: lotOwnedId,
     fund_type: "administrative",
     entry_type: "debit",
@@ -273,7 +273,7 @@ async function createCompanyFixture(suffix: string): Promise<CompanyFixture> {
     managerClerkId,
     ownerProfileId: owner.id,
     ownerClerkId,
-    subdivisionId: subdivision.id,
+    ocId: oc.id,
     budgetId: budget.id,
     bankAccountId: bankAccount.id,
     lotOwnedId,
@@ -298,7 +298,7 @@ async function opc1_submitSucceeds(
 ) {
   asUser(fx.companyA.ownerClerkId);
   const result = await opc.submitOwnerPaymentClaim({
-    subdivision_id: fx.companyA.subdivisionId,
+    oc_id: fx.companyA.ocId,
     lot_id: fx.companyA.lotOwnedId,
     amount: 250,
     claim_date: "2026-04-15",
@@ -331,10 +331,10 @@ async function opc2_membershipRequired(
   fx: Fixture,
   opc: typeof import("./owner-payment-claims"),
 ) {
-  // Owner B is a lot_owner but has no membership in subdivision A.
+  // Owner B is a lot_owner but has no membership in oc A.
   asUser(fx.companyB.ownerClerkId);
   const result = await opc.submitOwnerPaymentClaim({
-    subdivision_id: fx.companyA.subdivisionId,
+    oc_id: fx.companyA.ocId,
     lot_id: fx.companyA.lotOwnedId,
     amount: 100,
     claim_date: "2026-04-15",
@@ -357,7 +357,7 @@ async function opc3_claimedByServerEnforced(
   // claimed_by matches the active owner regardless.
   asUser(fx.companyA.ownerClerkId);
   const result = await opc.submitOwnerPaymentClaim({
-    subdivision_id: fx.companyA.subdivisionId,
+    oc_id: fx.companyA.ocId,
     lot_id: fx.companyA.lotOwnedId,
     amount: 75,
     claim_date: "2026-04-16",
@@ -384,7 +384,7 @@ async function opc4_lotNotOwned(
   // Owner A tries to claim against lotUnownedId (no membership for that lot).
   asUser(fx.companyA.ownerClerkId);
   const result = await opc.submitOwnerPaymentClaim({
-    subdivision_id: fx.companyA.subdivisionId,
+    oc_id: fx.companyA.ocId,
     lot_id: fx.companyA.lotUnownedId,
     amount: 50,
     claim_date: "2026-04-16",
@@ -404,11 +404,11 @@ async function opc5_listMyClaims(
   asUser(fx.companyA.ownerClerkId);
   const result = await opc.listMyPaymentClaims();
   // OPC-1 + OPC-3 both submitted as owner A → at least 2 claims expected.
-  const allOwned = result.rows.every((r) => r.subdivision_id === fx.companyA.subdivisionId);
+  const allOwned = result.rows.every((r) => r.oc_id === fx.companyA.ocId);
   record(
     "OPC-5: listMyPaymentClaims returns the owner's own claims",
     result.rows.length >= 2 && allOwned,
-    `count=${result.rows.length}, all in subdivisionA=${allOwned}`,
+    `count=${result.rows.length}, all in ocA=${allOwned}`,
   );
 }
 
@@ -433,9 +433,9 @@ async function opc7_listPendingClaims(
   // PP5-D-C-A: action renamed to listManagerPaymentClaims with optional
   // { orphan?: boolean }. Default behaviour (no opts) returns pending —
   // OPC-7 covers that branch; PD-2 covers the orphan branch.
-  const result = await opc.listManagerPaymentClaims(fx.companyA.subdivisionId);
+  const result = await opc.listManagerPaymentClaims(fx.companyA.ocId);
   record(
-    "OPC-7: listManagerPaymentClaims (default) returns pending claims for the manager's subdivision",
+    "OPC-7: listManagerPaymentClaims (default) returns pending claims for the manager's oc",
     result.rows.length >= 2 && result.rows.every((r) => r.claim_status === "pending"),
     `count=${result.rows.length}, all pending=${result.rows.every((r) => r.claim_status === "pending")}`,
   );
@@ -448,7 +448,7 @@ async function opc8_confirmViaExisting(
   // Owner submits a fresh claim for $200.
   asUser(fx.companyA.ownerClerkId);
   const submit = await opc.submitOwnerPaymentClaim({
-    subdivision_id: fx.companyA.subdivisionId,
+    oc_id: fx.companyA.ocId,
     lot_id: fx.companyA.lotOwnedId,
     amount: 200,
     claim_date: "2026-04-20",
@@ -549,7 +549,7 @@ async function opc9_confirmViaNewBankTx(
 
   asUser(fx.companyA.ownerClerkId);
   const submit = await opc.submitOwnerPaymentClaim({
-    subdivision_id: fx.companyA.subdivisionId,
+    oc_id: fx.companyA.ocId,
     lot_id: fx.companyA.lotOwnedId,
     amount: 90,
     claim_date: "2026-04-25",
@@ -618,7 +618,7 @@ async function opc10_rejectClaim(
 ) {
   asUser(fx.companyA.ownerClerkId);
   const submit = await opc.submitOwnerPaymentClaim({
-    subdivision_id: fx.companyA.subdivisionId,
+    oc_id: fx.companyA.ocId,
     lot_id: fx.companyA.lotOwnedId,
     amount: 33,
     claim_date: "2026-04-26",
@@ -662,7 +662,7 @@ async function opc11_confirmAlreadyMatched(
   const { data: matched } = await supabase
     .from("owner_payment_claims")
     .select("id")
-    .eq("subdivision_id", fx.companyA.subdivisionId)
+    .eq("oc_id", fx.companyA.ocId)
     .eq("claim_status", "matched")
     .limit(1)
     .single();
@@ -702,7 +702,7 @@ async function opc12_rejectAlreadyMatched(
   const { data: matched } = await supabase
     .from("owner_payment_claims")
     .select("id")
-    .eq("subdivision_id", fx.companyA.subdivisionId)
+    .eq("oc_id", fx.companyA.ocId)
     .eq("claim_status", "matched")
     .limit(1)
     .single();
@@ -727,7 +727,7 @@ async function opc13_crossCompanyIsolation(
   // Submit a claim in company B, then try to review it as company A's manager.
   asUser(fx.companyB.ownerClerkId);
   const submit = await opc.submitOwnerPaymentClaim({
-    subdivision_id: fx.companyB.subdivisionId,
+    oc_id: fx.companyB.ocId,
     lot_id: fx.companyB.lotOwnedId,
     amount: 60,
     claim_date: "2026-04-27",
@@ -753,7 +753,7 @@ async function opc14_rejectIsReadOnlyOnFinancials(
 ) {
   asUser(fx.companyA.ownerClerkId);
   const submit = await opc.submitOwnerPaymentClaim({
-    subdivision_id: fx.companyA.subdivisionId,
+    oc_id: fx.companyA.ocId,
     lot_id: fx.companyA.lotOwnedId,
     amount: 22,
     claim_date: "2026-04-28",
@@ -809,7 +809,7 @@ async function opc15_likelyDuplicateThenOverride(
 
   asUser(fx.companyA.ownerClerkId);
   const submit = await opc.submitOwnerPaymentClaim({
-    subdivision_id: fx.companyA.subdivisionId,
+    oc_id: fx.companyA.ocId,
     lot_id: fx.companyA.lotOwnedId,
     amount: 44,
     claim_date: "2026-05-01",
@@ -883,7 +883,7 @@ async function opc16_voidCascadeOrphan(
   // PP5-D or post-launch (see PRE_LAUNCH_CLEANUP).
   asUser(fx.companyA.ownerClerkId);
   const submit = await opc.submitOwnerPaymentClaim({
-    subdivision_id: fx.companyA.subdivisionId,
+    oc_id: fx.companyA.ocId,
     lot_id: fx.companyA.lotOwnedId,
     amount: 66,
     claim_date: "2026-05-05",
@@ -923,7 +923,7 @@ async function opc16_voidCascadeOrphan(
 
   // Void via the PRODUCTION path — UPDATE is_voided=true, no DELETE.
   const voidResult = await recon.voidBankTransaction({
-    subdivision_id: fx.companyA.subdivisionId,
+    oc_id: fx.companyA.ocId,
     bank_transaction_id: bankTx.id,
     reason: "OPC-16: voided after match to test orphan documentation",
   });
@@ -983,7 +983,7 @@ async function pd2_orphanFilter(
     const { data: pd2Lot } = await supabase
       .from("lots")
       .insert({
-        subdivision_id: fx.companyA.subdivisionId,
+        oc_id: fx.companyA.ocId,
         lot_number: 99,
         lot_entitlement: 100,
         lot_liability: 100,
@@ -992,8 +992,8 @@ async function pd2_orphanFilter(
       .single();
     assert(pd2Lot, "PD-2 setup: lot insert failed");
     const pd2LotId = pd2Lot.id;
-    await supabase.from("subdivision_members").insert({
-      subdivision_id: fx.companyA.subdivisionId,
+    await supabase.from("oc_members").insert({
+      oc_id: fx.companyA.ocId,
       profile_id: fx.companyA.ownerProfileId,
       lot_id: pd2LotId,
       role: "lot_owner",
@@ -1006,7 +1006,7 @@ async function pd2_orphanFilter(
     const { data: pd2Notice } = await supabase
       .from("levy_notices")
       .insert({
-        subdivision_id: fx.companyA.subdivisionId,
+        oc_id: fx.companyA.ocId,
         lot_id: pd2LotId,
         budget_id: fx.companyA.budgetId,
         reference_number: "LEV-PD2",
@@ -1024,7 +1024,7 @@ async function pd2_orphanFilter(
     assert(pd2Notice, "PD-2 setup: notice insert failed");
     const pd2NoticeId = pd2Notice.id;
     await supabase.from("lot_ledger_entries").insert({
-      subdivision_id: fx.companyA.subdivisionId,
+      oc_id: fx.companyA.ocId,
       lot_id: pd2LotId,
       fund_type: "administrative",
       entry_type: "debit",
@@ -1042,7 +1042,7 @@ async function pd2_orphanFilter(
     async function submitAndMatchExisting(amount: number, claimDate: string, txDate: string) {
       asUser(fx.companyA.ownerClerkId);
       const submit = await opc.submitOwnerPaymentClaim({
-        subdivision_id: fx.companyA.subdivisionId,
+        oc_id: fx.companyA.ocId,
         lot_id: pd2LotId,
         amount,
         claim_date: claimDate,
@@ -1095,7 +1095,7 @@ async function pd2_orphanFilter(
     const recon = await import("./reconciliation");
     asUser(fx.companyA.managerClerkId);
     const voidRes = await recon.voidBankTransaction({
-      subdivision_id: fx.companyA.subdivisionId,
+      oc_id: fx.companyA.ocId,
       bank_transaction_id: b.bank_tx_id,
       reason: "PD-2 orphan trigger (b): production void path",
     });
@@ -1124,7 +1124,7 @@ async function pd2_orphanFilter(
     // Default branch (orphan=undefined): pending claims only. None of our
     // 5 setups are pending — so they should NOT appear in the result.
     asUser(fx.companyA.managerClerkId);
-    const pendingOnly = await opc.listManagerPaymentClaims(fx.companyA.subdivisionId);
+    const pendingOnly = await opc.listManagerPaymentClaims(fx.companyA.ocId);
     const pendingIds = new Set(pendingOnly.rows.map((r) => r.id));
     const allFiveExcludedFromPending =
       !pendingIds.has(a.claim_id) &&
@@ -1134,7 +1134,7 @@ async function pd2_orphanFilter(
       !pendingIds.has(e.claim_id);
 
     // Orphan branch: matched + any of (a,b,c,d) — but NOT (e).
-    const orphans = await opc.listManagerPaymentClaims(fx.companyA.subdivisionId, {
+    const orphans = await opc.listManagerPaymentClaims(fx.companyA.ocId, {
       orphan: true,
     });
     const orphanIds = new Set(orphans.rows.map((r) => r.id));
@@ -1180,8 +1180,8 @@ async function addSecondManager(
     .single();
   const profileId = (manager as { id: string }).id;
 
-  await supabase.from("subdivision_members").insert({
-    subdivision_id: fx.companyA.subdivisionId,
+  await supabase.from("oc_members").insert({
+    oc_id: fx.companyA.ocId,
     profile_id: profileId,
     role: "strata_manager",
     is_primary_contact: false,
@@ -1198,7 +1198,7 @@ async function m1_fanOutToAllManagers(
 ) {
   asUser(fx.companyA.ownerClerkId);
   const submitted = await opc.submitOwnerPaymentClaim({
-    subdivision_id: fx.companyA.subdivisionId,
+    oc_id: fx.companyA.ocId,
     lot_id: fx.companyA.lotOwnedId,
     amount: 175,
     claim_date: "2026-04-21",
@@ -1243,7 +1243,7 @@ async function m2_inAppNotificationsRow(
 ) {
   asUser(fx.companyA.ownerClerkId);
   const submitted = await opc.submitOwnerPaymentClaim({
-    subdivision_id: fx.companyA.subdivisionId,
+    oc_id: fx.companyA.ocId,
     lot_id: fx.companyA.lotOwnedId,
     amount: 185,
     claim_date: "2026-04-22",
@@ -1258,7 +1258,7 @@ async function m2_inAppNotificationsRow(
   const { data: rows } = await supabase
     .from("notifications")
     .select("profile_id, type, link")
-    .eq("subdivision_id", fx.companyA.subdivisionId)
+    .eq("oc_id", fx.companyA.ocId)
     .eq("type", "new_claim_submitted");
   const list = (rows ?? []) as Array<{ profile_id: string; type: string; link: string | null }>;
   // Should include rows for BOTH managers (this submission's fan-out)
@@ -1293,7 +1293,7 @@ async function m3_perManagerOptOut(
 
   asUser(fx.companyA.ownerClerkId);
   const submitted = await opc.submitOwnerPaymentClaim({
-    subdivision_id: fx.companyA.subdivisionId,
+    oc_id: fx.companyA.ocId,
     lot_id: fx.companyA.lotOwnedId,
     amount: 195,
     claim_date: "2026-04-23",
@@ -1324,7 +1324,7 @@ async function m3_perManagerOptOut(
   const { data: notifRows } = await supabase
     .from("notifications")
     .select("profile_id")
-    .eq("subdivision_id", fx.companyA.subdivisionId)
+    .eq("oc_id", fx.companyA.ocId)
     .eq("type", "new_claim_submitted");
   const notifRecipients = new Set(
     (notifRows ?? []).map((r) => (r as { profile_id: string }).profile_id),
@@ -1358,7 +1358,7 @@ async function m4_dryRunBehavior(
   // and the in-app notifications row is unaffected.
   asUser(fx.companyA.ownerClerkId);
   const submitted = await opc.submitOwnerPaymentClaim({
-    subdivision_id: fx.companyA.subdivisionId,
+    oc_id: fx.companyA.ocId,
     lot_id: fx.companyA.lotOwnedId,
     amount: 205,
     claim_date: "2026-04-24",
@@ -1390,7 +1390,7 @@ async function m4_dryRunBehavior(
   const { count: notifCount } = await supabase
     .from("notifications")
     .select("id", { count: "exact", head: true })
-    .eq("subdivision_id", fx.companyA.subdivisionId)
+    .eq("oc_id", fx.companyA.ocId)
     .eq("type", "new_claim_submitted");
 
   const ok =
@@ -1421,18 +1421,18 @@ async function cleanupMarker(): Promise<void> {
 
 async function cleanupCompany(companyId: string): Promise<void> {
   const { data: subs } = await supabase
-    .from("subdivisions")
+    .from("owners_corporations")
     .select("id")
     .eq("management_company_id", companyId);
   const subIds = (subs ?? []).map((s) => s.id);
   if (subIds.length > 0) {
     // owner_payment_claims first (FKs into bank_transactions and ledger).
-    await supabase.from("owner_payment_claims").delete().in("subdivision_id", subIds);
+    await supabase.from("owner_payment_claims").delete().in("oc_id", subIds);
 
     const { data: accounts } = await supabase
       .from("bank_accounts")
       .select("id")
-      .in("subdivision_id", subIds);
+      .in("oc_id", subIds);
     const accountIds = (accounts ?? []).map((a) => a.id);
     if (accountIds.length > 0) {
       const { data: txns } = await supabase
@@ -1448,7 +1448,7 @@ async function cleanupCompany(companyId: string): Promise<void> {
     const { data: lots } = await supabase
       .from("lots")
       .select("id")
-      .in("subdivision_id", subIds);
+      .in("oc_id", subIds);
     const lotIds = (lots ?? []).map((l) => l.id);
     if (lotIds.length > 0) {
       const { data: entries } = await supabase
@@ -1479,21 +1479,21 @@ async function cleanupCompany(companyId: string): Promise<void> {
     const { data: notices } = await supabase
       .from("levy_notices")
       .select("id")
-      .in("subdivision_id", subIds);
+      .in("oc_id", subIds);
     const noticeIds = (notices ?? []).map((n) => n.id);
     if (noticeIds.length > 0) {
       await supabase.from("levy_notice_items").delete().in("levy_notice_id", noticeIds);
-      await supabase.from("levy_notices").update({ linked_levy_id: null }).in("subdivision_id", subIds);
-      await supabase.from("levy_notices").delete().in("subdivision_id", subIds);
+      await supabase.from("levy_notices").update({ linked_levy_id: null }).in("oc_id", subIds);
+      await supabase.from("levy_notices").delete().in("oc_id", subIds);
     }
-    await supabase.from("levy_batches").delete().in("subdivision_id", subIds);
-    await supabase.from("budgets").delete().in("subdivision_id", subIds);
+    await supabase.from("levy_batches").delete().in("oc_id", subIds);
+    await supabase.from("budgets").delete().in("oc_id", subIds);
     // PP6-C-2: emitNewClaimSubmitted writes to communication_log + notifications.
-    await supabase.from("communication_log").delete().in("subdivision_id", subIds);
-    await supabase.from("notifications").delete().in("subdivision_id", subIds);
-    await supabase.from("audit_log").delete().in("subdivision_id", subIds);
-    await supabase.from("subdivision_members").delete().in("subdivision_id", subIds);
-    await supabase.from("subdivisions").delete().in("id", subIds);
+    await supabase.from("communication_log").delete().in("oc_id", subIds);
+    await supabase.from("notifications").delete().in("oc_id", subIds);
+    await supabase.from("audit_log").delete().in("oc_id", subIds);
+    await supabase.from("oc_members").delete().in("oc_id", subIds);
+    await supabase.from("owners_corporations").delete().in("id", subIds);
   }
   // PP6-C-2: notification_preferences rows for this company's profiles
   // (auto-opt-out from M-3 + Clerk-seeded rows for new test profiles).

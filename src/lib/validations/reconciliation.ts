@@ -70,7 +70,7 @@ const MAX_REASON_LEN = 1000;
 // ─── Manual bank transaction add ───────────────────────────────
 
 export const addManualBankTransactionSchema = z.object({
-  subdivision_id: z.string().uuid(),
+  oc_id: z.string().uuid(),
   bank_account_id: z.string().uuid(),
   transaction_date: z.string().regex(ISO_DATE, "Date must be YYYY-MM-DD"),
   amount: z
@@ -115,7 +115,7 @@ const collidingMappingSnapshotSchema = z.object({
 });
 
 export const reconcileTransactionSchema = z.object({
-  subdivision_id: z.string().uuid(),
+  oc_id: z.string().uuid(),
   bank_transaction_id: z.string().uuid(),
   allocations: z
     .array(reconcileAllocationSchema)
@@ -139,7 +139,7 @@ export const reconcileTransactionSchema = z.object({
 // idempotent for its narrow concern (one match, one DB write) and gives
 // the dialog round-trip a clean dedicated endpoint.
 export const resolvePayerMappingCollisionSchema = z.object({
-  subdivision_id: z.string().uuid(),
+  oc_id: z.string().uuid(),
   bank_transaction_id: z.string().uuid(), // for canonical-name lookup
   proposed_lot_id: z.string().uuid(),
   resolution: z.enum(MAPPING_RESOLUTIONS),
@@ -154,7 +154,7 @@ export type ResolvePayerMappingCollisionInput = z.infer<
 // PP4-D: mapping management actions (mappings page row-actions).
 export const mappingActionSchema = z.object({
   mapping_id: z.string().uuid(),
-  subdivision_id: z.string().uuid(),
+  oc_id: z.string().uuid(),
 });
 export type MappingActionInput = z.infer<typeof mappingActionSchema>;
 
@@ -168,7 +168,7 @@ export type DisableMappingActionInput = z.infer<typeof disableMappingSchema>;
 // flow): no bank_transaction_id, no canonical-name lookup — the UI passes
 // canonical_sender_name + proposed_lot_id directly.
 export const resolveMappingCollisionSchema = z.object({
-  subdivision_id: z.string().uuid(),
+  oc_id: z.string().uuid(),
   canonical_sender_name: z.string().min(1),
   proposed_lot_id: z.string().uuid(),
   resolution: z.enum(MAPPING_RESOLUTIONS),
@@ -213,7 +213,7 @@ export type DuplicateMetadata = z.infer<typeof duplicateMetadataSchema>;
 // ledger" (status='confirmed'); reject = "no, legitimate, run auto-match"
 // (status='rejected' + tryAutoMatch retry).
 export const duplicateReviewSchema = z.object({
-  subdivision_id: z.string().uuid(),
+  oc_id: z.string().uuid(),
   bank_transaction_id: z.string().uuid(),
   notes: z.string().trim().max(500).nullable().optional(),
 });
@@ -247,7 +247,7 @@ export type LedgerDuplicateMetadata = z.infer<typeof ledgerDuplicateMetadataSche
 //   voidAsLedgerDuplicate    → status='confirmed', creates void_offset
 //   keepAsOverpayment        → status='rejected', entry stays active
 export const ledgerDuplicateReviewSchema = z.object({
-  subdivision_id: z.string().uuid(),
+  oc_id: z.string().uuid(),
   lot_ledger_entry_id: z.string().uuid(),
   notes: z.string().trim().max(500).nullable().optional(),
 });
@@ -256,7 +256,7 @@ export type LedgerDuplicateReviewInput = z.infer<typeof ledgerDuplicateReviewSch
 // ─── Unmatch ───────────────────────────────────────────────────
 
 export const unmatchTransactionSchema = z.object({
-  subdivision_id: z.string().uuid(),
+  oc_id: z.string().uuid(),
   bank_transaction_id: z.string().uuid(),
   match_ids: z.array(z.string().uuid()).nullable().optional(),
   reason: z.string().trim().min(MIN_REASON_LEN, `Reason must be at least ${MIN_REASON_LEN} characters`).max(MAX_REASON_LEN),
@@ -267,7 +267,7 @@ export type UnmatchTransactionInput = z.infer<typeof unmatchTransactionSchema>;
 
 export const recordCashReceiptSchema = z
   .object({
-    subdivision_id: z.string().uuid(),
+    oc_id: z.string().uuid(),
     lot_id: z.string().uuid(),
     bank_account_id: z.string().uuid(),
     fund_type: z.enum(FUND_TYPES),
@@ -292,7 +292,7 @@ export type RecordCashReceiptInput = z.infer<typeof recordCashReceiptSchema>;
 // ─── Deposit undeposited funds ─────────────────────────────────
 
 export const depositUndepositedFundsSchema = z.object({
-  subdivision_id: z.string().uuid(),
+  oc_id: z.string().uuid(),
   bank_transaction_id: z.string().uuid(),
   undeposited_entry_ids: z
     .array(z.string().uuid())
@@ -305,14 +305,14 @@ export type DepositUndepositedFundsInput = z.infer<
 // ─── Exclude / unexclude / void ───────────────────────────────
 
 export const excludeTransactionSchema = z.object({
-  subdivision_id: z.string().uuid(),
+  oc_id: z.string().uuid(),
   bank_transaction_id: z.string().uuid(),
   reason: z.string().trim().min(MIN_REASON_LEN).max(MAX_REASON_LEN),
 });
 export type ExcludeTransactionInput = z.infer<typeof excludeTransactionSchema>;
 
 export const unexcludeTransactionSchema = z.object({
-  subdivision_id: z.string().uuid(),
+  oc_id: z.string().uuid(),
   bank_transaction_id: z.string().uuid(),
 });
 export type UnexcludeTransactionInput = z.infer<
@@ -320,14 +320,14 @@ export type UnexcludeTransactionInput = z.infer<
 >;
 
 export const voidBankTransactionSchema = z.object({
-  subdivision_id: z.string().uuid(),
+  oc_id: z.string().uuid(),
   bank_transaction_id: z.string().uuid(),
   reason: z.string().trim().min(MIN_REASON_LEN).max(MAX_REASON_LEN),
 });
 export type VoidBankTransactionInput = z.infer<typeof voidBankTransactionSchema>;
 
 export const voidUndepositedReceiptSchema = z.object({
-  subdivision_id: z.string().uuid(),
+  oc_id: z.string().uuid(),
   receipt_id: z.string().uuid(),
   reason: z.string().trim().min(MIN_REASON_LEN).max(MAX_REASON_LEN),
 });
@@ -404,14 +404,14 @@ export interface ReconciliationQueueResult {
   oldestUnmatchedDays: number | null;
   matchedThisMonthValue: number;
   /**
-   * Distinct transaction_source values present in this subdivision's data.
+   * Distinct transaction_source values present in this oc's data.
    * Drives the dynamic source-filter dropdown — the UI prepends "All" to
    * this list. Filter-agnostic: doesn't depend on the currently-applied
    * status/source/bank filters. New sources (basiq, future integrations)
    * appear automatically once a transaction of that source is recorded.
    */
   availableSources: TransactionSource[];
-  /** Bank accounts for this subdivision, for the account-picker filter. */
+  /** Bank accounts for this oc, for the account-picker filter. */
   bankAccounts: BankAccountOption[];
 }
 
@@ -420,7 +420,7 @@ export interface BankTransactionDetail {
   bank_account_id: string;
   bank_account_name: string;
   bank_account_fund_type: FundType;
-  subdivision_id: string;
+  oc_id: string;
   source: TransactionSource;
   transaction_date: string;
   amount: number;
@@ -469,7 +469,7 @@ export interface BankTransactionDetail {
 
 export interface UndepositedFundsEntry {
   id: string;
-  subdivision_id: string;
+  oc_id: string;
   lot_id: string;
   lot_number: string;
   unit_number: string | null;

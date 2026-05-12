@@ -5,17 +5,17 @@ import { usePathname } from "next/navigation";
 import Link from "next/link";
 import { NotificationBell } from "./notification-bell";
 import {
-  setCachedSubdivisions,
+  setCachedOCs,
   SIDEBAR_REFRESH_EVENT,
 } from "@/lib/sidebar-cache";
 import {
-  getSidebarSubdivisions,
-  type SidebarSubdivision,
-} from "@/lib/actions/subdivision";
+  getSidebarOCs,
+  type SidebarOC,
+} from "@/lib/actions/oc";
 
 const routeLabels: Record<string, string> = {
   dashboard: "Dashboard",
-  subdivisions: "Subdivisions",
+  ocs: "OCs",
   settings: "Settings",
   new: "New",
   levies: "Levies",
@@ -40,8 +40,8 @@ function isUUID(s: string): boolean {
   return /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(s);
 }
 
-// Subdivision URL segments are 8-char Crockford-32 codes (post-rename).
-function isSubdivisionCode(s: string): boolean {
+// OC URL segments are 8-char Crockford-32 codes (post-rename).
+function isOCCode(s: string): boolean {
   return /^[ABCDEFGHJKLMNPQRSTUVWXYZ23456789]{8}$/.test(s);
 }
 
@@ -54,13 +54,13 @@ interface Crumb {
 function buildBreadcrumbs(pathname: string): Crumb[] {
   const segments = pathname.split("/").filter(Boolean);
 
-  // Subdivision context (/subdivisions/[code]/...)
-  if (segments[0] === "subdivisions" && segments[1] && isSubdivisionCode(segments[1])) {
-    const subdivisionCode = segments[1];
+  // OC context (/ocs/[code]/...)
+  if (segments[0] === "ocs" && segments[1] && isOCCode(segments[1])) {
+    const ocCode = segments[1];
     const subPages = segments.slice(2);
-    const base = `/subdivisions/${subdivisionCode}`;
+    const base = `/ocs/${ocCode}`;
 
-    // Subdivision root IS the dashboard — show just "Dashboard"
+    // OC root IS the dashboard — show just "Dashboard"
     if (subPages.length === 0) {
       return [{ label: "Dashboard", href: null, isLast: true }];
     }
@@ -78,7 +78,7 @@ function buildBreadcrumbs(pathname: string): Crumb[] {
     let path = base;
     for (let i = 0; i < subPages.length; i++) {
       const segment = subPages[i];
-      if (isUUID(segment) || isSubdivisionCode(segment)) continue;
+      if (isUUID(segment) || isOCCode(segment)) continue;
       path += "/" + segment;
       const label =
         routeLabels[segment] ??
@@ -98,7 +98,7 @@ function buildBreadcrumbs(pathname: string): Crumb[] {
   let path = "";
   for (let i = 0; i < segments.length; i++) {
     const segment = segments[i];
-    if (isUUID(segment) || isSubdivisionCode(segment)) continue;
+    if (isUUID(segment) || isOCCode(segment)) continue;
     path += "/" + segment;
 
     const label =
@@ -116,39 +116,39 @@ function buildBreadcrumbs(pathname: string): Crumb[] {
 }
 
 interface HeaderProps {
-  initialSubdivisions: SidebarSubdivision[];
+  initialOCs: SidebarOC[];
 }
 
-export function Header({ initialSubdivisions }: HeaderProps) {
+export function Header({ initialOCs }: HeaderProps) {
   const pathname = usePathname();
   const breadcrumbs = buildBreadcrumbs(pathname);
 
-  const [subdivisions, setSubdivisions] = useState<SidebarSubdivision[]>(initialSubdivisions);
+  const [ocs, setOCs] = useState<SidebarOC[]>(initialOCs);
 
   // No on-mount fetch — server layout already handed us fresh data.
   // Only refetch when a mutation broadcasts a refresh event.
   useEffect(() => {
-    setCachedSubdivisions(initialSubdivisions);
+    setCachedOCs(initialOCs);
 
     function onRefresh() {
-      getSidebarSubdivisions()
+      getSidebarOCs()
         .then((data) => {
-          setSubdivisions(data);
-          setCachedSubdivisions(data);
+          setOCs(data);
+          setCachedOCs(data);
         })
         .catch(() => {});
     }
     window.addEventListener(SIDEBAR_REFRESH_EVENT, onRefresh);
     return () => window.removeEventListener(SIDEBAR_REFRESH_EVENT, onRefresh);
-  }, [initialSubdivisions]);
+  }, [initialOCs]);
 
-  const subdivisionMatch = pathname.match(/^\/subdivisions\/([^/]+)/);
-  const currentCode = subdivisionMatch?.[1] ?? null;
-  const isInSubdivision = currentCode !== null && isSubdivisionCode(currentCode);
-  const currentSubdivision = subdivisions.find((s) => s.short_code === currentCode);
+  const ocMatch = pathname.match(/^\/ocs\/([^/]+)/);
+  const currentCode = ocMatch?.[1] ?? null;
+  const isInOC = currentCode !== null && isOCCode(currentCode);
+  const currentOC = ocs.find((s) => s.short_code === currentCode);
 
-  const centerTitle = isInSubdivision
-    ? (currentSubdivision?.name ?? null)
+  const centerTitle = isInOC
+    ? (currentOC?.name ?? null)
     : "Main dashboard";
 
   return (

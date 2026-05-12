@@ -6,7 +6,7 @@ import {
 } from "@/lib/actions/basiq";
 import { verifyStateToken } from "@/lib/basiq/state";
 import { createServerClient } from "@/lib/supabase";
-import { buildSubdivisionUrl } from "@/lib/subdivision-resolver";
+import { buildOCUrl } from "@/lib/oc-resolver";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -51,7 +51,7 @@ export async function GET(req: Request): Promise<Response> {
   const supabase = createServerClient();
   const { data: priorConn } = await supabase
     .from("basiq_connections")
-    .select("status, subdivision_id")
+    .select("status, oc_id")
     .eq("id", connectionId)
     .single();
   const wasReauth =
@@ -68,7 +68,7 @@ export async function GET(req: Request): Promise<Response> {
     const target =
       returnTo ??
       (priorConn
-        ? ((await buildSubdivisionUrl(priorConn.subdivision_id, "/bank-account")) ?? "/")
+        ? ((await buildOCUrl(priorConn.oc_id, "/bank-account")) ?? "/")
         : "/");
     const sep = target.includes("?") ? "&" : "?";
     return NextResponse.redirect(
@@ -92,7 +92,7 @@ export async function GET(req: Request): Promise<Response> {
   const target =
     returnTo ??
     (priorConn
-      ? `/subdivisions/${priorConn.subdivision_id}/bank-account`
+      ? `/ocs/${priorConn.oc_id}/bank-account`
       : "/");
   const sep = target.includes("?") ? "&" : "?";
   return NextResponse.redirect(

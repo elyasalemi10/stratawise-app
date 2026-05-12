@@ -86,7 +86,7 @@ import {
   getBankTxSnapshotsByIds,
   type NearbyBankTxRow,
 } from "@/lib/actions/owner-payment-claims";
-import { getBankAccountsForSubdivision } from "@/lib/actions/bank-transactions";
+import { getBankAccountsForOC } from "@/lib/actions/bank-transactions";
 import {
   OWNER_CLAIM_PAYMENT_METHOD_LABELS,
   type ManagerClaimQueueRow,
@@ -345,7 +345,7 @@ function classifyErrorCode(code: string | null, action: SubmittingAction): {
     case "FORBIDDEN":
       return {
         recoverable: false,
-        defaultMessage: "Access denied — this claim isn't in your subdivision.",
+        defaultMessage: "Access denied — this claim isn't in your oc.",
         returnToStage: stageFromAction,
       };
     case "NOT_FOUND":
@@ -465,13 +465,13 @@ export function ManagerClaimReviewDialog({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open, payload?.id]);
 
-  // Fetch bank accounts on dialog open (cheap; single subdivision).
+  // Fetch bank accounts on dialog open (cheap; single oc).
   useEffect(() => {
     if (!open || !payload) return;
     let cancelled = false;
     void (async () => {
       try {
-        const accounts = await getBankAccountsForSubdivision(payload.subdivision_id);
+        const accounts = await getBankAccountsForOC(payload.oc_id);
         if (!cancelled) setBankAccounts(accounts);
       } catch (e) {
         if (!cancelled) {
@@ -482,7 +482,7 @@ export function ManagerClaimReviewDialog({
     return () => {
       cancelled = true;
     };
-  }, [open, payload?.subdivision_id, payload]);
+  }, [open, payload?.oc_id, payload]);
 
   // Side-effect: when state transitions to match-existing with candidates===null,
   // kick off getNearbyBankTxsForClaim. Dispatches CANDIDATES_LOADED on success.

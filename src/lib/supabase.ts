@@ -22,7 +22,7 @@ export function getSupabaseClient() {
  * Admin client — uses the service-role key, BYPASSES RLS.
  * Use ONLY in trusted server contexts: system operations, webhook handlers,
  * trigger jobs, and back-office actions where the app already validated
- * authorization at a higher level (via requireRole / requireSubdivisionAccess).
+ * authorization at a higher level (via requireRole / requireOCAccess).
  *
  * NEVER expose this client to the browser. New per-call (no singleton).
  *

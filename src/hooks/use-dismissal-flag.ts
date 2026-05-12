@@ -5,7 +5,7 @@
 // ----------------------------------------------------------------------------
 // Backs the "Not now" affordance on prompts that should reappear after a
 // cooldown (e.g. the repeat-manual proposal toast: dismissed for 30 days per
-// (subdivision, canonical_name, lot) tuple).
+// (oc, canonical_name, lot) tuple).
 //
 // All flags share a single localStorage entry "stratawise:dismissals" mapping
 // arbitrary string keys → epoch-ms of dismissal. Garbage-collected on read:

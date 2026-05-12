@@ -18,7 +18,7 @@
 import { createClient } from "@supabase/supabase-js";
 import { config } from "dotenv";
 import { randomUUID } from "crypto";
-import { generateSubdivisionCode } from "@/lib/subdivision-code";
+import { generateOCCode } from "@/lib/oc-code";
 
 config({ path: ".env.local" });
 
@@ -55,7 +55,7 @@ function assert(cond: unknown, msg: string): asserts cond {
 type Fixture = {
   runId: string;
   companyId: string;
-  subdivisionId: string;
+  ocId: string;
   budgetId: string;
   profileId: string;
   lotIds: string[];
@@ -91,25 +91,25 @@ async function createFixture(): Promise<Fixture> {
     .single();
   if (profileErr || !profile) throw new Error(`Fixture: profile insert failed: ${profileErr?.message}`);
 
-  const { data: subdivision, error: subErr } = await supabase
-    .from("subdivisions")
+  const { data: oc, error: subErr } = await supabase
+    .from("owners_corporations")
     .insert({
       management_company_id: company.id,
       name: companyName,
       plan_number: `PLAN-${runId}`,
-      short_code: generateSubdivisionCode(),
+      short_code: generateOCCode(),
       address: "1 Ledger Verify St, Melbourne VIC 3000",
       total_lots: 3,
       created_by: profile.id,
     })
     .select("id")
     .single();
-  if (subErr || !subdivision) throw new Error(`Fixture: subdivision insert failed: ${subErr?.message}`);
+  if (subErr || !oc) throw new Error(`Fixture: oc insert failed: ${subErr?.message}`);
 
   const { data: budget, error: budgetErr } = await supabase
     .from("budgets")
     .insert({
-      subdivision_id: subdivision.id,
+      oc_id: oc.id,
       financial_year: "2026-2027",
       fund_type: "administrative",
       total_amount: 12000,
@@ -122,7 +122,7 @@ async function createFixture(): Promise<Fixture> {
   if (budgetErr || !budget) throw new Error(`Fixture: budget insert failed: ${budgetErr?.message}`);
 
   const lotRows = [1, 2, 3].map((n) => ({
-    subdivision_id: subdivision.id,
+    oc_id: oc.id,
     lot_number: n,
     lot_entitlement: 100,
     lot_liability: 100,
@@ -140,7 +140,7 @@ async function createFixture(): Promise<Fixture> {
   return {
     runId,
     companyId: company.id,
-    subdivisionId: subdivision.id,
+    ocId: oc.id,
     budgetId: budget.id,
     profileId: profile.id,
     lotIds: lots.map((l) => l.id),
@@ -154,7 +154,7 @@ async function makeLevyBatch(
   const { data: batch, error: batchErr } = await supabase
     .from("levy_batches")
     .insert({
-      subdivision_id: fx.subdivisionId,
+      oc_id: fx.ocId,
       budget_id: fx.budgetId,
       financial_year: "2026-2027",
       fund_type: "administrative",
@@ -175,13 +175,13 @@ async function makeLevyBatch(
   for (const lotId of fx.lotIds) {
     const { data: ref } = await supabase.rpc("next_reference_number", {
       p_prefix: "LEV",
-      p_subdivision_id: fx.subdivisionId,
+      p_oc_id: fx.ocId,
     });
     if (!ref) throw new Error("next_reference_number returned null");
     const { data: notice, error: nErr } = await supabase
       .from("levy_notices")
       .insert({
-        subdivision_id: fx.subdivisionId,
+        oc_id: fx.ocId,
         lot_id: lotId,
         budget_id: fx.budgetId,
         batch_id: batch.id,
@@ -267,7 +267,7 @@ async function scenario2_FullPayment(fx: Fixture, s1: S1Out) {
     const balanceBefore = Number(before.admin_balance);
 
     const { error: pErr } = await supabase.rpc("rpc_payment_credit", {
-      p_subdivision_id: fx.subdivisionId,
+      p_oc_id: fx.ocId,
       p_lot_id: lotId,
       p_fund_type: "administrative",
       p_amount: paymentAmount,
@@ -307,7 +307,7 @@ async function scenario3_PartialPayment(fx: Fixture, s1: S1Out) {
     const oldestBefore = before.oldest_unpaid_date_admin;
 
     const { error: pErr } = await supabase.rpc("rpc_payment_credit", {
-      p_subdivision_id: fx.subdivisionId,
+      p_oc_id: fx.ocId,
       p_lot_id: lotId,
       p_fund_type: "administrative",
       p_amount: PAYMENT_AMOUNT,
@@ -364,7 +364,7 @@ async function scenario4_OldestUnpaidAdvances(fx: Fixture, s1: S1Out) {
     assert(!rpcErr, `rpc_levy_batch_debit Q2 failed: ${rpcErr?.message}`);
 
     const { error: pErr } = await supabase.rpc("rpc_payment_credit", {
-      p_subdivision_id: fx.subdivisionId,
+      p_oc_id: fx.ocId,
       p_lot_id: lotId,
       p_fund_type: "administrative",
       p_amount: coveragePayment,
@@ -512,7 +512,7 @@ async function scenario7_DuplicateLevyDebit(fx: Fixture, s1: S1Out) {
     const existingAmount = Number(before[0].amount);
 
     const { data: returnedId, error: rErr } = await supabase.rpc("rpc_levy_debit", {
-      p_subdivision_id: fx.subdivisionId,
+      p_oc_id: fx.ocId,
       p_lot_id: lotId,
       p_fund_type: "administrative",
       p_amount: existingAmount,
@@ -550,7 +550,7 @@ async function scenario8_ExplicitReferencePayment(fx: Fixture) {
   try {
     const { data: newLot, error: lotErr } = await supabase
       .from("lots")
-      .insert({ subdivision_id: fx.subdivisionId, lot_number: 100, lot_entitlement: 100, lot_liability: 100 })
+      .insert({ oc_id: fx.ocId, lot_number: 100, lot_entitlement: 100, lot_liability: 100 })
       .select("id")
       .single();
     assert(!lotErr && newLot, `S8 setup lot insert failed: ${lotErr?.message}`);
@@ -566,7 +566,7 @@ async function scenario8_ExplicitReferencePayment(fx: Fixture) {
       const { data: n } = await supabase
         .from("levy_notices")
         .insert({
-          subdivision_id: fx.subdivisionId,
+          oc_id: fx.ocId,
           lot_id: newLotId,
           budget_id: fx.budgetId,
           reference_number: ref,
@@ -585,11 +585,11 @@ async function scenario8_ExplicitReferencePayment(fx: Fixture) {
     };
     const { data: ref1 } = await supabase.rpc("next_reference_number", {
       p_prefix: "LEV",
-      p_subdivision_id: fx.subdivisionId,
+      p_oc_id: fx.ocId,
     });
     const { data: ref2 } = await supabase.rpc("next_reference_number", {
       p_prefix: "LEV",
-      p_subdivision_id: fx.subdivisionId,
+      p_oc_id: fx.ocId,
     });
     assert(ref1 && ref2, "S8 ref alloc failed");
     const n1 = await mkNotice(ref1 as string, OLDER);
@@ -597,7 +597,7 @@ async function scenario8_ExplicitReferencePayment(fx: Fixture) {
 
     for (const [n, period] of [[n1, OLDER], [n2, NEWER]] as const) {
       await supabase.rpc("rpc_levy_debit", {
-        p_subdivision_id: fx.subdivisionId,
+        p_oc_id: fx.ocId,
         p_lot_id: newLotId,
         p_fund_type: "administrative",
         p_amount: LEVY_AMOUNT,
@@ -612,7 +612,7 @@ async function scenario8_ExplicitReferencePayment(fx: Fixture) {
 
     // Targeted payment on the OLDER levy.
     await supabase.rpc("rpc_payment_credit", {
-      p_subdivision_id: fx.subdivisionId,
+      p_oc_id: fx.ocId,
       p_lot_id: newLotId,
       p_fund_type: "administrative",
       p_amount: LEVY_AMOUNT,
@@ -650,7 +650,7 @@ async function scenario9_WriteoffAdjustment(fx: Fixture) {
     const balanceBefore = Number(before.admin_balance);
 
     const { data: entryId, error: aErr } = await supabase.rpc("rpc_ledger_adjustment", {
-      p_subdivision_id: fx.subdivisionId,
+      p_oc_id: fx.ocId,
       p_lot_id: lotId,
       p_fund_type: "administrative",
       p_entry_type: "credit",
@@ -686,12 +686,12 @@ async function scenario9_WriteoffAdjustment(fx: Fixture) {
 // ───────── PP4-A: priority-aware walker + payment-status snapshot ─────────
 
 // Helper: insert a fresh lot for a clean ledger state. Caller passes a unique
-// lot_number to avoid the (subdivision_id, lot_number) UNIQUE.
+// lot_number to avoid the (oc_id, lot_number) UNIQUE.
 async function makeFreshLot(fx: Fixture, lotNumber: number): Promise<string> {
   const { data, error } = await supabase
     .from("lots")
     .insert({
-      subdivision_id: fx.subdivisionId,
+      oc_id: fx.ocId,
       lot_number: lotNumber,
       lot_entitlement: 100,
       lot_liability: 100,
@@ -716,13 +716,13 @@ async function makeNotice(
 ): Promise<{ id: string; reference: string }> {
   const { data: ref } = await supabase.rpc("next_reference_number", {
     p_prefix: "LEV",
-    p_subdivision_id: fx.subdivisionId,
+    p_oc_id: fx.ocId,
   });
   if (!ref) throw new Error("makeNotice: next_reference_number returned null");
   const { data, error } = await supabase
     .from("levy_notices")
     .insert({
-      subdivision_id: fx.subdivisionId,
+      oc_id: fx.ocId,
       lot_id: lotId,
       budget_id: fx.budgetId,
       reference_number: ref as string,
@@ -775,7 +775,7 @@ async function scenario10_PriorityAwareWalker(fx: Fixture) {
     // new rows — see PRE_LAUNCH_CLEANUP for the trigger / per-RPC fix.
     await supabase.from("lot_ledger_entries").insert([
       {
-        subdivision_id: fx.subdivisionId,
+        oc_id: fx.ocId,
         lot_id: lotId,
         fund_type: "administrative",
         entry_type: "debit",
@@ -790,7 +790,7 @@ async function scenario10_PriorityAwareWalker(fx: Fixture) {
         allocation_priority: 2,
       },
       {
-        subdivision_id: fx.subdivisionId,
+        oc_id: fx.ocId,
         lot_id: lotId,
         fund_type: "administrative",
         entry_type: "debit",
@@ -805,7 +805,7 @@ async function scenario10_PriorityAwareWalker(fx: Fixture) {
         allocation_priority: 3,
       },
       {
-        subdivision_id: fx.subdivisionId,
+        oc_id: fx.ocId,
         lot_id: lotId,
         fund_type: "administrative",
         entry_type: "credit",
@@ -862,7 +862,7 @@ async function scenario11_PaymentStatusPaid(fx: Fixture) {
 
     await supabase.from("lot_ledger_entries").insert([
       {
-        subdivision_id: fx.subdivisionId,
+        oc_id: fx.ocId,
         lot_id: lotId,
         fund_type: "administrative",
         entry_type: "debit",
@@ -875,7 +875,7 @@ async function scenario11_PaymentStatusPaid(fx: Fixture) {
         created_by: fx.profileId,
       },
       {
-        subdivision_id: fx.subdivisionId,
+        oc_id: fx.ocId,
         lot_id: lotId,
         fund_type: "administrative",
         entry_type: "credit",
@@ -934,7 +934,7 @@ async function scenario12_PaymentStatusPartial(fx: Fixture) {
 
     await supabase.from("lot_ledger_entries").insert([
       {
-        subdivision_id: fx.subdivisionId,
+        oc_id: fx.ocId,
         lot_id: lotId,
         fund_type: "administrative",
         entry_type: "debit",
@@ -947,7 +947,7 @@ async function scenario12_PaymentStatusPartial(fx: Fixture) {
         created_by: fx.profileId,
       },
       {
-        subdivision_id: fx.subdivisionId,
+        oc_id: fx.ocId,
         lot_id: lotId,
         fund_type: "administrative",
         entry_type: "credit",
@@ -1005,7 +1005,7 @@ async function scenario13_PaymentStatusOutstanding(fx: Fixture) {
     });
 
     await supabase.from("lot_ledger_entries").insert({
-      subdivision_id: fx.subdivisionId,
+      oc_id: fx.ocId,
       lot_id: lotId,
       fund_type: "administrative",
       entry_type: "debit",
@@ -1048,7 +1048,7 @@ async function scenario15_KeywordAmountPriorityWalker(fx: Fixture) {
     // Setup:
     //   - Fresh lot.
     //   - Bank account (admin fund).
-    //   - Two batches in this subdivision:
+    //   - Two batches in this oc:
     //       * batch_A with match_keywords=['gardening']
     //       * batch_B with match_keywords=['painting']
     //   - Two notices, both $500, both administrative:
@@ -1072,7 +1072,7 @@ async function scenario15_KeywordAmountPriorityWalker(fx: Fixture) {
     const { data: bankAccount } = await supabase
       .from("bank_accounts")
       .insert({
-        subdivision_id: fx.subdivisionId,
+        oc_id: fx.ocId,
         account_name: "S15 Admin",
         bsb: "012-345",
         account_number: "11111111",
@@ -1085,7 +1085,7 @@ async function scenario15_KeywordAmountPriorityWalker(fx: Fixture) {
     const { data: batchA } = await supabase
       .from("levy_batches")
       .insert({
-        subdivision_id: fx.subdivisionId,
+        oc_id: fx.ocId,
         budget_id: fx.budgetId,
         financial_year: "2026-2027",
         fund_type: "administrative",
@@ -1104,7 +1104,7 @@ async function scenario15_KeywordAmountPriorityWalker(fx: Fixture) {
     const { data: batchB } = await supabase
       .from("levy_batches")
       .insert({
-        subdivision_id: fx.subdivisionId,
+        oc_id: fx.ocId,
         budget_id: fx.budgetId,
         financial_year: "2026-2027",
         fund_type: "administrative",
@@ -1124,16 +1124,16 @@ async function scenario15_KeywordAmountPriorityWalker(fx: Fixture) {
 
     const { data: refAdmin } = await supabase.rpc("next_reference_number", {
       p_prefix: "LEV",
-      p_subdivision_id: fx.subdivisionId,
+      p_oc_id: fx.ocId,
     });
     const { data: refSpecial } = await supabase.rpc("next_reference_number", {
       p_prefix: "LEV",
-      p_subdivision_id: fx.subdivisionId,
+      p_oc_id: fx.ocId,
     });
     const { data: noticeAdmin } = await supabase
       .from("levy_notices")
       .insert({
-        subdivision_id: fx.subdivisionId,
+        oc_id: fx.ocId,
         lot_id: lotId,
         budget_id: fx.budgetId,
         batch_id: batchA.id,
@@ -1151,7 +1151,7 @@ async function scenario15_KeywordAmountPriorityWalker(fx: Fixture) {
     const { data: noticeSpecial } = await supabase
       .from("levy_notices")
       .insert({
-        subdivision_id: fx.subdivisionId,
+        oc_id: fx.ocId,
         lot_id: lotId,
         budget_id: fx.budgetId,
         batch_id: batchB.id,
@@ -1172,7 +1172,7 @@ async function scenario15_KeywordAmountPriorityWalker(fx: Fixture) {
     // allocation_priority from category (levy=2, special_levy=3).
     await supabase.from("lot_ledger_entries").insert([
       {
-        subdivision_id: fx.subdivisionId,
+        oc_id: fx.ocId,
         lot_id: lotId,
         fund_type: "administrative",
         entry_type: "debit",
@@ -1185,7 +1185,7 @@ async function scenario15_KeywordAmountPriorityWalker(fx: Fixture) {
         created_by: fx.profileId,
       },
       {
-        subdivision_id: fx.subdivisionId,
+        oc_id: fx.ocId,
         lot_id: lotId,
         fund_type: "administrative",
         entry_type: "debit",
@@ -1221,7 +1221,7 @@ async function scenario15_KeywordAmountPriorityWalker(fx: Fixture) {
     );
     const outcome = await tryAutoMatch({
       bankTransactionId: bt.id,
-      subdivisionId: fx.subdivisionId,
+      ocId: fx.ocId,
       bankAccountId: bankAccount.id,
       description: "GARDENING SERVICES PAID",
       amount: 500,
@@ -1296,7 +1296,7 @@ async function scenario14_PaymentStatusVoidAfterAsOfDate(fx: Fixture) {
       .from("lot_ledger_entries")
       .insert([
         {
-          subdivision_id: fx.subdivisionId,
+          oc_id: fx.ocId,
           lot_id: lotId,
           fund_type: "administrative",
           entry_type: "debit",
@@ -1309,7 +1309,7 @@ async function scenario14_PaymentStatusVoidAfterAsOfDate(fx: Fixture) {
           created_by: fx.profileId,
         },
         {
-          subdivision_id: fx.subdivisionId,
+          oc_id: fx.ocId,
           lot_id: lotId,
           fund_type: "administrative",
           entry_type: "credit",
@@ -1399,15 +1399,15 @@ async function cleanupMarker() {
 }
 
 async function cleanupOneCompany(companyId: string) {
-  // Find subdivisions, lots, bank accounts under this company
-  const { data: subs } = await supabase.from("subdivisions").select("id").eq("management_company_id", companyId);
+  // Find ocs, lots, bank accounts under this company
+  const { data: subs } = await supabase.from("owners_corporations").select("id").eq("management_company_id", companyId);
   const subIds = (subs ?? []).map((s) => s.id);
 
   if (subIds.length > 0) {
-    const { data: lots } = await supabase.from("lots").select("id").in("subdivision_id", subIds);
+    const { data: lots } = await supabase.from("lots").select("id").in("oc_id", subIds);
     const lotIds = (lots ?? []).map((l) => l.id);
 
-    const { data: accounts } = await supabase.from("bank_accounts").select("id").in("subdivision_id", subIds);
+    const { data: accounts } = await supabase.from("bank_accounts").select("id").in("oc_id", subIds);
     const accountIds = (accounts ?? []).map((a) => a.id);
 
     // 1. reconciliation_matches
@@ -1446,21 +1446,21 @@ async function cleanupOneCompany(companyId: string) {
     }
 
     // 5. payments
-    await supabase.from("payments").delete().in("subdivision_id", subIds);
+    await supabase.from("payments").delete().in("oc_id", subIds);
 
     // 6. levy_notice_items, levy_notices, levy_batches
-    const { data: notices } = await supabase.from("levy_notices").select("id").in("subdivision_id", subIds);
+    const { data: notices } = await supabase.from("levy_notices").select("id").in("oc_id", subIds);
     const noticeIds = (notices ?? []).map((n) => n.id);
     if (noticeIds.length > 0) {
       await supabase.from("levy_notice_items").delete().in("levy_notice_id", noticeIds);
       // Clear linked_levy_id self-reference if any
-      await supabase.from("levy_notices").update({ linked_levy_id: null }).in("subdivision_id", subIds);
-      await supabase.from("levy_notices").delete().in("subdivision_id", subIds);
+      await supabase.from("levy_notices").update({ linked_levy_id: null }).in("oc_id", subIds);
+      await supabase.from("levy_notices").delete().in("oc_id", subIds);
     }
-    await supabase.from("levy_batches").delete().in("subdivision_id", subIds);
+    await supabase.from("levy_batches").delete().in("oc_id", subIds);
 
-    // 7. Subdivision delete — cascades lots, budgets, bank_accounts, etc.
-    await supabase.from("subdivisions").delete().in("id", subIds);
+    // 7. OC delete — cascades lots, budgets, bank_accounts, etc.
+    await supabase.from("owners_corporations").delete().in("id", subIds);
   }
 
   // 8. Profiles associated with this company (by management_company_id)

@@ -51,7 +51,7 @@ import {
   __setUserIdResolverForVerification,
   __getUserIdResolverForVerification,
 } from "@/lib/auth-resolver";
-import { generateSubdivisionCode } from "@/lib/subdivision-code";
+import { generateOCCode } from "@/lib/oc-code";
 import {
   normaliseDescription,
   hashDescription,
@@ -95,7 +95,7 @@ function assert(cond: unknown, msg = "assertion failed"): asserts cond {
 interface Fixture {
   runId: string;
   companyId: string;
-  subdivisionId: string;
+  ocId: string;
   profileId: string;
   bankAccountAId: string;
   bankAccountBId: string; // for cross-account isolation tests
@@ -128,26 +128,26 @@ async function createFixture(): Promise<Fixture> {
     .single();
   assert(profile, "fixture: profile insert failed");
 
-  const { data: subdivision } = await supabase
-    .from("subdivisions")
+  const { data: oc } = await supabase
+    .from("owners_corporations")
     .insert({
       management_company_id: company.id,
       name: companyName,
       plan_number: `PLAN-${runId}`,
-      short_code: generateSubdivisionCode(),
+      short_code: generateOCCode(),
       address: "1 Dup Verify St, Melbourne VIC 3000",
       total_lots: 2,
       created_by: profile.id,
     })
     .select("id")
     .single();
-  assert(subdivision, "fixture: subdivision insert failed");
+  assert(oc, "fixture: oc insert failed");
 
   // Two admin-fund bank accounts so we can verify per-account scoping.
   const { data: acctA } = await supabase
     .from("bank_accounts")
     .insert({
-      subdivision_id: subdivision.id,
+      oc_id: oc.id,
       account_name: "Account A",
       bsb: "012-345",
       account_number: "11111111",
@@ -160,7 +160,7 @@ async function createFixture(): Promise<Fixture> {
   const { data: acctB } = await supabase
     .from("bank_accounts")
     .insert({
-      subdivision_id: subdivision.id,
+      oc_id: oc.id,
       account_name: "Account B",
       bsb: "012-345",
       account_number: "22222222",
@@ -173,7 +173,7 @@ async function createFixture(): Promise<Fixture> {
   return {
     runId,
     companyId: company.id,
-    subdivisionId: subdivision.id,
+    ocId: oc.id,
     profileId: profile.id,
     bankAccountAId: acctA.id,
     bankAccountBId: acctB.id,
@@ -513,7 +513,7 @@ async function dd6_chainPrevention(fx: Fixture) {
   assert(detection2.flagged && detection2.duplicate_of === firstId, "second should flag against first");
   await markDuplicate({
     bank_transaction_id: secondId,
-    subdivision_id: fx.subdivisionId,
+    oc_id: fx.ocId,
     duplicate_of: detection2.duplicate_of,
     metadata: detection2.metadata,
     performedBy: fx.profileId,
@@ -678,7 +678,7 @@ async function dd10_confirmBlocksWhenMatchActive(
   assert(det.flagged && det.duplicate_of === olderId, "DD-10 setup: detection failed");
   await markDuplicate({
     bank_transaction_id: newerId,
-    subdivision_id: fx.subdivisionId,
+    oc_id: fx.ocId,
     duplicate_of: det.duplicate_of,
     metadata: det.metadata,
     performedBy: fx.profileId,
@@ -686,7 +686,7 @@ async function dd10_confirmBlocksWhenMatchActive(
   });
 
   const result = await recon.confirmDuplicate({
-    subdivision_id: fx.subdivisionId,
+    oc_id: fx.ocId,
     bank_transaction_id: newerId,
   });
   record(
@@ -731,7 +731,7 @@ async function dd11_confirmBlocksWhenMatchedTotalNonZero(
   assert(det.flagged && det.duplicate_of === olderId, "DD-11 setup: detection failed");
   await markDuplicate({
     bank_transaction_id: newerId,
-    subdivision_id: fx.subdivisionId,
+    oc_id: fx.ocId,
     duplicate_of: det.duplicate_of,
     metadata: det.metadata,
     performedBy: fx.profileId,
@@ -739,7 +739,7 @@ async function dd11_confirmBlocksWhenMatchedTotalNonZero(
   });
 
   const result = await recon.confirmDuplicate({
-    subdivision_id: fx.subdivisionId,
+    oc_id: fx.ocId,
     bank_transaction_id: newerId,
   });
   record(
@@ -779,7 +779,7 @@ async function dd12_rejectSucceedsAndReruns(
   assert(det.flagged, "DD-12 setup: detection failed");
   await markDuplicate({
     bank_transaction_id: newerId,
-    subdivision_id: fx.subdivisionId,
+    oc_id: fx.ocId,
     duplicate_of: det.duplicate_of,
     metadata: det.metadata,
     performedBy: fx.profileId,
@@ -787,7 +787,7 @@ async function dd12_rejectSucceedsAndReruns(
   });
 
   const result = await recon.rejectDuplicate({
-    subdivision_id: fx.subdivisionId,
+    oc_id: fx.ocId,
     bank_transaction_id: newerId,
   });
   const state = await fetchDuplicateState(newerId);
@@ -834,7 +834,7 @@ async function dd13_orchestratorSkipsSuspected(fx: Fixture) {
   assert(det.flagged, "DD-13 setup: detection failed");
   await markDuplicate({
     bank_transaction_id: newerId,
-    subdivision_id: fx.subdivisionId,
+    oc_id: fx.ocId,
     duplicate_of: det.duplicate_of,
     metadata: det.metadata,
     performedBy: fx.profileId,
@@ -843,7 +843,7 @@ async function dd13_orchestratorSkipsSuspected(fx: Fixture) {
 
   const outcome = await tryAutoMatch({
     bankTransactionId: newerId,
-    subdivisionId: fx.subdivisionId,
+    ocId: fx.ocId,
     bankAccountId: fx.bankAccountAId,
     description: "ORCH SKIP",
     amount: 50,
@@ -888,7 +888,7 @@ async function dd14_csvImportIntegration(
   // CSV import delivers two rows:
   //  - one identical to a row we'll insert twice (intra-batch + prior-import dedup)
   //  - one cross-source dup of the Basiq row (different desc formatting)
-  const res1 = await bankActions.importBankTransactions(fx.subdivisionId, {
+  const res1 = await bankActions.importBankTransactions(fx.ocId, {
     bank_account_id: fx.bankAccountAId,
     rows: [
       {
@@ -903,7 +903,7 @@ async function dd14_csvImportIntegration(
 
   // Second import: same standard row (prior-import dup) + cross-source dup
   // of the Basiq row.
-  const res2 = await bankActions.importBankTransactions(fx.subdivisionId, {
+  const res2 = await bankActions.importBankTransactions(fx.ocId, {
     bank_account_id: fx.bankAccountAId,
     rows: [
       {
@@ -968,7 +968,7 @@ async function dd15_basiqIntegration(fx: Fixture) {
   assert(det.flagged, "DD-15 setup: detection failed");
   const marked = await markDuplicate({
     bank_transaction_id: basiqId,
-    subdivision_id: fx.subdivisionId,
+    oc_id: fx.ocId,
     duplicate_of: det.duplicate_of,
     metadata: det.metadata,
     performedBy: fx.profileId,
@@ -999,7 +999,7 @@ async function dd16_addManualIntegration(
   });
   // Manager manually enters the same tx.
   const res = await recon.addManualBankTransaction({
-    subdivision_id: fx.subdivisionId,
+    oc_id: fx.ocId,
     bank_account_id: fx.bankAccountAId,
     transaction_date: "2027-01-15",
     amount: 88,
@@ -1034,7 +1034,7 @@ async function cleanupMarker(): Promise<void> {
 
 async function cleanupCompany(companyId: string): Promise<void> {
   const { data: subs } = await supabase
-    .from("subdivisions")
+    .from("owners_corporations")
     .select("id")
     .eq("management_company_id", companyId);
   const subIds = (subs ?? []).map((s) => s.id);
@@ -1042,7 +1042,7 @@ async function cleanupCompany(companyId: string): Promise<void> {
     const { data: accounts } = await supabase
       .from("bank_accounts")
       .select("id")
-      .in("subdivision_id", subIds);
+      .in("oc_id", subIds);
     const accountIds = (accounts ?? []).map((a) => a.id);
     if (accountIds.length > 0) {
       // Clear duplicate_of self-references first so deletes don't FK-fail.
@@ -1060,8 +1060,8 @@ async function cleanupCompany(companyId: string): Promise<void> {
       }
       await supabase.from("bank_transactions").delete().in("bank_account_id", accountIds);
     }
-    await supabase.from("audit_log").delete().in("subdivision_id", subIds);
-    await supabase.from("subdivisions").delete().in("id", subIds);
+    await supabase.from("audit_log").delete().in("oc_id", subIds);
+    await supabase.from("owners_corporations").delete().in("id", subIds);
   }
   await supabase.from("profiles").delete().eq("management_company_id", companyId);
   await supabase.from("management_companies").delete().eq("id", companyId);
