@@ -20,12 +20,12 @@ import { config } from "dotenv";
 config({ path: ".env.local" });
 process.env.EMAIL_DRY_RUN = "true";
 
+import { validateLogoFile } from "./company-branding";
 import {
-  validateLogoFile,
   MAX_LOGO_BYTES,
   MAX_LOGO_WIDTH,
   MAX_LOGO_HEIGHT,
-} from "./company-branding";
+} from "./company-branding-constants";
 
 type Result = { scenario: string; passed: boolean; detail: string };
 const results: Result[] = [];

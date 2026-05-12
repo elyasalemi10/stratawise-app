@@ -23,16 +23,12 @@ import { requireCompanyRole } from "@/lib/auth";
 import { createServerClient } from "@/lib/supabase";
 import { uploadObject } from "@/lib/storage/r2";
 import imageSize from "image-size";
-
-export const ALLOWED_LOGO_MIME_TYPES = [
-  "image/png",
-  "image/jpeg",
-  "image/svg+xml",
-] as const;
-
-export const MAX_LOGO_BYTES = 1 * 1024 * 1024; // 1MB
-export const MAX_LOGO_WIDTH = 800;
-export const MAX_LOGO_HEIGHT = 400;
+import {
+  ALLOWED_LOGO_MIME_TYPES,
+  MAX_LOGO_BYTES,
+  MAX_LOGO_WIDTH,
+  MAX_LOGO_HEIGHT,
+} from "./company-branding-constants";
 
 export type LogoValidationResult =
   | { ok: true }
