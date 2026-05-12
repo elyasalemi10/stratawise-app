@@ -1,35 +1,19 @@
 "use client";
 
-import { useRouter, useSearchParams } from "next/navigation";
+import { useRouter } from "next/navigation";
 import { Suspense } from "react";
-import { StepIndicator } from "./step-indicator";
 import { StepCompany } from "./step-company";
-import { StepSubdivision } from "./step-subdivision";
 
-// Step 3 ("complete" page) removed — after creating the subdivision we
-// land the user directly on the dashboard. The wizard is now two steps.
+// Single-step onboarding — managers fill in their company details and land
+// on the dashboard. Subdivision creation happens from the dashboard once
+// they're in. Confetti runs on /dashboard?welcome=1 to mark first arrival.
 
 function SetupWizardContent() {
   const router = useRouter();
-  const searchParams = useSearchParams();
-  const step = Number(searchParams.get("step") ?? "1");
-
-  function goToStep(n: number) {
-    router.push(`/onboarding/setup?step=${n}`);
-  }
-
   return (
     <div className="w-full max-w-2xl mx-auto">
-      <StepIndicator currentStep={step} />
-
       <div className="rounded-lg border border-border bg-card p-6 shadow-none">
-        {step === 1 && <StepCompany onNext={() => goToStep(2)} />}
-        {step === 2 && (
-          <StepSubdivision
-            onNext={() => router.push("/dashboard")}
-            onBack={() => goToStep(1)}
-          />
-        )}
+        <StepCompany onNext={() => router.push("/dashboard?welcome=1")} />
       </div>
     </div>
   );

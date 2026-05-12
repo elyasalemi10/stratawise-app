@@ -1,108 +1,79 @@
 "use client";
 
-import { useState, useEffect } from "react";
-import { ChevronDown, Check } from "lucide-react";
+import { useMemo } from "react";
 import { cn } from "@/lib/utils";
-import { Input } from "@/components/ui/input";
-import { Button } from "@/components/ui/button";
-import {
-  DropdownMenu,
-  DropdownMenuTrigger,
-  DropdownMenuContent,
-  DropdownMenuItem,
-} from "@/components/ui/dropdown-menu";
-import { ScrollArea } from "@/components/ui/scroll-area";
 
-const countryCodes = [
-  { code: "+61", country: "AU", flag: "🇦🇺", label: "Australia" },
-  { code: "+64", country: "NZ", flag: "🇳🇿", label: "New Zealand" },
-  { code: "+1", country: "US", flag: "🇺🇸", label: "United States" },
-  { code: "+44", country: "GB", flag: "🇬🇧", label: "United Kingdom" },
-  { code: "+91", country: "IN", flag: "🇮🇳", label: "India" },
-  { code: "+86", country: "CN", flag: "🇨🇳", label: "China" },
-  { code: "+81", country: "JP", flag: "🇯🇵", label: "Japan" },
-  { code: "+65", country: "SG", flag: "🇸🇬", label: "Singapore" },
-  { code: "+60", country: "MY", flag: "🇲🇾", label: "Malaysia" },
-  { code: "+63", country: "PH", flag: "🇵🇭", label: "Philippines" },
-  { code: "+62", country: "ID", flag: "🇮🇩", label: "Indonesia" },
-  { code: "+66", country: "TH", flag: "🇹🇭", label: "Thailand" },
-  { code: "+82", country: "KR", flag: "🇰🇷", label: "South Korea" },
-  { code: "+49", country: "DE", flag: "🇩🇪", label: "Germany" },
-  { code: "+33", country: "FR", flag: "🇫🇷", label: "France" },
-];
+// Australian phone input.
+//
+// - Always +61 country code (shown as a static prefix, not editable).
+// - Internally stores E.164 ("+614XXXXXXXX") so server actions don't have to
+//   parse spaces. The displayed value is grouped for readability:
+//     mobile (04XX):  "4XX XXX XXX"  → +614XXXXXXXX
+//     landline (0X):  "X XXXX XXXX"  → +61XXXXXXXXX (where X is 2/3/7/8)
+// - Paste handles +61 / 0 / 61 prefixes and strips them.
+// - Capped at 9 digits after the +61 (AU mobiles + landlines are 9 digits).
 
 interface PhoneInputProps {
   value: string;
-  onChange: (value: string) => void;
+  onChange: (next: string) => void;
   error?: boolean;
   id?: string;
 }
 
-export function PhoneInput({ value, onChange, error, id }: PhoneInputProps) {
-  const [selectedCode, setSelectedCode] = useState(countryCodes[0]);
-  const [localNumber, setLocalNumber] = useState("");
+function normaliseToAuDigits(raw: string): string {
+  let d = raw.replace(/\D/g, "");
+  if (d.startsWith("61")) d = d.slice(2);
+  if (d.startsWith("0")) d = d.slice(1);
+  return d.slice(0, 9);
+}
 
-  useEffect(() => {
-    if (value) {
-      const found = countryCodes.find((c) => value.startsWith(c.code));
-      if (found) {
-        setSelectedCode(found);
-        setLocalNumber(value.slice(found.code.length).trim());
-      } else {
-        setLocalNumber(value);
-      }
-    }
-  }, []);
-
-  function handleSelect(country: typeof countryCodes[0]) {
-    setSelectedCode(country);
-    onChange(`${country.code} ${localNumber}`);
+function formatAuDigits(digits: string): string {
+  if (digits.length === 0) return "";
+  if (digits.startsWith("4")) {
+    if (digits.length <= 3) return digits;
+    if (digits.length <= 6) return `${digits.slice(0, 3)} ${digits.slice(3)}`;
+    return `${digits.slice(0, 3)} ${digits.slice(3, 6)} ${digits.slice(6)}`;
   }
+  if (digits.length <= 1) return digits;
+  if (digits.length <= 5) return `${digits.slice(0, 1)} ${digits.slice(1)}`;
+  return `${digits.slice(0, 1)} ${digits.slice(1, 5)} ${digits.slice(5)}`;
+}
 
-  function handleNumberChange(num: string) {
-    setLocalNumber(num);
-    onChange(`${selectedCode.code} ${num}`);
+export function PhoneInput({ value, onChange, error, id }: PhoneInputProps) {
+  const displayDigits = useMemo(() => normaliseToAuDigits(value), [value]);
+  const displayValue = useMemo(() => formatAuDigits(displayDigits), [displayDigits]);
+
+  function commit(digits: string) {
+    onChange(digits.length === 0 ? "+61 " : `+61${digits}`);
   }
 
   return (
-    <div className="flex gap-0">
-      <DropdownMenu>
-        <DropdownMenuTrigger
-          className={cn(
-            "flex h-9 items-center gap-1.5 rounded-l-md rounded-r-none border border-r-0 border-border bg-background px-2.5 text-sm transition-colors hover:bg-muted outline-none",
-            error && "border-destructive"
-          )}
-        >
-          <span className="text-base leading-none">{selectedCode.flag}</span>
-          <span className="text-muted-foreground">{selectedCode.code}</span>
-          <ChevronDown className="h-3 w-3 text-muted-foreground" />
-        </DropdownMenuTrigger>
-        <DropdownMenuContent align="start" className="w-64">
-          <ScrollArea className="h-64">
-            {countryCodes.map((country) => (
-              <DropdownMenuItem
-                key={country.code + country.country}
-                onClick={() => handleSelect(country)}
-              >
-                <span className="text-base leading-none mr-2">{country.flag}</span>
-                <span className="flex-1">{country.label}</span>
-                <span className="text-muted-foreground text-sm">{country.code}</span>
-                {selectedCode.code === country.code && (
-                  <Check className="ml-2 h-4 w-4 text-primary" />
-                )}
-              </DropdownMenuItem>
-            ))}
-          </ScrollArea>
-        </DropdownMenuContent>
-      </DropdownMenu>
-
-      <Input
+    <div
+      className={cn(
+        "flex h-9 w-full overflow-hidden rounded-md border bg-background text-sm transition-colors focus-within:ring-2",
+        error
+          ? "border-destructive focus-within:border-destructive focus-within:ring-destructive/20"
+          : "border-border focus-within:border-primary focus-within:ring-primary/20",
+      )}
+    >
+      <div className="flex items-center border-r border-border bg-muted/40 px-3 text-sm font-medium text-muted-foreground select-none">
+        +61
+      </div>
+      <input
         id={id}
         type="tel"
-        placeholder="412 345 678"
-        value={localNumber}
-        onChange={(e) => handleNumberChange(e.target.value)}
-        className={cn("rounded-l-none", error && "border-destructive")}
+        inputMode="tel"
+        autoComplete="tel-national"
+        placeholder="4XX XXX XXX"
+        value={displayValue}
+        onChange={(e) => commit(normaliseToAuDigits(e.target.value))}
+        onPaste={(e) => {
+          e.preventDefault();
+          const pasted = e.clipboardData.getData("text");
+          commit(normaliseToAuDigits(pasted));
+        }}
+        maxLength={11}
+        className="flex-1 bg-transparent px-3 outline-none placeholder:text-muted-foreground"
       />
     </div>
   );

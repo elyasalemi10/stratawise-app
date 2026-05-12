@@ -14,6 +14,8 @@ import { Label } from "@/components/ui/label";
 import { Checkbox } from "@/components/ui/checkbox";
 import { PhoneInput } from "@/components/shared/phone-input";
 import { LogoUpload } from "@/components/shared/logo-upload";
+import { BrandColourPicker } from "@/components/shared/brand-colour-picker";
+import { PlacesAutocomplete } from "@/components/shared/places-autocomplete";
 import { getSupabaseClient } from "@/lib/supabase";
 
 // Format 11 raw digits as "XX XXX XXX XXX"
@@ -36,16 +38,20 @@ export function StepCompany({ onNext }: { onNext: () => void }) {
 
   const [pending, setPending] = useState(false);
   const [logoUrl, setLogoUrl] = useState("");
+  const [brandColour, setBrandColour] = useState("");
   const [phone, setPhone] = useState("+61 ");
   const [phoneInvalid, setPhoneInvalid] = useState(false);
   const [abn, setAbn] = useState("");
   const [abnInvalid, setAbnInvalid] = useState(false);
+  const [address, setAddress] = useState("");
+  const [addressInvalid, setAddressInvalid] = useState(false);
   const [agreed, setAgreed] = useState(false);
   const [consentError, setConsentError] = useState(false);
 
   const {
     register,
     handleSubmit,
+    setValue,
     formState: { errors },
   } = useForm<CompanyFormValues>({
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -76,14 +82,22 @@ export function StepCompany({ onNext }: { onNext: () => void }) {
     }
     setAbnInvalid(false);
 
+    if (address.trim().length < 3) {
+      setAddressInvalid(true);
+      toast.error("Address is required.");
+      return;
+    }
+    setAddressInvalid(false);
+
     setPending(true);
     const result = await createCompany({
       name: data.name,
       abn: abnDigits || undefined,
-      address: data.address,
+      address,
       phone: phone.trim(),
       email: userEmail,
       logo_url: logoUrl || undefined,
+      brand_color: brandColour || undefined,
     });
 
     if (result.error) {
@@ -111,6 +125,23 @@ export function StepCompany({ onNext }: { onNext: () => void }) {
         <div className="space-y-1.5">
           <Label>Company logo</Label>
           <LogoUpload value={logoUrl} onChange={setLogoUrl} />
+          <p className="text-xs text-muted-foreground">
+            Recommended: 800×400 PNG with transparent background.
+          </p>
+        </div>
+
+        <div className="space-y-1.5">
+          <Label htmlFor="brand-colour">Brand colour</Label>
+          <BrandColourPicker
+            id="brand-colour"
+            value={brandColour}
+            onChange={setBrandColour}
+            logoUrl={logoUrl || undefined}
+          />
+          <p className="text-xs text-muted-foreground">
+            Used on levy notices and other documents — not on the app UI.
+            {logoUrl ? " We'll try to pull it from your logo automatically." : ""}
+          </p>
         </div>
 
         <div className="space-y-1.5">
@@ -157,16 +188,24 @@ export function StepCompany({ onNext }: { onNext: () => void }) {
           <Label htmlFor="company-address">
             Address <span className="text-destructive">*</span>
           </Label>
-          <Input
+          <PlacesAutocomplete
             id="company-address"
-            placeholder="123 Main Street, Melbourne VIC 3000"
-            autoComplete="off"
-            aria-invalid={!!errors.address}
-            {...register("address")}
+            value={address}
+            onChange={(v) => {
+              setAddress(v);
+              setValue("address", v);
+              if (addressInvalid) setAddressInvalid(false);
+            }}
+            placeholder="Start typing your business address…"
+            invalid={addressInvalid || !!errors.address}
           />
-          {errors.address && (
-            <p className="text-xs text-destructive mt-1">{errors.address.message}</p>
+          {(addressInvalid || errors.address) && (
+            <p className="text-xs text-destructive mt-1">
+              {errors.address?.message ?? "Address is required"}
+            </p>
           )}
+          {/* Hidden field so react-hook-form's submit still has the value */}
+          <input type="hidden" {...register("address")} />
         </div>
 
         <div className="space-y-1.5">

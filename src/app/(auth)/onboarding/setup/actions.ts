@@ -26,6 +26,7 @@ export async function createCompany(formData: {
   phone: string;
   email: string;
   logo_url?: string;
+  brand_color?: string;
 }) {
   const userId = await getAuthUserId();
   if (!userId) throw new Error("Not authenticated");
@@ -79,6 +80,7 @@ export async function createCompany(formData: {
       phone: formData.phone,
       email: formData.email,
       logo_url: formData.logo_url || null,
+      brand_color: formData.brand_color || null,
     })
     .select("id")
     .single();

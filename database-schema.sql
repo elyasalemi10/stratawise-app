@@ -180,6 +180,7 @@ CREATE TABLE management_companies (
   email TEXT,
   logo_url TEXT,
   signature_url TEXT,
+  brand_color TEXT,                                 -- #RRGGBB; used by levy PDFs etc, not app UI
   subscription_status subscription_status NOT NULL DEFAULT 'active',
   created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
   updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()

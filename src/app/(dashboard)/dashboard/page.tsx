@@ -1,7 +1,9 @@
 import { redirect } from "next/navigation";
+import { Suspense } from "react";
 import Link from "next/link";
 import { Building2, DollarSign, Users, Plus, MapPin, AlertTriangle, CheckCircle2, ArrowRight, History } from "lucide-react";
 import { InviteTeamButton } from "./_components/invite-team-button";
+import { WelcomeConfetti } from "./_components/welcome-confetti";
 import { getCurrentProfile } from "@/lib/auth";
 import { getCompanySubdivisionSummary } from "@/lib/actions/subdivision";
 import { createServerClient } from "@/lib/supabase";
@@ -325,6 +327,10 @@ export default async function DashboardPage() {
 
   return (
     <div className="space-y-6">
+      <Suspense fallback={null}>
+        <WelcomeConfetti />
+      </Suspense>
+
       {/* Company KPIs */}
       <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
         <KPICard
