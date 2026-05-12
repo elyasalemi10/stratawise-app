@@ -10,7 +10,14 @@
 
 ## Brand
 - Full name: "Strata Wise" (two words for display). One-word identifier: "StrataWise". Abbreviated: "SW". Never "MSM" or "My Strata Management" (legacy).
-- Brand colours: Primary blue #2b7fff, Secondary green #00bd7d.
+- Brand palette (light mode only):
+  - Midnight (text):  #0E314C  — used for foreground, sidebar bg
+  - Paper (cards):    #FFFFFF
+  - Page bg (cream):  #FAF7F0
+  - Stone (border):   #E5E0D3
+  - Gold (accent):    #CFA753  — used as `--primary` (primary action colour)
+  - Slate (muted):    #4A5868  — used for `--muted-foreground`
+- Dark equivalents exist in design notes but dark mode is NOT enabled in the app.
 
 ## Stack
 - Next.js 15 (App Router), TypeScript, Tailwind CSS, shadcn/ui, Tremor, Clerk, Supabase, Vercel (syd1), Zod, react-hook-form, @react-pdf/renderer, Trigger.dev, Sonner, TanStack Table, Lucide React, Basiq (bank feeds).
@@ -38,21 +45,21 @@
 
 ## Colour Palette
 ```
---primary: hsl(216, 100%, 58%)        /* #2b7fff blue */
---primary-hover: hsl(216, 100%, 48%)
---primary-foreground: hsl(0, 0%, 100%)
---secondary: hsl(160, 100%, 37%)      /* #00bd7d green */
---secondary-hover: hsl(160, 100%, 30%)
+--primary: hsl(40, 57%, 57%)          /* gold #CFA753 (accent) */
+--primary-hover: hsl(40, 57%, 47%)
+--primary-foreground: hsl(208, 70%, 18%)  /* midnight on gold */
+--secondary: hsl(42, 32%, 86%)        /* stone #E5E0D3 */
+--secondary-hover: hsl(42, 32%, 78%)
 --destructive: hsl(0, 72%, 51%)       /* red */
 --warning: hsl(38, 92%, 50%)          /* amber */
---background: hsl(220, 14%, 96%)      /* #f0f2f5 */
---card: hsl(0, 0%, 100%)             /* white */
---foreground: hsl(220, 26%, 14%)      /* #1a1f2e */
---muted-foreground: hsl(220, 9%, 46%)
---sidebar: hsl(220, 26%, 14%)         /* #1a1f2e */
---sidebar-active: hsl(216, 100%, 58%) /* primary blue */
---border: hsl(220, 13%, 91%)          /* #e2e5ea */
---muted: hsl(220, 14%, 96%)
+--background: hsl(40, 47%, 96%)       /* cream #FAF7F0 */
+--card: hsl(0, 0%, 100%)              /* paper white */
+--foreground: hsl(208, 70%, 18%)      /* midnight #0E314C */
+--muted-foreground: hsl(211, 17%, 35%) /* slate #4A5868 */
+--sidebar: hsl(208, 70%, 18%)         /* midnight */
+--sidebar-active: hsl(40, 57%, 57%)   /* gold */
+--border: hsl(42, 32%, 86%)           /* stone */
+--muted: hsl(40, 25%, 92%)
 ```
 
 ## Component Patterns

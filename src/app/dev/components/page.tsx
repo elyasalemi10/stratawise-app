@@ -529,18 +529,18 @@ export default function ComponentShowcase() {
               <CardContent className="pt-5">
                 <div className="grid grid-cols-2 gap-3 sm:grid-cols-4 lg:grid-cols-6">
                   {[
-                    { label: "Primary", color: "bg-primary", hex: "#2b7fff" },
-                    { label: "Secondary", color: "bg-secondary", hex: "#00bd7d" },
+                    { label: "Primary", color: "bg-primary", hex: "#CFA753" },
+                    { label: "Secondary", color: "bg-secondary", hex: "#0E314C" },
                     { label: "Destructive", color: "bg-destructive", hex: "#ef4444" },
                     { label: "Warning", color: "bg-warning", hex: "#f59e0b" },
-                    { label: "Foreground", color: "bg-foreground", hex: "#1a1f2e" },
-                    { label: "Muted fg", color: "bg-muted-foreground", hex: "#6b7280" },
-                    { label: "Background", color: "bg-background border border-border", hex: "#f0f2f5" },
+                    { label: "Foreground", color: "bg-foreground", hex: "#0E314C" },
+                    { label: "Muted fg", color: "bg-muted-foreground", hex: "#4A5868" },
+                    { label: "Background", color: "bg-background border border-border", hex: "#FAF7F0" },
                     { label: "Card", color: "bg-card border border-border", hex: "#ffffff" },
-                    { label: "Border", color: "bg-border", hex: "#e2e5ea" },
-                    { label: "Sidebar", color: "bg-sidebar", hex: "#1a1f2e" },
-                    { label: "Muted", color: "bg-muted border border-border", hex: "#f0f2f5" },
-                    { label: "Ring", color: "bg-ring", hex: "#2b7fff" },
+                    { label: "Border", color: "bg-border", hex: "#E5E0D3" },
+                    { label: "Sidebar", color: "bg-sidebar", hex: "#0E314C" },
+                    { label: "Muted", color: "bg-muted border border-border", hex: "#FAF7F0" },
+                    { label: "Ring", color: "bg-ring", hex: "#CFA753" },
                   ].map((swatch) => (
                     <div key={swatch.label} className="space-y-1.5">
                       <div className={`h-10 rounded-md ${swatch.color}`} />

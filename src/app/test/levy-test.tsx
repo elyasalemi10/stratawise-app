@@ -95,8 +95,8 @@ export default function LevyTestPage() {
   const [data, setData] = useState(DEFAULT_DATA);
   const [logoPreview, setLogoPreview] = useState<string | null>(null);
   const [refreshKey, setRefreshKey] = useState(0);
-  const [brandPrimary, setBrandPrimary] = useState("#2b7fff");
-  const [brandSecondary, setBrandSecondary] = useState("#00bd7d");
+  const [brandPrimary, setBrandPrimary] = useState("#CFA753");
+  const [brandSecondary, setBrandSecondary] = useState("#0E314C");
   const [includeBpay, setIncludeBpay] = useState(false);
   const [includeGst, setIncludeGst] = useState(false);
 

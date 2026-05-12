@@ -19,17 +19,19 @@ export default function AuthLayout({
         />
       </div>
 
-      {/* Right panel — white bg, centred logo + auth content */}
-      <div className="flex w-full lg:w-1/2 flex-col items-center justify-center bg-card px-6 py-12">
+      {/* Right panel — white bg, centred logo near top + auth content */}
+      <div className="flex w-full lg:w-1/2 flex-col items-center bg-card px-6 pt-16 pb-12">
         <Image
           src="/stratawise-logo.webp"
           alt="Strata Wise"
-          width={180}
-          height={40}
+          width={260}
+          height={56}
           priority
-          className="mb-8 h-9 w-auto"
+          className="mb-12 h-14 w-auto"
         />
-        {children}
+        <div className="flex w-full flex-1 flex-col items-center justify-center">
+          {children}
+        </div>
       </div>
     </div>
   );

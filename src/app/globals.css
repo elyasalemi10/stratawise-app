@@ -79,67 +79,74 @@
 
 /* ============================================
    STRATA WISE DESIGN SYSTEM — LIGHT MODE ONLY
+   Brand palette:
+     Midnight (text)   #0E314C
+     Paper (cards)     #FFFFFF
+     Page bg           #FAF7F0  (warm cream)
+     Stone (border)    #E5E0D3
+     Gold (accent)     #CFA753
+     Slate (muted)     #4A5868
    ============================================ */
 
 :root {
-  /* Primary — Blue #2b7fff */
-  --primary: hsl(216, 100%, 58%);
-  --primary-hover: hsl(216, 100%, 48%);
-  --primary-foreground: hsl(0, 0%, 100%);
+  /* Primary — Gold #CFA753 */
+  --primary: hsl(40, 57%, 57%);
+  --primary-hover: hsl(40, 57%, 47%);
+  --primary-foreground: hsl(208, 70%, 18%);   /* midnight on gold for AA contrast */
 
-  /* Secondary — Green #00bd7d */
-  --secondary: hsl(160, 100%, 37%);
-  --secondary-hover: hsl(160, 100%, 30%);
-  --secondary-foreground: hsl(0, 0%, 100%);
+  /* Secondary — Stone #E5E0D3 (subtle button bg) */
+  --secondary: hsl(42, 32%, 86%);
+  --secondary-hover: hsl(42, 32%, 78%);
+  --secondary-foreground: hsl(208, 70%, 18%);
 
   /* Destructive — Red */
   --destructive: hsl(0, 72%, 51%);
   --destructive-foreground: hsl(0, 0%, 100%);
 
-  /* Warning — Amber */
+  /* Warning — Amber (kept harmonious with gold) */
   --warning: hsl(38, 92%, 50%);
   --warning-foreground: hsl(38, 92%, 25%);
 
   /* Background & Surface */
-  --background: hsl(220, 14%, 96%);
-  --foreground: hsl(220, 26%, 14%);
-  --card: hsl(0, 0%, 100%);
-  --card-foreground: hsl(220, 26%, 14%);
+  --background: hsl(40, 47%, 96%);            /* page bg cream #FAF7F0 */
+  --foreground: hsl(208, 70%, 18%);            /* midnight #0E314C */
+  --card: hsl(0, 0%, 100%);                    /* paper #FFFFFF */
+  --card-foreground: hsl(208, 70%, 18%);
   --popover: hsl(0, 0%, 100%);
-  --popover-foreground: hsl(220, 26%, 14%);
+  --popover-foreground: hsl(208, 70%, 18%);
 
   /* Muted */
-  --muted: hsl(220, 14%, 96%);
-  --muted-foreground: hsl(220, 9%, 46%);
+  --muted: hsl(40, 25%, 92%);                  /* slightly darker than bg */
+  --muted-foreground: hsl(211, 17%, 35%);      /* slate #4A5868 */
 
   /* Accent */
-  --accent: hsl(220, 14%, 96%);
-  --accent-foreground: hsl(220, 26%, 14%);
+  --accent: hsl(40, 25%, 92%);
+  --accent-foreground: hsl(208, 70%, 18%);
 
   /* Border / Input / Ring */
-  --border: hsl(220, 13%, 91%);
-  --input: hsl(220, 13%, 91%);
-  --ring: hsl(216, 100%, 58%);
+  --border: hsl(42, 32%, 86%);                 /* stone #E5E0D3 */
+  --input: hsl(42, 32%, 86%);
+  --ring: hsl(40, 57%, 57%);                   /* gold ring on focus */
 
-  /* Sidebar */
-  --sidebar: hsl(220, 26%, 14%);
-  --sidebar-foreground: hsl(220, 15%, 65%);
-  --sidebar-text: hsl(220, 15%, 65%);
-  --sidebar-primary: hsl(216, 100%, 58%);
-  --sidebar-primary-foreground: hsl(0, 0%, 100%);
-  --sidebar-accent: hsl(220, 26%, 20%);
-  --sidebar-accent-foreground: hsl(0, 0%, 100%);
-  --sidebar-active: hsl(216, 100%, 58%);
-  --sidebar-active-bg: hsl(220, 26%, 20%);
-  --sidebar-border: hsl(0, 0%, 100%, 0.1);
-  --sidebar-ring: hsl(216, 100%, 58%);
+  /* Sidebar — midnight bg + paper text + gold active */
+  --sidebar: hsl(208, 70%, 18%);
+  --sidebar-foreground: hsl(40, 30%, 88%);     /* warm light on midnight */
+  --sidebar-text: hsl(40, 30%, 88%);
+  --sidebar-primary: hsl(40, 57%, 57%);
+  --sidebar-primary-foreground: hsl(208, 70%, 18%);
+  --sidebar-accent: hsl(208, 70%, 24%);
+  --sidebar-accent-foreground: hsl(40, 30%, 88%);
+  --sidebar-active: hsl(40, 57%, 57%);
+  --sidebar-active-bg: hsl(208, 70%, 24%);
+  --sidebar-border: hsl(0, 0%, 100%, 0.08);
+  --sidebar-ring: hsl(40, 57%, 57%);
 
-  /* Charts — brand colours */
-  --chart-1: hsl(216, 100%, 58%);
-  --chart-2: hsl(160, 100%, 37%);
-  --chart-3: hsl(220, 9%, 46%);
-  --chart-4: hsl(38, 92%, 50%);
-  --chart-5: hsl(0, 72%, 51%);
+  /* Charts — brand-led palette */
+  --chart-1: hsl(40, 57%, 57%);                /* gold */
+  --chart-2: hsl(208, 70%, 18%);               /* midnight */
+  --chart-3: hsl(211, 17%, 35%);               /* slate */
+  --chart-4: hsl(38, 92%, 50%);                /* amber */
+  --chart-5: hsl(0, 72%, 51%);                 /* red */
 
   /* Radius */
   --radius: 0.5rem;
@@ -180,9 +187,9 @@
   .animate-shimmer {
     background: linear-gradient(
       90deg,
-      hsl(220, 14%, 96%) 0%,
-      hsl(220, 14%, 93%) 50%,
-      hsl(220, 14%, 96%) 100%
+      hsl(40, 47%, 96%) 0%,
+      hsl(40, 25%, 92%) 50%,
+      hsl(40, 47%, 96%) 100%
     );
     background-size: 200% 100%;
     animation: shimmer 1.5s ease-in-out infinite;

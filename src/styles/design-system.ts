@@ -2,6 +2,14 @@
  * Strata Wise Design System Constants
  * Reusable tokens for components that need programmatic access to design values.
  * CSS variables in globals.css are the source of truth — these mirror them for JS usage.
+ *
+ * Brand palette:
+ *   Midnight (text)   #0E314C
+ *   Paper (cards)     #FFFFFF
+ *   Page bg (cream)   #FAF7F0
+ *   Stone (border)    #E5E0D3
+ *   Gold (accent)     #CFA753
+ *   Slate (muted)     #4A5868
  */
 
 // ============================================
@@ -10,16 +18,16 @@
 
 export const colors = {
   primary: {
-    DEFAULT: "hsl(216, 100%, 58%)",
-    hover: "hsl(216, 100%, 48%)",
-    foreground: "hsl(0, 0%, 100%)",
-    hex: "#2b7fff",
+    DEFAULT: "hsl(40, 57%, 57%)",
+    hover: "hsl(40, 57%, 47%)",
+    foreground: "hsl(208, 70%, 18%)",   // midnight on gold
+    hex: "#CFA753",
   },
   secondary: {
-    DEFAULT: "hsl(160, 100%, 37%)",
-    hover: "hsl(160, 100%, 30%)",
-    foreground: "hsl(0, 0%, 100%)",
-    hex: "#00bd7d",
+    DEFAULT: "hsl(42, 32%, 86%)",        // stone
+    hover: "hsl(42, 32%, 78%)",
+    foreground: "hsl(208, 70%, 18%)",
+    hex: "#E5E0D3",
   },
   destructive: {
     DEFAULT: "hsl(0, 72%, 51%)",
@@ -29,19 +37,19 @@ export const colors = {
     DEFAULT: "hsl(38, 92%, 50%)",
     foreground: "hsl(38, 92%, 25%)",
   },
-  background: "hsl(220, 14%, 96%)",
-  foreground: "hsl(220, 26%, 14%)",
-  card: "hsl(0, 0%, 100%)",
-  border: "hsl(220, 13%, 91%)",
+  background: "hsl(40, 47%, 96%)",       // cream #FAF7F0
+  foreground: "hsl(208, 70%, 18%)",      // midnight #0E314C
+  card: "hsl(0, 0%, 100%)",              // paper
+  border: "hsl(42, 32%, 86%)",           // stone #E5E0D3
   muted: {
-    DEFAULT: "hsl(220, 14%, 96%)",
-    foreground: "hsl(220, 9%, 46%)",
+    DEFAULT: "hsl(40, 25%, 92%)",
+    foreground: "hsl(211, 17%, 35%)",   // slate #4A5868
   },
   sidebar: {
-    DEFAULT: "hsl(220, 26%, 14%)",
-    text: "hsl(220, 15%, 65%)",
-    active: "hsl(216, 100%, 58%)",
-    activeBg: "hsl(220, 26%, 20%)",
+    DEFAULT: "hsl(208, 70%, 18%)",      // midnight bg
+    text: "hsl(40, 30%, 88%)",
+    active: "hsl(40, 57%, 57%)",        // gold
+    activeBg: "hsl(208, 70%, 24%)",
   },
 } as const;
 
@@ -122,7 +130,7 @@ export const spacing = {
 
 export const components = {
   button: {
-    primary: "bg-primary text-white rounded-md h-9 px-4 text-sm font-medium shadow-sm hover:bg-primary/90 transition-colors duration-150",
+    primary: "bg-primary text-primary-foreground rounded-md h-9 px-4 text-sm font-medium shadow-sm hover:bg-primary/90 transition-colors duration-150",
     secondary: "bg-transparent border border-border text-foreground rounded-md h-9 px-4 text-sm font-medium hover:bg-muted transition-colors duration-150",
     destructive: "bg-destructive text-white rounded-md h-9 px-4 text-sm font-medium hover:bg-destructive/90 transition-colors duration-150",
     ghost: "bg-transparent text-muted-foreground rounded-md h-9 px-4 text-sm font-medium hover:bg-muted transition-colors duration-150",
@@ -135,11 +143,11 @@ export const components = {
   },
   badge: {
     base: "rounded-full px-2.5 py-0.5 text-xs font-medium inline-flex items-center",
-    success: "bg-secondary/10 text-secondary",
+    success: "bg-primary/10 text-primary",
     warning: "bg-warning/10 text-[hsl(38,92%,35%)]",
     error: "bg-destructive/10 text-destructive",
     neutral: "bg-muted text-muted-foreground",
-    info: "bg-primary/10 text-primary",
+    info: "bg-foreground/10 text-foreground",
   },
   table: {
     header: "bg-muted/50 text-xs font-medium uppercase tracking-wider text-muted-foreground h-10",
@@ -155,9 +163,9 @@ export const components = {
 // ============================================
 
 export const chartColors = {
-  primary: "#2b7fff",
-  secondary: "#00bd7d",
-  muted: "#6b7280",
+  primary: "#CFA753",      // gold
+  secondary: "#0E314C",    // midnight
+  muted: "#4A5868",        // slate
   warning: "#f59e0b",
   destructive: "#ef4444",
 } as const;

@@ -65,14 +65,14 @@ export async function sendVerificationCodeEmail({
     subject: `Your Strata Wise verification code: ${code}`,
     html: `
       <div style="font-family:'Inter',system-ui,sans-serif;max-width:520px;margin:0 auto;padding:32px 0;">
-        <h2 style="margin:0 0 16px;font-size:20px;font-weight:600;color:#1a1f2e;">Verify your email</h2>
-        <p style="margin:0 0 20px;color:#1a1f2e;font-size:14px;line-height:1.6;">
+        <h2 style="margin:0 0 16px;font-size:20px;font-weight:600;color:#0E314C;">Verify your email</h2>
+        <p style="margin:0 0 20px;color:#0E314C;font-size:14px;line-height:1.6;">
           ${greeting} use the code below to verify your Strata Wise account. It expires in 10 minutes.
         </p>
-        <div style="background:#f8f9fb;border:1px solid #e2e5ea;border-radius:6px;padding:24px;margin:0 0 24px;text-align:center;">
-          <p style="margin:0;font-size:32px;font-weight:700;letter-spacing:8px;color:#1a1f2e;font-family:'SF Mono','Courier New',monospace;">${code}</p>
+        <div style="background:#FAF7F0;border:1px solid #E5E0D3;border-radius:6px;padding:24px;margin:0 0 24px;text-align:center;">
+          <p style="margin:0;font-size:32px;font-weight:700;letter-spacing:8px;color:#0E314C;font-family:'SF Mono','Courier New',monospace;">${code}</p>
         </div>
-        <p style="margin:24px 0 0;color:#6b7280;font-size:12px;line-height:1.5;">
+        <p style="margin:24px 0 0;color:#4A5868;font-size:12px;line-height:1.5;">
           If you didn't request this code, you can safely ignore this email.
         </p>
       </div>
@@ -99,7 +99,7 @@ export async function sendInvitationEmail({
 }: SendInvitationEmailParams) {
   const roleLabel = role === "lot_owner" ? "lot owner" : "strata manager";
   const greeting = inviteeName ? `Hi ${inviteeName},` : "Hi,";
-  const lotLine = lotNumber ? `<p style="margin:0 0 8px;color:#6b7280;font-size:14px;">Lot: <strong>${lotNumber}</strong></p>` : "";
+  const lotLine = lotNumber ? `<p style="margin:0 0 8px;color:#4A5868;font-size:14px;">Lot: <strong>${lotNumber}</strong></p>` : "";
   const invitedByLine = invitedByName ? ` by ${invitedByName}` : "";
 
   if (isDryRun()) {
@@ -114,19 +114,19 @@ export async function sendInvitationEmail({
     html: `
       <div style="font-family:'Inter',system-ui,sans-serif;max-width:520px;margin:0 auto;padding:32px 0;">
         ${logoImg(companyLogoUrl)}
-        <h2 style="margin:0 0 16px;font-size:20px;font-weight:600;color:#1a1f2e;">You've been invited</h2>
-        <p style="margin:0 0 20px;color:#1a1f2e;font-size:14px;line-height:1.6;">
+        <h2 style="margin:0 0 16px;font-size:20px;font-weight:600;color:#0E314C;">You've been invited</h2>
+        <p style="margin:0 0 20px;color:#0E314C;font-size:14px;line-height:1.6;">
           ${greeting} you've been invited${invitedByLine} to join as a <strong>${roleLabel}</strong>.
         </p>
-        <div style="background:#f8f9fb;border:1px solid #e2e5ea;border-radius:6px;padding:16px;margin:0 0 24px;">
-          <p style="margin:0 0 4px;font-size:15px;font-weight:600;color:#1a1f2e;">${subdivisionName}</p>
-          <p style="margin:0 0 8px;color:#6b7280;font-size:14px;">${subdivisionAddress}</p>
+        <div style="background:#FAF7F0;border:1px solid #E5E0D3;border-radius:6px;padding:16px;margin:0 0 24px;">
+          <p style="margin:0 0 4px;font-size:15px;font-weight:600;color:#0E314C;">${subdivisionName}</p>
+          <p style="margin:0 0 8px;color:#4A5868;font-size:14px;">${subdivisionAddress}</p>
           ${lotLine}
         </div>
-        <a href="${inviteUrl}" style="display:inline-block;background:#2b7fff;color:#ffffff;font-size:14px;font-weight:600;text-decoration:none;padding:10px 24px;border-radius:6px;">
+        <a href="${inviteUrl}" style="display:inline-block;background:#CFA753;color:#ffffff;font-size:14px;font-weight:600;text-decoration:none;padding:10px 24px;border-radius:6px;">
           Accept invitation
         </a>
-        <p style="margin:24px 0 0;color:#6b7280;font-size:12px;line-height:1.5;">
+        <p style="margin:24px 0 0;color:#4A5868;font-size:12px;line-height:1.5;">
           This invitation expires in 7 days. If you didn't expect this email, you can safely ignore it.
         </p>
       </div>
@@ -185,21 +185,21 @@ export async function sendLevyEmail({
     html: `
       <div style="font-family:'Inter',system-ui,sans-serif;max-width:520px;margin:0 auto;padding:32px 0;">
         ${logoHtml}
-        <h2 style="margin:0 0 16px;font-size:20px;font-weight:600;color:#1a1f2e;">Levy Notice</h2>
-        <p style="margin:0 0 20px;color:#1a1f2e;font-size:14px;line-height:1.6;">
+        <h2 style="margin:0 0 16px;font-size:20px;font-weight:600;color:#0E314C;">Levy Notice</h2>
+        <p style="margin:0 0 20px;color:#0E314C;font-size:14px;line-height:1.6;">
           ${greeting} a new levy notice has been issued for <strong>${subdivisionAddress}</strong>.
         </p>
-        <div style="background:#f8f9fb;border:1px solid #e2e5ea;border-radius:6px;padding:16px;margin:0 0 24px;">
-          <p style="margin:0 0 4px;font-size:13px;color:#6b7280;">Reference</p>
-          <p style="margin:0 0 12px;font-size:15px;font-weight:600;color:#1a1f2e;">${referenceNumber}</p>
-          <p style="margin:0 0 4px;font-size:13px;color:#6b7280;">Period</p>
-          <p style="margin:0 0 12px;font-size:14px;color:#1a1f2e;">${periodLabel}</p>
-          <p style="margin:0 0 4px;font-size:13px;color:#6b7280;">Amount due</p>
-          <p style="margin:0 0 12px;font-size:18px;font-weight:700;color:#1a1f2e;">${totalAmount}</p>
-          <p style="margin:0 0 4px;font-size:13px;color:#6b7280;">Due date</p>
-          <p style="margin:0;font-size:14px;font-weight:600;color:#00bd7d;">${dueDate}</p>
+        <div style="background:#FAF7F0;border:1px solid #E5E0D3;border-radius:6px;padding:16px;margin:0 0 24px;">
+          <p style="margin:0 0 4px;font-size:13px;color:#4A5868;">Reference</p>
+          <p style="margin:0 0 12px;font-size:15px;font-weight:600;color:#0E314C;">${referenceNumber}</p>
+          <p style="margin:0 0 4px;font-size:13px;color:#4A5868;">Period</p>
+          <p style="margin:0 0 12px;font-size:14px;color:#0E314C;">${periodLabel}</p>
+          <p style="margin:0 0 4px;font-size:13px;color:#4A5868;">Amount due</p>
+          <p style="margin:0 0 12px;font-size:18px;font-weight:700;color:#0E314C;">${totalAmount}</p>
+          <p style="margin:0 0 4px;font-size:13px;color:#4A5868;">Due date</p>
+          <p style="margin:0;font-size:14px;font-weight:600;color:#0E314C;">${dueDate}</p>
         </div>
-        <p style="margin:0;color:#1a1f2e;font-size:14px;">
+        <p style="margin:0;color:#0E314C;font-size:14px;">
           Your levy notice is attached as a PDF. Please refer to the notice for payment details.
         </p>
       </div>
@@ -266,15 +266,15 @@ export async function sendBasiqReauthReminderEmail(params: {
   const html = `
     <div style="font-family:'Inter',system-ui,sans-serif;max-width:520px;margin:0 auto;padding:24px 0;">
       ${logoImg(companyLogoUrl)}
-      <h2 style="margin:0 0 12px;font-size:18px;font-weight:600;color:#1a1f2e;">Bank feed expiring soon</h2>
-      <p style="margin:0 0 16px;color:#1a1f2e;font-size:14px;line-height:1.5;">
+      <h2 style="margin:0 0 12px;font-size:18px;font-weight:600;color:#0E314C;">Bank feed expiring soon</h2>
+      <p style="margin:0 0 16px;color:#0E314C;font-size:14px;line-height:1.5;">
         The automatic bank feed for <strong>${subdivisionName}</strong> will expire in
         <strong>${daysRemaining} day${daysRemaining === 1 ? "" : "s"}</strong>. Reauthorise to keep transactions syncing.
       </p>
-      <a href="${reauthUrl}" style="display:inline-block;background:#2b7fff;color:#ffffff;font-size:14px;font-weight:600;text-decoration:none;padding:10px 20px;border-radius:6px;">
+      <a href="${reauthUrl}" style="display:inline-block;background:#CFA753;color:#ffffff;font-size:14px;font-weight:600;text-decoration:none;padding:10px 20px;border-radius:6px;">
         Reauthorise now
       </a>
-      <p style="margin:16px 0 0;color:#6b7280;font-size:12px;">If the feed expires, CSV import remains available as a fallback.</p>
+      <p style="margin:16px 0 0;color:#4A5868;font-size:12px;">If the feed expires, CSV import remains available as a fallback.</p>
     </div>
   `;
   return sendSystemEmail(to, subject, html);
@@ -292,13 +292,13 @@ export async function sendBasiqConsentExpiredEmail(params: {
     <div style="font-family:'Inter',system-ui,sans-serif;max-width:520px;margin:0 auto;padding:24px 0;">
       ${logoImg(companyLogoUrl)}
       <h2 style="margin:0 0 12px;font-size:18px;font-weight:600;color:#b91c1c;">Bank feed disconnected</h2>
-      <p style="margin:0 0 16px;color:#1a1f2e;font-size:14px;line-height:1.5;">
+      <p style="margin:0 0 16px;color:#0E314C;font-size:14px;line-height:1.5;">
         The automatic bank feed for <strong>${subdivisionName}</strong> has expired. New transactions will not be imported until you reauthorise.
       </p>
-      <a href="${reauthUrl}" style="display:inline-block;background:#2b7fff;color:#ffffff;font-size:14px;font-weight:600;text-decoration:none;padding:10px 20px;border-radius:6px;">
+      <a href="${reauthUrl}" style="display:inline-block;background:#CFA753;color:#ffffff;font-size:14px;font-weight:600;text-decoration:none;padding:10px 20px;border-radius:6px;">
         Reauthorise now
       </a>
-      <p style="margin:16px 0 0;color:#6b7280;font-size:12px;">CSV import remains available as a fallback.</p>
+      <p style="margin:16px 0 0;color:#4A5868;font-size:12px;">CSV import remains available as a fallback.</p>
     </div>
   `;
   return sendSystemEmail(to, subject, html);
@@ -328,19 +328,19 @@ export async function sendBasiqGapReconciliationEmail(params: {
   const html = `
     <div style="font-family:'Inter',system-ui,sans-serif;max-width:520px;margin:0 auto;padding:24px 0;">
       ${logoImg(companyLogoUrl)}
-      <h2 style="margin:0 0 12px;font-size:18px;font-weight:600;color:#1a1f2e;">Bank feed reconnected</h2>
-      <p style="margin:0 0 12px;color:#1a1f2e;font-size:14px;line-height:1.5;">
+      <h2 style="margin:0 0 12px;font-size:18px;font-weight:600;color:#0E314C;">Bank feed reconnected</h2>
+      <p style="margin:0 0 12px;color:#0E314C;font-size:14px;line-height:1.5;">
         The bank feed for <strong>${subdivisionName}</strong> was disconnected for <strong>${gapHours} hour${gapHours === 1 ? "" : "s"}</strong>.
       </p>
-      <ul style="margin:0 0 16px;padding-left:20px;color:#1a1f2e;font-size:14px;line-height:1.6;">
+      <ul style="margin:0 0 16px;padding-left:20px;color:#0E314C;font-size:14px;line-height:1.6;">
         <li>${backfilledCount} transaction${backfilledCount === 1 ? "" : "s"} imported during reconnection</li>
         <li>${autoMatchedCount} auto-matched</li>
         <li>${manualReviewCount} awaiting manual review</li>
       </ul>
-      <p style="margin:0 0 16px;color:#1a1f2e;font-size:14px;line-height:1.5;">
+      <p style="margin:0 0 16px;color:#0E314C;font-size:14px;line-height:1.5;">
         Arrears notifications are paused for 48 hours while you review.
       </p>
-      <a href="${reportUrl}" style="display:inline-block;background:#2b7fff;color:#ffffff;font-size:14px;font-weight:600;text-decoration:none;padding:10px 20px;border-radius:6px;">
+      <a href="${reportUrl}" style="display:inline-block;background:#CFA753;color:#ffffff;font-size:14px;font-weight:600;text-decoration:none;padding:10px 20px;border-radius:6px;">
         View gap report
       </a>
     </div>
@@ -361,10 +361,10 @@ export async function sendBasiqCommitteeGapNotificationEmail(params: {
     <div style="font-family:'Inter',system-ui,sans-serif;max-width:520px;margin:0 auto;padding:24px 0;">
       ${logoImg(companyLogoUrl)}
       <h2 style="margin:0 0 12px;font-size:18px;font-weight:600;color:#b45309;">Extended bank-feed outage</h2>
-      <p style="margin:0 0 12px;color:#1a1f2e;font-size:14px;line-height:1.5;">
+      <p style="margin:0 0 12px;color:#0E314C;font-size:14px;line-height:1.5;">
         The automatic bank feed for <strong>${subdivisionName}</strong> was disconnected for approximately <strong>${days} days</strong>.
       </p>
-      <p style="margin:0 0 0;color:#1a1f2e;font-size:14px;line-height:1.5;">
+      <p style="margin:0 0 0;color:#0E314C;font-size:14px;line-height:1.5;">
         During this time, arrears notifications may have been issued based on stale reconciliation state. A detailed gap report is available in the Strata Wise dashboard.
       </p>
     </div>
@@ -435,7 +435,7 @@ export async function sendPaymentReceivedEmail(
   }
 
   const refLine = reference
-    ? `<p style="margin:0 0 4px;font-size:13px;color:#6b7280;">Reference</p><p style="margin:0 0 12px;font-size:14px;color:#1a1f2e;">${escapeHtml(reference)}</p>`
+    ? `<p style="margin:0 0 4px;font-size:13px;color:#4A5868;">Reference</p><p style="margin:0 0 12px;font-size:14px;color:#0E314C;">${escapeHtml(reference)}</p>`
     : "";
 
   const ctaBlock = buildCtaBlock(
@@ -446,19 +446,19 @@ export async function sendPaymentReceivedEmail(
   );
 
   const html = brandShell(`
-    <h2 style="margin:0 0 16px;font-size:20px;font-weight:600;color:#1a1f2e;">Payment received</h2>
-    <p style="margin:0 0 20px;color:#1a1f2e;font-size:14px;line-height:1.6;">
+    <h2 style="margin:0 0 16px;font-size:20px;font-weight:600;color:#0E314C;">Payment received</h2>
+    <p style="margin:0 0 20px;color:#0E314C;font-size:14px;line-height:1.6;">
       ${greeting(ownerName)} we've recorded a payment against your account at <strong>${escapeHtml(subdivisionAddress)}</strong>.
     </p>
-    <div style="background:#f8f9fb;border:1px solid #e2e5ea;border-radius:6px;padding:16px;margin:0 0 24px;">
-      <p style="margin:0 0 4px;font-size:13px;color:#6b7280;">Lot</p>
-      <p style="margin:0 0 12px;font-size:14px;color:#1a1f2e;">${escapeHtml(lotLabel)}</p>
-      <p style="margin:0 0 4px;font-size:13px;color:#6b7280;">Amount</p>
-      <p style="margin:0 0 12px;font-size:18px;font-weight:700;color:#00bd7d;">$${amount.toFixed(2)}</p>
-      <p style="margin:0 0 4px;font-size:13px;color:#6b7280;">Date</p>
-      <p style="margin:0 0 12px;font-size:14px;color:#1a1f2e;">${escapeHtml(paymentDate)}</p>
+    <div style="background:#FAF7F0;border:1px solid #E5E0D3;border-radius:6px;padding:16px;margin:0 0 24px;">
+      <p style="margin:0 0 4px;font-size:13px;color:#4A5868;">Lot</p>
+      <p style="margin:0 0 12px;font-size:14px;color:#0E314C;">${escapeHtml(lotLabel)}</p>
+      <p style="margin:0 0 4px;font-size:13px;color:#4A5868;">Amount</p>
+      <p style="margin:0 0 12px;font-size:18px;font-weight:700;color:#0E314C;">$${amount.toFixed(2)}</p>
+      <p style="margin:0 0 4px;font-size:13px;color:#4A5868;">Date</p>
+      <p style="margin:0 0 12px;font-size:14px;color:#0E314C;">${escapeHtml(paymentDate)}</p>
       ${refLine}
-      ${description ? `<p style="margin:0 0 4px;font-size:13px;color:#6b7280;">Description</p><p style="margin:0;font-size:14px;color:#1a1f2e;">${escapeHtml(description)}</p>` : ""}
+      ${description ? `<p style="margin:0 0 4px;font-size:13px;color:#4A5868;">Description</p><p style="margin:0;font-size:14px;color:#0E314C;">${escapeHtml(description)}</p>` : ""}
     </div>
     ${ctaBlock}
   `, companyLogoUrl);
@@ -504,7 +504,7 @@ export async function sendOverdueReminderEmail(
   }
 
   const interestLine = penaltyInterestAccrued > 0
-    ? `<p style="margin:0 0 4px;font-size:13px;color:#6b7280;">Interest accrued</p><p style="margin:0 0 12px;font-size:14px;font-weight:600;color:#dc2626;">$${penaltyInterestAccrued.toFixed(2)}</p>`
+    ? `<p style="margin:0 0 4px;font-size:13px;color:#4A5868;">Interest accrued</p><p style="margin:0 0 12px;font-size:14px;font-weight:600;color:#dc2626;">$${penaltyInterestAccrued.toFixed(2)}</p>`
     : "";
 
   // PP6-D-D-fix: CTA hyperlink to the owner's my-arrears page. Fallback to
@@ -512,32 +512,32 @@ export async function sendOverdueReminderEmail(
   // anchor with a relative href).
   const appBaseUrl = process.env.NEXT_PUBLIC_APP_URL?.replace(/\/$/, "") ?? "";
   const ctaBlock = appBaseUrl
-    ? `<p style="margin:0 0 16px;color:#1a1f2e;font-size:14px;line-height:1.6;">
+    ? `<p style="margin:0 0 16px;color:#0E314C;font-size:14px;line-height:1.6;">
         Click below to see your arrears, payment options, and full ledger.
       </p>
-      <a href="${appBaseUrl}/subdivisions/${escapeHtml(subdivisionShortCode)}/my-arrears" style="display:inline-block;background:#2b7fff;color:#ffffff;font-size:14px;font-weight:600;text-decoration:none;padding:10px 24px;border-radius:6px;margin:0 0 24px;">
+      <a href="${appBaseUrl}/subdivisions/${escapeHtml(subdivisionShortCode)}/my-arrears" style="display:inline-block;background:#CFA753;color:#ffffff;font-size:14px;font-weight:600;text-decoration:none;padding:10px 24px;border-radius:6px;margin:0 0 24px;">
         View outstanding balance
       </a>`
-    : `<p style="margin:0 0 24px;color:#1a1f2e;font-size:14px;">
+    : `<p style="margin:0 0 24px;color:#0E314C;font-size:14px;">
         Log in to Strata Wise to view your outstanding balance, payment options, and full ledger.
       </p>`;
 
   const html = brandShell(`
-    <h2 style="margin:0 0 16px;font-size:20px;font-weight:600;color:#1a1f2e;">Levy overdue — friendly reminder</h2>
-    <p style="margin:0 0 20px;color:#1a1f2e;font-size:14px;line-height:1.6;">
+    <h2 style="margin:0 0 16px;font-size:20px;font-weight:600;color:#0E314C;">Levy overdue — friendly reminder</h2>
+    <p style="margin:0 0 20px;color:#0E314C;font-size:14px;line-height:1.6;">
       ${greeting(ownerName)} our records show a levy at <strong>${escapeHtml(subdivisionAddress)}</strong> is now <strong>${daysOverdue} days</strong> past its due date. If you've already paid, you can disregard this notice — it may take a day or two to reflect on our system.
     </p>
     <div style="background:#fef9f3;border:1px solid #fde7d0;border-radius:6px;padding:16px;margin:0 0 24px;">
-      <p style="margin:0 0 4px;font-size:13px;color:#6b7280;">Reference</p>
-      <p style="margin:0 0 12px;font-size:14px;font-weight:600;color:#1a1f2e;">${escapeHtml(referenceNumber)}</p>
-      <p style="margin:0 0 4px;font-size:13px;color:#6b7280;">Original due date</p>
-      <p style="margin:0 0 12px;font-size:14px;color:#1a1f2e;">${escapeHtml(dueDate)}</p>
-      <p style="margin:0 0 4px;font-size:13px;color:#6b7280;">Amount outstanding</p>
-      <p style="margin:0 0 12px;font-size:18px;font-weight:700;color:#1a1f2e;">$${amountOutstanding.toFixed(2)}</p>
+      <p style="margin:0 0 4px;font-size:13px;color:#4A5868;">Reference</p>
+      <p style="margin:0 0 12px;font-size:14px;font-weight:600;color:#0E314C;">${escapeHtml(referenceNumber)}</p>
+      <p style="margin:0 0 4px;font-size:13px;color:#4A5868;">Original due date</p>
+      <p style="margin:0 0 12px;font-size:14px;color:#0E314C;">${escapeHtml(dueDate)}</p>
+      <p style="margin:0 0 4px;font-size:13px;color:#4A5868;">Amount outstanding</p>
+      <p style="margin:0 0 12px;font-size:18px;font-weight:700;color:#0E314C;">$${amountOutstanding.toFixed(2)}</p>
       ${interestLine}
     </div>
     ${ctaBlock}
-    <p style="margin:0;color:#6b7280;font-size:12px;line-height:1.5;">
+    <p style="margin:0;color:#4A5868;font-size:12px;line-height:1.5;">
       Continued non-payment may result in further reminders and late fees in line with your strata rules.
     </p>
   `, companyLogoUrl);
@@ -595,19 +595,19 @@ export async function sendClaimMatchedEmail(
   );
 
   const html = brandShell(`
-    <h2 style="margin:0 0 16px;font-size:20px;font-weight:600;color:#1a1f2e;">Payment confirmed</h2>
-    <p style="margin:0 0 20px;color:#1a1f2e;font-size:14px;line-height:1.6;">
+    <h2 style="margin:0 0 16px;font-size:20px;font-weight:600;color:#0E314C;">Payment confirmed</h2>
+    <p style="margin:0 0 20px;color:#0E314C;font-size:14px;line-height:1.6;">
       ${greeting(ownerName)} the payment claim you submitted for <strong>${escapeHtml(subdivisionAddress)}</strong> has been matched and applied to your account.
     </p>
     <div style="background:#f0fdf4;border:1px solid #bbf7d0;border-radius:6px;padding:16px;margin:0 0 24px;">
-      <p style="margin:0 0 4px;font-size:13px;color:#6b7280;">Lot</p>
-      <p style="margin:0 0 12px;font-size:14px;color:#1a1f2e;">${escapeHtml(lotLabel)}</p>
-      <p style="margin:0 0 4px;font-size:13px;color:#6b7280;">Amount</p>
-      <p style="margin:0 0 12px;font-size:18px;font-weight:700;color:#00bd7d;">$${amount.toFixed(2)}</p>
-      <p style="margin:0 0 4px;font-size:13px;color:#6b7280;">Claimed date</p>
-      <p style="margin:0 0 12px;font-size:14px;color:#1a1f2e;">${escapeHtml(claimDate)}</p>
-      <p style="margin:0 0 4px;font-size:13px;color:#6b7280;">Method</p>
-      <p style="margin:0;font-size:14px;color:#1a1f2e;">${escapeHtml(paymentMethod)}</p>
+      <p style="margin:0 0 4px;font-size:13px;color:#4A5868;">Lot</p>
+      <p style="margin:0 0 12px;font-size:14px;color:#0E314C;">${escapeHtml(lotLabel)}</p>
+      <p style="margin:0 0 4px;font-size:13px;color:#4A5868;">Amount</p>
+      <p style="margin:0 0 12px;font-size:18px;font-weight:700;color:#0E314C;">$${amount.toFixed(2)}</p>
+      <p style="margin:0 0 4px;font-size:13px;color:#4A5868;">Claimed date</p>
+      <p style="margin:0 0 12px;font-size:14px;color:#0E314C;">${escapeHtml(claimDate)}</p>
+      <p style="margin:0 0 4px;font-size:13px;color:#4A5868;">Method</p>
+      <p style="margin:0;font-size:14px;color:#0E314C;">${escapeHtml(paymentMethod)}</p>
     </div>
     ${ctaBlock}
   `, companyLogoUrl);
@@ -654,21 +654,21 @@ export async function sendClaimRejectedEmail(
   );
 
   const html = brandShell(`
-    <h2 style="margin:0 0 16px;font-size:20px;font-weight:600;color:#1a1f2e;">Update on your payment claim</h2>
-    <p style="margin:0 0 20px;color:#1a1f2e;font-size:14px;line-height:1.6;">
+    <h2 style="margin:0 0 16px;font-size:20px;font-weight:600;color:#0E314C;">Update on your payment claim</h2>
+    <p style="margin:0 0 20px;color:#0E314C;font-size:14px;line-height:1.6;">
       ${greeting(ownerName)} after review, the payment claim you submitted for <strong>${escapeHtml(subdivisionAddress)}</strong> has not been matched. The details and the manager's note are below.
     </p>
     <div style="background:#fef2f2;border:1px solid #fecaca;border-radius:6px;padding:16px;margin:0 0 16px;">
-      <p style="margin:0 0 4px;font-size:13px;color:#6b7280;">Lot</p>
-      <p style="margin:0 0 12px;font-size:14px;color:#1a1f2e;">${escapeHtml(lotLabel)}</p>
-      <p style="margin:0 0 4px;font-size:13px;color:#6b7280;">Amount</p>
-      <p style="margin:0 0 12px;font-size:18px;font-weight:700;color:#1a1f2e;">$${amount.toFixed(2)}</p>
-      <p style="margin:0 0 4px;font-size:13px;color:#6b7280;">Claimed date</p>
-      <p style="margin:0;font-size:14px;color:#1a1f2e;">${escapeHtml(claimDate)}</p>
+      <p style="margin:0 0 4px;font-size:13px;color:#4A5868;">Lot</p>
+      <p style="margin:0 0 12px;font-size:14px;color:#0E314C;">${escapeHtml(lotLabel)}</p>
+      <p style="margin:0 0 4px;font-size:13px;color:#4A5868;">Amount</p>
+      <p style="margin:0 0 12px;font-size:18px;font-weight:700;color:#0E314C;">$${amount.toFixed(2)}</p>
+      <p style="margin:0 0 4px;font-size:13px;color:#4A5868;">Claimed date</p>
+      <p style="margin:0;font-size:14px;color:#0E314C;">${escapeHtml(claimDate)}</p>
     </div>
-    <div style="background:#f8f9fb;border:1px solid #e2e5ea;border-radius:6px;padding:16px;margin:0 0 24px;">
-      <p style="margin:0 0 4px;font-size:13px;color:#6b7280;">Reason from your strata manager</p>
-      <p style="margin:0;font-size:14px;line-height:1.5;color:#1a1f2e;">${escapeHtml(rejectionReason)}</p>
+    <div style="background:#FAF7F0;border:1px solid #E5E0D3;border-radius:6px;padding:16px;margin:0 0 24px;">
+      <p style="margin:0 0 4px;font-size:13px;color:#4A5868;">Reason from your strata manager</p>
+      <p style="margin:0;font-size:14px;line-height:1.5;color:#0E314C;">${escapeHtml(rejectionReason)}</p>
     </div>
     ${ctaBlock}
   `, companyLogoUrl);
@@ -716,7 +716,7 @@ export async function sendNewClaimSubmittedEmail(
   const greetingLine = managerName ? `Hi ${managerName},` : "Hi,";
   const ownerLabel = ownerName ?? "An owner";
   const notesBlock = notes && notes.trim().length > 0
-    ? `<p style="margin:0 0 4px;font-size:13px;color:#6b7280;">Owner notes</p><p style="margin:0;font-size:14px;line-height:1.5;color:#1a1f2e;">${escapeHtml(notes)}</p>`
+    ? `<p style="margin:0 0 4px;font-size:13px;color:#4A5868;">Owner notes</p><p style="margin:0;font-size:14px;line-height:1.5;color:#0E314C;">${escapeHtml(notes)}</p>`
     : "";
 
   const ctaBlock = buildCtaBlock(
@@ -727,23 +727,23 @@ export async function sendNewClaimSubmittedEmail(
   );
 
   const html = brandShell(`
-    <h2 style="margin:0 0 16px;font-size:20px;font-weight:600;color:#1a1f2e;">New payment claim</h2>
-    <p style="margin:0 0 20px;color:#1a1f2e;font-size:14px;line-height:1.6;">
+    <h2 style="margin:0 0 16px;font-size:20px;font-weight:600;color:#0E314C;">New payment claim</h2>
+    <p style="margin:0 0 20px;color:#0E314C;font-size:14px;line-height:1.6;">
       ${greetingLine} ${escapeHtml(ownerLabel)} has submitted a payment claim for <strong>${escapeHtml(subdivisionName)}</strong> that needs your review.
     </p>
-    <div style="background:#f8f9fb;border:1px solid #e2e5ea;border-radius:6px;padding:16px;margin:0 0 16px;">
-      <p style="margin:0 0 4px;font-size:13px;color:#6b7280;">Lot</p>
-      <p style="margin:0 0 12px;font-size:14px;color:#1a1f2e;">${escapeHtml(lotLabel)}</p>
-      <p style="margin:0 0 4px;font-size:13px;color:#6b7280;">Amount</p>
-      <p style="margin:0 0 12px;font-size:18px;font-weight:700;color:#1a1f2e;">$${amount.toFixed(2)}</p>
-      <p style="margin:0 0 4px;font-size:13px;color:#6b7280;">Claimed date</p>
-      <p style="margin:0 0 12px;font-size:14px;color:#1a1f2e;">${escapeHtml(claimDate)}</p>
-      <p style="margin:0 0 4px;font-size:13px;color:#6b7280;">Method</p>
-      <p style="margin:0;font-size:14px;color:#1a1f2e;">${escapeHtml(paymentMethod)}</p>
+    <div style="background:#FAF7F0;border:1px solid #E5E0D3;border-radius:6px;padding:16px;margin:0 0 16px;">
+      <p style="margin:0 0 4px;font-size:13px;color:#4A5868;">Lot</p>
+      <p style="margin:0 0 12px;font-size:14px;color:#0E314C;">${escapeHtml(lotLabel)}</p>
+      <p style="margin:0 0 4px;font-size:13px;color:#4A5868;">Amount</p>
+      <p style="margin:0 0 12px;font-size:18px;font-weight:700;color:#0E314C;">$${amount.toFixed(2)}</p>
+      <p style="margin:0 0 4px;font-size:13px;color:#4A5868;">Claimed date</p>
+      <p style="margin:0 0 12px;font-size:14px;color:#0E314C;">${escapeHtml(claimDate)}</p>
+      <p style="margin:0 0 4px;font-size:13px;color:#4A5868;">Method</p>
+      <p style="margin:0;font-size:14px;color:#0E314C;">${escapeHtml(paymentMethod)}</p>
     </div>
-    ${notesBlock ? `<div style="background:#f8f9fb;border:1px solid #e2e5ea;border-radius:6px;padding:16px;margin:0 0 24px;">${notesBlock}</div>` : ""}
+    ${notesBlock ? `<div style="background:#FAF7F0;border:1px solid #E5E0D3;border-radius:6px;padding:16px;margin:0 0 24px;">${notesBlock}</div>` : ""}
     ${ctaBlock}
-    <p style="margin:24px 0 0;color:#6b7280;font-size:12px;line-height:1.5;">
+    <p style="margin:24px 0 0;color:#4A5868;font-size:12px;line-height:1.5;">
       You're receiving this because you're a strata manager for ${escapeHtml(subdivisionName)}.
     </p>
   `, companyLogoUrl);
@@ -790,9 +790,9 @@ function buildCtaBlock(
 ): string {
   const appBaseUrl = process.env.NEXT_PUBLIC_APP_URL?.replace(/\/$/, "") ?? "";
   if (!appBaseUrl) {
-    return `<p style="margin:0 0 24px;color:#1a1f2e;font-size:14px;">${escapeHtml(fallbackText)}</p>`;
+    return `<p style="margin:0 0 24px;color:#0E314C;font-size:14px;">${escapeHtml(fallbackText)}</p>`;
   }
-  return `<a href="${appBaseUrl}/subdivisions/${escapeHtml(subdivisionShortCode)}/${path}" style="display:inline-block;background:#2b7fff;color:#ffffff;font-size:14px;font-weight:600;text-decoration:none;padding:10px 24px;border-radius:6px;margin:0 0 24px;">
+  return `<a href="${appBaseUrl}/subdivisions/${escapeHtml(subdivisionShortCode)}/${path}" style="display:inline-block;background:#CFA753;color:#ffffff;font-size:14px;font-weight:600;text-decoration:none;padding:10px 24px;border-radius:6px;margin:0 0 24px;">
     ${escapeHtml(ctaLabel)}
   </a>`;
 }
@@ -831,7 +831,7 @@ export async function sendSecondReminderEmail(
   }
 
   const interestLine = penaltyInterestAccrued > 0
-    ? `<p style="margin:0 0 4px;font-size:13px;color:#6b7280;">Interest accrued</p><p style="margin:0 0 12px;font-size:14px;font-weight:600;color:#dc2626;">$${penaltyInterestAccrued.toFixed(2)}</p>`
+    ? `<p style="margin:0 0 4px;font-size:13px;color:#4A5868;">Interest accrued</p><p style="margin:0 0 12px;font-size:14px;font-weight:600;color:#dc2626;">$${penaltyInterestAccrued.toFixed(2)}</p>`
     : "";
 
   const ctaBlock = buildCtaBlock(
@@ -843,20 +843,20 @@ export async function sendSecondReminderEmail(
 
   const html = brandShell(`
     <h2 style="margin:0 0 16px;font-size:20px;font-weight:600;color:#b45309;">Second reminder — levy ${daysOverdue}+ days overdue</h2>
-    <p style="margin:0 0 20px;color:#1a1f2e;font-size:14px;line-height:1.6;">
+    <p style="margin:0 0 20px;color:#0E314C;font-size:14px;line-height:1.6;">
       ${greeting(ownerName)} our records still show an unpaid levy at <strong>${escapeHtml(subdivisionAddress)}</strong>. It is now more than <strong>${daysOverdue} days</strong> overdue and penalty interest is accruing.
     </p>
     <div style="background:#fef3c7;border:1px solid #fde68a;border-radius:6px;padding:16px;margin:0 0 24px;">
-      <p style="margin:0 0 4px;font-size:13px;color:#6b7280;">Reference</p>
-      <p style="margin:0 0 12px;font-size:14px;font-weight:600;color:#1a1f2e;">${escapeHtml(referenceNumber)}</p>
-      <p style="margin:0 0 4px;font-size:13px;color:#6b7280;">Original due date</p>
-      <p style="margin:0 0 12px;font-size:14px;color:#1a1f2e;">${escapeHtml(dueDate)}</p>
-      <p style="margin:0 0 4px;font-size:13px;color:#6b7280;">Amount outstanding</p>
-      <p style="margin:0 0 12px;font-size:18px;font-weight:700;color:#1a1f2e;">$${amountOutstanding.toFixed(2)}</p>
+      <p style="margin:0 0 4px;font-size:13px;color:#4A5868;">Reference</p>
+      <p style="margin:0 0 12px;font-size:14px;font-weight:600;color:#0E314C;">${escapeHtml(referenceNumber)}</p>
+      <p style="margin:0 0 4px;font-size:13px;color:#4A5868;">Original due date</p>
+      <p style="margin:0 0 12px;font-size:14px;color:#0E314C;">${escapeHtml(dueDate)}</p>
+      <p style="margin:0 0 4px;font-size:13px;color:#4A5868;">Amount outstanding</p>
+      <p style="margin:0 0 12px;font-size:18px;font-weight:700;color:#0E314C;">$${amountOutstanding.toFixed(2)}</p>
       ${interestLine}
     </div>
     ${ctaBlock}
-    <p style="margin:0;color:#6b7280;font-size:12px;line-height:1.5;">
+    <p style="margin:0;color:#4A5868;font-size:12px;line-height:1.5;">
       If payment is not received, the matter may proceed to a final notice and further recovery action under your strata rules.
     </p>
   `, companyLogoUrl);
@@ -916,7 +916,7 @@ export async function sendFinalNoticeEmail(
   }
 
   const interestLine = penaltyInterestAccrued > 0
-    ? `<p style="margin:0 0 4px;font-size:13px;color:#6b7280;">Interest accrued</p><p style="margin:0 0 12px;font-size:14px;font-weight:600;color:#dc2626;">$${penaltyInterestAccrued.toFixed(2)}</p>`
+    ? `<p style="margin:0 0 4px;font-size:13px;color:#4A5868;">Interest accrued</p><p style="margin:0 0 12px;font-size:14px;font-weight:600;color:#dc2626;">$${penaltyInterestAccrued.toFixed(2)}</p>`
     : "";
 
   const ctaBlock = buildCtaBlock(
@@ -928,23 +928,23 @@ export async function sendFinalNoticeEmail(
 
   const html = brandShell(`
     <h2 style="margin:0 0 16px;font-size:20px;font-weight:700;color:#b91c1c;">FINAL NOTICE — levy outstanding</h2>
-    <p style="margin:0 0 20px;color:#1a1f2e;font-size:14px;line-height:1.6;">
+    <p style="margin:0 0 20px;color:#0E314C;font-size:14px;line-height:1.6;">
       ${greeting(ownerName)} this is a <strong>final notice</strong> for the unpaid levy at <strong>${escapeHtml(subdivisionAddress)}</strong>. The levy is now more than <strong>${daysOverdue} days</strong> overdue.
     </p>
     <div style="background:#fef2f2;border:1px solid #fecaca;border-radius:6px;padding:16px;margin:0 0 24px;">
-      <p style="margin:0 0 4px;font-size:13px;color:#6b7280;">Reference</p>
-      <p style="margin:0 0 12px;font-size:14px;font-weight:600;color:#1a1f2e;">${escapeHtml(referenceNumber)}</p>
-      <p style="margin:0 0 4px;font-size:13px;color:#6b7280;">Original due date</p>
-      <p style="margin:0 0 12px;font-size:14px;color:#1a1f2e;">${escapeHtml(dueDate)}</p>
-      <p style="margin:0 0 4px;font-size:13px;color:#6b7280;">Amount outstanding</p>
+      <p style="margin:0 0 4px;font-size:13px;color:#4A5868;">Reference</p>
+      <p style="margin:0 0 12px;font-size:14px;font-weight:600;color:#0E314C;">${escapeHtml(referenceNumber)}</p>
+      <p style="margin:0 0 4px;font-size:13px;color:#4A5868;">Original due date</p>
+      <p style="margin:0 0 12px;font-size:14px;color:#0E314C;">${escapeHtml(dueDate)}</p>
+      <p style="margin:0 0 4px;font-size:13px;color:#4A5868;">Amount outstanding</p>
       <p style="margin:0 0 12px;font-size:18px;font-weight:700;color:#b91c1c;">$${amountOutstanding.toFixed(2)}</p>
       ${interestLine}
     </div>
     ${ctaBlock}
-    <p style="margin:0 0 8px;color:#1a1f2e;font-size:14px;line-height:1.5;">
+    <p style="margin:0 0 8px;color:#0E314C;font-size:14px;line-height:1.5;">
       If full payment is not received promptly, the owners' corporation may commence recovery action — including, where appropriate, an application to VCAT or referral to a debt-recovery agent. Costs of recovery may be added to the debt under section 32 of the Owners Corporations Act 2006 (Vic).
     </p>
-    <p style="margin:0;color:#6b7280;font-size:12px;line-height:1.5;">
+    <p style="margin:0;color:#4A5868;font-size:12px;line-height:1.5;">
       This notice is sent as a statutory communication and cannot be opted out of.
     </p>
   `, companyLogoUrl);
