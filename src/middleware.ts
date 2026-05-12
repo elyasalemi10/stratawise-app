@@ -15,8 +15,20 @@ const PUBLIC_PATHS = [
   "/test",
 ];
 
+// Auth-flow pages that signed-in users should bounce *out* of — e.g. an
+// authenticated user landing on /sign-in is sent to /dashboard so they
+// don't see the form they don't need. /reset-password and /verify-email
+// are NOT in this list because they require an active session.
+const SIGNED_IN_REDIRECT_AWAY = ["/sign-in", "/sign-up", "/forgot-password", "/"];
+
 function isPublic(pathname: string): boolean {
   return PUBLIC_PATHS.some((p) => pathname === p || pathname.startsWith(p + "/"));
+}
+
+function shouldRedirectSignedIn(pathname: string): boolean {
+  return SIGNED_IN_REDIRECT_AWAY.some(
+    (p) => pathname === p || pathname.startsWith(p + "/"),
+  );
 }
 
 export async function middleware(request: NextRequest) {
@@ -52,10 +64,23 @@ export async function middleware(request: NextRequest) {
 
   const pathname = request.nextUrl.pathname;
 
+  // Unauthenticated user on a protected route → /sign-in?next=<path>
   if (!user && !isPublic(pathname)) {
     const url = request.nextUrl.clone();
     url.pathname = "/sign-in";
     url.searchParams.set("next", pathname);
+    return NextResponse.redirect(url);
+  }
+
+  // Already-signed-in user on /sign-in /sign-up /forgot-password / →
+  // bounce to /dashboard so they don't see the form they no longer need.
+  // /reset-password is excluded because it requires a session (the magic
+  // link sets one). /verify-email is excluded because verification still
+  // needs to happen.
+  if (user && shouldRedirectSignedIn(pathname)) {
+    const url = request.nextUrl.clone();
+    url.pathname = "/dashboard";
+    url.search = "";
     return NextResponse.redirect(url);
   }
 

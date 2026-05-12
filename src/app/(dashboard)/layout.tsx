@@ -31,7 +31,6 @@ export default async function DashboardLayout({
   return (
     <SidebarProvider defaultOpen={defaultOpen}>
       <AppSidebar
-        variant="inset"
         initialProfile={sidebarProfile}
         initialSubdivisions={sidebarSubdivisions}
       />

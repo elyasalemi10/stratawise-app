@@ -263,48 +263,49 @@ function NavUser({
 }) {
   const { isMobile } = useSidebar();
 
+  // The trigger is a plain styled <button>, NOT a SidebarMenuButton —
+  // base-ui's Menu.Trigger renders its own <button> via `useRender` and
+  // composing it with our SidebarMenuButton's `useRender` caused a
+  // runtime "client-side exception" when the dropdown opened. Replicate
+  // the styles inline instead.
+  const triggerClass =
+    "flex h-12 w-full cursor-pointer items-center gap-2 overflow-hidden rounded-md p-2 text-left text-sm text-sidebar-foreground transition-colors outline-none hover:bg-sidebar-accent hover:text-sidebar-accent-foreground focus-visible:ring-2 focus-visible:ring-sidebar-ring data-[popup-open]:bg-sidebar-accent data-[popup-open]:text-sidebar-accent-foreground";
+
   return (
     <DropdownMenu>
-      <DropdownMenuTrigger
-        render={
-          <SidebarMenuButton
-            size="lg"
-            className="cursor-pointer data-[state=open]:bg-sidebar-accent data-[state=open]:text-sidebar-accent-foreground"
-          >
-            {!loaded ? (
-              <>
-                <Skeleton className="h-8 w-8 rounded-lg shrink-0" />
-                <div className="grid flex-1 text-left text-sm leading-tight">
-                  <Skeleton className="h-3.5 w-24" />
-                  <Skeleton className="h-3 w-32 mt-1" />
-                </div>
-              </>
-            ) : (
-              <>
-                <Avatar className="h-8 w-8 rounded-lg grayscale">
-                  {profile?.userAvatarUrl ? (
-                    <AvatarImage src={profile.userAvatarUrl} alt="Avatar" />
-                  ) : null}
-                  <AvatarFallback className="rounded-lg">
-                    {profile?.userInitials ?? "?"}
-                  </AvatarFallback>
-                </Avatar>
-                <div className="grid flex-1 text-left text-sm leading-tight">
-                  <span className="truncate font-medium">
-                    {profile?.companyName ?? "My Company"}
-                  </span>
-                  <span className="text-muted-foreground truncate text-xs">
-                    {profile?.userEmail ?? ""}
-                  </span>
-                </div>
-                <MoreVertical className="ml-auto size-4" />
-              </>
-            )}
-          </SidebarMenuButton>
-        }
-      />
+      <DropdownMenuTrigger className={triggerClass}>
+        {!loaded ? (
+          <>
+            <Skeleton className="h-8 w-8 rounded-lg shrink-0" />
+            <div className="grid flex-1 text-left text-sm leading-tight">
+              <Skeleton className="h-3.5 w-24" />
+              <Skeleton className="h-3 w-32 mt-1" />
+            </div>
+          </>
+        ) : (
+          <>
+            <Avatar className="h-8 w-8 rounded-lg grayscale shrink-0">
+              {profile?.userAvatarUrl ? (
+                <AvatarImage src={profile.userAvatarUrl} alt="Avatar" />
+              ) : null}
+              <AvatarFallback className="rounded-lg">
+                {profile?.userInitials ?? "?"}
+              </AvatarFallback>
+            </Avatar>
+            <div className="grid flex-1 text-left text-sm leading-tight">
+              <span className="truncate font-medium">
+                {profile?.companyName ?? "My Company"}
+              </span>
+              <span className="text-muted-foreground truncate text-xs">
+                {profile?.userEmail ?? ""}
+              </span>
+            </div>
+            <MoreVertical className="ml-auto size-4 shrink-0" />
+          </>
+        )}
+      </DropdownMenuTrigger>
       <DropdownMenuContent
-        className="w-(--radix-dropdown-menu-trigger-width) min-w-56 rounded-lg"
+        className="w-(--anchor-width) min-w-56 rounded-lg"
         side={isMobile ? "bottom" : "right"}
         align="end"
         sideOffset={4}
