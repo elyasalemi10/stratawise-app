@@ -186,11 +186,15 @@ CREATE TABLE management_companies (
 );
 
 -- ============================================================================
--- 2. PROFILES (synced from Clerk via webhook)
+-- 2. PROFILES (linked to Supabase Auth via auth_user_id)
 -- ============================================================================
+-- Each profile is keyed by the auth.users.id UUID Supabase Auth assigns on
+-- signup. On signup, the handle_new_user() trigger (defined below) inserts
+-- a matching profile row with role='lot_owner' by default. Onboarding flow
+-- promotes role + populates management_company_id once the user picks a path.
 CREATE TABLE profiles (
   id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
-  clerk_id TEXT UNIQUE NOT NULL,
+  auth_user_id UUID UNIQUE REFERENCES auth.users(id) ON DELETE SET NULL,
   email TEXT NOT NULL,
   first_name TEXT,
   last_name TEXT,
@@ -207,9 +211,40 @@ CREATE TABLE profiles (
   updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 
-CREATE INDEX idx_profiles_clerk_id ON profiles(clerk_id);
+CREATE INDEX idx_profiles_auth_user_id ON profiles(auth_user_id);
 CREATE INDEX idx_profiles_management_company ON profiles(management_company_id);
 CREATE INDEX idx_profiles_role ON profiles(role);
+
+-- Auto-create a profile row when a user signs up via Supabase Auth.
+-- Reads the user's email + raw_user_meta_data (intended_role, names) and
+-- inserts a stub profile. Onboarding then completes the record.
+CREATE OR REPLACE FUNCTION handle_new_user()
+RETURNS TRIGGER
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = public
+AS $$
+BEGIN
+  INSERT INTO public.profiles (
+    auth_user_id,
+    email,
+    first_name,
+    last_name,
+    role
+  ) VALUES (
+    NEW.id,
+    NEW.email,
+    NEW.raw_user_meta_data->>'first_name',
+    NEW.raw_user_meta_data->>'last_name',
+    COALESCE((NEW.raw_user_meta_data->>'intended_role')::profile_role, 'lot_owner')
+  );
+  RETURN NEW;
+END;
+$$;
+
+CREATE TRIGGER on_auth_user_created
+  AFTER INSERT ON auth.users
+  FOR EACH ROW EXECUTE FUNCTION handle_new_user();
 
 -- ============================================================================
 -- 3. USER CONSENTS
