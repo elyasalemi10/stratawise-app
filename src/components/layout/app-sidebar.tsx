@@ -47,9 +47,7 @@ import {
   type SidebarSubdivision,
 } from "@/lib/actions/subdivision";
 import {
-  getCachedProfile,
   setCachedProfile,
-  getCachedSubdivisions,
   setCachedSubdivisions,
   SIDEBAR_REFRESH_EVENT,
 } from "@/lib/sidebar-cache";
@@ -239,54 +237,49 @@ function DropdownSeparator() {
 
 // ─── Main component ─────────────────────────────────────────────
 
-export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
+interface AppSidebarProps extends React.ComponentProps<typeof Sidebar> {
+  initialProfile: SidebarProfile | null;
+  initialSubdivisions: SidebarSubdivision[];
+}
+
+export function AppSidebar({
+  initialProfile,
+  initialSubdivisions,
+  ...props
+}: AppSidebarProps) {
   const pathname = usePathname();
   const searchParams = useSearchParams();
   const router = useRouter();
   const { signOut } = useClerk();
-  // Initialize as null to avoid hydration mismatch (localStorage only exists on client)
-  const [profile, setProfile] = useState<SidebarProfile | null>(null);
-  const [subdivisions, setSubdivisions] = useState<SidebarSubdivision[]>([]);
-  const [loaded, setLoaded] = useState(false);
+  // Seeded from the server layout so the initial render has no skeleton.
+  // The localStorage cache is kept in sync for the dropdown switch (which
+  // sometimes runs faster than a server roundtrip for repeat nav across
+  // tabs) and as a fallback for the refresh-event handler.
+  const [profile, setProfile] = useState<SidebarProfile | null>(initialProfile);
+  const [subdivisions, setSubdivisions] = useState<SidebarSubdivision[]>(initialSubdivisions);
+  const loaded = true;
 
+  // Refresh listener — fires after mutations (revalidateSidebarFromClient).
+  // We don't fetch on mount any more (server hands us fresh data), but we
+  // do refetch on this event so badge counts update in-session without a
+  // full nav.
   useEffect(() => {
-    // Show cached data immediately while fetching fresh
-    const cachedProfile = getCachedProfile();
-    const cachedSubs = getCachedSubdivisions();
-    if (cachedProfile) {
-      setProfile(cachedProfile);
-      setLoaded(true);
-    }
-    if (cachedSubs) {
-      setSubdivisions(cachedSubs);
-    }
+    if (initialProfile) setCachedProfile(initialProfile);
+    setCachedSubdivisions(initialSubdivisions);
 
-    function fetchFresh() {
-      Promise.all([getSidebarProfile(), getSidebarSubdivisions()])
-        .then(([profileData, subdivisionData]) => {
-          setProfile(profileData);
-          setSubdivisions(subdivisionData);
-          setLoaded(true);
-          if (profileData) setCachedProfile(profileData);
-          setCachedSubdivisions(subdivisionData);
-        })
-        .catch(() => {
-          setLoaded(true);
-        });
-    }
-
-    fetchFresh();
-
-    // Listen for client-side invalidation events dispatched by mutations
-    // (see revalidateSidebarFromClient in sidebar-cache.ts). revalidateTag on
-    // the server clears unstable_cache; this event clears localStorage +
-    // triggers an immediate refetch so the badge count updates in-session.
     function onRefresh() {
-      fetchFresh();
+      Promise.all([getSidebarProfile(), getSidebarSubdivisions()])
+        .then(([p, s]) => {
+          setProfile(p);
+          setSubdivisions(s);
+          if (p) setCachedProfile(p);
+          setCachedSubdivisions(s);
+        })
+        .catch(() => {});
     }
     window.addEventListener(SIDEBAR_REFRESH_EVENT, onRefresh);
     return () => window.removeEventListener(SIDEBAR_REFRESH_EVENT, onRefresh);
-  }, []);
+  }, [initialProfile, initialSubdivisions]);
 
   // Detect subdivision context from URL. The URL segment is the 8-char
   // short_code (post-rename); the variable suffix "Code" makes the shape

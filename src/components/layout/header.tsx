@@ -4,9 +4,7 @@ import { useEffect, useState } from "react";
 import { usePathname } from "next/navigation";
 import Link from "next/link";
 import { NotificationBell } from "./notification-bell";
-import { Skeleton } from "@/components/ui/skeleton";
 import {
-  getCachedSubdivisions,
   setCachedSubdivisions,
   SIDEBAR_REFRESH_EVENT,
 } from "@/lib/sidebar-cache";
@@ -117,38 +115,32 @@ function buildBreadcrumbs(pathname: string): Crumb[] {
   return crumbs;
 }
 
-export function Header() {
+interface HeaderProps {
+  initialSubdivisions: SidebarSubdivision[];
+}
+
+export function Header({ initialSubdivisions }: HeaderProps) {
   const pathname = usePathname();
   const breadcrumbs = buildBreadcrumbs(pathname);
 
-  const [subdivisions, setSubdivisions] = useState<SidebarSubdivision[]>([]);
-  const [loaded, setLoaded] = useState(false);
+  const [subdivisions, setSubdivisions] = useState<SidebarSubdivision[]>(initialSubdivisions);
 
+  // No on-mount fetch — server layout already handed us fresh data.
+  // Only refetch when a mutation broadcasts a refresh event.
   useEffect(() => {
-    const cached = getCachedSubdivisions();
-    if (cached) {
-      setSubdivisions(cached);
-      setLoaded(true);
-    }
+    setCachedSubdivisions(initialSubdivisions);
 
-    function fetchFresh() {
+    function onRefresh() {
       getSidebarSubdivisions()
         .then((data) => {
           setSubdivisions(data);
           setCachedSubdivisions(data);
-          setLoaded(true);
         })
-        .catch(() => setLoaded(true));
-    }
-
-    fetchFresh();
-
-    function onRefresh() {
-      fetchFresh();
+        .catch(() => {});
     }
     window.addEventListener(SIDEBAR_REFRESH_EVENT, onRefresh);
     return () => window.removeEventListener(SIDEBAR_REFRESH_EVENT, onRefresh);
-  }, []);
+  }, [initialSubdivisions]);
 
   const subdivisionMatch = pathname.match(/^\/subdivisions\/([^/]+)/);
   const currentCode = subdivisionMatch?.[1] ?? null;
@@ -192,8 +184,6 @@ export function Header() {
       <div className="flex justify-center min-w-0">
         {centerTitle ? (
           <span className="font-bold text-foreground truncate">{centerTitle}</span>
-        ) : !loaded && isInSubdivision ? (
-          <Skeleton className="h-4 w-32" />
         ) : null}
       </div>
 
