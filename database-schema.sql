@@ -229,6 +229,11 @@ CREATE TABLE email_verification_codes (
 CREATE INDEX idx_email_verification_codes_profile_id ON email_verification_codes(profile_id) WHERE used_at IS NULL;
 CREATE INDEX idx_email_verification_codes_email ON email_verification_codes(email) WHERE used_at IS NULL;
 
+-- Lock down to service-role only. All app flows go through createServerClient()
+-- (admin) so RLS bypass is fine; anon/authenticated clients can no longer
+-- read or insert codes via the public REST surface.
+ALTER TABLE email_verification_codes ENABLE ROW LEVEL SECURITY;
+
 CREATE INDEX idx_profiles_auth_user_id ON profiles(auth_user_id);
 CREATE INDEX idx_profiles_management_company ON profiles(management_company_id);
 CREATE INDEX idx_profiles_role ON profiles(role);

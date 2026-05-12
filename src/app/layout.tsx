@@ -13,6 +13,13 @@ const inter = Inter({
 export const metadata: Metadata = {
   title: "Strata Wise",
   description: "Professional strata management platform for Australian property managers",
+  icons: {
+    icon: [
+      { url: "/stratawise-favicon.webp", type: "image/webp" },
+      { url: "/stratawise-favicon.png", type: "image/png" },
+    ],
+    apple: "/stratawise-favicon.png",
+  },
 };
 
 export default function RootLayout({

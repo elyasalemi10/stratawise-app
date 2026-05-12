@@ -1,3 +1,5 @@
+import Image from "next/image";
+
 export default function AuthLayout({
   children,
 }: {
@@ -5,20 +7,28 @@ export default function AuthLayout({
 }) {
   return (
     <div className="flex min-h-screen">
-      {/* Left panel — brand panel, hidden on mobile */}
-      <div className="hidden lg:flex lg:w-1/2 items-center justify-center bg-foreground px-12">
-        <div className="text-center">
-          <h1 className="text-4xl font-bold text-white">
-            Strata Wise
-          </h1>
-          <p className="mt-3 text-lg text-white/60">
-            Professional strata management, automated.
-          </p>
-        </div>
+      {/* Left panel — hero image, hidden on mobile */}
+      <div className="hidden lg:block lg:w-1/2 relative bg-foreground">
+        <Image
+          src="/login-hero.webp"
+          alt=""
+          fill
+          priority
+          sizes="50vw"
+          className="object-cover"
+        />
       </div>
 
-      {/* Right panel — auth content */}
-      <div className="flex w-full lg:w-1/2 items-center justify-center bg-background p-8">
+      {/* Right panel — white bg, centred logo + auth content */}
+      <div className="flex w-full lg:w-1/2 flex-col items-center justify-center bg-card px-6 py-12">
+        <Image
+          src="/stratawise-logo.webp"
+          alt="Strata Wise"
+          width={180}
+          height={40}
+          priority
+          className="mb-8 h-9 w-auto"
+        />
         {children}
       </div>
     </div>

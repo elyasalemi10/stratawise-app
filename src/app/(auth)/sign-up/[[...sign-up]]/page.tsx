@@ -5,7 +5,6 @@ import { useSearchParams } from "next/navigation";
 import Link from "next/link";
 import { toast } from "sonner";
 import { Building2, Home, Loader2 } from "lucide-react";
-import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -16,12 +15,12 @@ type Role = "strata_manager" | "lot_owner";
 function RoleSelector({ onSelect }: { onSelect: (role: Role) => void }) {
   return (
     <div className="w-full max-w-md space-y-6">
-      <div className="text-center">
-        <h2 className="text-xl font-semibold text-foreground">
+      <div>
+        <h1 className="text-2xl font-semibold tracking-tight text-foreground">
           How will you use Strata Wise?
-        </h2>
-        <p className="mt-1 text-sm text-muted-foreground">
-          Choose your role to get started
+        </h1>
+        <p className="mt-1.5 text-sm text-muted-foreground">
+          Choose your role to get started.
         </p>
       </div>
 
@@ -29,7 +28,7 @@ function RoleSelector({ onSelect }: { onSelect: (role: Role) => void }) {
         <button
           type="button"
           onClick={() => onSelect("strata_manager")}
-          className="w-full flex items-start gap-4 rounded-lg border border-border bg-card p-4 text-left transition-colors hover:border-primary/50 cursor-pointer"
+          className="w-full flex items-start gap-4 rounded-lg border border-border p-4 text-left transition-colors hover:border-primary/60 hover:bg-muted/30 cursor-pointer"
         >
           <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-primary/10 text-primary shrink-0">
             <Building2 className="h-5 w-5" />
@@ -47,7 +46,7 @@ function RoleSelector({ onSelect }: { onSelect: (role: Role) => void }) {
         <button
           type="button"
           onClick={() => onSelect("lot_owner")}
-          className="w-full flex items-start gap-4 rounded-lg border border-border bg-card p-4 text-left transition-colors hover:border-primary/50 cursor-pointer"
+          className="w-full flex items-start gap-4 rounded-lg border border-border p-4 text-left transition-colors hover:border-primary/60 hover:bg-muted/30 cursor-pointer"
         >
           <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-primary/10 text-primary shrink-0">
             <Home className="h-5 w-5" />
@@ -120,80 +119,79 @@ function SignUpForm({ role, inviteToken }: { role: Role; inviteToken: string | n
   }
 
   return (
-    <div className="w-full max-w-sm">
-      <Card>
-        <CardContent className="pt-5 space-y-4">
-          <div className="text-center">
-            <h1 className="text-xl font-semibold text-foreground">Create account</h1>
-            <p className="mt-1 text-sm text-muted-foreground">
-              {role === "strata_manager" ? "Strata manager" : "Lot owner"} signup
-            </p>
+    <div className="w-full max-w-sm space-y-6">
+      <div>
+        <h1 className="text-2xl font-semibold tracking-tight text-foreground">
+          Create your account
+        </h1>
+        <p className="mt-1.5 text-sm text-muted-foreground">
+          Signing up as a {role === "strata_manager" ? "strata manager" : "lot owner"}.
+        </p>
+      </div>
+
+      <form onSubmit={handleSubmit} className="space-y-4">
+        <div className="grid grid-cols-2 gap-3">
+          <div className="space-y-1.5">
+            <Label htmlFor="firstName">First name</Label>
+            <Input
+              id="firstName"
+              required
+              autoComplete="given-name"
+              value={firstName}
+              onChange={(e) => setFirstName(e.target.value)}
+            />
           </div>
+          <div className="space-y-1.5">
+            <Label htmlFor="lastName">Last name</Label>
+            <Input
+              id="lastName"
+              required
+              autoComplete="family-name"
+              value={lastName}
+              onChange={(e) => setLastName(e.target.value)}
+            />
+          </div>
+        </div>
 
-          <form onSubmit={handleSubmit} className="space-y-3">
-            <div className="grid grid-cols-2 gap-2">
-              <div className="space-y-1.5">
-                <Label htmlFor="firstName">First name</Label>
-                <Input
-                  id="firstName"
-                  required
-                  autoComplete="given-name"
-                  value={firstName}
-                  onChange={(e) => setFirstName(e.target.value)}
-                />
-              </div>
-              <div className="space-y-1.5">
-                <Label htmlFor="lastName">Last name</Label>
-                <Input
-                  id="lastName"
-                  required
-                  autoComplete="family-name"
-                  value={lastName}
-                  onChange={(e) => setLastName(e.target.value)}
-                />
-              </div>
-            </div>
+        <div className="space-y-1.5">
+          <Label htmlFor="email">Email</Label>
+          <Input
+            id="email"
+            type="email"
+            required
+            autoComplete="email"
+            placeholder="you@example.com"
+            value={email}
+            onChange={(e) => setEmail(e.target.value)}
+          />
+        </div>
 
-            <div className="space-y-1.5">
-              <Label htmlFor="email">Email</Label>
-              <Input
-                id="email"
-                type="email"
-                required
-                autoComplete="email"
-                value={email}
-                onChange={(e) => setEmail(e.target.value)}
-              />
-            </div>
+        <div className="space-y-1.5">
+          <Label htmlFor="password">Password</Label>
+          <Input
+            id="password"
+            type="password"
+            required
+            minLength={8}
+            autoComplete="new-password"
+            placeholder="At least 8 characters"
+            value={password}
+            onChange={(e) => setPassword(e.target.value)}
+          />
+        </div>
 
-            <div className="space-y-1.5">
-              <Label htmlFor="password">Password</Label>
-              <Input
-                id="password"
-                type="password"
-                required
-                minLength={8}
-                autoComplete="new-password"
-                value={password}
-                onChange={(e) => setPassword(e.target.value)}
-              />
-              <p className="text-xs text-muted-foreground">Minimum 8 characters.</p>
-            </div>
+        <Button type="submit" className="w-full" disabled={pending}>
+          {pending && <Loader2 className="size-4 animate-spin" />}
+          Create account
+        </Button>
+      </form>
 
-            <Button type="submit" className="w-full" disabled={pending}>
-              {pending && <Loader2 className="size-4 animate-spin" />}
-              Create account
-            </Button>
-          </form>
-
-          <p className="text-center text-sm text-muted-foreground">
-            Already have an account?{" "}
-            <Link href="/sign-in" className="text-primary hover:underline">
-              Sign in
-            </Link>
-          </p>
-        </CardContent>
-      </Card>
+      <p className="text-center text-sm text-muted-foreground">
+        Already have an account?{" "}
+        <Link href="/sign-in" className="font-medium text-primary hover:underline">
+          Sign in
+        </Link>
+      </p>
     </div>
   );
 }

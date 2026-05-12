@@ -1,5 +1,7 @@
 import Link from "next/link";
-import { getAuthUserId } from "@/lib/auth";import { redirect } from "next/navigation";
+import Image from "next/image";
+import { redirect } from "next/navigation";
+import { getAuthUserId } from "@/lib/auth";
 
 export default async function LandingPage() {
   const userId = await getAuthUserId();
@@ -11,10 +13,15 @@ export default async function LandingPage() {
   return (
     <div className="flex min-h-screen items-center justify-center bg-foreground">
       <div className="text-center">
-        <h1 className="text-4xl font-bold text-white">
-          Strata Wise
-        </h1>
-        <p className="mt-3 text-lg text-white/60">
+        <Image
+          src="/stratawise-logo.webp"
+          alt="Strata Wise"
+          width={220}
+          height={48}
+          priority
+          className="mx-auto h-12 w-auto invert"
+        />
+        <p className="mt-4 text-lg text-white/60">
           Professional strata management, automated.
         </p>
         <Link
