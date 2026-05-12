@@ -1,8 +1,19 @@
 "use client";
 
+import { useEffect, useState } from "react";
 import { usePathname } from "next/navigation";
 import Link from "next/link";
 import { NotificationBell } from "./notification-bell";
+import { Skeleton } from "@/components/ui/skeleton";
+import {
+  getCachedSubdivisions,
+  setCachedSubdivisions,
+  SIDEBAR_REFRESH_EVENT,
+} from "@/lib/sidebar-cache";
+import {
+  getSidebarSubdivisions,
+  type SidebarSubdivision,
+} from "@/lib/actions/subdivision";
 
 const routeLabels: Record<string, string> = {
   dashboard: "Dashboard",
@@ -31,9 +42,7 @@ function isUUID(s: string): boolean {
   return /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(s);
 }
 
-// Subdivision URL segments are now 8-char Crockford-32 codes (post-rename),
-// not UUIDs. Same role in the breadcrumb logic — distinguish a real
-// subdivision context from a literal route token like "new".
+// Subdivision URL segments are 8-char Crockford-32 codes (post-rename).
 function isSubdivisionCode(s: string): boolean {
   return /^[ABCDEFGHJKLMNPQRSTUVWXYZ23456789]{8}$/.test(s);
 }
@@ -47,17 +56,18 @@ interface Crumb {
 function buildBreadcrumbs(pathname: string): Crumb[] {
   const segments = pathname.split("/").filter(Boolean);
 
-  // Inside a subdivision (/subdivisions/[code]/...)
-  if (
-    segments.length >= 3 &&
-    segments[0] === "subdivisions" &&
-    isSubdivisionCode(segments[1])
-  ) {
+  // Subdivision context (/subdivisions/[code]/...)
+  if (segments[0] === "subdivisions" && segments[1] && isSubdivisionCode(segments[1])) {
     const subdivisionCode = segments[1];
     const subPages = segments.slice(2);
     const base = `/subdivisions/${subdivisionCode}`;
 
-    // Special case: /lots/[lotId] — show "Lots & owners > Owner details"
+    // Subdivision root IS the dashboard — show just "Dashboard"
+    if (subPages.length === 0) {
+      return [{ label: "Dashboard", href: null, isLast: true }];
+    }
+
+    // /lots/[lotId] — show "Lots & owners > Owner details"
     if (subPages.length === 2 && subPages[0] === "lots" && isUUID(subPages[1])) {
       return [
         { label: "Lots & owners", href: `${base}/lots`, isLast: false },
@@ -65,12 +75,12 @@ function buildBreadcrumbs(pathname: string): Crumb[] {
       ];
     }
 
-    // Build breadcrumbs from sub-page segments, skipping UUIDs
+    // Build breadcrumbs from sub-page segments, skipping UUIDs and the code
     const crumbs: Crumb[] = [];
     let path = base;
     for (let i = 0; i < subPages.length; i++) {
       const segment = subPages[i];
-      if (isUUID(segment)) continue;
+      if (isUUID(segment) || isSubdivisionCode(segment)) continue;
       path += "/" + segment;
       const label =
         routeLabels[segment] ??
@@ -85,11 +95,12 @@ function buildBreadcrumbs(pathname: string): Crumb[] {
     return crumbs;
   }
 
-  // Normal pages — simple breadcrumbs
+  // Normal pages
   const crumbs: Crumb[] = [];
   let path = "";
   for (let i = 0; i < segments.length; i++) {
     const segment = segments[i];
+    if (isUUID(segment) || isSubdivisionCode(segment)) continue;
     path += "/" + segment;
 
     const label =
@@ -110,10 +121,48 @@ export function Header() {
   const pathname = usePathname();
   const breadcrumbs = buildBreadcrumbs(pathname);
 
+  const [subdivisions, setSubdivisions] = useState<SidebarSubdivision[]>([]);
+  const [loaded, setLoaded] = useState(false);
+
+  useEffect(() => {
+    const cached = getCachedSubdivisions();
+    if (cached) {
+      setSubdivisions(cached);
+      setLoaded(true);
+    }
+
+    function fetchFresh() {
+      getSidebarSubdivisions()
+        .then((data) => {
+          setSubdivisions(data);
+          setCachedSubdivisions(data);
+          setLoaded(true);
+        })
+        .catch(() => setLoaded(true));
+    }
+
+    fetchFresh();
+
+    function onRefresh() {
+      fetchFresh();
+    }
+    window.addEventListener(SIDEBAR_REFRESH_EVENT, onRefresh);
+    return () => window.removeEventListener(SIDEBAR_REFRESH_EVENT, onRefresh);
+  }, []);
+
+  const subdivisionMatch = pathname.match(/^\/subdivisions\/([^/]+)/);
+  const currentCode = subdivisionMatch?.[1] ?? null;
+  const isInSubdivision = currentCode !== null && isSubdivisionCode(currentCode);
+  const currentSubdivision = subdivisions.find((s) => s.short_code === currentCode);
+
+  const centerTitle = isInSubdivision
+    ? (currentSubdivision?.name ?? null)
+    : "Main dashboard";
+
   return (
-    <div className="flex items-center justify-between flex-1">
-      {/* Breadcrumbs */}
-      <nav className="flex items-center text-sm">
+    <div className="grid grid-cols-3 items-center flex-1 gap-4">
+      {/* Breadcrumbs — left */}
+      <nav className="flex items-center text-sm min-w-0">
         {breadcrumbs.map((crumb, i) => (
           <span key={i} className="flex items-center">
             {i > 0 && <span className="mx-2 text-muted-foreground">/</span>}
@@ -139,7 +188,19 @@ export function Header() {
         ))}
       </nav>
 
-      <NotificationBell />
+      {/* Centered title — middle */}
+      <div className="flex justify-center min-w-0">
+        {centerTitle ? (
+          <span className="font-bold text-foreground truncate">{centerTitle}</span>
+        ) : !loaded && isInSubdivision ? (
+          <Skeleton className="h-4 w-32" />
+        ) : null}
+      </div>
+
+      {/* Notification bell — right */}
+      <div className="flex justify-end">
+        <NotificationBell />
+      </div>
     </div>
   );
 }

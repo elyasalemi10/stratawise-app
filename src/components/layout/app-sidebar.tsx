@@ -193,7 +193,7 @@ function SimpleDropdown({
 
   return (
     <div ref={ref} className="relative">
-      <div onClick={() => setOpen((o) => !o)}>{trigger}</div>
+      <div onClick={() => setOpen((o) => !o)} className="cursor-pointer">{trigger}</div>
       {open && (
         <div
           className={`absolute ${positionClass} left-0 z-50 rounded-lg border border-border bg-popover p-1 shadow-md animate-in fade-in-0 zoom-in-95 duration-100 ${matchWidth ? "w-full" : "min-w-56"}`}
