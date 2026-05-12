@@ -1,83 +1,342 @@
 "use server";
 
+import { revalidatePath } from "next/cache";
 import { requireCompanyRole } from "@/lib/auth";
 import { createServerClient } from "@/lib/supabase";
 import { insertOCWithCode } from "@/lib/oc-code";
-import { buildOCUrl } from "@/lib/oc-resolver";
-import {
-  step1Schema,
-  step2Schema,
-  step3Schema,
-  step4Schema,
-  step5Schema,
-  type Step1Values,
-  type Step2Values,
-  type Step3Values,
-  type Step4Values,
-  type Step5Values,
-} from "@/lib/validations/oc-wizard";
+import { parsePlanPdf, type ParsedPlan } from "@/lib/parse-plan";
+
+// ─── Types stored on draft_json ─────────────────────────────────
+//
+// The wizard's editable state. Persisted on every page transition so the user
+// can refresh / come back later. Promoted to real rows on completion.
+
+export type DraftLot = {
+  lot_number: number;
+  unit_entitlement: number;
+  lot_liability: number;
+  owner_name?: string;
+  owner_email?: string;
+  owner_phone?: string;
+  owner_postal_address?: string;
+  is_occupied_by_owner?: boolean;
+  tenant_name?: string;
+  tenant_email?: string;
+  tenant_phone?: string;
+};
+
+export type DraftJson = {
+  // Page 2 (review)
+  plan_number?: string;
+  oc_number?: number;
+  oc_name?: string;
+  address?: string;
+  street_number?: string;
+  street_name?: string;
+  suburb?: string;
+  state?: string;
+  postcode?: string;
+  total_lots?: number;
+  lots?: DraftLot[];
+  // Page 3 (basics)
+  trading_name?: string;
+  services_only?: boolean;
+  financial_year_start_month?: number;       // 1–12
+  notice_address_same_as_oc?: boolean;
+  notice_address?: string;
+  common_seal?: boolean;
+  common_seal_text?: string;
+  // Page 5 (trust account)
+  bank_name?: string;
+  account_name?: string;
+  bsb?: string;
+  account_number?: string;
+  account_purpose?: "combined" | "separate_admin_first" | "split_per_fund";
+  macquarie_connect?: boolean;
+};
 
 // ─── Helpers ────────────────────────────────────────────────────
 
-async function verifyOCOwnership(ocId: string, managementCompanyId: string) {
+async function loadDraft(draftId: string) {
+  const profile = await requireCompanyRole();
+  if (!profile.management_company_id) throw new Error("No management company assigned");
   const supabase = createServerClient();
-  const { data } = await supabase
-    .from("owners_corporations")
-    .select("id")
-    .eq("id", ocId)
-    .eq("management_company_id", managementCompanyId)
+  const { data, error } = await supabase
+    .from("oc_drafts")
+    .select("*")
+    .eq("id", draftId)
+    .eq("management_company_id", profile.management_company_id)
     .single();
-  return !!data;
+  if (error || !data) throw new Error("Draft not found");
+  return { draft: data, profile };
 }
 
-// ─── Step 1: Create oc with general details ────────────
+// ─── createDraft: row + return id ───────────────────────────────
 
-export async function createOCStep1(data: Step1Values) {
+export async function createDraft(): Promise<{ draftId?: string; error?: string }> {
   try {
     const profile = await requireCompanyRole();
     if (!profile.management_company_id) {
       return { error: "No management company assigned" };
     }
+    const supabase = createServerClient();
+    const { data, error } = await supabase
+      .from("oc_drafts")
+      .insert({
+        management_company_id: profile.management_company_id,
+        created_by: profile.id,
+      })
+      .select("id")
+      .single();
+    if (error || !data) {
+      console.error("createDraft error:", error);
+      return { error: "Failed to start the wizard" };
+    }
+    return { draftId: data.id };
+  } catch (err) {
+    return { error: err instanceof Error ? err.message : "Unexpected error" };
+  }
+}
 
-    const parsed = step1Schema.safeParse(data);
-    if (!parsed.success) {
-      return { error: parsed.error.issues[0]?.message ?? "Validation failed" };
+// ─── getDraft (for hydrating the wizard) ────────────────────────
+
+export async function getDraft(draftId: string) {
+  try {
+    const { draft } = await loadDraft(draftId);
+    return { draft };
+  } catch (err) {
+    return { error: err instanceof Error ? err.message : "Failed to load draft" };
+  }
+}
+
+// ─── savePlanUpload: persist storage key + file meta, mark pending ──
+
+export async function savePlanUpload(
+  draftId: string,
+  meta: { storage_key: string; filename: string; size_bytes: number },
+) {
+  try {
+    const { draft } = await loadDraft(draftId);
+    const supabase = createServerClient();
+    const { error } = await supabase
+      .from("oc_drafts")
+      .update({
+        plan_storage_key: meta.storage_key,
+        plan_filename: meta.filename,
+        plan_size_bytes: meta.size_bytes,
+        parse_status: "pending",
+        parse_started_at: new Date().toISOString(),
+        parse_error: null,
+      })
+      .eq("id", draft.id);
+    if (error) return { error: error.message };
+    return { success: true };
+  } catch (err) {
+    return { error: err instanceof Error ? err.message : "Unexpected error" };
+  }
+}
+
+// ─── uploadPlan: receive FormData with the PDF, push to Storage ──
+//
+// Server-action multipart upload. next.config.ts bumps the body-size limit to
+// 50MB. Client calls this with FormData containing a single `file` field.
+
+export async function uploadPlan(draftId: string, formData: FormData) {
+  try {
+    const { draft } = await loadDraft(draftId);
+    const file = formData.get("file");
+    if (!(file instanceof File)) return { error: "No file uploaded" };
+    if (file.type !== "application/pdf" && !file.name.toLowerCase().endsWith(".pdf")) {
+      return { error: "Only PDF files are accepted" };
+    }
+    if (file.size > 50 * 1024 * 1024) return { error: "File exceeds 50MB" };
+
+    const supabase = createServerClient();
+    const key = `${draft.id}/original.pdf`;
+    const buf = Buffer.from(await file.arrayBuffer());
+    const { error: upErr } = await supabase.storage
+      .from("plans")
+      .upload(key, buf, { contentType: "application/pdf", upsert: true });
+    if (upErr) return { error: upErr.message };
+
+    const { error: dbErr } = await supabase
+      .from("oc_drafts")
+      .update({
+        plan_storage_key: key,
+        plan_filename: file.name,
+        plan_size_bytes: file.size,
+        parse_status: "pending",
+        parse_started_at: new Date().toISOString(),
+        parse_error: null,
+      })
+      .eq("id", draft.id);
+    if (dbErr) return { error: dbErr.message };
+    return { success: true };
+  } catch (err) {
+    return { error: err instanceof Error ? err.message : "Unexpected error" };
+  }
+}
+
+// ─── parseDraftWithGemini: blocking call, ~10-30s ───────────────
+
+export async function parseDraftWithGemini(draftId: string) {
+  try {
+    const { draft } = await loadDraft(draftId);
+    if (!draft.plan_storage_key) return { error: "No plan uploaded" };
+
+    const supabase = createServerClient();
+    const { data: file, error: dlError } = await supabase.storage
+      .from("plans")
+      .download(draft.plan_storage_key);
+    if (dlError || !file) {
+      await supabase.from("oc_drafts").update({
+        parse_status: "failed",
+        parse_error: dlError?.message ?? "Download failed",
+      }).eq("id", draft.id);
+      return { error: "Could not read the uploaded plan" };
     }
 
-    const v = parsed.data;
-    const address = `${v.street_number} ${v.street_name}, ${v.suburb} ${v.state} ${v.postcode}`;
+    const buf = Buffer.from(await file.arrayBuffer());
+
+    let parsed: ParsedPlan;
+    try {
+      parsed = await parsePlanPdf(buf);
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : "Parser failed";
+      await supabase.from("oc_drafts").update({
+        parse_status: "failed",
+        parse_completed_at: new Date().toISOString(),
+        parse_error: msg,
+      }).eq("id", draft.id);
+      return { error: msg };
+    }
+
+    // Default to the first detected OC and seed draft_json so page 2 has
+    // something to render even if the user never edits.
+    const first = parsed.detected_ocs[0];
+    const draftJson: DraftJson = {
+      plan_number: parsed.plan_of_subdivision_number ?? undefined,
+      oc_number: first?.oc_number ?? 1,
+      oc_name: first?.oc_name ?? undefined,
+      address: first?.address ?? undefined,
+      street_number: first?.street_number ?? undefined,
+      street_name: first?.street_name ?? undefined,
+      suburb: first?.suburb ?? undefined,
+      state: first?.state ?? "VIC",
+      postcode: first?.postcode ?? undefined,
+      total_lots: first?.lot_count ?? first?.lots.length ?? 0,
+      lots: (first?.lots ?? []).map((l) => ({
+        lot_number: l.lot_number,
+        unit_entitlement: l.unit_entitlement,
+        lot_liability: l.lot_liability,
+      })),
+    };
+
+    const { error } = await supabase
+      .from("oc_drafts")
+      .update({
+        parsed_json: parsed as unknown as Record<string, unknown>,
+        draft_json: draftJson as unknown as Record<string, unknown>,
+        parse_status: "complete",
+        parse_completed_at: new Date().toISOString(),
+        parse_error: null,
+      })
+      .eq("id", draft.id);
+    if (error) return { error: error.message };
+    return { success: true, ocCount: parsed.detected_ocs.length, lotCount: first?.lots.length ?? 0 };
+  } catch (err) {
+    return { error: err instanceof Error ? err.message : "Unexpected error" };
+  }
+}
+
+// ─── skipParsing: user opted to enter manually ──────────────────
+
+export async function skipParsing(draftId: string) {
+  try {
+    await loadDraft(draftId);
+    const supabase = createServerClient();
+    const { error } = await supabase
+      .from("oc_drafts")
+      .update({ parse_status: "skipped", current_step: 3 })
+      .eq("id", draftId);
+    if (error) return { error: error.message };
+    return { success: true };
+  } catch (err) {
+    return { error: err instanceof Error ? err.message : "Unexpected error" };
+  }
+}
+
+// ─── saveStep: merge partial draft_json + step number ───────────
+
+export async function saveStep(
+  draftId: string,
+  patch: Partial<DraftJson>,
+  nextStep: number,
+) {
+  try {
+    const { draft } = await loadDraft(draftId);
+    const supabase = createServerClient();
+    const merged = { ...(draft.draft_json as DraftJson), ...patch };
+    const { error } = await supabase
+      .from("oc_drafts")
+      .update({ draft_json: merged, current_step: nextStep })
+      .eq("id", draft.id);
+    if (error) return { error: error.message };
+    return { success: true };
+  } catch (err) {
+    return { error: err instanceof Error ? err.message : "Unexpected error" };
+  }
+}
+
+// ─── completeWizard: promote draft to real OC + lots + lot_owners ─
+
+export async function completeWizard(draftId: string) {
+  try {
+    const { draft, profile } = await loadDraft(draftId);
+    const d = draft.draft_json as DraftJson;
+    if (!profile.management_company_id) return { error: "No management company assigned" };
+
+    // Minimum viable: plan_number, oc_name, address, at least 2 lots.
+    if (!d.plan_number) return { error: "Plan number is required (page 2)" };
+    if (!d.oc_name) return { error: "OC name is required (page 2)" };
+    if (!d.address) return { error: "Address is required (page 2)" };
+    if (!d.lots || d.lots.length < 2) return { error: "At least 2 lots are required" };
+    if (!d.bsb || !d.account_number || !d.account_name) return { error: "Trust account details are required (page 5)" };
 
     const supabase = createServerClient();
 
-    // Allocate a unique short_code app-side with 23505-retry on collision
-    // (alphabet ABCDEFGHJKLMNPQRSTUVWXYZ23456789, 8 chars). The DB UNIQUE
-    // constraint is the source of truth; the helper retries on collision.
     const insertResult = await insertOCWithCode(supabase, {
       management_company_id: profile.management_company_id,
-      plan_number: v.plan_number,
-      management_start_date: v.management_start_date,
-      name: v.name,
-      street_number: v.street_number,
-      street_name: v.street_name,
-      suburb: v.suburb,
-      state: v.state,
-      postcode: v.postcode,
-      address,
-      common_property_description: v.common_property_description || null,
-      abn: v.abn || null,
-      tfn: v.tfn || null,
-      total_lots: 0,
-      setup_step: 1,
+      plan_number: d.plan_number,
+      name: d.oc_name,
+      trading_name: d.trading_name || null,
+      oc_number: d.oc_number ?? 1,
+      address: d.address,
+      street_number: d.street_number || null,
+      street_name: d.street_name || null,
+      suburb: d.suburb || null,
+      state: d.state || "VIC",
+      postcode: d.postcode || null,
+      total_lots: d.lots.length,
+      financial_year_start_month: d.financial_year_start_month ?? 7,
+      services_only: !!d.services_only,
+      notice_address_same_as_oc: d.notice_address_same_as_oc ?? true,
+      notice_address: d.notice_address_same_as_oc === false ? (d.notice_address || null) : null,
+      common_seal_text: d.common_seal ? (d.common_seal_text || null) : null,
+      bank_bsb: d.bsb,
+      bank_account_number: d.account_number,
+      bank_account_name: d.account_name,
+      bank_connection_type: "manual",
+      setup_step: 5,
+      status: "active",
       created_by: profile.id,
     });
-
-    if (insertResult.error) {
-      console.error("Step 1 error:", insertResult.error);
-      return { error: "Failed to create oc" };
+    if (insertResult.error || !insertResult.success) {
+      return { error: insertResult.error ?? "Failed to create OC" };
     }
-    const oc = { id: insertResult.success!.id, short_code: insertResult.success!.short_code };
+    const oc = insertResult.success;
 
-    // Add creator as oc member
+    // Add creator as primary OC member.
     await supabase.from("oc_members").insert({
       oc_id: oc.id,
       profile_id: profile.id,
@@ -85,444 +344,89 @@ export async function createOCStep1(data: Step1Values) {
       is_primary_contact: true,
     });
 
-    // Audit log
+    // Insert lots.
+    const lotsToInsert = d.lots.map((l) => ({
+      oc_id: oc.id,
+      lot_number: l.lot_number,
+      lot_entitlement: l.unit_entitlement,
+      lot_liability: l.lot_liability,
+    }));
+    const { data: insertedLots, error: lotsError } = await supabase
+      .from("lots")
+      .insert(lotsToInsert)
+      .select("id, lot_number");
+    if (lotsError || !insertedLots) {
+      return { error: `Failed to create lots: ${lotsError?.message ?? "unknown"}` };
+    }
+
+    // Insert lot_owners for any lot that had at least a name or contact.
+    const lotByNumber = new Map<number, string>();
+    for (const l of insertedLots) lotByNumber.set(l.lot_number, l.id);
+
+    const ownerRows = d.lots
+      .map((l) => {
+        const name = (l.owner_name ?? "").trim();
+        const email = (l.owner_email ?? "").trim();
+        const phone = (l.owner_phone ?? "").trim();
+        const postal = (l.owner_postal_address ?? "").trim();
+        if (!name && !email && !phone && !postal) return null;
+        const lotId = lotByNumber.get(l.lot_number);
+        if (!lotId) return null;
+        return {
+          lot_id: lotId,
+          name: name || "Owner",
+          email: email || null,
+          phone: phone || null,
+          postal_address: postal || null,
+          is_occupied_by_owner: l.is_occupied_by_owner ?? true,
+          tenant_name: l.tenant_name || null,
+          tenant_email: l.tenant_email || null,
+          tenant_phone: l.tenant_phone || null,
+        };
+      })
+      .filter((x): x is NonNullable<typeof x> => x !== null);
+
+    if (ownerRows.length > 0) {
+      const { error: ownersError } = await supabase.from("lot_owners").insert(ownerRows);
+      if (ownersError) {
+        console.error("lot_owners insert failed (non-fatal):", ownersError);
+      }
+    }
+
+    // Trust account → bank_accounts (administrative fund + capital works share details).
+    for (const fund of ["administrative", "capital_works"] as const) {
+      await supabase.from("bank_accounts").insert({
+        oc_id: oc.id,
+        fund_type: fund,
+        bank_name: d.bank_name ?? null,
+        account_name: d.account_name,
+        bsb: d.bsb,
+        account_number: d.account_number,
+      });
+    }
+
+    // Mark draft promoted.
+    await supabase
+      .from("oc_drafts")
+      .update({ promoted_oc_id: oc.id, promoted_at: new Date().toISOString() })
+      .eq("id", draft.id);
+
+    // Audit.
     await supabase.from("audit_log").insert({
       profile_id: profile.id,
       oc_id: oc.id,
       action: "create",
       entity_type: "oc",
       entity_id: oc.id,
-      after_state: { step: 1, name: v.name, plan_number: v.plan_number },
+      after_state: { name: d.oc_name, plan_number: d.plan_number, lots: d.lots.length },
+      metadata: { source: "oc_wizard_v2", draft_id: draft.id },
     });
 
-    return { ocId: oc.id, ocCode: oc.short_code };
+    revalidatePath("/ocs");
+    revalidatePath("/dashboard");
+
+    return { success: true, ocCode: oc.short_code };
   } catch (err) {
     return { error: err instanceof Error ? err.message : "Unexpected error" };
-  }
-}
-
-// ─── Step 1: Update existing oc general details ────────
-
-export async function updateOCStep1(ocId: string, data: Step1Values) {
-  try {
-    const profile = await requireCompanyRole();
-    if (!profile.management_company_id) {
-      return { error: "No management company assigned" };
-    }
-
-    if (!(await verifyOCOwnership(ocId, profile.management_company_id))) {
-      return { error: "Access denied" };
-    }
-
-    const parsed = step1Schema.safeParse(data);
-    if (!parsed.success) {
-      return { error: parsed.error.issues[0]?.message ?? "Validation failed" };
-    }
-
-    const v = parsed.data;
-    const address = `${v.street_number} ${v.street_name}, ${v.suburb} ${v.state} ${v.postcode}`;
-
-    const supabase = createServerClient();
-
-    const { error } = await supabase
-      .from("owners_corporations")
-      .update({
-        plan_number: v.plan_number,
-        management_start_date: v.management_start_date,
-        name: v.name,
-        street_number: v.street_number,
-        street_name: v.street_name,
-        suburb: v.suburb,
-        state: v.state,
-        postcode: v.postcode,
-        address,
-        common_property_description: v.common_property_description || null,
-        abn: v.abn || null,
-        tfn: v.tfn || null,
-      })
-      .eq("id", ocId);
-
-    if (error) {
-      console.error("Step 1 update error:", error);
-      return { error: "Failed to update oc" };
-    }
-
-    return { ocId };
-  } catch (err) {
-    return { error: err instanceof Error ? err.message : "Unexpected error" };
-  }
-}
-
-// ─── Step 2: Update advanced settings ───────────────────────────
-
-export async function updateOCStep2(ocId: string, data: Step2Values) {
-  try {
-    const profile = await requireCompanyRole();
-    if (!profile.management_company_id) {
-      return { error: "No management company assigned" };
-    }
-
-    if (!(await verifyOCOwnership(ocId, profile.management_company_id))) {
-      return { error: "Access denied" };
-    }
-
-    const parsed = step2Schema.safeParse(data);
-    if (!parsed.success) {
-      return { error: parsed.error.issues[0]?.message ?? "Validation failed" };
-    }
-
-    const v = parsed.data;
-    const supabase = createServerClient();
-
-    const { error } = await supabase
-      .from("owners_corporations")
-      .update({
-        financial_year_start_month: v.financial_year_start_month,
-        levy_year_start_month: v.levy_year_start_month,
-        levies_per_year: v.levies_per_year,
-        setup_step: 2,
-      })
-      .eq("id", ocId);
-
-    if (error) {
-      console.error("Step 2 error:", error);
-      return { error: "Failed to update settings" };
-    }
-
-    return { success: true };
-  } catch (err) {
-    return { error: err instanceof Error ? err.message : "Unexpected error" };
-  }
-}
-
-// ─── Step 3: Banking details ────────────────────────────────────
-
-export async function updateOCStep3(ocId: string, data: Step3Values) {
-  try {
-    const profile = await requireCompanyRole();
-    if (!profile.management_company_id) {
-      return { error: "No management company assigned" };
-    }
-
-    if (!(await verifyOCOwnership(ocId, profile.management_company_id))) {
-      return { error: "Access denied" };
-    }
-
-    const parsed = step3Schema.safeParse(data);
-    if (!parsed.success) {
-      return { error: parsed.error.issues[0]?.message ?? "Validation failed" };
-    }
-
-    const v = parsed.data;
-    const supabase = createServerClient();
-
-    // Update oc bank connection type
-    await supabase
-      .from("owners_corporations")
-      .update({
-        bank_connection_type: v.bank_connection_type,
-        bank_bsb: v.bsb,
-        bank_account_number: v.account_number,
-        bank_account_name: v.account_name,
-        setup_step: 3,
-      })
-      .eq("id", ocId);
-
-    // Upsert admin fund bank account
-    const { data: existing } = await supabase
-      .from("bank_accounts")
-      .select("id")
-      .eq("oc_id", ocId)
-      .eq("fund_type", "administrative")
-      .single();
-
-    if (existing) {
-      await supabase
-        .from("bank_accounts")
-        .update({
-          bank_name: v.bank_name,
-          account_name: v.account_name,
-          bsb: v.bsb,
-          account_number: v.account_number,
-        })
-        .eq("id", existing.id);
-    } else {
-      await supabase.from("bank_accounts").insert({
-        oc_id: ocId,
-        fund_type: "administrative",
-        bank_name: v.bank_name,
-        account_name: v.account_name,
-        bsb: v.bsb,
-        account_number: v.account_number,
-      });
-    }
-
-    // Upsert capital works fund bank account (same bank details)
-    const { data: existingCw } = await supabase
-      .from("bank_accounts")
-      .select("id")
-      .eq("oc_id", ocId)
-      .eq("fund_type", "capital_works")
-      .single();
-
-    if (existingCw) {
-      await supabase
-        .from("bank_accounts")
-        .update({
-          bank_name: v.bank_name,
-          account_name: v.account_name,
-          bsb: v.bsb,
-          account_number: v.account_number,
-        })
-        .eq("id", existingCw.id);
-    } else {
-      await supabase.from("bank_accounts").insert({
-        oc_id: ocId,
-        fund_type: "capital_works",
-        bank_name: v.bank_name,
-        account_name: v.account_name,
-        bsb: v.bsb,
-        account_number: v.account_number,
-      });
-    }
-
-    return { success: true };
-  } catch (err) {
-    return { error: err instanceof Error ? err.message : "Unexpected error" };
-  }
-}
-
-// ─── Step 4: Lots and membership ────────────────────────────────
-
-export async function updateOCStep4(ocId: string, data: Step4Values) {
-  try {
-    const profile = await requireCompanyRole();
-    if (!profile.management_company_id) {
-      return { error: "No management company assigned" };
-    }
-
-    if (!(await verifyOCOwnership(ocId, profile.management_company_id))) {
-      return { error: "Access denied" };
-    }
-
-    const parsed = step4Schema.safeParse(data);
-    if (!parsed.success) {
-      return { error: parsed.error.issues[0]?.message ?? "Validation failed" };
-    }
-
-    const v = parsed.data;
-    const supabase = createServerClient();
-
-    // Replace the full lot list for this oc during setup. Pending
-    // invitations reference lot_id with no ON DELETE CASCADE, so we must
-    // clear them before deleting lots.
-    const { data: existingLots } = await supabase
-      .from("lots")
-      .select("id")
-      .eq("oc_id", ocId);
-
-    const existingLotIds = (existingLots ?? []).map((l) => l.id);
-    if (existingLotIds.length > 0) {
-      await supabase
-        .from("invitations")
-        .delete()
-        .in("lot_id", existingLotIds)
-        .eq("status", "pending");
-    }
-
-    await supabase
-      .from("lots")
-      .delete()
-      .eq("oc_id", ocId);
-
-    // Insert lots (no owner fields — ownership lives on oc_members).
-    const lotsToInsert = v.lots.map((lot, idx) => ({
-      oc_id: ocId,
-      lot_number: parseInt(lot.lot_number, 10) || (idx + 1),
-      unit_number: lot.unit_number || null,
-      lot_entitlement: lot.lot_entitlement,
-      lot_liability: lot.lot_entitlement, // Default liability = entitlement
-    }));
-
-    const { data: insertedLots, error: lotsError } = await supabase
-      .from("lots")
-      .insert(lotsToInsert)
-      .select("id, lot_number");
-
-    if (lotsError) {
-      console.error("Step 4 lots error:", lotsError);
-      return { error: "Failed to create lots" };
-    }
-
-    // Pre-create pending invitation rows for lots whose manager noted any
-    // owner contact details (name OR email OR phone). No emails are sent
-    // here or at the end of setup — they fire only when the manager
-    // explicitly clicks "Invite" on the manage page. Until then, the row
-    // is the canonical pre-acceptance owner record for the lot.
-    const lotByNumber = new Map<number, string>();
-    for (const l of insertedLots ?? []) lotByNumber.set(l.lot_number, l.id);
-
-    const invitationsToInsert = v.lots
-      .map((lot, idx) => {
-        const email = (lot.invitee_email ?? "").trim();
-        const name = lot.invitee_name?.trim() ?? "";
-        const phone = lot.invitee_phone?.trim() ?? "";
-        if (!email && !name && !phone) return null;
-        const lotNumber = parseInt(lot.lot_number, 10) || (idx + 1);
-        const lotId = lotByNumber.get(lotNumber);
-        if (!lotId) return null;
-        return {
-          oc_id: ocId,
-          lot_id: lotId,
-          email: email || null,
-          name: name || null,
-          phone: phone || null,
-          role: "lot_owner" as const,
-          status: "noted" as const,
-          invited_by: profile.id,
-        };
-      })
-      .filter((x): x is NonNullable<typeof x> => x !== null);
-
-    if (invitationsToInsert.length > 0) {
-      const { error: invError } = await supabase
-        .from("invitations")
-        .insert(invitationsToInsert);
-      if (invError) {
-        console.error("Step 4 invitations error:", invError);
-        // Don't fail step 4 — lots are created; manager can retry invitations
-        // from the manage page.
-      }
-    }
-
-    // Update total_lots
-    await supabase
-      .from("owners_corporations")
-      .update({
-        total_lots: v.total_lots,
-        setup_step: 4,
-      })
-      .eq("id", ocId);
-
-    return { success: true };
-  } catch (err) {
-    return { error: err instanceof Error ? err.message : "Unexpected error" };
-  }
-}
-
-// ─── Step 5: Opening balances + complete setup ──────────────────
-
-export async function completeOCSetup(ocId: string, data: Step5Values) {
-  try {
-    const profile = await requireCompanyRole();
-    if (!profile.management_company_id) {
-      return { error: "No management company assigned" };
-    }
-
-    if (!(await verifyOCOwnership(ocId, profile.management_company_id))) {
-      return { error: "Access denied" };
-    }
-
-    const parsed = step5Schema.safeParse(data);
-    if (!parsed.success) {
-      return { error: parsed.error.issues[0]?.message ?? "Validation failed" };
-    }
-
-    const v = parsed.data;
-    const supabase = createServerClient();
-
-    // Update admin fund bank account with opening balance
-    await supabase
-      .from("bank_accounts")
-      .update({
-        opening_balance: v.admin_opening_balance,
-        opening_balance_date: v.opening_balance_date,
-      })
-      .eq("oc_id", ocId)
-      .eq("fund_type", "administrative");
-
-    // Update capital works fund bank account with opening balance
-    await supabase
-      .from("bank_accounts")
-      .update({
-        opening_balance: v.capital_works_opening_balance,
-        opening_balance_date: v.opening_balance_date,
-      })
-      .eq("oc_id", ocId)
-      .eq("fund_type", "capital_works");
-
-    // Mark oc as active
-    await supabase
-      .from("owners_corporations")
-      .update({
-        setup_step: 5,
-        status: "active",
-      })
-      .eq("id", ocId);
-
-    // Lot-owner invitation emails are NOT dispatched at the end of setup.
-    // Pending invitation rows queued in step 4 stay queued until the manager
-    // explicitly clicks "Invite" on a lot from the manage page.
-
-    // Audit log — full setup completed
-    await supabase.from("audit_log").insert({
-      profile_id: profile.id,
-      oc_id: ocId,
-      action: "create",
-      entity_type: "oc",
-      entity_id: ocId,
-      after_state: { step: 5, status: "active" },
-      metadata: {
-        source: "oc_wizard_complete",
-      },
-    });
-
-    // Look up the short_code so the wizard can redirect to the code-shaped
-    // URL (/ocs/<short_code>) instead of the now-stale UUID URL.
-    const ocUrl = (await buildOCUrl(ocId, "")) ?? "/dashboard";
-
-    return { success: true, redirectUrl: ocUrl };
-  } catch (err) {
-    return { error: err instanceof Error ? err.message : "Unexpected error" };
-  }
-}
-
-// ─── Get wizard data for pre-populating forms ───────────────────
-
-export async function getOCWizardData(ocId: string) {
-  try {
-    const { getCurrentProfile } = await import("@/lib/auth");
-    const profile = await getCurrentProfile();
-    if (!profile || !profile.management_company_id) return null;
-
-    const supabase = createServerClient();
-
-    const { data: oc } = await supabase
-      .from("owners_corporations")
-      .select("*")
-      .eq("id", ocId)
-      .eq("management_company_id", profile.management_company_id)
-      .single();
-
-    if (!oc) return null;
-
-    const { data: lots } = await supabase
-      .from("lots")
-      .select("*")
-      .eq("oc_id", ocId)
-      .order("lot_number");
-
-    const { data: bankAccounts } = await supabase
-      .from("bank_accounts")
-      .select("*")
-      .eq("oc_id", ocId);
-
-    return {
-      oc,
-      lots: lots ?? [],
-      bankAccounts: bankAccounts ?? [],
-    };
-  } catch {
-    return null;
   }
 }

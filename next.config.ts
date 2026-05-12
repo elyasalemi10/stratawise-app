@@ -1,6 +1,12 @@
 import type { NextConfig } from "next";
 
 const nextConfig: NextConfig = {
+  experimental: {
+    serverActions: {
+      // OC creation wizard accepts Plan-of-Subdivision PDFs up to 50MB.
+      bodySizeLimit: "50mb",
+    },
+  },
   async redirects() {
     return [
       // Common alternative paths → canonical /sign-in and /sign-up

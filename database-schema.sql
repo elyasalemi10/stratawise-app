@@ -332,8 +332,13 @@ CREATE TABLE owners_corporations (
   -- 23505-retry on collision.
   short_code TEXT NOT NULL,
   management_company_id UUID NOT NULL REFERENCES management_companies(id),
-  name TEXT NOT NULL,
-  plan_number TEXT NOT NULL,
+  name TEXT NOT NULL,                               -- legal name (typically "Owners Corporation PS<plan_no>")
+  trading_name TEXT,                                -- optional friendly name shown alongside the legal name
+  plan_number TEXT NOT NULL,                        -- e.g. PS812345X
+  oc_number INTEGER,                                -- ordinal when a plan creates multiple OCs (1, 2, 3, …)
+  services_only BOOLEAN NOT NULL DEFAULT false,     -- if true, forces Tier 5 regardless of lot count
+  notice_address TEXT,                              -- address for service of notices when not same as OC
+  notice_address_same_as_oc BOOLEAN NOT NULL DEFAULT true,
   address TEXT NOT NULL,
   street_number TEXT,
   street_name TEXT,
@@ -396,6 +401,34 @@ CREATE INDEX idx_owners_corporations_status ON owners_corporations(status);
 CREATE UNIQUE INDEX idx_owners_corporations_short_code ON owners_corporations(short_code);
 
 -- ============================================================================
+-- 5b. OC DRAFTS — wizard state (resumable Plan-of-Subdivision creation).
+-- Promoted to owners_corporations + lots + lot_owners on completion.
+-- ============================================================================
+CREATE TABLE oc_drafts (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  management_company_id UUID NOT NULL REFERENCES management_companies(id) ON DELETE CASCADE,
+  created_by UUID NOT NULL REFERENCES profiles(id) ON DELETE CASCADE,
+  current_step INTEGER NOT NULL DEFAULT 1 CHECK (current_step BETWEEN 1 AND 5),
+  plan_storage_key TEXT,                            -- plans/{draft_id}/original.pdf
+  plan_filename TEXT,
+  plan_size_bytes BIGINT,
+  parse_status TEXT NOT NULL DEFAULT 'none'
+    CHECK (parse_status IN ('none','pending','complete','failed','skipped')),
+  parse_started_at TIMESTAMPTZ,
+  parse_completed_at TIMESTAMPTZ,
+  parse_error TEXT,
+  parsed_json JSONB,                                -- raw Gemini output (immutable)
+  draft_json JSONB NOT NULL DEFAULT '{}'::jsonb,    -- user's editable state across all 5 pages
+  promoted_oc_id UUID REFERENCES owners_corporations(id) ON DELETE SET NULL,
+  promoted_at TIMESTAMPTZ,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+CREATE INDEX idx_oc_drafts_company ON oc_drafts(management_company_id);
+CREATE INDEX idx_oc_drafts_creator_open ON oc_drafts(created_by) WHERE promoted_at IS NULL;
+
+-- ============================================================================
 -- 6. LOTS
 -- Ownership is modelled via oc_members + profiles. This table is
 -- deliberately owner-field-free — pre-acceptance identity lives on invitations.
@@ -413,7 +446,31 @@ CREATE TABLE lots (
 CREATE INDEX idx_lots_oc ON lots(oc_id);
 
 -- ============================================================================
--- 7. SUBDIVISION MEMBERS
+-- 6b. LOT OWNERS — per-lot owner contact records. Joint owners get multiple
+-- rows; one owner across multiple lots = duplicated rows. invitation_id links
+-- to the pending invite that turns this contact into a portal user.
+-- ============================================================================
+CREATE TABLE lot_owners (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  lot_id UUID NOT NULL REFERENCES lots(id) ON DELETE CASCADE,
+  name TEXT NOT NULL,
+  email TEXT,
+  phone TEXT,
+  postal_address TEXT,
+  share_fraction NUMERIC NOT NULL DEFAULT 1.0 CHECK (share_fraction > 0 AND share_fraction <= 1),
+  is_occupied_by_owner BOOLEAN NOT NULL DEFAULT true,
+  tenant_name TEXT,
+  tenant_email TEXT,
+  tenant_phone TEXT,
+  invitation_id UUID REFERENCES invitations(id) ON DELETE SET NULL,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+CREATE INDEX idx_lot_owners_lot ON lot_owners(lot_id);
+CREATE INDEX idx_lot_owners_email ON lot_owners(email) WHERE email IS NOT NULL;
+
+-- ============================================================================
+-- 7. OC MEMBERS
 -- ============================================================================
 CREATE TABLE oc_members (
   id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),

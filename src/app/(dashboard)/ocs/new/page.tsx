@@ -1,150 +1,166 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { Suspense } from "react";
-import { Card, CardContent } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
 import { StepIndicator } from "./step-indicator";
-import { Step1General } from "./steps/step-1-general";
-import { Step2Settings } from "./steps/step-2-settings";
-import { Step3Banking } from "./steps/step-3-banking";
-import { Step4BankFeeds } from "./steps/step-4-bank-feeds";
-import { Step4Lots } from "./steps/step-4-lots";
-import { Step5Balances } from "./steps/step-5-balances";
-import { getOCWizardData } from "./actions";
+import { Page1Upload } from "./pages/page-1-upload";
+import { Page2Review } from "./pages/page-2-review";
+import { Page3Basics } from "./pages/page-3-basics";
+import { Page4Lots } from "./pages/page-4-lots";
+import { Page5Trust } from "./pages/page-5-trust";
+import { createDraft, getDraft, type DraftJson } from "./actions";
 
-const STEP_TITLES: Record<number, { title: string; subtitle: string }> = {
-  1: { title: "Create an Owners Corporation", subtitle: "General details and the registered address" },
-  2: { title: "Advanced settings", subtitle: "Financial year and levy schedule" },
-  3: { title: "Banking details", subtitle: "Trust account for this OC" },
-  4: { title: "Connect bank feeds", subtitle: "Optional — link the accounts above for automatic transaction syncing." },
-  5: { title: "Lots and ownership", subtitle: "Add lots and (optionally) note owner contacts" },
-  6: { title: "Opening balances", subtitle: "Current fund balances at handover" },
+type DraftRow = {
+  id: string;
+  current_step: number;
+  parse_status: "none" | "pending" | "complete" | "failed" | "skipped";
+  plan_filename: string | null;
+  parsed_json: { detected_ocs?: { oc_number: number; lot_count: number; oc_name?: string | null }[] } | null;
+  draft_json: DraftJson;
 };
-
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
-type WizardData = Awaited<ReturnType<typeof getOCWizardData>>;
 
 function WizardContent() {
   const router = useRouter();
   const searchParams = useSearchParams();
+  const [draft, setDraft] = useState<DraftRow | null>(null);
+  const [bootError, setBootError] = useState<string | null>(null);
+  const [step, setStep] = useState<number>(1);
+  const initialised = useRef(false);
 
-  // Use local state for step and ID — URL is synced but not the source of truth
-  const [currentStep, setCurrentStep] = useState(() =>
-    Math.max(1, Math.min(6, parseInt(searchParams.get("step") ?? "1", 10)))
-  );
-  const [subId, setSubId] = useState(() => searchParams.get("id") ?? "");
-
-  const [wizardData, setWizardData] = useState<WizardData>(null);
-  const [dataLoading, setDataLoading] = useState(false);
-
-  // Fetch existing oc data on mount if resuming (URL has id)
-  const [initialFetchDone, setInitialFetchDone] = useState(false);
+  // Bootstrap: either resume an existing draft via ?draft= or create a fresh one.
   useEffect(() => {
-    if (initialFetchDone || !subId) return;
-    setInitialFetchDone(true);
-    setDataLoading(true);
-    getOCWizardData(subId)
-      .then((data) => {
-        setWizardData(data);
-        setDataLoading(false);
-      })
-      .catch(() => setDataLoading(false));
-  }, [subId, initialFetchDone]);
+    if (initialised.current) return;
+    initialised.current = true;
 
-  const { title, subtitle } = STEP_TITLES[currentStep] ?? STEP_TITLES[1];
+    const draftId = searchParams.get("draft");
+    (async () => {
+      if (draftId) {
+        const r = await getDraft(draftId);
+        if (r.error || !r.draft) {
+          setBootError(r.error ?? "Draft not found");
+          return;
+        }
+        const d = r.draft as unknown as DraftRow;
+        setDraft(d);
+        setStep(d.current_step);
+        return;
+      }
+      const c = await createDraft();
+      if (c.error || !c.draftId) {
+        setBootError(c.error ?? "Could not start the wizard");
+        return;
+      }
+      const r = await getDraft(c.draftId);
+      if (r.error || !r.draft) {
+        setBootError(r.error ?? "Draft not found");
+        return;
+      }
+      const d = r.draft as unknown as DraftRow;
+      setDraft(d);
+      setStep(d.current_step);
+      // Persist draft id in URL for refresh resumability.
+      const next = new URLSearchParams(searchParams.toString());
+      next.set("draft", d.id);
+      window.history.replaceState(null, "", `/ocs/new?${next.toString()}`);
+    })();
+  }, [searchParams]);
 
-  function goToStep(s: number, id?: string) {
-    const sid = id ?? subId;
-    if (id) setSubId(id);
-    setCurrentStep(s);
-
-    // Sync URL without triggering server navigation
-    const params = new URLSearchParams();
-    params.set("step", String(s));
-    if (sid) params.set("id", sid);
-    window.history.replaceState(null, "", `/ocs/new?${params.toString()}`);
+  function goToStep(n: number) {
+    setStep(n);
+    const next = new URLSearchParams(searchParams.toString());
+    if (draft) next.set("draft", draft.id);
+    next.set("step", String(n));
+    window.history.replaceState(null, "", `/ocs/new?${next.toString()}`);
   }
 
-  const ocId = subId;
-  const showLoading = dataLoading && currentStep > 1;
+  async function refreshDraft() {
+    if (!draft) return;
+    const r = await getDraft(draft.id);
+    if (r.draft) setDraft(r.draft as unknown as DraftRow);
+  }
+
+  if (bootError) {
+    return (
+      <div className="mx-auto w-full max-w-2xl">
+        <div className="rounded-md border border-destructive/40 bg-destructive/5 p-4 text-sm text-destructive">
+          {bootError}
+        </div>
+      </div>
+    );
+  }
+
+  if (!draft) {
+    return (
+      <div className="mx-auto w-full max-w-2xl space-y-6">
+        <Skeleton className="h-8 w-1/2 mx-auto" />
+        <Skeleton className="h-40 w-full" />
+      </div>
+    );
+  }
+
+  const totalLots = draft.draft_json.lots?.length ?? draft.draft_json.total_lots ?? 0;
+  const ocName = draft.draft_json.oc_name ?? "";
+  const detectedOcs = draft.parsed_json?.detected_ocs?.map((o) => ({
+    oc_number: o.oc_number,
+    lot_count: o.lot_count,
+    oc_name: o.oc_name ?? null,
+  })) ?? [];
 
   return (
     <div className="mx-auto w-full max-w-3xl">
-      <StepIndicator
-        currentStep={currentStep}
-        onStepClick={(s) => goToStep(s)}
-      />
-
-      <div className="mb-6">
-        <h2 className="text-lg font-semibold text-foreground">{title}</h2>
-        <p className="mt-1 text-sm text-muted-foreground">{subtitle}</p>
+      <StepIndicator current={step} />
+      <div className="rounded-lg border border-border bg-card p-6">
+        {step === 1 && (
+          <Page1Upload
+            draftId={draft.id}
+            initialStatus={draft.parse_status}
+            initialFilename={draft.plan_filename}
+            initialOcCount={draft.parsed_json?.detected_ocs?.length ?? 0}
+            initialLotCount={draft.parsed_json?.detected_ocs?.[0]?.lot_count ?? 0}
+            onNext={async () => {
+              await refreshDraft();
+              goToStep(draft.parse_status === "skipped" ? 3 : 2);
+            }}
+          />
+        )}
+        {step === 2 && (
+          <Page2Review
+            draftId={draft.id}
+            initialDraft={draft.draft_json}
+            detectedOcs={detectedOcs}
+            onBack={() => goToStep(1)}
+            onNext={async () => { await refreshDraft(); goToStep(3); }}
+          />
+        )}
+        {step === 3 && (
+          <Page3Basics
+            draftId={draft.id}
+            initialDraft={draft.draft_json}
+            totalLots={totalLots}
+            onBack={() => goToStep(draft.parse_status === "skipped" ? 1 : 2)}
+            onNext={async () => { await refreshDraft(); goToStep(4); }}
+          />
+        )}
+        {step === 4 && (
+          <Page4Lots
+            draftId={draft.id}
+            initialDraft={draft.draft_json}
+            onBack={() => goToStep(3)}
+            onNext={async () => { await refreshDraft(); goToStep(5); }}
+          />
+        )}
+        {step === 5 && (
+          <Page5Trust
+            draftId={draft.id}
+            initialDraft={draft.draft_json}
+            ocName={ocName}
+            onBack={() => goToStep(4)}
+            onComplete={(ocCode) => router.push(`/ocs/${ocCode}?created=1`)}
+          />
+        )}
       </div>
-
-      <Card>
-        <CardContent className="pt-5">
-          {showLoading ? (
-            <div className="space-y-4">
-              {Array.from({ length: 3 }).map((_, i) => (
-                <div key={i} className="space-y-1.5">
-                  <Skeleton className="h-3 w-24" />
-                  <Skeleton className="h-9 w-full rounded-md" />
-                </div>
-              ))}
-            </div>
-          ) : (
-            <>
-              {currentStep === 1 && (
-                <Step1General
-                  onNext={(id) => goToStep(2, id)}
-                  onCancel={() => router.push("/ocs")}
-                  initialData={wizardData?.oc}
-                />
-              )}
-              {currentStep === 2 && ocId && (
-                <Step2Settings
-                  ocId={ocId}
-                  onNext={() => goToStep(3)}
-                  onBack={() => goToStep(1)}
-                  initialData={wizardData?.oc}
-                />
-              )}
-              {currentStep === 3 && ocId && (
-                <Step3Banking
-                  ocId={ocId}
-                  onNext={() => goToStep(4)}
-                  onBack={() => goToStep(2)}
-                  initialData={wizardData}
-                />
-              )}
-              {currentStep === 4 && ocId && (
-                <Step4BankFeeds
-                  ocId={ocId}
-                  onNext={() => goToStep(5)}
-                  onBack={() => goToStep(3)}
-                />
-              )}
-              {currentStep === 5 && ocId && (
-                <Step4Lots
-                  ocId={ocId}
-                  onNext={() => goToStep(6)}
-                  onBack={() => goToStep(4)}
-                  initialData={wizardData?.lots}
-                />
-              )}
-              {currentStep === 6 && ocId && (
-                <Step5Balances
-                  ocId={ocId}
-                  onComplete={(url) => router.push(url)}
-                  onBack={() => goToStep(5)}
-                  initialData={wizardData?.bankAccounts}
-                />
-              )}
-            </>
-          )}
-        </CardContent>
-      </Card>
     </div>
   );
 }
