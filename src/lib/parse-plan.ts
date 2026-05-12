@@ -88,7 +88,9 @@ Rules:
 export async function parsePlanPdf(pdfBytes: Buffer): Promise<ParsedPlan> {
   const apiKey = process.env.GEMINI_API_KEY;
   if (!apiKey) {
-    throw new Error("GEMINI_API_KEY is not configured");
+    // Surface a generic user-facing error; log the real reason for the operator.
+    console.error("parsePlanPdf: parser credentials missing");
+    throw new Error("Automatic plan parsing is temporarily unavailable.");
   }
   const ai = new GoogleGenAI({ apiKey });
 

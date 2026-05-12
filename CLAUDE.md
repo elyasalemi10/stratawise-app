@@ -3,6 +3,14 @@
 ## Git
 - Always commit and push to origin after completing changes. Do not wait for the user to ask.
 
+## Object Storage
+- **ALL** binary objects (PDFs, images, CSVs, logos, plans) go to **Cloudflare R2**. NEVER Supabase Storage. Use `src/lib/storage/r2.ts` (`uploadObject` / `fetchObject` / `deleteObject` / `keyFromPublicUrl`).
+- Path-prefix convention inside the single bucket: `logos/{companyId}/...`, `documents/{ocId}/...`, `levies/{ocId}/...`, `plans/{draftId}/...`.
+
+## Error Messages
+- NEVER reveal internal infrastructure or env var names in user-facing errors. NOT "GEMINI_API_KEY is not configured", "R2_ENDPOINT missing", "DATABASE_URL invalid", "Supabase credentials missing", etc. Show a generic message like "This feature is temporarily unavailable" or "Something went wrong — please try again". Log the real reason server-side (`console.error`) for the operator to read in Vercel logs.
+- This applies to toasts, error pages, form errors, and JSON error bodies returned from server actions.
+
 ## Domain Nomenclature
 - An "Owners Corporation" (abbreviated "OC") is the legal entity that owns and manages common property — what's commonly called a "strata" in NSW or "body corporate" in QLD. Victoria uses "Owners Corporation" (Owners Corporations Act 2006).
 - Always use "Owners Corporation" / "OC" in UI labels and prose. NEVER "subdivision", "strata", "body corporate" — these are legacy and incorrect for our jurisdiction.

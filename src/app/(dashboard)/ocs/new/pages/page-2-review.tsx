@@ -6,6 +6,7 @@ import { Plus, Trash2, AlertTriangle, Loader2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { VicAddressAutocomplete, type ParsedAddress } from "@/components/shared/vic-address-autocomplete";
 import { saveStep, type DraftJson, type DraftLot } from "../actions";
 
 // Plan-of-Subdivision number regex: PS + 6 digits + 1 uppercase letter.
@@ -34,12 +35,14 @@ export function Page2Review({
   const [planNumberInvalid, setPlanNumberInvalid] = useState(false);
   const [ocNumber, setOcNumber] = useState<number>(initialDraft.oc_number ?? 1);
   const [ocName, setOcName] = useState(initialDraft.oc_name ?? "");
-  const [address, setAddress] = useState(initialDraft.address ?? "");
-  const [streetNumber, setStreetNumber] = useState(initialDraft.street_number ?? "");
-  const [streetName, setStreetName] = useState(initialDraft.street_name ?? "");
-  const [suburb, setSuburb] = useState(initialDraft.suburb ?? "");
-  const [state, setState] = useState(initialDraft.state ?? "VIC");
-  const [postcode, setPostcode] = useState(initialDraft.postcode ?? "");
+  const [address, setAddress] = useState<ParsedAddress>({
+    street_number: initialDraft.street_number ?? "",
+    street_name: initialDraft.street_name ?? "",
+    suburb: initialDraft.suburb ?? "",
+    state: "VIC",
+    postcode: initialDraft.postcode ?? "",
+    formatted: initialDraft.address ?? "",
+  });
   const [lots, setLots] = useState<DraftLot[]>(initialDraft.lots ?? []);
   const [pending, setPending] = useState(false);
 
@@ -85,12 +88,12 @@ export function Page2Review({
       plan_number: planNumber.toUpperCase() || undefined,
       oc_number: ocNumber,
       oc_name: ocName || (planNumber ? `Owners Corporation ${planNumber.toUpperCase()}` : undefined),
-      address,
-      street_number: streetNumber,
-      street_name: streetName,
-      suburb,
-      state,
-      postcode,
+      address: address.formatted,
+      street_number: address.street_number,
+      street_name: address.street_name,
+      suburb: address.suburb,
+      state: address.state,
+      postcode: address.postcode,
       total_lots: lots.length,
       lots,
     }, 3);
@@ -174,54 +177,10 @@ export function Page2Review({
         </div>
 
         <div className="space-y-1.5">
-          <Label htmlFor="address">Address</Label>
-          <Input
-            id="address"
-            placeholder="56-58 Test Road, Carlton VIC 3053"
-            value={address}
-            onChange={(e) => setAddress(e.target.value)}
-          />
-        </div>
-
-        <div className="grid grid-cols-[120px_1fr_120px_120px] gap-4">
-          <div className="space-y-1.5">
-            <Label htmlFor="street-no">Street no.</Label>
-            <Input id="street-no" value={streetNumber} onChange={(e) => setStreetNumber(e.target.value)} />
-          </div>
-          <div className="space-y-1.5">
-            <Label htmlFor="street-name">Street name</Label>
-            <Input id="street-name" value={streetName} onChange={(e) => setStreetName(e.target.value)} />
-          </div>
-          <div className="space-y-1.5">
-            <Label htmlFor="state">State</Label>
-            <select
-              id="state"
-              value={state}
-              onChange={(e) => setState(e.target.value)}
-              className="flex h-9 w-full rounded-md border border-border bg-background px-3 text-sm focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary"
-            >
-              {["ACT", "NSW", "NT", "QLD", "SA", "TAS", "VIC", "WA"].map((s) => (
-                <option key={s} value={s} disabled={s !== "VIC"}>
-                  {s}{s !== "VIC" ? " (soon)" : ""}
-                </option>
-              ))}
-            </select>
-          </div>
-          <div className="space-y-1.5">
-            <Label htmlFor="postcode">Postcode</Label>
-            <Input
-              id="postcode"
-              inputMode="numeric"
-              maxLength={4}
-              value={postcode}
-              onChange={(e) => setPostcode(e.target.value.replace(/\D/g, "").slice(0, 4))}
-            />
-          </div>
-        </div>
-
-        <div className="space-y-1.5">
-          <Label htmlFor="suburb">Suburb</Label>
-          <Input id="suburb" value={suburb} onChange={(e) => setSuburb(e.target.value)} />
+          <Label htmlFor="address">
+            Address <span className="text-destructive">*</span>
+          </Label>
+          <VicAddressAutocomplete id="address" value={address} onChange={setAddress} />
         </div>
 
         {/* Lot schedule */}

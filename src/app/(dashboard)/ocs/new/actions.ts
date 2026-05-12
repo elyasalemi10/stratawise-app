@@ -5,6 +5,7 @@ import { requireCompanyRole } from "@/lib/auth";
 import { createServerClient } from "@/lib/supabase";
 import { insertOCWithCode } from "@/lib/oc-code";
 import { parsePlanPdf, type ParsedPlan } from "@/lib/parse-plan";
+import { uploadObject, fetchObject, deleteObject } from "@/lib/storage/r2";
 
 // ─── Types stored on draft_json ─────────────────────────────────
 //
@@ -136,10 +137,11 @@ export async function savePlanUpload(
   }
 }
 
-// ─── uploadPlan: receive FormData with the PDF, push to Storage ──
+// ─── uploadPlan: receive FormData with the PDF, push to R2 ──
 //
 // Server-action multipart upload. next.config.ts bumps the body-size limit to
 // 50MB. Client calls this with FormData containing a single `file` field.
+// Object goes to R2 under `plans/{draftId}/original.pdf`.
 
 export async function uploadPlan(draftId: string, formData: FormData) {
   try {
@@ -151,14 +153,17 @@ export async function uploadPlan(draftId: string, formData: FormData) {
     }
     if (file.size > 50 * 1024 * 1024) return { error: "File exceeds 50MB" };
 
-    const supabase = createServerClient();
-    const key = `${draft.id}/original.pdf`;
+    const key = `plans/${draft.id}/original.pdf`;
     const buf = Buffer.from(await file.arrayBuffer());
-    const { error: upErr } = await supabase.storage
-      .from("plans")
-      .upload(key, buf, { contentType: "application/pdf", upsert: true });
-    if (upErr) return { error: upErr.message };
 
+    try {
+      await uploadObject(key, buf, "application/pdf");
+    } catch (err) {
+      console.error("uploadPlan: R2 upload failed", err);
+      return { error: "Couldn't save your file — please try again." };
+    }
+
+    const supabase = createServerClient();
     const { error: dbErr } = await supabase
       .from("oc_drafts")
       .update({
@@ -170,10 +175,14 @@ export async function uploadPlan(draftId: string, formData: FormData) {
         parse_error: null,
       })
       .eq("id", draft.id);
-    if (dbErr) return { error: dbErr.message };
+    if (dbErr) {
+      console.error("uploadPlan: DB update failed", dbErr);
+      return { error: "Couldn't save your file — please try again." };
+    }
     return { success: true };
   } catch (err) {
-    return { error: err instanceof Error ? err.message : "Unexpected error" };
+    console.error("uploadPlan: unexpected error", err);
+    return { error: "Something went wrong — please try again." };
   }
 }
 
@@ -185,30 +194,30 @@ export async function parseDraftWithGemini(draftId: string) {
     if (!draft.plan_storage_key) return { error: "No plan uploaded" };
 
     const supabase = createServerClient();
-    const { data: file, error: dlError } = await supabase.storage
-      .from("plans")
-      .download(draft.plan_storage_key);
-    if (dlError || !file) {
+
+    let buf: Buffer;
+    try {
+      buf = await fetchObject(draft.plan_storage_key);
+    } catch (err) {
+      console.error("parseDraftWithGemini: R2 fetch failed", err);
       await supabase.from("oc_drafts").update({
         parse_status: "failed",
-        parse_error: dlError?.message ?? "Download failed",
+        parse_error: "Storage read failed",
       }).eq("id", draft.id);
-      return { error: "Could not read the uploaded plan" };
+      return { error: "We couldn't read the uploaded plan." };
     }
-
-    const buf = Buffer.from(await file.arrayBuffer());
 
     let parsed: ParsedPlan;
     try {
       parsed = await parsePlanPdf(buf);
     } catch (err) {
-      const msg = err instanceof Error ? err.message : "Parser failed";
+      console.error("parseDraftWithGemini: parser failed", err);
       await supabase.from("oc_drafts").update({
         parse_status: "failed",
         parse_completed_at: new Date().toISOString(),
-        parse_error: msg,
+        parse_error: err instanceof Error ? err.message : "Parser failed",
       }).eq("id", draft.id);
-      return { error: msg };
+      return { error: "We couldn't read this plan automatically. Continue and enter details manually." };
     }
 
     // Default to the first detected OC and seed draft_json so page 2 has
