@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, Suspense } from "react";
-import { useRouter, useSearchParams } from "next/navigation";
+import { useSearchParams } from "next/navigation";
 import Link from "next/link";
 import { toast } from "sonner";
 import { Building2, Home, Loader2 } from "lucide-react";
@@ -67,7 +67,6 @@ function RoleSelector({ onSelect }: { onSelect: (role: Role) => void }) {
 }
 
 function SignUpForm({ role, inviteToken }: { role: Role; inviteToken: string | null }) {
-  const router = useRouter();
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [firstName, setFirstName] = useState("");
@@ -104,19 +103,20 @@ function SignUpForm({ role, inviteToken }: { role: Role; inviteToken: string | n
       return;
     }
 
-    if (data.user && !data.session) {
-      // Email confirmation required
-      toast.success("Check your email to confirm your account.");
+    if (!data.session) {
+      // Should not happen with email confirmation disabled in Supabase, but if
+      // it does we can't proceed — direct user to sign in.
+      toast.error("Sign-up succeeded but no session was returned. Please sign in.");
+      window.location.href = "/sign-in";
       return;
     }
 
-    // Email confirmation disabled — already signed in
-    const redirectUrl = inviteToken
-      ? `/invite/${inviteToken}`
-      : role === "lot_owner"
-      ? "/onboarding/lot-owner"
-      : "/onboarding";
-    window.location.href = redirectUrl;
+    // Land on /verify-email — page auto-sends a 6-digit code on mount,
+    // user enters it, then continues to /onboarding (or invite flow).
+    sessionStorage.removeItem("verifyEmail.codeSent");
+    window.location.href = inviteToken
+      ? `/verify-email?next=/invite/${inviteToken}`
+      : "/verify-email";
   }
 
   return (

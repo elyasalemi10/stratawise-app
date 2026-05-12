@@ -260,11 +260,15 @@ export async function getOnboardingRedirect(): Promise<string | null> {
 
   const { data: profile } = await admin
     .from("profiles")
-    .select("id, role, management_company_id")
+    .select("id, role, management_company_id, email_verified")
     .eq("auth_user_id", user.id)
     .single();
 
   if (!profile) return "/onboarding";
+
+  // Email-verification gate — our own 6-digit OTP flow runs before any
+  // role-specific onboarding. Once flipped, never redirected back here.
+  if (!profile.email_verified) return "/verify-email";
 
   if (profile.role === "lot_owner") {
     const { count } = await admin

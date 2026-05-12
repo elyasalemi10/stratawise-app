@@ -196,6 +196,7 @@ CREATE TABLE profiles (
   id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
   auth_user_id UUID UNIQUE REFERENCES auth.users(id) ON DELETE SET NULL,
   email TEXT NOT NULL,
+  email_verified BOOLEAN NOT NULL DEFAULT false,    -- our own 6-digit OTP gate
   first_name TEXT,
   last_name TEXT,
   phone TEXT,
@@ -210,6 +211,23 @@ CREATE TABLE profiles (
   created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
   updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
+
+-- Our own email verification — we send a 6-digit code via Resend (not Supabase's
+-- built-in magic link). The OTP is stored here until verified, then marked used.
+-- profiles.email_verified is the gate the app checks; getOnboardingRedirect
+-- routes to /verify-email until this flips to true.
+CREATE TABLE email_verification_codes (
+  id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+  profile_id UUID NOT NULL REFERENCES profiles(id) ON DELETE CASCADE,
+  email TEXT NOT NULL,
+  code TEXT NOT NULL,                               -- 6-digit numeric, plain
+  expires_at TIMESTAMPTZ NOT NULL,                  -- typically NOW() + 10 min
+  used_at TIMESTAMPTZ,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+CREATE INDEX idx_email_verification_codes_profile_id ON email_verification_codes(profile_id) WHERE used_at IS NULL;
+CREATE INDEX idx_email_verification_codes_email ON email_verification_codes(email) WHERE used_at IS NULL;
 
 CREATE INDEX idx_profiles_auth_user_id ON profiles(auth_user_id);
 CREATE INDEX idx_profiles_management_company ON profiles(management_company_id);

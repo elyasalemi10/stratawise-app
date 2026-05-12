@@ -36,6 +36,56 @@ interface SendInvitationEmailParams {
   companyLogoUrl?: string | null;
 }
 
+// ─── Email verification (6-digit OTP) ──────────────────────────────────────
+// Sent on sign-up and on resend requests. Our own gate — separate from
+// Supabase Auth's built-in confirmation link (which is disabled). The code
+// is plain 6-digit numeric, 10-minute expiry stored in email_verification_codes.
+
+interface SendVerificationCodeEmailParams {
+  to: string;
+  name: string | null;
+  code: string;
+}
+
+export async function sendVerificationCodeEmail({
+  to,
+  name,
+  code,
+}: SendVerificationCodeEmailParams): Promise<{ success: true } | { error: string }> {
+  const greeting = name ? `Hi ${name},` : "Hi,";
+
+  if (isDryRun()) {
+    console.log(`[email-dry-run] type=verification to=${to} code=${code}`);
+    return { success: true };
+  }
+
+  const { error } = await getResend().emails.send({
+    from: FROM_SYSTEM,
+    to,
+    subject: `Your Strata Wise verification code: ${code}`,
+    html: `
+      <div style="font-family:'Inter',system-ui,sans-serif;max-width:520px;margin:0 auto;padding:32px 0;">
+        <h2 style="margin:0 0 16px;font-size:20px;font-weight:600;color:#1a1f2e;">Verify your email</h2>
+        <p style="margin:0 0 20px;color:#1a1f2e;font-size:14px;line-height:1.6;">
+          ${greeting} use the code below to verify your Strata Wise account. It expires in 10 minutes.
+        </p>
+        <div style="background:#f8f9fb;border:1px solid #e2e5ea;border-radius:6px;padding:24px;margin:0 0 24px;text-align:center;">
+          <p style="margin:0;font-size:32px;font-weight:700;letter-spacing:8px;color:#1a1f2e;font-family:'SF Mono','Courier New',monospace;">${code}</p>
+        </div>
+        <p style="margin:24px 0 0;color:#6b7280;font-size:12px;line-height:1.5;">
+          If you didn't request this code, you can safely ignore this email.
+        </p>
+      </div>
+    `,
+  });
+
+  if (error) {
+    console.error("Failed to send verification code email:", error);
+    return { error: error.message ?? "Failed to send email" };
+  }
+  return { success: true as const };
+}
+
 export async function sendInvitationEmail({
   to,
   inviteeName,
