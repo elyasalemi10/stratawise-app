@@ -7,6 +7,9 @@ import { resolveCompanyLogo } from "@/lib/notifications";
 import { canonicaliseSender } from "@/lib/reconciliation/canonical";
 import { sweepMappingsForOwnerChange } from "@/lib/reconciliation/mappings";
 import { buildSubdivisionUrl } from "@/lib/subdivision-resolver";
+import { generateInviteCode, normaliseInviteCode } from "@/lib/invite-code";
+import { rateLimitCheck, getClientIp } from "@/lib/rate-limit";
+import { headers } from "next/headers";
 
 export async function inviteStrataManager(data: { email: string; name: string }) {
   const profile = await requireCompanyRole();
@@ -51,8 +54,9 @@ export async function inviteStrataManager(data: { email: string; name: string })
       name: data.name,
       role: "strata_manager",
       invited_by: profile.id,
+      code: generateInviteCode(),
     })
-    .select("id, token")
+    .select("id, code")
     .single();
 
   if (error) return { error: error.message };
@@ -67,7 +71,7 @@ export async function inviteStrataManager(data: { email: string; name: string })
 
   // Send invitation email
   const baseUrl = process.env.APP_URL ?? "http://localhost:3000";
-  const inviteUrl = `${baseUrl}/invite/${invitation.token}`;
+  const inviteUrl = `${baseUrl}/invite/${invitation.code}`;
   const companyLogoUrl = await resolveCompanyLogo(supabase, {
     managementCompanyId: profile.management_company_id,
   });
@@ -81,10 +85,30 @@ export async function inviteStrataManager(data: { email: string; name: string })
     companyLogoUrl,
   });
 
-  return { success: true, token: invitation.token };
+  return { success: true, code: invitation.code };
 }
 
-export async function getInvitationByToken(token: string) {
+/**
+ * Look up an invitation by its 10-char code. Rate-limited by client IP to
+ * defuse brute-force enumeration: max 10 lookups per IP per 10 minutes.
+ *
+ * Returns null when the code is unknown OR the IP is rate-limited — we
+ * deliberately don't distinguish the two so an attacker can't tell whether
+ * a code shape is valid by watching response codes.
+ */
+export async function getInvitationByCode(rawCode: string) {
+  const code = normaliseInviteCode(rawCode);
+  if (!code) return null;
+
+  const h = await headers();
+  const ip = getClientIp(h);
+  const rl = await rateLimitCheck({
+    key: `invite_lookup:${ip}`,
+    limit: 10,
+    windowMs: 10 * 60 * 1000,
+  });
+  if (!rl.ok) return null;
+
   const supabase = createServerClient();
 
   const { data: invitation } = await supabase
@@ -94,7 +118,7 @@ export async function getInvitationByToken(token: string) {
       subdivisions:subdivision_id (id, name, address, plan_number),
       lots:lot_id (lot_number, unit_number)
     `)
-    .eq("token", token)
+    .eq("code", code)
     .single();
 
   if (!invitation) return null;
@@ -107,7 +131,10 @@ export async function getInvitationByToken(token: string) {
   };
 }
 
-export async function acceptInvitation(token: string) {
+export async function acceptInvitation(rawCode: string) {
+  const code = normaliseInviteCode(rawCode);
+  if (!code) return { error: "Invalid invite code" };
+
   const profile = await getCurrentProfile();
   if (!profile) return { error: "Please sign in first" };
 
@@ -117,7 +144,7 @@ export async function acceptInvitation(token: string) {
   const { data: invitation } = await supabase
     .from("invitations")
     .select("*")
-    .eq("token", token)
+    .eq("code", code)
     .single();
 
   if (!invitation) return { error: "Invitation not found" };

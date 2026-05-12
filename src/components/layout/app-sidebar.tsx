@@ -37,19 +37,10 @@ import {
   SidebarMenu,
   SidebarMenuButton,
   SidebarMenuItem,
-  useSidebar,
 } from "@/components/ui/sidebar";
 import { Avatar, AvatarImage, AvatarFallback } from "@/components/ui/avatar";
-import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuGroup,
-  DropdownMenuItem,
-  DropdownMenuLabel,
-  DropdownMenuSeparator,
-  DropdownMenuTrigger,
-} from "@/components/ui/dropdown-menu";
 import { Skeleton } from "@/components/ui/skeleton";
+import { cn } from "@/lib/utils";
 import { getSidebarProfile, type SidebarProfile } from "@/lib/actions/profile";
 import {
   getSidebarSubdivisions,
@@ -250,6 +241,8 @@ function DropdownSeparator() {
 // (bottom on mobile). The dropdown header repeats the avatar + name + email
 // for context, then menu items below.
 
+// Hand-rolled dropdown (avoids base-ui Menu which threw error #31 when
+// composed inside Sidebar context). Pops up on top with a small offset.
 function NavUser({
   loaded,
   profile,
@@ -261,19 +254,39 @@ function NavUser({
   onSettings: () => void;
   onSignOut: () => void;
 }) {
-  const { isMobile } = useSidebar();
+  const [open, setOpen] = useState(false);
+  const wrapperRef = useRef<HTMLDivElement>(null);
 
-  // The trigger is a plain styled <button>, NOT a SidebarMenuButton —
-  // base-ui's Menu.Trigger renders its own <button> via `useRender` and
-  // composing it with our SidebarMenuButton's `useRender` caused a
-  // runtime "client-side exception" when the dropdown opened. Replicate
-  // the styles inline instead.
-  const triggerClass =
-    "flex h-12 w-full cursor-pointer items-center gap-2 overflow-hidden rounded-md p-2 text-left text-sm text-sidebar-foreground transition-colors outline-none hover:bg-sidebar-accent hover:text-sidebar-accent-foreground focus-visible:ring-2 focus-visible:ring-sidebar-ring data-[popup-open]:bg-sidebar-accent data-[popup-open]:text-sidebar-accent-foreground";
+  useEffect(() => {
+    function handler(e: MouseEvent) {
+      if (wrapperRef.current && !wrapperRef.current.contains(e.target as Node)) {
+        setOpen(false);
+      }
+    }
+    function escHandler(e: KeyboardEvent) {
+      if (e.key === "Escape") setOpen(false);
+    }
+    document.addEventListener("mousedown", handler);
+    document.addEventListener("keydown", escHandler);
+    return () => {
+      document.removeEventListener("mousedown", handler);
+      document.removeEventListener("keydown", escHandler);
+    };
+  }, []);
 
   return (
-    <DropdownMenu>
-      <DropdownMenuTrigger className={triggerClass}>
+    <div ref={wrapperRef} className="relative">
+      <button
+        type="button"
+        onClick={() => setOpen((o) => !o)}
+        aria-expanded={open}
+        className={cn(
+          "flex h-14 w-full items-center gap-2 overflow-hidden rounded-lg border p-2 text-left text-sm text-sidebar-foreground transition-colors outline-none",
+          "border-sidebar-border/40 hover:bg-sidebar-accent hover:text-sidebar-accent-foreground",
+          "focus-visible:ring-2 focus-visible:ring-sidebar-ring",
+          open && "bg-sidebar-accent text-sidebar-accent-foreground",
+        )}
+      >
         {!loaded ? (
           <>
             <Skeleton className="h-8 w-8 rounded-lg shrink-0" />
@@ -292,7 +305,7 @@ function NavUser({
                 {profile?.userInitials ?? "?"}
               </AvatarFallback>
             </Avatar>
-            <div className="grid flex-1 text-left text-sm leading-tight">
+            <div className="grid flex-1 text-left text-sm leading-tight min-w-0">
               <span className="truncate font-medium">
                 {profile?.companyName ?? "My Company"}
               </span>
@@ -303,47 +316,43 @@ function NavUser({
             <MoreVertical className="ml-auto size-4 shrink-0" />
           </>
         )}
-      </DropdownMenuTrigger>
-      <DropdownMenuContent
-        className="w-(--anchor-width) min-w-56 rounded-lg"
-        side={isMobile ? "bottom" : "right"}
-        align="end"
-        sideOffset={4}
-      >
-        <DropdownMenuLabel className="p-0 font-normal">
-          <div className="flex items-center gap-2 px-1 py-1.5 text-left text-sm">
-            <Avatar className="h-8 w-8 rounded-lg">
-              {profile?.userAvatarUrl ? (
-                <AvatarImage src={profile.userAvatarUrl} alt="Avatar" />
-              ) : null}
-              <AvatarFallback className="rounded-lg">
-                {profile?.userInitials ?? "?"}
-              </AvatarFallback>
-            </Avatar>
-            <div className="grid flex-1 text-left text-sm leading-tight">
-              <span className="truncate font-medium text-foreground">
-                {profile?.companyName ?? "My Company"}
-              </span>
-              <span className="text-muted-foreground truncate text-xs">
-                {profile?.userEmail ?? ""}
-              </span>
-            </div>
+      </button>
+
+      {open && (
+        <div className="absolute bottom-full left-0 right-0 mb-1 z-50 rounded-lg border border-border bg-popover p-1 shadow-md">
+          <div className="px-2 py-2 border-b border-border mb-1">
+            <p className="truncate text-sm font-medium text-foreground">
+              {profile?.companyName ?? "My Company"}
+            </p>
+            <p className="truncate text-xs text-muted-foreground">
+              {profile?.userEmail ?? ""}
+            </p>
           </div>
-        </DropdownMenuLabel>
-        <DropdownMenuSeparator />
-        <DropdownMenuGroup>
-          <DropdownMenuItem onClick={onSettings} className="cursor-pointer">
+          <button
+            type="button"
+            onClick={() => {
+              setOpen(false);
+              onSettings();
+            }}
+            className="flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-sm text-foreground hover:bg-accent hover:text-accent-foreground"
+          >
             <Settings className="h-4 w-4" />
             Settings
-          </DropdownMenuItem>
-        </DropdownMenuGroup>
-        <DropdownMenuSeparator />
-        <DropdownMenuItem onClick={onSignOut} className="cursor-pointer">
-          <LogOut className="h-4 w-4" />
-          Sign out
-        </DropdownMenuItem>
-      </DropdownMenuContent>
-    </DropdownMenu>
+          </button>
+          <button
+            type="button"
+            onClick={() => {
+              setOpen(false);
+              onSignOut();
+            }}
+            className="flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-sm text-foreground hover:bg-accent hover:text-accent-foreground"
+          >
+            <LogOut className="h-4 w-4" />
+            Sign out
+          </button>
+        </div>
+      )}
+    </div>
   );
 }
 
@@ -571,7 +580,12 @@ export function AppSidebar({
                       : 0;
                   return (
                     <SidebarMenuItem key={item.href}>
-                      <SidebarMenuButton isActive={isActive} render={<Link href={item.href} />}>
+                      <SidebarMenuButton
+                        isActive={isActive}
+                        size="lg"
+                        className="text-base [&>svg]:!size-5"
+                        render={<Link href={item.href} />}
+                      >
                         <item.icon />
                         <span>{item.label}</span>
                         {count > 0 && (

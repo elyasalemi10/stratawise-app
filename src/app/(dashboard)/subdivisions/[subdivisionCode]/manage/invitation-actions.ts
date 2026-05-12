@@ -5,6 +5,7 @@ import { createServerClient } from "@/lib/supabase";
 import { revalidatePath } from "next/cache";
 import { sendInvitationEmail } from "@/lib/email";
 import { resolveCompanyLogo } from "@/lib/notifications";
+import { generateInviteCode } from "@/lib/invite-code";
 
 type LotOwnerInput = {
   name: string;
@@ -143,7 +144,7 @@ export async function inviteLotOwner(
   // since we're now sending the email. Refresh contact fields + expiry.
   const existingOpen = await findOpenInvitation(supabase, lotId);
 
-  let invitation: { id: string; token: string };
+  let invitation: { id: string; code: string };
   let isResend = false;
 
   if (existingOpen) {
@@ -159,7 +160,7 @@ export async function inviteLotOwner(
         expires_at: newExpiry,
       })
       .eq("id", existingOpen.id)
-      .select("id, token")
+      .select("id, code")
       .single();
 
     if (updateError || !updated) return { error: updateError?.message ?? "Failed to update invitation" };
@@ -176,8 +177,9 @@ export async function inviteLotOwner(
         phone: data.phone || null,
         role: "lot_owner",
         invited_by: profile.id,
+        code: generateInviteCode(),
       })
-      .select("id, token")
+      .select("id, code")
       .single();
 
     if (error || !created) return { error: error?.message ?? "Failed to create invitation" };
@@ -208,7 +210,7 @@ export async function inviteLotOwner(
     .single();
 
   const baseUrl = process.env.APP_URL ?? "http://localhost:3000";
-  const inviteUrl = `${baseUrl}/invite/${invitation.token}`;
+  const inviteUrl = `${baseUrl}/invite/${invitation.code}`;
   const companyLogoUrl = await resolveCompanyLogo(supabase, {
     subdivisionId,
   });
@@ -225,7 +227,7 @@ export async function inviteLotOwner(
 
   revalidatePath("/subdivisions/[subdivisionCode]/manage", "page");
 
-  return { success: true, token: invitation.token };
+  return { success: true, code: invitation.code };
 }
 
 export async function getLotInvitationStatus(subdivisionId: string, lotIds: string[]) {

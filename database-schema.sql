@@ -224,8 +224,20 @@ CREATE TABLE email_verification_codes (
   code TEXT NOT NULL,                               -- 6-digit numeric, plain
   expires_at TIMESTAMPTZ NOT NULL,                  -- typically NOW() + 10 min
   used_at TIMESTAMPTZ,
+  attempts INTEGER NOT NULL DEFAULT 0,              -- rate limit: code is marked used after 5 wrong attempts
   created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
+
+-- Sliding-window rate-limit counters. Keyed by "rule:identifier" pairs,
+-- e.g. "invite_lookup:1.2.3.4" or "otp_resend:<profile_id>". Service-role
+-- bypasses RLS so server actions can read/write; anon/authenticated have
+-- no policies → deny-all.
+CREATE TABLE rate_limits (
+  key TEXT PRIMARY KEY,
+  count INTEGER NOT NULL DEFAULT 0,
+  window_start TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+ALTER TABLE rate_limits ENABLE ROW LEVEL SECURITY;
 
 CREATE INDEX idx_email_verification_codes_profile_id ON email_verification_codes(profile_id) WHERE used_at IS NULL;
 CREATE INDEX idx_email_verification_codes_email ON email_verification_codes(email) WHERE used_at IS NULL;
@@ -437,7 +449,11 @@ CREATE TABLE invitations (
   name TEXT,
   phone TEXT,
   role member_role NOT NULL DEFAULT 'lot_owner',
-  token TEXT UNIQUE NOT NULL DEFAULT encode(gen_random_bytes(32), 'hex'),
+  -- Application-generated 10-char Crockford-32 code (no 0/O/1/I). Used in
+  -- the invite URL AND as a typeable code the recipient can enter manually
+  -- on /sign-up. 32^10 ≈ 1.1×10^15 combinations; combined with the
+  -- rate_limits table this is unbruteforceable.
+  code TEXT UNIQUE NOT NULL,
   reference_number TEXT,
   status invitation_status NOT NULL DEFAULT 'pending',
   invited_by UUID NOT NULL REFERENCES profiles(id),
@@ -445,7 +461,7 @@ CREATE TABLE invitations (
   expires_at TIMESTAMPTZ NOT NULL DEFAULT (NOW() + INTERVAL '30 days')
 );
 
-CREATE INDEX idx_invitations_token ON invitations(token);
+CREATE INDEX idx_invitations_code ON invitations(code);
 CREATE INDEX idx_invitations_subdivision ON invitations(subdivision_id);
 CREATE INDEX idx_invitations_email ON invitations(email);
 CREATE INDEX idx_invitations_lot_status ON invitations(lot_id, status) WHERE lot_id IS NOT NULL;

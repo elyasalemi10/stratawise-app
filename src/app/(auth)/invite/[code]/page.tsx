@@ -1,13 +1,13 @@
-import { getInvitationByToken } from "@/lib/actions/invitations";
+import { getInvitationByCode } from "@/lib/actions/invitations";
 import { InviteAcceptContent } from "./invite-accept-content";
 
 export default async function InviteAcceptPage({
   params,
 }: {
-  params: Promise<{ token: string }>;
+  params: Promise<{ code: string }>;
 }) {
-  const { token } = await params;
-  const invitation = await getInvitationByToken(token);
+  const { code } = await params;
+  const invitation = await getInvitationByCode(code);
 
   if (!invitation) {
     return (

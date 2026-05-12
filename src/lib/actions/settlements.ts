@@ -12,6 +12,7 @@ import {
 } from "@/lib/validations/settlement";
 
 import { normalizePlanNumber } from "@/lib/settlements/plan-number";
+import { generateInviteCode } from "@/lib/invite-code";
 
 // ─── R2 helper ─────────────────────────────────────────────────
 
@@ -386,8 +387,9 @@ export async function applySettlementToLot(input: ApplySettlementInput) {
       phone: newOwner.phone,
       role: "lot_owner",
       invited_by: profile.id,
+      code: generateInviteCode(),
     })
-    .select("id, token, email, name")
+    .select("id, code, email, name")
     .single();
 
   if (invErr || !invitation) {
@@ -442,7 +444,7 @@ export async function applySettlementToLot(input: ApplySettlementInput) {
   return {
     success: true,
     invitationId: invitation.id,
-    invitationToken: invitation.token,
+    invitationCode: invitation.code,
     endedMemberId: activeMember?.id ?? null,
   };
 }

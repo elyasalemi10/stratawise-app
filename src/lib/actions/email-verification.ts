@@ -126,7 +126,7 @@ export async function verifyEmailCode(
 
   const { data: row } = await admin
     .from("email_verification_codes")
-    .select("id, code, expires_at, used_at")
+    .select("id, code, expires_at, used_at, attempts")
     .eq("profile_id", profile.id)
     .is("used_at", null)
     .order("created_at", { ascending: false })
@@ -135,7 +135,30 @@ export async function verifyEmailCode(
 
   if (!row) return { error: "No active code. Request a new one." };
   if (row.expires_at < nowIso) return { error: "Code expired. Request a new one." };
-  if (row.code !== trimmed) return { error: "Incorrect code." };
+
+  // Rate limit: after MAX_ATTEMPTS wrong tries on the same code, burn it
+  // so the user must resend. Defends against brute-force attempts at
+  // guessing the 6 digits.
+  const MAX_ATTEMPTS = 5;
+  if (row.code !== trimmed) {
+    const nextAttempts = (row.attempts ?? 0) + 1;
+    if (nextAttempts >= MAX_ATTEMPTS) {
+      await admin
+        .from("email_verification_codes")
+        .update({ used_at: nowIso, attempts: nextAttempts })
+        .eq("id", row.id);
+      return {
+        error: "Too many incorrect attempts. Click Resend for a new code.",
+      };
+    }
+    await admin
+      .from("email_verification_codes")
+      .update({ attempts: nextAttempts })
+      .eq("id", row.id);
+    return {
+      error: `Incorrect code. ${MAX_ATTEMPTS - nextAttempts} attempts left.`,
+    };
+  }
 
   // Mark used + flip verified flag.
   const { error: updateCodeErr } = await admin

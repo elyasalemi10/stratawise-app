@@ -9,6 +9,8 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { getSupabaseClient } from "@/lib/supabase";
+import { getInvitationByCode } from "@/lib/actions/invitations";
+import { normaliseInviteCode, isInviteCodeShape } from "@/lib/invite-code";
 
 type Role = "strata_manager" | "lot_owner";
 
@@ -80,17 +82,20 @@ function RoleSelector({ onSelect }: { onSelect: (role: Role) => void }) {
 const PASSWORD_RULE = /^(?=.*[A-Za-z])(?=.*[^A-Za-z0-9]).{8,}$/;
 const PASSWORD_HINT = "8+ characters, one letter, one special symbol.";
 
-function SignUpForm({ role, inviteToken }: { role: Role; inviteToken: string | null }) {
+function SignUpForm({ role, inviteCode: prefillInvite }: { role: Role; inviteCode: string | null }) {
   const emailLabel = role === "strata_manager" ? "Business email" : "Email";
+  const isLotOwner = role === "lot_owner";
 
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [firstName, setFirstName] = useState("");
   const [lastName, setLastName] = useState("");
+  const [inviteCode, setInviteCode] = useState(prefillInvite ?? "");
   const [pending, setPending] = useState(false);
   const [showPassword, setShowPassword] = useState(false);
   const [emailInvalid, setEmailInvalid] = useState(false);
   const [passwordInvalid, setPasswordInvalid] = useState(false);
+  const [inviteInvalid, setInviteInvalid] = useState(false);
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
@@ -101,9 +106,32 @@ function SignUpForm({ role, inviteToken }: { role: Role; inviteToken: string | n
       return;
     }
 
-    setPending(true);
+    // Lot owners MUST provide a valid invite code before we'll create
+    // their account. The validation calls a rate-limited server action
+    // (10 lookups per IP per 10 min) so brute-forcing is impractical.
+    let normalisedCode: string | null = null;
+    if (isLotOwner) {
+      const candidate = normaliseInviteCode(inviteCode);
+      if (!isInviteCodeShape(candidate)) {
+        setInviteInvalid(true);
+        toast.error("Enter the 10-character invite code from your email.");
+        return;
+      }
+      setPending(true);
+      const invitation = await getInvitationByCode(candidate);
+      if (!invitation || invitation.isExpired || invitation.status !== "pending") {
+        setPending(false);
+        setInviteInvalid(true);
+        toast.error("Invite code is invalid or has expired.");
+        return;
+      }
+      normalisedCode = candidate;
+    } else {
+      setPending(true);
+    }
     setEmailInvalid(false);
     setPasswordInvalid(false);
+    setInviteInvalid(false);
 
     const supabase = getSupabaseClient();
     const { data, error } = await supabase.auth.signUp({
@@ -115,6 +143,7 @@ function SignUpForm({ role, inviteToken }: { role: Role; inviteToken: string | n
           first_name: firstName,
           last_name: lastName,
           intended_role: role,
+          invite_code: normalisedCode,
         },
       },
     });
@@ -140,8 +169,8 @@ function SignUpForm({ role, inviteToken }: { role: Role; inviteToken: string | n
     // Land on /verify-email — page auto-sends a 6-digit code on mount,
     // user enters it, then continues to /onboarding (or invite flow).
     sessionStorage.removeItem("verifyEmail.codeSent");
-    window.location.href = inviteToken
-      ? `/verify-email?next=/invite/${inviteToken}`
+    window.location.href = normalisedCode
+      ? `/verify-email?next=/invite/${normalisedCode}`
       : "/verify-email";
   }
 
@@ -157,6 +186,31 @@ function SignUpForm({ role, inviteToken }: { role: Role; inviteToken: string | n
       </div>
 
       <form onSubmit={handleSubmit} className="mx-auto w-full max-w-sm space-y-4">
+        {isLotOwner && (
+          <div className="space-y-1.5">
+            <Label htmlFor="inviteCode">Invite code</Label>
+            <Input
+              id="inviteCode"
+              required
+              placeholder="ABCDEF2345"
+              autoComplete="off"
+              spellCheck={false}
+              value={inviteCode}
+              onChange={(e) => {
+                setInviteCode(e.target.value.toUpperCase());
+                if (inviteInvalid) setInviteInvalid(false);
+              }}
+              aria-invalid={inviteInvalid || undefined}
+              maxLength={10}
+              readOnly={Boolean(prefillInvite)}
+              className="h-11 font-mono tracking-wider"
+            />
+            <p className="text-xs text-muted-foreground">
+              The 10-character code from your invitation email.
+            </p>
+          </div>
+        )}
+
         <div className="grid grid-cols-2 gap-3">
           <div className="space-y-1.5">
             <Label htmlFor="firstName">First name</Label>
@@ -254,16 +308,16 @@ function SignUpForm({ role, inviteToken }: { role: Role; inviteToken: string | n
 function SignUpContent() {
   const searchParams = useSearchParams();
   const initialRole = searchParams.get("role") as Role | null;
-  const inviteToken = searchParams.get("invite");
+  const inviteCode = searchParams.get("invite");
   const [selectedRole, setSelectedRole] = useState<Role | null>(
-    inviteToken ? "lot_owner" : initialRole,
+    inviteCode ? "lot_owner" : initialRole,
   );
 
   if (!selectedRole) {
     return <RoleSelector onSelect={setSelectedRole} />;
   }
 
-  return <SignUpForm role={selectedRole} inviteToken={inviteToken} />;
+  return <SignUpForm role={selectedRole} inviteCode={inviteCode} />;
 }
 
 export default function SignUpPage() {
