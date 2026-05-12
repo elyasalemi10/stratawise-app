@@ -18,10 +18,12 @@ function SignInContent() {
   const [password, setPassword] = useState("");
   const [pending, setPending] = useState(false);
   const [showPassword, setShowPassword] = useState(false);
+  const [invalidCreds, setInvalidCreds] = useState(false);
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
     setPending(true);
+    setInvalidCreds(false);
 
     const supabase = getSupabaseClient();
     const { error } = await supabase.auth.signInWithPassword({
@@ -29,14 +31,15 @@ function SignInContent() {
       password,
     });
 
-    setPending(false);
-
     if (error) {
+      setPending(false);
+      setInvalidCreds(true);
       toast.error(error.message);
       return;
     }
 
-    // Hard navigation so the server layout re-renders with the new session
+    // Keep pending true while we hard-navigate — page unmount clears state,
+    // user never sees the button un-grey (which would suggest failure).
     window.location.href = nextPath;
   }
 
@@ -64,7 +67,11 @@ function SignInContent() {
             autoComplete="email"
             placeholder="you@example.com"
             value={email}
-            onChange={(e) => setEmail(e.target.value)}
+            onChange={(e) => {
+              setEmail(e.target.value);
+              if (invalidCreds) setInvalidCreds(false);
+            }}
+            aria-invalid={invalidCreds || undefined}
             className="h-11"
           />
         </div>
@@ -87,7 +94,11 @@ function SignInContent() {
               autoComplete="current-password"
               placeholder="••••••••"
               value={password}
-              onChange={(e) => setPassword(e.target.value)}
+              onChange={(e) => {
+                setPassword(e.target.value);
+                if (invalidCreds) setInvalidCreds(false);
+              }}
+              aria-invalid={invalidCreds || undefined}
               className="h-11 pr-10"
             />
             <button

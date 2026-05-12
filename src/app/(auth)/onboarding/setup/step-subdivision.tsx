@@ -81,12 +81,14 @@ export function StepSubdivision({
 
   return (
     <div>
-      <h2 className="text-lg font-semibold text-foreground">
-        Create your first subdivision
-      </h2>
-      <p className="mt-1 text-sm text-muted-foreground mb-6">
-        You can add more subdivisions later from the dashboard.
-      </p>
+      <div className="text-center mb-6">
+        <h2 className="text-lg font-semibold text-foreground">
+          Create your first subdivision
+        </h2>
+        <p className="mt-1 text-sm text-muted-foreground">
+          You can add more subdivisions later from the dashboard.
+        </p>
+      </div>
 
       <form onSubmit={handleSubmit(onSubmit)} autoComplete="off" className="space-y-4">
         <div className="space-y-1.5">

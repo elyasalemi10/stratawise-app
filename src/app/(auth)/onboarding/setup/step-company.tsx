@@ -5,16 +5,26 @@ import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { toast } from "sonner";
 import Link from "next/link";
+import { Loader2 } from "lucide-react";
 import { companySchema, type CompanyFormValues } from "@/lib/validations/onboarding-setup";
 import { createCompany } from "./actions";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Checkbox } from "@/components/ui/checkbox";
-import { Spinner } from "@/components/ui/spinner";
 import { PhoneInput } from "@/components/shared/phone-input";
 import { LogoUpload } from "@/components/shared/logo-upload";
 import { getSupabaseClient } from "@/lib/supabase";
+
+// Format 11 raw digits as "XX XXX XXX XXX"
+function formatAbn(digits: string): string {
+  const d = digits.replace(/\D/g, "").slice(0, 11);
+  if (d.length === 0) return "";
+  if (d.length <= 2) return d;
+  if (d.length <= 5) return `${d.slice(0, 2)} ${d.slice(2)}`;
+  if (d.length <= 8) return `${d.slice(0, 2)} ${d.slice(2, 5)} ${d.slice(5)}`;
+  return `${d.slice(0, 2)} ${d.slice(2, 5)} ${d.slice(5, 8)} ${d.slice(8)}`;
+}
 
 export function StepCompany({ onNext }: { onNext: () => void }) {
   const [userEmail, setUserEmail] = useState("");
@@ -23,14 +33,15 @@ export function StepCompany({ onNext }: { onNext: () => void }) {
       setUserEmail(data.user?.email ?? "");
     });
   }, []);
-  const clerkEmail = userEmail; // legacy var name — pre-fills the company email field
 
   const [pending, setPending] = useState(false);
   const [logoUrl, setLogoUrl] = useState("");
   const [phone, setPhone] = useState("+61 ");
-  const [termsAccepted, setTermsAccepted] = useState(false);
-  const [privacyAccepted, setPrivacyAccepted] = useState(false);
-  const [consentError, setConsentError] = useState("");
+  const [phoneInvalid, setPhoneInvalid] = useState(false);
+  const [abn, setAbn] = useState("");
+  const [abnInvalid, setAbnInvalid] = useState(false);
+  const [agreed, setAgreed] = useState(false);
+  const [consentError, setConsentError] = useState(false);
 
   const {
     register,
@@ -42,44 +53,59 @@ export function StepCompany({ onNext }: { onNext: () => void }) {
   });
 
   async function onSubmit(data: CompanyFormValues) {
-    if (!termsAccepted || !privacyAccepted) {
-      setConsentError("You must accept both the Terms of Service and Privacy Policy to continue.");
+    if (!agreed) {
+      setConsentError(true);
+      toast.error("Accept the terms to continue.");
       return;
     }
-    setConsentError("");
+    setConsentError(false);
 
     if (!phone || phone.replace(/\s/g, "").length < 6) {
+      setPhoneInvalid(true);
       toast.error("Please enter a valid phone number");
       return;
     }
+    setPhoneInvalid(false);
+
+    // ABN — optional but if present must be exactly 11 digits
+    const abnDigits = abn.replace(/\D/g, "");
+    if (abnDigits.length > 0 && abnDigits.length !== 11) {
+      setAbnInvalid(true);
+      toast.error("ABN must be 11 digits.");
+      return;
+    }
+    setAbnInvalid(false);
 
     setPending(true);
     const result = await createCompany({
       name: data.name,
-      abn: data.abn,
+      abn: abnDigits || undefined,
       address: data.address,
       phone: phone.trim(),
-      email: clerkEmail,
+      email: userEmail,
       logo_url: logoUrl || undefined,
     });
-    setPending(false);
 
     if (result.error) {
+      setPending(false);
       toast.error(result.error);
       return;
     }
 
+    // Keep pending true while we navigate — no flash of un-greyed button
     onNext();
   }
 
   return (
     <div>
-      <h2 className="text-lg font-semibold text-foreground">
-        Tell us about your management company
-      </h2>
-      <p className="mt-1 text-sm text-muted-foreground mb-6">
-        This information appears on all documents sent to lot owners.
-      </p>
+      <div className="text-center mb-8">
+        <h2 className="text-lg font-semibold text-foreground">
+          Tell us about your management company
+        </h2>
+        <p className="mt-1 text-sm text-muted-foreground">
+          This information appears on all documents sent to lot owners.
+        </p>
+      </div>
 
       <form onSubmit={handleSubmit(onSubmit)} autoComplete="off" className="space-y-4">
         <div className="space-y-1.5">
@@ -109,18 +135,38 @@ export function StepCompany({ onNext }: { onNext: () => void }) {
             id="company-abn"
             placeholder="12 345 678 901"
             autoComplete="off"
-            {...register("abn")}
+            inputMode="numeric"
+            value={abn}
+            onChange={(e) => {
+              setAbn(formatAbn(e.target.value));
+              if (abnInvalid) setAbnInvalid(false);
+            }}
+            onPaste={(e) => {
+              e.preventDefault();
+              const pasted = e.clipboardData.getData("text");
+              setAbn(formatAbn(pasted));
+              if (abnInvalid) setAbnInvalid(false);
+            }}
+            // 14 = 11 digits + 3 separating spaces — physically caps typing length
+            maxLength={14}
+            aria-invalid={abnInvalid || undefined}
           />
         </div>
 
         <div className="space-y-1.5">
-          <Label htmlFor="company-address">Address</Label>
+          <Label htmlFor="company-address">
+            Address <span className="text-destructive">*</span>
+          </Label>
           <Input
             id="company-address"
             placeholder="123 Main Street, Melbourne VIC 3000"
             autoComplete="off"
+            aria-invalid={!!errors.address}
             {...register("address")}
           />
+          {errors.address && (
+            <p className="text-xs text-destructive mt-1">{errors.address.message}</p>
+          )}
         </div>
 
         <div className="space-y-1.5">
@@ -130,54 +176,49 @@ export function StepCompany({ onNext }: { onNext: () => void }) {
           <PhoneInput
             id="company-phone"
             value={phone}
-            onChange={setPhone}
+            onChange={(v) => {
+              setPhone(v);
+              if (phoneInvalid) setPhoneInvalid(false);
+            }}
+            error={phoneInvalid}
           />
         </div>
 
-        {/* T&Cs consent */}
-        <div className="border-t border-border pt-4 mt-6 space-y-3">
+        {/* Single consent checkbox — covers both ToS and Privacy. */}
+        <div className="border-t border-border pt-4 mt-6">
           <div className="flex items-start gap-3">
             <Checkbox
-              id="terms"
-              checked={termsAccepted}
+              id="agree"
+              checked={agreed}
               onCheckedChange={(checked) => {
-                setTermsAccepted(checked === true);
-                if (checked) setConsentError("");
+                setAgreed(checked === true);
+                if (checked) setConsentError(false);
               }}
+              aria-invalid={consentError || undefined}
             />
-            <Label htmlFor="terms" className="text-sm text-foreground leading-snug cursor-pointer font-normal">
+            <Label htmlFor="agree" className="text-sm text-foreground leading-snug cursor-pointer font-normal">
               I have read and agree to the{" "}
               <Link href="/legal/terms" target="_blank" className="text-primary hover:underline">
                 Terms of Service
-              </Link>
-            </Label>
-          </div>
-
-          <div className="flex items-start gap-3">
-            <Checkbox
-              id="privacy"
-              checked={privacyAccepted}
-              onCheckedChange={(checked) => {
-                setPrivacyAccepted(checked === true);
-                if (checked) setConsentError("");
-              }}
-            />
-            <Label htmlFor="privacy" className="text-sm text-foreground leading-snug cursor-pointer font-normal">
-              I have read and agree to the{" "}
+              </Link>{" "}
+              and{" "}
               <Link href="/legal/privacy" target="_blank" className="text-primary hover:underline">
                 Privacy Policy
               </Link>
+              .
             </Label>
           </div>
-
           {consentError && (
-            <p className="text-xs text-destructive">{consentError}</p>
+            <p className="mt-2 text-xs text-destructive">
+              You must accept the terms to continue.
+            </p>
           )}
         </div>
 
         <div className="flex justify-end pt-2">
           <Button type="submit" disabled={pending}>
-            {pending ? <><Spinner className="mr-2" /> Continue</> : "Continue"}
+            {pending && <Loader2 className="size-4 animate-spin" />}
+            Continue
           </Button>
         </div>
       </form>

@@ -103,7 +103,7 @@ export function LogoUpload({ value, onChange }: LogoUploadProps) {
       <input
         ref={inputRef}
         type="file"
-        accept="image/png,image/jpeg,image/svg+xml,image/webp"
+        accept="image/png,image/jpeg,image/svg+xml,image/webp,image/avif,image/gif,image/bmp,image/heic,image/heif,.png,.jpg,.jpeg,.svg,.webp,.avif,.gif,.bmp,.heic,.heif"
         className="hidden"
         onChange={(e) => {
           const file = e.target.files?.[0];

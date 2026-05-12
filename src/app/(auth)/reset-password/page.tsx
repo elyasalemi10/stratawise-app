@@ -14,30 +14,37 @@ export default function ResetPasswordPage() {
   const [confirm, setConfirm] = useState("");
   const [pending, setPending] = useState(false);
   const [showPassword, setShowPassword] = useState(false);
+  const [pwInvalid, setPwInvalid] = useState(false);
+  const [confirmInvalid, setConfirmInvalid] = useState(false);
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
 
-    if (password.length < 8) {
-      toast.error("Password must be at least 8 characters");
+    const PASSWORD_RULE = /^(?=.*[A-Za-z])(?=.*[^A-Za-z0-9]).{8,}$/;
+    if (!PASSWORD_RULE.test(password)) {
+      setPwInvalid(true);
+      toast.error("Password too weak. 8+ characters, one letter, one special symbol.");
       return;
     }
     if (password !== confirm) {
+      setConfirmInvalid(true);
       toast.error("Passwords don't match");
       return;
     }
 
     setPending(true);
+    setPwInvalid(false);
+    setConfirmInvalid(false);
     const supabase = getSupabaseClient();
     const { error } = await supabase.auth.updateUser({ password });
-    setPending(false);
 
     if (error) {
+      setPending(false);
+      setPwInvalid(true);
       toast.error(error.message);
       return;
     }
 
-    toast.success("Password updated. Sign in with your new password.");
     // Sign out to force a fresh sign-in with the new password
     await supabase.auth.signOut();
     window.location.href = "/sign-in";
@@ -66,7 +73,11 @@ export default function ResetPasswordPage() {
               autoComplete="new-password"
               placeholder="At least 8 characters"
               value={password}
-              onChange={(e) => setPassword(e.target.value)}
+              onChange={(e) => {
+                setPassword(e.target.value);
+                if (pwInvalid) setPwInvalid(false);
+              }}
+              aria-invalid={pwInvalid || undefined}
               className="h-11 pr-10"
             />
             <button
@@ -91,7 +102,11 @@ export default function ResetPasswordPage() {
             autoComplete="new-password"
             placeholder="Repeat the password"
             value={confirm}
-            onChange={(e) => setConfirm(e.target.value)}
+            onChange={(e) => {
+              setConfirm(e.target.value);
+              if (confirmInvalid) setConfirmInvalid(false);
+            }}
+            aria-invalid={confirmInvalid || undefined}
             className="h-11"
           />
         </div>

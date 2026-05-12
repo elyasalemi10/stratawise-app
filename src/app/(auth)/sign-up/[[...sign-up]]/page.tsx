@@ -75,22 +75,35 @@ function RoleSelector({ onSelect }: { onSelect: (role: Role) => void }) {
   );
 }
 
+// Password policy — enforced on sign-up and on reset-password.
+// 8+ chars, at least one letter, at least one special character.
+const PASSWORD_RULE = /^(?=.*[A-Za-z])(?=.*[^A-Za-z0-9]).{8,}$/;
+const PASSWORD_HINT = "8+ characters, one letter, one special symbol.";
+
 function SignUpForm({ role, inviteToken }: { role: Role; inviteToken: string | null }) {
+  const emailLabel = role === "strata_manager" ? "Business email" : "Email";
+
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [firstName, setFirstName] = useState("");
   const [lastName, setLastName] = useState("");
   const [pending, setPending] = useState(false);
   const [showPassword, setShowPassword] = useState(false);
+  const [emailInvalid, setEmailInvalid] = useState(false);
+  const [passwordInvalid, setPasswordInvalid] = useState(false);
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
-    if (password.length < 8) {
-      toast.error("Password must be at least 8 characters");
+
+    if (!PASSWORD_RULE.test(password)) {
+      setPasswordInvalid(true);
+      toast.error(`Password too weak. ${PASSWORD_HINT}`);
       return;
     }
 
     setPending(true);
+    setEmailInvalid(false);
+    setPasswordInvalid(false);
 
     const supabase = getSupabaseClient();
     const { data, error } = await supabase.auth.signUp({
@@ -109,6 +122,9 @@ function SignUpForm({ role, inviteToken }: { role: Role; inviteToken: string | n
     setPending(false);
 
     if (error) {
+      // Most signup failures are email-related ("already registered",
+      // "invalid email", etc.) — flag that field as invalid for a visual cue.
+      setEmailInvalid(true);
       toast.error(error.message);
       return;
     }
@@ -167,7 +183,7 @@ function SignUpForm({ role, inviteToken }: { role: Role; inviteToken: string | n
         </div>
 
         <div className="space-y-1.5">
-          <Label htmlFor="email">Email</Label>
+          <Label htmlFor="email">{emailLabel}</Label>
           <Input
             id="email"
             type="email"
@@ -175,7 +191,11 @@ function SignUpForm({ role, inviteToken }: { role: Role; inviteToken: string | n
             autoComplete="email"
             placeholder="you@example.com"
             value={email}
-            onChange={(e) => setEmail(e.target.value)}
+            onChange={(e) => {
+              setEmail(e.target.value);
+              if (emailInvalid) setEmailInvalid(false);
+            }}
+            aria-invalid={emailInvalid || undefined}
             className="h-11"
           />
         </div>
@@ -191,19 +211,24 @@ function SignUpForm({ role, inviteToken }: { role: Role; inviteToken: string | n
               autoComplete="new-password"
               placeholder="At least 8 characters"
               value={password}
-              onChange={(e) => setPassword(e.target.value)}
+              onChange={(e) => {
+                setPassword(e.target.value);
+                if (passwordInvalid) setPasswordInvalid(false);
+              }}
+              aria-invalid={passwordInvalid || undefined}
               className="h-11 pr-10"
             />
             <button
               type="button"
               onClick={() => setShowPassword((s) => !s)}
-              className="absolute right-2.5 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground cursor-pointer p-1"
+              className="absolute right-2.5 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground p-1"
               aria-label={showPassword ? "Hide password" : "Show password"}
               tabIndex={-1}
             >
               {showPassword ? <EyeOff className="size-4" /> : <Eye className="size-4" />}
             </button>
           </div>
+          <p className="text-xs text-muted-foreground">{PASSWORD_HINT}</p>
         </div>
 
         <Button

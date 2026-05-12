@@ -6,7 +6,6 @@ import { cn } from "@/lib/utils";
 const steps = [
   { number: 1, label: "Company" },
   { number: 2, label: "Subdivision" },
-  { number: 3, label: "Done" },
 ];
 
 export function StepIndicator({ currentStep }: { currentStep: number }) {
@@ -19,9 +18,9 @@ export function StepIndicator({ currentStep }: { currentStep: number }) {
               className={cn(
                 "flex h-8 w-8 shrink-0 items-center justify-center rounded-full text-sm font-medium transition-colors",
                 step.number < currentStep
-                  ? "bg-[hsl(160,100%,37%)] text-white"
+                  ? "bg-primary text-primary-foreground"
                   : step.number === currentStep
-                    ? "bg-primary text-white"
+                    ? "bg-primary text-primary-foreground"
                     : "border-2 border-dashed border-border bg-background text-muted-foreground"
               )}
             >
@@ -36,7 +35,7 @@ export function StepIndicator({ currentStep }: { currentStep: number }) {
                 className={cn(
                   "mx-2 flex-1 border-t-2",
                   step.number < currentStep
-                    ? "border-solid border-[hsl(160,100%,37%)]"
+                    ? "border-solid border-primary"
                     : "border-dashed border-border"
                 )}
               />
@@ -53,7 +52,7 @@ export function StepIndicator({ currentStep }: { currentStep: number }) {
               step.number === currentStep
                 ? "font-medium text-foreground"
                 : step.number < currentStep
-                  ? "font-medium text-[hsl(160,100%,37%)]"
+                  ? "font-medium text-primary"
                   : "text-muted-foreground"
             )}
           >

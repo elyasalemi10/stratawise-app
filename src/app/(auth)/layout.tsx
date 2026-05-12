@@ -22,10 +22,9 @@ export default function AuthLayout({
       </div>
 
       {/* Right panel — white bg. The favicon + form sit in a single
-          horizontally-centred block (mx-auto), so they always align as
-          one column regardless of viewport width. */}
-      <div className="flex w-full lg:w-1/2 flex-col bg-card px-6 pt-28 pb-12">
-        <div className="mx-auto flex w-full max-w-lg flex-col items-center">
+          horizontally-centred, vertically-centred block. */}
+      <div className="flex w-full lg:w-1/2 flex-col items-center justify-center bg-card px-6 py-12">
+        <div className="flex w-full max-w-lg flex-col items-center">
           <Image
             src="/stratawise-favicon.webp"
             alt="StrataWise"

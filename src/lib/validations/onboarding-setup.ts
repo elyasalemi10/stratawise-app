@@ -2,8 +2,16 @@ import { z } from "zod";
 
 export const companySchema = z.object({
   name: z.string().min(2, "Company name is required"),
-  abn: z.string().optional(),
-  address: z.string().optional(),
+  // ABN is optional but if provided must be 11 digits (after stripping
+  // whitespace). The UI strips for us, so we accept either form here.
+  abn: z
+    .string()
+    .optional()
+    .refine(
+      (val) => !val || val.replace(/\D/g, "").length === 11,
+      { message: "ABN must be 11 digits" },
+    ),
+  address: z.string().min(3, "Address is required"),
 });
 
 export type CompanyFormValues = z.infer<typeof companySchema>;

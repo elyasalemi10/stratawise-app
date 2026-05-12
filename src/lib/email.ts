@@ -70,7 +70,7 @@ export async function sendVerificationCodeEmail({
           ${greeting} use the code below to verify your StrataWise account. It expires in 10 minutes.
         </p>
         <div style="background:#FAF7F0;border:1px solid #E5E0D3;border-radius:6px;padding:24px;margin:0 0 24px;text-align:center;">
-          <p style="margin:0;font-size:32px;font-weight:700;letter-spacing:8px;color:#0E314C;font-family:'SF Mono','Courier New',monospace;">${code}</p>
+          <p style="margin:0;font-size:40px;font-weight:700;letter-spacing:14px;color:#0E314C;font-family:'Geist',-apple-system,BlinkMacSystemFont,'Segoe UI',Helvetica,Arial,sans-serif;font-variant-numeric:tabular-nums;">${code}</p>
         </div>
         <p style="margin:24px 0 0;color:#4A5868;font-size:12px;line-height:1.5;">
           If you didn't request this code, you can safely ignore this email.

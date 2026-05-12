@@ -58,7 +58,7 @@ export const colors = {
 // ============================================
 
 export const fontFamily = {
-  sans: ["Inter", "system-ui", "-apple-system", "sans-serif"],
+  sans: ["Geist", "system-ui", "-apple-system", "sans-serif"],
 } as const;
 
 export const typography = {

@@ -54,7 +54,7 @@ export async function validateLogoFile(
     return {
       ok: false,
       errorCode: "INVALID_TYPE",
-      error: `Logo must be PNG, JPG, or SVG. Received ${mimeType}.`,
+      error: `Logo must be PNG, JPG, SVG, WebP, AVIF, GIF, BMP or HEIC. Received ${mimeType}.`,
     };
   }
   if (byteSize > MAX_LOGO_BYTES) {
@@ -64,8 +64,9 @@ export async function validateLogoFile(
       error: `Logo must be under ${MAX_LOGO_BYTES / 1024 / 1024}MB. Received ${(byteSize / 1024 / 1024).toFixed(2)}MB.`,
     };
   }
-  // SVG: skip raster dimension probe.
-  if (mimeType === "image/svg+xml") {
+  // Vector or formats image-size can't decode reliably: skip raster probe.
+  // SVG is vector; HEIC/HEIF aren't supported by the image-size lib.
+  if (mimeType === "image/svg+xml" || mimeType === "image/heic" || mimeType === "image/heif") {
     return { ok: true };
   }
   let dimensions: { width?: number; height?: number };
@@ -176,7 +177,13 @@ export async function updateCompanyLogo(
 
 function mimeToExt(mimeType: string): string {
   if (mimeType === "image/png") return "png";
-  if (mimeType === "image/jpeg") return "jpg";
+  if (mimeType === "image/jpeg" || mimeType === "image/jpg") return "jpg";
   if (mimeType === "image/svg+xml") return "svg";
+  if (mimeType === "image/webp") return "webp";
+  if (mimeType === "image/avif") return "avif";
+  if (mimeType === "image/gif") return "gif";
+  if (mimeType === "image/bmp") return "bmp";
+  if (mimeType === "image/heic") return "heic";
+  if (mimeType === "image/heif") return "heif";
   return "bin";
 }

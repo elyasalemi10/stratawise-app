@@ -5,7 +5,9 @@ import { Suspense } from "react";
 import { StepIndicator } from "./step-indicator";
 import { StepCompany } from "./step-company";
 import { StepSubdivision } from "./step-subdivision";
-import { StepComplete } from "./step-complete";
+
+// Step 3 ("complete" page) removed — after creating the subdivision we
+// land the user directly on the dashboard. The wizard is now two steps.
 
 function SetupWizardContent() {
   const router = useRouter();
@@ -24,11 +26,10 @@ function SetupWizardContent() {
         {step === 1 && <StepCompany onNext={() => goToStep(2)} />}
         {step === 2 && (
           <StepSubdivision
-            onNext={() => goToStep(3)}
+            onNext={() => router.push("/dashboard")}
             onBack={() => goToStep(1)}
           />
         )}
-        {step === 3 && <StepComplete />}
       </div>
     </div>
   );
