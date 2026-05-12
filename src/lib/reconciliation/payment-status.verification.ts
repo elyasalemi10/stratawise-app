@@ -83,7 +83,7 @@ async function createFixture(): Promise<Fixture> {
   const { data: profile } = await supabase
     .from("profiles")
     .insert({
-      clerk_id: clerkId,
+      auth_user_id: clerkId,
       email,
       first_name: "PS",
       last_name: "Verify",

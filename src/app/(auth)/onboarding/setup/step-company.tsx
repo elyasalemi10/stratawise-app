@@ -1,7 +1,6 @@
 "use client";
 
-import { useState } from "react";
-import { useUser } from "@clerk/nextjs";
+import { useState, useEffect } from "react";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { toast } from "sonner";
@@ -15,10 +14,16 @@ import { Checkbox } from "@/components/ui/checkbox";
 import { Spinner } from "@/components/ui/spinner";
 import { PhoneInput } from "@/components/shared/phone-input";
 import { LogoUpload } from "@/components/shared/logo-upload";
+import { getSupabaseClient } from "@/lib/supabase";
 
 export function StepCompany({ onNext }: { onNext: () => void }) {
-  const { user } = useUser();
-  const clerkEmail = user?.primaryEmailAddress?.emailAddress ?? "";
+  const [userEmail, setUserEmail] = useState("");
+  useEffect(() => {
+    getSupabaseClient().auth.getUser().then(({ data }) => {
+      setUserEmail(data.user?.email ?? "");
+    });
+  }, []);
+  const clerkEmail = userEmail; // legacy var name — pre-fills the company email field
 
   const [pending, setPending] = useState(false);
   const [logoUrl, setLogoUrl] = useState("");

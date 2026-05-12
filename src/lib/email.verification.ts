@@ -77,7 +77,7 @@ async function createFixture(): Promise<FixtureContext> {
   const { data: manager } = await supabase
     .from("profiles")
     .insert({
-      clerk_id: `${VERIFY_MARKER}_MGR_${runId}`,
+      auth_user_id: `${VERIFY_MARKER}_MGR_${runId}`,
       email: `${VERIFY_MARKER.toLowerCase()}${runId}_mgr@email.test`,
       first_name: "Email",
       last_name: "TestMgr",
@@ -92,7 +92,7 @@ async function createFixture(): Promise<FixtureContext> {
   const { data: owner } = await supabase
     .from("profiles")
     .insert({
-      clerk_id: `${VERIFY_MARKER}_OWNER_${runId}`,
+      auth_user_id: `${VERIFY_MARKER}_OWNER_${runId}`,
       email: `${VERIFY_MARKER.toLowerCase()}${runId}_owner@email.test`,
       first_name: "Email",
       last_name: "TestOwner",
@@ -705,11 +705,11 @@ async function cleanupCompany(companyId: string) {
     .eq("management_company_id", companyId);
   const profileIds = (profileRows ?? []).map((p) => (p as { id: string }).id);
 
-  // Owner profile (lot_owner role) is not management_company-scoped — find by clerk_id pattern.
+  // Owner profile (lot_owner role) is not management_company-scoped — find by auth_user_id pattern.
   const { data: orphanOwners } = await supabase
     .from("profiles")
     .select("id")
-    .like("clerk_id", `${VERIFY_MARKER}_OWNER_%`);
+    .like("auth_user_id", `${VERIFY_MARKER}_OWNER_%`);
   const orphanOwnerIds = (orphanOwners ?? []).map((p) => (p as { id: string }).id);
   const allProfileIds = [...profileIds, ...orphanOwnerIds];
 

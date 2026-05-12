@@ -1,7 +1,6 @@
 "use server";
 
-import { auth } from "@clerk/nextjs/server";
-import { redirect } from "next/navigation";
+import { getAuthUserId } from "@/lib/auth";import { redirect } from "next/navigation";
 import { headers } from "next/headers";
 import { createServerClient } from "@/lib/supabase";
 import { ensureProfile } from "@/lib/auth";
@@ -11,7 +10,7 @@ const TERMS_VERSION = "1.0";
 const PRIVACY_VERSION = "1.0";
 
 export async function recordConsent(formData: FormData) {
-  const { userId } = await auth();
+  const userId = await getAuthUserId();
   if (!userId) {
     throw new Error("Not authenticated");
   }
@@ -77,7 +76,7 @@ export async function recordConsent(formData: FormData) {
 }
 
 export async function checkExistingConsent(): Promise<boolean> {
-  const { userId } = await auth();
+  const userId = await getAuthUserId();
   if (!userId) return false;
 
   // Ensure profile exists before checking consent

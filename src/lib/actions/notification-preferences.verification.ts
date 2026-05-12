@@ -74,7 +74,7 @@ async function createFixture(): Promise<FixtureContext> {
   const { data: a } = await supabase
     .from("profiles")
     .insert({
-      clerk_id: `${VERIFY_MARKER}_A_${runId}`,
+      auth_user_id: `${VERIFY_MARKER}_A_${runId}`,
       email: `${VERIFY_MARKER.toLowerCase()}${runId}_a@np.test`,
       first_name: "NP",
       last_name: "TestA",
@@ -85,7 +85,7 @@ async function createFixture(): Promise<FixtureContext> {
   const { data: b } = await supabase
     .from("profiles")
     .insert({
-      clerk_id: `${VERIFY_MARKER}_B_${runId}`,
+      auth_user_id: `${VERIFY_MARKER}_B_${runId}`,
       email: `${VERIFY_MARKER.toLowerCase()}${runId}_b@np.test`,
       first_name: "NP",
       last_name: "TestB",
@@ -252,7 +252,7 @@ async function cleanupMarker() {
   const { data: profiles } = await supabase
     .from("profiles")
     .select("id")
-    .like("clerk_id", `${VERIFY_MARKER}%`);
+    .like("auth_user_id", `${VERIFY_MARKER}%`);
   const ids = (profiles ?? []).map((p) => (p as { id: string }).id);
   if (ids.length > 0) {
     await supabase.from("notification_preferences").delete().in("profile_id", ids);

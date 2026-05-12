@@ -1,31 +1,37 @@
 import { createClient, type SupabaseClient } from "@supabase/supabase-js";
+import { createBrowserClient as ssrCreateBrowserClient } from "@supabase/ssr";
 
 /**
- * Browser client — uses the anon key.
- * Safe for client components. Respects RLS policies.
- * Lazily initialized to avoid build-time errors when env vars aren't set.
+ * Browser client — RLS-aware, reads auth from browser cookies via @supabase/ssr.
+ * Use in client components for queries that should respect the signed-in user.
+ * Lazily initialized; safe to call repeatedly.
  */
 let _browserClient: SupabaseClient | null = null;
 
 export function getSupabaseClient() {
   if (!_browserClient) {
-    _browserClient = createClient(
+    _browserClient = ssrCreateBrowserClient(
       process.env.NEXT_PUBLIC_SUPABASE_URL!,
-      process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
+      process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
     );
   }
   return _browserClient;
 }
 
 /**
- * Server client — uses the service role key.
- * Bypasses RLS. Use ONLY in server actions, API routes, and Trigger.dev jobs.
- * NEVER expose this client to the browser.
- * Creates a new client per call (no singleton) to avoid shared state across requests.
+ * Admin client — uses the service-role key, BYPASSES RLS.
+ * Use ONLY in trusted server contexts: system operations, webhook handlers,
+ * trigger jobs, and back-office actions where the app already validated
+ * authorization at a higher level (via requireRole / requireSubdivisionAccess).
+ *
+ * NEVER expose this client to the browser. New per-call (no singleton).
+ *
+ * SSR cookie-aware server client lives in supabase-server.ts so this file
+ * stays client-safe (next/headers is server-only).
  */
 export function createServerClient() {
   return createClient(
     process.env.NEXT_PUBLIC_SUPABASE_URL!,
-    process.env.SUPABASE_SERVICE_ROLE_KEY!
+    process.env.SUPABASE_SERVICE_ROLE_KEY!,
   );
 }

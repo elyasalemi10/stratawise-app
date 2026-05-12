@@ -11,7 +11,7 @@
  *   npx tsx src/lib/reconciliation/duplicate-detection.verification.ts --cleanup
  *
  * Test data is tagged with VERIFY_MARKER on management_companies.name and
- * profiles.email/clerk_id, so --cleanup never touches real data.
+ * profiles.email/auth_user_id, so --cleanup never touches real data.
  */
 
 import { config } from "dotenv";
@@ -116,7 +116,7 @@ async function createFixture(): Promise<Fixture> {
   const { data: profile } = await supabase
     .from("profiles")
     .insert({
-      clerk_id: VERIFY_CLERK_ID,
+      auth_user_id: VERIFY_CLERK_ID,
       email,
       first_name: "Dup",
       last_name: "Verify",

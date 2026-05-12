@@ -1,12 +1,11 @@
 import { redirect } from "next/navigation";
-import { auth } from "@clerk/nextjs/server";
-import { createServerClient } from "@/lib/supabase";
+import { getAuthUserId } from "@/lib/auth";import { createServerClient } from "@/lib/supabase";
 import { ensureProfile } from "@/lib/auth";
 
 export const dynamic = "force-dynamic";
 
 export default async function OnboardingPage() {
-  const { userId } = await auth();
+  const userId = await getAuthUserId();
   if (!userId) redirect("/sign-in");
 
   await ensureProfile();
@@ -15,7 +14,7 @@ export default async function OnboardingPage() {
   const { data: profile } = await supabase
     .from("profiles")
     .select("id, role, management_company_id")
-    .eq("clerk_id", userId)
+    .eq("auth_user_id", userId)
     .single();
 
   // Lot owners should go to the lot owner onboarding, not the company setup

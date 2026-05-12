@@ -1,8 +1,8 @@
 "use server";
 
-import { auth, clerkClient } from "@clerk/nextjs/server";
 import { createServerClient } from "@/lib/supabase";
-import { getCurrentProfile } from "@/lib/auth";
+import { createSupabaseServerClient } from "@/lib/supabase-server";
+import { getCurrentProfile, getAuthUserId } from "@/lib/auth";
 import { profileSchema } from "@/lib/validations/settings";
 import { uploadObject } from "@/lib/storage/r2";
 
@@ -10,7 +10,7 @@ export async function updateProfile(formData: {
   phone?: string;
   postal_address?: string;
 }) {
-  const { userId } = await auth();
+  const userId = await getAuthUserId();
   if (!userId) throw new Error("Not authenticated");
 
   const parsed = profileSchema.safeParse(formData);
@@ -26,7 +26,7 @@ export async function updateProfile(formData: {
       phone: parsed.data.phone || null,
       postal_address: parsed.data.postal_address || null,
     })
-    .eq("clerk_id", userId);
+    .eq("auth_user_id", userId);
 
   if (error) {
     console.error("Failed to update profile:", error);
@@ -37,7 +37,7 @@ export async function updateProfile(formData: {
 }
 
 export async function updateAvatar(avatarUrl: string) {
-  const { userId } = await auth();
+  const userId = await getAuthUserId();
   if (!userId) throw new Error("Not authenticated");
 
   const supabase = createServerClient();
@@ -45,7 +45,7 @@ export async function updateAvatar(avatarUrl: string) {
   const { error } = await supabase
     .from("profiles")
     .update({ avatar_url: avatarUrl || null })
-    .eq("clerk_id", userId);
+    .eq("auth_user_id", userId);
 
   if (error) {
     console.error("Failed to update avatar:", error);
@@ -56,21 +56,28 @@ export async function updateAvatar(avatarUrl: string) {
 }
 
 export async function changePassword(currentPassword: string, newPassword: string) {
-  const { userId } = await auth();
-  if (!userId) throw new Error("Not authenticated");
+  const supabase = await createSupabaseServerClient();
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user?.email) throw new Error("Not authenticated");
 
-  try {
-    const client = await clerkClient();
-    await client.users.verifyPassword({ userId, password: currentPassword });
-    await client.users.updateUser(userId, { password: newPassword });
-    return { success: true };
-  } catch (err: unknown) {
-    const message = err instanceof Error ? err.message : "Failed to change password";
-    if (message.includes("password")) {
-      return { error: "Current password is incorrect." };
-    }
-    return { error: "Failed to change password. Please try again." };
+  // Verify current password by attempting re-auth. Supabase doesn't expose a
+  // "verifyPassword" — signInWithPassword on the existing email is the
+  // documented pattern. It returns an error on wrong password without
+  // disturbing the existing session.
+  const { error: verifyError } = await supabase.auth.signInWithPassword({
+    email: user.email,
+    password: currentPassword,
+  });
+  if (verifyError) {
+    return { error: "Current password is incorrect." };
   }
+
+  const { error: updateError } = await supabase.auth.updateUser({ password: newPassword });
+  if (updateError) {
+    return { error: updateError.message || "Failed to change password. Please try again." };
+  }
+
+  return { success: true };
 }
 
 // ─── Company settings ──────────────────────────────────────

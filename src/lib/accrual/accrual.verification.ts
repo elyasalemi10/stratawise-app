@@ -100,7 +100,7 @@ async function createManagerProfile(companyId: string): Promise<string> {
   const { data, error } = await supabase
     .from("profiles")
     .insert({
-      clerk_id: `${VERIFY_MARKER}_MGR_${runId}`,
+      auth_user_id: `${VERIFY_MARKER}_MGR_${runId}`,
       email: `${VERIFY_MARKER.toLowerCase()}${runId}_mgr@accrual.test`,
       first_name: "Accrual",
       last_name: "TestMgr",

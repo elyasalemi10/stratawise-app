@@ -228,7 +228,7 @@ async function createFixture(): Promise<Fixture> {
   const { data: profile, error: profileErr } = await supabase
     .from("profiles")
     .insert({
-      clerk_id: VERIFY_CLERK_ID,
+      auth_user_id: VERIFY_CLERK_ID,
       email: profileEmail,
       first_name: "Basiq",
       last_name: "Verify",

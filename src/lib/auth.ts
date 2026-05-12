@@ -1,8 +1,8 @@
 "use server";
 
 import { cache } from "react";
-import { auth, currentUser } from "@clerk/nextjs/server";
 import { createServerClient } from "@/lib/supabase";
+import { createSupabaseServerClient } from "@/lib/supabase-server";
 import { _verificationUserIdResolver } from "@/lib/auth-resolver";
 
 const NOTIFICATION_TYPES = [
@@ -22,7 +22,7 @@ const NOTIFICATION_TYPES = [
 
 export interface Profile {
   id: string;
-  clerk_id: string;
+  auth_user_id: string | null;
   email: string;
   first_name: string | null;
   last_name: string | null;
@@ -37,26 +37,43 @@ export interface Profile {
   updated_at: string;
 }
 
+// ─── Resolve current Supabase Auth user id ────────────────────
+
+/**
+ * Returns the current Supabase Auth user's UUID, or null if not signed in.
+ * Verification suites short-circuit via _verificationUserIdResolver so they
+ * can run server actions without a real signed-in user. Replaces Clerk's
+ * `(await auth()).userId` pattern.
+ */
+export async function getAuthUserId(): Promise<string | null> {
+  if (_verificationUserIdResolver) {
+    return await _verificationUserIdResolver();
+  }
+  const supabase = await createSupabaseServerClient();
+  const { data: { user } } = await supabase.auth.getUser();
+  return user?.id ?? null;
+}
+
 // ─── getCurrentProfile ──────────────────────────────────────────
 
 /**
  * Fetches the current user's full profile from Supabase.
  * Returns null if not authenticated or profile doesn't exist.
  * Wrapped with React cache() — deduplicated within a single request.
- * Multiple calls in layout + page + server actions only hit DB once.
  */
 export const getCurrentProfile = cache(async (): Promise<Profile | null> => {
-  const userId = _verificationUserIdResolver
-    ? await _verificationUserIdResolver()
-    : (await auth()).userId;
-  if (!userId) return null;
+  const authUserId = await getAuthUserId();
+  if (!authUserId) return null;
 
+  // Admin client — we already validated the user is signed in via
+  // Supabase Auth. RLS isn't needed here since we're scoping by
+  // auth_user_id explicitly.
   const supabase = createServerClient();
 
   const { data } = await supabase
     .from("profiles")
     .select("*")
-    .eq("clerk_id", userId)
+    .eq("auth_user_id", authUserId)
     .single();
 
   return (data as Profile) ?? null;
@@ -64,13 +81,8 @@ export const getCurrentProfile = cache(async (): Promise<Profile | null> => {
 
 // ─── requireRole ────────────────────────────────────────────────
 
-/**
- * Ensures the current user has one of the allowed roles.
- * Throws an error if not authenticated or role doesn't match.
- * Returns the profile for convenience.
- */
 export async function requireRole(
-  allowedRoles: Array<"super_admin" | "strata_manager" | "lot_owner">
+  allowedRoles: Array<"super_admin" | "strata_manager" | "lot_owner">,
 ): Promise<Profile> {
   const profile = await getCurrentProfile();
 
@@ -87,22 +99,17 @@ export async function requireRole(
 
 // ─── requireCompanyRole ────────────────────────────────────────
 
-/**
- * Ensures the current user is a strata_manager/super_admin with
- * the required company_role (admin or manager). Viewers are blocked.
- * Use for all mutation actions (create, update, delete).
- */
 export async function requireCompanyRole(
-  allowedCompanyRoles: Array<"admin" | "manager"> = ["admin", "manager"]
+  allowedCompanyRoles: Array<"admin" | "manager"> = ["admin", "manager"],
 ): Promise<Profile> {
   const profile = await requireRole(["strata_manager", "super_admin"]);
 
-  // super_admin bypasses company role check
   if (profile.role === "super_admin") return profile;
 
-  // strata_manager must have an explicit company_role in the allowed set.
-  // A null company_role is NOT treated as admin — deny by default.
-  if (!profile.company_role || !(allowedCompanyRoles as string[]).includes(profile.company_role)) {
+  if (
+    !profile.company_role ||
+    !(allowedCompanyRoles as string[]).includes(profile.company_role)
+  ) {
     throw new Error("Access denied. Insufficient permissions.");
   }
 
@@ -112,73 +119,59 @@ export async function requireCompanyRole(
 // ─── ensureProfile ──────────────────────────────────────────────
 
 /**
- * Ensures a profile row exists for the current Clerk user.
- * Creates one on-the-fly if missing (just-in-time provisioning).
- * Also seeds default notification preferences if they don't exist.
+ * Ensures a profile row exists for the current Supabase Auth user.
+ * The on_auth_user_created DB trigger should have created one on signup,
+ * but this provides a safety net (e.g. trigger disabled, race during
+ * initial deploy). Also seeds default notification preferences.
  * Returns the profile id, or null if not authenticated.
  */
 export async function ensureProfile(): Promise<string | null> {
-  const { userId } = await auth();
-  if (!userId) return null;
+  const supabase = await createSupabaseServerClient();
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) return null;
 
-  const supabase = createServerClient();
+  const admin = createServerClient();
 
-  // Check if profile already exists
-  const { data: existing } = await supabase
+  const { data: existing } = await admin
     .from("profiles")
     .select("id")
-    .eq("clerk_id", userId)
+    .eq("auth_user_id", user.id)
     .single();
 
   if (existing) {
-    await seedNotificationPreferences(supabase, existing.id);
+    await seedNotificationPreferences(admin, existing.id);
     return existing.id;
   }
 
-  // Profile doesn't exist — create it from Clerk user data.
-  const user = await currentUser();
-  if (!user) return null;
-
-  // Sign-up persists the user's intended role to Clerk via
-  // `unsafeMetadata.intended_role`. Read it here so a manager who lands
-  // on /onboarding before the Clerk webhook fires doesn't get created as
-  // a lot_owner (which would re-route them to /onboarding/lot-owner).
-  // Fallback: lot_owner — same default as the webhook.
+  // Trigger missed — create profile manually from auth.users metadata.
   const intendedRole =
-    (user.unsafeMetadata?.intended_role as string | undefined) ?? null;
+    (user.user_metadata?.intended_role as string | undefined) ?? null;
   const role: "strata_manager" | "lot_owner" =
     intendedRole === "strata_manager" ? "strata_manager" : "lot_owner";
 
-  const { data: created, error } = await supabase
+  const { data: created, error } = await admin
     .from("profiles")
     .insert({
-      clerk_id: userId,
-      email: user.primaryEmailAddress?.emailAddress ?? "",
-      first_name: user.firstName ?? null,
-      last_name: user.lastName ?? null,
-      avatar_url: user.imageUrl ?? null,
+      auth_user_id: user.id,
+      email: user.email ?? "",
+      first_name: (user.user_metadata?.first_name as string | undefined) ?? null,
+      last_name: (user.user_metadata?.last_name as string | undefined) ?? null,
       role,
     })
     .select("id")
     .single();
 
   if (error) {
-    // 23505 = duplicate key. A concurrent caller (typically the Clerk
-    // user.created webhook firing in parallel with this page-load
-    // ensureProfile) committed the insert in the brief window between
-    // our SELECT and INSERT. Recover by re-reading the row.
+    // 23505 = duplicate. The trigger fired between our SELECT and INSERT.
+    // Recover by re-reading.
     if (error.code === "23505") {
-      console.warn("profiles: concurrent insert race recovered", {
-        path: "ensureProfile",
-        clerk_id: userId,
-      });
-      const { data: raced } = await supabase
+      const { data: raced } = await admin
         .from("profiles")
         .select("id")
-        .eq("clerk_id", userId)
+        .eq("auth_user_id", user.id)
         .single();
       if (raced) {
-        await seedNotificationPreferences(supabase, raced.id);
+        await seedNotificationPreferences(admin, raced.id);
         return raced.id;
       }
     }
@@ -187,7 +180,7 @@ export async function ensureProfile(): Promise<string | null> {
   }
 
   if (created) {
-    await seedNotificationPreferences(supabase, created.id);
+    await seedNotificationPreferences(admin, created.id);
   }
 
   return created?.id ?? null;
@@ -218,36 +211,32 @@ async function seedNotificationPreferences(supabase: any, profileId: string) {
 
 // ─── requireSubdivisionAccess ───────────────────────────────────
 
-/**
- * Validates the current user has access to a specific subdivision.
- * Returns the profile if authorized, throws if not.
- */
 export async function requireSubdivisionAccess(
-  subdivisionId: string
+  subdivisionId: string,
 ): Promise<Profile> {
   const profile = await getCurrentProfile();
   if (!profile) throw new Error("Not authenticated");
 
-  // super_admin can access everything
   if (profile.role === "super_admin") return profile;
 
   const supabase = createServerClient();
 
   if (profile.role === "strata_manager") {
-    // Must belong to the same management company
     const { data: subdivision } = await supabase
       .from("subdivisions")
       .select("management_company_id")
       .eq("id", subdivisionId)
       .single();
 
-    if (!subdivision || subdivision.management_company_id !== profile.management_company_id) {
+    if (
+      !subdivision ||
+      subdivision.management_company_id !== profile.management_company_id
+    ) {
       throw new Error("Access denied");
     }
     return profile;
   }
 
-  // lot_owner — must be a member
   const { data: membership } = await supabase
     .from("subdivision_members")
     .select("id")
@@ -262,36 +251,31 @@ export async function requireSubdivisionAccess(
 
 // ─── getOnboardingRedirect ──────────────────────────────────────
 
-/**
- * Check if the current user has completed onboarding.
- * Returns the redirect path if incomplete, or null if complete.
- */
 export async function getOnboardingRedirect(): Promise<string | null> {
-  const { userId } = await auth();
-  if (!userId) return "/sign-in";
+  const supabase = await createSupabaseServerClient();
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) return "/sign-in";
 
-  const supabase = createServerClient();
+  const admin = createServerClient();
 
-  const { data: profile } = await supabase
+  const { data: profile } = await admin
     .from("profiles")
     .select("id, role, management_company_id")
-    .eq("clerk_id", userId)
+    .eq("auth_user_id", user.id)
     .single();
 
   if (!profile) return "/onboarding";
 
-  // Lot owners don't need a management company — just need consent
   if (profile.role === "lot_owner") {
-    const { count } = await supabase
+    const { count } = await admin
       .from("user_consents")
       .select("id", { count: "exact", head: true })
       .eq("profile_id", profile.id);
 
     if (!count || count === 0) return "/onboarding/lot-owner";
-    return null; // lot owner with consent → allow dashboard
+    return null;
   }
 
-  // Strata managers need a management company
   if (!profile.management_company_id) return "/onboarding/setup";
 
   return null;

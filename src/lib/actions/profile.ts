@@ -1,7 +1,6 @@
 "use server";
 
-import { auth } from "@clerk/nextjs/server";
-import { createServerClient } from "@/lib/supabase";
+import { getAuthUserId } from "@/lib/auth";import { createServerClient } from "@/lib/supabase";
 
 export interface SidebarProfile {
   companyName: string | null;
@@ -13,7 +12,7 @@ export interface SidebarProfile {
 }
 
 export async function getSidebarProfile(): Promise<SidebarProfile | null> {
-  const { userId } = await auth();
+  const userId = await getAuthUserId();
   if (!userId) return null;
 
   const supabase = createServerClient();
@@ -21,7 +20,7 @@ export async function getSidebarProfile(): Promise<SidebarProfile | null> {
   const { data: profile } = await supabase
     .from("profiles")
     .select("email, first_name, last_name, avatar_url, role, management_company_id")
-    .eq("clerk_id", userId)
+    .eq("auth_user_id", userId)
     .single();
 
   if (!profile) return null;
