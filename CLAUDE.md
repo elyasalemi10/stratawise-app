@@ -35,6 +35,7 @@
 - ALL forms use labels above inputs, never floating labels.
 - ALL loading states use Skeleton components for page/section loads, never spinners.
 - ALL button loading states use an inline spinning circle (Loader2 from lucide). The button TEXT must stay the same — never replace with "Saving..." or "Loading..." (which causes layout shift). Disable the button while pending so it's not double-clickable.
+- ALL buttons show the clicking-hand cursor (`cursor: pointer`) on hover. globals.css applies this site-wide via `button:not(:disabled)` and `[role="button"]`, so you don't need `cursor-pointer` on every Button — but if you build a custom non-button clickable (e.g. a `<div onClick>` or a Radix trigger), add `cursor-pointer` explicitly.
 - ALL toasts use Sonner, positioned **top-right**. Errors don't auto-dismiss.
 - ALL pages use the PageHeader shared component for title/back link/actions.
 - ALL tabs persist state in URL via ?tab= searchParam.

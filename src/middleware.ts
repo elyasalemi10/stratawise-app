@@ -6,6 +6,7 @@ const PUBLIC_PATHS = [
   "/",
   "/sign-in",
   "/sign-up",
+  "/forgot-password",
   "/legal",
   "/api/webhooks",
   "/logout",

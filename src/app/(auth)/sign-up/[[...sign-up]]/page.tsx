@@ -15,12 +15,14 @@ type Role = "strata_manager" | "lot_owner";
 function RoleSelector({ onSelect }: { onSelect: (role: Role) => void }) {
   return (
     <div className="w-full max-w-md space-y-6">
-      <div>
-        <h1 className="text-2xl font-semibold tracking-tight text-foreground">
-          How will you use Strata Wise?
+      <div className="text-center">
+        <h1 className="text-3xl font-semibold tracking-tight text-foreground">
+          Create your account.
         </h1>
-        <p className="mt-1.5 text-sm text-muted-foreground">
-          Choose your role to get started.
+        <p className="mt-2 text-sm text-muted-foreground leading-relaxed">
+          Strata works when everyone&apos;s on the same page.
+          <br />
+          Choose your role to begin.
         </p>
       </div>
 
@@ -28,7 +30,7 @@ function RoleSelector({ onSelect }: { onSelect: (role: Role) => void }) {
         <button
           type="button"
           onClick={() => onSelect("strata_manager")}
-          className="w-full flex items-start gap-4 rounded-lg border border-border p-4 text-left transition-colors hover:border-primary/60 hover:bg-muted/30 cursor-pointer"
+          className="w-full flex items-start gap-4 rounded-lg border border-border p-4 text-left transition-colors hover:border-primary/60 hover:bg-muted/30"
         >
           <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-primary/10 text-primary shrink-0">
             <Building2 className="h-5 w-5" />
@@ -46,7 +48,7 @@ function RoleSelector({ onSelect }: { onSelect: (role: Role) => void }) {
         <button
           type="button"
           onClick={() => onSelect("lot_owner")}
-          className="w-full flex items-start gap-4 rounded-lg border border-border p-4 text-left transition-colors hover:border-primary/60 hover:bg-muted/30 cursor-pointer"
+          className="w-full flex items-start gap-4 rounded-lg border border-border p-4 text-left transition-colors hover:border-primary/60 hover:bg-muted/30"
         >
           <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-primary/10 text-primary shrink-0">
             <Home className="h-5 w-5" />
@@ -61,6 +63,13 @@ function RoleSelector({ onSelect }: { onSelect: (role: Role) => void }) {
           </div>
         </button>
       </div>
+
+      <p className="text-center text-sm text-muted-foreground">
+        Already have an account?{" "}
+        <Link href="/sign-in" className="font-medium text-primary hover:underline">
+          Sign in
+        </Link>
+      </p>
     </div>
   );
 }
@@ -121,11 +130,11 @@ function SignUpForm({ role, inviteToken }: { role: Role; inviteToken: string | n
 
   return (
     <div className="w-full max-w-sm space-y-6">
-      <div>
-        <h1 className="text-2xl font-semibold tracking-tight text-foreground">
-          Create your account
+      <div className="text-center">
+        <h1 className="text-3xl font-semibold tracking-tight text-foreground">
+          Create your account.
         </h1>
-        <p className="mt-1.5 text-sm text-muted-foreground">
+        <p className="mt-2 text-sm text-muted-foreground leading-relaxed">
           Signing up as a {role === "strata_manager" ? "strata manager" : "lot owner"}.
         </p>
       </div>

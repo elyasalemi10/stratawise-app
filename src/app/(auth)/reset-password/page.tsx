@@ -1,7 +1,6 @@
 "use client";
 
-import { useState, Suspense } from "react";
-import { useSearchParams } from "next/navigation";
+import { useState } from "react";
 import Link from "next/link";
 import { toast } from "sonner";
 import { Loader2, Eye, EyeOff } from "lucide-react";
@@ -10,25 +9,27 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { getSupabaseClient } from "@/lib/supabase";
 
-function SignInContent() {
-  const searchParams = useSearchParams();
-  const nextPath = searchParams.get("next") ?? "/dashboard";
-
-  const [email, setEmail] = useState("");
+export default function ResetPasswordPage() {
   const [password, setPassword] = useState("");
+  const [confirm, setConfirm] = useState("");
   const [pending, setPending] = useState(false);
   const [showPassword, setShowPassword] = useState(false);
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
+
+    if (password.length < 8) {
+      toast.error("Password must be at least 8 characters");
+      return;
+    }
+    if (password !== confirm) {
+      toast.error("Passwords don't match");
+      return;
+    }
+
     setPending(true);
-
     const supabase = getSupabaseClient();
-    const { error } = await supabase.auth.signInWithPassword({
-      email,
-      password,
-    });
-
+    const { error } = await supabase.auth.updateUser({ password });
     setPending(false);
 
     if (error) {
@@ -36,55 +37,34 @@ function SignInContent() {
       return;
     }
 
-    // Hard navigation so the server layout re-renders with the new session
-    window.location.href = nextPath;
+    toast.success("Password updated. Sign in with your new password.");
+    // Sign out to force a fresh sign-in with the new password
+    await supabase.auth.signOut();
+    window.location.href = "/sign-in";
   }
 
   return (
     <div className="w-full max-w-sm space-y-6">
       <div className="text-center">
         <h1 className="text-3xl font-semibold tracking-tight text-foreground">
-          Welcome back!
+          Set a new password
         </h1>
         <p className="mt-2 text-sm text-muted-foreground leading-relaxed">
-          Every building tells a story. You&apos;re the one keeping it on track.
-          <br />
-          Sign in to continue.
+          Choose a password you haven&apos;t used before.
         </p>
       </div>
 
       <form onSubmit={handleSubmit} className="space-y-4">
         <div className="space-y-1.5">
-          <Label htmlFor="email">Email</Label>
-          <Input
-            id="email"
-            type="email"
-            required
-            autoComplete="email"
-            placeholder="you@example.com"
-            value={email}
-            onChange={(e) => setEmail(e.target.value)}
-            className="h-11"
-          />
-        </div>
-
-        <div className="space-y-1.5">
-          <div className="flex items-center justify-between">
-            <Label htmlFor="password">Password</Label>
-            <Link
-              href="/forgot-password"
-              className="text-xs font-medium text-muted-foreground hover:text-primary"
-            >
-              Forgot password?
-            </Link>
-          </div>
+          <Label htmlFor="password">New password</Label>
           <div className="relative">
             <Input
               id="password"
               type={showPassword ? "text" : "password"}
               required
-              autoComplete="current-password"
-              placeholder="••••••••"
+              minLength={8}
+              autoComplete="new-password"
+              placeholder="At least 8 characters"
               value={password}
               onChange={(e) => setPassword(e.target.value)}
               className="h-11 pr-10"
@@ -101,30 +81,36 @@ function SignInContent() {
           </div>
         </div>
 
+        <div className="space-y-1.5">
+          <Label htmlFor="confirm">Confirm new password</Label>
+          <Input
+            id="confirm"
+            type={showPassword ? "text" : "password"}
+            required
+            minLength={8}
+            autoComplete="new-password"
+            placeholder="Repeat the password"
+            value={confirm}
+            onChange={(e) => setConfirm(e.target.value)}
+            className="h-11"
+          />
+        </div>
+
         <Button
           type="submit"
           className="w-full h-11 border border-foreground/15 shadow-sm"
           disabled={pending}
         >
           {pending && <Loader2 className="size-4 animate-spin" />}
-          Sign in
+          Update password
         </Button>
       </form>
 
       <p className="text-center text-sm text-muted-foreground">
-        Don&apos;t have an account?{" "}
-        <Link href="/sign-up" className="font-medium text-primary hover:underline">
-          Sign up
+        <Link href="/sign-in" className="font-medium text-primary hover:underline">
+          Back to sign in
         </Link>
       </p>
     </div>
-  );
-}
-
-export default function SignInPage() {
-  return (
-    <Suspense>
-      <SignInContent />
-    </Suspense>
   );
 }

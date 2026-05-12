@@ -163,6 +163,16 @@
   html {
     @apply font-sans;
   }
+
+  /* Every interactive button/link/role=button shows the clicking-hand
+     cursor on hover. Tailwind v4 dropped the legacy button cursor reset,
+     so we restore it project-wide here. Disabled buttons keep the default
+     pointer (Button's :disabled rules handle the rest). */
+  button:not(:disabled),
+  [role="button"]:not([aria-disabled="true"]),
+  a[href] {
+    cursor: pointer;
+  }
 }
 
 /* ============================================
