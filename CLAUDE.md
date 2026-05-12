@@ -11,6 +11,12 @@
 - NEVER reveal internal infrastructure or env var names in user-facing errors. NOT "GEMINI_API_KEY is not configured", "R2_ENDPOINT missing", "DATABASE_URL invalid", "Supabase credentials missing", etc. Show a generic message like "This feature is temporarily unavailable" or "Something went wrong — please try again". Log the real reason server-side (`console.error`) for the operator to read in Vercel logs.
 - This applies to toasts, error pages, form errors, and JSON error bodies returned from server actions.
 
+## OC Tiers — what's built vs deferred
+- The platform supports OC creation across ALL five tiers (1, 2, 3, 4, 5). Tier is auto-calculated from lot count + the services-only override.
+- **Tier 4 / Tier 5** (3–9 lots / 2 lots or services-only) get full feature parity — the platform's MVP is designed for them.
+- **Tier 1 / Tier 2 / Tier 3** (10+ lots) are NOT blocked at creation, but the tier-specific compliance features they legally require — audit obligations, 10-year maintenance plans, larger committee structures, formal AGM minute templates — are NOT built yet. They will be added once we ship for smaller OCs first.
+- Don't add tier-restriction UI / server blocks. Just keep building tier-4/5 features without breaking tier-1/2/3 OCs that happen to exist.
+
 ## Domain Nomenclature
 - An "Owners Corporation" (abbreviated "OC") is the legal entity that owns and manages common property — what's commonly called a "strata" in NSW or "body corporate" in QLD. Victoria uses "Owners Corporation" (Owners Corporations Act 2006).
 - Always use "Owners Corporation" / "OC" in UI labels and prose. NEVER "subdivision", "strata", "body corporate" — these are legacy and incorrect for our jurisdiction.
