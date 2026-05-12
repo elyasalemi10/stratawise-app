@@ -20,13 +20,13 @@ export default async function DashboardLayout({
 
   return (
     <SidebarProvider defaultOpen={defaultOpen}>
-      <AppSidebar />
+      <AppSidebar variant="inset" />
       <SidebarInset>
-        <header className="flex h-14 shrink-0 items-center gap-2 border-b border-border bg-card px-6">
-          <SidebarTrigger className="-ml-2" />
+        <header className="flex h-12 shrink-0 items-center gap-2 border-b border-border bg-card px-4 lg:px-6">
+          <SidebarTrigger className="-ml-1" />
           <Header />
         </header>
-        <main className="flex-1 overflow-y-auto bg-background p-6">
+        <main className="flex-1 overflow-y-auto bg-background py-4 md:py-6 px-4 lg:px-6">
           {children}
         </main>
       </SidebarInset>

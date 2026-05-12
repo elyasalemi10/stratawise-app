@@ -10,6 +10,7 @@ import {
   Settings,
   LogOut,
   ChevronsUpDown,
+  MoreVertical,
   Receipt,
   Inbox,
   Users,
@@ -38,7 +39,7 @@ import {
   SidebarMenuButton,
   SidebarMenuItem,
 } from "@/components/ui/sidebar";
-import { UserAvatar } from "@/components/shared/user-avatar";
+import { Avatar, AvatarImage, AvatarFallback } from "@/components/ui/avatar";
 import { Skeleton } from "@/components/ui/skeleton";
 import { getSidebarProfile, type SidebarProfile } from "@/lib/actions/profile";
 import {
@@ -238,7 +239,7 @@ function DropdownSeparator() {
 
 // ─── Main component ─────────────────────────────────────────────
 
-export function AppSidebar() {
+export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
   const pathname = usePathname();
   const searchParams = useSearchParams();
   const router = useRouter();
@@ -320,7 +321,7 @@ export function AppSidebar() {
   }
 
   return (
-    <Sidebar collapsible="offcanvas">
+    <Sidebar collapsible="offcanvas" {...props}>
       {/* Dashboard switcher — styled like shadcn TeamSwitcher */}
       <SidebarHeader className="p-2">
         <SidebarMenu>
@@ -496,10 +497,13 @@ export function AppSidebar() {
               side="top"
               matchWidth
               trigger={
-                <SidebarMenuButton size="lg">
+                <SidebarMenuButton
+                  size="lg"
+                  className="data-[state=open]:bg-sidebar-accent data-[state=open]:text-sidebar-accent-foreground"
+                >
                   {!loaded ? (
                     <>
-                      <Skeleton className="h-8 w-8 rounded-full shrink-0" />
+                      <Skeleton className="h-8 w-8 rounded-lg shrink-0" />
                       <div className="grid flex-1 text-left text-sm leading-tight">
                         <Skeleton className="h-3.5 w-24" />
                         <Skeleton className="h-3 w-32 mt-1" />
@@ -507,34 +511,42 @@ export function AppSidebar() {
                     </>
                   ) : (
                     <>
-                      <UserAvatar
-                        src={profile?.userAvatarUrl}
-                        initials={profile?.userInitials ?? "?"}
-                      />
+                      <Avatar className="h-8 w-8 rounded-lg grayscale">
+                        {profile?.userAvatarUrl ? (
+                          <AvatarImage src={profile.userAvatarUrl} alt="Avatar" />
+                        ) : null}
+                        <AvatarFallback className="rounded-lg">
+                          {profile?.userInitials ?? "?"}
+                        </AvatarFallback>
+                      </Avatar>
                       <div className="grid flex-1 text-left text-sm leading-tight">
                         <span className="truncate font-medium">
                           {profile?.companyName ?? "My Company"}
                         </span>
-                        <span className="truncate text-xs text-muted-foreground">
+                        <span className="text-muted-foreground truncate text-xs">
                           {profile?.userEmail ?? ""}
                         </span>
                       </div>
-                      <ChevronsUpDown className="ml-auto size-4" />
+                      <MoreVertical className="ml-auto size-4" />
                     </>
                   )}
                 </SidebarMenuButton>
               }
             >
-              <div className="flex items-center gap-2 px-2 py-1.5 text-sm">
-                <UserAvatar
-                  src={profile?.userAvatarUrl}
-                  initials={profile?.userInitials ?? "?"}
-                />
+              <div className="flex items-center gap-2 px-1 py-1.5 text-sm">
+                <Avatar className="h-8 w-8 rounded-lg">
+                  {profile?.userAvatarUrl ? (
+                    <AvatarImage src={profile.userAvatarUrl} alt="Avatar" />
+                  ) : null}
+                  <AvatarFallback className="rounded-lg">
+                    {profile?.userInitials ?? "?"}
+                  </AvatarFallback>
+                </Avatar>
                 <div className="grid flex-1 text-left text-sm leading-tight">
                   <span className="truncate font-medium text-foreground">
                     {profile?.companyName ?? "My Company"}
                   </span>
-                  <span className="truncate text-xs text-muted-foreground">
+                  <span className="text-muted-foreground truncate text-xs">
                     {profile?.userEmail ?? ""}
                   </span>
                 </div>
