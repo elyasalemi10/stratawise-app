@@ -1,7 +1,8 @@
 "use server";
 
 import { cache } from "react";
-import { createSupabaseServerClient, createServerClient } from "@/lib/supabase";
+import { createServerClient } from "@/lib/supabase";
+import { createSupabaseServerClient } from "@/lib/supabase-server";
 import { _verificationUserIdResolver } from "@/lib/auth-resolver";
 
 const NOTIFICATION_TYPES = [
@@ -36,11 +37,15 @@ export interface Profile {
   updated_at: string;
 }
 
-// ─── Internal: resolve current Supabase Auth user id ────────────
+// ─── Resolve current Supabase Auth user id ────────────────────
 
-async function getAuthUserId(): Promise<string | null> {
-  // Verification suites short-circuit auth via this resolver so they can
-  // run server actions without a real signed-in user.
+/**
+ * Returns the current Supabase Auth user's UUID, or null if not signed in.
+ * Verification suites short-circuit via _verificationUserIdResolver so they
+ * can run server actions without a real signed-in user. Replaces Clerk's
+ * `(await auth()).userId` pattern.
+ */
+export async function getAuthUserId(): Promise<string | null> {
   if (_verificationUserIdResolver) {
     return await _verificationUserIdResolver();
   }

@@ -1,13 +1,12 @@
 "use server";
 
-import { auth } from "@clerk/nextjs/server";
-import { headers } from "next/headers";
+import { getAuthUserId } from "@/lib/auth";import { headers } from "next/headers";
 import { revalidatePath } from "next/cache";
 import { createServerClient } from "@/lib/supabase";
 import { ensureProfile } from "@/lib/auth";
 
 export async function recordLotOwnerConsent() {
-  const { userId } = await auth();
+  const userId = await getAuthUserId();
   if (!userId) return { error: "Not authenticated" };
 
   // Ensure profile exists

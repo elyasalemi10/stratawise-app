@@ -12,7 +12,7 @@
  *   npx tsx src/lib/actions/reconciliation.verification.ts --cleanup   # clean stale runs and exit
  *
  * Test data is tagged with VERIFY_MARKER in management_companies.name /
- * profiles.email / profiles.clerk_id so --cleanup never touches real data.
+ * profiles.email / profiles.auth_user_id so --cleanup never touches real data.
  */
 
 import { config } from "dotenv";
@@ -138,7 +138,7 @@ async function createFixture(): Promise<Fixture> {
   const { data: profile, error: profileErr } = await supabase
     .from("profiles")
     .insert({
-      clerk_id: VERIFY_CLERK_ID,
+      auth_user_id: VERIFY_CLERK_ID,
       email: profileEmail,
       first_name: "Recon",
       last_name: "Verify",

@@ -7,7 +7,7 @@
 //   - NO imports from `@clerk/*` or `@/lib/auth` — auth is resolved by the
 //     caller; this module takes an explicit systemProfileId arg.
 //   - Caller supplies a real profile UUID; the only "system sentinel" is
-//     the bootstrap row keyed by clerk_id='system_accrual_cron' (PP6-A).
+//     the bootstrap row keyed by auth_user_id='system_accrual_cron' (PP6-A).
 //
 // The verification harness (PP6-B-B src/lib/accrual/accrual.verification.ts)
 // will call accrueInterestForSubdivisionJob directly with deterministic
@@ -52,7 +52,7 @@ export async function resolveSystemProfileId(
   const { data, error } = await supabase
     .from("profiles")
     .select("id")
-    .eq("clerk_id", SYSTEM_ACCRUAL_CLERK_ID)
+    .eq("auth_user_id", SYSTEM_ACCRUAL_CLERK_ID)
     .single();
 
   if (error || !data) {

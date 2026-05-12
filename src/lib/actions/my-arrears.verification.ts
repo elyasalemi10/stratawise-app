@@ -87,7 +87,7 @@ async function createFixture(): Promise<FixtureContext> {
   const { data: manager } = await supabase
     .from("profiles")
     .insert({
-      clerk_id: `${VERIFY_MARKER}_MGR_${runId}`,
+      auth_user_id: `${VERIFY_MARKER}_MGR_${runId}`,
       email: `${VERIFY_MARKER.toLowerCase()}${runId}_mgr@ma.test`,
       first_name: "MA",
       last_name: "TestMgr",
@@ -103,7 +103,7 @@ async function createFixture(): Promise<FixtureContext> {
   const { data: owner } = await supabase
     .from("profiles")
     .insert({
-      clerk_id: ownerClerkId,
+      auth_user_id: ownerClerkId,
       email: `${VERIFY_MARKER.toLowerCase()}${runId}_owner@ma.test`,
       first_name: "MA",
       last_name: "TestOwner",
@@ -378,7 +378,7 @@ async function cleanupMarker() {
   const { data: orphanOwners } = await supabase
     .from("profiles")
     .select("id")
-    .like("clerk_id", `${VERIFY_MARKER}_OWNER_%`);
+    .like("auth_user_id", `${VERIFY_MARKER}_OWNER_%`);
   const orphanIds = (orphanOwners ?? []).map((p) => (p as { id: string }).id);
   if (orphanIds.length > 0) {
     await supabase.from("profiles").delete().in("id", orphanIds);

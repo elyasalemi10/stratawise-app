@@ -1,10 +1,9 @@
 import { NextRequest, NextResponse } from "next/server";
-import { auth } from "@clerk/nextjs/server";
-
+import { getAuthUserId } from "@/lib/auth";
 const ALLOWED_CONTENT_TYPES = ["image/png", "image/jpeg", "image/webp", "image/svg+xml", "image/gif"];
 
 export async function GET(request: NextRequest) {
-  const { userId } = await auth();
+  const userId = await getAuthUserId();
   if (!userId) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }

@@ -92,7 +92,7 @@ async function createFixture(): Promise<FixtureContext> {
   const { data: manager } = await supabase
     .from("profiles")
     .insert({
-      clerk_id: `${VERIFY_MARKER}_MGR_${runId}`,
+      auth_user_id: `${VERIFY_MARKER}_MGR_${runId}`,
       email: `${VERIFY_MARKER.toLowerCase()}${runId}_mgr@resend.test`,
       first_name: "Resend",
       last_name: "TestMgr",
@@ -107,7 +107,7 @@ async function createFixture(): Promise<FixtureContext> {
   const { data: owner } = await supabase
     .from("profiles")
     .insert({
-      clerk_id: `${VERIFY_MARKER}_OWNER_${runId}`,
+      auth_user_id: `${VERIFY_MARKER}_OWNER_${runId}`,
       email: `${VERIFY_MARKER.toLowerCase()}${runId}_owner@resend.test`,
       first_name: "Resend",
       last_name: "TestOwner",
@@ -436,7 +436,7 @@ async function cleanupMarker() {
   const { data: orphanOwners } = await supabase
     .from("profiles")
     .select("id")
-    .like("clerk_id", `${VERIFY_MARKER}_OWNER_%`);
+    .like("auth_user_id", `${VERIFY_MARKER}_OWNER_%`);
   const orphanOwnerIds = (orphanOwners ?? []).map((p) => (p as { id: string }).id);
   if (orphanOwnerIds.length > 0) {
     await supabase.from("notification_preferences").delete().in("profile_id", orphanOwnerIds);

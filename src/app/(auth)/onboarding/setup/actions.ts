@@ -1,7 +1,6 @@
 "use server";
 
-import { auth } from "@clerk/nextjs/server";
-import { headers } from "next/headers";
+import { getAuthUserId } from "@/lib/auth";import { headers } from "next/headers";
 import { createServerClient } from "@/lib/supabase";
 import { ensureProfile } from "@/lib/auth";
 import { companySchema, inviteRowSchema } from "@/lib/validations/onboarding-setup";
@@ -11,7 +10,7 @@ async function getProfileId(clerkUserId: string) {
   const { data, error } = await supabase
     .from("profiles")
     .select("id, management_company_id")
-    .eq("clerk_id", clerkUserId)
+    .eq("auth_user_id", clerkUserId)
     .single();
   if (error && error.code !== "PGRST116") {
     // PGRST116 = "no rows returned" (expected if profile doesn't exist yet)
@@ -28,7 +27,7 @@ export async function createCompany(formData: {
   email: string;
   logo_url?: string;
 }) {
-  const { userId } = await auth();
+  const userId = await getAuthUserId();
   if (!userId) throw new Error("Not authenticated");
 
   const parsed = companySchema.safeParse(formData);
@@ -98,7 +97,7 @@ export async function createCompany(formData: {
       role: "strata_manager",
       company_role: "admin",
     })
-    .eq("clerk_id", userId);
+    .eq("auth_user_id", userId);
 
   if (profileError) {
     console.error("Failed to assign company:", profileError);
@@ -115,7 +114,7 @@ export async function createSubdivision(formData: {
   total_lots: number;
   state: string;
 }) {
-  const { userId } = await auth();
+  const userId = await getAuthUserId();
   if (!userId) throw new Error("Not authenticated");
 
   if (!formData.plan_number || !formData.name || !formData.address || formData.total_lots < 2) {
@@ -182,7 +181,7 @@ export async function createSubdivision(formData: {
 }
 
 export async function sendInvitations(invites: { email: string; name: string }[]) {
-  const { userId } = await auth();
+  const userId = await getAuthUserId();
   if (!userId) throw new Error("Not authenticated");
 
   const profile = await getProfileId(userId);
@@ -232,7 +231,7 @@ export async function sendInvitations(invites: { email: string; name: string }[]
 }
 
 export async function getOnboardingState() {
-  const { userId } = await auth();
+  const userId = await getAuthUserId();
   if (!userId) return { state: "no-auth" as const };
 
   const supabase = createServerClient();
@@ -240,7 +239,7 @@ export async function getOnboardingState() {
   const { data: profile } = await supabase
     .from("profiles")
     .select("id, management_company_id")
-    .eq("clerk_id", userId)
+    .eq("auth_user_id", userId)
     .single();
 
   if (!profile) return { state: "no-profile" as const };
@@ -276,7 +275,7 @@ export async function getOnboardingState() {
 }
 
 export async function getSetupSummary() {
-  const { userId } = await auth();
+  const userId = await getAuthUserId();
   if (!userId) return null;
 
   const supabase = createServerClient();
@@ -284,7 +283,7 @@ export async function getSetupSummary() {
   const { data: profile } = await supabase
     .from("profiles")
     .select("management_company_id")
-    .eq("clerk_id", userId)
+    .eq("auth_user_id", userId)
     .single();
 
   if (!profile?.management_company_id) return null;

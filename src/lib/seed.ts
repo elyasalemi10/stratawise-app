@@ -28,7 +28,7 @@ async function seed() {
 
   const { data: profiles, error } = await supabase
     .from("profiles")
-    .select("id, clerk_id, email, first_name, last_name, role")
+    .select("id, auth_user_id, email, first_name, last_name, role")
     .order("created_at", { ascending: true });
 
   if (error) {

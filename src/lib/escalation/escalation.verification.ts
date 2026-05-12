@@ -82,7 +82,7 @@ async function createFixtureContext(): Promise<FixtureContext> {
   const { data: manager } = await supabase
     .from("profiles")
     .insert({
-      clerk_id: `${VERIFY_MARKER}_MGR_${runId}`,
+      auth_user_id: `${VERIFY_MARKER}_MGR_${runId}`,
       email: `${VERIFY_MARKER.toLowerCase()}${runId}_mgr@esc.test`,
       first_name: "Esc",
       last_name: "TestMgr",
@@ -131,7 +131,7 @@ async function createLotWithOwner(
   const { data: owner } = await supabase
     .from("profiles")
     .insert({
-      clerk_id: `${VERIFY_MARKER}_OWNER_${runId}_${lotNumber}`,
+      auth_user_id: `${VERIFY_MARKER}_OWNER_${runId}_${lotNumber}`,
       email: `${VERIFY_MARKER.toLowerCase()}${runId}_l${lotNumber}@esc.test`,
       first_name: "Owner",
       last_name: `Esc${lotNumber}`,
@@ -597,7 +597,7 @@ async function cleanupMarker() {
   const { data: orphanOwners } = await supabase
     .from("profiles")
     .select("id")
-    .like("clerk_id", `${VERIFY_MARKER}_OWNER_%`);
+    .like("auth_user_id", `${VERIFY_MARKER}_OWNER_%`);
   const orphanOwnerIds = (orphanOwners ?? []).map((p) => (p as { id: string }).id);
   if (orphanOwnerIds.length > 0) {
     await supabase.from("notification_preferences").delete().in("profile_id", orphanOwnerIds);

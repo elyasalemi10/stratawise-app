@@ -128,7 +128,7 @@ async function createCompanyFixture(suffix: string): Promise<CompanyFixture> {
   const { data: manager } = await supabase
     .from("profiles")
     .insert({
-      clerk_id: managerClerkId,
+      auth_user_id: managerClerkId,
       email: managerEmail,
       first_name: "OPC",
       last_name: `Mgr${suffix}`,
@@ -143,7 +143,7 @@ async function createCompanyFixture(suffix: string): Promise<CompanyFixture> {
   const { data: owner } = await supabase
     .from("profiles")
     .insert({
-      clerk_id: ownerClerkId,
+      auth_user_id: ownerClerkId,
       email: ownerEmail,
       first_name: "OPC",
       last_name: `Owner${suffix}`,
@@ -1168,7 +1168,7 @@ async function addSecondManager(
   const { data: manager } = await supabase
     .from("profiles")
     .insert({
-      clerk_id: clerkId,
+      auth_user_id: clerkId,
       email: `${VERIFY_MARKER.toLowerCase()}${tag}_mgr2@opc.test`,
       first_name: "OPC",
       last_name: "Mgr2",

@@ -1,9 +1,8 @@
 import Link from "next/link";
-import { auth } from "@clerk/nextjs/server";
-import { redirect } from "next/navigation";
+import { getAuthUserId } from "@/lib/auth";import { redirect } from "next/navigation";
 
 export default async function LandingPage() {
-  const { userId } = await auth();
+  const userId = await getAuthUserId();
 
   if (userId) {
     redirect("/dashboard");

@@ -3,7 +3,6 @@
 import { useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
-import { useClerk } from "@clerk/nextjs";
 import {
   LayoutDashboard,
   Building2,
@@ -250,7 +249,6 @@ export function AppSidebar({
   const pathname = usePathname();
   const searchParams = useSearchParams();
   const router = useRouter();
-  const { signOut } = useClerk();
   // Seeded from the server layout so the initial render has no skeleton.
   // The localStorage cache is kept in sync for the dropdown switch (which
   // sometimes runs faster than a server roundtrip for repeat nav across
@@ -550,7 +548,7 @@ export function AppSidebar({
                 Settings
               </DropdownItem>
               <DropdownSeparator />
-              <DropdownItem onClick={() => signOut({ redirectUrl: "/" })}>
+              <DropdownItem onClick={() => { window.location.href = "/logout"; }}>
                 <LogOut className="h-4 w-4" />
                 Sign out
               </DropdownItem>
