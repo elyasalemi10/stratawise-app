@@ -6,7 +6,7 @@ import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
 import Link from "next/link";
 import { toast } from "sonner";
-import { Pencil, Check, Upload, Landmark } from "lucide-react";
+import { Pencil, Check, Upload, Landmark, Loader2 } from "lucide-react";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -105,7 +105,8 @@ export function BankAccountContent({
             </Button>
             <Button size="sm" onClick={handleSave} disabled={saving} className="cursor-pointer">
               <Check className="mr-2 h-3.5 w-3.5" />
-              {saving ? "Saving..." : "Save"}
+              {saving && <Loader2 className="size-4 animate-spin" />}
+              Save
             </Button>
           </div>
         ) : (
@@ -330,7 +331,8 @@ function BankAccountCard({
                   className="cursor-pointer"
                 >
                   <Check className="mr-2 h-3.5 w-3.5" />
-                  {bpaySaving ? "Saving..." : "Save"}
+                  {bpaySaving && <Loader2 className="size-4 animate-spin" />}
+                  Save
                 </Button>
               </div>
             ) : (

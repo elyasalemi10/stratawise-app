@@ -40,7 +40,7 @@ export default async function DashboardLayout({
           <SidebarTrigger className="-ml-1" />
           <Header initialSubdivisions={sidebarSubdivisions} />
         </header>
-        <main className="flex-1 overflow-y-auto bg-background py-4 md:py-6 px-4 lg:px-6">
+        <main className="flex-1 min-h-0 overflow-y-auto bg-background py-4 md:py-6 px-4 lg:px-6">
           {children}
         </main>
       </SidebarInset>

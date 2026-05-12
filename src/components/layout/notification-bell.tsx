@@ -88,9 +88,9 @@ export function NotificationBell() {
         className="relative text-muted-foreground"
         onClick={() => setOpen((o) => !o)}
       >
-        <Bell className="h-4 w-4" />
+        <Bell className="size-5" />
         {loaded && unreadCount > 0 && (
-          <span className="absolute top-1 right-1 flex h-4 w-4 items-center justify-center rounded-full bg-destructive text-[10px] font-medium text-white">
+          <span className="absolute top-0.5 right-0.5 flex h-4 w-4 items-center justify-center rounded-full bg-destructive text-[10px] font-medium text-white">
             {unreadCount > 9 ? "9+" : unreadCount}
           </span>
         )}

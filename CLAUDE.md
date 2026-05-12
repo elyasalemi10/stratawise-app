@@ -26,8 +26,9 @@
 - ALL buttons are sentence case ("Create subdivision", never "CREATE SUBDIVISION").
 - ALL forms use Zod + react-hook-form + shadcn Form. Never raw onChange handlers.
 - ALL forms use labels above inputs, never floating labels.
-- ALL loading states use Skeleton components, never spinners.
-- ALL toasts use Sonner, positioned bottom-right. Errors don't auto-dismiss.
+- ALL loading states use Skeleton components for page/section loads, never spinners.
+- ALL button loading states use an inline spinning circle (Loader2 from lucide). The button TEXT must stay the same — never replace with "Saving..." or "Loading..." (which causes layout shift). Disable the button while pending so it's not double-clickable.
+- ALL toasts use Sonner, positioned **top-right**. Errors don't auto-dismiss.
 - ALL pages use the PageHeader shared component for title/back link/actions.
 - ALL tabs persist state in URL via ?tab= searchParam.
 - ALL outbound communications logged to communication_log table.

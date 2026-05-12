@@ -2,7 +2,7 @@
 
 import { useState, useRef, useEffect, useCallback } from "react";
 import { useRouter } from "next/navigation";
-import { Plus, X, ArrowLeft } from "lucide-react";
+import { Plus, X, ArrowLeft, Loader2 } from "lucide-react";
 import { toast } from "sonner";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -400,7 +400,8 @@ export function CreateBudgetForm({
       {/* Submit */}
       <div className="flex justify-end">
         <Button onClick={handleSubmit} disabled={pending || total === 0}>
-          {pending ? "Creating..." : "Create budget"}
+          {pending && <Loader2 className="size-4 animate-spin" />}
+          Create budget
         </Button>
       </div>
     </div>

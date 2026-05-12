@@ -22,7 +22,7 @@
 
 import { useEffect, useReducer } from "react";
 import { toast } from "sonner";
-import { AlertTriangle, Check, X } from "lucide-react";
+import { AlertTriangle, Check, X, Loader2 } from "lucide-react";
 import {
   Dialog,
   DialogContent,
@@ -550,7 +550,8 @@ function ChoiceButton({
       )}
     >
       <div className="font-medium text-foreground">
-        {loading ? "Saving..." : label}
+        {loading && <Loader2 className="size-4 animate-spin" />}
+        {label}
       </div>
       <div className="mt-0.5 text-xs text-muted-foreground">{description}</div>
     </button>

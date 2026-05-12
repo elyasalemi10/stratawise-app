@@ -4,6 +4,7 @@ import { useState } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { toast } from "sonner";
+import { Loader2 } from "lucide-react";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
@@ -78,7 +79,8 @@ export default function LotOwnerOnboardingPage() {
         disabled={!canContinue || pending}
         onClick={handleSubmit}
       >
-        {pending ? "Setting up..." : "Continue"}
+        {pending && <Loader2 className="size-4 animate-spin" />}
+        Continue
       </Button>
     </div>
   );

@@ -220,7 +220,10 @@ function PolicyDetailDialog({
             </div>
             <DialogFooter>
               <Button variant="ghost" onClick={() => setEditing(false)} className="cursor-pointer">Cancel</Button>
-              <Button onClick={handleSave} disabled={saving} className="cursor-pointer">{saving ? "Saving..." : "Save"}</Button>
+              <Button onClick={handleSave} disabled={saving} className="cursor-pointer">
+                {saving && <Loader2 className="size-4 animate-spin" />}
+                Save
+              </Button>
             </DialogFooter>
           </div>
         ) : (

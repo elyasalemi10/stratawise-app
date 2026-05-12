@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import { useRouter } from "next/navigation";
-import { ArrowLeft, CheckCircle2, ChevronDown, Download, Mail, Trash2, FolderDown, DollarSign, Undo2, RefreshCw, CalendarIcon, AlertTriangle } from "lucide-react";
+import { ArrowLeft, CheckCircle2, ChevronDown, Download, Mail, Trash2, FolderDown, DollarSign, Undo2, RefreshCw, CalendarIcon, AlertTriangle, Loader2 } from "lucide-react";
 import { format } from "date-fns";
 import { formatDateLong } from "@/lib/utils";
 import { toast } from "sonner";
@@ -476,7 +476,8 @@ export function BatchDetailContent({
                           disabled={sendingIds.has(levy.id)}
                         >
                           <CheckCircle2 className="mr-1 h-3.5 w-3.5" />
-                          {sendingIds.has(levy.id) ? "Sending..." : "Mark as sent"}
+                          {sendingIds.has(levy.id) && <Loader2 className="size-4 animate-spin" />}
+                          Mark as sent
                         </Button>
                       )}
                       {levy.pdf_url && (

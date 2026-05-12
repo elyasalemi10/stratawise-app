@@ -4,7 +4,7 @@ import { useState, Suspense } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import Link from "next/link";
 import { toast } from "sonner";
-import { Building2, Home } from "lucide-react";
+import { Building2, Home, Loader2 } from "lucide-react";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -181,7 +181,8 @@ function SignUpForm({ role, inviteToken }: { role: Role; inviteToken: string | n
             </div>
 
             <Button type="submit" className="w-full" disabled={pending}>
-              {pending ? "Creating account..." : "Create account"}
+              {pending && <Loader2 className="size-4 animate-spin" />}
+              Create account
             </Button>
           </form>
 

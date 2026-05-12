@@ -5,6 +5,7 @@ import { useFieldArray, useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
 import { toast } from "sonner";
+import { Loader2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import {
@@ -437,7 +438,8 @@ export function AllocateForm({
               disabled={!canSave || isSubmitting}
               className="w-full"
             >
-              {isSubmitting ? "Saving..." : isFullyAllocated ? "Save matches" : "Save partial match"}
+              {isSubmitting && <Loader2 className="size-4 animate-spin" />}
+              {isFullyAllocated ? "Save matches" : "Save partial match"}
             </Button>
           </form>
         </Form>
