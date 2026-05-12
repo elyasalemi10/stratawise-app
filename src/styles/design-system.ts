@@ -1,5 +1,5 @@
 /**
- * MSM Design System Constants
+ * Strata Wise Design System Constants
  * Reusable tokens for components that need programmatic access to design values.
  * CSS variables in globals.css are the source of truth — these mirror them for JS usage.
  */

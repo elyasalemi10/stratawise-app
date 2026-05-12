@@ -10,7 +10,7 @@ function RoleSelector({ onSelect }: { onSelect: (role: string) => void }) {
   return (
     <div className="w-full max-w-md space-y-6">
       <div className="text-center">
-        <h2 className="text-xl font-semibold text-foreground">How will you use MSM?</h2>
+        <h2 className="text-xl font-semibold text-foreground">How will you use Strata Wise?</h2>
         <p className="mt-1 text-sm text-muted-foreground">Choose your role to get started</p>
       </div>
 

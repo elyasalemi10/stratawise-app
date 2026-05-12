@@ -1,4 +1,4 @@
-# My Strata Management (MSM) — Claude Code Rules
+# Strata Wise (SW) — Claude Code Rules
 
 ## Git
 - Always commit and push to origin after completing changes. Do not wait for the user to ask.
@@ -9,7 +9,7 @@
 - Use our own settings page at /settings for profile/password management, NOT Clerk's UserButton or UserProfile popups.
 
 ## Brand
-- Full name: "My Strata Management". Abbreviated: "MSM". Never "StrataOS".
+- Full name: "Strata Wise" (two words for display). One-word identifier: "StrataWise". Abbreviated: "SW". Never "MSM" or "My Strata Management" (legacy).
 - Brand colours: Primary blue #2b7fff, Secondary green #00bd7d.
 
 ## Stack
@@ -32,7 +32,7 @@
 - ALL tabs persist state in URL via ?tab= searchParam.
 - ALL outbound communications logged to communication_log table.
 - ALL data mutations logged to audit_log with before/after JSON state.
-- ALL generated documents follow naming: MSM-{TYPE}-{YYYY}-{NNNNNN}.pdf
+- ALL generated documents follow naming: SW-{TYPE}-{YYYY}-{NNNNNN}.pdf
 - ALL date pickers use shadcn Calendar + Popover (never native HTML date inputs).
 
 ## Colour Palette
@@ -88,7 +88,7 @@
 
 ## Roles
 - Three platform roles: super_admin, strata_manager, lot_owner.
-- super_admin: MSM platform team. Full access to everything.
+- super_admin: Strata Wise platform team. Full access to everything.
 - strata_manager: Management company staff. Full CRUD on assigned subdivisions.
 - lot_owner: Invited portal user. View own lot, pay levies, vote, chat, submit requests.
 - Every server action checks role + management_company_id match before mutations. UI hides elements, server enforces.
@@ -99,7 +99,7 @@
 
 ## Reference Numbers
 - Financial-facing references (LEV, RCP, PAY): per-OC sequence via subdivisions.next_{levy|receipt|payment}_number integer column. Format `{PREFIX}-{n}` where n is the OC's own counter. Two OCs can each have LEV-1; matching is always subdivision-scoped so no ambiguity.
-- Operational references (MTG, MIN, SLEV, INV, POL, CLM, MNT, CMP, ESC): global Postgres SEQUENCE. Format `MSM-{PREFIX}-{YYYY}-{NNNNNN}`.
+- Operational references (MTG, MIN, SLEV, INV, POL, CLM, MNT, CMP, ESC): global Postgres SEQUENCE. Format `SW-{PREFIX}-{YYYY}-{NNNNNN}`.
 - Function signature: `next_reference_number(prefix TEXT, subdivision_id UUID DEFAULT NULL)`. Financial prefixes require subdivision_id; operational prefixes ignore it.
 
 ## Background Jobs
@@ -112,7 +112,7 @@
 - Penalty interest configurable per subdivision (0-2.5%/month VIC cap).
 - Notice period blocking: meeting dates grey out within 14 days, levy due dates within 28 days.
 - Stripe Connect optional. Default is BPAY/EFT display only. Card payments are an upgrade.
-- MSM never holds OC funds. Stripe Connect sends payments directly to OC's bank.
+- Strata Wise never holds OC funds. Stripe Connect sends payments directly to OC's bank.
 - Profile pictures stored in R2 (or Supabase Storage for MVP).
 
 ## File Structure

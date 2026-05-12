@@ -1,4 +1,4 @@
-# MSM Build Context — Handoff for Subsequent Prompts
+# Strata Wise Build Context — Handoff for Subsequent Prompts
 
 Every prompt in the reconciliation build reads this file first. It captures
 the invariants, architecture, and current state of the codebase after the
@@ -8,7 +8,7 @@ Prompt 0 consolidation. Treat it as the authoritative starting point.
 
 ## 1. Product overview
 
-My Strata Management (MSM) is a company-focused strata management platform
+Strata Wise (SW) is a company-focused strata management platform
 for Victorian owners' corporations (OCs). Management company staff operate
 subdivisions on behalf of lot owners — levies, budgets, meetings, minutes,
 insurance, maintenance, complaints, and compliance evidence trails all live
@@ -64,7 +64,7 @@ extending to other states is a seed-data exercise, not a code rewrite.
 - Toasts via Sonner, bottom-right. Errors don't auto-dismiss.
 - Loading states are Skeleton components that mirror the loaded layout
   exactly. No spinners. No page-transition animations. No dark mode.
-- Reference numbers: `MSM-{PREFIX}-{YYYY}-{NNNNNN}`, generated from global
+- Reference numbers: `SW-{PREFIX}-{YYYY}-{NNNNNN}`, generated from global
   Postgres sequences (never per-subdivision).
 - Notifications: in-app via `notifications` (profile-scoped). The
   `notifications.read_at IS NULL` is the single source of truth for unread
@@ -222,8 +222,8 @@ candidate pool — voided/excluded can't anchor a duplicate; the
 `duplicate_of` filter is **chain prevention** so a third-arrival doesn't
 re-anchor on a row that already points elsewhere.
 
-**Description normaliser**: `normaliseDescription` uppercases, strips MSM
-reference tokens (`LEV-`, `RCP-`, `PAY-`, `MSM-{PREFIX}-{YYYY}-{NNNN}`),
+**Description normaliser**: `normaliseDescription` uppercases, strips Strata Wise
+reference tokens (`LEV-`, `RCP-`, `PAY-`, `SW-{PREFIX}-{YYYY}-{NNNN}`),
 strips non-word characters, collapses whitespace, trims. Reference
 tokens are stripped because two sources may format them differently
 ("LEV-12" vs "Ref:LEV-12" vs "lev12") — the normaliser collapses these
@@ -390,7 +390,7 @@ feature lands.
   cascade, no stale fields.
 - **Multi-linked credit** (>1 distinct bank txs via partial-allocation
   matches): hard error `errorCode='MULTI_LINKED'`. Currently impossible
-  via any normal MSM flow but allowed by the
+  via any normal Strata Wise flow but allowed by the
   `UNIQUE(bank_transaction_id, ledger_entry_id)` constraint (only blocks
   same-pair duplicates). Hard-erroring keeps financial-state writes
   inside RPC contracts and surfaces any future architectural shift
@@ -443,7 +443,7 @@ freshly-inserted bank tx as a suspected duplicate, both the candidate
 (pre-existing bank tx) and the new bank tx must produce the same
 description hash — i.e. either identical raw descriptions or differing
 only in normaliser-stripped tokens (`LEV-`, `RCP-`, `PAY-`,
-`MSM-{PREFIX}-{YYYY}-{NNNN}`). Distinct descriptions correctly produce
+`SW-{PREFIX}-{YYYY}-{NNNN}`). Distinct descriptions correctly produce
 no detector flag; that's not a bug, it's the spec. PP5-C's OPC-9 hit
 this during first execution — candidate `"OPC-9 candidate"` vs new
 `"OPC-9 manual bank tx (override candidate)"` didn't hash-match, so
@@ -734,7 +734,7 @@ project-roadmap.md                 — per-step delivery plan (when present)
 - `documents.lot_id` (nullable FK for lot-scoped docs) + partial indexes
 - `insurance_policies.document_url`
 - `levy_notices.batch_id`, `pdf_url`
-- `levy_batches` table + `msm_levy_batch_seq` + `levy_batch_status` enum
+- `levy_batches` table + `sw_levy_batch_seq` + `levy_batch_status` enum
 - `levy_notice_items` table
 - Missing `trg_updated_at_*` triggers on `bank_accounts` and
   `insurance_policies`
@@ -825,7 +825,7 @@ leave the fixture for inspection; `--cleanup` cleans stale runs).
 **New table.** `undeposited_funds_entries` — staging table for
 cash/cheque receipts. Rows live here from `rpc_record_cash_receipt`
 until `rpc_deposit_receipts` links them to a bank transaction. Each row
-carries `receipt_number` (MSM-RCPT-YYYY-NNNNNN), `amount`,
+carries `receipt_number` (SW-RCPT-YYYY-NNNNNN), `amount`,
 `bank_account_id`, `linked_ledger_credit_id` (the ledger credit it
 created), `status` (`pending_deposit | deposited | voided`), and
 deposit tracking columns (`deposited_at`, `deposited_bank_txn_id`,
@@ -839,7 +839,7 @@ scaffold from Prompt 1 is now fully written. Each row links one
 **Auto-matching is application-layer only (no DB trigger).** After a
 manual bank transaction is inserted, `addManualBankTransaction` calls
 `tryAutoMatchByReference` as a best-effort step — it scans the
-description for a single MSM-LEV-* reference, looks up the levy notice,
+description for a single SW-LEV-* reference, looks up the levy notice,
 and calls `rpc_reconcile_bank_transaction` if an outstanding amount
 exists. If matching fails, the error is written to `audit_log` and the
 function returns `{ matched: false }` without failing or rolling back the
@@ -856,7 +856,7 @@ outer insert. CSV imports have an inline copy of the same logic.
   Re-opens any deposited receipts to `pending_deposit`.
 - `rpc_record_cash_receipt(...)` — records a cash/cheque receipt: calls
   `rpc_payment_credit` for the lot, inserts `undeposited_funds_entries`,
-  assigns `MSM-RCPT-YYYY-NNNNNN` reference.
+  assigns `SW-RCPT-YYYY-NNNNNN` reference.
 
 **Server actions.** `src/lib/actions/reconciliation.ts` exposes
 `addManualBankTransaction`, `getReconciliationQueue`,
@@ -908,7 +908,7 @@ receipt (pending and deposited). Runs clean with 12/12 pass.
 
 **Deferred to later prompts.**
 - Basiq bank feed connection and webhook ingestion → Prompt 3.
-- Auto-matching beyond MSM-LEV reference (BPAY CRN, sender identity,
+- Auto-matching beyond Strata Wise-LEV reference (BPAY CRN, sender identity,
   confidence scoring) → Prompt 4.
 - Owner self-report and duplicate detection → Prompt 5.
 - Lot statement PDF (`getLotStatement` data is ready; PDF template
@@ -1210,7 +1210,7 @@ to Prompt 6.5 due to headroom — only step 1 of the escalation ladder
 ships in Prompt 6.
 
 **Sub-pause shipping order (11 commits, all on `main`, all Vercel-green
-at deploy; 3 parallel invitation commits from a non-MSM-architect session
+at deploy; 3 parallel invitation commits from a non-Strata Wise-architect session
 also landed during this window):**
 
 1. PP6-B-A daily interest accrual cron + jobs — commit `463d4d1`

@@ -63,7 +63,7 @@ function getClient(): S3Client {
 export function getBucket(): string {
   // Default fallback matches the legacy uploadCompanyLogo path. The bucket is
   // multi-purpose despite the legacy name.
-  return process.env.R2_BUCKET_NAME ?? "msm-company-logos";
+  return process.env.R2_BUCKET_NAME ?? "stratawise-company-logos";
 }
 
 /**

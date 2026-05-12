@@ -179,10 +179,10 @@ No other candidates for deletion found.
 *Actually `levy_batches` as defined in the migration only has `created_at`, no `updated_at`. We keep it that way — no trigger needed.*
 
 ### Sequences kept
-All 11 existing sequences: `msm_levy_seq`, `msm_special_levy_seq`, `msm_payment_seq`, `msm_meeting_seq`, `msm_minutes_seq`, `msm_policy_seq`, `msm_claim_seq`, `msm_maintenance_seq`, `msm_invitation_seq`, `msm_complaint_seq`, `msm_escalation_seq`.
+All 11 existing sequences: `sw_lev_seq`, `sw_slev_seq`, `sw_pay_seq`, `sw_mtg_seq`, `sw_min_seq`, `sw_pol_seq`, `sw_clm_seq`, `sw_mnt_seq`, `sw_inv_seq`, `sw_cmp_seq`, `sw_esc_seq`.
 
 ### Sequences ADDED
-- `msm_levy_batch_seq` (from levy-batches migration — promoted)
+- `sw_levy_batch_seq` (from levy-batches migration — promoted)
 
 ---
 
@@ -195,7 +195,7 @@ All 11 existing sequences: `msm_levy_seq`, `msm_special_levy_seq`, `msm_payment_
 | 3 | Resolve `notifications` → use base-schema shape (`profile_id`, `title`, `body`, `link`, `read_at`) | Matches runtime code. |
 | 4 | Fix `calculate_oc_tier()` → VIC-legal thresholds | Per user; migration-corrected version wins. |
 | 5 | Add missing `trg_updated_at` on `bank_accounts`, `insurance_policies` | Per user. |
-| 6 | Promote `levy_batches`, `levy_notice_items`, `msm_levy_batch_seq`, `levy_batch_status` enum, `levy_notices.batch_id/pdf_url` from migration to consolidated schema | Used throughout levy flow. |
+| 6 | Promote `levy_batches`, `levy_notice_items`, `sw_levy_batch_seq`, `levy_batch_status` enum, `levy_notices.batch_id/pdf_url` from migration to consolidated schema | Used throughout levy flow. |
 | 7 | Drop `management_companies.stripe_customer_id` | Zero code refs, Stripe Connect deferred. |
 | 8 | Drop `bank_accounts.stripe_account_id` | Same. |
 | 9 | Keep `bank_accounts.basiq_user_id/basiq_connection_id/last_poll_at` | Basiq is the next build phase. |

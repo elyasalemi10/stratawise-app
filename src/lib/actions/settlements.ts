@@ -24,7 +24,7 @@ const R2 = new S3Client({
   },
 });
 
-const BUCKET = process.env.R2_BUCKET_NAME ?? "msm-company-logos";
+const BUCKET = process.env.R2_BUCKET_NAME ?? "stratawise-company-logos";
 
 async function fetchDocumentBytes(filePath: string): Promise<Buffer> {
   const out = await R2.send(new GetObjectCommand({ Bucket: BUCKET, Key: filePath }));

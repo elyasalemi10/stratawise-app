@@ -1334,7 +1334,7 @@ async function ld20_voidUnlinkedCredit(
 // Hand-crafts an "impossible" state — one credit linked to two distinct
 // bank txs via separate reconciliation_matches rows. The UNIQUE
 // constraint on (bank_transaction_id, ledger_entry_id) blocks same-pair
-// duplicates but allows distinct-pair multi-linkage; no current MSM flow
+// duplicates but allows distinct-pair multi-linkage; no current Strata Wise flow
 // produces this state. The MULTI_LINKED guard locks in the "no manual
 // cleanup outside RPC contracts" architectural decision.
 

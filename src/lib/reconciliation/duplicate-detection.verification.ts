@@ -237,7 +237,7 @@ function runNormaliserTests() {
     ["DN-2: strips LEV-{n}", "TRANSFER LEV-12 FROM JANE", "TRANSFER FROM JANE"],
     ["DN-3: strips RCP-{n}", "RCP-7 cash receipt", "CASH RECEIPT"],
     ["DN-4: strips PAY-{n}", "Pay-9 invoice", "INVOICE"],
-    ["DN-5: strips MSM-PREFIX-YYYY-NNNN", "msm-mtg-2026-000123 minutes", "MINUTES"],
+    ["DN-5: strips SW-PREFIX-YYYY-NNNN", "sw-mtg-2026-000123 minutes", "MINUTES"],
     [
       "DN-6: strips punctuation, collapses whitespace",
       "  Jane,  Brown!!  ",

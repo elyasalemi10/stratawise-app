@@ -7,7 +7,7 @@
 // cooldown (e.g. the repeat-manual proposal toast: dismissed for 30 days per
 // (subdivision, canonical_name, lot) tuple).
 //
-// All flags share a single localStorage entry "msm:dismissals" mapping
+// All flags share a single localStorage entry "stratawise:dismissals" mapping
 // arbitrary string keys → epoch-ms of dismissal. Garbage-collected on read:
 // any entry older than `ttlMs` is dropped. Quota errors are silently
 // swallowed — dismissal is a UX nice-to-have, never a correctness signal.
@@ -22,7 +22,7 @@ import { useCallback, useSyncExternalStore } from "react";
 
 type DismissalMap = Record<string, number>;
 
-const STORAGE_KEY = "msm:dismissals";
+const STORAGE_KEY = "stratawise:dismissals";
 
 type Listener = () => void;
 const listeners = new Set<Listener>();

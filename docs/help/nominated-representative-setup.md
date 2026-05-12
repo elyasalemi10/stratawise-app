@@ -8,7 +8,7 @@ party (like your strata software) can receive bank transaction data.
 
 As the strata manager, you register yourself as the nominated
 representative with your bank once. Afterwards, you can complete the
-"Connect bank feed" flow in My Strata Management and your OC's
+"Connect bank feed" flow in Strata Wise and your OC's
 transactions sync automatically.
 
 ## How to set up
@@ -43,13 +43,13 @@ dashboard list.
 
 ## Consent duration
 
-Once granted, consent lasts 12 months. My Strata Management will remind
+Once granted, consent lasts 12 months. Strata Wise will remind
 you 30, 14, 7, 3, and 1 day before expiry — click the
 "Reauthorise" button to extend.
 
 ## If something goes wrong
 
 If the bank's CDR page says you're already the nominated representative
-but MSM still shows "Not connected", check that the bank account BSB
-and account number in MSM exactly match the account you nominated for
+but Strata Wise still shows "Not connected", check that the bank account BSB
+and account number in Strata Wise exactly match the account you nominated for
 sharing. Mismatches are the most common cause of silent failures.

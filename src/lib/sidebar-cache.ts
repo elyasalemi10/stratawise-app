@@ -1,8 +1,8 @@
 import type { SidebarProfile } from "@/lib/actions/profile";
 import type { SidebarSubdivision } from "@/lib/actions/subdivision";
 
-const PROFILE_KEY = "msm_sidebar_profile";
-const SUBDIVISIONS_KEY = "msm_sidebar_subdivisions";
+const PROFILE_KEY = "stratawise_sidebar_profile";
+const SUBDIVISIONS_KEY = "stratawise_sidebar_subdivisions";
 const MAX_AGE_MS = 5 * 60 * 1000; // 5 minutes
 
 interface CachedData<T> {
@@ -60,7 +60,7 @@ export function clearSidebarCache(): void {
  * Event name the sidebar listens for. Kept as an export so callers don't
  * duplicate the string literal (grep-safety).
  */
-export const SIDEBAR_REFRESH_EVENT = "msm-sidebar:refresh";
+export const SIDEBAR_REFRESH_EVENT = "stratawise-sidebar:refresh";
 
 /**
  * Call this from ANY client-side mutation success handler that affected the

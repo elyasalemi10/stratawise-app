@@ -1,5 +1,5 @@
 // ============================================================================
-// Strategy 1 — MSM levy reference (LEV-{n})
+// Strategy 1 — Strata Wise levy reference (LEV-{n})
 // ----------------------------------------------------------------------------
 // Extracts levy references from the bank-transaction description, looks
 // them up against outstanding levy_notices in the bank account's fund,

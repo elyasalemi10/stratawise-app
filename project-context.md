@@ -1,8 +1,8 @@
-# MY STRATA MANAGEMENT (MSM) — COMPLETE PROJECT CONTEXT
+# STRATA WISE (SW) — COMPLETE PROJECT CONTEXT
 
 > **Purpose of this file:** Give this entire file to a new Claude session (Claude.ai or Claude Code) so it has full context of every decision made, every piece of research done, and every spec created for this project. Nothing is lost between sessions.
 >
-> **Brand:** "My Strata Management" (full name) / "MSM" (abbreviated). Never "StrataOS".
+> **Brand:** "Strata Wise" (full name) / "Strata Wise" (abbreviated). Never "StrataOS".
 
 ---
 
@@ -14,7 +14,7 @@ Elyas — Melbourne-based property developer running an integrated Australian pr
 
 ## WHAT WE'RE BUILDING
 
-**My Strata Management (MSM)** — a SaaS platform for professional strata management companies to manage multiple subdivisions. Strata managers sign up with their company, assign themselves to subdivisions, and use MSM to automate tedious tasks: levy generation, escalation workflows, meeting notices, bank reconciliation, compliance tracking. Lot owners get invited to a limited portal where they can view their levies, pay, chat with their manager, submit maintenance requests, and vote at meetings. This is professional management software, not self-management software.
+**Strata Wise (SW)** — a SaaS platform for professional strata management companies to manage multiple subdivisions. Strata managers sign up with their company, assign themselves to subdivisions, and use Strata Wise to automate tedious tasks: levy generation, escalation workflows, meeting notices, bank reconciliation, compliance tracking. Lot owners get invited to a limited portal where they can view their levies, pay, chat with their manager, submit maintenance requests, and vote at meetings. This is professional management software, not self-management software.
 
 **Target users (in priority order):**
 - Strata management companies (PRIMARY — they pay the subscription)
@@ -128,7 +128,7 @@ building_valuation_cycle_years: 5
 
 ## DESIGN SYSTEM
 
-### Brand: "My Strata Management" / "MSM"
+### Brand: "Strata Wise" / "Strata Wise"
 
 ### Colour palette (HSL CSS variables):
 ```
@@ -261,7 +261,7 @@ Foreground:                 hsl(220, 26%, 14%) — #1a1f2e — primary text (nea
    - id, subdivision_id, lot_id, email, name, phone, role (strata_manager/lot_owner), token (unique), status (pending/accepted/expired/revoked), invited_by, created_at, expires_at
 
 10. **budgets** + **budget_items** — with fund_type (administrative/capital_works)
-10. **levy_notices** — with fund_type, unique reference_number (MSM-LEV-YYYY-NNNNNN) for bank matching
+10. **levy_notices** — with fund_type, unique reference_number (SW-LEV-YYYY-NNNNNN) for bank matching
 11. **payments** — with fund_type, linked to bank_transaction_id for reconciliation, match_confidence score
 12. **lot_financial_summary** — materialized view (total_levied, total_paid, balance_owing, is_financial)
 13. **bank_accounts** — per subdivision, per fund type
@@ -311,7 +311,7 @@ CHARGE GROUPS & ADVANCED FINANCIAL:
 
 ### Platform-level roles (profiles table):
 ```
-super_admin  — MSM platform team (Elyas). Can see everything across all management companies.
+super_admin  — Strata Wise platform team (Elyas). Can see everything across all management companies.
 
 strata_manager — Staff at a strata management company. Manages assigned subdivisions. Full CRUD on their subdivisions.
 
@@ -439,7 +439,7 @@ Lot owners have FIXED, LIMITED access (see LOT OWNER VISIBILITY section for full
 - **v2 Escalation channels:** SMS via Twilio/MessageBird, voice calls via Vapi voice agents for overdue levy follow-ups
 - **v2 Live bank feeds:** Basiq or Yodlee integration for real-time bank transaction import (replaces CSV upload)
 - **v2 Hybrid management tier:** self-managed lot owners with optional strata manager support (mix of both models)
-- **v3 Fully self-managed tier:** self-management platform for lot owners (original MSM vision)
+- **v3 Fully self-managed tier:** self-management platform for lot owners (original Strata Wise vision)
 - **v2 Multi-tenancy:** multiple strata management companies on the platform with complete isolation
 - Mobile app (iOS/Android) with push notifications
 - AI-assisted document drafting (minutes, notices)
@@ -472,19 +472,19 @@ Lot owners have FIXED, LIMITED access (see LOT OWNER VISIBILITY section for full
 | Charge groups | Optional charge_group_id on budget_items | Per-item lot overrides | Clean separation: define groups once, reference in budgets. Supports differential levies (driveway, pool, lift). |
 | Settings split | Account (/settings) + Subdivision (/subdivisions/[id]/settings) | Single settings page | Account = per-user (profile, notifications). Subdivision = per-OC (financial config, charge groups, bank accounts). |
 | Bank reconciliation | Manual entry primary, CSV secondary, PDF reference only | CSV primary | Members with manage_banking may not be tech-savvy. Manual entry with lot owner dropdown is most accessible. |
-| Role model | super_admin + lot_owner + granular responsibilities | Fixed committee titles or MSM coordinator | Task-based, not title-based. Subdivision creator assigns manage_meetings, manage_finances, etc. No coordinator in the loop. |
+| Role model | super_admin + lot_owner + granular responsibilities | Fixed committee titles or Strata Wise coordinator | Task-based, not title-based. Subdivision creator assigns manage_meetings, manage_finances, etc. No coordinator in the loop. |
 | Reference numbers | Global Postgres SEQUENCE per type | Per-subdivision counter | Two levies from different subdivisions must NEVER share a reference. Global sequence guarantees uniqueness across the entire platform. |
 | AGM tracking | last_agm_date + next_agm_due on subdivisions table | Calculate from meetings table | Explicit fields are more reliable and visible. Auto-updated when AGM is closed. |
 | Public levy payments | /pay page with Stripe + BPAY/EFT display | Login-required payments only | Frictionless: scan QR code on levy PDF → pay instantly. No account needed. |
 | Card surcharge | NO surcharges. OC absorbs Stripe fees. | Surcharge to payer | RBA banning surcharges from 2026-2027. OC budgets for "Payment processing fees" line item. |
-| Stripe model | Stripe Connect (destination charges) | Direct Stripe on MSM | Funds go directly to OC's connected Stripe account. MSM never holds levy money. Platform fee billed separately. |
+| Stripe model | Stripe Connect (destination charges) | Direct Stripe on Strata Wise | Funds go directly to OC's connected Stripe account. Strata Wise never holds levy money. Platform fee billed separately. |
 | BPAY | Display biller code + CRN on /pay page (MVP). API integration via Monoova v2. | Full API from start | BPAY is bank-side — owners pay in their own banking app. MVP just displays details. |
 | Chart of accounts | Simplified categories with hidden COA codes | Full double-entry accounting | Users see "Gardening", auditors see [200400]. Export button generates COA-coded report. |
 | Smart blocking | Locked feature cards with CTAs when prerequisites missing | Show empty/broken data | Progressive disclosure: don't show Financials until entitlements set, don't show Levies until budget approved. |
 | Onboarding | 4-step wizard for first user, invited users skip it | Dump on empty dashboard | First person (usually chair) guided through setup. Everyone else joins via invitation link. |
-| Platform fee in budgets | Mandatory, auto-inserted, non-removable by committee | Optional line item | Guarantees MSM fee is always included in levies. Committee sees it but can't delete it. |
-| MSM billing | Stripe Subscription on OC's connected account | Invoice/manual | Automatic monthly billing. Failed payment → suspension. Clean revenue collection. |
-| Bank accounts | OC brings their own. MSM doesn't create bank accounts. | MSM creates accounts | OC already has a bank account. Treasurer enters details. Stripe Connect links to it for payouts. |
+| Platform fee in budgets | Mandatory, auto-inserted, non-removable by committee | Optional line item | Guarantees Strata Wise fee is always included in levies. Committee sees it but can't delete it. |
+| Strata Wise billing | Stripe Subscription on OC's connected account | Invoice/manual | Automatic monthly billing. Failed payment → suspension. Clean revenue collection. |
+| Bank accounts | OC brings their own. Strata Wise doesn't create bank accounts. | Strata Wise creates accounts | OC already has a bank account. Treasurer enters details. Stripe Connect links to it for payouts. |
 | Payment portal 2FA | Email verification code before showing levy details | No verification | Prevents random reference guessing. 6-digit code to owner's email. Skip if no email on file. |
 | Interest customization | Committee chooses: enabled/disabled, rate (0-2.5%), accrual day, grace period | Fixed 2.5% from day 1 | Flexibility within VIC cap. Some OCs prefer lower rate or grace period for good relations. |
 | Notice period blocking | Date pickers grey out dates within 14 days (meetings) / 28 days (levies) | Validate on submit only | Prevents mistakes before they happen. Tooltip explains the legal requirement. |
@@ -540,7 +540,7 @@ Better Auth (MIT license, 26K GitHub stars, YC-backed, $5M raised) is the top op
 
 ### Subdivision states:
 - **active**: normal usage
-- **suspended**: non-payment of MSM subscription. Read-only — 30-day grace period.
+- **suspended**: non-payment of Strata Wise subscription. Read-only — 30-day grace period.
 - **archived**: OC dissolved or permanently closed. All data retained read-only.
 
 ### Retention rules (Victorian compliance):
@@ -580,32 +580,32 @@ All entities and documents follow consistent naming. Reference this in every ste
 ```
 === ENTITY REFERENCE NUMBERS (stored in database, shown in UI) ===
 
-Levy notices:      MSM-LEV-{YYYY}-{NNNNNN}     e.g., MSM-LEV-2026-000042
-Special levies:    MSM-SLEV-{YYYY}-{NNNNNN}    e.g., MSM-SLEV-2026-000001
-Payments:          MSM-PAY-{YYYY}-{NNNNNN}     e.g., MSM-PAY-2026-000105
-Meetings:          MSM-MTG-{YYYY}-{NNNNNN}     e.g., MSM-MTG-2026-000003
-Meeting minutes:   MSM-MIN-{YYYY}-{NNNNNN}     e.g., MSM-MIN-2026-000003
-Insurance policies:MSM-POL-{YYYY}-{NNNNNN}     e.g., MSM-POL-2026-000002
-Insurance claims:  MSM-CLM-{YYYY}-{NNNNNN}     e.g., MSM-CLM-2026-000001
-Maintenance:       MSM-MNT-{YYYY}-{NNNNNN}     e.g., MSM-MNT-2026-000015
-Invitations:       MSM-INV-{YYYY}-{NNNNNN}     e.g., MSM-INV-2026-000008
-OC Certificates:   MSM-CERT-{PLAN}-{DATE}      e.g., MSM-CERT-PS123456A-20260315
-Reconciliation:    MSM-REC-{ACCT}-{YYYY-MM}    e.g., MSM-REC-ADMIN-2026-03
-VCAT prep packs:   MSM-VCAT-{PLAN}-LOT{N}-{DATE} e.g., MSM-VCAT-PS123456A-LOT7-20260315
-Complaints:        MSM-CMP-{YYYY}-{NNNNNN}     e.g., MSM-CMP-2026-000003
-Escalation:        MSM-ESC-{YYYY}-{NNNNNN}     e.g., MSM-ESC-2026-000012
+Levy notices:      SW-LEV-{YYYY}-{NNNNNN}     e.g., SW-LEV-2026-000042
+Special levies:    SW-SLEV-{YYYY}-{NNNNNN}    e.g., SW-SLEV-2026-000001
+Payments:          SW-PAY-{YYYY}-{NNNNNN}     e.g., SW-PAY-2026-000105
+Meetings:          SW-MTG-{YYYY}-{NNNNNN}     e.g., SW-MTG-2026-000003
+Meeting minutes:   SW-MIN-{YYYY}-{NNNNNN}     e.g., SW-MIN-2026-000003
+Insurance policies:SW-POL-{YYYY}-{NNNNNN}     e.g., SW-POL-2026-000002
+Insurance claims:  SW-CLM-{YYYY}-{NNNNNN}     e.g., SW-CLM-2026-000001
+Maintenance:       SW-MNT-{YYYY}-{NNNNNN}     e.g., SW-MNT-2026-000015
+Invitations:       SW-INV-{YYYY}-{NNNNNN}     e.g., SW-INV-2026-000008
+OC Certificates:   SW-CERT-{PLAN}-{DATE}      e.g., SW-CERT-PS123456A-20260315
+Reconciliation:    SW-REC-{ACCT}-{YYYY-MM}    e.g., SW-REC-ADMIN-2026-03
+VCAT prep packs:   SW-VCAT-{PLAN}-LOT{N}-{DATE} e.g., SW-VCAT-PS123456A-LOT7-20260315
+Complaints:        SW-CMP-{YYYY}-{NNNNNN}     e.g., SW-CMP-2026-000003
+Escalation:        SW-ESC-{YYYY}-{NNNNNN}     e.g., SW-ESC-2026-000012
 
 {NNNNNN} is a GLOBAL auto-incrementing sequence per type — NEVER per-subdivision. Two levies from different subdivisions must never share a reference number. Reset to 000001 each January 1st.
-Use a Postgres SEQUENCE per type: CREATE SEQUENCE msm_lev_seq; CREATE SEQUENCE msm_mtg_seq; etc. (names are short-form matching the prefix passed to `next_reference_number()` — e.g. `LEV` → `msm_lev_seq`). Generate via Supabase RPC; the function prepends `MSM-` and returns `MSM-<PREFIX>-YYYY-NNNNNN`. A single global sequence per entity type ensures uniqueness across the entire platform.
+Use a Postgres SEQUENCE per type: CREATE SEQUENCE sw_lev_seq; CREATE SEQUENCE sw_mtg_seq; etc. (names are short-form matching the prefix passed to `next_reference_number()` — e.g. `LEV` → `sw_lev_seq`). Generate via Supabase RPC; the function prepends `Strata Wise-` and returns `SW-<PREFIX>-YYYY-NNNNNN`. A single global sequence per entity type ensures uniqueness across the entire platform.
 
 === PDF FILE NAMES (when downloaded/generated) ===
 
 Same as reference number + .pdf suffix:
-  MSM-LEV-2026-000042.pdf, MSM-MTG-2026-000003.pdf, etc.
+  SW-LEV-2026-000042.pdf, SW-MTG-2026-000003.pdf, etc.
 
 === LEVY REFERENCE FOR BANK MATCHING ===
 
-The levy reference number (MSM-LEV-{YYYY}-{NNNNNN}) is printed on every levy notice PDF.
+The levy reference number (SW-LEV-{YYYY}-{NNNNNN}) is printed on every levy notice PDF.
 Owners are instructed to use this as their BPAY/EFT payment reference.
 The bank reconciliation auto-matcher scans transaction descriptions for this pattern.
 ```
@@ -678,7 +678,7 @@ NOTIFICATION EDGE CASES:
 
 SUBDIVISION LIFECYCLE EDGE CASES:
 - Subdivision archived but has unpaid levies: Archive proceeds, outstanding levies remain on record.
-- Subdivision suspended (non-payment of MSM fee): Banner shown to all members. All data read-only. Escalations paused.
+- Subdivision suspended (non-payment of Strata Wise fee): Banner shown to all members. All data read-only. Escalations paused.
 - Reactivation after suspension: All data preserved, escalations can resume.
 - Developer period ending: Developer must hand over to OC. Add "developer handover checklist" compliance item.
 - Rules change (model to custom): Requires special resolution. Record registration date and reference.
@@ -717,7 +717,7 @@ TIER 2 — STRIPE CONNECT (card payments enabled):
   Budget line item: "Payment Processing Fees" to cover this.
 
 TIER 3 — BPAY API (future, v2):
-  MSM gets a biller code via Monoova/Ezidebit. Webhook auto-matches BPAY payments.
+  Strata Wise gets a biller code via Monoova/Ezidebit. Webhook auto-matches BPAY payments.
   Cost to OC: ~$0.20-0.85 per BPAY transaction.
 
 UI IN SUBDIVISION SETTINGS → BANK ACCOUNTS TAB:
@@ -840,7 +840,7 @@ WHICH lots or WHO owes what. Only strata managers can see individual details.
 ```
 All users can upload a profile picture. This replaces the default initial-based avatar.
 
-STORAGE: Cloudflare R2 bucket 'msm-avatars'. Path: avatars/{profile_id}.jpg
+STORAGE: Cloudflare R2 bucket 'stratawise-avatars'. Path: avatars/{profile_id}.jpg
   R2 has zero egress fees — avatars are loaded on every page, by every user, constantly.
   Supabase Storage charges $0.09/GB for bandwidth. For a platform with hundreds of users
   loading avatars on every page view, R2 saves real money.
@@ -859,7 +859,7 @@ SETTINGS: Upload/change in /settings?tab=profile. Drag-and-drop zone or click to
           "Remove photo" link returns to initials.
 
 Clerk UserButton already shows Clerk's avatar — sync is optional.
-For simplicity, store MSM avatar separately (not dependent on Clerk).
+For simplicity, store Strata Wise avatar separately (not dependent on Clerk).
 
 Add avatar_url column to profiles table.
 ```
@@ -872,15 +872,15 @@ Every email the platform sends. All use Resend + React Email templates. All logg
 
 ```
 AUTHENTICATION & ACCOUNT:
-  1. Invitation email       → "You've been invited to join {subdivision_name} on MSM"
+  1. Invitation email       → "You've been invited to join {subdivision_name} on Strata Wise"
                               Contains: accept link (/invite/{token}), subdivision name, lot number, role info
                               Trigger: member with manage_members sends invitation (Step 3.1)
 
-  2. Welcome email          → "Welcome to My Strata Management"
+  2. Welcome email          → "Welcome to Strata Wise"
                               Contains: getting started guide, link to dashboard
                               Trigger: user accepts invitation and completes sign-up
 
-  3. Account deactivated    → "Your MSM account has been deactivated"
+  3. Account deactivated    → "Your Strata Wise account has been deactivated"
                               Contains: what this means, how to reactivate, data retention note
                               Trigger: user deactivates own account (Step 3.3)
 
@@ -943,11 +943,11 @@ GENERAL:
                               Trigger: compliance check finds red item
 
 PAYMENT PORTAL:
-  17. 2FA verification      → "Your MSM verification code: {code}"
+  17. 2FA verification      → "Your Strata Wise verification code: {code}"
                               Contains: 6-digit code, expires in 10 minutes
                               Trigger: /pay page lookup (Step 15.4)
 
-  18. Portal payment receipt → "Payment received via MSM portal"
+  18. Portal payment receipt → "Payment received via Strata Wise portal"
                               Contains: levy reference, amount, confirmation number
                               Trigger: Stripe webhook on /pay success
 
@@ -973,7 +973,7 @@ All emails:
 - From: notifications@mystratamanagement.com.au (Resend verified domain)
 - Reply-to: support@mystratamanagement.com.au
 - Unsubscribe link: links to /settings?tab=notifications
-- Footer: "My Strata Management — ABN XXXXXXX"
+- Footer: "Strata Wise — ABN XXXXXXX"
 - Respect notification_preferences: if user disabled email for that type, DON'T send (except legal requirements like levy notices)
 - Legal requirement emails (levy notices, meeting notices): ALWAYS send regardless of preferences, per Victorian legislation
 ```
@@ -1056,7 +1056,7 @@ Hide this card once all steps are complete. It's a gentle onboarding guide, not 
 
 ## CHART OF ACCOUNTS (SIMPLIFIED)
 
-MSM uses friendly category names for users but maps them to standard strata chart of accounts (COA) codes for auditors and accountants.
+Strata Wise uses friendly category names for users but maps them to standard strata chart of accounts (COA) codes for auditors and accountants.
 
 ```
 === BUDGET CATEGORY MAPPING ===

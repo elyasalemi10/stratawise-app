@@ -74,16 +74,16 @@ Small fixes to batch before going live. Non-blocking for feature work.
 ## From Prompt 1
 
 - **Sequence-name drift caught during Prompt 1 verification:** base schema
-  used long-form (`msm_levy_seq`, `msm_meeting_seq`, ...), the
+  used long-form (`sw_lev_seq`, `sw_mtg_seq`, ...), the
   `next_reference_number()` function and every caller used short-form
-  (`msm_lev_seq`, `msm_mtg_seq`, ...). No caller ever succeeded at
+  (`sw_lev_seq`, `sw_mtg_seq`, ...). No caller ever succeeded at
   generating a reference number (production code `continue`d past the
   silent null). Root cause: Prompt 0 consolidation picked long-form
   sequence names without cross-checking the function body.
   **Lesson for future consolidations: verify function bodies against the
   table/sequence names they construct, not just the table names
   themselves.** Fixed in commit that renamed sequences to short-form and
-  updated `next_reference_number()` to prepend `MSM-` so output matches
+  updated `next_reference_number()` to prepend `Strata Wise-` so output matches
   the format advertised in CLAUDE.md and project-context.md.
 
 ## From Prompt 6
@@ -165,9 +165,9 @@ Small fixes to batch before going live. Non-blocking for feature work.
 
 ## From Prompt 4 (PP4-0 refactor)
 
-- **Operational-sequence reference format overflow:** `next_reference_number` for operational prefixes (MTG, MIN, SLEV, INV, POL, CLM, MNT, CMP, ESC) uses `lpad(seq_val::TEXT, 6, '0')`. `lpad` only pads to the minimum width; it does not truncate past 999,999. At scale a seven-digit sequence value would silently produce `MSM-PREFIX-YYYY-NNNNNNN` (seven digits), breaking any regex that assumes exactly six digits. Before launch: decide whether to widen the pad to 7, pre-validate against the six-digit Zod regex in `src/lib/validations/`, or add a guard that raises when the sequence crosses 999,999 on a given prefix. Unlikely in practice for single-tenant MSM deployments but worth naming.
+- **Operational-sequence reference format overflow:** `next_reference_number` for operational prefixes (MTG, MIN, SLEV, INV, POL, CLM, MNT, CMP, ESC) uses `lpad(seq_val::TEXT, 6, '0')`. `lpad` only pads to the minimum width; it does not truncate past 999,999. At scale a seven-digit sequence value would silently produce `Strata Wise-PREFIX-YYYY-NNNNNNN` (seven digits), breaking any regex that assumes exactly six digits. Before launch: decide whether to widen the pad to 7, pre-validate against the six-digit Zod regex in `src/lib/validations/`, or add a guard that raises when the sequence crosses 999,999 on a given prefix. Unlikely in practice for single-tenant Strata Wise deployments but worth naming.
 
-- **Legacy `msm_slev_seq` sequence:** Declared in `database-schema.sql` but has zero callers (`grep -rn "'SLEV'\|\"SLEV\"" src/` returns nothing). Special levies currently flow through the `LEV` prefix with `levy_type='special'`. Either wire up a caller (if we genuinely want distinct SLEV references for special levies) or drop the sequence. No functional issue today — pure dead weight.
+- **Legacy `sw_slev_seq` sequence:** Declared in `database-schema.sql` but has zero callers (`grep -rn "'SLEV'\|\"SLEV\"" src/` returns nothing). Special levies currently flow through the `LEV` prefix with `levy_type='special'`. Either wire up a caller (if we genuinely want distinct SLEV references for special levies) or drop the sequence. No functional issue today — pure dead weight.
 
 - **Legacy `payments.reference_number` UNIQUE constraint:** PP4-0 deliberately skipped altering the `payments` table because it has zero active write paths in Prompts 1-3 and is slated for removal in Prompt 7. The old single-column UNIQUE is still in place. When Prompt 7 removes the table, the constraint goes with it; if Prompt 7 decides to keep `payments` and add new write paths, re-evaluate whether the constraint should become composite `(subdivision_id, reference_number)` to match the LEV/RCP tables.
 
@@ -201,7 +201,7 @@ Small fixes to batch before going live. Non-blocking for feature work.
 
 - **Lot-owner edit on the non-invite path doesn't trigger sweep.** If a manager directly edits a lot owner via `subdivisions/manage` (or wherever the non-invite owner-mutation flow lands in PP4-D), `sweepMappingsForOwnerChange` is not called. Add the hook in `src/lib/actions/subdivision.ts` (or the relevant action file) wherever lot ownership is mutated outside the invitation-acceptance flow. PP4-D scope; flagged here so it isn't lost.
 
-- **`detectRepeatedManualMatch` performance at scale.** Iterates 30 days of manual matches and canonicalises each linked description in TS. Bounded for typical MSM volumes but unbounded across multi-OC scaling. If verification or production telemetry shows hot-path latency, denormalise canonical_sender_name onto `bank_transactions` at insert time (one TS canonicalisation, cached on the row) so the detection query becomes a SELECT COUNT … WHERE canonical = ?. Schema change deferred until evidence demands it.
+- **`detectRepeatedManualMatch` performance at scale.** Iterates 30 days of manual matches and canonicalises each linked description in TS. Bounded for typical Strata Wise volumes but unbounded across multi-OC scaling. If verification or production telemetry shows hot-path latency, denormalise canonical_sender_name onto `bank_transactions` at insert time (one TS canonicalisation, cached on the row) so the detection query becomes a SELECT COUNT … WHERE canonical = ?. Schema change deferred until evidence demands it.
 
 - **Strategy 4 keyword input validation not yet enforced at write time.** `src/lib/validations/levy.ts::matchKeywordsSchema` lands in PP4-B (Gap J resolution) but no production write path uses it yet — `levy_batches.match_keywords` is set directly by verification fixtures or future PP4-D batch-creation UI. Pre-launch: confirm the PP4-D server action wires the schema before insert.
 
@@ -374,7 +374,7 @@ Pre-launch action: confirm production state matches each file's
 - **`MULTI_LINKED` guard architectural assumption (PP5-B).**
   `voidAsLedgerDuplicate` hard-errors with `errorCode='MULTI_LINKED'` if
   a credit is linked to >1 distinct bank tx. Currently impossible via
-  any normal MSM flow but allowed by the
+  any normal Strata Wise flow but allowed by the
   `UNIQUE(bank_transaction_id, ledger_entry_id)` constraint (which only
   blocks same-pair duplicates). LD-21 verifies the guard by hand-crafting
   the impossible state. If a future flow legitimately creates this

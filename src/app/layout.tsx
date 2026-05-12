@@ -12,7 +12,7 @@ const inter = Inter({
 });
 
 export const metadata: Metadata = {
-  title: "My Strata Management",
+  title: "Strata Wise",
   description: "Professional strata management platform for Australian property managers",
 };
 

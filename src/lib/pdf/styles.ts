@@ -1,9 +1,9 @@
 import { StyleSheet } from "@react-pdf/renderer";
 
 /**
- * Shared PDF styles for all MSM document templates.
+ * Shared PDF styles for all Strata Wise document templates.
  * Uses Helvetica (built-in) as the base font.
- * Colour palette matches the MSM design system.
+ * Colour palette matches the Strata Wise design system.
  */
 
 export const colors = {

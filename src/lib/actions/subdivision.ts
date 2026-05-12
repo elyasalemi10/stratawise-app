@@ -67,7 +67,7 @@ export async function getSidebarSubdivisions(): Promise<SidebarSubdivision[]> {
     // CSV import, manual-txn add) calls revalidateSidebarForSubdivision(), which
     // resolves company_id and invokes Next.js 16 updateTag() on this cache tag
     // for read-your-own-writes semantics. The client also clears localStorage
-    // (sidebar-cache.ts) and re-fetches on the "msm-sidebar:refresh" event.
+    // (sidebar-cache.ts) and re-fetches on the "stratawise-sidebar:refresh" event.
     //
     // Deliberate trade-off on query count:
     // - +2 supabase queries on sidebar mount (bank_accounts fan-out + unmatched

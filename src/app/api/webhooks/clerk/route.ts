@@ -259,7 +259,7 @@ async function handleUserDeleted(data: ClerkUserEvent) {
       anonymised_at: new Date().toISOString(),
       first_name: "Former",
       last_name: "User",
-      email: `anonymised-${profile.id}@msm.internal`,
+      email: `anonymised-${profile.id}@stratawise.internal`,
       phone: null,
       postal_address: null,
       avatar_url: null,
@@ -321,7 +321,7 @@ async function handleUserDeleted(data: ClerkUserEvent) {
       status: "anonymised",
       first_name: "Former",
       last_name: "User",
-      email: `anonymised-${profile.id}@msm.internal`,
+      email: `anonymised-${profile.id}@stratawise.internal`,
     },
   });
 }

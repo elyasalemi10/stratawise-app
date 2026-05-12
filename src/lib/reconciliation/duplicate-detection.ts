@@ -37,7 +37,7 @@ import {
  *
  * Pipeline (exact spec from PP5-0 user resolution):
  *   1. Uppercase
- *   2. Strip MSM reference tokens (LEV-/RCP-/PAY-/MSM-{PREFIX}-{YYYY}-{NNNN})
+ *   2. Strip Strata Wise reference tokens (LEV-/RCP-/PAY-/SW-{PREFIX}-{YYYY}-{NNNN})
  *   3. Strip non-word chars (replace with space)
  *   4. Collapse whitespace, trim
  *
@@ -51,7 +51,7 @@ export function normaliseDescription(raw: string): string {
     .replace(/\bLEV-?\s*\d+\b/g, "")
     .replace(/\bRCP-?\s*\d+\b/g, "")
     .replace(/\bPAY-?\s*\d+\b/g, "")
-    .replace(/\bMSM-[A-Z]+-\d+-\d+\b/g, "")
+    .replace(/\bSW-[A-Z]+-\d+-\d+\b/g, "")
     .replace(/[^\w\s]/g, " ")
     .replace(/\s+/g, " ")
     .trim();

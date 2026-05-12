@@ -1,5 +1,5 @@
 -- ============================================================================
--- MY STRATA MANAGEMENT (MSM) — CONSOLIDATED DATABASE SCHEMA
+-- STRATA WISE — CONSOLIDATED DATABASE SCHEMA
 -- ============================================================================
 -- SINGLE SOURCE OF TRUTH. Auto-generated from consolidation in Prompt 0.
 -- All prior `database-migration-*.sql` files have been merged into this file
@@ -84,7 +84,7 @@ CREATE TYPE reconciliation_match_method AS ENUM (
 -- Two reference-number schemes coexist:
 --   1. Operational prefixes (MTG, MIN, SLEV, INV, POL, CLM, MNT, CMP, ESC)
 --      use global Postgres sequences declared below. Format:
---      "MSM-{PREFIX}-{YYYY}-{NNNNNN}". next_reference_number(prefix) — the
+--      "SW-{PREFIX}-{YYYY}-{NNNNNN}". next_reference_number(prefix) — the
 --      p_subdivision_id arg is accepted but ignored.
 --   2. Financial prefixes (LEV, RCP, PAY) use per-OC integer counters on
 --      subdivisions.next_{levy,receipt,payment}_number. Format: "{PREFIX}-{n}".
@@ -92,24 +92,24 @@ CREATE TYPE reconciliation_match_method AS ENUM (
 -- Two OCs can each have LEV-1; downstream matching is always subdivision-
 -- scoped so collisions are not possible.
 -- ============================================================================
-CREATE SEQUENCE msm_slev_seq START 1;   -- SLEV — Special levies
-CREATE SEQUENCE msm_mtg_seq  START 1;   -- MTG  — Meetings
-CREATE SEQUENCE msm_min_seq  START 1;   -- MIN  — Meeting minutes
-CREATE SEQUENCE msm_pol_seq  START 1;   -- POL  — Insurance policies
-CREATE SEQUENCE msm_clm_seq  START 1;   -- CLM  — Insurance claims
-CREATE SEQUENCE msm_mnt_seq  START 1;   -- MNT  — Maintenance requests
-CREATE SEQUENCE msm_inv_seq  START 1;   -- INV  — Invitations
-CREATE SEQUENCE msm_cmp_seq  START 1;   -- CMP  — Complaints
-CREATE SEQUENCE msm_esc_seq  START 1;   -- ESC  — Escalation instances
+CREATE SEQUENCE sw_slev_seq START 1;   -- SLEV — Special levies
+CREATE SEQUENCE sw_mtg_seq  START 1;   -- MTG  — Meetings
+CREATE SEQUENCE sw_min_seq  START 1;   -- MIN  — Meeting minutes
+CREATE SEQUENCE sw_pol_seq  START 1;   -- POL  — Insurance policies
+CREATE SEQUENCE sw_clm_seq  START 1;   -- CLM  — Insurance claims
+CREATE SEQUENCE sw_mnt_seq  START 1;   -- MNT  — Maintenance requests
+CREATE SEQUENCE sw_inv_seq  START 1;   -- INV  — Invitations
+CREATE SEQUENCE sw_cmp_seq  START 1;   -- CMP  — Complaints
+CREATE SEQUENCE sw_esc_seq  START 1;   -- ESC  — Escalation instances
 
 -- Prefix-aware reference number generator.
 -- Usage:
 --   SELECT next_reference_number('LEV', '<subdivision-uuid>');  →  'LEV-1'
 --   SELECT next_reference_number('RCP', '<subdivision-uuid>');  →  'RCP-1'
---   SELECT next_reference_number('MTG');                        →  'MSM-MTG-2026-000001'
+--   SELECT next_reference_number('MTG');                        →  'SW-MTG-2026-000001'
 -- Financial prefixes (LEV, RCP, PAY) atomically bump the OC's counter column
 -- and return '{PREFIX}-{n}'. Operational prefixes use the global sequence and
--- return the long 'MSM-{PREFIX}-{YYYY}-{NNNNNN}' form. Input prefix is
+-- return the long 'SW-{PREFIX}-{YYYY}-{NNNNNN}' form. Input prefix is
 -- normalised to uppercase — callers may pass either case.
 CREATE FUNCTION next_reference_number(
   p_prefix         TEXT,
@@ -157,12 +157,12 @@ BEGIN
     RETURN v_prefix || '-' || v_n::TEXT;
 
   ELSE
-    -- Operational prefix: global sequence, legacy MSM-{PREFIX}-{YYYY}-{NNNNNN}.
+    -- Operational prefix: global sequence, format SW-{PREFIX}-{YYYY}-{NNNNNN}.
     -- p_subdivision_id is accepted but ignored for these prefixes.
-    v_seq_name := 'msm_' || lower(v_prefix) || '_seq';
+    v_seq_name := 'sw_' || lower(v_prefix) || '_seq';
     EXECUTE format('SELECT nextval(%L)', v_seq_name) INTO v_seq_val;
     v_year := extract(year FROM now())::TEXT;
-    RETURN 'MSM-' || v_prefix || '-' || v_year || '-' || lpad(v_seq_val::TEXT, 6, '0');
+    RETURN 'SW-' || v_prefix || '-' || v_year || '-' || lpad(v_seq_val::TEXT, 6, '0');
   END IF;
 END;
 $$;
@@ -532,7 +532,7 @@ CREATE TABLE payments (
   subdivision_id UUID NOT NULL REFERENCES subdivisions(id),
   lot_id UUID NOT NULL REFERENCES lots(id),
   levy_notice_id UUID REFERENCES levy_notices(id),
-  reference_number TEXT UNIQUE,                     -- MSM-PAY-YYYY-NNNNNN
+  reference_number TEXT UNIQUE,                     -- SW-PAY-YYYY-NNNNNN
   fund_type fund_type NOT NULL,
   amount DECIMAL(12,2) NOT NULL,
   payment_date DATE NOT NULL,
@@ -633,7 +633,7 @@ ALTER TABLE payments ADD CONSTRAINT fk_payments_bank_transaction
 CREATE TABLE meetings (
   id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
   subdivision_id UUID NOT NULL REFERENCES subdivisions(id) ON DELETE CASCADE,
-  reference_number TEXT UNIQUE,                     -- MSM-MTG-YYYY-NNNNNN
+  reference_number TEXT UNIQUE,                     -- SW-MTG-YYYY-NNNNNN
   meeting_type meeting_type NOT NULL,
   title TEXT NOT NULL,
   date_time TIMESTAMPTZ NOT NULL,
@@ -700,7 +700,7 @@ CREATE INDEX idx_votes_agenda ON votes(agenda_item_id);
 CREATE TABLE meeting_minutes (
   id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
   meeting_id UUID NOT NULL REFERENCES meetings(id) UNIQUE,
-  reference_number TEXT UNIQUE,                     -- MSM-MIN-YYYY-NNNNNN
+  reference_number TEXT UNIQUE,                     -- SW-MIN-YYYY-NNNNNN
   content TEXT,
   status TEXT NOT NULL DEFAULT 'draft',
   approved_by UUID REFERENCES profiles(id),
@@ -754,7 +754,7 @@ CREATE TABLE committee_nominations (
 CREATE TABLE insurance_policies (
   id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
   subdivision_id UUID NOT NULL REFERENCES subdivisions(id) ON DELETE CASCADE,
-  reference_number TEXT UNIQUE,                     -- MSM-POL-YYYY-NNNNNN
+  reference_number TEXT UNIQUE,                     -- SW-POL-YYYY-NNNNNN
   policy_type TEXT NOT NULL,
   provider TEXT NOT NULL,
   policy_number TEXT,
@@ -776,7 +776,7 @@ CREATE INDEX idx_insurance_subdivision ON insurance_policies(subdivision_id);
 CREATE TABLE insurance_claims (
   id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
   policy_id UUID NOT NULL REFERENCES insurance_policies(id),
-  reference_number TEXT UNIQUE,                     -- MSM-CLM-YYYY-NNNNNN
+  reference_number TEXT UNIQUE,                     -- SW-CLM-YYYY-NNNNNN
   description TEXT NOT NULL,
   amount_claimed DECIMAL(12,2),
   amount_received DECIMAL(12,2),
@@ -792,7 +792,7 @@ CREATE TABLE insurance_claims (
 CREATE TABLE maintenance_requests (
   id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
   subdivision_id UUID NOT NULL REFERENCES subdivisions(id) ON DELETE CASCADE,
-  reference_number TEXT UNIQUE,                     -- MSM-MNT-YYYY-NNNNNN
+  reference_number TEXT UNIQUE,                     -- SW-MNT-YYYY-NNNNNN
   title TEXT NOT NULL,
   description TEXT NOT NULL,
   location TEXT,
@@ -881,7 +881,7 @@ CREATE INDEX idx_comms_status ON communication_log(status);
 CREATE TABLE complaints (
   id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
   subdivision_id UUID NOT NULL REFERENCES subdivisions(id) ON DELETE CASCADE,
-  reference_number TEXT UNIQUE,                     -- MSM-CMP-YYYY-NNNNNN
+  reference_number TEXT UNIQUE,                     -- SW-CMP-YYYY-NNNNNN
   category TEXT NOT NULL,
   description TEXT NOT NULL,
   against_member_id UUID REFERENCES profiles(id),
@@ -972,7 +972,7 @@ CREATE TABLE escalation_instances (
   id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
   levy_notice_id UUID NOT NULL REFERENCES levy_notices(id),
   workflow_id UUID NOT NULL REFERENCES escalation_workflows(id),
-  reference_number TEXT UNIQUE,                     -- MSM-ESC-YYYY-NNNNNN
+  reference_number TEXT UNIQUE,                     -- SW-ESC-YYYY-NNNNNN
   current_step INTEGER NOT NULL DEFAULT 1,
   status escalation_status NOT NULL DEFAULT 'active',
   next_action_at TIMESTAMPTZ,

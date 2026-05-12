@@ -58,7 +58,7 @@ check(
   "JANE BROWN",
 );
 
-// CAN-5: MSM levy reference stripped
+// CAN-5: Strata Wise levy reference stripped
 check(
   "CAN-5: levy reference 'LEV-7' stripped",
   "TRANSFER LEV-7 FROM JANE BROWN",

@@ -16,7 +16,7 @@
 // Pipeline (order matters):
 //   1. null/empty fast-path
 //   2. uppercase
-//   3. strip MSM levy refs (LEV-7, LEV7, LEV 7 etc.)
+//   3. strip Strata Wise levy refs (LEV-7, LEV7, LEV 7 etc.)
 //   4. strip BPAY blocks (BPAY + non-uppercase chars + digit runs)
 //   5. strip directional noise (TRANSFER FROM, FROM, OSKO FROM, etc.)
 //   6. strip BSB strings (DDD-DDD)
@@ -30,7 +30,7 @@
 // normalises everything.
 // ============================================================================
 
-const MSM_LEVY_REF_REGEX = /\bLEV-?\s*\d+\b/g;
+const LEVY_REF_REGEX = /\bLEV-?\s*\d+\b/g;
 const BPAY_BLOCK_REGEX = /\bBPAY\b[^A-Z]*(\d+[^A-Z]*)+/g;
 const DIRECTIONAL_NOISE_REGEX =
   /\b(TRANSFER\s+FROM|DIRECT\s+CREDIT|DIRECT\s+DEBIT|PAYMENT\s+FROM|PAYMENT\s+TO|OSKO\s+FROM|EFTPOS|NPP|FROM|TO)\b/g;
@@ -51,7 +51,7 @@ export function canonicaliseSender(
 ): string | null {
   if (!raw) return null;
   let s = raw.toUpperCase();
-  s = s.replace(MSM_LEVY_REF_REGEX, " ");
+  s = s.replace(LEVY_REF_REGEX, " ");
   s = s.replace(BPAY_BLOCK_REGEX, " ");
   // Dates BEFORE BSBs and LONG_DIGIT — date pattern overlaps with BSBs
   // (e.g. "12-345-678" partially) and we want the full date stripped first.

@@ -1,5 +1,5 @@
 export const metadata = {
-  title: "Terms of Service — My Strata Management",
+  title: "Terms of Service — Strata Wise",
 };
 
 export default function TermsPage() {

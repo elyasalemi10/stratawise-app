@@ -1,5 +1,5 @@
 export const metadata = {
-  title: "Privacy Policy — My Strata Management",
+  title: "Privacy Policy — Strata Wise",
 };
 
 export default function PrivacyPage() {

@@ -29,7 +29,7 @@ export default function NominatedRepresentativeSetupPage() {
         <p className="mt-2 leading-relaxed">
           As the strata manager, you register yourself as the nominated
           representative with your bank once. Afterwards, you can complete
-          the &ldquo;Connect bank feed&rdquo; flow in My Strata Management
+          the &ldquo;Connect bank feed&rdquo; flow in Strata Wise
           and your OC&apos;s transactions sync automatically.
         </p>
       </section>
@@ -101,7 +101,7 @@ export default function NominatedRepresentativeSetupPage() {
       <section>
         <h2 className="text-lg font-semibold">Consent duration</h2>
         <p className="mt-2 leading-relaxed">
-          Once granted, consent lasts 12 months. My Strata Management will
+          Once granted, consent lasts 12 months. Strata Wise will
           remind you 30, 14, 7, 3, and 1 day before expiry — click the
           &ldquo;Reauthorise&rdquo; button to extend.
         </p>
@@ -111,8 +111,8 @@ export default function NominatedRepresentativeSetupPage() {
         <h2 className="text-lg font-semibold">If something goes wrong</h2>
         <p className="mt-2 leading-relaxed">
           If the bank&apos;s CDR page says you&apos;re already the nominated
-          representative but MSM still shows &ldquo;Not connected&rdquo;,
-          check that the bank account BSB and account number in MSM exactly
+          representative but Strata Wise still shows &ldquo;Not connected&rdquo;,
+          check that the bank account BSB and account number in Strata Wise exactly
           match the account you nominated for sharing. Mismatches are the
           most common cause of silent failures.
         </p>

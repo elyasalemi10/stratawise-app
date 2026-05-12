@@ -9,8 +9,8 @@
 // audit_log entry per invocation.
 //
 // Strategy order (PP4 spec §Architecture overview):
-//   1. reference        — MSM levy reference (LEV-{n}) — full PP4-A
-//   2. bpay_crn         — MSM BPAY CRN check-digit       — full PP4-A
+//   1. reference        — Strata Wise levy reference (LEV-{n}) — full PP4-A
+//   2. bpay_crn         — Strata Wise BPAY CRN check-digit       — full PP4-A
 //   3. known_payer      — canonical sender → lot mapping — stub PP4-A → full PP4-B
 //   4. keyword_amount   — batch keyword + amount agree   — stub PP4-A → full PP4-B
 //   5. amount_window    — single candidate by amount + date window — stub → PP4-B

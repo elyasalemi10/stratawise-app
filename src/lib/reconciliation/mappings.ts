@@ -540,7 +540,7 @@ export async function sweepMappingsForOwnerChange(
  * (subdivision, canonical, lot).
  *
  * Performance: bounded by 30-day window. Per-row canonicalisation in TS;
- * acceptable at MSM scale per Gap B resolution. PRE_LAUNCH_CLEANUP item
+ * acceptable at Strata Wise scale per Gap B resolution. PRE_LAUNCH_CLEANUP item
  * tracks if cost becomes meaningful at scale.
  */
 export async function detectRepeatedManualMatch(

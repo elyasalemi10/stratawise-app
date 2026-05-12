@@ -4,9 +4,9 @@ function getResend() {
   return new Resend(process.env.RESEND_API_KEY);
 }
 
-const FROM_INVITES = process.env.RESEND_INVITES_FROM ?? "My Strata Management <noreply@myocm.com.au>";
-const FROM_LEVIES = process.env.RESEND_LEVIES_FROM ?? "My Strata Management <noreply@myocm.com.au>";
-const FROM_SYSTEM = process.env.RESEND_SYSTEM_FROM ?? "My Strata Management <noreply@myocm.com.au>";
+const FROM_INVITES = process.env.RESEND_INVITES_FROM ?? "Strata Wise <noreply@myocm.com.au>";
+const FROM_LEVIES = process.env.RESEND_LEVIES_FROM ?? "Strata Wise <noreply@myocm.com.au>";
+const FROM_SYSTEM = process.env.RESEND_SYSTEM_FROM ?? "Strata Wise <noreply@myocm.com.au>";
 
 // EMAIL_DRY_RUN gate (PP6-C-1 retrofit). Set EMAIL_DRY_RUN=true in dev/staging
 // .env.local to short-circuit all sends with a console.log; production leaves
@@ -315,7 +315,7 @@ export async function sendBasiqCommitteeGapNotificationEmail(params: {
         The automatic bank feed for <strong>${subdivisionName}</strong> was disconnected for approximately <strong>${days} days</strong>.
       </p>
       <p style="margin:0 0 0;color:#1a1f2e;font-size:14px;line-height:1.5;">
-        During this time, arrears notifications may have been issued based on stale reconciliation state. A detailed gap report is available in the MSM dashboard.
+        During this time, arrears notifications may have been issued based on stale reconciliation state. A detailed gap report is available in the Strata Wise dashboard.
       </p>
     </div>
   `;
@@ -392,7 +392,7 @@ export async function sendPaymentReceivedEmail(
     subdivisionShortCode,
     "my-payments",
     "View payment history",
-    "Log in to MSM to view your full payment history.",
+    "Log in to Strata Wise to view your full payment history.",
   );
 
   const html = brandShell(`
@@ -469,7 +469,7 @@ export async function sendOverdueReminderEmail(
         View outstanding balance
       </a>`
     : `<p style="margin:0 0 24px;color:#1a1f2e;font-size:14px;">
-        Log in to MSM to view your outstanding balance, payment options, and full ledger.
+        Log in to Strata Wise to view your outstanding balance, payment options, and full ledger.
       </p>`;
 
   const html = brandShell(`
@@ -541,7 +541,7 @@ export async function sendClaimMatchedEmail(
     subdivisionShortCode,
     "my-payments",
     "View payment confirmation",
-    "Log in to MSM to view this confirmed payment.",
+    "Log in to Strata Wise to view this confirmed payment.",
   );
 
   const html = brandShell(`
@@ -600,7 +600,7 @@ export async function sendClaimRejectedEmail(
     subdivisionShortCode,
     "my-arrears",
     "Resubmit or view details",
-    "Log in to MSM to view your outstanding balance and resubmit the claim.",
+    "Log in to Strata Wise to view your outstanding balance and resubmit the claim.",
   );
 
   const html = brandShell(`
@@ -673,7 +673,7 @@ export async function sendNewClaimSubmittedEmail(
     subdivisionShortCode,
     "reconciliation/claims",
     "Review claim",
-    "Log in to MSM to review this claim in the reconciliation queue.",
+    "Log in to Strata Wise to review this claim in the reconciliation queue.",
   );
 
   const html = brandShell(`
@@ -788,7 +788,7 @@ export async function sendSecondReminderEmail(
     subdivisionShortCode,
     "my-arrears",
     "View outstanding balance",
-    "Log in to MSM to view your outstanding balance and payment options.",
+    "Log in to Strata Wise to view your outstanding balance and payment options.",
   );
 
   const html = brandShell(`
@@ -873,7 +873,7 @@ export async function sendFinalNoticeEmail(
     subdivisionShortCode,
     "my-arrears",
     "View outstanding balance",
-    "Log in to MSM to view your outstanding balance and pay the levy immediately.",
+    "Log in to Strata Wise to view your outstanding balance and pay the levy immediately.",
   );
 
   const html = brandShell(`

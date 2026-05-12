@@ -77,10 +77,10 @@ export default function ComponentShowcase() {
         {/* Page title */}
         <div className="mb-10">
           <h1 className="text-2xl font-semibold tracking-tight text-foreground">
-            MSM Design System
+            Strata Wise Design System
           </h1>
           <p className="mt-1 text-sm text-muted-foreground">
-            Component showcase for My Strata Management. Development reference only.
+            Component showcase for Strata Wise. Development reference only.
           </p>
         </div>
 
@@ -557,7 +557,7 @@ export default function ComponentShowcase() {
         {/* Footer */}
         <div className="mt-10 border-t border-border pt-6 pb-10">
           <p className="text-xs text-muted-foreground">
-            MSM Design System v1.0 — Development reference only. Not visible in production.
+            Strata Wise Design System v1.0 — Development reference only. Not visible in production.
           </p>
         </div>
       </div>

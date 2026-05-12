@@ -1305,7 +1305,7 @@ export type LedgerDuplicateReviewErrorCode =
   | "ALREADY_VOIDED"
   | "FORBIDDEN"
   /** PP5-B: credit is linked to >1 bank tx via partial-allocation
-   *  matches. Currently impossible via any normal MSM flow but allowed
+   *  matches. Currently impossible via any normal Strata Wise flow but allowed
    *  by the UNIQUE(bank_transaction_id, ledger_entry_id) constraint
    *  (which only blocks same-pair duplicates). Hard-erroring keeps
    *  financial state writes inside the RPC contracts and surfaces any
@@ -1403,7 +1403,7 @@ export async function voidAsLedgerDuplicate(
     voidOffsetId = voidData as string;
   } else {
     // Linked credit. Pre-check for the multi-link case (>1 distinct bank tx)
-    // BEFORE any mutating RPC. Currently impossible via any normal MSM flow
+    // BEFORE any mutating RPC. Currently impossible via any normal Strata Wise flow
     // but the UNIQUE(bank_transaction_id, ledger_entry_id) constraint only
     // blocks same-pair duplicates, so the state is allowable at the DB
     // level. Hard-erroring keeps financial-state writes inside RPC

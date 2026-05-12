@@ -13,7 +13,7 @@ export default async function LandingPage() {
     <div className="flex min-h-screen items-center justify-center bg-foreground">
       <div className="text-center">
         <h1 className="text-4xl font-bold text-white">
-          My Strata Management
+          Strata Wise
         </h1>
         <p className="mt-3 text-lg text-white/60">
           Professional strata management, automated.
