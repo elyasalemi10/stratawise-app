@@ -38,8 +38,10 @@ CREATE TYPE levy_status AS ENUM ('draft', 'issued', 'partially_paid', 'paid', 'o
 CREATE TYPE levy_type AS ENUM ('regular', 'special', 'penalty_interest');
 CREATE TYPE levy_batch_status AS ENUM ('draft', 'ledger_written', 'sent', 'partially_sent');
 CREATE TYPE payment_method AS ENUM ('bpay', 'eft', 'cash', 'cheque', 'direct_debit', 'stripe_card', 'other');
-CREATE TYPE match_confidence AS ENUM ('exact_reference', 'amount_match', 'name_match', 'manual', 'auto_portal', 'basiq_auto', 'system_created');
-CREATE TYPE transaction_source AS ENUM ('manual', 'csv', 'basiq');
+CREATE TYPE match_confidence AS ENUM ('exact_reference', 'amount_match', 'name_match', 'manual', 'auto_portal', 'system_created');
+CREATE TYPE transaction_source AS ENUM ('manual', 'csv');
+CREATE TYPE bank_txn_source AS ENUM ('macquarie_txn', 'macquarie_pay', 'csv_import', 'manual');
+CREATE TYPE bank_provider AS ENUM ('macquarie_deft', 'other_csv');
 CREATE TYPE meeting_type AS ENUM ('agm', 'sgm', 'committee');
 CREATE TYPE meeting_status AS ENUM ('draft', 'notice_sent', 'in_progress', 'completed', 'cancelled');
 CREATE TYPE resolution_type AS ENUM ('ordinary', 'special', 'unanimous', 'information');
@@ -356,7 +358,17 @@ CREATE TABLE owners_corporations (
   financial_year_start_month INTEGER NOT NULL DEFAULT 7,
   levy_year_start_month INTEGER NOT NULL DEFAULT 7,
   levies_per_year INTEGER NOT NULL DEFAULT 4,
-  bank_connection_type TEXT NOT NULL DEFAULT 'manual',
+  -- Banking ingest path. macquarie_deft → DRN-tagged TXN/PAY files;
+  -- other_csv → manual CSV upload only. Legacy `bank_connection_type` retained
+  -- below for back-compat, to be dropped after reconciliation rewrite.
+  bank_provider bank_provider,
+  bank_connection_type TEXT NOT NULL DEFAULT 'manual',   -- LEGACY — use bank_provider
+  uses_shared_trust_account BOOLEAN NOT NULL DEFAULT false,
+  -- Per-fund opening balances (anchored at opening_balance_date).
+  opening_balance_date DATE,
+  opening_admin_balance NUMERIC(12,2),
+  opening_capital_works_balance NUMERIC(12,2),
+  opening_maintenance_plan_balance NUMERIC(12,2),        -- Tier 1/2 mandatory; optional higher
   management_start_date DATE,
   is_developer_period BOOLEAN NOT NULL DEFAULT false,
   developer_period_end_date DATE,
@@ -392,8 +404,7 @@ CREATE TABLE owners_corporations (
   updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
   created_by UUID REFERENCES profiles(id),
   CONSTRAINT chk_levy_year_start_month CHECK (levy_year_start_month BETWEEN 1 AND 12),
-  CONSTRAINT chk_levies_per_year CHECK (levies_per_year IN (1, 2, 4, 6, 12)),
-  CONSTRAINT chk_bank_connection_type CHECK (bank_connection_type IN ('basiq', 'manual'))
+  CONSTRAINT chk_levies_per_year CHECK (levies_per_year IN (1, 2, 4, 6, 12))
 );
 
 CREATE INDEX idx_owners_corporations_company ON owners_corporations(management_company_id);
@@ -440,6 +451,9 @@ CREATE TABLE lots (
   unit_number TEXT,
   lot_entitlement DECIMAL(10,4) NOT NULL DEFAULT 0,
   lot_liability DECIMAL(10,4) NOT NULL DEFAULT 0,
+  -- Opening arrears at OC setup (positive = arrears, negative = credit).
+  -- Anchored to owners_corporations.opening_balance_date.
+  opening_balance DECIMAL(12,2) NOT NULL DEFAULT 0,
   UNIQUE(oc_id, lot_number)
 );
 
@@ -698,16 +712,9 @@ CREATE TABLE bank_accounts (
   bsb TEXT NOT NULL,
   account_number TEXT NOT NULL,
   fund_type fund_type NOT NULL,
-  bank_name TEXT,                                   -- Westpac, CBA, ANZ, NAB, Other
+  bank_name TEXT,                                   -- Macquarie, CBA, NAB, Westpac, ANZ, Bendigo, Other
   opening_balance DECIMAL(12,2) NOT NULL DEFAULT 0,
   opening_balance_date DATE,
-  -- Basiq integration (Prompt 3): optional FK to basiq_connections (§50).
-  -- FK added via ALTER TABLE after basiq_connections exists (mirrors the
-  -- payments → bank_transactions pattern below). NULL means no bank feed
-  -- (CSV / manual only).
-  basiq_connection_id UUID,
-  basiq_account_id    TEXT,                         -- Basiq's account identifier once linked
-  last_sync_at        TIMESTAMPTZ,                  -- last successful sync for this account
   -- BPAY config (Prompt 4): null = BPAY not enabled for this account.
   bpay_biller_code TEXT,                            -- e.g. "1234567"
   bpay_crn_prefix  TEXT,                            -- optional static prefix on per-notice CRNs
@@ -717,8 +724,6 @@ CREATE TABLE bank_accounts (
 );
 
 CREATE INDEX idx_bank_accounts_oc ON bank_accounts(oc_id);
-CREATE INDEX idx_bank_accounts_basiq_connection ON bank_accounts(basiq_connection_id)
-  WHERE basiq_connection_id IS NOT NULL;
 
 -- ============================================================================
 -- 18. BANK TRANSACTIONS
@@ -726,9 +731,10 @@ CREATE INDEX idx_bank_accounts_basiq_connection ON bank_accounts(basiq_connectio
 CREATE TABLE bank_transactions (
   id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
   bank_account_id UUID NOT NULL REFERENCES bank_accounts(id) ON DELETE CASCADE,
-  source transaction_source NOT NULL DEFAULT 'manual',
-  basiq_transaction_id TEXT UNIQUE,                 -- idempotency key for Basiq
-  basiq_raw JSONB,                                  -- full Basiq payload for re-parsing / debugging (Prompt 3)
+  source bank_txn_source NOT NULL DEFAULT 'manual',
+  -- DEFT Reference Number attached to this transaction by Macquarie's TXN/PAY
+  -- file. Matched against lot_drns (date-aware) to attribute to a lot.
+  deft_reference_number TEXT,
   transaction_date DATE NOT NULL,
   amount DECIMAL(12,2) NOT NULL,                    -- positive = credit, negative = debit
   description TEXT,
@@ -758,7 +764,8 @@ CREATE TABLE bank_transactions (
 
 CREATE INDEX idx_bank_transactions_account ON bank_transactions(bank_account_id);
 CREATE INDEX idx_bank_transactions_date ON bank_transactions(transaction_date);
-CREATE INDEX idx_bank_transactions_basiq ON bank_transactions(basiq_transaction_id);
+CREATE INDEX idx_bank_transactions_deft ON bank_transactions(deft_reference_number)
+  WHERE deft_reference_number IS NOT NULL;
 CREATE INDEX idx_bank_transactions_match ON bank_transactions(match_status);
 CREATE INDEX idx_bank_transactions_active ON bank_transactions(bank_account_id, transaction_date DESC) WHERE is_voided = false;
 
@@ -1412,140 +1419,64 @@ CREATE INDEX idx_uf_pending      ON undeposited_funds_entries(bank_account_id, s
 -- expiry / reauth / revocation. An OC typically has one active connection
 -- at a time; expired/revoked rows are retained for audit.
 --
--- basiq_external_connection_id holds Basiq's connection string (TEXT) —
--- named distinctly from bank_accounts.basiq_connection_id (our internal
--- UUID FK pointing at this row) to keep the two identifiers visually
--- unambiguous in queries and code.
+-- LOT DRNs — time-bounded DEFT Reference Number → lot mappings.
+-- Macquarie assigns DRNs; one DRN per payer per OC (≈ one per lot). DRNs can
+-- be reassigned across owner changes, so we keep historical rows. Live row
+-- has active_to IS NULL. Lookups for a transaction date use date-aware joins.
 -- ============================================================================
-CREATE TABLE basiq_connections (
-  id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
-  oc_id UUID NOT NULL REFERENCES owners_corporations(id) ON DELETE CASCADE,
-
-  -- Basiq-side identifiers (external, issued by Basiq).
-  basiq_user_id                TEXT NOT NULL,       -- Basiq's user ID for this OC
-  basiq_external_connection_id TEXT NOT NULL,       -- Basiq's connection ID for this bank link
-  basiq_institution_id         TEXT NOT NULL,       -- e.g. "AU00000" for CBA
-
-  -- Human-readable
-  institution_name TEXT NOT NULL,
-  institution_short_name TEXT,
-
-  -- Lifecycle. The CHECK enforces the allowed value set only; legal
-  -- transitions are enforced in application code (server actions). For
-  -- reference, with triggers:
-  --   pending → active    : manager completes consent in Basiq UI
-  --   pending → failed    : consent declined / session expired
-  --   active  → syncing   : force-sync or scheduled poll in progress
-  --   active  → expired   : 12-month auto-expiry, OR Basiq returns
-  --                         consent_required on a read
-  --   active  → revoked   : consumer revokes via Basiq dashboard, OR
-  --                         bank revokes server-side
-  --   active  → failed    : permanent error (account closed, API
-  --                         rejection on non-consent grounds, etc.)
-  --   syncing → active    : sync completes successfully
-  --   syncing → failed    : sync fails with unrecoverable error
-  --   expired → active    : manager reauthorises via initiateReauth
-  --   revoked → active    : manual reconnect (new consent flow)
-  --   failed  → active    : manual intervention only — fix root cause
-  --                         then reconnect
-  -- 'syncing' is a transient marker for an in-flight sync; every other
-  -- stable state is a terminal branch until a user or scheduler action
-  -- moves it.
-  status TEXT NOT NULL CHECK (status IN (
-    'pending',          -- consent UI opened, not yet completed
-    'active',           -- consent granted, data flowing
-    'expired',          -- 12-month consent expired
-    'revoked',          -- revoked by consumer or bank
-    'failed',           -- permanent error (account closed, etc.)
-    'syncing'           -- transient state during active sync
-  )),
-
-  -- Consent tracking
-  consent_granted_at TIMESTAMPTZ,
-  consent_expires_at TIMESTAMPTZ,                   -- consent_granted_at + 12 months
-  last_reauth_prompt_sent_at TIMESTAMPTZ,
-
-  -- Sync tracking
-  last_sync_at             TIMESTAMPTZ,
-  last_sync_error          TEXT,
-  last_webhook_received_at TIMESTAMPTZ,
-
-  -- Nominated rep (audit only; platform does not enforce).
-  nominated_representative_name       TEXT,
-  nominated_representative_profile_id UUID REFERENCES profiles(id),
-
+CREATE TABLE lot_drns (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  lot_id UUID NOT NULL REFERENCES lots(id) ON DELETE CASCADE,
+  drn TEXT NOT NULL,
+  primary_id TEXT,                                  -- usually the payer name from the Macquarie export
+  secondary_id TEXT,                                -- usually the lot number reference
+  active_from DATE NOT NULL DEFAULT CURRENT_DATE,
+  active_to DATE,                                   -- NULL = current
+  source TEXT NOT NULL DEFAULT 'macquarie_csv' CHECK (source IN ('macquarie_csv','manual')),
   created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-  created_by UUID NOT NULL REFERENCES profiles(id),
   updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
-
-CREATE INDEX idx_basiq_connections_oc ON basiq_connections(oc_id);
-CREATE INDEX idx_basiq_connections_status      ON basiq_connections(status)
-  WHERE status IN ('active', 'pending');
-CREATE INDEX idx_basiq_connections_expires     ON basiq_connections(consent_expires_at)
-  WHERE status = 'active';
-CREATE UNIQUE INDEX idx_basiq_connections_external_id
-  ON basiq_connections(basiq_external_connection_id);
-
--- Forward FK from bank_accounts (declared earlier) to this table.
-ALTER TABLE bank_accounts ADD CONSTRAINT fk_bank_accounts_basiq_connection
-  FOREIGN KEY (basiq_connection_id) REFERENCES basiq_connections(id) ON DELETE SET NULL;
+CREATE INDEX idx_lot_drns_drn ON lot_drns(drn);
+CREATE INDEX idx_lot_drns_lot ON lot_drns(lot_id);
+CREATE UNIQUE INDEX uq_lot_drns_drn_current ON lot_drns(drn) WHERE active_to IS NULL;
 
 -- ============================================================================
--- 51. BASIQ REAUTH NOTIFICATIONS  (Prompt 3 — idempotency ledger for reminders)
+-- 51. LEVY OVERDUE BATCHES — draft + 24h-manager-approval workflow.
 -- ----------------------------------------------------------------------------
--- UNIQUE(connection, type) guarantees each reminder in the 30/14/7/3/1-day
--- cadence + expired + gap_reconciliation sends once per consent lifecycle.
+-- Daily cron generates a DRAFT batch per OC of newly-overdue notices. Manager
+-- has 24h to Send or upload a fresh bank import that auto-cancels reconciled
+-- rows. After 24h with no action, batch auto-sends.
 -- ============================================================================
-CREATE TABLE basiq_reauth_notifications (
-  id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
-  basiq_connection_id UUID NOT NULL REFERENCES basiq_connections(id) ON DELETE CASCADE,
-  notification_type TEXT NOT NULL CHECK (notification_type IN (
-    'reauth_30d', 'reauth_14d', 'reauth_7d', 'reauth_3d', 'reauth_1d',
-    'expired', 'gap_reconciliation'
-  )),
-  sent_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-  profile_id UUID NOT NULL REFERENCES profiles(id),
-  UNIQUE (basiq_connection_id, notification_type)
+CREATE TABLE levy_overdue_batches (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  oc_id UUID NOT NULL REFERENCES owners_corporations(id) ON DELETE CASCADE,
+  status TEXT NOT NULL DEFAULT 'draft' CHECK (status IN ('draft','sent','cancelled','expired')),
+  generated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  auto_send_at TIMESTAMPTZ NOT NULL DEFAULT NOW() + INTERVAL '24 hours',
+  sent_at TIMESTAMPTZ,
+  cancelled_at TIMESTAMPTZ,
+  cancel_reason TEXT,
+  notice_count INTEGER NOT NULL DEFAULT 0,
+  total_amount NUMERIC(12,2) NOT NULL DEFAULT 0,
+  approved_by UUID REFERENCES profiles(id),
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
+CREATE INDEX idx_overdue_batches_oc_status ON levy_overdue_batches(oc_id, status);
 
-CREATE INDEX idx_basiq_reauth_notifications_connection
-  ON basiq_reauth_notifications(basiq_connection_id);
-
--- ============================================================================
--- 52. BASIQ GAP REPORTS  (Prompt 3 — one row per late-reauth gap)
--- ============================================================================
-CREATE TABLE basiq_gap_reports (
-  id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
-  basiq_connection_id UUID NOT NULL REFERENCES basiq_connections(id) ON DELETE CASCADE,
-  oc_id      UUID NOT NULL REFERENCES owners_corporations(id) ON DELETE CASCADE,
-
-  gap_start_at TIMESTAMPTZ NOT NULL,
-  gap_end_at   TIMESTAMPTZ NOT NULL,
-  gap_duration_hours INT GENERATED ALWAYS AS
-    ((EXTRACT(EPOCH FROM (gap_end_at - gap_start_at)) / 3600)::INT) STORED,
-
-  backfilled_transaction_count INT NOT NULL DEFAULT 0,
-  auto_matched_count           INT NOT NULL DEFAULT 0,
-  manual_review_count          INT NOT NULL DEFAULT 0,
-
-  arrears_notifications_during_gap INT     DEFAULT 0,
-  committee_notified               BOOLEAN DEFAULT FALSE,  -- set when gap > 30 days
-
-  -- Dismissal is team-wide (per-report, not per-user): clicking Dismiss
-  -- on the bank-account banner hides it for everyone on the oc.
-  -- dismissed_by records the actor for audit.
-  dismissed_at TIMESTAMPTZ,
-  dismissed_by UUID REFERENCES profiles(id),
-
-  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+CREATE TABLE levy_overdue_batch_items (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  batch_id UUID NOT NULL REFERENCES levy_overdue_batches(id) ON DELETE CASCADE,
+  levy_notice_id UUID NOT NULL REFERENCES levy_notices(id) ON DELETE CASCADE,
+  lot_id UUID NOT NULL REFERENCES lots(id) ON DELETE CASCADE,
+  amount_due NUMERIC(12,2) NOT NULL,
+  days_overdue INTEGER NOT NULL,
+  excluded BOOLEAN NOT NULL DEFAULT false,
+  exclude_reason TEXT,
+  UNIQUE (batch_id, levy_notice_id)
 );
-
-CREATE INDEX idx_basiq_gap_reports_oc ON basiq_gap_reports(oc_id);
-CREATE INDEX idx_basiq_gap_reports_connection  ON basiq_gap_reports(basiq_connection_id);
-CREATE INDEX idx_basiq_gap_reports_undismissed
-  ON basiq_gap_reports(oc_id, created_at DESC)
-  WHERE dismissed_at IS NULL;
+CREATE INDEX idx_overdue_items_batch ON levy_overdue_batch_items(batch_id);
+CREATE INDEX idx_overdue_items_notice ON levy_overdue_batch_items(levy_notice_id);
 
 -- ============================================================================
 -- 53. SUBDIVISION NOTIFICATION SUPPRESSIONS  (Prompt 3 — 48h arrears pause etc.)
@@ -1683,7 +1614,6 @@ CREATE TRIGGER trg_updated_at_maintenance_requests BEFORE UPDATE ON maintenance_
 CREATE TRIGGER trg_updated_at_complaints          BEFORE UPDATE ON complaints          FOR EACH ROW EXECUTE FUNCTION update_updated_at();
 CREATE TRIGGER trg_updated_at_escalation_instances BEFORE UPDATE ON escalation_instances FOR EACH ROW EXECUTE FUNCTION update_updated_at();
 CREATE TRIGGER trg_updated_at_charge_groups       BEFORE UPDATE ON charge_groups       FOR EACH ROW EXECUTE FUNCTION update_updated_at();
-CREATE TRIGGER trg_updated_at_basiq_connections   BEFORE UPDATE ON basiq_connections   FOR EACH ROW EXECUTE FUNCTION update_updated_at();
 CREATE TRIGGER trg_updated_at_bank_payer_mappings BEFORE UPDATE ON bank_payer_mappings FOR EACH ROW EXECUTE FUNCTION update_updated_at();
 
 -- Seed a zero-balance lot_ledger_state row whenever a new lot is inserted.
@@ -3112,166 +3042,6 @@ BEGIN
           v_before, v_after);
 
   RETURN jsonb_build_object('ok', true);
-END;
-$$;
-
--- ============================================================================
--- BASIQ RPCs  (Prompt 3)
--- ----------------------------------------------------------------------------
--- Two RPCs only. Basiq API calls can't happen inside Postgres, so the rest
--- of the Basiq pipeline (consent start/complete, poll, webhook dispatch,
--- gap reconciliation) lives in server actions.
--- ============================================================================
-
--- rpc_insert_basiq_transaction: idempotent insert of a Basiq-sourced
--- bank transaction. If basiq_transaction_id already exists, returns the
--- existing row with was_duplicate=true (silent — no audit entry for
--- duplicates, to avoid log noise from webhook replays). On first insert,
--- creates the bank_transactions row and writes audit_log.
---
--- Callers: webhook handler, polling job, force-sync. The caller is
--- responsible for firing auto-match (application layer — this RPC never
--- calls rpc_reconcile_bank_transaction).
-CREATE OR REPLACE FUNCTION rpc_insert_basiq_transaction(
-  p_bank_account_id      uuid,
-  p_basiq_transaction_id text,
-  p_transaction_date     date,
-  p_amount               numeric,
-  p_description          text,
-  p_balance              numeric,
-  p_basiq_raw            jsonb,
-  p_performed_by         uuid
-)
-RETURNS jsonb
-LANGUAGE plpgsql
-AS $$
-DECLARE
-  v_existing_id    uuid;
-  v_inserted_id    uuid;
-  v_oc_id uuid;
-BEGIN
-  IF p_basiq_transaction_id IS NULL OR length(trim(p_basiq_transaction_id)) = 0 THEN
-    RAISE EXCEPTION 'rpc_insert_basiq_transaction: basiq_transaction_id is required';
-  END IF;
-
-  -- Defensive payload size check: real Basiq payloads are a few KB. Anything
-  -- ≥ 20KB points at a malformed caller or an attack surface, not a
-  -- legitimate transaction. Reject loudly so it lands in the application
-  -- error path (and is surfaced in the audit log by the caller's wrapper).
-  IF p_basiq_raw IS NOT NULL AND octet_length(p_basiq_raw::text) > 20000 THEN
-    RAISE EXCEPTION 'rpc_insert_basiq_transaction: basiq_raw payload exceeds 20KB limit (got % bytes)',
-      octet_length(p_basiq_raw::text);
-  END IF;
-
-  -- Duplicate check via the UNIQUE index on basiq_transaction_id.
-  SELECT id INTO v_existing_id
-    FROM bank_transactions
-   WHERE basiq_transaction_id = p_basiq_transaction_id
-   LIMIT 1;
-
-  IF v_existing_id IS NOT NULL THEN
-    RETURN jsonb_build_object(
-      'bank_transaction_id', v_existing_id,
-      'was_duplicate',       true
-    );
-  END IF;
-
-  SELECT oc_id INTO v_oc_id
-    FROM bank_accounts
-   WHERE id = p_bank_account_id;
-  IF v_oc_id IS NULL THEN
-    RAISE EXCEPTION 'rpc_insert_basiq_transaction: bank_account % not found', p_bank_account_id;
-  END IF;
-
-  INSERT INTO bank_transactions (
-    bank_account_id, source, basiq_transaction_id, transaction_date,
-    amount, description, balance, basiq_raw, match_status
-  )
-  VALUES (
-    p_bank_account_id, 'basiq', p_basiq_transaction_id, p_transaction_date,
-    p_amount, p_description, p_balance, p_basiq_raw, 'unmatched'
-  )
-  RETURNING id INTO v_inserted_id;
-
-  INSERT INTO audit_log (
-    profile_id, oc_id, action, entity_type, entity_id, after_state, metadata
-  )
-  VALUES (
-    p_performed_by,
-    v_oc_id,
-    'bank_transaction.imported_from_basiq',
-    'bank_transaction',
-    v_inserted_id,
-    jsonb_build_object(
-      'bank_account_id',      p_bank_account_id,
-      'transaction_date',     p_transaction_date,
-      'amount',               p_amount,
-      'description',          p_description,
-      'basiq_transaction_id', p_basiq_transaction_id
-    ),
-    jsonb_build_object('source', 'basiq')
-  );
-
-  RETURN jsonb_build_object(
-    'bank_transaction_id', v_inserted_id,
-    'was_duplicate',       false
-  );
-END;
-$$;
-
--- rpc_mark_basiq_connection_expired: idempotent state flip to 'expired'.
--- Called from the hourly-expiry-check scheduled job, the webhook handler
--- on consent.expired events, and the force-sync path when Basiq returns
--- consent_required.
-CREATE OR REPLACE FUNCTION rpc_mark_basiq_connection_expired(
-  p_basiq_connection_id uuid,
-  p_reason              text,
-  p_performed_by        uuid
-)
-RETURNS jsonb
-LANGUAGE plpgsql
-AS $$
-DECLARE
-  v_conn   basiq_connections%ROWTYPE;
-  v_before jsonb;
-  v_after  jsonb;
-BEGIN
-  SELECT * INTO v_conn FROM basiq_connections WHERE id = p_basiq_connection_id FOR UPDATE;
-  IF NOT FOUND THEN
-    RAISE EXCEPTION 'rpc_mark_basiq_connection_expired: connection % not found', p_basiq_connection_id;
-  END IF;
-
-  IF v_conn.status = 'expired' THEN
-    -- Idempotent: already expired, no-op.
-    RETURN jsonb_build_object('ok', true, 'already_expired', true);
-  END IF;
-
-  v_before := to_jsonb(v_conn);
-
-  UPDATE basiq_connections
-     SET status          = 'expired',
-         last_sync_error = COALESCE(p_reason, 'Consent expired'),
-         updated_at      = NOW()
-   WHERE id = p_basiq_connection_id;
-
-  SELECT to_jsonb(c) INTO v_after FROM basiq_connections c WHERE c.id = p_basiq_connection_id;
-
-  INSERT INTO audit_log (
-    profile_id, oc_id, action, entity_type, entity_id,
-    before_state, after_state, metadata
-  )
-  VALUES (
-    p_performed_by,
-    v_conn.oc_id,
-    'basiq_connection.marked_expired',
-    'basiq_connection',
-    p_basiq_connection_id,
-    v_before,
-    v_after,
-    jsonb_build_object('reason', p_reason)
-  );
-
-  RETURN jsonb_build_object('ok', true, 'already_expired', false);
 END;
 $$;
 

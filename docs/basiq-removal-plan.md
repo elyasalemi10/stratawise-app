@@ -1,4 +1,13 @@
-# Basiq removal + Macquarie DRN / CSV reconciliation plan
+# Basiq removal + Macquarie DEFT / CSV reconciliation plan
+
+> **Status (this commit):** Basiq surface area deleted. Schema for the
+> replacement design (DRN time-bounded mappings, opening balances, overdue
+> draft batches) is migrated. Wizard now collects opening balances on a new
+> page 6. **TXN/PAY parser, CSV parsers, reconciliation engine update, DRN
+> import UI, and overdue draft+approval workflow remain to build** — see
+> "Remaining work" at the bottom.
+
+
 
 You want to drop Basiq entirely and replace bank-feed-driven reconciliation
 with two inputs:
@@ -161,28 +170,62 @@ should mitigate with:
 
 ---
 
-## Open questions before I execute
+## Answers (locked in)
 
-1. **Macquarie API access** — do you have a dev account / sandbox? Without
-   API docs I'm guessing at the DRN delivery format. If you don't have access
-   yet, I'll ship the manual_csv path fully and stub the Macquarie sync
-   behind a "Connect" button that's wired-up-but-disabled.
+1. **Macquarie API / Direct Downloads / DEFT API → skipped, post-revenue.**
+   Two ingest paths only: TXN-file parser (Macquarie's fixed-format weekly
+   statement) and generic CSV upload. Manager drag-and-drops files.
 
-2. **CSV format** — should we restrict to Macquarie's CSV layout only, or
-   also support CBA / NAB / Westpac out of the box? (Each is a 30-min parser
-   to add; rolling generic CSV with column-mapping UI is a few hours more.)
+2. **CSV: all major AU banks** — Macquarie, CBA, NAB, Westpac, ANZ, Bendigo.
+   Header-detector picks the right parser per file.
 
-3. **Pre-overdue grace + manager review step** — happy with the design above
-   (draft batch, 24h to send / cancel)? Or do you want overdues to fire
-   *automatically* and rely on managers to upload CSV more frequently?
+3. **Overdue policy: draft + manager approval.** Daily cron generates a
+   draft `levy_overdue_batches` row per OC. 24h to Send or upload a fresh
+   import that auto-cancels rows now reconciled. After 24h no-action → auto-send.
 
-4. **DRN per OC** — should we generate the DRN ourselves at OC creation (10-
-   digit numeric, our own counter), or does Macquarie assign it when the
-   trust account is opened? If they assign it, the wizard's bank-account
-   step needs a "Paste your DRN from Macquarie" input.
+4. **DRN ownership: Macquarie assigns. We never generate.** Critical fix:
+   DRN = **DEFT Reference Number** (not "Direct"). One DRN per *payer* per OC
+   (≈ one per lot, not one per OC). Mappings are **time-bounded** via the
+   `lot_drns` table since DRNs can be reassigned on owner changes; historical
+   transactions stay linked to the DRN active when they arrived. After OC
+   creation the wizard's follow-up prompt is "Upload your DEFT Reference
+   Number export from Macquarie Business Online" — we auto-match by
+   Secondary ID (lot number) then Primary ID (payer name), surface unmatched
+   for manual review, allow single-entry fallback.
 
-5. **Bulk historical CSV** — when onboarding a new OC, does the manager need
-   to import 12 months of past statements to establish opening balance + back
-   reconciliation? Or just go-forward from setup?
+5. **Go-forward only.** No back-reconciliation. Opening balances anchor the
+   ledger:
+   - Per OC: opening admin fund balance, opening capital works balance,
+     optional opening maintenance plan fund balance (mandatory Tier 1/2,
+     optional Tier 3–5).
+   - Per OC: opening_balance_date, BSB+account_number per fund, "shared
+     trust account for both funds" toggle.
+   - Per lot: opening arrears (positive) or credit (negative) at setup date.
+   - Encryption decision: BSB/account NOT column-encrypted (they're on every
+     levy notice as BPAY/EFT details anyway). TFN remains encrypted.
 
-Answer those five, and I'll execute the removal in one session.
+## Remaining work (next session)
+
+Schema is done. Old code is deleted. What still needs building:
+
+- **TXN parser** (Macquarie's fixed-format statement file) — needs a sample
+  file from the user / Macquarie docs to write column-position logic.
+- **PAY parser** (consolidated settlements) — same source-file blocker.
+- **Generic CSV parsers** — Macquarie, CBA, NAB, Westpac, ANZ, Bendigo
+  formats. Detect format from header row.
+- **DRN import flow** — Macquarie Business Online CSV → `lot_drns` rows
+  with auto-match against `lots.lot_number` (Secondary ID) and owner_name
+  (Primary ID), confirmation UI for unmatched rows.
+- **Reconciliation engine update** — match cascade: DRN exact → BPAY CRN →
+  reference number → fuzzy → manual queue. Date-aware DRN lookup using
+  `lot_drns.active_from/active_to`.
+- **Overdue draft+approval UI** — list of pending draft batches, per-batch
+  detail view with Send / Cancel / Exclude-row actions, 24h countdown.
+- **Daily overdue cron** — generates `levy_overdue_batches` + items for each
+  OC with newly-overdue notices.
+- **Bank-account page rebuild** — currently degraded after Basiq removal.
+  Needs a clean "Trust accounts" panel with the Macquarie TXN/PAY +
+  generic CSV upload zones.
+- **`bank_connection_type` legacy column drop** — left in place for now to
+  avoid breaking any code path; remove in a follow-up after reconciliation
+  engine is rewritten.

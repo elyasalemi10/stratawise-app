@@ -34,8 +34,6 @@ import { getBankTransactions, updateBankAccount } from "@/lib/actions/bank-trans
 import { getUndepositedEntries, voidUndepositedReceipt } from "@/lib/actions/reconciliation";
 import { RecordCashReceiptDialog } from "@/components/shared/record-cash-receipt-dialog";
 import { AddManualTransactionDialog } from "@/components/shared/add-manual-transaction-dialog";
-import { BankFeedPanel } from "./bank-feed-panel";
-import { GapReconciliationBanner } from "./gap-reconciliation-banner";
 import type { BankAccountSummary, BankTransactionRecord } from "@/lib/validations/bank-transactions";
 import type { UndepositedFundsEntry } from "@/lib/validations/reconciliation";
 import { ImportCsvDialog } from "./import-csv-dialog";
@@ -154,7 +152,6 @@ export function BankAccountContent({
       </Card>
 
       <div>
-        <GapReconciliationBanner ocId={ocId} />
         <div className="flex items-center justify-between mb-3">
           <h3 className="text-sm font-semibold text-foreground">Bank transactions</h3>
         </div>
@@ -291,11 +288,6 @@ function BankAccountCard({
             </Button>
           </div>
         </div>
-
-        <BankFeedPanel
-          ocId={ocId}
-          bankAccountId={account.id}
-        />
 
         {/* BPAY settings — per-account, surfaced on bank-account page so the
             manager configures them alongside the EFT details. Biller code is

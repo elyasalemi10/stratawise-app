@@ -10,6 +10,7 @@ import { Page2Review } from "./pages/page-2-review";
 import { Page3Basics } from "./pages/page-3-basics";
 import { Page4Lots } from "./pages/page-4-lots";
 import { Page5Trust } from "./pages/page-5-trust";
+import { Page6Balances } from "./pages/page-6-balances";
 import { createDraft, getDraft, type DraftJson } from "./actions";
 
 type DraftRow = {
@@ -157,6 +158,16 @@ function WizardContent() {
             initialDraft={draft.draft_json}
             ocName={ocName}
             onBack={() => goToStep(4)}
+            onNext={async () => { await refreshDraft(); goToStep(6); }}
+          />
+        )}
+        {step === 6 && (
+          <Page6Balances
+            draftId={draft.id}
+            initialDraft={draft.draft_json}
+            totalLots={totalLots}
+            servicesOnly={draft.draft_json.services_only ?? false}
+            onBack={() => goToStep(5)}
             onComplete={(ocCode) => router.push(`/ocs/${ocCode}?created=1`)}
           />
         )}

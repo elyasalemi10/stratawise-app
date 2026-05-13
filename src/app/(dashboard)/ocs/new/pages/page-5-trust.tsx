@@ -2,12 +2,12 @@
 
 import { useMemo, useState } from "react";
 import { toast } from "sonner";
-import { Info, Loader2, ExternalLink } from "lucide-react";
+import { Info, Loader2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Checkbox } from "@/components/ui/checkbox";
-import { saveStep, completeWizard, type DraftJson } from "../actions";
+import { saveStep, type DraftJson } from "../actions";
 
 // Common AU BSB prefixes → bank name. Not exhaustive — covers ~95% of real
 // trust-account openings. Full table (~2k entries) deferred.
@@ -20,7 +20,6 @@ const BSB_PREFIXES: Record<string, string> = {
   "63": "Bendigo Bank",
   "73": "Westpac",
   "76": "Westpac",
-  "63-2": "Bendigo Bank",
 };
 
 const BANKS: { value: string; label: string; recommended?: boolean }[] = [
@@ -40,8 +39,13 @@ function lookupBank(bsb: string): string | null {
 }
 function formatBsb(input: string): string {
   const d = input.replace(/\D/g, "").slice(0, 6);
-  if (d.length <= 3) return d;
-  return `${d.slice(0, 3)}-${d.slice(3)}`;
+  return d.length <= 3 ? d : `${d.slice(0, 3)}-${d.slice(3)}`;
+}
+function isValidBsb(s: string): boolean {
+  return s.replace(/\D/g, "").length === 6;
+}
+function isValidAccountNumber(s: string): boolean {
+  return /^\d{6,9}$/.test(s.replace(/\D/g, ""));
 }
 
 export function Page5Trust({
@@ -49,242 +53,243 @@ export function Page5Trust({
   initialDraft,
   ocName,
   onBack,
-  onComplete,
+  onNext,
 }: {
   draftId: string;
   initialDraft: DraftJson;
   ocName: string;
   onBack: () => void;
-  onComplete: (ocCode: string) => void;
+  onNext: () => void;
 }) {
   const [bank, setBank] = useState(initialDraft.bank_name ?? "Macquarie Bank");
+  const [shared, setShared] = useState(initialDraft.uses_shared_trust_account ?? true);
+
+  // Admin fund (or shared) fields.
   const [accountName, setAccountName] = useState(
     initialDraft.account_name ?? (ocName ? `${ocName} Trust Account` : ""),
   );
   const [bsb, setBsb] = useState(initialDraft.bsb ?? "");
-  const [bsbInvalid, setBsbInvalid] = useState(false);
   const [accountNumber, setAccountNumber] = useState(initialDraft.account_number ?? "");
-  const [accountNumberInvalid, setAccountNumberInvalid] = useState(false);
-  const [accountNameInvalid, setAccountNameInvalid] = useState(false);
-  const [purpose, setPurpose] = useState<"combined" | "separate_admin_first" | "split_per_fund">(
-    initialDraft.account_purpose ?? "combined",
+
+  // Capital works fund fields (only when !shared).
+  const [capitalBank, setCapitalBank] = useState(initialDraft.capital_bank_name ?? "Macquarie Bank");
+  const [capitalAccountName, setCapitalAccountName] = useState(
+    initialDraft.capital_account_name ?? (ocName ? `${ocName} Capital Works Trust Account` : ""),
   );
-  const [macquarieConnect, setMacquarieConnect] = useState(initialDraft.macquarie_connect ?? true);
+  const [capitalBsb, setCapitalBsb] = useState(initialDraft.capital_bsb ?? "");
+  const [capitalAccountNumber, setCapitalAccountNumber] = useState(initialDraft.capital_account_number ?? "");
+
+  // Field-level invalid flags.
+  const [adminInvalid, setAdminInvalid] = useState({ name: false, bsb: false, acc: false });
+  const [capitalInvalid, setCapitalInvalid] = useState({ name: false, bsb: false, acc: false });
+
   const [pending, setPending] = useState(false);
 
   const detectedBank = useMemo(() => lookupBank(bsb), [bsb]);
-
-  async function persistDraft(opts: { complete: boolean }) {
-    setPending(true);
-    const patch = {
-      bank_name: bank,
-      account_name: accountName.trim() || undefined,
-      bsb: bsb || undefined,
-      account_number: accountNumber || undefined,
-      account_purpose: purpose,
-      macquarie_connect: bank === "Macquarie Bank" ? macquarieConnect : false,
-    };
-
-    if (opts.complete) {
-      // Save then immediately promote.
-      const r = await saveStep(draftId, patch, 5);
-      if (r.error) {
-        setPending(false);
-        toast.error(r.error);
-        return;
-      }
-      const result = await completeWizard(draftId);
-      setPending(false);
-      if (result.error || !result.ocCode) {
-        toast.error(result.error ?? "Failed to create the OC");
-        return;
-      }
-      onComplete(result.ocCode);
-    } else {
-      // Skip path — persist trust placeholder so user can come back later.
-      const r = await saveStep(draftId, patch, 5);
-      setPending(false);
-      if (r.error) {
-        toast.error(r.error);
-        return;
-      }
-      toast.info("Saved. You can complete trust account details from the OC's bank account page.");
-    }
-  }
+  const detectedCapitalBank = useMemo(() => lookupBank(capitalBsb), [capitalBsb]);
 
   function onContinue() {
     const problems: string[] = [];
-    const bsbDigits = bsb.replace(/\D/g, "");
-    const bsbOk = bsbDigits.length === 6;
-    const accNumOk = /^\d{6,9}$/.test(accountNumber.replace(/\D/g, ""));
-    const accNameOk = accountName.trim().length >= 2;
-    if (!accNameOk) problems.push("Account name is required");
-    if (!bsbOk) problems.push("BSB must be 6 digits");
-    if (!accNumOk) problems.push("Account number must be 6–9 digits");
-    setAccountNameInvalid(!accNameOk);
-    setBsbInvalid(!bsbOk);
-    setAccountNumberInvalid(!accNumOk);
+    const adminNameOk = accountName.trim().length >= 2;
+    const adminBsbOk = isValidBsb(bsb);
+    const adminAccOk = isValidAccountNumber(accountNumber);
+    if (!adminNameOk) problems.push("Admin trust account name is required");
+    if (!adminBsbOk) problems.push("Admin BSB must be 6 digits");
+    if (!adminAccOk) problems.push("Admin account number must be 6–9 digits");
+    setAdminInvalid({ name: !adminNameOk, bsb: !adminBsbOk, acc: !adminAccOk });
+
+    let capNameOk = true, capBsbOk = true, capAccOk = true;
+    if (!shared) {
+      capNameOk = capitalAccountName.trim().length >= 2;
+      capBsbOk = isValidBsb(capitalBsb);
+      capAccOk = isValidAccountNumber(capitalAccountNumber);
+      if (!capNameOk) problems.push("Capital works account name is required");
+      if (!capBsbOk) problems.push("Capital works BSB must be 6 digits");
+      if (!capAccOk) problems.push("Capital works account number must be 6–9 digits");
+    }
+    setCapitalInvalid({ name: !capNameOk, bsb: !capBsbOk, acc: !capAccOk });
+
     if (problems.length) {
       toast.error(problems.length === 1 ? problems[0] : "Fix the highlighted fields.");
       return;
     }
-    void persistDraft({ complete: true });
+
+    setPending(true);
+    void (async () => {
+      const r = await saveStep(draftId, {
+        bank_provider: bank === "Macquarie Bank" ? "macquarie_deft" : "other_csv",
+        uses_shared_trust_account: shared,
+        bank_name: bank,
+        account_name: accountName.trim(),
+        bsb,
+        account_number: accountNumber,
+        capital_bank_name: shared ? bank : capitalBank,
+        capital_account_name: shared ? accountName.trim() : capitalAccountName.trim(),
+        capital_bsb: shared ? bsb : capitalBsb,
+        capital_account_number: shared ? accountNumber : capitalAccountNumber,
+      }, 6);
+      setPending(false);
+      if (r.error) {
+        toast.error(r.error);
+        return;
+      }
+      onNext();
+    })();
   }
 
-  return (
-    <div className="space-y-6">
-      <div className="text-center">
-        <h2 className="text-lg font-semibold text-foreground">Set up the trust account</h2>
-        <p className="mt-1 text-sm text-muted-foreground">
-          This is the OC&apos;s bank account — separate from your management company&apos;s operating account.
-        </p>
-      </div>
-
-      <div className="space-y-4">
+  function FundBlock({
+    title,
+    bankValue, setBank,
+    nameValue, setName, nameInvalid,
+    bsbValue, setBsb, bsbInvalid, detected,
+    accValue, setAcc, accInvalid,
+    idPrefix,
+  }: {
+    title: string;
+    bankValue: string; setBank: (v: string) => void;
+    nameValue: string; setName: (v: string) => void; nameInvalid: boolean;
+    bsbValue: string; setBsb: (v: string) => void; bsbInvalid: boolean; detected: string | null;
+    accValue: string; setAcc: (v: string) => void; accInvalid: boolean;
+    idPrefix: string;
+  }) {
+    return (
+      <div className="rounded-md border border-border bg-card p-4 space-y-3">
+        <h3 className="text-sm font-semibold text-foreground">{title}</h3>
         <div className="space-y-1.5">
-          <Label htmlFor="bank">
-            Bank <span className="text-destructive">*</span>
-          </Label>
+          <Label htmlFor={`${idPrefix}-bank`}>Bank</Label>
           <select
-            id="bank"
-            value={bank}
+            id={`${idPrefix}-bank`}
+            value={bankValue}
             onChange={(e) => setBank(e.target.value)}
             className="flex h-9 w-full rounded-md border border-border bg-background px-3 text-sm focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary"
           >
             {BANKS.map((b) => (
               <option key={b.value} value={b.value}>
-                {b.label}{b.recommended ? " — Recommended (direct integration available)" : ""}
+                {b.label}{b.recommended ? " — Recommended (Macquarie DEFT auto-reconciles)" : ""}
               </option>
             ))}
           </select>
         </div>
-
-        {bank === "Macquarie Bank" && (
-          <div className="rounded-md border border-green-200 bg-green-50 p-4">
-            <div className="flex items-start gap-3">
-              <ExternalLink className="mt-0.5 h-4 w-4 text-green-700 shrink-0" />
-              <div className="flex-1 space-y-2">
-                <p className="text-sm font-medium text-green-900">
-                  Auto-reconcile via Macquarie Connect
-                </p>
-                <p className="text-xs text-green-800">
-                  You&apos;ll be prompted to authorise read-only API access after setup — this enables daily
-                  transaction sync and auto-reconciliation against levy notices.
-                </p>
-                <div className="flex items-start gap-2 pt-1">
-                  <Checkbox
-                    id="macq-connect"
-                    checked={macquarieConnect}
-                    onCheckedChange={(v) => setMacquarieConnect(v === true)}
-                  />
-                  <Label htmlFor="macq-connect" className="text-xs font-normal cursor-pointer text-green-900">
-                    Set up Macquarie Connect after creating this OC
-                  </Label>
-                </div>
-              </div>
-            </div>
-          </div>
-        )}
-
         <div className="space-y-1.5">
-          <Label htmlFor="account-name">
+          <Label htmlFor={`${idPrefix}-name`}>
             Account name <span className="text-destructive">*</span>
           </Label>
           <Input
-            id="account-name"
-            placeholder={ocName ? `${ocName} Trust Account` : "Owners Corporation PS… Trust Account"}
-            value={accountName}
-            onChange={(e) => {
-              setAccountName(e.target.value);
-              if (accountNameInvalid) setAccountNameInvalid(false);
-            }}
-            aria-invalid={accountNameInvalid || undefined}
+            id={`${idPrefix}-name`}
+            value={nameValue}
+            onChange={(e) => setName(e.target.value)}
+            aria-invalid={nameInvalid || undefined}
           />
         </div>
-
-        <div className="grid grid-cols-[180px_1fr] gap-4">
+        <div className="grid grid-cols-[180px_1fr] gap-3">
           <div className="space-y-1.5">
-            <Label htmlFor="bsb">
+            <Label htmlFor={`${idPrefix}-bsb`}>
               BSB <span className="text-destructive">*</span>
             </Label>
             <Input
-              id="bsb"
+              id={`${idPrefix}-bsb`}
               placeholder="XXX-XXX"
-              value={bsb}
-              onChange={(e) => {
-                setBsb(formatBsb(e.target.value));
-                if (bsbInvalid) setBsbInvalid(false);
-              }}
+              value={bsbValue}
+              onChange={(e) => setBsb(formatBsb(e.target.value))}
               inputMode="numeric"
               maxLength={7}
               aria-invalid={bsbInvalid || undefined}
             />
-            {detectedBank && <p className="text-xs text-muted-foreground">Matches {detectedBank}</p>}
+            {detected && <p className="text-xs text-muted-foreground">Matches {detected}</p>}
           </div>
           <div className="space-y-1.5">
-            <Label htmlFor="account-number">
+            <Label htmlFor={`${idPrefix}-acc`}>
               Account number <span className="text-destructive">*</span>
             </Label>
             <Input
-              id="account-number"
+              id={`${idPrefix}-acc`}
               placeholder="12345678"
-              value={accountNumber}
-              onChange={(e) => {
-                setAccountNumber(e.target.value.replace(/\D/g, "").slice(0, 9));
-                if (accountNumberInvalid) setAccountNumberInvalid(false);
-              }}
+              value={accValue}
+              onChange={(e) => setAcc(e.target.value.replace(/\D/g, "").slice(0, 9))}
               inputMode="numeric"
-              aria-invalid={accountNumberInvalid || undefined}
+              aria-invalid={accInvalid || undefined}
             />
           </div>
         </div>
+      </div>
+    );
+  }
 
-        <div className="space-y-2">
-          <div className="flex items-center gap-2">
-            <Label>Account purpose</Label>
-            <span
-              className="text-muted-foreground"
-              title="Some OCs hold admin and maintenance funds in the same account with internal ledger separation; others use separate accounts. Both are compliant."
-            >
-              <Info className="h-3.5 w-3.5" />
-            </span>
-          </div>
-          <div className="space-y-1.5">
-            {[
-              { v: "combined" as const, label: "Combined admin + maintenance fund (default)" },
-              { v: "separate_admin_first" as const, label: "Separate admin fund — I'll add the maintenance fund next" },
-              { v: "split_per_fund" as const, label: "This OC has separate trust accounts per fund" },
-            ].map((opt) => (
-              <label key={opt.v} className="flex items-center gap-2 text-sm cursor-pointer">
-                <input
-                  type="radio"
-                  name="purpose"
-                  checked={purpose === opt.v}
-                  onChange={() => setPurpose(opt.v)}
-                />
-                <span>{opt.label}</span>
-              </label>
-            ))}
+  return (
+    <div className="space-y-6">
+      <div className="text-center">
+        <h2 className="text-lg font-semibold text-foreground">Set up the trust account{!shared && "s"}</h2>
+        <p className="mt-1 text-sm text-muted-foreground">
+          Trust accounts hold the OC&apos;s funds — separate from your management company&apos;s operating account.
+        </p>
+      </div>
+
+      {/* Shared vs separate toggle. */}
+      <div className="rounded-md border border-border bg-card p-4">
+        <div className="flex items-start gap-3">
+          <Checkbox
+            id="shared"
+            checked={shared}
+            onCheckedChange={(v) => setShared(v === true)}
+          />
+          <div>
+            <Label htmlFor="shared" className="text-sm font-medium cursor-pointer">
+              Use the same bank account for both funds
+            </Label>
+            <p className="mt-1 text-xs text-muted-foreground">
+              One physical trust account, two internal ledger balances (admin + capital works).
+              Recommended for smaller OCs. Uncheck if the OC keeps separate trust accounts per fund.
+            </p>
           </div>
         </div>
       </div>
 
-      <div className="flex items-center justify-between pt-2">
-        <Button type="button" variant="ghost" onClick={onBack}>Back</Button>
-        <div className="flex items-center gap-3">
-          <button
-            type="button"
-            onClick={() => void persistDraft({ complete: false })}
-            disabled={pending}
-            className="text-sm text-muted-foreground hover:text-foreground disabled:opacity-50 cursor-pointer"
-          >
-            Skip — I&apos;ll add this later
-          </button>
-          <Button type="button" onClick={onContinue} disabled={pending}>
-            {pending && <Loader2 className="size-4 animate-spin" />}
-            Create OC
-          </Button>
+      <FundBlock
+        title={shared ? "Trust account (both funds)" : "Administrative fund trust account"}
+        bankValue={bank} setBank={setBank}
+        nameValue={accountName} setName={(v) => { setAccountName(v); if (adminInvalid.name) setAdminInvalid({ ...adminInvalid, name: false }); }}
+        nameInvalid={adminInvalid.name}
+        bsbValue={bsb} setBsb={(v) => { setBsb(v); if (adminInvalid.bsb) setAdminInvalid({ ...adminInvalid, bsb: false }); }}
+        bsbInvalid={adminInvalid.bsb} detected={detectedBank}
+        accValue={accountNumber} setAcc={(v) => { setAccountNumber(v); if (adminInvalid.acc) setAdminInvalid({ ...adminInvalid, acc: false }); }}
+        accInvalid={adminInvalid.acc}
+        idPrefix="admin"
+      />
+
+      {!shared && (
+        <FundBlock
+          title="Capital works fund trust account"
+          bankValue={capitalBank} setBank={setCapitalBank}
+          nameValue={capitalAccountName} setName={(v) => { setCapitalAccountName(v); if (capitalInvalid.name) setCapitalInvalid({ ...capitalInvalid, name: false }); }}
+          nameInvalid={capitalInvalid.name}
+          bsbValue={capitalBsb} setBsb={(v) => { setCapitalBsb(v); if (capitalInvalid.bsb) setCapitalInvalid({ ...capitalInvalid, bsb: false }); }}
+          bsbInvalid={capitalInvalid.bsb} detected={detectedCapitalBank}
+          accValue={capitalAccountNumber} setAcc={(v) => { setCapitalAccountNumber(v); if (capitalInvalid.acc) setCapitalInvalid({ ...capitalInvalid, acc: false }); }}
+          accInvalid={capitalInvalid.acc}
+          idPrefix="capital"
+        />
+      )}
+
+      {bank === "Macquarie Bank" && (
+        <div className="rounded-md border border-green-200 bg-green-50 p-3">
+          <div className="flex items-start gap-2">
+            <Info className="mt-0.5 h-4 w-4 text-green-700 shrink-0" />
+            <div className="text-xs text-green-900">
+              Macquarie&apos;s DEFT system tags every incoming transaction with the payer&apos;s
+              <strong> DEFT Reference Number</strong>. You&apos;ll upload your DRN export CSV
+              from Macquarie Business Online after setup, and we&apos;ll auto-allocate
+              transactions from the TXN/PAY files you import each week.
+            </div>
+          </div>
         </div>
+      )}
+
+      <div className="flex justify-between pt-2">
+        <Button type="button" variant="ghost" onClick={onBack}>Back</Button>
+        <Button type="button" onClick={onContinue} disabled={pending}>
+          {pending && <Loader2 className="size-4 animate-spin" />}
+          Continue
+        </Button>
       </div>
     </div>
   );

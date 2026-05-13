@@ -24,6 +24,8 @@ export type DraftLot = {
   tenant_name?: string;
   tenant_email?: string;
   tenant_phone?: string;
+  /** Opening arrears as at setup date. Positive = arrears, negative = credit. */
+  opening_balance?: number;
 };
 
 export type DraftJson = {
@@ -47,13 +49,26 @@ export type DraftJson = {
   notice_address?: string;
   common_seal?: boolean;
   common_seal_text?: string;
-  // Page 5 (trust account)
+  // Page 5 (trust accounts)
+  bank_provider?: "macquarie_deft" | "other_csv";
+  uses_shared_trust_account?: boolean;
+  // Shared mode: single set of fields. Separate mode: admin_* + capital_*.
   bank_name?: string;
   account_name?: string;
   bsb?: string;
   account_number?: string;
-  account_purpose?: "combined" | "separate_admin_first" | "split_per_fund";
-  macquarie_connect?: boolean;
+  // Used when uses_shared_trust_account === false
+  capital_bank_name?: string;
+  capital_account_name?: string;
+  capital_bsb?: string;
+  capital_account_number?: string;
+  // Page 6 (opening balances)
+  opening_balance_date?: string;                 // ISO yyyy-mm-dd
+  opening_admin_balance?: number;
+  opening_capital_works_balance?: number;
+  // Tier 1/2 mandatory; optional toggle for higher tiers.
+  has_maintenance_plan_fund?: boolean;
+  opening_maintenance_plan_balance?: number;
 };
 
 // ─── Helpers ────────────────────────────────────────────────────
@@ -311,6 +326,12 @@ export async function completeWizard(draftId: string) {
     if (!d.address) return { error: "Address is required (page 2)" };
     if (!d.lots || d.lots.length < 2) return { error: "At least 2 lots are required" };
     if (!d.bsb || !d.account_number || !d.account_name) return { error: "Trust account details are required (page 5)" };
+    if (!d.opening_balance_date) return { error: "Opening balance date is required (page 6)" };
+
+    const shared = d.uses_shared_trust_account ?? false;
+    if (!shared && (!d.capital_bsb || !d.capital_account_number || !d.capital_account_name)) {
+      return { error: "Capital works trust account details are required (page 5)" };
+    }
 
     const supabase = createServerClient();
 
@@ -332,11 +353,18 @@ export async function completeWizard(draftId: string) {
       notice_address_same_as_oc: d.notice_address_same_as_oc ?? true,
       notice_address: d.notice_address_same_as_oc === false ? (d.notice_address || null) : null,
       common_seal_text: d.common_seal ? (d.common_seal_text || null) : null,
+      bank_provider: d.bank_provider ?? "other_csv",
+      uses_shared_trust_account: shared,
       bank_bsb: d.bsb,
       bank_account_number: d.account_number,
       bank_account_name: d.account_name,
-      bank_connection_type: "manual",
-      setup_step: 5,
+      opening_balance_date: d.opening_balance_date,
+      opening_admin_balance: d.opening_admin_balance ?? 0,
+      opening_capital_works_balance: d.opening_capital_works_balance ?? 0,
+      opening_maintenance_plan_balance: d.has_maintenance_plan_fund
+        ? (d.opening_maintenance_plan_balance ?? 0)
+        : null,
+      setup_step: 6,
       status: "active",
       created_by: profile.id,
     });
@@ -353,12 +381,13 @@ export async function completeWizard(draftId: string) {
       is_primary_contact: true,
     });
 
-    // Insert lots.
+    // Insert lots — opening_balance carries per-lot arrears/credit at setup date.
     const lotsToInsert = d.lots.map((l) => ({
       oc_id: oc.id,
       lot_number: l.lot_number,
       lot_entitlement: l.unit_entitlement,
       lot_liability: l.lot_liability,
+      opening_balance: l.opening_balance ?? 0,
     }));
     const { data: insertedLots, error: lotsError } = await supabase
       .from("lots")
@@ -402,17 +431,28 @@ export async function completeWizard(draftId: string) {
       }
     }
 
-    // Trust account → bank_accounts (administrative fund + capital works share details).
-    for (const fund of ["administrative", "capital_works"] as const) {
-      await supabase.from("bank_accounts").insert({
-        oc_id: oc.id,
-        fund_type: fund,
-        bank_name: d.bank_name ?? null,
-        account_name: d.account_name,
-        bsb: d.bsb,
-        account_number: d.account_number,
-      });
-    }
+    // Trust accounts → bank_accounts. Shared mode duplicates the BSB/account
+    // across both funds; separate mode uses admin_* and capital_* fields.
+    await supabase.from("bank_accounts").insert({
+      oc_id: oc.id,
+      fund_type: "administrative",
+      bank_name: d.bank_name ?? null,
+      account_name: d.account_name,
+      bsb: d.bsb,
+      account_number: d.account_number,
+      opening_balance: d.opening_admin_balance ?? 0,
+      opening_balance_date: d.opening_balance_date,
+    });
+    await supabase.from("bank_accounts").insert({
+      oc_id: oc.id,
+      fund_type: "capital_works",
+      bank_name: shared ? (d.bank_name ?? null) : (d.capital_bank_name ?? null),
+      account_name: shared ? d.account_name : (d.capital_account_name ?? ""),
+      bsb: shared ? d.bsb : (d.capital_bsb ?? ""),
+      account_number: shared ? d.account_number : (d.capital_account_number ?? ""),
+      opening_balance: d.opening_capital_works_balance ?? 0,
+      opening_balance_date: d.opening_balance_date,
+    });
 
     // Mark draft promoted.
     await supabase

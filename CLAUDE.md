@@ -3,6 +3,24 @@
 ## Git
 - Always commit and push to origin after completing changes. Do not wait for the user to ask.
 
+## Banking & Reconciliation
+- Two bank-ingest paths only: **Macquarie DEFT TXN/PAY file parser** and **generic CSV upload** (Macquarie, CBA, NAB, Westpac, ANZ formats). NO Basiq, NO live bank-feed APIs, NO Direct Downloads. All deferred to post-revenue.
+- **DRN = DEFT Reference Number** (not "Direct Reference Number"). Strata managers know it as DEFT. Always use the full expansion in user-facing copy.
+- Macquarie assigns one DRN per payer per OC (≈ one per lot). NEVER generate DRNs ourselves — they're Macquarie's internal identifiers; making them up would not match the TXN file.
+- DRN-to-lot mapping is **time-bounded** (`lot_drns` table with `active_from` / `active_to`). DRNs can be reassigned on owner changes; historical transactions stay linked to the DRN that was active when received. Lookups must use date-aware joins.
+- DRN onboarding flow: manager exports the DRN CSV from Macquarie Business Online → wizard parses it → auto-matches to lots by Secondary ID (lot number) then Primary ID (payer name) → unmatched rows surface for manual resolution. Single-DRN-at-a-time entry is the fallback.
+- Match cascade for incoming transactions: (1) DRN exact match → (2) BPAY CRN match against `levy_notices.bpay_crn` → (3) `reference_number` match → (4) `bank_payer_mappings` fuzzy → (5) unmatched queue. Confidence scoring on each.
+- Reconciliation is **go-forward only**. No back-reconciliation of historical statements. Opening balances are set at OC creation and anchor everything.
+
+## Levy/Overdue Trigger Policy
+- Levies are **date-driven**, not bank-feed-driven. Issuance cron runs on the OC's billing cadence regardless of whether bank import is current.
+- Overdues use a **draft + manager approval** workflow. Daily cron generates a draft `levy_overdue_batches` row for each OC with newly-overdue notices. Manager has 24h to either click Send or upload a fresh CSV that auto-cancels rows now reconciled. After 24h no-action, the batch auto-sends.
+
+## Trust Account Models
+- An OC's two funds (admin + capital_works) can live in **separate** physical trust accounts (default) or a **shared** account (`uses_shared_trust_account=true`). Both are compliant.
+- Shared account: both `bank_accounts` rows reference the same BSB+account_number. Bank reports one balance; ledger keeps the two funds separate via `lot_ledger_entries.fund_type`. Attribution rule for incoming transactions: read the source `levy_notices.fund_type`; manual fund-pick at attribution time for non-levy receipts.
+- BSB and account numbers are **NOT** column-encrypted. They appear on every levy notice as BPAY/EFT details anyway. Supabase's at-rest disk encryption is sufficient. TFN IS encrypted (different sensitivity profile).
+
 ## Object Storage
 - **ALL** binary objects (PDFs, images, CSVs, logos, plans) go to **Cloudflare R2**. NEVER Supabase Storage. Use `src/lib/storage/r2.ts` (`uploadObject` / `fetchObject` / `deleteObject` / `keyFromPublicUrl`).
 - Path-prefix convention inside the single bucket: `logos/{companyId}/...`, `documents/{ocId}/...`, `levies/{ocId}/...`, `plans/{draftId}/...`.
