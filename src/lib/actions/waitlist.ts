@@ -86,9 +86,48 @@ export async function joinWaitlist(input: unknown): Promise<WaitlistResult> {
     return { success: false, error: "Something went wrong — please try again." };
   }
 
-  await sendOperatorNotification({ email, name, company, role, ipAddress, userAgent });
+  await Promise.all([
+    sendOperatorNotification({ email, name, company, role, ipAddress, userAgent }),
+    addToResendAudience({ email, name }),
+  ]);
 
   return { success: true, alreadyOnList: false };
+}
+
+// Adds the waitlist contact to a Resend audience (mailing list) so the
+// operator can later send broadcasts via the Resend dashboard / API.
+// Gated on RESEND_AUDIENCE_ID — when unset we skip silently so dev
+// environments without an audience don't error. Failures here never
+// block the user-facing signup.
+async function addToResendAudience(args: { email: string; name: string | null }) {
+  const audienceId = process.env.RESEND_AUDIENCE_ID?.trim();
+  if (!audienceId) return;
+
+  if (process.env.EMAIL_DRY_RUN === "true" || !process.env.RESEND_API_KEY) {
+    console.log(
+      `[email-dry-run] type=audience_add audience=${audienceId} email=${args.email}`,
+    );
+    return;
+  }
+
+  const [firstName, ...rest] = (args.name ?? "").trim().split(/\s+/);
+  const lastName = rest.join(" ");
+
+  try {
+    const resend = new Resend(process.env.RESEND_API_KEY);
+    const { error } = await resend.contacts.create({
+      email: args.email,
+      firstName: firstName || undefined,
+      lastName: lastName || undefined,
+      unsubscribed: false,
+      audienceId,
+    });
+    if (error) {
+      console.error("[waitlist] Resend audience add failed:", error);
+    }
+  } catch (err) {
+    console.error("[waitlist] Resend audience add threw:", err);
+  }
 }
 
 async function sendOperatorNotification(args: {

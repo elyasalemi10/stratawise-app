@@ -104,7 +104,7 @@ export function WaitlistForm() {
             if (emailInvalid) setEmailInvalid(false);
           }}
           aria-invalid={emailInvalid || undefined}
-          className="h-11 border-white/15 bg-white/5 text-white placeholder:text-white/40 focus-visible:border-white/40"
+          className="h-11 border-white/15 bg-white/5 text-white placeholder:text-white/40 focus-visible:border-white/40 aria-invalid:border-red-400 aria-invalid:ring-red-400/30"
         />
       </div>
 
@@ -116,9 +116,6 @@ export function WaitlistForm() {
         {isPending && <Loader2 className="size-4 animate-spin" />}
         Join the waitlist
       </Button>
-      <p className="text-center text-xs text-white/50">
-        We&apos;ll only use your email to notify you when StrataWise launches.
-      </p>
     </form>
   );
 }
