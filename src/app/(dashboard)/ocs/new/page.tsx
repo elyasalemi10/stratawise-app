@@ -10,7 +10,9 @@ import { Page2Review } from "./pages/page-2-review";
 import { Page3Basics } from "./pages/page-3-basics";
 import { Page4Lots } from "./pages/page-4-lots";
 import { Page5Trust } from "./pages/page-5-trust";
-import { Page6Balances } from "./pages/page-6-balances";
+import { Page6Rules } from "./pages/page-6-rules";
+import { Page7Insurance } from "./pages/page-7-insurance";
+import { Page8Balances } from "./pages/page-8-balances";
 import { createDraft, getDraft, type DraftJson } from "./actions";
 
 type DraftRow = {
@@ -18,6 +20,9 @@ type DraftRow = {
   current_step: number;
   parse_status: "none" | "pending" | "complete" | "failed" | "skipped";
   plan_filename: string | null;
+  rules_filename: string | null;
+  rules_parsed_json: { rules?: { rule_number: string }[] } | null;
+  insurance_doc_filename: string | null;
   parsed_json: { detected_ocs?: { oc_number: number; lot_count: number; oc_name?: string | null }[] } | null;
   draft_json: DraftJson;
 };
@@ -163,10 +168,34 @@ function WizardContent() {
           />
         )}
         {step === 6 && (
-          <Page6Balances
+          <Page6Rules
             draftId={draft.id}
             initialDraft={draft.draft_json}
+            initialRulesFilename={draft.rules_filename}
+            initialParseStatus={
+              draft.rules_parsed_json?.rules ? "parsed"
+              : draft.rules_filename ? "uploaded"
+              : "none"
+            }
+            initialRuleCount={draft.rules_parsed_json?.rules?.length ?? 0}
             onBack={() => goToStep(5)}
+            onNext={async () => { await refreshDraft(); goToStep(7); }}
+          />
+        )}
+        {step === 7 && (
+          <Page7Insurance
+            draftId={draft.id}
+            initialDraft={draft.draft_json}
+            initialDocFilename={draft.insurance_doc_filename}
+            onBack={() => goToStep(6)}
+            onNext={async () => { await refreshDraft(); goToStep(8); }}
+          />
+        )}
+        {step === 8 && (
+          <Page8Balances
+            draftId={draft.id}
+            initialDraft={draft.draft_json}
+            onBack={() => goToStep(7)}
             onComplete={(ocCode) => router.push(`/ocs/${ocCode}?created=1`)}
           />
         )}

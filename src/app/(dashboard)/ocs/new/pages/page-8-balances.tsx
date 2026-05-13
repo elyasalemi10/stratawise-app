@@ -9,7 +9,7 @@ import { NumberInput } from "@/components/ui/number-input";
 import { DatePicker } from "@/components/shared/date-picker";
 import { saveStep, completeWizard, type DraftJson, type DraftLot } from "../actions";
 
-export function Page6Balances({
+export function Page8Balances({
   draftId,
   initialDraft,
   onBack,
@@ -88,12 +88,13 @@ export function Page6Balances({
 
     setPending(true);
     const r = await saveStep(draftId, {
+      // Final step; current_step bumps to 8 so a resumed draft lands here.
       opening_balance_date: date,
       opening_admin_balance: adminN ?? 0,
       opening_capital_works_balance: capitalN ?? 0,
       opening_maintenance_plan_balance: hasMaintenance ? (maintN ?? 0) : undefined,
       lots,
-    }, 6);
+    }, 8);
     if (r.error) {
       setPending(false);
       toast.error(r.error);

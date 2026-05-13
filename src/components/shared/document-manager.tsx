@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useRef, useCallback } from "react";
+import { useState, useRef, useCallback, useEffect } from "react";
 import {
   FileText, Upload, Download, Eye, Pencil, Trash2, X,
   FileSpreadsheet, FileImage, File,
@@ -132,10 +132,57 @@ export function DocumentManager({ ocId, lotId, initialDocuments, readOnly }: Doc
   function handleDrop(e: React.DragEvent) {
     e.preventDefault();
     setDragging(false);
+    dragDepthRef.current = 0;
     if (e.dataTransfer.files.length > 0) {
       handleFiles(e.dataTransfer.files);
     }
   }
+
+  // Window-level drag listeners — show a floating overlay only when the user
+  // drags an actual file (not a text selection or anchor link). The counter
+  // pattern handles browsers firing dragleave on every child element.
+  const dragDepthRef = useRef(0);
+  useEffect(() => {
+    if (readOnly) return;
+    function isFileDrag(e: DragEvent): boolean {
+      const types = e.dataTransfer?.types;
+      if (!types) return false;
+      for (let i = 0; i < types.length; i++) if (types[i] === "Files") return true;
+      return false;
+    }
+    function onEnter(e: DragEvent) {
+      if (!isFileDrag(e)) return;
+      e.preventDefault();
+      dragDepthRef.current += 1;
+      setDragging(true);
+    }
+    function onOver(e: DragEvent) {
+      if (!isFileDrag(e)) return;
+      e.preventDefault();
+    }
+    function onLeave() {
+      dragDepthRef.current = Math.max(0, dragDepthRef.current - 1);
+      if (dragDepthRef.current === 0) setDragging(false);
+    }
+    function onDrop(e: DragEvent) {
+      if (!isFileDrag(e)) return;
+      e.preventDefault();
+      dragDepthRef.current = 0;
+      setDragging(false);
+      if (e.dataTransfer?.files?.length) handleFiles(e.dataTransfer.files);
+    }
+    window.addEventListener("dragenter", onEnter);
+    window.addEventListener("dragover", onOver);
+    window.addEventListener("dragleave", onLeave);
+    window.addEventListener("drop", onDrop);
+    return () => {
+      window.removeEventListener("dragenter", onEnter);
+      window.removeEventListener("dragover", onOver);
+      window.removeEventListener("dragleave", onLeave);
+      window.removeEventListener("drop", onDrop);
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [readOnly]);
 
   async function handleRename() {
     if (!renameDoc || !renameName.trim()) return;
@@ -197,10 +244,12 @@ export function DocumentManager({ ocId, lotId, initialDocuments, readOnly }: Doc
 
   return (
     <div className="space-y-4">
-      {/* Upload zone (hidden for read-only) */}
+      {/* Top-right Upload button + category chip row. Big paste area removed —
+          users drag files anywhere on the page and a floating overlay appears
+          (see useEffect above). Clicking Upload opens the native picker. */}
       {!readOnly && (
-        <div className="space-y-2">
-          <div className="flex items-center gap-2">
+        <div className="flex items-center justify-between gap-3">
+          <div className="flex flex-wrap items-center gap-2">
             <span className="text-xs text-muted-foreground">Tag:</span>
             {["other", "insurance", "levy", "meeting", "legal", "maintenance"].map((cat) => (
               <button
@@ -217,22 +266,10 @@ export function DocumentManager({ ocId, lotId, initialDocuments, readOnly }: Doc
               </button>
             ))}
           </div>
-          <div
-            className={`border-2 border-dashed rounded-lg p-8 text-center transition-colors cursor-pointer ${
-              dragging ? "border-primary bg-primary/5" : "border-border hover:border-primary/50"
-            }`}
-            onDragOver={(e) => { e.preventDefault(); setDragging(true); }}
-            onDragLeave={() => setDragging(false)}
-            onDrop={handleDrop}
-            onClick={() => fileInputRef.current?.click()}
-          >
-            <Upload className="h-8 w-8 text-muted-foreground mx-auto" />
-            <p className="mt-2 text-sm text-foreground font-medium">
-              Drop files here or click to upload
-            </p>
-            <p className="mt-1 text-xs text-muted-foreground">
-              PDF, DOC, XLS, images, CSV. Max 25MB per file.
-            </p>
+          <Button size="sm" onClick={() => fileInputRef.current?.click()}>
+            <Upload className="mr-2 h-3.5 w-3.5" />
+            Upload
+          </Button>
           <input
             ref={fileInputRef}
             type="file"
@@ -244,6 +281,25 @@ export function DocumentManager({ ocId, lotId, initialDocuments, readOnly }: Doc
               e.target.value = "";
             }}
           />
+        </div>
+      )}
+
+      {/* Floating drag overlay — appears when the user drags files anywhere on
+          the page. Click-through disabled so the underlying page handles the
+          drop (handled by the window listener in the effect above). */}
+      {!readOnly && dragging && (
+        <div className="fixed inset-0 z-[60] pointer-events-none flex items-center justify-center bg-foreground/30 backdrop-blur-sm">
+          <div
+            onDragOver={(e) => e.preventDefault()}
+            onDrop={handleDrop}
+            className="pointer-events-auto flex flex-col items-center gap-3 rounded-lg border-2 border-dashed border-primary bg-card/95 px-12 py-10 shadow-lg"
+          >
+            <Upload className="h-10 w-10 text-primary" />
+            <p className="text-base font-semibold text-foreground">Drop files to upload</p>
+            <p className="text-xs text-muted-foreground">
+              They&apos;ll be tagged as <span className="font-medium">{selectedCategory === "other" ? "General" : selectedCategory}</span>.
+              PDF, DOC, XLS, images, CSV. Max 25MB per file.
+            </p>
           </div>
         </div>
       )}
@@ -291,7 +347,7 @@ export function DocumentManager({ ocId, lotId, initialDocuments, readOnly }: Doc
             <FileText className="h-10 w-10 text-muted-foreground/30" />
             <p className="mt-3 text-sm font-medium text-foreground">No documents yet</p>
             <p className="mt-1 text-xs text-muted-foreground">
-              {readOnly ? "Documents will appear here once uploaded by your strata manager." : "Upload your first document using the area above."}
+              {readOnly ? "Documents will appear here once uploaded by your strata manager." : "Click Upload above, or drag files anywhere on the page."}
             </p>
           </CardContent>
         </Card>

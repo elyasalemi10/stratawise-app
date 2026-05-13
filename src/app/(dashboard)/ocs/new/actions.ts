@@ -5,6 +5,7 @@ import { requireCompanyRole } from "@/lib/auth";
 import { createServerClient } from "@/lib/supabase";
 import { insertOCWithCode } from "@/lib/oc-code";
 import { parsePlanPdf, type ParsedPlan } from "@/lib/parse-plan";
+import { parseRulesPdf, type ParsedRulesDocument } from "@/lib/parse-rules";
 import { uploadObject, fetchObject, deleteObject } from "@/lib/storage/r2";
 
 // ─── Types stored on draft_json ─────────────────────────────────
@@ -75,7 +76,24 @@ export type DraftJson = {
   // (set by the wizard if the user doesn't change it).
   notice_address?: string;
 
-  // Page 6 (opening balances)
+  // Page 6 (rules)
+  rules_source?: "model" | "custom";
+  rules_status?: "none" | "uploaded" | "parsed" | "failed";
+  rules_filename?: string;
+  rules_rule_count?: number;
+
+  // Page 7 (insurance) — primary policy captured at setup.
+  has_insurance?: boolean;
+  insurance_provider?: string;
+  insurance_policy_number?: string;
+  insurance_policy_type?: string;     // 'building' | 'public_liability' | 'combined' | 'other'
+  insurance_sum_insured?: number;
+  insurance_premium?: number;
+  insurance_start_date?: string;      // ISO yyyy-mm-dd
+  insurance_end_date?: string;
+  insurance_doc_filename?: string;
+
+  // Page 8 (opening balances)
   opening_balance_date?: string;                 // ISO yyyy-mm-dd
   opening_admin_balance?: number;
   opening_capital_works_balance?: number;
@@ -303,6 +321,153 @@ export async function parseDraftWithGemini(draftId: string) {
   }
 }
 
+// ─── uploadRules / parseDraftRules / skipRules ──────────────────
+//
+// Wizard page 6 captures custom OC rules. When a manager uploads a PDF we:
+//   1. Push it to R2 under rules/{draftId}/source.pdf,
+//   2. Run Gemini's rules extractor → cache parsed JSON on the draft,
+//   3. On completeWizard, materialise one oc_rules row per parsed rule and
+//      register the PDF in `documents`.
+//
+// "Use Victoria's Model Rules" path is just a flag — no upload, no parse.
+
+export async function uploadRules(draftId: string, formData: FormData) {
+  try {
+    const { draft } = await loadDraft(draftId);
+    const file = formData.get("file");
+    if (!(file instanceof File)) return { error: "No file uploaded" };
+    if (file.type !== "application/pdf" && !file.name.toLowerCase().endsWith(".pdf")) {
+      return { error: "Only PDF files are accepted" };
+    }
+    if (file.size > 25 * 1024 * 1024) return { error: "Rules PDF exceeds 25MB" };
+
+    const key = `rules/${draft.id}/source.pdf`;
+    const buf = Buffer.from(await file.arrayBuffer());
+    try {
+      await uploadObject(key, buf, "application/pdf");
+    } catch (err) {
+      console.error("uploadRules: R2 upload failed", err);
+      return { error: "Couldn't save your file — please try again." };
+    }
+
+    const supabase = createServerClient();
+    const { error: dbErr } = await supabase
+      .from("oc_drafts")
+      .update({
+        rules_storage_key: key,
+        rules_filename: file.name,
+        rules_size_bytes: file.size,
+        rules_parsed_json: null,
+      })
+      .eq("id", draft.id);
+    if (dbErr) {
+      console.error("uploadRules: DB update failed", dbErr);
+      return { error: "Couldn't save your file — please try again." };
+    }
+    return { success: true };
+  } catch (err) {
+    console.error("uploadRules: unexpected error", err);
+    return { error: "Something went wrong — please try again." };
+  }
+}
+
+export async function parseDraftRules(draftId: string) {
+  try {
+    const { draft } = await loadDraft(draftId);
+    if (!draft.rules_storage_key) return { error: "No rules PDF uploaded" };
+
+    let buf: Buffer;
+    try {
+      buf = await fetchObject(draft.rules_storage_key);
+    } catch (err) {
+      console.error("parseDraftRules: R2 fetch failed", err);
+      return { error: "We couldn't read the uploaded rules document." };
+    }
+
+    let parsed: ParsedRulesDocument;
+    try {
+      parsed = await parseRulesPdf(buf);
+    } catch (err) {
+      console.error("parseDraftRules: parser failed", err);
+      return { error: "We couldn't read this rules PDF automatically. Continue and we'll keep the original — searchable but not indexed." };
+    }
+    if (!parsed.is_oc_rules) {
+      return {
+        error: `That didn't look like an OC rules document (looks like: ${parsed.document_type_guess || "another document type"}). Upload a different PDF or skip to use Victoria's Model Rules.`,
+      };
+    }
+
+    const supabase = createServerClient();
+    const { error } = await supabase
+      .from("oc_drafts")
+      .update({ rules_parsed_json: parsed as unknown as Record<string, unknown> })
+      .eq("id", draft.id);
+    if (error) return { error: error.message };
+
+    return { success: true, ruleCount: parsed.rules.length };
+  } catch (err) {
+    console.error("parseDraftRules: unexpected error", err);
+    return { error: "Something went wrong — please try again." };
+  }
+}
+
+export async function setRulesSource(draftId: string, source: "model" | "custom") {
+  try {
+    const { draft } = await loadDraft(draftId);
+    const supabase = createServerClient();
+    const merged = { ...(draft.draft_json as DraftJson), rules_source: source };
+    const { error } = await supabase
+      .from("oc_drafts")
+      .update({ draft_json: merged })
+      .eq("id", draft.id);
+    if (error) return { error: error.message };
+    return { success: true };
+  } catch (err) {
+    return { error: err instanceof Error ? err.message : "Unexpected error" };
+  }
+}
+
+// ─── uploadInsuranceDoc — stores the policy schedule PDF on the draft ────
+
+export async function uploadInsuranceDoc(draftId: string, formData: FormData) {
+  try {
+    const { draft } = await loadDraft(draftId);
+    const file = formData.get("file");
+    if (!(file instanceof File)) return { error: "No file uploaded" };
+    if (file.type !== "application/pdf" && !file.name.toLowerCase().endsWith(".pdf")) {
+      return { error: "Only PDF files are accepted" };
+    }
+    if (file.size > 25 * 1024 * 1024) return { error: "Insurance document exceeds 25MB" };
+
+    const key = `insurance/${draft.id}/policy.pdf`;
+    const buf = Buffer.from(await file.arrayBuffer());
+    try {
+      await uploadObject(key, buf, "application/pdf");
+    } catch (err) {
+      console.error("uploadInsuranceDoc: R2 upload failed", err);
+      return { error: "Couldn't save your file — please try again." };
+    }
+
+    const supabase = createServerClient();
+    const { error: dbErr } = await supabase
+      .from("oc_drafts")
+      .update({
+        insurance_doc_storage_key: key,
+        insurance_doc_filename: file.name,
+        insurance_doc_size_bytes: file.size,
+      })
+      .eq("id", draft.id);
+    if (dbErr) {
+      console.error("uploadInsuranceDoc: DB update failed", dbErr);
+      return { error: "Couldn't save your file — please try again." };
+    }
+    return { success: true };
+  } catch (err) {
+    console.error("uploadInsuranceDoc: unexpected error", err);
+    return { error: "Something went wrong — please try again." };
+  }
+}
+
 // ─── skipParsing: user opted to enter manually ──────────────────
 
 export async function skipParsing(draftId: string) {
@@ -411,7 +576,9 @@ export async function completeWizard(draftId: string) {
       opening_admin_balance: d.opening_admin_balance ?? 0,
       opening_capital_works_balance: d.opening_capital_works_balance ?? 0,
       opening_maintenance_plan_balance: hasMaintenance ? (d.opening_maintenance_plan_balance ?? 0) : null,
-      setup_step: 6,
+      rules_source: d.rules_source ?? "model",
+      rules_uploaded_at: d.rules_source === "custom" && draft.rules_storage_key ? new Date().toISOString() : null,
+      setup_step: 8,
       status: "active",
       created_by: profile.id,
     });
@@ -539,6 +706,88 @@ export async function completeWizard(draftId: string) {
         uploaded_by: profile.id,
         ocr_status: "pending",
       });
+    }
+
+    // Rules (custom path only): register the source PDF + materialise the
+    // parsed rules into oc_rules so they're searchable + linkable.
+    let rulesDocumentId: string | null = null;
+    if (d.rules_source === "custom" && draft.rules_storage_key && draft.rules_filename) {
+      const { data: rulesDoc } = await supabase.from("documents").insert({
+        oc_id: oc.id,
+        lot_id: null,
+        category: "oc_rules",
+        file_name: draft.rules_filename,
+        file_path: draft.rules_storage_key,
+        file_size: draft.rules_size_bytes ?? null,
+        mime_type: "application/pdf",
+        is_confidential: false,
+        uploaded_by: profile.id,
+        ocr_status: "pending",
+      }).select("id").single();
+      rulesDocumentId = rulesDoc?.id ?? null;
+
+      // Materialise parsed rules. Best-effort: if the parse failed earlier
+      // we still keep the PDF — the search index works via OCR text.
+      const parsedRules = draft.rules_parsed_json as { rules?: Array<{
+        rule_number: string;
+        heading?: string | null;
+        body: string;
+        page_number?: number | null;
+        bbox?: { x: number; y: number; w: number; h: number } | null;
+        confidence?: number;
+      }> } | null;
+      if (parsedRules?.rules && parsedRules.rules.length > 0) {
+        const rows = parsedRules.rules.map((r, idx) => ({
+          oc_id: oc.id,
+          rule_number: r.rule_number,
+          heading: r.heading ?? null,
+          body: r.body,
+          page_number: r.page_number ?? null,
+          bbox: r.bbox ?? null,
+          confidence: r.confidence ?? null,
+          ordinal: idx + 1,
+          source_document_id: rulesDocumentId,
+        }));
+        const { error: rulesError } = await supabase.from("oc_rules").insert(rows);
+        if (rulesError) {
+          console.error("completeWizard: oc_rules insert failed (non-fatal)", rulesError);
+        }
+      }
+    }
+
+    // Insurance policy (if captured) + supporting PDF.
+    if (d.has_insurance && d.insurance_provider && d.insurance_start_date && d.insurance_end_date) {
+      let insuranceDocId: string | null = null;
+      if (draft.insurance_doc_storage_key && draft.insurance_doc_filename) {
+        const { data: insDoc } = await supabase.from("documents").insert({
+          oc_id: oc.id,
+          lot_id: null,
+          category: "insurance_policy",
+          file_name: draft.insurance_doc_filename,
+          file_path: draft.insurance_doc_storage_key,
+          file_size: draft.insurance_doc_size_bytes ?? null,
+          mime_type: "application/pdf",
+          is_confidential: false,
+          uploaded_by: profile.id,
+          ocr_status: "pending",
+        }).select("id").single();
+        insuranceDocId = insDoc?.id ?? null;
+      }
+      const { error: insErr } = await supabase.from("insurance_policies").insert({
+        oc_id: oc.id,
+        policy_type: d.insurance_policy_type ?? "combined",
+        provider: d.insurance_provider,
+        policy_number: d.insurance_policy_number ?? null,
+        sum_insured: d.insurance_sum_insured ?? null,
+        premium: d.insurance_premium ?? null,
+        start_date: d.insurance_start_date,
+        end_date: d.insurance_end_date,
+        document_url: insuranceDocId ? null : null,
+        status: "active",
+      });
+      if (insErr) {
+        console.error("completeWizard: insurance_policies insert failed (non-fatal)", insErr);
+      }
     }
 
     // Audit.
