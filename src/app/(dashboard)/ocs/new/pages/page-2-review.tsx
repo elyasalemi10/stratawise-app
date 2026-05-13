@@ -213,15 +213,17 @@ export function Page2Review({
         </div>
 
         <div className="space-y-1.5">
-          <Label htmlFor="oc-name">Legal OC Name</Label>
+          <Label htmlFor="oc-name">
+            Legal OC name <span className="text-xs font-normal text-muted-foreground">(optional)</span>
+          </Label>
           <Input
             id="oc-name"
-            placeholder={`Owners Corporation ${planNumber || "PS……"}`}
+            placeholder="Leave blank to auto-name from the plan number"
             value={ocName}
             onChange={(e) => setOcName(e.target.value)}
           />
           <p className="text-xs text-muted-foreground">
-            You can add a friendly trading name on the next page.
+            Defaults to &ldquo;Owners Corporation {planNumber || "PS……"}&rdquo; if you leave this blank. You can add a friendly trading name on the next page.
           </p>
         </div>
 

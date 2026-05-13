@@ -35,12 +35,19 @@ export interface SidebarLot {
 
 export interface SidebarOC {
   id: string;
+  /** Discriminator: "active" rows live in owners_corporations and own a
+   *  short_code; "draft" rows live in oc_drafts and own a current_step
+   *  pointing to where the wizard left off. Drafts surface in the swapper
+   *  but never on the count badge. */
+  kind: "active" | "draft";
   short_code: string;
   name: string;
   address: string;
   plan_number: string;
   total_lots: number;
   status: string;
+  /** Wizard step the draft was last on. Only set when kind === "draft". */
+  draft_step?: number;
   lots?: SidebarLot[];
   /**
    * Count of bank transactions in this oc awaiting manager
@@ -114,11 +121,53 @@ export async function getSidebarOCs(): Promise<SidebarOC[]> {
           }
         }
 
-        return subRows.map((s) => ({
+        const active: SidebarOC[] = subRows.map((s) => ({
           ...s,
+          kind: "active" as const,
           address: s.address ?? "",
           unmatched_count: countBySub.get(s.id) ?? 0,
         }));
+
+        // Drafts the user started but didn't complete. Sorted oldest-first
+        // so picking up an old draft is the natural action; drafts appended
+        // AFTER active OCs in the swapper but the count badge ignores them.
+        // promoted_oc_id IS NULL = the wizard never finished. We don't want
+        // already-promoted draft rows reappearing alongside the real OC they
+        // produced.
+        const { data: drafts } = await sb
+          .from("oc_drafts")
+          .select("id, current_step, draft_json, plan_filename")
+          .eq("management_company_id", cid)
+          .is("promoted_oc_id", null)
+          .order("updated_at", { ascending: false });
+        const draftRows: SidebarOC[] = (drafts ?? []).map((d) => {
+          const draftJson = (d.draft_json ?? {}) as {
+            oc_name?: string;
+            plan_number?: string;
+            address?: string;
+            total_lots?: number;
+          };
+          const planNumber = draftJson.plan_number ?? "";
+          // Best-effort label: prefer the OC name typed by the user, then the
+          // plan number, then the uploaded filename. Always prefixed "Draft:".
+          const labelGuess = draftJson.oc_name?.trim() ||
+            (planNumber ? `Owners Corporation ${planNumber}` : null) ||
+            d.plan_filename?.replace(/\.pdf$/i, "") ||
+            "Untitled draft";
+          return {
+            id: d.id,
+            kind: "draft" as const,
+            short_code: "",
+            name: `Draft: ${labelGuess}`,
+            address: draftJson.address ?? "",
+            plan_number: planNumber,
+            total_lots: draftJson.total_lots ?? 0,
+            status: "draft",
+            draft_step: d.current_step ?? 1,
+          };
+        });
+
+        return [...active, ...draftRows];
       },
       [`sidebar-ocs`],
       { tags: [`sidebar-ocs-${companyId}`] },
@@ -160,6 +209,7 @@ export async function getSidebarOCs(): Promise<SidebarOC[]> {
 
   return (subsResult.data ?? []).map((s) => ({
     ...s,
+    kind: "active" as const,
     address: s.address ?? "",
     lots: lotsMap.get(s.id) ?? [],
   }));

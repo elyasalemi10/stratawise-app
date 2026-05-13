@@ -13,20 +13,19 @@ import { resolve } from "node:path";
 import { GoogleGenAI } from "@google/genai";
 
 // Manually load .env.local. We can't `source` it from zsh because the JSON
-// service-account value contains newlines that break shell parsing.
+// service-account value contains characters that break shell parsing.
 const envPath = resolve(process.cwd(), ".env.local");
 const envText = readFileSync(envPath, "utf8");
-// dotenv-style parser: KEY=value, with optional quoting. Handles \n inside
-// JSON-quoted values.
+// dotenv-style parser: KEY=value (each line). DO NOT unescape \n — the
+// service-account JSON keeps `\n` as the two-char escape sequence inside the
+// string, and JSON.parse expands it correctly at consumption time. If we
+// pre-unescape we end up with literal newlines breaking JSON.parse.
 for (const m of envText.matchAll(/^([A-Z_][A-Z0-9_]*)=(.*)$/gm)) {
   const key = m[1];
   let val = m[2].trim();
   if ((val.startsWith('"') && val.endsWith('"')) || (val.startsWith("'") && val.endsWith("'"))) {
     val = val.slice(1, -1);
   }
-  // Multi-line JSON service-account values use literal \n — unescape so the
-  // private-key newlines survive.
-  if (val.includes("\\n")) val = val.replace(/\\n/g, "\n");
   if (!process.env[key]) process.env[key] = val;
 }
 

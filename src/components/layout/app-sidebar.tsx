@@ -24,6 +24,7 @@ import {
   Landmark,
   GitMerge,
   AlertTriangle,
+  CircleDashed,
 } from "lucide-react";
 
 import {
@@ -493,9 +494,13 @@ export function AppSidebar({
                         <Skeleton className="h-3 w-20 mt-0.5" />
                       ) : isInOC ? (
                         currentOC?.plan_number ?? ""
-                      ) : (
-                        `${ocs.length} OC${ocs.length !== 1 ? "s" : ""}`
-                      )}
+                      ) : (() => {
+                        // Count only promoted (active) OCs on the header
+                        // badge; draft entries are listed separately and
+                        // shouldn't inflate the headline number.
+                        const activeCount = ocs.filter((s) => s.kind !== "draft").length;
+                        return `${activeCount} OC${activeCount !== 1 ? "s" : ""}`;
+                      })()}
                     </span>
                   </div>
                   <ChevronsUpDown className="ml-auto size-4" />
@@ -515,7 +520,10 @@ export function AppSidebar({
 
               {ocs.length > 0 && <DropdownSeparator />}
 
-              {ocs.map((sub) => (
+              {/* Active OCs first, drafts after — keeps the swapper biased
+                  toward day-to-day work; in-progress wizard sessions are
+                  surfaced but visually distinguished. */}
+              {ocs.filter((s) => s.kind !== "draft").map((sub) => (
                 <DropdownItem
                   key={sub.id}
                   onClick={() => switchOC(sub.short_code)}
@@ -536,6 +544,29 @@ export function AppSidebar({
                   )}
                 </DropdownItem>
               ))}
+
+              {ocs.some((s) => s.kind === "draft") && (
+                <>
+                  <DropdownSeparator />
+                  <DropdownLabel>In progress</DropdownLabel>
+                  {ocs.filter((s) => s.kind === "draft").map((draft) => (
+                    <DropdownItem
+                      key={draft.id}
+                      onClick={() => router.push(`/ocs/new?draft=${draft.id}&step=${draft.draft_step ?? 1}`)}
+                    >
+                      <div className="flex size-6 items-center justify-center rounded-md border border-dashed border-border shrink-0">
+                        <CircleDashed className="size-3.5 shrink-0 text-muted-foreground" />
+                      </div>
+                      <div className="flex-1 min-w-0">
+                        <span className="block truncate">{draft.name}</span>
+                        <span className="block text-xs text-muted-foreground truncate">
+                          Step {draft.draft_step ?? 1} of 8
+                        </span>
+                      </div>
+                    </DropdownItem>
+                  ))}
+                </>
+              )}
 
               {!isLotOwner && (
                 <>
