@@ -18,7 +18,7 @@ export function Page8Balances({
   draftId: string;
   initialDraft: DraftJson;
   onBack: () => void;
-  onComplete: (ocCode: string) => void;
+  onComplete: (result: { ocCode: string; sourceDraftId?: string; nextOcIndex?: number | null }) => void;
 }) {
   const today = new Date().toISOString().slice(0, 10);
 
@@ -106,7 +106,11 @@ export function Page8Balances({
       toast.error(result.error ?? "Failed to create the OC");
       return;
     }
-    onComplete(result.ocCode);
+    onComplete({
+      ocCode: result.ocCode,
+      sourceDraftId: result.sourceDraftId,
+      nextOcIndex: result.nextOcIndex,
+    });
   }
 
   return (

@@ -13,6 +13,16 @@ import { uploadObject, fetchObject, deleteObject } from "@/lib/storage/r2";
 // The wizard's editable state. Persisted on every page transition so the user
 // can refresh / come back later. Promoted to real rows on completion.
 
+export type DraftInsurancePolicy = {
+  provider: string;
+  policy_number?: string;
+  policy_type: "building" | "public_liability" | "combined" | "fidelity" | "voluntary_workers" | "other";
+  sum_insured?: number;
+  premium?: number;
+  start_date: string;     // ISO yyyy-mm-dd
+  end_date: string;
+};
+
 export type DraftLot = {
   lot_number: number;
   unit_number?: string;            // e.g. "3B" — apartment / unit label distinct from lot_number
@@ -82,14 +92,17 @@ export type DraftJson = {
   rules_filename?: string;
   rules_rule_count?: number;
 
-  // Page 7 (insurance) — primary policy captured at setup.
+  // Page 7 (insurance) — captures one or more policies on cover at setup.
   has_insurance?: boolean;
+  insurance_policies?: DraftInsurancePolicy[];
+  // The single-policy fields below are legacy — kept so older drafts still
+  // round-trip cleanly. New drafts write into insurance_policies[].
   insurance_provider?: string;
   insurance_policy_number?: string;
-  insurance_policy_type?: string;     // 'building' | 'public_liability' | 'combined' | 'other'
+  insurance_policy_type?: string;
   insurance_sum_insured?: number;
   insurance_premium?: number;
-  insurance_start_date?: string;      // ISO yyyy-mm-dd
+  insurance_start_date?: string;
   insurance_end_date?: string;
   insurance_doc_filename?: string;
 
@@ -755,11 +768,29 @@ export async function completeWizard(draftId: string) {
       }
     }
 
-    // Insurance policy (if captured) + supporting PDF.
-    if (d.has_insurance && d.insurance_provider && d.insurance_start_date && d.insurance_end_date) {
-      let insuranceDocId: string | null = null;
+    // Insurance — support multiple policies. Backward compat: when the older
+    // single-policy fields are set but `insurance_policies` is empty, treat
+    // the legacy fields as one policy.
+    if (d.has_insurance) {
+      const policies: DraftInsurancePolicy[] =
+        d.insurance_policies && d.insurance_policies.length > 0
+          ? d.insurance_policies
+          : (d.insurance_provider && d.insurance_start_date && d.insurance_end_date
+              ? [{
+                  provider: d.insurance_provider,
+                  policy_number: d.insurance_policy_number,
+                  policy_type: (d.insurance_policy_type as DraftInsurancePolicy["policy_type"]) ?? "combined",
+                  sum_insured: d.insurance_sum_insured,
+                  premium: d.insurance_premium,
+                  start_date: d.insurance_start_date,
+                  end_date: d.insurance_end_date,
+                }]
+              : []);
+
+      // Single supporting PDF is shared across the batch — most managers
+      // upload one combined policy schedule covering all the OC's policies.
       if (draft.insurance_doc_storage_key && draft.insurance_doc_filename) {
-        const { data: insDoc } = await supabase.from("documents").insert({
+        await supabase.from("documents").insert({
           oc_id: oc.id,
           lot_id: null,
           category: "insurance_policy",
@@ -770,23 +801,24 @@ export async function completeWizard(draftId: string) {
           is_confidential: false,
           uploaded_by: profile.id,
           ocr_status: "pending",
-        }).select("id").single();
-        insuranceDocId = insDoc?.id ?? null;
+        });
       }
-      const { error: insErr } = await supabase.from("insurance_policies").insert({
-        oc_id: oc.id,
-        policy_type: d.insurance_policy_type ?? "combined",
-        provider: d.insurance_provider,
-        policy_number: d.insurance_policy_number ?? null,
-        sum_insured: d.insurance_sum_insured ?? null,
-        premium: d.insurance_premium ?? null,
-        start_date: d.insurance_start_date,
-        end_date: d.insurance_end_date,
-        document_url: insuranceDocId ? null : null,
-        status: "active",
-      });
-      if (insErr) {
-        console.error("completeWizard: insurance_policies insert failed (non-fatal)", insErr);
+
+      for (const p of policies) {
+        const { error: insErr } = await supabase.from("insurance_policies").insert({
+          oc_id: oc.id,
+          policy_type: p.policy_type,
+          provider: p.provider,
+          policy_number: p.policy_number ?? null,
+          sum_insured: p.sum_insured ?? null,
+          premium: p.premium ?? null,
+          start_date: p.start_date,
+          end_date: p.end_date,
+          status: "active",
+        });
+        if (insErr) {
+          console.error("completeWizard: insurance_policies insert failed (non-fatal)", insErr);
+        }
       }
     }
 
@@ -804,7 +836,120 @@ export async function completeWizard(draftId: string) {
     revalidatePath("/ocs");
     revalidatePath("/dashboard");
 
-    return { success: true, ocCode: oc.short_code };
+    // Multi-OC follow-on: if the parsed plan detected more than one OC, the
+    // caller can prompt the manager to create the next one. The next OC's
+    // index in detected_ocs[] is just the position after the one we already
+    // promoted (i.e. however many OCs share this plan_number, minus the
+    // count we've already created from this same draft). We surface that
+    // metadata; the client decides what to do.
+    const detectedOcs = (draft.parsed_json as { detected_ocs?: Array<unknown> } | null)?.detected_ocs ?? [];
+    let nextOcIndex: number | null = null;
+    if (detectedOcs.length > 1) {
+      // Count OCs we've already created against this plan number from any
+      // promoted draft on the same management_company_id.
+      const { data: siblings } = await supabase
+        .from("owners_corporations")
+        .select("id")
+        .eq("management_company_id", profile.management_company_id)
+        .eq("plan_number", d.plan_number);
+      const made = siblings?.length ?? 1;
+      if (made < detectedOcs.length) {
+        nextOcIndex = made; // 0-based index into detected_ocs[]
+      }
+    }
+
+    return {
+      success: true,
+      ocCode: oc.short_code,
+      sourceDraftId: draft.id,
+      nextOcIndex,
+    };
+  } catch (err) {
+    return { error: err instanceof Error ? err.message : "Unexpected error" };
+  }
+}
+
+// ─── createDraftFromDetectedOc — fork a new draft from a multi-OC plan ──
+//
+// Used by the "Create the next OC from this plan?" prompt after a wizard
+// completes. We copy the plan + parse from the source draft and seed page 2
+// with the chosen OC's detected fields.
+
+export async function createDraftFromDetectedOc(sourceDraftId: string, ocIndex: number) {
+  try {
+    const profile = await requireCompanyRole();
+    if (!profile.management_company_id) {
+      return { error: "No management company assigned" };
+    }
+    const supabase = createServerClient();
+
+    const { data: source } = await supabase
+      .from("oc_drafts")
+      .select("plan_storage_key, plan_filename, plan_size_bytes, parsed_json")
+      .eq("id", sourceDraftId)
+      .eq("management_company_id", profile.management_company_id)
+      .single();
+    if (!source) return { error: "Source draft not found" };
+
+    const detectedOcs = (source.parsed_json as { detected_ocs?: Array<{
+      oc_number: number;
+      oc_name?: string | null;
+      address?: string | null;
+      street_number?: string | null;
+      street_name?: string | null;
+      suburb?: string | null;
+      state?: string | null;
+      postcode?: string | null;
+      lot_count?: number;
+      building_name?: string | null;
+      lots?: Array<{ lot_number: number; unit_number?: string | null; unit_entitlement: number; lot_liability: number }>;
+    }> } | null)?.detected_ocs ?? [];
+    const target = detectedOcs[ocIndex];
+    if (!target) return { error: "That OC index isn't in the source plan." };
+
+    const parsed = source.parsed_json as { plan_of_subdivision_number?: string | null };
+    const draftJson: DraftJson = {
+      plan_number: parsed?.plan_of_subdivision_number ?? undefined,
+      oc_number: target.oc_number,
+      oc_name: target.oc_name ?? undefined,
+      trading_name: target.building_name ?? undefined,
+      address: target.address ?? undefined,
+      street_number: target.street_number ?? undefined,
+      street_name: target.street_name ?? undefined,
+      suburb: target.suburb ?? undefined,
+      state: target.state ?? "VIC",
+      postcode: target.postcode ?? undefined,
+      total_lots: target.lot_count ?? target.lots?.length ?? 0,
+      lots: (target.lots ?? []).map((l) => ({
+        lot_number: l.lot_number,
+        unit_number: l.unit_number ?? undefined,
+        unit_entitlement: l.unit_entitlement,
+        lot_liability: l.lot_liability,
+      })),
+    };
+
+    const { data: created, error } = await supabase
+      .from("oc_drafts")
+      .insert({
+        management_company_id: profile.management_company_id,
+        created_by: profile.id,
+        // Keep the same plan PDF + parse cache so the user can re-parse if
+        // they want or just review.
+        plan_storage_key: source.plan_storage_key,
+        plan_filename: source.plan_filename,
+        plan_size_bytes: source.plan_size_bytes,
+        parse_status: "complete",
+        parsed_json: source.parsed_json,
+        draft_json: draftJson as unknown as Record<string, unknown>,
+        current_step: 2,    // Skip the upload step — the parse is already done.
+      })
+      .select("id")
+      .single();
+    if (error || !created) {
+      console.error("createDraftFromDetectedOc: insert failed", error);
+      return { error: "Couldn't start the next OC — please try again." };
+    }
+    return { draftId: created.id };
   } catch (err) {
     return { error: err instanceof Error ? err.message : "Unexpected error" };
   }

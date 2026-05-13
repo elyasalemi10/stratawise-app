@@ -13,7 +13,9 @@ import { Page5Trust } from "./pages/page-5-trust";
 import { Page6Rules } from "./pages/page-6-rules";
 import { Page7Insurance } from "./pages/page-7-insurance";
 import { Page8Balances } from "./pages/page-8-balances";
-import { createDraft, getDraft, type DraftJson } from "./actions";
+import { Button } from "@/components/ui/button";
+import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { createDraft, createDraftFromDetectedOc, getDraft, type DraftJson } from "./actions";
 
 type DraftRow = {
   id: string;
@@ -33,6 +35,8 @@ function WizardContent() {
   const [draft, setDraft] = useState<DraftRow | null>(null);
   const [bootError, setBootError] = useState<string | null>(null);
   const [step, setStep] = useState<number>(1);
+  const [nextOcPrompt, setNextOcPrompt] = useState<{ ocCode: string; sourceDraftId: string; nextOcIndex: number; totalOcs: number } | null>(null);
+  const [forkingNext, setForkingNext] = useState(false);
   const initialised = useRef(false);
 
   // Bootstrap: either resume an existing draft via ?draft= or create a fresh one.
@@ -196,10 +200,62 @@ function WizardContent() {
             draftId={draft.id}
             initialDraft={draft.draft_json}
             onBack={() => goToStep(7)}
-            onComplete={(ocCode) => router.push(`/ocs/${ocCode}?created=1`)}
+            onComplete={(r) => {
+              const detected = draft.parsed_json?.detected_ocs ?? [];
+              if (r.sourceDraftId && typeof r.nextOcIndex === "number" && detected.length > 1) {
+                setNextOcPrompt({
+                  ocCode: r.ocCode,
+                  sourceDraftId: r.sourceDraftId,
+                  nextOcIndex: r.nextOcIndex,
+                  totalOcs: detected.length,
+                });
+                return;
+              }
+              router.push(`/ocs/${r.ocCode}?created=1`);
+            }}
           />
         )}
       </div>
+
+      {/* Multi-OC follow-on prompt. Fires when the source plan creates more
+          than one OC and we haven't promoted them all yet. */}
+      {nextOcPrompt && (
+        <Dialog open onOpenChange={(open) => { if (!open) router.push(`/ocs/${nextOcPrompt.ocCode}?created=1`); }}>
+          <DialogContent>
+            <DialogHeader>
+              <DialogTitle>This plan creates {nextOcPrompt.totalOcs} OCs</DialogTitle>
+              <DialogDescription>
+                You&apos;ve just created one of them. Continue with the next OC from the same plan now, or finish and create it later from the OCs page.
+              </DialogDescription>
+            </DialogHeader>
+            <DialogFooter>
+              <Button
+                variant="ghost"
+                disabled={forkingNext}
+                onClick={() => router.push(`/ocs/${nextOcPrompt.ocCode}?created=1`)}
+              >
+                Finish for now
+              </Button>
+              <Button
+                disabled={forkingNext}
+                onClick={async () => {
+                  setForkingNext(true);
+                  const r = await createDraftFromDetectedOc(nextOcPrompt.sourceDraftId, nextOcPrompt.nextOcIndex);
+                  setForkingNext(false);
+                  if (r.error || !r.draftId) {
+                    return;
+                  }
+                  // Hard navigation so the wizard fully resets with the new
+                  // draft id (skipping page 1).
+                  window.location.assign(`/ocs/new?draft=${r.draftId}&step=2`);
+                }}
+              >
+                {forkingNext ? "Loading…" : "Create the next OC"}
+              </Button>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
+      )}
     </div>
   );
 }

@@ -37,4 +37,7 @@ export interface DocumentRecord {
   is_confidential: boolean;
   uploaded_by: string | null;
   created_at: string;
+  /** Slash-separated folder path INSIDE an OC's documents. Empty = top level.
+   *  Free-form per-OC; the DB strips leading/trailing slashes via trigger. */
+  folder_path?: string;
 }

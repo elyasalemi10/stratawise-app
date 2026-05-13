@@ -27,6 +27,8 @@ export async function POST(request: NextRequest) {
   const ocId = formData.get("oc_id") as string | null;
   const lotId = formData.get("lot_id") as string | null;
   const category = (formData.get("category") as string) || "other";
+  // Optional folder path (slash-separated). Normalised by the DB trigger.
+  const folderPath = ((formData.get("folder_path") as string) || "").trim();
 
   if (!file) {
     return NextResponse.json({ error: "No file provided" }, { status: 400 });
@@ -94,6 +96,7 @@ export async function POST(request: NextRequest) {
       mime_type: file.type,
       is_confidential: false,
       uploaded_by: profile.id,
+      folder_path: folderPath,
       ocr_status: willOcr ? "pending" : "skipped",
     })
     .select()
