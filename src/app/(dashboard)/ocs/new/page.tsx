@@ -15,7 +15,7 @@ import { Page7Insurance } from "./pages/page-7-insurance";
 import { Page8Balances } from "./pages/page-8-balances";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
-import { createDraft, createDraftFromDetectedOc, getDraft, type DraftJson } from "./actions";
+import { createDraftAndLoad, createDraftFromDetectedOc, getDraft, type DraftJson } from "./actions";
 import { revalidateSidebarFromClient } from "@/lib/sidebar-cache";
 
 type DraftRow = {
@@ -59,17 +59,15 @@ function WizardContent() {
         setStep(d.current_step);
         return;
       }
-      const c = await createDraft();
-      if (c.error || !c.draftId) {
+      // Single round-trip: server inserts + returns the full draft row so the
+      // wizard renders without a second getDraft hop (was the visible delay
+      // when first hitting /ocs/new — auth + insert + auth + select).
+      const c = await createDraftAndLoad();
+      if (c.error || !c.draft) {
         setBootError(c.error ?? "Could not start the wizard");
         return;
       }
-      const r = await getDraft(c.draftId);
-      if (r.error || !r.draft) {
-        setBootError(r.error ?? "Draft not found");
-        return;
-      }
-      const d = r.draft as unknown as DraftRow;
+      const d = c.draft as unknown as DraftRow;
       setDraft(d);
       setStep(d.current_step);
       // Persist draft id in URL for refresh resumability.
@@ -121,9 +119,9 @@ function WizardContent() {
   })) ?? [];
 
   return (
-    <div className="mx-auto w-full max-w-3xl">
+    <div className="mx-auto w-full max-w-5xl">
       <StepIndicator current={step} />
-      <div className="rounded-lg border border-border bg-card p-6">
+      <div className="mt-2">
         {step === 1 && (
           <Page1Upload
             draftId={draft.id}

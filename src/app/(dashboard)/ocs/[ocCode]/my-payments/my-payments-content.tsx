@@ -12,6 +12,7 @@ import { z } from "zod";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { NumberInput } from "@/components/ui/number-input";
 import { Textarea } from "@/components/ui/textarea";
 import { Badge } from "@/components/ui/badge";
 import {
@@ -194,13 +195,10 @@ export function MyPaymentsContent({ ocId, ownerLots, claims }: Props) {
                     <FormItem>
                       <FormLabel>Amount (AUD)</FormLabel>
                       <FormControl>
-                        <Input
-                          type="number"
-                          step="0.01"
-                          min="0.01"
-                          placeholder="0.00"
-                          {...field}
-                          onChange={(e) => field.onChange(Number(e.target.value))}
+                        <NumberInput
+                          placeholder="Amount"
+                          value={field.value != null ? String(field.value) : ""}
+                          onChange={(v) => field.onChange(v ? Number(v) : undefined)}
                         />
                       </FormControl>
                       <FormMessage />

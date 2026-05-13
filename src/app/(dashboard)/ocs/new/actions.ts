@@ -6,6 +6,7 @@ import { createServerClient } from "@/lib/supabase";
 import { insertOCWithCode } from "@/lib/oc-code";
 import { parsePlanPdf, type ParsedPlan } from "@/lib/parse-plan";
 import { parseRulesPdf, type ParsedRulesDocument } from "@/lib/parse-rules";
+import { parseInsurancePdf, type ParsedInsurancePolicy } from "@/lib/parse-insurance";
 import { uploadObject, fetchObject, deleteObject, publicUrlFor } from "@/lib/storage/r2";
 
 // ─── Types stored on draft_json ─────────────────────────────────
@@ -151,6 +152,33 @@ export async function createDraft(): Promise<{ draftId?: string; error?: string 
       return { error: "Failed to start the wizard" };
     }
     return { draftId: data.id };
+  } catch (err) {
+    return { error: err instanceof Error ? err.message : "Unexpected error" };
+  }
+}
+
+// Single round-trip variant: insert + return the full row so the wizard
+// renders immediately without a second auth+select hop on first paint.
+export async function createDraftAndLoad(): Promise<{ draft?: unknown; error?: string }> {
+  try {
+    const profile = await requireCompanyRole();
+    if (!profile.management_company_id) {
+      return { error: "No management company assigned" };
+    }
+    const supabase = createServerClient();
+    const { data, error } = await supabase
+      .from("oc_drafts")
+      .insert({
+        management_company_id: profile.management_company_id,
+        created_by: profile.id,
+      })
+      .select("*")
+      .single();
+    if (error || !data) {
+      console.error("createDraftAndLoad error:", error);
+      return { error: "Failed to start the wizard" };
+    }
+    return { draft: data };
   } catch (err) {
     return { error: err instanceof Error ? err.message : "Unexpected error" };
   }
@@ -516,6 +544,51 @@ export async function setRulesSource(draftId: string, source: "model" | "custom"
     return { success: true };
   } catch (err) {
     return { error: err instanceof Error ? err.message : "Unexpected error" };
+  }
+}
+
+// ─── parseInsuranceCoC — Gemini extraction from a Certificate of Currency ──
+//
+// Page 7 lets the manager either type each policy by hand OR upload a CoC and
+// have us extract the fields. The PDF is already uploaded to R2 via
+// uploadInsuranceDoc; this action re-fetches the bytes and runs the
+// parse-insurance Gemini call. Result is returned to the client — caller
+// decides whether to merge into draft_json.
+
+export async function parseInsuranceCoC(draftId: string): Promise<{
+  success?: true;
+  policies?: ParsedInsurancePolicy[];
+  error?: string;
+}> {
+  try {
+    const { draft } = await loadDraft(draftId);
+    if (!draft.insurance_doc_storage_key) {
+      return { error: "Upload a certificate of currency first." };
+    }
+    let buf: Buffer;
+    try {
+      buf = await fetchObject(draft.insurance_doc_storage_key);
+    } catch (err) {
+      console.error("parseInsuranceCoC: R2 fetch failed", err);
+      return { error: "We couldn't read the uploaded document." };
+    }
+
+    let parsed;
+    try {
+      parsed = await parseInsurancePdf(buf);
+    } catch (err) {
+      console.error("parseInsuranceCoC: parser failed", err);
+      return { error: "We couldn't read this PDF automatically. Enter details manually." };
+    }
+    if (!parsed.is_insurance_certificate) {
+      return {
+        error: `That didn't look like a certificate of currency (looks like: ${parsed.document_type_guess || "another document type"}). Upload a different PDF or enter details manually.`,
+      };
+    }
+    return { success: true, policies: parsed.policies };
+  } catch (err) {
+    console.error("parseInsuranceCoC: unexpected error", err);
+    return { error: "Something went wrong — please try again." };
   }
 }
 

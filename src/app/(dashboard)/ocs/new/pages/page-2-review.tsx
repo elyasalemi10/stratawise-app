@@ -146,12 +146,14 @@ export function Page2Review({
       total_lots: lots.length,
       lots,
     }, 3);
-    setPending(false);
     if (r.error) {
+      setPending(false);
       toast.error(r.error);
       return;
     }
-    onNext();
+    // Keep the spinner up through the refresh + step transition so the button
+    // doesn't visibly "stop loading" before the next page renders.
+    await onNext();
   }
 
   return (
@@ -171,7 +173,7 @@ export function Page2Review({
             </Label>
             <Input
               id="plan-number"
-              placeholder="PS812345X"
+              placeholder="Plan-of-subdivision number"
               value={planNumber}
               onChange={(e) => {
                 setPlanNumber(e.target.value.toUpperCase());
@@ -181,6 +183,7 @@ export function Page2Review({
               aria-invalid={planNumberInvalid || undefined}
               className="uppercase"
             />
+            <p className="text-xs text-muted-foreground">Format: PS + 6 digits + 1 letter.</p>
           </div>
           <div className="space-y-1.5">
             <Label htmlFor="oc-number">OC number</Label>
@@ -198,12 +201,12 @@ export function Page2Review({
                 ))}
               </select>
             ) : (
-              <Input
+              <NumberInput
                 id="oc-number"
-                type="number"
-                min={1}
-                value={ocNumber}
-                onChange={(e) => setOcNumber(parseInt(e.target.value, 10) || 1)}
+                allowDecimal={false}
+                value={String(ocNumber)}
+                onChange={(v) => setOcNumber(parseInt(v, 10) || 1)}
+                placeholder="Owners Corporation number"
               />
             )}
             <p className="text-xs text-muted-foreground">
@@ -218,12 +221,13 @@ export function Page2Review({
           </Label>
           <Input
             id="oc-name"
-            placeholder="Leave blank to auto-name from the plan number"
+            placeholder="Legal name as registered (leave blank to auto-name)"
             value={ocName}
             onChange={(e) => setOcName(e.target.value)}
           />
           <p className="text-xs text-muted-foreground">
-            Defaults to &ldquo;Owners Corporation {planNumber || "PS……"}&rdquo; if you leave this blank. You can add a friendly trading name on the next page.
+            Only fill this in if the OC is registered under a name that differs from the
+            plan-derived default &ldquo;Owners Corporation {planNumber || "PS……"}&rdquo;. Used on official notices and legal documents.
           </p>
         </div>
 
@@ -288,7 +292,7 @@ export function Page2Review({
               <table className="w-full text-sm">
                 <thead className="bg-muted/50 text-muted-foreground">
                   <tr className="text-xs uppercase tracking-wide">
-                    <th className="px-3 py-2 text-left font-medium">Lot #</th>
+                    <th className="px-3 py-2 text-left font-medium">Lot</th>
                     <th className="px-3 py-2 text-left font-medium">Unit</th>
                     <th className="px-3 py-2 text-left font-medium">Units of entitlement</th>
                     <th className="px-3 py-2 text-left font-medium">Lot liability</th>
@@ -299,7 +303,7 @@ export function Page2Review({
                   {lots.map((lot, idx) => {
                     const errs = lotErrors[idx] ?? {};
                     return (
-                    <tr key={idx} className="border-t border-border">
+                    <tr key={idx}>
                       <td className="px-3 py-1.5" data-cell={`${idx}:0`}>
                         <NumberInput
                           allowDecimal={false}
@@ -312,7 +316,7 @@ export function Page2Review({
                         <Input
                           value={lot.unit_number ?? ""}
                           onChange={(e) => updateLot(idx, { unit_number: e.target.value })}
-                          placeholder="e.g. 3B"
+                          placeholder="Unit"
                           aria-invalid={errs.unit || undefined}
                           className="h-8"
                         />

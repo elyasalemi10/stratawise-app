@@ -147,7 +147,7 @@ export function Page8Balances({
               <span className="absolute left-3 top-1/2 -translate-y-1/2 text-sm text-muted-foreground">$</span>
               <NumberInput
                 id="admin-bal"
-                placeholder="0.00"
+                placeholder="Opening balance"
                 value={admin}
                 onChange={(v) => { setAdmin(v); if (adminInvalid) setAdminInvalid(false); }}
                 invalid={adminInvalid}
@@ -163,7 +163,7 @@ export function Page8Balances({
               <span className="absolute left-3 top-1/2 -translate-y-1/2 text-sm text-muted-foreground">$</span>
               <NumberInput
                 id="cap-bal"
-                placeholder="0.00"
+                placeholder="Opening balance"
                 value={capital}
                 onChange={(v) => { setCapital(v); if (capitalInvalid) setCapitalInvalid(false); }}
                 invalid={capitalInvalid}
@@ -185,7 +185,7 @@ export function Page8Balances({
               <span className="absolute left-3 top-1/2 -translate-y-1/2 text-sm text-muted-foreground">$</span>
               <NumberInput
                 id="maint-bal"
-                placeholder="0.00"
+                placeholder="Opening balance"
                 value={maintenance}
                 onChange={(v) => { setMaintenance(v); if (maintenanceInvalid) setMaintenanceInvalid(false); }}
                 invalid={maintenanceInvalid}
@@ -259,7 +259,7 @@ export function Page8Balances({
                           value={absStr}
                           onChange={setAmount}
                           className="h-8 pl-7"
-                          placeholder="0.00"
+                          placeholder="Amount"
                         />
                       </div>
                     </td>

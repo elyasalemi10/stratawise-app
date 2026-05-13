@@ -1,12 +1,10 @@
 "use client";
 
-import { Fragment, useMemo, useState } from "react";
+import { Fragment, useState } from "react";
 import { toast } from "sonner";
-import { Loader2, AlertTriangle, Download, Upload } from "lucide-react";
+import { Loader2, AlertTriangle, Download, Upload, FileSpreadsheet } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
-import { Switch } from "@/components/ui/switch";
 import {
   Dialog,
   DialogContent,
@@ -16,6 +14,7 @@ import {
   DialogFooter,
 } from "@/components/ui/dialog";
 import { PhoneInput } from "@/components/shared/phone-input";
+import { Switch } from "@/components/ui/switch";
 import { saveStep, type DraftJson, type DraftLot } from "../actions";
 
 // AU phone validation: accept landline (8 digits + state code) or mobile (04XX
@@ -145,26 +144,18 @@ export function Page4Lots({
     : Array.from({ length: 2 }, (_, i) => ({ lot_number: i + 1, unit_entitlement: 0, lot_liability: 0 }));
 
   const [lots, setLots] = useState<DraftLot[]>(initialLots);
-  const [mode, setMode] = useState<"manual" | "bulk">(initialLots.length >= 10 ? "bulk" : "manual");
+  const [csvDialogOpen, setCsvDialogOpen] = useState(false);
   const [confirmSkipOpen, setConfirmSkipOpen] = useState(false);
   const [pending, setPending] = useState(false);
   const [csvErrors, setCsvErrors] = useState<{ row: number; reason: string }[]>([]);
   // Per-row submit-time validity flags. CLAUDE.md "no live red" rule: only
-  // populated by the submit handler, cleared on input change.
-  const [rowErrors, setRowErrors] = useState<Array<{ email?: boolean; phone?: boolean; tEmail?: boolean; tPhone?: boolean }>>([]);
-
-  // Item 16: notice address for service of notices. Defaults to OC address;
-  // manager can override here. No checkbox — direct edit instead.
-  const [noticeAddress, setNoticeAddress] = useState<string>(
-    initialDraft.notice_address ?? initialDraft.address ?? "",
-  );
-
-  const missingEmailPct = useMemo(() => {
-    const total = lots.length;
-    if (total === 0) return 0;
-    const missing = lots.filter((l) => !l.owner_email).length;
-    return Math.round((missing / total) * 100);
-  }, [lots]);
+  // populated by the submit handler, cleared on input change. ownerName and
+  // tenantName participate too — both are mandatory (owner always; tenant only
+  // when owner-occupied is off).
+  const [rowErrors, setRowErrors] = useState<Array<{
+    ownerName?: boolean; email?: boolean; phone?: boolean;
+    tName?: boolean; tEmail?: boolean; tPhone?: boolean;
+  }>>([]);
 
   function updateLot(idx: number, patch: Partial<DraftLot>) {
     setLots((prev) => prev.map((l, i) => (i === idx ? { ...l, ...patch } : l)));
@@ -172,18 +163,16 @@ export function Page4Lots({
       setRowErrors((prev) => {
         const next = [...prev];
         const cur = { ...(next[idx] ?? {}) };
+        if ("owner_name" in patch) cur.ownerName = false;
         if ("owner_email" in patch) cur.email = false;
         if ("owner_phone" in patch) cur.phone = false;
+        if ("tenant_name" in patch) cur.tName = false;
         if ("tenant_email" in patch) cur.tEmail = false;
         if ("tenant_phone" in patch) cur.tPhone = false;
         next[idx] = cur;
         return next;
       });
     }
-  }
-  function addLot() {
-    const nextNum = lots.length === 0 ? 1 : Math.max(...lots.map((l) => l.lot_number)) + 1;
-    setLots((prev) => [...prev, { lot_number: nextNum, unit_entitlement: 0, lot_liability: 0, is_occupied_by_owner: true }]);
   }
 
   function downloadCsv() {
@@ -202,6 +191,7 @@ export function Page4Lots({
       const { lots: parsedLots, errors } = csvToLots(text, lots);
       setLots(parsedLots);
       setCsvErrors(errors);
+      setCsvDialogOpen(false);
       if (errors.length === 0) toast.success(`Imported ${parsedLots.length} lots`);
       else toast.error(`${parsedLots.length} imported, ${errors.length} row${errors.length === 1 ? "" : "s"} with errors`);
     };
@@ -209,18 +199,19 @@ export function Page4Lots({
   }
 
   async function persistAndAdvance(nextStep: number, skipped = false) {
-    // Validate everything the user filled in. Empty rows are allowed (owners
-    // can be added later) but anything typed must be shape-correct. Skip
-    // path bypasses per-row validation. Errors are accumulated AND a parallel
-    // rowErrors flag set is populated so the inputs go red on submit only.
+    // Owner name is mandatory on every lot. Tenant name is mandatory whenever
+    // the lot is NOT owner-occupied. Skip path bypasses validation entirely so
+    // managers can come back to fill these in later. Live-red rule: only set
+    // rowErrors on submit; cleared on the matching field's onChange.
     const problems: string[] = [];
-    const nextRowErrors: Array<{ email?: boolean; phone?: boolean; tEmail?: boolean; tPhone?: boolean }> = lots.map(() => ({}));
+    const nextRowErrors: typeof rowErrors = lots.map(() => ({}));
     if (!skipped) {
-      if (!noticeAddress || noticeAddress.trim().length < 3) {
-        problems.push("Address for service of notices is required.");
-      }
       lots.forEach((l, i) => {
-        const hasOwner = !!(l.owner_name || l.owner_email || l.owner_phone || l.owner_postal_address);
+        const ownerName = (l.owner_name ?? "").trim();
+        if (!ownerName) {
+          problems.push(`Lot ${l.lot_number}: owner name is required.`);
+          nextRowErrors[i].ownerName = true;
+        }
         if (l.owner_email && !isValidEmail(l.owner_email)) {
           problems.push(`Lot ${l.lot_number}: invalid email`);
           nextRowErrors[i].email = true;
@@ -230,11 +221,12 @@ export function Page4Lots({
           nextRowErrors[i].phone = true;
         }
         const tenantOpen = l.is_occupied_by_owner === false;
-        if (tenantOpen && !(l.tenant_name || l.tenant_email || l.tenant_phone)) {
-          problems.push(`Lot ${l.lot_number}: tenant fields are empty — toggle owner-occupied back on or add tenant contact.`);
-        }
-        if (hasOwner && !l.owner_name?.trim()) {
-          problems.push(`Lot ${l.lot_number}: owner name required when other owner fields are filled.`);
+        if (tenantOpen) {
+          const tenantName = (l.tenant_name ?? "").trim();
+          if (!tenantName) {
+            problems.push(`Lot ${l.lot_number}: tenant name is required when not owner-occupied.`);
+            nextRowErrors[i].tName = true;
+          }
         }
         if (l.tenant_email && !isValidEmail(l.tenant_email)) {
           problems.push(`Lot ${l.lot_number}: invalid tenant email`);
@@ -255,14 +247,13 @@ export function Page4Lots({
     const r = await saveStep(draftId, {
       lots,
       total_lots: lots.length,
-      notice_address: noticeAddress || undefined,
     }, nextStep);
-    setPending(false);
     if (r.error) {
+      setPending(false);
       toast.error(r.error);
       return;
     }
-    onNext();
+    await onNext();
   }
 
   return (
@@ -270,96 +261,37 @@ export function Page4Lots({
       <div className="text-center">
         <h2 className="text-lg font-semibold text-foreground">Add the lot owners</h2>
         <p className="mt-1 text-sm text-muted-foreground">
-          Add the owner contact details for each lot. You can bulk import or enter manually.
+          Owner name is required on every lot. You can type each row or import a CSV.
         </p>
       </div>
 
-      {/* Item 16: Notice-address field, defaulting to the OC address. */}
-      <div className="space-y-1.5">
-        <Label htmlFor="notice-address">Address for service of notices</Label>
-        <Input
-          id="notice-address"
-          value={noticeAddress}
-          onChange={(e) => setNoticeAddress(e.target.value)}
-          placeholder={initialDraft.address ?? "Postal address used for official correspondence"}
-        />
-        <p className="text-xs text-muted-foreground">
-          Pre-filled with the OC address. Edit if notices should go elsewhere
-          (e.g. the manager&apos;s office). Per-lot postal addresses are set in the
-          rows below.
-        </p>
+      {/* CSV import — popover dialog with the download-template + upload buttons
+          inside, so the page itself isn't crowded with a manual/bulk toggle. */}
+      <div className="flex items-center justify-end">
+        <Button type="button" variant="secondary" size="sm" onClick={() => setCsvDialogOpen(true)}>
+          <FileSpreadsheet className="mr-1.5 h-3.5 w-3.5" />
+          Import from CSV
+        </Button>
       </div>
 
-      {/* Mode toggle */}
-      <div className="flex items-center justify-center gap-2">
-        <div className="inline-flex rounded-md border border-border bg-card p-0.5">
-          <button
-            type="button"
-            onClick={() => setMode("manual")}
-            className={`px-3 py-1.5 text-xs font-medium rounded-sm cursor-pointer ${mode === "manual" ? "bg-primary text-primary-foreground" : "text-muted-foreground"}`}
-          >
-            Manual entry
-          </button>
-          <button
-            type="button"
-            onClick={() => setMode("bulk")}
-            className={`px-3 py-1.5 text-xs font-medium rounded-sm cursor-pointer ${mode === "bulk" ? "bg-primary text-primary-foreground" : "text-muted-foreground"}`}
-          >
-            Bulk import (CSV)
-          </button>
-        </div>
-      </div>
-
-      {mode === "bulk" ? (
-        <div className="space-y-4">
-          <div className="rounded-md border border-border bg-card p-4 space-y-3">
-            <p className="text-sm text-foreground">
-              Download the template, fill in owner details, then upload it back. Lot numbers and entitlements
-              are pre-populated from the lot schedule.
-            </p>
-            <div className="flex flex-wrap gap-2">
-              <Button type="button" variant="secondary" size="sm" onClick={downloadCsv}>
-                <Download className="mr-1.5 h-3.5 w-3.5" />
-                Download template
-              </Button>
-              <label className="inline-flex items-center gap-1.5 h-9 px-3 rounded-md border border-border bg-card text-sm cursor-pointer hover:bg-muted">
-                <Upload className="h-3.5 w-3.5" />
-                Upload completed CSV
-                <input
-                  type="file"
-                  accept=".csv,text/csv"
-                  className="sr-only"
-                  onChange={(e) => {
-                    const f = e.target.files?.[0];
-                    if (f) onUploadCsv(f);
-                  }}
-                />
-              </label>
+      {csvErrors.length > 0 && (
+        <div className="rounded-md border border-amber-200 bg-amber-50 p-3">
+          <div className="flex items-start gap-2">
+            <AlertTriangle className="mt-0.5 h-4 w-4 text-amber-600 shrink-0" />
+            <div className="flex-1">
+              <p className="text-sm font-medium text-amber-900">
+                {csvErrors.length} row{csvErrors.length === 1 ? "" : "s"} need attention
+              </p>
+              <ul className="mt-1 text-xs text-amber-900 list-disc pl-4 space-y-0.5">
+                {csvErrors.slice(0, 5).map((e, i) => (
+                  <li key={i}>Row {e.row}: {e.reason}</li>
+                ))}
+                {csvErrors.length > 5 && <li>… {csvErrors.length - 5} more</li>}
+              </ul>
             </div>
           </div>
-          {csvErrors.length > 0 && (
-            <div className="rounded-md border border-amber-200 bg-amber-50 p-3">
-              <div className="flex items-start gap-2">
-                <AlertTriangle className="mt-0.5 h-4 w-4 text-amber-600 shrink-0" />
-                <div className="flex-1">
-                  <p className="text-sm font-medium text-amber-900">
-                    {csvErrors.length} row{csvErrors.length === 1 ? "" : "s"} need attention
-                  </p>
-                  <ul className="mt-1 text-xs text-amber-900 list-disc pl-4 space-y-0.5">
-                    {csvErrors.slice(0, 5).map((e, i) => (
-                      <li key={i}>Row {e.row}: {e.reason}</li>
-                    ))}
-                    {csvErrors.length > 5 && <li>… {csvErrors.length - 5} more</li>}
-                  </ul>
-                </div>
-              </div>
-            </div>
-          )}
-          <p className="text-xs text-muted-foreground text-center">
-            Imported lots appear in the table below — switch to manual entry to inline-edit before continuing.
-          </p>
         </div>
-      ) : null}
+      )}
 
       {/* Lot table (visible in both modes after import).
 
@@ -405,7 +337,6 @@ export function Page4Lots({
               <th className="px-2 py-2 text-left font-medium">Owner name</th>
               <th className="px-2 py-2 text-left font-medium">Email</th>
               <th className="px-2 py-2 text-left font-medium">Phone</th>
-              <th className="px-2 py-2 text-left font-medium">Address for notices</th>
               <th className="px-2 py-2 text-left font-medium">Owner occupied?</th>
             </tr>
           </thead>
@@ -415,7 +346,7 @@ export function Page4Lots({
               const ownerOccupied = lot.is_occupied_by_owner !== false;
               return (
                 <Fragment key={idx}>
-                  <tr className="border-t border-border">
+                  <tr>
                     <td className="px-2 py-1.5 tabular-nums">{lot.lot_number}</td>
                     <td className="px-2 py-1.5 text-sm text-muted-foreground">
                       {lot.unit_number?.trim() || <span className="text-muted-foreground/60">—</span>}
@@ -424,6 +355,8 @@ export function Page4Lots({
                       <Input
                         value={lot.owner_name ?? ""}
                         onChange={(e) => updateLot(idx, { owner_name: e.target.value })}
+                        aria-invalid={errs.ownerName || undefined}
+                        placeholder="Owner name"
                         className="h-8"
                       />
                     </td>
@@ -433,6 +366,7 @@ export function Page4Lots({
                         value={lot.owner_email ?? ""}
                         onChange={(e) => updateLot(idx, { owner_email: e.target.value })}
                         aria-invalid={errs.email || undefined}
+                        placeholder="Email"
                         className="h-8"
                       />
                     </td>
@@ -441,13 +375,6 @@ export function Page4Lots({
                         value={lot.owner_phone ?? "+61 "}
                         onChange={(v) => updateLot(idx, { owner_phone: v })}
                         error={errs.phone}
-                      />
-                    </td>
-                    <td className="px-2 py-1.5" data-cell={`${idx}:3`}>
-                      <Input
-                        value={lot.owner_postal_address ?? ""}
-                        onChange={(e) => updateLot(idx, { owner_postal_address: e.target.value })}
-                        className="h-8"
                       />
                     </td>
                     <td className="px-2 py-1.5">
@@ -459,14 +386,15 @@ export function Page4Lots({
                     </td>
                   </tr>
                   {!ownerOccupied && (
-                    <tr className="border-t border-dashed border-border bg-muted/20">
+                    <tr className="bg-muted/20">
                       <td className="px-2 py-1.5" colSpan={2} />
-                      <td className="px-2 py-1.5 text-xs text-muted-foreground" colSpan={5}>
+                      <td className="px-2 py-1.5 text-xs text-muted-foreground" colSpan={4}>
                         <div className="grid grid-cols-3 gap-2">
                           <Input
                             placeholder="Tenant name"
                             value={lot.tenant_name ?? ""}
                             onChange={(e) => updateLot(idx, { tenant_name: e.target.value })}
+                            aria-invalid={errs.tName || undefined}
                             className="h-8"
                           />
                           <Input
@@ -493,17 +421,6 @@ export function Page4Lots({
         </table>
       </div>
 
-      <div className="flex items-center justify-between">
-        <Button type="button" variant="secondary" size="sm" onClick={addLot}>
-          + Add lot
-        </Button>
-        {missingEmailPct > 20 && (
-          <p className="text-xs text-amber-700">
-            {missingEmailPct}% of lots have no email — communication is mostly by email.
-          </p>
-        )}
-      </div>
-
       <div className="flex items-center justify-between pt-2">
         <Button type="button" variant="ghost" onClick={onBack}>Back</Button>
         <div className="flex items-center gap-3">
@@ -520,6 +437,41 @@ export function Page4Lots({
           </Button>
         </div>
       </div>
+
+      <Dialog open={csvDialogOpen} onOpenChange={setCsvDialogOpen}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Import lot owners from CSV</DialogTitle>
+            <DialogDescription>
+              Download the template (pre-populated from the lot schedule), fill in owner details,
+              then upload it back. Lot numbers are matched — extra rows are ignored.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="flex flex-col gap-3 sm:flex-row">
+            <Button type="button" variant="secondary" onClick={downloadCsv} className="flex-1">
+              <Download className="mr-1.5 h-3.5 w-3.5" />
+              Download template
+            </Button>
+            <label className="inline-flex flex-1 items-center justify-center gap-1.5 h-9 px-3 rounded-md border border-border bg-card text-sm cursor-pointer hover:bg-muted">
+              <Upload className="h-3.5 w-3.5" />
+              Upload completed CSV
+              <input
+                type="file"
+                accept=".csv,text/csv"
+                className="sr-only"
+                onChange={(e) => {
+                  const f = e.target.files?.[0];
+                  if (f) onUploadCsv(f);
+                  e.target.value = "";
+                }}
+              />
+            </label>
+          </div>
+          <DialogFooter>
+            <Button variant="ghost" onClick={() => setCsvDialogOpen(false)}>Close</Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
 
       <Dialog open={confirmSkipOpen} onOpenChange={setConfirmSkipOpen}>
         <DialogContent>

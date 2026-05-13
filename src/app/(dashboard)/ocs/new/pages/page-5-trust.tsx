@@ -82,6 +82,7 @@ function FundFieldsBlock({ value, onChange, invalid, idPrefix }: FundFieldsProps
         </Label>
         <Input
           id={`${idPrefix}-name`}
+          placeholder="Account name as it appears on bank statements"
           value={value.accountName}
           onChange={(e) => onChange({ ...value, accountName: e.target.value })}
           aria-invalid={invalid.name || undefined}
@@ -94,7 +95,7 @@ function FundFieldsBlock({ value, onChange, invalid, idPrefix }: FundFieldsProps
           </Label>
           <Input
             id={`${idPrefix}-bsb`}
-            placeholder="XXX-XXX"
+            placeholder="6-digit BSB"
             value={value.bsb}
             onChange={(e) => onChange({ ...value, bsb: formatBsb(e.target.value) })}
             inputMode="numeric"
@@ -109,7 +110,7 @@ function FundFieldsBlock({ value, onChange, invalid, idPrefix }: FundFieldsProps
           </Label>
           <Input
             id={`${idPrefix}-acc`}
-            placeholder="12345678"
+            placeholder="Bank account number"
             value={value.accountNumber}
             onChange={(e) => onChange({ ...value, accountNumber: e.target.value.replace(/\D/g, "").slice(0, 9) })}
             inputMode="numeric"
@@ -142,11 +143,17 @@ export function Page5Trust({
   const tier = tierForLotCount(totalLots, initialDraft.services_only ?? false);
   const isTier1or2 = tier <= 2;
 
-  // Item 17: no prefilled account names. Manager types each one from scratch.
+  // No prefilled account names. Older draft rows (pre-2026-05) sometimes
+  // baked an auto-generated "Owners Corporation {PS…} Trust Account" into
+  // admin_account_name; strip it on hydration so the field renders empty and
+  // the manager types the real, legally-registered account name.
   void ocName;
+  const legacyAutoName = /^Owners Corporation\s+PS\d{6}[A-Z]\s+Trust Account$/i;
+  const stripLegacy = (s: string | undefined) =>
+    s && legacyAutoName.test(s.trim()) ? "" : (s ?? "");
   const [admin, setAdmin] = useState<FundFields>({
     bankId: initialDraft.admin_bank_id ?? "",
-    accountName: initialDraft.admin_account_name ?? "",
+    accountName: stripLegacy(initialDraft.admin_account_name),
     bsb: initialDraft.admin_bsb ?? "",
     accountNumber: initialDraft.admin_account_number ?? "",
   });
@@ -156,7 +163,7 @@ export function Page5Trust({
   );
   const [capital, setCapital] = useState<FundFields>({
     bankId: initialDraft.capital_bank_id ?? "",
-    accountName: initialDraft.capital_account_name ?? "",
+    accountName: stripLegacy(initialDraft.capital_account_name),
     bsb: initialDraft.capital_bsb ?? "",
     accountNumber: initialDraft.capital_account_number ?? "",
   });
@@ -171,7 +178,7 @@ export function Page5Trust({
   );
   const [maintenance, setMaintenance] = useState<FundFields>({
     bankId: initialDraft.maintenance_bank_id ?? "",
-    accountName: initialDraft.maintenance_account_name ?? "",
+    accountName: stripLegacy(initialDraft.maintenance_account_name),
     bsb: initialDraft.maintenance_bsb ?? "",
     accountNumber: initialDraft.maintenance_account_number ?? "",
   });
@@ -194,41 +201,52 @@ export function Page5Trust({
     const problems: string[] = [];
     const adminFlags = validateFund(admin);
     if (Object.values(adminFlags).some(Boolean)) problems.push("Admin fund details");
-    setAdminInvalid(adminFlags);
 
     let capFlags: InvalidFlags = NO_INVALID;
     if (!capitalSameAsAdmin) {
       capFlags = validateFund(capital);
       if (Object.values(capFlags).some(Boolean)) problems.push("Capital works fund details");
     }
-    setCapitalInvalid(capFlags);
 
     let mFlags: InvalidFlags = NO_INVALID;
     if (hasMaintenance && !maintenanceSameAsAdmin) {
       mFlags = validateFund(maintenance);
       if (Object.values(mFlags).some(Boolean)) problems.push("Maintenance plan fund details");
     }
-    setMaintenanceInvalid(mFlags);
 
-    // Item 21: no two ACTIVE funds may share a (BSB, account) unless they're
-    // explicitly tied to admin via the "same as admin" toggle. This catches a
-    // user typing the same BSB+account into two separate independent funds.
-    const pairs: Array<{ label: string; bsb: string; acc: string }> = [
-      { label: "admin", bsb: admin.bsb, acc: admin.accountNumber },
+    // No two ACTIVE funds may share a (BSB, account) unless they're explicitly
+    // tied to admin via the "same as admin" toggle. When we detect a duplicate
+    // we also flip the BSB + account flags on BOTH offending funds so the user
+    // sees red borders on the rows that need fixing — not just a toast.
+    type Slot = "admin" | "capital" | "maintenance";
+    const pairs: Array<{ slot: Slot; label: string; bsb: string; acc: string }> = [
+      { slot: "admin", label: "admin", bsb: admin.bsb, acc: admin.accountNumber },
     ];
-    if (!capitalSameAsAdmin) pairs.push({ label: "capital works", bsb: capital.bsb, acc: capital.accountNumber });
-    if (hasMaintenance && !maintenanceSameAsAdmin) pairs.push({ label: "maintenance plan", bsb: maintenance.bsb, acc: maintenance.accountNumber });
-    const seen = new Map<string, string>();
+    if (!capitalSameAsAdmin) pairs.push({ slot: "capital", label: "capital works", bsb: capital.bsb, acc: capital.accountNumber });
+    if (hasMaintenance && !maintenanceSameAsAdmin) pairs.push({ slot: "maintenance", label: "maintenance plan", bsb: maintenance.bsb, acc: maintenance.accountNumber });
+    const seen = new Map<string, { slot: Slot; label: string }>();
+    const dupSlots = new Set<Slot>();
+    let dupMessage: string | null = null;
     for (const p of pairs) {
       if (!p.bsb || !p.acc) continue;
       const key = `${p.bsb}|${p.acc}`;
-      const dup = seen.get(key);
-      if (dup) {
-        problems.push(`Same BSB + account number used by both ${dup} and ${p.label}. Use the "same account as admin" toggle instead.`);
-        break;
+      const prev = seen.get(key);
+      if (prev) {
+        dupSlots.add(prev.slot);
+        dupSlots.add(p.slot);
+        dupMessage = `Same BSB + account number used by both ${prev.label} and ${p.label}. Use the "same account as admin" toggle instead.`;
+      } else {
+        seen.set(key, { slot: p.slot, label: p.label });
       }
-      seen.set(key, p.label);
     }
+    if (dupMessage) problems.push(dupMessage);
+
+    if (dupSlots.has("admin")) { adminFlags.bsb = true; adminFlags.acc = true; }
+    if (dupSlots.has("capital")) { capFlags.bsb = true; capFlags.acc = true; }
+    if (dupSlots.has("maintenance")) { mFlags.bsb = true; mFlags.acc = true; }
+    setAdminInvalid(adminFlags);
+    setCapitalInvalid(capFlags);
+    setMaintenanceInvalid(mFlags);
 
     if (problems.length) {
       toast.error(problems.length === 1 ? problems[0] : "Fix the highlighted fields.");
@@ -255,12 +273,12 @@ export function Page5Trust({
         maintenance_bsb: !hasMaintenance || maintenanceSameAsAdmin ? undefined : maintenance.bsb,
         maintenance_account_number: !hasMaintenance || maintenanceSameAsAdmin ? undefined : maintenance.accountNumber,
       }, 6);
-      setPending(false);
       if (r.error) {
+        setPending(false);
         toast.error(r.error);
         return;
       }
-      onNext();
+      await onNext();
     })();
   }
 
@@ -269,7 +287,7 @@ export function Page5Trust({
   return (
     <div className="space-y-6">
       <div className="text-center">
-        <h2 className="text-lg font-semibold text-foreground">Trust accounts</h2>
+        <h2 className="text-lg font-semibold text-foreground">Bank accounts</h2>
         <p className="mt-1 text-sm text-muted-foreground">
           The OC&apos;s funds — separate from your management company&apos;s operating account.
           The admin fund is always present; capital works and (optionally) maintenance plan

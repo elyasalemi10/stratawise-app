@@ -2,7 +2,7 @@
 
 import { useRef, useState } from "react";
 import { toast } from "sonner";
-import { CheckCircle2, FileText, Loader2, Plus, Shield, Trash2, Upload, X } from "lucide-react";
+import { CheckCircle2, FileText, Loader2, Plus, Shield, Sparkles, Trash2, Upload, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -16,7 +16,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { DatePicker } from "@/components/shared/date-picker";
-import { saveStep, uploadInsuranceDoc, type DraftJson, type DraftInsurancePolicy } from "../actions";
+import { parseInsuranceCoC, saveStep, uploadInsuranceDoc, type DraftJson, type DraftInsurancePolicy } from "../actions";
 
 // Wizard page 7 — insurance policies on cover at setup.
 //
@@ -86,6 +86,7 @@ export function Page7Insurance({
   const [invalidByIdx, setInvalidByIdx] = useState<Record<number, PolicyInvalid>>({});
   const [docFilename, setDocFilename] = useState<string | null>(initialDocFilename);
   const [uploading, setUploading] = useState(false);
+  const [parsingDoc, setParsingDoc] = useState(false);
   const [isDragging, setIsDragging] = useState(false);
   const [pending, setPending] = useState(false);
   const dragDepthRef = useRef(0);
@@ -125,7 +126,41 @@ export function Page7Insurance({
     if (r.error) {
       setDocFilename(null);
       toast.error(r.error);
+      return;
     }
+    // Upload succeeded — offer to run the parser immediately. We don't auto-
+    // run it (some managers prefer hand-entry); a button + spinner appears
+    // next to the file row.
+  }
+
+  // Gemini extraction of the uploaded CoC. Replaces the current policies array
+  // with whatever the parser found. The PDF itself is already saved to the
+  // draft (via uploadInsuranceDoc) so it'll be archived to documents on wizard
+  // completion regardless of whether the parse succeeds.
+  async function handleParseDoc() {
+    if (!docFilename) return;
+    setParsingDoc(true);
+    const r = await parseInsuranceCoC(draftId);
+    setParsingDoc(false);
+    if (r.error || !r.policies) {
+      toast.error(r.error ?? "Couldn't read this document.");
+      return;
+    }
+    if (r.policies.length === 0) {
+      toast.error("No policies detected in this document. Enter details manually.");
+      return;
+    }
+    setPolicies(r.policies.map((p) => ({
+      provider: p.provider,
+      policy_number: p.policy_number ?? "",
+      policy_type: p.policy_type,
+      sum_insured: p.sum_insured ?? undefined,
+      premium: p.premium ?? undefined,
+      start_date: p.start_date ?? "",
+      end_date: p.end_date ?? "",
+    })));
+    setInvalidByIdx({});
+    toast.success(`Prefilled ${r.policies.length} polic${r.policies.length === 1 ? "y" : "ies"} from the certificate.`);
   }
   function onDrop(e: React.DragEvent) {
     e.preventDefault();
@@ -148,12 +183,12 @@ export function Page7Insurance({
     if (!hasInsurance) {
       setPending(true);
       const r = await saveStep(draftId, { has_insurance: false, insurance_policies: [] }, 8);
-      setPending(false);
       if (r.error) {
+        setPending(false);
         toast.error(r.error);
         return;
       }
-      onNext();
+      await onNext();
       return;
     }
     const problems: string[] = [];
@@ -193,12 +228,12 @@ export function Page7Insurance({
       insurance_end_date: policies[0]?.end_date,
       insurance_doc_filename: docFilename ?? undefined,
     }, 8);
-    setPending(false);
     if (r.error) {
+      setPending(false);
       toast.error(r.error);
       return;
     }
-    onNext();
+    await onNext();
   }
 
   return (
@@ -258,7 +293,7 @@ export function Page7Insurance({
                       </Label>
                       <Input
                         id={`prov-${idx}`}
-                        placeholder="e.g. CHU, Strata Community Insurance, QBE"
+                        placeholder="Insurer / underwriter name"
                         value={p.provider}
                         onChange={(e) => { updatePolicy(idx, { provider: e.target.value }); clearInvalid(idx, "provider"); }}
                         aria-invalid={inv.provider || undefined}
@@ -301,7 +336,7 @@ export function Page7Insurance({
                           id={`sum-${idx}`}
                           value={p.sum_insured != null ? String(p.sum_insured) : ""}
                           onChange={(v) => updatePolicy(idx, { sum_insured: v ? parseFloat(v) : undefined })}
-                          placeholder="e.g. 12500000"
+                          placeholder="Sum insured"
                           className="pl-7"
                         />
                       </div>
@@ -317,7 +352,7 @@ export function Page7Insurance({
                           id={`prem-${idx}`}
                           value={p.premium != null ? String(p.premium) : ""}
                           onChange={(v) => updatePolicy(idx, { premium: v ? parseFloat(v) : undefined })}
-                          placeholder="0.00"
+                          placeholder="Annual premium"
                           className="pl-7"
                         />
                       </div>
@@ -353,9 +388,15 @@ export function Page7Insurance({
             </Button>
           </div>
 
-          {/* Shared supporting PDF (optional). */}
+          {/* Certificate of Currency / policy schedule. Upload it and we can
+              pull the fields out automatically. PDF is archived to documents
+              on wizard completion either way. */}
           <div className="space-y-2">
-            <Label>Policy schedule (PDF) — covers all policies above</Label>
+            <Label>Certificate of Currency or policy schedule (PDF)</Label>
+            <p className="text-xs text-muted-foreground">
+              Upload the insurer&apos;s certificate and we&apos;ll extract the policies, sums insured,
+              premiums and dates automatically. You can still edit each row before continuing.
+            </p>
             {!docFilename ? (
               <div
                 onDragEnter={onDragEnter}
@@ -379,7 +420,7 @@ export function Page7Insurance({
                   />
                   <Upload className="h-6 w-6 text-muted-foreground" />
                   <p className="text-xs text-muted-foreground">
-                    {isDragging ? "Drop the policy here" : "Optional — click or drag the policy schedule PDF"}
+                    {isDragging ? "Drop the certificate here" : "Click or drag the certificate of currency PDF"}
                   </p>
                 </label>
               </div>
@@ -394,14 +435,31 @@ export function Page7Insurance({
                   <FileText className="h-3.5 w-3.5 text-muted-foreground shrink-0" />
                   <p className="text-sm font-medium text-foreground truncate">{docFilename}</p>
                 </div>
-                <button
-                  type="button"
-                  onClick={() => setDocFilename(null)}
-                  className="text-muted-foreground hover:text-foreground cursor-pointer"
-                  aria-label="Remove policy file"
-                >
-                  <X className="h-4 w-4" />
-                </button>
+                <div className="flex items-center gap-2 shrink-0">
+                  <Button
+                    type="button"
+                    size="sm"
+                    variant="secondary"
+                    onClick={handleParseDoc}
+                    disabled={uploading || parsingDoc}
+                  >
+                    {parsingDoc ? (
+                      <Loader2 className="size-3.5 animate-spin" />
+                    ) : (
+                      <Sparkles className="size-3.5" />
+                    )}
+                    Prefill from document
+                  </Button>
+                  <button
+                    type="button"
+                    onClick={() => setDocFilename(null)}
+                    className="text-muted-foreground hover:text-foreground cursor-pointer"
+                    aria-label="Remove policy file"
+                    disabled={parsingDoc}
+                  >
+                    <X className="h-4 w-4" />
+                  </button>
+                </div>
               </div>
             )}
           </div>

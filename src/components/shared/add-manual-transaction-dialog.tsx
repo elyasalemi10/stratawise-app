@@ -28,6 +28,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { Input } from "@/components/ui/input";
+import { NumberInput } from "@/components/ui/number-input";
 import { Button } from "@/components/ui/button";
 import { addManualBankTransactionSchema } from "@/lib/validations/reconciliation";
 import { addManualBankTransaction } from "@/lib/actions/reconciliation";
@@ -161,16 +162,11 @@ export function AddManualTransactionDialog({
                   <FormControl>
                     <div className="relative">
                       <span className="absolute left-3 top-2.5 text-sm text-muted-foreground">$</span>
-                      <Input
-                        type="number"
-                        step="0.01"
-                        placeholder="0.00"
+                      <NumberInput
+                        placeholder="Amount"
                         className="pl-6"
-                        {...field}
-                        value={field.value ?? ""}
-                        onChange={(e) =>
-                          field.onChange(e.target.value ? parseFloat(e.target.value) : 0)
-                        }
+                        value={field.value != null ? String(field.value) : ""}
+                        onChange={(v) => field.onChange(v ? parseFloat(v) : 0)}
                       />
                     </div>
                   </FormControl>

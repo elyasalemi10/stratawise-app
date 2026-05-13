@@ -26,6 +26,38 @@ function tierForLotCount(n: number, servicesOnly: boolean): number {
   return 5;
 }
 
+// Re-encode an image client-side as JPEG, scaling so the long edge is at most
+// maxEdge. Returns the original file unchanged if it's already small enough
+// or if the decode/encode fails (e.g. HEIC the browser can't read).
+async function downscaleImage(file: File, maxEdge: number, quality: number): Promise<File> {
+  if (typeof window === "undefined" || typeof document === "undefined") return file;
+  if (file.size < 1_500_000) return file;
+  const url = URL.createObjectURL(file);
+  try {
+    const img = await new Promise<HTMLImageElement>((res, rej) => {
+      const i = new Image();
+      i.onload = () => res(i);
+      i.onerror = rej;
+      i.src = url;
+    });
+    const ratio = Math.min(1, maxEdge / Math.max(img.naturalWidth, img.naturalHeight));
+    if (ratio >= 1) return file;
+    const w = Math.round(img.naturalWidth * ratio);
+    const h = Math.round(img.naturalHeight * ratio);
+    const canvas = document.createElement("canvas");
+    canvas.width = w;
+    canvas.height = h;
+    const ctx = canvas.getContext("2d");
+    if (!ctx) return file;
+    ctx.drawImage(img, 0, 0, w, h);
+    const blob = await new Promise<Blob | null>((res) => canvas.toBlob(res, "image/jpeg", quality));
+    if (!blob) return file;
+    return new File([blob], file.name.replace(/\.(heic|heif|png|webp)$/i, ".jpg"), { type: "image/jpeg" });
+  } finally {
+    URL.revokeObjectURL(url);
+  }
+}
+
 function tierColour(t: number): string {
   switch (t) {
     case 1: return "bg-red-100 text-red-900 border-red-300";
@@ -84,13 +116,25 @@ export function Page3Basics({
   }, [initialPhotoKey]);
 
   async function handlePhotoSelect(file: File) {
-    if (file.size > 10 * 1024 * 1024) {
-      toast.error("Photo exceeds 10MB.");
+    // Phone photos are routinely 8-20MB at native resolution and the server
+    // action transport adds noticeable latency above ~3MB. Downscale
+    // client-side to a reasonable display size (max 1600px on the long edge,
+    // re-encoded as JPEG q=0.82) before sending. Falls back to the raw file
+    // if the canvas path errors out (rare — HEIC without browser decode).
+    setPhotoUploading(true);
+    let upload: File = file;
+    try {
+      upload = await downscaleImage(file, 1600, 0.82);
+    } catch (err) {
+      console.warn("Photo downscale failed; uploading original.", err);
+    }
+    if (upload.size > 10 * 1024 * 1024) {
+      setPhotoUploading(false);
+      toast.error("Photo is too large even after compression. Try a smaller image.");
       return;
     }
-    setPhotoUploading(true);
     const fd = new FormData();
-    fd.append("file", file);
+    fd.append("file", upload);
     const r = await uploadOcPhoto(draftId, fd);
     setPhotoUploading(false);
     if (r.error || !r.storage_key) {
@@ -123,12 +167,12 @@ export function Page3Basics({
       financial_year_start_month: fyMonth,
       financial_year_start_day: 1,
     }, 4);
-    setPending(false);
     if (r.error) {
+      setPending(false);
       toast.error(r.error);
       return;
     }
-    onNext();
+    await onNext();
   }
 
   return (
@@ -149,7 +193,7 @@ export function Page3Basics({
             </Label>
             <Input
               id="oc-title"
-              placeholder="The Grandview Apartments"
+              placeholder="Friendly building or development name"
               value={title}
               onChange={(e) => setTitle(e.target.value)}
             />

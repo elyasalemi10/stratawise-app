@@ -37,6 +37,7 @@ import {
   PopoverTrigger,
 } from "@/components/ui/popover";
 import { Input } from "@/components/ui/input";
+import { NumberInput } from "@/components/ui/number-input";
 import { X, Plus, Check } from "lucide-react";
 import { cn } from "@/lib/utils";
 import {
@@ -317,17 +318,10 @@ export function AllocateForm({
                     <FormItem>
                       <FormLabel>Amount</FormLabel>
                       <FormControl>
-                        <Input
-                          type="number"
-                          step="0.01"
-                          placeholder="0.00"
-                          {...field}
-                          value={field.value ?? ""}
-                          onChange={(e) =>
-                            field.onChange(
-                              e.target.value ? parseFloat(e.target.value) : undefined
-                            )
-                          }
+                        <NumberInput
+                          placeholder="Amount"
+                          value={field.value != null ? String(field.value) : ""}
+                          onChange={(v) => field.onChange(v ? parseFloat(v) : undefined)}
                         />
                       </FormControl>
                       <FormMessage />

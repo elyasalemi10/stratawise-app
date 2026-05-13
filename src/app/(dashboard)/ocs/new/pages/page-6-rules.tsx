@@ -1,6 +1,6 @@
 "use client";
 
-import { useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { toast } from "sonner";
 import { CheckCircle2, AlertTriangle, FileText, Loader2, Upload, X, Scale } from "lucide-react";
 import { Button } from "@/components/ui/button";
@@ -48,6 +48,29 @@ export function Page6Rules({
   const [isDragging, setIsDragging] = useState(false);
   const [pending, setPending] = useState(false);
   const dragDepthRef = useRef(0);
+  const resumedParseRef = useRef(false);
+
+  // Resume case: the user uploaded a rules PDF, then navigated away before
+  // parsing completed (or it failed silently). On remount we have a filename
+  // but no parsed rules — kick off parsing again so the upload module isn't
+  // just gone with no upload box and no status indicator either.
+  useEffect(() => {
+    if (resumedParseRef.current) return;
+    if (initialParseStatus === "uploaded" && initialRulesFilename) {
+      resumedParseRef.current = true;
+      setStage("parsing");
+      (async () => {
+        const parsed = await parseDraftRules(draftId);
+        if (parsed.error) {
+          setStage("failed");
+          setParseError(parsed.error);
+          return;
+        }
+        setStage("complete");
+        setRuleCount(parsed.ruleCount ?? 0);
+      })();
+    }
+  }, [draftId, initialParseStatus, initialRulesFilename]);
 
   async function handleFile(file: File) {
     if (file.size > 25 * 1024 * 1024) {
@@ -117,12 +140,12 @@ export function Page6Rules({
       rules_filename: filename ?? undefined,
       rules_rule_count: ruleCount,
     }, 7);
-    setPending(false);
     if (r.error) {
+      setPending(false);
       toast.error(r.error);
       return;
     }
-    onNext();
+    await onNext();
   }
 
   const busy = stage === "uploading" || stage === "parsing";
@@ -250,7 +273,7 @@ export function Page6Rules({
       )}
 
       <div className="flex justify-between pt-2">
-        <Button type="button" variant="ghost" onClick={onBack}>Back</Button>
+        <Button type="button" variant="ghost" onClick={onBack} disabled={busy}>Back</Button>
         <Button type="button" onClick={onContinue} disabled={pending || busy}>
           {pending && <Loader2 className="size-4 animate-spin" />}
           Continue

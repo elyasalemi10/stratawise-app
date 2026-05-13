@@ -6,8 +6,8 @@
  * Brand palette:
  *   Midnight (text)   #0E314C
  *   Paper (cards)     #FFFFFF
- *   Page bg (cream)   #FAF7F0
- *   Stone (border)    #E5E0D3
+ *   Page bg           #F4F5F7  (cool soft grey)
+ *   Border            #E5E7EB  (cool stone)
  *   Gold (accent)     #CFA753
  *   Slate (muted)     #4A5868
  */
@@ -30,10 +30,10 @@ export const colors = {
     hex: "#CFA753",
   },
   secondary: {
-    DEFAULT: "hsl(42, 32%, 86%)",        // stone
-    hover: "hsl(42, 32%, 78%)",
+    DEFAULT: "hsl(220, 13%, 91%)",       // cool stone
+    hover: "hsl(220, 13%, 84%)",
     foreground: "hsl(208, 70%, 18%)",
-    hex: "#E5E0D3",
+    hex: "#E5E7EB",
   },
   destructive: {
     DEFAULT: "hsl(0, 72%, 51%)",
@@ -43,12 +43,12 @@ export const colors = {
     DEFAULT: "hsl(38, 92%, 50%)",
     foreground: "hsl(38, 92%, 25%)",
   },
-  background: "hsl(40, 47%, 96%)",       // cream #FAF7F0
+  background: "hsl(220, 14%, 96%)",      // cool soft grey #F4F5F7
   foreground: "hsl(208, 70%, 18%)",      // midnight #0E314C
   card: "hsl(0, 0%, 100%)",              // paper
-  border: "hsl(42, 32%, 86%)",           // stone #E5E0D3
+  border: "hsl(220, 13%, 91%)",          // cool stone #E5E7EB
   muted: {
-    DEFAULT: "hsl(40, 25%, 92%)",
+    DEFAULT: "hsl(220, 14%, 93%)",
     foreground: "hsl(211, 17%, 35%)",   // slate #4A5868
   },
   sidebar: {
