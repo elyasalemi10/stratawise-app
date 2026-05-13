@@ -71,7 +71,7 @@ export interface BankAccountSummary {
 export interface BankTransactionRecord {
   id: string;
   bank_account_id: string;
-  source: "manual" | "csv" | "basiq";
+  source: "manual" | "csv_import" | "macquarie_txn" | "macquarie_pay";
   transaction_date: string;
   amount: number;
   description: string | null;

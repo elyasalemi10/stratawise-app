@@ -3,6 +3,12 @@
 ## Git
 - Always commit and push to origin after completing changes. Do not wait for the user to ask.
 
+## Gemini / Vertex AI
+- `GEMINI_API_KEY` env var accepts EITHER a bare AI Studio key (string starts with "AIza") OR a full service-account JSON (string starts with "{"). The parser auto-detects and switches to Vertex AI mode for JSON. Production prefers JSON.
+- Service-account JSON path uses Vertex AI with `googleAuthOptions: { credentials }` — no temp-file dance. project_id is read from the JSON.
+- Default region for Vertex AI is `australia-southeast1` (Sydney — Gemini 2.5 Pro is hosted there, keeps inference in-country). Override with `GEMINI_LOCATION`.
+- Vertex AI does not train on inputs. Paid AI Studio also does not. Free AI Studio DOES — never use a free key.
+
 ## Banking & Reconciliation
 - Two bank-ingest paths only: **Macquarie DEFT TXN/PAY file parser** and **generic CSV upload** (Macquarie, CBA, NAB, Westpac, ANZ formats). NO Basiq, NO live bank-feed APIs, NO Direct Downloads. All deferred to post-revenue.
 - **DRN = DEFT Reference Number** (not "Direct Reference Number"). Strata managers know it as DEFT. Always use the full expansion in user-facing copy.

@@ -193,7 +193,7 @@ export async function importBankTransactions(
       .from("bank_transactions")
       .insert({
         bank_account_id: account.id,
-        source: "csv",
+        source: "csv_import",
         transaction_date: row.transaction_date,
         amount: row.amount,
         description: row.description,
@@ -219,7 +219,7 @@ export async function importBankTransactions(
         transaction_date: row.transaction_date,
         amount: row.amount,
         description: row.description,
-        source: "csv",
+        source: "csv_import",
       },
       supabase,
     );

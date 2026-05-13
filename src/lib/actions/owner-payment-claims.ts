@@ -439,7 +439,7 @@ export interface NearbyBankTxRow {
   bank_account_id: string;
   bank_account_name: string;
   fund_type: "administrative" | "capital_works";
-  source: "manual" | "csv" | "basiq";
+  source: "manual" | "csv_import" | "macquarie_txn" | "macquarie_pay";
   transaction_date: string;
   amount: number;
   description: string | null;
@@ -519,7 +519,7 @@ export async function getNearbyBankTxsForClaim(
     const row = r as {
       id: string;
       bank_account_id: string;
-      source: "manual" | "csv" | "basiq";
+      source: "manual" | "csv_import" | "macquarie_txn" | "macquarie_pay";
       transaction_date: string;
       amount: number | string;
       description: string | null;
@@ -603,7 +603,7 @@ export async function getBankTxSnapshotsByIds(
     const row = r as unknown as {
       id: string;
       bank_account_id: string;
-      source: "manual" | "csv" | "basiq";
+      source: "manual" | "csv_import" | "macquarie_txn" | "macquarie_pay";
       transaction_date: string;
       amount: number | string;
       description: string | null;

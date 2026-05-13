@@ -33,7 +33,7 @@ export const MATCH_STATUSES = [
 ] as const;
 export type MatchStatus = (typeof MATCH_STATUSES)[number];
 
-export const TRANSACTION_SOURCES = ["manual", "csv", "basiq"] as const;
+export const TRANSACTION_SOURCES = ["manual", "csv_import", "macquarie_txn", "macquarie_pay"] as const;
 export type TransactionSource = (typeof TRANSACTION_SOURCES)[number];
 
 // PP5-A: bank_transactions.duplicate_status enum values. Status is orthogonal

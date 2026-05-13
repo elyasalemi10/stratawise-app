@@ -41,7 +41,7 @@ export const step2Schema = z.object({
 // ─── Step 3: Banking ────────────────────────────────────────────
 
 export const step3Schema = z.object({
-  bank_connection_type: z.enum(["basiq", "manual"]),
+  bank_provider: z.enum(["macquarie_deft", "other_csv"]),
   bank_name: z.string().min(1, "Please select a bank"),
   account_name: z.string().min(1, "Account name is required"),
   bsb: z

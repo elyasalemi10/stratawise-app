@@ -85,14 +85,54 @@ Rules:
 - Do NOT invent lot numbers. Do NOT extrapolate from the lot count. Only report lots actually present in the schedule.
 - Address: include the full registered address. State for VIC plans is "VIC".`;
 
-export async function parsePlanPdf(pdfBytes: Buffer): Promise<ParsedPlan> {
-  const apiKey = process.env.GEMINI_API_KEY;
-  if (!apiKey) {
-    // Surface a generic user-facing error; log the real reason for the operator.
-    console.error("parsePlanPdf: parser credentials missing");
+type ServiceAccount = {
+  type?: string;
+  project_id?: string;
+  client_email?: string;
+  private_key?: string;
+};
+
+// Initialise the client. GEMINI_API_KEY holds EITHER a Google AI Studio
+// API key string (starts with "AIza...") OR a full service-account JSON
+// (starts with "{" — Vertex AI mode). Service-account is the production
+// path: paid tier, regional pinning, no training on inputs.
+function buildClient(): GoogleGenAI {
+  const raw = process.env.GEMINI_API_KEY;
+  if (!raw) {
+    console.error("parsePlanPdf: GEMINI_API_KEY is not set");
     throw new Error("Automatic plan parsing is temporarily unavailable.");
   }
-  const ai = new GoogleGenAI({ apiKey });
+  const trimmed = raw.trim();
+  if (trimmed.startsWith("{")) {
+    // Service-account JSON → Vertex AI mode.
+    let credentials: ServiceAccount;
+    try {
+      credentials = JSON.parse(trimmed) as ServiceAccount;
+    } catch {
+      console.error("parsePlanPdf: GEMINI_API_KEY does not parse as JSON");
+      throw new Error("Automatic plan parsing is temporarily unavailable.");
+    }
+    if (!credentials.project_id) {
+      console.error("parsePlanPdf: service-account JSON missing project_id");
+      throw new Error("Automatic plan parsing is temporarily unavailable.");
+    }
+    // Vertex AI on AU customer data should pin to a Sydney region when
+    // possible (australia-southeast1 hosts Gemini 2.5 Pro). Allow override
+    // via GEMINI_LOCATION for ops who want elsewhere.
+    const location = process.env.GEMINI_LOCATION?.trim() || "australia-southeast1";
+    return new GoogleGenAI({
+      vertexai: true,
+      project: credentials.project_id,
+      location,
+      googleAuthOptions: { credentials },
+    });
+  }
+  // Bare key → AI Studio mode (use a billed key in production).
+  return new GoogleGenAI({ apiKey: trimmed });
+}
+
+export async function parsePlanPdf(pdfBytes: Buffer): Promise<ParsedPlan> {
+  const ai = buildClient();
 
   const result = await ai.models.generateContent({
     model: "gemini-2.5-pro",
@@ -115,7 +155,8 @@ export async function parsePlanPdf(pdfBytes: Buffer): Promise<ParsedPlan> {
 
   const text = result.text;
   if (!text) {
-    throw new Error("Gemini returned an empty response");
+    console.error("parsePlanPdf: empty response from model");
+    throw new Error("Automatic plan parsing returned no data.");
   }
   const parsed = JSON.parse(text) as ParsedPlan;
   return parsed;

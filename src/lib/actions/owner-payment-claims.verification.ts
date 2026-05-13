@@ -537,7 +537,7 @@ async function opc9_confirmViaNewBankTx(
     .from("bank_transactions")
     .insert({
       bank_account_id: fx.companyA.bankAccountId,
-      source: "basiq",
+      source: "csv_import",
       transaction_date: "2026-04-25",
       amount: 90,
       description: SHARED_DESCRIPTION,
@@ -800,7 +800,7 @@ async function opc15_likelyDuplicateThenOverride(
   // Pre-existing bank tx that the manual entry would duplicate.
   await supabase.from("bank_transactions").insert({
     bank_account_id: fx.companyA.bankAccountId,
-    source: "basiq",
+    source: "csv_import",
     transaction_date: "2026-05-01",
     amount: 44,
     description: "Pre-existing tx for OPC-15",

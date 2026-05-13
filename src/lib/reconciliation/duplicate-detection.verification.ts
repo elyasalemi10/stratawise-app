@@ -187,7 +187,7 @@ interface InsertOpts {
   date: string;
   amount: number;
   description: string;
-  source?: "manual" | "csv" | "basiq";
+  source?: "manual" | "csv_import" | "macquarie_txn" | "macquarie_pay";
   matchStatus?: "unmatched" | "auto_matched" | "manually_matched" | "excluded";
   excludedReason?: string | null;
   isVoided?: boolean;
@@ -882,7 +882,7 @@ async function dd14_csvImportIntegration(
     date: "2026-11-01",
     amount: 333,
     description: "BASIQ INCOMING JANE",
-    source: "basiq",
+    source: "csv_import",
   });
 
   // CSV import delivers two rows:
@@ -952,7 +952,7 @@ async function dd15_basiqIntegration(fx: Fixture) {
     date: "2026-12-01",
     amount: 222,
     description: "Manual Entry Of Basiq Tx",
-    source: "basiq",
+    source: "csv_import",
   });
   const det = await detectDuplicate(
     {
@@ -961,7 +961,7 @@ async function dd15_basiqIntegration(fx: Fixture) {
       transaction_date: "2026-12-01",
       amount: 222,
       description: "Manual Entry Of Basiq Tx",
-      source: "basiq",
+      source: "csv_import",
     },
     supabase,
   );
@@ -978,7 +978,7 @@ async function dd15_basiqIntegration(fx: Fixture) {
   const meta = (state?.duplicate_metadata ?? {}) as { older_source?: string; newer_source?: string };
   record(
     "DD-15: Basiq integration triggers detection (older_source=manual, newer_source=basiq)",
-    marked.ok && state?.duplicate_status === "suspected" && meta.newer_source === "basiq" && meta.older_source === "manual",
+    marked.ok && state?.duplicate_status === "suspected" && meta.newer_source === "csv_import" && meta.older_source === "manual",
     `older=${meta.older_source}, newer=${meta.newer_source}, status=${state?.duplicate_status}`,
   );
 }
@@ -995,7 +995,7 @@ async function dd16_addManualIntegration(
     date: "2027-01-15",
     amount: 88,
     description: "RENT JANUARY",
-    source: "csv",
+    source: "csv_import",
   });
   // Manager manually enters the same tx.
   const res = await recon.addManualBankTransaction({

@@ -82,8 +82,9 @@ const formatDate = (iso: string) => {
 
 const SOURCE_LABEL: Record<TransactionSource, string> = {
   manual: "Manual",
-  csv: "CSV",
-  basiq: "Bank feed",
+  csv_import: "CSV",
+  macquarie_txn: "Macquarie TXN",
+  macquarie_pay: "Macquarie PAY",
 };
 
 const STATUS_OPTIONS: Array<{ value: string; label: string }> = [
