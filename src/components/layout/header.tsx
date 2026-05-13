@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 import { usePathname } from "next/navigation";
 import Link from "next/link";
 import { NotificationBell } from "./notification-bell";
+import { DocumentSearch } from "./document-search";
 import {
   setCachedOCs,
   SIDEBAR_REFRESH_EVENT,
@@ -180,15 +181,17 @@ export function Header({ initialOCs }: HeaderProps) {
         ))}
       </nav>
 
-      {/* Centered title — middle */}
+      {/* Global document search — middle. Falls back to the page title when no
+          query is active. */}
       <div className="flex justify-center min-w-0">
-        {centerTitle ? (
-          <span className="font-bold text-foreground truncate">{centerTitle}</span>
-        ) : null}
+        <DocumentSearch />
       </div>
 
       {/* Notification bell — right */}
-      <div className="flex justify-end">
+      <div className="flex items-center justify-end gap-3">
+        {centerTitle && (
+          <span className="hidden font-medium text-muted-foreground xl:inline truncate">{centerTitle}</span>
+        )}
         <NotificationBell />
       </div>
     </div>

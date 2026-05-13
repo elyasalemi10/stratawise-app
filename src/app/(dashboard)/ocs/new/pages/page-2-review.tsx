@@ -164,7 +164,7 @@ export function Page2Review({
         </div>
 
         <div className="space-y-1.5">
-          <Label htmlFor="oc-name">OC name</Label>
+          <Label htmlFor="oc-name">Legal OC Name</Label>
           <Input
             id="oc-name"
             placeholder={`Owners Corporation ${planNumber || "PS……"}`}
@@ -172,7 +172,7 @@ export function Page2Review({
             onChange={(e) => setOcName(e.target.value)}
           />
           <p className="text-xs text-muted-foreground">
-            The legal name. You can add a friendly trading name on the next page.
+            You can add a friendly trading name on the next page.
           </p>
         </div>
 

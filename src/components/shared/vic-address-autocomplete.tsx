@@ -6,17 +6,17 @@ import { cn } from "@/lib/utils";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 
-// VIC-only address autocomplete with structured-component extraction.
+// VIC-only address autocomplete using Google's Places API (New).
 //
-// Usage pattern: collapsed by default (single search box). Once a suggestion
-// is picked, we extract street_number/street_name/suburb/state/postcode and
-// hand them up via onSelect. There's also a "Enter manually" link that
-// reveals the individual boxes for tricky cases (new estates, addresses not
-// yet on Google).
+// Uses AutocompleteSuggestion.fetchAutocompleteSuggestions / Place.fetchFields
+// rather than the legacy AutocompleteService — Google deprecated the legacy
+// API and new GCP projects often don't have it enabled even with a billed
+// key. The new API ships with both "Maps JavaScript API" and "Places API
+// (New)" enabled in GCP.
 //
 // Strictly rejects non-VIC selections — predictions ARE biased to VIC via
-// locationBias, but Google sometimes still returns NSW/SA border addresses,
-// so we double-check administrative_area_level_1 === "Victoria" on select.
+// locationBias, but Google sometimes returns NSW/SA border addresses, so we
+// double-check administrative_area_level_1 === "VIC" on select.
 
 export type ParsedAddress = {
   street_number: string;
@@ -33,9 +33,44 @@ interface Props {
   id?: string;
 }
 
-interface Prediction {
+interface Suggestion {
   placeId: string;
   description: string;
+}
+
+// Minimal typings for the new Places API surface we touch. `@types/google.maps`
+// hasn't fully caught up; this avoids a flurry of any-casts.
+interface NewPlaceAddressComponent {
+  types: string[];
+  longText: string | null;
+  shortText: string | null;
+}
+interface NewPlace {
+  fetchFields(opts: { fields: string[] }): Promise<unknown>;
+  formattedAddress: string | null;
+  addressComponents: NewPlaceAddressComponent[] | null;
+}
+interface NewPlacePrediction {
+  placeId: string;
+  text: { text: string };
+  toPlace(): NewPlace;
+}
+interface NewAutocompleteResponse {
+  suggestions: Array<{ placePrediction: NewPlacePrediction | null }>;
+}
+interface NewAutocompleteSuggestionCtor {
+  fetchAutocompleteSuggestions(opts: {
+    input: string;
+    sessionToken?: unknown;
+    includedRegionCodes?: string[];
+    includedPrimaryTypes?: string[];
+    locationBias?: {
+      rectangle: { low: { latitude: number; longitude: number }; high: { latitude: number; longitude: number } };
+    };
+  }): Promise<NewAutocompleteResponse>;
+}
+interface AutocompleteSessionTokenCtor {
+  new (): unknown;
 }
 
 let _placesPromise: Promise<google.maps.PlacesLibrary> | null = null;
@@ -53,32 +88,35 @@ function loadPlaces(): Promise<google.maps.PlacesLibrary> | null {
   return _placesPromise;
 }
 
-function emptyAddress(state: "VIC" = "VIC"): ParsedAddress {
-  return { street_number: "", street_name: "", suburb: "", state, postcode: "", formatted: "" };
-}
-
 function joinFormatted(p: ParsedAddress): string {
   return `${p.street_number} ${p.street_name}, ${p.suburb} ${p.state} ${p.postcode}`.replace(/\s+/g, " ").trim();
 }
 
-function pick(comps: google.maps.GeocoderAddressComponent[], types: string[]): string {
+function pickComponent(
+  comps: NewPlaceAddressComponent[],
+  types: string[],
+  short = false,
+): string {
   const c = comps.find((c) => types.every((t) => c.types.includes(t)));
-  return c?.long_name ?? "";
-}
-function pickShort(comps: google.maps.GeocoderAddressComponent[], types: string[]): string {
-  const c = comps.find((c) => types.every((t) => c.types.includes(t)));
-  return c?.short_name ?? "";
+  if (!c) return "";
+  return (short ? c.shortText : c.longText) ?? "";
 }
 
-function componentsToParsed(comps: google.maps.GeocoderAddressComponent[], formatted: string): ParsedAddress | null {
-  const state = pickShort(comps, ["administrative_area_level_1"]);
+function componentsToParsed(
+  comps: NewPlaceAddressComponent[],
+  formatted: string,
+): ParsedAddress | null {
+  const state = pickComponent(comps, ["administrative_area_level_1"], true);
   if (state !== "VIC") return null;
   return {
-    street_number: pick(comps, ["street_number"]),
-    street_name: pick(comps, ["route"]),
-    suburb: pick(comps, ["locality"]) || pick(comps, ["postal_town"]) || pick(comps, ["sublocality"]),
+    street_number: pickComponent(comps, ["street_number"]),
+    street_name: pickComponent(comps, ["route"]),
+    suburb:
+      pickComponent(comps, ["locality"]) ||
+      pickComponent(comps, ["postal_town"]) ||
+      pickComponent(comps, ["sublocality"]),
     state: "VIC",
-    postcode: pick(comps, ["postal_code"]),
+    postcode: pickComponent(comps, ["postal_code"]),
     formatted,
   };
 }
@@ -88,14 +126,17 @@ export function VicAddressAutocomplete({ value, onChange, id }: Props) {
   const hasParsedValue = !!(value.street_number || value.street_name || value.suburb || value.postcode);
   const [mode, setMode] = useState<"search" | "manual">(hasParsedValue ? "manual" : "search");
   const [searchInput, setSearchInput] = useState(value.formatted || joinFormatted(value));
-  const [predictions, setPredictions] = useState<Prediction[]>([]);
+  const [suggestions, setSuggestions] = useState<Suggestion[]>([]);
   const [open, setOpen] = useState(false);
   const [activeIdx, setActiveIdx] = useState(0);
   const [searchError, setSearchError] = useState<string | null>(null);
 
-  const tokenRef = useRef<google.maps.places.AutocompleteSessionToken | null>(null);
-  const acService = useRef<google.maps.places.AutocompleteService | null>(null);
-  const placesService = useRef<google.maps.places.PlacesService | null>(null);
+  const sdkRef = useRef<{
+    AutocompleteSuggestion: NewAutocompleteSuggestionCtor;
+    AutocompleteSessionToken: AutocompleteSessionTokenCtor;
+  } | null>(null);
+  const sessionTokenRef = useRef<unknown>(null);
+  const predictionByIdRef = useRef<Map<string, NewPlacePrediction>>(new Map());
   const wrapperRef = useRef<HTMLDivElement>(null);
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
@@ -103,9 +144,17 @@ export function VicAddressAutocomplete({ value, onChange, id }: Props) {
     const p = loadPlaces();
     if (!p) return;
     p.then((places) => {
-      acService.current = new places.AutocompleteService();
-      placesService.current = new places.PlacesService(document.createElement("div"));
-      tokenRef.current = new places.AutocompleteSessionToken();
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const lib = places as any;
+      if (!lib.AutocompleteSuggestion) {
+        console.error("VicAddressAutocomplete: Places API (New) not available. Enable 'Places API (New)' in GCP and use a key that allows it.");
+        return;
+      }
+      sdkRef.current = {
+        AutocompleteSuggestion: lib.AutocompleteSuggestion,
+        AutocompleteSessionToken: lib.AutocompleteSessionToken,
+      };
+      sessionTokenRef.current = new lib.AutocompleteSessionToken();
     }).catch((err) => console.error("VicAddressAutocomplete: Places SDK failed to load", err));
   }, []);
 
@@ -117,77 +166,86 @@ export function VicAddressAutocomplete({ value, onChange, id }: Props) {
     return () => document.removeEventListener("mousedown", onDocClick);
   }, []);
 
-  function fetchPredictions(input: string) {
-    if (!acService.current || input.length < 3) {
-      setPredictions([]);
+  async function fetchSuggestions(input: string) {
+    if (!sdkRef.current || input.length < 3) {
+      setSuggestions([]);
       setOpen(false);
       return;
     }
-    acService.current.getPlacePredictions(
-      {
+    try {
+      const resp = await sdkRef.current.AutocompleteSuggestion.fetchAutocompleteSuggestions({
         input,
-        sessionToken: tokenRef.current ?? undefined,
-        componentRestrictions: { country: "au" },
-        types: ["address"],
-        locationBias: { north: -33.98, south: -39.16, west: 140.96, east: 149.98 },
-      },
-      (results, status) => {
-        if (status !== google.maps.places.PlacesServiceStatus.OK || !results) {
-          setPredictions([]);
-          setOpen(false);
-          return;
-        }
-        setPredictions(results.slice(0, 5).map((r) => ({ placeId: r.place_id, description: r.description })));
-        setActiveIdx(0);
-        setOpen(true);
-      },
-    );
+        sessionToken: sessionTokenRef.current ?? undefined,
+        includedRegionCodes: ["au"],
+        includedPrimaryTypes: ["address"],
+        locationBias: {
+          rectangle: {
+            low: { latitude: -39.16, longitude: 140.96 },
+            high: { latitude: -33.98, longitude: 149.98 },
+          },
+        },
+      });
+      const items: Suggestion[] = [];
+      predictionByIdRef.current.clear();
+      for (const s of resp.suggestions.slice(0, 5)) {
+        if (!s.placePrediction) continue;
+        items.push({ placeId: s.placePrediction.placeId, description: s.placePrediction.text.text });
+        predictionByIdRef.current.set(s.placePrediction.placeId, s.placePrediction);
+      }
+      setSuggestions(items);
+      setActiveIdx(0);
+      setOpen(items.length > 0);
+    } catch (err) {
+      console.error("VicAddressAutocomplete: fetchAutocompleteSuggestions failed", err);
+      setSuggestions([]);
+      setOpen(false);
+    }
   }
 
   function onInput(v: string) {
     setSearchInput(v);
     setSearchError(null);
     if (debounceRef.current) clearTimeout(debounceRef.current);
-    debounceRef.current = setTimeout(() => fetchPredictions(v), 200);
+    debounceRef.current = setTimeout(() => void fetchSuggestions(v), 200);
   }
 
-  function selectPrediction(p: Prediction) {
-    if (!placesService.current) {
+  async function selectSuggestion(s: Suggestion) {
+    const prediction = predictionByIdRef.current.get(s.placeId);
+    if (!prediction || !sdkRef.current) {
       setSearchError("Couldn't load address details — try entering manually.");
       return;
     }
-    placesService.current.getDetails(
-      {
-        placeId: p.placeId,
-        fields: ["formatted_address", "address_components"],
-        sessionToken: tokenRef.current ?? undefined,
-      },
-      (place, status) => {
-        if (status !== google.maps.places.PlacesServiceStatus.OK || !place?.address_components) {
-          setSearchError("Couldn't load address details — try entering manually.");
-          return;
-        }
-        const parsed = componentsToParsed(place.address_components, place.formatted_address ?? p.description);
-        if (!parsed) {
-          setSearchError("That address isn't in Victoria. Try a VIC address or enter manually.");
-          return;
-        }
-        onChange(parsed);
-        setSearchInput(parsed.formatted);
-        setOpen(false);
-        // Rotate the session token so the next search starts a new billable session.
-        tokenRef.current = new google.maps.places.AutocompleteSessionToken();
-        // Lock to manual view so users can edit if needed.
-        setMode("manual");
-      },
-    );
+    try {
+      const place = prediction.toPlace();
+      await place.fetchFields({ fields: ["formattedAddress", "addressComponents"] });
+      if (!place.addressComponents) {
+        setSearchError("Couldn't load address details — try entering manually.");
+        return;
+      }
+      const parsed = componentsToParsed(place.addressComponents, place.formattedAddress ?? s.description);
+      if (!parsed) {
+        setSearchError("That address isn't in Victoria. Try a VIC address or enter manually.");
+        return;
+      }
+      onChange(parsed);
+      setSearchInput(parsed.formatted);
+      setOpen(false);
+      // Rotate the session token so the next search starts a new billable session.
+      if (sdkRef.current) {
+        sessionTokenRef.current = new sdkRef.current.AutocompleteSessionToken();
+      }
+      setMode("manual");
+    } catch (err) {
+      console.error("VicAddressAutocomplete: fetchFields failed", err);
+      setSearchError("Couldn't load address details — try entering manually.");
+    }
   }
 
   function onKeyDown(e: React.KeyboardEvent<HTMLInputElement>) {
-    if (!open || predictions.length === 0) return;
-    if (e.key === "ArrowDown") { e.preventDefault(); setActiveIdx((i) => Math.min(i + 1, predictions.length - 1)); }
+    if (!open || suggestions.length === 0) return;
+    if (e.key === "ArrowDown") { e.preventDefault(); setActiveIdx((i) => Math.min(i + 1, suggestions.length - 1)); }
     else if (e.key === "ArrowUp") { e.preventDefault(); setActiveIdx((i) => Math.max(i - 1, 0)); }
-    else if (e.key === "Enter") { e.preventDefault(); selectPrediction(predictions[activeIdx]); }
+    else if (e.key === "Enter") { e.preventDefault(); void selectSuggestion(suggestions[activeIdx]); }
     else if (e.key === "Escape") { setOpen(false); }
   }
 
@@ -197,7 +255,6 @@ export function VicAddressAutocomplete({ value, onChange, id }: Props) {
     onChange(next);
   }
 
-  // Manual mode — show the 5 boxes.
   if (mode === "manual") {
     return (
       <div className="space-y-2">
@@ -244,7 +301,6 @@ export function VicAddressAutocomplete({ value, onChange, id }: Props) {
     );
   }
 
-  // Search mode.
   return (
     <div className="space-y-1.5">
       <div ref={wrapperRef} className="relative">
@@ -253,24 +309,24 @@ export function VicAddressAutocomplete({ value, onChange, id }: Props) {
           value={searchInput}
           onChange={(e) => onInput(e.target.value)}
           onKeyDown={onKeyDown}
-          onFocus={() => predictions.length > 0 && setOpen(true)}
+          onFocus={() => suggestions.length > 0 && setOpen(true)}
           placeholder="Start typing a Victorian address…"
           autoComplete="off"
         />
-        {open && predictions.length > 0 && (
+        {open && suggestions.length > 0 && (
           <div className="absolute left-0 right-0 top-full z-50 mt-1 rounded-md border border-border bg-popover shadow-md">
-            {predictions.map((p, i) => (
+            {suggestions.map((s, i) => (
               <button
-                key={p.placeId}
+                key={s.placeId}
                 type="button"
-                onMouseDown={(e) => { e.preventDefault(); selectPrediction(p); }}
+                onMouseDown={(e) => { e.preventDefault(); void selectSuggestion(s); }}
                 onMouseEnter={() => setActiveIdx(i)}
                 className={cn(
                   "block w-full truncate px-3 py-2 text-left text-sm cursor-pointer",
                   i === activeIdx ? "bg-muted text-foreground" : "text-foreground hover:bg-muted",
                 )}
               >
-                {p.description}
+                {s.description}
               </button>
             ))}
           </div>

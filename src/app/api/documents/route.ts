@@ -1,8 +1,10 @@
 import { NextRequest, NextResponse } from "next/server";
+import { after } from "next/server";
 import { createServerClient } from "@/lib/supabase";
 import { requireCompanyRole, requireOCAccess } from "@/lib/auth";
 import { ALLOWED_DOCUMENT_TYPES, MAX_DOCUMENT_SIZE } from "@/lib/validations/documents";
 import { uploadObject, publicUrlFor } from "@/lib/storage/r2";
+import { ingestDocumentOcr, isOcrable } from "@/lib/ocr/ingest";
 
 const UUID_REGEX = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
@@ -79,6 +81,7 @@ export async function POST(request: NextRequest) {
   const buffer = Buffer.from(await file.arrayBuffer());
   await uploadObject(key, buffer, file.type);
 
+  const willOcr = isOcrable(file.type);
   const { data: doc, error } = await supabase
     .from("documents")
     .insert({
@@ -91,6 +94,7 @@ export async function POST(request: NextRequest) {
       mime_type: file.type,
       is_confidential: false,
       uploaded_by: profile.id,
+      ocr_status: willOcr ? "pending" : "skipped",
     })
     .select()
     .single();
@@ -107,6 +111,15 @@ export async function POST(request: NextRequest) {
     entity_id: doc.id,
     after_state: { file_name: safeName, category, lot_id: lotId || null },
   });
+
+  // Kick OCR after the response so the client isn't blocked for 10-30s on a
+  // Document AI round-trip. Vercel keeps the function alive for the duration
+  // of `after()`. Failures land on the document row as ocr_status='failed'.
+  if (willOcr) {
+    after(async () => {
+      await ingestDocumentOcr(doc.id);
+    });
+  }
 
   return NextResponse.json({
     ...doc,
