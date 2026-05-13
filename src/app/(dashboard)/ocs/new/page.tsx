@@ -16,6 +16,7 @@ import { Page8Balances } from "./pages/page-8-balances";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { createDraft, createDraftFromDetectedOc, getDraft, type DraftJson } from "./actions";
+import { revalidateSidebarFromClient } from "@/lib/sidebar-cache";
 
 type DraftRow = {
   id: string;
@@ -27,6 +28,7 @@ type DraftRow = {
   insurance_doc_filename: string | null;
   parsed_json: { detected_ocs?: { oc_number: number; lot_count: number; oc_name?: string | null }[] } | null;
   draft_json: DraftJson;
+  photo_storage_key: string | null;
 };
 
 function WizardContent() {
@@ -119,7 +121,7 @@ function WizardContent() {
   })) ?? [];
 
   return (
-    <div className="w-full">
+    <div className="mx-auto w-full max-w-3xl">
       <StepIndicator current={step} />
       <div className="rounded-lg border border-border bg-card p-6">
         {step === 1 && (
@@ -148,6 +150,7 @@ function WizardContent() {
           <Page3Basics
             draftId={draft.id}
             initialDraft={draft.draft_json}
+            initialPhotoKey={draft.photo_storage_key}
             totalLots={totalLots}
             onBack={() => goToStep(draft.parse_status === "skipped" ? 1 : 2)}
             onNext={async () => { await refreshDraft(); goToStep(4); }}
@@ -201,6 +204,11 @@ function WizardContent() {
             initialDraft={draft.draft_json}
             onBack={() => goToStep(7)}
             onComplete={(r) => {
+              // Clear the localStorage sidebar cache so the new OC appears in
+              // the picker immediately, without waiting 5 minutes for the TTL.
+              // The server-side cache tag is already invalidated by
+              // completeWizard() — this just nudges the client.
+              revalidateSidebarFromClient();
               const detected = draft.parsed_json?.detected_ocs ?? [];
               if (r.sourceDraftId && typeof r.nextOcIndex === "number" && detected.length > 1) {
                 setNextOcPrompt({

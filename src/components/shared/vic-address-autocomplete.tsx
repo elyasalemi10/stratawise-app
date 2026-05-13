@@ -140,14 +140,28 @@ export function VicAddressAutocomplete({ value, onChange, id }: Props) {
   const wrapperRef = useRef<HTMLDivElement>(null);
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
+  // Tracks whether the Places SDK actually loaded. We can't tell *why* a load
+  // fails from inside the browser (the JS loader rejects with a generic
+  // `ApiNotActivatedMapError` regardless of which API is missing), so we just
+  // surface a "search is unavailable" hint when this stays false and let the
+  // user fall back to manual entry.
+  const [sdkFailed, setSdkFailed] = useState(false);
+
   useEffect(() => {
     const p = loadPlaces();
-    if (!p) return;
+    if (!p) {
+      setSdkFailed(true);
+      return;
+    }
     p.then((places) => {
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       const lib = places as any;
       if (!lib.AutocompleteSuggestion) {
-        console.error("VicAddressAutocomplete: Places API (New) not available. Enable 'Places API (New)' in GCP and use a key that allows it.");
+        // The Maps JS bundle loaded but doesn't include AutocompleteSuggestion
+        // — usually means "Places API (New)" isn't enabled in GCP for this
+        // key, OR the key lacks "Maps JavaScript API" entirely.
+        console.error("VicAddressAutocomplete: Places API (New) not available. Enable BOTH 'Maps JavaScript API' AND 'Places API (New)' in GCP for the key in NEXT_PUBLIC_GOOGLE_MAPS_API_KEY.");
+        setSdkFailed(true);
         return;
       }
       sdkRef.current = {
@@ -155,7 +169,10 @@ export function VicAddressAutocomplete({ value, onChange, id }: Props) {
         AutocompleteSessionToken: lib.AutocompleteSessionToken,
       };
       sessionTokenRef.current = new lib.AutocompleteSessionToken();
-    }).catch((err) => console.error("VicAddressAutocomplete: Places SDK failed to load", err));
+    }).catch((err) => {
+      console.error("VicAddressAutocomplete: Places SDK failed to load", err);
+      setSdkFailed(true);
+    });
   }, []);
 
   useEffect(() => {
@@ -165,6 +182,13 @@ export function VicAddressAutocomplete({ value, onChange, id }: Props) {
     document.addEventListener("mousedown", onDocClick);
     return () => document.removeEventListener("mousedown", onDocClick);
   }, []);
+
+  // When the Places SDK fails to load (key missing, API not enabled), drop
+  // the user into manual entry automatically so they're not stuck typing into
+  // a search box that never returns results.
+  useEffect(() => {
+    if (sdkFailed && mode === "search") setMode("manual");
+  }, [sdkFailed, mode]);
 
   async function fetchSuggestions(input: string) {
     if (!sdkRef.current || input.length < 3) {
@@ -288,7 +312,7 @@ export function VicAddressAutocomplete({ value, onChange, id }: Props) {
             />
           </div>
         </div>
-        {apiKeyConfigured && (
+        {apiKeyConfigured && !sdkFailed && (
           <button
             type="button"
             onClick={() => { setMode("search"); setSearchInput(""); }}
@@ -296,6 +320,11 @@ export function VicAddressAutocomplete({ value, onChange, id }: Props) {
           >
             Search by address instead
           </button>
+        )}
+        {sdkFailed && (
+          <p className="text-xs text-amber-700">
+            Address search is temporarily unavailable. Enter the address manually.
+          </p>
         )}
       </div>
     );

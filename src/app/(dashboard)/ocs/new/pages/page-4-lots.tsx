@@ -69,13 +69,24 @@ function parseCsvLine(line: string): string[] {
   return out;
 }
 
-function csvToLots(csv: string, defaults: DraftLot[]): { lots: DraftLot[]; errors: { row: number; reason: string }[] } {
+function csvToLots(
+  csv: string,
+  defaults: DraftLot[],
+): { lots: DraftLot[]; errors: { row: number; reason: string }[] } {
   const lines = csv.split(/\r?\n/).filter((l) => l.trim().length > 0);
   if (lines.length < 2) return { lots: defaults, errors: [{ row: 0, reason: "Empty CSV" }] };
   const header = parseCsvLine(lines[0]).map((h) => h.trim().toLowerCase());
   const idx = (name: string) => header.indexOf(name);
   const errors: { row: number; reason: string }[] = [];
-  const lots: DraftLot[] = [];
+  // Defaults define the canonical lot register from the plan-of-subdivision.
+  // The CSV's job is to FILL OWNER INFO INTO existing rows, never to add new
+  // lots — managers were creating extra ghost lots when their CSV had a
+  // trailing blank or an off-by-one. Match by lot_number; ignore unknowns.
+  const defaultsByLot = new Map<number, DraftLot>();
+  defaults.forEach((l) => defaultsByLot.set(l.lot_number, l));
+  // Track which lots already received a row so we can warn on the extras.
+  const consumed = new Set<number>();
+  const merged: DraftLot[] = defaults.map((l) => ({ ...l }));
   for (let i = 1; i < lines.length; i++) {
     const cols = parseCsvLine(lines[i]);
     const lot_number = parseInt(cols[idx("lot_number")] ?? "", 10);
@@ -83,26 +94,39 @@ function csvToLots(csv: string, defaults: DraftLot[]): { lots: DraftLot[]; error
       errors.push({ row: i + 1, reason: "Invalid lot_number" });
       continue;
     }
-    const unit_entitlement = parseFloat(cols[idx("unit_entitlement")] ?? "0") || 0;
-    const lot_liability = parseFloat(cols[idx("lot_liability")] ?? String(unit_entitlement)) || 0;
+    if (!defaultsByLot.has(lot_number)) {
+      errors.push({ row: i + 1, reason: `Lot ${lot_number} isn't in the plan — ignored` });
+      continue;
+    }
+    if (consumed.has(lot_number)) {
+      errors.push({ row: i + 1, reason: `Lot ${lot_number} appears twice — keeping first` });
+      continue;
+    }
+    consumed.add(lot_number);
     const email = (cols[idx("owner_email")] ?? "").trim();
     if (email && !isValidEmail(email)) errors.push({ row: i + 1, reason: "Invalid email" });
     const phone = (cols[idx("owner_phone")] ?? "").trim();
     if (phone && !isValidAuPhone(phone)) errors.push({ row: i + 1, reason: "Invalid phone" });
-    lots.push({
-      lot_number,
-      unit_entitlement,
-      lot_liability,
-      owner_name: (cols[idx("owner_name")] ?? "").trim(),
-      owner_email: email,
-      owner_phone: phone,
-      owner_postal_address: (cols[idx("owner_postal_address")] ?? "").trim(),
-      is_occupied_by_owner: ((cols[idx("is_occupied_by_owner")] ?? "true").toLowerCase() !== "false"),
-      tenant_name: (cols[idx("tenant_name")] ?? "").trim(),
-      tenant_email: (cols[idx("tenant_email")] ?? "").trim(),
-    });
+    const ownerOccupied = ((cols[idx("is_occupied_by_owner")] ?? "true").toLowerCase() !== "false");
+    // When owner-occupied is true, the tenant_* columns are noise. Drop them
+    // outright so they can't sneak through into the DB as orphan tenant data.
+    const target = merged.find((l) => l.lot_number === lot_number)!;
+    target.owner_name = (cols[idx("owner_name")] ?? "").trim();
+    target.owner_email = email;
+    target.owner_phone = phone;
+    target.owner_postal_address = (cols[idx("owner_postal_address")] ?? "").trim();
+    target.is_occupied_by_owner = ownerOccupied;
+    if (ownerOccupied) {
+      target.tenant_name = undefined;
+      target.tenant_email = undefined;
+      target.tenant_phone = undefined;
+    } else {
+      target.tenant_name = (cols[idx("tenant_name")] ?? "").trim();
+      target.tenant_email = (cols[idx("tenant_email")] ?? "").trim();
+      target.tenant_phone = (cols[idx("tenant_phone")] ?? "").trim();
+    }
   }
-  return { lots, errors };
+  return { lots: merged, errors };
 }
 
 export function Page4Lots({
@@ -125,6 +149,9 @@ export function Page4Lots({
   const [confirmSkipOpen, setConfirmSkipOpen] = useState(false);
   const [pending, setPending] = useState(false);
   const [csvErrors, setCsvErrors] = useState<{ row: number; reason: string }[]>([]);
+  // Per-row submit-time validity flags. CLAUDE.md "no live red" rule: only
+  // populated by the submit handler, cleared on input change.
+  const [rowErrors, setRowErrors] = useState<Array<{ email?: boolean; phone?: boolean; tEmail?: boolean; tPhone?: boolean }>>([]);
 
   // Item 16: notice address for service of notices. Defaults to OC address;
   // manager can override here. No checkbox — direct edit instead.
@@ -141,6 +168,18 @@ export function Page4Lots({
 
   function updateLot(idx: number, patch: Partial<DraftLot>) {
     setLots((prev) => prev.map((l, i) => (i === idx ? { ...l, ...patch } : l)));
+    if (rowErrors[idx]) {
+      setRowErrors((prev) => {
+        const next = [...prev];
+        const cur = { ...(next[idx] ?? {}) };
+        if ("owner_email" in patch) cur.email = false;
+        if ("owner_phone" in patch) cur.phone = false;
+        if ("tenant_email" in patch) cur.tEmail = false;
+        if ("tenant_phone" in patch) cur.tPhone = false;
+        next[idx] = cur;
+        return next;
+      });
+    }
   }
   function addLot() {
     const nextNum = lots.length === 0 ? 1 : Math.max(...lots.map((l) => l.lot_number)) + 1;
@@ -170,33 +209,44 @@ export function Page4Lots({
   }
 
   async function persistAndAdvance(nextStep: number, skipped = false) {
-    // Item 15: validate everything the user filled in. Empty rows are
-    // allowed — owners can be added later — but anything typed must be
-    // shape-correct. Skip path bypasses per-row validation.
+    // Validate everything the user filled in. Empty rows are allowed (owners
+    // can be added later) but anything typed must be shape-correct. Skip
+    // path bypasses per-row validation. Errors are accumulated AND a parallel
+    // rowErrors flag set is populated so the inputs go red on submit only.
     const problems: string[] = [];
+    const nextRowErrors: Array<{ email?: boolean; phone?: boolean; tEmail?: boolean; tPhone?: boolean }> = lots.map(() => ({}));
     if (!skipped) {
-      // Notice address: must be non-empty (defaults to OC address; user
-      // could have cleared it).
       if (!noticeAddress || noticeAddress.trim().length < 3) {
         problems.push("Address for service of notices is required.");
       }
-      for (const l of lots) {
+      lots.forEach((l, i) => {
         const hasOwner = !!(l.owner_name || l.owner_email || l.owner_phone || l.owner_postal_address);
-        if (l.owner_email && !isValidEmail(l.owner_email)) problems.push(`Lot ${l.lot_number}: invalid email`);
-        if (l.owner_phone && !isValidAuPhone(l.owner_phone)) problems.push(`Lot ${l.lot_number}: invalid phone`);
-        // If owner-occupied is off, expect either a tenant name or a tenant contact.
+        if (l.owner_email && !isValidEmail(l.owner_email)) {
+          problems.push(`Lot ${l.lot_number}: invalid email`);
+          nextRowErrors[i].email = true;
+        }
+        if (l.owner_phone && !isValidAuPhone(l.owner_phone)) {
+          problems.push(`Lot ${l.lot_number}: invalid phone`);
+          nextRowErrors[i].phone = true;
+        }
         const tenantOpen = l.is_occupied_by_owner === false;
         if (tenantOpen && !(l.tenant_name || l.tenant_email || l.tenant_phone)) {
           problems.push(`Lot ${l.lot_number}: tenant fields are empty — toggle owner-occupied back on or add tenant contact.`);
         }
-        // If the row has ANY owner info, name is required.
         if (hasOwner && !l.owner_name?.trim()) {
           problems.push(`Lot ${l.lot_number}: owner name required when other owner fields are filled.`);
         }
-        if (l.tenant_email && !isValidEmail(l.tenant_email)) problems.push(`Lot ${l.lot_number}: invalid tenant email`);
-        if (l.tenant_phone && !isValidAuPhone(l.tenant_phone)) problems.push(`Lot ${l.lot_number}: invalid tenant phone`);
-      }
+        if (l.tenant_email && !isValidEmail(l.tenant_email)) {
+          problems.push(`Lot ${l.lot_number}: invalid tenant email`);
+          nextRowErrors[i].tEmail = true;
+        }
+        if (l.tenant_phone && !isValidAuPhone(l.tenant_phone)) {
+          problems.push(`Lot ${l.lot_number}: invalid tenant phone`);
+          nextRowErrors[i].tPhone = true;
+        }
+      });
     }
+    setRowErrors(nextRowErrors);
     if (problems.length) {
       toast.error(problems.length === 1 ? problems[0] : `${problems.length} rows have errors — see highlights.`);
       return;
@@ -311,54 +361,89 @@ export function Page4Lots({
         </div>
       ) : null}
 
-      {/* Lot table (visible in both modes after import) */}
-      <div className="rounded-md border border-border bg-card overflow-hidden">
+      {/* Lot table (visible in both modes after import).
+
+          Arrow-key navigation: ArrowUp / ArrowDown jump to the same logical
+          column in the prev/next row; ArrowLeft / ArrowRight cross columns at
+          the start/end of the input. Implemented via a data-cell attribute on
+          every focusable input and an onKeyDown handler at the <tbody> level. */}
+      <div
+        className="rounded-md border border-border bg-card overflow-hidden"
+        onKeyDown={(e) => {
+          if (!(e.target instanceof HTMLElement)) return;
+          const target = e.target as HTMLInputElement;
+          const cell = target.closest<HTMLElement>("[data-cell]");
+          if (!cell) return;
+          const [rowStr, colStr] = (cell.dataset.cell ?? "").split(":");
+          const row = parseInt(rowStr, 10);
+          const col = parseInt(colStr, 10);
+          if (Number.isNaN(row) || Number.isNaN(col)) return;
+          const move = (r: number, c: number) => {
+            const node = (e.currentTarget as HTMLElement).querySelector<HTMLElement>(
+              `[data-cell="${r}:${c}"]`,
+            );
+            const input = node?.querySelector("input") ?? null;
+            if (input) {
+              e.preventDefault();
+              input.focus();
+              input.select?.();
+            }
+          };
+          const caret = target.selectionStart ?? 0;
+          const len = target.value.length;
+          if (e.key === "ArrowUp") move(row - 1, col);
+          else if (e.key === "ArrowDown") move(row + 1, col);
+          else if (e.key === "ArrowLeft" && caret === 0) move(row, col - 1);
+          else if (e.key === "ArrowRight" && caret === len) move(row, col + 1);
+        }}
+      >
         <table className="w-full text-sm">
           <thead className="bg-muted/50 text-muted-foreground">
             <tr className="text-xs uppercase tracking-wide">
-              <th className="px-2 py-2 text-left font-medium">Lot #</th>
+              <th className="px-2 py-2 text-left font-medium">Lot</th>
+              <th className="px-2 py-2 text-left font-medium">Unit</th>
               <th className="px-2 py-2 text-left font-medium">Owner name</th>
               <th className="px-2 py-2 text-left font-medium">Email</th>
               <th className="px-2 py-2 text-left font-medium">Phone</th>
-              <th className="px-2 py-2 text-left font-medium">Postal address</th>
+              <th className="px-2 py-2 text-left font-medium">Address for notices</th>
               <th className="px-2 py-2 text-left font-medium">Owner occupied?</th>
             </tr>
           </thead>
           <tbody>
             {lots.map((lot, idx) => {
-              const emailBad = !!lot.owner_email && !isValidEmail(lot.owner_email);
-              const phoneBad = !!lot.owner_phone && !isValidAuPhone(lot.owner_phone);
-              // Item 18: default new lots to owner-occupied=true. Toggle OFF reveals
-              // tenant fields. is_occupied_by_owner === false means a tenant lives there.
+              const errs = rowErrors[idx] ?? {};
               const ownerOccupied = lot.is_occupied_by_owner !== false;
               return (
                 <Fragment key={idx}>
                   <tr className="border-t border-border">
                     <td className="px-2 py-1.5 tabular-nums">{lot.lot_number}</td>
-                    <td className="px-2 py-1.5">
+                    <td className="px-2 py-1.5 text-sm text-muted-foreground">
+                      {lot.unit_number?.trim() || <span className="text-muted-foreground/60">—</span>}
+                    </td>
+                    <td className="px-2 py-1.5" data-cell={`${idx}:0`}>
                       <Input
                         value={lot.owner_name ?? ""}
                         onChange={(e) => updateLot(idx, { owner_name: e.target.value })}
                         className="h-8"
                       />
                     </td>
-                    <td className="px-2 py-1.5">
+                    <td className="px-2 py-1.5" data-cell={`${idx}:1`}>
                       <Input
                         type="email"
                         value={lot.owner_email ?? ""}
                         onChange={(e) => updateLot(idx, { owner_email: e.target.value })}
-                        aria-invalid={emailBad || undefined}
+                        aria-invalid={errs.email || undefined}
                         className="h-8"
                       />
                     </td>
-                    <td className="px-2 py-1.5">
+                    <td className="px-2 py-1.5" data-cell={`${idx}:2`}>
                       <PhoneInput
                         value={lot.owner_phone ?? "+61 "}
                         onChange={(v) => updateLot(idx, { owner_phone: v })}
-                        error={phoneBad}
+                        error={errs.phone}
                       />
                     </td>
-                    <td className="px-2 py-1.5">
+                    <td className="px-2 py-1.5" data-cell={`${idx}:3`}>
                       <Input
                         value={lot.owner_postal_address ?? ""}
                         onChange={(e) => updateLot(idx, { owner_postal_address: e.target.value })}
@@ -375,7 +460,7 @@ export function Page4Lots({
                   </tr>
                   {!ownerOccupied && (
                     <tr className="border-t border-dashed border-border bg-muted/20">
-                      <td className="px-2 py-1.5" />
+                      <td className="px-2 py-1.5" colSpan={2} />
                       <td className="px-2 py-1.5 text-xs text-muted-foreground" colSpan={5}>
                         <div className="grid grid-cols-3 gap-2">
                           <Input
@@ -389,11 +474,13 @@ export function Page4Lots({
                             type="email"
                             value={lot.tenant_email ?? ""}
                             onChange={(e) => updateLot(idx, { tenant_email: e.target.value })}
+                            aria-invalid={errs.tEmail || undefined}
                             className="h-8"
                           />
                           <PhoneInput
                             value={lot.tenant_phone ?? "+61 "}
                             onChange={(v) => updateLot(idx, { tenant_phone: v })}
+                            error={errs.tPhone}
                           />
                         </div>
                       </td>

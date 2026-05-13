@@ -2,7 +2,7 @@
 
 import { useMemo, useState } from "react";
 import { toast } from "sonner";
-import { Plus, Trash2, AlertTriangle, Loader2 } from "lucide-react";
+import { Plus, Trash2, Loader2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -45,6 +45,10 @@ export function Page2Review({
     formatted: initialDraft.address ?? "",
   });
   const [lots, setLots] = useState<DraftLot[]>(initialDraft.lots ?? []);
+  // Per-row field invalidity flags. Populated only on submit, cleared back
+  // to false on the matching field's onChange — so the inputs DON'T turn red
+  // while the user is still typing (CLAUDE.md validation rule).
+  const [lotErrors, setLotErrors] = useState<Array<{ unit?: boolean; entitlement?: boolean }>>([]);
   const [pending, setPending] = useState(false);
 
   const totalEntitlement = useMemo(
@@ -64,6 +68,19 @@ export function Page2Review({
 
   function updateLot(idx: number, patch: Partial<DraftLot>) {
     setLots((prev) => prev.map((l, i) => (i === idx ? { ...l, ...patch } : l)));
+    // Clear submit-time invalidity flags for any field that's just been
+    // touched, so the red border disappears as soon as the user starts
+    // fixing the value.
+    if (lotErrors[idx]) {
+      setLotErrors((prev) => {
+        const next = [...prev];
+        const cur = { ...(next[idx] ?? {}) };
+        if ("unit_number" in patch) cur.unit = false;
+        if ("unit_entitlement" in patch) cur.entitlement = false;
+        next[idx] = cur;
+        return next;
+      });
+    }
   }
   function addLot() {
     const nextNum = lots.length === 0 ? 1 : Math.max(...lots.map((l) => l.lot_number)) + 1;
@@ -79,16 +96,36 @@ export function Page2Review({
     if (!planOk) problems.push('Plan number format is "PS" + 6 digits + 1 letter (e.g. PS812345X)');
     setPlanNumberInvalid(!planOk);
 
-    // Item 7: every lot must have entitlement > 0, and at least 2 lots.
+    // Build the per-row error flags fresh on every submit.
+    const nextLotErrors: Array<{ unit?: boolean; entitlement?: boolean }> = lots.map(() => ({}));
+
+    // Every lot must have entitlement > 0, and at least 2 lots.
     if (lots.length < 2) {
       problems.push("An OC must have at least 2 lots.");
     }
-    const zeroEntitlement = lots.filter((l) => !(Number(l.unit_entitlement) > 0));
+    const zeroEntitlement: number[] = [];
+    const missingUnit: number[] = [];
+    lots.forEach((l, i) => {
+      if (!(Number(l.unit_entitlement) > 0)) {
+        zeroEntitlement.push(l.lot_number);
+        nextLotErrors[i].entitlement = true;
+      }
+      if (!l.unit_number || !l.unit_number.trim()) {
+        missingUnit.push(l.lot_number);
+        nextLotErrors[i].unit = true;
+      }
+    });
     if (zeroEntitlement.length > 0) {
-      const ids = zeroEntitlement.map((l) => `Lot ${l.lot_number}`).slice(0, 3).join(", ");
+      const ids = zeroEntitlement.slice(0, 3).map((n) => `Lot ${n}`).join(", ");
       const more = zeroEntitlement.length > 3 ? ` and ${zeroEntitlement.length - 3} more` : "";
       problems.push(`Unit entitlement must be greater than 0 for every lot (${ids}${more}).`);
     }
+    if (missingUnit.length > 0) {
+      const ids = missingUnit.slice(0, 3).map((n) => `Lot ${n}`).join(", ");
+      const more = missingUnit.length > 3 ? ` and ${missingUnit.length - 3} more` : "";
+      problems.push(`Unit is required for every lot (${ids}${more}).`);
+    }
+    setLotErrors(nextLotErrors);
 
     if (problems.length) {
       toast.error(problems.length === 1 ? problems[0] : "Fix the highlighted fields.");
@@ -216,12 +253,41 @@ export function Page2Review({
               No lots yet. Click &ldquo;Add lot&rdquo; to start.
             </div>
           ) : (
-            <div className="rounded-md border border-border bg-card overflow-hidden">
+            <div
+              className="rounded-md border border-border bg-card overflow-hidden"
+              onKeyDown={(e) => {
+                if (!(e.target instanceof HTMLInputElement)) return;
+                const target = e.target as HTMLInputElement;
+                const cell = target.closest<HTMLElement>("[data-cell]");
+                if (!cell) return;
+                const [rowStr, colStr] = (cell.dataset.cell ?? "").split(":");
+                const row = parseInt(rowStr, 10);
+                const col = parseInt(colStr, 10);
+                if (Number.isNaN(row) || Number.isNaN(col)) return;
+                const move = (r: number, c: number) => {
+                  const node = (e.currentTarget as HTMLElement).querySelector<HTMLElement>(
+                    `[data-cell="${r}:${c}"]`,
+                  );
+                  const input = node?.querySelector("input") ?? null;
+                  if (input) {
+                    e.preventDefault();
+                    input.focus();
+                    input.select?.();
+                  }
+                };
+                const caret = target.selectionStart ?? 0;
+                const len = target.value.length;
+                if (e.key === "ArrowUp") move(row - 1, col);
+                else if (e.key === "ArrowDown") move(row + 1, col);
+                else if (e.key === "ArrowLeft" && caret === 0) move(row, col - 1);
+                else if (e.key === "ArrowRight" && caret === len) move(row, col + 1);
+              }}
+            >
               <table className="w-full text-sm">
                 <thead className="bg-muted/50 text-muted-foreground">
                   <tr className="text-xs uppercase tracking-wide">
-                    <th className="px-3 py-2 text-left font-medium">Lot number</th>
-                    <th className="px-3 py-2 text-left font-medium">Unit number</th>
+                    <th className="px-3 py-2 text-left font-medium">Lot #</th>
+                    <th className="px-3 py-2 text-left font-medium">Unit</th>
                     <th className="px-3 py-2 text-left font-medium">Units of entitlement</th>
                     <th className="px-3 py-2 text-left font-medium">Lot liability</th>
                     <th className="w-10" />
@@ -229,10 +295,10 @@ export function Page2Review({
                 </thead>
                 <tbody>
                   {lots.map((lot, idx) => {
-                    const entitlementBad = !(Number(lot.unit_entitlement) > 0);
+                    const errs = lotErrors[idx] ?? {};
                     return (
                     <tr key={idx} className="border-t border-border">
-                      <td className="px-3 py-1.5">
+                      <td className="px-3 py-1.5" data-cell={`${idx}:0`}>
                         <NumberInput
                           allowDecimal={false}
                           value={lot.lot_number ? String(lot.lot_number) : ""}
@@ -240,23 +306,24 @@ export function Page2Review({
                           className="h-8"
                         />
                       </td>
-                      <td className="px-3 py-1.5">
+                      <td className="px-3 py-1.5" data-cell={`${idx}:1`}>
                         <Input
                           value={lot.unit_number ?? ""}
                           onChange={(e) => updateLot(idx, { unit_number: e.target.value })}
-                          placeholder="(optional)"
+                          placeholder="e.g. 3B"
+                          aria-invalid={errs.unit || undefined}
                           className="h-8"
                         />
                       </td>
-                      <td className="px-3 py-1.5">
+                      <td className="px-3 py-1.5" data-cell={`${idx}:2`}>
                         <NumberInput
                           value={lot.unit_entitlement ? String(lot.unit_entitlement) : ""}
                           onChange={(v) => updateLot(idx, { unit_entitlement: parseFloat(v) || 0 })}
-                          invalid={entitlementBad}
+                          invalid={errs.entitlement || undefined}
                           className="h-8"
                         />
                       </td>
-                      <td className="px-3 py-1.5">
+                      <td className="px-3 py-1.5" data-cell={`${idx}:3`}>
                         <NumberInput
                           value={lot.lot_liability ? String(lot.lot_liability) : ""}
                           onChange={(v) => updateLot(idx, { lot_liability: parseFloat(v) || 0 })}

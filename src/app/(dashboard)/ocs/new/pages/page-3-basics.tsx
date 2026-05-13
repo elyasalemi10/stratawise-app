@@ -1,8 +1,8 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { toast } from "sonner";
-import { Info, Loader2 } from "lucide-react";
+import { Info, Loader2, X, ImagePlus } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -15,7 +15,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
-import { saveStep, type DraftJson } from "../actions";
+import { saveStep, uploadOcPhoto, removeOcPhoto, getPhotoPublicUrl, type DraftJson } from "../actions";
 
 function tierForLotCount(n: number, servicesOnly: boolean): number {
   if (servicesOnly) return 5;
@@ -54,12 +54,14 @@ const MONTHS = [
 export function Page3Basics({
   draftId,
   initialDraft,
+  initialPhotoKey,
   totalLots,
   onNext,
   onBack,
 }: {
   draftId: string;
   initialDraft: DraftJson;
+  initialPhotoKey: string | null;
   totalLots: number;
   onNext: () => void;
   onBack: () => void;
@@ -68,6 +70,48 @@ export function Page3Basics({
   const [servicesOnly, setServicesOnly] = useState(initialDraft.services_only ?? false);
   const [fyMonth, setFyMonth] = useState<number>(initialDraft.financial_year_start_month ?? 7);
   const [pending, setPending] = useState(false);
+  const [photoKey, setPhotoKey] = useState<string | null>(initialPhotoKey);
+  const [photoUrl, setPhotoUrl] = useState<string | null>(null);
+  const [photoUploading, setPhotoUploading] = useState(false);
+  const photoInputRef = useRef<HTMLInputElement>(null);
+
+  // Resolve the public URL for a resumed draft once on mount. uploadOcPhoto
+  // returns the URL inline so fresh uploads don't go through this path.
+  useEffect(() => {
+    if (initialPhotoKey) {
+      void getPhotoPublicUrl(initialPhotoKey).then(setPhotoUrl);
+    }
+  }, [initialPhotoKey]);
+
+  async function handlePhotoSelect(file: File) {
+    if (file.size > 10 * 1024 * 1024) {
+      toast.error("Photo exceeds 10MB.");
+      return;
+    }
+    setPhotoUploading(true);
+    const fd = new FormData();
+    fd.append("file", file);
+    const r = await uploadOcPhoto(draftId, fd);
+    setPhotoUploading(false);
+    if (r.error || !r.storage_key) {
+      toast.error(r.error ?? "Couldn't save the photo.");
+      return;
+    }
+    setPhotoKey(r.storage_key);
+    setPhotoUrl(r.public_url ?? null);
+  }
+
+  async function handleRemovePhoto() {
+    setPhotoUploading(true);
+    const r = await removeOcPhoto(draftId);
+    setPhotoUploading(false);
+    if (r.error) {
+      toast.error(r.error);
+      return;
+    }
+    setPhotoKey(null);
+    setPhotoUrl(null);
+  }
 
   const tier = useMemo(() => tierForLotCount(totalLots, servicesOnly), [totalLots, servicesOnly]);
 
@@ -111,6 +155,81 @@ export function Page3Basics({
             />
           </div>
 
+          {/* Photo of the OC. JPEG/PNG/WebP, 10MB cap. Stored in R2 under
+              logos/{companyId}/oc-photos/ and copied to the OC row on
+              completion. Optional — managers can add later from settings. */}
+          <div className="space-y-1.5">
+            <Label>
+              Photo <span className="text-xs font-normal text-muted-foreground">(optional)</span>
+            </Label>
+            {photoKey && photoUrl ? (
+              <div className="flex items-center gap-3 rounded-md border border-border bg-card p-2">
+                <div className="relative h-20 w-32 shrink-0 overflow-hidden rounded-md bg-muted/30">
+                  {/* eslint-disable-next-line @next/next/no-img-element */}
+                  <img
+                    src={photoUrl}
+                    alt="OC photo"
+                    className="h-full w-full object-cover"
+                  />
+                </div>
+                <div className="flex flex-1 items-center justify-between gap-2">
+                  <p className="text-sm text-muted-foreground">
+                    A picture of the building or site shown on dashboards and notices.
+                  </p>
+                  <div className="flex items-center gap-1">
+                    <Button
+                      type="button"
+                      size="sm"
+                      variant="secondary"
+                      disabled={photoUploading}
+                      onClick={() => photoInputRef.current?.click()}
+                    >
+                      Replace
+                    </Button>
+                    <Button
+                      type="button"
+                      size="sm"
+                      variant="ghost"
+                      disabled={photoUploading}
+                      onClick={handleRemovePhoto}
+                      aria-label="Remove photo"
+                    >
+                      <X className="h-4 w-4" />
+                    </Button>
+                  </div>
+                </div>
+              </div>
+            ) : (
+              <button
+                type="button"
+                onClick={() => photoInputRef.current?.click()}
+                disabled={photoUploading}
+                className="flex w-full flex-col items-center justify-center gap-2 rounded-md border-2 border-dashed border-border bg-muted/20 px-4 py-6 text-sm text-muted-foreground hover:bg-muted/30 hover:text-foreground cursor-pointer disabled:cursor-not-allowed disabled:opacity-60"
+              >
+                {photoUploading ? (
+                  <Loader2 className="h-5 w-5 animate-spin" />
+                ) : (
+                  <ImagePlus className="h-5 w-5" />
+                )}
+                <span>
+                  {photoUploading ? "Uploading…" : "Click to upload a photo"}
+                </span>
+                <span className="text-xs">JPEG, PNG, or WebP. Max 10MB.</span>
+              </button>
+            )}
+            <input
+              ref={photoInputRef}
+              type="file"
+              accept="image/jpeg,image/png,image/webp"
+              className="hidden"
+              onChange={(e) => {
+                const f = e.target.files?.[0];
+                if (f) void handlePhotoSelect(f);
+                e.target.value = "";
+              }}
+            />
+          </div>
+
           {/* Tier — shadcn Tooltip with a larger, more legible body. */}
           <div className="rounded-md border border-border bg-card p-4">
             <div className="flex items-center justify-between gap-4">
@@ -119,12 +238,17 @@ export function Page3Basics({
                 <Tooltip>
                   <TooltipTrigger
                     aria-label="What is OC tier?"
-                    className="inline-flex items-center text-muted-foreground hover:text-foreground cursor-help"
+                    className="inline-flex items-center text-muted-foreground hover:text-foreground"
+                    style={{ cursor: "default" }}
                   >
                     <Info className="h-4 w-4" />
                   </TooltipTrigger>
-                  <TooltipContent className="max-w-sm text-sm leading-relaxed">
-                    <p className="font-medium text-foreground">OC tier (Owners Corporations Act 2006)</p>
+                  {/* Override base-ui's default dark popup. The header is navy
+                      already; the dark-on-dark tooltip vanishes. White card
+                      with a 1px border + dark text reads cleanly against
+                      either navy or the cream page bg. */}
+                  <TooltipContent className="max-w-sm border border-border bg-popover p-3 text-sm leading-relaxed text-foreground shadow-sm">
+                    <p className="font-medium">OC tier (Owners Corporations Act 2006)</p>
                     <p className="mt-1 text-muted-foreground">
                       Determines compliance requirements: audit obligations, 10-year maintenance
                       plans, and committee size. Tier 1 has the most obligations; Tier 5 the fewest.
@@ -149,15 +273,20 @@ export function Page3Basics({
             </div>
           </div>
 
-          {/* Financial year start — month picker. We always anchor to day 1. */}
+          {/* Financial year start — month picker. We always anchor to day 1.
+              Base-UI Select's SelectValue defaults to the bare option value
+              ("7" for July) unless you pass a children renderer; we resolve to
+              the label explicitly so the trigger shows "July" not "7". */}
           <div className="space-y-1.5">
             <Label htmlFor="fy-start">Financial year start</Label>
             <Select
               value={String(fyMonth)}
               onValueChange={(v) => setFyMonth(parseInt(v ?? "7", 10))}
             >
-              <SelectTrigger id="fy-start" className="w-full">
-                <SelectValue placeholder="Pick a month" />
+              <SelectTrigger id="fy-start" className="w-48">
+                <SelectValue placeholder="Pick a month">
+                  {MONTHS.find((m) => m.value === fyMonth)?.label ?? "Pick a month"}
+                </SelectValue>
               </SelectTrigger>
               <SelectContent>
                 {MONTHS.map((m) => (

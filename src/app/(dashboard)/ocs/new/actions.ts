@@ -1,12 +1,12 @@
 "use server";
 
-import { revalidatePath } from "next/cache";
+import { revalidatePath, updateTag } from "next/cache";
 import { requireCompanyRole } from "@/lib/auth";
 import { createServerClient } from "@/lib/supabase";
 import { insertOCWithCode } from "@/lib/oc-code";
 import { parsePlanPdf, type ParsedPlan } from "@/lib/parse-plan";
 import { parseRulesPdf, type ParsedRulesDocument } from "@/lib/parse-rules";
-import { uploadObject, fetchObject, deleteObject } from "@/lib/storage/r2";
+import { uploadObject, fetchObject, deleteObject, publicUrlFor } from "@/lib/storage/r2";
 
 // ─── Types stored on draft_json ─────────────────────────────────
 //
@@ -240,6 +240,85 @@ export async function uploadPlan(draftId: string, formData: FormData) {
   } catch (err) {
     console.error("uploadPlan: unexpected error", err);
     return { error: "Something went wrong — please try again." };
+  }
+}
+
+// ─── uploadOcPhoto: photo of the OC's building (page 3) ───────────
+//
+// Photos are <=10MB JPEG/PNG/WebP. Same R2 layout as logos:
+//   logos/{managementCompanyId}/oc-photos/{draftId}-{uuid}.{ext}
+// On wizard completion the storage key is copied to
+// owners_corporations.photo_storage_key.
+
+const PHOTO_TYPES = new Set(["image/jpeg", "image/png", "image/webp"]);
+
+export async function uploadOcPhoto(draftId: string, formData: FormData) {
+  try {
+    const { draft, profile } = await loadDraft(draftId);
+    const file = formData.get("file");
+    if (!(file instanceof File)) return { error: "No file uploaded" };
+    if (!PHOTO_TYPES.has(file.type)) {
+      return { error: "Photos must be JPEG, PNG, or WebP" };
+    }
+    if (file.size > 10 * 1024 * 1024) {
+      return { error: "Photo exceeds 10MB" };
+    }
+    const ext = file.name.toLowerCase().match(/\.(jpe?g|png|webp)$/i)?.[0] ?? ".jpg";
+    const key = `logos/${profile.management_company_id}/oc-photos/${draft.id}-${crypto.randomUUID()}${ext}`;
+    const buf = Buffer.from(await file.arrayBuffer());
+
+    try {
+      await uploadObject(key, buf, file.type);
+    } catch (err) {
+      console.error("uploadOcPhoto: R2 upload failed", err);
+      return { error: "Couldn't save your photo — please try again." };
+    }
+
+    const supabase = createServerClient();
+
+    // Best-effort cleanup: drop the previous photo from R2 if the user is
+    // replacing it. Don't block on the result; orphan keys are harmless.
+    if (draft.photo_storage_key && draft.photo_storage_key !== key) {
+      void deleteObject(draft.photo_storage_key).catch(() => {});
+    }
+
+    const { error: dbErr } = await supabase
+      .from("oc_drafts")
+      .update({ photo_storage_key: key })
+      .eq("id", draft.id);
+    if (dbErr) {
+      console.error("uploadOcPhoto: DB update failed", dbErr);
+      return { error: "Couldn't save your photo — please try again." };
+    }
+    return { success: true, storage_key: key, public_url: publicUrlFor(key) };
+  } catch (err) {
+    console.error("uploadOcPhoto: unexpected error", err);
+    return { error: "Something went wrong — please try again." };
+  }
+}
+
+// Resolves a storage key to its public URL without leaking the bucket origin
+// to the bundle. Called once on page 3 mount when the draft already has a
+// previously-uploaded photo (resumed wizard).
+export async function getPhotoPublicUrl(storageKey: string): Promise<string> {
+  return publicUrlFor(storageKey);
+}
+
+export async function removeOcPhoto(draftId: string) {
+  try {
+    const { draft } = await loadDraft(draftId);
+    if (draft.photo_storage_key) {
+      void deleteObject(draft.photo_storage_key).catch(() => {});
+    }
+    const supabase = createServerClient();
+    const { error } = await supabase
+      .from("oc_drafts")
+      .update({ photo_storage_key: null })
+      .eq("id", draft.id);
+    if (error) return { error: "Couldn't remove the photo." };
+    return { success: true };
+  } catch (err) {
+    return { error: err instanceof Error ? err.message : "Unexpected error" };
   }
 }
 
@@ -573,6 +652,7 @@ export async function completeWizard(draftId: string) {
       state: d.state || "VIC",
       postcode: d.postcode || null,
       total_lots: d.lots.length,
+      photo_storage_key: draft.photo_storage_key ?? null,
       financial_year_start_month: d.financial_year_start_month ?? 7,
       financial_year_start_day: d.financial_year_start_day ?? 1,
       services_only: !!d.services_only,
@@ -833,6 +913,11 @@ export async function completeWizard(draftId: string) {
       metadata: { source: "oc_wizard_v2", draft_id: draft.id },
     });
 
+    // Sidebar OC list uses unstable_cache tagged with the company id — without
+    // this updateTag, the sidebar serves the previous (empty) list until the
+    // 5-min localStorage TTL expires. revalidatePath isn't enough on its own:
+    // the cache key is unrelated to the path.
+    updateTag(`sidebar-ocs-${profile.management_company_id}`);
     revalidatePath("/ocs");
     revalidatePath("/dashboard");
 
