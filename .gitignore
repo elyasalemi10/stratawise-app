@@ -51,7 +51,16 @@ next-env.d.ts
 # Convention: any file whose basename starts with "_" is scratch — never
 # canonical. Canonical files (database-schema.sql, CONTEXT.md, CLAUDE.md,
 # PRE_LAUNCH_CLEANUP.md, etc.) never use this prefix.
+#
+# Exception: Next.js uses `_components`, `_lib`, etc. inside app/ to mark
+# private folders that are NOT route segments. Those are canonical and MUST
+# be tracked. Add new exceptions here when adopting another `_xxx` private
+# folder convention.
 _*
+!**/_components/
+!**/_components/**
+!**/_lib/
+!**/_lib/**
 
 # PP6-D-D smoke harness — ephemeral tsx scripts run pre-launch + deleted
 # post-walk. No commit.
