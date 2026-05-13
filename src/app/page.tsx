@@ -1,8 +1,10 @@
-import Link from "next/link";
 import Image from "next/image";
+import { WaitlistForm } from "./_components/waitlist-form";
 
-// Note: signed-in users are bounced to /dashboard by the middleware before
-// this page is ever rendered (see src/middleware.ts SIGNED_IN_REDIRECT_AWAY).
+// Pre-launch landing page: waitlist capture only. Sign-in / sign-up are
+// intentionally hidden — the auth flow is closed to the public during the
+// waitlist period. Submissions are persisted to waitlist_signups and an
+// operator notification is dispatched to SEND_TO.
 
 export default function LandingPage() {
   return (
@@ -16,45 +18,27 @@ export default function LandingPage() {
           priority
           className="h-9 w-auto invert"
         />
-        <nav className="flex items-center gap-3 text-sm">
-          <Link
-            href="/sign-in"
-            className="rounded-md px-3 py-1.5 text-white/80 hover:text-white"
-          >
-            Sign in
-          </Link>
-          <Link
-            href="/sign-up"
-            className="rounded-md bg-primary px-4 py-1.5 font-medium text-primary-foreground shadow-sm hover:bg-primary/90"
-          >
-            Get started
-          </Link>
-        </nav>
+        <span className="rounded-full border border-white/15 bg-white/5 px-3 py-1 text-xs font-medium uppercase tracking-wide text-white/70">
+          Coming soon
+        </span>
       </header>
 
-      <main className="flex flex-1 flex-col items-center justify-center px-6 text-center">
-        <h1 className="max-w-3xl text-4xl font-semibold tracking-tight md:text-6xl">
-          Strata management,
-          <br />
-          on autopilot.
-        </h1>
-        <p className="mt-5 max-w-xl text-lg text-white/60 leading-relaxed">
-          Levies, meetings, reconciliation, communications — handled.
-          Built in Melbourne for Australian strata managers.
-        </p>
-        <div className="mt-10 flex flex-wrap items-center justify-center gap-3">
-          <Link
-            href="/sign-up"
-            className="inline-flex h-11 items-center rounded-md bg-primary px-6 text-sm font-medium text-primary-foreground shadow-sm hover:bg-primary/90"
-          >
-            Get started &rarr;
-          </Link>
-          <Link
-            href="/sign-in"
-            className="inline-flex h-11 items-center rounded-md border border-white/15 px-6 text-sm font-medium text-white hover:bg-white/5"
-          >
-            Sign in
-          </Link>
+      <main className="flex flex-1 flex-col items-center justify-center px-6 py-12">
+        <div className="w-full max-w-xl text-center">
+          <h1 className="text-4xl font-semibold tracking-tight md:text-5xl">
+            Strata management,
+            <br />
+            on autopilot.
+          </h1>
+          <p className="mt-5 text-lg text-white/60 leading-relaxed">
+            Levies, meetings, reconciliation, communications — handled. Built in
+            Melbourne for Australian strata managers. Join the waitlist to be
+            first in line when we open up.
+          </p>
+        </div>
+
+        <div className="mt-10 w-full max-w-md">
+          <WaitlistForm />
         </div>
       </main>
 

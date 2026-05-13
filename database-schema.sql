@@ -1555,6 +1555,31 @@ CREATE INDEX idx_payer_mappings_lot
   ON bank_payer_mappings (lot_id);                            -- ownership-change sweep
 
 -- ============================================================================
+-- WAITLIST SIGNUPS (pre-launch)
+-- ----------------------------------------------------------------------------
+-- Captures email addresses from the public landing page during the pre-launch
+-- waitlist period (sign-up flow disabled). Writes go through the service-role
+-- server action only — RLS is on with no policies, so anon/authenticated have
+-- zero direct access. A copy of each submission is also emailed to the
+-- operator (SEND_TO env var) at submit time.
+-- ============================================================================
+CREATE TABLE waitlist_signups (
+  id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+  email TEXT NOT NULL,
+  name TEXT,
+  company TEXT,
+  role TEXT,
+  source TEXT,
+  ip_address TEXT,
+  user_agent TEXT,
+  notified BOOLEAN NOT NULL DEFAULT FALSE,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  CONSTRAINT waitlist_signups_email_lower_unique UNIQUE (email)
+);
+
+CREATE INDEX idx_waitlist_signups_created_at ON waitlist_signups (created_at DESC);
+
+-- ============================================================================
 -- TRIGGERS
 -- ============================================================================
 
@@ -3154,6 +3179,7 @@ ALTER TABLE basiq_reauth_notifications            ENABLE ROW LEVEL SECURITY;
 ALTER TABLE basiq_gap_reports                     ENABLE ROW LEVEL SECURITY;
 ALTER TABLE oc_notification_suppressions ENABLE ROW LEVEL SECURITY;
 ALTER TABLE bank_payer_mappings                   ENABLE ROW LEVEL SECURITY;
+ALTER TABLE waitlist_signups                      ENABLE ROW LEVEL SECURITY;
 
 -- Audit log is immutable — INSERT only.
 CREATE POLICY "audit_log_insert_only" ON audit_log FOR INSERT WITH CHECK (true);

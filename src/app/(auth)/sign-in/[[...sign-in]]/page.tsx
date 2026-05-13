@@ -123,12 +123,6 @@ function SignInContent() {
         </Button>
       </form>
 
-      <p className="text-center text-sm text-muted-foreground">
-        Don&apos;t have an account?{" "}
-        <Link href="/sign-up" className="font-medium text-primary hover:underline">
-          Sign up
-        </Link>
-      </p>
     </div>
   );
 }
