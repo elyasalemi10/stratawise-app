@@ -78,6 +78,17 @@ export function Page2Review({
     if (!planOk) problems.push('Plan number format is "PS" + 6 digits + 1 letter (e.g. PS812345X)');
     setPlanNumberInvalid(!planOk);
 
+    // Item 7: every lot must have entitlement > 0, and at least 2 lots.
+    if (lots.length < 2) {
+      problems.push("An OC must have at least 2 lots.");
+    }
+    const zeroEntitlement = lots.filter((l) => !(Number(l.unit_entitlement) > 0));
+    if (zeroEntitlement.length > 0) {
+      const ids = zeroEntitlement.map((l) => `Lot ${l.lot_number}`).slice(0, 3).join(", ");
+      const more = zeroEntitlement.length > 3 ? ` and ${zeroEntitlement.length - 3} more` : "";
+      problems.push(`Unit entitlement must be greater than 0 for every lot (${ids}${more}).`);
+    }
+
     if (problems.length) {
       toast.error(problems.length === 1 ? problems[0] : "Fix the highlighted fields.");
       return;
@@ -205,13 +216,16 @@ export function Page2Review({
                 <thead className="bg-muted/50 text-muted-foreground">
                   <tr className="text-xs uppercase tracking-wide">
                     <th className="px-3 py-2 text-left font-medium">Lot #</th>
+                    <th className="px-3 py-2 text-left font-medium">Unit #</th>
                     <th className="px-3 py-2 text-right font-medium">Unit entitlement</th>
                     <th className="px-3 py-2 text-right font-medium">Lot liability</th>
                     <th className="w-10" />
                   </tr>
                 </thead>
                 <tbody>
-                  {lots.map((lot, idx) => (
+                  {lots.map((lot, idx) => {
+                    const entitlementBad = !(Number(lot.unit_entitlement) > 0);
+                    return (
                     <tr key={idx} className="border-t border-border">
                       <td className="px-3 py-1.5">
                         <Input
@@ -222,6 +236,14 @@ export function Page2Review({
                           className="h-8"
                         />
                       </td>
+                      <td className="px-3 py-1.5">
+                        <Input
+                          value={lot.unit_number ?? ""}
+                          onChange={(e) => updateLot(idx, { unit_number: e.target.value })}
+                          placeholder="(optional)"
+                          className="h-8"
+                        />
+                      </td>
                       <td className="px-3 py-1.5 text-right">
                         <Input
                           type="number"
@@ -229,6 +251,7 @@ export function Page2Review({
                           min={0}
                           value={lot.unit_entitlement}
                           onChange={(e) => updateLot(idx, { unit_entitlement: parseFloat(e.target.value) || 0 })}
+                          aria-invalid={entitlementBad || undefined}
                           className="h-8 text-right"
                         />
                       </td>
@@ -253,11 +276,11 @@ export function Page2Review({
                         </button>
                       </td>
                     </tr>
-                  ))}
+                  );})}
                 </tbody>
                 <tfoot className="bg-muted/30 text-xs font-medium">
                   <tr className="border-t border-border">
-                    <td className="px-3 py-2">Totals</td>
+                    <td className="px-3 py-2" colSpan={2}>Totals</td>
                     <td className="px-3 py-2 text-right tabular-nums">{totalEntitlement.toLocaleString()}</td>
                     <td className="px-3 py-2 text-right tabular-nums">{totalLiability.toLocaleString()}</td>
                     <td />

@@ -110,7 +110,7 @@ function WizardContent() {
   })) ?? [];
 
   return (
-    <div className="mx-auto w-full max-w-3xl">
+    <div className="w-full">
       <StepIndicator current={step} />
       <div className="rounded-lg border border-border bg-card p-6">
         {step === 1 && (
@@ -157,6 +157,7 @@ function WizardContent() {
             draftId={draft.id}
             initialDraft={draft.draft_json}
             ocName={ocName}
+            totalLots={totalLots}
             onBack={() => goToStep(4)}
             onNext={async () => { await refreshDraft(); goToStep(6); }}
           />
@@ -165,8 +166,6 @@ function WizardContent() {
           <Page6Balances
             draftId={draft.id}
             initialDraft={draft.draft_json}
-            totalLots={totalLots}
-            servicesOnly={draft.draft_json.services_only ?? false}
             onBack={() => goToStep(5)}
             onComplete={(ocCode) => router.push(`/ocs/${ocCode}?created=1`)}
           />

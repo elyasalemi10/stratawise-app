@@ -14,6 +14,7 @@ import { uploadObject, fetchObject, deleteObject } from "@/lib/storage/r2";
 
 export type DraftLot = {
   lot_number: number;
+  unit_number?: string;            // e.g. "3B" — apartment / unit label distinct from lot_number
   unit_entitlement: number;
   lot_liability: number;
   owner_name?: string;
@@ -45,30 +46,40 @@ export type DraftJson = {
   trading_name?: string;
   services_only?: boolean;
   financial_year_start_month?: number;       // 1–12
-  notice_address_same_as_oc?: boolean;
-  notice_address?: string;
-  common_seal?: boolean;
-  common_seal_text?: string;
-  // Page 5 (trust accounts)
+  financial_year_start_day?: number;         // 1–31
+  // Page 5 (trust accounts) — per-fund bank arrangement.
   bank_provider?: "macquarie_deft" | "other_csv";
-  uses_shared_trust_account?: boolean;
-  // Shared mode: single set of fields. Separate mode: admin_* + capital_*.
-  bank_name?: string;
-  account_name?: string;
-  bsb?: string;
-  account_number?: string;
-  // Used when uses_shared_trust_account === false
-  capital_bank_name?: string;
+  // Whether this OC holds a third "maintenance plan" reserve fund. Tier 1/2
+  // is mandatory (the UI forces this on); higher tiers can opt in.
+  has_maintenance_plan_fund?: boolean;
+  // Admin fund — always present.
+  admin_bank_id?: string;        // e.g. "macquarie"
+  admin_account_name?: string;
+  admin_bsb?: string;
+  admin_account_number?: string;
+  // Capital works fund — either inherits admin's account or its own bank details.
+  capital_same_as_admin?: boolean;
+  capital_bank_id?: string;
   capital_account_name?: string;
   capital_bsb?: string;
   capital_account_number?: string;
+  // Maintenance plan fund — only relevant when has_maintenance_plan_fund.
+  maintenance_same_as_admin?: boolean;
+  maintenance_bank_id?: string;
+  maintenance_account_name?: string;
+  maintenance_bsb?: string;
+  maintenance_account_number?: string;
+
+  // Notice address — collected on page 4 (lots) since it informs per-lot
+  // postal address defaults. Always present; defaults to the OC address
+  // (set by the wizard if the user doesn't change it).
+  notice_address?: string;
+
   // Page 6 (opening balances)
   opening_balance_date?: string;                 // ISO yyyy-mm-dd
   opening_admin_balance?: number;
   opening_capital_works_balance?: number;
-  // Tier 1/2 mandatory; optional toggle for higher tiers.
-  has_maintenance_plan_fund?: boolean;
-  opening_maintenance_plan_balance?: number;
+  opening_maintenance_plan_balance?: number;     // only when has_maintenance_plan_fund
 };
 
 // ─── Helpers ────────────────────────────────────────────────────
@@ -256,6 +267,10 @@ export async function parseDraftWithGemini(draftId: string) {
       plan_number: parsed.plan_of_subdivision_number ?? undefined,
       oc_number: first?.oc_number ?? 1,
       oc_name: first?.oc_name ?? undefined,
+      // Use the building name from the plan as the default trading name —
+      // managers usually use the building's display name as the OC's
+      // friendly title.
+      trading_name: first?.building_name ?? undefined,
       address: first?.address ?? undefined,
       street_number: first?.street_number ?? undefined,
       street_name: first?.street_name ?? undefined,
@@ -265,6 +280,7 @@ export async function parseDraftWithGemini(draftId: string) {
       total_lots: first?.lot_count ?? first?.lots.length ?? 0,
       lots: (first?.lots ?? []).map((l) => ({
         lot_number: l.lot_number,
+        unit_number: l.unit_number ?? undefined,
         unit_entitlement: l.unit_entitlement,
         lot_liability: l.lot_liability,
       })),
@@ -339,12 +355,29 @@ export async function completeWizard(draftId: string) {
     if (!d.oc_name) return { error: "OC name is required (page 2)" };
     if (!d.address) return { error: "Address is required (page 2)" };
     if (!d.lots || d.lots.length < 2) return { error: "At least 2 lots are required" };
-    if (!d.bsb || !d.account_number || !d.account_name) return { error: "Trust account details are required (page 5)" };
+    if (!d.admin_bsb || !d.admin_account_number || !d.admin_account_name || !d.admin_bank_id) {
+      return { error: "Trust account details are required (page 5)" };
+    }
     if (!d.opening_balance_date) return { error: "Opening balance date is required (page 6)" };
 
-    const shared = d.uses_shared_trust_account ?? false;
-    if (!shared && (!d.capital_bsb || !d.capital_account_number || !d.capital_account_name)) {
+    // Resolve per-fund bank details. Capital and maintenance can either share
+    // the admin account or have their own.
+    const capitalShared = d.capital_same_as_admin ?? true;
+    const capital = capitalShared
+      ? { bank_id: d.admin_bank_id, account_name: d.admin_account_name, bsb: d.admin_bsb, account_number: d.admin_account_number }
+      : { bank_id: d.capital_bank_id, account_name: d.capital_account_name, bsb: d.capital_bsb, account_number: d.capital_account_number };
+    if (!capital.bsb || !capital.account_number || !capital.account_name || !capital.bank_id) {
       return { error: "Capital works trust account details are required (page 5)" };
+    }
+
+    const hasMaintenance = !!d.has_maintenance_plan_fund;
+    const maintenanceShared = d.maintenance_same_as_admin ?? true;
+    const maintenance = !hasMaintenance ? null
+      : maintenanceShared
+        ? { bank_id: d.admin_bank_id, account_name: d.admin_account_name, bsb: d.admin_bsb, account_number: d.admin_account_number }
+        : { bank_id: d.maintenance_bank_id, account_name: d.maintenance_account_name, bsb: d.maintenance_bsb, account_number: d.maintenance_account_number };
+    if (maintenance && (!maintenance.bsb || !maintenance.account_number || !maintenance.account_name || !maintenance.bank_id)) {
+      return { error: "Maintenance plan trust account details are required (page 5)" };
     }
 
     const supabase = createServerClient();
@@ -363,21 +396,21 @@ export async function completeWizard(draftId: string) {
       postcode: d.postcode || null,
       total_lots: d.lots.length,
       financial_year_start_month: d.financial_year_start_month ?? 7,
+      financial_year_start_day: d.financial_year_start_day ?? 1,
       services_only: !!d.services_only,
-      notice_address_same_as_oc: d.notice_address_same_as_oc ?? true,
-      notice_address: d.notice_address_same_as_oc === false ? (d.notice_address || null) : null,
-      common_seal_text: d.common_seal ? (d.common_seal_text || null) : null,
+      // Notice address always set — wizard defaults to OC address; user can override.
+      notice_address_same_as_oc: !d.notice_address || d.notice_address.trim() === d.address.trim(),
+      notice_address: d.notice_address || d.address,
       bank_provider: d.bank_provider ?? "other_csv",
-      uses_shared_trust_account: shared,
-      bank_bsb: d.bsb,
-      bank_account_number: d.account_number,
-      bank_account_name: d.account_name,
+      uses_shared_trust_account: capitalShared && (!hasMaintenance || maintenanceShared),
+      // Legacy summary fields point at the admin trust account.
+      bank_bsb: d.admin_bsb,
+      bank_account_number: d.admin_account_number,
+      bank_account_name: d.admin_account_name,
       opening_balance_date: d.opening_balance_date,
       opening_admin_balance: d.opening_admin_balance ?? 0,
       opening_capital_works_balance: d.opening_capital_works_balance ?? 0,
-      opening_maintenance_plan_balance: d.has_maintenance_plan_fund
-        ? (d.opening_maintenance_plan_balance ?? 0)
-        : null,
+      opening_maintenance_plan_balance: hasMaintenance ? (d.opening_maintenance_plan_balance ?? 0) : null,
       setup_step: 6,
       status: "active",
       created_by: profile.id,
@@ -399,6 +432,7 @@ export async function completeWizard(draftId: string) {
     const lotsToInsert = d.lots.map((l) => ({
       oc_id: oc.id,
       lot_number: l.lot_number,
+      unit_number: l.unit_number || null,
       lot_entitlement: l.unit_entitlement,
       lot_liability: l.lot_liability,
       opening_balance: l.opening_balance ?? 0,
@@ -445,28 +479,42 @@ export async function completeWizard(draftId: string) {
       }
     }
 
-    // Trust accounts → bank_accounts. Shared mode duplicates the BSB/account
-    // across both funds; separate mode uses admin_* and capital_* fields.
+    // Trust accounts → bank_accounts rows per fund. Each fund references its
+    // own (resolved) BSB+account_number; shared-account funds end up with
+    // matching values, which the uq_bank_accounts_oc_fund_account index
+    // accepts (one row per fund_type).
     await supabase.from("bank_accounts").insert({
       oc_id: oc.id,
       fund_type: "administrative",
-      bank_name: d.bank_name ?? null,
-      account_name: d.account_name,
-      bsb: d.bsb,
-      account_number: d.account_number,
+      bank_name: d.admin_bank_id ?? null,
+      account_name: d.admin_account_name,
+      bsb: d.admin_bsb,
+      account_number: d.admin_account_number,
       opening_balance: d.opening_admin_balance ?? 0,
       opening_balance_date: d.opening_balance_date,
     });
     await supabase.from("bank_accounts").insert({
       oc_id: oc.id,
       fund_type: "capital_works",
-      bank_name: shared ? (d.bank_name ?? null) : (d.capital_bank_name ?? null),
-      account_name: shared ? d.account_name : (d.capital_account_name ?? ""),
-      bsb: shared ? d.bsb : (d.capital_bsb ?? ""),
-      account_number: shared ? d.account_number : (d.capital_account_number ?? ""),
+      bank_name: capital.bank_id ?? null,
+      account_name: capital.account_name!,
+      bsb: capital.bsb!,
+      account_number: capital.account_number!,
       opening_balance: d.opening_capital_works_balance ?? 0,
       opening_balance_date: d.opening_balance_date,
     });
+    if (maintenance) {
+      await supabase.from("bank_accounts").insert({
+        oc_id: oc.id,
+        fund_type: "maintenance_plan",
+        bank_name: maintenance.bank_id ?? null,
+        account_name: maintenance.account_name!,
+        bsb: maintenance.bsb!,
+        account_number: maintenance.account_number!,
+        opening_balance: d.opening_maintenance_plan_balance ?? 0,
+        opening_balance_date: d.opening_balance_date,
+      });
+    }
 
     // Mark draft promoted.
     await supabase

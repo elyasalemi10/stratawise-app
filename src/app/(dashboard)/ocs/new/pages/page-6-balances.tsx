@@ -6,37 +6,21 @@ import { Loader2, Info, AlertTriangle } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { Checkbox } from "@/components/ui/checkbox";
 import { DatePicker } from "@/components/shared/date-picker";
 import { saveStep, completeWizard, type DraftJson, type DraftLot } from "../actions";
-
-function tierForLotCount(n: number, servicesOnly: boolean): number {
-  if (servicesOnly) return 5;
-  if (n >= 100) return 1;
-  if (n >= 51) return 2;
-  if (n >= 10) return 3;
-  if (n >= 3) return 4;
-  return 5;
-}
 
 export function Page6Balances({
   draftId,
   initialDraft,
-  totalLots,
-  servicesOnly,
   onBack,
   onComplete,
 }: {
   draftId: string;
   initialDraft: DraftJson;
-  totalLots: number;
-  servicesOnly: boolean;
   onBack: () => void;
   onComplete: (ocCode: string) => void;
 }) {
   const today = new Date().toISOString().slice(0, 10);
-  const tier = useMemo(() => tierForLotCount(totalLots, servicesOnly), [totalLots, servicesOnly]);
-  const isTier1or2 = tier <= 2;
 
   const [date, setDate] = useState(initialDraft.opening_balance_date ?? today);
   const [admin, setAdmin] = useState<string>(
@@ -45,10 +29,8 @@ export function Page6Balances({
   const [capital, setCapital] = useState<string>(
     initialDraft.opening_capital_works_balance != null ? String(initialDraft.opening_capital_works_balance) : "",
   );
-  // Tier 1/2 = mandatory, default on. Tier 3-5 = optional, default off.
-  const [hasMaintenance, setHasMaintenance] = useState<boolean>(
-    initialDraft.has_maintenance_plan_fund ?? isTier1or2,
-  );
+  // `has_maintenance_plan_fund` was decided on page 5 — read-only here.
+  const hasMaintenance = initialDraft.has_maintenance_plan_fund ?? false;
   const [maintenance, setMaintenance] = useState<string>(
     initialDraft.opening_maintenance_plan_balance != null
       ? String(initialDraft.opening_maintenance_plan_balance)
@@ -109,7 +91,6 @@ export function Page6Balances({
       opening_balance_date: date,
       opening_admin_balance: adminN ?? 0,
       opening_capital_works_balance: capitalN ?? 0,
-      has_maintenance_plan_fund: hasMaintenance,
       opening_maintenance_plan_balance: hasMaintenance ? (maintN ?? 0) : undefined,
       lots,
     }, 6);
@@ -189,50 +170,28 @@ export function Page6Balances({
           </div>
         </div>
 
-        {/* Maintenance plan fund */}
-        <div className="rounded-md border border-border bg-card p-4 space-y-3">
-          <div className="flex items-start gap-2">
-            <Checkbox
-              id="has-maintenance"
-              checked={hasMaintenance}
-              onCheckedChange={(v) => setHasMaintenance(v === true)}
-              disabled={isTier1or2}
-            />
-            <div className="flex-1">
-              <Label htmlFor="has-maintenance" className="text-sm font-medium cursor-pointer">
-                This OC has a maintenance plan fund
-                {isTier1or2 && (
-                  <span className="ml-2 text-xs font-normal text-muted-foreground">
-                    (mandatory for Tier {tier})
-                  </span>
-                )}
-              </Label>
-              <p className="mt-0.5 text-xs text-muted-foreground">
-                Tier 1 and Tier 2 OCs must hold a separate reserve aligned to their 10-year maintenance plan.
-                Tier 3–5 OCs may opt in.
-              </p>
+        {/* Maintenance plan opening balance — toggle lives on page 5; this
+            section only renders when the wizard already knows the OC has a
+            maintenance fund. */}
+        {hasMaintenance && (
+          <div className="space-y-1.5">
+            <Label htmlFor="maint-bal">
+              Maintenance plan fund <span className="text-destructive">*</span>
+            </Label>
+            <div className="relative">
+              <span className="absolute left-3 top-1/2 -translate-y-1/2 text-sm text-muted-foreground">$</span>
+              <Input
+                id="maint-bal"
+                inputMode="decimal"
+                placeholder="0.00"
+                value={maintenance}
+                onChange={(e) => { setMaintenance(e.target.value); if (maintenanceInvalid) setMaintenanceInvalid(false); }}
+                aria-invalid={maintenanceInvalid || undefined}
+                className="pl-7"
+              />
             </div>
           </div>
-          {hasMaintenance && (
-            <div className="space-y-1.5">
-              <Label htmlFor="maint-bal">
-                Maintenance plan fund <span className="text-destructive">*</span>
-              </Label>
-              <div className="relative">
-                <span className="absolute left-3 top-1/2 -translate-y-1/2 text-sm text-muted-foreground">$</span>
-                <Input
-                  id="maint-bal"
-                  inputMode="decimal"
-                  placeholder="0.00"
-                  value={maintenance}
-                  onChange={(e) => { setMaintenance(e.target.value); if (maintenanceInvalid) setMaintenanceInvalid(false); }}
-                  aria-invalid={maintenanceInvalid || undefined}
-                  className="pl-7"
-                />
-              </div>
-            </div>
-          )}
-        </div>
+        )}
       </div>
 
       {/* Per-lot opening arrears */}

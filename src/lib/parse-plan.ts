@@ -8,6 +8,8 @@ import { GoogleGenAI, Type } from "@google/genai";
 
 export type ParsedLot = {
   lot_number: number;
+  /** Apartment / unit label distinct from the lot number, e.g. "3B" or "204". */
+  unit_number: string | null;
   unit_entitlement: number;
   lot_liability: number;
   confidence: number;
@@ -22,6 +24,18 @@ export type ParsedOC = {
   suburb: string | null;
   state: string | null;
   postcode: string | null;
+  /** Optional descriptive name of the building / development (from cover sheet). */
+  building_name: string | null;
+  /** Number of storeys / levels if shown on the plan. */
+  storeys: number | null;
+  /** Total site area in sqm if stated. */
+  site_area_sqm: number | null;
+  /** What kind of property the plan covers (apartments, townhouses, mixed, services-only…). */
+  property_type: string | null;
+  /** Year the plan was registered (or surveyed). */
+  registered_year: number | null;
+  /** Description of the common property as written on the plan. */
+  common_property_description: string | null;
   lot_count: number;
   lots: ParsedLot[];
 };
@@ -56,16 +70,23 @@ const RESPONSE_SCHEMA = {
           suburb: { type: Type.STRING, nullable: true },
           state: { type: Type.STRING, nullable: true, description: "AU state code, e.g. VIC." },
           postcode: { type: Type.STRING, nullable: true, description: "4-digit AU postcode." },
+          building_name: { type: Type.STRING, nullable: true, description: "Friendly name of the building or development, e.g. 'Riverside Apartments'. Null when not stated." },
+          storeys: { type: Type.INTEGER, nullable: true, description: "Number of storeys / levels if shown on the plan, otherwise null." },
+          site_area_sqm: { type: Type.NUMBER, nullable: true, description: "Total site area in square metres if stated. Convert hectares to sqm. Null if absent." },
+          property_type: { type: Type.STRING, nullable: true, description: "One of: 'apartments', 'townhouses', 'mixed', 'commercial', 'services_only', 'other'. Null when unclear." },
+          registered_year: { type: Type.INTEGER, nullable: true, description: "Year the plan was registered or surveyed. Null when not stated." },
+          common_property_description: { type: Type.STRING, nullable: true, description: "Description of the common property as written on the plan (driveways, lifts, gardens, etc.). Null when absent." },
           lot_count: { type: Type.INTEGER },
           lots: {
             type: Type.ARRAY,
             items: {
               type: Type.OBJECT,
               properties: {
-                lot_number: { type: Type.INTEGER },
+                lot_number: { type: Type.INTEGER, description: "Lot number on the plan (the legal 'Lot N' identifier)." },
+                unit_number: { type: Type.STRING, nullable: true, description: "Apartment/unit label distinct from the lot number, e.g. '3B' or 'Unit 204'. Null if the plan only shows lot numbers." },
                 unit_entitlement: { type: Type.NUMBER },
                 lot_liability: { type: Type.NUMBER },
-                confidence: { type: Type.NUMBER, description: "0-1 confidence in this row's three numbers." },
+                confidence: { type: Type.NUMBER, description: "0-1 confidence in this row's values." },
               },
               required: ["lot_number", "unit_entitlement", "lot_liability", "confidence"],
             },

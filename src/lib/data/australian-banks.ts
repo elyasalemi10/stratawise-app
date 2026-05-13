@@ -2,14 +2,16 @@ export interface BankOption {
   id: string;
   name: string;
   logo: string | null;
+  /** Macquarie has DEFT auto-reconciliation — surface a recommendation badge. */
+  recommended?: boolean;
 }
 
 export const AUSTRALIAN_BANKS: BankOption[] = [
+  { id: "macquarie", name: "Macquarie Bank", logo: "/bank-logos/macquarie.webp", recommended: true },
   { id: "anz", name: "ANZ", logo: "/bank-logos/anz.webp" },
   { id: "cba", name: "Commonwealth Bank", logo: "/bank-logos/cba.webp" },
   { id: "nab", name: "NAB", logo: "/bank-logos/nab.webp" },
   { id: "westpac", name: "Westpac", logo: "/bank-logos/westpac.webp" },
-  { id: "macquarie", name: "Macquarie Bank", logo: "/bank-logos/macquarie.webp" },
   { id: "bendigo", name: "Bendigo Bank", logo: "/bank-logos/bendigo.webp" },
   { id: "bankwest", name: "Bankwest", logo: "/bank-logos/bankwest.webp" },
   { id: "suncorp", name: "Suncorp", logo: "/bank-logos/suncorp.webp" },

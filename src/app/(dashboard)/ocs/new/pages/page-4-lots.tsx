@@ -2,9 +2,11 @@
 
 import { Fragment, useMemo, useState } from "react";
 import { toast } from "sonner";
-import { Loader2, ChevronDown, ChevronRight, AlertTriangle, Download, Upload } from "lucide-react";
+import { Loader2, AlertTriangle, Download, Upload } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import { Switch } from "@/components/ui/switch";
 import {
   Dialog,
   DialogContent,
@@ -13,6 +15,7 @@ import {
   DialogDescription,
   DialogFooter,
 } from "@/components/ui/dialog";
+import { PhoneInput } from "@/components/shared/phone-input";
 import { saveStep, type DraftJson, type DraftLot } from "../actions";
 
 // AU phone validation: accept landline (8 digits + state code) or mobile (04XX
@@ -119,10 +122,15 @@ export function Page4Lots({
 
   const [lots, setLots] = useState<DraftLot[]>(initialLots);
   const [mode, setMode] = useState<"manual" | "bulk">(initialLots.length >= 10 ? "bulk" : "manual");
-  const [tenantExpanded, setTenantExpanded] = useState<Set<number>>(new Set());
   const [confirmSkipOpen, setConfirmSkipOpen] = useState(false);
   const [pending, setPending] = useState(false);
   const [csvErrors, setCsvErrors] = useState<{ row: number; reason: string }[]>([]);
+
+  // Item 16: notice address for service of notices. Defaults to OC address;
+  // manager can override here. No checkbox — direct edit instead.
+  const [noticeAddress, setNoticeAddress] = useState<string>(
+    initialDraft.notice_address ?? initialDraft.address ?? "",
+  );
 
   const missingEmailPct = useMemo(() => {
     const total = lots.length;
@@ -134,17 +142,9 @@ export function Page4Lots({
   function updateLot(idx: number, patch: Partial<DraftLot>) {
     setLots((prev) => prev.map((l, i) => (i === idx ? { ...l, ...patch } : l)));
   }
-  function toggleTenant(idx: number) {
-    setTenantExpanded((prev) => {
-      const next = new Set(prev);
-      if (next.has(idx)) next.delete(idx);
-      else next.add(idx);
-      return next;
-    });
-  }
   function addLot() {
     const nextNum = lots.length === 0 ? 1 : Math.max(...lots.map((l) => l.lot_number)) + 1;
-    setLots((prev) => [...prev, { lot_number: nextNum, unit_entitlement: 0, lot_liability: 0 }]);
+    setLots((prev) => [...prev, { lot_number: nextNum, unit_entitlement: 0, lot_liability: 0, is_occupied_by_owner: true }]);
   }
 
   function downloadCsv() {
@@ -181,14 +181,17 @@ export function Page4Lots({
       return;
     }
     setPending(true);
-    const r = await saveStep(draftId, { lots, total_lots: lots.length }, nextStep);
+    const r = await saveStep(draftId, {
+      lots,
+      total_lots: lots.length,
+      notice_address: noticeAddress || undefined,
+    }, nextStep);
     setPending(false);
     if (r.error) {
       toast.error(r.error);
       return;
     }
-    if (nextStep === 5) onNext();
-    else onNext();
+    onNext();
   }
 
   return (
@@ -197,6 +200,22 @@ export function Page4Lots({
         <h2 className="text-lg font-semibold text-foreground">Add the lot owners</h2>
         <p className="mt-1 text-sm text-muted-foreground">
           Add the owner contact details for each lot. You can bulk import or enter manually.
+        </p>
+      </div>
+
+      {/* Item 16: Notice-address field, defaulting to the OC address. */}
+      <div className="space-y-1.5">
+        <Label htmlFor="notice-address">Address for service of notices</Label>
+        <Input
+          id="notice-address"
+          value={noticeAddress}
+          onChange={(e) => setNoticeAddress(e.target.value)}
+          placeholder={initialDraft.address ?? "Postal address used for official correspondence"}
+        />
+        <p className="text-xs text-muted-foreground">
+          Pre-filled with the OC address. Edit if notices should go elsewhere
+          (e.g. the manager&apos;s office). Per-lot postal addresses are set in the
+          rows below.
         </p>
       </div>
 
@@ -281,14 +300,16 @@ export function Page4Lots({
               <th className="px-2 py-2 text-left font-medium">Email</th>
               <th className="px-2 py-2 text-left font-medium">Phone</th>
               <th className="px-2 py-2 text-left font-medium">Postal address</th>
-              <th className="px-2 py-2 text-left font-medium">Tenant?</th>
+              <th className="px-2 py-2 text-left font-medium">Owner occupied?</th>
             </tr>
           </thead>
           <tbody>
             {lots.map((lot, idx) => {
               const emailBad = !!lot.owner_email && !isValidEmail(lot.owner_email);
               const phoneBad = !!lot.owner_phone && !isValidAuPhone(lot.owner_phone);
-              const tenantOpen = tenantExpanded.has(idx);
+              // Item 18: default new lots to owner-occupied=true. Toggle OFF reveals
+              // tenant fields. is_occupied_by_owner === false means a tenant lives there.
+              const ownerOccupied = lot.is_occupied_by_owner !== false;
               return (
                 <Fragment key={idx}>
                   <tr className="border-t border-border">
@@ -310,11 +331,10 @@ export function Page4Lots({
                       />
                     </td>
                     <td className="px-2 py-1.5">
-                      <Input
-                        value={lot.owner_phone ?? ""}
-                        onChange={(e) => updateLot(idx, { owner_phone: e.target.value })}
-                        aria-invalid={phoneBad || undefined}
-                        className="h-8"
+                      <PhoneInput
+                        value={lot.owner_phone ?? "+61 "}
+                        onChange={(v) => updateLot(idx, { owner_phone: v })}
+                        error={phoneBad}
                       />
                     </td>
                     <td className="px-2 py-1.5">
@@ -325,23 +345,17 @@ export function Page4Lots({
                       />
                     </td>
                     <td className="px-2 py-1.5">
-                      <button
-                        type="button"
-                        onClick={() => {
-                          updateLot(idx, { is_occupied_by_owner: tenantOpen });
-                          toggleTenant(idx);
-                        }}
-                        className="inline-flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground cursor-pointer"
-                      >
-                        {tenantOpen ? <ChevronDown className="h-3 w-3" /> : <ChevronRight className="h-3 w-3" />}
-                        {tenantOpen ? "Yes" : "No"}
-                      </button>
+                      <Switch
+                        checked={ownerOccupied}
+                        onCheckedChange={(v) => updateLot(idx, { is_occupied_by_owner: v === true })}
+                        aria-label={`Owner occupied for lot ${lot.lot_number}`}
+                      />
                     </td>
                   </tr>
-                  {tenantOpen && (
+                  {!ownerOccupied && (
                     <tr className="border-t border-dashed border-border bg-muted/20">
                       <td className="px-2 py-1.5" />
-                      <td className="px-2 py-1.5" colSpan={5}>
+                      <td className="px-2 py-1.5 text-xs text-muted-foreground" colSpan={5}>
                         <div className="grid grid-cols-3 gap-2">
                           <Input
                             placeholder="Tenant name"
@@ -356,11 +370,9 @@ export function Page4Lots({
                             onChange={(e) => updateLot(idx, { tenant_email: e.target.value })}
                             className="h-8"
                           />
-                          <Input
-                            placeholder="Tenant phone"
-                            value={lot.tenant_phone ?? ""}
-                            onChange={(e) => updateLot(idx, { tenant_phone: e.target.value })}
-                            className="h-8"
+                          <PhoneInput
+                            value={lot.tenant_phone ?? "+61 "}
+                            onChange={(v) => updateLot(idx, { tenant_phone: v })}
                           />
                         </div>
                       </td>

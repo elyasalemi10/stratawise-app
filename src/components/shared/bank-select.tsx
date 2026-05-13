@@ -58,7 +58,7 @@ export function BankSelect({ value, onChange, error, id }: BankSelectProps) {
           "hover:border-primary/50"
         )}
       >
-        <span className="flex items-center gap-2">
+        <span className="flex items-center gap-2 truncate">
           {selectedBank ? (
             <>
               {selectedBank.logo && (
@@ -71,10 +71,15 @@ export function BankSelect({ value, onChange, error, id }: BankSelectProps) {
                   className="rounded"
                 />
               )}
-              {selectedBank.name}
+              <span className="truncate">{selectedBank.name}</span>
+              {selectedBank.recommended && (
+                <span className="ml-1 shrink-0 rounded bg-green-100 px-1.5 py-0.5 text-[10px] font-medium text-green-900">
+                  DEFT auto-recon
+                </span>
+              )}
             </>
           ) : (
-            <span className="text-muted-foreground">Search banks...</span>
+            <span className="text-muted-foreground">Select a bank…</span>
           )}
         </span>
         <ChevronDown className="h-4 w-4 text-muted-foreground" />
@@ -109,6 +114,11 @@ export function BankSelect({ value, onChange, error, id }: BankSelectProps) {
                         />
                       )}
                       {bank.name}
+                      {bank.recommended && (
+                        <span className="ml-1 rounded bg-green-100 px-1.5 py-0.5 text-[10px] font-medium text-green-900">
+                          DEFT auto-recon
+                        </span>
+                      )}
                     </span>
                   </CommandItem>
                 ))}
