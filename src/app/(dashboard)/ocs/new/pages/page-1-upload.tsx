@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useRef, useState } from "react";
 import { toast } from "sonner";
 import { CheckCircle2, AlertTriangle, FileText, Loader2, Upload, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
@@ -34,6 +34,10 @@ export function Page1Upload({
   const [parseError, setParseError] = useState<string | null>(null);
   const [skipping, setSkipping] = useState(false);
   const [isDragging, setIsDragging] = useState(false);
+  // Counter pattern for nested drag-leave: the browser fires dragleave when
+  // moving over a child element, which would close the highlight prematurely.
+  // We only flip back to !dragging when the counter reaches 0.
+  const dragDepthRef = useRef(0);
 
   async function handleFile(file: File) {
     if (file.type !== "application/pdf" && !file.name.toLowerCase().endsWith(".pdf")) {
@@ -72,9 +76,19 @@ export function Page1Upload({
 
   function onDrop(e: React.DragEvent) {
     e.preventDefault();
+    dragDepthRef.current = 0;
     setIsDragging(false);
     const file = e.dataTransfer.files?.[0];
     if (file) void handleFile(file);
+  }
+  function onDragEnter(e: React.DragEvent) {
+    e.preventDefault();
+    dragDepthRef.current += 1;
+    setIsDragging(true);
+  }
+  function onDragLeave() {
+    dragDepthRef.current = Math.max(0, dragDepthRef.current - 1);
+    if (dragDepthRef.current === 0) setIsDragging(false);
   }
 
   async function onSkip() {
@@ -100,37 +114,36 @@ export function Page1Upload({
         </p>
       </div>
 
-      {/* Upload dropzone */}
-      <div
-        onDragOver={(e) => { e.preventDefault(); setIsDragging(true); }}
-        onDragLeave={() => setIsDragging(false)}
-        onDrop={onDrop}
-        className={`relative rounded-lg border-2 border-dashed transition-colors ${
-          isDragging ? "border-primary bg-primary/5" : "border-border bg-muted/20"
-        } ${busy ? "pointer-events-none opacity-60" : ""}`}
-      >
-        <label className="flex cursor-pointer flex-col items-center justify-center gap-3 px-6 py-10">
-          <input
-            type="file"
-            accept="application/pdf,.pdf"
-            className="sr-only"
-            disabled={busy}
-            onChange={(e) => {
-              const file = e.target.files?.[0];
-              if (file) void handleFile(file);
-            }}
-          />
-          <Upload className="h-8 w-8 text-muted-foreground" />
-          <div className="text-center">
+      {/* Upload dropzone — hidden once a file is uploaded; reappears when cleared. */}
+      {!filename && (
+        <div
+          onDragEnter={onDragEnter}
+          onDragLeave={onDragLeave}
+          onDragOver={(e) => e.preventDefault()}
+          onDrop={onDrop}
+          className={`relative rounded-lg border-2 border-dashed transition-colors ${
+            isDragging ? "border-primary bg-primary/5" : "border-border bg-muted/20"
+          }`}
+        >
+          <label className="flex cursor-pointer flex-col items-center justify-center gap-3 px-6 py-10">
+            <input
+              type="file"
+              accept="application/pdf,.pdf"
+              className="sr-only"
+              onChange={(e) => {
+                const file = e.target.files?.[0];
+                if (file) void handleFile(file);
+                // Reset the input so re-uploading the same file after clearing works.
+                e.target.value = "";
+              }}
+            />
+            <Upload className="h-8 w-8 text-muted-foreground" />
             <p className="text-sm font-medium text-foreground">
               {isDragging ? "Drop the PDF here" : "Click to browse or drag a PDF here"}
             </p>
-            <p className="mt-1 text-xs text-muted-foreground">
-              PDF up to 50MB. Usually titled &ldquo;PS123456X.pdf&rdquo; from Land Use Victoria or your conveyancer.
-            </p>
-          </div>
-        </label>
-      </div>
+          </label>
+        </div>
+      )}
 
       {/* Status panel */}
       {filename && status !== "idle" && (
@@ -171,16 +184,8 @@ export function Page1Upload({
                   .
                 </p>
               )}
-              {status === "failed" && (
-                <>
-                  <p className="mt-1 text-xs text-amber-700">
-                    We couldn&apos;t read this plan automatically.{" "}
-                    {parseError && <span className="text-muted-foreground">({parseError})</span>}
-                  </p>
-                  <p className="mt-1 text-xs text-muted-foreground">
-                    You can continue and enter details manually.
-                  </p>
-                </>
+              {status === "failed" && parseError && (
+                <p className="mt-1 text-xs text-amber-700">{parseError}</p>
               )}
             </div>
             {!busy && (
@@ -197,13 +202,14 @@ export function Page1Upload({
         </div>
       )}
 
-      {/* Buttons */}
+      {/* Buttons. Skip is greyed out once a PDF has been uploaded — clear the
+          file with the X to re-enable. */}
       <div className="flex items-center justify-between pt-2">
         <button
           type="button"
           onClick={onSkip}
-          disabled={busy || skipping}
-          className="text-sm text-muted-foreground hover:text-foreground disabled:opacity-50 cursor-pointer"
+          disabled={busy || skipping || !!filename}
+          className="text-sm text-muted-foreground hover:text-foreground disabled:opacity-40 disabled:cursor-not-allowed cursor-pointer"
         >
           {skipping ? "Loading…" : "Skip and enter manually"}
         </button>

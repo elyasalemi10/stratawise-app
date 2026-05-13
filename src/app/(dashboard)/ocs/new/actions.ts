@@ -232,7 +232,21 @@ export async function parseDraftWithGemini(draftId: string) {
         parse_completed_at: new Date().toISOString(),
         parse_error: err instanceof Error ? err.message : "Parser failed",
       }).eq("id", draft.id);
-      return { error: "We couldn't read this plan automatically. Continue and enter details manually." };
+      return { error: "Couldn't read this PDF automatically." };
+    }
+
+    // Document-type gate: Gemini saw the PDF and decided it's not a Plan of
+    // Subdivision. Surface a clear message and don't pollute draft_json with
+    // a hallucinated lot schedule.
+    if (!parsed.is_plan_of_subdivision) {
+      await supabase.from("oc_drafts").update({
+        parse_status: "failed",
+        parse_completed_at: new Date().toISOString(),
+        parse_error: `Not a Plan of Subdivision (looks like: ${parsed.document_type_guess || "unknown document"})`,
+      }).eq("id", draft.id);
+      return {
+        error: `That didn't look like a Plan of Subdivision (looks like: ${parsed.document_type_guess || "another document type"}). Upload a different PDF, or skip this step and enter details manually.`,
+      };
     }
 
     // Default to the first detected OC and seed draft_json so page 2 has

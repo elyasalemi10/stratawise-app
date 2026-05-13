@@ -28,7 +28,7 @@ export function StepIndicator({ current }: { current: number }) {
           </div>
           <span
             className={cn(
-              "text-xs",
+              "text-xs whitespace-nowrap",
               s.number === current && "font-medium text-foreground",
               s.number < current && "font-medium text-primary",
               s.number > current && "text-muted-foreground",

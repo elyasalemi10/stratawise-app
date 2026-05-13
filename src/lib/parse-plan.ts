@@ -27,6 +27,10 @@ export type ParsedOC = {
 };
 
 export type ParsedPlan = {
+  /** True only when the model is confident this PDF really is a Victorian
+   *  Plan-of-Subdivision. When false, all other fields are null. */
+  is_plan_of_subdivision: boolean;
+  document_type_guess: string;        // e.g. "Plan of Subdivision", "Bank statement", "Insurance policy"…
   plan_of_subdivision_number: string | null;
   plan_of_subdivision_confidence: number;
   detected_ocs: ParsedOC[];
@@ -35,8 +39,10 @@ export type ParsedPlan = {
 const RESPONSE_SCHEMA = {
   type: Type.OBJECT,
   properties: {
-    plan_of_subdivision_number: { type: Type.STRING, nullable: true, description: "Plan-of-Subdivision identifier, e.g. PS812345X. Null if not visible." },
-    plan_of_subdivision_confidence: { type: Type.NUMBER, description: "0-1 confidence in the extracted plan number." },
+    is_plan_of_subdivision: { type: Type.BOOLEAN, description: "True ONLY if this PDF really is a registered Victorian Plan-of-Subdivision. Set false for ANY other document (bank statement, insurance policy, image, contract, blank page, OCR-garbled file, etc.)." },
+    document_type_guess: { type: Type.STRING, description: "Best one-line guess of what this PDF actually is, e.g. 'Plan of Subdivision', 'Section 32 statement', 'Bank statement', 'Insurance policy', 'Unknown'." },
+    plan_of_subdivision_number: { type: Type.STRING, nullable: true, description: "Plan-of-Subdivision identifier, e.g. PS812345X. Null if not visible or not a plan." },
+    plan_of_subdivision_confidence: { type: Type.NUMBER, description: "0-1 confidence in the extracted plan number. 0 when is_plan_of_subdivision is false." },
     detected_ocs: {
       type: Type.ARRAY,
       items: {
@@ -69,14 +75,20 @@ const RESPONSE_SCHEMA = {
       },
     },
   },
-  required: ["plan_of_subdivision_confidence", "detected_ocs"],
+  required: ["is_plan_of_subdivision", "document_type_guess", "plan_of_subdivision_confidence", "detected_ocs"],
 };
 
 const SYSTEM_PROMPT = `You extract structured data from Victorian Plan-of-Subdivision PDFs.
 
 A Plan of Subdivision (PS) is a registered survey document under the Subdivision Act 1988 (Vic). It can create one or more Owners Corporations (OCs); each OC has its own lot schedule with per-lot Unit Entitlement and Lot Liability (typically integers summing to 100 or 1000, sometimes equal per lot).
 
-Rules:
+CRITICAL — document-type gate:
+- BEFORE extracting anything, decide whether this PDF really IS a Victorian Plan-of-Subdivision.
+- A real Plan-of-Subdivision has: a PS identifier (e.g. "PS812345X"), registered-survey diagrams, and an Owners-Corporation lot-entitlement/lot-liability schedule.
+- If the document is anything else (a bank statement, insurance policy, contract, photo, blank page, random text, image of a building, conveyancer Section 32, OCR-garbled file, etc.), set is_plan_of_subdivision=false, document_type_guess to your best one-line description, leave plan_of_subdivision_number=null, plan_of_subdivision_confidence=0, and return detected_ocs=[]. DO NOT invent fields.
+- When in doubt, return false. We'd rather the user re-upload than ingest a hallucinated lot schedule.
+
+When the document IS a plan:
 - Return ALL OCs found on the plan, not just the largest one.
 - Lot numbers, unit entitlement, and lot liability come from the lot schedule table (often titled "Schedule of Lot Entitlement and Liability" or similar).
 - If the plan creates only one OC, set oc_number=1.

@@ -1,54 +1,57 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
-import { S3Client, GetObjectCommand } from "@aws-sdk/client-s3";
 import { requireCompanyRole, requireOCAccess } from "@/lib/auth";
 import { createServerClient } from "@/lib/supabase";
-import { parseSettlementPdf, type ParsedSettlement } from "@/lib/pdf/parse-settlement";
 import {
   applySettlementSchema,
   type ApplySettlementInput,
   type OwnershipHistoryEntry,
 } from "@/lib/validations/settlement";
 
-import { normalizePlanNumber } from "@/lib/settlements/plan-number";
 import { generateInviteCode } from "@/lib/invite-code";
 
-// ─── R2 helper ─────────────────────────────────────────────────
+// ─── Settlement PDF auto-parse: temporarily disabled ────────────
+//
+// Auto-parsing of Section 32 settlement statements used AWS Textract. With
+// the Textract removal we'll re-introduce parsing via Google Document AI's
+// OCR processor (the same path that'll OCR every uploaded document for
+// search indexing). Until then, parseSettlementForReview /
+// parseSettlementAndMatchLot return a not-available error and the manager
+// upload-and-assign manually.
 
-const R2 = new S3Client({
-  region: "auto",
-  endpoint: process.env.R2_ENDPOINT!,
-  credentials: {
-    accessKeyId: process.env.R2_ACCESS_KEY_ID!,
-    secretAccessKey: process.env.R2_SECRET_ACCESS_KEY!,
-  },
-});
+type StubReturn = { data?: SettlementReview; error: string };
 
-const BUCKET = process.env.R2_BUCKET_NAME ?? "stratawise-company-logos";
-
-async function fetchDocumentBytes(filePath: string): Promise<Buffer> {
-  const out = await R2.send(new GetObjectCommand({ Bucket: BUCKET, Key: filePath }));
-  const body = out.Body;
-  if (!body) throw new Error("Document body was empty");
-  // SDK v3 stream — transformToByteArray() is on the SdkStream mixin.
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const bytes: Uint8Array = await (body as any).transformToByteArray();
-  return Buffer.from(bytes);
-}
+const PARSE_DISABLED_MSG =
+  "Settlement auto-parse is temporarily unavailable. Upload the document and assign the owner manually — auto-parse returns when Document AI integration ships.";
 
 // ─── parseSettlementForReview ──────────────────────────────────
 
 export interface SettlementReview {
-  parsed: Omit<ParsedSettlement, "rawText">;
+  parsed: {
+    lotNumber: number | null;
+    planNumber: string | null;
+    transferee: {
+      name: string | null;
+      email: string | null;
+      phone: string | null;
+      postalAddress: string | null;
+      dateOfBirth: string | null;
+    };
+    settlementDate: string | null;
+    salePriceCents: number | null;
+    contractDate: string | null;
+    conveyancer: { name: string | null; email: string | null };
+    additionalTransferees: Array<{ name: string | null }>;
+  };
   matches: {
-    lotNumber: boolean | null;   // null = couldn't be checked (missing data)
+    lotNumber: boolean | null;
     planNumber: boolean | null;
   };
   expected: {
     lotNumber: number | null;
-    planNumber: string | null;     // raw DB value (may carry "Plan ..." prefix)
-    planNumberNormalized: string | null;  // bare ID for comparison/display
+    planNumber: string | null;
+    planNumberNormalized: string | null;
   };
   currentOwner: {
     profileId: string | null;
@@ -56,115 +59,21 @@ export interface SettlementReview {
     email: string | null;
     joinedAt: string | null;
   } | null;
-  pendingInvitationId: string | null;  // existing pending invite that would be replaced
+  pendingInvitationId: string | null;
   documentName: string;
   matchedLot: {
     id: string;
     lotNumber: number;
     unitNumber: string | null;
-  } | null;                            // populated only by parseAndMatchSettlement
+  } | null;
 }
 
 export async function parseSettlementForReview(
-  documentId: string,
-  lotId: string,
-): Promise<{ data?: SettlementReview; error?: string }> {
+  _documentId: string,
+  _lotId: string,
+): Promise<StubReturn> {
   await requireCompanyRole();
-  const supabase = createServerClient();
-
-  const { data: doc } = await supabase
-    .from("documents")
-    .select("id, oc_id, lot_id, file_name, file_path, mime_type")
-    .eq("id", documentId)
-    .single();
-
-  if (!doc) return { error: "Document not found" };
-  if (doc.lot_id !== lotId) return { error: "Document is not attached to this lot" };
-  await requireOCAccess(doc.oc_id);
-
-  const { data: lot } = await supabase
-    .from("lots")
-    .select("id, lot_number, ocs:ocs!inner(id, plan_number)")
-    .eq("id", lotId)
-    .single();
-
-  if (!lot) return { error: "Lot not found" };
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const planNumber: string | null = (lot as any).ocs?.plan_number ?? null;
-
-  let parsed: ParsedSettlement;
-  try {
-    const bytes = await fetchDocumentBytes(doc.file_path);
-    parsed = await parseSettlementPdf(bytes, doc.mime_type ?? "application/pdf");
-  } catch (err) {
-    console.error("parseSettlementForReview: parser failed:", err);
-    return { error: "Failed to read the uploaded document. Please re-upload or assign the owner manually." };
-  }
-
-  const expectedPlanNorm = normalizePlanNumber(planNumber);
-  const parsedPlanNorm = normalizePlanNumber(parsed.planNumber);
-  const matches = {
-    lotNumber:
-      parsed.lotNumber == null
-        ? null
-        : Number(parsed.lotNumber) === Number(lot.lot_number),
-    planNumber:
-      !expectedPlanNorm || !parsedPlanNorm
-        ? null
-        : parsedPlanNorm === expectedPlanNorm,
-  };
-
-  // Current active owner (will be ended on confirm).
-  const { data: activeMember } = await supabase
-    .from("oc_members")
-    .select("profile_id, joined_at, profiles!inner(first_name, last_name, email)")
-    .eq("lot_id", lotId)
-    .eq("role", "lot_owner")
-    .is("left_at", null)
-    .maybeSingle();
-
-  let currentOwner: SettlementReview["currentOwner"] = null;
-  if (activeMember) {
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const p = (activeMember as any).profiles;
-    const name = [p?.first_name, p?.last_name].filter(Boolean).join(" ").trim() || null;
-    currentOwner = {
-      profileId: activeMember.profile_id,
-      name,
-      email: p?.email ?? null,
-      joinedAt: activeMember.joined_at,
-    };
-  }
-
-  // Existing pending invitation (will be marked replaced on confirm).
-  const { data: pendingInv } = await supabase
-    .from("invitations")
-    .select("id")
-    .eq("lot_id", lotId)
-    .eq("status", "pending")
-    .order("created_at", { ascending: false })
-    .limit(1)
-    .maybeSingle();
-
-  // Strip rawText — too large for the wire and not needed by the UI.
-  // eslint-disable-next-line @typescript-eslint/no-unused-vars
-  const { rawText: _rawText, ...display } = parsed;
-
-  return {
-    data: {
-      parsed: display,
-      matches,
-      expected: {
-        lotNumber: lot.lot_number,
-        planNumber,
-        planNumberNormalized: expectedPlanNorm,
-      },
-      currentOwner,
-      pendingInvitationId: pendingInv?.id ?? null,
-      documentName: doc.file_name,
-      matchedLot: null,
-    },
-  };
+  return { error: PARSE_DISABLED_MSG };
 }
 
 // ─── parseSettlementAndMatchLot ──────────────────────────────
@@ -174,127 +83,12 @@ export async function parseSettlementForReview(
 // lot. The manager confirms a single subsequent applySettlementToLot call.
 
 export async function parseSettlementAndMatchLot(
-  documentId: string,
+  _documentId: string,
   ocId: string,
-): Promise<{ data?: SettlementReview; error?: string }> {
+): Promise<StubReturn> {
   await requireCompanyRole();
   await requireOCAccess(ocId);
-  const supabase = createServerClient();
-
-  const { data: doc } = await supabase
-    .from("documents")
-    .select("id, oc_id, lot_id, file_name, file_path, mime_type")
-    .eq("id", documentId)
-    .single();
-
-  if (!doc) return { error: "Document not found" };
-  if (doc.oc_id !== ocId) {
-    return { error: "Document is not in this oc" };
-  }
-
-  let parsed: ParsedSettlement;
-  try {
-    const bytes = await fetchDocumentBytes(doc.file_path);
-    parsed = await parseSettlementPdf(bytes, doc.mime_type ?? "application/pdf");
-  } catch (err) {
-    console.error("parseSettlementAndMatchLot: parser failed:", err);
-    return { error: "Failed to read the uploaded document. Please re-upload or assign the owner manually." };
-  }
-
-  if (parsed.lotNumber == null) {
-    return {
-      error: "Could not find a lot number in the document. Open the lot manually and upload from there.",
-    };
-  }
-
-  // Look up the lot in this oc by lot number. Plan number is verified
-  // as a match indicator, but lot number is the matching key — multiple
-  // ocs never share both within the same management company.
-  const { data: candidateLots } = await supabase
-    .from("lots")
-    .select("id, lot_number, unit_number, ocs!inner(id, plan_number)")
-    .eq("oc_id", ocId)
-    .eq("lot_number", parsed.lotNumber);
-
-  const lot = (candidateLots ?? [])[0];
-  if (!lot) {
-    return {
-      error: `No lot ${parsed.lotNumber} found in this oc. Verify the document matches and assign manually.`,
-    };
-  }
-
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const planNumber: string | null = (lot as any).ocs?.plan_number ?? null;
-
-  const expectedPlanNorm = normalizePlanNumber(planNumber);
-  const parsedPlanNorm = normalizePlanNumber(parsed.planNumber);
-  const matches = {
-    lotNumber: true,                   // we matched on it, so it's true
-    planNumber:
-      !expectedPlanNorm || !parsedPlanNorm
-        ? null
-        : parsedPlanNorm === expectedPlanNorm,
-  };
-
-  // Attach the document to the matched lot so the existing applySettlementToLot
-  // path works unchanged. Skip the update if it's already pointing at this lot.
-  if (doc.lot_id !== lot.id) {
-    await supabase.from("documents").update({ lot_id: lot.id }).eq("id", doc.id);
-  }
-
-  // Current active owner of the matched lot.
-  const { data: activeMember } = await supabase
-    .from("oc_members")
-    .select("profile_id, joined_at, profiles(first_name, last_name, email)")
-    .eq("lot_id", lot.id)
-    .eq("role", "lot_owner")
-    .is("left_at", null)
-    .maybeSingle();
-
-  let currentOwner: SettlementReview["currentOwner"] = null;
-  if (activeMember) {
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const p = (activeMember as any).profiles;
-    const name = [p?.first_name, p?.last_name].filter(Boolean).join(" ").trim() || null;
-    currentOwner = {
-      profileId: activeMember.profile_id,
-      name,
-      email: p?.email ?? null,
-      joinedAt: activeMember.joined_at,
-    };
-  }
-
-  const { data: pendingInv } = await supabase
-    .from("invitations")
-    .select("id")
-    .eq("lot_id", lot.id)
-    .eq("status", "pending")
-    .order("created_at", { ascending: false })
-    .limit(1)
-    .maybeSingle();
-
-  // eslint-disable-next-line @typescript-eslint/no-unused-vars
-  const { rawText: _rawText, ...display } = parsed;
-
-  return {
-    data: {
-      parsed: display,
-      matches,
-      expected: {
-        lotNumber: lot.lot_number,
-        planNumber,
-        planNumberNormalized: expectedPlanNorm,
-      },
-      currentOwner,
-      pendingInvitationId: pendingInv?.id ?? null,
-      documentName: doc.file_name,
-      matchedLot: {
-        id: lot.id,
-        lotNumber: lot.lot_number,
-        unitNumber: lot.unit_number,
-      },
-    },
-  };
+  return { error: PARSE_DISABLED_MSG };
 }
 
 // ─── applySettlementToLot ─────────────────────────────────────
