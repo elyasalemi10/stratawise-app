@@ -37,6 +37,7 @@ import { AddManualTransactionDialog } from "@/components/shared/add-manual-trans
 import type { BankAccountSummary, BankTransactionRecord } from "@/lib/validations/bank-transactions";
 import type { UndepositedFundsEntry } from "@/lib/validations/reconciliation";
 import { ImportCsvDialog } from "./import-csv-dialog";
+import { ImportTxnDialog } from "./import-txn-dialog";
 import { useOCCode } from "@/lib/oc-context";
 
 const formatCurrency = (n: number) =>
@@ -50,6 +51,7 @@ const formatDate = (iso: string) => {
 const FUND_LABEL: Record<BankAccountSummary["fund_type"], string> = {
   administrative: "Administrative fund",
   capital_works: "Capital works fund",
+  maintenance_plan: "Maintenance plan fund",
 };
 
 export function BankAccountContent({
@@ -71,8 +73,11 @@ export function BankAccountContent({
   const [accountName, setAccountName] = useState(initialAccountName);
   const [saving, setSaving] = useState(false);
   const [importAccountId, setImportAccountId] = useState<string | null>(null);
+  const [txnAccountId, setTxnAccountId] = useState<string | null>(null);
+  const [refreshNonce, setRefreshNonce] = useState(0);
 
   const importAccount = bankAccounts.find((a) => a.id === importAccountId) ?? null;
+  const txnAccount = bankAccounts.find((a) => a.id === txnAccountId) ?? null;
 
   async function handleSave() {
     setSaving(true);
@@ -159,17 +164,18 @@ export function BankAccountContent({
           <Card>
             <CardContent className="py-10 text-center">
               <Landmark className="h-8 w-8 text-muted-foreground mx-auto mb-2" />
-              <p className="text-sm text-muted-foreground">No bank accounts configured for this oc.</p>
+              <p className="text-sm text-muted-foreground">No bank accounts configured for this OC.</p>
             </CardContent>
           </Card>
         ) : (
           <div className="space-y-5">
             {bankAccounts.map((account) => (
               <BankAccountCard
-                key={account.id}
+                key={account.id + refreshNonce}
                 ocId={ocId}
                 account={account}
                 onImport={() => setImportAccountId(account.id)}
+                onImportTxn={() => setTxnAccountId(account.id)}
               />
             ))}
           </div>
@@ -185,6 +191,17 @@ export function BankAccountContent({
           fundLabel={FUND_LABEL[importAccount.fund_type]}
         />
       )}
+
+      {txnAccount && (
+        <ImportTxnDialog
+          open={!!txnAccount}
+          onClose={() => setTxnAccountId(null)}
+          ocId={ocId}
+          bankAccountId={txnAccount.id}
+          fundLabel={FUND_LABEL[txnAccount.fund_type]}
+          onImported={() => setRefreshNonce((n) => n + 1)}
+        />
+      )}
     </div>
   );
 }
@@ -193,10 +210,12 @@ function BankAccountCard({
   ocId,
   account,
   onImport,
+  onImportTxn,
 }: {
   ocId: string;
   account: BankAccountSummary;
   onImport: () => void;
+  onImportTxn: () => void;
 }) {
   const [transactions, setTransactions] = useState<BankTransactionRecord[] | null>(null);
   const [undepositedEntries, setUndepositedEntries] = useState<UndepositedFundsEntry[] | null>(null);
@@ -282,9 +301,13 @@ function BankAccountCard({
             <Button variant="outline" size="sm" onClick={() => setManualTxnDialogOpen(true)} className="cursor-pointer">
               Add manual transaction
             </Button>
-            <Button size="sm" onClick={onImport} className="cursor-pointer">
+            <Button variant="outline" size="sm" onClick={onImport} className="cursor-pointer">
               <Upload className="mr-2 h-3.5 w-3.5" />
               Import CSV
+            </Button>
+            <Button size="sm" onClick={onImportTxn} className="cursor-pointer">
+              <Upload className="mr-2 h-3.5 w-3.5" />
+              Import Macquarie TXN
             </Button>
           </div>
         </div>

@@ -30,7 +30,7 @@ export default async function OCsPage() {
         <Link href="/ocs/new">
           <Button>
             <Plus className="mr-2 h-4 w-4" />
-            Create oc
+            Create OC
           </Button>
         </Link>
       </div>
@@ -43,12 +43,12 @@ export default async function OCsPage() {
             No ocs yet
           </p>
           <p className="mt-1 text-sm text-muted-foreground max-w-sm">
-            Create your first oc to start managing lots, levies, and meetings.
+            Create your first OC to start managing lots, levies, and meetings.
           </p>
           <Link href="/ocs/new">
             <Button className="mt-4">
               <Plus className="mr-2 h-4 w-4" />
-              Create oc
+              Create OC
             </Button>
           </Link>
         </div>

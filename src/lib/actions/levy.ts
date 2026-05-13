@@ -31,7 +31,7 @@ export interface LevyPreviewLot {
 export interface LevyPreviewData {
   budget_id: string;
   financial_year: string;
-  fund_type: "administrative" | "capital_works";
+  fund_type: "administrative" | "capital_works" | "maintenance_plan";
   period_label: string;
   period_start: string;
   period_end: string;
@@ -45,7 +45,7 @@ export interface LevyPreviewData {
 export interface LevyBatchSummary {
   id: string;
   financial_year: string;
-  fund_type: "administrative" | "capital_works";
+  fund_type: "administrative" | "capital_works" | "maintenance_plan";
   period_label: string;
   period_start: string;
   period_end: string;
@@ -425,7 +425,7 @@ export async function createLevyBatch(
   data: {
     budget_id: string;
     financial_year: string;
-    fund_type: "administrative" | "capital_works";
+    fund_type: "administrative" | "capital_works" | "maintenance_plan";
     period_label: string;
     period_start: string;
     period_end: string;

@@ -26,7 +26,7 @@ function CategoryCombobox({
 }: {
   categories: BudgetCategory[];
   usedCategoryIds: string[];
-  fundType: "administrative" | "capital_works";
+  fundType: "administrative" | "capital_works" | "maintenance_plan";
   onSelect: (category: { id: string; name: string }) => void;
   onCancel: () => void;
   onUpdateCategoryId?: (tempId: string, realId: string) => void;
@@ -203,7 +203,7 @@ export function CreateBudgetForm({
 }) {
   const ocCode = useOCCode();
   const router = useRouter();
-  const [fundType, setFundType] = useState<"administrative" | "capital_works">("administrative");
+  const [fundType, setFundType] = useState<"administrative" | "capital_works" | "maintenance_plan">("administrative");
   const [items, setItems] = useState<BudgetItem[]>([]);
   const [showCombobox, setShowCombobox] = useState(false);
   const [pending, setPending] = useState(false);

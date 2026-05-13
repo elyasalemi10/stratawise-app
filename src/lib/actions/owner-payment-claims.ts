@@ -438,7 +438,7 @@ export interface NearbyBankTxRow {
   id: string;
   bank_account_id: string;
   bank_account_name: string;
-  fund_type: "administrative" | "capital_works";
+  fund_type: "administrative" | "capital_works" | "maintenance_plan";
   source: "manual" | "csv_import" | "macquarie_txn" | "macquarie_pay";
   transaction_date: string;
   amount: number;
@@ -497,9 +497,9 @@ export async function getNearbyBankTxsForClaim(
   if (accountIds.length === 0) {
     return { ok: true, rows: [], claim_amount: claimAmount, claim_date: c.claim_date };
   }
-  const accountMap = new Map<string, { name: string; fund_type: "administrative" | "capital_works" }>();
+  const accountMap = new Map<string, { name: string; fund_type: "administrative" | "capital_works" | "maintenance_plan" }>();
   for (const a of accounts ?? []) {
-    const row = a as { id: string; account_name: string; fund_type: "administrative" | "capital_works" };
+    const row = a as { id: string; account_name: string; fund_type: "administrative" | "capital_works" | "maintenance_plan" };
     accountMap.set(row.id, { name: row.account_name, fund_type: row.fund_type });
   }
 
@@ -608,7 +608,7 @@ export async function getBankTxSnapshotsByIds(
       amount: number | string;
       description: string | null;
       match_status: MatchStatus;
-      bank_accounts: { oc_id: string; account_name: string; fund_type: "administrative" | "capital_works" };
+      bank_accounts: { oc_id: string; account_name: string; fund_type: "administrative" | "capital_works" | "maintenance_plan" };
     };
     if (row.bank_accounts.oc_id !== c.oc_id) {
       // Refuse to leak any out-of-oc rows. Whole call returns FORBIDDEN.

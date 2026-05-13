@@ -81,7 +81,7 @@ interface LevyFixture {
   levyId: string;
   amount: number;
   amountPaid: number;
-  fundType: "administrative" | "capital_works";
+  fundType: "administrative" | "capital_works" | "maintenance_plan";
 }
 
 async function createCompany(): Promise<string> {
@@ -171,7 +171,7 @@ interface LevyOpts {
   dueDate: string;            // 'YYYY-MM-DD'
   status?: "issued" | "partially_paid" | "overdue" | "paid" | "draft";
   levyType?: "regular" | "special" | "penalty_interest";
-  fundType?: "administrative" | "capital_works";
+  fundType?: "administrative" | "capital_works" | "maintenance_plan";
   lastAccrualDate?: string | null;
   linkedLevyId?: string | null;
   bpayCrn?: string | null;

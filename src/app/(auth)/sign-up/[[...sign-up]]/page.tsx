@@ -62,7 +62,7 @@ function RoleSelector({ onSelect }: { onSelect: (role: Role) => void }) {
               I&apos;m a lot owner
             </p>
             <p className="mt-0.5 text-xs text-muted-foreground">
-              I own a lot in a strata oc and want to view my levies and documents.
+              I own a lot in a strata OC and want to view my levies and documents.
             </p>
           </div>
         </button>

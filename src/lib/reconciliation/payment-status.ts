@@ -16,7 +16,7 @@
 
 import { createServerClient } from "@/lib/supabase";
 
-export type FundType = "administrative" | "capital_works";
+export type FundType = "administrative" | "capital_works" | "maintenance_plan";
 export type LevyPaymentStatusValue = "paid" | "partially_paid" | "outstanding";
 
 export interface LevyPaymentStatus {

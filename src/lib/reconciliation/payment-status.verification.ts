@@ -171,7 +171,7 @@ async function makeLot(fx: Fixture): Promise<string> {
 
 interface NoticeOpts {
   amount?: number;
-  fundType?: "administrative" | "capital_works";
+  fundType?: "administrative" | "capital_works" | "maintenance_plan";
   dueDate?: string;
   periodStart?: string;
 }
@@ -211,7 +211,7 @@ async function makeNotice(
 }
 
 interface DebitOpts {
-  fundType?: "administrative" | "capital_works";
+  fundType?: "administrative" | "capital_works" | "maintenance_plan";
   entryDate?: string;
 }
 async function makeDebit(
@@ -246,7 +246,7 @@ async function makeDebit(
 }
 
 interface CreditOpts {
-  fundType?: "administrative" | "capital_works";
+  fundType?: "administrative" | "capital_works" | "maintenance_plan";
   entryDate?: string;
   reference?: string | null;
   noticeId?: string | null;

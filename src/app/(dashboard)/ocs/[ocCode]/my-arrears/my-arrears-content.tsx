@@ -20,7 +20,7 @@ export function MyArrearsContent({
   rows: MyArrearsLevyRow[];
   outstandingTotal: number;
 }) {
-  // Group rows by lot when owner owns multiple lots in this oc.
+  // Group rows by lot when owner owns multiple lots in this OC.
   const lotGroups = new Map<string, { label: string; rows: MyArrearsLevyRow[] }>();
   for (const r of rows) {
     const label = formatLotLabel(r.lot_number, r.unit_number);

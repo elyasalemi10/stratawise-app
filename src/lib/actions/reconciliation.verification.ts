@@ -971,7 +971,7 @@ async function pp_mkOutstandingNotice(
     referenceOverride?: string;
     bpayCrn?: string | null;
     amount?: number;
-    fundType?: "administrative" | "capital_works";
+    fundType?: "administrative" | "capital_works" | "maintenance_plan";
     dueDate?: string;
     periodStart?: string;
   } = {},

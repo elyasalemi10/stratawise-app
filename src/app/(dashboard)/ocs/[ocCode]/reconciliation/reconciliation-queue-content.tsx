@@ -118,7 +118,7 @@ export function ReconciliationQueueContent({
   const [selectedBankAccount, setSelectedBankAccount] = useState<{
     id: string;
     name: string;
-    fund_type: "administrative" | "capital_works";
+    fund_type: "administrative" | "capital_works" | "maintenance_plan";
   } | null>(null);
 
   // Match-metadata drawer state. We open the drawer at the parent so a single

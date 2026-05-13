@@ -106,7 +106,7 @@ export async function checkOverdueLeviesJob(
     id: string;
     lot_id: string;
     oc_id: string;
-    fund_type: "administrative" | "capital_works";
+    fund_type: "administrative" | "capital_works" | "maintenance_plan";
     reference_number: string;
     amount: number | string;
     amount_paid: number | string;
@@ -179,7 +179,7 @@ interface ProcessLevyContext {
     id: string;
     lot_id: string;
     oc_id: string;
-    fund_type: "administrative" | "capital_works";
+    fund_type: "administrative" | "capital_works" | "maintenance_plan";
     reference_number: string;
     amount: number | string;
     amount_paid: number | string;

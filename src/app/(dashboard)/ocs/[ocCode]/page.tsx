@@ -8,6 +8,7 @@ import { getOC, getOCStats } from "@/lib/actions/oc";
 import { getCurrentProfile } from "@/lib/auth";
 import { resolveOCFromCode } from "@/lib/oc-resolver";
 import { createServerClient } from "@/lib/supabase";
+import { DrnImportPrompt } from "./_components/drn-import-prompt";
 
 interface KPICardProps {
   label: string;
@@ -46,7 +47,7 @@ const formatCurrency = (n: number) =>
 async function LotOwnerDashboard({ ocId, ocCode, profileId }: { ocId: string; ocCode: string; profileId: string }) {
   const supabase = createServerClient();
 
-  // Get the lot owner's lots in this oc
+  // Get the lot owner's lots in this OC
   const { data: memberships } = await supabase
     .from("oc_members")
     .select("lot_id")
@@ -63,7 +64,7 @@ async function LotOwnerDashboard({ ocId, ocCode, profileId }: { ocId: string; oc
         <Home className="h-12 w-12 text-muted-foreground/30" />
         <p className="mt-4 text-base font-medium text-foreground">No lots assigned</p>
         <p className="mt-1 text-sm text-muted-foreground max-w-sm">
-          Your strata manager hasn&apos;t assigned you to a lot in this oc yet.
+          Your strata manager hasn&apos;t assigned you to a lot in this OC yet.
         </p>
       </div>
     );
@@ -203,7 +204,7 @@ async function ManagerDashboard({ ocId }: { ocId: string }) {
       <Card>
         <CardContent className="flex items-center justify-center py-16">
           <p className="text-sm text-muted-foreground">
-            Levies, meetings, and activity will appear here as you build out this oc.
+            Levies, meetings, and activity will appear here as you build out this OC.
           </p>
         </CardContent>
       </Card>
@@ -214,10 +215,13 @@ async function ManagerDashboard({ ocId }: { ocId: string }) {
 // ─── Main Page ───────────────────────────────────────────
 export default async function OCDashboardPage({
   params,
+  searchParams,
 }: {
   params: Promise<{ ocCode: string }>;
+  searchParams?: Promise<{ created?: string; drn?: string }>;
 }) {
   const { ocCode } = await params;
+  const sp = (await searchParams) ?? {};
   const resolved = await resolveOCFromCode(ocCode);
   if (!resolved) redirect("/dashboard");
   const ocId = resolved.id;
@@ -254,5 +258,28 @@ export default async function OCDashboardPage({
     return <LotOwnerDashboard ocId={ocId} ocCode={ocCode} profileId={profile.id} />;
   }
 
-  return <ManagerDashboard ocId={ocId} />;
+  // When the wizard finishes and the OC uses Macquarie DEFT, prompt for the
+  // DRN export CSV. Manager can dismiss with "I'll do this later"; we don't
+  // block the dashboard behind the upload.
+  const showDrnPrompt =
+    (sp.created === "1" || sp.drn === "1") && oc?.bank_provider === "macquarie_deft";
+  let lotsForDrn: Array<{ id: string; lot_number: number; unit_number: string | null }> = [];
+  if (showDrnPrompt) {
+    const supabase = createServerClient();
+    const { data: lots } = await supabase
+      .from("lots")
+      .select("id, lot_number, unit_number")
+      .eq("oc_id", ocId)
+      .order("lot_number");
+    lotsForDrn = lots ?? [];
+  }
+
+  return (
+    <>
+      <ManagerDashboard ocId={ocId} />
+      {showDrnPrompt && (
+        <DrnImportPrompt ocId={ocId} ocCode={ocCode} lots={lotsForDrn} />
+      )}
+    </>
+  );
 }

@@ -8,7 +8,7 @@ export interface BudgetCategory {
   id: string;
   code: string;
   name: string;
-  fund_type: "administrative" | "capital_works";
+  fund_type: "administrative" | "capital_works" | "maintenance_plan";
   sort_order: number;
 }
 
@@ -22,7 +22,7 @@ export interface BudgetWithItems {
   id: string;
   oc_id: string;
   financial_year: string;
-  fund_type: "administrative" | "capital_works";
+  fund_type: "administrative" | "capital_works" | "maintenance_plan";
   total_amount: number;
   status: "draft" | "approved";
   approved_at: string | null;
@@ -47,7 +47,7 @@ export async function getBudgetCategories(): Promise<BudgetCategory[]> {
 
 export async function createBudgetCategory(
   name: string,
-  fundType: "administrative" | "capital_works"
+  fundType: "administrative" | "capital_works" | "maintenance_plan"
 ): Promise<{ id: string; error?: string }> {
   await requireCompanyRole();
   const trimmed = name.trim();
@@ -127,7 +127,7 @@ export async function createBudget(
   ocId: string,
   data: {
     financial_year: string;
-    fund_type: "administrative" | "capital_works";
+    fund_type: "administrative" | "capital_works" | "maintenance_plan";
     items: BudgetItemData[];
   }
 ) {

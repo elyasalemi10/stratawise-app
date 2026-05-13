@@ -60,7 +60,7 @@ export interface LedgerDuplicateReviewPayload {
   current: {
     entry_date: string;
     amount: number;
-    fund_type: "administrative" | "capital_works";
+    fund_type: "administrative" | "capital_works" | "maintenance_plan";
     levy_notice_id: string | null;
     description: string | null;
   };
@@ -159,9 +159,10 @@ function formatDate(iso: string): string {
   }).format(new Date(`${iso}T00:00:00`));
 }
 
-const FUND_LABEL: Record<"administrative" | "capital_works", string> = {
+const FUND_LABEL: Record<"administrative" | "capital_works" | "maintenance_plan", string> = {
   administrative: "Admin fund",
   capital_works: "Capital works",
+  maintenance_plan: "Maintenance plan",
 };
 
 // Maps PP5-B's LedgerDuplicateReviewErrorCode to recoverability.

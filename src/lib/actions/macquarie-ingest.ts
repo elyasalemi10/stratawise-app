@@ -5,6 +5,7 @@ import { createServerClient } from "@/lib/supabase";
 import { parseTxnFile } from "@/lib/macquarie/txn";
 import { looksLikePayFile } from "@/lib/macquarie/pay";
 import { parseDrnCsv, matchDrnsToLots, type DrnMatchResult } from "@/lib/macquarie/drn-import";
+import { tryAutoMatch } from "@/lib/reconciliation/orchestrator";
 
 // ─── Ingest a TXN file into bank_transactions ───────────────────
 //
@@ -21,6 +22,8 @@ import { parseDrnCsv, matchDrnsToLots, type DrnMatchResult } from "@/lib/macquar
 export type TxnIngestSummary = {
   imported: number;
   duplicates: number;
+  /** Of the imported rows, how many auto-matched via the DRN cascade. */
+  autoMatched: number;
   warnings: string[];
 };
 
@@ -71,7 +74,7 @@ export async function uploadMacquarieTxn(
       ),
     );
 
-    const summary: TxnIngestSummary = { imported: 0, duplicates: 0, warnings: [] };
+    const summary: TxnIngestSummary = { imported: 0, duplicates: 0, autoMatched: 0, warnings: [] };
     for (const e of parsed.errors) {
       if (e.lineNumber > 0) {
         summary.warnings.push(`Line ${e.lineNumber}: ${e.message}`);
@@ -79,6 +82,8 @@ export async function uploadMacquarieTxn(
         summary.warnings.push(e.message);
       }
     }
+
+    const profile = await requireCompanyRole();
 
     for (const t of parsed.transactions) {
       const amount = t.signedAmountCents / 100;
@@ -89,7 +94,7 @@ export async function uploadMacquarieTxn(
       }
       seen.add(key);
 
-      const { error: insertErr } = await supabase
+      const { data: inserted, error: insertErr } = await supabase
         .from("bank_transactions")
         .insert({
           bank_account_id: bankAccountId,
@@ -99,12 +104,35 @@ export async function uploadMacquarieTxn(
           description: t.description,
           deft_reference_number: t.deftReferenceNumber || null,
           match_status: "unmatched",
-        });
-      if (insertErr) {
-        summary.warnings.push(`Line ${t.lineNumber}: ${insertErr.message}`);
+        })
+        .select("id")
+        .single();
+      if (insertErr || !inserted) {
+        summary.warnings.push(`Line ${t.lineNumber}: ${insertErr?.message ?? "insert failed"}`);
         continue;
       }
       summary.imported += 1;
+
+      // Auto-match credit transactions. The orchestrator's first strategy is
+      // deft_drn (uses bank_transactions.deft_reference_number); skip debits
+      // which represent OC outflows, not lot-owner receipts.
+      if (amount > 0) {
+        try {
+          const matchOutcome = await tryAutoMatch({
+            bankTransactionId: inserted.id,
+            ocId,
+            bankAccountId,
+            description: t.description,
+            amount,
+            transactionDate: t.transactionDate,
+            performedBy: profile.id,
+          });
+          if (matchOutcome.matched) summary.autoMatched += 1;
+        } catch (err) {
+          console.error(`uploadMacquarieTxn: auto-match failed for line ${t.lineNumber}`, err);
+          // Don't fail the import — the row stays unmatched in the queue.
+        }
+      }
     }
 
     return { summary };

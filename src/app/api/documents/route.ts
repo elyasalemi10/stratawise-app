@@ -62,7 +62,7 @@ export async function POST(request: NextRequest) {
 
   const supabase = createServerClient();
 
-  // If uploading against a lot, ensure the lot belongs to this oc.
+  // If uploading against a lot, ensure the lot belongs to this OC.
   if (lotId) {
     const { data: lot } = await supabase
       .from("lots")
@@ -70,7 +70,7 @@ export async function POST(request: NextRequest) {
       .eq("id", lotId)
       .single();
     if (!lot || lot.oc_id !== ocId) {
-      return NextResponse.json({ error: "Lot does not belong to this oc" }, { status: 400 });
+      return NextResponse.json({ error: "Lot does not belong to this OC" }, { status: 400 });
     }
   }
 

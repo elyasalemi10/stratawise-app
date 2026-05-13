@@ -34,6 +34,7 @@
 // ============================================================================
 
 import { createServerClient } from "@/lib/supabase";
+import { tryDeftDrnMatch } from "./strategies/deft-drn";
 import { tryReferenceMatch } from "./strategies/reference";
 import { tryBpayCrnMatch } from "./strategies/bpay-crn";
 import { tryKnownPayerMatch } from "./strategies/known-payer";
@@ -45,9 +46,10 @@ import { emitPaymentReceivedEmail } from "@/lib/notifications";
 
 // ─── Types ────────────────────────────────────────────────────────────────
 
-export type FundType = "administrative" | "capital_works";
+export type FundType = "administrative" | "capital_works" | "maintenance_plan";
 
 export type StrategyName =
+  | "deft_drn"
   | "reference"
   | "bpay_crn"
   | "known_payer"
@@ -66,6 +68,7 @@ export type MatchConfidence =
 
 export type MatchMethod =
   | "manual"
+  | "auto_deft_drn"
   | "auto_reference"
   | "auto_bpay_crn"
   | "auto_sender"
@@ -87,6 +90,10 @@ export interface AutoMatchInput {
 export interface AutoMatchContext extends AutoMatchInput {
   bankAccountFundType: FundType;
   bpayBillerCode: string | null;
+  /** DEFT Reference Number attached to the transaction by Macquarie's TXN
+   *  file (bytes 120-130 of the transaction record). When non-empty, the
+   *  deft_drn strategy looks it up against `lot_drns` to identify the lot. */
+  deftReferenceNumber: string | null;
 }
 
 export interface Allocation {
@@ -139,6 +146,7 @@ export interface StrategyAttempt {
 const STRATEGY_ORDER: ReadonlyArray<
   readonly [StrategyName, (ctx: AutoMatchContext) => Promise<StrategyOutcome>]
 > = [
+  ["deft_drn", tryDeftDrnMatch],
   ["reference", tryReferenceMatch],
   ["bpay_crn", tryBpayCrnMatch],
   ["known_payer", tryKnownPayerMatch],
@@ -161,7 +169,7 @@ export async function tryAutoMatch(
   const { data: rowRaw } = await supabase
     .from("bank_transactions")
     .select(
-      "duplicate_status, bank_accounts!inner(fund_type, bpay_biller_code)",
+      "duplicate_status, deft_reference_number, bank_accounts!inner(fund_type, bpay_biller_code)",
     )
     .eq("id", input.bankTransactionId)
     .maybeSingle();
@@ -172,6 +180,7 @@ export async function tryAutoMatch(
 
   const row = rowRaw as unknown as {
     duplicate_status: "suspected" | "confirmed" | "rejected" | null;
+    deft_reference_number: string | null;
     bank_accounts: { fund_type: FundType; bpay_biller_code: string | null };
   };
 
@@ -199,6 +208,7 @@ export async function tryAutoMatch(
     ...input,
     bankAccountFundType: row.bank_accounts.fund_type,
     bpayBillerCode: row.bank_accounts.bpay_biller_code ?? null,
+    deftReferenceNumber: row.deft_reference_number ?? null,
   };
 
   // Run strategies in order; stop at first match. fuzzy_hint never matches

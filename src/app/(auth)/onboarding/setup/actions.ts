@@ -132,7 +132,7 @@ export async function createOC(formData: {
 
   const supabase = createServerClient();
 
-  // Create oc
+  // Create OC
   const { data: oc, error: subError } = await supabase
     .from("owners_corporations")
     .insert({
@@ -148,8 +148,8 @@ export async function createOC(formData: {
     .single();
 
   if (subError || !oc) {
-    console.error("Failed to create oc:", subError);
-    return { error: "Failed to create oc. Please try again." };
+    console.error("Failed to create OC:", subError);
+    return { error: "Failed to create OC. Please try again." };
   }
 
   // Create lots
@@ -195,7 +195,7 @@ export async function sendInvitations(invites: { email: string; name: string }[]
 
   const supabase = createServerClient();
 
-  // Get the first oc for this company
+  // Get the first OC for this company
   const { data: oc } = await supabase
     .from("owners_corporations")
     .select("id")
@@ -204,7 +204,7 @@ export async function sendInvitations(invites: { email: string; name: string }[]
     .single();
 
   if (!oc) {
-    return { error: "No oc found. Please complete Step 2 first." };
+    return { error: "No OC found. Please complete Step 2 first." };
   }
 
   const validInvites = invites.filter((inv) => {

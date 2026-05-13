@@ -53,7 +53,7 @@ interface Props {
   ocId: string;
   bankAccountId: string;
   bankAccountName: string;
-  fundType: "administrative" | "capital_works";
+  fundType: "administrative" | "capital_works" | "maintenance_plan";
   defaultLotId?: string;
   onSuccess: () => void;
 }

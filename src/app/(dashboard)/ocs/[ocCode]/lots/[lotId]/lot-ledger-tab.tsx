@@ -504,7 +504,7 @@ export function LedgerTab({
                   Record cash receipt
                 </Button>
               </TooltipTrigger>
-              <TooltipContent>No bank accounts configured for this oc.</TooltipContent>
+              <TooltipContent>No bank accounts configured for this OC.</TooltipContent>
             </Tooltip>
           )}
           <Button

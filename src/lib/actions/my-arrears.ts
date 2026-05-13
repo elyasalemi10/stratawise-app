@@ -42,7 +42,7 @@ export interface MyArrearsLevyRow {
   outstanding: number;
   due_date: string;
   status: "issued" | "partially_paid" | "overdue";
-  fund_type: "administrative" | "capital_works";
+  fund_type: "administrative" | "capital_works" | "maintenance_plan";
   penalty_interest: MyArrearsPenaltyRow[];
 }
 
@@ -98,7 +98,7 @@ export async function getMyArrears(
     amount_paid: number | string;
     due_date: string;
     status: "issued" | "partially_paid" | "overdue";
-    fund_type: "administrative" | "capital_works";
+    fund_type: "administrative" | "capital_works" | "maintenance_plan";
     levy_type: string;
   };
 

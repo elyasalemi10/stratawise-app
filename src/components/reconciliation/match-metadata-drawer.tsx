@@ -45,6 +45,7 @@ type MatchMetadataDrawerProps = {
 };
 
 const STRATEGY_LABELS: Record<StrategyName, string> = {
+  deft_drn: "DEFT Reference Number",
   reference: "Levy reference",
   bpay_crn: "BPAY CRN",
   known_payer: "Known payer",

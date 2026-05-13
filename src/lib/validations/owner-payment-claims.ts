@@ -76,7 +76,7 @@ export type SubmitOwnerPaymentClaimInput = z.infer<typeof submitOwnerPaymentClai
 
 const reconcileAllocationShape = z.object({
   lot_id: z.string().uuid(),
-  fund_type: z.enum(["administrative", "capital_works"]),
+  fund_type: z.enum(["administrative", "capital_works", "maintenance_plan"]),
   amount: z.number().positive().finite(),
   levy_notice_id: z.string().uuid().nullable().optional(),
   reference: z.string().trim().max(100).nullable().optional(),

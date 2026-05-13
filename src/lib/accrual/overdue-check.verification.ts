@@ -149,7 +149,7 @@ interface LevyOpts {
   amountPaid?: number;
   status?: "issued" | "partially_paid" | "overdue" | "paid" | "draft";
   levyType?: "regular" | "special" | "penalty_interest";
-  fundType?: "administrative" | "capital_works";
+  fundType?: "administrative" | "capital_works" | "maintenance_plan";
   dueDate?: string;
   linkedLevyId?: string | null;
 }

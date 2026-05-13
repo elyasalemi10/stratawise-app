@@ -99,9 +99,10 @@ const MIN_REJECTION_REASON_LEN = 10;
 const MAX_NOTES_LEN = 500;
 const ISO_DATE = /^\d{4}-\d{2}-\d{2}$/;
 
-const FUND_TYPE_LABELS: Record<"administrative" | "capital_works", string> = {
+const FUND_TYPE_LABELS: Record<"administrative" | "capital_works" | "maintenance_plan", string> = {
   administrative: "Administrative",
   capital_works: "Capital works",
+  maintenance_plan: "Maintenance plan",
 };
 
 // ─── Form schemas (react-hook-form-driven; reducer doesn't track these) ──
