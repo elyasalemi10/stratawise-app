@@ -1,11 +1,9 @@
 "use client";
 
 import { useState, useRef, useCallback, useEffect } from "react";
-import Image from "next/image";
 import {
-  FileText, Upload, Download, Eye, Pencil, Trash2, X,
+  FileText, Upload, Download, Pencil, Trash2, X,
   FileSpreadsheet, FileImage, File,
-  FolderPlus, ChevronRight, Home,
 } from "lucide-react";
 import { toast } from "sonner";
 import { Card, CardContent } from "@/components/ui/card";
@@ -14,6 +12,27 @@ import { Input } from "@/components/ui/input";
 import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import type { DocumentRecord } from "@/lib/validations/documents";
 import { ALLOWED_EXTENSIONS } from "@/lib/validations/documents";
+
+// Categories drive both the filter row above the grid and the upload-tag row.
+// "all" is the filter sentinel; it's not a valid tag for new uploads.
+const CATEGORY_FILTER_OPTIONS = [
+  { value: "all", label: "All" },
+  { value: "general", label: "General" },
+  { value: "insurance", label: "Insurance" },
+  { value: "levies", label: "Levies" },
+  { value: "meetings", label: "Meetings" },
+  { value: "legal", label: "Legal" },
+  { value: "maintenance", label: "Maintenance" },
+];
+
+const UPLOAD_CATEGORY_OPTIONS = [
+  { value: "other", label: "General" },
+  { value: "insurance", label: "Insurance" },
+  { value: "levies", label: "Levies" },
+  { value: "meetings", label: "Meetings" },
+  { value: "legal", label: "Legal" },
+  { value: "maintenance", label: "Maintenance" },
+];
 
 interface UploadProgress {
   id: string;
@@ -78,15 +97,13 @@ export function DocumentManager({ ocId, lotId, initialDocuments, readOnly }: Doc
   const [deleteDoc, setDeleteDoc] = useState<DocWithUrl | null>(null);
   const [deleting, setDeleting] = useState(false);
   const [previewDoc, setPreviewDoc] = useState<DocWithUrl | null>(null);
-  const [selectedCategory, setSelectedCategory] = useState("other");
-  // Folder navigation: empty string = top level. "Compliance/2026" = nested.
-  const [currentFolder, setCurrentFolder] = useState<string>("");
-  const [newFolderOpen, setNewFolderOpen] = useState(false);
-  const [newFolderName, setNewFolderName] = useState("");
-  // Local-only folder set: tracks folders the user just created so they
-  // appear in the listing even before they hold any documents.
-  const [virtualFolders, setVirtualFolders] = useState<Set<string>>(new Set());
+  // Upload-time tag. "all" is the filter sentinel and isn't a valid tag for new
+  // uploads — when the filter is "all", new uploads default to "other".
+  const [selectedCategory, setSelectedCategory] = useState<string>("other");
+  // Filter: which category to display. "all" = show everything.
+  const [filterCategory, setFilterCategory] = useState<string>("all");
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const [exporting, setExporting] = useState(false);
 
   const uploadFile = useCallback((file: File) => {
     const uploadId = crypto.randomUUID();
@@ -98,7 +115,6 @@ export function DocumentManager({ ocId, lotId, initialDocuments, readOnly }: Doc
     formData.append("oc_id", ocId);
     formData.append("category", selectedCategory);
     if (lotId) formData.append("lot_id", lotId);
-    formData.append("folder_path", currentFolder);
 
     xhr.upload.addEventListener("progress", (e) => {
       if (e.lengthComputable) {
@@ -133,7 +149,7 @@ export function DocumentManager({ ocId, lotId, initialDocuments, readOnly }: Doc
 
     xhr.open("POST", "/api/documents");
     xhr.send(formData);
-  }, [ocId, lotId, selectedCategory, currentFolder]);
+  }, [ocId, lotId, selectedCategory]);
 
   function handleFiles(files: FileList | File[]) {
     Array.from(files).forEach(uploadFile);
@@ -254,49 +270,95 @@ export function DocumentManager({ ocId, lotId, initialDocuments, readOnly }: Doc
 
   return (
     <div className="space-y-4">
-      {/* Top-right Upload button + category chip row. Big paste area removed —
-          users drag files anywhere on the page and a floating overlay appears
-          (see useEffect above). Clicking Upload opens the native picker. */}
-      {!readOnly && (
-        <div className="flex items-center justify-between gap-3">
-          <div className="flex flex-wrap items-center gap-2">
-            <span className="text-xs text-muted-foreground">Tag:</span>
-            {["other", "insurance", "levy", "meeting", "legal", "maintenance"].map((cat) => (
-              <button
-                key={cat}
-                type="button"
-                onClick={() => setSelectedCategory(cat)}
-                className={`px-2.5 py-0.5 rounded-full text-xs font-medium cursor-pointer transition-colors ${
-                  selectedCategory === cat
-                    ? "bg-primary text-white"
-                    : "bg-muted text-muted-foreground hover:bg-muted/80"
-                }`}
-              >
-                {cat === "other" ? "General" : cat.charAt(0).toUpperCase() + cat.slice(1)}
-              </button>
-            ))}
-          </div>
+      {/* Category filter pills + Upload + Export. Drop the folder tree entirely
+          — categories ARE the folders for retrieval; Export reshapes the flat
+          set into a folder structure when the user actually wants one. */}
+      <div className="flex items-center justify-between gap-3">
+        <div className="flex flex-wrap items-center gap-2">
+          {CATEGORY_FILTER_OPTIONS.map((opt) => (
+            <button
+              key={opt.value}
+              type="button"
+              onClick={() => setFilterCategory(opt.value)}
+              className={`px-3 py-1 rounded-full text-xs font-medium cursor-pointer transition-colors ${
+                filterCategory === opt.value
+                  ? "bg-primary text-primary-foreground"
+                  : "bg-muted text-muted-foreground hover:bg-muted/80"
+              }`}
+            >
+              {opt.label}
+            </button>
+          ))}
+        </div>
+        {!readOnly && (
           <div className="flex items-center gap-2">
-            <Button variant="outline" size="sm" onClick={() => setNewFolderOpen(true)}>
-              <FolderPlus className="mr-2 h-3.5 w-3.5" />
-              New folder
+            <Button
+              variant="outline"
+              size="sm"
+              disabled={exporting || documents.length === 0}
+              onClick={async () => {
+                setExporting(true);
+                try {
+                  const res = await fetch(`/api/documents/export?oc_id=${ocId}`);
+                  if (!res.ok) {
+                    toast.error("Couldn't generate the export.");
+                    return;
+                  }
+                  const blob = await res.blob();
+                  const url = URL.createObjectURL(blob);
+                  const a = document.createElement("a");
+                  a.href = url;
+                  a.download = `oc-documents-${new Date().toISOString().slice(0, 10)}.zip`;
+                  a.click();
+                  URL.revokeObjectURL(url);
+                } finally {
+                  setExporting(false);
+                }
+              }}
+            >
+              <Download className="mr-2 h-3.5 w-3.5" />
+              {exporting ? "Preparing…" : "Export ZIP"}
             </Button>
             <Button size="sm" onClick={() => fileInputRef.current?.click()}>
               <Upload className="mr-2 h-3.5 w-3.5" />
               Upload
             </Button>
+            <input
+              ref={fileInputRef}
+              type="file"
+              multiple
+              accept={ACCEPT_STRING}
+              className="hidden"
+              onChange={(e) => {
+                if (e.target.files) handleFiles(e.target.files);
+                e.target.value = "";
+              }}
+            />
           </div>
-          <input
-            ref={fileInputRef}
-            type="file"
-            multiple
-            accept={ACCEPT_STRING}
-            className="hidden"
-            onChange={(e) => {
-              if (e.target.files) handleFiles(e.target.files);
-              e.target.value = "";
-            }}
-          />
+        )}
+      </div>
+
+      {/* Tag row for uploads (only when readOnly=false). Separate from the
+          filter pills above because they answer different questions: filter =
+          "what do I want to see now"; tag = "what should new uploads be
+          tagged as." */}
+      {!readOnly && (
+        <div className="flex flex-wrap items-center gap-2 text-xs">
+          <span className="text-muted-foreground">New uploads tagged as:</span>
+          {UPLOAD_CATEGORY_OPTIONS.map((opt) => (
+            <button
+              key={opt.value}
+              type="button"
+              onClick={() => setSelectedCategory(opt.value)}
+              className={`px-2 py-0.5 rounded-full font-medium cursor-pointer transition-colors ${
+                selectedCategory === opt.value
+                  ? "bg-primary/10 text-primary border border-primary/40"
+                  : "border border-border text-muted-foreground hover:bg-muted/80"
+              }`}
+            >
+              {opt.label}
+            </button>
+          ))}
         </div>
       )}
 
@@ -356,68 +418,23 @@ export function DocumentManager({ ocId, lotId, initialDocuments, readOnly }: Doc
         </div>
       )}
 
-      {/* Breadcrumb. "Home" jumps to top level; each segment is clickable. */}
-      <div className="flex items-center gap-1 text-sm">
-        <button
-          type="button"
-          onClick={() => setCurrentFolder("")}
-          className="inline-flex items-center gap-1 text-muted-foreground hover:text-foreground cursor-pointer"
-        >
-          <Home className="h-3.5 w-3.5" /> Documents
-        </button>
-        {currentFolder.split("/").filter(Boolean).map((seg, idx, arr) => {
-          const path = arr.slice(0, idx + 1).join("/");
-          const isLast = idx === arr.length - 1;
-          return (
-            <span key={path} className="inline-flex items-center gap-1">
-              <ChevronRight className="h-3.5 w-3.5 text-muted-foreground" />
-              <button
-                type="button"
-                onClick={() => setCurrentFolder(path)}
-                className={isLast ? "font-medium text-foreground" : "text-muted-foreground hover:text-foreground cursor-pointer"}
-              >
-                {seg}
-              </button>
-            </span>
-          );
-        })}
-      </div>
-
-      {/* Compute folder + document slices for the current path. */}
-      {(() => null)()}
-      {/* Document grid */}
+      {/* Document grid. Flat list filtered by selected category. */}
       {(() => {
-        const folderPrefix = currentFolder === "" ? "" : `${currentFolder}/`;
-        const visibleDocs = documents.filter((d) => (d.folder_path ?? "") === currentFolder);
-        const subfolderSet = new Set<string>();
-        for (const d of documents) {
-          const fp = d.folder_path ?? "";
-          if (folderPrefix === "") {
-            const first = fp.split("/")[0];
-            if (first) subfolderSet.add(first);
-          } else if (fp.startsWith(folderPrefix)) {
-            const rest = fp.slice(folderPrefix.length);
-            const first = rest.split("/")[0];
-            if (first) subfolderSet.add(first);
-          }
-        }
-        // Plus user-just-created folders at this path.
-        for (const f of virtualFolders) {
-          if (folderPrefix === "" && !f.includes("/")) subfolderSet.add(f);
-          else if (f.startsWith(folderPrefix)) {
-            const rest = f.slice(folderPrefix.length);
-            const first = rest.split("/")[0];
-            if (first) subfolderSet.add(first);
-          }
-        }
-        const subfolders = Array.from(subfolderSet).sort();
-        const empty = visibleDocs.length === 0 && subfolders.length === 0 && uploads.length === 0;
-        if (empty) {
+        const visibleDocs = filterCategory === "all"
+          ? documents
+          : documents.filter((d) => {
+              const cat = (d.category ?? "other").toLowerCase();
+              if (filterCategory === "general") return cat === "other" || cat === "general";
+              return cat === filterCategory;
+            });
+        if (visibleDocs.length === 0 && uploads.length === 0) {
           return (
             <Card>
               <CardContent className="flex flex-col items-center justify-center py-16 text-center">
                 <FileText className="h-10 w-10 text-muted-foreground/30" />
-                <p className="mt-3 text-sm font-medium text-foreground">No documents in this folder yet</p>
+                <p className="mt-3 text-sm font-medium text-foreground">
+                  {filterCategory === "all" ? "No documents yet" : "No documents in this category"}
+                </p>
                 <p className="mt-1 text-xs text-muted-foreground">
                   {readOnly ? "Documents will appear here once uploaded by your strata manager." : "Click Upload above, or drag files anywhere on the page."}
                 </p>
@@ -427,30 +444,6 @@ export function DocumentManager({ ocId, lotId, initialDocuments, readOnly }: Doc
         }
         return (
         <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
-          {subfolders.map((name) => {
-            const fullPath = folderPrefix + name;
-            return (
-              <Card
-                key={`folder-${fullPath}`}
-                className="cursor-pointer transition-colors hover:border-primary/30"
-                onClick={() => setCurrentFolder(fullPath)}
-              >
-                <CardContent className="p-3">
-                  <div className="flex items-center justify-center h-24 rounded-md bg-muted/50 mb-3">
-                    <Image
-                      src="/folder-icon.png"
-                      alt=""
-                      width={48}
-                      height={48}
-                      className="h-12 w-12 object-contain"
-                    />
-                  </div>
-                  <p className="truncate text-sm font-medium text-foreground" title={name}>{name}</p>
-                  <p className="text-xs text-muted-foreground">Folder</p>
-                </CardContent>
-              </Card>
-            );
-          })}
           {visibleDocs.map((doc) => {
             const isImage = doc.mime_type?.startsWith("image/");
             return (
@@ -607,55 +600,6 @@ export function DocumentManager({ ocId, lotId, initialDocuments, readOnly }: Doc
         </DialogContent>
       </Dialog>
 
-      {/* New-folder dialog. Folders are virtual — they're materialised the
-          first time a doc is uploaded to that path. We track unmaterialised
-          folders client-side via `virtualFolders`. */}
-      <Dialog open={newFolderOpen} onOpenChange={(v) => { if (!v) { setNewFolderOpen(false); setNewFolderName(""); } }}>
-        <DialogContent>
-          <DialogHeader>
-            <DialogTitle>New folder</DialogTitle>
-          </DialogHeader>
-          <div className="space-y-2">
-            <p className="text-xs text-muted-foreground">
-              Creating in: <span className="font-medium text-foreground">{currentFolder || "Documents"}</span>
-            </p>
-            <Input
-              autoFocus
-              placeholder="Folder name"
-              value={newFolderName}
-              onChange={(e) => setNewFolderName(e.target.value)}
-              onKeyDown={(e) => {
-                if (e.key === "Enter") {
-                  e.preventDefault();
-                  const name = newFolderName.trim().replace(/\//g, "");
-                  if (!name) return;
-                  const full = (currentFolder ? `${currentFolder}/` : "") + name;
-                  setVirtualFolders((prev) => new Set(prev).add(full));
-                  setCurrentFolder(full);
-                  setNewFolderOpen(false);
-                  setNewFolderName("");
-                }
-              }}
-            />
-          </div>
-          <DialogFooter>
-            <Button variant="ghost" onClick={() => { setNewFolderOpen(false); setNewFolderName(""); }}>Cancel</Button>
-            <Button
-              onClick={() => {
-                const name = newFolderName.trim().replace(/\//g, "");
-                if (!name) return;
-                const full = (currentFolder ? `${currentFolder}/` : "") + name;
-                setVirtualFolders((prev) => new Set(prev).add(full));
-                setCurrentFolder(full);
-                setNewFolderOpen(false);
-                setNewFolderName("");
-              }}
-            >
-              Create
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
     </div>
   );
 }
