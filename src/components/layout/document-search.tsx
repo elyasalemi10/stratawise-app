@@ -54,20 +54,20 @@ export function DocumentSearch() {
 
   return (
     <div ref={wrapperRef} className="relative w-full max-w-md">
-      <div className="flex h-10 items-center rounded-md border border-border bg-card focus-within:border-foreground/40">
-        <div className="flex items-center pl-3 pr-3 border-r border-border">
+      <div className="flex h-11 items-center rounded-xl border-2 border-border bg-card focus-within:border-primary/40">
+        <div className="flex items-center pl-4 pr-3 border-r border-border">
           <Search className="h-4 w-4 text-foreground" />
         </div>
         <input
           type="search"
-          placeholder="Search for a document"
+          placeholder="Search anything"
           value={query}
           onChange={(e) => onInput(e.target.value)}
           onFocus={() => hits.length > 0 && setOpen(true)}
           className="flex-1 bg-transparent px-3 text-sm outline-none placeholder:text-muted-foreground"
         />
         {loading && (
-          <Loader2 className="mr-3 h-4 w-4 animate-spin text-muted-foreground" />
+          <Loader2 className="mr-4 h-4 w-4 animate-spin text-muted-foreground" />
         )}
       </div>
 

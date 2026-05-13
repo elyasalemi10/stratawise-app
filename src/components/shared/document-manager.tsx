@@ -1,10 +1,11 @@
 "use client";
 
 import { useState, useRef, useCallback, useEffect } from "react";
+import Image from "next/image";
 import {
   FileText, Upload, Download, Eye, Pencil, Trash2, X,
   FileSpreadsheet, FileImage, File,
-  Folder, FolderPlus, ChevronRight, Home,
+  FolderPlus, ChevronRight, Home,
 } from "lucide-react";
 import { toast } from "sonner";
 import { Card, CardContent } from "@/components/ui/card";
@@ -436,7 +437,13 @@ export function DocumentManager({ ocId, lotId, initialDocuments, readOnly }: Doc
               >
                 <CardContent className="p-3">
                   <div className="flex items-center justify-center h-24 rounded-md bg-muted/50 mb-3">
-                    <Folder className="h-10 w-10 text-primary/70" />
+                    <Image
+                      src="/folder-icon.png"
+                      alt=""
+                      width={48}
+                      height={48}
+                      className="h-12 w-12 object-contain"
+                    />
                   </div>
                   <p className="truncate text-sm font-medium text-foreground" title={name}>{name}</p>
                   <p className="text-xs text-muted-foreground">Folder</p>

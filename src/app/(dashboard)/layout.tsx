@@ -35,7 +35,7 @@ export default async function DashboardLayout({
         initialOCs={sidebarOCs}
       />
       <SidebarInset>
-        <header className="sticky top-0 z-30 flex h-12 shrink-0 items-center gap-2 border-b border-border bg-card px-4 lg:px-6">
+        <header className="sticky top-0 z-30 flex h-16 shrink-0 items-center gap-3 border-b border-border bg-card px-4 lg:px-6">
           <SidebarTrigger className="-ml-1" />
           <Header initialOCs={sidebarOCs} />
         </header>
