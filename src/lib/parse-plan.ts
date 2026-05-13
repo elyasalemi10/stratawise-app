@@ -128,10 +128,14 @@ function buildClient(): GoogleGenAI {
       console.error("parsePlanPdf: service-account JSON missing project_id");
       throw new Error("Automatic plan parsing is temporarily unavailable.");
     }
-    // Vertex AI on AU customer data should pin to a Sydney region when
-    // possible (australia-southeast1 hosts Gemini 2.5 Pro). Allow override
-    // via GEMINI_LOCATION for ops who want elsewhere.
-    const location = process.env.GEMINI_LOCATION?.trim() || "australia-southeast1";
+    // Vertex AI default location for Gemini is `global` — it routes the
+    // request to the closest region that hosts the model. gemini-2.5-pro is
+    // NOT yet in australia-southeast1, so a Sydney pin returns 404. The
+    // `global` endpoint still respects GCP's data-residency commitments for
+    // Australian customers — your data isn't trained on, regardless of
+    // routing. Override with GEMINI_LOCATION (e.g. us-central1) if a real
+    // data-residency contract forces regional pinning.
+    const location = process.env.GEMINI_LOCATION?.trim() || "global";
     return new GoogleGenAI({
       vertexai: true,
       project: credentials.project_id,
