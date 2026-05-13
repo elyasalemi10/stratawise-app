@@ -6,6 +6,7 @@ import { Plus, Trash2, AlertTriangle, Loader2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { NumberInput } from "@/components/ui/number-input";
 import { VicAddressAutocomplete, type ParsedAddress } from "@/components/shared/vic-address-autocomplete";
 import { saveStep, type DraftJson, type DraftLot } from "../actions";
 
@@ -197,10 +198,14 @@ export function Page2Review({
         {/* Lot schedule */}
         <div className="space-y-2 pt-2">
           <div className="flex items-center justify-between">
-            <Label>
-              Lot schedule — <span className="font-normal text-muted-foreground">{lots.length} lot{lots.length === 1 ? "" : "s"}</span>
-            </Label>
-            <Button type="button" variant="secondary" size="sm" onClick={addLot}>
+            <Label>Lot schedule</Label>
+            <Button
+              type="button"
+              variant="secondary"
+              size="sm"
+              onClick={addLot}
+              className={lots.length < 2 ? "border border-destructive ring-2 ring-destructive/20" : undefined}
+            >
               <Plus className="mr-1.5 h-3.5 w-3.5" />
               Add lot
             </Button>
@@ -215,10 +220,10 @@ export function Page2Review({
               <table className="w-full text-sm">
                 <thead className="bg-muted/50 text-muted-foreground">
                   <tr className="text-xs uppercase tracking-wide">
-                    <th className="px-3 py-2 text-left font-medium">Lot #</th>
-                    <th className="px-3 py-2 text-left font-medium">Unit #</th>
-                    <th className="px-3 py-2 text-right font-medium">Unit entitlement</th>
-                    <th className="px-3 py-2 text-right font-medium">Lot liability</th>
+                    <th className="px-3 py-2 text-left font-medium">Lot number</th>
+                    <th className="px-3 py-2 text-left font-medium">Unit number</th>
+                    <th className="px-3 py-2 text-left font-medium">Units of entitlement</th>
+                    <th className="px-3 py-2 text-left font-medium">Lot liability</th>
                     <th className="w-10" />
                   </tr>
                 </thead>
@@ -228,11 +233,10 @@ export function Page2Review({
                     return (
                     <tr key={idx} className="border-t border-border">
                       <td className="px-3 py-1.5">
-                        <Input
-                          type="number"
-                          min={1}
-                          value={lot.lot_number}
-                          onChange={(e) => updateLot(idx, { lot_number: parseInt(e.target.value, 10) || 0 })}
+                        <NumberInput
+                          allowDecimal={false}
+                          value={lot.lot_number ? String(lot.lot_number) : ""}
+                          onChange={(v) => updateLot(idx, { lot_number: parseInt(v, 10) || 0 })}
                           className="h-8"
                         />
                       </td>
@@ -244,25 +248,19 @@ export function Page2Review({
                           className="h-8"
                         />
                       </td>
-                      <td className="px-3 py-1.5 text-right">
-                        <Input
-                          type="number"
-                          step="any"
-                          min={0}
-                          value={lot.unit_entitlement}
-                          onChange={(e) => updateLot(idx, { unit_entitlement: parseFloat(e.target.value) || 0 })}
-                          aria-invalid={entitlementBad || undefined}
-                          className="h-8 text-right"
+                      <td className="px-3 py-1.5">
+                        <NumberInput
+                          value={lot.unit_entitlement ? String(lot.unit_entitlement) : ""}
+                          onChange={(v) => updateLot(idx, { unit_entitlement: parseFloat(v) || 0 })}
+                          invalid={entitlementBad}
+                          className="h-8"
                         />
                       </td>
-                      <td className="px-3 py-1.5 text-right">
-                        <Input
-                          type="number"
-                          step="any"
-                          min={0}
-                          value={lot.lot_liability}
-                          onChange={(e) => updateLot(idx, { lot_liability: parseFloat(e.target.value) || 0 })}
-                          className="h-8 text-right"
+                      <td className="px-3 py-1.5">
+                        <NumberInput
+                          value={lot.lot_liability ? String(lot.lot_liability) : ""}
+                          onChange={(v) => updateLot(idx, { lot_liability: parseFloat(v) || 0 })}
+                          className="h-8"
                         />
                       </td>
                       <td className="px-3 py-1.5 text-right">
@@ -281,8 +279,8 @@ export function Page2Review({
                 <tfoot className="bg-muted/30 text-xs font-medium">
                   <tr className="border-t border-border">
                     <td className="px-3 py-2" colSpan={2}>Totals</td>
-                    <td className="px-3 py-2 text-right tabular-nums">{totalEntitlement.toLocaleString()}</td>
-                    <td className="px-3 py-2 text-right tabular-nums">{totalLiability.toLocaleString()}</td>
+                    <td className="px-3 py-2 text-left tabular-nums">{totalEntitlement.toLocaleString()}</td>
+                    <td className="px-3 py-2 text-left tabular-nums">{totalLiability.toLocaleString()}</td>
                     <td />
                   </tr>
                 </tfoot>
@@ -290,15 +288,6 @@ export function Page2Review({
             </div>
           )}
 
-          {lots.length > 0 && !sensibleTotals && (
-            <div className="flex items-start gap-2 rounded-md border border-amber-200 bg-amber-50 px-3 py-2">
-              <AlertTriangle className="mt-0.5 h-3.5 w-3.5 text-amber-600 shrink-0" />
-              <p className="text-xs text-amber-900">
-                Totals sum to {totalEntitlement.toLocaleString()}. Most plans sum to 100 or 1000.
-                Check the lot schedule on your plan.
-              </p>
-            </div>
-          )}
         </div>
       </div>
 

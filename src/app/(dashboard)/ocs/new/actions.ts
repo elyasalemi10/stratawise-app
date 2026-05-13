@@ -522,6 +522,25 @@ export async function completeWizard(draftId: string) {
       .update({ promoted_oc_id: oc.id, promoted_at: new Date().toISOString() })
       .eq("id", draft.id);
 
+    // Item 22: persist the uploaded Plan-of-Subdivision PDF as a document on
+    // the new OC. The file is already in R2 at draft.plan_storage_key; we
+    // just register a documents row pointing at it so it surfaces in the OC's
+    // documents tab and is full-text searchable once OCR completes.
+    if (draft.plan_storage_key && draft.plan_filename) {
+      await supabase.from("documents").insert({
+        oc_id: oc.id,
+        lot_id: null,
+        category: "plan_of_subdivision",
+        file_name: draft.plan_filename,
+        file_path: draft.plan_storage_key,
+        file_size: draft.plan_size_bytes ?? null,
+        mime_type: "application/pdf",
+        is_confidential: false,
+        uploaded_by: profile.id,
+        ocr_status: "pending",
+      });
+    }
+
     // Audit.
     await supabase.from("audit_log").insert({
       profile_id: profile.id,

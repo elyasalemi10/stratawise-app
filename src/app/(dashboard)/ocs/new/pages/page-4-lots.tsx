@@ -169,12 +169,33 @@ export function Page4Lots({
     reader.readAsText(file);
   }
 
-  async function persistAndAdvance(nextStep: number) {
-    // Validate contact details (at least email or postal address per row).
+  async function persistAndAdvance(nextStep: number, skipped = false) {
+    // Item 15: validate everything the user filled in. Empty rows are
+    // allowed — owners can be added later — but anything typed must be
+    // shape-correct. Skip path bypasses per-row validation.
     const problems: string[] = [];
-    for (const l of lots) {
-      if (l.owner_email && !isValidEmail(l.owner_email)) problems.push(`Lot ${l.lot_number}: invalid email`);
-      if (l.owner_phone && !isValidAuPhone(l.owner_phone)) problems.push(`Lot ${l.lot_number}: invalid phone`);
+    if (!skipped) {
+      // Notice address: must be non-empty (defaults to OC address; user
+      // could have cleared it).
+      if (!noticeAddress || noticeAddress.trim().length < 3) {
+        problems.push("Address for service of notices is required.");
+      }
+      for (const l of lots) {
+        const hasOwner = !!(l.owner_name || l.owner_email || l.owner_phone || l.owner_postal_address);
+        if (l.owner_email && !isValidEmail(l.owner_email)) problems.push(`Lot ${l.lot_number}: invalid email`);
+        if (l.owner_phone && !isValidAuPhone(l.owner_phone)) problems.push(`Lot ${l.lot_number}: invalid phone`);
+        // If owner-occupied is off, expect either a tenant name or a tenant contact.
+        const tenantOpen = l.is_occupied_by_owner === false;
+        if (tenantOpen && !(l.tenant_name || l.tenant_email || l.tenant_phone)) {
+          problems.push(`Lot ${l.lot_number}: tenant fields are empty — toggle owner-occupied back on or add tenant contact.`);
+        }
+        // If the row has ANY owner info, name is required.
+        if (hasOwner && !l.owner_name?.trim()) {
+          problems.push(`Lot ${l.lot_number}: owner name required when other owner fields are filled.`);
+        }
+        if (l.tenant_email && !isValidEmail(l.tenant_email)) problems.push(`Lot ${l.lot_number}: invalid tenant email`);
+        if (l.tenant_phone && !isValidAuPhone(l.tenant_phone)) problems.push(`Lot ${l.lot_number}: invalid tenant phone`);
+      }
     }
     if (problems.length) {
       toast.error(problems.length === 1 ? problems[0] : `${problems.length} rows have errors — see highlights.`);
@@ -424,7 +445,7 @@ export function Page4Lots({
           </DialogHeader>
           <DialogFooter>
             <Button variant="ghost" onClick={() => setConfirmSkipOpen(false)}>Cancel</Button>
-            <Button onClick={() => { setConfirmSkipOpen(false); void persistAndAdvance(5); }}>
+            <Button onClick={() => { setConfirmSkipOpen(false); void persistAndAdvance(5, true); }}>
               Skip anyway
             </Button>
           </DialogFooter>

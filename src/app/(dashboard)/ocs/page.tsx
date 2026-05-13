@@ -16,31 +16,31 @@ export default async function OCsPage() {
 
   return (
     <div className="space-y-6">
-      {/* Actions bar — hide the 0/0 count when there's nothing to count yet */}
-      <div className="flex items-center justify-between">
-        <div>
-          {ocs.length > 0 && (
-            <p className="text-sm text-muted-foreground">
-              {ocs.length} oc{ocs.length !== 1 ? "s" : ""}
-              {" · "}
-              {summary?.totalLots ?? 0} total lots
-            </p>
-          )}
+      {/* Actions bar. The top-right Create OC button is hidden when there are
+          no OCs — two CTAs (top-right + center empty state) felt noisy. The
+          centered Create OC in the empty state is the only one in that case. */}
+      {ocs.length > 0 && (
+        <div className="flex items-center justify-between">
+          <p className="text-sm text-muted-foreground">
+            {ocs.length} OC{ocs.length !== 1 ? "s" : ""}
+            {" · "}
+            {summary?.totalLots ?? 0} total lots
+          </p>
+          <Link href="/ocs/new">
+            <Button>
+              <Plus className="mr-2 h-4 w-4" />
+              Create OC
+            </Button>
+          </Link>
         </div>
-        <Link href="/ocs/new">
-          <Button>
-            <Plus className="mr-2 h-4 w-4" />
-            Create OC
-          </Button>
-        </Link>
-      </div>
+      )}
 
       {/* OC grid */}
       {ocs.length === 0 ? (
         <div className="flex flex-col items-center justify-center py-20 text-center">
           <Building2 className="h-12 w-12 text-muted-foreground/30" />
           <p className="mt-4 text-base font-medium text-foreground">
-            No ocs yet
+            No OCs yet
           </p>
           <p className="mt-1 text-sm text-muted-foreground max-w-sm">
             Create your first OC to start managing lots, levies, and meetings.

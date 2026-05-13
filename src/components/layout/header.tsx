@@ -124,33 +124,20 @@ export function Header({ initialOCs }: HeaderProps) {
   const pathname = usePathname();
   const breadcrumbs = buildBreadcrumbs(pathname);
 
-  const [ocs, setOCs] = useState<SidebarOC[]>(initialOCs);
-
-  // No on-mount fetch — server layout already handed us fresh data.
-  // Only refetch when a mutation broadcasts a refresh event.
+  // Sidebar cache is read by app-sidebar.tsx; we keep this header in sync so
+  // a navigation event that mutates the OC list (e.g. wizard finish) re-seeds
+  // both surfaces.
   useEffect(() => {
     setCachedOCs(initialOCs);
 
     function onRefresh() {
       getSidebarOCs()
-        .then((data) => {
-          setOCs(data);
-          setCachedOCs(data);
-        })
+        .then((data) => setCachedOCs(data))
         .catch(() => {});
     }
     window.addEventListener(SIDEBAR_REFRESH_EVENT, onRefresh);
     return () => window.removeEventListener(SIDEBAR_REFRESH_EVENT, onRefresh);
   }, [initialOCs]);
-
-  const ocMatch = pathname.match(/^\/ocs\/([^/]+)/);
-  const currentCode = ocMatch?.[1] ?? null;
-  const isInOC = currentCode !== null && isOCCode(currentCode);
-  const currentOC = ocs.find((s) => s.short_code === currentCode);
-
-  const centerTitle = isInOC
-    ? (currentOC?.name ?? null)
-    : "Main dashboard";
 
   return (
     <div className="grid grid-cols-3 items-center flex-1 gap-4">
@@ -187,11 +174,9 @@ export function Header({ initialOCs }: HeaderProps) {
         <DocumentSearch />
       </div>
 
-      {/* Notification bell — right */}
-      <div className="flex items-center justify-end gap-3">
-        {centerTitle && (
-          <span className="hidden font-medium text-muted-foreground xl:inline truncate">{centerTitle}</span>
-        )}
+      {/* Notification bell — right. Center title was removed: the sidebar's
+          larger switcher already shows the current dashboard. */}
+      <div className="flex items-center justify-end">
         <NotificationBell />
       </div>
     </div>

@@ -7,6 +7,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Checkbox } from "@/components/ui/checkbox";
+import { Switch } from "@/components/ui/switch";
 import { BankSelect } from "@/components/shared/bank-select";
 import { saveStep, type DraftJson } from "../actions";
 
@@ -141,9 +142,11 @@ export function Page5Trust({
   const tier = tierForLotCount(totalLots, initialDraft.services_only ?? false);
   const isTier1or2 = tier <= 2;
 
+  // Item 17: no prefilled account names. Manager types each one from scratch.
+  void ocName;
   const [admin, setAdmin] = useState<FundFields>({
     bankId: initialDraft.admin_bank_id ?? "",
-    accountName: initialDraft.admin_account_name ?? (ocName ? `${ocName} Trust Account` : ""),
+    accountName: initialDraft.admin_account_name ?? "",
     bsb: initialDraft.admin_bsb ?? "",
     accountNumber: initialDraft.admin_account_number ?? "",
   });
@@ -153,7 +156,7 @@ export function Page5Trust({
   );
   const [capital, setCapital] = useState<FundFields>({
     bankId: initialDraft.capital_bank_id ?? "",
-    accountName: initialDraft.capital_account_name ?? (ocName ? `${ocName} Capital Works Trust Account` : ""),
+    accountName: initialDraft.capital_account_name ?? "",
     bsb: initialDraft.capital_bsb ?? "",
     accountNumber: initialDraft.capital_account_number ?? "",
   });
@@ -168,7 +171,7 @@ export function Page5Trust({
   );
   const [maintenance, setMaintenance] = useState<FundFields>({
     bankId: initialDraft.maintenance_bank_id ?? "",
-    accountName: initialDraft.maintenance_account_name ?? (ocName ? `${ocName} Maintenance Plan Trust Account` : ""),
+    accountName: initialDraft.maintenance_account_name ?? "",
     bsb: initialDraft.maintenance_bsb ?? "",
     accountNumber: initialDraft.maintenance_account_number ?? "",
   });
@@ -315,27 +318,18 @@ export function Page5Trust({
 
       {/* Maintenance plan fund (optional toggle; forced for Tier 1/2). */}
       <div className="rounded-md border border-border bg-card p-4 space-y-3">
-        <div className="flex items-start justify-between gap-3">
-          <div>
-            <h3 className="text-sm font-semibold text-foreground">Maintenance plan fund</h3>
-            <p className="mt-0.5 text-xs text-muted-foreground">
-              {isTier1or2
-                ? `Mandatory for Tier ${tier}.`
-                : "Optional reserve aligned to a long-term maintenance plan."}
-            </p>
-          </div>
-          <div className="flex items-center gap-2">
-            <Checkbox
-              id="has-maintenance"
-              checked={hasMaintenance}
-              onCheckedChange={(v) => setHasMaintenance(v === true)}
-              disabled={isTier1or2}
-            />
-            <Label className="text-sm font-normal text-foreground">
-              This OC has a maintenance plan fund
-            </Label>
-          </div>
+        <div className="flex items-center justify-between gap-3">
+          <h3 className="text-sm font-semibold text-foreground">Maintenance plan fund</h3>
+          <Switch
+            checked={hasMaintenance}
+            onCheckedChange={(v) => setHasMaintenance(v === true)}
+            disabled={isTier1or2}
+            aria-label="This OC has a maintenance plan fund"
+          />
         </div>
+        {isTier1or2 && (
+          <p className="text-xs text-muted-foreground">Mandatory for Tier {tier}.</p>
+        )}
         {hasMaintenance && (
           <>
             <div className="flex items-center gap-3 border-t border-border pt-3">

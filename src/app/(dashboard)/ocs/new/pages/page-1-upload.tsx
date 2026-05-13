@@ -145,54 +145,47 @@ export function Page1Upload({
         </div>
       )}
 
-      {/* Status panel */}
+      {/* Status panel — centered, single spinner, no left/right loading bar. */}
       {filename && status !== "idle" && (
-        <div className="rounded-md border border-border bg-card p-4">
-          <div className="flex items-start gap-3">
+        <div className="relative rounded-md border border-border bg-card p-6">
+          <div className="flex flex-col items-center text-center gap-3">
             {status === "uploading" || status === "parsing" ? (
-              <Loader2 className="mt-0.5 h-5 w-5 animate-spin text-primary" />
+              <Loader2 className="h-8 w-8 animate-spin text-primary" />
             ) : status === "complete" ? (
-              <CheckCircle2 className="mt-0.5 h-5 w-5 text-green-600" />
+              <CheckCircle2 className="h-8 w-8 text-green-600" />
             ) : (
-              <AlertTriangle className="mt-0.5 h-5 w-5 text-amber-600" />
+              <AlertTriangle className="h-8 w-8 text-amber-600" />
             )}
-            <div className="flex-1 min-w-0">
-              <div className="flex items-center gap-2">
-                <FileText className="h-3.5 w-3.5 text-muted-foreground shrink-0" />
-                <p className="text-sm font-medium text-foreground truncate">{filename}</p>
-              </div>
-              {status === "uploading" && (
-                <p className="mt-1 text-xs text-muted-foreground">Uploading…</p>
-              )}
-              {status === "parsing" && (
-                <>
-                  <p className="mt-1 text-xs text-muted-foreground">
-                    Reading your plan… extracting lot schedule. This usually takes 10–30 seconds.
-                  </p>
-                  <div className="mt-2 h-1 w-full overflow-hidden rounded-full bg-muted">
-                    <div className="h-full w-1/3 animate-[indeterminate_1.5s_ease-in-out_infinite] rounded-full bg-primary" />
-                  </div>
-                </>
-              )}
-              {status === "complete" && (
-                <p className="mt-1 text-xs text-foreground">
-                  Plan parsed successfully — found{" "}
-                  <span className="font-medium">{lotCount} lot{lotCount === 1 ? "" : "s"}</span>
-                  {ocCount > 1 && (
-                    <> across <span className="font-medium">{ocCount} OCs</span></>
-                  )}
-                  .
-                </p>
-              )}
-              {status === "failed" && parseError && (
-                <p className="mt-1 text-xs text-amber-700">{parseError}</p>
-              )}
+            <div className="flex items-center justify-center gap-2 max-w-full">
+              <FileText className="h-3.5 w-3.5 text-muted-foreground shrink-0" />
+              <p className="text-sm font-medium text-foreground truncate">{filename}</p>
             </div>
+            {status === "uploading" && (
+              <p className="text-xs text-muted-foreground">Uploading…</p>
+            )}
+            {status === "parsing" && (
+              <p className="text-xs text-muted-foreground">
+                Reading your plan… extracting lot schedule. This usually takes 10–30 seconds.
+              </p>
+            )}
+            {status === "complete" && (
+              <p className="text-xs text-foreground">
+                Plan parsed successfully — found{" "}
+                <span className="font-medium">{lotCount} lot{lotCount === 1 ? "" : "s"}</span>
+                {ocCount > 1 && (
+                  <> across <span className="font-medium">{ocCount} OCs</span></>
+                )}
+                .
+              </p>
+            )}
+            {status === "failed" && parseError && (
+              <p className="text-xs text-amber-700">{parseError}</p>
+            )}
             {!busy && (
               <button
                 type="button"
                 onClick={() => { setStatus("idle"); setFilename(null); setParseError(null); }}
-                className="text-muted-foreground hover:text-foreground"
+                className="absolute right-3 top-3 text-muted-foreground hover:text-foreground cursor-pointer"
                 aria-label="Clear upload"
               >
                 <X className="h-4 w-4" />
@@ -222,13 +215,6 @@ export function Page1Upload({
         </Button>
       </div>
 
-      <style jsx global>{`
-        @keyframes indeterminate {
-          0% { transform: translateX(-100%); }
-          50% { transform: translateX(150%); }
-          100% { transform: translateX(300%); }
-        }
-      `}</style>
     </div>
   );
 }
