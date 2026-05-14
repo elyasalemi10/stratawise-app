@@ -4,8 +4,9 @@
 // the manager sees exactly what they're agreeing to.
 //
 // Source: legislation.vic.gov.au/in-force/statutory-rules/owners-corporations-regulations-2018
-// Rule bodies are condensed to the operative clause — the full statutory
-// wording is referenced when needed elsewhere; this is for at-a-glance review.
+// The schedule has 7 top-level headings. Body text below is a paraphrased
+// summary of each heading's operative clauses for at-a-glance display — the
+// full statutory wording lives in the source above and is what governs.
 
 export interface ModelRule {
   rule_number: string;
@@ -18,42 +19,42 @@ export const VICTORIA_MODEL_RULES: ModelRule[] = [
     rule_number: "1",
     heading: "Health, safety and security",
     body:
-      "Lot owners and occupiers must not use the lot or common property in a manner that creates a health, safety or security risk to other occupiers, visitors, or contractors. Includes obstructing fire-safety equipment or exit routes and tampering with security devices on common property.",
+      "Lot owners, occupiers, and their guests must not use the lot or common property in a way that creates a health, safety or security risk for other occupiers. Includes safe storage of flammable liquids and dangerous substances, and not interfering with fire-safety equipment.",
   },
   {
     rule_number: "2",
-    heading: "Lots used for residential purposes",
+    heading: "Management and administration",
     body:
-      "Lots zoned residential under the plan of subdivision must be used principally for residential purposes. Short-stay arrangements remain permitted unless the OC has additional registered rules limiting them.",
+      "Covers the metering of services supplied to lots and the OC's duty to keep its records, financial statements, and registers in a state that lets it administer the common property efficiently.",
   },
   {
     rule_number: "3",
-    heading: "Vehicles and parking",
+    heading: "Use of common property",
     body:
-      "Vehicles parked on common property must not block driveways, fire routes, accessible parking, or visitor parking outside the conditions of use posted by the OC. The committee may remove or tow-away vehicles parked in breach.",
+      "Owners and occupiers must use common property reasonably, must not park vehicles so as to obstruct driveways or fire routes, must not damage or alter common property without the OC's written consent, and must not behave in a way that interferes with another occupier's peaceful enjoyment.",
   },
   {
     rule_number: "4",
-    heading: "Damage to common property",
+    heading: "Lots",
     body:
-      "An owner or occupier must not damage, alter, deface, or remove common property without the OC's written consent. Repair costs for damage caused by an owner, occupier, or their invitee are recoverable from that owner.",
+      "An owner or occupier must not change the use of a lot in a way that increases the OC's insurance premium or risk. The external appearance of a lot must not be altered without the OC's written consent.",
   },
   {
     rule_number: "5",
-    heading: "Behaviour of owners, occupiers and invitees",
+    heading: "Behaviour of persons",
     body:
-      "Owners, occupiers and their invitees must not behave in a manner that unreasonably interferes with the peaceful enjoyment of another occupier. This covers excessive noise, harassment, intoxicated behaviour in common areas, and abusive conduct towards the manager or committee.",
+      "Owners, occupiers and their guests must not behave in a way that unreasonably interferes with another occupier — including excessive noise, harassment, intoxicated behaviour in common areas, and abusive conduct toward the manager or committee.",
   },
   {
     rule_number: "6",
-    heading: "Noise and other nuisance control",
+    heading: "Disputes and complaints",
     body:
-      "Noise audible to another lot between 10pm and 7am must be minimised. Music, power tools, vacuuming, and similar activities follow the times posted by the OC committee, in line with EPA Victoria's residential noise schedule.",
+      "The OC's grievance procedure: complaints must be in writing, copied to all parties, and the OC must try to resolve the dispute internally before referring it to Consumer Affairs Victoria or VCAT.",
   },
   {
     rule_number: "7",
-    heading: "Keeping of animals",
+    heading: "Notices and documents",
     body:
-      "Owners and occupiers may keep an animal only with the OC's written consent. The OC must not unreasonably refuse consent. Existing assistance dogs registered with the owner are permitted without further consent.",
+      "Notices and documents addressed to the OC must be served on the secretary or the manager. Owners must keep the OC informed of the address at which they will accept service.",
   },
 ];

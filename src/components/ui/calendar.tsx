@@ -31,7 +31,7 @@ function Calendar({
     <DayPicker
       showOutsideDays={showOutsideDays}
       className={cn(
-        "group/calendar bg-muted p-2 [--cell-radius:var(--radius-md)] [--cell-size:--spacing(7)] in-data-[slot=card-content]:bg-transparent in-data-[slot=popover-content]:bg-transparent",
+        "group/calendar bg-muted [--cell-radius:var(--radius-md)] [--cell-size:--spacing(7)] in-data-[slot=card-content]:bg-transparent in-data-[slot=popover-content]:bg-transparent",
         String.raw`rtl:**:[.rdp-button\_next>svg]:rotate-180`,
         String.raw`rtl:**:[.rdp-button\_previous>svg]:rotate-180`,
         className
@@ -46,12 +46,14 @@ function Calendar({
       classNames={{
         root: cn("w-fit", defaultClassNames.root),
         months: cn(
-          "relative flex flex-col gap-4 md:flex-row",
+          "relative flex flex-col gap-2 md:flex-row",
           defaultClassNames.months
         ),
-        month: cn("flex w-full flex-col gap-4", defaultClassNames.month),
+        month: cn("flex w-full flex-col gap-3", defaultClassNames.month),
         nav: cn(
-          "absolute inset-x-0 top-0 flex w-full items-center justify-between gap-1",
+          // Full-width white caption strip with a bottom border — looks like a
+          // cut-off line rather than a floating pill.
+          "absolute inset-x-0 top-0 flex w-full items-center justify-between gap-1 bg-card px-1 py-1 border-b border-border",
           defaultClassNames.nav
         ),
         button_previous: cn(
@@ -65,7 +67,10 @@ function Calendar({
           defaultClassNames.button_next
         ),
         month_caption: cn(
-          "flex h-(--cell-size) w-full items-center justify-center px-(--cell-size) rounded-md bg-card",
+          // Caption + nav both sit on the same white strip (see `nav` above).
+          // Adding bg-card here keeps the area behind the month label white
+          // even when react-day-picker layers it under the nav.
+          "flex h-(--cell-size) w-full items-center justify-center px-(--cell-size) bg-card border-b border-border",
           defaultClassNames.month_caption
         ),
         dropdowns: cn(
@@ -87,7 +92,7 @@ function Calendar({
             : "flex items-center gap-1 rounded-(--cell-radius) text-sm [&>svg]:size-3.5 [&>svg]:text-muted-foreground",
           defaultClassNames.caption_label
         ),
-        table: "w-full border-collapse",
+        table: "w-full border-collapse px-2 pb-2",
         weekdays: cn("flex", defaultClassNames.weekdays),
         weekday: cn(
           "flex-1 rounded-(--cell-radius) text-[0.8rem] font-normal text-muted-foreground select-none",
@@ -119,7 +124,11 @@ function Calendar({
           defaultClassNames.range_end
         ),
         today: cn(
-          "rounded-(--cell-radius) bg-muted text-foreground data-[selected=true]:rounded-none",
+          // Today is rendered as a white pill with a 1px border so it stands
+          // out against the grey calendar bg without competing with the
+          // selected-day fill. When today IS also the selected day, the
+          // selected style takes over (data-selected=true on the parent).
+          "rounded-(--cell-radius) bg-card text-foreground border border-border data-[selected=true]:rounded-none data-[selected=true]:border-0",
           defaultClassNames.today
         ),
         outside: cn(
@@ -209,7 +218,11 @@ function CalendarDayButton({
       data-range-end={modifiers.range_end}
       data-range-middle={modifiers.range_middle}
       className={cn(
-        "relative isolate z-10 flex aspect-square size-auto w-full min-w-(--cell-size) flex-col gap-1 border-0 leading-none font-normal group-data-[focused=true]/day:relative group-data-[focused=true]/day:z-10 group-data-[focused=true]/day:border-ring group-data-[focused=true]/day:ring-[3px] group-data-[focused=true]/day:ring-ring/50 data-[range-end=true]:rounded-(--cell-radius) data-[range-end=true]:rounded-r-(--cell-radius) data-[range-end=true]:bg-card data-[range-end=true]:text-foreground data-[range-end=true]:border data-[range-end=true]:border-primary data-[range-middle=true]:rounded-none data-[range-middle=true]:bg-card/60 data-[range-middle=true]:text-foreground data-[range-start=true]:rounded-(--cell-radius) data-[range-start=true]:rounded-l-(--cell-radius) data-[range-start=true]:bg-card data-[range-start=true]:text-foreground data-[range-start=true]:border data-[range-start=true]:border-primary data-[selected-single=true]:bg-card data-[selected-single=true]:text-foreground data-[selected-single=true]:border data-[selected-single=true]:border-primary [&>span]:text-xs [&>span]:opacity-70",
+        // Selected = navy pill; today = white pill with border (handled on the
+        // outer day cell via the `today` className). When today is also the
+        // selected day, navy wins because `data-selected-single=true`
+        // overrides the today fill.
+        "relative isolate z-10 flex aspect-square size-auto w-full min-w-(--cell-size) flex-col gap-1 border-0 leading-none font-normal group-data-[focused=true]/day:relative group-data-[focused=true]/day:z-10 group-data-[focused=true]/day:border-ring group-data-[focused=true]/day:ring-[3px] group-data-[focused=true]/day:ring-ring/50 data-[range-end=true]:rounded-(--cell-radius) data-[range-end=true]:rounded-r-(--cell-radius) data-[range-end=true]:bg-primary data-[range-end=true]:text-primary-foreground data-[range-middle=true]:rounded-none data-[range-middle=true]:bg-primary/15 data-[range-middle=true]:text-foreground data-[range-start=true]:rounded-(--cell-radius) data-[range-start=true]:rounded-l-(--cell-radius) data-[range-start=true]:bg-primary data-[range-start=true]:text-primary-foreground data-[selected-single=true]:bg-primary data-[selected-single=true]:text-primary-foreground [&>span]:text-xs [&>span]:opacity-70",
         defaultClassNames.day,
         className
       )}

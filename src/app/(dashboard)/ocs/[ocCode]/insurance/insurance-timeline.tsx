@@ -538,15 +538,14 @@ export function InsuranceTimeline({
 
   return (
     <div className="space-y-6">
-      <div className="flex items-center justify-between">
-        <h1 className="text-lg font-semibold text-foreground">Insurance</h1>
-        {!readOnly && (
+      {!readOnly && (
+        <div className="flex justify-end">
           <Button size="sm" onClick={() => setShowAdd(true)}>
             <Plus className="mr-2 h-3.5 w-3.5" />
             Add policy
           </Button>
-        )}
-      </div>
+        </div>
+      )}
 
       {policies.length === 0 ? (
         <Card>

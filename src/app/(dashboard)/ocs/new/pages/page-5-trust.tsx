@@ -297,10 +297,7 @@ export function Page5Trust({
 
       {/* Admin fund. */}
       <div className="rounded-md border border-border bg-card p-4 space-y-3">
-        <div className="flex items-baseline justify-between">
-          <h3 className="text-sm font-semibold text-foreground">Administrative fund</h3>
-          <span className="text-xs text-muted-foreground">Always present</span>
-        </div>
+        <h3 className="text-sm font-semibold text-foreground">Administrative fund</h3>
         <FundFieldsBlock
           value={admin}
           onChange={(v) => { setAdmin(v); setAdminInvalid(NO_INVALID); }}
@@ -321,7 +318,7 @@ export function Page5Trust({
             onCheckedChange={(v) => setCapitalSameAsAdmin(v === true)}
           />
           <Label className="text-sm font-normal text-foreground">
-            Use the same trust account as the admin fund
+            Use the same bank account as the admin fund
           </Label>
         </div>
         {!capitalSameAsAdmin && (
@@ -357,7 +354,7 @@ export function Page5Trust({
                 onCheckedChange={(v) => setMaintenanceSameAsAdmin(v === true)}
               />
               <Label className="text-sm font-normal text-foreground">
-                Use the same trust account as the admin fund
+                Use the same bank account as the admin fund
               </Label>
             </div>
             {!maintenanceSameAsAdmin && (

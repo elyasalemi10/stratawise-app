@@ -3,6 +3,7 @@
 import { unstable_cache, updateTag } from "next/cache";
 import { getCurrentProfile, requireOCAccess } from "@/lib/auth";
 import { createServerClient } from "@/lib/supabase";
+import { publicUrlFor } from "@/lib/storage/r2";
 import { countLotsWithOwner, getLotOwners, type LotOwnerStatus } from "@/lib/actions/lot-ownership";
 
 /**
@@ -46,6 +47,10 @@ export interface SidebarOC {
   plan_number: string;
   total_lots: number;
   status: string;
+  /** Public URL for the OC's thumbnail photo (~192x128 JPEG). Null when the
+   *  manager hasn't uploaded a photo. Used by the swapper to render a small
+   *  visual identifier alongside the OC name. */
+  thumbnail_url?: string | null;
   /** Wizard step the draft was last on. Only set when kind === "draft". */
   draft_step?: number;
   lots?: SidebarLot[];
@@ -90,7 +95,7 @@ export async function getSidebarOCs(): Promise<SidebarOC[]> {
         const sb = createServerClient();
         const { data: subs } = await sb
           .from("owners_corporations")
-          .select("id, short_code, name, address, plan_number, total_lots, status")
+          .select("id, short_code, name, address, plan_number, total_lots, status, photo_thumbnail_storage_key, photo_storage_key")
           .eq("management_company_id", cid)
           .eq("status", "active")
           .order("name");
@@ -121,12 +126,23 @@ export async function getSidebarOCs(): Promise<SidebarOC[]> {
           }
         }
 
-        const active: SidebarOC[] = subRows.map((s) => ({
-          ...s,
-          kind: "active" as const,
-          address: s.address ?? "",
-          unmatched_count: countBySub.get(s.id) ?? 0,
-        }));
+        const active: SidebarOC[] = subRows.map((s) => {
+          // Prefer the thumbnail when it exists; fall back to the full-res
+          // photo (older OCs created before the thumb pipeline).
+          const thumbKey = s.photo_thumbnail_storage_key ?? s.photo_storage_key ?? null;
+          return {
+            id: s.id,
+            short_code: s.short_code,
+            name: s.name,
+            plan_number: s.plan_number,
+            total_lots: s.total_lots,
+            status: s.status,
+            kind: "active" as const,
+            address: s.address ?? "",
+            thumbnail_url: thumbKey ? publicUrlFor(thumbKey) : null,
+            unmatched_count: countBySub.get(s.id) ?? 0,
+          };
+        });
 
         // Drafts the user started but didn't complete. Sorted oldest-first
         // so picking up an old draft is the natural action; drafts appended

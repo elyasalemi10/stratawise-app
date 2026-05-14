@@ -392,11 +392,16 @@ export function Page4Lots({
                       />
                     </td>
                     <td className="px-2 py-1.5">
-                      <Switch
-                        checked={ownerOccupied}
-                        onCheckedChange={(v) => updateLot(idx, { is_occupied_by_owner: v === true })}
-                        aria-label={`Owner occupied for lot ${lot.lot_number}`}
-                      />
+                      <div className="inline-flex items-center gap-2">
+                        <Switch
+                          checked={ownerOccupied}
+                          onCheckedChange={(v) => updateLot(idx, { is_occupied_by_owner: v === true })}
+                          aria-label={`Owner occupied for lot ${lot.lot_number}`}
+                        />
+                        <span className={`text-xs font-medium ${ownerOccupied ? "text-foreground" : "text-muted-foreground"}`}>
+                          {ownerOccupied ? "Yes" : "No"}
+                        </span>
+                      </div>
                     </td>
                   </tr>
                   {!ownerOccupied && (

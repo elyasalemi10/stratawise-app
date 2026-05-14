@@ -34,7 +34,6 @@ export function MyArrearsContent({
   if (rows.length === 0) {
     return (
       <div className="space-y-6">
-        <h1 className="text-lg font-semibold text-foreground">My arrears</h1>
         <Card>
           <CardContent className="flex flex-col items-center justify-center py-16 text-center">
             <CheckCircle2 className="h-12 w-12 text-[hsl(160,100%,37%)]/40" />
@@ -52,8 +51,6 @@ export function MyArrearsContent({
 
   return (
     <div className="space-y-6">
-      <h1 className="text-lg font-semibold text-foreground">My arrears</h1>
-
       {/* KPI: outstanding total — destructive when > 0, neutral when 0. */}
       <Card>
         <CardContent className="pt-5">

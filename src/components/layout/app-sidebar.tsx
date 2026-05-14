@@ -528,9 +528,18 @@ export function AppSidebar({
                   key={sub.id}
                   onClick={() => switchOC(sub.short_code)}
                 >
-                  <div className="flex size-6 items-center justify-center rounded-md border border-border shrink-0">
-                    <Building2 className="size-3.5 shrink-0" />
-                  </div>
+                  {sub.thumbnail_url ? (
+                    /* eslint-disable-next-line @next/next/no-img-element */
+                    <img
+                      src={sub.thumbnail_url}
+                      alt=""
+                      className="size-6 rounded-md border border-border object-cover shrink-0"
+                    />
+                  ) : (
+                    <div className="flex size-6 items-center justify-center rounded-md border border-border shrink-0">
+                      <Building2 className="size-3.5 shrink-0" />
+                    </div>
+                  )}
                   <div className="flex-1 min-w-0">
                     <span className="block truncate">{sub.name}</span>
                     {isLotOwner && sub.lots && sub.lots.length > 0 && (

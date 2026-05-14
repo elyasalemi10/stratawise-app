@@ -59,6 +59,8 @@ export type DraftJson = {
   services_only?: boolean;
   financial_year_start_month?: number;       // 1–12
   financial_year_start_day?: number;         // 1–31
+  /** monthly | quarterly | half_yearly | annually — drives the levy cron. */
+  billing_cycle?: "monthly" | "quarterly" | "half_yearly" | "annually";
   // Page 5 (trust accounts) — per-fund bank arrangement.
   bank_provider?: "macquarie_deft" | "other_csv";
   // Whether this OC holds a third "maintenance plan" reserve fund. Tier 1/2
@@ -124,6 +126,36 @@ export type DraftJson = {
   opening_capital_works_balance?: number;
   opening_maintenance_plan_balance?: number;     // only when has_maintenance_plan_fund
 };
+
+// ─── Document naming ────────────────────────────────────────────
+//
+// Documents uploaded via the wizard get a system-generated display name
+// (e.g. "Plan of Subdivision — PS812345X.pdf") that's stored on
+// `documents.file_name`. The user's original filename is preserved on
+// `documents.original_filename` so it's never thrown away — it shows up on
+// the document detail view and is used as the suggested download filename
+// when the user pulls the file back down.
+
+type DocCategory = "plan_of_subdivision" | "oc_rules" | "insurance_policy";
+function friendlyDocName(
+  category: DocCategory,
+  ctx: { planNumber?: string | null; ocName?: string | null; index?: number },
+): string {
+  const plan = (ctx.planNumber ?? "").trim().toUpperCase();
+  const stamp = new Date().toISOString().slice(0, 10);
+  switch (category) {
+    case "plan_of_subdivision":
+      return plan ? `Plan of Subdivision — ${plan}.pdf` : `Plan of Subdivision — ${stamp}.pdf`;
+    case "oc_rules":
+      return plan ? `Owners Corporation Rules — ${plan}.pdf` : `Owners Corporation Rules — ${stamp}.pdf`;
+    case "insurance_policy": {
+      const n = ctx.index != null ? ` ${ctx.index}` : "";
+      return plan
+        ? `Certificate of Currency${n} — ${plan}.pdf`
+        : `Certificate of Currency${n} — ${stamp}.pdf`;
+    }
+  }
+}
 
 // ─── Helpers ────────────────────────────────────────────────────
 
@@ -295,6 +327,7 @@ export async function uploadOcPhoto(draftId: string, formData: FormData) {
   try {
     const { draft, profile } = await loadDraft(draftId);
     const file = formData.get("file");
+    const thumb = formData.get("thumb");
     if (!(file instanceof File)) return { error: "No file uploaded" };
     if (!PHOTO_TYPES.has(file.type)) {
       return { error: "Photos must be JPEG, PNG, or WebP" };
@@ -303,7 +336,10 @@ export async function uploadOcPhoto(draftId: string, formData: FormData) {
       return { error: "Photo exceeds 10MB" };
     }
     const ext = file.name.toLowerCase().match(/\.(jpe?g|png|webp)$/i)?.[0] ?? ".jpg";
-    const key = `logos/${profile.management_company_id}/oc-photos/${draft.id}-${crypto.randomUUID()}${ext}`;
+    const baseKey = `logos/${profile.management_company_id}/oc-photos/${draft.id}-${crypto.randomUUID()}`;
+    const key = `${baseKey}${ext}`;
+    // Thumbnail is always JPEG (compressed from canvas client-side).
+    const thumbKey = `${baseKey}-thumb.jpg`;
     const buf = Buffer.from(await file.arrayBuffer());
 
     try {
@@ -313,23 +349,45 @@ export async function uploadOcPhoto(draftId: string, formData: FormData) {
       return { error: "Couldn't save your photo — please try again." };
     }
 
+    // Best-effort thumbnail upload. If the client didn't generate one (very
+    // old browser, canvas failure) we just leave thumbnail_storage_key null
+    // and consumers fall back to the full-res image.
+    let storedThumbKey: string | null = null;
+    if (thumb instanceof File) {
+      try {
+        const thumbBuf = Buffer.from(await thumb.arrayBuffer());
+        await uploadObject(thumbKey, thumbBuf, "image/jpeg");
+        storedThumbKey = thumbKey;
+      } catch (err) {
+        console.error("uploadOcPhoto: thumbnail upload failed (non-fatal)", err);
+      }
+    }
+
     const supabase = createServerClient();
 
-    // Best-effort cleanup: drop the previous photo from R2 if the user is
-    // replacing it. Don't block on the result; orphan keys are harmless.
+    // Best-effort cleanup: drop the previous photo + thumb from R2 if the user
+    // is replacing them. Don't block on the result; orphan keys are harmless.
     if (draft.photo_storage_key && draft.photo_storage_key !== key) {
       void deleteObject(draft.photo_storage_key).catch(() => {});
+    }
+    if (draft.photo_thumbnail_storage_key && draft.photo_thumbnail_storage_key !== storedThumbKey) {
+      void deleteObject(draft.photo_thumbnail_storage_key).catch(() => {});
     }
 
     const { error: dbErr } = await supabase
       .from("oc_drafts")
-      .update({ photo_storage_key: key })
+      .update({ photo_storage_key: key, photo_thumbnail_storage_key: storedThumbKey })
       .eq("id", draft.id);
     if (dbErr) {
       console.error("uploadOcPhoto: DB update failed", dbErr);
       return { error: "Couldn't save your photo — please try again." };
     }
-    return { success: true, storage_key: key, public_url: publicUrlFor(key) };
+    return {
+      success: true,
+      storage_key: key,
+      thumbnail_storage_key: storedThumbKey,
+      public_url: publicUrlFor(key),
+    };
   } catch (err) {
     console.error("uploadOcPhoto: unexpected error", err);
     return { error: "Something went wrong — please try again." };
@@ -349,10 +407,13 @@ export async function removeOcPhoto(draftId: string) {
     if (draft.photo_storage_key) {
       void deleteObject(draft.photo_storage_key).catch(() => {});
     }
+    if (draft.photo_thumbnail_storage_key) {
+      void deleteObject(draft.photo_thumbnail_storage_key).catch(() => {});
+    }
     const supabase = createServerClient();
     const { error } = await supabase
       .from("oc_drafts")
-      .update({ photo_storage_key: null })
+      .update({ photo_storage_key: null, photo_thumbnail_storage_key: null })
       .eq("id", draft.id);
     if (error) return { error: "Couldn't remove the photo." };
     return { success: true };
@@ -538,7 +599,10 @@ export async function parseDraftRules(draftId: string) {
     return {
       success: true,
       ruleCount: parsed.rules.length,
+      ocScopes: parsed.oc_scopes,
       rules: parsed.rules.map((r) => ({
+        oc_scope: r.oc_scope,
+        parent_heading: r.parent_heading ?? null,
         rule_number: r.rule_number,
         heading: r.heading ?? null,
         body: r.body,
@@ -802,9 +866,11 @@ export async function completeWizard(draftId: string) {
       postcode: d.postcode || null,
       total_lots: d.lots.length,
       photo_storage_key: draft.photo_storage_key ?? null,
+      photo_thumbnail_storage_key: draft.photo_thumbnail_storage_key ?? null,
       financial_year_start_month: d.financial_year_start_month ?? 7,
       financial_year_start_day: d.financial_year_start_day ?? 1,
       services_only: !!d.services_only,
+      billing_cycle: d.billing_cycle ?? "quarterly",
       // Notice address always set — wizard defaults to OC address; user can override.
       notice_address_same_as_oc: !d.notice_address || d.notice_address.trim() === d.address.trim(),
       notice_address: d.notice_address || d.address,
@@ -940,7 +1006,8 @@ export async function completeWizard(draftId: string) {
         oc_id: oc.id,
         lot_id: null,
         category: "plan_of_subdivision",
-        file_name: draft.plan_filename,
+        file_name: friendlyDocName("plan_of_subdivision", { planNumber: d.plan_number, ocName: d.oc_name }),
+        original_filename: draft.plan_filename,
         file_path: draft.plan_storage_key,
         file_size: draft.plan_size_bytes ?? null,
         mime_type: "application/pdf",
@@ -958,7 +1025,8 @@ export async function completeWizard(draftId: string) {
         oc_id: oc.id,
         lot_id: null,
         category: "oc_rules",
-        file_name: draft.rules_filename,
+        file_name: friendlyDocName("oc_rules", { planNumber: d.plan_number, ocName: d.oc_name }),
+        original_filename: draft.rules_filename,
         file_path: draft.rules_storage_key,
         file_size: draft.rules_size_bytes ?? null,
         mime_type: "application/pdf",
@@ -970,19 +1038,62 @@ export async function completeWizard(draftId: string) {
 
       // Materialise parsed rules. Best-effort: if the parse failed earlier
       // we still keep the PDF — the search index works via OCR text.
-      const parsedRules = draft.rules_parsed_json as { rules?: Array<{
-        rule_number: string;
-        heading?: string | null;
-        body: string;
-        page_number?: number | null;
-        bbox?: { x: number; y: number; w: number; h: number } | null;
-        confidence?: number;
-      }> } | null;
-      if (parsedRules?.rules && parsedRules.rules.length > 0) {
-        const rows = parsedRules.rules.map((r, idx) => ({
+      //
+      // Multi-OC documents (one PDF that registers rules for two or more OCs)
+      // are filtered down to the rules whose `oc_scope` matches THIS OC,
+      // matched by plan_number first then by ordinal position in oc_scopes
+      // (the OC at index N in the parsed scopes maps to the N-th OC promoted
+      // from this plan). This prevents two OCs' rule "1.1.1" from getting
+      // merged onto a single OC.
+      const parsedRules = draft.rules_parsed_json as {
+        oc_scopes?: Array<{ label: string; plan_number: string | null; rule_count: number }>;
+        rules?: Array<{
+          oc_scope?: string;
+          parent_heading?: string | null;
+          rule_number: string;
+          heading?: string | null;
+          body: string;
+          page_number?: number | null;
+          bbox?: { x: number; y: number; w: number; h: number } | null;
+          confidence?: number;
+        }>;
+      } | null;
+
+      const scopes = parsedRules?.oc_scopes ?? [];
+      const allRules = parsedRules?.rules ?? [];
+      const norm = (s: string | null | undefined) => (s ?? "").trim().toUpperCase().replace(/\s+/g, "");
+      // Resolve which scope to keep:
+      //  (a) the scope whose stated plan_number matches the current OC's, or
+      //  (b) if there's a multi-OC plan and we're creating the N-th OC, pick
+      //      the N-th scope, or
+      //  (c) fall back to all rules (single-OC document).
+      let scopeLabel: string | null = null;
+      if (scopes.length > 0) {
+        const byPlan = scopes.find((s) => norm(s.plan_number) === norm(d.plan_number));
+        if (byPlan) {
+          scopeLabel = byPlan.label;
+        } else if (scopes.length > 1) {
+          // Use oc_number as a 1-based index hint.
+          const idx = Math.min(Math.max((d.oc_number ?? 1) - 1, 0), scopes.length - 1);
+          scopeLabel = scopes[idx]?.label ?? null;
+        } else {
+          scopeLabel = scopes[0].label;
+        }
+      }
+      const ocRules = scopeLabel
+        ? allRules.filter((r) => (r.oc_scope ?? scopes[0]?.label ?? "") === scopeLabel)
+        : allRules;
+
+      if (ocRules.length > 0) {
+        const rows = ocRules.map((r, idx) => ({
           oc_id: oc.id,
           rule_number: r.rule_number,
-          heading: r.heading ?? null,
+          // Preserve the parent-section heading inline (e.g. "8. Commercial
+          // Lots — Advertising Signage") so breach-notice generators don't
+          // strip critical scope context.
+          heading: r.parent_heading
+            ? (r.heading ? `${r.parent_heading} — ${r.heading}` : r.parent_heading)
+            : (r.heading ?? null),
           body: r.body,
           page_number: r.page_number ?? null,
           bbox: r.bbox ?? null,
@@ -1021,12 +1132,20 @@ export async function completeWizard(draftId: string) {
       // routinely upload multiple certs (e.g. one per insurer when a cover
       // mix changes mid-year).
       const cocs = d.insurance_cocs ?? [];
-      for (const coc of cocs) {
-        await supabase.from("documents").insert({
+      cocs.forEach((coc, idx) => {
+        // Each cert gets a sequential index suffix when there's more than one
+        // ("Certificate of Currency 1 — PS812345X.pdf").
+        const friendly = friendlyDocName("insurance_policy", {
+          planNumber: d.plan_number,
+          ocName: d.oc_name,
+          index: cocs.length > 1 ? idx + 1 : undefined,
+        });
+        void supabase.from("documents").insert({
           oc_id: oc.id,
           lot_id: null,
           category: "insurance_policy",
-          file_name: coc.filename,
+          file_name: friendly,
+          original_filename: coc.filename,
           file_path: coc.storage_key,
           file_size: coc.size_bytes,
           mime_type: "application/pdf",
@@ -1034,7 +1153,7 @@ export async function completeWizard(draftId: string) {
           uploaded_by: profile.id,
           ocr_status: "pending",
         });
-      }
+      });
       // Legacy single-doc path — only register it if no multi-CoC list is
       // present, to avoid duplicating older drafts that wrote the same key
       // through `insurance_doc_storage_key`.
@@ -1043,7 +1162,8 @@ export async function completeWizard(draftId: string) {
           oc_id: oc.id,
           lot_id: null,
           category: "insurance_policy",
-          file_name: draft.insurance_doc_filename,
+          file_name: friendlyDocName("insurance_policy", { planNumber: d.plan_number, ocName: d.oc_name }),
+          original_filename: draft.insurance_doc_filename,
           file_path: draft.insurance_doc_storage_key,
           file_size: draft.insurance_doc_size_bytes ?? null,
           mime_type: "application/pdf",

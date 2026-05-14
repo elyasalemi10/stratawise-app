@@ -4,7 +4,6 @@ import { Card, CardContent } from "@/components/ui/card";
 export default function DocumentsLoading() {
   return (
     <div className="space-y-6">
-      <h1 className="text-lg font-semibold text-foreground">Documents</h1>
       <Card>
         <CardContent className="pt-5 space-y-3">
           {Array.from({ length: 4 }).map((_, i) => (

@@ -4,8 +4,6 @@ import { Skeleton } from "@/components/ui/skeleton";
 export default function MyPaymentsLoading() {
   return (
     <div className="space-y-6">
-      <h1 className="text-lg font-semibold text-foreground">My payments</h1>
-
       <Card>
         <CardHeader>
           <p className="text-sm font-semibold uppercase tracking-wide">Report a payment</p>

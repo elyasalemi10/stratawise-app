@@ -59,14 +59,13 @@ export function RulesList({ ocId, ocCode, rules, sourceDocumentName }: Props) {
   return (
     <div className="space-y-4">
       <div className="flex items-center justify-between gap-3">
-        <div>
-          <h1 className="text-lg font-semibold text-foreground">Rules</h1>
-          {sourceDocumentName && (
-            <p className="mt-0.5 text-xs text-muted-foreground">
-              Parsed from <span className="font-medium text-foreground">{sourceDocumentName}</span>
-            </p>
-          )}
-        </div>
+        {sourceDocumentName ? (
+          <p className="text-xs text-muted-foreground">
+            Parsed from <span className="font-medium text-foreground">{sourceDocumentName}</span>
+          </p>
+        ) : (
+          <div />
+        )}
         <Input
           placeholder="Search rules…"
           value={query}

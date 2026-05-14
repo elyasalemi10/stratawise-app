@@ -44,19 +44,16 @@ async function heicToJpeg(file: File, quality: number): Promise<File> {
   return new File([out], file.name.replace(/\.(heic|heif)$/i, ".jpg"), { type: "image/jpeg" });
 }
 
-// Re-encode an image client-side as JPEG, scaling so the long edge is at most
-// maxEdge. Decodes HEIC first if needed. Returns the original file unchanged
-// if it's already small enough.
-async function downscaleImage(file: File, maxEdge: number, quality: number): Promise<File> {
-  if (typeof window === "undefined" || typeof document === "undefined") return file;
-
-  // Convert HEIC up front — the browser can't draw HEIC to canvas.
+// Decode + canvas pipeline: load the file (after HEIC conversion if needed)
+// to an HTMLImageElement so callers can resample at multiple sizes from one
+// decode. Returns the working file (post-HEIC) too, so the caller can fall
+// back to it if a re-encode fails.
+async function decodeImage(file: File, fallbackQuality: number): Promise<{ img: HTMLImageElement; working: File } | null> {
+  if (typeof window === "undefined" || typeof document === "undefined") return null;
   let working = file;
   if (isHeic(file)) {
-    working = await heicToJpeg(file, quality);
+    working = await heicToJpeg(file, fallbackQuality);
   }
-
-  if (working.size < 1_500_000) return working;
   const url = URL.createObjectURL(working);
   try {
     const img = await new Promise<HTMLImageElement>((res, rej) => {
@@ -65,22 +62,68 @@ async function downscaleImage(file: File, maxEdge: number, quality: number): Pro
       i.onerror = rej;
       i.src = url;
     });
-    const ratio = Math.min(1, maxEdge / Math.max(img.naturalWidth, img.naturalHeight));
-    if (ratio >= 1) return working;
-    const w = Math.round(img.naturalWidth * ratio);
-    const h = Math.round(img.naturalHeight * ratio);
-    const canvas = document.createElement("canvas");
-    canvas.width = w;
-    canvas.height = h;
-    const ctx = canvas.getContext("2d");
-    if (!ctx) return working;
-    ctx.drawImage(img, 0, 0, w, h);
-    const blob = await new Promise<Blob | null>((res) => canvas.toBlob(res, "image/jpeg", quality));
-    if (!blob) return working;
-    return new File([blob], working.name.replace(/\.(png|webp)$/i, ".jpg"), { type: "image/jpeg" });
+    return { img, working };
   } finally {
     URL.revokeObjectURL(url);
   }
+}
+
+// Re-encode an image client-side as JPEG, scaling so the long edge is at most
+// maxEdge. Decodes HEIC first if needed. Returns the original file unchanged
+// if it's already small enough.
+async function downscaleImage(file: File, maxEdge: number, quality: number): Promise<File> {
+  const decoded = await decodeImage(file, quality);
+  if (!decoded) return file;
+  const { img, working } = decoded;
+  if (working.size < 1_500_000) return working;
+  const ratio = Math.min(1, maxEdge / Math.max(img.naturalWidth, img.naturalHeight));
+  if (ratio >= 1) return working;
+  const w = Math.round(img.naturalWidth * ratio);
+  const h = Math.round(img.naturalHeight * ratio);
+  const canvas = document.createElement("canvas");
+  canvas.width = w;
+  canvas.height = h;
+  const ctx = canvas.getContext("2d");
+  if (!ctx) return working;
+  ctx.drawImage(img, 0, 0, w, h);
+  const blob = await new Promise<Blob | null>((res) => canvas.toBlob(res, "image/jpeg", quality));
+  if (!blob) return working;
+  return new File([blob], working.name.replace(/\.(png|webp)$/i, ".jpg"), { type: "image/jpeg" });
+}
+
+// Centre-crop + resample for the sidebar swapper thumbnail. ~96x64 is enough
+// for an inline dropdown row; we ship 192x128 (2x) so retina screens still
+// look sharp.
+async function makeThumbnail(file: File): Promise<File | null> {
+  const decoded = await decodeImage(file, 0.85);
+  if (!decoded) return null;
+  const { img } = decoded;
+  const targetW = 192;
+  const targetH = 128;
+  const sw = img.naturalWidth;
+  const sh = img.naturalHeight;
+  if (sw === 0 || sh === 0) return null;
+  // Centre-crop to match the 3:2 target aspect ratio.
+  const targetAspect = targetW / targetH;
+  const sourceAspect = sw / sh;
+  let cropW = sw;
+  let cropH = sh;
+  if (sourceAspect > targetAspect) {
+    cropW = Math.round(sh * targetAspect);
+  } else {
+    cropH = Math.round(sw / targetAspect);
+  }
+  const cropX = Math.round((sw - cropW) / 2);
+  const cropY = Math.round((sh - cropH) / 2);
+  const canvas = document.createElement("canvas");
+  canvas.width = targetW;
+  canvas.height = targetH;
+  const ctx = canvas.getContext("2d");
+  if (!ctx) return null;
+  ctx.drawImage(img, cropX, cropY, cropW, cropH, 0, 0, targetW, targetH);
+  const blob = await new Promise<Blob | null>((res) => canvas.toBlob(res, "image/jpeg", 0.75));
+  if (!blob) return null;
+  return new File([blob], "thumb.jpg", { type: "image/jpeg" });
 }
 
 function tierColour(t: number): string {
@@ -108,6 +151,14 @@ const MONTHS = [
   { value: 12, label: "December" },
 ];
 
+const BILLING_CYCLES = [
+  { value: "monthly",     label: "Monthly" },
+  { value: "quarterly",   label: "Quarterly" },
+  { value: "half_yearly", label: "Half-yearly" },
+  { value: "annually",    label: "Annually" },
+] as const;
+type BillingCycle = typeof BILLING_CYCLES[number]["value"];
+
 export function Page3Basics({
   draftId,
   initialDraft,
@@ -126,6 +177,9 @@ export function Page3Basics({
   const [title, setTitle] = useState(initialDraft.trading_name ?? "");
   const [servicesOnly, setServicesOnly] = useState(initialDraft.services_only ?? false);
   const [fyMonth, setFyMonth] = useState<number>(initialDraft.financial_year_start_month ?? 7);
+  const [billingCycle, setBillingCycle] = useState<BillingCycle>(
+    (initialDraft.billing_cycle as BillingCycle | undefined) ?? "quarterly",
+  );
   const [pending, setPending] = useState(false);
   const [photoKey, setPhotoKey] = useState<string | null>(initialPhotoKey);
   const [photoUrl, setPhotoUrl] = useState<string | null>(null);
@@ -148,10 +202,16 @@ export function Page3Basics({
     // if the canvas path errors out (rare — HEIC without browser decode).
     setPhotoUploading(true);
     let upload: File = file;
+    let thumb: File | null = null;
     try {
       upload = await downscaleImage(file, 1600, 0.82);
     } catch (err) {
       console.warn("Photo downscale failed; uploading original.", err);
+    }
+    try {
+      thumb = await makeThumbnail(upload);
+    } catch (err) {
+      console.warn("Thumbnail generation failed; uploading without thumb.", err);
     }
     if (upload.size > 10 * 1024 * 1024) {
       setPhotoUploading(false);
@@ -160,6 +220,7 @@ export function Page3Basics({
     }
     const fd = new FormData();
     fd.append("file", upload);
+    if (thumb) fd.append("thumb", thumb);
     const r = await uploadOcPhoto(draftId, fd);
     setPhotoUploading(false);
     if (r.error || !r.storage_key) {
@@ -191,6 +252,7 @@ export function Page3Basics({
       services_only: servicesOnly,
       financial_year_start_month: fyMonth,
       financial_year_start_day: 1,
+      billing_cycle: billingCycle,
     }, 4);
     if (r.error) {
       setPending(false);
@@ -319,29 +381,53 @@ export function Page3Basics({
             </div>
           </div>
 
-          {/* Financial year start — month picker. We always anchor to day 1.
-              Base-UI Select's SelectValue defaults to the bare option value
-              ("7" for July) unless you pass a children renderer; we resolve to
-              the label explicitly so the trigger shows "July" not "7". */}
-          <div className="space-y-1.5">
-            <Label htmlFor="fy-start">Financial year start</Label>
-            <Select
-              value={String(fyMonth)}
-              onValueChange={(v) => setFyMonth(parseInt(v ?? "7", 10))}
-            >
-              <SelectTrigger id="fy-start" className="w-48">
-                <SelectValue placeholder="Pick a month">
-                  {MONTHS.find((m) => m.value === fyMonth)?.label ?? "Pick a month"}
-                </SelectValue>
-              </SelectTrigger>
-              <SelectContent>
-                {MONTHS.map((m) => (
-                  <SelectItem key={m.value} value={String(m.value)}>
-                    {m.label}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
+          <div className="grid grid-cols-2 gap-4">
+            {/* Financial year start — month picker. We always anchor to day 1. */}
+            <div className="space-y-1.5">
+              <Label htmlFor="fy-start">Financial year start</Label>
+              <Select
+                value={String(fyMonth)}
+                onValueChange={(v) => setFyMonth(parseInt(v ?? "7", 10))}
+              >
+                <SelectTrigger id="fy-start" className="w-full">
+                  <SelectValue placeholder="Pick a month">
+                    {MONTHS.find((m) => m.value === fyMonth)?.label ?? "Pick a month"}
+                  </SelectValue>
+                </SelectTrigger>
+                <SelectContent>
+                  {MONTHS.map((m) => (
+                    <SelectItem key={m.value} value={String(m.value)}>
+                      {m.label}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+
+            {/* Levy issuance cadence — drives when the levy cron fires. Most
+                Victorian OCs run quarterly (matches the Owners Corporations
+                Act levy notice cycle). Annually is rare but legal for very
+                small OCs. */}
+            <div className="space-y-1.5">
+              <Label htmlFor="billing-cycle">Levy frequency</Label>
+              <Select
+                value={billingCycle}
+                onValueChange={(v) => setBillingCycle((v as BillingCycle) ?? "quarterly")}
+              >
+                <SelectTrigger id="billing-cycle" className="w-full">
+                  <SelectValue placeholder="Pick a frequency">
+                    {BILLING_CYCLES.find((b) => b.value === billingCycle)?.label ?? "Pick a frequency"}
+                  </SelectValue>
+                </SelectTrigger>
+                <SelectContent>
+                  {BILLING_CYCLES.map((b) => (
+                    <SelectItem key={b.value} value={b.value}>
+                      {b.label}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
           </div>
         </div>
 

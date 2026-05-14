@@ -84,10 +84,7 @@ export function ClaimsContent({ rows, orphanMode }: Props) {
 
   return (
     <div className="space-y-6">
-      <div>
-        <h1 className="text-lg font-semibold text-foreground">Payment claims</h1>
-        <p className="text-sm text-muted-foreground mt-1">{subhead}</p>
-      </div>
+      <p className="text-sm text-muted-foreground">{subhead}</p>
 
       {/* Single-bool chip toggle styled to match FilterChips primitive. */}
       <div className="space-y-1.5">

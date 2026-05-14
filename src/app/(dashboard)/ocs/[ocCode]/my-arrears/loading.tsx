@@ -4,8 +4,6 @@ import { Skeleton } from "@/components/ui/skeleton";
 export default function MyArrearsLoading() {
   return (
     <div className="space-y-6">
-      <h1 className="text-lg font-semibold text-foreground">My arrears</h1>
-
       {/* KPI skeleton (mirrors loaded layout: icon + label + value) */}
       <Card>
         <CardContent className="pt-5">

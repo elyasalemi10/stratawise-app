@@ -122,7 +122,7 @@ export function Page1Upload({
           onDragOver={(e) => e.preventDefault()}
           onDrop={onDrop}
           className={`relative rounded-lg border-2 border-dashed transition-colors ${
-            isDragging ? "border-primary bg-primary/5" : "border-border bg-muted/20"
+            isDragging ? "border-primary bg-primary/5" : "border-border bg-card"
           }`}
         >
           <label className="flex cursor-pointer flex-col items-center justify-center gap-3 px-6 py-10">

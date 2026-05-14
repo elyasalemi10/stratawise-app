@@ -120,12 +120,7 @@ function WizardContent() {
 
   return (
     <div className="mx-auto w-full max-w-5xl">
-      {/* Sticky step indicator — without sticky the bar scrolls off-screen on
-          the longer steps (opening balances has the per-lot arrears table) and
-          managers lose the wizard context. */}
-      <div className="sticky top-0 z-30 bg-background pb-4 pt-2">
-        <StepIndicator current={step} />
-      </div>
+      <StepIndicator current={step} />
       <div className="mt-2">
         {step === 1 && (
           <Page1Upload

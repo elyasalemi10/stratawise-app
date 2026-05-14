@@ -38,28 +38,25 @@ export function LotsPageContent({
 
   return (
     <div className="space-y-6">
-      <div className="flex items-center justify-between">
-        <h1 className="text-lg font-semibold text-foreground">{isLotOwner ? "Lot owners" : "Lots & owners"}</h1>
-        {!isLotOwner && (
-          <div className="flex items-center gap-2">
-            <Button variant="secondary" size="sm" onClick={() => setSettlementOpen(true)}>
-              <FileSignature className="mr-2 h-3.5 w-3.5" />
-              Record settlement
+      {!isLotOwner && (
+        <div className="flex justify-end items-center gap-2">
+          <Button variant="secondary" size="sm" onClick={() => setSettlementOpen(true)}>
+            <FileSignature className="mr-2 h-3.5 w-3.5" />
+            Record settlement
+          </Button>
+          {isEditing ? (
+            <Button variant="secondary" size="sm" onClick={() => setIsEditing(false)}>
+              <Check className="mr-2 h-3.5 w-3.5" />
+              Done
             </Button>
-            {isEditing ? (
-              <Button variant="secondary" size="sm" onClick={() => setIsEditing(false)}>
-                <Check className="mr-2 h-3.5 w-3.5" />
-                Done
-              </Button>
-            ) : (
-              <Button variant="secondary" size="sm" onClick={() => setIsEditing(true)}>
-                <Pencil className="mr-2 h-3.5 w-3.5" />
-                Edit
-              </Button>
-            )}
-          </div>
-        )}
-      </div>
+          ) : (
+            <Button variant="secondary" size="sm" onClick={() => setIsEditing(true)}>
+              <Pencil className="mr-2 h-3.5 w-3.5" />
+              Edit
+            </Button>
+          )}
+        </div>
+      )}
       <LotsTab
         lots={lots}
         ocId={ocId}

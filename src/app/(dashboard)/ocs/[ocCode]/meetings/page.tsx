@@ -4,7 +4,6 @@ import { Card, CardContent } from "@/components/ui/card";
 export default async function MeetingsPage() {
   return (
     <div className="space-y-6">
-      <h1 className="text-lg font-semibold text-foreground">Meetings</h1>
       <Card>
         <CardContent className="flex flex-col items-center justify-center py-16 text-center">
           <CalendarDays className="h-12 w-12 text-muted-foreground/30" />

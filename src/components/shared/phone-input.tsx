@@ -50,7 +50,7 @@ export function PhoneInput({ value, onChange, error, id }: PhoneInputProps) {
   return (
     <div
       className={cn(
-        "flex h-9 w-full overflow-hidden rounded-md border bg-background text-sm transition-colors focus-within:ring-2",
+        "flex h-9 w-full overflow-hidden rounded-md border bg-card text-sm transition-colors focus-within:ring-2",
         error
           ? "border-destructive focus-within:border-destructive focus-within:ring-destructive/20"
           : "border-border focus-within:border-primary focus-within:ring-primary/20",

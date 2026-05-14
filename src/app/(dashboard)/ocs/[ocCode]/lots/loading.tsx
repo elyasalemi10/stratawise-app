@@ -3,8 +3,7 @@ import { Skeleton } from "@/components/ui/skeleton";
 export default function LotsLoading() {
   return (
     <div className="space-y-6">
-      <div className="flex items-center justify-between">
-        <h1 className="text-lg font-semibold text-foreground">Lots & owners</h1>
+      <div className="flex justify-end">
         <Skeleton className="h-8 w-16 rounded-md" />
       </div>
       <div className="rounded-lg border border-border overflow-hidden">

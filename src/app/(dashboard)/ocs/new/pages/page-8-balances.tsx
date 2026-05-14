@@ -59,6 +59,7 @@ export function Page8Balances({
   const [adminInvalid, setAdminInvalid] = useState(false);
   const [capitalInvalid, setCapitalInvalid] = useState(false);
   const [maintenanceInvalid, setMaintenanceInvalid] = useState(false);
+  const [dateInvalid, setDateInvalid] = useState(false);
   const [pending, setPending] = useState(false);
 
   const totalArrears = useMemo(
@@ -96,7 +97,12 @@ export function Page8Balances({
       problems.push("Opening maintenance plan fund balance is required");
       setMaintenanceInvalid(true);
     } else { setMaintenanceInvalid(false); }
-    if (!date) problems.push("Opening balance date is required");
+    if (!date) {
+      problems.push("Opening balance date is required");
+      setDateInvalid(true);
+    } else {
+      setDateInvalid(false);
+    }
 
     if (problems.length) {
       toast.error(problems.length === 1 ? problems[0] : "Fix the highlighted fields.");
@@ -145,7 +151,11 @@ export function Page8Balances({
         <Label>
           Opening balance date <span className="text-destructive">*</span>
         </Label>
-        <DatePicker value={date} onChange={setDate} />
+        <DatePicker
+          value={date}
+          onChange={(v) => { setDate(v); if (dateInvalid) setDateInvalid(false); }}
+          error={dateInvalid}
+        />
         <p className="text-xs text-muted-foreground">
           Usually the day you took over management. Balances and lot arrears are as at this date.
         </p>

@@ -8,6 +8,8 @@ import { VICTORIA_MODEL_RULES } from "@/lib/data/victoria-model-rules";
 import { uploadRules, parseDraftRules, setRulesSource, saveStep, type DraftJson } from "../actions";
 
 type ParsedRule = {
+  oc_scope?: string;
+  parent_heading?: string | null;
   rule_number: string;
   heading?: string | null;
   body: string;
@@ -211,7 +213,7 @@ export function Page6Rules({
       {source === "model" && (
         <div className="rounded-md border border-border bg-card overflow-hidden">
           <div className="bg-muted/40 px-4 py-2 border-b border-border text-xs font-medium uppercase tracking-wide text-muted-foreground">
-            Victoria&apos;s Model Rules (Owners Corporations Regulations 2018, Schedule 2)
+            Victoria&apos;s Model Rules
           </div>
           <ol className="divide-y divide-border">
             {VICTORIA_MODEL_RULES.map((r) => (
@@ -303,18 +305,46 @@ export function Page6Rules({
                   <Trash2 className="h-4 w-4" />
                 </button>
               </div>
-              <ol className="divide-y divide-border max-h-[480px] overflow-y-auto">
-                {parsedRules.map((r, i) => (
-                  <li key={i} className="px-4 py-3">
-                    <p className="text-sm font-semibold text-foreground">
-                      {r.rule_number}{r.heading ? `. ${r.heading}` : ""}
-                    </p>
-                    <p className="mt-1 text-sm text-muted-foreground leading-relaxed whitespace-pre-line">
-                      {r.body}
-                    </p>
-                  </li>
-                ))}
-              </ol>
+              <div className="max-h-[480px] overflow-y-auto">{(() => {
+                // Group rules by oc_scope first (most docs have one scope, but
+                // mixed-use plans register rules for separate OCs in the same
+                // PDF), then by parent_heading within each scope so the user
+                // can see "8. Commercial Lots → 8.2.1 Advertising Signage" in
+                // context rather than as an orphan rule.
+                const byScope = new Map<string, ParsedRule[]>();
+                for (const r of parsedRules) {
+                  const k = r.oc_scope ?? "";
+                  if (!byScope.has(k)) byScope.set(k, []);
+                  byScope.get(k)!.push(r);
+                }
+                const scopeEntries = Array.from(byScope.entries());
+                return scopeEntries.map(([scope, scopeRules], si) => (
+                  <div key={si}>
+                    {scope && scopeEntries.length > 1 && (
+                      <div className="bg-primary/5 px-4 py-2 border-b border-border text-xs font-semibold uppercase tracking-wide text-primary">
+                        {scope}
+                      </div>
+                    )}
+                    <ol className="divide-y divide-border">
+                      {scopeRules.map((r, i) => (
+                        <li key={i} className="px-4 py-3">
+                          {r.parent_heading && (
+                            <p className="text-xs uppercase tracking-wide text-muted-foreground">
+                              {r.parent_heading}
+                            </p>
+                          )}
+                          <p className="text-sm font-semibold text-foreground">
+                            {r.rule_number}{r.heading ? `. ${r.heading}` : ""}
+                          </p>
+                          <p className="mt-1 text-sm text-muted-foreground leading-relaxed whitespace-pre-line">
+                            {r.body}
+                          </p>
+                        </li>
+                      ))}
+                    </ol>
+                  </div>
+                ));
+              })()}</div>
             </div>
           )}
 

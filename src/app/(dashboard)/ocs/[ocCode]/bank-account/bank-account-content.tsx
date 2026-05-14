@@ -99,8 +99,7 @@ export function BankAccountContent({
 
   return (
     <div className="space-y-6">
-      <div className="flex items-center justify-between">
-        <h1 className="text-lg font-semibold text-foreground">Bank account</h1>
+      <div className="flex justify-end">
         {editing ? (
           <div className="flex items-center gap-2">
             <Button variant="ghost" size="sm" onClick={() => { setEditing(false); setBsb(initialBsb); setAccountNumber(initialAccountNumber); setAccountName(initialAccountName); }} className="cursor-pointer">

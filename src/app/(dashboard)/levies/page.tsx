@@ -3,7 +3,6 @@ import { FileText, DollarSign, AlertTriangle, CheckCircle2 } from "lucide-react"
 import { getCurrentProfile } from "@/lib/auth";
 import { createServerClient } from "@/lib/supabase";
 import { Card, CardContent } from "@/components/ui/card";
-import { PageHeader } from "@/components/shared/page-header";
 import { LevyStatusBadge } from "@/components/shared/levy-status-badge";
 
 const formatCurrency = (n: number) =>
@@ -29,7 +28,6 @@ export default async function LeviesPage() {
   if (lotIds.length === 0) {
     return (
       <div className="space-y-6">
-        <PageHeader title="Levies" subtitle="View all your levy notices" />
         <Card>
           <CardContent className="flex flex-col items-center justify-center py-16 text-center">
             <FileText className="h-12 w-12 text-muted-foreground/30" />
@@ -103,8 +101,6 @@ export default async function LeviesPage() {
 
   return (
     <div className="space-y-6">
-      <PageHeader title="Levies" subtitle="View all your levy notices across all ocs" />
-
       {/* Summary cards */}
       <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
         <Card>

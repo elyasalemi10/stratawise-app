@@ -166,8 +166,7 @@ export function SettingsContent({ oc: initial }: { oc: OCData }) {
 
   return (
     <div className="space-y-6">
-      <div className="flex items-center justify-between">
-        <h1 className="text-lg font-semibold text-foreground">OC settings</h1>
+      <div className="flex justify-end">
         {isEditing ? (
           <Button variant="secondary" size="sm" onClick={() => setIsEditing(false)}>
             <Check className="mr-2 h-3.5 w-3.5" />

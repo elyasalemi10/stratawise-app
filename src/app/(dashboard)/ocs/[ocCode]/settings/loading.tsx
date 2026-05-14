@@ -4,8 +4,7 @@ import { Card, CardContent } from "@/components/ui/card";
 export default function SettingsLoading() {
   return (
     <div className="space-y-6">
-      <div className="flex items-center justify-between">
-        <h1 className="text-lg font-semibold text-foreground">OC settings</h1>
+      <div className="flex justify-end">
         <Skeleton className="h-8 w-16 rounded-md" />
       </div>
       <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">

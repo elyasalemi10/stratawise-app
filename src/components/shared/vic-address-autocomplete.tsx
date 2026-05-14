@@ -150,6 +150,18 @@ export function VicAddressAutocomplete({ value, onChange, id }: Props) {
   useEffect(() => {
     const p = loadPlaces();
     if (!p) {
+      // Diagnostic — most common cause is a NEXT_PUBLIC_* env var set after
+      // `next dev` was started (those bake at build time and require a
+      // server restart). Mirror to console.warn so the operator can see it.
+      if (typeof window !== "undefined") {
+        // eslint-disable-next-line react-hooks/set-state-in-effect
+        console.warn(
+          "VicAddressAutocomplete: NEXT_PUBLIC_GOOGLE_MAPS_API_KEY is missing at runtime. "
+          + "If it's set in .env.local you need to RESTART `next dev` after editing — "
+          + "NEXT_PUBLIC_* vars are baked at build time."
+        );
+      }
+      // eslint-disable-next-line react-hooks/set-state-in-effect
       setSdkFailed(true);
       return;
     }
@@ -160,7 +172,14 @@ export function VicAddressAutocomplete({ value, onChange, id }: Props) {
         // The Maps JS bundle loaded but doesn't include AutocompleteSuggestion
         // — usually means "Places API (New)" isn't enabled in GCP for this
         // key, OR the key lacks "Maps JavaScript API" entirely.
-        console.error("VicAddressAutocomplete: Places API (New) not available. Enable BOTH 'Maps JavaScript API' AND 'Places API (New)' in GCP for the key in NEXT_PUBLIC_GOOGLE_MAPS_API_KEY.");
+        console.error(
+          "[VicAddressAutocomplete] Places API (New) not available.\n"
+          + "Fix in Google Cloud Console:\n"
+          + " 1. APIs & Services → Library → enable 'Places API (New)' and 'Maps JavaScript API'.\n"
+          + " 2. APIs & Services → Credentials → your key → Application restrictions: 'HTTP referrers' "
+          + "must include http://localhost:* and your prod domain (or temporarily set to 'None' to test).\n"
+          + " 3. Billing must be enabled on the project."
+        );
         setSdkFailed(true);
         return;
       }
@@ -170,7 +189,12 @@ export function VicAddressAutocomplete({ value, onChange, id }: Props) {
       };
       sessionTokenRef.current = new lib.AutocompleteSessionToken();
     }).catch((err) => {
-      console.error("VicAddressAutocomplete: Places SDK failed to load", err);
+      console.error(
+        "[VicAddressAutocomplete] Places SDK failed to load. Likely causes: "
+        + "API key restrictions blocking this origin, billing not enabled, or 'Places API (New)' "
+        + "not enabled in GCP. Raw error:",
+        err,
+      );
       setSdkFailed(true);
     });
   }, []);

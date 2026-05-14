@@ -31,8 +31,7 @@ export default async function LeviesPage({
 
   return (
     <div className="space-y-6">
-      <div className="flex items-center justify-between">
-        <h1 className="text-lg font-semibold text-foreground">Levies</h1>
+      <div className="flex justify-end">
         <Link href={`/ocs/${ocCode}/generate`}>
           <Button size="sm">
             <Plus className="mr-2 h-3.5 w-3.5" />

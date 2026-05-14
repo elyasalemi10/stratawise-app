@@ -66,17 +66,14 @@ export function InboxContent({ notifications: initial }: { notifications: Notifi
     const Icon = TYPE_ICONS[openNotification.type] ?? Info;
     return (
       <div className="space-y-6">
-        <div className="flex items-center justify-between">
-          <div className="flex items-center gap-3">
-            <button
-              type="button"
-              onClick={() => setOpenId(null)}
-              className="flex h-8 w-8 items-center justify-center rounded-md hover:bg-muted cursor-pointer"
-            >
-              <ArrowLeft className="h-4 w-4" />
-            </button>
-            <h1 className="text-lg font-semibold text-foreground">Inbox</h1>
-          </div>
+        <div>
+          <button
+            type="button"
+            onClick={() => setOpenId(null)}
+            className="inline-flex h-8 w-8 items-center justify-center rounded-md hover:bg-muted cursor-pointer"
+          >
+            <ArrowLeft className="h-4 w-4" />
+          </button>
         </div>
 
         <Card>
@@ -118,15 +115,14 @@ export function InboxContent({ notifications: initial }: { notifications: Notifi
   // Notification list
   return (
     <div className="space-y-6">
-      <div className="flex items-center justify-between">
-        <h1 className="text-lg font-semibold text-foreground">Inbox</h1>
-        {unreadCount > 0 && (
+      {unreadCount > 0 && (
+        <div className="flex justify-end">
           <Button variant="outline" size="sm" onClick={handleMarkAllRead} className="cursor-pointer">
             <Check className="mr-2 h-3.5 w-3.5" />
             Mark all as read ({unreadCount})
           </Button>
-        )}
-      </div>
+        </div>
+      )}
 
       {notifications.length === 0 ? (
         <Card>

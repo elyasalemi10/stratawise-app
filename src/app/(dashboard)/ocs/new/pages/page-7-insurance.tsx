@@ -137,13 +137,6 @@ export function Page7Insurance({
   const [hasInsurance, setHasInsurance] = useState<boolean | null>(
     initialDraft.has_insurance === undefined ? null : initialDraft.has_insurance,
   );
-  const [mode, setMode] = useState<"upload" | "manual">(() => {
-    // Default to upload mode unless the existing draft already has manually-
-    // entered policies and no CoCs.
-    const cocs = initialDraft.insurance_cocs ?? [];
-    const pol = migrateLegacy(initialDraft);
-    return cocs.length === 0 && pol.length > 0 ? "manual" : "upload";
-  });
   const [policies, setPolicies] = useState<DraftInsurancePolicy[]>(() => migrateLegacy(initialDraft));
   const [cocs, setCocs] = useState<Coc[]>(initialDraft.insurance_cocs ?? []);
   const [invalidByIdx, setInvalidByIdx] = useState<Record<number, PolicyInvalid>>({});
@@ -376,68 +369,44 @@ export function Page7Insurance({
             </div>
           )}
 
-          {/* CoC upload OR manual entry. */}
-          {mode === "upload" ? (
-            <div className="space-y-3">
-              <button
-                type="button"
-                onClick={() => inputRef.current?.click()}
-                disabled={uploading}
-                className="flex w-full flex-col items-center justify-center gap-2 rounded-lg border-2 border-dashed border-border bg-card/60 px-6 py-10 text-sm text-muted-foreground hover:bg-card hover:text-foreground cursor-pointer disabled:cursor-not-allowed disabled:opacity-60"
-              >
-                {uploading ? (
-                  <Loader2 className="h-6 w-6 animate-spin text-primary" />
-                ) : (
-                  <Upload className="h-6 w-6" />
-                )}
-                <span className="text-sm font-medium text-foreground">
-                  {uploading ? "Reading your certificate…" : "Upload a Certificate of Currency"}
-                </span>
-                <span className="text-xs">PDF. We&apos;ll extract the policies automatically.</span>
-              </button>
-              <input
-                ref={inputRef}
-                type="file"
-                accept="application/pdf,.pdf"
-                className="hidden"
-                onChange={(e) => {
-                  const f = e.target.files?.[0];
-                  if (f) void handleFile(f);
-                  e.target.value = "";
-                }}
-              />
-              <p className="text-center text-xs text-muted-foreground">
-                Or{" "}
-                <button
-                  type="button"
-                  onClick={() => {
-                    setMode("manual");
-                    if (policies.length === 0) addPolicy();
-                  }}
-                  className="text-primary underline-offset-2 hover:underline cursor-pointer"
-                >
-                  fill in details manually
-                </button>
-                .
-              </p>
-            </div>
-          ) : (
-            <div className="space-y-3">
-              <p className="text-center text-xs text-muted-foreground">
-                <button
-                  type="button"
-                  onClick={() => setMode("upload")}
-                  className="text-primary underline-offset-2 hover:underline cursor-pointer"
-                >
-                  Switch back to certificate upload
-                </button>
-                .
-              </p>
-            </div>
-          )}
+          {/* CoC upload — always available. Below it are the policy cards
+              the manager can edit by hand. Upload + manual entry are not
+              mutually-exclusive; the AI just prefills cards faster than typing
+              them in. */}
+          <div className="space-y-3">
+            <button
+              type="button"
+              onClick={() => inputRef.current?.click()}
+              disabled={uploading}
+              className="flex w-full flex-col items-center justify-center gap-2 rounded-lg border-2 border-dashed border-border bg-card/60 px-6 py-10 text-sm text-muted-foreground hover:bg-card hover:text-foreground cursor-pointer disabled:cursor-not-allowed disabled:opacity-60"
+            >
+              {uploading ? (
+                <Loader2 className="h-6 w-6 animate-spin text-primary" />
+              ) : (
+                <Upload className="h-6 w-6" />
+              )}
+              <span className="text-sm font-medium text-foreground">
+                {uploading ? "Reading your certificate…" : "Upload a Certificate of Currency"}
+              </span>
+              <span className="text-xs">PDF. We&apos;ll extract the policies automatically. Or scroll down to add one by hand.</span>
+            </button>
+            <input
+              ref={inputRef}
+              type="file"
+              accept="application/pdf,.pdf"
+              className="hidden"
+              onChange={(e) => {
+                const f = e.target.files?.[0];
+                if (f) void handleFile(f);
+                e.target.value = "";
+              }}
+            />
+          </div>
 
-          {/* Policy cards — visible in both modes once a policy exists. */}
-          {policies.length > 0 && (
+          {/* Policy cards — visible whenever there's a policy to edit. The
+              "Add another policy" button appears underneath whether there are
+              zero or many — the manager can always hand-enter another. */}
+          <div className="space-y-4">{policies.length > 0 && (
             <div className="space-y-4">
               {policies.map((p, idx) => {
                 const inv = invalidByIdx[idx] ?? NO_PI;
@@ -560,12 +529,13 @@ export function Page7Insurance({
                 );
               })}
 
-              <Button type="button" variant="secondary" onClick={addPolicy} className="w-full">
-                <Plus className="mr-1.5 h-3.5 w-3.5" />
-                Add another policy
-              </Button>
             </div>
           )}
+            <Button type="button" variant="secondary" onClick={addPolicy} className="w-full">
+              <Plus className="mr-1.5 h-3.5 w-3.5" />
+              {policies.length === 0 ? "Add a policy" : "Add another policy"}
+            </Button>
+          </div>
         </>
       )}
 

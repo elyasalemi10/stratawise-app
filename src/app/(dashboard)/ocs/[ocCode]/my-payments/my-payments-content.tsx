@@ -130,7 +130,6 @@ export function MyPaymentsContent({ ocId, ownerLots, claims }: Props) {
   if (ownerLots.length === 0) {
     return (
       <div className="space-y-6">
-        <h1 className="text-lg font-semibold text-foreground">My payments</h1>
         <Card>
           <CardContent className="py-10 text-center">
             <p className="text-sm text-muted-foreground">
@@ -145,8 +144,6 @@ export function MyPaymentsContent({ ocId, ownerLots, claims }: Props) {
 
   return (
     <div className="space-y-6">
-      <h1 className="text-lg font-semibold text-foreground">My payments</h1>
-
       <Card>
         <CardHeader>
           <CardTitle className="text-sm font-semibold uppercase tracking-wide">
