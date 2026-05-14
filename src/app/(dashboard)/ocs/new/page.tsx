@@ -91,6 +91,12 @@ function WizardContent() {
     if (draft) next.set("draft", draft.id);
     next.set("step", String(n));
     window.history.replaceState(null, "", `/ocs/new?${next.toString()}`);
+    // Scroll the viewport back to the top so the next step starts above the
+    // fold. Without this, finishing a long step (Lots / Per-lot arrears)
+    // dumps the manager into the middle of the next page.
+    if (typeof window !== "undefined") {
+      window.scrollTo({ top: 0, behavior: "auto" });
+    }
   }
 
   async function refreshDraft() {

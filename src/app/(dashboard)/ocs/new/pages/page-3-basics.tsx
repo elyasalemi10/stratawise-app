@@ -169,9 +169,14 @@ export function Page3Basics({
   const [photoKey, setPhotoKey] = useState<string | null>(initialPhotoKey);
   const [photoUrl, setPhotoUrl] = useState<string | null>(null);
   const [photoUploading, setPhotoUploading] = useState(false);
-  const [uploadAborted, setUploadAborted] = useState(false);
   const photoInputRef = useRef<HTMLInputElement>(null);
   const activeBlobUrlRef = useRef<string | null>(null);
+  // Each photo selection gets a unique upload id. handleRemovePhoto bumps
+  // the id when it fires mid-upload; the in-flight upload watches the id
+  // and bails (with a server-side cleanup) when it changes underneath it.
+  // Using a ref instead of state because the upload closure captures the
+  // value at start time — state would never see the post-click update.
+  const uploadIdRef = useRef(0);
 
   // Resolve the public URL for a resumed draft once on mount. uploadOcPhoto
   // returns the URL inline so fresh uploads don't go through this path.
@@ -188,7 +193,10 @@ export function Page3Basics({
     // re-encoded as JPEG q=0.82) before sending. Falls back to the raw file
     // if the canvas path errors out (rare — HEIC without browser decode).
     setPhotoUploading(true);
-    setUploadAborted(false);
+    // Take a snapshot of the current upload id so we can detect a cancel
+    // (handleRemovePhoto bumps the global counter, this local copy stays).
+    uploadIdRef.current += 1;
+    const myUploadId = uploadIdRef.current;
 
     // Optimistic preview — paint the chosen image immediately under a dim
     // overlay + spinner so the user sees their photo while we compress and
@@ -239,20 +247,13 @@ export function Page3Basics({
     if (thumb) fd.append("thumb", thumb);
     const r = await uploadOcPhoto(draftId, fd);
 
-    // If the user clicked the trash icon mid-upload, the upload-aborted flag
-    // got set. The server still persisted the photo (we don't have an abort
-    // controller wired to the server action yet) — so issue a follow-up
-    // delete and bail out without rendering.
-    if (uploadAborted) {
-      setUploadAborted(false);
+    // Cancel check (ref-based — captures the latest value, unlike the old
+    // state-based check). If the user clicked trash mid-upload, our id is
+    // stale; clean up the just-persisted photo from R2 and bail without
+    // touching React state (handleRemovePhoto already cleared it).
+    if (uploadIdRef.current !== myUploadId) {
       if (r.storage_key) void removeOcPhoto(draftId);
-      if (previewUrl) {
-        URL.revokeObjectURL(previewUrl);
-        activeBlobUrlRef.current = null;
-      }
-      setPhotoUploading(false);
-      setPhotoKey(null);
-      setPhotoUrl(null);
+      if (previewUrl) URL.revokeObjectURL(previewUrl);
       return;
     }
 
@@ -276,6 +277,13 @@ export function Page3Basics({
     if (r2Url) {
       const preloader = new Image();
       preloader.onload = () => {
+        // Re-check cancel — the user might have clicked trash AFTER the
+        // upload returned but BEFORE the preloader fired. If so, drop the
+        // swap and clean up.
+        if (uploadIdRef.current !== myUploadId) {
+          void removeOcPhoto(draftId);
+          return;
+        }
         setPhotoUrl(r2Url);
         if (previewUrl) {
           URL.revokeObjectURL(previewUrl);
@@ -284,6 +292,7 @@ export function Page3Basics({
         setPhotoUploading(false);
       };
       preloader.onerror = () => {
+        if (uploadIdRef.current !== myUploadId) return;
         // R2 URL didn't load (CDN propagation, network blip). Keep showing
         // the local blob — it's still valid until the page reloads.
         setPhotoUploading(false);
@@ -298,24 +307,24 @@ export function Page3Basics({
   // fast and a spinner inside the photo slot just causes flicker on what's
   // already an instant action.
   async function handleRemovePhoto() {
-    const wasUploading = photoUploading;
-    if (wasUploading) {
-      // Tell the in-flight upload to dispose of itself when it returns.
-      setUploadAborted(true);
-    }
+    // Bump the upload id so any in-flight upload sees a mismatch when it
+    // returns and tears itself down (incl. removing the just-uploaded R2
+    // object). This must happen BEFORE clearing other state so the upload
+    // closure's pending return doesn't race past us and re-render the photo.
+    uploadIdRef.current += 1;
     // Optimistically clear the UI so the click feels instant.
     if (activeBlobUrlRef.current) {
       URL.revokeObjectURL(activeBlobUrlRef.current);
       activeBlobUrlRef.current = null;
     }
+    setPhotoUploading(false);
     setPhotoKey(null);
     setPhotoUrl(null);
-    if (!wasUploading) {
-      const r = await removeOcPhoto(draftId);
-      if (r.error) {
-        toast.error(r.error);
-      }
-    }
+    // Always fire the server delete — covers the saved-photo case AND the
+    // mid-upload case (the upload's own bail-out also fires a delete; both
+    // are idempotent so the second one's a no-op).
+    const r = await removeOcPhoto(draftId);
+    if (r.error) toast.error(r.error);
   }
 
   async function onContinue() {

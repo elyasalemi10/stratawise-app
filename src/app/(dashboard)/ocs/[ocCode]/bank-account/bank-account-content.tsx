@@ -99,30 +99,31 @@ export function BankAccountContent({
 
   return (
     <div className="space-y-6">
-      <div className="flex justify-end">
-        {editing ? (
-          <div className="flex items-center gap-2">
-            <Button variant="ghost" size="sm" onClick={() => { setEditing(false); setBsb(initialBsb); setAccountNumber(initialAccountNumber); setAccountName(initialAccountName); }} className="cursor-pointer">
-              Cancel
-            </Button>
-            <Button size="sm" onClick={handleSave} disabled={saving} className="cursor-pointer">
-              <Check className="mr-2 h-3.5 w-3.5" />
-              {saving && <Loader2 className="size-4 animate-spin" />}
-              Save
-            </Button>
-          </div>
-        ) : (
-          <Button variant="secondary" size="sm" onClick={() => setEditing(true)} className="cursor-pointer">
-            <Pencil className="mr-2 h-3.5 w-3.5" />
-            Edit
-          </Button>
-        )}
-      </div>
-
       <Card>
         <CardContent className="pt-5">
-          <h3 className="text-sm font-semibold text-foreground mb-4">EFT details</h3>
-          <p className="text-xs text-muted-foreground mb-4">These details appear on levy notices for lot owners to make payments.</p>
+          <div className="mb-4 flex items-start justify-between gap-3">
+            <div>
+              <h3 className="text-sm font-semibold text-foreground">EFT details</h3>
+              <p className="mt-1 text-xs text-muted-foreground">These details appear on levy notices for lot owners to make payments.</p>
+            </div>
+            {editing ? (
+              <div className="flex items-center gap-2 shrink-0">
+                <Button variant="ghost" size="sm" onClick={() => { setEditing(false); setBsb(initialBsb); setAccountNumber(initialAccountNumber); setAccountName(initialAccountName); }} className="cursor-pointer">
+                  Cancel
+                </Button>
+                <Button size="sm" onClick={handleSave} disabled={saving} className="cursor-pointer">
+                  <Check className="mr-2 h-3.5 w-3.5" />
+                  {saving && <Loader2 className="size-4 animate-spin" />}
+                  Save
+                </Button>
+              </div>
+            ) : (
+              <Button variant="secondary" size="sm" onClick={() => setEditing(true)} className="cursor-pointer shrink-0">
+                <Pencil className="mr-2 h-3.5 w-3.5" />
+                Edit
+              </Button>
+            )}
+          </div>
 
           <div className="space-y-4">
             <div className="flex items-center justify-between py-2 border-b border-border/50">

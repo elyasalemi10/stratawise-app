@@ -1,6 +1,7 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useLayoutEffect, useRef, useState } from "react";
+import { createPortal } from "react-dom";
 import Link from "next/link";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import {
@@ -15,17 +16,16 @@ import {
   Users,
   FileText,
   Wallet,
-  Wrench,
   CalendarCheck,
   Plus,
-  Check,
   Search,
   Shield,
   ClipboardList,
   Landmark,
   GitMerge,
   AlertTriangle,
-  Star,
+  Pin,
+  PieChart,
 } from "lucide-react";
 
 import {
@@ -138,17 +138,32 @@ function getOCNavGroups(ocCode: string, isLotOwner: boolean) {
         { href: `${base}/reports`, label: "Reports", icon: ClipboardList },
       ],
     },
+    // Finance split into three focused groups — Levies (what the lot owners
+    // see / get billed), Banking (cash flow + reconciliation), Insurance
+    // (separate because it's a different vendor lifecycle). Order matches
+    // how managers move through a typical month: bill, reconcile, manage
+    // cover.
     {
-      label: "Finance",
+      label: "Levies",
       items: [
-        { href: `${base}/budgets`, label: "Budgets", icon: Wallet },
         { href: `${base}/levies`, label: "Levies", icon: Receipt },
         { href: `${base}/generate`, label: "Generate levies", icon: Plus },
-        { href: `${base}/insurance`, label: "Insurance", icon: Shield },
-        { href: `${base}/bank-account`, label: "Bank account", icon: Landmark },
-        { href: `${base}/reconciliation`, label: "Reconciliation", icon: GitMerge, badgeKey: "unmatched_count" as const },
-        { href: `${base}/reconciliation/mappings`, label: "Payer mappings", icon: Users },
         { href: `${base}/reconciliation/claims`, label: "Payment claims", icon: Receipt },
+        { href: `${base}/budgets`, label: "Budgets", icon: PieChart },
+      ],
+    },
+    {
+      label: "Banking",
+      items: [
+        { href: `${base}/reconciliation`, label: "Reconciliation", icon: GitMerge, badgeKey: "unmatched_count" as const },
+        { href: `${base}/bank-account`, label: "Bank account", icon: Landmark },
+        { href: `${base}/reconciliation/mappings`, label: "Payer mappings", icon: Users },
+      ],
+    },
+    {
+      label: "Insurance",
+      items: [
+        { href: `${base}/insurance`, label: "Insurance", icon: Shield },
       ],
     },
     {
@@ -191,25 +206,72 @@ function SimpleDropdown({
   closeOnClick?: boolean;
 }) {
   const [open, setOpen] = useState(false);
-  const ref = useRef<HTMLDivElement>(null);
-  useClickOutside(ref, () => setOpen(false));
+  const wrapperRef = useRef<HTMLDivElement>(null);
+  const panelRef = useRef<HTMLDivElement>(null);
+  const [panelStyle, setPanelStyle] = useState<React.CSSProperties>({});
 
-  const positionClass =
-    side === "top" ? "bottom-full mb-1"
-    : side === "right" ? "left-full top-0 ml-2"
-    : "top-full mt-1";
+  // Click-outside dismiss. Considers BOTH the trigger wrapper and the
+  // portaled panel — without that, clicking inside the portaled panel would
+  // count as "outside" because it's not a descendant of wrapperRef.
+  useEffect(() => {
+    function onDocClick(e: MouseEvent) {
+      const t = e.target as Node;
+      if (wrapperRef.current?.contains(t)) return;
+      if (panelRef.current?.contains(t)) return;
+      setOpen(false);
+    }
+    if (open) document.addEventListener("mousedown", onDocClick);
+    return () => document.removeEventListener("mousedown", onDocClick);
+  }, [open]);
+
+  // Position the panel relative to the trigger via fixed coordinates. The
+  // panel renders into a portal so it escapes the sidebar's overflow-hidden
+  // clip; positioning by getBoundingClientRect keeps it pinned to the
+  // trigger across scroll / resize.
+  useLayoutEffect(() => {
+    if (!open || !wrapperRef.current) return;
+    function recompute() {
+      const rect = wrapperRef.current?.getBoundingClientRect();
+      if (!rect) return;
+      if (side === "right") {
+        setPanelStyle({ position: "fixed", left: rect.right + 8, top: rect.top });
+      } else if (side === "top") {
+        setPanelStyle({ position: "fixed", left: rect.left, top: rect.top - 8, transform: "translateY(-100%)" });
+      } else {
+        setPanelStyle({
+          position: "fixed",
+          left: rect.left,
+          top: rect.bottom + 4,
+          width: matchWidth ? rect.width : undefined,
+        });
+      }
+    }
+    recompute();
+    window.addEventListener("scroll", recompute, true);
+    window.addEventListener("resize", recompute);
+    return () => {
+      window.removeEventListener("scroll", recompute, true);
+      window.removeEventListener("resize", recompute);
+    };
+  }, [open, side, matchWidth]);
 
   return (
-    <div ref={ref} className="relative">
+    <div ref={wrapperRef} className="relative">
       <div onClick={() => setOpen((o) => !o)} className="cursor-pointer">{trigger}</div>
-      {open && (
+      {open && typeof window !== "undefined" && createPortal(
         <div
-          className={`absolute ${positionClass} left-0 z-50 rounded-lg border border-border bg-popover shadow-md animate-in fade-in-0 zoom-in-95 duration-100 ${matchWidth ? "w-full" : "min-w-56"} ${side === "right" ? "left-auto" : ""}`}
+          ref={panelRef}
+          style={panelStyle}
+          // z-[100] beats the sidebar (z-20) and any popover (z-50) so the
+          // panel always sits on top regardless of which surface launched
+          // it. animate-in keeps the open feel snappy.
+          className={`z-[100] rounded-lg border border-border bg-popover shadow-md animate-in fade-in-0 zoom-in-95 duration-100 ${matchWidth ? "" : "min-w-56"}`}
           onClick={closeOnClick ? () => setOpen(false) : undefined}
           onMouseDown={closeOnClick ? undefined : (e) => e.stopPropagation()}
         >
           {children}
-        </div>
+        </div>,
+        document.body,
       )}
     </div>
   );
@@ -265,11 +327,19 @@ function OCSwitcherRow({
   onTogglePin: () => void;
 }) {
   return (
-    <div className="group flex items-center gap-1 rounded-md hover:bg-accent">
+    <div
+      className={cn(
+        "group flex items-center gap-1 rounded-md hover:bg-accent",
+        // The current row is greyed (no Check icon) so the user feels "this
+        // is where I am" without an explicit affordance. Slight bg tint +
+        // dimmed text. Hover still works so it's not visually inert.
+        isCurrent && "bg-muted/60 text-muted-foreground",
+      )}
+    >
       <button
         type="button"
         onClick={onSwitch}
-        className="flex flex-1 cursor-pointer items-center gap-2 rounded-md px-2 py-1.5 text-left text-sm text-foreground"
+        className="flex flex-1 cursor-pointer items-center gap-2 rounded-md px-2 py-2.5 text-left text-sm"
       >
         {sub.thumbnail_url ? (
           /* eslint-disable-next-line @next/next/no-img-element */
@@ -291,7 +361,6 @@ function OCSwitcherRow({
             </span>
           )}
         </div>
-        {isCurrent && <Check className="h-4 w-4 text-primary shrink-0" />}
       </button>
       <button
         type="button"
@@ -300,13 +369,17 @@ function OCSwitcherRow({
           e.stopPropagation();
           onTogglePin();
         }}
-        className={`mr-1 inline-flex size-7 cursor-pointer items-center justify-center rounded-md ${
-          isPinned
-            ? "text-amber-500"
-            : "text-muted-foreground opacity-0 group-hover:opacity-100 hover:text-foreground"
-        }`}
+        // Pin icon is hidden until row hover, regardless of pinned state.
+        // Pinned rows show a filled pin; unpinned show outline. The hover-
+        // only reveal keeps the panel visually quiet — the user only sees a
+        // pin affordance when they're hovering a row they might want to act
+        // on.
+        className={cn(
+          "mr-1 inline-flex size-7 cursor-pointer items-center justify-center rounded-md opacity-0 group-hover:opacity-100",
+          isPinned ? "text-amber-500" : "text-muted-foreground hover:text-foreground",
+        )}
       >
-        <Star className={`size-3.5 ${isPinned ? "fill-current" : ""}`} />
+        <Pin className={cn("size-3.5", isPinned && "fill-current")} />
       </button>
     </div>
   );
@@ -662,13 +735,17 @@ export function AppSidebar({
                       <button
                         type="button"
                         onClick={() => switchOC(null)}
-                        className="flex w-full cursor-pointer items-center gap-2 rounded-md px-2 py-1.5 text-sm text-foreground hover:bg-accent"
+                        className={cn(
+                          "flex w-full cursor-pointer items-center gap-2 rounded-md px-2 py-2.5 text-sm hover:bg-accent",
+                          // Matches the OC row treatment — greyed when this
+                          // is the user's current location, no check icon.
+                          !isInOC ? "bg-muted/60 text-muted-foreground" : "text-foreground",
+                        )}
                       >
                         <div className="flex size-6 items-center justify-center rounded-md border border-border">
                           <LayoutDashboard className="size-3.5 shrink-0" />
                         </div>
                         <span className="flex-1 text-left">Main dashboard</span>
-                        {!isInOC && <Check className="ml-auto h-4 w-4 text-primary" />}
                       </button>
                       <div className="relative mt-1">
                         <Search className="pointer-events-none absolute left-2.5 top-1/2 size-3.5 -translate-y-1/2 text-muted-foreground" />
@@ -681,10 +758,12 @@ export function AppSidebar({
                         />
                       </div>
                     </div>
-                    {/* Scrollable middle. max-h ≈ 12 rows so the panel
-                        doesn't dominate the viewport when an org has 30+
-                        OCs; users still get visible scroll affordance. */}
-                    <div className="max-h-[360px] overflow-y-auto p-1">
+                    {/* Scrollable middle. max-h is sized to ~6.5 rows so a
+                        partial 7th row peeks at the bottom — that fractional
+                        cut is intentional, it signals "scroll for more"
+                        better than a clean edge. Row height ≈ 44px
+                        (py-2.5 + size-6 image). */}
+                    <div className="max-h-[286px] overflow-y-auto p-1">
                       {pinned.length > 0 && (
                         <>
                           <div className="px-2 pb-1 pt-1 text-[10px] font-medium uppercase tracking-wide text-muted-foreground">Pinned</div>

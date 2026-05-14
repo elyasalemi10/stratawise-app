@@ -1201,8 +1201,11 @@ export async function completeWizard(draftId: string) {
     // Trust accounts → bank_accounts rows per fund. Each fund references its
     // own (resolved) BSB+account_number; shared-account funds end up with
     // matching values, which the uq_bank_accounts_oc_fund_account index
-    // accepts (one row per fund_type).
-    await supabase.from("bank_accounts").insert({
+    // accepts (one row per fund_type). Errors are logged + surfaced — the
+    // wizard used to swallow them silently, so a constraint trip (e.g. on
+    // the now-removed global unique) produced an OC with zero bank rows
+    // and a baffled manager on the bank-account page.
+    const { error: adminBankErr } = await supabase.from("bank_accounts").insert({
       oc_id: oc.id,
       fund_type: "administrative",
       bank_name: d.admin_bank_id ?? null,
@@ -1212,7 +1215,11 @@ export async function completeWizard(draftId: string) {
       opening_balance: d.opening_admin_balance ?? 0,
       opening_balance_date: d.opening_balance_date,
     });
-    await supabase.from("bank_accounts").insert({
+    if (adminBankErr) {
+      console.error("completeWizard: admin bank_accounts insert failed", adminBankErr);
+      return { error: "Couldn't save the admin fund bank account. Please check the details and try again." };
+    }
+    const { error: capitalBankErr } = await supabase.from("bank_accounts").insert({
       oc_id: oc.id,
       fund_type: "capital_works",
       bank_name: capital.bank_id ?? null,
@@ -1222,8 +1229,12 @@ export async function completeWizard(draftId: string) {
       opening_balance: d.opening_capital_works_balance ?? 0,
       opening_balance_date: d.opening_balance_date,
     });
+    if (capitalBankErr) {
+      console.error("completeWizard: capital_works bank_accounts insert failed", capitalBankErr);
+      return { error: "Couldn't save the capital works fund bank account. Please check the details and try again." };
+    }
     if (maintenance) {
-      await supabase.from("bank_accounts").insert({
+      const { error: mBankErr } = await supabase.from("bank_accounts").insert({
         oc_id: oc.id,
         fund_type: "maintenance_plan",
         bank_name: maintenance.bank_id ?? null,
@@ -1233,6 +1244,10 @@ export async function completeWizard(draftId: string) {
         opening_balance: d.opening_maintenance_plan_balance ?? 0,
         opening_balance_date: d.opening_balance_date,
       });
+      if (mBankErr) {
+        console.error("completeWizard: maintenance_plan bank_accounts insert failed", mBankErr);
+        return { error: "Couldn't save the maintenance plan fund bank account. Please check the details and try again." };
+      }
     }
 
     // DRN mappings (Macquarie only). The wizard staged rows in
