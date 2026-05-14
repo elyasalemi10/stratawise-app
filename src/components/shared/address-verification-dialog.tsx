@@ -58,8 +58,11 @@ export function AddressVerificationDialog({
   onCancel,
 }: AddressVerificationDialogProps) {
   if (!result || !original) return null;
+  // Only fires on corrected / failed. "verified" + "unchecked" never
+  // surface to the user — the caller commits the address straight away.
   const isCorrected = result.status === "corrected" && result.correctedAddress;
   const isFailed = result.status === "failed";
+  if (!isCorrected && !isFailed) return null;
   const suggestion = result.correctedAddress;
   const orig = formatAddrLines(original);
   const sugg = suggestion ? formatAddrLines(suggestion) : null;

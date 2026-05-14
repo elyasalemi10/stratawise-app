@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useState } from "react";
 import { toast } from "sonner";
 import { Info, Loader2, Mail, MailOpen, MailX, Pencil } from "lucide-react";
 import { Button } from "@/components/ui/button";
@@ -147,30 +147,16 @@ export function Page5Comms({
     setPopupDraft((prev) => prev.includes(cat) ? prev.filter((c) => c !== cat) : [...prev, cat]);
   }
 
-  // "Any owner ever receiving postal" — true when default is postal, or
-  // when default is "mixed" and at least one owner has any category gap.
-  // Drives whether the buffer section is even relevant; under pure-email
-  // delivery the postal buffer never bites.
-  const anyPostalInPlay = useMemo(() => {
-    if (defaultDelivery === "postal") return true;
-    if (defaultDelivery === "email") return false;
-    // mixed: postal kicks in for any owner whose consent list is missing
-    // at least one OC-offered category (those categories fall back to
-    // postal under "mixed").
-    return lots.some((l) => {
-      const consent = l.digital_consent_categories ?? [];
-      return offeredCategories.some((c) => !consent.includes(c));
-    });
-  }, [defaultDelivery, lots, offeredCategories]);
-
-  // Phase 1 Continue: main Comms screen → either jump to the 5.1 buffer
-  // screen (when postal is in play) or save + advance to step 6.
+  // Phase 1 Continue → buffer sub-view ALWAYS, even when the current
+  // comms config is pure email. The buffer config is per-OC and lasts
+  // beyond this wizard; if the manager (or a future owner via the
+  // portal) ever flips someone back to postal we want the buffer
+  // already configured. Pre-filled defaults (14 days) match the
+  // statutory-minimum-plus-comfortable-margin everyone uses, so a
+  // manager who doesn't currently send postal can just Continue
+  // through without thinking about it.
   async function onMainContinue() {
-    if (anyPostalInPlay) {
-      setPhase("buffer");
-      return;
-    }
-    await persist({ meetings: 14, levies: 14, financial: 14 });
+    setPhase("buffer");
   }
 
   // Phase 2 Continue: 5.1 buffer screen → validate + save + advance.

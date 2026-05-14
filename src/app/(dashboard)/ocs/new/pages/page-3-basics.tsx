@@ -6,6 +6,7 @@ import { Loader2, ImagePlus, Trash2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { Checkbox } from "@/components/ui/checkbox";
 import {
   Select,
   SelectContent,
@@ -13,6 +14,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
+import { VicAddressAutocomplete, type ParsedAddress } from "@/components/shared/vic-address-autocomplete";
 import { saveStep, uploadOcPhoto, removeOcPhoto, getPhotoPublicUrl, type DraftJson } from "../actions";
 
 // tier classification still happens — at completeWizard time. The wizard UI
@@ -167,6 +169,27 @@ export function Page3Basics({
   const [billingCycle, setBillingCycle] = useState<BillingCycle>(
     (initialDraft.billing_cycle as BillingCycle | undefined) ?? "quarterly",
   );
+  // Notice address — where post lands when an owner / the OC needs paper.
+  // Default: use the OC's plan-of-subdivision address (a separate value
+  // would be unusual for new OCs). When "useSiteAddress" is OFF the
+  // manager enters a custom address with Google autocomplete + manual
+  // fallback. All four parts (street_no, street_name, suburb, postcode)
+  // are required on submit. PostGrid verification is NOT wired here yet
+  // — the address is saved with status='unchecked' until the addver
+  // product key is added; see lib/postgrid/client.ts.
+  const initialNoticeIsCustom = !!(initialDraft.notice_address && initialDraft.notice_address.trim()
+    && initialDraft.address && initialDraft.notice_address.trim() !== initialDraft.address.trim());
+  const [useSiteAddress, setUseSiteAddress] = useState<boolean>(!initialNoticeIsCustom);
+  const [noticeAddress, setNoticeAddress] = useState<ParsedAddress>({
+    street_number: "",
+    street_name: "",
+    suburb: "",
+    state: "VIC",
+    postcode: "",
+    formatted: initialDraft.notice_address ?? "",
+  });
+  const [noticeAddressInvalid, setNoticeAddressInvalid] = useState(false);
+
   const [pending, setPending] = useState(false);
   const [photoKey, setPhotoKey] = useState<string | null>(initialPhotoKey);
   const [photoUrl, setPhotoUrl] = useState<string | null>(null);
@@ -330,6 +353,34 @@ export function Page3Basics({
   }
 
   async function onContinue() {
+    // Notice-address validation. When "use site address" is OFF the
+    // manager has to supply every component (street_no, street_name,
+    // suburb, postcode). All four are required for PostGrid to verify
+    // deliverability later, and for the postal label generator to
+    // produce something Australia Post will scan.
+    let resolvedNotice: string | undefined;
+    if (!useSiteAddress) {
+      const a = noticeAddress;
+      const missing: string[] = [];
+      if (!a.street_number?.trim()) missing.push("street number");
+      if (!a.street_name?.trim()) missing.push("street name");
+      if (!a.suburb?.trim()) missing.push("suburb");
+      if (!a.postcode?.trim()) missing.push("postcode");
+      if (missing.length > 0) {
+        setNoticeAddressInvalid(true);
+        toast.error(`Notice address is missing: ${missing.join(", ")}.`);
+        return;
+      }
+      setNoticeAddressInvalid(false);
+      resolvedNotice = a.formatted?.trim()
+        || `${a.street_number} ${a.street_name}, ${a.suburb} VIC ${a.postcode}`;
+    } else {
+      // Use OC site address — completeWizard already falls back to
+      // draft_json.address when notice_address is empty, so we send
+      // undefined here to mean "inherit OC address".
+      resolvedNotice = undefined;
+    }
+
     setPending(true);
     const r = await saveStep(draftId, {
       trading_name: title || undefined,
@@ -337,6 +388,7 @@ export function Page3Basics({
       financial_year_start_month: fyMonth,
       financial_year_start_day: 1,
       billing_cycle: billingCycle,
+      notice_address: resolvedNotice,
     }, 4);
     if (r.error) {
       setPending(false);
@@ -484,6 +536,53 @@ export function Page3Basics({
                 </SelectContent>
               </Select>
             </div>
+          </div>
+
+          {/* Notice address. Default ON = use the OC's site/plan-of-
+              subdivision address (most common). When toggled OFF the
+              manager enters a separate address — useful when the OC's
+              registered office (e.g. their strata manager's PO box) is
+              the official notice destination. Required by Owners
+              Corporations Act for service of legal notices, so we
+              persist a copy even when it matches the site address. */}
+          <div className="space-y-3 rounded-md border border-border bg-card p-4">
+            <div className="space-y-1">
+              <Label className="text-sm font-semibold text-foreground">Notice address</Label>
+              <p className="text-xs text-muted-foreground">
+                Where paper notices are posted as a fallback when an owner hasn&apos;t consented to digital comms — and the OC&apos;s registered address of service under the Owners Corporations Act.
+              </p>
+            </div>
+            <div className="flex items-start gap-2">
+              <Checkbox
+                id="use-site-address"
+                checked={useSiteAddress}
+                onCheckedChange={(v) => {
+                  setUseSiteAddress(v === true);
+                  if (v === true) setNoticeAddressInvalid(false);
+                }}
+              />
+              <Label className="text-sm text-foreground">
+                Use the OC&apos;s site address from the plan of subdivision
+              </Label>
+            </div>
+            {!useSiteAddress && (
+              <div className="space-y-1.5">
+                <VicAddressAutocomplete
+                  id="notice-address"
+                  value={noticeAddress}
+                  onChange={(v) => { setNoticeAddress(v); if (noticeAddressInvalid) setNoticeAddressInvalid(false); }}
+                  error={noticeAddressInvalid}
+                />
+                {noticeAddressInvalid && (
+                  <p className="text-xs text-destructive">
+                    Notice address must include street number, street name, suburb, and postcode.
+                  </p>
+                )}
+                <p className="text-[11px] text-muted-foreground">
+                  We&apos;ll verify deliverability against PostGrid before any letter goes out.
+                </p>
+              </div>
+            )}
           </div>
         </div>
 

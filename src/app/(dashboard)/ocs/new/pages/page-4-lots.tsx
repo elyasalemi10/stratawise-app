@@ -150,7 +150,7 @@ export function Page4Lots({
   // tenantName participate too — both are mandatory (owner always; tenant only
   // when owner-occupied is off).
   const [rowErrors, setRowErrors] = useState<Array<{
-    ownerName?: boolean; email?: boolean; phone?: boolean;
+    ownerName?: boolean; email?: boolean; phone?: boolean; postal?: boolean;
     tName?: boolean; tEmail?: boolean; tPhone?: boolean;
   }>>([]);
 
@@ -163,6 +163,7 @@ export function Page4Lots({
         if ("owner_name" in patch) cur.ownerName = false;
         if ("owner_email" in patch) cur.email = false;
         if ("owner_phone" in patch) cur.phone = false;
+        if ("owner_postal_address" in patch) cur.postal = false;
         if ("tenant_name" in patch) cur.tName = false;
         if ("tenant_email" in patch) cur.tEmail = false;
         if ("tenant_phone" in patch) cur.tPhone = false;
@@ -234,6 +235,16 @@ export function Page4Lots({
       if (l.owner_phone && !isValidAuPhone(l.owner_phone)) {
         problems.push(`Lot ${l.lot_number}: invalid phone`);
         nextRowErrors[i].phone = true;
+      }
+      // Postal address — required on every lot. Postal is the universal
+      // fallback when an owner hasn't consented to digital comms for a
+      // particular notice category, so every lot needs SOMETHING we can
+      // print on a label. The PostGrid verifier (when wired) will then
+      // check deliverability on top of the presence check.
+      const postal = (l.owner_postal_address ?? "").trim();
+      if (!postal) {
+        problems.push(`Lot ${l.lot_number}: postal address is required for paper notices.`);
+        nextRowErrors[i].postal = true;
       }
       const tenantOpen = l.is_occupied_by_owner === false;
       if (tenantOpen) {
@@ -401,6 +412,26 @@ export function Page4Lots({
                         <span className={`text-xs font-medium ${ownerOccupied ? "text-foreground" : "text-muted-foreground"}`}>
                           {ownerOccupied ? "Yes" : "No"}
                         </span>
+                      </div>
+                    </td>
+                  </tr>
+                  {/* Postal address sub-row — always rendered (every lot
+                      needs a posting address for paper fallback). Spans
+                      from the Owner-name column to the right so it
+                      visually nests under the lot's data without
+                      stealing horizontal space from the main row. */}
+                  <tr>
+                    <td className="px-2 pb-2 pt-0" colSpan={2} />
+                    <td className="px-2 pb-2 pt-0" colSpan={4}>
+                      <div className="flex items-center gap-2">
+                        <span className="text-[11px] uppercase tracking-wide text-muted-foreground shrink-0 w-16">Postal</span>
+                        <Input
+                          value={lot.owner_postal_address ?? ""}
+                          onChange={(e) => updateLot(idx, { owner_postal_address: e.target.value })}
+                          aria-invalid={errs.postal || undefined}
+                          placeholder="Owner postal address (street, suburb, state, postcode)"
+                          className="h-8"
+                        />
                       </div>
                     </td>
                   </tr>

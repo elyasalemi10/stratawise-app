@@ -2,48 +2,56 @@ import "server-only";
 
 // PostGrid client wrapper.
 //
-// API docs: https://docs.postgrid.com/
-// Auth: x-api-key header. Two environment keys:
-//   POSTGRID_API_KEY            — production (live letters, billable)
-//   POSTGRID_TEST_API_KEY       — sandbox (no postage charge, no real mail)
+// PostGrid runs TWO separate products on TWO separate API keys:
+//   • Print & Mail API — sends physical letters. Endpoints live at
+//     api.postgrid.com/print-mail/v1/... ($-billable; charge applies
+//     per letter once the test mode is flipped off.)
+//   • Address Verification API — checks deliverability. Endpoints at
+//     api.postgrid.com/v1/addver/... (US/CA) and
+//     api.postgrid.com/v1/intl_addver/... (everything else inc. AU).
 //
-// The wrapper picks the key based on POSTGRID_MODE (default "test"). Flip
-// to "live" only after the dev cycle has signed off.
+// Auth: x-api-key header. Each product has its OWN key — supplying a
+// Print Mail key to the Address Verification endpoint returns
+// HTTP 401 "OperationalError: Invalid API key." (Verified locally by
+// scripts/test-postgrid-addver.ts.)
 //
-// Address verification: POST /print-mail/v1/addver/verifications, JSON body
-// shape { line1, line2?, city, provinceOrState, postalOrZip, country }.
-// Returns a `status` ("verified" / "corrected" / "failed") plus a
-// `details.correctedAddress` block when PostGrid found a better match.
-// We expose three normalised statuses to the caller — verified / corrected
-// / failed — so the UI doesn't have to know PostGrid's exact wire format.
+// Env vars (test = sandbox, live = production):
+//   POSTGRID_PRINT_TEST_API_KEY    POSTGRID_PRINT_API_KEY
+//   POSTGRID_ADDVER_TEST_API_KEY   POSTGRID_ADDVER_API_KEY
+//   POSTGRID_MODE                  — "test" (default) | "live"
 //
-// Rate-limiting note (item 2): when we later let lot owners change their
-// own postal address, batch the verifications via PostGrid's
-// /print-mail/v1/addver/batches endpoint rather than firing one call per
-// address. Single-call mode is fine for the OC creation wizard (≤ a few
-// dozen lots) but the portal-driven path can hit a 50-OC complex in one
-// midnight scheduled refresh — that's a rate-limit risk on the single
-// endpoint.
-
-const POSTGRID_LIVE_BASE = "https://api.postgrid.com";
-const POSTGRID_TEST_BASE = "https://api.postgrid.com";
+// Backwards-compat: POSTGRID_TEST_API_KEY (no product prefix) is treated
+// as the Print Mail test key, since that's what the dashboard hands you
+// first. Address verification stays "unchecked" until the addver key is
+// added — `verifyAddress` short-circuits with a synthetic "unchecked"
+// status rather than throwing, so the wizard works end-to-end while we
+// wait on the verification subscription.
 
 export type PostGridMode = "test" | "live";
+export type PostGridProduct = "print" | "addver";
 
 function resolveMode(): PostGridMode {
   const m = (process.env.POSTGRID_MODE ?? "test").trim().toLowerCase();
   return m === "live" ? "live" : "test";
 }
 
-function resolveKey(mode: PostGridMode): string {
-  const key = mode === "live"
-    ? process.env.POSTGRID_API_KEY
-    : process.env.POSTGRID_TEST_API_KEY;
-  if (!key || !key.trim()) {
-    console.error(`postgrid: ${mode === "live" ? "POSTGRID_API_KEY" : "POSTGRID_TEST_API_KEY"} not configured`);
-    throw new Error("Address verification is temporarily unavailable.");
+/** Returns the API key for the given product+mode, or null if not
+ *  configured. Callers decide whether to soft-fail (verification) or hard-
+ *  fail (print mail). */
+function resolveKey(product: PostGridProduct, mode: PostGridMode): string | null {
+  const envName = product === "print"
+    ? (mode === "live" ? "POSTGRID_PRINT_API_KEY" : "POSTGRID_PRINT_TEST_API_KEY")
+    : (mode === "live" ? "POSTGRID_ADDVER_API_KEY" : "POSTGRID_ADDVER_TEST_API_KEY");
+  const key = process.env[envName];
+  if (key && key.trim()) return key.trim();
+  // Back-compat: a bare POSTGRID_TEST_API_KEY (the dashboard's default
+  // when you sign up) is treated as the Print Mail test key, since
+  // that's the product PostGrid bootstraps first.
+  if (product === "print" && mode === "test") {
+    const legacy = process.env.POSTGRID_TEST_API_KEY;
+    if (legacy && legacy.trim()) return legacy.trim();
   }
-  return key.trim();
+  return null;
 }
 
 export type PostGridAddress = {
@@ -55,76 +63,94 @@ export type PostGridAddress = {
   country?: string;         // defaults to "AU"
 };
 
-export type VerificationStatus = "verified" | "corrected" | "failed";
+// "unchecked" lands when no Address Verification key is configured —
+// the wizard records the address as-is and lets levy / notice flows
+// proceed with a flagged delivery_log row. Lets us ship the UX before
+// the verify-product subscription is bought.
+export type VerificationStatus = "verified" | "corrected" | "failed" | "unchecked";
 
 export type VerificationResult = {
   status: VerificationStatus;
-  /** PostGrid's corrected address. Populated when status === "corrected". */
   correctedAddress: PostGridAddress | null;
-  /** Free-text reason from PostGrid (e.g. "Postal code does not match
-   *  province"). Null on success. */
   errorMessage: string | null;
-  /** Raw verification id PostGrid returns. Persist this with the address
-   *  for the audit trail; useful when investigating a missed-delivery
-   *  later down the road. */
   verificationId: string | null;
-  /** Provider mode the call used. Saved so we can spot "verified under
-   *  test mode" records once we cut over to live and want to re-verify. */
   mode: PostGridMode;
 };
 
+// PostGrid Addver response shape — verified locally against intl_addver.
+// `verifiedAddress` is the corrected version (always returned when the
+// service finds a match, even on status="verified"). Status is one of:
+//   "verified"               — exact match
+//   "corrected"              — match after correction
+//   "failed"                 — couldn't match
+//   "verified_with_warnings" — match but with caveats (we treat as verified)
 type PostGridVerifyResponse = {
-  id: string;
-  status: string; // "verified" | "corrected" | "failed"
-  details?: {
-    correctedAddress?: {
-      line1?: string;
-      line2?: string;
-      city?: string;
-      provinceOrState?: string;
-      postalOrZip?: string;
-      country?: string;
-    };
-    error?: string;
-    message?: string;
+  id?: string;
+  status?: string;
+  verifiedAddress?: {
+    line1?: string;
+    line2?: string;
+    city?: string;
+    provinceOrState?: string;
+    postalOrZip?: string;
+    country?: string;
   };
+  error?: { message?: string; type?: string };
 };
 
-/** Verify a single Australian postal address. Throws only on transport /
- *  auth failure; a "failed" address is returned as a result, not an error.
- *  Caller decides whether to block on `failed` or surface to the user. */
+const AU_COUNTRIES = new Set(["AU", "AUS", "AUSTRALIA"]);
+
+/** Verify a single postal address. Returns "unchecked" with a logged
+ *  warning when the addver key isn't configured — never throws on missing
+ *  config, only on real network/server errors. AU addresses route to
+ *  the intl_addver endpoint; everything else to addver (US/CA). */
 export async function verifyAddress(addr: PostGridAddress): Promise<VerificationResult> {
   const mode = resolveMode();
-  const key = resolveKey(mode);
-  const base = mode === "live" ? POSTGRID_LIVE_BASE : POSTGRID_TEST_BASE;
+  const key = resolveKey("addver", mode);
+  if (!key) {
+    // No addver key — the wizard still needs to save the address so we
+    // return a synthetic "unchecked" result. The delivery_log will mark
+    // every send to this address as unverified.
+    return { status: "unchecked", correctedAddress: null, errorMessage: null, verificationId: null, mode };
+  }
 
+  const country = (addr.country ?? "AU").trim().toUpperCase();
+  const isIntl = !["US", "USA", "CA", "CAN"].includes(country);
+  const path = isIntl ? "/v1/intl_addver/verifications" : "/v1/addver/verifications";
+
+  // PostGrid expects { address: { ... } } nested, NOT a flat body. The
+  // querystring flags ask for the corrected version + proper-cased output.
   const body = {
-    line1: addr.line1.trim(),
-    line2: (addr.line2 ?? "").trim() || undefined,
-    city: addr.city.trim(),
-    provinceOrState: addr.provinceOrState.trim(),
-    postalOrZip: addr.postalOrZip.trim(),
-    country: (addr.country ?? "AU").trim().toUpperCase(),
+    address: {
+      line1: addr.line1.trim(),
+      line2: (addr.line2 ?? "").trim() || undefined,
+      city: addr.city.trim(),
+      provinceOrState: addr.provinceOrState.trim(),
+      postalOrZip: addr.postalOrZip.trim(),
+      country: AU_COUNTRIES.has(country) ? "AU" : country,
+    },
   };
 
   let resp: Response;
   try {
-    resp = await fetch(`${base}/print-mail/v1/addver/verifications`, {
+    resp = await fetch(`https://api.postgrid.com${path}?includeDetails=true&properCase=true`, {
       method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        "x-api-key": key,
-      },
+      headers: { "Content-Type": "application/json", "x-api-key": key },
       body: JSON.stringify(body),
     });
   } catch (err) {
-    console.error("postgrid: network failure", err);
+    console.error("postgrid addver: network failure", err);
     throw new Error("Address verification is temporarily unavailable.");
   }
 
   if (!resp.ok) {
     const txt = await resp.text().catch(() => "");
-    console.error("postgrid: HTTP", resp.status, txt);
+    console.error("postgrid addver: HTTP", resp.status, txt);
+    // 401 means key works but isn't a verify-product key — soft-fail to
+    // unchecked so the manager isn't blocked by a config issue.
+    if (resp.status === 401) {
+      return { status: "unchecked", correctedAddress: null, errorMessage: "Address verification key not configured.", verificationId: null, mode };
+    }
     throw new Error("Address verification is temporarily unavailable.");
   }
 
@@ -132,32 +158,33 @@ export async function verifyAddress(addr: PostGridAddress): Promise<Verification
   try {
     payload = (await resp.json()) as PostGridVerifyResponse;
   } catch (err) {
-    console.error("postgrid: JSON parse failure", err);
+    console.error("postgrid addver: JSON parse failure", err);
     throw new Error("Address verification is temporarily unavailable.");
   }
 
+  const raw = (payload.status ?? "").toLowerCase();
   const status: VerificationStatus =
-    payload.status === "verified" ? "verified"
-    : payload.status === "corrected" ? "corrected"
+    raw === "verified" || raw === "verified_with_warnings" ? "verified"
+    : raw === "corrected" ? "corrected"
     : "failed";
 
-  const corrected = payload.details?.correctedAddress;
+  const v = payload.verifiedAddress;
   const correctedAddress: PostGridAddress | null =
-    corrected && corrected.line1
+    v && v.line1
       ? {
-          line1: corrected.line1,
-          line2: corrected.line2 ?? null,
-          city: corrected.city ?? body.city,
-          provinceOrState: corrected.provinceOrState ?? body.provinceOrState,
-          postalOrZip: corrected.postalOrZip ?? body.postalOrZip,
-          country: corrected.country ?? body.country,
+          line1: v.line1,
+          line2: v.line2 ?? null,
+          city: v.city ?? body.address.city,
+          provinceOrState: v.provinceOrState ?? body.address.provinceOrState,
+          postalOrZip: v.postalOrZip ?? body.address.postalOrZip,
+          country: v.country ?? body.address.country,
         }
       : null;
 
   return {
     status,
     correctedAddress,
-    errorMessage: payload.details?.error ?? payload.details?.message ?? null,
+    errorMessage: payload.error?.message ?? null,
     verificationId: payload.id ?? null,
     mode,
   };
