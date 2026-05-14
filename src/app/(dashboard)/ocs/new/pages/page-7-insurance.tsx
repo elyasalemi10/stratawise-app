@@ -620,7 +620,7 @@ export function Page7Insurance({
           </DialogHeader>
           <DialogFooter>
             <Button
-              variant="ghost"
+              variant="secondary"
               onClick={() => {
                 if (pendingCoc) void deleteCoC(draftId, pendingCoc.coc.storage_key);
                 setPendingCoc(null);

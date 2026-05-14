@@ -834,7 +834,7 @@ export function Page6Rules({
             </DialogDescription>
           </DialogHeader>
           <DialogFooter>
-            <Button variant="ghost" onClick={discardReadBack}>
+            <Button variant="secondary" onClick={discardReadBack}>
               Cancel — wrong document
             </Button>
             <Button onClick={onPsMismatchUseAnyway}>Use anyway</Button>
@@ -890,7 +890,7 @@ export function Page6Rules({
             </div>
           )}
           <DialogFooter>
-            <Button variant="ghost" onClick={discardReadBack}>
+            <Button variant="secondary" onClick={discardReadBack}>
               Cancel — wrong document
             </Button>
             <Button
@@ -1051,7 +1051,7 @@ export function Page6Rules({
             </div>
           </div>
           <DialogFooter>
-            <Button variant="ghost" onClick={() => setAddOpen(false)}>Cancel</Button>
+            <Button variant="secondary" onClick={() => setAddOpen(false)}>Cancel</Button>
             <Button onClick={commitAdd}>Add rule</Button>
           </DialogFooter>
         </DialogContent>
@@ -1096,7 +1096,7 @@ export function Page6Rules({
             </div>
           </div>
           <DialogFooter>
-            <Button variant="ghost" onClick={() => setEditIdx(null)}>Cancel</Button>
+            <Button variant="secondary" onClick={() => setEditIdx(null)}>Cancel</Button>
             <Button onClick={commitEdit}>Save changes</Button>
           </DialogFooter>
         </DialogContent>
@@ -1118,7 +1118,7 @@ export function Page6Rules({
             </DialogDescription>
           </DialogHeader>
           <DialogFooter>
-            <Button variant="ghost" onClick={() => setDeleteIdx(null)}>Cancel</Button>
+            <Button variant="secondary" onClick={() => setDeleteIdx(null)}>Cancel</Button>
             <Button onClick={commitDelete} className="bg-destructive hover:bg-destructive/90">
               Remove rule
             </Button>

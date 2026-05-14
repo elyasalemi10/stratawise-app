@@ -111,13 +111,13 @@ export function Page8Balances({
 
     setPending(true);
     const r = await saveStep(draftId, {
-      // Final step; current_step bumps to 8 so a resumed draft lands here.
+      // Final step; current_step bumps to 9 so a resumed draft lands here.
       opening_balance_date: date,
       opening_admin_balance: adminN ?? 0,
       opening_capital_works_balance: capitalN ?? 0,
       opening_maintenance_plan_balance: hasMaintenance ? (maintN ?? 0) : undefined,
       lots,
-    }, 8);
+    }, 9);
     if (r.error) {
       setPending(false);
       toast.error(r.error);

@@ -61,7 +61,7 @@ export function Page2Review({
   // to false on the matching field's onChange — so the inputs DON'T turn red
   // while the user is still typing (CLAUDE.md validation rule). Lot liability
   // must be > 0 (statutory share of common-property costs); 0 isn't legal.
-  const [lotErrors, setLotErrors] = useState<Array<{ unit?: boolean; entitlement?: boolean; liability?: boolean }>>([]);
+  const [lotErrors, setLotErrors] = useState<Array<{ unit?: boolean; entitlement?: boolean; liability?: boolean; lotNumber?: boolean }>>([]);
   // Whether to flag the "Add lot" button red. The OC-Act-minimum check is
   // < 2 lots, but we don't want a destructive red ring to appear the moment
   // the user lands on the page — only after they actually try to advance.
@@ -88,6 +88,7 @@ export function Page2Review({
         const next = [...prev];
         const cur = { ...(next[idx] ?? {}) };
         if ("unit_number" in patch) cur.unit = false;
+        if ("lot_number" in patch) cur.lotNumber = false;
         if ("unit_entitlement" in patch) cur.entitlement = false;
         if ("lot_liability" in patch) cur.liability = false;
         next[idx] = cur;
@@ -126,7 +127,7 @@ export function Page2Review({
     }
 
     // Build the per-row error flags fresh on every submit.
-    const nextLotErrors: Array<{ unit?: boolean; entitlement?: boolean; liability?: boolean }> = lots.map(() => ({}));
+    const nextLotErrors: Array<{ unit?: boolean; entitlement?: boolean; liability?: boolean; lotNumber?: boolean }> = lots.map(() => ({}));
 
     // Every lot must have entitlement > 0 AND liability > 0, and at least 2 lots.
     if (lots.length < 2) {
@@ -166,6 +167,51 @@ export function Page2Review({
       const ids = missingUnit.slice(0, 3).map((n) => `Lot ${n}`).join(", ");
       const more = missingUnit.length > 3 ? ` and ${missingUnit.length - 3} more` : "";
       problems.push(`Unit is required for every lot (${ids}${more}).`);
+    }
+
+    // Duplicate-detection. A plan of subdivision uniquely identifies each
+    // lot by both lot_number and unit_number, so accepting duplicates here
+    // would let the manager create two lots that point at the same physical
+    // dwelling — the downstream lots / levies / DRN tables would then have
+    // multiple records claiming the same identity. Block at submit.
+    const lotNumberCounts = new Map<number, number[]>();
+    const unitNumberCounts = new Map<string, number[]>();
+    lots.forEach((l, i) => {
+      if (l.lot_number) {
+        const arr = lotNumberCounts.get(l.lot_number) ?? [];
+        arr.push(i);
+        lotNumberCounts.set(l.lot_number, arr);
+      }
+      const unitKey = (l.unit_number ?? "").trim().toUpperCase();
+      if (unitKey) {
+        const arr = unitNumberCounts.get(unitKey) ?? [];
+        arr.push(i);
+        unitNumberCounts.set(unitKey, arr);
+      }
+    });
+    const dupLotNumbers: number[] = [];
+    for (const [lotNo, indices] of lotNumberCounts) {
+      if (indices.length > 1) {
+        dupLotNumbers.push(lotNo);
+        indices.forEach((i) => { nextLotErrors[i].lotNumber = true; });
+      }
+    }
+    const dupUnits: string[] = [];
+    for (const [unit, indices] of unitNumberCounts) {
+      if (indices.length > 1) {
+        dupUnits.push(unit);
+        indices.forEach((i) => { nextLotErrors[i].unit = true; });
+      }
+    }
+    if (dupLotNumbers.length > 0) {
+      const ids = dupLotNumbers.slice(0, 3).map((n) => `Lot ${n}`).join(", ");
+      const more = dupLotNumbers.length > 3 ? ` and ${dupLotNumbers.length - 3} more` : "";
+      problems.push(`Duplicate lot numbers — every lot must be unique (${ids}${more}).`);
+    }
+    if (dupUnits.length > 0) {
+      const ids = dupUnits.slice(0, 3).map((u) => `Unit ${u}`).join(", ");
+      const more = dupUnits.length > 3 ? ` and ${dupUnits.length - 3} more` : "";
+      problems.push(`Duplicate unit numbers — every unit must be unique (${ids}${more}).`);
     }
     setLotErrors(nextLotErrors);
 
@@ -342,6 +388,7 @@ export function Page2Review({
                           allowDecimal={false}
                           value={lot.lot_number ? String(lot.lot_number) : ""}
                           onChange={(v) => updateLot(idx, { lot_number: parseInt(v, 10) || 0 })}
+                          invalid={errs.lotNumber || undefined}
                           className="h-8"
                         />
                       </td>

@@ -127,8 +127,8 @@ export default async function OCsPage() {
                   >
                     <Card className="transition-colors hover:border-primary/30 cursor-pointer border-dashed">
                       <CardContent className="pt-4 pb-4">
-                        <div className="flex items-start gap-3">
-                          <CircleDashed className="mt-0.5 h-4 w-4 text-muted-foreground shrink-0" />
+                        <div className="flex items-center gap-3">
+                          <CircleDashed className="h-4 w-4 text-muted-foreground shrink-0" />
                           <div className="flex-1 min-w-0">
                             <p className="text-sm font-semibold text-foreground truncate">
                               {d.label} — {d.step}/8

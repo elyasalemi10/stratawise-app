@@ -9,10 +9,14 @@ import { Page1Upload } from "./pages/page-1-upload";
 import { Page2Review } from "./pages/page-2-review";
 import { Page3Basics } from "./pages/page-3-basics";
 import { Page4Lots } from "./pages/page-4-lots";
-import { Page5Trust } from "./pages/page-5-trust";
-import { Page6Rules } from "./pages/page-6-rules";
-import { Page7Insurance } from "./pages/page-7-insurance";
-import { Page8Balances } from "./pages/page-8-balances";
+// Step 5 is the new Communications & consent screen — older docs called
+// step 5 "Bank accounts" / step-trust. We renumbered to insert Communications
+// between Lots and Trust without touching the components' filenames.
+import { Page5Comms } from "./pages/page-5-comms";
+import { Page5Trust as Page6Trust } from "./pages/page-5-trust";
+import { Page6Rules as Page7Rules } from "./pages/page-6-rules";
+import { Page7Insurance as Page8Insurance } from "./pages/page-7-insurance";
+import { Page8Balances as Page9Balances } from "./pages/page-8-balances";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { X } from "lucide-react";
@@ -47,7 +51,7 @@ function WizardContent() {
   // step to whatever the draft itself reports (URL might be stale).
   const [step, setStep] = useState<number>(() => {
     const fromUrl = parseInt(searchParams.get("step") ?? "", 10);
-    return Number.isFinite(fromUrl) && fromUrl >= 1 && fromUrl <= 8 ? fromUrl : 1;
+    return Number.isFinite(fromUrl) && fromUrl >= 1 && fromUrl <= 9 ? fromUrl : 1;
   });
   const [nextOcPrompt, setNextOcPrompt] = useState<{ ocCode: string; sourceDraftId: string; nextOcIndex: number; totalOcs: number } | null>(null);
   const [forkingNext, setForkingNext] = useState(false);
@@ -244,16 +248,24 @@ function WizardContent() {
           />
         )}
         {step === 5 && (
-          <Page5Trust
+          <Page5Comms
             draftId={draft.id}
             initialDraft={draft.draft_json}
-            totalLots={totalLots}
             onBack={() => goToStep(4)}
             onNext={async () => { await refreshDraft(); goToStep(6); }}
           />
         )}
         {step === 6 && (
-          <Page6Rules
+          <Page6Trust
+            draftId={draft.id}
+            initialDraft={draft.draft_json}
+            totalLots={totalLots}
+            onBack={() => goToStep(5)}
+            onNext={async () => { await refreshDraft(); goToStep(7); }}
+          />
+        )}
+        {step === 7 && (
+          <Page7Rules
             draftId={draft.id}
             initialDraft={draft.draft_json}
             initialRulesFilename={draft.rules_filename}
@@ -264,24 +276,24 @@ function WizardContent() {
             }
             initialRuleCount={draft.rules_parsed_json?.rules?.length ?? 0}
             initialParsedRules={draft.rules_parsed_json?.rules ?? []}
-            onBack={() => goToStep(5)}
-            onNext={async () => { await refreshDraft(); goToStep(7); }}
-          />
-        )}
-        {step === 7 && (
-          <Page7Insurance
-            draftId={draft.id}
-            initialDraft={draft.draft_json}
-            initialDocFilename={draft.insurance_doc_filename}
             onBack={() => goToStep(6)}
             onNext={async () => { await refreshDraft(); goToStep(8); }}
           />
         )}
         {step === 8 && (
-          <Page8Balances
+          <Page8Insurance
             draftId={draft.id}
             initialDraft={draft.draft_json}
+            initialDocFilename={draft.insurance_doc_filename}
             onBack={() => goToStep(7)}
+            onNext={async () => { await refreshDraft(); goToStep(9); }}
+          />
+        )}
+        {step === 9 && (
+          <Page9Balances
+            draftId={draft.id}
+            initialDraft={draft.draft_json}
+            onBack={() => goToStep(8)}
             onComplete={(r) => {
               // Clear the localStorage sidebar cache so the new OC appears in
               // the picker immediately, without waiting 5 minutes for the TTL.
@@ -326,7 +338,7 @@ function WizardContent() {
             </DialogDescription>
           </DialogHeader>
           <DialogFooter>
-            <Button variant="ghost" onClick={() => setCancelOpen(false)}>Keep going</Button>
+            <Button variant="secondary" onClick={() => setCancelOpen(false)}>Keep going</Button>
             <Button onClick={() => router.push("/ocs")}>Leave wizard</Button>
           </DialogFooter>
         </DialogContent>
@@ -345,7 +357,7 @@ function WizardContent() {
             </DialogHeader>
             <DialogFooter>
               <Button
-                variant="ghost"
+                variant="secondary"
                 disabled={forkingNext}
                 onClick={() => router.push(`/ocs/${nextOcPrompt.ocCode}?created=1`)}
               >

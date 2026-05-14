@@ -50,6 +50,12 @@ export type DraftLot = {
   tenant_phone?: string;
   /** Opening arrears as at setup date. Positive = arrears, negative = credit. */
   opening_balance?: number;
+  /** Communications-consent state recorded by the manager during the OC
+   *  setup wizard. The manager attests on the owner's behalf — VCAT cares
+   *  more about the eventual signup-flow consent (which writes IP + UA), but
+   *  this gives a starting position so day-one digital notices aren't
+   *  blocked. Empty array = no consent yet, owner gets paper. */
+  digital_consent_categories?: string[];
 };
 
 export type DraftJson = {
@@ -109,6 +115,16 @@ export type DraftJson = {
   // postal address defaults. Always present; defaults to the OC address
   // (set by the wizard if the user doesn't change it).
   notice_address?: string;
+
+  // Page 5 (communications & consent) — OC-level policy. Per-lot consent
+  // lives on each DraftLot. Designed to plumb through to the lot-owner
+  // portal's signup flow without further schema work: when the owner ticks
+  // the checkbox, we write digital_consent_given_at + ip + user_agent +
+  // source='signup_flow' on their lot_owners row using the same
+  // digital_consent_categories array.
+  default_delivery_method?: "postal" | "email" | "mixed";
+  collect_consent_on_signup?: boolean;
+  consent_categories_offered?: string[];
 
   // Page 6 (rules)
   rules_source?: "model" | "custom";
@@ -1237,7 +1253,13 @@ export async function completeWizard(draftId: string) {
       opening_maintenance_plan_balance: hasMaintenance ? (d.opening_maintenance_plan_balance ?? 0) : null,
       rules_source: d.rules_source ?? "model",
       rules_uploaded_at: d.rules_source === "custom" && draft.rules_storage_key ? new Date().toISOString() : null,
-      setup_step: 8,
+      // Communications & consent policy — see migration
+      // oc_and_lot_owner_digital_consent. Postal-default + signup-consent-on
+      // matches Victorian regulatory practice.
+      default_delivery_method: d.default_delivery_method ?? "postal",
+      collect_consent_on_signup: d.collect_consent_on_signup ?? true,
+      consent_categories_offered: d.consent_categories_offered ?? ["levies", "agms", "minutes", "breach_notices", "financials"],
+      setup_step: 9,
       status: "active",
       created_by: profile.id,
     });
@@ -1284,6 +1306,13 @@ export async function completeWizard(draftId: string) {
         if (!name && !email && !phone && !postal) return null;
         const lotId = lotByNumber.get(l.lot_number);
         if (!lotId) return null;
+        // Initial digital-comms consent recorded by the manager on
+        // wizard page 5. source='manager_initial' (no IP / user-agent)
+        // because the manager is attesting on the owner's behalf — when
+        // the owner later signs up via the portal, that flow overwrites
+        // these with source='signup_flow' + their real IP + UA.
+        const consentCats = l.digital_consent_categories ?? [];
+        const hasConsent = consentCats.length > 0;
         return {
           lot_id: lotId,
           name: name || "Owner",
@@ -1294,6 +1323,9 @@ export async function completeWizard(draftId: string) {
           tenant_name: l.tenant_name || null,
           tenant_email: l.tenant_email || null,
           tenant_phone: l.tenant_phone || null,
+          digital_consent_categories: consentCats,
+          digital_consent_given_at: hasConsent ? new Date().toISOString() : null,
+          digital_consent_source: hasConsent ? "manager_initial" as const : null,
         };
       })
       .filter((x): x is NonNullable<typeof x> => x !== null);

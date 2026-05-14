@@ -231,7 +231,7 @@ export default async function OCDashboardPage({
   // If setup is incomplete (managers only), show continue setup prompt
   if (
     oc &&
-    (oc.setup_step ?? 0) < 5 &&
+    (oc.setup_step ?? 0) < 6 &&
     profile?.role !== "lot_owner"
   ) {
     const step = (oc.setup_step ?? 0) + 1;

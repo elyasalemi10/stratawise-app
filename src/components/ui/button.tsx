@@ -12,8 +12,15 @@ const buttonVariants = cva(
       variant: {
         default:
           "bg-primary text-primary-foreground shadow-sm rounded-md hover:bg-primary/90 hover:ring-2 hover:ring-[var(--brand-gold)]/40 transition-shadow",
+        // Secondary buttons sit on EITHER the grey page bg OR the white
+        // dialog bg, so they explicitly carry white (bg-card) + a border.
+        // This gives them clear button affordance on both surfaces — the
+        // earlier bg-transparent version disappeared into the dialog's
+        // white card with only a faint border to suggest a clickable
+        // shape. Use this variant for every Back / Cancel / "go back to
+        // previous state" button.
         secondary:
-          "bg-transparent border border-border text-foreground rounded-md hover:bg-muted",
+          "bg-card border border-border text-foreground rounded-md hover:bg-muted",
         destructive:
           "bg-destructive text-white rounded-md shadow-sm hover:bg-destructive/90",
         ghost:
