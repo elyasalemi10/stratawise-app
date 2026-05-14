@@ -147,19 +147,17 @@ export function Page5Comms({
     setPopupDraft((prev) => prev.includes(cat) ? prev.filter((c) => c !== cat) : [...prev, cat]);
   }
 
-  // Phase 1 Continue → buffer sub-view ALWAYS, even when the current
-  // comms config is pure email. The buffer config is per-OC and lasts
-  // beyond this wizard; if the manager (or a future owner via the
-  // portal) ever flips someone back to postal we want the buffer
-  // already configured. Pre-filled defaults (14 days) match the
-  // statutory-minimum-plus-comfortable-margin everyone uses, so a
-  // manager who doesn't currently send postal can just Continue
-  // through without thinking about it.
+  // Postal buffer config moved to OC settings — defaults persist
+  // silently here so the wizard doesn't make every manager click
+  // through future-proofing. 14d is the statutory-min-plus-comfortable
+  // margin everyone ends up with anyway.
   async function onMainContinue() {
-    setPhase("buffer");
+    await persist({ meetings: 14, levies: 14, financial: 14 });
   }
 
-  // Phase 2 Continue: 5.1 buffer screen → validate + save + advance.
+  // Legacy buffer-Continue handler kept callable so resume flows that
+  // somehow land here don't crash; in practice nothing calls it any
+  // more. Validates if state was set (shouldn't be) then persists.
   async function onBufferContinue() {
     const parseBuffer = (s: string): number | null => {
       const n = parseInt(s, 10);

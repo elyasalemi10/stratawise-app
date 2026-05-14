@@ -51,7 +51,10 @@ export type DraftLot = {
   tenant_name?: string;
   tenant_email?: string;
   tenant_phone?: string;
-  /** Opening arrears as at setup date. Positive = arrears, negative = credit. */
+  /** Opening arrears as at setup date. Positive = arrears, negative = credit.
+   *  Captured per-lot directly on page 4 (Lots) rather than on a separate
+   *  final step — same lots, same owners, no need for the manager to scroll
+   *  back and forth between two tables. */
   opening_balance?: number;
   /** Communications-consent state recorded by the manager during the OC
    *  setup wizard. The manager attests on the owner's behalf — VCAT cares
@@ -59,6 +62,19 @@ export type DraftLot = {
    *  this gives a starting position so day-one digital notices aren't
    *  blocked. Empty array = no consent yet, owner gets paper. */
   digital_consent_categories?: string[];
+};
+
+/** Per-role committee snapshot captured during the wizard. The wizard
+ *  always asks for chairperson / secretary / treasurer; the OC settings
+ *  page lets managers add other roles or record handovers later. */
+export type DraftCommitteeMember = {
+  role: "chairperson" | "secretary" | "treasurer";
+  name: string;
+  email?: string;
+  phone?: string;
+  /** Optional lot_number — when set, completeWizard joins to the
+   *  inserted lot_owners row by lot_number → owner. */
+  lot_number?: number;
 };
 
 export type DraftJson = {
@@ -74,6 +90,11 @@ export type DraftJson = {
   postcode?: string;
   total_lots?: number;
   lots?: DraftLot[];
+  // Page 2 (review) — captured here because ABN + GST tend to be on
+  // the same plan/registration documents the manager has open.
+  abn?: string;
+  gst_registered?: boolean;
+
   // Page 3 (basics)
   trading_name?: string;
   services_only?: boolean;
@@ -81,6 +102,21 @@ export type DraftJson = {
   financial_year_start_day?: number;         // 1–31
   /** monthly | quarterly | half_yearly | annually — drives the levy cron. */
   billing_cycle?: "monthly" | "quarterly" | "half_yearly" | "annually";
+  /** Date the current management contract started. Different from
+   *  opening_balance_date (financial anchor) — this drives contract
+   *  anniversary + renewal reminders + fee billing. */
+  manager_appointment_date?: string; // ISO yyyy-mm-dd
+  /** 1–5 VIC OC compliance tier. Auto-derived from lot count + services-
+   *  only flag, but the manager confirms on page 3 (especially the
+   *  services-only edge case = Tier 5). */
+  tier?: number;
+
+  // New step 6 — Committee snapshot. has_active_committee=false skips
+  // the role-assignment UI; small OCs without an elected committee are
+  // valid. last_agm_date drives "AGM due within 15 months" reminders.
+  has_active_committee?: boolean;
+  committee_members?: DraftCommitteeMember[];
+  last_agm_date?: string; // ISO yyyy-mm-dd
   // Page 5 (trust accounts) — per-fund bank arrangement.
   bank_provider?: "macquarie_deft" | "other_csv";
   // Macquarie DRN mappings the manager uploaded during the wizard. We stage
@@ -1261,18 +1297,34 @@ export async function completeWizard(draftId: string) {
       opening_admin_balance: d.opening_admin_balance ?? 0,
       opening_capital_works_balance: d.opening_capital_works_balance ?? 0,
       opening_maintenance_plan_balance: hasMaintenance ? (d.opening_maintenance_plan_balance ?? 0) : null,
-      rules_source: d.rules_source ?? "model",
-      rules_uploaded_at: d.rules_source === "custom" && draft.rules_storage_key ? new Date().toISOString() : null,
+      // Rules + insurance moved out of the wizard in the May refresh.
+      // Every new OC starts on Victoria's Model Rules; managers upload
+      // custom registered rules later from a post-wizard task card on
+      // the OC dashboard. Insurance is captured the same way once the
+      // CoC arrives (typically weeks after handover).
+      rules_source: "model",
+      rules_uploaded_at: null,
       // Communications & consent policy — see migration
       // oc_and_lot_owner_digital_consent. Postal-default + signup-consent-on
       // matches Victorian regulatory practice.
       default_delivery_method: d.default_delivery_method ?? "postal",
       collect_consent_on_signup: d.collect_consent_on_signup ?? true,
       consent_categories_offered: d.consent_categories_offered ?? ["levies", "agms", "minutes", "breach_notices", "financials"],
+      // Buffer config moved to OC settings — save defaults silently
+      // here so the wizard doesn't make every manager click through
+      // future-proofing.
       meetings_postal_buffer_days: d.meetings_postal_buffer_days ?? 14,
       levies_postal_buffer_days: d.levies_postal_buffer_days ?? 14,
       financial_postal_buffer_days: d.financial_postal_buffer_days ?? 14,
-      setup_step: 9,
+      // ABN + GST + manager appointment + tier + committee — all new
+      // fields captured during the May refresh.
+      abn: d.abn ?? null,
+      gst_registered: d.gst_registered ?? false,
+      manager_appointment_date: d.manager_appointment_date ?? null,
+      tier: d.tier ?? null,
+      has_active_committee: d.has_active_committee ?? true,
+      last_agm_date: d.last_agm_date ?? null,
+      setup_step: 8,
       status: "active",
       created_by: profile.id,
     });
@@ -1377,6 +1429,46 @@ export async function completeWizard(draftId: string) {
             console.error("lot_owner_consent_log seed failed (non-fatal):", consentLogErr);
           }
         }
+      }
+    }
+
+    // Committee snapshot. Only insert rows when the manager said the OC
+    // has an active committee AND captured at least one name on Step 6.
+    // Empty roles are dropped. lot_owner_id is resolved by mapping each
+    // committee member's lot_number to the inserted lots and looking up
+    // the matching lot_owner from the freshly-inserted lot_owners rows.
+    const committeeMembers = d.committee_members ?? [];
+    if ((d.has_active_committee ?? true) && committeeMembers.length > 0) {
+      // Fetch the inserted lot_owners' ids keyed by lot_id, so we can
+      // populate lot_owner_id for each committee row that points at a
+      // captured lot owner.
+      const { data: ownersForCommittee } = await supabase
+        .from("lot_owners")
+        .select("id, lot_id")
+        .in("lot_id", insertedLots.map((l) => l.id));
+      const ownerIdByLotId = new Map<string, string>();
+      for (const o of ownersForCommittee ?? []) {
+        if (!ownerIdByLotId.has(o.lot_id)) ownerIdByLotId.set(o.lot_id, o.id);
+      }
+      const committeeRows = committeeMembers
+        .filter((m) => (m.name ?? "").trim())
+        .map((m) => {
+          const lotId = m.lot_number != null ? lotByNumber.get(m.lot_number) : undefined;
+          return {
+            oc_id: oc.id,
+            role: m.role,
+            lot_owner_id: lotId ? (ownerIdByLotId.get(lotId) ?? null) : null,
+            name: m.name.trim(),
+            email: m.email?.trim() || null,
+            phone: m.phone?.trim() || null,
+            in_from: d.manager_appointment_date ?? null,
+          };
+        });
+      const { error: committeeErr } = await supabase
+        .from("oc_committee_members")
+        .insert(committeeRows);
+      if (committeeErr) {
+        console.error("completeWizard: oc_committee_members insert failed (non-fatal)", committeeErr);
       }
     }
 

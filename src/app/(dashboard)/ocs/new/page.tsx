@@ -9,14 +9,19 @@ import { Page1Upload } from "./pages/page-1-upload";
 import { Page2Review } from "./pages/page-2-review";
 import { Page3Basics } from "./pages/page-3-basics";
 import { Page4Lots } from "./pages/page-4-lots";
-// Step 5 is the new Communications & consent screen — older docs called
-// step 5 "Bank accounts" / step-trust. We renumbered to insert Communications
-// between Lots and Trust without touching the components' filenames.
 import { Page5Comms } from "./pages/page-5-comms";
-import { Page5Trust as Page6Trust } from "./pages/page-5-trust";
-import { Page6Rules as Page7Rules } from "./pages/page-6-rules";
-import { Page7Insurance as Page8Insurance } from "./pages/page-7-insurance";
-import { Page8Balances as Page9Balances } from "./pages/page-8-balances";
+import { Page6Committee } from "./pages/page-6-committee";
+import { Page5Trust as Page7Trust } from "./pages/page-5-trust";
+import { Page8Balances } from "./pages/page-8-balances";
+// Rules + Insurance + Photo + Postal-buffer are no longer wizard steps.
+// Rules: defaults to Victoria's Model Rules; custom rules upload becomes
+//        a post-wizard task card on the OC dashboard.
+// Insurance: deferred entirely — CoCs typically arrive weeks after
+//        handover. Post-wizard task card.
+// Photo: moved to /ocs/[code]/settings — pure vanity, doesn't affect
+//        operations.
+// Postal buffer: silent defaults (14d for each category) saved at
+//        completeWizard time; manager can change from OC settings.
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { X } from "lucide-react";
@@ -51,7 +56,11 @@ function WizardContent() {
   // step to whatever the draft itself reports (URL might be stale).
   const [step, setStep] = useState<number>(() => {
     const fromUrl = parseInt(searchParams.get("step") ?? "", 10);
-    return Number.isFinite(fromUrl) && fromUrl >= 1 && fromUrl <= 9 ? fromUrl : 1;
+    // Wizard is now 8 steps after the May refresh (rules + insurance +
+    // photo + postal-buffer moved out). Allow 1-9 in URL parsing for
+    // back-compat with old bookmarks pointing at step 9 (Balances) —
+    // we'll snap them to 8.
+    return Number.isFinite(fromUrl) && fromUrl >= 1 && fromUrl <= 8 ? fromUrl : Math.min(fromUrl, 8) || 1;
   });
   const [nextOcPrompt, setNextOcPrompt] = useState<{ ocCode: string; sourceDraftId: string; nextOcIndex: number; totalOcs: number } | null>(null);
   const [forkingNext, setForkingNext] = useState(false);
@@ -256,44 +265,27 @@ function WizardContent() {
           />
         )}
         {step === 6 && (
-          <Page6Trust
+          <Page6Committee
             draftId={draft.id}
             initialDraft={draft.draft_json}
-            totalLots={totalLots}
             onBack={() => goToStep(5)}
             onNext={async () => { await refreshDraft(); goToStep(7); }}
           />
         )}
         {step === 7 && (
-          <Page7Rules
+          <Page7Trust
             draftId={draft.id}
             initialDraft={draft.draft_json}
-            initialRulesFilename={draft.rules_filename}
-            initialParseStatus={
-              draft.rules_parsed_json?.rules ? "parsed"
-              : draft.rules_filename ? "uploaded"
-              : "none"
-            }
-            initialRuleCount={draft.rules_parsed_json?.rules?.length ?? 0}
-            initialParsedRules={draft.rules_parsed_json?.rules ?? []}
+            totalLots={totalLots}
             onBack={() => goToStep(6)}
             onNext={async () => { await refreshDraft(); goToStep(8); }}
           />
         )}
         {step === 8 && (
-          <Page8Insurance
+          <Page8Balances
             draftId={draft.id}
             initialDraft={draft.draft_json}
-            initialDocFilename={draft.insurance_doc_filename}
             onBack={() => goToStep(7)}
-            onNext={async () => { await refreshDraft(); goToStep(9); }}
-          />
-        )}
-        {step === 9 && (
-          <Page9Balances
-            draftId={draft.id}
-            initialDraft={draft.draft_json}
-            onBack={() => goToStep(8)}
             onComplete={(r) => {
               // Clear the localStorage sidebar cache so the new OC appears in
               // the picker immediately, without waiting 5 minutes for the TTL.

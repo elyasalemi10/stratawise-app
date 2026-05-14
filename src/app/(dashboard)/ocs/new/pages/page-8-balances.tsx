@@ -112,13 +112,14 @@ export function Page8Balances({
 
     setPending(true);
     const r = await saveStep(draftId, {
-      // Final step; current_step bumps to 9 so a resumed draft lands here.
+      // Final step; current_step bumps to 8 so a resumed draft lands here.
+      // Per-lot arrears are persisted by Step 4 (Lots) now — page 8 only
+      // owns the per-OC fund balances + opening date.
       opening_balance_date: date,
       opening_admin_balance: adminN ?? 0,
       opening_capital_works_balance: capitalN ?? 0,
       opening_maintenance_plan_balance: hasMaintenance ? (maintN ?? 0) : undefined,
-      lots,
-    }, 9);
+    }, 8);
     if (r.error) {
       setPending(false);
       toast.error(r.error);
@@ -230,100 +231,18 @@ export function Page8Balances({
           - Debit = the lot OWES the OC (positive arrears, the common case)
           - Credit = the OC OWES the lot (e.g. overpaid in the previous
             management's books, or a refund pending)
-          Total is just a sum; we don't paint it red/green because positive
-          and negative aren't "good or bad" — they're directional. */}
-      <div className="space-y-2">
-        <div className="flex items-center justify-between">
-          <div className="flex items-center gap-1.5">
-            <h3 className="text-sm font-semibold text-foreground">Per-lot opening arrears</h3>
-            {/* Debit/Credit explanation now lives in a hover tooltip rather
-                than crowding the heading row. */}
-            <TooltipProvider>
-              <Tooltip>
-                <TooltipTrigger
-                  render={
-                    <button type="button" aria-label="Debit / Credit explained" className="text-muted-foreground hover:text-foreground cursor-help">
-                      <Info className="h-3.5 w-3.5" />
-                    </button>
-                  }
-                />
-                <TooltipContent>
-                  <span><strong>Debit</strong> = the lot owes the OC. <strong>Credit</strong> = the OC owes the lot.</span>
-                </TooltipContent>
-              </Tooltip>
-            </TooltipProvider>
-          </div>
-          <span className="text-xs tabular-nums text-muted-foreground">
-            Total: ${totalArrears.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
-          </span>
-        </div>
-        {/* Table matches the wizard's lot table on page 2: header carries
-            the only border-b, rows have no separators. Keeps the wizard
-            visually consistent across steps. */}
-        <div className="rounded-md border border-border bg-card overflow-hidden">
-          <table className="w-full text-sm">
-            <thead className="bg-muted/40 text-muted-foreground">
-              <tr className="text-xs uppercase tracking-wide border-b border-border">
-                <th className="px-3 py-2 text-left font-medium w-16">Lot</th>
-                <th className="px-3 py-2 text-left font-medium">Owner</th>
-                <th className="px-3 py-2 text-left font-medium w-40">Type</th>
-                <th className="px-3 py-2 text-left font-medium w-44">Amount</th>
-              </tr>
-            </thead>
-            <tbody>
-              {lots.map((lot, idx) => {
-                const bal = Number(lot.opening_balance) || 0;
-                const isCredit = creditByRow[idx] ?? (bal < 0);
-                const absStr = Math.abs(bal) === 0 ? "" : String(Math.abs(bal));
-                function setAmount(absVal: string) {
-                  const n = parseFloat(absVal) || 0;
-                  updateLotBalance(idx, String(isCredit ? -n : n));
-                }
-                function setType(toCredit: boolean) {
-                  setCreditByRow((prev) => ({ ...prev, [idx]: toCredit }));
-                  const cur = Math.abs(Number(lot.opening_balance) || 0);
-                  if (cur > 0) updateLotBalance(idx, String(toCredit ? -cur : cur));
-                }
-                return (
-                  <tr key={idx}>
-                    <td className="px-3 py-1.5 tabular-nums">{lot.lot_number}</td>
-                    <td className="px-3 py-1.5 text-muted-foreground truncate">{lot.owner_name || "—"}</td>
-                    <td className="px-3 py-1.5">
-                      <div className="inline-flex rounded-md border border-border bg-card p-0.5">
-                        <button
-                          type="button"
-                          onClick={() => setType(false)}
-                          className={`px-2.5 py-0.5 text-xs rounded-sm cursor-pointer ${!isCredit ? "bg-primary text-primary-foreground" : "text-muted-foreground"}`}
-                        >
-                          Debit
-                        </button>
-                        <button
-                          type="button"
-                          onClick={() => setType(true)}
-                          className={`px-2.5 py-0.5 text-xs rounded-sm cursor-pointer ${isCredit ? "bg-primary text-primary-foreground" : "text-muted-foreground"}`}
-                        >
-                          Credit
-                        </button>
-                      </div>
-                    </td>
-                    <td className="px-3 py-1.5">
-                      <div className="relative">
-                        <span className="absolute left-3 top-1/2 -translate-y-1/2 text-xs text-muted-foreground">$</span>
-                        <NumberInput
-                          thousandsSeparator
-                          value={absStr}
-                          onChange={setAmount}
-                          className="h-8 pl-7"
-                          placeholder="Amount"
-                        />
-                      </div>
-                    </td>
-                  </tr>
-                );
-              })}
-            </tbody>
-          </table>
-        </div>
+          Per-lot arrears were merged into Step 4 (Lots) in the May refresh
+          — the manager fills lot + owner + arrears on one screen instead
+          of scrolling back and forth between two tables. The page-8 step
+          now only carries the per-OC fund balances. */}
+
+      <div className="rounded-md border border-border bg-muted/30 p-3 text-xs text-muted-foreground">
+        <p>
+          Per-lot opening arrears were captured on <strong className="text-foreground">Step 4 (Lots)</strong>.
+          {" "}Running total across all lots: <strong className="text-foreground tabular-nums">
+            ${totalArrears.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+          </strong>.
+        </p>
       </div>
 
       {/* The Macquarie post-create note used to live here. Now that DRN

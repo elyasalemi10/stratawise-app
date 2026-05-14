@@ -2,7 +2,7 @@
 
 import { useEffect, useRef, useState } from "react";
 import { toast } from "sonner";
-import { Loader2, ImagePlus, Trash2 } from "lucide-react";
+import { Loader2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -14,8 +14,25 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
+import { DatePicker } from "@/components/shared/date-picker";
 import { VicAddressAutocomplete, type ParsedAddress } from "@/components/shared/vic-address-autocomplete";
 import { saveStep, uploadOcPhoto, removeOcPhoto, getPhotoPublicUrl, type DraftJson } from "../actions";
+
+/** Auto-compute VIC OC tier from lot count + services-only flag.
+ *  - Tier 1: 100+ lots
+ *  - Tier 2: 51-99 lots
+ *  - Tier 3: 10-50 lots
+ *  - Tier 4: 3-9 lots
+ *  - Tier 5: 2 lots OR services-only (regardless of lot count)
+ *  Manager confirms on page 3; their confirmed value wins. */
+function computeAutoTier(lotCount: number, servicesOnly: boolean): number {
+  if (servicesOnly) return 5;
+  if (lotCount >= 100) return 1;
+  if (lotCount >= 51) return 2;
+  if (lotCount >= 10) return 3;
+  if (lotCount >= 3) return 4;
+  return 5;
+}
 
 // tier classification still happens — at completeWizard time. The wizard UI
 // no longer surfaces the tier badge; the visible flag here is just whether
@@ -189,6 +206,22 @@ export function Page3Basics({
     formatted: initialDraft.notice_address ?? "",
   });
   const [noticeAddressInvalid, setNoticeAddressInvalid] = useState(false);
+
+  // Manager appointment / handover date. Separate from opening_balance_
+  // date (which lives on Step 8) — appointment_date is the management
+  // contract start.
+  const [managerAppointmentDate, setManagerAppointmentDate] = useState<string>(
+    initialDraft.manager_appointment_date ?? "",
+  );
+
+  // Auto-tier from lot count + services-only. Confirmed value (when the
+  // manager overrides) lands in tierConfirmed; otherwise we use autoTier
+  // directly. Re-derives on every render when totalLots / servicesOnly
+  // change so a manager who added lots on Page 2 sees the bump.
+  const autoTier = computeAutoTier(totalLots, servicesOnly);
+  const [tierConfirmed, setTierConfirmed] = useState<number | null>(
+    initialDraft.tier ?? null,
+  );
 
   const [pending, setPending] = useState(false);
   const [photoKey, setPhotoKey] = useState<string | null>(initialPhotoKey);
@@ -389,6 +422,8 @@ export function Page3Basics({
       financial_year_start_day: 1,
       billing_cycle: billingCycle,
       notice_address: resolvedNotice,
+      manager_appointment_date: managerAppointmentDate || undefined,
+      tier: tierConfirmed ?? autoTier,
     }, 4);
     if (r.error) {
       setPending(false);
@@ -419,69 +454,58 @@ export function Page3Basics({
             />
           </div>
 
-          {/* Photo of the OC. JPEG/PNG/WebP/HEIC, 10MB cap (post-compression).
-              Stored in R2 under logos/{companyId}/oc-photos/ and copied to the
-              OC row on completion. */}
+          {/* OC photo moved to /ocs/[code]/settings — pure vanity, zero
+              operational impact, no reason to slow the wizard down. The
+              uploadOcPhoto / removeOcPhoto / getPhotoPublicUrl actions
+              still exist; settings just calls them from a different
+              surface. */}
+
+          {/* Manager appointment / handover date. The contract start.
+              Separate from opening_balance_date (which is the financial
+              ledger anchor and lives on Step 8) — appointment_date drives
+              contract anniversary, renewal reminders, and management-fee
+              billing cycles. Optional in MVP; recommended every time. */}
           <div className="space-y-1.5">
-            <Label>Photo</Label>
-            {/* While a photo is uploading we paint the image immediately
-                (object URL of the local file, set in handlePhotoSelect) and
-                dim it with a black/50 overlay + centered spinner. The image
-                "fades in" to full colour the moment the upload returns. */}
-            {photoUrl ? (
-              <div className="relative overflow-hidden rounded-md border border-border bg-card">
-                {/* eslint-disable-next-line @next/next/no-img-element */}
-                <img
-                  src={photoUrl}
-                  alt="OC photo"
-                  className="block w-full max-h-[420px] object-cover"
-                />
-                {photoUploading && (
-                  <div className="absolute inset-0 flex items-center justify-center bg-black/45 backdrop-blur-[1px]">
-                    <Loader2 className="h-7 w-7 animate-spin text-white" />
-                  </div>
-                )}
-                {/* Trash stays visible during upload — clicking aborts and
-                    cleans up. Stops the user from feeling locked in once
-                    they realise the wrong photo is on the way up. */}
-                {(photoKey || photoUploading) && (
-                  <button
-                    type="button"
-                    onClick={handleRemovePhoto}
-                    aria-label="Remove photo"
-                    className="absolute right-3 top-3 inline-flex h-9 w-9 items-center justify-center rounded-md bg-card/90 backdrop-blur-sm border border-border text-destructive hover:bg-card cursor-pointer"
-                  >
-                    <Trash2 className="h-4 w-4" />
-                  </button>
-                )}
-              </div>
-            ) : (
-              <button
-                type="button"
-                onClick={() => photoInputRef.current?.click()}
-                disabled={photoUploading}
-                // Empty-state dropzone matches the height of the loaded photo
-                // preview (max-h-[420px]) so the layout doesn't snap / jump
-                // when an image actually lands. Wide screens use the natural
-                // image height; narrow screens fall back to a sensible 280px.
-                className="flex h-[280px] w-full flex-col items-center justify-center gap-2 rounded-md border-2 border-dashed border-border bg-card/60 px-4 text-sm text-muted-foreground hover:bg-card hover:text-foreground cursor-pointer disabled:cursor-not-allowed disabled:opacity-60 sm:h-[360px]"
-              >
-                <ImagePlus className="h-7 w-7" />
-                <span>Click to upload a photo</span>
-                <span className="text-xs">JPEG, PNG, WebP, or HEIC. Max 10MB.</span>
-              </button>
-            )}
-            <input
-              ref={photoInputRef}
-              type="file"
-              accept="image/jpeg,image/png,image/webp,image/heic,image/heif,.heic,.heif"
-              className="hidden"
-              onChange={(e) => {
-                const f = e.target.files?.[0];
-                if (f) void handlePhotoSelect(f);
-                e.target.value = "";
-              }}
+            <Label htmlFor="appointment-date">Manager appointment date</Label>
+            <DatePicker
+              value={managerAppointmentDate}
+              onChange={(v) => setManagerAppointmentDate(v)}
             />
+            <p className="text-xs text-muted-foreground">
+              The date your management contract started. Drives anniversary + renewal reminders.
+            </p>
+          </div>
+
+          {/* Tier confirmation. Auto-computed from total_lots +
+              services_only and shown as a read-only chip with a small
+              "Override" link — most managers should never touch it, but
+              services-only Tier 5 + boundary cases (9-vs-10 lots) need a
+              way out. */}
+          <div className="space-y-1.5">
+            <Label>VIC OC tier</Label>
+            <div className="flex items-center gap-3 rounded-md border border-border bg-muted/30 px-3 py-2">
+              <span className="inline-flex items-center justify-center rounded-md bg-primary text-primary-foreground text-xs font-semibold px-2 py-0.5">
+                Tier {tierConfirmed ?? autoTier}
+              </span>
+              <span className="text-xs text-muted-foreground flex-1">
+                Auto-calculated from {totalLots} lot{totalLots === 1 ? "" : "s"}{servicesOnly ? " (services-only)" : ""}.
+              </span>
+              <Select
+                value={String(tierConfirmed ?? autoTier)}
+                onValueChange={(v) => setTierConfirmed(parseInt(v ?? "5", 10))}
+              >
+                <SelectTrigger className="w-32 h-8 text-xs">
+                  <SelectValue>Tier {tierConfirmed ?? autoTier}</SelectValue>
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="1">Tier 1 (100+ lots)</SelectItem>
+                  <SelectItem value="2">Tier 2 (51–99 lots)</SelectItem>
+                  <SelectItem value="3">Tier 3 (10–50 lots)</SelectItem>
+                  <SelectItem value="4">Tier 4 (3–9 lots)</SelectItem>
+                  <SelectItem value="5">Tier 5 (2 lots / services-only)</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
           </div>
 
           {/* Services-only flag is plumbed through draft_json (default false)

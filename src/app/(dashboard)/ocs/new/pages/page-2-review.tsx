@@ -57,6 +57,15 @@ export function Page2Review({
     formatted: initialDraft.address ?? "",
   });
   const [addressInvalid, setAddressInvalid] = useState(false);
+  // ABN + GST. ABN is digits-only, normalised to 11 digits on submit.
+  // GST registration drives whether levy notices add GST + show ABN on
+  // the invoice line. Both optional in MVP; an OC can be set up without
+  // them and add later via OC settings.
+  const [abn, setAbn] = useState<string>(initialDraft.abn ?? "");
+  const [abnInvalid, setAbnInvalid] = useState(false);
+  const [gstRegistered, setGstRegistered] = useState<boolean>(
+    initialDraft.gst_registered ?? false,
+  );
   const [lots, setLots] = useState<DraftLot[]>(initialDraft.lots ?? []);
   // Per-row field invalidity flags. Populated only on submit, cleared back
   // to false on the matching field's onChange — so the inputs DON'T turn red
@@ -246,6 +255,21 @@ export function Page2Review({
     }
     setLotErrors(nextLotErrors);
 
+    // ABN validation. Strip whitespace, expect exactly 11 digits.
+    // Required when GST-registered (you can't issue a tax invoice
+    // without an ABN); optional otherwise but we still validate the
+    // shape if anything was typed.
+    const abnDigits = abn.replace(/\s+/g, "").trim();
+    if (gstRegistered && abnDigits.length === 0) {
+      problems.push("ABN is required when the OC is registered for GST.");
+      setAbnInvalid(true);
+    } else if (abnDigits.length > 0 && !/^\d{11}$/.test(abnDigits)) {
+      problems.push("ABN must be 11 digits.");
+      setAbnInvalid(true);
+    } else {
+      setAbnInvalid(false);
+    }
+
     if (problems.length) {
       toast.error(problems.length === 1 ? problems[0] : "Fix the highlighted fields.");
       return;
@@ -266,6 +290,8 @@ export function Page2Review({
       postcode: address.postcode,
       total_lots: lots.length,
       lots,
+      abn: abnDigits || undefined,
+      gst_registered: gstRegistered,
     }, 3);
     if (r.error) {
       setPending(false);
@@ -365,6 +391,48 @@ export function Page2Review({
               Address must include street number, street name, suburb, and postcode.
             </p>
           )}
+        </div>
+
+        {/* ABN + GST. Captured here on the same screen as the plan/OC
+            numbers because the manager usually has the OC's
+            registration paperwork open. ABN is optional unless GST-
+            registered (you can't issue a tax invoice without an ABN). */}
+        <div className="grid grid-cols-[1fr_220px] gap-4">
+          <div className="space-y-1.5">
+            <Label htmlFor="abn">
+              ABN {gstRegistered && <span className="text-destructive">*</span>}
+            </Label>
+            <Input
+              id="abn"
+              placeholder="11-digit ABN"
+              value={abn}
+              onChange={(e) => {
+                // Allow digits and spaces while typing; strip on submit.
+                // Lets the manager paste "12 345 678 901" without it
+                // getting auto-mangled.
+                setAbn(e.target.value.replace(/[^\d ]/g, ""));
+                if (abnInvalid) setAbnInvalid(false);
+              }}
+              inputMode="numeric"
+              maxLength={14} // 11 digits + 3 spaces
+              aria-invalid={abnInvalid || undefined}
+            />
+          </div>
+          <div className="space-y-1.5">
+            <Label className="text-xs uppercase tracking-wide text-muted-foreground">GST</Label>
+            <button
+              type="button"
+              onClick={() => setGstRegistered((v) => !v)}
+              className={`flex items-center justify-between rounded-md border px-3 h-9 w-full cursor-pointer transition-colors ${
+                gstRegistered ? "border-primary bg-primary/5 text-foreground" : "border-border bg-card text-muted-foreground hover:border-primary/40"
+              }`}
+            >
+              <span className="text-sm">{gstRegistered ? "Registered for GST" : "Not registered"}</span>
+              <span className={`inline-flex h-5 w-9 items-center rounded-full transition-colors ${gstRegistered ? "bg-primary" : "bg-border"}`}>
+                <span className={`inline-block h-4 w-4 rounded-full bg-white transition-transform ${gstRegistered ? "translate-x-4" : "translate-x-0.5"}`} />
+              </span>
+            </button>
+          </div>
         </div>
 
         {/* Lot schedule */}

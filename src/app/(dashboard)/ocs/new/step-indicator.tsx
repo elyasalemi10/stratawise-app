@@ -8,10 +8,9 @@ const STEPS = [
   { number: 3, label: "OC basics" },
   { number: 4, label: "Lots" },
   { number: 5, label: "Communications" },
-  { number: 6, label: "Bank accounts" },
-  { number: 7, label: "Rules" },
-  { number: 8, label: "Insurance" },
-  { number: 9, label: "Opening balances" },
+  { number: 6, label: "Committee" },
+  { number: 7, label: "Bank accounts" },
+  { number: 8, label: "Opening balances" },
 ];
 
 export function StepIndicator({ current }: { current: number }) {
