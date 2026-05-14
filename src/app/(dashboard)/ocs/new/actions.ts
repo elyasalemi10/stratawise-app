@@ -123,6 +123,13 @@ export type DraftJson = {
   default_delivery_method?: "postal" | "email" | "mixed";
   collect_consent_on_signup?: boolean;
   consent_categories_offered?: string[];
+  /** Postal transit buffers (days). Only meaningful when at least one
+   *  lot owner receives notices of that category by post. Floor 7,
+   *  default 14, no upper limit. Adds onto the statutory minimum to
+   *  decide send-by date for each notice. */
+  meetings_postal_buffer_days?: number;
+  levies_postal_buffer_days?: number;
+  financial_postal_buffer_days?: number;
 
   // Page 6 (rules)
   rules_source?: "model" | "custom";
@@ -1257,6 +1264,9 @@ export async function completeWizard(draftId: string) {
       default_delivery_method: d.default_delivery_method ?? "postal",
       collect_consent_on_signup: d.collect_consent_on_signup ?? true,
       consent_categories_offered: d.consent_categories_offered ?? ["levies", "agms", "minutes", "breach_notices", "financials"],
+      meetings_postal_buffer_days: d.meetings_postal_buffer_days ?? 14,
+      levies_postal_buffer_days: d.levies_postal_buffer_days ?? 14,
+      financial_postal_buffer_days: d.financial_postal_buffer_days ?? 14,
       setup_step: 9,
       status: "active",
       created_by: profile.id,
@@ -1329,9 +1339,35 @@ export async function completeWizard(draftId: string) {
       .filter((x): x is NonNullable<typeof x> => x !== null);
 
     if (ownerRows.length > 0) {
-      const { error: ownersError } = await supabase.from("lot_owners").insert(ownerRows);
+      const { data: insertedOwners, error: ownersError } = await supabase
+        .from("lot_owners")
+        .insert(ownerRows)
+        .select("id, lot_id, digital_consent_categories");
       if (ownersError) {
         console.error("lot_owners insert failed (non-fatal):", ownersError);
+      }
+      // Seed the consent audit log for any owner who arrived with
+      // categories ticked by the manager. before_categories is empty
+      // (no prior state); after carries the manager-attested set.
+      // Source = manager_initial; IP / UA are null because the manager
+      // is attesting on the owner's behalf, not the owner themselves.
+      if (insertedOwners && insertedOwners.length > 0) {
+        const consentLogRows = insertedOwners
+          .filter((o) => Array.isArray(o.digital_consent_categories) && o.digital_consent_categories.length > 0)
+          .map((o) => ({
+            lot_owner_id: o.id,
+            oc_id: oc.id,
+            before_categories: [],
+            after_categories: o.digital_consent_categories,
+            source: "manager_initial" as const,
+            actor_profile_id: profile.id,
+          }));
+        if (consentLogRows.length > 0) {
+          const { error: consentLogErr } = await supabase.from("lot_owner_consent_log").insert(consentLogRows);
+          if (consentLogErr) {
+            console.error("lot_owner_consent_log seed failed (non-fatal):", consentLogErr);
+          }
+        }
       }
     }
 
