@@ -17,10 +17,10 @@ export type ParsedInsurancePolicy = {
   premium: number | null;
   start_date: string | null;      // ISO yyyy-mm-dd
   end_date: string | null;        // ISO yyyy-mm-dd
-  /** 24h HH:MM. Australian CoCs typically state cover times as "4:00pm" —
-   *  preserve when present, null when the cert is date-only. */
-  start_time: string | null;
-  end_time: string | null;
+  /** Free-text notes the certificate carries about this policy — exclusions,
+   *  named insureds, special endorsements, mid-year broker changes. Null
+   *  when the cert has nothing to add beyond the structured fields. */
+  notes: string | null;
 };
 
 export type ParsedInsuranceDocument = {
@@ -72,8 +72,7 @@ const RESPONSE_SCHEMA = {
           premium: { type: Type.NUMBER, nullable: true, description: "Annual premium in AUD inclusive of GST + stamp duty. Null if not shown." },
           start_date: { type: Type.STRING, nullable: true, description: "ISO yyyy-mm-dd. Period of insurance FROM date." },
           end_date: { type: Type.STRING, nullable: true, description: "ISO yyyy-mm-dd. Period of insurance TO date." },
-          start_time: { type: Type.STRING, nullable: true, description: "24-hour HH:MM time the cover starts on start_date, if the certificate states one (e.g. '4:00pm' → '16:00'). Null when only a date is given." },
-          end_time: { type: Type.STRING, nullable: true, description: "24-hour HH:MM time the cover ends on end_date, if stated. Null when only a date is given." },
+          notes: { type: Type.STRING, nullable: true, description: "Brief free-text notes the cert carries about this policy — exclusions, endorsements, named insureds, broker / underwriter notes. Pull verbatim phrases when meaningful; null if the cert is purely tabular." },
         },
         required: ["provider", "policy_type"],
       },
@@ -94,8 +93,8 @@ Other rules:
 - Return policies in source order.
 - Money fields are AUD numbers, no currency symbols. Strip commas: "$12,500,000" → 12500000.
 - "Legal Liability $20 million" → 20000000 (parse abbreviations like 'million' / 'm' / 'mn').
-- Dates: ISO yyyy-mm-dd. Australian DD/MM/YYYY is the dominant source format — convert carefully.
-- Times: When the cert explicitly states a time alongside the period of insurance ("from 4:00pm 1 May 2024 to 4:00pm 1 May 2025" is the Australian strata convention), populate start_time + end_time as 24-hour HH:MM. "4:00pm" → "16:00", "9:00am" → "09:00". When only a date is given, leave both null — don't guess.
+- Dates: ISO yyyy-mm-dd. Australian DD/MM/YYYY is the dominant source format — convert carefully. Do NOT extract times — the form has dropped time fields.
+- Notes: pull any free-text the cert carries that doesn't fit the structured fields — endorsements, exclusions, named insureds beyond the headline insured, broker / underwriter side-notes, mid-year change references. Keep it brief (1-2 sentences). Null if the cert has nothing useful to add beyond the structured fields.
 - plan_number: scan the cert for the Plan-of-Subdivision identifier ("PS812345X" or similar — "PS" + 6 digits + 1 letter). Typically near the address or under "Insured" / "Property Description". Case-insensitive — emit upper-case. Null if not present.
 - insured_name: the named insured / owners corporation name from the cert header. Null if not present.
 

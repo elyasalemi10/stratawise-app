@@ -23,7 +23,7 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { DatePicker } from "@/components/shared/date-picker";
-import { TimePicker } from "@/components/shared/time-picker";
+import { Textarea } from "@/components/ui/textarea";
 import { deleteCoC, saveStep, uploadAndParseCoC, type DraftJson, type DraftInsurancePolicy } from "../actions";
 
 // Wizard page 7 — insurance.
@@ -61,8 +61,7 @@ function blankPolicy(): DraftInsurancePolicy {
     premium: undefined,
     start_date: "",
     end_date: "",
-    start_time: "",
-    end_time: "",
+    notes: "",
   };
 }
 
@@ -98,8 +97,7 @@ type ParsedFromServer = {
   premium: number | null;
   start_date: string | null;
   end_date: string | null;
-  start_time: string | null;
-  end_time: string | null;
+  notes: string | null;
 };
 
 type PendingCoc = {
@@ -220,8 +218,7 @@ export function Page7Insurance({
       premium: p.premium ?? undefined,
       start_date: p.start_date ?? "",
       end_date: p.end_date ?? "",
-      start_time: p.start_time ?? "",
-      end_time: p.end_time ?? "",
+      notes: p.notes ?? "",
       // Tag each policy with the R2 key of the CoC it came from so
       // completeWizard can wire insurance_policies.source_document_id back
       // to the documents row created from this cert.
@@ -525,43 +522,42 @@ export function Page7Insurance({
                       </div>
                     </div>
 
-                    {/* Start + end date/time. Times default to empty — most
-                        Australian CoCs state "4:00pm to 4:00pm" but a few
-                        don't, so we don't force a value. If Gemini lifted a
-                        time off the cert it lands here automatically. */}
+                    {/* Date-only start + end. Time fields were dropped — the
+                        real-world CoC variability didn't justify the form
+                        cost. If a manager needs to record "4pm to 4pm"
+                        they can put it in notes. */}
                     <div className="grid grid-cols-2 gap-4">
                       <div className="space-y-1.5">
                         <Label>
                           Start date <span className="text-destructive">*</span>
                         </Label>
-                        <div className="grid grid-cols-[1fr_130px] gap-2">
-                          <DatePicker
-                            value={p.start_date}
-                            onChange={(v) => updatePolicy(idx, { start_date: v })}
-                            error={inv.start}
-                          />
-                          <TimePicker
-                            value={p.start_time ?? ""}
-                            onChange={(v) => updatePolicy(idx, { start_time: v })}
-                          />
-                        </div>
+                        <DatePicker
+                          value={p.start_date}
+                          onChange={(v) => updatePolicy(idx, { start_date: v })}
+                          error={inv.start}
+                        />
                       </div>
                       <div className="space-y-1.5">
                         <Label>
                           End date <span className="text-destructive">*</span>
                         </Label>
-                        <div className="grid grid-cols-[1fr_130px] gap-2">
-                          <DatePicker
-                            value={p.end_date}
-                            onChange={(v) => updatePolicy(idx, { end_date: v })}
-                            error={inv.end}
-                          />
-                          <TimePicker
-                            value={p.end_time ?? ""}
-                            onChange={(v) => updatePolicy(idx, { end_time: v })}
-                          />
-                        </div>
+                        <DatePicker
+                          value={p.end_date}
+                          onChange={(v) => updatePolicy(idx, { end_date: v })}
+                          error={inv.end}
+                        />
                       </div>
+                    </div>
+
+                    <div className="space-y-1.5">
+                      <Label htmlFor={`notes-${idx}`}>Notes</Label>
+                      <Textarea
+                        id={`notes-${idx}`}
+                        value={p.notes ?? ""}
+                        onChange={(e) => updatePolicy(idx, { notes: e.target.value })}
+                        placeholder="Exclusions, endorsements, brokers, mid-year changes…"
+                        rows={2}
+                      />
                     </div>
                   </div>
                 );

@@ -24,11 +24,9 @@ export type DraftInsurancePolicy = {
   premium?: number;
   start_date: string;     // ISO yyyy-mm-dd
   end_date: string;
-  /** Optional 24h HH:MM time the cover starts on `start_date`. Australian
-   *  CoCs typically state "4:00pm" — preserve when present, null when the
-   *  cert only states a date. */
-  start_time?: string;
-  end_time?: string;
+  /** Free-text notes about this policy (broker, exclusions, endorsements,
+   *  etc.). Optional; null when nothing extra to record. */
+  notes?: string;
   /** R2 key of the CoC PDF this policy was extracted from. Used at
    *  completeWizard time to link the resulting insurance_policies row to its
    *  source document. Empty for hand-entered policies. */
@@ -1632,10 +1630,7 @@ export async function completeWizard(draftId: string) {
           premium: p.premium ?? null,
           start_date: p.start_date,
           end_date: p.end_date,
-          // Optional HH:MM start/end times — null when the cert was date-
-          // only. Postgres TIME columns accept "HH:MM" or "HH:MM:SS".
-          start_time: p.start_time && p.start_time.length > 0 ? p.start_time : null,
-          end_time: p.end_time && p.end_time.length > 0 ? p.end_time : null,
+          notes: p.notes && p.notes.trim().length > 0 ? p.notes.trim() : null,
           status: "active",
           source_document_id: sourceDocId,
         });

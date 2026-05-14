@@ -358,17 +358,21 @@ export default async function DashboardPage() {
         />
       </div>
 
-      {/* OCs section */}
+      {/* OCs section. Top-right Create OC is hidden when there are no OCs
+          — the empty state below carries the single CTA in that case so we
+          aren't double-stamping the same action on one screen. */}
       <div className="flex items-center justify-between">
         <h2 className="text-base font-semibold text-foreground">OCs</h2>
-        <div className="flex items-center gap-2">
-          <Link href="/ocs/new">
-            <Button size="sm">
-              <Plus className="mr-2 h-4 w-4" />
-              Create OC
-            </Button>
-          </Link>
-        </div>
+        {ocs.length > 0 && (
+          <div className="flex items-center gap-2">
+            <Link href="/ocs/new">
+              <Button size="sm">
+                <Plus className="mr-2 h-4 w-4" />
+                Create OC
+              </Button>
+            </Link>
+          </div>
+        )}
       </div>
 
       {ocs.length === 0 ? (

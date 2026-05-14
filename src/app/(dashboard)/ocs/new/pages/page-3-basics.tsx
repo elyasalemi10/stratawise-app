@@ -440,7 +440,7 @@ export function Page3Basics({
           <div className="grid grid-cols-2 gap-4">
             {/* Financial year start — month picker. We always anchor to day 1. */}
             <div className="space-y-1.5">
-              <Label htmlFor="fy-start">Financial year start</Label>
+              <Label htmlFor="fy-start">Financial year start <span className="text-destructive">*</span></Label>
               <Select
                 value={String(fyMonth)}
                 onValueChange={(v) => setFyMonth(parseInt(v ?? "7", 10))}
@@ -465,7 +465,7 @@ export function Page3Basics({
                 Act levy notice cycle). Annually is rare but legal for very
                 small OCs. */}
             <div className="space-y-1.5">
-              <Label htmlFor="billing-cycle">Levy frequency</Label>
+              <Label htmlFor="billing-cycle">Levy frequency <span className="text-destructive">*</span></Label>
               <Select
                 value={billingCycle}
                 onValueChange={(v) => setBillingCycle((v as BillingCycle) ?? "quarterly")}

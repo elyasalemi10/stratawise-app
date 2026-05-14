@@ -31,6 +31,10 @@ interface Props {
   value: ParsedAddress;
   onChange: (next: ParsedAddress) => void;
   id?: string;
+  /** Submit-time invalidity flag. When true the input shows a red border
+   *  via aria-invalid. Reset by the parent's onChange handler — never
+   *  derived live from value. */
+  error?: boolean;
 }
 
 interface Suggestion {
@@ -153,7 +157,7 @@ function componentsToParsed(
   };
 }
 
-export function VicAddressAutocomplete({ value, onChange, id }: Props) {
+export function VicAddressAutocomplete({ value, onChange, id, error }: Props) {
   const apiKeyConfigured = !!process.env.NEXT_PUBLIC_GOOGLE_MAPS_API_KEY;
   const hasParsedValue = !!(value.street_number || value.street_name || value.suburb || value.postcode);
   const [mode, setMode] = useState<"search" | "manual">(hasParsedValue ? "manual" : "search");
@@ -351,22 +355,31 @@ export function VicAddressAutocomplete({ value, onChange, id }: Props) {
   }
 
   if (mode === "manual") {
+    // When error is true, paint any missing-part input red. Filled parts
+    // stay neutral — the user can see at a glance which specific field is
+    // blocking them rather than getting an undifferentiated red banner.
+    const missing = {
+      street_number: !value.street_number?.trim(),
+      street_name: !value.street_name?.trim(),
+      suburb: !value.suburb?.trim(),
+      postcode: !value.postcode?.trim(),
+    };
     return (
       <div className="space-y-2">
         <div className="grid grid-cols-[120px_1fr] gap-3">
           <div className="space-y-1">
             <Label htmlFor={`${id}-no`} className="text-xs text-muted-foreground">Street no.</Label>
-            <Input id={`${id}-no`} value={value.street_number} onChange={(e) => updateField("street_number", e.target.value)} />
+            <Input id={`${id}-no`} value={value.street_number} onChange={(e) => updateField("street_number", e.target.value)} aria-invalid={(error && missing.street_number) || undefined} />
           </div>
           <div className="space-y-1">
             <Label htmlFor={`${id}-name`} className="text-xs text-muted-foreground">Street name</Label>
-            <Input id={`${id}-name`} value={value.street_name} onChange={(e) => updateField("street_name", e.target.value)} />
+            <Input id={`${id}-name`} value={value.street_name} onChange={(e) => updateField("street_name", e.target.value)} aria-invalid={(error && missing.street_name) || undefined} />
           </div>
         </div>
         <div className="grid grid-cols-[1fr_100px_120px] gap-3">
           <div className="space-y-1">
             <Label htmlFor={`${id}-suburb`} className="text-xs text-muted-foreground">Suburb</Label>
-            <Input id={`${id}-suburb`} value={value.suburb} onChange={(e) => updateField("suburb", e.target.value)} />
+            <Input id={`${id}-suburb`} value={value.suburb} onChange={(e) => updateField("suburb", e.target.value)} aria-invalid={(error && missing.suburb) || undefined} />
           </div>
           <div className="space-y-1">
             <Label className="text-xs text-muted-foreground">State</Label>
@@ -380,6 +393,7 @@ export function VicAddressAutocomplete({ value, onChange, id }: Props) {
               maxLength={4}
               value={value.postcode}
               onChange={(e) => updateField("postcode", e.target.value.replace(/\D/g, "").slice(0, 4))}
+              aria-invalid={(error && missing.postcode) || undefined}
             />
           </div>
         </div>

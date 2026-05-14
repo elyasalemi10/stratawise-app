@@ -2,7 +2,8 @@
 
 import { useMemo, useState } from "react";
 import { toast } from "sonner";
-import { Loader2 } from "lucide-react";
+import { Info, Loader2 } from "lucide-react";
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
 import { NumberInput } from "@/components/ui/number-input";
@@ -156,15 +157,11 @@ export function Page8Balances({
           onChange={(v) => { setDate(v); if (dateInvalid) setDateInvalid(false); }}
           error={dateInvalid}
         />
-        <p className="text-xs text-muted-foreground">
-          Usually the day you took over management. Balances and lot arrears are as at this date.
-        </p>
       </div>
 
-      {/* Fund balances */}
+      {/* Per-fund opening balances. The "Fund balances" header was removed
+          — the field labels carry the meaning, the heading was repetitive. */}
       <div className="space-y-3">
-        <h3 className="text-sm font-semibold text-foreground">Fund balances</h3>
-
         <div className="grid grid-cols-2 gap-4">
           <div className="space-y-1.5">
             <Label htmlFor="admin-bal">
@@ -237,19 +234,35 @@ export function Page8Balances({
           and negative aren't "good or bad" — they're directional. */}
       <div className="space-y-2">
         <div className="flex items-center justify-between">
-          <div>
+          <div className="flex items-center gap-1.5">
             <h3 className="text-sm font-semibold text-foreground">Per-lot opening arrears</h3>
-            <p className="mt-0.5 text-xs text-muted-foreground">
-              <strong>Debit</strong> = the lot owes the OC. <strong>Credit</strong> = the OC owes the lot.
-            </p>
+            {/* Debit/Credit explanation now lives in a hover tooltip rather
+                than crowding the heading row. */}
+            <TooltipProvider>
+              <Tooltip>
+                <TooltipTrigger
+                  render={
+                    <button type="button" aria-label="Debit / Credit explained" className="text-muted-foreground hover:text-foreground cursor-help">
+                      <Info className="h-3.5 w-3.5" />
+                    </button>
+                  }
+                />
+                <TooltipContent>
+                  <span><strong>Debit</strong> = the lot owes the OC. <strong>Credit</strong> = the OC owes the lot.</span>
+                </TooltipContent>
+              </Tooltip>
+            </TooltipProvider>
           </div>
           <span className="text-xs tabular-nums text-muted-foreground">
             Total: ${totalArrears.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
           </span>
         </div>
-        <div className="rounded-md border border-border bg-muted/40 overflow-hidden">
+        {/* Table matches the wizard's lot table on page 2: header carries
+            the only border-b, rows have no separators. Keeps the wizard
+            visually consistent across steps. */}
+        <div className="rounded-md border border-border bg-card overflow-hidden">
           <table className="w-full text-sm">
-            <thead className="bg-card text-muted-foreground">
+            <thead className="bg-muted/40 text-muted-foreground">
               <tr className="text-xs uppercase tracking-wide border-b border-border">
                 <th className="px-3 py-2 text-left font-medium w-16">Lot</th>
                 <th className="px-3 py-2 text-left font-medium">Owner</th>
@@ -272,7 +285,7 @@ export function Page8Balances({
                   if (cur > 0) updateLotBalance(idx, String(toCredit ? -cur : cur));
                 }
                 return (
-                  <tr key={idx} className="border-t border-border">
+                  <tr key={idx}>
                     <td className="px-3 py-1.5 tabular-nums">{lot.lot_number}</td>
                     <td className="px-3 py-1.5 text-muted-foreground truncate">{lot.owner_name || "—"}</td>
                     <td className="px-3 py-1.5">
@@ -297,7 +310,7 @@ export function Page8Balances({
                       <div className="relative">
                         <span className="absolute left-3 top-1/2 -translate-y-1/2 text-xs text-muted-foreground">$</span>
                         <NumberInput
-                thousandsSeparator
+                          thousandsSeparator
                           value={absStr}
                           onChange={setAmount}
                           className="h-8 pl-7"

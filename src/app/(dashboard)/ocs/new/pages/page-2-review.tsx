@@ -56,6 +56,7 @@ export function Page2Review({
     postcode: initialDraft.postcode ?? "",
     formatted: initialDraft.address ?? "",
   });
+  const [addressInvalid, setAddressInvalid] = useState(false);
   const [lots, setLots] = useState<DraftLot[]>(initialDraft.lots ?? []);
   // Per-row field invalidity flags. Populated only on submit, cleared back
   // to false on the matching field's onChange — so the inputs DON'T turn red
@@ -115,6 +116,27 @@ export function Page2Review({
       setPlanNumberInvalid(true);
     } else {
       setPlanNumberInvalid(false);
+    }
+
+    // Address parts — every component must be present. Plan parsers can
+    // return an address with missing pieces; managers have to fill them in
+    // before we can produce levy notices (postal label needs them all).
+    const addressParts = {
+      street_number: (address.street_number ?? "").trim(),
+      street_name: (address.street_name ?? "").trim(),
+      suburb: (address.suburb ?? "").trim(),
+      postcode: (address.postcode ?? "").trim(),
+    };
+    const missingAddressParts: string[] = [];
+    if (!addressParts.street_number) missingAddressParts.push("street number");
+    if (!addressParts.street_name) missingAddressParts.push("street name");
+    if (!addressParts.suburb) missingAddressParts.push("suburb");
+    if (!addressParts.postcode) missingAddressParts.push("postcode");
+    if (missingAddressParts.length > 0) {
+      problems.push(`Address is missing: ${missingAddressParts.join(", ")}.`);
+      setAddressInvalid(true);
+    } else {
+      setAddressInvalid(false);
     }
 
     // OC number is required (parses to a positive integer).
@@ -246,12 +268,21 @@ export function Page2Review({
     await onNext();
   }
 
+  // Two header variants depending on whether the user came from the
+  // plan-parse path (detected OCs non-empty) or from skip-and-enter-
+  // manually (no detected OCs). The skip path has nothing to "review",
+  // so the copy reflects that — they're entering everything by hand.
+  const cameFromSkip = detectedOcs.length === 0;
   return (
     <div className="space-y-6">
       <div className="text-center">
-        <h2 className="text-lg font-semibold text-foreground">Review the extracted details</h2>
+        <h2 className="text-lg font-semibold text-foreground">
+          {cameFromSkip ? "Enter the OC details" : "Review the extracted details"}
+        </h2>
         <p className="mt-1 text-sm text-muted-foreground">
-          We pulled these from your plan. Edit anything that&apos;s wrong.
+          {cameFromSkip
+            ? "Fill in the basics for this OC and add each lot below."
+            : "We pulled these from your plan. Edit anything that's wrong."}
         </p>
       </div>
 
@@ -314,7 +345,17 @@ export function Page2Review({
           <Label htmlFor="address">
             Address <span className="text-destructive">*</span>
           </Label>
-          <VicAddressAutocomplete id="address" value={address} onChange={setAddress} />
+          <VicAddressAutocomplete
+            id="address"
+            value={address}
+            onChange={(v) => { setAddress(v); if (addressInvalid) setAddressInvalid(false); }}
+            error={addressInvalid}
+          />
+          {addressInvalid && (
+            <p className="text-xs text-destructive">
+              Address must include street number, street name, suburb, and postcode.
+            </p>
+          )}
         </div>
 
         {/* Lot schedule */}
@@ -402,17 +443,23 @@ export function Page2Review({
                         />
                       </td>
                       <td className="px-3 py-1.5" data-cell={`${idx}:2`}>
+                        {/* `value != null` rather than `value ?` so the
+                            user can actually type 0 — the truthy check
+                            collapsed 0 back to empty on every keystroke.
+                            0 is illegal under VIC OC Act but only the
+                            submit validator flags it; typing through 0
+                            is allowed. */}
                         <NumberInput
-                          value={lot.unit_entitlement ? String(lot.unit_entitlement) : ""}
-                          onChange={(v) => updateLot(idx, { unit_entitlement: parseFloat(v) || 0 })}
+                          value={lot.unit_entitlement != null ? String(lot.unit_entitlement) : ""}
+                          onChange={(v) => updateLot(idx, { unit_entitlement: v === "" ? 0 : parseFloat(v) })}
                           invalid={errs.entitlement || undefined}
                           className="h-8"
                         />
                       </td>
                       <td className="px-3 py-1.5" data-cell={`${idx}:3`}>
                         <NumberInput
-                          value={lot.lot_liability ? String(lot.lot_liability) : ""}
-                          onChange={(v) => updateLot(idx, { lot_liability: parseFloat(v) || 0 })}
+                          value={lot.lot_liability != null ? String(lot.lot_liability) : ""}
+                          onChange={(v) => updateLot(idx, { lot_liability: v === "" ? 0 : parseFloat(v) })}
                           invalid={errs.liability || undefined}
                           className="h-8"
                         />

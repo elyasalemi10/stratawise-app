@@ -42,7 +42,10 @@ export default async function OCsPage() {
         </div>
       )}
 
-      {/* OC grid */}
+      {/* OC grid. Empty state: NO Create OC button here — the user comes
+          to /ocs via the sidebar (which carries its own Create OC affordance
+          in the switcher), so duplicating it inline made the page feel
+          stamped with the same CTA twice. The empty state is now copy-only. */}
       {ocs.length === 0 && drafts.length === 0 ? (
         <div className="flex flex-col items-center justify-center py-20 text-center">
           <Building2 className="h-12 w-12 text-muted-foreground/30" />
@@ -50,14 +53,8 @@ export default async function OCsPage() {
             No OCs yet
           </p>
           <p className="mt-1 text-sm text-muted-foreground max-w-sm">
-            Create your first OC to start managing lots, levies, and meetings.
+            Create your first OC from the sidebar to start managing lots, levies, and meetings.
           </p>
-          <Link href="/ocs/new">
-            <Button className="mt-4">
-              <Plus className="mr-2 h-4 w-4" />
-              Create OC
-            </Button>
-          </Link>
         </div>
       ) : (
         <>
@@ -131,7 +128,7 @@ export default async function OCsPage() {
                           <CircleDashed className="h-4 w-4 text-muted-foreground shrink-0" />
                           <div className="flex-1 min-w-0">
                             <p className="text-sm font-semibold text-foreground truncate">
-                              {d.label} — {d.step}/8
+                              {d.label} <span className="text-muted-foreground font-normal">— Step {d.step}/9</span>
                             </p>
                             {d.address ? (
                               <p className="mt-1 text-xs text-muted-foreground truncate">{d.address}</p>

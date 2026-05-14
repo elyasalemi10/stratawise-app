@@ -16,12 +16,16 @@ const STEPS = [
 
 export function StepIndicator({ current }: { current: number }) {
   return (
-    <div className="mb-8 flex items-center justify-center gap-3">
+    // flex-wrap so a 9-step indicator survives narrow viewports without
+    // forcing a horizontal scrollbar on the page. justify-center keeps the
+    // wrapped lines balanced. Each step group gets gap-y so wrapped rows
+    // breathe vertically.
+    <div className="mb-8 flex flex-wrap items-center justify-center gap-x-3 gap-y-2">
       {STEPS.map((s, i) => (
         <div key={s.number} className="flex items-center gap-3">
           <div
             className={cn(
-              "flex h-8 w-8 items-center justify-center rounded-full text-sm font-medium transition-colors",
+              "flex h-8 w-8 shrink-0 items-center justify-center rounded-full text-sm font-medium transition-colors",
               s.number === current && "bg-primary text-primary-foreground",
               s.number < current && "bg-primary text-primary-foreground",
               s.number > current && "border-2 border-dashed border-border bg-background text-muted-foreground",
@@ -42,7 +46,7 @@ export function StepIndicator({ current }: { current: number }) {
           {i < STEPS.length - 1 && (
             <div
               className={cn(
-                "h-px w-6 border-t-2",
+                "h-px w-6 shrink-0 border-t-2",
                 s.number < current ? "border-solid border-primary" : "border-dashed border-border",
               )}
             />
