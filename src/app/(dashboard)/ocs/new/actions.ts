@@ -1459,8 +1459,6 @@ export async function completeWizard(draftId: string) {
           heading?: string | null;
           body: string;
           page_number?: number | null;
-          bbox?: { x: number; y: number; w: number; h: number } | null;
-          confidence?: number;
         }>;
       } | null;
 
@@ -1504,8 +1502,6 @@ export async function completeWizard(draftId: string) {
           section_heading: r.section_heading ?? null,
           body: r.body,
           page_number: r.page_number ?? null,
-          bbox: r.bbox ?? null,
-          confidence: r.confidence ?? null,
           ordinal: idx + 1,
           source_document_id: rulesDocumentId,
         }));

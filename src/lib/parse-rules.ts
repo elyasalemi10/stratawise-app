@@ -48,8 +48,6 @@ export type ParsedRule = {
   heading: string | null;
   body: string;
   page_number: number | null;
-  bbox: { x: number; y: number; w: number; h: number } | null;
-  confidence: number;
 };
 
 export type ParsedRulesDocument = {
@@ -144,26 +142,20 @@ const RESPONSE_SCHEMA = {
             nullable: true,
             description: "1-indexed PDF page where the rule starts.",
           },
-          bbox: {
-            type: Type.OBJECT,
-            nullable: true,
-            description: "Bounding box on `page_number` in normalised page coords (0-1). Null if not confidently locatable.",
-            properties: {
-              x: { type: Type.NUMBER },
-              y: { type: Type.NUMBER },
-              w: { type: Type.NUMBER },
-              h: { type: Type.NUMBER },
-            },
-            required: ["x", "y", "w", "h"],
-          },
-          confidence: { type: Type.NUMBER, description: "0-1 confidence in this row's extraction." },
         },
-        required: ["oc_scope", "rule_number", "body", "confidence"],
+        required: ["oc_scope", "rule_number", "body"],
       },
     },
   },
   required: ["is_oc_rules", "document_type_guess", "oc_scopes", "rules"],
 };
+// NOTE: bbox + confidence were dropped from the rules schema in May 2026
+// after benchmarking showed long rules PDFs (10+ pages, 100+ rules) blew
+// past Flash's output-token ceiling and got truncated mid-JSON. The fields
+// were rarely useful in practice — bbox was almost always null and
+// confidence didn't change downstream behaviour. Slimmer schema ≈ 15-20%
+// smaller JSON, which makes the difference between a parsed and a
+// truncated response.
 
 const SYSTEM_PROMPT = `You extract every numbered rule from a registered Victorian Owners Corporation rules PDF.
 
@@ -187,7 +179,6 @@ Rule mechanics:
 - Preserve sub-numbering verbatim (e.g. "2.3.a" stays "2.3.a", NOT "2.3.1").
 - Body text should be the full text of the rule, joined into one string. Drop only the leading rule number / rule's own heading.
 - Use page_number to indicate where each rule starts (1-indexed).
-- bbox: only set when you can confidently locate the rule on the page. Otherwise null.
 
 Document-type gate:
 - BEFORE extracting anything, decide whether this PDF actually IS a set of OC rules.
@@ -237,6 +228,13 @@ export async function parseRulesPdf(pdfBytes: Buffer): Promise<ParsedRulesDocume
     config: {
       systemInstruction: SYSTEM_PROMPT,
       temperature: 0.1,
+      // Long OC-rules documents (10+ pages with 100+ numbered rules) blow
+      // through the 8K-token default and Gemini truncates the JSON mid-rule.
+      // 65535 is the Flash ceiling and gives enough headroom for the longest
+      // rules PDFs we've benchmarked. Cost-wise this only affects bills when
+      // the model actually emits that many tokens — the limit is a cap, not
+      // a target.
+      maxOutputTokens: 65535,
       responseMimeType: "application/json",
       responseSchema: RESPONSE_SCHEMA,
     },

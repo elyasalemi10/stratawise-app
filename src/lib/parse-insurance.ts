@@ -147,6 +147,11 @@ export async function parseInsurancePdf(pdfBytes: Buffer): Promise<ParsedInsuran
     config: {
       systemInstruction: SYSTEM_PROMPT,
       temperature: 0.1,
+      // Insurance schedules are short (1-5 policies typically) so the
+      // default would usually be fine — but a 65535 cap costs nothing
+      // when the model emits a smaller response and saves us from one
+      // class of silent truncation.
+      maxOutputTokens: 65535,
       responseMimeType: "application/json",
       responseSchema: RESPONSE_SCHEMA,
     },

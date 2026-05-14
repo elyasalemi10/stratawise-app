@@ -190,6 +190,10 @@ export async function parsePlanPdf(pdfBytes: Buffer): Promise<ParsedPlan> {
     config: {
       systemInstruction: SYSTEM_PROMPT,
       temperature: 0.1,
+      // Large plans with 100+ lots can produce big JSON outputs. 65535
+      // matches the Flash ceiling; defensive against truncation on long
+      // lot schedules.
+      maxOutputTokens: 65535,
       responseMimeType: "application/json",
       responseSchema: RESPONSE_SCHEMA,
     },

@@ -50,9 +50,8 @@ const RULES_SCHEMA = {
           heading: { type: Type.STRING, nullable: true },
           body: { type: Type.STRING },
           page_number: { type: Type.INTEGER, nullable: true },
-          confidence: { type: Type.NUMBER },
         },
-        required: ["oc_scope", "rule_number", "body", "confidence"],
+        required: ["oc_scope", "rule_number", "body"],
       },
     },
   },
@@ -133,6 +132,7 @@ async function runParse(
       ],
       config: {
         temperature: 0.1,
+        maxOutputTokens: 65535,
         responseMimeType: "application/json",
         responseSchema: schema as never,
       },
