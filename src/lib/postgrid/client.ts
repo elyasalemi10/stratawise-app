@@ -20,6 +20,20 @@ import "server-only";
 //   POSTGRID_ADDVER_TEST_API_KEY   POSTGRID_ADDVER_API_KEY
 //   POSTGRID_MODE                  — "test" (default) | "live"
 //
+// IMPORTANT: PostGrid keys come in two flavours, distinguished by prefix:
+//   • test_pk_… / live_pk_…  — PUBLIC key. Browser-only. PostGrid checks
+//                              the request Origin against an allowlist
+//                              configured in the dashboard. Server-side
+//                              calls from Node have no Origin header and
+//                              get rejected with HTTP 403 "Invalid origin
+//                              for this api key." (verified locally — see
+//                              scripts/test-postgrid-addver.ts).
+//   • test_sk_… / live_sk_…  — SECRET key. Server-side only. No origin
+//                              restriction; the key itself authenticates.
+//                              This is what every endpoint in this wrapper
+//                              expects. Generate one from PostGrid
+//                              dashboard → Settings → API Keys → Secret.
+//
 // Backwards-compat: POSTGRID_TEST_API_KEY (no product prefix) is treated
 // as the Print Mail test key, since that's what the dashboard hands you
 // first. Address verification stays "unchecked" until the addver key is
@@ -150,6 +164,14 @@ export async function verifyAddress(addr: PostGridAddress): Promise<Verification
     // unchecked so the manager isn't blocked by a config issue.
     if (resp.status === 401) {
       return { status: "unchecked", correctedAddress: null, errorMessage: "Address verification key not configured.", verificationId: null, mode };
+    }
+    // 403 "Invalid origin" means the configured addver key is a public
+    // (test_pk_…) key restricted to a browser Origin allowlist. Our
+    // server-side call doesn't carry an Origin and won't ever pass that
+    // check. Surface a clear hint instead of a mystery error.
+    if (resp.status === 403 && txt.toLowerCase().includes("invalid origin")) {
+      console.error("postgrid addver: configured key is a public (pk_) key — needs a secret (sk_) key for server-side calls. See lib/postgrid/client.ts comment.");
+      return { status: "unchecked", correctedAddress: null, errorMessage: "Address verification key must be a server-side secret key.", verificationId: null, mode };
     }
     throw new Error("Address verification is temporarily unavailable.");
   }

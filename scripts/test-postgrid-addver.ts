@@ -49,7 +49,7 @@ const INTL_CANDIDATES: Array<{ label: string; url: string }> = [
   { label: "api.postgrid.com /v1/addver/verifications (AU body)", url: "https://api.postgrid.com/v1/addver/verifications" },
 ];
 
-async function probe(url: string, label: string) {
+async function probe(url: string, label: string, extraHeaders: Record<string, string> = {}) {
   console.log(`\n=== ${label} ===`);
   console.log(`POST ${url}`);
   const t0 = Date.now();
@@ -59,6 +59,7 @@ async function probe(url: string, label: string) {
       headers: {
         "Content-Type": "application/json",
         "x-api-key": KEY,
+        ...extraHeaders,
       },
       body: JSON.stringify(AU_BODY),
     });
@@ -77,4 +78,10 @@ async function probe(url: string, label: string) {
   for (const c of INTL_CANDIDATES) {
     await probe(c.url, c.label);
   }
+  // pk_ keys check the request Origin against a browser allowlist
+  // configured in the PostGrid dashboard. Try setting it explicitly to
+  // see if PostGrid will accept a server-side request that masquerades
+  // as one of the allowlisted origins (* would be the simplest setting).
+  await probe(INTL_CANDIDATES[0].url, "intl_addver with Origin=http://localhost:3000", { Origin: "http://localhost:3000" });
+  await probe(INTL_CANDIDATES[0].url, "intl_addver with Origin=https://stratawise.app", { Origin: "https://stratawise.app" });
 })();
