@@ -6,7 +6,6 @@ import { Loader2, ImagePlus, Trash2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { Checkbox } from "@/components/ui/checkbox";
 import {
   Select,
   SelectContent,
@@ -160,7 +159,10 @@ export function Page3Basics({
   onBack: () => void;
 }) {
   const [title, setTitle] = useState(initialDraft.trading_name ?? "");
-  const [servicesOnly, setServicesOnly] = useState(initialDraft.services_only ?? false);
+  // Services-only support is deferred — feature parity isn't built yet, so
+  // we preserve whatever value an existing draft holds but never change it
+  // from the UI. New drafts arrive as false. See item 6 of the May refresh.
+  const servicesOnly = initialDraft.services_only ?? false;
   const [fyMonth, setFyMonth] = useState<number>(initialDraft.financial_year_start_month ?? 7);
   const [billingCycle, setBillingCycle] = useState<BillingCycle>(
     (initialDraft.billing_cycle as BillingCycle | undefined) ?? "quarterly",
@@ -430,21 +432,10 @@ export function Page3Basics({
             />
           </div>
 
-          {/* Services-only flag — the only visible bit left from the old
-              tier box. Tier is still computed at completeWizard time from
-              lot count + this flag; we just don't show the badge any more,
-              since most managers found it noisy and the compliance
-              implications surface elsewhere (audits, maintenance plans). */}
-          <div className="flex items-center gap-2">
-            <Checkbox
-              id="services-only"
-              checked={servicesOnly}
-              onCheckedChange={(v) => setServicesOnly(v === true)}
-            />
-            <Label className="text-sm font-normal">
-              This is a services-only OC
-            </Label>
-          </div>
+          {/* Services-only flag is plumbed through draft_json (default false)
+              but no longer exposed in the UI — the feature isn't supported
+              in MVP and the checkbox just confused managers. Hidden until
+              we ship the services-only compliance path. */}
 
           <div className="grid grid-cols-2 gap-4">
             {/* Financial year start — month picker. We always anchor to day 1. */}

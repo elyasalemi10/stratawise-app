@@ -281,40 +281,55 @@ export function Page6Rules({
     });
   }
 
-  // Build the unique chapter + section combinations from the existing rule
-  // list so the Add dialog can offer them as a Select. Order matches the
-  // first occurrence in source order so chapters/sections feel familiar.
-  function listSections(rules: ParsedRule[]): Array<{ key: string; chapterNumber: string; chapterHeading: string; sectionNumber: string | null; sectionHeading: string | null; label: string }> {
-    const seen = new Map<string, { key: string; chapterNumber: string; chapterHeading: string; sectionNumber: string | null; sectionHeading: string | null; label: string }>();
+  // Distinct chapters and sections derived from the existing rule list, so
+  // the Add dialog can offer chapter and section as two separate selects.
+  // Chapters are unique by chapter_number; sections live inside a chapter
+  // and are unique by chapter_number + section_number.
+  function listChapters(rules: ParsedRule[]): Array<{ key: string; number: string; heading: string; label: string }> {
+    const seen = new Map<string, { key: string; number: string; heading: string; label: string }>();
     for (const r of rules) {
       const chNum = r.chapter_number?.trim();
       if (!chNum) continue;
+      if (seen.has(chNum)) continue;
       const chHead = (r.chapter_heading ?? "").trim();
-      const secNum = r.section_number?.trim() || null;
-      const secHead = (r.section_heading ?? "").trim() || null;
-      const key = `${chNum}|${secNum ?? ""}`;
-      if (seen.has(key)) continue;
-      const label = secNum
-        ? `${secNum}. ${secHead ?? "Untitled"}  ·  ${chNum}. ${chHead}`
-        : `${chNum}. ${chHead}`;
-      seen.set(key, { key, chapterNumber: chNum, chapterHeading: chHead, sectionNumber: secNum, sectionHeading: secHead, label });
+      seen.set(chNum, { key: chNum, number: chNum, heading: chHead, label: `${chNum}. ${chHead}`.trim() });
+    }
+    return Array.from(seen.values());
+  }
+  function listSectionsInChapter(rules: ParsedRule[], chapterNumber: string): Array<{ key: string; number: string; heading: string; label: string }> {
+    const seen = new Map<string, { key: string; number: string; heading: string; label: string }>();
+    for (const r of rules) {
+      if ((r.chapter_number ?? "").trim() !== chapterNumber) continue;
+      const secNum = r.section_number?.trim();
+      if (!secNum) continue;
+      if (seen.has(secNum)) continue;
+      const secHead = (r.section_heading ?? "").trim();
+      seen.set(secNum, { key: secNum, number: secNum, heading: secHead, label: `${secNum}. ${secHead}`.trim() });
     }
     return Array.from(seen.values());
   }
 
-  // Section the user picked in the Add dialog. "" means "no section / new
-  // chapter"; any other value is the key from listSections().
-  const [addSectionKey, setAddSectionKey] = useState<string>("");
-  // When the user picks "(new)" in the section select, these inputs surface
-  // so they can type a chapter number/heading inline.
+  // Add dialog state — Type / Chapter / Section all picked here so adding
+  // a rule doesn't require pre-selecting Type from a dropdown menu.
+  // Chapter / section can be:
+  //   ""        → none (top-level rule with no chapter)
+  //   "__new__" → inline number+heading inputs surface
+  //   string    → key matches an existing chapter/section
+  const [addChapterKey, setAddChapterKey] = useState<string>("");
   const [addNewChapterNum, setAddNewChapterNum] = useState("");
   const [addNewChapterHead, setAddNewChapterHead] = useState("");
+  const [addSectionKey, setAddSectionKey] = useState<string>("");
+  const [addNewSectionNum, setAddNewSectionNum] = useState("");
+  const [addNewSectionHead, setAddNewSectionHead] = useState("");
 
   function openAdd(type: "registered" | "standing") {
     setAddType(type);
+    setAddChapterKey("");
     setAddSectionKey("");
     setAddNewChapterNum("");
     setAddNewChapterHead("");
+    setAddNewSectionNum("");
+    setAddNewSectionHead("");
     // Suggest next sequential top-level number.
     const tops = parsedRules
       .map((r) => r.rule_number.split(".")[0])
@@ -332,24 +347,31 @@ export function Page6Rules({
       toast.error("Rule number and body are both required.");
       return;
     }
-    // Resolve chapter + section context. If user picked an existing section,
-    // we inherit its chapter and section metadata so the new rule slots in
-    // beneath the right header. If they picked "(new chapter)", they typed
-    // chapter num + heading inline.
+    // Resolve chapter + section context.
     let chapter_number: string | null = null;
     let chapter_heading: string | null = null;
     let section_number: string | null = null;
     let section_heading: string | null = null;
-    if (addSectionKey === "__new__") {
+    if (addChapterKey === "__new__") {
       chapter_number = addNewChapterNum.trim() || null;
       chapter_heading = addNewChapterHead.trim() || null;
-    } else if (addSectionKey) {
-      const found = listSections(parsedRules).find((s) => s.key === addSectionKey);
+    } else if (addChapterKey) {
+      const found = listChapters(parsedRules).find((c) => c.key === addChapterKey);
       if (found) {
-        chapter_number = found.chapterNumber;
-        chapter_heading = found.chapterHeading;
-        section_number = found.sectionNumber;
-        section_heading = found.sectionHeading;
+        chapter_number = found.number;
+        chapter_heading = found.heading || null;
+      }
+    }
+    if (chapter_number) {
+      if (addSectionKey === "__new__") {
+        section_number = addNewSectionNum.trim() || null;
+        section_heading = addNewSectionHead.trim() || null;
+      } else if (addSectionKey) {
+        const found = listSectionsInChapter(parsedRules, chapter_number).find((s) => s.key === addSectionKey);
+        if (found) {
+          section_number = found.number;
+          section_heading = found.heading || null;
+        }
       }
     }
     const parent_heading = chapter_number
@@ -464,7 +486,7 @@ export function Page6Rules({
       <div className="text-center">
         <h2 className="text-lg font-semibold text-foreground">Add your owners corporation rules</h2>
         <p className="mt-1 text-sm text-muted-foreground">
-          Upload your registered rules, or skip to use Victoria&apos;s Model Rules as the default.
+          Upload your registered rules, or use the Victoria&apos;s Model Rules.
         </p>
       </div>
 
@@ -525,6 +547,41 @@ export function Page6Rules({
 
       {source === "custom" && (
         <>
+          {/* Add Rule bar — lives above the dropzone so the manager can
+              add rules by hand even before uploading a PDF. The rules list
+              box (below) only appears once at least one rule exists; that
+              keeps an empty "Your rules" panel from cluttering the page
+              before there's anything to show. */}
+          <div className="flex items-center justify-end">
+            <DropdownMenu>
+              <DropdownMenuTrigger
+                render={
+                  <Button type="button" size="sm" variant="secondary">
+                    <Plus className="mr-1 h-3.5 w-3.5" />
+                    Add rule
+                    <ChevronDown className="ml-1 h-3 w-3" />
+                  </Button>
+                }
+              />
+              <DropdownMenuContent align="end" className="min-w-[180px]">
+                <DropdownMenuItem
+                  onClick={() => openAdd("registered")}
+                  className="whitespace-nowrap [&_svg]:!text-emerald-700"
+                >
+                  <Scale className="mr-2 h-3.5 w-3.5 text-emerald-700" />
+                  Registered rule
+                </DropdownMenuItem>
+                <DropdownMenuItem
+                  onClick={() => openAdd("standing")}
+                  className="whitespace-nowrap [&_svg]:!text-amber-700"
+                >
+                  <FileText className="mr-2 h-3.5 w-3.5 text-amber-700" />
+                  Standing rule
+                </DropdownMenuItem>
+              </DropdownMenuContent>
+            </DropdownMenu>
+          </div>
+
           {/* Dropzone — hidden once a file is uploaded; reappears when cleared. */}
           {!filename && (
             <div
@@ -577,10 +634,11 @@ export function Page6Rules({
             </div>
           )}
 
-          {/* Rules list block — visible whenever there's anything to show OR
-              the manager has chosen "custom" rules (so they can start typing
-              by hand). Header carries the Add button + PDF preview + clear. */}
-          {(parsedRules.length > 0 || (source === "custom" && stage !== "uploading" && stage !== "parsing")) ? (
+          {/* Rules list block — only appears once at least one rule exists.
+              Before that the dropzone + Add Rule bar above are the whole
+              surface; once parsedRules is non-empty we surface the list
+              alongside its filename/count/clear header. */}
+          {parsedRules.length > 0 ? (
             <div className="rounded-md border border-border bg-card overflow-hidden">
               <div className="flex items-center justify-between gap-3 bg-muted/40 px-4 py-2 border-b border-border">
                 <div className="flex items-center gap-2 min-w-0">
@@ -593,39 +651,6 @@ export function Page6Rules({
                   </span>
                 </div>
                 <div className="flex items-center gap-1">
-                  <DropdownMenu>
-                    <DropdownMenuTrigger
-                      render={
-                        <Button type="button" size="sm" variant="secondary">
-                          <Plus className="mr-1 h-3.5 w-3.5" />
-                          Add rule
-                          <ChevronDown className="ml-1 h-3 w-3" />
-                        </Button>
-                      }
-                    />
-                    <DropdownMenuContent align="end" className="min-w-[180px]">
-                      {/* Icons keep their colour on hover via inline style —
-                          the DropdownMenuItem's `hover:text-accent-foreground`
-                          inherits down to children, so without an explicit
-                          colour on the SVG itself the icon flips to navy on
-                          hover and back. whitespace-nowrap stops "Standing"
-                          and "Rule" from wrapping when the menu is narrow. */}
-                      <DropdownMenuItem
-                        onClick={() => openAdd("registered")}
-                        className="whitespace-nowrap [&_svg]:!text-emerald-700"
-                      >
-                        <Scale className="mr-2 h-3.5 w-3.5 text-emerald-700" />
-                        Registered rule
-                      </DropdownMenuItem>
-                      <DropdownMenuItem
-                        onClick={() => openAdd("standing")}
-                        className="whitespace-nowrap [&_svg]:!text-amber-700"
-                      >
-                        <FileText className="mr-2 h-3.5 w-3.5 text-amber-700" />
-                        Standing rule
-                      </DropdownMenuItem>
-                    </DropdownMenuContent>
-                  </DropdownMenu>
                   {filename && (
                     <button
                       type="button"
@@ -637,7 +662,7 @@ export function Page6Rules({
                         setParsedRules([]);
                         persistRules([]);
                       }}
-                      className="ml-1 text-muted-foreground hover:text-destructive cursor-pointer shrink-0"
+                      className="text-muted-foreground hover:text-destructive cursor-pointer shrink-0"
                       aria-label="Remove all rules"
                     >
                       <Trash2 className="h-4 w-4" />
@@ -645,11 +670,7 @@ export function Page6Rules({
                   )}
                 </div>
               </div>
-              <div className="max-h-[480px] overflow-y-auto">{parsedRules.length === 0 ? (
-                <p className="px-4 py-6 text-center text-sm text-muted-foreground">
-                  No rules yet — use <strong>Add rule</strong> above to add one, or upload a PDF below.
-                </p>
-              ) : (() => {
+              <div className="max-h-[480px] overflow-y-auto">{(() => {
                 // Hierarchical render: oc_scope → chapter → section → rules.
                 // The chapter band carries the chapter number+heading; the
                 // section sub-band carries the section heading. Rules sit
@@ -726,7 +747,7 @@ export function Page6Rules({
                                         {r.body}
                                       </p>
                                     </div>
-                                    <div className="hidden items-center gap-1 shrink-0 group-hover:flex">
+                                    <div className="flex items-center gap-1 shrink-0 opacity-0 transition-opacity group-hover:opacity-100">
                                       <button
                                         type="button"
                                         onClick={() => openEdit(idx)}
@@ -898,40 +919,62 @@ export function Page6Rules({
       <Dialog open={addOpen} onOpenChange={setAddOpen}>
         <DialogContent className="sm:max-w-lg">
           <DialogHeader>
-            <DialogTitle>Add {addType === "standing" ? "standing" : "registered"} rule</DialogTitle>
+            <DialogTitle>Add rule</DialogTitle>
             <DialogDescription>
-              {addType === "standing"
-                ? "Committee-adopted internal rules that aren't filed with Land Use Victoria."
-                : "Filed with Land Use Victoria. Use this for any rule that's part of the OC's registered set."}
+              Registered rules are filed with Land Use Victoria; standing rules are committee-adopted internal rules that aren&apos;t filed.
             </DialogDescription>
           </DialogHeader>
           <div className="space-y-3">
-            {/* Section selector — picks the chapter/section the new rule
-                belongs under. Default is "(top level)" — no chapter, no
-                section — but if the document already has chapters/sections
-                we offer them as options so the rule slots in correctly. */}
-            <div className="space-y-1.5">
-              <Label htmlFor="wr-section">Section</Label>
-              <Select value={addSectionKey || "__top__"} onValueChange={(v) => setAddSectionKey(!v || v === "__top__" ? "" : v)}>
-                <SelectTrigger id="wr-section">
-                  <SelectValue>
-                    {addSectionKey === "" && "Top level (no chapter)"}
-                    {addSectionKey === "__new__" && "New chapter…"}
-                    {addSectionKey && addSectionKey !== "__new__" && (
-                      listSections(parsedRules).find((s) => s.key === addSectionKey)?.label ?? addSectionKey
-                    )}
-                  </SelectValue>
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="__top__">Top level (no chapter)</SelectItem>
-                  {listSections(parsedRules).map((s) => (
-                    <SelectItem key={s.key} value={s.key}>{s.label}</SelectItem>
-                  ))}
-                  <SelectItem value="__new__">New chapter…</SelectItem>
-                </SelectContent>
-              </Select>
+            {/* Type + Chapter on one row, Section + (optional inline new
+                fields) on the next. Section is disabled until a chapter is
+                chosen — sections only make sense inside a chapter. */}
+            <div className="grid grid-cols-2 gap-3">
+              <div className="space-y-1.5">
+                <Label htmlFor="wr-type">Type</Label>
+                <Select value={addType} onValueChange={(v) => setAddType(((v ?? "registered") as "registered" | "standing"))}>
+                  <SelectTrigger id="wr-type">
+                    <SelectValue>{addType === "standing" ? "Standing rule" : "Registered rule"}</SelectValue>
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="registered">Registered rule</SelectItem>
+                    <SelectItem value="standing">Standing rule</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+              <div className="space-y-1.5">
+                <Label htmlFor="wr-chapter">Chapter</Label>
+                <Select
+                  value={addChapterKey || "__top__"}
+                  onValueChange={(v) => {
+                    const next = !v || v === "__top__" ? "" : v;
+                    setAddChapterKey(next);
+                    // Resetting the chapter also clears section state — a
+                    // section selection only makes sense under a chosen
+                    // chapter, so we don't leave stale section_number
+                    // hanging around when the chapter changes.
+                    setAddSectionKey("");
+                  }}
+                >
+                  <SelectTrigger id="wr-chapter">
+                    <SelectValue>
+                      {addChapterKey === "" && "Top level (no chapter)"}
+                      {addChapterKey === "__new__" && "New chapter…"}
+                      {addChapterKey && addChapterKey !== "__new__" && (
+                        listChapters(parsedRules).find((c) => c.key === addChapterKey)?.label ?? addChapterKey
+                      )}
+                    </SelectValue>
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="__top__">Top level (no chapter)</SelectItem>
+                    {listChapters(parsedRules).map((c) => (
+                      <SelectItem key={c.key} value={c.key}>{c.label}</SelectItem>
+                    ))}
+                    <SelectItem value="__new__">New chapter…</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
             </div>
-            {addSectionKey === "__new__" && (
+            {addChapterKey === "__new__" && (
               <div className="grid grid-cols-[120px_1fr] gap-3">
                 <div className="space-y-1.5">
                   <Label htmlFor="wr-chnum">Chapter no.</Label>
@@ -943,11 +986,52 @@ export function Page6Rules({
                 </div>
               </div>
             )}
+            {(addChapterKey === "__new__" || addChapterKey) && (
+              <div className="space-y-1.5">
+                <Label htmlFor="wr-section">Section</Label>
+                <Select
+                  value={addSectionKey || "__none__"}
+                  onValueChange={(v) => setAddSectionKey(!v || v === "__none__" ? "" : v)}
+                >
+                  <SelectTrigger id="wr-section">
+                    <SelectValue>
+                      {addSectionKey === "" && "No section"}
+                      {addSectionKey === "__new__" && "New section…"}
+                      {addSectionKey && addSectionKey !== "__new__" && (() => {
+                        if (addChapterKey === "__new__") return addSectionKey;
+                        const found = listSectionsInChapter(parsedRules, addChapterKey).find((s) => s.key === addSectionKey);
+                        return found?.label ?? addSectionKey;
+                      })()}
+                    </SelectValue>
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="__none__">No section</SelectItem>
+                    {addChapterKey !== "__new__" &&
+                      listSectionsInChapter(parsedRules, addChapterKey).map((s) => (
+                        <SelectItem key={s.key} value={s.key}>{s.label}</SelectItem>
+                      ))}
+                    <SelectItem value="__new__">New section…</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+            )}
+            {addSectionKey === "__new__" && (
+              <div className="grid grid-cols-[120px_1fr] gap-3">
+                <div className="space-y-1.5">
+                  <Label htmlFor="wr-secnum">Section no.</Label>
+                  <Input id="wr-secnum" value={addNewSectionNum} onChange={(e) => setAddNewSectionNum(e.target.value)} placeholder="e.g. 5.1" />
+                </div>
+                <div className="space-y-1.5">
+                  <Label htmlFor="wr-sechead">Section heading</Label>
+                  <Input id="wr-sechead" value={addNewSectionHead} onChange={(e) => setAddNewSectionHead(e.target.value)} placeholder="e.g. Dogs" />
+                </div>
+              </div>
+            )}
             <div className="space-y-1.5">
               <Label htmlFor="wr-num">
                 Rule number <span className="text-destructive">*</span>
               </Label>
-              <Input id="wr-num" value={addNumber} onChange={(e) => setAddNumber(e.target.value)} />
+              <Input id="wr-num" value={addNumber} onChange={(e) => setAddNumber(e.target.value)} placeholder="e.g. 5.1.2" />
             </div>
             <div className="space-y-1.5">
               <Label htmlFor="wr-head">Heading</Label>

@@ -402,7 +402,9 @@ export function Page7Insurance({
               <span className="text-sm font-medium text-foreground">
                 {uploading ? "Reading your certificate…" : "Upload a Certificate of Currency"}
               </span>
-              <span className="text-xs">PDF. We&apos;ll read the policies for you. Or scroll down to add one by hand.</span>
+              <span className="text-xs">
+                PDF only. We&apos;ll pull the insurer, policy number, sums insured, premium, and cover dates onto the form below. You can edit anything we get wrong.
+              </span>
             </button>
             <input
               ref={inputRef}

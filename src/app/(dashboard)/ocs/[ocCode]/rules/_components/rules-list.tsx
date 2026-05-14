@@ -378,7 +378,7 @@ export function RulesList({ ocId, ocCode, rules, sourceDocumentName }: Props) {
                           {/* Hover-only pencil / trash. Stop propagation so
                               clicks don't also bubble to the card's "open
                               the PDF" handler. */}
-                          <div className="hidden items-center gap-1 group-hover:flex">
+                          <div className="flex items-center gap-1 opacity-0 transition-opacity group-hover:opacity-100">
                             <button
                               type="button"
                               onClick={(e) => openEdit(rule, e)}

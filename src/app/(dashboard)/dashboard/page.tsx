@@ -365,7 +365,7 @@ export default async function DashboardPage() {
           <Link href="/ocs/new">
             <Button size="sm">
               <Plus className="mr-2 h-4 w-4" />
-              Create oc
+              Create OC
             </Button>
           </Link>
         </div>
@@ -376,15 +376,15 @@ export default async function DashboardPage() {
           <CardContent className="flex flex-col items-center justify-center py-16 text-center">
             <Building2 className="h-12 w-12 text-muted-foreground/30" />
             <p className="mt-4 text-base font-medium text-foreground">
-              No ocs yet
+              No OCs yet
             </p>
             <p className="mt-1 text-sm text-muted-foreground max-w-sm">
-              Create your first oc to start managing lots, levies, and meetings.
+              Create your first OC to start managing lots, levies, and meetings.
             </p>
             <Link href="/ocs/new">
               <Button className="mt-4">
                 <Plus className="mr-2 h-4 w-4" />
-                Create oc
+                Create OC
               </Button>
             </Link>
           </CardContent>

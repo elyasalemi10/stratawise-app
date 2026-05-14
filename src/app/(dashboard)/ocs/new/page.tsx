@@ -105,11 +105,17 @@ function WizardContent() {
     if (draft) next.set("draft", draft.id);
     next.set("step", String(n));
     window.history.replaceState(null, "", `/ocs/new?${next.toString()}`);
-    // Scroll the viewport back to the top so the next step starts above the
-    // fold. Without this, finishing a long step (Lots / Per-lot arrears)
-    // dumps the manager into the middle of the next page.
+    // The dashboard layout sets overflow-y-auto on <main>, NOT on the
+    // window — so window.scrollTo is a silent no-op here. We have to
+    // target the actual scroll container. Smooth behaviour so the user's
+    // eye tracks back up rather than jump-cutting.
     if (typeof window !== "undefined") {
-      window.scrollTo({ top: 0, behavior: "auto" });
+      const main = document.querySelector("main");
+      if (main) {
+        main.scrollTo({ top: 0, behavior: "smooth" });
+      } else {
+        window.scrollTo({ top: 0, behavior: "smooth" });
+      }
     }
   }
 
@@ -292,7 +298,14 @@ function WizardContent() {
                 });
                 return;
               }
-              router.push(`/ocs/${r.ocCode}?created=1`);
+              // Hard navigate (not router.push) so the wizard fully unmounts
+              // before the OC dashboard renders. router.push does a soft
+              // client-side transition that kept Page 8 mounted underneath
+              // during the route swap, creating a visible flicker of "back
+              // to step 8 then forward to the dashboard" — looked like a
+              // redirect loop. Hard navigation kills the wizard tree
+              // outright, so there's nothing left to flicker.
+              window.location.assign(`/ocs/${r.ocCode}?created=1`);
             }}
           />
         )}

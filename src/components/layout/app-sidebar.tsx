@@ -17,6 +17,7 @@ import {
   FileText,
   Wallet,
   CalendarCheck,
+  ChevronRight,
   Plus,
   Search,
   Shield,
@@ -342,7 +343,10 @@ function OCSwitcherRow({
   return (
     <div
       className={cn(
-        "group flex items-center gap-1 rounded-md hover:bg-accent",
+        // min-w-0 + width:100% so the row collapses inside the switcher's
+        // overflow-x-hidden container — without it, a long OC name forces
+        // the row wider than 288px and you'd get a horizontal scrollbar.
+        "group flex w-full min-w-0 items-center gap-1 rounded-md hover:bg-accent",
         // The current row is greyed (no Check icon) so the user feels "this
         // is where I am" without an explicit affordance. Slight bg tint +
         // dimmed text. Hover still works so it's not visually inert.
@@ -352,7 +356,7 @@ function OCSwitcherRow({
       <button
         type="button"
         onClick={onSwitch}
-        className="flex flex-1 cursor-pointer items-center gap-3 rounded-md px-3 py-3 text-left text-sm"
+        className="flex flex-1 min-w-0 cursor-pointer items-center gap-3 rounded-md px-3 py-3 text-left text-sm"
       >
         {sub.thumbnail_url ? (
           /* eslint-disable-next-line @next/next/no-img-element */
@@ -636,6 +640,37 @@ export function AppSidebar({
   const { pins, togglePin, isPinned } = usePinnedOCs(profile?.userEmail ?? null);
   const [switcherQuery, setSwitcherQuery] = useState("");
 
+  // Collapsed-group state. Persists per nav-group label in localStorage so
+  // the manager's preference survives reloads + tab swaps. Default is all
+  // open; clicking a labelled group header toggles. Untitled groups (empty
+  // label string — Inbox, etc.) are never collapsible.
+  const collapsedGroupsKey = `stratawise:sidebar-collapsed-groups:${profile?.userEmail ?? "anon"}`;
+  const [collapsedGroups, setCollapsedGroups] = useState<Set<string>>(new Set());
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    try {
+      const raw = window.localStorage.getItem(collapsedGroupsKey);
+      if (!raw) return;
+      const parsed = JSON.parse(raw);
+      if (Array.isArray(parsed)) setCollapsedGroups(new Set(parsed.filter((s) => typeof s === "string")));
+    } catch {
+      /* corrupted — fall back to default-open */
+    }
+  }, [collapsedGroupsKey]);
+  function toggleGroup(label: string) {
+    setCollapsedGroups((prev) => {
+      const next = new Set(prev);
+      if (next.has(label)) next.delete(label);
+      else next.add(label);
+      if (typeof window !== "undefined") {
+        try {
+          window.localStorage.setItem(collapsedGroupsKey, JSON.stringify(Array.from(next)));
+        } catch { /* quota / private mode — keep in-memory only */ }
+      }
+      return next;
+    });
+  }
+
   // Refresh listener — fires after mutations (revalidateSidebarFromClient).
   // We don't fetch on mount any more (server hands us fresh data), but we
   // do refetch on this event so badge counts update in-session without a
@@ -764,7 +799,21 @@ export function AppSidebar({
                         <div className="flex size-9 items-center justify-center rounded-md border border-border">
                           <LayoutDashboard className="size-4 shrink-0" />
                         </div>
-                        <span className="flex-1 text-left font-medium">Main dashboard</span>
+                        <div className="flex-1 min-w-0 text-left">
+                          <span className="block truncate font-medium">Main dashboard</span>
+                          {/* Subtitle balances the row height with the OC
+                              rows below (which carry a plan_number sub-line)
+                              so the Main dashboard row doesn't look stunted
+                              by comparison. */}
+                          {(() => {
+                            const activeCount = ocs.filter((s) => s.kind !== "draft").length;
+                            return (
+                              <span className="block truncate text-xs text-muted-foreground">
+                                {activeCount} OC{activeCount !== 1 ? "s" : ""} across your company
+                              </span>
+                            );
+                          })()}
+                        </div>
                       </button>
                       <div className="relative mt-1">
                         <Search className="pointer-events-none absolute left-2.5 top-1/2 size-3.5 -translate-y-1/2 text-muted-foreground" />
@@ -777,12 +826,15 @@ export function AppSidebar({
                         />
                       </div>
                     </div>
-                    {/* Scrollable middle. max-h is sized to ~6.5 rows so a
+                    {/* Scrollable middle. max-h is sized to ~6.75 rows so a
                         partial 7th row peeks at the bottom — that fractional
                         cut is intentional, it signals "scroll for more"
                         better than a clean edge. Row height ≈ 60px
-                        (py-3 + size-9 image + two text lines). */}
-                    <div className="max-h-[390px] overflow-y-auto p-1">
+                        (py-3 + size-9 image + two text lines).
+                        overflow-x-hidden so long OC names truncate cleanly
+                        instead of triggering a horizontal scrollbar; row
+                        children use `truncate` to absorb the clip. */}
+                    <div className="max-h-[405px] overflow-y-auto overflow-x-hidden p-1">
                       {pinned.length > 0 && (
                         <>
                           {pinned.map((sub) => (
@@ -881,10 +933,21 @@ export function AppSidebar({
             }
             return best;
           })();
+          const isCollapsed = !!group.label && collapsedGroups.has(group.label);
           return (
           <SidebarGroup key={group.label || "_top"}>
-            {group.label && <SidebarGroupLabel>{group.label}</SidebarGroupLabel>}
-            <SidebarGroupContent>
+            {group.label && (
+              <SidebarGroupLabel
+                onClick={() => toggleGroup(group.label)}
+                className="cursor-pointer select-none hover:text-sidebar-foreground"
+                role="button"
+                aria-expanded={!isCollapsed}
+              >
+                <span>{group.label}</span>
+                <ChevronRight className={cn("ml-auto size-3.5 transition-transform", !isCollapsed && "rotate-90")} />
+              </SidebarGroupLabel>
+            )}
+            <SidebarGroupContent className={cn(isCollapsed && "hidden")}>
               <SidebarMenu>
                 {group.items.map((item) => {
                   // Handle both path-only and path+query active detection

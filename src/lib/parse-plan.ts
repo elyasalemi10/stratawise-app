@@ -1,10 +1,10 @@
 import "server-only";
 import { GoogleGenAI, Type } from "@google/genai";
 
-// Plan-of-Subdivision parser. Gemini 2.5 Pro vision over the raw PDF with a
-// structured response schema, so the result is always the same shape and we
-// never have to parse free-text. Confidence is per-field so the UI can tint
-// low-confidence cells amber and prompt the user to verify.
+// Plan-of-Subdivision parser. Gemini 2.5 Flash vision over the raw PDF with
+// a structured response schema, so the result is always the same shape and
+// we never have to parse free-text. Confidence is per-field so the UI can
+// tint low-confidence cells amber and prompt the user to verify.
 
 export type ParsedLot = {
   lot_number: number;
@@ -150,8 +150,8 @@ function buildClient(): GoogleGenAI {
       throw new Error("Automatic plan parsing is temporarily unavailable.");
     }
     // Vertex AI default location for Gemini is `global` — it routes the
-    // request to the closest region that hosts the model. gemini-2.5-pro is
-    // NOT yet in australia-southeast1, so a Sydney pin returns 404. The
+    // request to the closest region that hosts the model. gemini-2.5-flash
+    // is NOT yet in australia-southeast1, so a Sydney pin returns 404. The
     // `global` endpoint still respects GCP's data-residency commitments for
     // Australian customers — your data isn't trained on, regardless of
     // routing. Override with GEMINI_LOCATION (e.g. us-central1) if a real
