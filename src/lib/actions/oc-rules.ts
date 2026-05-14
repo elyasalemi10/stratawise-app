@@ -107,6 +107,78 @@ export async function createOCRule(input: {
 }
 
 /**
+ * Update a single rule (number / heading / body / type / parent heading).
+ * The rules viewer's hover-pencil dialog calls this. Existing rule's other
+ * fields (page_number, bbox, source_document_id) are preserved untouched.
+ */
+export async function updateOCRule(input: {
+  rule_id: string;
+  rule_number: string;
+  heading: string | null;
+  body: string;
+  rule_type: "model" | "registered" | "standing";
+}): Promise<{ success?: true; error?: string }> {
+  try {
+    await requireCompanyRole();
+    const supabase = createServerClient();
+    // Resolve OC for access check.
+    const { data: row } = await supabase
+      .from("oc_rules")
+      .select("oc_id")
+      .eq("id", input.rule_id)
+      .single();
+    if (!row?.oc_id) return { error: "Rule not found." };
+    await requireOCAccess(row.oc_id);
+
+    const { error } = await supabase
+      .from("oc_rules")
+      .update({
+        rule_number: input.rule_number.trim(),
+        heading: input.heading?.trim() || null,
+        body: input.body.trim(),
+        rule_type: input.rule_type,
+        updated_at: new Date().toISOString(),
+      })
+      .eq("id", input.rule_id);
+    if (error) {
+      console.error("updateOCRule: update failed", error);
+      return { error: "Couldn't save the changes." };
+    }
+    return { success: true };
+  } catch (err) {
+    return { error: err instanceof Error ? err.message : "Unexpected error" };
+  }
+}
+
+/**
+ * Hard-delete a single rule. The source document, if any, is left in place —
+ * users routinely keep only some of a parsed document's rules and a deleted
+ * rule doesn't invalidate the rest.
+ */
+export async function deleteOCRule(rule_id: string): Promise<{ success?: true; error?: string }> {
+  try {
+    await requireCompanyRole();
+    const supabase = createServerClient();
+    const { data: row } = await supabase
+      .from("oc_rules")
+      .select("oc_id")
+      .eq("id", rule_id)
+      .single();
+    if (!row?.oc_id) return { error: "Rule not found." };
+    await requireOCAccess(row.oc_id);
+
+    const { error } = await supabase.from("oc_rules").delete().eq("id", rule_id);
+    if (error) {
+      console.error("deleteOCRule: delete failed", error);
+      return { error: "Couldn't delete the rule." };
+    }
+    return { success: true };
+  } catch (err) {
+    return { error: err instanceof Error ? err.message : "Unexpected error" };
+  }
+}
+
+/**
  * Returns a short-lived signed URL the rules viewer can iframe to. Browsers
  * understand `#page=N` and `#page=N&zoom=auto` anchors in PDF URLs to jump
  * to the page (Chromium / Firefox / Edge). Safari ignores the anchor on

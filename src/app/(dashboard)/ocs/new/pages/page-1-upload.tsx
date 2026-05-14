@@ -170,7 +170,7 @@ export function Page1Upload({
       <div className="text-center">
         <h2 className="text-lg font-semibold text-foreground">Upload your plan of subdivision</h2>
         <p className="mt-1 text-sm text-muted-foreground">
-          We&apos;ll auto-extract the OC details, lot schedule, and entitlements.
+          We&apos;ll read your document and fill in the OC details, lot schedule, and entitlements for you.
           You can skip this and enter everything manually.
         </p>
       </div>
@@ -226,12 +226,12 @@ export function Page1Upload({
             )}
             {status === "parsing" && (
               <p className="text-xs text-muted-foreground">
-                Reading your plan… extracting lot schedule. This usually takes 10–30 seconds.
+                Reading your plan and pulling out the lot schedule. This usually takes 10–30 seconds.
               </p>
             )}
             {status === "complete" && (
               <p className="text-xs text-foreground">
-                Plan parsed successfully — found{" "}
+                Plan read successfully — found{" "}
                 <span className="font-medium">{lotCount} lot{lotCount === 1 ? "" : "s"}</span>
                 {ocCount > 1 && (
                   <> across <span className="font-medium">{ocCount} OCs</span></>

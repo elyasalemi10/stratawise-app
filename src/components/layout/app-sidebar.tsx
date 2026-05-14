@@ -24,7 +24,6 @@ import {
   Landmark,
   GitMerge,
   AlertTriangle,
-  CircleDashed,
 } from "lucide-react";
 
 import {
@@ -554,28 +553,11 @@ export function AppSidebar({
                 </DropdownItem>
               ))}
 
-              {ocs.some((s) => s.kind === "draft") && (
-                <>
-                  <DropdownSeparator />
-                  <DropdownLabel>In progress</DropdownLabel>
-                  {ocs.filter((s) => s.kind === "draft").map((draft) => (
-                    <DropdownItem
-                      key={draft.id}
-                      onClick={() => router.push(`/ocs/new?draft=${draft.id}&step=${draft.draft_step ?? 1}`)}
-                    >
-                      <div className="flex size-6 items-center justify-center rounded-md border border-dashed border-border shrink-0">
-                        <CircleDashed className="size-3.5 shrink-0 text-muted-foreground" />
-                      </div>
-                      <div className="flex-1 min-w-0">
-                        {/* Draft label is already a one-liner of
-                            "<plan-number or fallback> - <step>/8", no extra
-                            sub-row needed. */}
-                        <span className="block truncate">{draft.name}</span>
-                      </div>
-                    </DropdownItem>
-                  ))}
-                </>
-              )}
+              {/* Drafts are intentionally NOT surfaced in the sidebar swapper.
+                  They live on the /ocs list page under an "In progress"
+                  section — keeping them out of the swapper stops the
+                  fast-switch dropdown from filling up with abandoned wizard
+                  sessions. */}
 
               {!isLotOwner && (
                 <>

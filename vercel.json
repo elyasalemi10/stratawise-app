@@ -1,0 +1,14 @@
+{
+  "$schema": "https://openapi.vercel.sh/vercel.json",
+  "functions": {
+    "src/app/(dashboard)/ocs/new/actions.ts": {
+      "maxDuration": 300
+    },
+    "src/app/(dashboard)/ocs/[ocCode]/manage/document-actions.ts": {
+      "maxDuration": 300
+    },
+    "src/app/(dashboard)/ocs/[ocCode]/manage/actions.ts": {
+      "maxDuration": 300
+    }
+  }
+}

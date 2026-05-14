@@ -1,12 +1,13 @@
 import { X } from "lucide-react";
 import { Skeleton } from "@/components/ui/skeleton";
-import { StepIndicator } from "./step-indicator";
 
-// Loading state for /ocs/new. Mirrors the structure of the wizard's
-// first step (plan-of-subdivision upload) so the route swap feels
-// instant — the previous page disappears immediately and the wizard's
-// scaffolding is visible while the server action that creates the
-// draft is still in flight.
+// Loading state for /ocs/new. Server component — has no access to
+// searchParams, so it CAN'T know which step the URL wants. We keep the
+// chrome (top bar with X + auto-save note) visible and render a flat row
+// of step-indicator dots without highlighting one — the in-component
+// skeleton (which CAN read ?step=) takes over the moment the page mounts
+// and shows the correct active step. The handoff is invisible because
+// both layouts match.
 export default function Loading() {
   return (
     <div className="mx-auto w-full max-w-5xl">
@@ -19,7 +20,18 @@ export default function Loading() {
           and resume from the OC switcher in the sidebar.
         </p>
       </div>
-      <StepIndicator current={1} />
+      {/* Flat step-indicator shape — 8 dots in a row, no active highlight.
+          Matches the spacing of the real StepIndicator so the swap is
+          structurally identical. */}
+      <div className="mb-8 flex items-center justify-center gap-3">
+        {Array.from({ length: 8 }).map((_, i) => (
+          <div key={i} className="flex items-center gap-3">
+            <Skeleton className="h-8 w-8 rounded-full" />
+            <Skeleton className="h-3 w-16" />
+            {i < 7 && <Skeleton className="h-px w-6" />}
+          </div>
+        ))}
+      </div>
       <div className="mt-2 space-y-6">
         <div className="text-center">
           <Skeleton className="mx-auto h-6 w-72" />

@@ -104,7 +104,14 @@ function joinFormatted(p: ParsedAddress): string {
   // No state suffix — the Maps search is locationRestriction-bounded to
   // Victoria so every address we accept is already VIC. Showing ", VIC"
   // in every field is just noise.
-  return `${p.street_number} ${p.street_name}, ${p.suburb} ${p.postcode}`.replace(/\s+/g, " ").trim();
+  //
+  // Build the string from non-empty parts so a fully-empty address renders
+  // as "" not "," — the latter was bleeding into the search input as a
+  // pre-filled "," when the user landed on Page 2 after skip-and-enter-
+  // manually with no parsed address.
+  const street = `${p.street_number} ${p.street_name}`.replace(/\s+/g, " ").trim();
+  const tail = `${p.suburb} ${p.postcode}`.replace(/\s+/g, " ").trim();
+  return [street, tail].filter((s) => s.length > 0).join(", ");
 }
 
 // Same idea for Google's `formattedAddress`, which always tacks ", VIC" (and

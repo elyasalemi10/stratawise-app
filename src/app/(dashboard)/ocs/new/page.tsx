@@ -37,7 +37,13 @@ function WizardContent() {
   const searchParams = useSearchParams();
   const [draft, setDraft] = useState<DraftRow | null>(null);
   const [bootError, setBootError] = useState<string | null>(null);
-  const [step, setStep] = useState<number>(1);
+  // Seed step from the URL when present, so the skeleton + step indicator
+  // both land on the right step instantly. When the draft loads we re-set
+  // step to whatever the draft itself reports (URL might be stale).
+  const [step, setStep] = useState<number>(() => {
+    const fromUrl = parseInt(searchParams.get("step") ?? "", 10);
+    return Number.isFinite(fromUrl) && fromUrl >= 1 && fromUrl <= 8 ? fromUrl : 1;
+  });
   const [nextOcPrompt, setNextOcPrompt] = useState<{ ocCode: string; sourceDraftId: string; nextOcIndex: number; totalOcs: number } | null>(null);
   const [forkingNext, setForkingNext] = useState(false);
   const [cancelOpen, setCancelOpen] = useState(false);
@@ -107,6 +113,9 @@ function WizardContent() {
     // In-component skeleton (after route swap, while createDraftAndLoad is in
     // flight). Mirrors loading.tsx exactly so users don't see one skeleton
     // shape replaced by a different one when the draft finishes loading.
+    // Step indicator uses the seeded `step` (from ?step= or 1), so
+    // /ocs/new?draft=X&step=7 shows step 7 immediately rather than flashing
+    // step 1 first.
     return (
       <div className="mx-auto w-full max-w-5xl">
         <div className="relative mb-2 flex h-8 items-center">
@@ -118,7 +127,7 @@ function WizardContent() {
             and resume from the OC switcher in the sidebar.
           </p>
         </div>
-        <StepIndicator current={1} />
+        <StepIndicator current={step} />
         <div className="mt-2 space-y-6">
           <div className="text-center">
             <Skeleton className="mx-auto h-6 w-72" />

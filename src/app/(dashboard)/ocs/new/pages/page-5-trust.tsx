@@ -10,6 +10,7 @@ import { Checkbox } from "@/components/ui/checkbox";
 import { Switch } from "@/components/ui/switch";
 import { BankSelect } from "@/components/shared/bank-select";
 import { saveStep, type DraftJson } from "../actions";
+import { DraftDrnPanel } from "./_components/draft-drn-panel";
 
 // Common AU BSB prefixes → bank name. Not exhaustive — covers ~95% of real
 // trust-account openings. Full table (~2k entries) deferred.
@@ -188,7 +189,10 @@ export function Page5Trust({
   function validateFund(f: FundFields): InvalidFlags {
     return {
       bank: !f.bankId,
-      name: f.accountName.trim().length < 2,
+      // Allow any non-empty account name. Some OCs register short labels
+      // like "T" or "OC" on legacy trust accounts; 2-char minimum was
+      // unnecessarily strict.
+      name: f.accountName.trim().length < 1,
       bsb: !isValidBsb(f.bsb),
       acc: !isValidAccountNumber(f.accountNumber),
     };
@@ -368,17 +372,15 @@ export function Page5Trust({
 
       {/* Macquarie DEFT info banner — keyed off admin fund's bank. */}
       {macquarieSelected && (
-        <div className="rounded-md border border-green-200 bg-green-50 p-3">
-          <div className="flex items-start gap-2">
-            <Info className="mt-0.5 h-4 w-4 text-green-700 shrink-0" />
-            <div className="text-xs text-green-900">
-              Macquarie&apos;s DEFT system tags every incoming transaction with the payer&apos;s
-              <strong> DEFT Reference Number</strong>. You&apos;ll upload your DRN export CSV
-              from Macquarie Business Online after setup, and we&apos;ll auto-allocate
-              transactions from the TXN/PAY files you import each week.
-            </div>
-          </div>
-        </div>
+        <DraftDrnPanel
+          draftId={draftId}
+          initialMappings={initialDraft.lot_drns ?? []}
+          lots={(initialDraft.lots ?? []).map((l) => ({
+            lot_number: l.lot_number,
+            unit_number: l.unit_number ?? null,
+            owner_name: l.owner_name ?? null,
+          }))}
+        />
       )}
 
       <div className="flex justify-between pt-2">

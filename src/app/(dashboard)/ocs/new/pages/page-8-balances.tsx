@@ -230,18 +230,20 @@ export function Page8Balances({
       </div>
 
       {/* Per-lot opening arrears.
-          The credit/debit picker is sticky per-row: a UI state that controls
-          the sign applied to the typed amount on save. Previously the type
-          was inferred from `opening_balance < 0`, which couldn't flip while
-          the amount was still 0 (-0 === 0). `creditByRow` lets the manager
-          pick Credit on an empty row and have it stick once they type a
-          number. */}
+          - Debit = the lot OWES the OC (positive arrears, the common case)
+          - Credit = the OC OWES the lot (e.g. overpaid in the previous
+            management's books, or a refund pending)
+          Total is just a sum; we don't paint it red/green because positive
+          and negative aren't "good or bad" — they're directional. */}
       <div className="space-y-2">
         <div className="flex items-center justify-between">
-          <h3 className="text-sm font-semibold text-foreground">Per-lot opening arrears</h3>
-          <span
-            className={`text-xs tabular-nums ${totalArrears > 0 ? "text-destructive" : totalArrears < 0 ? "text-green-700" : "text-muted-foreground"}`}
-          >
+          <div>
+            <h3 className="text-sm font-semibold text-foreground">Per-lot opening arrears</h3>
+            <p className="mt-0.5 text-xs text-muted-foreground">
+              <strong>Debit</strong> = the lot owes the OC. <strong>Credit</strong> = the OC owes the lot.
+            </p>
+          </div>
+          <span className="text-xs tabular-nums text-muted-foreground">
             Total: ${totalArrears.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
           </span>
         </div>

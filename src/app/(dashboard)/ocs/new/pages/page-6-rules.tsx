@@ -69,16 +69,20 @@ export function Page6Rules({
   const [pending, setPending] = useState(false);
   const dragDepthRef = useRef(0);
   const resumedParseRef = useRef(false);
-  // Combined post-parse confirmation dialog. Fires when the parsed rules
-  // either cover multiple OCs (drop the ones we're not setting up) or the
-  // PS number on the document doesn't match this OC. Both checks are folded
-  // into a single dialog so the manager doesn't see two stacked popups.
+  // Combined post-read confirmation dialog. Fires when the document either
+  // covers multiple OCs (so the manager has to pick which OC's rules to
+  // apply here) or the PS number on the document doesn't match this OC.
+  // Both checks are folded into a single dialog so the manager doesn't see
+  // two stacked popups.
   const [confirm, setConfirm] = useState<{
-    keepLabel: string | null;
-    keepPlan: string | null;
-    dropScopes: Array<{ label: string; plan: string | null; ruleCount: number }>;
+    scopes: Array<{ label: string; plan: string | null; ruleCount: number }>;
     psMismatch: boolean;
     expectedPlan: string;
+    /** Indexes into `scopes` the manager wants to APPLY to this OC. Default
+     *  is the single matching scope (by plan_number) when there is one,
+     *  otherwise the first scope. Multi-pick is allowed for the rare case
+     *  where a manager wants to copy a parent OC's rules into a child OC. */
+    selected: Set<number>;
   } | null>(null);
 
   // Resume case: the user uploaded a rules PDF, then navigated away before
@@ -137,7 +141,7 @@ export function Page6Rules({
     maybeOpenConfirm(parsed.ocScopes ?? [], parsed.rules ?? []);
   }
 
-  // Inspect the parser output for multi-OC scopes or a PS-number mismatch
+  // Inspect the read-back output for multi-OC scopes or a PS-number mismatch
   // and open the confirmation dialog if either condition is hit. Both are
   // folded into one dialog rather than chained popups.
   function maybeOpenConfirm(
@@ -147,21 +151,33 @@ export function Page6Rules({
     void rules;
     const expectedPlan = (initialDraft.plan_number ?? "").trim().toUpperCase();
     const norm = (s: string | null) => (s ?? "").trim().toUpperCase().replace(/\s+/g, "");
-    const matchingScope = expectedPlan
-      ? scopes.find((s) => norm(s.plan_number) === expectedPlan)
-      : null;
-    const keep = matchingScope ?? scopes[0] ?? null;
-    const dropList = scopes.filter((s) => s !== keep);
-    const psMismatch = !!expectedPlan && !!keep?.plan_number && norm(keep.plan_number) !== expectedPlan;
-    // Open the dialog only if there's something to confirm: more than one
+    // Default selection: the scope whose plan_number matches this OC.
+    // Falls back to the first scope when no match (manager picks manually).
+    const matchingIdx = expectedPlan
+      ? scopes.findIndex((s) => norm(s.plan_number) === expectedPlan)
+      : -1;
+    const defaultIdx = matchingIdx >= 0 ? matchingIdx : 0;
+    const defaultScope = scopes[defaultIdx];
+    const psMismatch = !!expectedPlan && !!defaultScope?.plan_number
+      && norm(defaultScope.plan_number) !== expectedPlan;
+    // Open the dialog only when there's something to confirm: more than one
     // scope OR a PS number mismatch on the single scope.
     if (scopes.length <= 1 && !psMismatch) return;
     setConfirm({
-      keepLabel: keep?.label ?? null,
-      keepPlan: keep?.plan_number ?? null,
-      dropScopes: dropList.map((s) => ({ label: s.label, plan: s.plan_number, ruleCount: s.rule_count })),
+      scopes: scopes.map((s) => ({ label: s.label, plan: s.plan_number, ruleCount: s.rule_count })),
+      selected: new Set([defaultIdx]),
       psMismatch,
       expectedPlan,
+    });
+  }
+
+  function toggleConfirmScope(idx: number) {
+    setConfirm((prev) => {
+      if (!prev) return prev;
+      const next = new Set(prev.selected);
+      if (next.has(idx)) next.delete(idx);
+      else next.add(idx);
+      return { ...prev, selected: next };
     });
   }
 
@@ -323,8 +339,9 @@ export function Page6Rules({
                 )}
                 {stage === "parsing" && (
                   <p className="text-xs text-muted-foreground max-w-md">
-                    Extracting rules… this can take <strong>1–3 minutes</strong> on long
-                    rules documents. Please don&apos;t leave this page until parsing finishes.
+                    Reading your document and pulling out every rule. This can take{" "}
+                    <strong>1–3 minutes</strong> on long documents. Please don&apos;t leave this page
+                    until it&apos;s finished.
                   </p>
                 )}
               </div>
@@ -436,48 +453,73 @@ export function Page6Rules({
         </Button>
       </div>
 
-      {/* Combined confirm — fires when the parsed rules cover more than one
+      {/* Combined confirm — fires when the document covers more than one
           OC and/or the document's PS number doesn't match this OC. One
           dialog covers both cases so the manager doesn't see two stacked
-          popups. */}
+          popups. Multi-pick checkboxes let the manager choose exactly which
+          scopes apply here — e.g. a child OC adopting the parent body
+          corporate's rules verbatim. */}
       <Dialog open={confirm != null} onOpenChange={(open) => { if (!open) setConfirm(null); }}>
-        <DialogContent>
+        <DialogContent className="sm:max-w-md">
           <DialogHeader>
             <DialogTitle>
-              {confirm?.dropScopes.length ? "We detected rules for more than one OC" : "Plan-of-Subdivision number doesn't match"}
+              {confirm && confirm.scopes.length > 1
+                ? "Pick which OCs' rules to apply"
+                : "Plan-of-Subdivision number doesn't match"}
             </DialogTitle>
             <DialogDescription>
               {confirm?.psMismatch && (
                 <>
-                  The document looks like it&apos;s for{" "}
-                  <span className="font-medium text-foreground">{confirm?.keepPlan ?? "another plan"}</span>
-                  , but you&apos;re setting up{" "}
+                  The document looks like it&apos;s for another plan, but you&apos;re setting up{" "}
                   <span className="font-medium text-foreground">{confirm?.expectedPlan}</span>.{" "}
                 </>
               )}
-              {!!confirm?.dropScopes.length && (
+              {confirm && confirm.scopes.length > 1 && (
                 <>
-                  We&apos;ll keep <span className="font-medium text-foreground">{confirm?.keepLabel ?? "the first OC's rules"}</span>
-                  {" "}and drop the others. You can re-upload from those OCs&apos; rules pages later.
+                  The document covers more than one OC. Tick the ones you want
+                  to apply to <span className="font-medium text-foreground">this</span> OC — usually
+                  just one, but you can keep multiple if a child OC adopts a parent OC&apos;s rules.
                 </>
               )}
             </DialogDescription>
           </DialogHeader>
-          {confirm?.dropScopes && confirm.dropScopes.length > 0 && (
-            <div className="space-y-1 rounded-md border border-border bg-muted/40 p-2 text-xs">
-              <p className="font-medium text-foreground">Dropping:</p>
-              <ul className="space-y-0.5 text-muted-foreground">
-                {confirm.dropScopes.map((s) => (
-                  <li key={s.label}>
-                    {s.label}{s.plan ? ` (${s.plan})` : ""} — {s.ruleCount} rule{s.ruleCount === 1 ? "" : "s"}
-                  </li>
-                ))}
-              </ul>
+          {confirm && (
+            <div className="space-y-1.5">
+              {confirm.scopes.map((s, idx) => {
+                const checked = confirm.selected.has(idx);
+                return (
+                  <button
+                    key={s.label + idx}
+                    type="button"
+                    onClick={() => toggleConfirmScope(idx)}
+                    className={`flex w-full items-center justify-between gap-3 rounded-md border px-3 py-2 text-left text-sm cursor-pointer ${
+                      checked ? "border-primary bg-primary/5" : "border-border hover:border-primary/40"
+                    }`}
+                  >
+                    <div className="flex items-start gap-2 min-w-0">
+                      <input
+                        type="checkbox"
+                        checked={checked}
+                        readOnly
+                        className="mt-0.5 h-4 w-4 accent-primary"
+                      />
+                      <div className="min-w-0">
+                        <p className="font-medium truncate">
+                          {s.label}{s.plan ? ` (${s.plan})` : ""}
+                        </p>
+                        <p className="text-xs text-muted-foreground">
+                          {s.ruleCount} rule{s.ruleCount === 1 ? "" : "s"}
+                        </p>
+                      </div>
+                    </div>
+                  </button>
+                );
+              })}
             </div>
           )}
           <DialogFooter>
             <Button variant="ghost" onClick={() => {
-              // Cancel = discard the parse so the user can re-upload the
+              // Cancel = discard the read-back so the user can re-upload the
               // correct document. We don't actually delete the R2 object
               // (the manage doc tab can show it as orphan) but we clear
               // the wizard's parsed view.
@@ -489,7 +531,26 @@ export function Page6Rules({
             }}>
               Cancel — wrong document
             </Button>
-            <Button onClick={() => setConfirm(null)}>Use anyway</Button>
+            <Button
+              onClick={() => {
+                if (!confirm) return;
+                if (confirm.selected.size === 0) {
+                  toast.error("Pick at least one OC's rules to apply.");
+                  return;
+                }
+                // Filter parsedRules client-side to the chosen scopes.
+                // completeWizard's existing scope-filter will also run, but
+                // doing it here keeps the visible card list honest and lets
+                // the manager edit before saving.
+                const chosenLabels = new Set(
+                  Array.from(confirm.selected).map((i) => confirm.scopes[i]?.label),
+                );
+                setParsedRules((prev) => prev.filter((r) => chosenLabels.has(r.oc_scope ?? "")));
+                setConfirm(null);
+              }}
+            >
+              Apply selection
+            </Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>

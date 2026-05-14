@@ -40,11 +40,11 @@ import { deleteCoC, saveStep, uploadAndParseCoC, type DraftJson, type DraftInsur
 type POLICY_VALUE = DraftInsurancePolicy["policy_type"];
 
 const POLICY_TYPES: Array<{ value: POLICY_VALUE; label: string }> = [
-  { value: "building",          label: "Building insurance" },
-  { value: "public_liability",  label: "Public liability" },
-  { value: "combined",          label: "Combined building + public liability" },
-  { value: "fidelity",          label: "Fidelity / office bearers" },
-  { value: "voluntary_workers", label: "Voluntary workers" },
+  { value: "building",          label: "Building Insurance" },
+  { value: "public_liability",  label: "Public Liability" },
+  { value: "combined",          label: "Combined Building + Public Liability" },
+  { value: "fidelity",          label: "Fidelity / Office Bearers" },
+  { value: "voluntary_workers", label: "Voluntary Workers" },
   { value: "other",             label: "Other" },
 ];
 function labelForPolicyType(v: POLICY_VALUE): string {
@@ -323,7 +323,7 @@ export function Page7Insurance({
             <h3 className="text-sm font-semibold text-foreground">This OC has insurance</h3>
           </div>
           <p className="mt-1 text-xs text-muted-foreground">
-            Upload a Certificate of Currency and we&apos;ll extract the policies, or enter them by hand.
+            Upload a Certificate of Currency and we&apos;ll read the policies, or enter them by hand.
           </p>
         </button>
         <button
@@ -395,7 +395,7 @@ export function Page7Insurance({
               <span className="text-sm font-medium text-foreground">
                 {uploading ? "Reading your certificate…" : "Upload a Certificate of Currency"}
               </span>
-              <span className="text-xs">PDF. We&apos;ll extract the policies automatically. Or scroll down to add one by hand.</span>
+              <span className="text-xs">PDF. We&apos;ll read the policies for you. Or scroll down to add one by hand.</span>
             </button>
             <input
               ref={inputRef}

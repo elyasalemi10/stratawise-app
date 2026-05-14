@@ -352,9 +352,13 @@ export function Page3Basics({
                 type="button"
                 onClick={() => photoInputRef.current?.click()}
                 disabled={photoUploading}
-                className="flex w-full flex-col items-center justify-center gap-2 rounded-md border-2 border-dashed border-border bg-card/60 px-4 py-6 text-sm text-muted-foreground hover:bg-card hover:text-foreground cursor-pointer disabled:cursor-not-allowed disabled:opacity-60"
+                // Empty-state dropzone matches the height of the loaded photo
+                // preview (max-h-[420px]) so the layout doesn't snap / jump
+                // when an image actually lands. Wide screens use the natural
+                // image height; narrow screens fall back to a sensible 280px.
+                className="flex h-[280px] w-full flex-col items-center justify-center gap-2 rounded-md border-2 border-dashed border-border bg-card/60 px-4 text-sm text-muted-foreground hover:bg-card hover:text-foreground cursor-pointer disabled:cursor-not-allowed disabled:opacity-60 sm:h-[360px]"
               >
-                <ImagePlus className="h-5 w-5" />
+                <ImagePlus className="h-7 w-7" />
                 <span>Click to upload a photo</span>
                 <span className="text-xs">JPEG, PNG, WebP, or HEIC. Max 10MB.</span>
               </button>
