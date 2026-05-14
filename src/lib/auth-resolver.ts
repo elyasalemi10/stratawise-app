@@ -1,9 +1,9 @@
 // ─── Verification-script injection seam ────────────────────────
 //
-// Server actions call getCurrentProfile(), which calls Clerk's auth() to pull
-// the userId from request headers. That path requires a live HTTP request
-// scope, which a standalone `tsx` verification script does not have. The seam
-// below lets *.verification.ts replace the userId resolver before calling any
+// Server actions call getCurrentProfile(), which reads the Supabase Auth user
+// id from request cookies. That path requires a live HTTP request scope,
+// which a standalone `tsx` verification script does not have. The seam below
+// lets *.verification.ts replace the userId resolver before calling any
 // server action. Production code MUST NOT import or call these functions.
 //
 // Pre-launch grep: `grep -rn "__setUserIdResolverForVerification" src/` must

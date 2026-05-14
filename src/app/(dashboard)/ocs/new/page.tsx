@@ -24,7 +24,7 @@ type DraftRow = {
   parse_status: "none" | "pending" | "complete" | "failed" | "skipped";
   plan_filename: string | null;
   rules_filename: string | null;
-  rules_parsed_json: { rules?: { rule_number: string }[] } | null;
+  rules_parsed_json: { rules?: { rule_number: string; heading?: string | null; body: string }[] } | null;
   insurance_doc_filename: string | null;
   parsed_json: { detected_ocs?: { oc_number: number; lot_count: number; oc_name?: string | null }[] } | null;
   draft_json: DraftJson;
@@ -120,7 +120,12 @@ function WizardContent() {
 
   return (
     <div className="mx-auto w-full max-w-5xl">
-      <StepIndicator current={step} />
+      {/* Sticky step indicator — without sticky the bar scrolls off-screen on
+          the longer steps (opening balances has the per-lot arrears table) and
+          managers lose the wizard context. */}
+      <div className="sticky top-0 z-30 bg-background pb-4 pt-2">
+        <StepIndicator current={step} />
+      </div>
       <div className="mt-2">
         {step === 1 && (
           <Page1Upload
@@ -183,6 +188,7 @@ function WizardContent() {
               : "none"
             }
             initialRuleCount={draft.rules_parsed_json?.rules?.length ?? 0}
+            initialParsedRules={draft.rules_parsed_json?.rules ?? []}
             onBack={() => goToStep(5)}
             onNext={async () => { await refreshDraft(); goToStep(7); }}
           />

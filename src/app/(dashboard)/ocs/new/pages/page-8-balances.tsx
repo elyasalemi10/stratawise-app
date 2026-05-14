@@ -20,9 +20,13 @@ export function Page8Balances({
   onBack: () => void;
   onComplete: (result: { ocCode: string; sourceDraftId?: string; nextOcIndex?: number | null }) => void;
 }) {
-  const today = new Date().toISOString().slice(0, 10);
-
-  const [date, setDate] = useState(initialDraft.opening_balance_date ?? today);
+  // No date prefill — managers must set the handover date explicitly. The
+  // ledger anchors everything to this date, so we don't want a silent default
+  // of "today" persisting because the manager skimmed past the field.
+  const [date, setDate] = useState(initialDraft.opening_balance_date ?? "");
+  // Fund balances can be negative (rare but legal — overdrawn admin float). We
+  // hold them as strings so empty is distinct from 0; sign is set by typing a
+  // leading "-".
   const [admin, setAdmin] = useState<string>(
     initialDraft.opening_admin_balance != null ? String(initialDraft.opening_admin_balance) : "",
   );
@@ -40,6 +44,17 @@ export function Page8Balances({
   // Per-lot opening arrears.
   const initialLots: DraftLot[] = initialDraft.lots ?? [];
   const [lots, setLots] = useState<DraftLot[]>(initialLots);
+  // UI-only: tracks whether each row's pill is on Credit (true) or Debit
+  // (false). Initially derived from the saved sign. Decoupling it from the
+  // numeric value lets the user pick Credit on an empty cell and have it
+  // stick once they type a number.
+  const [creditByRow, setCreditByRow] = useState<Record<number, boolean>>(() => {
+    const init: Record<number, boolean> = {};
+    initialLots.forEach((l, i) => {
+      init[i] = (Number(l.opening_balance) || 0) < 0;
+    });
+    return init;
+  });
 
   const [adminInvalid, setAdminInvalid] = useState(false);
   const [capitalInvalid, setCapitalInvalid] = useState(false);
@@ -55,10 +70,12 @@ export function Page8Balances({
     setLots((prev) => prev.map((l, i) => i === idx ? { ...l, opening_balance: parseFloat(v) || 0 } : l));
   }
 
+  // Opening balances can legitimately be negative — an OC that took a loan or
+  // ran an overdrawn admin float at takeover. parseFloat handles the sign.
   function parseMoney(s: string): number | null {
     if (!s.trim()) return null;
     const n = parseFloat(s.replace(/[$,\s]/g, ""));
-    return Number.isFinite(n) && n >= 0 ? n : NaN as unknown as number;
+    return Number.isFinite(n) ? n : NaN as unknown as number;
   }
 
   async function onCreate() {
@@ -148,6 +165,7 @@ export function Page8Balances({
               <NumberInput
                 id="admin-bal"
                 placeholder="Opening balance"
+                allowNegative
                 value={admin}
                 onChange={(v) => { setAdmin(v); if (adminInvalid) setAdminInvalid(false); }}
                 invalid={adminInvalid}
@@ -164,6 +182,7 @@ export function Page8Balances({
               <NumberInput
                 id="cap-bal"
                 placeholder="Opening balance"
+                allowNegative
                 value={capital}
                 onChange={(v) => { setCapital(v); if (capitalInvalid) setCapitalInvalid(false); }}
                 invalid={capitalInvalid}
@@ -186,6 +205,7 @@ export function Page8Balances({
               <NumberInput
                 id="maint-bal"
                 placeholder="Opening balance"
+                allowNegative
                 value={maintenance}
                 onChange={(v) => { setMaintenance(v); if (maintenanceInvalid) setMaintenanceInvalid(false); }}
                 invalid={maintenanceInvalid}
@@ -196,7 +216,13 @@ export function Page8Balances({
         )}
       </div>
 
-      {/* Per-lot opening arrears — narrower table; credit/debit toggle per row. */}
+      {/* Per-lot opening arrears.
+          The credit/debit picker is sticky per-row: a UI state that controls
+          the sign applied to the typed amount on save. Previously the type
+          was inferred from `opening_balance < 0`, which couldn't flip while
+          the amount was still 0 (-0 === 0). `creditByRow` lets the manager
+          pick Credit on an empty row and have it stick once they type a
+          number. */}
       <div className="space-y-2">
         <div className="flex items-center justify-between">
           <h3 className="text-sm font-semibold text-foreground">Per-lot opening arrears</h3>
@@ -206,47 +232,47 @@ export function Page8Balances({
             Total: ${totalArrears.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
           </span>
         </div>
-        <div className="mx-auto max-w-2xl rounded-md border border-border bg-card overflow-hidden">
+        <div className="rounded-md border border-border bg-muted/40 overflow-hidden">
           <table className="w-full text-sm">
-            <thead className="bg-muted/50 text-muted-foreground">
-              <tr className="text-xs uppercase tracking-wide">
-                <th className="px-3 py-2 text-left font-medium">Lot</th>
+            <thead className="bg-card text-muted-foreground">
+              <tr className="text-xs uppercase tracking-wide border-b border-border">
+                <th className="px-3 py-2 text-left font-medium w-16">Lot</th>
                 <th className="px-3 py-2 text-left font-medium">Owner</th>
-                <th className="px-3 py-2 text-left font-medium">Type</th>
-                <th className="px-3 py-2 text-left font-medium">Amount</th>
+                <th className="px-3 py-2 text-left font-medium w-40">Type</th>
+                <th className="px-3 py-2 text-left font-medium w-44">Amount</th>
               </tr>
             </thead>
             <tbody>
               {lots.map((lot, idx) => {
-                const isCredit = (lot.opening_balance ?? 0) < 0;
-                const absStr = Math.abs(Number(lot.opening_balance) || 0) === 0
-                  ? ""
-                  : String(Math.abs(Number(lot.opening_balance)));
+                const bal = Number(lot.opening_balance) || 0;
+                const isCredit = creditByRow[idx] ?? (bal < 0);
+                const absStr = Math.abs(bal) === 0 ? "" : String(Math.abs(bal));
                 function setAmount(absVal: string) {
                   const n = parseFloat(absVal) || 0;
                   updateLotBalance(idx, String(isCredit ? -n : n));
                 }
-                function toggleType(toCredit: boolean) {
+                function setType(toCredit: boolean) {
+                  setCreditByRow((prev) => ({ ...prev, [idx]: toCredit }));
                   const cur = Math.abs(Number(lot.opening_balance) || 0);
-                  updateLotBalance(idx, String(toCredit ? -cur : cur));
+                  if (cur > 0) updateLotBalance(idx, String(toCredit ? -cur : cur));
                 }
                 return (
                   <tr key={idx} className="border-t border-border">
                     <td className="px-3 py-1.5 tabular-nums">{lot.lot_number}</td>
-                    <td className="px-3 py-1.5 text-muted-foreground truncate max-w-[140px]">{lot.owner_name || "—"}</td>
+                    <td className="px-3 py-1.5 text-muted-foreground truncate">{lot.owner_name || "—"}</td>
                     <td className="px-3 py-1.5">
                       <div className="inline-flex rounded-md border border-border bg-card p-0.5">
                         <button
                           type="button"
-                          onClick={() => toggleType(false)}
-                          className={`px-2 py-0.5 text-xs rounded-sm cursor-pointer ${!isCredit ? "bg-primary text-primary-foreground" : "text-muted-foreground"}`}
+                          onClick={() => setType(false)}
+                          className={`px-2.5 py-0.5 text-xs rounded-sm cursor-pointer ${!isCredit ? "bg-primary text-primary-foreground" : "text-muted-foreground"}`}
                         >
                           Debit
                         </button>
                         <button
                           type="button"
-                          onClick={() => toggleType(true)}
-                          className={`px-2 py-0.5 text-xs rounded-sm cursor-pointer ${isCredit ? "bg-primary text-primary-foreground" : "text-muted-foreground"}`}
+                          onClick={() => setType(true)}
+                          className={`px-2.5 py-0.5 text-xs rounded-sm cursor-pointer ${isCredit ? "bg-primary text-primary-foreground" : "text-muted-foreground"}`}
                         >
                           Credit
                         </button>

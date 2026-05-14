@@ -3,7 +3,7 @@
 // ----------------------------------------------------------------------------
 // Same rules as src/lib/accrual/jobs.ts:
 //   - NO "use server" directive
-//   - NO imports from next/cache, @clerk/*, @/lib/auth
+//   - NO imports from next/cache or @/lib/auth
 //
 // Eligibility (PP6-C-1 step 1): a levy_notice qualifies for the friendly
 // reminder when, on the cron's runDate:

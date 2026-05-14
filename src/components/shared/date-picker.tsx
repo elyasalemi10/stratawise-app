@@ -43,7 +43,7 @@ export function DatePicker({
         id={id}
         onClick={() => setOpen((o) => !o)}
         className={cn(
-          "flex h-9 w-full items-center justify-start rounded-md border bg-background px-3 text-sm font-normal",
+          "flex h-9 w-full items-center justify-start rounded-md border bg-card px-3 text-sm font-normal",
           error ? "border-destructive" : "border-border",
           !value && "text-muted-foreground",
           "hover:border-primary/50"
@@ -54,10 +54,14 @@ export function DatePicker({
       </button>
 
       {open && (
-        <div className="absolute top-full left-0 z-50 mt-1 rounded-lg border border-border bg-popover shadow-md">
+        <div className="absolute top-full left-0 z-50 mt-1 rounded-lg border border-border bg-muted shadow-md">
           <Calendar
             mode="single"
             selected={date}
+            // Open the calendar centered on the selected day (or today if no
+            // value yet). react-day-picker defaults to today's month, which is
+            // wrong when the user has already chosen a date in the past/future.
+            defaultMonth={date}
             onSelect={(d) => {
               if (d) {
                 const iso = format(d, "yyyy-MM-dd");

@@ -7,6 +7,13 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { NumberInput } from "@/components/ui/number-input";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import { VicAddressAutocomplete, type ParsedAddress } from "@/components/shared/vic-address-autocomplete";
 import { saveStep, type DraftJson, type DraftLot } from "../actions";
 
@@ -34,7 +41,13 @@ export function Page2Review({
 }) {
   const [planNumber, setPlanNumber] = useState(initialDraft.plan_number ?? "");
   const [planNumberInvalid, setPlanNumberInvalid] = useState(false);
-  const [ocNumber, setOcNumber] = useState<number>(initialDraft.oc_number ?? 1);
+  // OC number is held as a string so the input can be temporarily empty while
+  // the user is editing (CLAUDE.md "allow empty until Continue" rule). Parsed
+  // on submit and flagged if missing/invalid.
+  const [ocNumber, setOcNumber] = useState<string>(
+    initialDraft.oc_number != null ? String(initialDraft.oc_number) : "",
+  );
+  const [ocNumberInvalid, setOcNumberInvalid] = useState(false);
   const [ocName, setOcName] = useState(initialDraft.oc_name ?? "");
   const [address, setAddress] = useState<ParsedAddress>({
     street_number: initialDraft.street_number ?? "",
@@ -47,8 +60,9 @@ export function Page2Review({
   const [lots, setLots] = useState<DraftLot[]>(initialDraft.lots ?? []);
   // Per-row field invalidity flags. Populated only on submit, cleared back
   // to false on the matching field's onChange — so the inputs DON'T turn red
-  // while the user is still typing (CLAUDE.md validation rule).
-  const [lotErrors, setLotErrors] = useState<Array<{ unit?: boolean; entitlement?: boolean }>>([]);
+  // while the user is still typing (CLAUDE.md validation rule). Lot liability
+  // must be > 0 (statutory share of common-property costs); 0 isn't legal.
+  const [lotErrors, setLotErrors] = useState<Array<{ unit?: boolean; entitlement?: boolean; liability?: boolean }>>([]);
   const [pending, setPending] = useState(false);
 
   const totalEntitlement = useMemo(
@@ -60,11 +74,6 @@ export function Page2Review({
     [lots],
   );
 
-  const sensibleTotals = useMemo(() => {
-    const round = [100, 1000, 10000];
-    const allEqual = lots.length > 0 && lots.every((l) => l.unit_entitlement === lots[0].unit_entitlement);
-    return round.includes(totalEntitlement) || allEqual;
-  }, [lots, totalEntitlement]);
 
   function updateLot(idx: number, patch: Partial<DraftLot>) {
     setLots((prev) => prev.map((l, i) => (i === idx ? { ...l, ...patch } : l)));
@@ -77,6 +86,7 @@ export function Page2Review({
         const cur = { ...(next[idx] ?? {}) };
         if ("unit_number" in patch) cur.unit = false;
         if ("unit_entitlement" in patch) cur.entitlement = false;
+        if ("lot_liability" in patch) cur.liability = false;
         next[idx] = cur;
         return next;
       });
@@ -92,23 +102,44 @@ export function Page2Review({
 
   async function onContinue() {
     const problems: string[] = [];
-    const planOk = !planNumber || PS_REGEX.test(planNumber.toUpperCase());
-    if (!planOk) problems.push('Plan number format is "PS" + 6 digits + 1 letter (e.g. PS812345X)');
-    setPlanNumberInvalid(!planOk);
+    // Plan number is required.
+    if (!planNumber.trim()) {
+      problems.push("Plan number is required.");
+      setPlanNumberInvalid(true);
+    } else if (!PS_REGEX.test(planNumber.toUpperCase())) {
+      problems.push('Plan number format is "PS" + 6 digits + 1 letter (e.g. PS812345X)');
+      setPlanNumberInvalid(true);
+    } else {
+      setPlanNumberInvalid(false);
+    }
+
+    // OC number is required (parses to a positive integer).
+    const ocNumberParsed = parseInt(ocNumber, 10);
+    if (!ocNumber.trim() || !Number.isFinite(ocNumberParsed) || ocNumberParsed < 1) {
+      problems.push("OC number is required.");
+      setOcNumberInvalid(true);
+    } else {
+      setOcNumberInvalid(false);
+    }
 
     // Build the per-row error flags fresh on every submit.
-    const nextLotErrors: Array<{ unit?: boolean; entitlement?: boolean }> = lots.map(() => ({}));
+    const nextLotErrors: Array<{ unit?: boolean; entitlement?: boolean; liability?: boolean }> = lots.map(() => ({}));
 
-    // Every lot must have entitlement > 0, and at least 2 lots.
+    // Every lot must have entitlement > 0 AND liability > 0, and at least 2 lots.
     if (lots.length < 2) {
       problems.push("An OC must have at least 2 lots.");
     }
     const zeroEntitlement: number[] = [];
+    const zeroLiability: number[] = [];
     const missingUnit: number[] = [];
     lots.forEach((l, i) => {
       if (!(Number(l.unit_entitlement) > 0)) {
         zeroEntitlement.push(l.lot_number);
         nextLotErrors[i].entitlement = true;
+      }
+      if (!(Number(l.lot_liability) > 0)) {
+        zeroLiability.push(l.lot_number);
+        nextLotErrors[i].liability = true;
       }
       if (!l.unit_number || !l.unit_number.trim()) {
         missingUnit.push(l.lot_number);
@@ -119,6 +150,11 @@ export function Page2Review({
       const ids = zeroEntitlement.slice(0, 3).map((n) => `Lot ${n}`).join(", ");
       const more = zeroEntitlement.length > 3 ? ` and ${zeroEntitlement.length - 3} more` : "";
       problems.push(`Unit entitlement must be greater than 0 for every lot (${ids}${more}).`);
+    }
+    if (zeroLiability.length > 0) {
+      const ids = zeroLiability.slice(0, 3).map((n) => `Lot ${n}`).join(", ");
+      const more = zeroLiability.length > 3 ? ` and ${zeroLiability.length - 3} more` : "";
+      problems.push(`Lot liability must be greater than 0 for every lot (${ids}${more}).`);
     }
     if (missingUnit.length > 0) {
       const ids = missingUnit.slice(0, 3).map((n) => `Lot ${n}`).join(", ");
@@ -135,7 +171,7 @@ export function Page2Review({
     setPending(true);
     const r = await saveStep(draftId, {
       plan_number: planNumber.toUpperCase() || undefined,
-      oc_number: ocNumber,
+      oc_number: ocNumberParsed,
       oc_name: ocName || (planNumber ? `Owners Corporation ${planNumber.toUpperCase()}` : undefined),
       address: address.formatted,
       street_number: address.street_number,
@@ -183,52 +219,48 @@ export function Page2Review({
               aria-invalid={planNumberInvalid || undefined}
               className="uppercase"
             />
-            <p className="text-xs text-muted-foreground">Format: PS + 6 digits + 1 letter.</p>
           </div>
           <div className="space-y-1.5">
-            <Label htmlFor="oc-number">OC number</Label>
+            <Label htmlFor="oc-number">
+              OC number <span className="text-destructive">*</span>
+            </Label>
             {detectedOcs.length > 1 ? (
-              <select
-                id="oc-number"
+              <Select
                 value={ocNumber}
-                onChange={(e) => setOcNumber(parseInt(e.target.value, 10))}
-                className="flex h-9 w-full rounded-md border border-border bg-background px-3 text-sm focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary"
+                onValueChange={(v) => { setOcNumber(v ?? ""); if (ocNumberInvalid) setOcNumberInvalid(false); }}
               >
-                {detectedOcs.map((o) => (
-                  <option key={o.oc_number} value={o.oc_number}>
-                    OC{o.oc_number} — {o.lot_count} lots
-                  </option>
-                ))}
-              </select>
+                <SelectTrigger id="oc-number" aria-invalid={ocNumberInvalid || undefined}>
+                  <SelectValue placeholder="Select the OC" />
+                </SelectTrigger>
+                <SelectContent>
+                  {detectedOcs.map((o) => (
+                    <SelectItem key={o.oc_number} value={String(o.oc_number)}>
+                      OC{o.oc_number} — {o.lot_count} lots
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
             ) : (
               <NumberInput
                 id="oc-number"
                 allowDecimal={false}
-                value={String(ocNumber)}
-                onChange={(v) => setOcNumber(parseInt(v, 10) || 1)}
+                value={ocNumber}
+                onChange={(v) => { setOcNumber(v); if (ocNumberInvalid) setOcNumberInvalid(false); }}
                 placeholder="Owners Corporation number"
+                invalid={ocNumberInvalid}
               />
             )}
-            <p className="text-xs text-muted-foreground">
-              If the plan creates multiple OCs, this is the one you&apos;re setting up now. You can add the others later.
-            </p>
           </div>
         </div>
 
         <div className="space-y-1.5">
-          <Label htmlFor="oc-name">
-            Legal OC name <span className="text-xs font-normal text-muted-foreground">(optional)</span>
-          </Label>
+          <Label htmlFor="oc-name">Legal OC name</Label>
           <Input
             id="oc-name"
             placeholder="Legal name as registered (leave blank to auto-name)"
             value={ocName}
             onChange={(e) => setOcName(e.target.value)}
           />
-          <p className="text-xs text-muted-foreground">
-            Only fill this in if the OC is registered under a name that differs from the
-            plan-derived default &ldquo;Owners Corporation {planNumber || "PS……"}&rdquo;. Used on official notices and legal documents.
-          </p>
         </div>
 
         <div className="space-y-1.5">
@@ -260,7 +292,7 @@ export function Page2Review({
             </div>
           ) : (
             <div
-              className="rounded-md border border-border bg-card overflow-hidden"
+              className="rounded-md border border-border bg-muted/40 overflow-hidden"
               onKeyDown={(e) => {
                 if (!(e.target instanceof HTMLInputElement)) return;
                 const target = e.target as HTMLInputElement;
@@ -290,8 +322,8 @@ export function Page2Review({
               }}
             >
               <table className="w-full text-sm">
-                <thead className="bg-muted/50 text-muted-foreground">
-                  <tr className="text-xs uppercase tracking-wide">
+                <thead className="bg-card text-muted-foreground">
+                  <tr className="text-xs uppercase tracking-wide border-b border-border">
                     <th className="px-3 py-2 text-left font-medium">Lot</th>
                     <th className="px-3 py-2 text-left font-medium">Unit</th>
                     <th className="px-3 py-2 text-left font-medium">Units of entitlement</th>
@@ -333,6 +365,7 @@ export function Page2Review({
                         <NumberInput
                           value={lot.lot_liability ? String(lot.lot_liability) : ""}
                           onChange={(v) => updateLot(idx, { lot_liability: parseFloat(v) || 0 })}
+                          invalid={errs.liability || undefined}
                           className="h-8"
                         />
                       </td>

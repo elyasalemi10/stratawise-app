@@ -37,7 +37,7 @@ async function seed() {
   }
 
   if (!profiles || profiles.length === 0) {
-    console.error("No profiles found. Sign up via Clerk first, then run this script.");
+    console.error("No profiles found. Sign up via Supabase Auth first, then run this script.");
     process.exit(1);
   }
 

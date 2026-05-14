@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useRef, useState } from "react";
 import { toast } from "sonner";
-import { Info, Loader2, X, ImagePlus } from "lucide-react";
+import { Info, Loader2, ImagePlus, Trash2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -26,13 +26,38 @@ function tierForLotCount(n: number, servicesOnly: boolean): number {
   return 5;
 }
 
+// HEIC detection — covers iPhone's default camera output. The browser can't
+// natively decode it, so we run it through heic2any (dynamic import to keep
+// the bundle small on the rest of the wizard).
+function isHeic(file: File): boolean {
+  const name = file.name.toLowerCase();
+  const type = file.type.toLowerCase();
+  return type === "image/heic" || type === "image/heif"
+    || name.endsWith(".heic") || name.endsWith(".heif");
+}
+
+async function heicToJpeg(file: File, quality: number): Promise<File> {
+  const { default: heic2any } = await import("heic2any");
+  const blob = await heic2any({ blob: file, toType: "image/jpeg", quality });
+  // heic2any returns Blob | Blob[]; collapse arrays into the first frame.
+  const out = Array.isArray(blob) ? blob[0] : blob;
+  return new File([out], file.name.replace(/\.(heic|heif)$/i, ".jpg"), { type: "image/jpeg" });
+}
+
 // Re-encode an image client-side as JPEG, scaling so the long edge is at most
-// maxEdge. Returns the original file unchanged if it's already small enough
-// or if the decode/encode fails (e.g. HEIC the browser can't read).
+// maxEdge. Decodes HEIC first if needed. Returns the original file unchanged
+// if it's already small enough.
 async function downscaleImage(file: File, maxEdge: number, quality: number): Promise<File> {
   if (typeof window === "undefined" || typeof document === "undefined") return file;
-  if (file.size < 1_500_000) return file;
-  const url = URL.createObjectURL(file);
+
+  // Convert HEIC up front — the browser can't draw HEIC to canvas.
+  let working = file;
+  if (isHeic(file)) {
+    working = await heicToJpeg(file, quality);
+  }
+
+  if (working.size < 1_500_000) return working;
+  const url = URL.createObjectURL(working);
   try {
     const img = await new Promise<HTMLImageElement>((res, rej) => {
       const i = new Image();
@@ -41,18 +66,18 @@ async function downscaleImage(file: File, maxEdge: number, quality: number): Pro
       i.src = url;
     });
     const ratio = Math.min(1, maxEdge / Math.max(img.naturalWidth, img.naturalHeight));
-    if (ratio >= 1) return file;
+    if (ratio >= 1) return working;
     const w = Math.round(img.naturalWidth * ratio);
     const h = Math.round(img.naturalHeight * ratio);
     const canvas = document.createElement("canvas");
     canvas.width = w;
     canvas.height = h;
     const ctx = canvas.getContext("2d");
-    if (!ctx) return file;
+    if (!ctx) return working;
     ctx.drawImage(img, 0, 0, w, h);
     const blob = await new Promise<Blob | null>((res) => canvas.toBlob(res, "image/jpeg", quality));
-    if (!blob) return file;
-    return new File([blob], file.name.replace(/\.(heic|heif|png|webp)$/i, ".jpg"), { type: "image/jpeg" });
+    if (!blob) return working;
+    return new File([blob], working.name.replace(/\.(png|webp)$/i, ".jpg"), { type: "image/jpeg" });
   } finally {
     URL.revokeObjectURL(url);
   }
@@ -188,9 +213,7 @@ export function Page3Basics({
         <div className="space-y-4">
           {/* Title (was "Trading name"). */}
           <div className="space-y-1.5">
-            <Label htmlFor="oc-title">
-              Title <span className="text-xs font-normal text-muted-foreground">(optional)</span>
-            </Label>
+            <Label htmlFor="oc-title">Title</Label>
             <Input
               id="oc-title"
               placeholder="Friendly building or development name"
@@ -199,56 +222,35 @@ export function Page3Basics({
             />
           </div>
 
-          {/* Photo of the OC. JPEG/PNG/WebP, 10MB cap. Stored in R2 under
-              logos/{companyId}/oc-photos/ and copied to the OC row on
-              completion. Optional — managers can add later from settings. */}
+          {/* Photo of the OC. JPEG/PNG/WebP/HEIC, 10MB cap (post-compression).
+              Stored in R2 under logos/{companyId}/oc-photos/ and copied to the
+              OC row on completion. */}
           <div className="space-y-1.5">
-            <Label>
-              Photo <span className="text-xs font-normal text-muted-foreground">(optional)</span>
-            </Label>
+            <Label>Photo</Label>
             {photoKey && photoUrl ? (
-              <div className="flex items-center gap-3 rounded-md border border-border bg-card p-2">
-                <div className="relative h-20 w-32 shrink-0 overflow-hidden rounded-md bg-muted/30">
-                  {/* eslint-disable-next-line @next/next/no-img-element */}
-                  <img
-                    src={photoUrl}
-                    alt="OC photo"
-                    className="h-full w-full object-cover"
-                  />
-                </div>
-                <div className="flex flex-1 items-center justify-between gap-2">
-                  <p className="text-sm text-muted-foreground">
-                    A picture of the building or site shown on dashboards and notices.
-                  </p>
-                  <div className="flex items-center gap-1">
-                    <Button
-                      type="button"
-                      size="sm"
-                      variant="secondary"
-                      disabled={photoUploading}
-                      onClick={() => photoInputRef.current?.click()}
-                    >
-                      Replace
-                    </Button>
-                    <Button
-                      type="button"
-                      size="sm"
-                      variant="ghost"
-                      disabled={photoUploading}
-                      onClick={handleRemovePhoto}
-                      aria-label="Remove photo"
-                    >
-                      <X className="h-4 w-4" />
-                    </Button>
-                  </div>
-                </div>
+              <div className="relative overflow-hidden rounded-md border border-border bg-card">
+                {/* eslint-disable-next-line @next/next/no-img-element */}
+                <img
+                  src={photoUrl}
+                  alt="OC photo"
+                  className="block w-full max-h-[420px] object-cover"
+                />
+                <button
+                  type="button"
+                  onClick={handleRemovePhoto}
+                  disabled={photoUploading}
+                  aria-label="Remove photo"
+                  className="absolute right-3 top-3 inline-flex h-9 w-9 items-center justify-center rounded-md bg-card/90 backdrop-blur-sm border border-border text-destructive hover:bg-card cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
+                >
+                  <Trash2 className="h-4 w-4" />
+                </button>
               </div>
             ) : (
               <button
                 type="button"
                 onClick={() => photoInputRef.current?.click()}
                 disabled={photoUploading}
-                className="flex w-full flex-col items-center justify-center gap-2 rounded-md border-2 border-dashed border-border bg-muted/20 px-4 py-6 text-sm text-muted-foreground hover:bg-muted/30 hover:text-foreground cursor-pointer disabled:cursor-not-allowed disabled:opacity-60"
+                className="flex w-full flex-col items-center justify-center gap-2 rounded-md border-2 border-dashed border-border bg-card/60 px-4 py-6 text-sm text-muted-foreground hover:bg-card hover:text-foreground cursor-pointer disabled:cursor-not-allowed disabled:opacity-60"
               >
                 {photoUploading ? (
                   <Loader2 className="h-5 w-5 animate-spin" />
@@ -258,13 +260,13 @@ export function Page3Basics({
                 <span>
                   {photoUploading ? "Uploading…" : "Click to upload a photo"}
                 </span>
-                <span className="text-xs">JPEG, PNG, or WebP. Max 10MB.</span>
+                <span className="text-xs">JPEG, PNG, WebP, or HEIC. Max 10MB.</span>
               </button>
             )}
             <input
               ref={photoInputRef}
               type="file"
-              accept="image/jpeg,image/png,image/webp"
+              accept="image/jpeg,image/png,image/webp,image/heic,image/heif,.heic,.heif"
               className="hidden"
               onChange={(e) => {
                 const f = e.target.files?.[0];
@@ -344,8 +346,8 @@ export function Page3Basics({
         </div>
 
         <div className="flex justify-between pt-2">
-          <Button type="button" variant="ghost" onClick={onBack}>Back</Button>
-          <Button type="button" onClick={onContinue} disabled={pending}>
+          <Button type="button" variant="ghost" onClick={onBack} disabled={photoUploading}>Back</Button>
+          <Button type="button" onClick={onContinue} disabled={pending || photoUploading}>
             {pending && <Loader2 className="size-4 animate-spin" />}
             Continue
           </Button>

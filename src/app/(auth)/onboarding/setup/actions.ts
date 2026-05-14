@@ -5,12 +5,12 @@ import { createServerClient } from "@/lib/supabase";
 import { ensureProfile } from "@/lib/auth";
 import { companySchema, inviteRowSchema } from "@/lib/validations/onboarding-setup";
 
-async function getProfileId(clerkUserId: string) {
+async function getProfileId(authUserId: string) {
   const supabase = createServerClient();
   const { data, error } = await supabase
     .from("profiles")
     .select("id, management_company_id")
-    .eq("auth_user_id", clerkUserId)
+    .eq("auth_user_id", authUserId)
     .single();
   if (error && error.code !== "PGRST116") {
     // PGRST116 = "no rows returned" (expected if profile doesn't exist yet)

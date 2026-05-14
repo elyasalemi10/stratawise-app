@@ -213,7 +213,7 @@ export async function acceptInvitation(rawCode: string) {
     // sharing this owner's canonicalised name. Only flips active→ambiguous
     // (Addition 2: never auto-promotes). Owner name resolved from the
     // profile (preferred) with the invitation's `name` field as fallback
-    // for owners whose Clerk profile lacks first/last names.
+    // for owners whose Supabase Auth profile lacks first/last names.
     if (invitation.lot_id) {
       const fromProfile = [profile.first_name, profile.last_name]
         .filter(Boolean)

@@ -96,6 +96,17 @@ export type DraftJson = {
   // Page 7 (insurance) — captures one or more policies on cover at setup.
   has_insurance?: boolean;
   insurance_policies?: DraftInsurancePolicy[];
+  // Certificates of Currency uploaded by the manager. Each entry archives the
+  // file in R2 and (optionally) records what the AI parser pulled out, so the
+  // user sees a list of uploaded certs even after navigating away.
+  insurance_cocs?: Array<{
+    storage_key: string;
+    filename: string;
+    size_bytes: number;
+    plan_number: string | null;
+    insured_name: string | null;
+    ps_match: boolean;
+  }>;
   // The single-policy fields below are legacy — kept so older drafts still
   // round-trip cleanly. New drafts write into insurance_policies[].
   insurance_provider?: string;
@@ -524,7 +535,15 @@ export async function parseDraftRules(draftId: string) {
       .eq("id", draft.id);
     if (error) return { error: error.message };
 
-    return { success: true, ruleCount: parsed.rules.length };
+    return {
+      success: true,
+      ruleCount: parsed.rules.length,
+      rules: parsed.rules.map((r) => ({
+        rule_number: r.rule_number,
+        heading: r.heading ?? null,
+        body: r.body,
+      })),
+    };
   } catch (err) {
     console.error("parseDraftRules: unexpected error", err);
     return { error: "Something went wrong — please try again." };
@@ -547,47 +566,104 @@ export async function setRulesSource(draftId: string, source: "model" | "custom"
   }
 }
 
-// ─── parseInsuranceCoC — Gemini extraction from a Certificate of Currency ──
+// ─── uploadAndParseCoC — upload + Gemini extraction in one round-trip ───
 //
-// Page 7 lets the manager either type each policy by hand OR upload a CoC and
-// have us extract the fields. The PDF is already uploaded to R2 via
-// uploadInsuranceDoc; this action re-fetches the bytes and runs the
-// parse-insurance Gemini call. Result is returned to the client — caller
-// decides whether to merge into draft_json.
+// Page 7 uploads a Certificate of Currency. We push it to R2, record the
+// metadata on the draft, run the Gemini parser, and return both the storage
+// reference and the extracted policies. The client appends the entry to its
+// running list of uploaded CoCs.
+//
+// Caller can pass `expectedPlanNumber` so we can compare against the PS
+// number Gemini finds on the cert — the UI then warns the manager if the
+// cert is for a different plan.
 
-export async function parseInsuranceCoC(draftId: string): Promise<{
+export async function uploadAndParseCoC(
+  draftId: string,
+  formData: FormData,
+  expectedPlanNumber?: string,
+): Promise<{
   success?: true;
+  storage_key?: string;
+  filename?: string;
+  size_bytes?: number;
+  plan_number?: string | null;
+  insured_name?: string | null;
+  ps_match?: boolean;
   policies?: ParsedInsurancePolicy[];
   error?: string;
 }> {
   try {
     const { draft } = await loadDraft(draftId);
-    if (!draft.insurance_doc_storage_key) {
-      return { error: "Upload a certificate of currency first." };
+    const file = formData.get("file");
+    if (!(file instanceof File)) return { error: "No file uploaded" };
+    if (file.type !== "application/pdf" && !file.name.toLowerCase().endsWith(".pdf")) {
+      return { error: "Only PDF files are accepted" };
     }
-    let buf: Buffer;
+    if (file.size > 25 * 1024 * 1024) return { error: "Certificate exceeds 25MB" };
+
+    const key = `insurance/${draft.id}/${crypto.randomUUID()}.pdf`;
+    const buf = Buffer.from(await file.arrayBuffer());
+
     try {
-      buf = await fetchObject(draft.insurance_doc_storage_key);
+      await uploadObject(key, buf, "application/pdf");
     } catch (err) {
-      console.error("parseInsuranceCoC: R2 fetch failed", err);
-      return { error: "We couldn't read the uploaded document." };
+      console.error("uploadAndParseCoC: R2 upload failed", err);
+      return { error: "Couldn't save your file — please try again." };
     }
 
     let parsed;
     try {
       parsed = await parseInsurancePdf(buf);
     } catch (err) {
-      console.error("parseInsuranceCoC: parser failed", err);
+      console.error("uploadAndParseCoC: parser failed", err);
       return { error: "We couldn't read this PDF automatically. Enter details manually." };
     }
     if (!parsed.is_insurance_certificate) {
+      // Best-effort cleanup: the file isn't a real cert, so don't leave it
+      // sitting in R2.
+      void deleteObject(key).catch(() => {});
       return {
         error: `That didn't look like a certificate of currency (looks like: ${parsed.document_type_guess || "another document type"}). Upload a different PDF or enter details manually.`,
       };
     }
-    return { success: true, policies: parsed.policies };
+
+    // Compare cert PS number to the OC's. Normalise both sides to handle
+    // whitespace + casing differences. ps_match is true only when both sides
+    // have a value AND they agree.
+    const norm = (s: string | null | undefined) => (s ?? "").trim().toUpperCase().replace(/\s+/g, "");
+    const expected = norm(expectedPlanNumber);
+    const found = norm(parsed.plan_number ?? null);
+    const psMatch = !!expected && !!found && expected === found;
+
+    return {
+      success: true,
+      storage_key: key,
+      filename: file.name,
+      size_bytes: file.size,
+      plan_number: parsed.plan_number,
+      insured_name: parsed.insured_name,
+      ps_match: psMatch,
+      policies: parsed.policies,
+    };
   } catch (err) {
-    console.error("parseInsuranceCoC: unexpected error", err);
+    console.error("uploadAndParseCoC: unexpected error", err);
+    return { error: "Something went wrong — please try again." };
+  }
+}
+
+// ─── deleteCoC — remove a CoC document from R2 + draft ───
+//
+// Called when the manager removes a CoC from page 7. Best-effort R2 delete
+// so we don't leave orphaned objects when a cert is rejected or replaced.
+
+export async function deleteCoC(draftId: string, storageKey: string): Promise<{ success?: true; error?: string }> {
+  try {
+    await loadDraft(draftId);
+    // R2 delete is best-effort; orphans are harmless.
+    void deleteObject(storageKey).catch(() => {});
+    return { success: true };
+  } catch (err) {
+    console.error("deleteCoC: unexpected error", err);
     return { error: "Something went wrong — please try again." };
   }
 }
@@ -940,9 +1016,29 @@ export async function completeWizard(draftId: string) {
                 }]
               : []);
 
-      // Single supporting PDF is shared across the batch — most managers
-      // upload one combined policy schedule covering all the OC's policies.
-      if (draft.insurance_doc_storage_key && draft.insurance_doc_filename) {
+      // Register every uploaded Certificate of Currency as a separate
+      // document so each is archived + OCR-indexed independently. Managers
+      // routinely upload multiple certs (e.g. one per insurer when a cover
+      // mix changes mid-year).
+      const cocs = d.insurance_cocs ?? [];
+      for (const coc of cocs) {
+        await supabase.from("documents").insert({
+          oc_id: oc.id,
+          lot_id: null,
+          category: "insurance_policy",
+          file_name: coc.filename,
+          file_path: coc.storage_key,
+          file_size: coc.size_bytes,
+          mime_type: "application/pdf",
+          is_confidential: false,
+          uploaded_by: profile.id,
+          ocr_status: "pending",
+        });
+      }
+      // Legacy single-doc path — only register it if no multi-CoC list is
+      // present, to avoid duplicating older drafts that wrote the same key
+      // through `insurance_doc_storage_key`.
+      if (cocs.length === 0 && draft.insurance_doc_storage_key && draft.insurance_doc_filename) {
         await supabase.from("documents").insert({
           oc_id: oc.id,
           lot_id: null,

@@ -24,6 +24,11 @@ export type ParsedInsuranceDocument = {
   is_insurance_certificate: boolean;
   /** Free-text guess of what the upload actually is. */
   document_type_guess: string;
+  /** Plan-of-Subdivision number shown on the certificate, if present.
+   *  Format: PS + 6 digits + 1 letter (e.g. "PS812345X"). Null if not located. */
+  plan_number: string | null;
+  /** "Insured" / "Owners Corporation" name from the cert header, if present. */
+  insured_name: string | null;
   policies: ParsedInsurancePolicy[];
 };
 
@@ -36,6 +41,16 @@ const RESPONSE_SCHEMA = {
         "True ONLY if this PDF is a Certificate of Currency or insurance policy schedule for a strata / owners-corporation building. False for plan-of-subdivision PDFs, OC rules, levy notices, photos, contracts, or anything else.",
     },
     document_type_guess: { type: Type.STRING, description: "One-line guess of the upload's actual type." },
+    plan_number: {
+      type: Type.STRING,
+      nullable: true,
+      description: "Plan-of-Subdivision number shown on the certificate (format PS + 6 digits + 1 letter, e.g. 'PS812345X'). Null if not found.",
+    },
+    insured_name: {
+      type: Type.STRING,
+      nullable: true,
+      description: "'Insured' / 'Owners Corporation' / 'Body Corporate' name from the certificate header. Null if not found.",
+    },
     policies: {
       type: Type.ARRAY,
       description: "Every distinct policy section listed on the certificate. Typically 1-5 entries.",
@@ -58,7 +73,7 @@ const RESPONSE_SCHEMA = {
       },
     },
   },
-  required: ["is_insurance_certificate", "document_type_guess", "policies"],
+  required: ["is_insurance_certificate", "document_type_guess", "plan_number", "insured_name", "policies"],
 };
 
 const SYSTEM_PROMPT = `You extract every policy section from a strata / owners-corporation Certificate of Currency or insurance policy schedule PDF.
@@ -68,10 +83,12 @@ Rules:
 - "Combined" policy_type only when one section explicitly covers BOTH building + public liability together.
 - Money fields are AUD numbers, no currency symbols. If a number has commas (e.g. "$12,500,000") strip them and return 12500000.
 - Dates: ISO yyyy-mm-dd. Australian DD/MM/YYYY is the dominant source format — convert carefully.
+- plan_number: scan the cert for the Plan-of-Subdivision identifier ("PS812345X" or similar — "PS" + 6 digits + 1 letter). Typically near the address or under "Insured" / "Property Description". Null if not present.
+- insured_name: the named insured / owners corporation name from the cert header. Null if not present.
 
 Document-type gate:
 - BEFORE extracting anything, decide whether this PDF IS a CoC or policy schedule for a strata building.
-- If it's something else (plan of subdivision, OC rules, levy notice, photo, contract, blank page), set is_insurance_certificate=false, document_type_guess to your best one-line description, and return policies=[].
+- If it's something else (plan of subdivision, OC rules, levy notice, photo, contract, blank page), set is_insurance_certificate=false, document_type_guess to your best one-line description, plan_number=null, insured_name=null, and policies=[].
 - When in doubt return false. The manager can re-upload.`;
 
 type ServiceAccount = { project_id?: string; client_email?: string; private_key?: string };

@@ -3,7 +3,7 @@
 // ----------------------------------------------------------------------------
 // Same boundary rules as src/lib/accrual/overdue-check.ts:
 //   - NO "use server" directive
-//   - NO imports from next/cache, @clerk/*, @/lib/auth
+//   - NO imports from next/cache or @/lib/auth
 //
 // Walks active escalation_instances and advances them through steps 2 and 3.
 // Step 1 is created by checkOverdueLeviesJob (PP6-C-1) when a levy hits

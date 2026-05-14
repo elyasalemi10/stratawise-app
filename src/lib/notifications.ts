@@ -3,7 +3,7 @@
 // ----------------------------------------------------------------------------
 // Same rules as src/lib/basiq/jobs.ts and src/lib/accrual/jobs.ts:
 //   - NO "use server" directive
-//   - NO imports from next/cache, @clerk/*, @/lib/auth
+//   - NO imports from next/cache or @/lib/auth
 //   - Takes an explicit SupabaseClient — caller passes either a service-role
 //     client (server actions, cron) or a request-context client.
 //
@@ -27,10 +27,10 @@ import {
   type SendNewClaimSubmittedEmailParams,
 } from "@/lib/email";
 
-// Canonical list of notification types seeded for new users by the Clerk
-// webhook (src/app/api/webhooks/clerk/route.ts) and validated by the
-// updateNotificationPreferences action (PP6-D-B). Single source of truth —
-// changes here propagate to both seed + validation paths.
+// Canonical list of notification types seeded for new users on first sign-in
+// and validated by the updateNotificationPreferences action (PP6-D-B).
+// Single source of truth — changes here propagate to both seed + validation
+// paths.
 export const NOTIFICATION_TYPES = [
   "levy_issued",
   "payment_received",

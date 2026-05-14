@@ -4,8 +4,8 @@
 // Same rules as src/lib/basiq/jobs.ts:
 //   - NO `"use server"` directive — exports must not become server actions
 //   - NO imports from `next/cache` — no revalidate calls
-//   - NO imports from `@clerk/*` or `@/lib/auth` — auth is resolved by the
-//     caller; this module takes an explicit systemProfileId arg.
+//   - NO imports from `@/lib/auth` — auth is resolved by the caller; this
+//     module takes an explicit systemProfileId arg.
 //   - Caller supplies a real profile UUID; the only "system sentinel" is
 //     the bootstrap row keyed by auth_user_id='system_accrual_cron' (PP6-A).
 //
@@ -17,7 +17,7 @@
 
 import type { SupabaseClient } from "@supabase/supabase-js";
 
-const SYSTEM_ACCRUAL_CLERK_ID = "system_accrual_cron";
+const SYSTEM_ACCRUAL_AUTH_ID = "system_accrual_cron";
 
 export interface AccrualJobInput {
   ocId: string;
@@ -52,12 +52,12 @@ export async function resolveSystemProfileId(
   const { data, error } = await supabase
     .from("profiles")
     .select("id")
-    .eq("auth_user_id", SYSTEM_ACCRUAL_CLERK_ID)
+    .eq("auth_user_id", SYSTEM_ACCRUAL_AUTH_ID)
     .single();
 
   if (error || !data) {
     throw new Error(
-      `system profile '${SYSTEM_ACCRUAL_CLERK_ID}' not found — apply PP6-A schema delta`,
+      `system profile '${SYSTEM_ACCRUAL_AUTH_ID}' not found — apply PP6-A schema delta`,
     );
   }
   return (data as { id: string }).id;

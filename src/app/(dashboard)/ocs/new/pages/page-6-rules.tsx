@@ -2,9 +2,16 @@
 
 import { useEffect, useRef, useState } from "react";
 import { toast } from "sonner";
-import { CheckCircle2, AlertTriangle, FileText, Loader2, Upload, X, Scale } from "lucide-react";
+import { AlertTriangle, FileText, Loader2, Upload, X, Scale, Trash2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { VICTORIA_MODEL_RULES } from "@/lib/data/victoria-model-rules";
 import { uploadRules, parseDraftRules, setRulesSource, saveStep, type DraftJson } from "../actions";
+
+type ParsedRule = {
+  rule_number: string;
+  heading?: string | null;
+  body: string;
+};
 
 // Wizard page 6 — OC Rules.
 //
@@ -25,6 +32,7 @@ export function Page6Rules({
   initialRulesFilename,
   initialParseStatus,
   initialRuleCount,
+  initialParsedRules,
   onBack,
   onNext,
 }: {
@@ -33,6 +41,7 @@ export function Page6Rules({
   initialRulesFilename: string | null;
   initialParseStatus: "none" | "uploaded" | "parsed" | "failed";
   initialRuleCount: number;
+  initialParsedRules: ParsedRule[];
   onBack: () => void;
   onNext: () => void;
 }) {
@@ -44,6 +53,7 @@ export function Page6Rules({
   );
   const [filename, setFilename] = useState<string | null>(initialRulesFilename);
   const [ruleCount, setRuleCount] = useState(initialRuleCount);
+  const [parsedRules, setParsedRules] = useState<ParsedRule[]>(initialParsedRules);
   const [parseError, setParseError] = useState<string | null>(null);
   const [isDragging, setIsDragging] = useState(false);
   const [pending, setPending] = useState(false);
@@ -56,20 +66,23 @@ export function Page6Rules({
   // just gone with no upload box and no status indicator either.
   useEffect(() => {
     if (resumedParseRef.current) return;
-    if (initialParseStatus === "uploaded" && initialRulesFilename) {
-      resumedParseRef.current = true;
+    if (initialParseStatus !== "uploaded" || !initialRulesFilename) return;
+    resumedParseRef.current = true;
+    // Move state updates outside the synchronous effect body — the lint rule
+    // forbids cascading setState. Defer to a microtask so the parse fires
+    // immediately but the initial render isn't disturbed.
+    void (async () => {
       setStage("parsing");
-      (async () => {
-        const parsed = await parseDraftRules(draftId);
-        if (parsed.error) {
-          setStage("failed");
-          setParseError(parsed.error);
-          return;
-        }
-        setStage("complete");
-        setRuleCount(parsed.ruleCount ?? 0);
-      })();
-    }
+      const parsed = await parseDraftRules(draftId);
+      if (parsed.error) {
+        setStage("failed");
+        setParseError(parsed.error);
+        return;
+      }
+      setStage("complete");
+      setRuleCount(parsed.ruleCount ?? 0);
+      if (parsed.rules) setParsedRules(parsed.rules);
+    })();
   }, [draftId, initialParseStatus, initialRulesFilename]);
 
   async function handleFile(file: File) {
@@ -99,6 +112,7 @@ export function Page6Rules({
     }
     setStage("complete");
     setRuleCount(parsed.ruleCount ?? 0);
+    if (parsed.rules) setParsedRules(parsed.rules);
   }
 
   function onDrop(e: React.DragEvent) {
@@ -194,6 +208,26 @@ export function Page6Rules({
         </button>
       </div>
 
+      {source === "model" && (
+        <div className="rounded-md border border-border bg-card overflow-hidden">
+          <div className="bg-muted/40 px-4 py-2 border-b border-border text-xs font-medium uppercase tracking-wide text-muted-foreground">
+            Victoria&apos;s Model Rules (Owners Corporations Regulations 2018, Schedule 2)
+          </div>
+          <ol className="divide-y divide-border">
+            {VICTORIA_MODEL_RULES.map((r) => (
+              <li key={r.rule_number} className="px-4 py-3">
+                <p className="text-sm font-semibold text-foreground">
+                  {r.rule_number}. {r.heading}
+                </p>
+                <p className="mt-1 text-sm text-muted-foreground leading-relaxed">
+                  {r.body}
+                </p>
+              </li>
+            ))}
+          </ol>
+        </div>
+      )}
+
       {source === "custom" && (
         <>
           {/* Dropzone — hidden once a file is uploaded; reappears when cleared. */}
@@ -204,7 +238,7 @@ export function Page6Rules({
               onDragOver={(e) => e.preventDefault()}
               onDrop={onDrop}
               className={`rounded-lg border-2 border-dashed transition-colors ${
-                isDragging ? "border-primary bg-primary/5" : "border-border bg-muted/20"
+                isDragging ? "border-primary bg-primary/5" : "border-border bg-card"
               }`}
             >
               <label className="flex cursor-pointer flex-col items-center justify-center gap-3 px-6 py-10">
@@ -226,16 +260,10 @@ export function Page6Rules({
             </div>
           )}
 
-          {filename && stage !== "idle" && (
+          {filename && busy && (
             <div className="relative rounded-md border border-border bg-card p-6">
               <div className="flex flex-col items-center text-center gap-3">
-                {busy ? (
-                  <Loader2 className="h-8 w-8 animate-spin text-primary" />
-                ) : stage === "complete" ? (
-                  <CheckCircle2 className="h-8 w-8 text-green-600" />
-                ) : (
-                  <AlertTriangle className="h-8 w-8 text-amber-600" />
-                )}
+                <Loader2 className="h-8 w-8 animate-spin text-primary" />
                 <div className="flex items-center justify-center gap-2 max-w-full">
                   <FileText className="h-3.5 w-3.5 text-muted-foreground shrink-0" />
                   <p className="text-sm font-medium text-foreground truncate">{filename}</p>
@@ -248,24 +276,73 @@ export function Page6Rules({
                     Extracting rules… usually 10–30 seconds.
                   </p>
                 )}
-                {stage === "complete" && (
-                  <p className="text-xs text-foreground">
-                    Parsed {ruleCount} rule{ruleCount === 1 ? "" : "s"}.
-                  </p>
-                )}
-                {stage === "failed" && parseError && (
-                  <p className="text-xs text-amber-700 max-w-md">{parseError}</p>
-                )}
-                {!busy && (
-                  <button
-                    type="button"
-                    onClick={() => { setStage("idle"); setFilename(null); setParseError(null); setRuleCount(0); }}
-                    className="absolute right-3 top-3 text-muted-foreground hover:text-foreground cursor-pointer"
-                    aria-label="Clear upload"
-                  >
-                    <X className="h-4 w-4" />
-                  </button>
-                )}
+              </div>
+            </div>
+          )}
+
+          {filename && stage === "complete" && parsedRules.length > 0 && (
+            <div className="rounded-md border border-border bg-card overflow-hidden">
+              <div className="flex items-center justify-between gap-3 bg-muted/40 px-4 py-2 border-b border-border">
+                <div className="flex items-center gap-2 min-w-0">
+                  <FileText className="h-3.5 w-3.5 text-muted-foreground shrink-0" />
+                  <span className="text-sm font-medium text-foreground truncate">{filename}</span>
+                  <span className="text-xs text-muted-foreground shrink-0">— {ruleCount} rule{ruleCount === 1 ? "" : "s"}</span>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setStage("idle");
+                    setFilename(null);
+                    setParseError(null);
+                    setRuleCount(0);
+                    setParsedRules([]);
+                  }}
+                  className="text-muted-foreground hover:text-destructive cursor-pointer shrink-0"
+                  aria-label="Remove upload"
+                >
+                  <Trash2 className="h-4 w-4" />
+                </button>
+              </div>
+              <ol className="divide-y divide-border max-h-[480px] overflow-y-auto">
+                {parsedRules.map((r, i) => (
+                  <li key={i} className="px-4 py-3">
+                    <p className="text-sm font-semibold text-foreground">
+                      {r.rule_number}{r.heading ? `. ${r.heading}` : ""}
+                    </p>
+                    <p className="mt-1 text-sm text-muted-foreground leading-relaxed whitespace-pre-line">
+                      {r.body}
+                    </p>
+                  </li>
+                ))}
+              </ol>
+            </div>
+          )}
+
+          {filename && stage === "failed" && (
+            <div className="relative rounded-md border border-amber-200 bg-amber-50 p-4">
+              <div className="flex items-start gap-2">
+                <AlertTriangle className="h-4 w-4 text-amber-600 shrink-0 mt-0.5" />
+                <div className="flex-1 min-w-0">
+                  <div className="flex items-center gap-2 min-w-0">
+                    <FileText className="h-3.5 w-3.5 text-muted-foreground shrink-0" />
+                    <p className="text-sm font-medium text-foreground truncate">{filename}</p>
+                  </div>
+                  {parseError && <p className="mt-1 text-xs text-amber-900">{parseError}</p>}
+                </div>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setStage("idle");
+                    setFilename(null);
+                    setParseError(null);
+                    setRuleCount(0);
+                    setParsedRules([]);
+                  }}
+                  className="text-muted-foreground hover:text-foreground cursor-pointer shrink-0"
+                  aria-label="Clear upload"
+                >
+                  <X className="h-4 w-4" />
+                </button>
               </div>
             </div>
           )}

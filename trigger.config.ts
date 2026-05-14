@@ -13,7 +13,7 @@ import { defineConfig } from "@trigger.dev/sdk";
 //
 // The tasks import ONLY from src/lib/basiq/jobs.ts — a framework-agnostic
 // module that never crosses the Next.js "use server" boundary and never
-// calls Clerk auth or next/cache. Each task passes a connection's own
+// calls auth or next/cache. Each task passes a connection's own
 // `created_by` (NOT NULL FK to profiles) as the performer.
 //
 // Env vars:

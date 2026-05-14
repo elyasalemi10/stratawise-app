@@ -10,8 +10,6 @@ import {
   DialogContent,
   DialogHeader,
   DialogTitle,
-  DialogDescription,
-  DialogFooter,
 } from "@/components/ui/dialog";
 import { PhoneInput } from "@/components/shared/phone-input";
 import { Switch } from "@/components/ui/switch";
@@ -145,7 +143,6 @@ export function Page4Lots({
 
   const [lots, setLots] = useState<DraftLot[]>(initialLots);
   const [csvDialogOpen, setCsvDialogOpen] = useState(false);
-  const [confirmSkipOpen, setConfirmSkipOpen] = useState(false);
   const [pending, setPending] = useState(false);
   const [csvErrors, setCsvErrors] = useState<{ row: number; reason: string }[]>([]);
   // Per-row submit-time validity flags. CLAUDE.md "no live red" rule: only
@@ -184,10 +181,29 @@ export function Page4Lots({
     a.click();
     URL.revokeObjectURL(url);
   }
+  // Strict format guard. The CSV MUST start with the exact header row we
+  // generate from lotsToCsv — anything else and we reject the upload outright
+  // so people can't paste random spreadsheets in and expect it to parse.
+  function isOurTemplate(text: string): boolean {
+    const firstLine = text.split(/\r?\n/, 1)[0] ?? "";
+    const cols = parseCsvLine(firstLine).map((c) => c.trim().toLowerCase());
+    const expected = [
+      "lot_number", "unit_entitlement", "lot_liability",
+      "owner_name", "owner_email", "owner_phone", "owner_postal_address",
+      "is_occupied_by_owner", "tenant_name", "tenant_email",
+    ];
+    if (cols.length !== expected.length) return false;
+    return expected.every((k, i) => cols[i] === k);
+  }
+
   function onUploadCsv(file: File) {
     const reader = new FileReader();
     reader.onload = () => {
       const text = String(reader.result ?? "");
+      if (!isOurTemplate(text)) {
+        toast.error("That CSV doesn't match our template. Download the template and fill it in.");
+        return;
+      }
       const { lots: parsedLots, errors } = csvToLots(text, lots);
       setLots(parsedLots);
       setCsvErrors(errors);
@@ -198,46 +214,44 @@ export function Page4Lots({
     reader.readAsText(file);
   }
 
-  async function persistAndAdvance(nextStep: number, skipped = false) {
+  async function persistAndAdvance(nextStep: number) {
     // Owner name is mandatory on every lot. Tenant name is mandatory whenever
-    // the lot is NOT owner-occupied. Skip path bypasses validation entirely so
-    // managers can come back to fill these in later. Live-red rule: only set
-    // rowErrors on submit; cleared on the matching field's onChange.
+    // the lot is NOT owner-occupied. Live-red rule: only set rowErrors on
+    // submit; cleared on the matching field's onChange. No skip path —
+    // managers must add owner details before advancing.
     const problems: string[] = [];
     const nextRowErrors: typeof rowErrors = lots.map(() => ({}));
-    if (!skipped) {
-      lots.forEach((l, i) => {
-        const ownerName = (l.owner_name ?? "").trim();
-        if (!ownerName) {
-          problems.push(`Lot ${l.lot_number}: owner name is required.`);
-          nextRowErrors[i].ownerName = true;
+    lots.forEach((l, i) => {
+      const ownerName = (l.owner_name ?? "").trim();
+      if (!ownerName) {
+        problems.push(`Lot ${l.lot_number}: owner name is required.`);
+        nextRowErrors[i].ownerName = true;
+      }
+      if (l.owner_email && !isValidEmail(l.owner_email)) {
+        problems.push(`Lot ${l.lot_number}: invalid email`);
+        nextRowErrors[i].email = true;
+      }
+      if (l.owner_phone && !isValidAuPhone(l.owner_phone)) {
+        problems.push(`Lot ${l.lot_number}: invalid phone`);
+        nextRowErrors[i].phone = true;
+      }
+      const tenantOpen = l.is_occupied_by_owner === false;
+      if (tenantOpen) {
+        const tenantName = (l.tenant_name ?? "").trim();
+        if (!tenantName) {
+          problems.push(`Lot ${l.lot_number}: tenant name is required when not owner-occupied.`);
+          nextRowErrors[i].tName = true;
         }
-        if (l.owner_email && !isValidEmail(l.owner_email)) {
-          problems.push(`Lot ${l.lot_number}: invalid email`);
-          nextRowErrors[i].email = true;
-        }
-        if (l.owner_phone && !isValidAuPhone(l.owner_phone)) {
-          problems.push(`Lot ${l.lot_number}: invalid phone`);
-          nextRowErrors[i].phone = true;
-        }
-        const tenantOpen = l.is_occupied_by_owner === false;
-        if (tenantOpen) {
-          const tenantName = (l.tenant_name ?? "").trim();
-          if (!tenantName) {
-            problems.push(`Lot ${l.lot_number}: tenant name is required when not owner-occupied.`);
-            nextRowErrors[i].tName = true;
-          }
-        }
-        if (l.tenant_email && !isValidEmail(l.tenant_email)) {
-          problems.push(`Lot ${l.lot_number}: invalid tenant email`);
-          nextRowErrors[i].tEmail = true;
-        }
-        if (l.tenant_phone && !isValidAuPhone(l.tenant_phone)) {
-          problems.push(`Lot ${l.lot_number}: invalid tenant phone`);
-          nextRowErrors[i].tPhone = true;
-        }
-      });
-    }
+      }
+      if (l.tenant_email && !isValidEmail(l.tenant_email)) {
+        problems.push(`Lot ${l.lot_number}: invalid tenant email`);
+        nextRowErrors[i].tEmail = true;
+      }
+      if (l.tenant_phone && !isValidAuPhone(l.tenant_phone)) {
+        problems.push(`Lot ${l.lot_number}: invalid tenant phone`);
+        nextRowErrors[i].tPhone = true;
+      }
+    });
     setRowErrors(nextRowErrors);
     if (problems.length) {
       toast.error(problems.length === 1 ? problems[0] : `${problems.length} rows have errors — see highlights.`);
@@ -300,7 +314,7 @@ export function Page4Lots({
           the start/end of the input. Implemented via a data-cell attribute on
           every focusable input and an onKeyDown handler at the <tbody> level. */}
       <div
-        className="rounded-md border border-border bg-card overflow-hidden"
+        className="rounded-md border border-border bg-muted/40 overflow-hidden"
         onKeyDown={(e) => {
           if (!(e.target instanceof HTMLElement)) return;
           const target = e.target as HTMLInputElement;
@@ -330,8 +344,8 @@ export function Page4Lots({
         }}
       >
         <table className="w-full text-sm">
-          <thead className="bg-muted/50 text-muted-foreground">
-            <tr className="text-xs uppercase tracking-wide">
+          <thead className="bg-card text-muted-foreground">
+            <tr className="text-xs uppercase tracking-wide border-b border-border">
               <th className="px-2 py-2 text-left font-medium">Lot</th>
               <th className="px-2 py-2 text-left font-medium">Unit</th>
               <th className="px-2 py-2 text-left font-medium">Owner name</th>
@@ -423,32 +437,19 @@ export function Page4Lots({
 
       <div className="flex items-center justify-between pt-2">
         <Button type="button" variant="ghost" onClick={onBack}>Back</Button>
-        <div className="flex items-center gap-3">
-          <button
-            type="button"
-            onClick={() => setConfirmSkipOpen(true)}
-            className="text-sm text-muted-foreground hover:text-foreground cursor-pointer"
-          >
-            Skip — I&apos;ll add owners later
-          </button>
-          <Button type="button" onClick={() => persistAndAdvance(5)} disabled={pending}>
-            {pending && <Loader2 className="size-4 animate-spin" />}
-            Continue
-          </Button>
-        </div>
+        <Button type="button" onClick={() => persistAndAdvance(5)} disabled={pending}>
+          {pending && <Loader2 className="size-4 animate-spin" />}
+          Continue
+        </Button>
       </div>
 
       <Dialog open={csvDialogOpen} onOpenChange={setCsvDialogOpen}>
-        <DialogContent>
+        <DialogContent className="sm:max-w-lg">
           <DialogHeader>
             <DialogTitle>Import lot owners from CSV</DialogTitle>
-            <DialogDescription>
-              Download the template (pre-populated from the lot schedule), fill in owner details,
-              then upload it back. Lot numbers are matched — extra rows are ignored.
-            </DialogDescription>
           </DialogHeader>
           <div className="flex flex-col gap-3 sm:flex-row">
-            <Button type="button" variant="secondary" onClick={downloadCsv} className="flex-1">
+            <Button type="button" variant="secondary" onClick={downloadCsv} className="flex-1 h-11">
               <Download className="mr-1.5 h-3.5 w-3.5" />
               Download template
             </Button>
@@ -467,27 +468,6 @@ export function Page4Lots({
               />
             </label>
           </div>
-          <DialogFooter>
-            <Button variant="ghost" onClick={() => setCsvDialogOpen(false)}>Close</Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
-
-      <Dialog open={confirmSkipOpen} onOpenChange={setConfirmSkipOpen}>
-        <DialogContent>
-          <DialogHeader>
-            <DialogTitle>Skip lot owners?</DialogTitle>
-            <DialogDescription>
-              You won&apos;t be able to send notices or levies until lot owners are added.
-              You can add them from the OC&apos;s manage page anytime.
-            </DialogDescription>
-          </DialogHeader>
-          <DialogFooter>
-            <Button variant="ghost" onClick={() => setConfirmSkipOpen(false)}>Cancel</Button>
-            <Button onClick={() => { setConfirmSkipOpen(false); void persistAndAdvance(5, true); }}>
-              Skip anyway
-            </Button>
-          </DialogFooter>
         </DialogContent>
       </Dialog>
     </div>

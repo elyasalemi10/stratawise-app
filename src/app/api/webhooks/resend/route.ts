@@ -12,7 +12,7 @@ export const dynamic = "force-dynamic";
 // Resend webhooks (Standard Webhooks format, svix-signed). The handler:
 //
 //   1. Verifies signature via svix.Webhook.verify on raw body. On failure,
-//      audits the rejection and returns 400 (mirrors Clerk webhook code-path).
+//      audits the rejection and returns 400.
 //   2. Switches on event.type and updates communication_log idempotently
 //      via WHERE external_id = event.data.email_id.
 //   3. Status-priority guard prevents out-of-order events from regressing

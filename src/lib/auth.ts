@@ -42,8 +42,7 @@ export interface Profile {
 /**
  * Returns the current Supabase Auth user's UUID, or null if not signed in.
  * Verification suites short-circuit via _verificationUserIdResolver so they
- * can run server actions without a real signed-in user. Replaces Clerk's
- * `(await auth()).userId` pattern.
+ * can run server actions without a real signed-in user.
  */
 export async function getAuthUserId(): Promise<string | null> {
   if (_verificationUserIdResolver) {
