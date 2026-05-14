@@ -1,11 +1,12 @@
 import { redirect } from "next/navigation";
 import Link from "next/link";
-import { Building2, CircleDashed, MapPin, Plus } from "lucide-react";
+import { Building2, MapPin, Plus } from "lucide-react";
 import { getCurrentProfile } from "@/lib/auth";
 import { getCompanyOCSummary } from "@/lib/actions/oc";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
+import { DraftCard } from "./_components/draft-card";
 
 export default async function OCsPage() {
   const profile = await getCurrentProfile();
@@ -123,29 +124,7 @@ export default async function OCsPage() {
               <h2 className="text-sm font-semibold text-foreground">In progress</h2>
               <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3">
                 {drafts.map((d) => (
-                  <Link
-                    key={d.id}
-                    href={`/ocs/new?draft=${d.id}&step=${d.step}`}
-                    className="block"
-                  >
-                    <Card className="transition-colors hover:border-primary/30 cursor-pointer border-dashed">
-                      <CardContent className="pt-4 pb-4">
-                        <div className="flex items-center gap-3">
-                          <CircleDashed className="h-4 w-4 text-muted-foreground shrink-0" />
-                          <div className="flex-1 min-w-0">
-                            <p className="text-sm font-semibold text-foreground truncate">
-                              {d.label} <span className="text-muted-foreground font-normal">— Step {d.step}/9</span>
-                            </p>
-                            {d.address ? (
-                              <p className="mt-1 text-xs text-muted-foreground truncate">{d.address}</p>
-                            ) : (
-                              <p className="mt-1 text-xs text-muted-foreground">Continue setting up this OC</p>
-                            )}
-                          </div>
-                        </div>
-                      </CardContent>
-                    </Card>
-                  </Link>
+                  <DraftCard key={d.id} draft={{ id: d.id, label: d.label, step: d.step, address: d.address }} />
                 ))}
               </div>
             </div>

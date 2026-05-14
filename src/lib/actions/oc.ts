@@ -456,3 +456,49 @@ export async function getCompanyOCSummary() {
     totalLots,
   };
 }
+
+/** Delete an OC creation draft. Only the manager who created the draft
+ *  (or anyone in their management company) can delete it. Cleans up
+ *  R2-stored plan / rules / insurance PDFs as a best-effort side
+ *  effect — orphaned objects in R2 are harmless but pile up over time.
+ *  Drafts that have already been promoted to a real OC (promoted_oc_id
+ *  is set) cannot be deleted from here — that's a separate
+ *  delete-the-OC flow we haven't built yet. */
+export async function deleteDraft(draftId: string): Promise<{ success?: true; error?: string }> {
+  try {
+    const profile = await getCurrentProfile();
+    if (!profile?.management_company_id) return { error: "No management company assigned" };
+    const sb = createServerClient();
+    const { data: draft, error: loadErr } = await sb
+      .from("oc_drafts")
+      .select("id, promoted_oc_id, plan_storage_key, rules_storage_key, insurance_doc_storage_key, photo_storage_key")
+      .eq("id", draftId)
+      .eq("management_company_id", profile.management_company_id)
+      .single();
+    if (loadErr || !draft) return { error: "Draft not found" };
+    if (draft.promoted_oc_id) {
+      return { error: "This draft has already become a real OC and can't be deleted from here." };
+    }
+    // Best-effort R2 cleanup. Failures here are non-fatal — we still
+    // want to drop the DB row even if a stray object hangs around.
+    const { deleteObject } = await import("@/lib/storage/r2");
+    const keys = [
+      draft.plan_storage_key,
+      draft.rules_storage_key,
+      draft.insurance_doc_storage_key,
+      draft.photo_storage_key,
+    ].filter((k): k is string => !!k);
+    await Promise.all(keys.map((k) => deleteObject(k).catch(() => null)));
+    const { error: delErr } = await sb.from("oc_drafts").delete().eq("id", draftId);
+    if (delErr) {
+      console.error("deleteDraft: delete failed", delErr);
+      return { error: "Couldn't delete the draft — please try again." };
+    }
+    // Refresh the sidebar OC list since drafts appear there too.
+    updateTag(`sidebar-ocs-${profile.management_company_id}`);
+    return { success: true };
+  } catch (err) {
+    console.error("deleteDraft: unexpected error", err);
+    return { error: err instanceof Error ? err.message : "Unexpected error" };
+  }
+}

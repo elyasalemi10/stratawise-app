@@ -5,6 +5,7 @@ import { toast } from "sonner";
 import { Loader2, AlertTriangle, Download, Upload, FileSpreadsheet } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
 import {
   Dialog,
   DialogContent,
@@ -415,80 +416,15 @@ export function Page4Lots({
                       </div>
                     </td>
                   </tr>
-                  {/* Postal address sub-row — always rendered (every lot
-                      needs a posting address for paper fallback). Spans
-                      from the Owner-name column to the right so it
-                      visually nests under the lot's data without
-                      stealing horizontal space from the main row. */}
-                  <tr>
-                    <td className="px-2 pb-2 pt-0" colSpan={2} />
-                    <td className="px-2 pb-2 pt-0" colSpan={4}>
-                      <div className="flex items-center gap-2">
-                        <span className="text-[11px] uppercase tracking-wide text-muted-foreground shrink-0 w-16">Postal</span>
-                        <Input
-                          value={lot.owner_postal_address ?? ""}
-                          onChange={(e) => updateLot(idx, { owner_postal_address: e.target.value })}
-                          aria-invalid={errs.postal || undefined}
-                          placeholder="Owner postal address (street, suburb, state, postcode)"
-                          className="h-8"
-                        />
-                      </div>
-                    </td>
-                  </tr>
-                  {/* Opening-arrears sub-row. Merged in from the old final
-                      step so the manager fills lot + owner + arrears on
-                      one screen instead of scrolling back and forth
-                      between two tables. Debit (positive) = lot owes OC;
-                      Credit (negative) = OC owes lot. */}
-                  {(() => {
-                    const bal = Number(lot.opening_balance ?? 0);
-                    const isCredit = bal < 0;
-                    const absStr = Math.abs(bal) === 0 ? "" : String(Math.abs(bal));
-                    function setAmount(absVal: string) {
-                      const n = parseFloat(absVal) || 0;
-                      updateLot(idx, { opening_balance: isCredit ? -n : n });
-                    }
-                    function setType(toCredit: boolean) {
-                      const cur = Math.abs(Number(lot.opening_balance ?? 0));
-                      updateLot(idx, { opening_balance: cur === 0 ? 0 : (toCredit ? -cur : cur) });
-                    }
-                    return (
-                      <tr>
-                        <td className="px-2 pb-2 pt-0" colSpan={2} />
-                        <td className="px-2 pb-2 pt-0" colSpan={4}>
-                          <div className="flex items-center gap-2">
-                            <span className="text-[11px] uppercase tracking-wide text-muted-foreground shrink-0 w-16">Arrears</span>
-                            <div className="inline-flex rounded-md border border-border bg-card p-0.5 shrink-0">
-                              <button
-                                type="button"
-                                onClick={() => setType(false)}
-                                className={`px-2.5 py-0.5 text-xs rounded-sm cursor-pointer ${!isCredit ? "bg-primary text-primary-foreground" : "text-muted-foreground"}`}
-                              >
-                                Debit
-                              </button>
-                              <button
-                                type="button"
-                                onClick={() => setType(true)}
-                                className={`px-2.5 py-0.5 text-xs rounded-sm cursor-pointer ${isCredit ? "bg-primary text-primary-foreground" : "text-muted-foreground"}`}
-                              >
-                                Credit
-                              </button>
-                            </div>
-                            <div className="relative flex-1">
-                              <span className="absolute left-3 top-1/2 -translate-y-1/2 text-xs text-muted-foreground">$</span>
-                              <Input
-                                value={absStr}
-                                onChange={(e) => setAmount(e.target.value.replace(/[^\d.]/g, ""))}
-                                placeholder="Amount as at handover (0 = no opening balance)"
-                                inputMode="decimal"
-                                className="h-8 pl-7"
-                              />
-                            </div>
-                          </div>
-                        </td>
-                      </tr>
-                    );
-                  })()}
+                  {/* The old Postal + Arrears sub-rows lived here — both
+                      moved out:
+                        • Notice addresses (was "postal address") now sit
+                          in their own table below this one — single
+                          well-aligned column rather than a cramped
+                          sub-row.
+                        • Opening arrears moved back to the Opening
+                          balances step (8) where they fit alongside the
+                          per-OC fund balances. */}
                   {!ownerOccupied && (
                     <tr className="bg-muted/20">
                       <td className="px-2 py-1.5" colSpan={2} />
@@ -523,6 +459,58 @@ export function Page4Lots({
             })}
           </tbody>
         </table>
+      </div>
+
+      {/* Notice addresses — one per lot owner. Where paper notices are
+          posted when the owner hasn't consented to digital comms for a
+          category. Same field as the old "postal address" sub-row; just
+          renamed (postal IS the notice address — there's no separate
+          field) and split into its own table for clean alignment. */}
+      <div className="space-y-2 pt-2">
+        <div className="flex items-baseline justify-between">
+          <div>
+            <Label className="text-sm font-semibold text-foreground">Notice addresses</Label>
+            <p className="text-xs text-muted-foreground mt-0.5">
+              Where paper notices land for each lot owner. Required for every lot — every owner needs somewhere we can post a fallback notice.
+            </p>
+          </div>
+        </div>
+        <div className="rounded-md border border-border bg-card overflow-hidden">
+          <table className="w-full text-sm">
+            <thead className="bg-muted/40 text-muted-foreground">
+              <tr className="text-xs uppercase tracking-wide border-b border-border">
+                <th className="px-3 py-2 text-left font-medium w-20">Lot</th>
+                <th className="px-3 py-2 text-left font-medium w-44">Owner</th>
+                <th className="px-3 py-2 text-left font-medium">Notice address</th>
+              </tr>
+            </thead>
+            <tbody>
+              {lots.map((lot, idx) => {
+                const errs = rowErrors[idx] ?? {};
+                return (
+                  <tr key={idx}>
+                    <td className="px-3 py-1.5 tabular-nums">
+                      {lot.lot_number}
+                      {lot.unit_number ? <span className="text-muted-foreground"> / {lot.unit_number}</span> : null}
+                    </td>
+                    <td className="px-3 py-1.5 text-muted-foreground truncate" title={lot.owner_name || ""}>
+                      {lot.owner_name || "—"}
+                    </td>
+                    <td className="px-3 py-1.5">
+                      <Input
+                        value={lot.owner_postal_address ?? ""}
+                        onChange={(e) => updateLot(idx, { owner_postal_address: e.target.value })}
+                        aria-invalid={errs.postal || undefined}
+                        placeholder="Street, suburb, state, postcode"
+                        className="h-8"
+                      />
+                    </td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
+        </div>
       </div>
 
       <div className="flex items-center justify-between pt-2">

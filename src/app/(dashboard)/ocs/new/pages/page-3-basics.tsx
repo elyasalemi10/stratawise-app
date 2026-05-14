@@ -178,10 +178,11 @@ export function Page3Basics({
   onBack: () => void;
 }) {
   const [title, setTitle] = useState(initialDraft.trading_name ?? "");
-  // Services-only support is deferred — feature parity isn't built yet, so
-  // we preserve whatever value an existing draft holds but never change it
-  // from the UI. New drafts arrive as false. See item 6 of the May refresh.
-  const servicesOnly = initialDraft.services_only ?? false;
+  // Services-only is the ONLY tier override available — checking it forces
+  // Tier 5 regardless of lot count (most are 2-lot OCs but some service
+  // lots have higher counts and still classify as Tier 5). Manager
+  // doesn't otherwise pick tier; it's auto-derived.
+  const [servicesOnly, setServicesOnly] = useState<boolean>(initialDraft.services_only ?? false);
   const [fyMonth, setFyMonth] = useState<number>(initialDraft.financial_year_start_month ?? 7);
   const [billingCycle, setBillingCycle] = useState<BillingCycle>(
     (initialDraft.billing_cycle as BillingCycle | undefined) ?? "quarterly",
@@ -214,14 +215,11 @@ export function Page3Basics({
     initialDraft.manager_appointment_date ?? "",
   );
 
-  // Auto-tier from lot count + services-only. Confirmed value (when the
-  // manager overrides) lands in tierConfirmed; otherwise we use autoTier
-  // directly. Re-derives on every render when totalLots / servicesOnly
-  // change so a manager who added lots on Page 2 sees the bump.
+  // Tier is fully auto-derived from lot count + services-only — no
+  // manual override (the spec was: only the services-only checkbox can
+  // flip the tier; everything else is mechanical). Re-derives on every
+  // render so toggling the checkbox updates the chip immediately.
   const autoTier = computeAutoTier(totalLots, servicesOnly);
-  const [tierConfirmed, setTierConfirmed] = useState<number | null>(
-    initialDraft.tier ?? null,
-  );
 
   const [pending, setPending] = useState(false);
   const [photoKey, setPhotoKey] = useState<string | null>(initialPhotoKey);
@@ -423,7 +421,7 @@ export function Page3Basics({
       billing_cycle: billingCycle,
       notice_address: resolvedNotice,
       manager_appointment_date: managerAppointmentDate || undefined,
-      tier: tierConfirmed ?? autoTier,
+      tier: autoTier,
     }, 4);
     if (r.error) {
       setPending(false);
@@ -476,39 +474,35 @@ export function Page3Basics({
             </p>
           </div>
 
-          {/* Tier confirmation. Auto-computed from total_lots +
-              services_only and shown as a read-only chip with a small
-              "Override" link — most managers should never touch it, but
-              services-only Tier 5 + boundary cases (9-vs-10 lots) need a
-              way out. */}
-          <div className="space-y-1.5">
+          {/* Tier — fully auto-derived. The chip just SHOWS the
+              computed value; the only thing the manager can change is
+              the services-only checkbox below, which forces Tier 5.
+              No manual tier picker — the spec was "just a checkmark,
+              this is a services-only OC". */}
+          <div className="space-y-2">
             <Label>VIC OC tier</Label>
             <div className="flex items-center gap-3 rounded-md border border-border bg-muted/30 px-3 py-2">
               <span className="inline-flex items-center justify-center rounded-md bg-primary text-primary-foreground text-xs font-semibold px-2 py-0.5">
-                Tier {tierConfirmed ?? autoTier}
+                Tier {autoTier}
               </span>
               <span className="text-xs text-muted-foreground flex-1">
                 Auto-calculated from {totalLots} lot{totalLots === 1 ? "" : "s"}{servicesOnly ? " (services-only)" : ""}.
               </span>
-              <Select
-                value={String(tierConfirmed ?? autoTier)}
-                onValueChange={(v) => setTierConfirmed(parseInt(v ?? "5", 10))}
-              >
-                <SelectTrigger className="w-32 h-8 text-xs">
-                  <SelectValue>Tier {tierConfirmed ?? autoTier}</SelectValue>
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="1">Tier 1 (100+ lots)</SelectItem>
-                  <SelectItem value="2">Tier 2 (51–99 lots)</SelectItem>
-                  <SelectItem value="3">Tier 3 (10–50 lots)</SelectItem>
-                  <SelectItem value="4">Tier 4 (3–9 lots)</SelectItem>
-                  <SelectItem value="5">Tier 5 (2 lots / services-only)</SelectItem>
-                </SelectContent>
-              </Select>
+            </div>
+            <div className="flex items-start gap-2 pl-1">
+              <Checkbox
+                id="services-only"
+                checked={servicesOnly}
+                onCheckedChange={(v) => setServicesOnly(v === true)}
+              />
+              <div className="-mt-0.5">
+                <Label className="text-sm text-foreground">This is a services-only OC</Label>
+                <p className="text-xs text-muted-foreground">Forces Tier 5 regardless of lot count.</p>
+              </div>
             </div>
           </div>
 
-          {/* Services-only flag is plumbed through draft_json (default false)
+          {/* (services-only checkbox now lives inside the tier card
               but no longer exposed in the UI — the feature isn't supported
               in MVP and the checkbox just confused managers. Hidden until
               we ship the services-only compliance path. */}
