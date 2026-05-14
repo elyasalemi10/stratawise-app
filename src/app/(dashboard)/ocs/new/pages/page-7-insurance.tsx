@@ -97,7 +97,6 @@ type ParsedFromServer = {
   premium: number | null;
   start_date: string | null;
   end_date: string | null;
-  notes: string | null;
 };
 
 type PendingCoc = {
@@ -218,7 +217,9 @@ export function Page7Insurance({
       premium: p.premium ?? undefined,
       start_date: p.start_date ?? "",
       end_date: p.end_date ?? "",
-      notes: p.notes ?? "",
+      // notes is intentionally NOT seeded from the CoC parser — only
+      // managers write notes. See parse-insurance.ts for rationale.
+      notes: "",
       // Tag each policy with the R2 key of the CoC it came from so
       // completeWizard can wire insurance_policies.source_document_id back
       // to the documents row created from this cert.

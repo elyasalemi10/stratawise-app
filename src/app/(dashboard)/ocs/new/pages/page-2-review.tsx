@@ -99,7 +99,10 @@ export function Page2Review({
   }
   function addLot() {
     const nextNum = lots.length === 0 ? 1 : Math.max(...lots.map((l) => l.lot_number)) + 1;
-    setLots((prev) => [...prev, { lot_number: nextNum, unit_entitlement: 0, lot_liability: 0 }]);
+    // Leave entitlement/liability undefined so the new row's inputs start
+    // EMPTY rather than seeded with 0 — the manager always wants to type
+    // the value, and 0 in entitlement is illegal anyway.
+    setLots((prev) => [...prev, { lot_number: nextNum }]);
   }
   function removeLot(idx: number) {
     setLots((prev) => prev.filter((_, i) => i !== idx));
@@ -158,16 +161,22 @@ export function Page2Review({
     } else {
       setAddLotInvalid(false);
     }
-    const zeroEntitlement: number[] = [];
-    const zeroLiability: number[] = [];
+    // Entitlement: must be present and > 0. Liability: must be present;
+    // 0 is legal (e.g. services-only lots with no share of common-property
+    // running costs). Both fields can be EMPTY during typing — only flagged
+    // when the manager actually tries to continue.
+    const missingEntitlement: number[] = [];
+    const missingLiability: number[] = [];
     const missingUnit: number[] = [];
     lots.forEach((l, i) => {
-      if (!(Number(l.unit_entitlement) > 0)) {
-        zeroEntitlement.push(l.lot_number);
+      const ent = l.unit_entitlement;
+      if (ent == null || Number.isNaN(Number(ent)) || Number(ent) <= 0) {
+        missingEntitlement.push(l.lot_number);
         nextLotErrors[i].entitlement = true;
       }
-      if (!(Number(l.lot_liability) > 0)) {
-        zeroLiability.push(l.lot_number);
+      const lia = l.lot_liability;
+      if (lia == null || Number.isNaN(Number(lia)) || Number(lia) < 0) {
+        missingLiability.push(l.lot_number);
         nextLotErrors[i].liability = true;
       }
       if (!l.unit_number || !l.unit_number.trim()) {
@@ -175,15 +184,15 @@ export function Page2Review({
         nextLotErrors[i].unit = true;
       }
     });
-    if (zeroEntitlement.length > 0) {
-      const ids = zeroEntitlement.slice(0, 3).map((n) => `Lot ${n}`).join(", ");
-      const more = zeroEntitlement.length > 3 ? ` and ${zeroEntitlement.length - 3} more` : "";
+    if (missingEntitlement.length > 0) {
+      const ids = missingEntitlement.slice(0, 3).map((n) => `Lot ${n}`).join(", ");
+      const more = missingEntitlement.length > 3 ? ` and ${missingEntitlement.length - 3} more` : "";
       problems.push(`Unit entitlement must be greater than 0 for every lot (${ids}${more}).`);
     }
-    if (zeroLiability.length > 0) {
-      const ids = zeroLiability.slice(0, 3).map((n) => `Lot ${n}`).join(", ");
-      const more = zeroLiability.length > 3 ? ` and ${zeroLiability.length - 3} more` : "";
-      problems.push(`Lot liability must be greater than 0 for every lot (${ids}${more}).`);
+    if (missingLiability.length > 0) {
+      const ids = missingLiability.slice(0, 3).map((n) => `Lot ${n}`).join(", ");
+      const more = missingLiability.length > 3 ? ` and ${missingLiability.length - 3} more` : "";
+      problems.push(`Lot liability is required for every lot — 0 is allowed (${ids}${more}).`);
     }
     if (missingUnit.length > 0) {
       const ids = missingUnit.slice(0, 3).map((n) => `Lot ${n}`).join(", ");
@@ -443,15 +452,14 @@ export function Page2Review({
                         />
                       </td>
                       <td className="px-3 py-1.5" data-cell={`${idx}:2`}>
-                        {/* `value != null` rather than `value ?` so the
-                            user can actually type 0 — the truthy check
-                            collapsed 0 back to empty on every keystroke.
-                            0 is illegal under VIC OC Act but only the
-                            submit validator flags it; typing through 0
-                            is allowed. */}
+                        {/* Empty stays empty (undefined) — the submit
+                            validator catches missing entitlement/liability
+                            at Continue time. Typing 0 stays as 0. The
+                            previous `v === "" ? 0` coalescion forced 0
+                            on blank inputs and made empty unreachable. */}
                         <NumberInput
                           value={lot.unit_entitlement != null ? String(lot.unit_entitlement) : ""}
-                          onChange={(v) => updateLot(idx, { unit_entitlement: v === "" ? 0 : parseFloat(v) })}
+                          onChange={(v) => updateLot(idx, { unit_entitlement: v === "" ? undefined : parseFloat(v) })}
                           invalid={errs.entitlement || undefined}
                           className="h-8"
                         />
@@ -459,7 +467,7 @@ export function Page2Review({
                       <td className="px-3 py-1.5" data-cell={`${idx}:3`}>
                         <NumberInput
                           value={lot.lot_liability != null ? String(lot.lot_liability) : ""}
-                          onChange={(v) => updateLot(idx, { lot_liability: v === "" ? 0 : parseFloat(v) })}
+                          onChange={(v) => updateLot(idx, { lot_liability: v === "" ? undefined : parseFloat(v) })}
                           invalid={errs.liability || undefined}
                           className="h-8"
                         />

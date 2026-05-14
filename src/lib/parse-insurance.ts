@@ -17,11 +17,14 @@ export type ParsedInsurancePolicy = {
   premium: number | null;
   start_date: string | null;      // ISO yyyy-mm-dd
   end_date: string | null;        // ISO yyyy-mm-dd
-  /** Free-text notes the certificate carries about this policy — exclusions,
-   *  named insureds, special endorsements, mid-year broker changes. Null
-   *  when the cert has nothing to add beyond the structured fields. */
-  notes: string | null;
 };
+// Note: Gemini does NOT extract "notes" — the field is manager-entered only.
+// The model kept hallucinating boilerplate like "Policy covers Strata
+// Building with Legal Liability of $20,000,000. Financial Interest:
+// National Australia Bank LIMITED. This certificate is for information
+// only and does not amend, extend or alter the coverage provided by the
+// policy." That's restating the structured fields, not adding context.
+// notes stays in the DB + the UI textbox, but only the manager writes to it.
 
 export type ParsedInsuranceDocument = {
   /** Did Gemini decide this is a real CoC / policy schedule? */
@@ -72,7 +75,6 @@ const RESPONSE_SCHEMA = {
           premium: { type: Type.NUMBER, nullable: true, description: "Annual premium in AUD inclusive of GST + stamp duty. Null if not shown." },
           start_date: { type: Type.STRING, nullable: true, description: "ISO yyyy-mm-dd. Period of insurance FROM date." },
           end_date: { type: Type.STRING, nullable: true, description: "ISO yyyy-mm-dd. Period of insurance TO date." },
-          notes: { type: Type.STRING, nullable: true, description: "Brief free-text notes the cert carries about this policy — exclusions, endorsements, named insureds, broker / underwriter notes. Pull verbatim phrases when meaningful; null if the cert is purely tabular." },
         },
         required: ["provider", "policy_type"],
       },
@@ -94,7 +96,7 @@ Other rules:
 - Money fields are AUD numbers, no currency symbols. Strip commas: "$12,500,000" → 12500000.
 - "Legal Liability $20 million" → 20000000 (parse abbreviations like 'million' / 'm' / 'mn').
 - Dates: ISO yyyy-mm-dd. Australian DD/MM/YYYY is the dominant source format — convert carefully. Do NOT extract times — the form has dropped time fields.
-- Notes: pull any free-text the cert carries that doesn't fit the structured fields — endorsements, exclusions, named insureds beyond the headline insured, broker / underwriter side-notes, mid-year change references. Keep it brief (1-2 sentences). Null if the cert has nothing useful to add beyond the structured fields.
+- Do NOT produce a "notes" field. That field is reserved for the manager's own annotations (mid-year broker changes, claim history, etc.) and should not be populated from boilerplate cert language. If you find policy-level info that doesn't fit the structured fields, leave it out rather than inventing a notes field.
 - plan_number: scan the cert for the Plan-of-Subdivision identifier ("PS812345X" or similar — "PS" + 6 digits + 1 letter). Typically near the address or under "Insured" / "Property Description". Case-insensitive — emit upper-case. Null if not present.
 - insured_name: the named insured / owners corporation name from the cert header. Null if not present.
 

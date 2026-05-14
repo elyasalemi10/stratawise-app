@@ -78,6 +78,10 @@ export function Page5Comms({
   );
   const [bufferInvalid, setBufferInvalid] = useState<{ meetings: boolean; levies: boolean; financial: boolean }>({ meetings: false, levies: false, financial: false });
   const [pending, setPending] = useState(false);
+  // 5.1 sub-view — the buffer screen. Lives within step 5 (no progress-bar
+  // bump). After the main Comms config screen, Continue moves to "buffer"
+  // if postal is in play; otherwise we save + advance straight to step 6.
+  const [phase, setPhase] = useState<"main" | "buffer">("main");
 
   function toggleOffered(category: string) {
     setOfferedCategories((prev) =>
@@ -129,8 +133,18 @@ export function Page5Comms({
     });
   }, [defaultDelivery, lots, offeredCategories]);
 
-  async function onContinue() {
-    // Validate buffer days. Floor 7, no ceiling. NaN / empty fail.
+  // Phase 1 Continue: main Comms screen → either jump to the 5.1 buffer
+  // screen (when postal is in play) or save + advance to step 6.
+  async function onMainContinue() {
+    if (anyPostalInPlay) {
+      setPhase("buffer");
+      return;
+    }
+    await persist({ meetings: 14, levies: 14, financial: 14 });
+  }
+
+  // Phase 2 Continue: 5.1 buffer screen → validate + save + advance.
+  async function onBufferContinue() {
     const parseBuffer = (s: string): number | null => {
       const n = parseInt(s, 10);
       if (!Number.isFinite(n) || n < 7) return null;
@@ -139,31 +153,32 @@ export function Page5Comms({
     const problems: string[] = [];
     const flags = { meetings: false, levies: false, financial: false };
     let meetingsN = 14, leviesN = 14, financialN = 14;
-    if (anyPostalInPlay) {
-      const m = parseBuffer(meetingsBuffer);
-      const l = parseBuffer(leviesBuffer);
-      const f = parseBuffer(financialBuffer);
-      if (m === null) { problems.push("Meetings buffer must be 7 days or more."); flags.meetings = true; }
-      else meetingsN = m;
-      if (l === null) { problems.push("Levies buffer must be 7 days or more."); flags.levies = true; }
-      else leviesN = l;
-      if (f === null) { problems.push("Financial documents buffer must be 7 days or more."); flags.financial = true; }
-      else financialN = f;
-    }
+    const m = parseBuffer(meetingsBuffer);
+    const l = parseBuffer(leviesBuffer);
+    const f = parseBuffer(financialBuffer);
+    if (m === null) { problems.push("Meetings buffer must be 7 days or more."); flags.meetings = true; }
+    else meetingsN = m;
+    if (l === null) { problems.push("Levies buffer must be 7 days or more."); flags.levies = true; }
+    else leviesN = l;
+    if (f === null) { problems.push("Financial documents buffer must be 7 days or more."); flags.financial = true; }
+    else financialN = f;
     setBufferInvalid(flags);
     if (problems.length) {
       toast.error(problems.length === 1 ? problems[0] : "Fix the highlighted buffer fields.");
       return;
     }
+    await persist({ meetings: meetingsN, levies: leviesN, financial: financialN });
+  }
 
+  async function persist(buffers: { meetings: number; levies: number; financial: number }) {
     setPending(true);
     const r = await saveStep(draftId, {
       default_delivery_method: defaultDelivery,
       collect_consent_on_signup: collectOnSignup,
       consent_categories_offered: offeredCategories,
-      meetings_postal_buffer_days: meetingsN,
-      levies_postal_buffer_days: leviesN,
-      financial_postal_buffer_days: financialN,
+      meetings_postal_buffer_days: buffers.meetings,
+      levies_postal_buffer_days: buffers.levies,
+      financial_postal_buffer_days: buffers.financial,
       lots,
     }, 6);
     if (r.error) {
@@ -184,11 +199,21 @@ export function Page5Comms({
   return (
     <div className="space-y-6">
       <div className="text-center">
-        <h2 className="text-lg font-semibold text-foreground">Communications & consent</h2>
+        <h2 className="text-lg font-semibold text-foreground">
+          {phase === "main" ? "Communications & consent" : "Postal transit buffer"}
+        </h2>
         <p className="mt-1 text-sm text-muted-foreground">
-          How this OC sends notices, and what each lot owner has already consented to receive digitally.
+          {phase === "main"
+            ? "How this OC sends notices, and what each lot owner has already consented to receive digitally."
+            : "Extra days added on top of the statutory minimum so postal notices reach owners in time."}
         </p>
       </div>
+      {/* phase=main: full Comms configuration. phase=buffer: a sub-view
+          (informally "5.1") that's shown only when at least one notice
+          will travel by post. NOT a separate step number — the progress
+          bar stays on 5 throughout. */}
+      {phase === "main" && (
+      <>{/* MAIN PHASE start */}
 
       {/* OC-wide default delivery method. Three explicit tiles rather than
           a Select so the trade-off (email faster + cheaper vs postal more
@@ -388,52 +413,6 @@ export function Page5Comms({
         </div>
       )}
 
-      {/* Postal transit buffer. Only shown when ANY notice will travel by
-          post (default postal, or mixed with category gaps). Pure-email
-          OCs never hit the postal buffer so the screen stays quiet. */}
-      {anyPostalInPlay && (
-        <div className="space-y-3 rounded-md border border-border bg-card p-4">
-          <div className="flex items-start gap-2">
-            <Info className="h-4 w-4 text-primary mt-0.5 shrink-0" />
-            <div>
-              <h3 className="text-sm font-semibold text-foreground">Postal transit buffer</h3>
-              <p className="mt-0.5 text-xs text-muted-foreground">
-                Extra days added on top of the statutory minimum so postal notices reach owners in time.
-                <strong className="ml-1 text-foreground">Send date = event date − (statutory minimum + buffer).</strong>
-                {" "}Floor 7 days, default 14, no upper limit.
-              </p>
-            </div>
-          </div>
-          <div className="grid grid-cols-1 gap-3 md:grid-cols-3">
-            {([
-              { key: "meetings" as const, label: "Meetings (committee, general, AGM)", value: meetingsBuffer, setter: setMeetingsBuffer, statutory: "7d committee, 14d general/AGM" },
-              { key: "levies" as const, label: "Levy notices", value: leviesBuffer, setter: setLeviesBuffer, statutory: "28d" },
-              { key: "financial" as const, label: "Financial documents", value: financialBuffer, setter: setFinancialBuffer, statutory: "—" },
-            ]).map((row) => (
-              <div key={row.key} className="space-y-1.5">
-                <Label htmlFor={`buf-${row.key}`} className="text-xs font-medium text-foreground">{row.label}</Label>
-                <div className="relative">
-                  <NumberInput
-                    id={`buf-${row.key}`}
-                    allowDecimal={false}
-                    value={row.value}
-                    onChange={(v) => {
-                      row.setter(v);
-                      if (bufferInvalid[row.key]) setBufferInvalid((b) => ({ ...b, [row.key]: false }));
-                    }}
-                    invalid={bufferInvalid[row.key]}
-                    placeholder="Days"
-                    className="pr-12"
-                  />
-                  <span className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 text-xs text-muted-foreground">days</span>
-                </div>
-                <p className="text-[11px] text-muted-foreground">Statutory min: {row.statutory}</p>
-              </div>
-            ))}
-          </div>
-        </div>
-      )}
-
       {lotsWithoutEmail.length > 0 && (
         <div className="rounded-md border border-border bg-muted/30 p-3">
           <p className="text-xs text-muted-foreground">
@@ -445,11 +424,64 @@ export function Page5Comms({
 
       <div className="flex justify-between pt-2">
         <Button type="button" variant="secondary" onClick={onBack} disabled={pending}>Back</Button>
-        <Button type="button" onClick={onContinue} disabled={pending}>
+        <Button type="button" onClick={onMainContinue} disabled={pending}>
           {pending && <Loader2 className="size-4 animate-spin" />}
           Continue
         </Button>
       </div>
+      </>)}{/* MAIN PHASE end */}
+
+      {/* 5.1 buffer sub-view. Same step indicator (no progress-bar bump);
+          Back returns to the main Comms config so the manager can edit
+          their consent state if the buffer screen reminds them of an
+          owner they forgot. */}
+      {phase === "buffer" && (
+        <div className="space-y-4">
+          <div className="rounded-md border border-border bg-card p-4 space-y-3">
+            <div className="flex items-start gap-2">
+              <Info className="h-4 w-4 text-primary mt-0.5 shrink-0" />
+              <p className="text-xs text-muted-foreground">
+                <strong className="text-foreground">Send date = event date − (statutory minimum + buffer).</strong>
+                {" "}Floor 7 days, default 14, no upper limit. Only applies when at least one lot owner receives that notice by post.
+              </p>
+            </div>
+            <div className="grid grid-cols-1 gap-3 md:grid-cols-3">
+              {([
+                { key: "meetings" as const, label: "Meetings (committee, general, AGM)", value: meetingsBuffer, setter: setMeetingsBuffer, statutory: "7d committee, 14d general/AGM" },
+                { key: "levies" as const, label: "Levy notices", value: leviesBuffer, setter: setLeviesBuffer, statutory: "28d" },
+                { key: "financial" as const, label: "Financial documents", value: financialBuffer, setter: setFinancialBuffer, statutory: "—" },
+              ]).map((row) => (
+                <div key={row.key} className="space-y-1.5">
+                  <Label htmlFor={`buf-${row.key}`} className="text-xs font-medium text-foreground">{row.label}</Label>
+                  <div className="relative">
+                    <NumberInput
+                      id={`buf-${row.key}`}
+                      allowDecimal={false}
+                      value={row.value}
+                      onChange={(v) => {
+                        row.setter(v);
+                        if (bufferInvalid[row.key]) setBufferInvalid((b) => ({ ...b, [row.key]: false }));
+                      }}
+                      invalid={bufferInvalid[row.key]}
+                      placeholder="Days"
+                      className="pr-12"
+                    />
+                    <span className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 text-xs text-muted-foreground">days</span>
+                  </div>
+                  <p className="text-[11px] text-muted-foreground">Statutory min: {row.statutory}</p>
+                </div>
+              ))}
+            </div>
+          </div>
+          <div className="flex justify-between pt-2">
+            <Button type="button" variant="secondary" onClick={() => setPhase("main")} disabled={pending}>Back</Button>
+            <Button type="button" onClick={onBufferContinue} disabled={pending}>
+              {pending && <Loader2 className="size-4 animate-spin" />}
+              Continue
+            </Button>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

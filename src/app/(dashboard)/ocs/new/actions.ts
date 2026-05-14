@@ -36,8 +36,12 @@ export type DraftInsurancePolicy = {
 export type DraftLot = {
   lot_number: number;
   unit_number?: string;            // e.g. "3B" — apartment / unit label distinct from lot_number
-  unit_entitlement: number;
-  lot_liability: number;
+  // Nullable to support the wizard's "empty until Continue" UX — both
+  // fields can be undefined while the manager is typing, and validation
+  // only fires on submit. Liability is allowed to be 0 (services lots);
+  // entitlement must be > 0 under VIC OC Act.
+  unit_entitlement?: number;
+  lot_liability?: number;
   owner_name?: string;
   owner_email?: string;
   owner_phone?: string;
@@ -1285,12 +1289,16 @@ export async function completeWizard(draftId: string) {
     });
 
     // Insert lots — opening_balance carries per-lot arrears/credit at setup date.
+    // Entitlement / liability are coerced to a number here; the submit
+    // validator on Page 2 guarantees they're set + entitlement > 0 + liability
+    // >= 0 before we reach completeWizard, so falling back to 0 is just a
+    // safety net for older drafts that predate the nullable schema.
     const lotsToInsert = d.lots.map((l) => ({
       oc_id: oc.id,
       lot_number: l.lot_number,
       unit_number: l.unit_number || null,
-      lot_entitlement: l.unit_entitlement,
-      lot_liability: l.lot_liability,
+      lot_entitlement: l.unit_entitlement ?? 0,
+      lot_liability: l.lot_liability ?? 0,
       opening_balance: l.opening_balance ?? 0,
     }));
     const { data: insertedLots, error: lotsError } = await supabase
