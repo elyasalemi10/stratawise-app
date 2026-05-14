@@ -195,6 +195,7 @@ function SimpleDropdown({
   side = "bottom",
   matchWidth = false,
   closeOnClick = true,
+  onClose,
 }: {
   trigger: React.ReactNode;
   children: React.ReactNode;
@@ -204,11 +205,22 @@ function SimpleDropdown({
    *  true (the existing dropdown behaviour). The OC switcher passes false
    *  because clicks inside the search input and pin-star shouldn't dismiss. */
   closeOnClick?: boolean;
+  /** Fires whenever the panel transitions to closed (click-outside, escape,
+   *  or selecting an item with closeOnClick=true). Lets callers reset
+   *  ephemeral state like a search query so the next open starts clean. */
+  onClose?: () => void;
 }) {
   const [open, setOpen] = useState(false);
   const wrapperRef = useRef<HTMLDivElement>(null);
   const panelRef = useRef<HTMLDivElement>(null);
   const [panelStyle, setPanelStyle] = useState<React.CSSProperties>({});
+  const onCloseRef = useRef(onClose);
+  useEffect(() => { onCloseRef.current = onClose; }, [onClose]);
+
+  function closePanel() {
+    setOpen(false);
+    onCloseRef.current?.();
+  }
 
   // Click-outside dismiss. Considers BOTH the trigger wrapper and the
   // portaled panel — without that, clicking inside the portaled panel would
@@ -218,10 +230,11 @@ function SimpleDropdown({
       const t = e.target as Node;
       if (wrapperRef.current?.contains(t)) return;
       if (panelRef.current?.contains(t)) return;
-      setOpen(false);
+      closePanel();
     }
     if (open) document.addEventListener("mousedown", onDocClick);
     return () => document.removeEventListener("mousedown", onDocClick);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open]);
 
   // Position the panel relative to the trigger via fixed coordinates. The
@@ -257,7 +270,7 @@ function SimpleDropdown({
 
   return (
     <div ref={wrapperRef} className="relative">
-      <div onClick={() => setOpen((o) => !o)} className="cursor-pointer">{trigger}</div>
+      <div onClick={() => (open ? closePanel() : setOpen(true))} className="cursor-pointer">{trigger}</div>
       {open && typeof window !== "undefined" && createPortal(
         <div
           ref={panelRef}
@@ -266,7 +279,7 @@ function SimpleDropdown({
           // panel always sits on top regardless of which surface launched
           // it. animate-in keeps the open feel snappy.
           className={`z-[100] rounded-lg border border-border bg-popover shadow-md animate-in fade-in-0 zoom-in-95 duration-100 ${matchWidth ? "" : "min-w-56"}`}
-          onClick={closeOnClick ? () => setOpen(false) : undefined}
+          onClick={closeOnClick ? () => closePanel() : undefined}
           onMouseDown={closeOnClick ? undefined : (e) => e.stopPropagation()}
         >
           {children}
@@ -339,26 +352,30 @@ function OCSwitcherRow({
       <button
         type="button"
         onClick={onSwitch}
-        className="flex flex-1 cursor-pointer items-center gap-2 rounded-md px-2 py-2.5 text-left text-sm"
+        className="flex flex-1 cursor-pointer items-center gap-3 rounded-md px-3 py-3 text-left text-sm"
       >
         {sub.thumbnail_url ? (
           /* eslint-disable-next-line @next/next/no-img-element */
           <img
             src={sub.thumbnail_url}
             alt=""
-            className="size-6 rounded-md border border-border object-cover shrink-0"
+            className="size-9 rounded-md border border-border object-cover shrink-0"
           />
         ) : (
-          <div className="flex size-6 items-center justify-center rounded-md border border-border shrink-0">
-            <Building2 className="size-3.5 shrink-0" />
+          <div className="flex size-9 items-center justify-center rounded-md border border-border shrink-0">
+            <Building2 className="size-4 shrink-0" />
           </div>
         )}
         <div className="flex-1 min-w-0">
-          <span className="block truncate">{sub.name}</span>
-          {isLotOwner && sub.lots && sub.lots.length > 0 && (
+          <span className="block truncate font-medium">{sub.name}</span>
+          {isLotOwner && sub.lots && sub.lots.length > 0 ? (
             <span className="block text-xs text-muted-foreground truncate">
               {sub.lots.map((l) => `Lot ${l.lot_number}${l.unit_number ? ` Unit ${l.unit_number}` : ""}`).join(", ")}
             </span>
+          ) : (
+            sub.plan_number && (
+              <span className="block text-xs text-muted-foreground truncate">{sub.plan_number}</span>
+            )
           )}
         </div>
       </button>
@@ -370,16 +387,17 @@ function OCSwitcherRow({
           onTogglePin();
         }}
         // Pin icon is hidden until row hover, regardless of pinned state.
-        // Pinned rows show a filled pin; unpinned show outline. The hover-
-        // only reveal keeps the panel visually quiet — the user only sees a
-        // pin affordance when they're hovering a row they might want to act
-        // on.
+        // Pinned rows show a filled brand-gold pin; unpinned show outline.
+        // The hover-only reveal keeps the panel visually quiet — the user
+        // only sees a pin affordance when hovering a row they might act on.
         className={cn(
-          "mr-1 inline-flex size-7 cursor-pointer items-center justify-center rounded-md opacity-0 group-hover:opacity-100",
-          isPinned ? "text-amber-500" : "text-muted-foreground hover:text-foreground",
+          "mr-1.5 inline-flex size-8 cursor-pointer items-center justify-center rounded-md opacity-0 group-hover:opacity-100",
+          isPinned
+            ? "text-[color:var(--brand-gold)]"
+            : "text-muted-foreground hover:text-foreground",
         )}
       >
-        <Pin className={cn("size-3.5", isPinned && "fill-current")} />
+        <Pin className={cn("size-4", isPinned && "fill-current")} />
       </button>
     </div>
   );
@@ -681,6 +699,7 @@ export function AppSidebar({
             <SimpleDropdown
               side="right"
               closeOnClick={false}
+              onClose={() => setSwitcherQuery("")}
               trigger={
                 <SidebarMenuButton
                   size="lg"
@@ -736,16 +755,16 @@ export function AppSidebar({
                         type="button"
                         onClick={() => switchOC(null)}
                         className={cn(
-                          "flex w-full cursor-pointer items-center gap-2 rounded-md px-2 py-2.5 text-sm hover:bg-accent",
+                          "flex w-full cursor-pointer items-center gap-3 rounded-md px-3 py-3 text-sm hover:bg-accent",
                           // Matches the OC row treatment — greyed when this
                           // is the user's current location, no check icon.
                           !isInOC ? "bg-muted/60 text-muted-foreground" : "text-foreground",
                         )}
                       >
-                        <div className="flex size-6 items-center justify-center rounded-md border border-border">
-                          <LayoutDashboard className="size-3.5 shrink-0" />
+                        <div className="flex size-9 items-center justify-center rounded-md border border-border">
+                          <LayoutDashboard className="size-4 shrink-0" />
                         </div>
-                        <span className="flex-1 text-left">Main dashboard</span>
+                        <span className="flex-1 text-left font-medium">Main dashboard</span>
                       </button>
                       <div className="relative mt-1">
                         <Search className="pointer-events-none absolute left-2.5 top-1/2 size-3.5 -translate-y-1/2 text-muted-foreground" />
@@ -761,12 +780,11 @@ export function AppSidebar({
                     {/* Scrollable middle. max-h is sized to ~6.5 rows so a
                         partial 7th row peeks at the bottom — that fractional
                         cut is intentional, it signals "scroll for more"
-                        better than a clean edge. Row height ≈ 44px
-                        (py-2.5 + size-6 image). */}
-                    <div className="max-h-[286px] overflow-y-auto p-1">
+                        better than a clean edge. Row height ≈ 60px
+                        (py-3 + size-9 image + two text lines). */}
+                    <div className="max-h-[390px] overflow-y-auto p-1">
                       {pinned.length > 0 && (
                         <>
-                          <div className="px-2 pb-1 pt-1 text-[10px] font-medium uppercase tracking-wide text-muted-foreground">Pinned</div>
                           {pinned.map((sub) => (
                             <OCSwitcherRow
                               key={sub.id}

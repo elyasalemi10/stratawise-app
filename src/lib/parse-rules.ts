@@ -30,8 +30,20 @@ export type ParsedRule = {
   /** Optional document-stated PS number for this OC's scope, if present. */
   oc_plan_number: string | null;
   /** Top-level / chapter heading the rule sits under (e.g. "8. Commercial
-   *  Lots"). Null when the rule itself IS a top-level heading. */
+   *  Lots"). Null when the rule itself IS a top-level heading. Kept for
+   *  backwards compatibility; prefer `chapter_*` + `section_*` for new code. */
   parent_heading: string | null;
+  /** Chapter number — the top-level container, typically a single integer
+   *  ("1", "2", …). Null only when the rule is itself a chapter heading. */
+  chapter_number: string | null;
+  /** Chapter heading text without the number (e.g. "Health Safety and
+   *  Security" for chapter "1"). */
+  chapter_heading: string | null;
+  /** Section number — the middle tier inside a chapter, two-level dotted
+   *  ("1.1", "1.2"). Null when no explicit section exists in the source. */
+  section_number: string | null;
+  /** Section heading text without the number (e.g. "General" for "1.1"). */
+  section_heading: string | null;
   rule_number: string;
   heading: string | null;
   body: string;
@@ -87,7 +99,31 @@ const RESPONSE_SCHEMA = {
             type: Type.STRING,
             nullable: true,
             description:
-              "The top-level chapter / section heading this rule sits under (e.g. '8. Commercial Lots' for rule 8.2.1, '9. Special Rules for the Developer' for rule 9.1.10). Carries the load-bearing context; null only when the rule itself IS a top-level heading.",
+              "DEPRECATED — prefer chapter_heading + section_heading. Kept for back-compat. The combined chapter+section heading this rule sits under (e.g. '8. Commercial Lots' for rule 8.2.1, '9. Special Rules for the Developer' for rule 9.1.10).",
+          },
+          chapter_number: {
+            type: Type.STRING,
+            nullable: true,
+            description:
+              "Chapter number — the top-level numbered container (e.g. '1' for rule '1.1.1', '8' for rule '8.2.1'). Null only when the rule itself IS a chapter heading. Use the literal numeral verbatim from the document, no trailing period.",
+          },
+          chapter_heading: {
+            type: Type.STRING,
+            nullable: true,
+            description:
+              "Chapter heading text without the leading number (e.g. 'Health Safety and Security' for chapter '1', 'Commercial Lots' for chapter '8').",
+          },
+          section_number: {
+            type: Type.STRING,
+            nullable: true,
+            description:
+              "Section number — middle tier inside a chapter, two-level dotted (e.g. '1.1' for rule '1.1.1', '8.2' for rule '8.2.1'). Null when the document doesn't have an explicit section header between chapter and rule.",
+          },
+          section_heading: {
+            type: Type.STRING,
+            nullable: true,
+            description:
+              "Section heading text without the leading number (e.g. 'General' for section '1.1', 'Advertising Signage' for section '8.2').",
           },
           rule_number: {
             type: Type.STRING,
@@ -136,9 +172,15 @@ Multi-OC documents:
 - Every rule MUST carry an oc_scope matching one of the labels in oc_scopes. If the document only defines rules for one OC, all rules share the same scope. Do NOT merge two OCs into a single rule list.
 - A typical signal of an OC boundary is a heading like "Owners Corporation 1 — Rules", "Owners Corporation No. 2", a page break followed by a section reset back to "1.1.1", or an explicit "Special Rules for OC2" header.
 
-Parent section:
-- Rules in OC rules docs typically nest under chapter headings like "8. Commercial Lots" or "9. Special Rules for the Developer". When a rule sits under such a heading, set parent_heading to that exact text. Without this context, "Advertising Signage" reads as a generic rule rather than a commercial-lot rule.
-- parent_heading is null only when the rule itself IS a top-level chapter (e.g. the rule numbered just "8" with heading "Commercial Lots").
+Hierarchy (chapter → section → rule):
+- Australian OC rules documents are typically three-tiered: a CHAPTER number with a heading (bold, e.g. "1. Health Safety and Security"), inside it a SECTION number with a heading (italic / indented, e.g. "1.1. General"), and inside that the actual numbered RULES (e.g. "1.1.1. An owner or occupier...").
+- For EVERY rule, populate:
+    chapter_number   = the leading integer of rule_number ("1" for "1.1.1", "8" for "8.2.1"). Verbatim, no trailing period.
+    chapter_heading  = the chapter's heading text without the number ("Health Safety and Security", "Commercial Lots").
+    section_number   = the two-level dotted prefix ("1.1" for "1.1.1", "8.2" for "8.2.1"). Null only if the document jumps straight from chapter to rule with no middle tier.
+    section_heading  = the section heading text without the number ("General", "Advertising Signage"). Null if section_number is null.
+- Also set parent_heading to a combined string ("1. Health Safety and Security — 1.1 General") for backwards compatibility with older consumers.
+- When a numbered entry IS itself a chapter heading (e.g. the line is just "8. Commercial Lots" with no body text), emit it with section_number=null and rule_number = chapter_number, body = chapter_heading.
 
 Rule mechanics:
 - Return every rule the document defines, in source order.
@@ -182,7 +224,7 @@ function buildClient(): GoogleGenAI {
 export async function parseRulesPdf(pdfBytes: Buffer): Promise<ParsedRulesDocument> {
   const ai = buildClient();
   const result = await ai.models.generateContent({
-    model: "gemini-2.5-pro",
+    model: "gemini-2.5-flash",
     contents: [
       {
         role: "user",

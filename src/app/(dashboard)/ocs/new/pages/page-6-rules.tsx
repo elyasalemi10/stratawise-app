@@ -2,7 +2,7 @@
 
 import { useEffect, useRef, useState } from "react";
 import { toast } from "sonner";
-import { AlertTriangle, ChevronDown, ExternalLink, FileText, Loader2, Pencil, Plus, Upload, X, Scale, Trash2 } from "lucide-react";
+import { AlertTriangle, ChevronDown, FileText, Loader2, Pencil, Plus, Upload, X, Scale, Trash2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -30,7 +30,6 @@ import {
 } from "@/components/ui/select";
 import { VICTORIA_MODEL_RULES } from "@/lib/data/victoria-model-rules";
 import {
-  getDraftRulesSourceUrl,
   parseDraftRules,
   saveDraftRules,
   saveStep,
@@ -42,6 +41,10 @@ import {
 type ParsedRule = {
   oc_scope?: string;
   parent_heading?: string | null;
+  chapter_number?: string | null;
+  chapter_heading?: string | null;
+  section_number?: string | null;
+  section_heading?: string | null;
   rule_number: string;
   heading?: string | null;
   body: string;
@@ -257,8 +260,6 @@ export function Page6Rules({
   const [editType, setEditType] = useState<"registered" | "standing">("registered");
 
   const [deleteIdx, setDeleteIdx] = useState<number | null>(null);
-  const [pdfUrl, setPdfUrl] = useState<string | null>(null);
-  const [pdfLoading, setPdfLoading] = useState(false);
 
   // Persist the current parsedRules list to the draft. Fire-and-forget; we
   // toast on error but don't block the UI.
@@ -266,6 +267,10 @@ export function Page6Rules({
     void saveDraftRules(draftId, rules.map((r) => ({
       oc_scope: r.oc_scope,
       parent_heading: r.parent_heading ?? null,
+      chapter_number: r.chapter_number ?? null,
+      chapter_heading: r.chapter_heading ?? null,
+      section_number: r.section_number ?? null,
+      section_heading: r.section_heading ?? null,
       rule_number: r.rule_number,
       heading: r.heading ?? null,
       body: r.body,
@@ -276,8 +281,40 @@ export function Page6Rules({
     });
   }
 
+  // Build the unique chapter + section combinations from the existing rule
+  // list so the Add dialog can offer them as a Select. Order matches the
+  // first occurrence in source order so chapters/sections feel familiar.
+  function listSections(rules: ParsedRule[]): Array<{ key: string; chapterNumber: string; chapterHeading: string; sectionNumber: string | null; sectionHeading: string | null; label: string }> {
+    const seen = new Map<string, { key: string; chapterNumber: string; chapterHeading: string; sectionNumber: string | null; sectionHeading: string | null; label: string }>();
+    for (const r of rules) {
+      const chNum = r.chapter_number?.trim();
+      if (!chNum) continue;
+      const chHead = (r.chapter_heading ?? "").trim();
+      const secNum = r.section_number?.trim() || null;
+      const secHead = (r.section_heading ?? "").trim() || null;
+      const key = `${chNum}|${secNum ?? ""}`;
+      if (seen.has(key)) continue;
+      const label = secNum
+        ? `${secNum}. ${secHead ?? "Untitled"}  ·  ${chNum}. ${chHead}`
+        : `${chNum}. ${chHead}`;
+      seen.set(key, { key, chapterNumber: chNum, chapterHeading: chHead, sectionNumber: secNum, sectionHeading: secHead, label });
+    }
+    return Array.from(seen.values());
+  }
+
+  // Section the user picked in the Add dialog. "" means "no section / new
+  // chapter"; any other value is the key from listSections().
+  const [addSectionKey, setAddSectionKey] = useState<string>("");
+  // When the user picks "(new)" in the section select, these inputs surface
+  // so they can type a chapter number/heading inline.
+  const [addNewChapterNum, setAddNewChapterNum] = useState("");
+  const [addNewChapterHead, setAddNewChapterHead] = useState("");
+
   function openAdd(type: "registered" | "standing") {
     setAddType(type);
+    setAddSectionKey("");
+    setAddNewChapterNum("");
+    setAddNewChapterHead("");
     // Suggest next sequential top-level number.
     const tops = parsedRules
       .map((r) => r.rule_number.split(".")[0])
@@ -295,11 +332,41 @@ export function Page6Rules({
       toast.error("Rule number and body are both required.");
       return;
     }
+    // Resolve chapter + section context. If user picked an existing section,
+    // we inherit its chapter and section metadata so the new rule slots in
+    // beneath the right header. If they picked "(new chapter)", they typed
+    // chapter num + heading inline.
+    let chapter_number: string | null = null;
+    let chapter_heading: string | null = null;
+    let section_number: string | null = null;
+    let section_heading: string | null = null;
+    if (addSectionKey === "__new__") {
+      chapter_number = addNewChapterNum.trim() || null;
+      chapter_heading = addNewChapterHead.trim() || null;
+    } else if (addSectionKey) {
+      const found = listSections(parsedRules).find((s) => s.key === addSectionKey);
+      if (found) {
+        chapter_number = found.chapterNumber;
+        chapter_heading = found.chapterHeading;
+        section_number = found.sectionNumber;
+        section_heading = found.sectionHeading;
+      }
+    }
+    const parent_heading = chapter_number
+      ? section_number
+        ? `${chapter_number}. ${chapter_heading ?? ""} — ${section_number} ${section_heading ?? ""}`.trim()
+        : `${chapter_number}. ${chapter_heading ?? ""}`.trim()
+      : null;
     const next: ParsedRule = {
       rule_number: addNumber.trim(),
       heading: addHeading.trim() || null,
       body: addBody.trim(),
       rule_type: addType,
+      chapter_number,
+      chapter_heading,
+      section_number,
+      section_heading,
+      parent_heading,
     };
     const merged = [...parsedRules, next];
     setParsedRules(merged);
@@ -341,22 +408,6 @@ export function Page6Rules({
     setRuleCount(merged.length);
     persistRules(merged);
     setDeleteIdx(null);
-  }
-
-  async function openPreview() {
-    if (pdfUrl) {
-      window.open(pdfUrl, "_blank", "noopener");
-      return;
-    }
-    setPdfLoading(true);
-    const r = await getDraftRulesSourceUrl(draftId);
-    setPdfLoading(false);
-    if (!r.url) {
-      toast.error(r.error ?? "No PDF attached to this rule.");
-      return;
-    }
-    setPdfUrl(r.url);
-    window.open(r.url, "_blank", "noopener");
   }
 
   function onDrop(e: React.DragEvent) {
@@ -542,17 +593,6 @@ export function Page6Rules({
                   </span>
                 </div>
                 <div className="flex items-center gap-1">
-                  {filename && (
-                    <button
-                      type="button"
-                      onClick={() => void openPreview()}
-                      disabled={pdfLoading}
-                      className="inline-flex items-center gap-1 rounded-md px-2 py-1 text-xs text-muted-foreground hover:bg-muted hover:text-foreground cursor-pointer disabled:opacity-50"
-                    >
-                      {pdfLoading ? <Loader2 className="h-3 w-3 animate-spin" /> : <ExternalLink className="h-3 w-3" />}
-                      Open PDF
-                    </button>
-                  )}
                   <DropdownMenu>
                     <DropdownMenuTrigger
                       render={
@@ -563,12 +603,24 @@ export function Page6Rules({
                         </Button>
                       }
                     />
-                    <DropdownMenuContent align="end">
-                      <DropdownMenuItem onClick={() => openAdd("registered")}>
+                    <DropdownMenuContent align="end" className="min-w-[180px]">
+                      {/* Icons keep their colour on hover via inline style —
+                          the DropdownMenuItem's `hover:text-accent-foreground`
+                          inherits down to children, so without an explicit
+                          colour on the SVG itself the icon flips to navy on
+                          hover and back. whitespace-nowrap stops "Standing"
+                          and "Rule" from wrapping when the menu is narrow. */}
+                      <DropdownMenuItem
+                        onClick={() => openAdd("registered")}
+                        className="whitespace-nowrap [&_svg]:!text-emerald-700"
+                      >
                         <Scale className="mr-2 h-3.5 w-3.5 text-emerald-700" />
                         Registered rule
                       </DropdownMenuItem>
-                      <DropdownMenuItem onClick={() => openAdd("standing")}>
+                      <DropdownMenuItem
+                        onClick={() => openAdd("standing")}
+                        className="whitespace-nowrap [&_svg]:!text-amber-700"
+                      >
                         <FileText className="mr-2 h-3.5 w-3.5 text-amber-700" />
                         Standing rule
                       </DropdownMenuItem>
@@ -598,67 +650,110 @@ export function Page6Rules({
                   No rules yet — use <strong>Add rule</strong> above to add one, or upload a PDF below.
                 </p>
               ) : (() => {
-                // Group rules by oc_scope first (most docs have one scope, but
-                // mixed-use plans register rules for separate OCs in the same
-                // PDF), then by parent_heading within each scope so the user
-                // can see "8. Commercial Lots → 8.2.1 Advertising Signage" in
-                // context rather than as an orphan rule.
-                const indexed = parsedRules.map((r, idx) => ({ rule: r, idx }));
-                const byScope = new Map<string, typeof indexed>();
-                for (const entry of indexed) {
-                  const k = entry.rule.oc_scope ?? "";
+                // Hierarchical render: oc_scope → chapter → section → rules.
+                // The chapter band carries the chapter number+heading; the
+                // section sub-band carries the section heading. Rules sit
+                // beneath their section, indented slightly so the visual
+                // weight matches the source document.
+                type Entry = { rule: ParsedRule; idx: number };
+                const indexed: Entry[] = parsedRules.map((r, idx) => ({ rule: r, idx }));
+                const byScope = new Map<string, Entry[]>();
+                for (const e of indexed) {
+                  const k = e.rule.oc_scope ?? "";
                   if (!byScope.has(k)) byScope.set(k, []);
-                  byScope.get(k)!.push(entry);
+                  byScope.get(k)!.push(e);
                 }
                 const scopeEntries = Array.from(byScope.entries());
-                return scopeEntries.map(([scope, scopeRules], si) => (
-                  <div key={si}>
-                    {scope && scopeEntries.length > 1 && (
-                      <div className="bg-primary/5 px-4 py-2 border-b border-border text-xs font-semibold uppercase tracking-wide text-primary">
-                        {scope}
-                      </div>
-                    )}
-                    <ol className="divide-y divide-border">
-                      {scopeRules.map(({ rule: r, idx }) => (
-                        <li key={idx} className="group flex items-start gap-2 px-4 py-3 hover:bg-muted/20">
-                          <div className="flex-1 min-w-0">
-                            {r.parent_heading && (
-                              <p className="text-xs uppercase tracking-wide text-muted-foreground">
-                                {r.parent_heading}
+                return scopeEntries.map(([scope, scopeRules], si) => {
+                  // Within a scope, group by chapter then by section, in
+                  // first-seen order.
+                  const byChapter = new Map<string, { number: string | null; heading: string | null; sections: Map<string, { number: string | null; heading: string | null; rules: Entry[] }> }>();
+                  for (const e of scopeRules) {
+                    const chNum = e.rule.chapter_number?.trim() || "";
+                    const chKey = chNum || "__nochapter__";
+                    if (!byChapter.has(chKey)) {
+                      byChapter.set(chKey, {
+                        number: chNum || null,
+                        heading: e.rule.chapter_heading ?? null,
+                        sections: new Map(),
+                      });
+                    }
+                    const chapter = byChapter.get(chKey)!;
+                    const secNum = e.rule.section_number?.trim() || "";
+                    const secKey = secNum || "__nosection__";
+                    if (!chapter.sections.has(secKey)) {
+                      chapter.sections.set(secKey, {
+                        number: secNum || null,
+                        heading: e.rule.section_heading ?? null,
+                        rules: [],
+                      });
+                    }
+                    chapter.sections.get(secKey)!.rules.push(e);
+                  }
+                  return (
+                    <div key={si}>
+                      {scope && scopeEntries.length > 1 && (
+                        <div className="bg-primary/5 px-4 py-2 border-b border-border text-xs font-semibold uppercase tracking-wide text-primary">
+                          {scope}
+                        </div>
+                      )}
+                      {Array.from(byChapter.entries()).map(([chKey, chapter]) => (
+                        <div key={chKey}>
+                          {chapter.number && (
+                            <div className="bg-muted/60 px-4 py-2 border-b border-border">
+                              <p className="text-sm font-semibold text-foreground">
+                                {chapter.number}. {chapter.heading ?? ""}
                               </p>
-                            )}
-                            <p className="text-sm font-semibold text-foreground">
-                              {r.rule_number}{r.heading ? `. ${r.heading}` : ""}
-                            </p>
-                            <p className="mt-1 text-sm text-muted-foreground leading-relaxed whitespace-pre-line">
-                              {r.body}
-                            </p>
-                          </div>
-                          {/* Hover-only edit + delete. stopPropagation isn't
-                              required here since the row isn't clickable. */}
-                          <div className="hidden items-center gap-1 shrink-0 group-hover:flex">
-                            <button
-                              type="button"
-                              onClick={() => openEdit(idx)}
-                              aria-label="Edit rule"
-                              className="inline-flex h-7 w-7 items-center justify-center rounded-md text-muted-foreground hover:bg-muted hover:text-foreground"
-                            >
-                              <Pencil className="h-3.5 w-3.5" />
-                            </button>
-                            <button
-                              type="button"
-                              onClick={() => setDeleteIdx(idx)}
-                              aria-label="Delete rule"
-                              className="inline-flex h-7 w-7 items-center justify-center rounded-md text-muted-foreground hover:bg-destructive/10 hover:text-destructive"
-                            >
-                              <Trash2 className="h-3.5 w-3.5" />
-                            </button>
-                          </div>
-                        </li>
+                            </div>
+                          )}
+                          {Array.from(chapter.sections.entries()).map(([secKey, section]) => (
+                            <div key={secKey}>
+                              {section.number && (
+                                <div className="px-4 py-1.5 border-b border-border bg-muted/20">
+                                  <p className="text-xs font-semibold italic text-muted-foreground">
+                                    {section.number}. {section.heading ?? ""}
+                                  </p>
+                                </div>
+                              )}
+                              <ol className="divide-y divide-border">
+                                {section.rules.map(({ rule: r, idx }) => (
+                                  <li key={idx} className="group flex items-start gap-2 px-4 py-3 pl-8 hover:bg-muted/20">
+                                    <div className="flex-1 min-w-0">
+                                      <p className="text-sm font-semibold text-foreground">
+                                        {r.rule_number}{r.heading ? `. ${r.heading}` : ""}
+                                      </p>
+                                      <p className="mt-1 text-sm text-muted-foreground leading-relaxed whitespace-pre-line">
+                                        {r.body}
+                                      </p>
+                                    </div>
+                                    <div className="hidden items-center gap-1 shrink-0 group-hover:flex">
+                                      <button
+                                        type="button"
+                                        onClick={() => openEdit(idx)}
+                                        aria-label="Edit rule"
+                                        className="inline-flex h-7 w-7 items-center justify-center rounded-md text-muted-foreground hover:bg-muted hover:text-foreground"
+                                      >
+                                        <Pencil className="h-3.5 w-3.5" />
+                                      </button>
+                                      <button
+                                        type="button"
+                                        onClick={() => setDeleteIdx(idx)}
+                                        aria-label="Delete rule"
+                                        className="inline-flex h-7 w-7 items-center justify-center rounded-md text-muted-foreground hover:bg-destructive/10 hover:text-destructive"
+                                      >
+                                        <Trash2 className="h-3.5 w-3.5" />
+                                      </button>
+                                    </div>
+                                  </li>
+                                ))}
+                              </ol>
+                            </div>
+                          ))}
+                        </div>
                       ))}
-                    </ol>
-                  </div>
-                ));
+                    </div>
+                  );
+                });
               })()}</div>
             </div>
           ) : null}
@@ -811,6 +906,43 @@ export function Page6Rules({
             </DialogDescription>
           </DialogHeader>
           <div className="space-y-3">
+            {/* Section selector — picks the chapter/section the new rule
+                belongs under. Default is "(top level)" — no chapter, no
+                section — but if the document already has chapters/sections
+                we offer them as options so the rule slots in correctly. */}
+            <div className="space-y-1.5">
+              <Label htmlFor="wr-section">Section</Label>
+              <Select value={addSectionKey || "__top__"} onValueChange={(v) => setAddSectionKey(!v || v === "__top__" ? "" : v)}>
+                <SelectTrigger id="wr-section">
+                  <SelectValue>
+                    {addSectionKey === "" && "Top level (no chapter)"}
+                    {addSectionKey === "__new__" && "New chapter…"}
+                    {addSectionKey && addSectionKey !== "__new__" && (
+                      listSections(parsedRules).find((s) => s.key === addSectionKey)?.label ?? addSectionKey
+                    )}
+                  </SelectValue>
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="__top__">Top level (no chapter)</SelectItem>
+                  {listSections(parsedRules).map((s) => (
+                    <SelectItem key={s.key} value={s.key}>{s.label}</SelectItem>
+                  ))}
+                  <SelectItem value="__new__">New chapter…</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+            {addSectionKey === "__new__" && (
+              <div className="grid grid-cols-[120px_1fr] gap-3">
+                <div className="space-y-1.5">
+                  <Label htmlFor="wr-chnum">Chapter no.</Label>
+                  <Input id="wr-chnum" value={addNewChapterNum} onChange={(e) => setAddNewChapterNum(e.target.value)} placeholder="e.g. 5" />
+                </div>
+                <div className="space-y-1.5">
+                  <Label htmlFor="wr-chhead">Chapter heading</Label>
+                  <Input id="wr-chhead" value={addNewChapterHead} onChange={(e) => setAddNewChapterHead(e.target.value)} placeholder="e.g. Pets and Animals" />
+                </div>
+              </div>
+            )}
             <div className="space-y-1.5">
               <Label htmlFor="wr-num">
                 Rule number <span className="text-destructive">*</span>

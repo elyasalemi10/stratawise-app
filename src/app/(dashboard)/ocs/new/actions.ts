@@ -7,6 +7,7 @@ import { insertOCWithCode } from "@/lib/oc-code";
 import { parsePlanPdf, type ParsedPlan } from "@/lib/parse-plan";
 import { parseRulesPdf, type ParsedRulesDocument } from "@/lib/parse-rules";
 import { parseInsurancePdf, type ParsedInsurancePolicy } from "@/lib/parse-insurance";
+import { runDocumentAiOcr } from "@/lib/google/document-ai";
 import { parseDrnCsv, matchDrnsToLots, type DrnMatchResult, type LotForMatch, type LotOwnerForMatch } from "@/lib/macquarie/drn-import";
 import { uploadObject, fetchObject, deleteObject, publicUrlFor } from "@/lib/storage/r2";
 
@@ -23,6 +24,11 @@ export type DraftInsurancePolicy = {
   premium?: number;
   start_date: string;     // ISO yyyy-mm-dd
   end_date: string;
+  /** Optional 24h HH:MM time the cover starts on `start_date`. Australian
+   *  CoCs typically state "4:00pm" — preserve when present, null when the
+   *  cert only states a date. */
+  start_time?: string;
+  end_time?: string;
   /** R2 key of the CoC PDF this policy was extracted from. Used at
    *  completeWizard time to link the resulting insurance_policies row to its
    *  source document. Empty for hand-entered policies. */
@@ -281,7 +287,20 @@ export async function createDraftAndLoad(): Promise<{ draft?: unknown; error?: s
 export async function getDraft(draftId: string) {
   try {
     const { draft } = await loadDraft(draftId);
-    return { draft };
+    // If this draft has already promoted to an OC, surface the OC's
+    // short_code so the wizard page can redirect there instead of
+    // re-rendering step 8 and tempting the user into duplicate creation.
+    let promoted_short_code: string | null = null;
+    if (draft.promoted_oc_id) {
+      const supabase = createServerClient();
+      const { data: oc } = await supabase
+        .from("owners_corporations")
+        .select("short_code")
+        .eq("id", draft.promoted_oc_id)
+        .maybeSingle();
+      promoted_short_code = oc?.short_code ?? null;
+    }
+    return { draft: { ...draft, promoted_short_code } };
   } catch (err) {
     return { error: err instanceof Error ? err.message : "Failed to load draft" };
   }
@@ -492,17 +511,26 @@ export async function parseDraftWithGemini(draftId: string) {
       return { error: "We couldn't read the uploaded plan." };
     }
 
-    let parsed: ParsedPlan;
-    try {
-      parsed = await parsePlanPdf(buf);
-    } catch (err) {
-      console.error("parseDraftWithGemini: parser failed", err);
+    // Gemini parse + Document AI OCR fire in parallel (see parseDraftRules
+    // for rationale). OCR text gets stashed on the draft so completeWizard
+    // can ship a search-ready documents row on day one.
+    const [parsedResult, ocrResult] = await Promise.allSettled([
+      parsePlanPdf(buf),
+      runDocumentAiOcr(buf, "application/pdf"),
+    ]);
+    if (parsedResult.status === "rejected") {
+      console.error("parseDraftWithGemini: parser failed", parsedResult.reason);
       await supabase.from("oc_drafts").update({
         parse_status: "failed",
         parse_completed_at: new Date().toISOString(),
-        parse_error: err instanceof Error ? err.message : "Parser failed",
+        parse_error: parsedResult.reason instanceof Error ? parsedResult.reason.message : "Parser failed",
       }).eq("id", draft.id);
       return { error: "Couldn't read this PDF automatically." };
+    }
+    const parsed: ParsedPlan = parsedResult.value;
+    const planOcrText = ocrResult.status === "fulfilled" ? ocrResult.value.text : null;
+    if (ocrResult.status === "rejected") {
+      console.error("parseDraftWithGemini: OCR failed (non-fatal)", ocrResult.reason);
     }
 
     // Document-type gate: Gemini saw the PDF and decided it's not a Plan of
@@ -558,6 +586,7 @@ export async function parseDraftWithGemini(draftId: string) {
         parse_status: "complete",
         parse_completed_at: new Date().toISOString(),
         parse_error: null,
+        plan_ocr_text: planOcrText,
       })
       .eq("id", draft.id);
     if (error) return { error: error.message };
@@ -639,23 +668,43 @@ export async function parseDraftRules(draftId: string) {
       return { error: "We couldn't read the uploaded rules document." };
     }
 
-    let parsed: ParsedRulesDocument;
-    try {
-      parsed = await parseRulesPdf(buf);
-    } catch (err) {
-      console.error("parseDraftRules: parser failed", err);
+    // Fire Gemini parse + Document AI OCR concurrently. Both calls take PDF
+    // bytes independently, so doing them in parallel saves the slower of the
+    // two (OCR) instead of paying for both serially. OCR result is stashed
+    // on the draft so completeWizard can write it straight to documents.ocr_*
+    // — the document is searchable the moment the OC is created, no second
+    // background pass needed.
+    const [parsedResult, ocrResult] = await Promise.allSettled([
+      parseRulesPdf(buf),
+      runDocumentAiOcr(buf, "application/pdf"),
+    ]);
+
+    if (parsedResult.status === "rejected") {
+      console.error("parseDraftRules: Gemini parse failed", parsedResult.reason);
       return { error: "We couldn't read this rules PDF automatically. Continue and we'll keep the original — searchable but not indexed." };
     }
+    const parsed = parsedResult.value;
     if (!parsed.is_oc_rules) {
       return {
         error: `That didn't look like an OC rules document (looks like: ${parsed.document_type_guess || "another document type"}). Upload a different PDF or skip to use Victoria's Model Rules.`,
       };
     }
 
+    // OCR failure is non-fatal — Gemini's structured output is the
+    // primary thing managers see. We just lose the searchable plain-text
+    // index until the background job retries.
+    const ocrText = ocrResult.status === "fulfilled" ? ocrResult.value.text : null;
+    if (ocrResult.status === "rejected") {
+      console.error("parseDraftRules: OCR failed (non-fatal)", ocrResult.reason);
+    }
+
     const supabase = createServerClient();
     const { error } = await supabase
       .from("oc_drafts")
-      .update({ rules_parsed_json: parsed as unknown as Record<string, unknown> })
+      .update({
+        rules_parsed_json: parsed as unknown as Record<string, unknown>,
+        rules_ocr_text: ocrText,
+      })
       .eq("id", draft.id);
     if (error) return { error: error.message };
 
@@ -666,6 +715,10 @@ export async function parseDraftRules(draftId: string) {
       rules: parsed.rules.map((r) => ({
         oc_scope: r.oc_scope,
         parent_heading: r.parent_heading ?? null,
+        chapter_number: r.chapter_number ?? null,
+        chapter_heading: r.chapter_heading ?? null,
+        section_number: r.section_number ?? null,
+        section_heading: r.section_heading ?? null,
         rule_number: r.rule_number,
         heading: r.heading ?? null,
         body: r.body,
@@ -738,13 +791,18 @@ export async function uploadAndParseCoC(
       return { error: "Couldn't save your file — please try again." };
     }
 
-    let parsed;
-    try {
-      parsed = await parseInsurancePdf(buf);
-    } catch (err) {
-      console.error("uploadAndParseCoC: parser failed", err);
+    // Parallel Gemini + Document AI. OCR result is keyed by the storage key
+    // on the draft so completeWizard can stitch each CoC's OCR text onto its
+    // own documents row.
+    const [parsedResult, ocrResult] = await Promise.allSettled([
+      parseInsurancePdf(buf),
+      runDocumentAiOcr(buf, "application/pdf"),
+    ]);
+    if (parsedResult.status === "rejected") {
+      console.error("uploadAndParseCoC: parser failed", parsedResult.reason);
       return { error: "We couldn't read this PDF automatically. Enter details manually." };
     }
+    const parsed = parsedResult.value;
     if (!parsed.is_insurance_certificate) {
       // Best-effort cleanup: the file isn't a real cert, so don't leave it
       // sitting in R2.
@@ -752,6 +810,21 @@ export async function uploadAndParseCoC(
       return {
         error: `That didn't look like a certificate of currency (looks like: ${parsed.document_type_guess || "another document type"}). Upload a different PDF or enter details manually.`,
       };
+    }
+    const ocrText = ocrResult.status === "fulfilled" ? ocrResult.value.text : null;
+    if (ocrResult.status === "rejected") {
+      console.error("uploadAndParseCoC: OCR failed (non-fatal)", ocrResult.reason);
+    }
+
+    // Stash the OCR text keyed by R2 storage key on the draft. completeWizard
+    // reads this map to populate documents.ocr_text on each CoC's row.
+    if (ocrText) {
+      const supabase = createServerClient();
+      const existing = (draft.insurance_ocr_text_by_key as Record<string, string> | null) ?? {};
+      await supabase
+        .from("oc_drafts")
+        .update({ insurance_ocr_text_by_key: { ...existing, [key]: ocrText } })
+        .eq("id", draft.id);
     }
 
     // Compare cert PS number to the OC's. Normalise both sides to handle
@@ -848,6 +921,10 @@ export async function saveDraftRules(
   rules: Array<{
     oc_scope?: string;
     parent_heading?: string | null;
+    chapter_number?: string | null;
+    chapter_heading?: string | null;
+    section_number?: string | null;
+    section_heading?: string | null;
     rule_number: string;
     heading?: string | null;
     body: string;
@@ -1062,6 +1139,36 @@ export async function completeWizard(draftId: string) {
     const { draft, profile } = await loadDraft(draftId);
     const d = draft.draft_json as DraftJson;
     if (!profile.management_company_id) return { error: "No management company assigned" };
+
+    // Idempotency guard. If this draft already promoted to an OC we MUST NOT
+    // create another one — the bug was that the Create button could fire
+    // twice (double click, back-button-then-resubmit, stale tab) and each
+    // call would mint a fresh OC, leaving the manager staring at a
+    // ballooning OC count. Now a re-run on a promoted draft returns the
+    // existing OC's short_code so the caller still navigates to /ocs/<code>
+    // — same UX as the first successful run, just without the duplicate
+    // side effects.
+    if (draft.promoted_oc_id) {
+      const supabase = createServerClient();
+      const { data: existing } = await supabase
+        .from("owners_corporations")
+        .select("short_code")
+        .eq("id", draft.promoted_oc_id)
+        .maybeSingle();
+      if (existing?.short_code) {
+        return {
+          success: true,
+          ocCode: existing.short_code as string,
+          sourceDraftId: draft.id,
+          nextOcIndex: null,
+          alreadyCreated: true,
+        };
+      }
+      // Draft has promoted_oc_id but the OC row vanished (manual cleanup?).
+      // Block rather than silently re-create — managers can start a fresh
+      // wizard if they really want to.
+      return { error: "This wizard has already finished and the resulting OC was removed. Start a new draft to create another OC." };
+    }
 
     // Minimum viable: plan_number, address, at least 2 lots. owners_corporations.name
     // is derived from trading_name → address; no separate "legal OC name" field.
@@ -1288,6 +1395,7 @@ export async function completeWizard(draftId: string) {
     // just register a documents row pointing at it so it surfaces in the OC's
     // documents tab and is full-text searchable once OCR completes.
     if (draft.plan_storage_key && draft.plan_filename) {
+      const cachedPlanOcr = draft.plan_ocr_text as string | null;
       await supabase.from("documents").insert({
         oc_id: oc.id,
         lot_id: null,
@@ -1299,7 +1407,12 @@ export async function completeWizard(draftId: string) {
         mime_type: "application/pdf",
         is_confidential: false,
         uploaded_by: profile.id,
-        ocr_status: "pending",
+        // OCR was already done during the wizard (Document AI ran in
+        // parallel with Gemini) — write the text now so the document is
+        // search-ready immediately. Falls back to "pending" if the OCR
+        // call failed at parse time.
+        ocr_text: cachedPlanOcr ?? null,
+        ocr_status: cachedPlanOcr ? "complete" : "pending",
       });
     }
 
@@ -1307,6 +1420,7 @@ export async function completeWizard(draftId: string) {
     // parsed rules into oc_rules so they're searchable + linkable.
     let rulesDocumentId: string | null = null;
     if (d.rules_source === "custom" && draft.rules_storage_key && draft.rules_filename) {
+      const cachedRulesOcr = draft.rules_ocr_text as string | null;
       const { data: rulesDoc } = await supabase.from("documents").insert({
         oc_id: oc.id,
         lot_id: null,
@@ -1318,7 +1432,8 @@ export async function completeWizard(draftId: string) {
         mime_type: "application/pdf",
         is_confidential: false,
         uploaded_by: profile.id,
-        ocr_status: "pending",
+        ocr_text: cachedRulesOcr ?? null,
+        ocr_status: cachedRulesOcr ? "complete" : "pending",
       }).select("id").single();
       rulesDocumentId = rulesDoc?.id ?? null;
 
@@ -1336,6 +1451,10 @@ export async function completeWizard(draftId: string) {
         rules?: Array<{
           oc_scope?: string;
           parent_heading?: string | null;
+          chapter_number?: string | null;
+          chapter_heading?: string | null;
+          section_number?: string | null;
+          section_heading?: string | null;
           rule_number: string;
           heading?: string | null;
           body: string;
@@ -1374,12 +1493,15 @@ export async function completeWizard(draftId: string) {
         const rows = ocRules.map((r, idx) => ({
           oc_id: oc.id,
           rule_number: r.rule_number,
-          // Preserve the parent-section heading inline (e.g. "8. Commercial
-          // Lots — Advertising Signage") so breach-notice generators don't
-          // strip critical scope context.
-          heading: r.parent_heading
-            ? (r.heading ? `${r.parent_heading} — ${r.heading}` : r.parent_heading)
-            : (r.heading ?? null),
+          heading: r.heading ?? null,
+          // Hierarchical columns — let the rules page group + filter
+          // without parsing rule_number at read time. Falls back to null
+          // when the document didn't have an explicit chapter / section
+          // tier above the numbered rule.
+          chapter_number: r.chapter_number ?? null,
+          chapter_heading: r.chapter_heading ?? null,
+          section_number: r.section_number ?? null,
+          section_heading: r.section_heading ?? null,
           body: r.body,
           page_number: r.page_number ?? null,
           bbox: r.bbox ?? null,
@@ -1420,6 +1542,7 @@ export async function completeWizard(draftId: string) {
       // keyed by R2 storage_key so policy inserts below can attach
       // source_document_id back to the originating cert.
       const cocs = d.insurance_cocs ?? [];
+      const cocOcrByKey = (draft.insurance_ocr_text_by_key as Record<string, string> | null) ?? {};
       const cocDocByKey = new Map<string, string>();
       for (let idx = 0; idx < cocs.length; idx++) {
         const coc = cocs[idx];
@@ -1428,6 +1551,7 @@ export async function completeWizard(draftId: string) {
           ocName: d.oc_name,
           index: cocs.length > 1 ? idx + 1 : undefined,
         });
+        const cachedOcr = cocOcrByKey[coc.storage_key] ?? null;
         const { data: docRow } = await supabase
           .from("documents")
           .insert({
@@ -1441,7 +1565,8 @@ export async function completeWizard(draftId: string) {
             mime_type: "application/pdf",
             is_confidential: false,
             uploaded_by: profile.id,
-            ocr_status: "pending",
+            ocr_text: cachedOcr,
+            ocr_status: cachedOcr ? "complete" : "pending",
           })
           .select("id")
           .single();
@@ -1479,6 +1604,10 @@ export async function completeWizard(draftId: string) {
           premium: p.premium ?? null,
           start_date: p.start_date,
           end_date: p.end_date,
+          // Optional HH:MM start/end times — null when the cert was date-
+          // only. Postgres TIME columns accept "HH:MM" or "HH:MM:SS".
+          start_time: p.start_time && p.start_time.length > 0 ? p.start_time : null,
+          end_time: p.end_time && p.end_time.length > 0 ? p.end_time : null,
           status: "active",
           source_document_id: sourceDocId,
         });

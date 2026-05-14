@@ -23,6 +23,7 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { DatePicker } from "@/components/shared/date-picker";
+import { TimePicker } from "@/components/shared/time-picker";
 import { deleteCoC, saveStep, uploadAndParseCoC, type DraftJson, type DraftInsurancePolicy } from "../actions";
 
 // Wizard page 7 — insurance.
@@ -60,6 +61,8 @@ function blankPolicy(): DraftInsurancePolicy {
     premium: undefined,
     start_date: "",
     end_date: "",
+    start_time: "",
+    end_time: "",
   };
 }
 
@@ -95,6 +98,8 @@ type ParsedFromServer = {
   premium: number | null;
   start_date: string | null;
   end_date: string | null;
+  start_time: string | null;
+  end_time: string | null;
 };
 
 type PendingCoc = {
@@ -215,6 +220,8 @@ export function Page7Insurance({
       premium: p.premium ?? undefined,
       start_date: p.start_date ?? "",
       end_date: p.end_date ?? "",
+      start_time: p.start_time ?? "",
+      end_time: p.end_time ?? "",
       // Tag each policy with the R2 key of the CoC it came from so
       // completeWizard can wire insurance_policies.source_document_id back
       // to the documents row created from this cert.
@@ -498,43 +505,60 @@ export function Page7Insurance({
                       </div>
                     </div>
 
-                    <div className="grid grid-cols-3 gap-4">
+                    <div className="space-y-1.5">
+                      <Label htmlFor={`prem-${idx}`}>
+                        Annual premium <span className="text-destructive">*</span>
+                      </Label>
+                      <div className="relative">
+                        <span className="absolute left-3 top-1/2 -translate-y-1/2 text-sm text-muted-foreground">$</span>
+                        <NumberInput
+                          id={`prem-${idx}`}
+                          value={p.premium != null ? String(p.premium) : ""}
+                          onChange={(v) => updatePolicy(idx, { premium: v ? parseFloat(v) : undefined })}
+                          placeholder="Annual premium"
+                          invalid={inv.premium || undefined}
+                          thousandsSeparator
+                          className="pl-7"
+                        />
+                      </div>
+                    </div>
+
+                    {/* Start + end date/time. Times default to empty — most
+                        Australian CoCs state "4:00pm to 4:00pm" but a few
+                        don't, so we don't force a value. If Gemini lifted a
+                        time off the cert it lands here automatically. */}
+                    <div className="grid grid-cols-2 gap-4">
                       <div className="space-y-1.5">
-                        <Label htmlFor={`prem-${idx}`}>
-                          Annual premium <span className="text-destructive">*</span>
+                        <Label>
+                          Start date <span className="text-destructive">*</span>
                         </Label>
-                        <div className="relative">
-                          <span className="absolute left-3 top-1/2 -translate-y-1/2 text-sm text-muted-foreground">$</span>
-                          <NumberInput
-                            id={`prem-${idx}`}
-                            value={p.premium != null ? String(p.premium) : ""}
-                            onChange={(v) => updatePolicy(idx, { premium: v ? parseFloat(v) : undefined })}
-                            placeholder="Annual premium"
-                            invalid={inv.premium || undefined}
-                            thousandsSeparator
-                            className="pl-7"
+                        <div className="grid grid-cols-[1fr_130px] gap-2">
+                          <DatePicker
+                            value={p.start_date}
+                            onChange={(v) => updatePolicy(idx, { start_date: v })}
+                            error={inv.start}
+                          />
+                          <TimePicker
+                            value={p.start_time ?? ""}
+                            onChange={(v) => updatePolicy(idx, { start_time: v })}
                           />
                         </div>
                       </div>
                       <div className="space-y-1.5">
                         <Label>
-                          Start date <span className="text-destructive">*</span>
-                        </Label>
-                        <DatePicker
-                          value={p.start_date}
-                          onChange={(v) => updatePolicy(idx, { start_date: v })}
-                          error={inv.start}
-                        />
-                      </div>
-                      <div className="space-y-1.5">
-                        <Label>
                           End date <span className="text-destructive">*</span>
                         </Label>
-                        <DatePicker
-                          value={p.end_date}
-                          onChange={(v) => updatePolicy(idx, { end_date: v })}
-                          error={inv.end}
-                        />
+                        <div className="grid grid-cols-[1fr_130px] gap-2">
+                          <DatePicker
+                            value={p.end_date}
+                            onChange={(v) => updatePolicy(idx, { end_date: v })}
+                            error={inv.end}
+                          />
+                          <TimePicker
+                            value={p.end_time ?? ""}
+                            onChange={(v) => updatePolicy(idx, { end_time: v })}
+                          />
+                        </div>
                       </div>
                     </div>
                   </div>

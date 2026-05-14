@@ -171,8 +171,13 @@ function buildClient(): GoogleGenAI {
 export async function parsePlanPdf(pdfBytes: Buffer): Promise<ParsedPlan> {
   const ai = buildClient();
 
+  // Gemini 2.5 Flash: ~3-5x faster than Pro, ~4x cheaper (input $0.30 vs
+  // $1.25 / 1M tokens, output $2.50 vs $10), and easily competent on
+  // structured field extraction with a constrained response schema. Switch
+  // back to Pro only if regression testing on real plans shows field-level
+  // accuracy drops.
   const result = await ai.models.generateContent({
-    model: "gemini-2.5-pro",
+    model: "gemini-2.5-flash",
     contents: [
       {
         role: "user",

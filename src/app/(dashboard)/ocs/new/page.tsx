@@ -30,6 +30,11 @@ type DraftRow = {
   parsed_json: { detected_ocs?: { oc_number: number; lot_count: number; oc_name?: string | null }[] } | null;
   draft_json: DraftJson;
   photo_storage_key: string | null;
+  /** Set once completeWizard has promoted this draft to an OC. The wizard
+   *  short-circuits on load if this is non-null so the user can't re-fire
+   *  Create OC and mint duplicates from the same draft. */
+  promoted_oc_id: string | null;
+  promoted_short_code: string | null;
 };
 
 function WizardContent() {
@@ -63,6 +68,15 @@ function WizardContent() {
           return;
         }
         const d = r.draft as unknown as DraftRow;
+        // Idempotency guard: if this draft already promoted to an OC,
+        // sending the user back into the wizard would let them mash
+        // "Create OC" and mint duplicates. Bounce them to the OC's
+        // dashboard instead. The completeWizard server action ALSO
+        // guards against this — belt and braces.
+        if (d.promoted_oc_id && d.promoted_short_code) {
+          router.replace(`/ocs/${d.promoted_short_code}`);
+          return;
+        }
         setDraft(d);
         setStep(d.current_step);
         return;
