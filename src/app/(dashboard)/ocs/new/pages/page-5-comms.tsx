@@ -2,12 +2,20 @@
 
 import { useMemo, useState } from "react";
 import { toast } from "sonner";
-import { Info, Loader2, Mail, MailOpen, MailX } from "lucide-react";
+import { Info, Loader2, Mail, MailOpen, MailX, Pencil } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
 import { Checkbox } from "@/components/ui/checkbox";
 import { NumberInput } from "@/components/ui/number-input";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
 import { saveStep, type DraftJson, type DraftLot } from "../actions";
 
 // Wizard page 5 — Communications & consent.
@@ -115,6 +123,28 @@ export function Page5Comms({
         return l;
       }),
     );
+  }
+
+  // Per-lot popup state. Holds the lot index being edited; null = closed.
+  // Local draft inside the popup so the manager can preview category
+  // toggles before confirming — Save persists; Cancel discards.
+  const [popupLotIdx, setPopupLotIdx] = useState<number | null>(null);
+  const [popupDraft, setPopupDraft] = useState<string[]>([]);
+  function openPerLotPopup(lotIdx: number) {
+    setPopupLotIdx(lotIdx);
+    setPopupDraft(lots[lotIdx]?.digital_consent_categories ?? []);
+  }
+  function commitPerLotPopup() {
+    if (popupLotIdx == null) return;
+    setLots((prev) => prev.map((l, i) => i === popupLotIdx ? { ...l, digital_consent_categories: popupDraft } : l));
+    setPopupLotIdx(null);
+  }
+  const popupAllOn = popupDraft.length === ALL_CATEGORIES.length;
+  function popupToggleAll(on: boolean) {
+    setPopupDraft(on ? ALL_CATEGORIES.map((c) => c.value) : []);
+  }
+  function popupToggleCategory(cat: string) {
+    setPopupDraft((prev) => prev.includes(cat) ? prev.filter((c) => c !== cat) : [...prev, cat]);
   }
 
   // "Any owner ever receiving postal" — true when default is postal, or
@@ -323,86 +353,85 @@ export function Page5Comms({
             </TooltipProvider>
           </div>
           <div className="rounded-md border border-border bg-card overflow-hidden">
-            <table className="w-full text-xs">
+            <table className="w-full text-sm">
               <thead className="bg-muted/40 text-muted-foreground">
-                <tr className="border-b border-border">
-                  <th className="px-3 py-2 text-left font-medium w-48 sticky left-0 bg-muted/40">Lot / Owner</th>
-                  {ALL_CATEGORIES.map((c) => (
-                    <th key={c.value} className="px-2 py-2 text-center font-medium">
-                      <div className="flex flex-col items-center gap-1">
-                        <span>{c.label}</span>
-                        <div className="flex gap-1">
-                          <button
-                            type="button"
-                            onClick={() => bulkToggleAll(c.value, true)}
-                            className="rounded px-1 text-[10px] text-primary hover:underline cursor-pointer"
-                          >
-                            all
-                          </button>
-                          <span className="text-muted-foreground">/</span>
-                          <button
-                            type="button"
-                            onClick={() => bulkToggleAll(c.value, false)}
-                            className="rounded px-1 text-[10px] text-muted-foreground hover:underline cursor-pointer"
-                          >
-                            none
-                          </button>
-                        </div>
-                      </div>
-                    </th>
-                  ))}
-                  <th className="px-2 py-2 text-center font-medium w-20">Row</th>
+                <tr className="text-xs uppercase tracking-wide border-b border-border">
+                  <th className="px-3 py-2 text-left font-medium">Lot / Owner</th>
+                  <th className="px-3 py-2 text-left font-medium w-48">Digital consent</th>
+                  <th className="px-3 py-2 text-left font-medium w-32">Categories</th>
+                  <th className="w-12" />
                 </tr>
               </thead>
               <tbody>
                 {lotsWithEmail.map((lot) => {
                   const lotIdx = lots.findIndex((l) => l.lot_number === lot.lot_number);
                   const consent = lot.digital_consent_categories ?? [];
-                  const allTicked = ALL_CATEGORIES.every((c) => consent.includes(c.value));
-                  const noneTicked = consent.length === 0;
+                  const isDigital = consent.length > 0;
+                  const allCats = consent.length === ALL_CATEGORIES.length;
+                  const summary = allCats
+                    ? "All categories"
+                    : consent.length === 0
+                      ? "—"
+                      : `${consent.length} of ${ALL_CATEGORIES.length}`;
                   return (
-                    <tr
-                      key={lot.lot_number}
-                      className={`hover:bg-muted/30 ${allTicked ? "bg-emerald-50/40" : ""}`}
-                    >
-                      <td className={`px-3 py-2 sticky left-0 ${allTicked ? "bg-emerald-50/40" : "bg-card"}`}>
-                        <p className="font-medium text-foreground">Lot {lot.lot_number}{lot.unit_number ? ` / ${lot.unit_number}` : ""}</p>
-                        <p className="text-muted-foreground truncate" title={lot.owner_name || ""}>{lot.owner_name || "—"}</p>
+                    <tr key={lot.lot_number} className="hover:bg-muted/30">
+                      <td className="px-3 py-2">
+                        <p className="font-medium text-foreground">
+                          Lot {lot.lot_number}{lot.unit_number ? ` / ${lot.unit_number}` : ""}
+                        </p>
+                        <p className="text-xs text-muted-foreground truncate" title={lot.owner_name || ""}>
+                          {lot.owner_name || "—"}
+                        </p>
                       </td>
-                      {ALL_CATEGORIES.map((c) => (
-                        <td key={c.value} className="px-2 py-2 text-center">
-                          <Checkbox
-                            id={`lot-${lot.lot_number}-${c.value}`}
-                            checked={consent.includes(c.value)}
-                            onCheckedChange={() => toggleLotConsent(lotIdx, c.value)}
-                          />
-                        </td>
-                      ))}
-                      <td className="px-2 py-2 text-center">
-                        <div className="inline-flex gap-1">
+                      <td className="px-3 py-2">
+                        {/* Single Yes/No pill control — matches the
+                            Debit/Credit pattern from the balances page.
+                            Clicking "Yes" with empty consent pre-fills
+                            with all categories (the common case), so the
+                            manager doesn't have to open the popup for
+                            uniform consents. */}
+                        <div className="inline-flex rounded-md border border-border bg-card p-0.5">
                           <button
                             type="button"
                             onClick={() => {
-                              // Bulk-set this row to all categories at once.
-                              setLots((prev) => prev.map((l, i) => i === lotIdx ? { ...l, digital_consent_categories: ALL_CATEGORIES.map((cat) => cat.value) } : l));
+                              if (!isDigital) {
+                                setLots((prev) => prev.map((l, i) => i === lotIdx ? { ...l, digital_consent_categories: ALL_CATEGORIES.map((c) => c.value) } : l));
+                              }
                             }}
-                            disabled={allTicked}
-                            className="rounded px-1 text-[10px] text-primary hover:underline cursor-pointer disabled:opacity-40 disabled:cursor-default disabled:hover:no-underline"
+                            className={`px-3 py-0.5 text-xs rounded-sm cursor-pointer ${isDigital ? "bg-primary text-primary-foreground" : "text-muted-foreground"}`}
                           >
-                            all
+                            Yes
                           </button>
-                          <span className="text-muted-foreground">/</span>
                           <button
                             type="button"
                             onClick={() => {
-                              setLots((prev) => prev.map((l, i) => i === lotIdx ? { ...l, digital_consent_categories: [] } : l));
+                              if (isDigital) {
+                                setLots((prev) => prev.map((l, i) => i === lotIdx ? { ...l, digital_consent_categories: [] } : l));
+                              }
                             }}
-                            disabled={noneTicked}
-                            className="rounded px-1 text-[10px] text-muted-foreground hover:underline cursor-pointer disabled:opacity-40 disabled:cursor-default disabled:hover:no-underline"
+                            className={`px-3 py-0.5 text-xs rounded-sm cursor-pointer ${!isDigital ? "bg-primary text-primary-foreground" : "text-muted-foreground"}`}
                           >
-                            none
+                            No
                           </button>
                         </div>
+                      </td>
+                      <td className="px-3 py-2 text-xs text-muted-foreground">
+                        {summary}
+                      </td>
+                      <td className="px-2 py-2">
+                        {/* Edit pencil — only meaningful when consent is on.
+                            Disabled state stays visually present so the
+                            row doesn't reflow when consent flips on/off
+                            (CLAUDE.md hover-icon-stability rule). */}
+                        <button
+                          type="button"
+                          onClick={() => openPerLotPopup(lotIdx)}
+                          disabled={!isDigital}
+                          aria-label="Edit categories"
+                          className="inline-flex h-7 w-7 items-center justify-center rounded-md text-muted-foreground hover:bg-muted hover:text-foreground disabled:opacity-30 disabled:hover:bg-transparent disabled:hover:text-muted-foreground disabled:cursor-default cursor-pointer"
+                        >
+                          <Pencil className="h-3.5 w-3.5" />
+                        </button>
                       </td>
                     </tr>
                   );
@@ -482,6 +511,54 @@ export function Page5Comms({
           </div>
         </div>
       )}
+
+      {/* Per-lot category popup. Opened from the Edit pencil on each
+          row of the digital-consent table. Carries a master "Toggle all"
+          switch + a per-category checkbox list. Save commits to the
+          parent state; Cancel discards the popup-local draft. */}
+      <Dialog open={popupLotIdx != null} onOpenChange={(o) => { if (!o) setPopupLotIdx(null); }}>
+        <DialogContent className="sm:max-w-sm">
+          <DialogHeader>
+            <DialogTitle>
+              Digital consent — Lot {popupLotIdx != null ? lots[popupLotIdx]?.lot_number : ""}
+            </DialogTitle>
+            <DialogDescription>
+              Tick each category the owner has consented to receive digitally.
+              {" "}<strong className="text-foreground">Toggle all</strong> flips them on or off in one click.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-2">
+            <div className="flex items-center gap-2 rounded-md border border-border bg-muted/30 px-3 py-2">
+              <Checkbox
+                id="popup-all"
+                checked={popupAllOn}
+                onCheckedChange={(v) => popupToggleAll(v === true)}
+              />
+              <Label className="text-sm font-medium text-foreground">Toggle all</Label>
+            </div>
+            {ALL_CATEGORIES.map((c) => {
+              const checked = popupDraft.includes(c.value);
+              return (
+                <div key={c.value} className="flex items-start gap-2 px-1">
+                  <Checkbox
+                    id={`popup-${c.value}`}
+                    checked={checked}
+                    onCheckedChange={() => popupToggleCategory(c.value)}
+                  />
+                  <div className="-mt-0.5">
+                    <Label className="text-sm text-foreground">{c.label}</Label>
+                    <p className="text-xs text-muted-foreground">{c.hint}</p>
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+          <DialogFooter>
+            <Button variant="secondary" onClick={() => setPopupLotIdx(null)}>Cancel</Button>
+            <Button onClick={commitPerLotPopup}>Save</Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

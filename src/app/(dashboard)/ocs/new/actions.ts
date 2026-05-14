@@ -8,6 +8,7 @@ import { parsePlanPdf, type ParsedPlan } from "@/lib/parse-plan";
 import { parseRulesPdf, type ParsedRulesDocument } from "@/lib/parse-rules";
 import { parseInsurancePdf, type ParsedInsurancePolicy } from "@/lib/parse-insurance";
 import { runDocumentAiOcr } from "@/lib/google/document-ai";
+import { verifyAddress, type PostGridAddress, type VerificationResult } from "@/lib/postgrid/client";
 import { parseDrnCsv, matchDrnsToLots, type DrnMatchResult, type LotForMatch, type LotOwnerForMatch } from "@/lib/macquarie/drn-import";
 import { uploadObject, fetchObject, deleteObject, publicUrlFor } from "@/lib/storage/r2";
 
@@ -1882,5 +1883,58 @@ export async function createDraftFromDetectedOc(sourceDraftId: string, ocIndex: 
     return { draftId: created.id };
   } catch (err) {
     return { error: err instanceof Error ? err.message : "Unexpected error" };
+  }
+}
+
+// ─── PostGrid address verification ──────────────────────────────────
+//
+// Server-action surface for the wizard. The client never holds the
+// PostGrid API key — every verification round-trips through here so the
+// key stays server-side and the response gets normalised to the shape
+// our dialog renders.
+//
+// Single-address path (used for the OC notice address on page 3).
+// Multi-address batch path (used for per-lot postal addresses on page 4
+// — verify N at once to avoid N round-trips, but we currently loop
+// internally because PostGrid's /addver/batches endpoint requires a
+// pre-configured account flag; loop is fine for N≤50). When we open up
+// owner-driven postal address changes via the portal, switch this to
+// the real batch endpoint per the docstring on
+// `verifyAddress` in lib/postgrid/client.ts.
+
+export type VerifyAddressInput = PostGridAddress;
+export type VerifyAddressOutput = VerificationResult & {
+  /** Echo of the input so the caller can pair result to original
+   *  when verifying a batch. */
+  original: PostGridAddress;
+};
+
+export async function verifyAddressAction(input: VerifyAddressInput): Promise<VerifyAddressOutput | { error: string }> {
+  try {
+    await requireCompanyRole();
+    const r = await verifyAddress(input);
+    return { ...r, original: input };
+  } catch (err) {
+    console.error("verifyAddressAction failed:", err);
+    return { error: err instanceof Error ? err.message : "Address verification is temporarily unavailable." };
+  }
+}
+
+export async function verifyAddressBatchAction(inputs: VerifyAddressInput[]): Promise<{ results?: VerifyAddressOutput[]; error?: string }> {
+  try {
+    await requireCompanyRole();
+    // Sequential rather than Promise.all — PostGrid rate-limits single-
+    // endpoint hits per second, and verification is fast enough that
+    // serialising a few dozen calls is fine. Switch to Promise.all only
+    // after benching that PostGrid will tolerate the burst.
+    const results: VerifyAddressOutput[] = [];
+    for (const addr of inputs) {
+      const r = await verifyAddress(addr);
+      results.push({ ...r, original: addr });
+    }
+    return { results };
+  } catch (err) {
+    console.error("verifyAddressBatchAction failed:", err);
+    return { error: err instanceof Error ? err.message : "Address verification is temporarily unavailable." };
   }
 }
