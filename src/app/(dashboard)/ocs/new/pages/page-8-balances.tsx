@@ -173,6 +173,7 @@ export function Page8Balances({
             <div className="relative">
               <span className="absolute left-3 top-1/2 -translate-y-1/2 text-sm text-muted-foreground">$</span>
               <NumberInput
+                thousandsSeparator
                 id="admin-bal"
                 placeholder="Opening balance"
                 allowNegative
@@ -190,6 +191,7 @@ export function Page8Balances({
             <div className="relative">
               <span className="absolute left-3 top-1/2 -translate-y-1/2 text-sm text-muted-foreground">$</span>
               <NumberInput
+                thousandsSeparator
                 id="cap-bal"
                 placeholder="Opening balance"
                 allowNegative
@@ -213,6 +215,7 @@ export function Page8Balances({
             <div className="relative">
               <span className="absolute left-3 top-1/2 -translate-y-1/2 text-sm text-muted-foreground">$</span>
               <NumberInput
+                thousandsSeparator
                 id="maint-bal"
                 placeholder="Opening balance"
                 allowNegative
@@ -292,6 +295,7 @@ export function Page8Balances({
                       <div className="relative">
                         <span className="absolute left-3 top-1/2 -translate-y-1/2 text-xs text-muted-foreground">$</span>
                         <NumberInput
+                thousandsSeparator
                           value={absStr}
                           onChange={setAmount}
                           className="h-8 pl-7"

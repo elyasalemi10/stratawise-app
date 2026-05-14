@@ -391,6 +391,15 @@ export async function getOCManageStats(ocId: string) {
   };
 }
 
+export interface CompanyOCSummaryDraft {
+  id: string;
+  label: string;
+  step: number;
+  address: string;
+  plan_number: string;
+  updated_at: string;
+}
+
 export async function getCompanyOCSummary() {
   const profile = await getCurrentProfile();
   if (!profile?.management_company_id) return null;
@@ -399,15 +408,50 @@ export async function getCompanyOCSummary() {
 
   const { data: ocs, count } = await supabase
     .from("owners_corporations")
-    .select("id, short_code, name, plan_number, address, total_lots, status, created_at", { count: "exact" })
+    .select("id, short_code, name, plan_number, address, total_lots, status, created_at, photo_thumbnail_storage_key, photo_storage_key", { count: "exact" })
     .eq("management_company_id", profile.management_company_id)
     .eq("status", "active")
     .order("name");
 
   const totalLots = ocs?.reduce((sum, s) => sum + (s.total_lots ?? 0), 0) ?? 0;
+  const ocsWithThumb = (ocs ?? []).map((s) => {
+    const k = s.photo_thumbnail_storage_key ?? s.photo_storage_key ?? null;
+    return { ...s, thumbnail_url: k ? publicUrlFor(k) : null };
+  });
+
+  // In-progress drafts. The /ocs list page surfaces these alongside the live
+  // OC cards so managers can pick up where they left off without having to
+  // dig through the sidebar swapper.
+  const { data: rawDrafts } = await supabase
+    .from("oc_drafts")
+    .select("id, current_step, draft_json, plan_filename, updated_at")
+    .eq("management_company_id", profile.management_company_id)
+    .is("promoted_oc_id", null)
+    .order("updated_at", { ascending: false });
+  const drafts: CompanyOCSummaryDraft[] = (rawDrafts ?? []).map((d) => {
+    const json = (d.draft_json ?? {}) as {
+      trading_name?: string;
+      plan_number?: string;
+      address?: string;
+    };
+    const plan = json.plan_number ?? "";
+    const label = plan
+      || json.trading_name?.trim()
+      || d.plan_filename?.replace(/\.pdf$/i, "")
+      || "Untitled draft";
+    return {
+      id: d.id,
+      label,
+      step: d.current_step ?? 1,
+      address: json.address ?? "",
+      plan_number: plan,
+      updated_at: d.updated_at ?? "",
+    };
+  });
 
   return {
-    ocs: ocs ?? [],
+    ocs: ocsWithThumb,
+    drafts,
     totalOCs: count ?? 0,
     totalLots,
   };

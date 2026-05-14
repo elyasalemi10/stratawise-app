@@ -62,6 +62,10 @@ export function Page2Review({
   // while the user is still typing (CLAUDE.md validation rule). Lot liability
   // must be > 0 (statutory share of common-property costs); 0 isn't legal.
   const [lotErrors, setLotErrors] = useState<Array<{ unit?: boolean; entitlement?: boolean; liability?: boolean }>>([]);
+  // Whether to flag the "Add lot" button red. The OC-Act-minimum check is
+  // < 2 lots, but we don't want a destructive red ring to appear the moment
+  // the user lands on the page — only after they actually try to advance.
+  const [addLotInvalid, setAddLotInvalid] = useState(false);
   const [pending, setPending] = useState(false);
 
   const totalEntitlement = useMemo(
@@ -127,6 +131,9 @@ export function Page2Review({
     // Every lot must have entitlement > 0 AND liability > 0, and at least 2 lots.
     if (lots.length < 2) {
       problems.push("An OC must have at least 2 lots.");
+      setAddLotInvalid(true);
+    } else {
+      setAddLotInvalid(false);
     }
     const zeroEntitlement: number[] = [];
     const zeroLiability: number[] = [];
@@ -210,7 +217,7 @@ export function Page2Review({
             </Label>
             <Input
               id="plan-number"
-              placeholder="Plan-of-subdivision number"
+              placeholder="Plan of subdivision number"
               value={planNumber}
               onChange={(e) => {
                 setPlanNumber(e.target.value.toUpperCase());
@@ -218,7 +225,10 @@ export function Page2Review({
               }}
               maxLength={9}
               aria-invalid={planNumberInvalid || undefined}
-              className="uppercase"
+              // `uppercase` would also paint the placeholder uppercase
+              // (CSS doesn't differentiate). normal-case on the placeholder
+              // keeps the hint readable.
+              className="uppercase placeholder:normal-case"
             />
           </div>
           <div className="space-y-1.5">
@@ -269,8 +279,8 @@ export function Page2Review({
               type="button"
               variant="secondary"
               size="sm"
-              onClick={addLot}
-              className={lots.length < 2 ? "border border-destructive ring-2 ring-destructive/20" : undefined}
+              onClick={() => { addLot(); if (addLotInvalid) setAddLotInvalid(false); }}
+              className={addLotInvalid ? "border border-destructive ring-2 ring-destructive/20" : undefined}
             >
               <Plus className="mr-1.5 h-3.5 w-3.5" />
               Add lot

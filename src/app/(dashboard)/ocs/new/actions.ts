@@ -511,7 +511,16 @@ export async function parseDraftWithGemini(draftId: string) {
       })
       .eq("id", draft.id);
     if (error) return { error: error.message };
-    return { success: true, ocCount: parsed.detected_ocs.length, lotCount: first?.lots.length ?? 0 };
+    return {
+      success: true,
+      ocCount: parsed.detected_ocs.length,
+      lotCount: first?.lots.length ?? 0,
+      detectedOcs: parsed.detected_ocs.map((o) => ({
+        oc_number: o.oc_number,
+        lot_count: o.lot_count,
+        oc_name: o.oc_name ?? null,
+      })),
+    };
   } catch (err) {
     return { error: err instanceof Error ? err.message : "Unexpected error" };
   }
@@ -783,9 +792,12 @@ export async function skipParsing(draftId: string) {
   try {
     await loadDraft(draftId);
     const supabase = createServerClient();
+    // Land on page 2 (Review) — the manager wants to type the plan number,
+    // address, and lot schedule by hand. Page 2 already supports an empty
+    // initial state.
     const { error } = await supabase
       .from("oc_drafts")
-      .update({ parse_status: "skipped", current_step: 3 })
+      .update({ parse_status: "skipped", current_step: 2 })
       .eq("id", draftId);
     if (error) return { error: error.message };
     return { success: true };
@@ -1254,6 +1266,59 @@ export async function completeWizard(draftId: string) {
       sourceDraftId: draft.id,
       nextOcIndex,
     };
+  } catch (err) {
+    return { error: err instanceof Error ? err.message : "Unexpected error" };
+  }
+}
+
+// ─── selectDetectedOc — pick which OC to set up first from a multi-OC plan ──
+//
+// Called after a plan PDF is parsed and Gemini reports more than one OC on
+// the same plan. We rewrite this draft's `draft_json` to reflect the chosen
+// OC's lot schedule, address, building name, etc., so page 2 prefill matches
+// the OC the manager is setting up. The OTHER detected OCs stay in
+// `parsed_json.detected_ocs` and can be promoted later via the multi-OC
+// follow-on dialog at wizard completion.
+
+export async function selectDetectedOc(
+  draftId: string,
+  ocIndex: number,
+): Promise<{ success?: true; error?: string }> {
+  try {
+    const { draft } = await loadDraft(draftId);
+    const parsed = draft.parsed_json as ParsedPlan | null;
+    const target = parsed?.detected_ocs?.[ocIndex];
+    if (!target) return { error: "That OC isn't in this plan." };
+
+    const supabase = createServerClient();
+    const current = (draft.draft_json ?? {}) as DraftJson;
+    const draftJson: DraftJson = {
+      ...current,
+      plan_number: parsed?.plan_of_subdivision_number ?? current.plan_number,
+      oc_number: target.oc_number,
+      oc_name: target.oc_name ?? undefined,
+      trading_name: target.building_name ?? undefined,
+      address: target.address ?? undefined,
+      street_number: target.street_number ?? undefined,
+      street_name: target.street_name ?? undefined,
+      suburb: target.suburb ?? undefined,
+      state: target.state ?? "VIC",
+      postcode: target.postcode ?? undefined,
+      total_lots: target.lot_count ?? target.lots?.length ?? 0,
+      lots: (target.lots ?? []).map((l) => ({
+        lot_number: l.lot_number,
+        unit_number: l.unit_number ?? undefined,
+        unit_entitlement: l.unit_entitlement,
+        lot_liability: l.lot_liability,
+      })),
+    };
+
+    const { error } = await supabase
+      .from("oc_drafts")
+      .update({ draft_json: draftJson as unknown as Record<string, unknown> })
+      .eq("id", draft.id);
+    if (error) return { error: error.message };
+    return { success: true };
   } catch (err) {
     return { error: err instanceof Error ? err.message : "Unexpected error" };
   }

@@ -1,3 +1,4 @@
+import { X } from "lucide-react";
 import { Skeleton } from "@/components/ui/skeleton";
 import { StepIndicator } from "./step-indicator";
 
@@ -9,6 +10,15 @@ import { StepIndicator } from "./step-indicator";
 export default function Loading() {
   return (
     <div className="mx-auto w-full max-w-5xl">
+      <div className="relative mb-2 flex h-8 items-center">
+        <span className="absolute left-0 top-0 inline-flex h-6 w-6 items-center justify-center text-muted-foreground">
+          <X className="h-4 w-4" />
+        </span>
+        <p className="w-full text-center text-xs text-muted-foreground">
+          Each step is saved when you click <strong>Continue</strong>. You can leave anytime
+          and resume from the OC switcher in the sidebar.
+        </p>
+      </div>
       <StepIndicator current={1} />
       <div className="mt-2 space-y-6">
         <div className="text-center">

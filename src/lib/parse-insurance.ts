@@ -78,12 +78,18 @@ const RESPONSE_SCHEMA = {
 
 const SYSTEM_PROMPT = `You extract every policy section from a strata / owners-corporation Certificate of Currency or insurance policy schedule PDF.
 
-Rules:
-- Return every distinct policy/section the document defines, in source order.
-- "Combined" policy_type only when one section explicitly covers BOTH building + public liability together.
-- Money fields are AUD numbers, no currency symbols. If a number has commas (e.g. "$12,500,000") strip them and return 12500000.
+CRITICAL — how to count policies:
+- A "policy" is anything the cert assigns its OWN policy number to. ONE policy number = ONE policy, even if the cert lists multiple coverage limits under it (e.g. "Sum Insured" for the building AND "Legal Liability" / "Public Liability" / "Workers Compensation" as separate limits within the same policy).
+- Australian strata policies are typically BUNDLED — a single "Strata Building" or "Residential Strata" policy carries Building, Public/Legal Liability, sometimes Voluntary Workers and Fidelity, all under one policy number. Output ONE entry with policy_type="combined" when you see that.
+- DO NOT emit a separate policy entry for each coverage limit. If you see policy number HSA154109901 with Sum Insured $3,045,000 AND Legal Liability $20 million, that's ONE policy with sum_insured=3045000 and policy_type="combined" — NOT two policies.
+- Emit a separate policy entry only when there's a DIFFERENT policy_number (e.g. a separate "fidelity guarantee" policy from a different insurer or with a distinct policy number).
+
+Other rules:
+- Return policies in source order.
+- Money fields are AUD numbers, no currency symbols. Strip commas: "$12,500,000" → 12500000.
+- "Legal Liability $20 million" → 20000000 (parse abbreviations like 'million' / 'm' / 'mn').
 - Dates: ISO yyyy-mm-dd. Australian DD/MM/YYYY is the dominant source format — convert carefully.
-- plan_number: scan the cert for the Plan-of-Subdivision identifier ("PS812345X" or similar — "PS" + 6 digits + 1 letter). Typically near the address or under "Insured" / "Property Description". Null if not present.
+- plan_number: scan the cert for the Plan-of-Subdivision identifier ("PS812345X" or similar — "PS" + 6 digits + 1 letter). Typically near the address or under "Insured" / "Property Description". Case-insensitive — emit upper-case. Null if not present.
 - insured_name: the named insured / owners corporation name from the cert header. Null if not present.
 
 Document-type gate:

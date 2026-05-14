@@ -64,9 +64,16 @@ interface NewAutocompleteSuggestionCtor {
     sessionToken?: unknown;
     includedRegionCodes?: string[];
     includedPrimaryTypes?: string[];
-    // JS Places API (New) accepts LatLngBoundsLiteral here, NOT the REST
-    // API's `{rectangle:{low,high}}` shape — that throws InvalidValueError.
+    // JS Places API (New) accepts LatLngBoundsLiteral for locationBias and
+    // LatLngBoundsLiteral too for locationRestriction. Restriction is the
+    // stronger filter — predictions OUTSIDE the box are dropped entirely.
     locationBias?: {
+      south: number;
+      west: number;
+      north: number;
+      east: number;
+    };
+    locationRestriction?: {
       south: number;
       west: number;
       north: number;
@@ -94,7 +101,20 @@ function loadPlaces(): Promise<google.maps.PlacesLibrary> | null {
 }
 
 function joinFormatted(p: ParsedAddress): string {
-  return `${p.street_number} ${p.street_name}, ${p.suburb} ${p.state} ${p.postcode}`.replace(/\s+/g, " ").trim();
+  // No state suffix — the Maps search is locationRestriction-bounded to
+  // Victoria so every address we accept is already VIC. Showing ", VIC"
+  // in every field is just noise.
+  return `${p.street_number} ${p.street_name}, ${p.suburb} ${p.postcode}`.replace(/\s+/g, " ").trim();
+}
+
+// Same idea for Google's `formattedAddress`, which always tacks ", VIC" (and
+// often ", Australia") onto the end.
+function stripStateAndCountry(s: string): string {
+  return s
+    .replace(/,\s*(VIC|Victoria)\b/gi, "")
+    .replace(/,\s*Australia\b/gi, "")
+    .replace(/\s{2,}/g, " ")
+    .trim();
 }
 
 function pickComponent(
@@ -230,11 +250,19 @@ export function VicAddressAutocomplete({ value, onChange, id }: Props) {
         input,
         sessionToken: sessionTokenRef.current ?? undefined,
         includedRegionCodes: ["au"],
-        includedPrimaryTypes: ["address"],
-        // Victoria bounding box. LatLngBoundsLiteral shape — `{south, west,
-        // north, east}` — is what the JS SDK accepts; the REST API's
-        // `{rectangle:{low,high}}` shape throws InvalidValueError here.
-        locationBias: {
+        // "address" isn't a supported primary type in the new Places API
+        // (it was a legacy AutocompleteService category). The closest
+        // equivalents that return AU street addresses are "street_address"
+        // and "premise"; pass both so we cover unit/apartment buildings as
+        // well as residential premises. Omitting this entirely also works
+        // but pulls in cafes, businesses, etc. — bad for an OC address.
+        includedPrimaryTypes: ["street_address", "premise"],
+        // Victoria bounding box used as a HARD RESTRICTION rather than a
+        // bias — we never want NSW/SA border addresses leaking in. Filter
+        // happens server-side, so the ", Vic" suffix on every prediction
+        // (which we used to append client-side as a soft hint) becomes
+        // unnecessary.
+        locationRestriction: {
           south: -39.16,
           west: 140.96,
           north: -33.98,
@@ -245,7 +273,10 @@ export function VicAddressAutocomplete({ value, onChange, id }: Props) {
       predictionByIdRef.current.clear();
       for (const s of resp.suggestions.slice(0, 5)) {
         if (!s.placePrediction) continue;
-        items.push({ placeId: s.placePrediction.placeId, description: s.placePrediction.text.text });
+        items.push({
+          placeId: s.placePrediction.placeId,
+          description: stripStateAndCountry(s.placePrediction.text.text),
+        });
         predictionByIdRef.current.set(s.placePrediction.placeId, s.placePrediction);
       }
       setSuggestions(items);
@@ -278,7 +309,8 @@ export function VicAddressAutocomplete({ value, onChange, id }: Props) {
         setSearchError("Couldn't load address details — try entering manually.");
         return;
       }
-      const parsed = componentsToParsed(place.addressComponents, place.formattedAddress ?? s.description);
+      const cleanFormatted = stripStateAndCountry(place.formattedAddress ?? s.description);
+      const parsed = componentsToParsed(place.addressComponents, cleanFormatted);
       if (!parsed) {
         setSearchError("That address isn't in Victoria. Try a VIC address or enter manually.");
         return;

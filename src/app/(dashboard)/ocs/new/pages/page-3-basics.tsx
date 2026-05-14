@@ -201,6 +201,26 @@ export function Page3Basics({
     // re-encoded as JPEG q=0.82) before sending. Falls back to the raw file
     // if the canvas path errors out (rare — HEIC without browser decode).
     setPhotoUploading(true);
+
+    // Optimistic preview — paint the chosen image immediately under a dim
+    // overlay + spinner so the user sees their photo while we compress and
+    // upload. We use an object URL of the source file (or the HEIC-decoded
+    // version if needed); a real R2 URL replaces it once the upload returns.
+    let previewSource: File = file;
+    try {
+      if (isHeic(file)) previewSource = await heicToJpeg(file, 0.82);
+    } catch {
+      // If HEIC decode fails we just skip the preview; the upload path will
+      // still try and may produce a real error toast.
+    }
+    let previewUrl: string | null = null;
+    try {
+      previewUrl = URL.createObjectURL(previewSource);
+      setPhotoUrl(previewUrl);
+    } catch {
+      // Object URLs only fail in weird sandboxed contexts; treat as no preview.
+    }
+
     let upload: File = file;
     let thumb: File | null = null;
     try {
@@ -215,6 +235,10 @@ export function Page3Basics({
     }
     if (upload.size > 10 * 1024 * 1024) {
       setPhotoUploading(false);
+      if (previewUrl) {
+        URL.revokeObjectURL(previewUrl);
+        setPhotoUrl(null);
+      }
       toast.error("Photo is too large even after compression. Try a smaller image.");
       return;
     }
@@ -225,10 +249,16 @@ export function Page3Basics({
     setPhotoUploading(false);
     if (r.error || !r.storage_key) {
       toast.error(r.error ?? "Couldn't save the photo.");
+      if (previewUrl) {
+        URL.revokeObjectURL(previewUrl);
+        setPhotoUrl(null);
+      }
       return;
     }
     setPhotoKey(r.storage_key);
     setPhotoUrl(r.public_url ?? null);
+    // Now that the real R2 URL is in place we can release the local blob.
+    if (previewUrl) URL.revokeObjectURL(previewUrl);
   }
 
   async function handleRemovePhoto() {
@@ -289,7 +319,11 @@ export function Page3Basics({
               OC row on completion. */}
           <div className="space-y-1.5">
             <Label>Photo</Label>
-            {photoKey && photoUrl ? (
+            {/* While a photo is uploading we paint the image immediately
+                (object URL of the local file, set in handlePhotoSelect) and
+                dim it with a black/50 overlay + centered spinner. The image
+                "fades in" to full colour the moment the upload returns. */}
+            {photoUrl ? (
               <div className="relative overflow-hidden rounded-md border border-border bg-card">
                 {/* eslint-disable-next-line @next/next/no-img-element */}
                 <img
@@ -297,15 +331,21 @@ export function Page3Basics({
                   alt="OC photo"
                   className="block w-full max-h-[420px] object-cover"
                 />
-                <button
-                  type="button"
-                  onClick={handleRemovePhoto}
-                  disabled={photoUploading}
-                  aria-label="Remove photo"
-                  className="absolute right-3 top-3 inline-flex h-9 w-9 items-center justify-center rounded-md bg-card/90 backdrop-blur-sm border border-border text-destructive hover:bg-card cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
-                >
-                  <Trash2 className="h-4 w-4" />
-                </button>
+                {photoUploading && (
+                  <div className="absolute inset-0 flex items-center justify-center bg-black/45 backdrop-blur-[1px]">
+                    <Loader2 className="h-7 w-7 animate-spin text-white" />
+                  </div>
+                )}
+                {photoKey && !photoUploading && (
+                  <button
+                    type="button"
+                    onClick={handleRemovePhoto}
+                    aria-label="Remove photo"
+                    className="absolute right-3 top-3 inline-flex h-9 w-9 items-center justify-center rounded-md bg-card/90 backdrop-blur-sm border border-border text-destructive hover:bg-card cursor-pointer"
+                  >
+                    <Trash2 className="h-4 w-4" />
+                  </button>
+                )}
               </div>
             ) : (
               <button
@@ -314,14 +354,8 @@ export function Page3Basics({
                 disabled={photoUploading}
                 className="flex w-full flex-col items-center justify-center gap-2 rounded-md border-2 border-dashed border-border bg-card/60 px-4 py-6 text-sm text-muted-foreground hover:bg-card hover:text-foreground cursor-pointer disabled:cursor-not-allowed disabled:opacity-60"
               >
-                {photoUploading ? (
-                  <Loader2 className="h-5 w-5 animate-spin" />
-                ) : (
-                  <ImagePlus className="h-5 w-5" />
-                )}
-                <span>
-                  {photoUploading ? "Uploading…" : "Click to upload a photo"}
-                </span>
+                <ImagePlus className="h-5 w-5" />
+                <span>Click to upload a photo</span>
                 <span className="text-xs">JPEG, PNG, WebP, or HEIC. Max 10MB.</span>
               </button>
             )}

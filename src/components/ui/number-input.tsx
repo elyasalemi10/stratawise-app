@@ -15,6 +15,12 @@ import { cn } from "@/lib/utils";
 // Stores values as STRING, not number — empty string is the "nothing typed"
 // sentinel (so `0` and "not yet filled" are distinguishable). Callers parse on
 // submit via parseFloat / parseInt as appropriate.
+//
+// Dollar fields opt-in to `thousandsSeparator` to display "12,345,678" while
+// they type. The stored value (the string passed back via onChange) NEVER
+// contains commas — callers continue to call parseFloat on it directly. Commas
+// are visual only and are not counted as real characters; backspacing over a
+// comma deletes the digit before it.
 
 export interface NumberInputProps
   extends Omit<React.InputHTMLAttributes<HTMLInputElement>, "type" | "onChange" | "value"> {
@@ -27,8 +33,11 @@ export interface NumberInputProps
   allowNegative?: boolean;
   /** Max digits AFTER the decimal point. Default 2 (currency). */
   maxFractionDigits?: number;
-  /** Cap total length of the input. Default 14 (≈ $99,999,999,999.99). */
+  /** Cap total length of the RAW (un-formatted) input. Default 14 (≈ $99,999,999,999.99). */
   maxLength?: number;
+  /** Display commas as thousands separators ("12,345,678"). Stored value never
+   *  contains commas; the formatting is purely visual. Default false. */
+  thousandsSeparator?: boolean;
   invalid?: boolean;
 }
 
@@ -72,6 +81,20 @@ function sanitise(
   return cleaned;
 }
 
+// Format a sanitised numeric string with commas in the integer portion.
+// Preserves a leading "-" and any decimal portion (including the bare ".").
+function formatWithCommas(s: string): string {
+  if (!s) return s;
+  const negative = s.startsWith("-");
+  const unsigned = negative ? s.slice(1) : s;
+  const dotIdx = unsigned.indexOf(".");
+  const intPart = dotIdx >= 0 ? unsigned.slice(0, dotIdx) : unsigned;
+  const fracPart = dotIdx >= 0 ? unsigned.slice(dotIdx) : "";
+  // Insert commas every 3 digits from the right.
+  const withCommas = intPart.replace(/\B(?=(\d{3})+(?!\d))/g, ",");
+  return `${negative ? "-" : ""}${withCommas}${fracPart}`;
+}
+
 export const NumberInput = React.forwardRef<HTMLInputElement, NumberInputProps>(
   function NumberInput(
     {
@@ -81,6 +104,7 @@ export const NumberInput = React.forwardRef<HTMLInputElement, NumberInputProps>(
       allowNegative = false,
       maxFractionDigits = 2,
       maxLength = 14,
+      thousandsSeparator = false,
       invalid,
       onKeyDown,
       onPaste,
@@ -103,6 +127,22 @@ export const NumberInput = React.forwardRef<HTMLInputElement, NumberInputProps>(
         e.preventDefault();
         return;
       }
+      // Backspace over a comma deletes the digit BEFORE the comma. Without
+      // this, the comma sits stubbornly in front of the cursor and a second
+      // backspace is needed to actually shrink the number. We only do this
+      // in thousands-separator mode where commas exist.
+      if (thousandsSeparator && e.key === "Backspace") {
+        const target = e.currentTarget;
+        const start = target.selectionStart ?? 0;
+        const end = target.selectionEnd ?? 0;
+        if (start === end && start > 0 && target.value[start - 1] === ",") {
+          e.preventDefault();
+          // Drop the digit one to the left of the comma.
+          const next = target.value.slice(0, start - 2) + target.value.slice(start);
+          onChange(sanitise(next, { allowDecimal, allowNegative, maxFractionDigits }));
+          return;
+        }
+      }
       onKeyDown?.(e);
     }
 
@@ -123,13 +163,15 @@ export const NumberInput = React.forwardRef<HTMLInputElement, NumberInputProps>(
       onPaste?.(e);
     }
 
+    const display = thousandsSeparator ? formatWithCommas(value) : value;
+
     return (
       <Input
         ref={ref}
         type="text"
         inputMode={allowDecimal ? "decimal" : "numeric"}
         autoComplete="off"
-        value={value}
+        value={display}
         onChange={handleChange}
         onKeyDown={handleKeyDown}
         onPaste={handlePaste}

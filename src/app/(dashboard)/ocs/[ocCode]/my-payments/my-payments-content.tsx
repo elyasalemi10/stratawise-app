@@ -193,6 +193,7 @@ export function MyPaymentsContent({ ocId, ownerLots, claims }: Props) {
                       <FormLabel>Amount (AUD)</FormLabel>
                       <FormControl>
                         <NumberInput
+                        thousandsSeparator
                           placeholder="Amount"
                           value={field.value != null ? String(field.value) : ""}
                           onChange={(v) => field.onChange(v ? Number(v) : undefined)}

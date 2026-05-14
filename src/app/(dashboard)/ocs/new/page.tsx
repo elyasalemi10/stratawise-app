@@ -105,10 +105,19 @@ function WizardContent() {
 
   if (!draft) {
     // In-component skeleton (after route swap, while createDraftAndLoad is in
-    // flight). Mirrors loading.tsx so users don't see a flash of one skeleton
-    // shape replaced by a different one.
+    // flight). Mirrors loading.tsx exactly so users don't see one skeleton
+    // shape replaced by a different one when the draft finishes loading.
     return (
       <div className="mx-auto w-full max-w-5xl">
+        <div className="relative mb-2 flex h-8 items-center">
+          <span className="absolute left-0 top-0 inline-flex h-6 w-6 items-center justify-center text-muted-foreground">
+            <X className="h-4 w-4" />
+          </span>
+          <p className="w-full text-center text-xs text-muted-foreground">
+            Each step is saved when you click <strong>Continue</strong>. You can leave anytime
+            and resume from the OC switcher in the sidebar.
+          </p>
+        </div>
         <StepIndicator current={1} />
         <div className="mt-2 space-y-6">
           <div className="text-center">
@@ -134,22 +143,24 @@ function WizardContent() {
 
   return (
     <div className="mx-auto w-full max-w-5xl">
-      {/* Cancel pill — top-left of the wizard. The wizard auto-saves on every
-          step transition, so closing the tab and coming back via the sidebar
-          swapper resumes from the last completed step. Cancel here means
-          discard this draft entirely. */}
-      <div className="mb-2 flex items-center justify-between gap-3">
+      {/* Top bar: plain X (no border) in the corner + centered "what gets
+          saved" note. The wizard auto-saves at each step transition (when
+          you click Continue) — half-typed fields inside the current step
+          aren't persisted yet, so the note phrasing has to be explicit
+          rather than promising "everything is saved." */}
+      <div className="relative mb-2 flex h-8 items-center">
         <button
           type="button"
           onClick={() => setCancelOpen(true)}
-          className="inline-flex items-center gap-1.5 rounded-md border border-border bg-card px-2.5 py-1 text-xs font-medium text-muted-foreground hover:text-foreground hover:border-primary/40 cursor-pointer"
+          aria-label="Cancel and exit wizard"
+          className="absolute left-0 top-0 inline-flex h-6 w-6 items-center justify-center text-muted-foreground hover:text-foreground cursor-pointer"
         >
-          <X className="h-3.5 w-3.5" />
-          Cancel
+          <X className="h-4 w-4" />
         </button>
-        <span className="text-xs text-muted-foreground">
-          Your progress is saved automatically — you can close this page and resume from the OC switcher.
-        </span>
+        <p className="w-full text-center text-xs text-muted-foreground">
+          Each step is saved when you click <strong>Continue</strong>. You can leave anytime
+          and resume from the OC switcher in the sidebar.
+        </p>
       </div>
       <StepIndicator current={step} />
       <div className="mt-2">
@@ -160,9 +171,13 @@ function WizardContent() {
             initialFilename={draft.plan_filename}
             initialOcCount={draft.parsed_json?.detected_ocs?.length ?? 0}
             initialLotCount={draft.parsed_json?.detected_ocs?.[0]?.lot_count ?? 0}
+            initialDetectedOcs={detectedOcs}
             onNext={async () => {
               await refreshDraft();
-              goToStep(draft.parse_status === "skipped" ? 3 : 2);
+              // Both the parsed-plan path and the skip-and-enter-manually
+              // path drop into Page 2 (Review) — that page renders an empty
+              // lot schedule fine when nothing was parsed.
+              goToStep(2);
             }}
           />
         )}
@@ -181,7 +196,7 @@ function WizardContent() {
             initialDraft={draft.draft_json}
             initialPhotoKey={draft.photo_storage_key}
             totalLots={totalLots}
-            onBack={() => goToStep(draft.parse_status === "skipped" ? 1 : 2)}
+            onBack={() => goToStep(2)}
             onNext={async () => { await refreshDraft(); goToStep(4); }}
           />
         )}
@@ -318,10 +333,20 @@ function WizardContent() {
   );
 }
 
+function WizardOuter() {
+  // When the swapper navigates to a different draft (e.g. ?draft=A → ?draft=B),
+  // the URL changes but the inner WizardContent guards its bootstrap useEffect
+  // with `initialised.current` so it never reloads the new draft. Keying the
+  // inner component on the draft id forces a fresh mount on each draft swap.
+  const searchParams = useSearchParams();
+  const draftKey = searchParams.get("draft") ?? "new";
+  return <WizardContent key={draftKey} />;
+}
+
 export default function NewOCPage() {
   return (
     <Suspense>
-      <WizardContent />
+      <WizardOuter />
     </Suspense>
   );
 }

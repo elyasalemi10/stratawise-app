@@ -67,11 +67,12 @@ type PolicyInvalid = {
   provider: boolean;
   type: boolean;
   number: boolean;
+  sumInsured: boolean;
   premium: boolean;
   start: boolean;
   end: boolean;
 };
-const NO_PI: PolicyInvalid = { provider: false, type: false, number: false, premium: false, start: false, end: false };
+const NO_PI: PolicyInvalid = { provider: false, type: false, number: false, sumInsured: false, premium: false, start: false, end: false };
 
 type Coc = {
   storage_key: string;
@@ -155,6 +156,7 @@ export function Page7Insurance({
       if ("provider" in patch) cur.provider = false;
       if ("policy_number" in patch) cur.number = false;
       if ("policy_type" in patch) cur.type = false;
+      if ("sum_insured" in patch) cur.sumInsured = false;
       if ("premium" in patch) cur.premium = false;
       if ("start_date" in patch) cur.start = false;
       if ("end_date" in patch) cur.end = false;
@@ -254,6 +256,7 @@ export function Page7Insurance({
         provider: p.provider.trim().length < 2,
         type: !p.policy_type,
         number: !p.policy_number || p.policy_number.trim().length === 0,
+        sumInsured: p.sum_insured == null,
         premium: p.premium == null,
         start: !p.start_date,
         end: !p.end_date,
@@ -477,7 +480,9 @@ export function Page7Insurance({
                         </Select>
                       </div>
                       <div className="space-y-1.5">
-                        <Label htmlFor={`sum-${idx}`}>Sum insured</Label>
+                        <Label htmlFor={`sum-${idx}`}>
+                          Sum insured <span className="text-destructive">*</span>
+                        </Label>
                         <div className="relative">
                           <span className="absolute left-3 top-1/2 -translate-y-1/2 text-sm text-muted-foreground">$</span>
                           <NumberInput
@@ -485,6 +490,8 @@ export function Page7Insurance({
                             value={p.sum_insured != null ? String(p.sum_insured) : ""}
                             onChange={(v) => updatePolicy(idx, { sum_insured: v ? parseFloat(v) : undefined })}
                             placeholder="Sum insured"
+                            invalid={inv.sumInsured || undefined}
+                            thousandsSeparator
                             className="pl-7"
                           />
                         </div>
@@ -504,6 +511,7 @@ export function Page7Insurance({
                             onChange={(v) => updatePolicy(idx, { premium: v ? parseFloat(v) : undefined })}
                             placeholder="Annual premium"
                             invalid={inv.premium || undefined}
+                            thousandsSeparator
                             className="pl-7"
                           />
                         </div>

@@ -4,6 +4,14 @@ import { useEffect, useRef, useState } from "react";
 import { toast } from "sonner";
 import { AlertTriangle, FileText, Loader2, Upload, X, Scale, Trash2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
 import { VICTORIA_MODEL_RULES } from "@/lib/data/victoria-model-rules";
 import { uploadRules, parseDraftRules, setRulesSource, saveStep, type DraftJson } from "../actions";
 
@@ -61,6 +69,17 @@ export function Page6Rules({
   const [pending, setPending] = useState(false);
   const dragDepthRef = useRef(0);
   const resumedParseRef = useRef(false);
+  // Combined post-parse confirmation dialog. Fires when the parsed rules
+  // either cover multiple OCs (drop the ones we're not setting up) or the
+  // PS number on the document doesn't match this OC. Both checks are folded
+  // into a single dialog so the manager doesn't see two stacked popups.
+  const [confirm, setConfirm] = useState<{
+    keepLabel: string | null;
+    keepPlan: string | null;
+    dropScopes: Array<{ label: string; plan: string | null; ruleCount: number }>;
+    psMismatch: boolean;
+    expectedPlan: string;
+  } | null>(null);
 
   // Resume case: the user uploaded a rules PDF, then navigated away before
   // parsing completed (or it failed silently). On remount we have a filename
@@ -115,6 +134,35 @@ export function Page6Rules({
     setStage("complete");
     setRuleCount(parsed.ruleCount ?? 0);
     if (parsed.rules) setParsedRules(parsed.rules);
+    maybeOpenConfirm(parsed.ocScopes ?? [], parsed.rules ?? []);
+  }
+
+  // Inspect the parser output for multi-OC scopes or a PS-number mismatch
+  // and open the confirmation dialog if either condition is hit. Both are
+  // folded into one dialog rather than chained popups.
+  function maybeOpenConfirm(
+    scopes: Array<{ label: string; plan_number: string | null; rule_count: number }>,
+    rules: ParsedRule[],
+  ) {
+    void rules;
+    const expectedPlan = (initialDraft.plan_number ?? "").trim().toUpperCase();
+    const norm = (s: string | null) => (s ?? "").trim().toUpperCase().replace(/\s+/g, "");
+    const matchingScope = expectedPlan
+      ? scopes.find((s) => norm(s.plan_number) === expectedPlan)
+      : null;
+    const keep = matchingScope ?? scopes[0] ?? null;
+    const dropList = scopes.filter((s) => s !== keep);
+    const psMismatch = !!expectedPlan && !!keep?.plan_number && norm(keep.plan_number) !== expectedPlan;
+    // Open the dialog only if there's something to confirm: more than one
+    // scope OR a PS number mismatch on the single scope.
+    if (scopes.length <= 1 && !psMismatch) return;
+    setConfirm({
+      keepLabel: keep?.label ?? null,
+      keepPlan: keep?.plan_number ?? null,
+      dropScopes: dropList.map((s) => ({ label: s.label, plan: s.plan_number, ruleCount: s.rule_count })),
+      psMismatch,
+      expectedPlan,
+    });
   }
 
   function onDrop(e: React.DragEvent) {
@@ -387,6 +435,64 @@ export function Page6Rules({
           Continue
         </Button>
       </div>
+
+      {/* Combined confirm — fires when the parsed rules cover more than one
+          OC and/or the document's PS number doesn't match this OC. One
+          dialog covers both cases so the manager doesn't see two stacked
+          popups. */}
+      <Dialog open={confirm != null} onOpenChange={(open) => { if (!open) setConfirm(null); }}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>
+              {confirm?.dropScopes.length ? "We detected rules for more than one OC" : "Plan-of-Subdivision number doesn't match"}
+            </DialogTitle>
+            <DialogDescription>
+              {confirm?.psMismatch && (
+                <>
+                  The document looks like it&apos;s for{" "}
+                  <span className="font-medium text-foreground">{confirm?.keepPlan ?? "another plan"}</span>
+                  , but you&apos;re setting up{" "}
+                  <span className="font-medium text-foreground">{confirm?.expectedPlan}</span>.{" "}
+                </>
+              )}
+              {!!confirm?.dropScopes.length && (
+                <>
+                  We&apos;ll keep <span className="font-medium text-foreground">{confirm?.keepLabel ?? "the first OC's rules"}</span>
+                  {" "}and drop the others. You can re-upload from those OCs&apos; rules pages later.
+                </>
+              )}
+            </DialogDescription>
+          </DialogHeader>
+          {confirm?.dropScopes && confirm.dropScopes.length > 0 && (
+            <div className="space-y-1 rounded-md border border-border bg-muted/40 p-2 text-xs">
+              <p className="font-medium text-foreground">Dropping:</p>
+              <ul className="space-y-0.5 text-muted-foreground">
+                {confirm.dropScopes.map((s) => (
+                  <li key={s.label}>
+                    {s.label}{s.plan ? ` (${s.plan})` : ""} — {s.ruleCount} rule{s.ruleCount === 1 ? "" : "s"}
+                  </li>
+                ))}
+              </ul>
+            </div>
+          )}
+          <DialogFooter>
+            <Button variant="ghost" onClick={() => {
+              // Cancel = discard the parse so the user can re-upload the
+              // correct document. We don't actually delete the R2 object
+              // (the manage doc tab can show it as orphan) but we clear
+              // the wizard's parsed view.
+              setConfirm(null);
+              setStage("idle");
+              setFilename(null);
+              setRuleCount(0);
+              setParsedRules([]);
+            }}>
+              Cancel — wrong document
+            </Button>
+            <Button onClick={() => setConfirm(null)}>Use anyway</Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

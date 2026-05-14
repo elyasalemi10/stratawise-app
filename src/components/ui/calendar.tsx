@@ -90,10 +90,13 @@ function Calendar({
           defaultClassNames.dropdown
         ),
         caption_label: cn(
-          "font-medium select-none",
+          // White text on the navy nav strip (parent bg-primary). Without
+          // forcing text-primary-foreground here the label inherits the
+          // default foreground (midnight) which is invisible on midnight.
+          "font-medium select-none text-primary-foreground",
           captionLayout === "label"
             ? "text-sm"
-            : "flex items-center gap-1 rounded-(--cell-radius) text-sm [&>svg]:size-3.5 [&>svg]:text-muted-foreground",
+            : "flex items-center gap-1 rounded-(--cell-radius) text-sm [&>svg]:size-3.5 [&>svg]:text-primary-foreground",
           defaultClassNames.caption_label
         ),
         table: "w-full border-collapse px-2 pb-2",

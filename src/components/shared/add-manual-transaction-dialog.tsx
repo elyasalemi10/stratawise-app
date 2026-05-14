@@ -163,6 +163,7 @@ export function AddManualTransactionDialog({
                     <div className="relative">
                       <span className="absolute left-3 top-2.5 text-sm text-muted-foreground">$</span>
                       <NumberInput
+                        thousandsSeparator
                         placeholder="Amount"
                         className="pl-6"
                         value={field.value != null ? String(field.value) : ""}
