@@ -51,14 +51,13 @@ function Calendar({
         ),
         month: cn("flex w-full flex-col gap-3", defaultClassNames.month),
         nav: cn(
-          // Full-width navy caption strip — the calendar's "header" anchor
-          // line that separates the month/year selector from the date grid
-          // below. White text on midnight matches the rest of the app's
-          // primary surfaces. Force-paint EVERY descendant white via [&_*]
-          // so the month label, year label, dropdown text, and chevrons all
-          // read against navy regardless of how react-day-picker layers
-          // children inside.
-          "absolute inset-x-0 top-0 flex w-full items-center justify-between gap-1 bg-primary px-1 py-1 [&_*]:text-primary-foreground",
+          // react-day-picker stacks the nav (prev/next chevrons) ABOVE the
+          // month_caption via absolute positioning. If we paint the nav navy,
+          // the navy fill covers the month_caption underneath, hiding the
+          // "May 2026" label. So: transparent nav, navy lives on the
+          // month_caption row, chevrons inherit white text from the
+          // descendant selector below.
+          "absolute inset-x-0 top-0 flex w-full items-center justify-between gap-1 bg-transparent px-1 py-1 z-10 [&_*]:text-primary-foreground",
           defaultClassNames.nav
         ),
         button_previous: cn(
@@ -75,11 +74,10 @@ function Calendar({
           defaultClassNames.button_next
         ),
         month_caption: cn(
-          // Sits behind the navy nav strip; the [&_*] selector on `nav`
-          // colours every descendant white. We also force bg-primary so the
-          // area outside the nav (when react-day-picker stacks them) stays
-          // navy too.
-          "flex h-(--cell-size) w-full items-center justify-center px-(--cell-size) bg-primary [&_*]:text-primary-foreground",
+          // This row is the actual navy strip the user sees. nav (chevrons)
+          // sits transparent above it. `relative` keeps the bg in normal
+          // flow under the absolute nav; [&_*] paints the month label white.
+          "relative flex h-(--cell-size) w-full items-center justify-center px-(--cell-size) bg-primary [&_*]:text-primary-foreground",
           defaultClassNames.month_caption
         ),
         dropdowns: cn(

@@ -2,8 +2,11 @@
 
 import { useEffect, useRef, useState } from "react";
 import { toast } from "sonner";
-import { AlertTriangle, FileText, Loader2, Upload, X, Scale, Trash2 } from "lucide-react";
+import { AlertTriangle, ChevronDown, ExternalLink, FileText, Loader2, Pencil, Plus, Upload, X, Scale, Trash2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import { Textarea } from "@/components/ui/textarea";
 import {
   Dialog,
   DialogContent,
@@ -12,8 +15,29 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import { VICTORIA_MODEL_RULES } from "@/lib/data/victoria-model-rules";
-import { uploadRules, parseDraftRules, setRulesSource, saveStep, type DraftJson } from "../actions";
+import {
+  getDraftRulesSourceUrl,
+  parseDraftRules,
+  saveDraftRules,
+  saveStep,
+  setRulesSource,
+  uploadRules,
+  type DraftJson,
+} from "../actions";
 
 type ParsedRule = {
   oc_scope?: string;
@@ -21,6 +45,8 @@ type ParsedRule = {
   rule_number: string;
   heading?: string | null;
   body: string;
+  page_number?: number | null;
+  rule_type?: "registered" | "standing";
 };
 
 // Wizard page 6 — OC Rules.
@@ -69,19 +95,19 @@ export function Page6Rules({
   const [pending, setPending] = useState(false);
   const dragDepthRef = useRef(0);
   const resumedParseRef = useRef(false);
-  // Combined post-read confirmation dialog. Fires when the document either
-  // covers multiple OCs (so the manager has to pick which OC's rules to
-  // apply here) or the PS number on the document doesn't match this OC.
-  // Both checks are folded into a single dialog so the manager doesn't see
-  // two stacked popups.
-  const [confirm, setConfirm] = useState<{
-    scopes: Array<{ label: string; plan: string | null; ruleCount: number }>;
-    psMismatch: boolean;
+  // Two sequential dialogs:
+  //   Phase 1 (psMismatch): the document's PS number doesn't match this OC.
+  //     "Wrong document?" yes/no. Cancel → discard; Use anyway → phase 2.
+  //   Phase 2 (multi-OC scope): the document covers >1 OC; let the manager
+  //     pick which scopes apply. Cancel → discard; Apply → done.
+  // Phases skip when their condition doesn't apply, so a single-OC document
+  // with a matching PS just goes straight to display.
+  const [psPhase, setPsPhase] = useState<{
+    foundPlan: string | null;
     expectedPlan: string;
-    /** Indexes into `scopes` the manager wants to APPLY to this OC. Default
-     *  is the single matching scope (by plan_number) when there is one,
-     *  otherwise the first scope. Multi-pick is allowed for the rare case
-     *  where a manager wants to copy a parent OC's rules into a child OC. */
+  } | null>(null);
+  const [scopePhase, setScopePhase] = useState<{
+    scopes: Array<{ label: string; plan: string | null; ruleCount: number }>;
     selected: Set<number>;
   } | null>(null);
 
@@ -138,12 +164,11 @@ export function Page6Rules({
     setStage("complete");
     setRuleCount(parsed.ruleCount ?? 0);
     if (parsed.rules) setParsedRules(parsed.rules);
+    lastScopesRef.current = parsed.ocScopes ?? [];
     maybeOpenConfirm(parsed.ocScopes ?? [], parsed.rules ?? []);
   }
 
-  // Inspect the read-back output for multi-OC scopes or a PS-number mismatch
-  // and open the confirmation dialog if either condition is hit. Both are
-  // folded into one dialog rather than chained popups.
+  // Decide which dialogs (if any) to fire after a successful read-back.
   function maybeOpenConfirm(
     scopes: Array<{ label: string; plan_number: string | null; rule_count: number }>,
     rules: ParsedRule[],
@@ -151,8 +176,6 @@ export function Page6Rules({
     void rules;
     const expectedPlan = (initialDraft.plan_number ?? "").trim().toUpperCase();
     const norm = (s: string | null) => (s ?? "").trim().toUpperCase().replace(/\s+/g, "");
-    // Default selection: the scope whose plan_number matches this OC.
-    // Falls back to the first scope when no match (manager picks manually).
     const matchingIdx = expectedPlan
       ? scopes.findIndex((s) => norm(s.plan_number) === expectedPlan)
       : -1;
@@ -160,25 +183,180 @@ export function Page6Rules({
     const defaultScope = scopes[defaultIdx];
     const psMismatch = !!expectedPlan && !!defaultScope?.plan_number
       && norm(defaultScope.plan_number) !== expectedPlan;
-    // Open the dialog only when there's something to confirm: more than one
-    // scope OR a PS number mismatch on the single scope.
-    if (scopes.length <= 1 && !psMismatch) return;
-    setConfirm({
-      scopes: scopes.map((s) => ({ label: s.label, plan: s.plan_number, ruleCount: s.rule_count })),
-      selected: new Set([defaultIdx]),
-      psMismatch,
-      expectedPlan,
-    });
+
+    if (psMismatch) {
+      // Open PS-mismatch first; phase 2 fires from its "Use anyway" handler.
+      setPsPhase({ foundPlan: defaultScope.plan_number, expectedPlan });
+      return;
+    }
+    if (scopes.length > 1) {
+      // No PS issue, but multi-OC — jump straight to the scope picker.
+      setScopePhase({
+        scopes: scopes.map((s) => ({ label: s.label, plan: s.plan_number, ruleCount: s.rule_count })),
+        selected: new Set([defaultIdx]),
+      });
+    }
+  }
+
+  function discardReadBack() {
+    setPsPhase(null);
+    setScopePhase(null);
+    setStage("idle");
+    setFilename(null);
+    setRuleCount(0);
+    setParsedRules([]);
+  }
+
+  function onPsMismatchUseAnyway() {
+    setPsPhase(null);
+    // Open the scope picker only if there's more than one scope. Otherwise
+    // the read-back is just applied as-is.
+    const scopes = lastScopesRef.current;
+    if (scopes.length > 1) {
+      const expectedPlan = (initialDraft.plan_number ?? "").trim().toUpperCase();
+      const norm = (s: string | null) => (s ?? "").trim().toUpperCase().replace(/\s+/g, "");
+      const matchingIdx = expectedPlan
+        ? scopes.findIndex((s) => norm(s.plan_number) === expectedPlan)
+        : -1;
+      const defaultIdx = matchingIdx >= 0 ? matchingIdx : 0;
+      setScopePhase({
+        scopes: scopes.map((s) => ({ label: s.label, plan: s.plan_number, ruleCount: s.rule_count })),
+        selected: new Set([defaultIdx]),
+      });
+    }
   }
 
   function toggleConfirmScope(idx: number) {
-    setConfirm((prev) => {
+    setScopePhase((prev) => {
       if (!prev) return prev;
       const next = new Set(prev.selected);
       if (next.has(idx)) next.delete(idx);
       else next.add(idx);
       return { ...prev, selected: next };
     });
+  }
+
+  // Cached scopes so the "Use anyway" handler in phase 1 can hand off to
+  // phase 2 without re-fetching the parser output.
+  const lastScopesRef = useRef<Array<{ label: string; plan_number: string | null; rule_count: number }>>([]);
+
+  // Wizard rules CRUD — manual add, inline edit, inline delete. State only
+  // until the manager hits Continue, then persisted via saveDraftRules so a
+  // resumed draft reflects the edits. Preview (open the source PDF) is a
+  // signed URL we lazy-load on first click.
+  const [addOpen, setAddOpen] = useState(false);
+  const [addType, setAddType] = useState<"registered" | "standing">("standing");
+  const [addNumber, setAddNumber] = useState("");
+  const [addHeading, setAddHeading] = useState("");
+  const [addBody, setAddBody] = useState("");
+
+  const [editIdx, setEditIdx] = useState<number | null>(null);
+  const [editNumber, setEditNumber] = useState("");
+  const [editHeading, setEditHeading] = useState("");
+  const [editBody, setEditBody] = useState("");
+  const [editType, setEditType] = useState<"registered" | "standing">("registered");
+
+  const [deleteIdx, setDeleteIdx] = useState<number | null>(null);
+  const [pdfUrl, setPdfUrl] = useState<string | null>(null);
+  const [pdfLoading, setPdfLoading] = useState(false);
+
+  // Persist the current parsedRules list to the draft. Fire-and-forget; we
+  // toast on error but don't block the UI.
+  function persistRules(rules: ParsedRule[]) {
+    void saveDraftRules(draftId, rules.map((r) => ({
+      oc_scope: r.oc_scope,
+      parent_heading: r.parent_heading ?? null,
+      rule_number: r.rule_number,
+      heading: r.heading ?? null,
+      body: r.body,
+      page_number: r.page_number ?? null,
+      rule_type: r.rule_type,
+    }))).then((r) => {
+      if (r.error) toast.error("Couldn't save rule changes.");
+    });
+  }
+
+  function openAdd(type: "registered" | "standing") {
+    setAddType(type);
+    // Suggest next sequential top-level number.
+    const tops = parsedRules
+      .map((r) => r.rule_number.split(".")[0])
+      .map((s) => parseInt(s, 10))
+      .filter((n) => Number.isFinite(n));
+    const next = (tops.length > 0 ? Math.max(...tops) : 0) + 1;
+    setAddNumber(String(next));
+    setAddHeading("");
+    setAddBody("");
+    setAddOpen(true);
+  }
+
+  function commitAdd() {
+    if (!addNumber.trim() || !addBody.trim()) {
+      toast.error("Rule number and body are both required.");
+      return;
+    }
+    const next: ParsedRule = {
+      rule_number: addNumber.trim(),
+      heading: addHeading.trim() || null,
+      body: addBody.trim(),
+      rule_type: addType,
+    };
+    const merged = [...parsedRules, next];
+    setParsedRules(merged);
+    setRuleCount(merged.length);
+    persistRules(merged);
+    setAddOpen(false);
+  }
+
+  function openEdit(idx: number) {
+    const r = parsedRules[idx];
+    if (!r) return;
+    setEditIdx(idx);
+    setEditNumber(r.rule_number);
+    setEditHeading(r.heading ?? "");
+    setEditBody(r.body);
+    setEditType(r.rule_type ?? "registered");
+  }
+
+  function commitEdit() {
+    if (editIdx == null) return;
+    if (!editNumber.trim() || !editBody.trim()) {
+      toast.error("Rule number and body are both required.");
+      return;
+    }
+    const merged = parsedRules.map((r, i) =>
+      i === editIdx
+        ? { ...r, rule_number: editNumber.trim(), heading: editHeading.trim() || null, body: editBody.trim(), rule_type: editType }
+        : r,
+    );
+    setParsedRules(merged);
+    persistRules(merged);
+    setEditIdx(null);
+  }
+
+  function commitDelete() {
+    if (deleteIdx == null) return;
+    const merged = parsedRules.filter((_, i) => i !== deleteIdx);
+    setParsedRules(merged);
+    setRuleCount(merged.length);
+    persistRules(merged);
+    setDeleteIdx(null);
+  }
+
+  async function openPreview() {
+    if (pdfUrl) {
+      window.open(pdfUrl, "_blank", "noopener");
+      return;
+    }
+    setPdfLoading(true);
+    const r = await getDraftRulesSourceUrl(draftId);
+    setPdfLoading(false);
+    if (!r.url) {
+      toast.error(r.error ?? "No PDF attached to this rule.");
+      return;
+    }
+    setPdfUrl(r.url);
+    window.open(r.url, "_blank", "noopener");
   }
 
   function onDrop(e: React.DragEvent) {
@@ -348,40 +526,89 @@ export function Page6Rules({
             </div>
           )}
 
-          {filename && stage === "complete" && parsedRules.length > 0 && (
+          {/* Rules list block — visible whenever there's anything to show OR
+              the manager has chosen "custom" rules (so they can start typing
+              by hand). Header carries the Add button + PDF preview + clear. */}
+          {(parsedRules.length > 0 || (source === "custom" && stage !== "uploading" && stage !== "parsing")) ? (
             <div className="rounded-md border border-border bg-card overflow-hidden">
               <div className="flex items-center justify-between gap-3 bg-muted/40 px-4 py-2 border-b border-border">
                 <div className="flex items-center gap-2 min-w-0">
                   <FileText className="h-3.5 w-3.5 text-muted-foreground shrink-0" />
-                  <span className="text-sm font-medium text-foreground truncate">{filename}</span>
-                  <span className="text-xs text-muted-foreground shrink-0">— {ruleCount} rule{ruleCount === 1 ? "" : "s"}</span>
+                  <span className="text-sm font-medium text-foreground truncate">
+                    {filename ?? "Your rules"}
+                  </span>
+                  <span className="text-xs text-muted-foreground shrink-0">
+                    — {parsedRules.length} rule{parsedRules.length === 1 ? "" : "s"}
+                  </span>
                 </div>
-                <button
-                  type="button"
-                  onClick={() => {
-                    setStage("idle");
-                    setFilename(null);
-                    setParseError(null);
-                    setRuleCount(0);
-                    setParsedRules([]);
-                  }}
-                  className="text-muted-foreground hover:text-destructive cursor-pointer shrink-0"
-                  aria-label="Remove upload"
-                >
-                  <Trash2 className="h-4 w-4" />
-                </button>
+                <div className="flex items-center gap-1">
+                  {filename && (
+                    <button
+                      type="button"
+                      onClick={() => void openPreview()}
+                      disabled={pdfLoading}
+                      className="inline-flex items-center gap-1 rounded-md px-2 py-1 text-xs text-muted-foreground hover:bg-muted hover:text-foreground cursor-pointer disabled:opacity-50"
+                    >
+                      {pdfLoading ? <Loader2 className="h-3 w-3 animate-spin" /> : <ExternalLink className="h-3 w-3" />}
+                      Open PDF
+                    </button>
+                  )}
+                  <DropdownMenu>
+                    <DropdownMenuTrigger
+                      render={
+                        <Button type="button" size="sm" variant="secondary">
+                          <Plus className="mr-1 h-3.5 w-3.5" />
+                          Add rule
+                          <ChevronDown className="ml-1 h-3 w-3" />
+                        </Button>
+                      }
+                    />
+                    <DropdownMenuContent align="end">
+                      <DropdownMenuItem onClick={() => openAdd("registered")}>
+                        <Scale className="mr-2 h-3.5 w-3.5 text-emerald-700" />
+                        Registered rule
+                      </DropdownMenuItem>
+                      <DropdownMenuItem onClick={() => openAdd("standing")}>
+                        <FileText className="mr-2 h-3.5 w-3.5 text-amber-700" />
+                        Standing rule
+                      </DropdownMenuItem>
+                    </DropdownMenuContent>
+                  </DropdownMenu>
+                  {filename && (
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setStage("idle");
+                        setFilename(null);
+                        setParseError(null);
+                        setRuleCount(0);
+                        setParsedRules([]);
+                        persistRules([]);
+                      }}
+                      className="ml-1 text-muted-foreground hover:text-destructive cursor-pointer shrink-0"
+                      aria-label="Remove all rules"
+                    >
+                      <Trash2 className="h-4 w-4" />
+                    </button>
+                  )}
+                </div>
               </div>
-              <div className="max-h-[480px] overflow-y-auto">{(() => {
+              <div className="max-h-[480px] overflow-y-auto">{parsedRules.length === 0 ? (
+                <p className="px-4 py-6 text-center text-sm text-muted-foreground">
+                  No rules yet — use <strong>Add rule</strong> above to add one, or upload a PDF below.
+                </p>
+              ) : (() => {
                 // Group rules by oc_scope first (most docs have one scope, but
                 // mixed-use plans register rules for separate OCs in the same
                 // PDF), then by parent_heading within each scope so the user
                 // can see "8. Commercial Lots → 8.2.1 Advertising Signage" in
                 // context rather than as an orphan rule.
-                const byScope = new Map<string, ParsedRule[]>();
-                for (const r of parsedRules) {
-                  const k = r.oc_scope ?? "";
+                const indexed = parsedRules.map((r, idx) => ({ rule: r, idx }));
+                const byScope = new Map<string, typeof indexed>();
+                for (const entry of indexed) {
+                  const k = entry.rule.oc_scope ?? "";
                   if (!byScope.has(k)) byScope.set(k, []);
-                  byScope.get(k)!.push(r);
+                  byScope.get(k)!.push(entry);
                 }
                 const scopeEntries = Array.from(byScope.entries());
                 return scopeEntries.map(([scope, scopeRules], si) => (
@@ -392,19 +619,41 @@ export function Page6Rules({
                       </div>
                     )}
                     <ol className="divide-y divide-border">
-                      {scopeRules.map((r, i) => (
-                        <li key={i} className="px-4 py-3">
-                          {r.parent_heading && (
-                            <p className="text-xs uppercase tracking-wide text-muted-foreground">
-                              {r.parent_heading}
+                      {scopeRules.map(({ rule: r, idx }) => (
+                        <li key={idx} className="group flex items-start gap-2 px-4 py-3 hover:bg-muted/20">
+                          <div className="flex-1 min-w-0">
+                            {r.parent_heading && (
+                              <p className="text-xs uppercase tracking-wide text-muted-foreground">
+                                {r.parent_heading}
+                              </p>
+                            )}
+                            <p className="text-sm font-semibold text-foreground">
+                              {r.rule_number}{r.heading ? `. ${r.heading}` : ""}
                             </p>
-                          )}
-                          <p className="text-sm font-semibold text-foreground">
-                            {r.rule_number}{r.heading ? `. ${r.heading}` : ""}
-                          </p>
-                          <p className="mt-1 text-sm text-muted-foreground leading-relaxed whitespace-pre-line">
-                            {r.body}
-                          </p>
+                            <p className="mt-1 text-sm text-muted-foreground leading-relaxed whitespace-pre-line">
+                              {r.body}
+                            </p>
+                          </div>
+                          {/* Hover-only edit + delete. stopPropagation isn't
+                              required here since the row isn't clickable. */}
+                          <div className="hidden items-center gap-1 shrink-0 group-hover:flex">
+                            <button
+                              type="button"
+                              onClick={() => openEdit(idx)}
+                              aria-label="Edit rule"
+                              className="inline-flex h-7 w-7 items-center justify-center rounded-md text-muted-foreground hover:bg-muted hover:text-foreground"
+                            >
+                              <Pencil className="h-3.5 w-3.5" />
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => setDeleteIdx(idx)}
+                              aria-label="Delete rule"
+                              className="inline-flex h-7 w-7 items-center justify-center rounded-md text-muted-foreground hover:bg-destructive/10 hover:text-destructive"
+                            >
+                              <Trash2 className="h-3.5 w-3.5" />
+                            </button>
+                          </div>
                         </li>
                       ))}
                     </ol>
@@ -412,7 +661,7 @@ export function Page6Rules({
                 ));
               })()}</div>
             </div>
-          )}
+          ) : null}
 
           {filename && stage === "failed" && (
             <div className="relative rounded-md border border-amber-200 bg-amber-50 p-4">
@@ -453,40 +702,47 @@ export function Page6Rules({
         </Button>
       </div>
 
-      {/* Combined confirm — fires when the document covers more than one
-          OC and/or the document's PS number doesn't match this OC. One
-          dialog covers both cases so the manager doesn't see two stacked
-          popups. Multi-pick checkboxes let the manager choose exactly which
-          scopes apply here — e.g. a child OC adopting the parent body
-          corporate's rules verbatim. */}
-      <Dialog open={confirm != null} onOpenChange={(open) => { if (!open) setConfirm(null); }}>
+      {/* Phase 1 — PS-number mismatch. Fires first when relevant; cancel
+          discards the read-back, "Use anyway" hands off to phase 2 (or
+          straight to display if the document is single-OC). */}
+      <Dialog open={psPhase != null} onOpenChange={(open) => { if (!open) discardReadBack(); }}>
         <DialogContent className="sm:max-w-md">
           <DialogHeader>
-            <DialogTitle>
-              {confirm && confirm.scopes.length > 1
-                ? "Pick which OCs' rules to apply"
-                : "Plan-of-Subdivision number doesn't match"}
-            </DialogTitle>
+            <DialogTitle>Plan-of-Subdivision number doesn&apos;t match</DialogTitle>
             <DialogDescription>
-              {confirm?.psMismatch && (
-                <>
-                  The document looks like it&apos;s for another plan, but you&apos;re setting up{" "}
-                  <span className="font-medium text-foreground">{confirm?.expectedPlan}</span>.{" "}
-                </>
-              )}
-              {confirm && confirm.scopes.length > 1 && (
-                <>
-                  The document covers more than one OC. Tick the ones you want
-                  to apply to <span className="font-medium text-foreground">this</span> OC — usually
-                  just one, but you can keep multiple if a child OC adopts a parent OC&apos;s rules.
-                </>
-              )}
+              The document looks like it&apos;s for{" "}
+              <span className="font-medium text-foreground">{psPhase?.foundPlan ?? "another plan"}</span>
+              , but you&apos;re setting up{" "}
+              <span className="font-medium text-foreground">{psPhase?.expectedPlan}</span>.
+              {" "}Use it anyway?
             </DialogDescription>
           </DialogHeader>
-          {confirm && (
+          <DialogFooter>
+            <Button variant="ghost" onClick={discardReadBack}>
+              Cancel — wrong document
+            </Button>
+            <Button onClick={onPsMismatchUseAnyway}>Use anyway</Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Phase 2 — multi-OC scope picker. Fires when there's more than one
+          OC scope in the document. Multi-pick because a child OC sometimes
+          adopts the parent body corporate's rules verbatim. */}
+      <Dialog open={scopePhase != null} onOpenChange={(open) => { if (!open) discardReadBack(); }}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle>Pick which OCs&apos; rules to apply</DialogTitle>
+            <DialogDescription>
+              The document covers more than one OC. Tick the ones you want
+              to apply to <span className="font-medium text-foreground">this</span> OC — usually
+              just one, but you can keep multiple if a child OC adopts a parent OC&apos;s rules.
+            </DialogDescription>
+          </DialogHeader>
+          {scopePhase && (
             <div className="space-y-1.5">
-              {confirm.scopes.map((s, idx) => {
-                const checked = confirm.selected.has(idx);
+              {scopePhase.scopes.map((s, idx) => {
+                const checked = scopePhase.selected.has(idx);
                 return (
                   <button
                     key={s.label + idx}
@@ -518,38 +774,137 @@ export function Page6Rules({
             </div>
           )}
           <DialogFooter>
-            <Button variant="ghost" onClick={() => {
-              // Cancel = discard the read-back so the user can re-upload the
-              // correct document. We don't actually delete the R2 object
-              // (the manage doc tab can show it as orphan) but we clear
-              // the wizard's parsed view.
-              setConfirm(null);
-              setStage("idle");
-              setFilename(null);
-              setRuleCount(0);
-              setParsedRules([]);
-            }}>
+            <Button variant="ghost" onClick={discardReadBack}>
               Cancel — wrong document
             </Button>
             <Button
               onClick={() => {
-                if (!confirm) return;
-                if (confirm.selected.size === 0) {
+                if (!scopePhase) return;
+                if (scopePhase.selected.size === 0) {
                   toast.error("Pick at least one OC's rules to apply.");
                   return;
                 }
-                // Filter parsedRules client-side to the chosen scopes.
-                // completeWizard's existing scope-filter will also run, but
-                // doing it here keeps the visible card list honest and lets
-                // the manager edit before saving.
                 const chosenLabels = new Set(
-                  Array.from(confirm.selected).map((i) => confirm.scopes[i]?.label),
+                  Array.from(scopePhase.selected).map((i) => scopePhase.scopes[i]?.label),
                 );
                 setParsedRules((prev) => prev.filter((r) => chosenLabels.has(r.oc_scope ?? "")));
-                setConfirm(null);
+                setScopePhase(null);
               }}
             >
               Apply selection
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Add rule (wizard) — same shape as the live rules page, scoped to
+          this draft. Saves to draft.rules_parsed_json via saveDraftRules
+          so refreshes don't lose the manual addition. */}
+      <Dialog open={addOpen} onOpenChange={setAddOpen}>
+        <DialogContent className="sm:max-w-lg">
+          <DialogHeader>
+            <DialogTitle>Add {addType === "standing" ? "standing" : "registered"} rule</DialogTitle>
+            <DialogDescription>
+              {addType === "standing"
+                ? "Committee-adopted internal rules that aren't filed with Land Use Victoria."
+                : "Filed with Land Use Victoria. Use this for any rule that's part of the OC's registered set."}
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-3">
+            <div className="space-y-1.5">
+              <Label htmlFor="wr-num">
+                Rule number <span className="text-destructive">*</span>
+              </Label>
+              <Input id="wr-num" value={addNumber} onChange={(e) => setAddNumber(e.target.value)} />
+            </div>
+            <div className="space-y-1.5">
+              <Label htmlFor="wr-head">Heading</Label>
+              <Input id="wr-head" value={addHeading} onChange={(e) => setAddHeading(e.target.value)} placeholder="Short title for the rule" />
+            </div>
+            <div className="space-y-1.5">
+              <Label htmlFor="wr-body">
+                Body <span className="text-destructive">*</span>
+              </Label>
+              <Textarea
+                id="wr-body"
+                rows={5}
+                value={addBody}
+                onChange={(e) => setAddBody(e.target.value)}
+                placeholder="Full text of the rule"
+              />
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="ghost" onClick={() => setAddOpen(false)}>Cancel</Button>
+            <Button onClick={commitAdd}>Add rule</Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Edit rule (wizard) */}
+      <Dialog open={editIdx != null} onOpenChange={(open) => { if (!open) setEditIdx(null); }}>
+        <DialogContent className="sm:max-w-lg">
+          <DialogHeader>
+            <DialogTitle>Edit rule</DialogTitle>
+          </DialogHeader>
+          <div className="space-y-3">
+            <div className="grid grid-cols-[140px_1fr] gap-3">
+              <div className="space-y-1.5">
+                <Label htmlFor="we-type">Type</Label>
+                <Select value={editType} onValueChange={(v) => setEditType((v as "registered" | "standing") ?? "registered")}>
+                  <SelectTrigger id="we-type">
+                    <SelectValue>{editType === "standing" ? "Standing" : "Registered"}</SelectValue>
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="registered">Registered</SelectItem>
+                    <SelectItem value="standing">Standing</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+              <div className="space-y-1.5">
+                <Label htmlFor="we-num">
+                  Rule number <span className="text-destructive">*</span>
+                </Label>
+                <Input id="we-num" value={editNumber} onChange={(e) => setEditNumber(e.target.value)} />
+              </div>
+            </div>
+            <div className="space-y-1.5">
+              <Label htmlFor="we-head">Heading</Label>
+              <Input id="we-head" value={editHeading} onChange={(e) => setEditHeading(e.target.value)} />
+            </div>
+            <div className="space-y-1.5">
+              <Label htmlFor="we-body">
+                Body <span className="text-destructive">*</span>
+              </Label>
+              <Textarea id="we-body" rows={5} value={editBody} onChange={(e) => setEditBody(e.target.value)} />
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="ghost" onClick={() => setEditIdx(null)}>Cancel</Button>
+            <Button onClick={commitEdit}>Save changes</Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Delete confirm (wizard) */}
+      <Dialog open={deleteIdx != null} onOpenChange={(open) => { if (!open) setDeleteIdx(null); }}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Remove this rule?</DialogTitle>
+            <DialogDescription>
+              {deleteIdx != null && parsedRules[deleteIdx] && (
+                <>
+                  Rule <strong className="text-foreground">{parsedRules[deleteIdx].rule_number}</strong>
+                  {parsedRules[deleteIdx].heading ? ` — ${parsedRules[deleteIdx].heading}` : ""} will be removed.
+                  The PDF stays in the OC&apos;s documents.
+                </>
+              )}
+            </DialogDescription>
+          </DialogHeader>
+          <DialogFooter>
+            <Button variant="ghost" onClick={() => setDeleteIdx(null)}>Cancel</Button>
+            <Button onClick={commitDelete} className="bg-destructive hover:bg-destructive/90">
+              Remove rule
             </Button>
           </DialogFooter>
         </DialogContent>

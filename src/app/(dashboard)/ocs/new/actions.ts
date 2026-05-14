@@ -836,6 +836,58 @@ export async function uploadInsuranceDoc(draftId: string, formData: FormData) {
   }
 }
 
+// ─── Wizard rules state (manual edits while the wizard is open) ──────
+//
+// Page 6 lets the manager add / edit / delete rules during the wizard so
+// the rule list saved at completeWizard time matches what they actually
+// want. We piggy-back on the existing `rules_parsed_json` blob to persist
+// these edits — the live page 6 reads from that on hydrate.
+
+export async function saveDraftRules(
+  draftId: string,
+  rules: Array<{
+    oc_scope?: string;
+    parent_heading?: string | null;
+    rule_number: string;
+    heading?: string | null;
+    body: string;
+    page_number?: number | null;
+    rule_type?: "registered" | "standing";
+  }>,
+): Promise<{ success?: true; error?: string }> {
+  try {
+    const { draft } = await loadDraft(draftId);
+    const supabase = createServerClient();
+    const existing = (draft.rules_parsed_json ?? {}) as Record<string, unknown>;
+    // Persist rules + clear oc_scopes since the edited list is already
+    // filtered. Keeps completeWizard's existing materialiser happy.
+    const next = { ...existing, rules };
+    const { error } = await supabase
+      .from("oc_drafts")
+      .update({ rules_parsed_json: next })
+      .eq("id", draft.id);
+    if (error) return { error: error.message };
+    return { success: true };
+  } catch (err) {
+    return { error: err instanceof Error ? err.message : "Unexpected error" };
+  }
+}
+
+export async function getDraftRulesSourceUrl(
+  draftId: string,
+): Promise<{ url: string | null; error?: string }> {
+  try {
+    const { draft } = await loadDraft(draftId);
+    if (!draft.rules_storage_key) return { url: null };
+    const { getSignedDownloadUrl } = await import("@/lib/storage/r2");
+    const url = await getSignedDownloadUrl(draft.rules_storage_key, 60 * 60);
+    return { url };
+  } catch (err) {
+    console.error("getDraftRulesSourceUrl: failed", err);
+    return { url: null, error: "Couldn't open the rules PDF." };
+  }
+}
+
 // ─── DRN CSV staging during the wizard ──────────────────────────
 //
 // Macquarie users get a "Upload DRN CSV" panel on Page 5 once they pick

@@ -19,11 +19,13 @@ import {
   CalendarCheck,
   Plus,
   Check,
+  Search,
   Shield,
   ClipboardList,
   Landmark,
   GitMerge,
   AlertTriangle,
+  Star,
 } from "lucide-react";
 
 import {
@@ -39,6 +41,7 @@ import {
   SidebarMenuItem,
 } from "@/components/ui/sidebar";
 import { Avatar, AvatarImage, AvatarFallback } from "@/components/ui/avatar";
+import { Input } from "@/components/ui/input";
 import { Skeleton } from "@/components/ui/skeleton";
 import { cn } from "@/lib/utils";
 import { getSidebarProfile, type SidebarProfile } from "@/lib/actions/profile";
@@ -176,18 +179,24 @@ function SimpleDropdown({
   children,
   side = "bottom",
   matchWidth = false,
+  closeOnClick = true,
 }: {
   trigger: React.ReactNode;
   children: React.ReactNode;
-  side?: "bottom" | "top";
+  side?: "bottom" | "top" | "right";
   matchWidth?: boolean;
+  /** Auto-close when the user clicks anywhere inside the panel. Defaults
+   *  true (the existing dropdown behaviour). The OC switcher passes false
+   *  because clicks inside the search input and pin-star shouldn't dismiss. */
+  closeOnClick?: boolean;
 }) {
   const [open, setOpen] = useState(false);
   const ref = useRef<HTMLDivElement>(null);
   useClickOutside(ref, () => setOpen(false));
 
-  const positionClass = side === "top"
-    ? "bottom-full mb-1"
+  const positionClass =
+    side === "top" ? "bottom-full mb-1"
+    : side === "right" ? "left-full top-0 ml-2"
     : "top-full mt-1";
 
   return (
@@ -195,8 +204,9 @@ function SimpleDropdown({
       <div onClick={() => setOpen((o) => !o)} className="cursor-pointer">{trigger}</div>
       {open && (
         <div
-          className={`absolute ${positionClass} left-0 z-50 rounded-lg border border-border bg-popover p-1 shadow-md animate-in fade-in-0 zoom-in-95 duration-100 ${matchWidth ? "w-full" : "min-w-56"}`}
-          onClick={() => setOpen(false)}
+          className={`absolute ${positionClass} left-0 z-50 rounded-lg border border-border bg-popover shadow-md animate-in fade-in-0 zoom-in-95 duration-100 ${matchWidth ? "w-full" : "min-w-56"} ${side === "right" ? "left-auto" : ""}`}
+          onClick={closeOnClick ? () => setOpen(false) : undefined}
+          onMouseDown={closeOnClick ? undefined : (e) => e.stopPropagation()}
         >
           {children}
         </div>
@@ -233,6 +243,124 @@ function DropdownLabel({ children }: { children: React.ReactNode }) {
 
 function DropdownSeparator() {
   return <div className="-mx-1 my-1 h-px bg-border" />;
+}
+
+// One row in the OC switcher panel. Splits the click target into two regions
+// — the wide left/middle (switches to that OC) and a right-edge pin star
+// (toggles the pin without dismissing the panel). Pin click stops propagation
+// so it doesn't also fire the row's onSwitch.
+function OCSwitcherRow({
+  sub,
+  isCurrent,
+  isLotOwner,
+  isPinned,
+  onSwitch,
+  onTogglePin,
+}: {
+  sub: SidebarOC;
+  isCurrent: boolean;
+  isLotOwner: boolean;
+  isPinned: boolean;
+  onSwitch: () => void;
+  onTogglePin: () => void;
+}) {
+  return (
+    <div className="group flex items-center gap-1 rounded-md hover:bg-accent">
+      <button
+        type="button"
+        onClick={onSwitch}
+        className="flex flex-1 cursor-pointer items-center gap-2 rounded-md px-2 py-1.5 text-left text-sm text-foreground"
+      >
+        {sub.thumbnail_url ? (
+          /* eslint-disable-next-line @next/next/no-img-element */
+          <img
+            src={sub.thumbnail_url}
+            alt=""
+            className="size-6 rounded-md border border-border object-cover shrink-0"
+          />
+        ) : (
+          <div className="flex size-6 items-center justify-center rounded-md border border-border shrink-0">
+            <Building2 className="size-3.5 shrink-0" />
+          </div>
+        )}
+        <div className="flex-1 min-w-0">
+          <span className="block truncate">{sub.name}</span>
+          {isLotOwner && sub.lots && sub.lots.length > 0 && (
+            <span className="block text-xs text-muted-foreground truncate">
+              {sub.lots.map((l) => `Lot ${l.lot_number}${l.unit_number ? ` Unit ${l.unit_number}` : ""}`).join(", ")}
+            </span>
+          )}
+        </div>
+        {isCurrent && <Check className="h-4 w-4 text-primary shrink-0" />}
+      </button>
+      <button
+        type="button"
+        aria-label={isPinned ? "Unpin OC" : "Pin OC"}
+        onClick={(e) => {
+          e.stopPropagation();
+          onTogglePin();
+        }}
+        className={`mr-1 inline-flex size-7 cursor-pointer items-center justify-center rounded-md ${
+          isPinned
+            ? "text-amber-500"
+            : "text-muted-foreground opacity-0 group-hover:opacity-100 hover:text-foreground"
+        }`}
+      >
+        <Star className={`size-3.5 ${isPinned ? "fill-current" : ""}`} />
+      </button>
+    </div>
+  );
+}
+
+// ─── Pinned OCs (localStorage) ─────────────────────────────────
+//
+// Managers asked for a way to pin frequently-accessed OCs to the top of the
+// swapper. Pins live in localStorage scoped by management company so two
+// users sharing a browser don't trample each other's pin state. The state is
+// just a list of short_codes ordered by pin-time-asc (oldest pin first).
+
+const OC_PINS_KEY_PREFIX = "stratawise:oc-pins:";
+function ocPinsKey(scope: string | null | undefined): string {
+  return `${OC_PINS_KEY_PREFIX}${scope ?? "anon"}`;
+}
+function usePinnedOCs(scope: string | null | undefined): {
+  pins: string[];
+  togglePin: (shortCode: string) => void;
+  isPinned: (shortCode: string) => boolean;
+} {
+  const [pins, setPins] = useState<string[]>([]);
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    try {
+      const raw = window.localStorage.getItem(ocPinsKey(scope));
+      if (raw) {
+        const parsed = JSON.parse(raw);
+        if (Array.isArray(parsed)) setPins(parsed.filter((s) => typeof s === "string"));
+      }
+    } catch {
+      /* corrupted storage — silently reset */
+    }
+  }, [scope]);
+  function persist(next: string[]) {
+    setPins(next);
+    if (typeof window !== "undefined") {
+      try {
+        window.localStorage.setItem(ocPinsKey(scope), JSON.stringify(next));
+      } catch {
+        /* quota / private mode — just hold the pins in memory */
+      }
+    }
+  }
+  function togglePin(shortCode: string) {
+    if (!shortCode) return;
+    persist(pins.includes(shortCode)
+      ? pins.filter((p) => p !== shortCode)
+      : [...pins, shortCode]);
+  }
+  function isPinned(shortCode: string) {
+    return pins.includes(shortCode);
+  }
+  return { pins, togglePin, isPinned };
 }
 
 // ─── NavUser (profile card + popup) ────────────────────────────
@@ -411,6 +539,11 @@ export function AppSidebar({
   const [profile, setProfile] = useState<SidebarProfile | null>(initialProfile);
   const [ocs, setOCs] = useState<SidebarOC[]>(initialOCs);
   const loaded = true;
+  // Pin state for the OC swapper. Scoped by userEmail so two users sharing
+  // a browser don't trample each other's pins; falls back to "anon" before
+  // the profile loads (will be re-keyed on next render).
+  const { pins, togglePin, isPinned } = usePinnedOCs(profile?.userEmail ?? null);
+  const [switcherQuery, setSwitcherQuery] = useState("");
 
   // Refresh listener — fires after mutations (revalidateSidebarFromClient).
   // We don't fetch on mount any more (server hands us fresh data), but we
@@ -473,7 +606,8 @@ export function AppSidebar({
         <SidebarMenu>
           <SidebarMenuItem>
             <SimpleDropdown
-              matchWidth
+              side="right"
+              closeOnClick={false}
               trigger={
                 <SidebarMenuButton
                   size="lg"
@@ -506,70 +640,108 @@ export function AppSidebar({
                 </SidebarMenuButton>
               }
             >
-              <DropdownLabel>Dashboards</DropdownLabel>
-              <DropdownSeparator />
-
-              <DropdownItem onClick={() => switchOC(null)}>
-                <div className="flex size-6 items-center justify-center rounded-md border border-border">
-                  <LayoutDashboard className="size-3.5 shrink-0" />
-                </div>
-                <span className="flex-1">{"Main dashboard"}</span>
-                {!isInOC && <Check className="ml-auto h-4 w-4 text-primary" />}
-              </DropdownItem>
-
-              {ocs.length > 0 && <DropdownSeparator />}
-
-              {/* Active OCs first, drafts after — keeps the swapper biased
-                  toward day-to-day work; in-progress wizard sessions are
-                  surfaced but visually distinguished. */}
-              {ocs.filter((s) => s.kind !== "draft").map((sub) => (
-                <DropdownItem
-                  key={sub.id}
-                  onClick={() => switchOC(sub.short_code)}
-                >
-                  {sub.thumbnail_url ? (
-                    /* eslint-disable-next-line @next/next/no-img-element */
-                    <img
-                      src={sub.thumbnail_url}
-                      alt=""
-                      className="size-6 rounded-md border border-border object-cover shrink-0"
-                    />
-                  ) : (
-                    <div className="flex size-6 items-center justify-center rounded-md border border-border shrink-0">
-                      <Building2 className="size-3.5 shrink-0" />
+              {/* Switcher panel — opens to the RIGHT of the sidebar trigger
+                  so it shows up in the main content area rather than below
+                  the trigger row (which on a 256px sidebar gets squashed).
+                  Structure: sticky top (Main dashboard + search) → scrolling
+                  middle (OCs, pinned first) → sticky bottom (Create OC). */}
+              {(() => {
+                const activeOCs = ocs.filter((s) => s.kind !== "draft");
+                const q = switcherQuery.trim().toLowerCase();
+                const matchesQuery = (s: SidebarOC) =>
+                  !q
+                    || s.name.toLowerCase().includes(q)
+                    || s.plan_number.toLowerCase().includes(q)
+                    || s.address.toLowerCase().includes(q);
+                const pinned = activeOCs.filter((s) => isPinned(s.short_code)).filter(matchesQuery);
+                const unpinned = activeOCs.filter((s) => !isPinned(s.short_code)).filter(matchesQuery);
+                return (
+                  <div className="flex w-72 flex-col">
+                    {/* Sticky header */}
+                    <div className="border-b border-border bg-popover p-1">
+                      <button
+                        type="button"
+                        onClick={() => switchOC(null)}
+                        className="flex w-full cursor-pointer items-center gap-2 rounded-md px-2 py-1.5 text-sm text-foreground hover:bg-accent"
+                      >
+                        <div className="flex size-6 items-center justify-center rounded-md border border-border">
+                          <LayoutDashboard className="size-3.5 shrink-0" />
+                        </div>
+                        <span className="flex-1 text-left">Main dashboard</span>
+                        {!isInOC && <Check className="ml-auto h-4 w-4 text-primary" />}
+                      </button>
+                      <div className="relative mt-1">
+                        <Search className="pointer-events-none absolute left-2.5 top-1/2 size-3.5 -translate-y-1/2 text-muted-foreground" />
+                        <Input
+                          value={switcherQuery}
+                          onChange={(e) => setSwitcherQuery(e.target.value)}
+                          placeholder="Search OCs"
+                          className="h-8 pl-7 text-sm"
+                          onClick={(e) => e.stopPropagation()}
+                        />
+                      </div>
                     </div>
-                  )}
-                  <div className="flex-1 min-w-0">
-                    <span className="block truncate">{sub.name}</span>
-                    {isLotOwner && sub.lots && sub.lots.length > 0 && (
-                      <span className="block text-xs text-muted-foreground truncate">
-                        {sub.lots.map((l) => `Lot ${l.lot_number}${l.unit_number ? ` Unit ${l.unit_number}` : ""}`).join(", ")}
-                      </span>
+                    {/* Scrollable middle. max-h ≈ 12 rows so the panel
+                        doesn't dominate the viewport when an org has 30+
+                        OCs; users still get visible scroll affordance. */}
+                    <div className="max-h-[360px] overflow-y-auto p-1">
+                      {pinned.length > 0 && (
+                        <>
+                          <div className="px-2 pb-1 pt-1 text-[10px] font-medium uppercase tracking-wide text-muted-foreground">Pinned</div>
+                          {pinned.map((sub) => (
+                            <OCSwitcherRow
+                              key={sub.id}
+                              sub={sub}
+                              isCurrent={sub.short_code === currentOCCode}
+                              isLotOwner={isLotOwner}
+                              isPinned
+                              onSwitch={() => switchOC(sub.short_code)}
+                              onTogglePin={() => togglePin(sub.short_code)}
+                            />
+                          ))}
+                          {unpinned.length > 0 && (
+                            <div className="my-1 h-px bg-border" />
+                          )}
+                        </>
+                      )}
+                      {unpinned.length === 0 && pinned.length === 0 ? (
+                        <div className="px-2 py-6 text-center text-xs text-muted-foreground">
+                          {q ? "No OCs match." : "No OCs yet."}
+                        </div>
+                      ) : (
+                        unpinned.map((sub) => (
+                          <OCSwitcherRow
+                            key={sub.id}
+                            sub={sub}
+                            isCurrent={sub.short_code === currentOCCode}
+                            isLotOwner={isLotOwner}
+                            isPinned={false}
+                            onSwitch={() => switchOC(sub.short_code)}
+                            onTogglePin={() => togglePin(sub.short_code)}
+                          />
+                        ))
+                      )}
+                    </div>
+                    {/* Sticky footer */}
+                    {!isLotOwner && (
+                      <div className="border-t border-border bg-popover p-1">
+                        <button
+                          type="button"
+                          onClick={() => router.push("/ocs/new")}
+                          className="flex w-full cursor-pointer items-center gap-2 rounded-md px-2 py-1.5 text-sm text-foreground hover:bg-accent"
+                        >
+                          <div className="flex size-6 items-center justify-center rounded-md border border-border bg-transparent">
+                            <Plus className="size-4" />
+                          </div>
+                          <span className="font-medium text-muted-foreground">Create OC</span>
+                        </button>
+                      </div>
                     )}
                   </div>
-                  {sub.short_code === currentOCCode && (
-                    <Check className="ml-auto h-4 w-4 text-primary shrink-0" />
-                  )}
-                </DropdownItem>
-              ))}
-
-              {/* Drafts are intentionally NOT surfaced in the sidebar swapper.
-                  They live on the /ocs list page under an "In progress"
-                  section — keeping them out of the swapper stops the
-                  fast-switch dropdown from filling up with abandoned wizard
-                  sessions. */}
-
-              {!isLotOwner && (
-                <>
-                  <DropdownSeparator />
-                  <DropdownItem onClick={() => router.push("/ocs/new")}>
-                    <div className="flex size-6 items-center justify-center rounded-md border border-border bg-transparent">
-                      <Plus className="size-4" />
-                    </div>
-                    <span className="text-muted-foreground font-medium">Create OC</span>
-                  </DropdownItem>
-                </>
-              )}
+                );
+              })()}
+              {/* anchor for the unused `pins` array so linters don't drop it */}
+              <span hidden>{pins.length}</span>
             </SimpleDropdown>
           </SidebarMenuItem>
         </SidebarMenu>

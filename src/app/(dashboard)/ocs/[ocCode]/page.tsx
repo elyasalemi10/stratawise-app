@@ -259,19 +259,31 @@ export default async function OCDashboardPage({
   }
 
   // When the wizard finishes and the OC uses Macquarie DEFT, prompt for the
-  // DRN export CSV. Manager can dismiss with "I'll do this later"; we don't
-  // block the dashboard behind the upload.
-  const showDrnPrompt =
-    (sp.created === "1" || sp.drn === "1") && oc?.bank_provider === "macquarie_deft";
+  // DRN export CSV — but ONLY if no DRN mappings have been recorded yet.
+  // The wizard now collects DRNs inline on Page 5, so most Macquarie OCs
+  // arrive at the dashboard with lot_drns rows already written; firing the
+  // dialog again would be a duplicate ask. Manager can dismiss with
+  // "I'll do this later"; we don't block the dashboard behind the upload.
+  let showDrnPrompt = false;
   let lotsForDrn: Array<{ id: string; lot_number: number; unit_number: string | null }> = [];
-  if (showDrnPrompt) {
+  if ((sp.created === "1" || sp.drn === "1") && oc?.bank_provider === "macquarie_deft") {
     const supabase = createServerClient();
-    const { data: lots } = await supabase
-      .from("lots")
-      .select("id, lot_number, unit_number")
-      .eq("oc_id", ocId)
-      .order("lot_number");
-    lotsForDrn = lots ?? [];
+    const { count: drnCount } = await supabase
+      .from("lot_drns")
+      .select("id", { count: "exact", head: true })
+      .in("lot_id", (await supabase
+        .from("lots")
+        .select("id")
+        .eq("oc_id", ocId)).data?.map((l) => l.id) ?? []);
+    if ((drnCount ?? 0) === 0) {
+      showDrnPrompt = true;
+      const { data: lots } = await supabase
+        .from("lots")
+        .select("id, lot_number, unit_number")
+        .eq("oc_id", ocId)
+        .order("lot_number");
+      lotsForDrn = lots ?? [];
+    }
   }
 
   return (

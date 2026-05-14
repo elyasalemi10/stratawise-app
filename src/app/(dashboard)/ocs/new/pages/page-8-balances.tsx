@@ -2,7 +2,7 @@
 
 import { useMemo, useState } from "react";
 import { toast } from "sonner";
-import { Loader2, Info } from "lucide-react";
+import { Loader2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
 import { NumberInput } from "@/components/ui/number-input";
@@ -313,19 +313,10 @@ export function Page8Balances({
         </div>
       </div>
 
-      {/* Macquarie next-step note */}
-      {initialDraft.bank_provider === "macquarie_deft" && (
-        <div className="rounded-md border border-blue-200 bg-blue-50 p-3">
-          <div className="flex items-start gap-2">
-            <Info className="mt-0.5 h-4 w-4 text-blue-700 shrink-0" />
-            <p className="text-xs text-blue-900">
-              After you click <strong>Create OC</strong>, you&apos;ll be prompted to upload the
-              DEFT Reference Number (DRN) export CSV from Macquarie Business Online. This maps each
-              lot to its DRN so incoming TXN-file transactions auto-allocate.
-            </p>
-          </div>
-        </div>
-      )}
+      {/* The Macquarie post-create note used to live here. Now that DRN
+          CSV upload happens inline on Page 5, there's nothing to surface
+          here — the mappings are staged in the draft and write out when
+          Create OC fires. */}
 
       <div className="flex justify-between pt-2">
         <Button type="button" variant="secondary" onClick={onBack}>Back</Button>

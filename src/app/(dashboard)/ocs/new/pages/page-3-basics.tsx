@@ -1,8 +1,8 @@
 "use client";
 
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { toast } from "sonner";
-import { Info, Loader2, ImagePlus, Trash2 } from "lucide-react";
+import { Loader2, ImagePlus, Trash2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -14,17 +14,12 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import { saveStep, uploadOcPhoto, removeOcPhoto, getPhotoPublicUrl, type DraftJson } from "../actions";
 
-function tierForLotCount(n: number, servicesOnly: boolean): number {
-  if (servicesOnly) return 5;
-  if (n >= 100) return 1;
-  if (n >= 51) return 2;
-  if (n >= 10) return 3;
-  if (n >= 3) return 4;
-  return 5;
-}
+// tier classification still happens — at completeWizard time. The wizard UI
+// no longer surfaces the tier badge; the visible flag here is just whether
+// the OC is services-only (which forces Tier 5 on the back end).
+
 
 // HEIC detection — covers iPhone's default camera output. The browser can't
 // natively decode it, so we run it through heic2any (dynamic import to keep
@@ -126,16 +121,6 @@ async function makeThumbnail(file: File): Promise<File | null> {
   return new File([blob], "thumb.jpg", { type: "image/jpeg" });
 }
 
-function tierColour(t: number): string {
-  switch (t) {
-    case 1: return "bg-red-100 text-red-900 border-red-300";
-    case 2: return "bg-orange-100 text-orange-900 border-orange-300";
-    case 3: return "bg-amber-100 text-amber-900 border-amber-300";
-    case 4: return "bg-green-100 text-green-900 border-green-300";
-    default: return "bg-blue-100 text-blue-900 border-blue-300";
-  }
-}
-
 const MONTHS = [
   { value: 1,  label: "January" },
   { value: 2,  label: "February" },
@@ -184,7 +169,9 @@ export function Page3Basics({
   const [photoKey, setPhotoKey] = useState<string | null>(initialPhotoKey);
   const [photoUrl, setPhotoUrl] = useState<string | null>(null);
   const [photoUploading, setPhotoUploading] = useState(false);
+  const [uploadAborted, setUploadAborted] = useState(false);
   const photoInputRef = useRef<HTMLInputElement>(null);
+  const activeBlobUrlRef = useRef<string | null>(null);
 
   // Resolve the public URL for a resumed draft once on mount. uploadOcPhoto
   // returns the URL inline so fresh uploads don't go through this path.
@@ -201,11 +188,14 @@ export function Page3Basics({
     // re-encoded as JPEG q=0.82) before sending. Falls back to the raw file
     // if the canvas path errors out (rare — HEIC without browser decode).
     setPhotoUploading(true);
+    setUploadAborted(false);
 
     // Optimistic preview — paint the chosen image immediately under a dim
     // overlay + spinner so the user sees their photo while we compress and
     // upload. We use an object URL of the source file (or the HEIC-decoded
-    // version if needed); a real R2 URL replaces it once the upload returns.
+    // version if needed); KEEP that blob URL on display until the R2 URL is
+    // fully loaded — swapping `src` to a not-yet-loaded R2 URL is the
+    // "flash to blank then back" that managers were seeing.
     let previewSource: File = file;
     try {
       if (isHeic(file)) previewSource = await heicToJpeg(file, 0.82);
@@ -216,6 +206,7 @@ export function Page3Basics({
     let previewUrl: string | null = null;
     try {
       previewUrl = URL.createObjectURL(previewSource);
+      activeBlobUrlRef.current = previewUrl;
       setPhotoUrl(previewUrl);
     } catch {
       // Object URLs only fail in weird sandboxed contexts; treat as no preview.
@@ -237,6 +228,7 @@ export function Page3Basics({
       setPhotoUploading(false);
       if (previewUrl) {
         URL.revokeObjectURL(previewUrl);
+        activeBlobUrlRef.current = null;
         setPhotoUrl(null);
       }
       toast.error("Photo is too large even after compression. Try a smaller image.");
@@ -246,34 +238,85 @@ export function Page3Basics({
     fd.append("file", upload);
     if (thumb) fd.append("thumb", thumb);
     const r = await uploadOcPhoto(draftId, fd);
-    setPhotoUploading(false);
+
+    // If the user clicked the trash icon mid-upload, the upload-aborted flag
+    // got set. The server still persisted the photo (we don't have an abort
+    // controller wired to the server action yet) — so issue a follow-up
+    // delete and bail out without rendering.
+    if (uploadAborted) {
+      setUploadAborted(false);
+      if (r.storage_key) void removeOcPhoto(draftId);
+      if (previewUrl) {
+        URL.revokeObjectURL(previewUrl);
+        activeBlobUrlRef.current = null;
+      }
+      setPhotoUploading(false);
+      setPhotoKey(null);
+      setPhotoUrl(null);
+      return;
+    }
+
     if (r.error || !r.storage_key) {
+      setPhotoUploading(false);
       toast.error(r.error ?? "Couldn't save the photo.");
       if (previewUrl) {
         URL.revokeObjectURL(previewUrl);
+        activeBlobUrlRef.current = null;
         setPhotoUrl(null);
       }
       return;
     }
+
+    // Save the storage key first so the trash icon below switches to the
+    // server-delete branch. Then preload the R2 URL in a hidden Image() —
+    // only swap `photoUrl` to the R2 URL once the image bytes are decoded.
+    // This eliminates the "blob → blank → R2" flash entirely.
     setPhotoKey(r.storage_key);
-    setPhotoUrl(r.public_url ?? null);
-    // Now that the real R2 URL is in place we can release the local blob.
-    if (previewUrl) URL.revokeObjectURL(previewUrl);
+    const r2Url = r.public_url ?? null;
+    if (r2Url) {
+      const preloader = new Image();
+      preloader.onload = () => {
+        setPhotoUrl(r2Url);
+        if (previewUrl) {
+          URL.revokeObjectURL(previewUrl);
+          if (activeBlobUrlRef.current === previewUrl) activeBlobUrlRef.current = null;
+        }
+        setPhotoUploading(false);
+      };
+      preloader.onerror = () => {
+        // R2 URL didn't load (CDN propagation, network blip). Keep showing
+        // the local blob — it's still valid until the page reloads.
+        setPhotoUploading(false);
+      };
+      preloader.src = r2Url;
+    } else {
+      setPhotoUploading(false);
+    }
   }
 
+  // Plain DB update; no loading state because the network round-trip is
+  // fast and a spinner inside the photo slot just causes flicker on what's
+  // already an instant action.
   async function handleRemovePhoto() {
-    setPhotoUploading(true);
-    const r = await removeOcPhoto(draftId);
-    setPhotoUploading(false);
-    if (r.error) {
-      toast.error(r.error);
-      return;
+    const wasUploading = photoUploading;
+    if (wasUploading) {
+      // Tell the in-flight upload to dispose of itself when it returns.
+      setUploadAborted(true);
+    }
+    // Optimistically clear the UI so the click feels instant.
+    if (activeBlobUrlRef.current) {
+      URL.revokeObjectURL(activeBlobUrlRef.current);
+      activeBlobUrlRef.current = null;
     }
     setPhotoKey(null);
     setPhotoUrl(null);
+    if (!wasUploading) {
+      const r = await removeOcPhoto(draftId);
+      if (r.error) {
+        toast.error(r.error);
+      }
+    }
   }
-
-  const tier = useMemo(() => tierForLotCount(totalLots, servicesOnly), [totalLots, servicesOnly]);
 
   async function onContinue() {
     setPending(true);
@@ -293,8 +336,7 @@ export function Page3Basics({
   }
 
   return (
-    <TooltipProvider>
-      <div className="space-y-6">
+    <div className="space-y-6">
         <div className="text-center">
           <h2 className="text-lg font-semibold text-foreground">Tell us about this OC</h2>
           <p className="mt-1 text-sm text-muted-foreground">
@@ -336,7 +378,10 @@ export function Page3Basics({
                     <Loader2 className="h-7 w-7 animate-spin text-white" />
                   </div>
                 )}
-                {photoKey && !photoUploading && (
+                {/* Trash stays visible during upload — clicking aborts and
+                    cleans up. Stops the user from feeling locked in once
+                    they realise the wrong photo is on the way up. */}
+                {(photoKey || photoUploading) && (
                   <button
                     type="button"
                     onClick={handleRemovePhoto}
@@ -376,47 +421,20 @@ export function Page3Basics({
             />
           </div>
 
-          {/* Tier — shadcn Tooltip with a larger, more legible body. */}
-          <div className="rounded-md border border-border bg-card p-4">
-            <div className="flex items-center justify-between gap-4">
-              <div className="flex items-center gap-2">
-                <span className="text-sm font-medium text-foreground">Tier</span>
-                <Tooltip>
-                  <TooltipTrigger
-                    aria-label="What is OC tier?"
-                    className="inline-flex items-center text-muted-foreground hover:text-foreground"
-                    style={{ cursor: "default" }}
-                  >
-                    <Info className="h-4 w-4" />
-                  </TooltipTrigger>
-                  {/* Override base-ui's default dark popup. The header is navy
-                      already; the dark-on-dark tooltip vanishes. White card
-                      with a 1px border + dark text reads cleanly against
-                      either navy or the cream page bg. */}
-                  <TooltipContent className="max-w-sm border border-border bg-popover p-3 text-sm leading-relaxed text-foreground shadow-sm">
-                    <p className="font-medium">OC tier (Owners Corporations Act 2006)</p>
-                    <p className="mt-1 text-muted-foreground">
-                      Determines compliance requirements: audit obligations, 10-year maintenance
-                      plans, and committee size. Tier 1 has the most obligations; Tier 5 the fewest.
-                      Calculated from lot count.
-                    </p>
-                  </TooltipContent>
-                </Tooltip>
-              </div>
-              <span className={`inline-flex items-center rounded-full border px-3 py-1 text-sm font-medium ${tierColour(tier)}`}>
-                Tier {tier}
-              </span>
-            </div>
-            <div className="mt-3 flex items-center gap-2 border-t border-border pt-3">
-              <Checkbox
-                id="services-only"
-                checked={servicesOnly}
-                onCheckedChange={(v) => setServicesOnly(v === true)}
-              />
-              <Label className="text-sm font-normal">
-                This is a services-only OC
-              </Label>
-            </div>
+          {/* Services-only flag — the only visible bit left from the old
+              tier box. Tier is still computed at completeWizard time from
+              lot count + this flag; we just don't show the badge any more,
+              since most managers found it noisy and the compliance
+              implications surface elsewhere (audits, maintenance plans). */}
+          <div className="flex items-center gap-2">
+            <Checkbox
+              id="services-only"
+              checked={servicesOnly}
+              onCheckedChange={(v) => setServicesOnly(v === true)}
+            />
+            <Label className="text-sm font-normal">
+              This is a services-only OC
+            </Label>
           </div>
 
           <div className="grid grid-cols-2 gap-4">
@@ -477,6 +495,5 @@ export function Page3Basics({
           </Button>
         </div>
       </div>
-    </TooltipProvider>
   );
 }
