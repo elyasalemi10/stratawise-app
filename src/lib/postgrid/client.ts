@@ -91,23 +91,35 @@ export type VerificationResult = {
   mode: PostGridMode;
 };
 
-// PostGrid Addver response shape — verified locally against intl_addver.
-// `verifiedAddress` is the corrected version (always returned when the
-// service finds a match, even on status="verified"). Status is one of:
-//   "verified"               — exact match
-//   "corrected"              — match after correction
-//   "failed"                 — couldn't match
-//   "verified_with_warnings" — match but with caveats (we treat as verified)
+// PostGrid Addver response shape — verified locally against intl_addver
+// with a real test key. Top-level `status` is the HTTP-level
+// success/error flag; the verification-specific status lives at
+// `data.summary.verificationStatus` and the verified-form address fields
+// sit directly under `data` (NOT nested under verifiedAddress).
+//
+// data.summary.verificationStatus values seen in practice:
+//   "verified"            — exact match (matchScore 100)
+//   "partially_verified"  — match with some corrections (treat as "corrected")
+//   "ambiguous"           — multiple candidates; surface as "corrected" with
+//                           the top-ranked match
+//   "not_verified"        — couldn't match → "failed"
+//   "reverted"            — fallback, treat as "failed"
 type PostGridVerifyResponse = {
-  id?: string;
   status?: string;
-  verifiedAddress?: {
+  message?: string;
+  data?: {
     line1?: string;
     line2?: string;
+    line3?: string;
     city?: string;
     provinceOrState?: string;
     postalOrZip?: string;
     country?: string;
+    formattedAddress?: string;
+    summary?: {
+      verificationStatus?: string;
+      matchScore?: number;
+    };
   };
   error?: { message?: string; type?: string };
 };
@@ -145,11 +157,25 @@ export async function verifyAddress(addr: PostGridAddress): Promise<Verification
     },
   };
 
+  // pk_ keys require an Origin header that matches the dashboard
+  // allowlist. sk_ keys ignore Origin entirely so this is a harmless
+  // header on either type. Default to NEXT_PUBLIC_APP_URL or localhost
+  // for dev so a fresh checkout with localhost in the allowlist works
+  // out of the box. POSTGRID_ORIGIN_OVERRIDE lets you target a
+  // different allowlisted origin from a non-browser context (e.g. CI).
+  const origin = (process.env.POSTGRID_ORIGIN_OVERRIDE
+    ?? process.env.NEXT_PUBLIC_APP_URL
+    ?? "http://localhost:3000").trim();
+
   let resp: Response;
   try {
     resp = await fetch(`https://api.postgrid.com${path}?includeDetails=true&properCase=true`, {
       method: "POST",
-      headers: { "Content-Type": "application/json", "x-api-key": key },
+      headers: {
+        "Content-Type": "application/json",
+        "x-api-key": key,
+        Origin: origin,
+      },
       body: JSON.stringify(body),
     });
   } catch (err) {
@@ -184,30 +210,54 @@ export async function verifyAddress(addr: PostGridAddress): Promise<Verification
     throw new Error("Address verification is temporarily unavailable.");
   }
 
-  const raw = (payload.status ?? "").toLowerCase();
-  const status: VerificationStatus =
-    raw === "verified" || raw === "verified_with_warnings" ? "verified"
-    : raw === "corrected" ? "corrected"
-    : "failed";
+  // Top-level error path. PostGrid wraps success in { status: "success",
+  // data: {...} } and failure in { status: "error", message: "..." }.
+  if (payload.status !== "success" || !payload.data) {
+    return {
+      status: "failed",
+      correctedAddress: null,
+      errorMessage: payload.message ?? payload.error?.message ?? "Verification failed.",
+      verificationId: null,
+      mode,
+    };
+  }
 
-  const v = payload.verifiedAddress;
-  const correctedAddress: PostGridAddress | null =
-    v && v.line1
-      ? {
-          line1: v.line1,
-          line2: v.line2 ?? null,
-          city: v.city ?? body.address.city,
-          provinceOrState: v.provinceOrState ?? body.address.provinceOrState,
-          postalOrZip: v.postalOrZip ?? body.address.postalOrZip,
-          country: v.country ?? body.address.country,
-        }
-      : null;
+  const data = payload.data;
+  const summary = data.summary?.verificationStatus?.toLowerCase() ?? "";
+  // Map PostGrid's verbose summary statuses onto our 3-state model.
+  // "verified" stays verified; anything with a partial / ambiguous match
+  // surfaces as "corrected" so the user gets to see the suggestion;
+  // not_verified / reverted / unknown → "failed".
+  let status: VerificationStatus;
+  if (summary === "verified") status = "verified";
+  else if (summary === "partially_verified" || summary === "ambiguous") status = "corrected";
+  else status = "failed";
+
+  // Build the PostGrid-corrected address from the response fields. If
+  // status is "verified" we skip building it — the address is already
+  // good as-is, no need to surface a "use suggestion" dialog.
+  const correctedAddress: PostGridAddress | null = status === "verified" || !data.line1
+    ? null
+    : {
+        line1: data.line1,
+        // line2 (subbuilding) + line3 (premise) are PostGrid's
+        // international-format hierarchy. Collapse into our line1/line2
+        // pair so the dialog can show a clean before/after.
+        line2: data.line2 ?? null,
+        city: data.city ?? body.address.city,
+        provinceOrState: data.provinceOrState ?? body.address.provinceOrState,
+        postalOrZip: data.postalOrZip ?? body.address.postalOrZip,
+        country: data.country ?? body.address.country,
+      };
 
   return {
     status,
     correctedAddress,
-    errorMessage: payload.error?.message ?? null,
-    verificationId: payload.id ?? null,
+    errorMessage: status === "failed" ? (data.summary?.verificationStatus ?? "Address could not be verified.") : null,
+    // PostGrid's intl_addver doesn't return a verification id we can
+    // persist for audit — the summary itself is the trace. If we
+    // upgrade to addver (US/CA) later we can pull id from data.id.
+    verificationId: null,
     mode,
   };
 }
