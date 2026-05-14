@@ -22,6 +22,10 @@ export type DraftInsurancePolicy = {
   premium?: number;
   start_date: string;     // ISO yyyy-mm-dd
   end_date: string;
+  /** R2 key of the CoC PDF this policy was extracted from. Used at
+   *  completeWizard time to link the resulting insurance_policies row to its
+   *  source document. Empty for hand-entered policies. */
+  source_coc_storage_key?: string;
 };
 
 export type DraftLot = {
@@ -820,10 +824,11 @@ export async function completeWizard(draftId: string) {
     const d = draft.draft_json as DraftJson;
     if (!profile.management_company_id) return { error: "No management company assigned" };
 
-    // Minimum viable: plan_number, oc_name, address, at least 2 lots.
+    // Minimum viable: plan_number, address, at least 2 lots. owners_corporations.name
+    // is derived from trading_name → address; no separate "legal OC name" field.
     if (!d.plan_number) return { error: "Plan number is required (page 2)" };
-    if (!d.oc_name) return { error: "OC name is required (page 2)" };
     if (!d.address) return { error: "Address is required (page 2)" };
+    const resolvedName = (d.trading_name?.trim() || d.address.trim()) || `Owners Corporation ${d.plan_number}`;
     if (!d.lots || d.lots.length < 2) return { error: "At least 2 lots are required" };
     if (!d.admin_bsb || !d.admin_account_number || !d.admin_account_name || !d.admin_bank_id) {
       return { error: "Trust account details are required (page 5)" };
@@ -855,7 +860,7 @@ export async function completeWizard(draftId: string) {
     const insertResult = await insertOCWithCode(supabase, {
       management_company_id: profile.management_company_id,
       plan_number: d.plan_number,
-      name: d.oc_name,
+      name: resolvedName,
       trading_name: d.trading_name || null,
       oc_number: d.oc_number ?? 1,
       address: d.address,
@@ -1130,30 +1135,37 @@ export async function completeWizard(draftId: string) {
       // Register every uploaded Certificate of Currency as a separate
       // document so each is archived + OCR-indexed independently. Managers
       // routinely upload multiple certs (e.g. one per insurer when a cover
-      // mix changes mid-year).
+      // mix changes mid-year). We capture the resulting documents row id
+      // keyed by R2 storage_key so policy inserts below can attach
+      // source_document_id back to the originating cert.
       const cocs = d.insurance_cocs ?? [];
-      cocs.forEach((coc, idx) => {
-        // Each cert gets a sequential index suffix when there's more than one
-        // ("Certificate of Currency 1 — PS812345X.pdf").
+      const cocDocByKey = new Map<string, string>();
+      for (let idx = 0; idx < cocs.length; idx++) {
+        const coc = cocs[idx];
         const friendly = friendlyDocName("insurance_policy", {
           planNumber: d.plan_number,
           ocName: d.oc_name,
           index: cocs.length > 1 ? idx + 1 : undefined,
         });
-        void supabase.from("documents").insert({
-          oc_id: oc.id,
-          lot_id: null,
-          category: "insurance_policy",
-          file_name: friendly,
-          original_filename: coc.filename,
-          file_path: coc.storage_key,
-          file_size: coc.size_bytes,
-          mime_type: "application/pdf",
-          is_confidential: false,
-          uploaded_by: profile.id,
-          ocr_status: "pending",
-        });
-      });
+        const { data: docRow } = await supabase
+          .from("documents")
+          .insert({
+            oc_id: oc.id,
+            lot_id: null,
+            category: "insurance_policy",
+            file_name: friendly,
+            original_filename: coc.filename,
+            file_path: coc.storage_key,
+            file_size: coc.size_bytes,
+            mime_type: "application/pdf",
+            is_confidential: false,
+            uploaded_by: profile.id,
+            ocr_status: "pending",
+          })
+          .select("id")
+          .single();
+        if (docRow?.id) cocDocByKey.set(coc.storage_key, docRow.id);
+      }
       // Legacy single-doc path — only register it if no multi-CoC list is
       // present, to avoid duplicating older drafts that wrote the same key
       // through `insurance_doc_storage_key`.
@@ -1174,6 +1186,9 @@ export async function completeWizard(draftId: string) {
       }
 
       for (const p of policies) {
+        const sourceDocId = p.source_coc_storage_key
+          ? cocDocByKey.get(p.source_coc_storage_key) ?? null
+          : null;
         const { error: insErr } = await supabase.from("insurance_policies").insert({
           oc_id: oc.id,
           policy_type: p.policy_type,
@@ -1184,6 +1199,7 @@ export async function completeWizard(draftId: string) {
           start_date: p.start_date,
           end_date: p.end_date,
           status: "active",
+          source_document_id: sourceDocId,
         });
         if (insErr) {
           console.error("completeWizard: insurance_policies insert failed (non-fatal)", insErr);
@@ -1198,7 +1214,7 @@ export async function completeWizard(draftId: string) {
       action: "create",
       entity_type: "oc",
       entity_id: oc.id,
-      after_state: { name: d.oc_name, plan_number: d.plan_number, lots: d.lots.length },
+      after_state: { name: resolvedName, plan_number: d.plan_number, lots: d.lots.length },
       metadata: { source: "oc_wizard_v2", draft_id: draft.id },
     });
 

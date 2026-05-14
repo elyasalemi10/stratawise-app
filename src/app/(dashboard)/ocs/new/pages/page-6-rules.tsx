@@ -274,8 +274,9 @@ export function Page6Rules({
                   <p className="text-xs text-muted-foreground">Uploading…</p>
                 )}
                 {stage === "parsing" && (
-                  <p className="text-xs text-muted-foreground">
-                    Extracting rules… usually 10–30 seconds.
+                  <p className="text-xs text-muted-foreground max-w-md">
+                    Extracting rules… this can take <strong>1–3 minutes</strong> on long
+                    rules documents. Please don&apos;t leave this page until parsing finishes.
                   </p>
                 )}
               </div>
@@ -380,7 +381,7 @@ export function Page6Rules({
       )}
 
       <div className="flex justify-between pt-2">
-        <Button type="button" variant="ghost" onClick={onBack} disabled={busy}>Back</Button>
+        <Button type="button" variant="secondary" onClick={onBack} disabled={busy}>Back</Button>
         <Button type="button" onClick={onContinue} disabled={pending || busy}>
           {pending && <Loader2 className="size-4 animate-spin" />}
           Continue

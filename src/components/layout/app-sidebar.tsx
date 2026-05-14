@@ -567,10 +567,10 @@ export function AppSidebar({
                         <CircleDashed className="size-3.5 shrink-0 text-muted-foreground" />
                       </div>
                       <div className="flex-1 min-w-0">
+                        {/* Draft label is already a one-liner of
+                            "<plan-number or fallback> - <step>/8", no extra
+                            sub-row needed. */}
                         <span className="block truncate">{draft.name}</span>
-                        <span className="block text-xs text-muted-foreground truncate">
-                          Step {draft.draft_step ?? 1} of 8
-                        </span>
                       </div>
                     </DropdownItem>
                   ))}

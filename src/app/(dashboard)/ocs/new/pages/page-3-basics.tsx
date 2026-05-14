@@ -432,7 +432,7 @@ export function Page3Basics({
         </div>
 
         <div className="flex justify-between pt-2">
-          <Button type="button" variant="ghost" onClick={onBack} disabled={photoUploading}>Back</Button>
+          <Button type="button" variant="secondary" onClick={onBack} disabled={photoUploading}>Back</Button>
           <Button type="button" onClick={onContinue} disabled={pending || photoUploading}>
             {pending && <Loader2 className="size-4 animate-spin" />}
             Continue

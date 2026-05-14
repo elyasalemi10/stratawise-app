@@ -15,6 +15,7 @@ import { Page7Insurance } from "./pages/page-7-insurance";
 import { Page8Balances } from "./pages/page-8-balances";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { X } from "lucide-react";
 import { createDraftAndLoad, createDraftFromDetectedOc, getDraft, type DraftJson } from "./actions";
 import { revalidateSidebarFromClient } from "@/lib/sidebar-cache";
 
@@ -39,6 +40,7 @@ function WizardContent() {
   const [step, setStep] = useState<number>(1);
   const [nextOcPrompt, setNextOcPrompt] = useState<{ ocCode: string; sourceDraftId: string; nextOcIndex: number; totalOcs: number } | null>(null);
   const [forkingNext, setForkingNext] = useState(false);
+  const [cancelOpen, setCancelOpen] = useState(false);
   const initialised = useRef(false);
 
   // Bootstrap: either resume an existing draft via ?draft= or create a fresh one.
@@ -102,16 +104,28 @@ function WizardContent() {
   }
 
   if (!draft) {
+    // In-component skeleton (after route swap, while createDraftAndLoad is in
+    // flight). Mirrors loading.tsx so users don't see a flash of one skeleton
+    // shape replaced by a different one.
     return (
-      <div className="mx-auto w-full max-w-2xl space-y-6">
-        <Skeleton className="h-8 w-1/2 mx-auto" />
-        <Skeleton className="h-40 w-full" />
+      <div className="mx-auto w-full max-w-5xl">
+        <StepIndicator current={1} />
+        <div className="mt-2 space-y-6">
+          <div className="text-center">
+            <Skeleton className="mx-auto h-6 w-72" />
+            <Skeleton className="mx-auto mt-2 h-4 w-96" />
+          </div>
+          <Skeleton className="h-48 w-full rounded-lg" />
+          <div className="flex items-center justify-between pt-2">
+            <Skeleton className="h-4 w-32" />
+            <Skeleton className="h-9 w-24" />
+          </div>
+        </div>
       </div>
     );
   }
 
   const totalLots = draft.draft_json.lots?.length ?? draft.draft_json.total_lots ?? 0;
-  const ocName = draft.draft_json.oc_name ?? "";
   const detectedOcs = draft.parsed_json?.detected_ocs?.map((o) => ({
     oc_number: o.oc_number,
     lot_count: o.lot_count,
@@ -120,6 +134,23 @@ function WizardContent() {
 
   return (
     <div className="mx-auto w-full max-w-5xl">
+      {/* Cancel pill — top-left of the wizard. The wizard auto-saves on every
+          step transition, so closing the tab and coming back via the sidebar
+          swapper resumes from the last completed step. Cancel here means
+          discard this draft entirely. */}
+      <div className="mb-2 flex items-center justify-between gap-3">
+        <button
+          type="button"
+          onClick={() => setCancelOpen(true)}
+          className="inline-flex items-center gap-1.5 rounded-md border border-border bg-card px-2.5 py-1 text-xs font-medium text-muted-foreground hover:text-foreground hover:border-primary/40 cursor-pointer"
+        >
+          <X className="h-3.5 w-3.5" />
+          Cancel
+        </button>
+        <span className="text-xs text-muted-foreground">
+          Your progress is saved automatically — you can close this page and resume from the OC switcher.
+        </span>
+      </div>
       <StepIndicator current={step} />
       <div className="mt-2">
         {step === 1 && (
@@ -166,7 +197,6 @@ function WizardContent() {
           <Page5Trust
             draftId={draft.id}
             initialDraft={draft.draft_json}
-            ocName={ocName}
             totalLots={totalLots}
             onBack={() => goToStep(4)}
             onNext={async () => { await refreshDraft(); goToStep(6); }}
@@ -223,6 +253,27 @@ function WizardContent() {
           />
         )}
       </div>
+
+      {/* Cancel-creation confirm. Draft stays in oc_drafts (visible in the
+          sidebar swapper "In progress" list) unless the user explicitly
+          discards it from the OC list page. The button below leaves the
+          wizard but preserves the row — that's what users almost always
+          want, and matches the auto-save hint shown next to the button. */}
+      <Dialog open={cancelOpen} onOpenChange={setCancelOpen}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Leave the OC creation wizard?</DialogTitle>
+            <DialogDescription>
+              Your progress is already saved as a draft. You can resume from the OC switcher in
+              the sidebar at any time — leaving now won&apos;t lose anything.
+            </DialogDescription>
+          </DialogHeader>
+          <DialogFooter>
+            <Button variant="ghost" onClick={() => setCancelOpen(false)}>Keep going</Button>
+            <Button onClick={() => router.push("/ocs")}>Leave wizard</Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
 
       {/* Multi-OC follow-on prompt. Fires when the source plan creates more
           than one OC and we haven't promoted them all yet. */}

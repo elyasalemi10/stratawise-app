@@ -64,8 +64,13 @@ interface NewAutocompleteSuggestionCtor {
     sessionToken?: unknown;
     includedRegionCodes?: string[];
     includedPrimaryTypes?: string[];
+    // JS Places API (New) accepts LatLngBoundsLiteral here, NOT the REST
+    // API's `{rectangle:{low,high}}` shape — that throws InvalidValueError.
     locationBias?: {
-      rectangle: { low: { latitude: number; longitude: number }; high: { latitude: number; longitude: number } };
+      south: number;
+      west: number;
+      north: number;
+      east: number;
     };
   }): Promise<NewAutocompleteResponse>;
 }
@@ -226,11 +231,14 @@ export function VicAddressAutocomplete({ value, onChange, id }: Props) {
         sessionToken: sessionTokenRef.current ?? undefined,
         includedRegionCodes: ["au"],
         includedPrimaryTypes: ["address"],
+        // Victoria bounding box. LatLngBoundsLiteral shape — `{south, west,
+        // north, east}` — is what the JS SDK accepts; the REST API's
+        // `{rectangle:{low,high}}` shape throws InvalidValueError here.
         locationBias: {
-          rectangle: {
-            low: { latitude: -39.16, longitude: 140.96 },
-            high: { latitude: -33.98, longitude: 149.98 },
-          },
+          south: -39.16,
+          west: 140.96,
+          north: -33.98,
+          east: 149.98,
         },
       });
       const items: Suggestion[] = [];

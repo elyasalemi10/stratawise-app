@@ -158,28 +158,30 @@ export async function getSidebarOCs(): Promise<SidebarOC[]> {
           .order("updated_at", { ascending: false });
         const draftRows: SidebarOC[] = (drafts ?? []).map((d) => {
           const draftJson = (d.draft_json ?? {}) as {
-            oc_name?: string;
+            trading_name?: string;
             plan_number?: string;
             address?: string;
             total_lots?: number;
           };
           const planNumber = draftJson.plan_number ?? "";
-          // Best-effort label: prefer the OC name typed by the user, then the
-          // plan number, then the uploaded filename. Always prefixed "Draft:".
-          const labelGuess = draftJson.oc_name?.trim() ||
-            (planNumber ? `Owners Corporation ${planNumber}` : null) ||
-            d.plan_filename?.replace(/\.pdf$/i, "") ||
-            "Untitled draft";
+          // Compact one-line label that fits a sidebar row: prefer the plan
+          // number (e.g. "PS812345X - 3/8"), fall back to trading name or
+          // filename when no plan number is parsed yet.
+          const step = d.current_step ?? 1;
+          const baseLabel = planNumber
+            || draftJson.trading_name?.trim()
+            || d.plan_filename?.replace(/\.pdf$/i, "")
+            || "Untitled";
           return {
             id: d.id,
             kind: "draft" as const,
             short_code: "",
-            name: `Draft: ${labelGuess}`,
+            name: `${baseLabel} - ${step}/8`,
             address: draftJson.address ?? "",
             plan_number: planNumber,
             total_lots: draftJson.total_lots ?? 0,
             status: "draft",
-            draft_step: d.current_step ?? 1,
+            draft_step: step,
           };
         });
 

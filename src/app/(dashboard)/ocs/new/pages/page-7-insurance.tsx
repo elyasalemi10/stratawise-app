@@ -213,6 +213,10 @@ export function Page7Insurance({
       premium: p.premium ?? undefined,
       start_date: p.start_date ?? "",
       end_date: p.end_date ?? "",
+      // Tag each policy with the R2 key of the CoC it came from so
+      // completeWizard can wire insurance_policies.source_document_id back
+      // to the documents row created from this cert.
+      source_coc_storage_key: coc.storage_key,
     }));
     setPolicies((prev) => [...prev, ...additions]);
     setCocs((prev) => [...prev, coc]);
@@ -531,7 +535,13 @@ export function Page7Insurance({
 
             </div>
           )}
-            <Button type="button" variant="secondary" onClick={addPolicy} className="w-full">
+            <Button
+              type="button"
+              variant="secondary"
+              onClick={addPolicy}
+              disabled={uploading}
+              className="w-full"
+            >
               <Plus className="mr-1.5 h-3.5 w-3.5" />
               {policies.length === 0 ? "Add a policy" : "Add another policy"}
             </Button>
@@ -540,7 +550,7 @@ export function Page7Insurance({
       )}
 
       <div className="flex justify-between pt-2">
-        <Button type="button" variant="ghost" onClick={onBack} disabled={uploading}>Back</Button>
+        <Button type="button" variant="secondary" onClick={onBack} disabled={uploading}>Back</Button>
         <Button type="button" onClick={onContinue} disabled={pending || uploading}>
           {pending && <Loader2 className="size-4 animate-spin" />}
           Continue

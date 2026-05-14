@@ -171,6 +171,20 @@
     @apply font-sans;
   }
 
+  /* Hide the page-level browser scrollbar across the app. Inner scroll
+     containers (rule lists inside parsed-rules cards, popovers, modal bodies,
+     etc.) keep their own scrollbar — only the body's vertical bar disappears,
+     since seeing a thin grey bar against the brand background looks scrappy.
+     Page is still scrollable via wheel/touchpad/keyboard. */
+  html, body {
+    scrollbar-width: none;            /* Firefox */
+    -ms-overflow-style: none;         /* IE / old Edge */
+  }
+  html::-webkit-scrollbar,
+  body::-webkit-scrollbar {
+    display: none;                    /* Chrome / Safari / WebKit */
+  }
+
   /* Every interactive button/link/role=button shows the clicking-hand
      cursor on hover. Tailwind v4 dropped the legacy button cursor reset,
      so we restore it project-wide here. Disabled buttons keep the default

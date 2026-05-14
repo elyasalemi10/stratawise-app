@@ -51,26 +51,30 @@ function Calendar({
         ),
         month: cn("flex w-full flex-col gap-3", defaultClassNames.month),
         nav: cn(
-          // Full-width white caption strip with a bottom border — looks like a
-          // cut-off line rather than a floating pill.
-          "absolute inset-x-0 top-0 flex w-full items-center justify-between gap-1 bg-card px-1 py-1 border-b border-border",
+          // Full-width navy caption strip — the calendar's "header" anchor
+          // line that separates the month/year selector from the date grid
+          // below. White text on midnight matches the rest of the app's
+          // primary surfaces.
+          "absolute inset-x-0 top-0 flex w-full items-center justify-between gap-1 bg-primary text-primary-foreground px-1 py-1",
           defaultClassNames.nav
         ),
         button_previous: cn(
           buttonVariants({ variant: buttonVariant }),
-          "size-(--cell-size) p-0 select-none aria-disabled:opacity-50",
+          // Chevrons sit on the navy nav strip — paint them white and hover
+          // with a subtle white-tinted background so they read against the
+          // dark surface.
+          "size-(--cell-size) p-0 select-none aria-disabled:opacity-50 text-primary-foreground hover:bg-primary-foreground/15 hover:text-primary-foreground",
           defaultClassNames.button_previous
         ),
         button_next: cn(
           buttonVariants({ variant: buttonVariant }),
-          "size-(--cell-size) p-0 select-none aria-disabled:opacity-50",
+          "size-(--cell-size) p-0 select-none aria-disabled:opacity-50 text-primary-foreground hover:bg-primary-foreground/15 hover:text-primary-foreground",
           defaultClassNames.button_next
         ),
         month_caption: cn(
-          // Caption + nav both sit on the same white strip (see `nav` above).
-          // Adding bg-card here keeps the area behind the month label white
-          // even when react-day-picker layers it under the nav.
-          "flex h-(--cell-size) w-full items-center justify-center px-(--cell-size) bg-card border-b border-border",
+          // Caption sits inside the navy nav strip (see `nav` above). Inherits
+          // bg-primary text via the parent.
+          "flex h-(--cell-size) w-full items-center justify-center px-(--cell-size) bg-primary text-primary-foreground",
           defaultClassNames.month_caption
         ),
         dropdowns: cn(

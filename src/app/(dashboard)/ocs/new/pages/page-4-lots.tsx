@@ -441,7 +441,7 @@ export function Page4Lots({
       </div>
 
       <div className="flex items-center justify-between pt-2">
-        <Button type="button" variant="ghost" onClick={onBack}>Back</Button>
+        <Button type="button" variant="secondary" onClick={onBack}>Back</Button>
         <Button type="button" onClick={() => persistAndAdvance(5)} disabled={pending}>
           {pending && <Loader2 className="size-4 animate-spin" />}
           Continue

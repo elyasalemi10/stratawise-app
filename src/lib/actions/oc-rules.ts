@@ -14,6 +14,9 @@ export type OCRule = {
   ordinal: number;
   confidence: number | null;
   source_document_id: string | null;
+  /** model = VIC statutory; registered = OC's registered rules; standing =
+   *  committee-adopted internal rules. Drives the badge on the rules list. */
+  rule_type: "model" | "registered" | "standing";
 };
 
 export type OCRulesPayload = {
@@ -28,7 +31,7 @@ export async function getOCRules(ocId: string): Promise<OCRulesPayload> {
 
   const { data: rules } = await supabase
     .from("oc_rules")
-    .select("id, rule_number, heading, body, page_number, bbox, ordinal, confidence, source_document_id")
+    .select("id, rule_number, heading, body, page_number, bbox, ordinal, confidence, source_document_id, rule_type")
     .eq("oc_id", ocId)
     .order("ordinal", { ascending: true });
 
@@ -47,6 +50,60 @@ export async function getOCRules(ocId: string): Promise<OCRulesPayload> {
     rules: (rules ?? []) as OCRule[],
     sourceDocument,
   };
+}
+
+/**
+ * Hand-authored rule. Used for "standing" rules (committee-adopted internal
+ * rules that aren't registered) and for ad-hoc additions to a registered set.
+ * Rule number is free-form so managers can use whatever scheme the OC
+ * already documents (e.g. "S-2026-01" for a 2026 standing rule).
+ */
+export async function createOCRule(input: {
+  oc_id: string;
+  rule_number: string;
+  heading: string | null;
+  body: string;
+  rule_type: "registered" | "standing";
+}): Promise<{ success?: true; ruleId?: string; error?: string }> {
+  try {
+    await requireCompanyRole();
+    await requireOCAccess(input.oc_id);
+    const supabase = createServerClient();
+
+    // Append to the end of the current OC's rules list.
+    const { data: last } = await supabase
+      .from("oc_rules")
+      .select("ordinal")
+      .eq("oc_id", input.oc_id)
+      .order("ordinal", { ascending: false })
+      .limit(1)
+      .maybeSingle();
+    const nextOrdinal = (last?.ordinal ?? 0) + 1;
+
+    const { data, error } = await supabase
+      .from("oc_rules")
+      .insert({
+        oc_id: input.oc_id,
+        rule_number: input.rule_number.trim(),
+        heading: input.heading?.trim() || null,
+        body: input.body.trim(),
+        rule_type: input.rule_type,
+        ordinal: nextOrdinal,
+        confidence: 1.0,                   // hand-authored = full confidence
+        source_document_id: null,
+        page_number: null,
+        bbox: null,
+      })
+      .select("id")
+      .single();
+    if (error || !data) {
+      console.error("createOCRule: insert failed", error);
+      return { error: "Couldn't save the rule. Please try again." };
+    }
+    return { success: true, ruleId: data.id };
+  } catch (err) {
+    return { error: err instanceof Error ? err.message : "Unexpected error" };
+  }
 }
 
 /**

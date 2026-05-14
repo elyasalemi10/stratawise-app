@@ -322,7 +322,7 @@ export function Page8Balances({
       )}
 
       <div className="flex justify-between pt-2">
-        <Button type="button" variant="ghost" onClick={onBack}>Back</Button>
+        <Button type="button" variant="secondary" onClick={onBack}>Back</Button>
         <Button type="button" onClick={onCreate} disabled={pending}>
           {pending && <Loader2 className="size-4 animate-spin" />}
           Create OC

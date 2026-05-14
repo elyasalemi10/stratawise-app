@@ -48,7 +48,6 @@ export function Page2Review({
     initialDraft.oc_number != null ? String(initialDraft.oc_number) : "",
   );
   const [ocNumberInvalid, setOcNumberInvalid] = useState(false);
-  const [ocName, setOcName] = useState(initialDraft.oc_name ?? "");
   const [address, setAddress] = useState<ParsedAddress>({
     street_number: initialDraft.street_number ?? "",
     street_name: initialDraft.street_name ?? "",
@@ -172,7 +171,9 @@ export function Page2Review({
     const r = await saveStep(draftId, {
       plan_number: planNumber.toUpperCase() || undefined,
       oc_number: ocNumberParsed,
-      oc_name: ocName || (planNumber ? `Owners Corporation ${planNumber.toUpperCase()}` : undefined),
+      // Don't persist a separate "legal OC name". owners_corporations.name is
+      // resolved from trading_name → address at completeWizard time, so the
+      // wizard doesn't need a field for it.
       address: address.formatted,
       street_number: address.street_number,
       street_name: address.street_name,
@@ -251,16 +252,6 @@ export function Page2Review({
               />
             )}
           </div>
-        </div>
-
-        <div className="space-y-1.5">
-          <Label htmlFor="oc-name">Legal OC name</Label>
-          <Input
-            id="oc-name"
-            placeholder="Legal name as registered (leave blank to auto-name)"
-            value={ocName}
-            onChange={(e) => setOcName(e.target.value)}
-          />
         </div>
 
         <div className="space-y-1.5">
@@ -385,8 +376,13 @@ export function Page2Review({
                 <tfoot className="bg-muted/30 text-xs font-medium">
                   <tr className="border-t border-border">
                     <td className="px-3 py-2" colSpan={2}>Totals</td>
-                    <td className="px-3 py-2 text-left tabular-nums">{totalEntitlement.toLocaleString()}</td>
-                    <td className="px-3 py-2 text-left tabular-nums">{totalLiability.toLocaleString()}</td>
+                    {/* Totals align with the NumberInput's text inside each
+                        cell — the input itself has px-3 horizontal padding,
+                        so the column-level px-3 alone leaves the totals
+                        flush-left under the cell border. Add the input's
+                        left padding here too (pl-6 total) to line up. */}
+                    <td className="px-3 pl-6 py-2 text-left tabular-nums">{totalEntitlement.toLocaleString()}</td>
+                    <td className="px-3 pl-6 py-2 text-left tabular-nums">{totalLiability.toLocaleString()}</td>
                     <td />
                   </tr>
                 </tfoot>
@@ -398,7 +394,7 @@ export function Page2Review({
       </div>
 
       <div className="flex justify-between pt-2">
-        <Button type="button" variant="ghost" onClick={onBack}>Back</Button>
+        <Button type="button" variant="secondary" onClick={onBack}>Back</Button>
         <Button type="button" onClick={onContinue} disabled={pending}>
           {pending && <Loader2 className="size-4 animate-spin" />}
           Continue

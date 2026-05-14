@@ -128,14 +128,12 @@ const NO_INVALID: InvalidFlags = { bank: false, name: false, bsb: false, acc: fa
 export function Page5Trust({
   draftId,
   initialDraft,
-  ocName,
   totalLots,
   onBack,
   onNext,
 }: {
   draftId: string;
   initialDraft: DraftJson;
-  ocName: string;
   totalLots: number;
   onBack: () => void;
   onNext: () => void;
@@ -147,7 +145,6 @@ export function Page5Trust({
   // baked an auto-generated "Owners Corporation {PS…} Trust Account" into
   // admin_account_name; strip it on hydration so the field renders empty and
   // the manager types the real, legally-registered account name.
-  void ocName;
   const legacyAutoName = /^Owners Corporation\s+PS\d{6}[A-Z]\s+Trust Account$/i;
   const stripLegacy = (s: string | undefined) =>
     s && legacyAutoName.test(s.trim()) ? "" : (s ?? "");
@@ -385,7 +382,7 @@ export function Page5Trust({
       )}
 
       <div className="flex justify-between pt-2">
-        <Button type="button" variant="ghost" onClick={onBack}>Back</Button>
+        <Button type="button" variant="secondary" onClick={onBack}>Back</Button>
         <Button type="button" onClick={onContinue} disabled={pending}>
           {pending && <Loader2 className="size-4 animate-spin" />}
           Continue
