@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useState } from "react";
 import { toast } from "sonner";
 import { Info, Loader2 } from "lucide-react";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
@@ -63,13 +63,6 @@ export function Step4OpeningBalances({
   });
 
   const [pending, setPending] = useState(false);
-
-  const totalArrears = useMemo(() => {
-    return Object.values(arrearsByLot).reduce((s, r) => {
-      const v = parseFloat(r.amount) || 0;
-      return s + (r.isCredit ? -v : v);
-    }, 0);
-  }, [arrearsByLot]);
 
   function updateRow(lotNumber: number, patch: Partial<{ isCredit: boolean; amount: string }>) {
     setArrearsByLot((prev) => ({
@@ -216,25 +209,20 @@ export function Step4OpeningBalances({
             rows that actually have a balance. Switch toggles between Debit
             (default OFF) and Credit. */}
         <div className="space-y-2">
-          <div className="flex items-center justify-between">
-            <div className="flex items-center gap-1.5">
-              <h3 className="text-sm font-semibold text-foreground">Per-lot opening arrears</h3>
-              <Tooltip>
-                <TooltipTrigger
-                  render={
-                    <button type="button" aria-label="Debit / Credit explained" className="text-muted-foreground hover:text-foreground cursor-help">
-                      <Info className="h-3.5 w-3.5" />
-                    </button>
-                  }
-                />
-                <TooltipContent>
-                  <span><strong>Debit</strong> = the lot owes the OC. <strong>Credit</strong> = the OC owes the lot.</span>
-                </TooltipContent>
-              </Tooltip>
-            </div>
-            <span className="text-xs tabular-nums text-muted-foreground">
-              Total: ${totalArrears.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
-            </span>
+          <div className="flex items-center gap-1.5">
+            <h3 className="text-sm font-semibold text-foreground">Per-lot opening arrears</h3>
+            <Tooltip>
+              <TooltipTrigger
+                render={
+                  <button type="button" aria-label="Debit / Credit explained" className="text-muted-foreground hover:text-foreground cursor-help">
+                    <Info className="h-3.5 w-3.5" />
+                  </button>
+                }
+              />
+              <TooltipContent>
+                <span><strong>Debit</strong> = the lot owes the OC. <strong>Credit</strong> = the OC owes the lot.</span>
+              </TooltipContent>
+            </Tooltip>
           </div>
 
           <div className="rounded-md border border-border bg-card overflow-hidden">

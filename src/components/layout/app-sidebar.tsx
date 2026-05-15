@@ -17,6 +17,7 @@ import {
   FileText,
   Wallet,
   CalendarCheck,
+  ChevronDown,
   ChevronRight,
   Plus,
   Search,
@@ -27,6 +28,8 @@ import {
   AlertTriangle,
   Pin,
   PieChart,
+  Briefcase,
+  type LucideIcon,
 } from "lucide-react";
 
 import {
@@ -57,6 +60,20 @@ import {
 } from "@/lib/sidebar-cache";
 
 // ─── Nav definitions ────────────────────────────────────────────
+
+// Icons used for multi-item group headers in the OC sidebar. Single-item
+// groups (Overview / Insurance / Settings on the manager view) render as
+// flat items and use their own item icon — these only apply to accordion
+// groups (Management / Levies / Banking / lot-owner Overview + OC).
+const GROUP_ICONS: Record<string, LucideIcon> = {
+  Overview: LayoutDashboard,
+  Management: Briefcase,
+  Levies: Receipt,
+  Banking: Landmark,
+  Insurance: Shield,
+  Settings: Settings,
+  OC: Building2,
+};
 
 const managerMainNavGroups = [
   {
@@ -640,35 +657,28 @@ export function AppSidebar({
   const { pins, togglePin, isPinned } = usePinnedOCs(profile?.userEmail ?? null);
   const [switcherQuery, setSwitcherQuery] = useState("");
 
-  // Collapsed-group state. Persists per nav-group label in localStorage so
-  // the manager's preference survives reloads + tab swaps. Default is all
-  // open; clicking a labelled group header toggles. Untitled groups (empty
-  // label string — Inbox, etc.) are never collapsible.
-  const collapsedGroupsKey = `stratawise:sidebar-collapsed-groups:${profile?.userEmail ?? "anon"}`;
-  const [collapsedGroups, setCollapsedGroups] = useState<Set<string>>(new Set());
+  // Accordion: only ONE group open at a time. null = all collapsed. Picking a
+  // new group auto-closes the previous one. Persisted per-user so the choice
+  // survives reloads. The active route also auto-opens its containing group
+  // on navigation (handled in the render section).
+  const openGroupKey = `stratawise:sidebar-open-group:${profile?.userEmail ?? "anon"}`;
+  const [openGroup, setOpenGroupState] = useState<string | null>(null);
   useEffect(() => {
     if (typeof window === "undefined") return;
     try {
-      const raw = window.localStorage.getItem(collapsedGroupsKey);
-      if (!raw) return;
-      const parsed = JSON.parse(raw);
-      if (Array.isArray(parsed)) setCollapsedGroups(new Set(parsed.filter((s) => typeof s === "string")));
+      const raw = window.localStorage.getItem(openGroupKey);
+      if (raw) setOpenGroupState(raw === "__none__" ? null : raw);
     } catch {
-      /* corrupted — fall back to default-open */
+      /* corrupted — leave at default null */
     }
-  }, [collapsedGroupsKey]);
-  function toggleGroup(label: string) {
-    setCollapsedGroups((prev) => {
-      const next = new Set(prev);
-      if (next.has(label)) next.delete(label);
-      else next.add(label);
-      if (typeof window !== "undefined") {
-        try {
-          window.localStorage.setItem(collapsedGroupsKey, JSON.stringify(Array.from(next)));
-        } catch { /* quota / private mode — keep in-memory only */ }
-      }
-      return next;
-    });
+  }, [openGroupKey]);
+  function setOpenGroup(label: string | null) {
+    setOpenGroupState(label);
+    if (typeof window !== "undefined") {
+      try {
+        window.localStorage.setItem(openGroupKey, label ?? "__none__");
+      } catch { /* quota / private mode — keep in-memory only */ }
+    }
   }
 
   // Refresh listener — fires after mutations (revalidateSidebarFromClient).
@@ -710,6 +720,29 @@ export function AppSidebar({
     ? getOCNavGroups(currentOCCode, isLotOwner)
     : mainNavGroups;
 
+  // Auto-open the group that contains the currently-active route. Fires
+  // whenever the URL changes (e.g. clicking a sub-nav item) so the user
+  // never lands on a page with the surrounding section collapsed.
+  useEffect(() => {
+    if (!isInOC) return;
+    for (const g of navGroups) {
+      if (g.items.length <= 1) continue;
+      const hit = g.items.some((it) => {
+        const [p, q] = it.href.split("?");
+        if (q) {
+          const tab = new URLSearchParams(q).get("tab");
+          return pathname === p && searchParams.get("tab") === tab;
+        }
+        return pathname === it.href || pathname.startsWith(it.href + "/");
+      });
+      if (hit && openGroup !== g.label) {
+        setOpenGroup(g.label);
+        return;
+      }
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [pathname, searchParams, isInOC]);
+
   // Smart oc switching — preserve current sub-page
   function switchOC(newCode: string | null) {
     if (newCode === null) {
@@ -738,9 +771,9 @@ export function AppSidebar({
               trigger={
                 <SidebarMenuButton
                   size="lg"
-                  className="data-[state=open]:bg-sidebar-accent data-[state=open]:text-sidebar-accent-foreground"
+                  className="h-16 data-[state=open]:bg-sidebar-accent data-[state=open]:text-sidebar-accent-foreground"
                 >
-                  <div className="flex aspect-square size-8 items-center justify-center rounded-lg bg-sidebar-primary text-sidebar-primary-foreground shrink-0">
+                  <div className="flex aspect-square size-9 items-center justify-center rounded-lg bg-sidebar-primary text-sidebar-primary-foreground shrink-0">
                     <Building2 className="size-4" />
                   </div>
                   <div className="grid flex-1 text-left leading-tight">
@@ -801,18 +834,6 @@ export function AppSidebar({
                         </div>
                         <div className="flex-1 min-w-0 text-left">
                           <span className="block truncate font-medium">Main dashboard</span>
-                          {/* Subtitle balances the row height with the OC
-                              rows below (which carry a plan_number sub-line)
-                              so the Main dashboard row doesn't look stunted
-                              by comparison. */}
-                          {(() => {
-                            const activeCount = ocs.filter((s) => s.kind !== "draft").length;
-                            return (
-                              <span className="block truncate text-xs text-muted-foreground">
-                                {activeCount} OC{activeCount !== 1 ? "s" : ""} across your company
-                              </span>
-                            );
-                          })()}
                         </div>
                       </button>
                       <div className="relative mt-1">
@@ -933,72 +954,98 @@ export function AppSidebar({
             }
             return best;
           })();
-          // Collapsible groups only inside an OC dashboard — that view
-          // has the most items (Levies, Banking, Insurance, Settings,
-          // soon Meetings + Maintenance) and managers want to hide
-          // sections they don't use daily. The main dashboard nav is
-          // short enough that collapsibles are friction, so we render
-          // its labels as static text without the chevron.
-          const isCollapsible = isInOC;
-          const isCollapsed = isCollapsible && !!group.label && collapsedGroups.has(group.label);
+
+          // Render a single-item group as a flat nav button (no header, no
+          // accordion). Per spec, Overview / Insurance / Settings on the
+          // manager view collapse to single items and don't need their own
+          // dropdown chrome.
+          const isFlat = group.items.length === 1;
+          // Multi-item groups inside an OC dashboard use the accordion
+          // pattern: header is a big nav-style button, default closed,
+          // opening one closes the others. Outside the OC dashboard the
+          // grouped layout (Inbox / Overview / Management) stays static.
+          const isAccordion = isInOC && !isFlat && !!group.label;
+          const isOpen = isAccordion && openGroup === group.label;
+
+          const renderItem = (item: typeof group.items[number]) => {
+            const [itemPath, itemQuery] = item.href.split("?");
+            let isActive = false;
+            if (itemQuery) {
+              const tab = new URLSearchParams(itemQuery).get("tab");
+              isActive = pathname === itemPath && searchParams.get("tab") === tab;
+            } else {
+              isActive = item.href === longestMatchHref;
+            }
+            const badgeKey = "badgeKey" in item ? item.badgeKey : undefined;
+            const count = badgeKey === "unmatched_count" ? currentOC?.unmatched_count ?? 0 : 0;
+            return (
+              <SidebarMenuItem key={item.href}>
+                <SidebarMenuButton
+                  isActive={isActive}
+                  size="lg"
+                  className="text-base [&>svg]:!size-5"
+                  render={<Link href={item.href} />}
+                >
+                  <item.icon />
+                  <span>{item.label}</span>
+                  {count > 0 && (
+                    <span
+                      className="ml-auto inline-flex items-center justify-center rounded-full bg-muted px-1.5 text-[10px] font-semibold leading-none text-muted-foreground h-4 min-w-[1rem]"
+                      aria-label={`${count} unmatched`}
+                    >
+                      {count > 99 ? "99+" : count}
+                    </span>
+                  )}
+                </SidebarMenuButton>
+              </SidebarMenuItem>
+            );
+          };
+
+          if (isFlat || !isAccordion) {
+            return (
+              <SidebarGroup key={group.label || "_top"}>
+                {/* Keep the static label outside the OC dashboard so the
+                    Inbox / Overview / Management groupings still read as
+                    sections; inside an OC the flat 1-item groups drop the
+                    header entirely. */}
+                {!isFlat && group.label && (
+                  <SidebarGroupLabel>{group.label}</SidebarGroupLabel>
+                )}
+                <SidebarGroupContent>
+                  <SidebarMenu>{group.items.map(renderItem)}</SidebarMenu>
+                </SidebarGroupContent>
+              </SidebarGroup>
+            );
+          }
+
+          // Accordion group — big nav-style header that toggles a panel of
+          // sub-items. Picking another group closes this one (single-open).
+          const GroupIcon = GROUP_ICONS[group.label] ?? Briefcase;
           return (
-          <SidebarGroup key={group.label || "_top"}>
-            {group.label && (isCollapsible ? (
-              <SidebarGroupLabel
-                onClick={() => toggleGroup(group.label)}
-                className="cursor-pointer select-none hover:text-sidebar-foreground"
-                role="button"
-                aria-expanded={!isCollapsed}
-              >
-                <span>{group.label}</span>
-                <ChevronRight className={cn("ml-auto size-3.5 transition-transform", !isCollapsed && "rotate-90")} />
-              </SidebarGroupLabel>
-            ) : (
-              <SidebarGroupLabel>{group.label}</SidebarGroupLabel>
-            ))}
-            <SidebarGroupContent className={cn(isCollapsed && "hidden")}>
-              <SidebarMenu>
-                {group.items.map((item) => {
-                  // Handle both path-only and path+query active detection
-                  const [itemPath, itemQuery] = item.href.split("?");
-                  let isActive = false;
-                  if (itemQuery) {
-                    // Tab-based: match path AND query param
-                    const tab = new URLSearchParams(itemQuery).get("tab");
-                    isActive = pathname === itemPath && searchParams.get("tab") === tab;
-                  } else {
-                    isActive = item.href === longestMatchHref;
-                  }
-                  const badgeKey = "badgeKey" in item ? item.badgeKey : undefined;
-                  const count =
-                    badgeKey === "unmatched_count"
-                      ? currentOC?.unmatched_count ?? 0
-                      : 0;
-                  return (
-                    <SidebarMenuItem key={item.href}>
-                      <SidebarMenuButton
-                        isActive={isActive}
-                        size="lg"
-                        className="text-base [&>svg]:!size-5"
-                        render={<Link href={item.href} />}
-                      >
-                        <item.icon />
-                        <span>{item.label}</span>
-                        {count > 0 && (
-                          <span
-                            className="ml-auto inline-flex items-center justify-center rounded-full bg-muted px-1.5 text-[10px] font-semibold leading-none text-muted-foreground h-4 min-w-[1rem]"
-                            aria-label={`${count} unmatched`}
-                          >
-                            {count > 99 ? "99+" : count}
-                          </span>
+            <SidebarGroup key={group.label}>
+              <SidebarGroupContent>
+                <SidebarMenu>
+                  <SidebarMenuItem>
+                    <SidebarMenuButton
+                      size="lg"
+                      className="text-base [&>svg]:!size-5"
+                      aria-expanded={isOpen}
+                      onClick={() => setOpenGroup(isOpen ? null : group.label)}
+                    >
+                      <GroupIcon />
+                      <span>{group.label}</span>
+                      <ChevronDown
+                        className={cn(
+                          "ml-auto size-4 transition-transform",
+                          isOpen && "rotate-180",
                         )}
-                      </SidebarMenuButton>
-                    </SidebarMenuItem>
-                  );
-                })}
-              </SidebarMenu>
-            </SidebarGroupContent>
-          </SidebarGroup>
+                      />
+                    </SidebarMenuButton>
+                  </SidebarMenuItem>
+                  {isOpen && group.items.map(renderItem)}
+                </SidebarMenu>
+              </SidebarGroupContent>
+            </SidebarGroup>
           );
         })}
       </SidebarContent>
