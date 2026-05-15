@@ -270,6 +270,20 @@ export async function applySettlementToLot(input: ApplySettlementInput) {
 
   if (!lot) return { error: "Lot not found in this oc" };
 
+  // The OC's management company scopes the owners table (an Owner lives
+  // under one management company; if it ever transfers to another we'll
+  // duplicate the row at transfer time, since ownership history at the
+  // old company stays attributed there).
+  const { data: ocRow } = await supabase
+    .from("owners_corporations")
+    .select("management_company_id")
+    .eq("id", doc.oc_id)
+    .single();
+  if (!ocRow?.management_company_id) {
+    return { error: "OC has no management company configured" };
+  }
+  const managementCompanyId = ocRow.management_company_id;
+
   const settlementTimestamp = new Date(`${settlementDate}T00:00:00Z`).toISOString();
 
   // 1. End the current active member, if any.
@@ -304,6 +318,27 @@ export async function applySettlementToLot(input: ApplySettlementInput) {
     });
   }
 
+  // 1a. End the active lot_ownership for the new entity model. Set end_date
+  //     to the settlement date. There may be 0 (first-ever owner) or 1
+  //     active row; the partial index lot_ownerships_active_idx makes the
+  //     lookup cheap.
+  let endedLotOwnershipId: string | null = null;
+  {
+    const { data: activeOwnership } = await supabase
+      .from("lot_ownerships")
+      .select("id")
+      .eq("lot_id", lotId)
+      .is("end_date", null)
+      .maybeSingle();
+    if (activeOwnership) {
+      await supabase
+        .from("lot_ownerships")
+        .update({ end_date: settlementDate })
+        .eq("id", activeOwnership.id);
+      endedLotOwnershipId = activeOwnership.id;
+    }
+  }
+
   // 2. Mark any existing pending invitation as revoked (replaced by this settlement).
   const { data: existingPending } = await supabase
     .from("invitations")
@@ -336,6 +371,101 @@ export async function applySettlementToLot(input: ApplySettlementInput) {
 
   if (invErr || !invitation) {
     return { error: invErr?.message ?? "Could not create invitation" };
+  }
+
+  // 3a. Owner + lot_ownership + settlement — the new entity-model writes.
+  //     Owner is matched by case-insensitive email within the OC's
+  //     management company; if no match, a new owner row is inserted.
+  //     A fresh lot_ownership row starts the new tenure (end_date null).
+  //     The settlement row links the old + new lot_ownerships together
+  //     with the source PDF document.
+  let newOwnerId: string | null = null;
+  let newLotOwnershipId: string | null = null;
+  let settlementRowId: string | null = null;
+  try {
+    const normEmail = (newOwner.email ?? "").trim().toLowerCase();
+    if (normEmail) {
+      const { data: existingOwner } = await supabase
+        .from("owners")
+        .select("id")
+        .eq("management_company_id", managementCompanyId)
+        .ilike("email", normEmail)
+        .maybeSingle();
+      if (existingOwner) newOwnerId = existingOwner.id;
+    }
+    if (!newOwnerId) {
+      const { data: createdOwner, error: ownerErr } = await supabase
+        .from("owners")
+        .insert({
+          management_company_id: managementCompanyId,
+          owner_type: "individual",
+          name: newOwner.name,
+          email: newOwner.email ?? null,
+          phone: newOwner.phone ?? null,
+          postal_address: newOwner.postalAddress ?? null,
+          date_of_birth: newOwner.dateOfBirth ?? null,
+        })
+        .select("id")
+        .single();
+      if (ownerErr || !createdOwner) {
+        console.error("applySettlementToLot: owner insert failed (non-fatal)", ownerErr);
+      } else {
+        newOwnerId = createdOwner.id;
+      }
+    }
+
+    if (newOwnerId) {
+      const { data: newOwnership, error: ownershipErr } = await supabase
+        .from("lot_ownerships")
+        .insert({
+          lot_id: lotId,
+          owner_id: newOwnerId,
+          oc_id: doc.oc_id,
+          start_date: settlementDate,
+          is_primary_contact: true,
+          is_financial: true,
+        })
+        .select("id")
+        .single();
+      if (ownershipErr || !newOwnership) {
+        console.error("applySettlementToLot: lot_ownership insert failed (non-fatal)", ownershipErr);
+      } else {
+        newLotOwnershipId = newOwnership.id;
+      }
+    }
+
+    if (newLotOwnershipId) {
+      const { data: settlementRow, error: settlementErr } = await supabase
+        .from("settlements")
+        .insert({
+          oc_id: doc.oc_id,
+          lot_id: lotId,
+          document_id: documentId,
+          settlement_date: settlementDate,
+          ended_lot_ownership_id: endedLotOwnershipId,
+          created_lot_ownership_id: newLotOwnershipId,
+          recorded_by: profile.id,
+        })
+        .select("id")
+        .single();
+      if (settlementErr || !settlementRow) {
+        console.error("applySettlementToLot: settlement insert failed (non-fatal)", settlementErr);
+      } else {
+        settlementRowId = settlementRow.id;
+        // Backfill source_settlement_id on the just-created lot_ownership.
+        await supabase
+          .from("lot_ownerships")
+          .update({ source_settlement_id: settlementRow.id })
+          .eq("id", newLotOwnershipId);
+      }
+    }
+  } catch (err) {
+    // The new-table writes are non-fatal in this first cut — the legacy
+    // invitation + oc_members flow below remains the source of truth for
+    // the existing UI. If owner / lot_ownership / settlement fails we
+    // log and carry on; a follow-up migration can repair from the
+    // invitation + audit_log records.
+    console.error("applySettlementToLot: entity-model writes failed (non-fatal)", err);
   }
 
   // 4. Audit-log the new invitation side of the transfer.
@@ -388,6 +518,13 @@ export async function applySettlementToLot(input: ApplySettlementInput) {
     invitationId: invitation.id,
     invitationCode: invitation.code,
     endedMemberId: activeMember?.id ?? null,
+    // Entity-model surface: tells the caller which new-shape rows were
+    // created. Non-fatal — settlementId / newLotOwnershipId may be null
+    // if the entity-model write failed (legacy flow still succeeded).
+    settlementId: settlementRowId,
+    newOwnerId,
+    newLotOwnershipId,
+    endedLotOwnershipId,
   };
 }
 
