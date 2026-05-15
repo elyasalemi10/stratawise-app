@@ -933,10 +933,17 @@ export function AppSidebar({
             }
             return best;
           })();
-          const isCollapsed = !!group.label && collapsedGroups.has(group.label);
+          // Collapsible groups only inside an OC dashboard — that view
+          // has the most items (Levies, Banking, Insurance, Settings,
+          // soon Meetings + Maintenance) and managers want to hide
+          // sections they don't use daily. The main dashboard nav is
+          // short enough that collapsibles are friction, so we render
+          // its labels as static text without the chevron.
+          const isCollapsible = isInOC;
+          const isCollapsed = isCollapsible && !!group.label && collapsedGroups.has(group.label);
           return (
           <SidebarGroup key={group.label || "_top"}>
-            {group.label && (
+            {group.label && (isCollapsible ? (
               <SidebarGroupLabel
                 onClick={() => toggleGroup(group.label)}
                 className="cursor-pointer select-none hover:text-sidebar-foreground"
@@ -946,7 +953,9 @@ export function AppSidebar({
                 <span>{group.label}</span>
                 <ChevronRight className={cn("ml-auto size-3.5 transition-transform", !isCollapsed && "rotate-90")} />
               </SidebarGroupLabel>
-            )}
+            ) : (
+              <SidebarGroupLabel>{group.label}</SidebarGroupLabel>
+            ))}
             <SidebarGroupContent className={cn(isCollapsed && "hidden")}>
               <SidebarMenu>
                 {group.items.map((item) => {

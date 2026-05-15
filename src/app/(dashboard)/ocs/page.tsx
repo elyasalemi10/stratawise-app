@@ -18,18 +18,24 @@ export default async function OCsPage() {
 
   return (
     <div className="space-y-8">
-      {/* Actions bar. The top-right Create OC button is hidden when there are
-          no OCs — two CTAs (top-right + center empty state) felt noisy. The
-          centered Create OC in the empty state is the only one in that case. */}
-      {ocs.length > 0 && (
+      {/* Actions bar. Shown whenever the page has ANY content (OCs OR
+          drafts) — previously this only fired on `ocs.length > 0` and
+          a manager with drafts-only saw no Create OC button anywhere,
+          because the empty state (which carries its own CTA) only
+          renders when BOTH lists are empty. */}
+      {(ocs.length > 0 || drafts.length > 0) && (
         <div className="flex items-center justify-between">
           <p className="text-sm text-muted-foreground">
-            {ocs.length} OC{ocs.length !== 1 ? "s" : ""}
-            {" · "}
-            {summary?.totalLots ?? 0} total lots
+            {ocs.length > 0 && (
+              <>
+                {ocs.length} OC{ocs.length !== 1 ? "s" : ""}
+                {" · "}
+                {summary?.totalLots ?? 0} total lots
+              </>
+            )}
             {drafts.length > 0 && (
               <>
-                {" · "}
+                {ocs.length > 0 ? " · " : ""}
                 {drafts.length} draft{drafts.length !== 1 ? "s" : ""} in progress
               </>
             )}

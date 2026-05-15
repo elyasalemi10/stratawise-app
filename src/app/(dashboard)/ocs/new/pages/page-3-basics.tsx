@@ -596,9 +596,6 @@ export function Page3Basics({
                     Notice address must include street number, street name, suburb, and postcode.
                   </p>
                 )}
-                <p className="text-[11px] text-muted-foreground">
-                  We&apos;ll verify deliverability against PostGrid before any letter goes out.
-                </p>
               </div>
             )}
           </div>
