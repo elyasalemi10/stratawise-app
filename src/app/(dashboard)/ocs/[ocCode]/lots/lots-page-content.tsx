@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { ChevronDown, Download, FileSignature, MailCheck, Wrench } from "lucide-react";
 import { Button } from "@/components/ui/button";
@@ -11,6 +11,7 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { LotsTab } from "../manage/lots-tab";
+import { getLotInvitationStatus } from "../manage/invitation-actions";
 import { SettlementDialog } from "./[lotId]/settlement-dialog";
 import { BulkInviteDialog } from "./bulk-invite-dialog";
 import type { LotWithFinancials } from "@/lib/actions/oc";
@@ -63,6 +64,29 @@ export function LotsPageContent({
   const [lots, setLots] = useState(initialLots);
   const [settlementOpen, setSettlementOpen] = useState(false);
   const [bulkInviteOpen, setBulkInviteOpen] = useState(false);
+  // Single source of truth for invite-status — fetched once here and
+  // handed down to both LotsTab (for the per-row pill) and BulkInviteDialog
+  // (for eligibility counts). Previously each component re-fetched the
+  // same data when it mounted; one round-trip is plenty.
+  const [inviteStatus, setInviteStatus] = useState<Map<string, string>>(new Map());
+
+  useEffect(() => {
+    const lotIds = lots.map((l) => l.id);
+    if (lotIds.length === 0) return;
+    let cancelled = false;
+    getLotInvitationStatus(ocId, lotIds).then((statusMap) => {
+      if (cancelled) return;
+      const map = new Map<string, string>();
+      if (statusMap instanceof Map) {
+        statusMap.forEach((v, k) => map.set(k, v));
+      } else {
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        Object.entries(statusMap as any).forEach(([k, v]) => map.set(k, v as string));
+      }
+      setInviteStatus(map);
+    });
+    return () => { cancelled = true; };
+  }, [lots, ocId]);
 
   function onLotUpdated(lotId: string, field: string, value: string | number | null) {
     setLots((prev) =>
@@ -122,6 +146,7 @@ export function LotsPageContent({
         ocId={ocId}
         onLotUpdated={onLotUpdated}
         isLotOwner={isLotOwner}
+        inviteStatusMap={inviteStatus}
       />
 
       {!isLotOwner && (
@@ -137,6 +162,7 @@ export function LotsPageContent({
             onClose={() => { setBulkInviteOpen(false); router.refresh(); }}
             ocId={ocId}
             lots={lots}
+            inviteStatusMap={inviteStatus}
           />
         </>
       )}

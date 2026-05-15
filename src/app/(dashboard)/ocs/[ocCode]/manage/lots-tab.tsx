@@ -23,6 +23,10 @@ interface LotsTabProps {
    *  Kept as an optional prop so the page still compiles; the value isn't
    *  rendered any more per the no-totals spec. */
   totalEntitlement?: number;
+  /** Pre-loaded invite-status map from the parent. /lots passes this so we
+   *  don't refetch the same data here AND in the bulk-invite dialog. When
+   *  omitted (legacy /manage path), the component fetches itself. */
+  inviteStatusMap?: Map<string, string>;
 }
 
 function EditableCell({
@@ -90,16 +94,22 @@ function EditableCell({
   );
 }
 
-export function LotsTab({ lots, ocId, isEditing = false, onLotUpdated, isLotOwner, totalEntitlement }: LotsTabProps) {
+export function LotsTab({ lots, ocId, isEditing = false, onLotUpdated, isLotOwner, totalEntitlement, inviteStatusMap }: LotsTabProps) {
   // Consume the prop so the unused-prop lint doesn't fire on /manage — the
   // value isn't rendered any more per the no-totals spec.
   void totalEntitlement;
   const ocCode = useOCCode();
   const router = useRouter();
-  const [inviteStatus, setInviteStatus] = useState<Map<string, string>>(new Map());
+  const [inviteStatus, setInviteStatus] = useState<Map<string, string>>(() => inviteStatusMap ?? new Map());
 
-  // Fetch invitation status for all lots
+  // Fetch invitation status for all lots — only when the parent didn't
+  // pre-load it. /lots passes inviteStatusMap so this fetch is skipped;
+  // /manage still drives it itself.
   useEffect(() => {
+    if (inviteStatusMap) {
+      setInviteStatus(inviteStatusMap);
+      return;
+    }
     const lotIds = lots.map((l) => l.id);
     if (lotIds.length === 0) return;
     getLotInvitationStatus(ocId, lotIds).then((statusMap) => {
@@ -112,7 +122,7 @@ export function LotsTab({ lots, ocId, isEditing = false, onLotUpdated, isLotOwne
       }
       setInviteStatus(map);
     });
-  }, [lots, ocId]);
+  }, [lots, ocId, inviteStatusMap]);
 
   // Sorted ascending by lot_number for now. Per-column filters / sorts will
   // come in a follow-up — the header is plain text without an arrow.
@@ -162,12 +172,13 @@ export function LotsTab({ lots, ocId, isEditing = false, onLotUpdated, isLotOwne
               {!isLotOwner && <th className="px-4 py-3 text-right whitespace-nowrap">Balance</th>}
             </tr>
           </thead>
-          {/* Alternating row colours: odd rows white, even rows a cool
-              slate-tinted grey so the stripe contrasts with our warm cream
-              page background (a same-warm-toned even row blends into it).
-              Hover bumps to bg-muted for a tracker-cursor that's
-              noticeable but doesn't fight the stripe. */}
-          <tbody className="[&_tr:nth-child(odd)]:bg-card [&_tr:nth-child(even)]:bg-[#F1F5F9] [&_tr:hover]:!bg-muted">
+          {/* Alternating row colours stay in the warm palette: odd rows
+              white, even rows a deeper warm beige than --muted so the
+              stripe is visible against the cream page bg without
+              introducing a cool slate tone (which clashed with the rest
+              of the brand). Hover lifts to --secondary at full opacity
+              — clearly distinct from both stripe shades. */}
+          <tbody className="[&_tr:nth-child(odd)]:bg-card [&_tr:nth-child(even)]:bg-[hsl(40,30%,90%)] [&_tr:hover]:!bg-secondary">
             {sortedLots.map((lot) => {
               const ownerLabel =
                 lot.owner_display_name ??
