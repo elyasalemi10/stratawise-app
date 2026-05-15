@@ -934,26 +934,30 @@ export function AppSidebar({
               </SidebarMenu>
             </SidebarGroupContent>
           </SidebarGroup>
-        ) : navGroups.map((group, groupIdx) => {
-          // PP4-D: longest-prefix-wins for active highlight, so a child route
-          // (e.g. /reconciliation/mappings) doesn't also light up its parent
-          // (/reconciliation). Prefix-only items still match deeper routes
-          // when they're the longest sibling that does.
-          const longestMatchHref = (() => {
+        ) : (() => {
+          // PP4-D: longest-prefix-wins for active highlight, GLOBAL across
+          // all groups. Without this, Dashboard (whose href is `/ocs/{code}`)
+          // matched every deeper page (`/ocs/{code}/lots` etc.) and lit up
+          // alongside the real active item. Computing the longest match
+          // once across the whole nav fixes that.
+          const globalLongestMatchHref = (() => {
             let best = "";
-            for (const it of group.items) {
-              const [p, q] = it.href.split("?");
-              if (q) continue; // tab-based items handled below
-              if (
-                (pathname === it.href ||
-                  pathname.startsWith(it.href + "/")) &&
-                p.length > best.length
-              ) {
-                best = it.href;
+            for (const g of navGroups) {
+              for (const it of g.items) {
+                const [p, q] = it.href.split("?");
+                if (q) continue;
+                if (
+                  (pathname === it.href || pathname.startsWith(it.href + "/")) &&
+                  p.length > best.length
+                ) {
+                  best = it.href;
+                }
               }
             }
             return best;
           })();
+          return navGroups.map((group, groupIdx) => {
+          const longestMatchHref = globalLongestMatchHref;
 
           // Render a single-item group as a flat nav button (no header, no
           // accordion). Per spec, Overview / Insurance / Settings on the
@@ -1079,7 +1083,8 @@ export function AppSidebar({
               </SidebarGroup>
             </div>
           );
-        })}
+        });
+        })()}
       </SidebarContent>
 
       {/* Footer — User profile */}

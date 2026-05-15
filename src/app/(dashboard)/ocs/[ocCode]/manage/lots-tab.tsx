@@ -2,7 +2,6 @@
 
 import { useState, useCallback, useEffect } from "react";
 import { useRouter } from "next/navigation";
-import { ArrowUpDown } from "lucide-react";
 import { toast } from "sonner";
 import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
@@ -97,7 +96,6 @@ export function LotsTab({ lots, ocId, isEditing = false, onLotUpdated, isLotOwne
   void totalEntitlement;
   const ocCode = useOCCode();
   const router = useRouter();
-  const [sortAsc, setSortAsc] = useState(true);
   const [inviteStatus, setInviteStatus] = useState<Map<string, string>>(new Map());
 
   // Fetch invitation status for all lots
@@ -116,9 +114,9 @@ export function LotsTab({ lots, ocId, isEditing = false, onLotUpdated, isLotOwne
     });
   }, [lots, ocId]);
 
-  const sortedLots = [...lots].sort((a, b) =>
-    sortAsc ? a.lot_number - b.lot_number : b.lot_number - a.lot_number,
-  );
+  // Sorted ascending by lot_number for now. Per-column filters / sorts will
+  // come in a follow-up — the header is plain text without an arrow.
+  const sortedLots = [...lots].sort((a, b) => a.lot_number - b.lot_number);
 
   const formatCurrency = (n: number) =>
     new Intl.NumberFormat("en-AU", { style: "currency", currency: "AUD" }).format(Math.abs(n));
@@ -133,27 +131,26 @@ export function LotsTab({ lots, ocId, isEditing = false, onLotUpdated, isLotOwne
 
   return (
     <div className="space-y-3">
+      {/* Table text bumped to text-base for readability — strata managers
+          scan this several times a day. Headers stay at text-sm font-medium
+          (normal case) so they're distinct without yelling. */}
       <div className="overflow-x-auto rounded-lg border border-border">
-        <table className="w-full text-sm">
+        <table className="w-full text-base">
           <thead>
-            <tr className="bg-muted/40 text-xs font-medium text-muted-foreground border-b border-border">
-              <th
-                className="px-4 py-2.5 text-left cursor-pointer hover:text-foreground select-none w-32"
-                onClick={() => setSortAsc((v) => !v)}
-              >
-                <span className="inline-flex items-center gap-1.5">
-                  Lot number
-                  <ArrowUpDown className="h-3 w-3 opacity-60" />
-                </span>
-              </th>
-              <th className="px-4 py-2.5 text-left">Name</th>
-              {!isLotOwner && <th className="px-4 py-2.5 text-left">Email</th>}
-              <th className="px-4 py-2.5 text-left w-40">Units of entitlement</th>
-              {!isLotOwner && <th className="px-4 py-2.5 text-left w-40">Invite status</th>}
-              {!isLotOwner && <th className="px-4 py-2.5 text-right w-32">Balance</th>}
+            <tr className="bg-muted/40 text-sm font-medium text-muted-foreground border-b border-border">
+              <th className="px-4 py-3 text-left w-24">Lot number</th>
+              <th className="px-4 py-3 text-left w-24">Unit number</th>
+              <th className="px-4 py-3 text-left">Name</th>
+              {!isLotOwner && <th className="px-4 py-3 text-left">Email</th>}
+              <th className="px-4 py-3 text-left w-44">Units of entitlement</th>
+              {!isLotOwner && <th className="px-4 py-3 text-left w-40">Invite status</th>}
+              {!isLotOwner && <th className="px-4 py-3 text-right w-32">Balance</th>}
             </tr>
           </thead>
-          <tbody className="[&_tr:nth-child(odd)]:bg-card [&_tr:nth-child(even)]:bg-muted/20">
+          {/* Alternating row colours + a slightly brighter hover. The hover
+              selector lives inside the same tbody descendant block so it
+              beats nth-child specificity. */}
+          <tbody className="[&_tr:nth-child(odd)]:bg-card [&_tr:nth-child(even)]:bg-muted/30 [&_tr:hover]:bg-muted/60">
             {sortedLots.map((lot) => {
               const ownerLabel =
                 lot.owner_display_name ??
@@ -163,11 +160,12 @@ export function LotsTab({ lots, ocId, isEditing = false, onLotUpdated, isLotOwne
                 <tr
                   key={lot.id}
                   onClick={!isEditing && !isLotOwner ? () => router.push(`/ocs/${ocCode}/lots/${lot.id}`) : undefined}
-                  className={`h-12 transition-colors hover:bg-muted/40 ${
+                  className={`h-14 transition-colors ${
                     !isEditing && !isLotOwner ? "cursor-pointer" : ""
                   }`}
                 >
                   <td className="px-4 font-medium text-foreground tabular-nums">{lot.lot_number}</td>
+                  <td className="px-4 text-muted-foreground tabular-nums">{lot.unit_number ?? ""}</td>
                   <td className="px-4">
                     {ownerLabel ? (
                       <span className={`font-medium ${lot.owner_status === "member" ? "text-foreground" : "text-muted-foreground"}`}>
@@ -210,7 +208,7 @@ export function LotsTab({ lots, ocId, isEditing = false, onLotUpdated, isLotOwne
             })}
             {sortedLots.length === 0 && (
               <tr>
-                <td colSpan={isLotOwner ? 3 : 6} className="px-4 py-12 text-center text-sm text-muted-foreground">
+                <td colSpan={isLotOwner ? 4 : 7} className="px-4 py-12 text-center text-base text-muted-foreground">
                   No lots found. Create lots from the oc setup wizard.
                 </td>
               </tr>

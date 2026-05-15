@@ -197,22 +197,17 @@ export function SettlementDialog(props: Props) {
 
         {stage === "submitting" && <ParsingSkeleton message="Applying settlement..." />}
 
-        <DialogFooter>
-          <Button
-            type="button"
-            variant="ghost"
-            onClick={handleClose}
-            disabled={stage === "parsing" || stage === "submitting"}
-          >
-            Cancel
-          </Button>
-          {stage === "review" && (
+        {/* Cancel button removed — the dialog's built-in close (X corner +
+            ESC + outside click) is enough. Confirm stays as the primary
+            action when we reach the review stage. */}
+        {stage === "review" && (
+          <DialogFooter>
             <Button type="button" onClick={handleConfirm}>
               <Check className="h-4 w-4" />
               Confirm and assign
             </Button>
-          )}
-        </DialogFooter>
+          </DialogFooter>
+        )}
       </DialogContent>
     </Dialog>
   );
@@ -228,8 +223,20 @@ function UploadDropzone({
   fileInputRef: React.RefObject<HTMLInputElement | null>;
   onFile: (file: File) => void;
 }) {
+  // The whole dropzone is now a single click target. Click anywhere inside
+  // opens the file picker — no separate "Choose file" button to aim at.
+  // Keyboard accessibility: Enter / Space also open the picker.
   return (
     <div
+      role="button"
+      tabIndex={0}
+      onClick={() => fileInputRef.current?.click()}
+      onKeyDown={(e) => {
+        if (e.key === "Enter" || e.key === " ") {
+          e.preventDefault();
+          fileInputRef.current?.click();
+        }
+      }}
       onDragOver={(e) => { e.preventDefault(); setDragging(true); }}
       onDragLeave={() => setDragging(false)}
       onDrop={(e) => {
@@ -238,26 +245,17 @@ function UploadDropzone({
         const file = e.dataTransfer.files[0];
         if (file) onFile(file);
       }}
-      className={`flex flex-col items-center justify-center rounded-md border-2 border-dashed p-10 text-center transition-colors ${
-        dragging ? "border-primary bg-primary/5" : "border-border bg-muted/30"
+      className={`flex cursor-pointer flex-col items-center justify-center rounded-md border-2 border-dashed p-10 text-center transition-colors outline-none focus-visible:ring-2 focus-visible:ring-primary/30 ${
+        dragging ? "border-primary bg-primary/5" : "border-border bg-muted/30 hover:border-primary/40 hover:bg-muted/40"
       }`}
     >
       <Upload className="h-8 w-8 text-muted-foreground/50" />
       <p className="mt-3 text-sm font-medium text-foreground">
-        Drop the Notice of Acquisition PDF here
+        Drop or click to upload the Notice of Acquisition PDF
       </p>
       <p className="mt-1 text-xs text-muted-foreground">
         We&apos;ll extract the new owner details and let you review before assigning.
       </p>
-      <Button
-        type="button"
-        variant="secondary"
-        size="sm"
-        className="mt-4"
-        onClick={() => fileInputRef.current?.click()}
-      >
-        Choose file
-      </Button>
       <input
         ref={fileInputRef}
         type="file"

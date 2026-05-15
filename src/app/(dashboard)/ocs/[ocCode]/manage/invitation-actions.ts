@@ -230,6 +230,49 @@ export async function inviteLotOwner(
   return { success: true, code: invitation.code };
 }
 
+/**
+ * Bulk-invite every eligible lot owner in one go from the Lots page Tools
+ * dropdown. Re-uses `inviteLotOwner` per row so the audit log + email
+ * dispatch + invitation row handling stays single-sourced. Skips rows
+ * without an email; treats lots with an accepted invite as already-done.
+ *
+ * Returns a tally so the toast can summarise: "Sent N, skipped M, K
+ * failed". Errors are collected but don't abort the rest of the batch —
+ * one bad lot shouldn't poison the whole sweep.
+ */
+export async function bulkInviteLotOwners(
+  ocId: string,
+  invites: Array<{ lotId: string; email: string; name: string; phone?: string | null }>,
+): Promise<{ sent: number; skipped: number; failed: number; errors: string[] }> {
+  await requireCompanyRole();
+  await requireOCAccess(ocId);
+
+  let sent = 0;
+  let skipped = 0;
+  let failed = 0;
+  const errors: string[] = [];
+
+  for (const row of invites) {
+    if (!row.email?.trim() || !row.name?.trim()) {
+      skipped++;
+      continue;
+    }
+    const r = await inviteLotOwner(ocId, row.lotId, {
+      email: row.email,
+      name: row.name,
+      phone: row.phone ?? undefined,
+    });
+    if ("error" in r && r.error) {
+      failed++;
+      errors.push(`Lot ${row.lotId}: ${r.error}`);
+    } else {
+      sent++;
+    }
+  }
+
+  return { sent, skipped, failed, errors };
+}
+
 export async function getLotInvitationStatus(ocId: string, lotIds: string[]) {
   const supabase = createServerClient();
 
