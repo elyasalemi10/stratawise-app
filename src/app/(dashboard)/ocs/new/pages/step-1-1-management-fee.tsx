@@ -4,6 +4,7 @@ import { useState } from "react";
 import { toast } from "sonner";
 import { Loader2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { NumberInput } from "@/components/ui/number-input";
 import {
@@ -15,19 +16,12 @@ import {
 } from "@/components/ui/select";
 import { saveStep, type DraftJson } from "../actions";
 
-// Wizard Step 1.1 — Management fee.
-//
-// Captures how the management company is paid by this OC. Persisted into
-// draft_json.management_fee; completeWizard inserts a row into the new
-// management_fees table.
-//
-// Levy line-item emission (for billing_method = include_in_levies) and
-// the trust-to-operating transfer cron are deferred to a follow-up PR;
-// this step only captures the configuration.
+// Wizard Step 1 sub-step 2 — Management fee.
 
 type FeeStructure = "fixed_monthly" | "per_lot_monthly" | "hybrid" | "quarterly_retainer";
 type BillingMethod = "invoice_direct" | "include_in_levies";
 type ContractTerm = "rolling_12" | "term_24" | "custom";
+type CustomUnit = "days" | "months" | "years";
 
 const FEE_STRUCTURES: Array<{ value: FeeStructure; label: string }> = [
   { value: "fixed_monthly", label: "Fixed monthly" },
@@ -35,12 +29,41 @@ const FEE_STRUCTURES: Array<{ value: FeeStructure; label: string }> = [
   { value: "hybrid", label: "Hybrid (fixed + per-lot)" },
   { value: "quarterly_retainer", label: "Quarterly retainer" },
 ];
+const FEE_STRUCTURE_LABEL: Record<FeeStructure, string> = Object.fromEntries(
+  FEE_STRUCTURES.map((s) => [s.value, s.label]),
+) as Record<FeeStructure, string>;
 
 const CONTRACT_TERMS: Array<{ value: ContractTerm; label: string }> = [
   { value: "rolling_12", label: "12 months rolling" },
   { value: "term_24", label: "24 months" },
   { value: "custom", label: "Custom" },
 ];
+const CONTRACT_TERM_LABEL: Record<ContractTerm, string> = Object.fromEntries(
+  CONTRACT_TERMS.map((t) => [t.value, t.label]),
+) as Record<ContractTerm, string>;
+
+const CUSTOM_UNITS: Array<{ value: CustomUnit; label: string }> = [
+  { value: "days", label: "Days" },
+  { value: "months", label: "Months" },
+  { value: "years", label: "Years" },
+];
+
+function InlineYesNoToggle({ value, onChange }: { value: boolean; onChange: (v: boolean) => void }) {
+  return (
+    <button
+      type="button"
+      onClick={() => onChange(!value)}
+      className={`inline-flex items-center justify-between rounded-md border px-3 h-9 cursor-pointer transition-colors w-[180px] ${
+        value ? "border-primary bg-primary/5 text-foreground" : "border-border bg-card text-muted-foreground hover:border-primary/40"
+      }`}
+    >
+      <span className="text-sm">{value ? "Yes" : "No"}</span>
+      <span className={`inline-flex h-5 w-9 items-center rounded-full transition-colors ${value ? "bg-primary" : "bg-border"}`}>
+        <span className={`inline-block h-4 w-4 rounded-full bg-white transition-transform ${value ? "translate-x-4" : "translate-x-0.5"}`} />
+      </span>
+    </button>
+  );
+}
 
 export function Step1ManagementFee({
   draftId,
@@ -60,7 +83,6 @@ export function Step1ManagementFee({
   );
   const [structureInvalid, setStructureInvalid] = useState(false);
 
-  // Amounts held as strings (NumberInput contract).
   const [fixedAmount, setFixedAmount] = useState<string>(
     mf?.fixed_amount_cents != null ? String(mf.fixed_amount_cents / 100) : "",
   );
@@ -69,7 +91,6 @@ export function Step1ManagementFee({
   );
   const [amountInvalid, setAmountInvalid] = useState<{ fixed: boolean; perLot: boolean }>({ fixed: false, perLot: false });
 
-  // GST defaults to the OC's GST registration state from Step 1.
   const [gstApplicable, setGstApplicable] = useState<boolean>(
     mf?.gst_applicable ?? (initialDraft.gst_registered ?? false),
   );
@@ -82,6 +103,10 @@ export function Step1ManagementFee({
   const [contractTerm, setContractTerm] = useState<ContractTerm>(
     (mf?.contract_term as ContractTerm | undefined) ?? "rolling_12",
   );
+  // Custom term: how many days/months/years.
+  const [customLength, setCustomLength] = useState<string>("");
+  const [customUnit, setCustomUnit] = useState<CustomUnit>("months");
+  const [customInvalid, setCustomInvalid] = useState(false);
 
   const [pending, setPending] = useState(false);
 
@@ -131,17 +156,32 @@ export function Step1ManagementFee({
       setBillingMethodInvalid(false);
     }
 
+    // Custom term must have a positive length.
+    if (contractTerm === "custom") {
+      const len = parseInt(customLength, 10);
+      if (!Number.isFinite(len) || len <= 0) {
+        problems.push("Custom term length must be a positive number.");
+        setCustomInvalid(true);
+      } else {
+        setCustomInvalid(false);
+      }
+    } else {
+      setCustomInvalid(false);
+    }
+
     if (problems.length) {
       toast.error(problems.length === 1 ? problems[0] : "Fix the highlighted fields.");
       return;
     }
 
-    // Convert amounts to integer cents. Shape constraints in the DB enforce
-    // which fields go with which structure; mirror them here so save reflects
-    // the intended structure.
     const fixedCents = fixedNum != null ? Math.round(fixedNum * 100) : undefined;
     const perLotCents = perLotNum != null ? Math.round(perLotNum * 100) : undefined;
 
+    // For custom terms, we don't know exactly how to map days/months/years to
+    // a single contract_end_date here without the start date in hand — that's
+    // computed at save-time downstream. Persist the raw choice for now; the
+    // detailed end-date materialisation is part of the deferred management-fee
+    // engine.
     setPending(true);
     const r = await saveStep(draftId, {
       management_fee: {
@@ -158,7 +198,7 @@ export function Step1ManagementFee({
         billing_method: billingMethod as BillingMethod,
         contract_term: contractTerm,
       },
-    }, 2, 0); // Advance to Step 2 main page.
+    }, 2, 0); // Advance to Step 2 main page (Settings).
     if (r.error) {
       setPending(false);
       toast.error(r.error);
@@ -186,7 +226,9 @@ export function Step1ManagementFee({
             onValueChange={(v) => { setStructure((v as FeeStructure) ?? ""); if (structureInvalid) setStructureInvalid(false); }}
           >
             <SelectTrigger id="fee-structure" aria-invalid={structureInvalid || undefined} className="w-full">
-              <SelectValue placeholder="Pick a fee structure" />
+              <SelectValue placeholder="Pick a fee structure">
+                {structure ? FEE_STRUCTURE_LABEL[structure as FeeStructure] : "Pick a fee structure"}
+              </SelectValue>
             </SelectTrigger>
             <SelectContent>
               {FEE_STRUCTURES.map((s) => (
@@ -227,29 +269,18 @@ export function Step1ManagementFee({
                   value={perLotAmount}
                   onChange={(v) => { setPerLotAmount(v); if (amountInvalid.perLot) setAmountInvalid((p) => ({ ...p, perLot: false })); }}
                   invalid={amountInvalid.perLot}
-                  placeholder="Amount per lot"
+                  placeholder="Per-lot amount"
                 />
               </div>
             )}
           </div>
         )}
 
-        <div className="rounded-md border border-border bg-card p-4">
-          <div className="flex items-center justify-between gap-3">
-            <p className="text-sm font-semibold text-foreground">GST applicable on fee</p>
-            <button
-              type="button"
-              onClick={() => setGstApplicable((v) => !v)}
-              className={`flex items-center justify-between rounded-md border px-3 h-9 cursor-pointer transition-colors min-w-[180px] ${
-                gstApplicable ? "border-primary bg-primary/5 text-foreground" : "border-border bg-card text-muted-foreground hover:border-primary/40"
-              }`}
-            >
-              <span className="text-sm">{gstApplicable ? "Yes" : "No"}</span>
-              <span className={`inline-flex h-5 w-9 items-center rounded-full transition-colors ${gstApplicable ? "bg-primary" : "bg-border"}`}>
-                <span className={`inline-block h-4 w-4 rounded-full bg-white transition-transform ${gstApplicable ? "translate-x-4" : "translate-x-0.5"}`} />
-              </span>
-            </button>
-          </div>
+        {/* GST applicable on fee — inline-toggle row matching the General step
+            pattern (not a card). */}
+        <div className="flex items-center justify-between gap-3">
+          <Label>GST applicable on fee</Label>
+          <InlineYesNoToggle value={gstApplicable} onChange={setGstApplicable} />
         </div>
 
         <div className="space-y-2">
@@ -287,7 +318,7 @@ export function Step1ManagementFee({
             onValueChange={(v) => setContractTerm((v as ContractTerm) ?? "rolling_12")}
           >
             <SelectTrigger id="contract-term" className="w-full">
-              <SelectValue placeholder="Pick a term" />
+              <SelectValue>{CONTRACT_TERM_LABEL[contractTerm]}</SelectValue>
             </SelectTrigger>
             <SelectContent>
               {CONTRACT_TERMS.map((t) => (
@@ -295,6 +326,28 @@ export function Step1ManagementFee({
               ))}
             </SelectContent>
           </Select>
+
+          {contractTerm === "custom" && (
+            <div className="mt-2 grid grid-cols-[1fr_180px] gap-2">
+              <NumberInput
+                allowDecimal={false}
+                value={customLength}
+                onChange={(v) => { setCustomLength(v); if (customInvalid) setCustomInvalid(false); }}
+                invalid={customInvalid}
+                placeholder="Length"
+              />
+              <Select value={customUnit} onValueChange={(v) => setCustomUnit((v as CustomUnit) ?? "months")}>
+                <SelectTrigger className="w-full">
+                  <SelectValue>{CUSTOM_UNITS.find((u) => u.value === customUnit)?.label ?? "Months"}</SelectValue>
+                </SelectTrigger>
+                <SelectContent>
+                  {CUSTOM_UNITS.map((u) => (
+                    <SelectItem key={u.value} value={u.value}>{u.label}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+          )}
         </div>
       </div>
 

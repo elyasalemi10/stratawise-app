@@ -1,14 +1,21 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { Fragment, useEffect, useMemo, useState } from "react";
 import { toast } from "sonner";
-import { AlertTriangle, Download, FileSpreadsheet, Loader2, MapPin, Upload } from "lucide-react";
+import { AlertTriangle, Download, FileSpreadsheet, Info, Loader2, Upload } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { PhoneInput } from "@/components/shared/phone-input";
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import { saveStep, type DraftJson, type DraftLot } from "../actions";
+
+// Wizard Step 3 sub-step 1 — Service address & contact.
+//
+// "Service address" is the postal address where notices are delivered when
+// the owner hasn't consented to digital comms. Renamed from "Postal" so the
+// legal-service framing is explicit on the label.
 
 function isValidAuPhone(raw: string): boolean {
   if (!raw) return true;
@@ -20,7 +27,6 @@ function isValidEmail(raw: string): boolean {
   return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(raw);
 }
 
-// Reuse the lot CSV template format (extended with owner_type column).
 function lotsToCsv(lots: DraftLot[]): string {
   const header = [
     "lot_number","unit_number","owner_type",
@@ -129,17 +135,31 @@ export function Step3PostalContact({
   onBack: () => void;
   onNext: () => void;
 }) {
-  const [lots, setLots] = useState<DraftLot[]>(initialDraft.lots ?? []);
+  const ocSiteAddress = initialDraft.address ?? "";
+
+  // On mount, seed each owner-occupied lot's service address from the OC site
+  // address WHEN it isn't already set (resumed drafts that already have
+  // values are left alone). Non-owner-occupied lots start blank.
+  const initialLots = useMemo<DraftLot[]>(() => {
+    const seed = initialDraft.lots ?? [];
+    return seed.map((l) => {
+      const isOwnerOccupied = l.is_occupied_by_owner !== false;
+      const hasPostal = (l.owner_postal_address ?? "").trim().length > 0;
+      if (isOwnerOccupied && !hasPostal && ocSiteAddress) {
+        return { ...l, owner_postal_address: ocSiteAddress };
+      }
+      return l;
+    });
+  }, [initialDraft.lots, ocSiteAddress]);
+
+  const [lots, setLots] = useState<DraftLot[]>(initialLots);
   const [csvDialogOpen, setCsvDialogOpen] = useState(false);
   const [csvErrors, setCsvErrors] = useState<{ row: number; reason: string }[]>([]);
   const [rowErrors, setRowErrors] = useState<Array<{ email?: boolean; phone?: boolean; postal?: boolean }>>([]);
   const [pending, setPending] = useState(false);
 
-  const ocSiteAddress = initialDraft.address ?? "";
-  const notOwnerOccupiedCount = useMemo(
-    () => lots.filter((l) => l.is_occupied_by_owner === false).length,
-    [lots],
-  );
+  // Keep lots in sync if the initialDraft updates (e.g. caller refreshDraft).
+  useEffect(() => setLots(initialLots), [initialLots]);
 
   function updateLot(idx: number, patch: Partial<DraftLot>) {
     setLots((prev) => prev.map((l, i) => (i === idx ? { ...l, ...patch } : l)));
@@ -156,14 +176,6 @@ export function Step3PostalContact({
     }
   }
 
-  function autoFillSiteAddress(idx: number) {
-    if (!ocSiteAddress) {
-      toast.error("OC site address isn't set — fill it in on Step 1 first.");
-      return;
-    }
-    updateLot(idx, { owner_postal_address: ocSiteAddress });
-  }
-
   function downloadCsv() {
     const blob = new Blob([lotsToCsv(lots)], { type: "text/csv;charset=utf-8;" });
     const url = URL.createObjectURL(blob);
@@ -173,7 +185,6 @@ export function Step3PostalContact({
     a.click();
     URL.revokeObjectURL(url);
   }
-
   function isOurTemplate(text: string): boolean {
     const firstLine = text.split(/\r?\n/, 1)[0] ?? "";
     const cols = parseCsvLine(firstLine).map((c) => c.trim().toLowerCase());
@@ -185,7 +196,6 @@ export function Step3PostalContact({
     if (cols.length !== expected.length) return false;
     return expected.every((k, i) => cols[i] === k);
   }
-
   function onUploadCsv(file: File) {
     const reader = new FileReader();
     reader.onload = () => {
@@ -218,7 +228,7 @@ export function Step3PostalContact({
         nextRowErrors[i].phone = true;
       }
       if (!(l.owner_postal_address ?? "").trim()) {
-        problems.push(`Lot ${l.lot_number}: postal address is required for paper notices.`);
+        problems.push(`Lot ${l.lot_number}: service address is required for paper notices.`);
         nextRowErrors[i].postal = true;
       }
     });
@@ -230,7 +240,7 @@ export function Step3PostalContact({
     }
 
     setPending(true);
-    const r = await saveStep(draftId, { lots }, 3, 2); // Advance to Step 3.2.
+    const r = await saveStep(draftId, { lots }, 3, 2); // Advance to Step 3 sub 2 (Digital consent).
     if (r.error) {
       setPending(false);
       toast.error(r.error);
@@ -240,100 +250,106 @@ export function Step3PostalContact({
   }
 
   return (
-    <div className="space-y-6">
-      <div className="text-center">
-        <h2 className="text-lg font-semibold text-foreground">Postal & contact</h2>
-      </div>
-
-      <div className="flex items-center justify-between gap-4">
-        <div className="text-sm">
-          {notOwnerOccupiedCount === 0 ? (
-            <span className="text-muted-foreground">All lots are owner-occupied.</span>
-          ) : (
-            <span className="text-foreground">
-              <strong>{notOwnerOccupiedCount}</strong> of {lots.length} lot{lots.length === 1 ? "" : "s"} {notOwnerOccupiedCount === 1 ? "is" : "are"} not owner-occupied.
-            </span>
-          )}
+    <TooltipProvider>
+      <div className="space-y-6">
+        <div className="text-center">
+          <h2 className="text-lg font-semibold text-foreground">Service & contact</h2>
         </div>
-        <Button type="button" variant="secondary" size="sm" onClick={() => setCsvDialogOpen(true)}>
-          <FileSpreadsheet className="mr-1.5 h-3.5 w-3.5" />
-          Import from CSV
-        </Button>
-      </div>
 
-      {csvErrors.length > 0 && (
-        <div className="rounded-md border border-amber-200 bg-amber-50 p-3">
-          <div className="flex items-start gap-2">
-            <AlertTriangle className="mt-0.5 h-4 w-4 text-amber-600 shrink-0" />
-            <div className="flex-1">
-              <p className="text-sm font-medium text-amber-900">
-                {csvErrors.length} row{csvErrors.length === 1 ? "" : "s"} need attention
-              </p>
-              <ul className="mt-1 text-xs text-amber-900 list-disc pl-4 space-y-0.5">
-                {csvErrors.slice(0, 5).map((e, i) => (
-                  <li key={i}>Row {e.row}: {e.reason}</li>
-                ))}
-                {csvErrors.length > 5 && <li>… {csvErrors.length - 5} more</li>}
-              </ul>
+        <div className="flex items-center justify-end gap-4">
+          <Button type="button" variant="secondary" size="sm" onClick={() => setCsvDialogOpen(true)}>
+            <FileSpreadsheet className="mr-1.5 h-3.5 w-3.5" />
+            Import from CSV
+          </Button>
+        </div>
+
+        {csvErrors.length > 0 && (
+          <div className="rounded-md border border-amber-200 bg-amber-50 p-3">
+            <div className="flex items-start gap-2">
+              <AlertTriangle className="mt-0.5 h-4 w-4 text-amber-600 shrink-0" />
+              <div className="flex-1">
+                <p className="text-sm font-medium text-amber-900">
+                  {csvErrors.length} row{csvErrors.length === 1 ? "" : "s"} need attention
+                </p>
+                <ul className="mt-1 text-xs text-amber-900 list-disc pl-4 space-y-0.5">
+                  {csvErrors.slice(0, 5).map((e, i) => (
+                    <li key={i}>Row {e.row}: {e.reason}</li>
+                  ))}
+                  {csvErrors.length > 5 && <li>… {csvErrors.length - 5} more</li>}
+                </ul>
+              </div>
             </div>
           </div>
-        </div>
-      )}
+        )}
 
-      {/* Per-lot contact + postal. Postal sits as its own sub-row beneath the
-          contact row so the input has room for a full address. */}
-      <div className="rounded-md border border-border bg-card overflow-hidden">
-        <table className="w-full text-sm">
-          <thead className="bg-muted/40 text-muted-foreground">
-            <tr className="text-xs uppercase tracking-wide border-b border-border">
-              <th className="px-3 py-2 text-left font-medium w-24">Lot</th>
-              <th className="px-3 py-2 text-left font-medium w-44">Owner</th>
-              <th className="px-3 py-2 text-left font-medium">Email</th>
-              <th className="px-3 py-2 text-left font-medium w-48">Phone</th>
-            </tr>
-          </thead>
-          <tbody>
-            {lots.map((lot, idx) => {
-              const errs = rowErrors[idx] ?? {};
-              const showSiteFillButton = lot.is_occupied_by_owner !== false && !!ocSiteAddress;
-              return (
-                <>
-                  <tr key={`r-${idx}`}>
-                    <td className="px-3 py-1.5 tabular-nums">
-                      {lot.lot_number}
-                      {lot.unit_number ? <span className="text-muted-foreground"> / {lot.unit_number}</span> : null}
-                    </td>
-                    <td className="px-3 py-1.5 text-muted-foreground truncate" title={lot.owner_name || ""}>
-                      {lot.owner_name || "—"}
-                      {lot.is_occupied_by_owner === false && (
-                        <span className="ml-2 inline-flex items-center rounded-full bg-amber-50 text-amber-800 text-[10px] px-1.5 py-0.5 font-medium">
-                          Tenanted
+        <div className="rounded-md border border-border bg-card overflow-hidden">
+          <table className="w-full text-sm">
+            <thead className="bg-muted/40 text-muted-foreground">
+              <tr className="text-xs font-medium">
+                <th className="px-3 py-2 text-left w-24">Lot</th>
+                <th className="px-3 py-2 text-left w-44">Owner</th>
+                <th className="px-3 py-2 text-left">Email</th>
+                <th className="px-3 py-2 text-left w-48">Phone</th>
+              </tr>
+            </thead>
+            <tbody>
+              {lots.map((lot, idx) => {
+                const errs = rowErrors[idx] ?? {};
+                // Rows alternate via inline class — keeping contact + service
+                // sub-rows visually grouped is more important than strict
+                // odd/even striping, so we colour them with the same band.
+                const band = idx % 2 === 0 ? "bg-card" : "bg-muted/20";
+                return (
+                  <Fragment key={idx}>
+                    <tr className={band}>
+                      <td className="px-3 py-1.5 tabular-nums">
+                        {lot.lot_number}
+                        {lot.unit_number ? <span className="text-muted-foreground"> / {lot.unit_number}</span> : null}
+                      </td>
+                      <td className="px-3 py-1.5 text-muted-foreground truncate" title={lot.owner_name || ""}>
+                        {lot.owner_name || "—"}
+                        {lot.is_occupied_by_owner === false && (
+                          <span className="ml-2 inline-flex items-center rounded-full bg-amber-50 text-amber-800 text-[10px] px-1.5 py-0.5 font-medium">
+                            Tenanted
+                          </span>
+                        )}
+                      </td>
+                      <td className="px-3 py-1.5">
+                        <Input
+                          type="email"
+                          value={lot.owner_email ?? ""}
+                          onChange={(e) => updateLot(idx, { owner_email: e.target.value })}
+                          aria-invalid={errs.email || undefined}
+                          placeholder="Email"
+                          className="h-8"
+                        />
+                      </td>
+                      <td className="px-3 py-1.5">
+                        <PhoneInput
+                          value={lot.owner_phone ?? "+61 "}
+                          onChange={(v) => updateLot(idx, { owner_phone: v })}
+                          error={errs.phone}
+                        />
+                      </td>
+                    </tr>
+                    <tr className={band}>
+                      <td className="px-3 pb-3" />
+                      <td className="px-3 pb-3 text-xs text-muted-foreground align-top pt-1">
+                        <span className="inline-flex items-center gap-1">
+                          Service address
+                          <Tooltip>
+                            <TooltipTrigger
+                              render={
+                                <button type="button" aria-label="Service address explained" className="text-muted-foreground hover:text-foreground cursor-help">
+                                  <Info className="h-3 w-3" />
+                                </button>
+                              }
+                            />
+                            <TooltipContent>Address to send notices to.</TooltipContent>
+                          </Tooltip>
                         </span>
-                      )}
-                    </td>
-                    <td className="px-3 py-1.5">
-                      <Input
-                        type="email"
-                        value={lot.owner_email ?? ""}
-                        onChange={(e) => updateLot(idx, { owner_email: e.target.value })}
-                        aria-invalid={errs.email || undefined}
-                        placeholder="Email"
-                        className="h-8"
-                      />
-                    </td>
-                    <td className="px-3 py-1.5">
-                      <PhoneInput
-                        value={lot.owner_phone ?? "+61 "}
-                        onChange={(v) => updateLot(idx, { owner_phone: v })}
-                        error={errs.phone}
-                      />
-                    </td>
-                  </tr>
-                  <tr key={`p-${idx}`} className="bg-muted/10">
-                    <td className="px-3 py-1.5" />
-                    <td className="px-3 py-1.5 text-xs text-muted-foreground align-top pt-3">Postal</td>
-                    <td className="px-3 py-1.5" colSpan={2}>
-                      <div className="flex items-center gap-2">
+                      </td>
+                      <td className="px-3 pb-3" colSpan={2}>
                         <Input
                           value={lot.owner_postal_address ?? ""}
                           onChange={(e) => updateLot(idx, { owner_postal_address: e.target.value })}
@@ -341,67 +357,51 @@ export function Step3PostalContact({
                           placeholder="Street, suburb, state, postcode"
                           className="h-8"
                         />
-                        {showSiteFillButton && (
-                          <Button
-                            type="button"
-                            variant="secondary"
-                            size="sm"
-                            className="shrink-0 h-8"
-                            onClick={() => autoFillSiteAddress(idx)}
-                          >
-                            <MapPin className="mr-1 h-3 w-3" />
-                            Site address
-                          </Button>
-                        )}
-                      </div>
-                    </td>
-                  </tr>
-                </>
-              );
-            })}
-          </tbody>
-        </table>
-      </div>
+                      </td>
+                    </tr>
+                  </Fragment>
+                );
+              })}
+            </tbody>
+          </table>
+        </div>
 
-      <div className="rounded-md border border-border bg-muted/20 px-3 py-2 text-xs text-muted-foreground">
-        Postal addresses will be verified by PostGrid once delivery checking is enabled. For now we just store what you enter.
-      </div>
+        <div className="flex justify-between pt-2">
+          <Button type="button" variant="secondary" onClick={onBack}>Back</Button>
+          <Button type="button" onClick={onContinue} disabled={pending}>
+            {pending && <Loader2 className="size-4 animate-spin" />}
+            Continue
+          </Button>
+        </div>
 
-      <div className="flex justify-between pt-2">
-        <Button type="button" variant="secondary" onClick={onBack}>Back</Button>
-        <Button type="button" onClick={onContinue} disabled={pending}>
-          {pending && <Loader2 className="size-4 animate-spin" />}
-          Continue
-        </Button>
+        <Dialog open={csvDialogOpen} onOpenChange={setCsvDialogOpen}>
+          <DialogContent className="sm:max-w-lg">
+            <DialogHeader>
+              <DialogTitle>Import lot owners from CSV</DialogTitle>
+            </DialogHeader>
+            <div className="flex flex-col gap-3 sm:flex-row">
+              <Button type="button" variant="secondary" onClick={downloadCsv} className="flex-1 h-11">
+                <Download className="mr-1.5 h-3.5 w-3.5" />
+                Download template
+              </Button>
+              <label className="inline-flex flex-1 items-center justify-center gap-1.5 h-9 px-3 rounded-md border border-border bg-card text-sm cursor-pointer hover:bg-muted">
+                <Upload className="h-3.5 w-3.5" />
+                Upload completed CSV
+                <input
+                  type="file"
+                  accept=".csv,text/csv"
+                  className="sr-only"
+                  onChange={(e) => {
+                    const f = e.target.files?.[0];
+                    if (f) onUploadCsv(f);
+                    e.target.value = "";
+                  }}
+                />
+              </label>
+            </div>
+          </DialogContent>
+        </Dialog>
       </div>
-
-      <Dialog open={csvDialogOpen} onOpenChange={setCsvDialogOpen}>
-        <DialogContent className="sm:max-w-lg">
-          <DialogHeader>
-            <DialogTitle>Import lot owners from CSV</DialogTitle>
-          </DialogHeader>
-          <div className="flex flex-col gap-3 sm:flex-row">
-            <Button type="button" variant="secondary" onClick={downloadCsv} className="flex-1 h-11">
-              <Download className="mr-1.5 h-3.5 w-3.5" />
-              Download template
-            </Button>
-            <label className="inline-flex flex-1 items-center justify-center gap-1.5 h-9 px-3 rounded-md border border-border bg-card text-sm cursor-pointer hover:bg-muted">
-              <Upload className="h-3.5 w-3.5" />
-              Upload completed CSV
-              <input
-                type="file"
-                accept=".csv,text/csv"
-                className="sr-only"
-                onChange={(e) => {
-                  const f = e.target.files?.[0];
-                  if (f) onUploadCsv(f);
-                  e.target.value = "";
-                }}
-              />
-            </label>
-          </div>
-        </DialogContent>
-      </Dialog>
-    </div>
+    </TooltipProvider>
   );
 }

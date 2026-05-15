@@ -5,14 +5,14 @@ import { useRouter, useSearchParams } from "next/navigation";
 import { Suspense } from "react";
 import { Skeleton } from "@/components/ui/skeleton";
 import { StepIndicator } from "./step-indicator";
-import { EntryPopup } from "./pages/entry-popup";
+import { Step1Upload } from "./pages/step-1-0-upload";
 import { Step1General } from "./pages/step-1-general";
 import { Step1ManagementFee } from "./pages/step-1-1-management-fee";
 import { Step2Settings } from "./pages/step-2-settings";
-import { Step2CommsDefault } from "./pages/step-2-1-comms-default";
 import { Step3Lots } from "./pages/step-3-lots";
 import { Step3PostalContact } from "./pages/step-3-1-postal-contact";
 import { Step3DigitalConsent } from "./pages/step-3-2-digital-consent";
+import { Step3CommsDefault } from "./pages/step-3-3-comms-default";
 import { Step4Banking } from "./pages/step-4-banking";
 import { Step4OpeningBalances } from "./pages/step-4-1-opening-balances";
 import { Button } from "@/components/ui/button";
@@ -34,13 +34,13 @@ type DraftRow = {
   promoted_short_code: string | null;
 };
 
-// (step, sub) tuple for routing. Sub-step indices:
-//   Step 1: 0 = General, 1 = Management fee
-//   Step 2: 0 = Settings, 1 = Comms default
-//   Step 3: 0 = Lots,     1 = Postal & Contact, 2 = Digital consent
-//   Step 4: 0 = Banking,  1 = Opening balances
+// (step, sub) routing map:
+//   Step 1: 0 Upload chooser, 1 General, 2 Management fee
+//   Step 2: 0 Settings
+//   Step 3: 0 Lots, 1 Service & contact, 2 Digital consent, 3 Comms default
+//   Step 4: 0 Banking, 1 Opening balances
 function clampStep(n: number) { return Number.isFinite(n) && n >= 1 && n <= 4 ? n : 1; }
-function clampSubstep(n: number) { return Number.isFinite(n) && n >= 0 && n <= 2 ? n : 0; }
+function clampSubstep(n: number) { return Number.isFinite(n) && n >= 0 && n <= 3 ? n : 0; }
 
 function WizardContent() {
   const router = useRouter();
@@ -49,13 +49,11 @@ function WizardContent() {
   const [bootError, setBootError] = useState<string | null>(null);
   const [step, setStep] = useState<number>(() => clampStep(parseInt(searchParams.get("step") ?? "", 10) || 1));
   const [substep, setSubstep] = useState<number>(() => clampSubstep(parseInt(searchParams.get("sub") ?? "", 10) || 0));
-  const [showEntryPopup, setShowEntryPopup] = useState(false);
   const [nextOcPrompt, setNextOcPrompt] = useState<{ ocCode: string; sourceDraftId: string; nextOcIndex: number; totalOcs: number } | null>(null);
   const [forkingNext, setForkingNext] = useState(false);
   const [cancelOpen, setCancelOpen] = useState(false);
   const initialised = useRef(false);
 
-  // Bootstrap: either resume an existing draft via ?draft= or create a fresh one.
   useEffect(() => {
     if (initialised.current) return;
     initialised.current = true;
@@ -68,8 +66,6 @@ function WizardContent() {
         return;
       }
       const d = r.draft as unknown as DraftRow;
-      // Idempotency: a promoted draft redirects to the OC dashboard rather
-      // than letting the user mash Create OC and mint duplicates.
       if (d.promoted_oc_id && d.promoted_short_code) {
         router.replace(`/ocs/${d.promoted_short_code}`);
         return;
@@ -77,16 +73,7 @@ function WizardContent() {
       setDraft(d);
       setStep(clampStep(d.current_step));
       setSubstep(clampSubstep(d.current_substep));
-      // Entry popup only opens on a fresh draft — i.e. nothing decided yet
-      // about the plan PDF. Resumed drafts skip straight to whichever step
-      // they were on.
-      const isFreshDraft =
-        d.parse_status === "none" &&
-        d.current_step === 1 &&
-        d.current_substep === 0;
-      setShowEntryPopup(isFreshDraft);
 
-      // Persist draft id in URL for refresh resumability.
       if (!draftId) {
         const next = new URLSearchParams(searchParams.toString());
         next.set("draft", d.id);
@@ -116,21 +103,21 @@ function WizardContent() {
     if (r.draft) setDraft(r.draft as unknown as DraftRow);
   }
 
-  // Sub-step transition table — Back navigates to the previous logical screen.
   function back() {
     if (step === 1 && substep === 0) {
-      // First screen: reopen the entry popup so the user can reconsider
-      // plan upload vs manual.
-      setShowEntryPopup(true);
+      // First screen of the wizard — no previous step to go to. The X corner
+      // button is the way out.
+      setCancelOpen(true);
       return;
     }
     if (step === 1 && substep === 1) return goTo(1, 0);
-    if (step === 2 && substep === 0) return goTo(1, 1);
-    if (step === 2 && substep === 1) return goTo(2, 0);
-    if (step === 3 && substep === 0) return goTo(2, 1);
+    if (step === 1 && substep === 2) return goTo(1, 1);
+    if (step === 2 && substep === 0) return goTo(1, 2);
+    if (step === 3 && substep === 0) return goTo(2, 0);
     if (step === 3 && substep === 1) return goTo(3, 0);
     if (step === 3 && substep === 2) return goTo(3, 1);
-    if (step === 4 && substep === 0) return goTo(3, 2);
+    if (step === 3 && substep === 3) return goTo(3, 2);
+    if (step === 4 && substep === 0) return goTo(3, 3);
     if (step === 4 && substep === 1) return goTo(4, 0);
   }
 
@@ -147,16 +134,12 @@ function WizardContent() {
   if (!draft) {
     return (
       <div className="mx-auto w-full max-w-5xl">
-        <div className="relative mb-2 flex h-8 items-center">
-          <span className="absolute left-0 top-0 inline-flex h-6 w-6 items-center justify-center text-muted-foreground">
-            <X className="h-4 w-4" />
+        <div className="relative">
+          <span className="absolute -left-4 top-3 inline-flex h-8 w-8 items-center justify-center text-muted-foreground">
+            <X className="h-5 w-5" />
           </span>
-          <p className="w-full text-center text-xs text-muted-foreground">
-            Each step is saved when you click <strong>Continue</strong>. You can leave anytime
-            and resume from the OC switcher in the sidebar.
-          </p>
+          <StepIndicator current={step} />
         </div>
-        <StepIndicator current={step} />
         <div className="mt-2 space-y-6">
           <div className="text-center">
             <Skeleton className="mx-auto h-6 w-72" />
@@ -172,40 +155,47 @@ function WizardContent() {
     );
   }
 
-  const totalLots = draft.draft_json.lots?.length ?? draft.draft_json.total_lots ?? 0;
   const detectedOcs = draft.parsed_json?.detected_ocs?.map((o) => ({
     oc_number: o.oc_number,
     lot_count: o.lot_count,
     oc_name: o.oc_name ?? null,
   })) ?? [];
+  const totalLots = draft.draft_json.lots?.length ?? draft.draft_json.total_lots ?? 0;
 
   return (
     <div className="mx-auto w-full max-w-5xl">
-      <div className="relative mb-2 flex h-8 items-center">
+      <div className="relative">
+        {/* X corner button — far left, vertically centered with the progress
+            circles. Click opens the cancel-confirm dialog. */}
         <button
           type="button"
           onClick={() => setCancelOpen(true)}
           aria-label="Cancel and exit wizard"
-          className="absolute left-0 top-0 inline-flex h-6 w-6 items-center justify-center text-muted-foreground hover:text-foreground cursor-pointer"
+          className="absolute -left-4 top-3 inline-flex h-8 w-8 items-center justify-center rounded-md text-muted-foreground hover:bg-muted hover:text-foreground cursor-pointer"
         >
-          <X className="h-4 w-4" />
+          <X className="h-5 w-5" />
         </button>
-        <p className="w-full text-center text-xs text-muted-foreground">
-          Each step is saved when you click <strong>Continue</strong>. You can leave anytime
-          and resume from the OC switcher in the sidebar.
-        </p>
+        <StepIndicator current={step} />
       </div>
-      <StepIndicator current={step} />
       <div className="mt-2">
         {step === 1 && substep === 0 && (
-          <Step1General
+          <Step1Upload
             draftId={draft.id}
-            initialDraft={draft.draft_json}
-            onBack={back}
+            initialStatus={draft.parse_status}
+            initialFilename={draft.plan_filename}
+            initialDetectedOcs={detectedOcs}
             onNext={async () => { await refreshDraft(); goTo(1, 1); }}
           />
         )}
         {step === 1 && substep === 1 && (
+          <Step1General
+            draftId={draft.id}
+            initialDraft={draft.draft_json}
+            onBack={back}
+            onNext={async () => { await refreshDraft(); goTo(1, 2); }}
+          />
+        )}
+        {step === 1 && substep === 2 && (
           <Step1ManagementFee
             draftId={draft.id}
             initialDraft={draft.draft_json}
@@ -215,14 +205,6 @@ function WizardContent() {
         )}
         {step === 2 && substep === 0 && (
           <Step2Settings
-            draftId={draft.id}
-            initialDraft={draft.draft_json}
-            onBack={back}
-            onNext={async () => { await refreshDraft(); goTo(2, 1); }}
-          />
-        )}
-        {step === 2 && substep === 1 && (
-          <Step2CommsDefault
             draftId={draft.id}
             initialDraft={draft.draft_json}
             onBack={back}
@@ -247,6 +229,14 @@ function WizardContent() {
         )}
         {step === 3 && substep === 2 && (
           <Step3DigitalConsent
+            draftId={draft.id}
+            initialDraft={draft.draft_json}
+            onBack={back}
+            onNext={async () => { await refreshDraft(); goTo(3, 3); }}
+          />
+        )}
+        {step === 3 && substep === 3 && (
+          <Step3CommsDefault
             draftId={draft.id}
             initialDraft={draft.draft_json}
             onBack={back}
@@ -285,23 +275,6 @@ function WizardContent() {
         )}
       </div>
 
-      {/* Entry popup. Mounted while showEntryPopup is true; closes on Done. */}
-      {showEntryPopup && draft && (
-        <EntryPopup
-          draftId={draft.id}
-          initialStatus={draft.parse_status}
-          initialFilename={draft.plan_filename}
-          initialDetectedOcs={detectedOcs}
-          onDone={async () => {
-            await refreshDraft();
-            setShowEntryPopup(false);
-            // Land on Step 1 General.
-            goTo(1, 0);
-          }}
-        />
-      )}
-
-      {/* Cancel-creation confirm. Draft stays in oc_drafts and is resumable. */}
       <Dialog open={cancelOpen} onOpenChange={setCancelOpen}>
         <DialogContent>
           <DialogHeader>
@@ -318,8 +291,6 @@ function WizardContent() {
         </DialogContent>
       </Dialog>
 
-      {/* Multi-OC follow-on prompt. Fires when the source plan creates more
-          than one OC and we haven't promoted them all yet. */}
       {nextOcPrompt && (
         <Dialog open onOpenChange={(open) => { if (!open) router.push(`/ocs/${nextOcPrompt.ocCode}?created=1`); }}>
           <DialogContent>
@@ -344,7 +315,7 @@ function WizardContent() {
                   const r = await createDraftFromDetectedOc(nextOcPrompt.sourceDraftId, nextOcPrompt.nextOcIndex);
                   setForkingNext(false);
                   if (r.error || !r.draftId) return;
-                  window.location.assign(`/ocs/new?draft=${r.draftId}&step=1&sub=0`);
+                  window.location.assign(`/ocs/new?draft=${r.draftId}&step=1&sub=1`);
                 }}
               >
                 {forkingNext ? "Loading…" : "Create the next OC"}

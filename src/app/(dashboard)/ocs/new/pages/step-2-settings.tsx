@@ -2,7 +2,7 @@
 
 import { useMemo, useState } from "react";
 import { toast } from "sonner";
-import { Info, Loader2, AlertTriangle } from "lucide-react";
+import { AlertTriangle, Info, Loader2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
 import { NumberInput } from "@/components/ui/number-input";
@@ -16,13 +16,6 @@ import {
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import { saveStep, type DraftJson } from "../actions";
 import { nextLevyDue, formatLevyDueDisplay, type LevyFrequency } from "@/lib/levy-cadence";
-
-// Wizard Step 2 — Settings.
-//
-// Financial year + levy frequency drive the live "First levy due" line.
-// Levy calculation basis is captured; the per-lot custom-apportionment
-// editor is deferred to a follow-up PR. Interest + early payment +
-// arrears threshold are captured as new owners_corporations columns.
 
 const MONTHS = [
   { value: 1,  label: "January" },
@@ -39,11 +32,11 @@ const MONTHS = [
   { value: 12, label: "December" },
 ];
 
-const LEVY_FREQUENCIES: Array<{ value: LevyFrequency; label: string; periodsPerYear: number }> = [
-  { value: "annually",    label: "Annually (1)",     periodsPerYear: 1 },
-  { value: "half_yearly", label: "Half-yearly (2)",  periodsPerYear: 2 },
-  { value: "quarterly",   label: "Quarterly (4)",    periodsPerYear: 4 },
-  { value: "monthly",     label: "Monthly (12)",     periodsPerYear: 12 },
+const LEVY_FREQUENCIES: Array<{ value: LevyFrequency; label: string }> = [
+  { value: "annually",    label: "Annually (1)" },
+  { value: "half_yearly", label: "Half-yearly (2)" },
+  { value: "quarterly",   label: "Quarterly (4)" },
+  { value: "monthly",     label: "Monthly (12)" },
 ];
 
 const LEVY_BASIS = [
@@ -52,6 +45,23 @@ const LEVY_BASIS = [
   { value: "custom_apportionment", label: "Custom apportionment" },
 ] as const;
 type LevyBasis = typeof LEVY_BASIS[number]["value"];
+
+function InlineYesNoToggle({ value, onChange }: { value: boolean; onChange: (v: boolean) => void }) {
+  return (
+    <button
+      type="button"
+      onClick={() => onChange(!value)}
+      className={`inline-flex items-center justify-between rounded-md border px-3 h-9 cursor-pointer transition-colors w-[180px] ${
+        value ? "border-primary bg-primary/5 text-foreground" : "border-border bg-card text-muted-foreground hover:border-primary/40"
+      }`}
+    >
+      <span className="text-sm">{value ? "Yes" : "No"}</span>
+      <span className={`inline-flex h-5 w-9 items-center rounded-full transition-colors ${value ? "bg-primary" : "bg-border"}`}>
+        <span className={`inline-block h-4 w-4 rounded-full bg-white transition-transform ${value ? "translate-x-4" : "translate-x-0.5"}`} />
+      </span>
+    </button>
+  );
+}
 
 export function Step2Settings({
   draftId,
@@ -76,7 +86,7 @@ export function Step2Settings({
   const [earlyPaymentPct, setEarlyPaymentPct] = useState<string>(
     initialDraft.early_payment_incentive_percent != null
       ? String(initialDraft.early_payment_incentive_percent)
-      : "0",
+      : "",
   );
   const [earlyPaymentInvalid, setEarlyPaymentInvalid] = useState(false);
 
@@ -99,16 +109,12 @@ export function Step2Settings({
   const [arrearsThresholdDollars, setArrearsThresholdDollars] = useState<string>(
     initialDraft.arrears_action_threshold_cents != null
       ? String(initialDraft.arrears_action_threshold_cents / 100)
-      : "50",
+      : "",
   );
   const [arrearsInvalid, setArrearsInvalid] = useState(false);
 
   const [pending, setPending] = useState(false);
 
-  // Live "First levy due" line. Recomputes whenever FY, freq, or the saved
-  // management start date changes. management_start_date lives on Step 1; if
-  // the manager hasn't typed it yet (legacy resumed draft) we fall back to
-  // "—" so we never show an arbitrary "first levy" anchored to nothing.
   const firstLevyDate = useMemo(() => {
     const msd = initialDraft.manager_appointment_date;
     if (!msd) return null;
@@ -118,7 +124,7 @@ export function Step2Settings({
   async function onContinue() {
     const problems: string[] = [];
 
-    const earlyN = parseFloat(earlyPaymentPct);
+    const earlyN = parseFloat(earlyPaymentPct || "0");
     if (!Number.isFinite(earlyN) || earlyN < 0 || earlyN > 100) {
       problems.push("Early payment incentive must be between 0% and 100%.");
       setEarlyPaymentInvalid(true);
@@ -150,7 +156,7 @@ export function Step2Settings({
       setAnnualRateInvalid(false);
     }
 
-    const thresholdDollars = parseFloat(arrearsThresholdDollars);
+    const thresholdDollars = parseFloat(arrearsThresholdDollars || "0");
     if (!Number.isFinite(thresholdDollars) || thresholdDollars < 0) {
       problems.push("Arrears action threshold must be $0 or greater.");
       setArrearsInvalid(true);
@@ -174,7 +180,7 @@ export function Step2Settings({
       annual_interest_rate_percent: interestEnabled ? annualRateN : 0,
       interest_free_period_days: interestFreeN,
       arrears_action_threshold_cents: Math.round(thresholdDollars * 100),
-    }, 2, 1); // Advance to Step 2.1 (Comms default).
+    }, 3, 0); // Advance straight to Step 3 (Lots & Owners); Comms now lives on Step 3.3.
     if (r.error) {
       setPending(false);
       toast.error(r.error);
@@ -201,9 +207,7 @@ export function Step2Settings({
               </Label>
               <Select value={String(fyMonth)} onValueChange={(v) => setFyMonth(parseInt(v ?? "7", 10))}>
                 <SelectTrigger id="fy-start" className="w-full">
-                  <SelectValue placeholder="Pick a month">
-                    {MONTHS.find((m) => m.value === fyMonth)?.label ?? "Pick a month"}
-                  </SelectValue>
+                  <SelectValue>{MONTHS.find((m) => m.value === fyMonth)?.label ?? "Pick a month"}</SelectValue>
                 </SelectTrigger>
                 <SelectContent>
                   {MONTHS.map((m) => (
@@ -218,9 +222,7 @@ export function Step2Settings({
               </Label>
               <Select value={levyFreq} onValueChange={(v) => setLevyFreq((v as LevyFrequency) ?? "quarterly")}>
                 <SelectTrigger id="levy-freq" className="w-full">
-                  <SelectValue placeholder="Pick a frequency">
-                    {LEVY_FREQUENCIES.find((f) => f.value === levyFreq)?.label ?? "Pick a frequency"}
-                  </SelectValue>
+                  <SelectValue>{LEVY_FREQUENCIES.find((f) => f.value === levyFreq)?.label ?? "Pick a frequency"}</SelectValue>
                 </SelectTrigger>
                 <SelectContent>
                   {LEVY_FREQUENCIES.map((f) => (
@@ -231,20 +233,34 @@ export function Step2Settings({
             </div>
           </div>
 
-          {/* Live "first levy due" line. Reads management start from the saved
-              draft — Step 1 just persisted it. */}
-          <div className="rounded-md border border-border bg-muted/30 px-3 py-2 text-sm text-foreground">
-            <span className="font-medium">First levy due:</span>{" "}
+          {/* Live "first levy due" line. White panel, narrow width matching the
+              fields above. */}
+          <div className="inline-flex items-center gap-2 rounded-md border border-border bg-card px-3 py-2 text-sm text-foreground">
+            <span className="font-medium">First levy due:</span>
             <span className="tabular-nums">{formatLevyDueDisplay(firstLevyDate)}</span>
             {!firstLevyDate && (
-              <span className="ml-2 text-xs text-muted-foreground">(set management start date on Step 1)</span>
+              <span className="ml-1 text-xs text-muted-foreground">(set management start date on Step 1)</span>
             )}
           </div>
 
           <div className="space-y-1.5">
-            <Label htmlFor="levy-basis">
-              Levy calculation basis <span className="text-destructive">*</span>
-            </Label>
+            <div className="flex items-center gap-1.5">
+              <Label htmlFor="levy-basis">
+                Levy calculation basis <span className="text-destructive">*</span>
+              </Label>
+              <Tooltip>
+                <TooltipTrigger
+                  render={
+                    <button type="button" aria-label="Levy calculation basis explained" className="text-muted-foreground hover:text-foreground cursor-help">
+                      <Info className="h-3.5 w-3.5" />
+                    </button>
+                  }
+                />
+                <TooltipContent>
+                  How each lot&apos;s share of a levy is computed: by lot liability (standard), split evenly per lot, or a custom per-lot apportionment.
+                </TooltipContent>
+              </Tooltip>
+            </div>
             <Select value={basis} onValueChange={(v) => setBasis((v as LevyBasis) ?? "lot_liability")}>
               <SelectTrigger id="levy-basis" className="w-full">
                 <SelectValue>{LEVY_BASIS.find((b) => b.value === basis)?.label ?? "Pick a basis"}</SelectValue>
@@ -267,54 +283,33 @@ export function Step2Settings({
             )}
           </div>
 
-          <div className="space-y-1.5">
-            <div className="flex items-center gap-1.5">
-              <Label htmlFor="early-payment">
-                Early payment incentive <span className="text-destructive">*</span>
-              </Label>
-              <Tooltip>
-                <TooltipTrigger
-                  render={
-                    <button type="button" aria-label="Early payment incentive explained" className="text-muted-foreground hover:text-foreground cursor-help">
-                      <Info className="h-3.5 w-3.5" />
-                    </button>
-                  }
-                />
-                <TooltipContent>Discount applied when a lot owner pays on or before the due date.</TooltipContent>
-              </Tooltip>
-            </div>
+          {/* Early payment — narrower input (was full-width); placeholder is
+              description text, not a sample number. */}
+          <div className="space-y-1.5 w-44">
+            <Label htmlFor="early-payment">
+              Early payment incentive <span className="text-destructive">*</span>
+            </Label>
             <NumberInput
               id="early-payment"
               value={earlyPaymentPct}
               onChange={(v) => { setEarlyPaymentPct(v); if (earlyPaymentInvalid) setEarlyPaymentInvalid(false); }}
               suffix="%"
               invalid={earlyPaymentInvalid}
-              placeholder="0"
+              placeholder="Discount"
             />
           </div>
 
-          {/* Interest toggle. When OFF, the sub-fields are hidden entirely. */}
-          <div className="rounded-md border border-border bg-card p-4 space-y-3">
+          {/* Interest on overdue — inline-toggle row (no card), revealing the
+              two sub-fields beside it when Yes. */}
+          <div className="space-y-3">
             <div className="flex items-center justify-between gap-3">
-              <p className="text-sm font-semibold text-foreground">
+              <Label>
                 Interest on overdue levies <span className="text-destructive">*</span>
-              </p>
-              <button
-                type="button"
-                onClick={() => setInterestEnabled((v) => !v)}
-                className={`flex items-center justify-between rounded-md border px-3 h-9 cursor-pointer transition-colors min-w-[140px] ${
-                  interestEnabled ? "border-primary bg-primary/5 text-foreground" : "border-border bg-card text-muted-foreground hover:border-primary/40"
-                }`}
-              >
-                <span className="text-sm">{interestEnabled ? "Yes" : "No"}</span>
-                <span className={`inline-flex h-5 w-9 items-center rounded-full transition-colors ${interestEnabled ? "bg-primary" : "bg-border"}`}>
-                  <span className={`inline-block h-4 w-4 rounded-full bg-white transition-transform ${interestEnabled ? "translate-x-4" : "translate-x-0.5"}`} />
-                </span>
-              </button>
+              </Label>
+              <InlineYesNoToggle value={interestEnabled} onChange={setInterestEnabled} />
             </div>
-
             {interestEnabled && (
-              <div className="grid grid-cols-2 gap-4 border-t border-border pt-3">
+              <div className="grid grid-cols-2 gap-4">
                 <div className="space-y-1.5">
                   <div className="flex items-center gap-1.5">
                     <Label htmlFor="interest-free">
@@ -338,7 +333,7 @@ export function Step2Settings({
                     onChange={(v) => { setInterestFreeDays(v); if (interestFreeInvalid) setInterestFreeInvalid(false); }}
                     suffix="days"
                     invalid={interestFreeInvalid}
-                    placeholder="28"
+                    placeholder="Days"
                   />
                   {showInterestFreeWarn && (
                     <div className="flex items-start gap-1.5 text-xs text-amber-700">
@@ -369,14 +364,14 @@ export function Step2Settings({
                     onChange={(v) => { setAnnualRatePct(v); if (annualRateInvalid) setAnnualRateInvalid(false); }}
                     suffix="per year"
                     invalid={annualRateInvalid}
-                    placeholder="0"
+                    placeholder="Rate"
                   />
                 </div>
               </div>
             )}
           </div>
 
-          <div className="space-y-1.5">
+          <div className="space-y-1.5 w-56">
             <div className="flex items-center gap-1.5">
               <Label htmlFor="arrears-threshold">
                 Arrears action threshold <span className="text-destructive">*</span>
@@ -399,7 +394,7 @@ export function Step2Settings({
               value={arrearsThresholdDollars}
               onChange={(v) => { setArrearsThresholdDollars(v); if (arrearsInvalid) setArrearsInvalid(false); }}
               invalid={arrearsInvalid}
-              placeholder="50"
+              placeholder="Amount"
             />
           </div>
         </div>

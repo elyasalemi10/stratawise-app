@@ -14,25 +14,9 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
 import { saveStep, type DraftJson, type DraftLot } from "../actions";
 
-// Wizard Step 3.2 — Lot owner digital consent.
-//
-// Captures TWO per-lot states:
-//   1. Current digital consent — what the owner has already agreed to (e.g.
-//      under previous management). source='manager_initial' at completeWizard
-//      time; the owner's later portal-signup tick overwrites with their IP +
-//      user-agent.
-//   2. At portal signup — categories the manager wants the owner asked to
-//      consent to when they first sign into the portal. Per-lot (replaces the
-//      OC-wide consent_categories_offered column).
+// Wizard Step 3 sub-step 2 — Lot owner digital consent.
 
 export const CATEGORIES: Array<{ value: string; label: string; hint: string }> = [
   { value: "meetings", label: "Meeting notices and minutes", hint: "AGMs, special meetings, committee meetings." },
@@ -43,7 +27,7 @@ export const CATEGORIES: Array<{ value: string; label: string; hint: string }> =
 ];
 const ALL_CATEGORY_VALUES = CATEGORIES.map((c) => c.value);
 
-type BulkChoice = "all" | "specific" | "none" | "";
+type BulkChoice = "" | "all" | "specific" | "none";
 
 export function Step3DigitalConsent({
   draftId,
@@ -62,25 +46,31 @@ export function Step3DigitalConsent({
   const [bulkSpecificDialogOpen, setBulkSpecificDialogOpen] = useState(false);
   const [pending, setPending] = useState(false);
 
-  // Per-lot edit dialog. Tracks which lot's open + which column (current vs
-  // signup) so the same dialog component handles both edits.
   const [editLotIdx, setEditLotIdx] = useState<number | null>(null);
   const [editColumn, setEditColumn] = useState<"current" | "signup">("current");
   const [editDraft, setEditDraft] = useState<string[]>([]);
 
-  function applyBulk() {
-    if (!bulkChoice) {
-      toast.error("Pick a default first.");
-      return;
-    }
-    if (bulkChoice === "all") {
+  // Bulk-set is auto-applied: picking a radio rewrites every lot's state
+  // immediately. No "Apply to N lots" button.
+  function pickBulk(choice: BulkChoice) {
+    setBulkChoice(choice);
+    if (choice === "all") {
       setLots((prev) => prev.map((l) => ({ ...l, digital_consent_categories: [...ALL_CATEGORY_VALUES] })));
-    } else if (bulkChoice === "none") {
+    } else if (choice === "none") {
       setLots((prev) => prev.map((l) => ({ ...l, digital_consent_categories: [], at_portal_signup_categories: [...ALL_CATEGORY_VALUES] })));
-    } else if (bulkChoice === "specific") {
+    } else if (choice === "specific") {
       setLots((prev) => prev.map((l) => ({ ...l, digital_consent_categories: [...bulkSpecific] })));
     }
-    toast.success(`Applied to ${lots.length} lot${lots.length === 1 ? "" : "s"}`);
+  }
+
+  // When the manager edits the "specific categories" set, re-apply if the
+  // bulk choice was "specific" (so the table reflects the new selection
+  // without an extra Apply click).
+  function applySpecificEdit(next: string[]) {
+    setBulkSpecific(next);
+    if (bulkChoice === "specific") {
+      setLots((prev) => prev.map((l) => ({ ...l, digital_consent_categories: [...next] })));
+    }
   }
 
   function openEdit(lotIdx: number, column: "current" | "signup") {
@@ -93,7 +83,6 @@ export function Step3DigitalConsent({
         : (lot?.at_portal_signup_categories ?? [...ALL_CATEGORY_VALUES]),
     );
   }
-
   function commitEdit() {
     if (editLotIdx == null) return;
     setLots((prev) => prev.map((l, i) => {
@@ -101,8 +90,6 @@ export function Step3DigitalConsent({
       if (editColumn === "current") return { ...l, digital_consent_categories: editDraft };
       return { ...l, at_portal_signup_categories: editDraft };
     }));
-    // If the manager just turned on digital consent for a lot without email,
-    // surface a warning rather than silently storing a useless preference.
     if (editColumn === "current" && editDraft.length > 0) {
       const lot = lots[editLotIdx];
       if (!(lot?.owner_email ?? "").trim()) {
@@ -114,7 +101,7 @@ export function Step3DigitalConsent({
 
   async function onContinue() {
     setPending(true);
-    const r = await saveStep(draftId, { lots }, 4, 0); // Advance to Step 4 (Banking).
+    const r = await saveStep(draftId, { lots }, 3, 3); // Advance to Step 3 sub 3 (Comms default).
     if (r.error) {
       setPending(false);
       toast.error(r.error);
@@ -138,79 +125,68 @@ export function Step3DigitalConsent({
         </p>
       </div>
 
-      {/* Bulk-set panel. Three radio options + Apply button. The Specific
-          option opens a small dialog to pick categories. */}
+      {/* Bulk-set. Radio-style choices that auto-apply on click — no Apply
+          button. "Specific" surfaces a "pick" link that opens the category
+          dialog. */}
       <div className="rounded-md border border-border bg-card p-4 space-y-3">
-        <Label className="text-sm font-semibold text-foreground">Set default for all lots…</Label>
+        <Label className="text-sm font-semibold text-foreground">Set default for all lots</Label>
         <div className="space-y-2">
-          <label className="flex items-start gap-2 cursor-pointer">
-            <input
-              type="radio"
-              name="bulk-choice"
-              value="all"
-              checked={bulkChoice === "all"}
-              onChange={() => setBulkChoice("all")}
-              className="mt-1"
-            />
-            <span className="text-sm text-foreground">All have consented to all categories</span>
-          </label>
-          <label className="flex items-start gap-2 cursor-pointer">
-            <input
-              type="radio"
-              name="bulk-choice"
-              value="specific"
-              checked={bulkChoice === "specific"}
-              onChange={() => setBulkChoice("specific")}
-              className="mt-1"
-            />
-            <span className="text-sm text-foreground inline-flex items-center gap-2">
-              All have consented to specific categories…
+          {([
+            { value: "all" as const, label: "All have consented to all categories" },
+            { value: "specific" as const, label: `All have consented to specific categories (${bulkSpecific.length} of ${CATEGORIES.length})` },
+            { value: "none" as const, label: "None have consented — ask all at signup" },
+          ]).map((opt) => {
+            const selected = bulkChoice === opt.value;
+            return (
               <button
+                key={opt.value}
                 type="button"
-                onClick={(e) => { e.preventDefault(); setBulkSpecificDialogOpen(true); setBulkChoice("specific"); }}
-                className="text-xs underline text-primary cursor-pointer"
+                onClick={() => pickBulk(opt.value)}
+                className={`flex w-full items-center gap-3 rounded-md border px-3 py-2 text-left text-sm cursor-pointer transition-colors ${
+                  selected ? "border-primary bg-primary/5" : "border-border bg-card hover:border-primary/40"
+                }`}
               >
-                pick
+                <span
+                  className={`flex h-4 w-4 shrink-0 items-center justify-center rounded-full border-2 ${
+                    selected ? "border-primary" : "border-border"
+                  }`}
+                >
+                  {selected && <span className="h-2 w-2 rounded-full bg-primary" />}
+                </span>
+                <span className="text-sm text-foreground flex-1">{opt.label}</span>
+                {opt.value === "specific" && (
+                  <span
+                    role="button"
+                    onClick={(e) => { e.stopPropagation(); setBulkSpecificDialogOpen(true); }}
+                    className="text-xs underline text-primary cursor-pointer"
+                  >
+                    pick
+                  </span>
+                )}
               </button>
-              <span className="text-xs text-muted-foreground">({bulkSpecific.length} of {CATEGORIES.length})</span>
-            </span>
-          </label>
-          <label className="flex items-start gap-2 cursor-pointer">
-            <input
-              type="radio"
-              name="bulk-choice"
-              value="none"
-              checked={bulkChoice === "none"}
-              onChange={() => setBulkChoice("none")}
-              className="mt-1"
-            />
-            <span className="text-sm text-foreground">None have consented — ask all at signup</span>
-          </label>
-        </div>
-        <div className="flex justify-end">
-          <Button type="button" variant="secondary" size="sm" onClick={applyBulk}>
-            Apply to all {lots.length} lots
-          </Button>
+            );
+          })}
         </div>
       </div>
 
-      {/* Per-lot table. Two consent columns — both open the same dialog. */}
+      {/* Per-lot table. Alternating row colours (#25); normal-case headers
+          (#32); no row dividers. */}
       <div className="rounded-md border border-border bg-card overflow-hidden">
         <table className="w-full text-sm">
           <thead className="bg-muted/40 text-muted-foreground">
-            <tr className="text-xs uppercase tracking-wide border-b border-border">
-              <th className="px-3 py-2 text-left font-medium w-24">Lot</th>
-              <th className="px-3 py-2 text-left font-medium">Owner</th>
-              <th className="px-3 py-2 text-left font-medium w-56">Current digital consent</th>
-              <th className="px-3 py-2 text-left font-medium w-56">At portal signup</th>
+            <tr className="text-xs font-medium">
+              <th className="px-3 py-2 text-left w-24">Lot</th>
+              <th className="px-3 py-2 text-left">Owner</th>
+              <th className="px-3 py-2 text-left w-56">Current digital consent</th>
+              <th className="px-3 py-2 text-left w-56">At portal signup</th>
             </tr>
           </thead>
-          <tbody>
+          <tbody className="[&_tr:nth-child(odd)]:bg-card [&_tr:nth-child(even)]:bg-muted/20">
             {lots.map((lot, idx) => {
               const current = lot.digital_consent_categories ?? [];
               const signup = lot.at_portal_signup_categories ?? [...ALL_CATEGORY_VALUES];
               return (
-                <tr key={idx} className="hover:bg-muted/30">
+                <tr key={idx}>
                   <td className="px-3 py-2 tabular-nums">
                     {lot.lot_number}
                     {lot.unit_number ? <span className="text-muted-foreground"> / {lot.unit_number}</span> : null}
@@ -259,8 +235,8 @@ export function Step3DigitalConsent({
         </Button>
       </div>
 
-      {/* Per-lot edit dialog. Used by BOTH columns; the title flexes on
-          editColumn. Master toggle + per-category checkboxes + audit note. */}
+      {/* Per-lot edit dialog. Checkboxes carry bg-card so they read against
+          the popup's white surface. */}
       <Dialog open={editLotIdx != null} onOpenChange={(o) => { if (!o) setEditLotIdx(null); }}>
         <DialogContent className="sm:max-w-md">
           <DialogHeader>
@@ -281,6 +257,7 @@ export function Step3DigitalConsent({
               <Checkbox
                 checked={editDraft.length === CATEGORIES.length}
                 onCheckedChange={(v) => setEditDraft(v === true ? [...ALL_CATEGORY_VALUES] : [])}
+                className="bg-card"
               />
               <Label className="text-sm font-medium text-foreground">Master toggle — all categories</Label>
             </div>
@@ -295,6 +272,7 @@ export function Step3DigitalConsent({
                         prev.includes(c.value) ? prev.filter((x) => x !== c.value) : [...prev, c.value],
                       )
                     }
+                    className="bg-card"
                   />
                   <div className="-mt-0.5">
                     <Label className="text-sm text-foreground">{c.label}</Label>
@@ -319,7 +297,8 @@ export function Step3DigitalConsent({
         </DialogContent>
       </Dialog>
 
-      {/* Bulk-specific pick dialog. */}
+      {/* Bulk-specific pick dialog. Re-applies live to all lots when the
+          bulk-choice was "specific". */}
       <Dialog open={bulkSpecificDialogOpen} onOpenChange={setBulkSpecificDialogOpen}>
         <DialogContent className="sm:max-w-md">
           <DialogHeader>
@@ -330,7 +309,8 @@ export function Step3DigitalConsent({
             <div className="flex items-center gap-2 rounded-md border border-border bg-muted/30 px-3 py-2">
               <Checkbox
                 checked={bulkSpecific.length === CATEGORIES.length}
-                onCheckedChange={(v) => setBulkSpecific(v === true ? [...ALL_CATEGORY_VALUES] : [])}
+                onCheckedChange={(v) => applySpecificEdit(v === true ? [...ALL_CATEGORY_VALUES] : [])}
+                className="bg-card"
               />
               <Label className="text-sm font-medium text-foreground">All categories</Label>
             </div>
@@ -341,10 +321,13 @@ export function Step3DigitalConsent({
                   <Checkbox
                     checked={checked}
                     onCheckedChange={() =>
-                      setBulkSpecific((prev) =>
-                        prev.includes(c.value) ? prev.filter((x) => x !== c.value) : [...prev, c.value],
+                      applySpecificEdit(
+                        bulkSpecific.includes(c.value)
+                          ? bulkSpecific.filter((x) => x !== c.value)
+                          : [...bulkSpecific, c.value],
                       )
                     }
+                    className="bg-card"
                   />
                   <div className="-mt-0.5">
                     <Label className="text-sm text-foreground">{c.label}</Label>

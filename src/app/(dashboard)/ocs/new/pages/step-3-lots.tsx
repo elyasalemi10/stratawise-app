@@ -1,14 +1,15 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { Fragment, useMemo, useState } from "react";
 import { toast } from "sonner";
-import { Plus, Trash2, Loader2 } from "lucide-react";
+import { Trash2, Loader2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Checkbox } from "@/components/ui/checkbox";
 import { NumberInput } from "@/components/ui/number-input";
 import { Switch } from "@/components/ui/switch";
+import { PhoneInput } from "@/components/shared/phone-input";
 import {
   Select,
   SelectContent,
@@ -18,15 +19,7 @@ import {
 } from "@/components/ui/select";
 import { saveStep, type DraftJson, type DraftLot } from "../actions";
 
-// Wizard Step 3 — Lots & Owners (main page).
-//
-// Captures the lot schedule with Type + Name + entitlements + owner-occupied
-// flag. Sub-steps 3.1 (Postal & Contact) and 3.2 (Digital consent) fill in
-// the per-owner contact + consent details.
-//
-// Tier is auto-derived from lot count + services-only flag. Manager confirms
-// via the checkbox; the value is persisted to draft_json.tier_confirmed and
-// stamped onto owners_corporations.tier_confirmed_at / by at completeWizard.
+// Wizard Step 3 sub-step 0 — Lots & Owners (main).
 
 function computeAutoTier(lotCount: number, servicesOnly: boolean): { tier: number; description: string } {
   if (servicesOnly) return { tier: 5, description: "services-only" };
@@ -35,6 +28,15 @@ function computeAutoTier(lotCount: number, servicesOnly: boolean): { tier: numbe
   if (lotCount >= 10) return { tier: 3, description: "10–50 lots" };
   if (lotCount >= 3) return { tier: 4, description: "3–9 lots" };
   return { tier: 5, description: "2 lots" };
+}
+
+function defaultLot(idx: number): DraftLot {
+  // 1-based chronological default for both lot_number and unit_number.
+  return {
+    lot_number: idx + 1,
+    unit_number: String(idx + 1),
+    owner_type: "individual",
+  };
 }
 
 export function Step3Lots({
@@ -48,15 +50,20 @@ export function Step3Lots({
   onBack: () => void;
   onNext: () => void;
 }) {
-  // Seed at least 2 lots so the table renders something on first load.
   const seedLots: DraftLot[] = initialDraft.lots && initialDraft.lots.length > 0
     ? initialDraft.lots
-    : Array.from({ length: 2 }, (_, i) => ({ lot_number: i + 1, unit_number: String(i + 1), owner_type: "individual" }));
+    : Array.from({ length: 2 }, (_, i) => defaultLot(i));
 
   const [lots, setLots] = useState<DraftLot[]>(seedLots);
   const [servicesOnly, setServicesOnly] = useState<boolean>(initialDraft.services_only ?? false);
   const [tierConfirmed, setTierConfirmed] = useState<boolean>(initialDraft.tier_confirmed ?? false);
   const [tierConfirmedInvalid, setTierConfirmedInvalid] = useState(false);
+
+  // Number-of-lots textbox. Live-edits the lots array length: typing higher
+  // appends defaultLot()s, lower truncates from the end. Backed by a string
+  // so the field can be temporarily empty while the manager retypes.
+  const [lotCountInput, setLotCountInput] = useState<string>(String(seedLots.length));
+  const [lotCountInvalid, setLotCountInvalid] = useState(false);
 
   const [lotErrors, setLotErrors] = useState<Array<{
     name?: boolean; type?: boolean; lotNumber?: boolean; unit?: boolean;
@@ -73,6 +80,18 @@ export function Step3Lots({
     [lots],
   );
   const { tier, description: tierDesc } = computeAutoTier(lots.length, servicesOnly);
+
+  function applyLotCount(n: number) {
+    if (n < 2) return; // OC Act minimum.
+    setLots((prev) => {
+      if (n === prev.length) return prev;
+      if (n < prev.length) return prev.slice(0, n);
+      // Grow: append default lots starting at the next lot number.
+      const next = [...prev];
+      for (let i = prev.length; i < n; i++) next.push(defaultLot(i));
+      return next;
+    });
+  }
 
   function updateLot(idx: number, patch: Partial<DraftLot>) {
     setLots((prev) => prev.map((l, i) => (i === idx ? { ...l, ...patch } : l)));
@@ -92,15 +111,12 @@ export function Step3Lots({
       });
     }
   }
-  function addLot() {
-    const nextNum = lots.length === 0 ? 1 : Math.max(...lots.map((l) => l.lot_number)) + 1;
-    setLots((prev) => [
-      ...prev,
-      { lot_number: nextNum, unit_number: String(nextNum), owner_type: "individual" },
-    ]);
-  }
   function removeLot(idx: number) {
-    setLots((prev) => prev.filter((_, i) => i !== idx));
+    setLots((prev) => {
+      const next = prev.filter((_, i) => i !== idx);
+      setLotCountInput(String(next.length));
+      return next;
+    });
   }
 
   async function onContinue() {
@@ -109,6 +125,9 @@ export function Step3Lots({
 
     if (lots.length < 2) {
       problems.push("An OC must have at least 2 lots.");
+      setLotCountInvalid(true);
+    } else {
+      setLotCountInvalid(false);
     }
 
     const lotNumberCounts = new Map<number, number[]>();
@@ -150,7 +169,6 @@ export function Step3Lots({
         problems.push(`Lot ${l.lot_number || i + 1}: lot liability is required (0 is allowed).`);
         nextLotErrors[i].liability = true;
       }
-      // Tenant name required when not owner-occupied.
       if (l.is_occupied_by_owner === false && !(l.tenant_name ?? "").trim()) {
         problems.push(`Lot ${l.lot_number || i + 1}: tenant name is required when not owner-occupied.`);
         nextLotErrors[i].tenantName = true;
@@ -190,7 +208,7 @@ export function Step3Lots({
       services_only: servicesOnly,
       tier,
       tier_confirmed: true,
-    }, 3, 1); // Advance to Step 3.1 (Postal & Contact).
+    }, 3, 1); // Advance to Step 3 sub 1 (Service & contact).
     if (r.error) {
       setPending(false);
       toast.error(r.error);
@@ -205,27 +223,40 @@ export function Step3Lots({
         <h2 className="text-lg font-semibold text-foreground">Lot schedule</h2>
       </div>
 
-      <div className="flex items-end justify-between gap-6">
-        <div className="space-y-1.5 w-40">
+      <div className="grid grid-cols-1 gap-4 md:grid-cols-[180px_1fr]">
+        <div className="space-y-1.5">
           <Label htmlFor="lot-count">Number of lots</Label>
-          <Input
+          <NumberInput
             id="lot-count"
-            readOnly
-            value={lots.length}
-            className="bg-muted text-foreground cursor-default"
+            allowDecimal={false}
+            value={lotCountInput}
+            onChange={(v) => {
+              setLotCountInput(v);
+              if (lotCountInvalid) setLotCountInvalid(false);
+              const n = parseInt(v, 10);
+              if (Number.isFinite(n) && n >= 2 && n <= 1000) applyLotCount(n);
+            }}
+            invalid={lotCountInvalid}
+            placeholder="Count"
           />
         </div>
-        <div className="flex items-start gap-2 pb-2">
-          <Checkbox
-            id="services-only"
-            checked={servicesOnly}
-            onCheckedChange={(v) => setServicesOnly(v === true)}
-          />
-          <div className="-mt-0.5">
-            <Label className="text-sm font-medium text-foreground">Services-only scheme</Label>
-            <p className="text-xs text-muted-foreground">
-              Tick if this OC exists only to share services with no residential / commercial lots. Forces Tier 5.
-            </p>
+        {/* Services-only as a card. The checkbox + helper sits inside its own
+            bordered card so it reads as a stand-alone decision, not a stray
+            tick next to the lot count. */}
+        <div className="rounded-md border border-border bg-card p-4">
+          <div className="flex items-start gap-3">
+            <Checkbox
+              id="services-only"
+              checked={servicesOnly}
+              onCheckedChange={(v) => setServicesOnly(v === true)}
+              className="bg-card"
+            />
+            <div className="-mt-0.5">
+              <Label className="text-sm font-semibold text-foreground">Services-only scheme</Label>
+              <p className="text-xs text-muted-foreground mt-0.5">
+                Tick if this OC exists only to share services with no residential / commercial lots. Forces Tier 5.
+              </p>
+            </div>
           </div>
         </div>
       </div>
@@ -260,24 +291,24 @@ export function Step3Lots({
       >
         <table className="w-full text-sm">
           <thead className="bg-muted/40 text-muted-foreground">
-            <tr className="text-xs uppercase tracking-wide border-b border-border">
-              <th className="px-2 py-2 text-left font-medium w-32">Type</th>
-              <th className="px-2 py-2 text-left font-medium">Name</th>
-              <th className="px-2 py-2 text-left font-medium w-20">Lot</th>
-              <th className="px-2 py-2 text-left font-medium w-24">Unit</th>
-              <th className="px-2 py-2 text-left font-medium w-32">Entitlement</th>
-              <th className="px-2 py-2 text-left font-medium w-32">Liability</th>
-              <th className="px-2 py-2 text-left font-medium w-32">Owner occupied</th>
+            <tr className="text-xs font-medium">
+              <th className="px-2 py-2 text-left w-32">Type</th>
+              <th className="px-2 py-2 text-left">Name</th>
+              <th className="px-2 py-2 text-left w-20">Lot</th>
+              <th className="px-2 py-2 text-left w-24">Unit</th>
+              <th className="px-2 py-2 text-left w-32">Entitlement</th>
+              <th className="px-2 py-2 text-left w-32">Liability</th>
+              <th className="px-2 py-2 text-left w-36 whitespace-nowrap">Owner occupied</th>
               <th className="w-10" />
             </tr>
           </thead>
-          <tbody>
+          <tbody className="[&_tr:nth-child(odd)]:bg-card [&_tr:nth-child(even)]:bg-muted/20">
             {lots.map((lot, idx) => {
               const errs = lotErrors[idx] ?? {};
               const ownerOccupied = lot.is_occupied_by_owner !== false;
               return (
-                <>
-                  <tr key={idx}>
+                <Fragment key={idx}>
+                  <tr>
                     <td className="px-2 py-1.5">
                       <Select
                         value={lot.owner_type ?? "individual"}
@@ -350,7 +381,8 @@ export function Step3Lots({
                       <button
                         type="button"
                         onClick={() => removeLot(idx)}
-                        className="text-muted-foreground hover:text-destructive cursor-pointer"
+                        disabled={lots.length <= 2}
+                        className="text-muted-foreground hover:text-destructive disabled:opacity-40 disabled:cursor-not-allowed cursor-pointer"
                         aria-label="Remove lot"
                       >
                         <Trash2 className="h-3.5 w-3.5" />
@@ -358,7 +390,7 @@ export function Step3Lots({
                     </td>
                   </tr>
                   {!ownerOccupied && (
-                    <tr className="bg-muted/20">
+                    <tr>
                       <td className="px-2 py-1.5" />
                       <td className="px-2 py-1.5" colSpan={7}>
                         <div className="grid grid-cols-3 gap-2">
@@ -369,11 +401,9 @@ export function Step3Lots({
                             aria-invalid={errs.tenantName || undefined}
                             className="h-8"
                           />
-                          <Input
-                            placeholder="Tenant phone"
-                            value={lot.tenant_phone ?? ""}
-                            onChange={(e) => updateLot(idx, { tenant_phone: e.target.value })}
-                            className="h-8"
+                          <PhoneInput
+                            value={lot.tenant_phone ?? "+61 "}
+                            onChange={(v) => updateLot(idx, { tenant_phone: v })}
                           />
                           <Input
                             placeholder="Tenant email"
@@ -386,12 +416,12 @@ export function Step3Lots({
                       </td>
                     </tr>
                   )}
-                </>
+                </Fragment>
               );
             })}
           </tbody>
           <tfoot className="bg-muted/30 text-xs font-medium">
-            <tr className="border-t border-border">
+            <tr>
               <td className="px-2 py-2" colSpan={4}>Totals</td>
               <td className="px-2 py-2 tabular-nums">{totalEntitlement.toLocaleString()}</td>
               <td className="px-2 py-2 tabular-nums">{totalLiability.toLocaleString()}</td>
@@ -401,19 +431,12 @@ export function Step3Lots({
         </table>
       </div>
 
-      <div>
-        <Button type="button" variant="secondary" size="sm" onClick={addLot}>
-          <Plus className="mr-1.5 h-3.5 w-3.5" />
-          Add lot
-        </Button>
-      </div>
-
-      {/* Tier badge + confirmation. Read-only — manager can only change tier
-          by editing the lot count or the services-only flag above. */}
+      {/* Tier badge — just "Tier N" + a short description. No "Computed
+          tier:" prefix anymore. */}
       <div className="rounded-md border border-border bg-card p-4 space-y-3">
         <div className="flex items-center gap-3">
           <span className="inline-flex items-center justify-center rounded-md bg-primary text-primary-foreground text-xs font-semibold px-2 py-0.5">
-            Computed tier: Tier {tier}
+            Tier {tier}
           </span>
           <span className="text-xs text-muted-foreground">({tierDesc})</span>
         </div>
@@ -423,7 +446,7 @@ export function Step3Lots({
             checked={tierConfirmed}
             onCheckedChange={(v) => { setTierConfirmed(v === true); if (tierConfirmedInvalid) setTierConfirmedInvalid(false); }}
             aria-invalid={tierConfirmedInvalid || undefined}
-            className={tierConfirmedInvalid ? "border-destructive" : undefined}
+            className={`bg-card ${tierConfirmedInvalid ? "border-destructive" : ""}`}
           />
           <div className="-mt-0.5">
             <Label className="text-sm text-foreground">

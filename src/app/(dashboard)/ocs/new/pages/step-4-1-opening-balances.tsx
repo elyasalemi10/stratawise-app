@@ -2,33 +2,20 @@
 
 import { useMemo, useState } from "react";
 import { toast } from "sonner";
-import { Info, Loader2, Plus, Trash2 } from "lucide-react";
+import { Info, Loader2 } from "lucide-react";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
 import { NumberInput } from "@/components/ui/number-input";
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
+import { Switch } from "@/components/ui/switch";
 import { saveStep, completeWizard, type DraftJson, type DraftLot } from "../actions";
 
-// Wizard Step 4.1 — Opening balances.
+// Wizard Step 4 sub-step 1 — Opening balances.
 //
-// As at the management start date (Step 1). No separate date picker — the
-// ledger anchors to management_start_date.
-//
-// Per-lot arrears are OPT-IN now: empty by default, manager hits "Add lot
-// with opening arrears" to pick a lot, then enters Debit/Credit + amount.
-
-interface ArrearsRow {
-  lot_number: number;
-  isCredit: boolean;
-  amount: string; // NumberInput string contract.
-}
+// Anchored to the management start date (Step 1). Per-lot arrears live in a
+// single full table — every lot is listed and the manager fills in the rows
+// that actually have a balance to record. Type switch toggles between Debit
+// (lot owes the OC) and Credit (OC owes the lot).
 
 export function Step4OpeningBalances({
   draftId,
@@ -44,71 +31,51 @@ export function Step4OpeningBalances({
   const managementStart = initialDraft.manager_appointment_date ?? "";
 
   const [admin, setAdmin] = useState<string>(
-    initialDraft.opening_admin_balance != null ? String(initialDraft.opening_admin_balance) : "0",
+    initialDraft.opening_admin_balance != null ? String(initialDraft.opening_admin_balance) : "",
   );
   const [capital, setCapital] = useState<string>(
-    initialDraft.opening_capital_works_balance != null ? String(initialDraft.opening_capital_works_balance) : "0",
+    initialDraft.opening_capital_works_balance != null ? String(initialDraft.opening_capital_works_balance) : "",
   );
   const hasMaintenance = initialDraft.has_maintenance_plan_fund ?? false;
   const [maintenance, setMaintenance] = useState<string>(
     initialDraft.opening_maintenance_plan_balance != null
       ? String(initialDraft.opening_maintenance_plan_balance)
-      : "0",
+      : "",
   );
   const [adminInvalid, setAdminInvalid] = useState(false);
   const [capitalInvalid, setCapitalInvalid] = useState(false);
   const [maintenanceInvalid, setMaintenanceInvalid] = useState(false);
 
-  // Per-lot arrears — opt-in. Seed from any pre-existing per-lot opening
-  // balance values, otherwise empty.
+  // Every lot is in the arrears table from the start. Each row has a
+  // Debit/Credit switch (Switch OFF = Debit / lot owes the OC; ON = Credit
+  // / OC owes the lot) and an Amount field. Empty amount = no arrears.
   const lots = initialDraft.lots ?? [];
-  const [rows, setRows] = useState<ArrearsRow[]>(() => {
-    return lots
-      .filter((l) => Number(l.opening_balance ?? 0) !== 0)
-      .map((l) => {
-        const v = Number(l.opening_balance ?? 0);
-        return {
-          lot_number: l.lot_number,
-          isCredit: v < 0,
-          amount: String(Math.abs(v)),
-        };
-      });
+  const [arrearsByLot, setArrearsByLot] = useState<Record<number, { isCredit: boolean; amount: string }>>(() => {
+    const init: Record<number, { isCredit: boolean; amount: string }> = {};
+    for (const l of lots) {
+      const v = Number(l.opening_balance ?? 0);
+      init[l.lot_number] = {
+        isCredit: v < 0,
+        amount: v === 0 ? "" : String(Math.abs(v)),
+      };
+    }
+    return init;
   });
-  const [picker, setPicker] = useState<string>("");
+
   const [pending, setPending] = useState(false);
 
-  const lotByNumber = useMemo(() => {
-    const map = new Map<number, DraftLot>();
-    lots.forEach((l) => map.set(l.lot_number, l));
-    return map;
-  }, [lots]);
+  const totalArrears = useMemo(() => {
+    return Object.values(arrearsByLot).reduce((s, r) => {
+      const v = parseFloat(r.amount) || 0;
+      return s + (r.isCredit ? -v : v);
+    }, 0);
+  }, [arrearsByLot]);
 
-  const remainingLots = lots.filter((l) => !rows.some((r) => r.lot_number === l.lot_number));
-
-  const totalArrears = useMemo(
-    () =>
-      rows.reduce((s, r) => {
-        const v = parseFloat(r.amount) || 0;
-        return s + (r.isCredit ? -v : v);
-      }, 0),
-    [rows],
-  );
-
-  function addArrearsRow() {
-    if (!picker) {
-      toast.error("Pick a lot first.");
-      return;
-    }
-    const lotNum = parseInt(picker, 10);
-    if (!Number.isFinite(lotNum)) return;
-    setRows((prev) => [...prev, { lot_number: lotNum, isCredit: false, amount: "" }]);
-    setPicker("");
-  }
-  function removeRow(idx: number) {
-    setRows((prev) => prev.filter((_, i) => i !== idx));
-  }
-  function updateRow(idx: number, patch: Partial<ArrearsRow>) {
-    setRows((prev) => prev.map((r, i) => (i === idx ? { ...r, ...patch } : r)));
+  function updateRow(lotNumber: number, patch: Partial<{ isCredit: boolean; amount: string }>) {
+    setArrearsByLot((prev) => ({
+      ...prev,
+      [lotNumber]: { ...prev[lotNumber], ...patch },
+    }));
   }
 
   function parseMoney(s: string): number | null {
@@ -146,16 +113,11 @@ export function Step4OpeningBalances({
       return;
     }
 
-    // Roll arrears rows back into the lots[] array so completeWizard reads them.
-    const arrearsByLot = new Map<number, number>();
-    for (const r of rows) {
-      const v = parseFloat(r.amount) || 0;
-      arrearsByLot.set(r.lot_number, r.isCredit ? -v : v);
-    }
-    const updatedLots = lots.map((l) => ({
-      ...l,
-      opening_balance: arrearsByLot.get(l.lot_number) ?? 0,
-    }));
+    const updatedLots: DraftLot[] = lots.map((l) => {
+      const row = arrearsByLot[l.lot_number];
+      const v = parseFloat(row?.amount ?? "") || 0;
+      return { ...l, opening_balance: row?.isCredit ? -v : v };
+    });
 
     setPending(true);
     const r = await saveStep(draftId, {
@@ -212,7 +174,7 @@ export function Step4OpeningBalances({
                 onChange={(v) => { setAdmin(v); if (adminInvalid) setAdminInvalid(false); }}
                 invalid={adminInvalid}
                 prefix="$"
-                placeholder="0"
+                placeholder="Balance"
               />
             </div>
             <div className="space-y-1.5">
@@ -227,7 +189,7 @@ export function Step4OpeningBalances({
                 onChange={(v) => { setCapital(v); if (capitalInvalid) setCapitalInvalid(false); }}
                 invalid={capitalInvalid}
                 prefix="$"
-                placeholder="0"
+                placeholder="Balance"
               />
             </div>
           </div>
@@ -244,13 +206,15 @@ export function Step4OpeningBalances({
                 onChange={(v) => { setMaintenance(v); if (maintenanceInvalid) setMaintenanceInvalid(false); }}
                 invalid={maintenanceInvalid}
                 prefix="$"
-                placeholder="0"
+                placeholder="Balance"
               />
             </div>
           )}
         </div>
 
-        {/* Per-lot opening arrears — opt-in via the picker + Add button. */}
+        {/* Per-lot opening arrears — every lot listed; manager fills in the
+            rows that actually have a balance. Switch toggles between Debit
+            (default OFF) and Credit. */}
         <div className="space-y-2">
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-1.5">
@@ -273,91 +237,53 @@ export function Step4OpeningBalances({
             </span>
           </div>
 
-          {rows.length > 0 && (
-            <div className="rounded-md border border-border bg-card overflow-hidden">
-              <table className="w-full text-sm">
-                <thead className="bg-muted/40 text-muted-foreground">
-                  <tr className="text-xs uppercase tracking-wide border-b border-border">
-                    <th className="px-3 py-2 text-left font-medium w-16">Lot</th>
-                    <th className="px-3 py-2 text-left font-medium">Owner</th>
-                    <th className="px-3 py-2 text-left font-medium w-40">Type</th>
-                    <th className="px-3 py-2 text-left font-medium w-44">Amount</th>
-                    <th className="w-10" />
-                  </tr>
-                </thead>
-                <tbody>
-                  {rows.map((row, idx) => {
-                    const lot = lotByNumber.get(row.lot_number);
-                    return (
-                      <tr key={`${row.lot_number}-${idx}`}>
-                        <td className="px-3 py-1.5 tabular-nums">{row.lot_number}</td>
-                        <td className="px-3 py-1.5 text-muted-foreground truncate">{lot?.owner_name || "—"}</td>
-                        <td className="px-3 py-1.5">
-                          <div className="inline-flex rounded-md border border-border bg-card p-0.5">
-                            <button
-                              type="button"
-                              onClick={() => updateRow(idx, { isCredit: false })}
-                              className={`px-2.5 py-0.5 text-xs rounded-sm cursor-pointer ${!row.isCredit ? "bg-primary text-primary-foreground" : "text-muted-foreground"}`}
-                            >
-                              Debit
-                            </button>
-                            <button
-                              type="button"
-                              onClick={() => updateRow(idx, { isCredit: true })}
-                              className={`px-2.5 py-0.5 text-xs rounded-sm cursor-pointer ${row.isCredit ? "bg-primary text-primary-foreground" : "text-muted-foreground"}`}
-                            >
-                              Credit
-                            </button>
-                          </div>
-                        </td>
-                        <td className="px-3 py-1.5">
-                          <NumberInput
-                            thousandsSeparator
-                            prefix="$"
-                            value={row.amount}
-                            onChange={(v) => updateRow(idx, { amount: v })}
-                            className="h-8"
-                            placeholder="Amount"
+          <div className="rounded-md border border-border bg-card overflow-hidden">
+            <table className="w-full text-sm">
+              <thead className="bg-muted/40 text-muted-foreground">
+                <tr className="text-xs font-medium">
+                  <th className="px-3 py-2 text-left w-20">Lot</th>
+                  <th className="px-3 py-2 text-left">Name</th>
+                  <th className="px-3 py-2 text-left w-40">Type</th>
+                  <th className="px-3 py-2 text-left w-48">Amount</th>
+                </tr>
+              </thead>
+              <tbody className="[&_tr:nth-child(odd)]:bg-card [&_tr:nth-child(even)]:bg-muted/20">
+                {lots.map((lot) => {
+                  const row = arrearsByLot[lot.lot_number] ?? { isCredit: false, amount: "" };
+                  return (
+                    <tr key={lot.lot_number}>
+                      <td className="px-3 py-1.5 tabular-nums">{lot.lot_number}</td>
+                      <td className="px-3 py-1.5 text-muted-foreground truncate" title={lot.owner_name || ""}>
+                        {lot.owner_name || "—"}
+                      </td>
+                      <td className="px-3 py-1.5">
+                        <div className="inline-flex items-center gap-2">
+                          <Switch
+                            checked={row.isCredit}
+                            onCheckedChange={(v) => updateRow(lot.lot_number, { isCredit: v === true })}
+                            aria-label={`Switch to ${row.isCredit ? "Debit" : "Credit"} for lot ${lot.lot_number}`}
                           />
-                        </td>
-                        <td className="px-3 py-1.5 text-right">
-                          <button
-                            type="button"
-                            onClick={() => removeRow(idx)}
-                            className="text-muted-foreground hover:text-destructive cursor-pointer"
-                            aria-label="Remove row"
-                          >
-                            <Trash2 className="h-3.5 w-3.5" />
-                          </button>
-                        </td>
-                      </tr>
-                    );
-                  })}
-                </tbody>
-              </table>
-            </div>
-          )}
-
-          {remainingLots.length > 0 && (
-            <div className="flex items-center gap-2">
-              <Select value={picker || undefined} onValueChange={(v) => setPicker(v ?? "")}>
-                <SelectTrigger className="w-72 h-9">
-                  <SelectValue placeholder="Pick a lot…" />
-                </SelectTrigger>
-                <SelectContent>
-                  {remainingLots.map((l) => (
-                    <SelectItem key={l.lot_number} value={String(l.lot_number)}>
-                      Lot {l.lot_number} — {l.owner_name || "—"}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-              <Button type="button" variant="secondary" size="sm" onClick={addArrearsRow}>
-                <Plus className="mr-1.5 h-3.5 w-3.5" />
-                Add lot with opening arrears
-              </Button>
-            </div>
-          )}
+                          <span className="text-xs font-medium text-foreground w-12">
+                            {row.isCredit ? "Credit" : "Debit"}
+                          </span>
+                        </div>
+                      </td>
+                      <td className="px-3 py-1.5">
+                        <NumberInput
+                          thousandsSeparator
+                          prefix="$"
+                          value={row.amount}
+                          onChange={(v) => updateRow(lot.lot_number, { amount: v })}
+                          className="h-8"
+                          placeholder="Amount"
+                        />
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
         </div>
 
         <div className="flex justify-between pt-2">

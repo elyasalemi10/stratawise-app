@@ -6,10 +6,10 @@ import { Loader2, Mail, MailOpen, MailX } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { saveStep, type DraftJson } from "../actions";
 
-// Wizard Step 2.1 — Communications default.
+// Wizard Step 3 sub-step 3 — Communications default.
 //
-// Single decision: where notices go when an individual lot owner hasn't
-// expressed a digital preference. Per-lot consent capture lives on Step 3.2.
+// Moved here from Step 2.1 — communications policy belongs alongside lot
+// owners + consent rather than the financial settings step.
 
 type Delivery = "postal" | "mixed" | "email";
 
@@ -22,9 +22,9 @@ const OPTIONS: Array<{ value: Delivery; title: string; icon: typeof Mail; body: 
   },
   {
     value: "mixed",
-    title: "Mixed (recommended)",
+    title: "Mixed",
     icon: Mail,
-    body: "Email if the lot owner has consented to that category, postal otherwise. Most OCs end up here.",
+    body: "Email if the lot owner has consented to that category, postal otherwise.",
   },
   {
     value: "email",
@@ -34,7 +34,7 @@ const OPTIONS: Array<{ value: Delivery; title: string; icon: typeof Mail; body: 
   },
 ];
 
-export function Step2CommsDefault({
+export function Step3CommsDefault({
   draftId,
   initialDraft,
   onBack,
@@ -54,7 +54,7 @@ export function Step2CommsDefault({
     setPending(true);
     const r = await saveStep(draftId, {
       default_delivery_method: delivery,
-    }, 3, 0); // Advance to Step 3 main (Lots).
+    }, 4, 0); // Advance to Step 4 (Banking).
     if (r.error) {
       setPending(false);
       toast.error(r.error);
@@ -93,11 +93,6 @@ export function Step2CommsDefault({
             </button>
           );
         })}
-      </div>
-
-      <div className="rounded-md border border-border bg-muted/30 p-3 text-xs text-muted-foreground">
-        <strong className="text-foreground">Recommended: Mixed.</strong>{" "}
-        Posting every notice is legally safest but the cost of letters is billed to your management company through your communication credits. Mixed delivery keeps you compliant and minimises postal spend as owners consent to digital comms.
       </div>
 
       <div className="flex justify-between pt-2">
