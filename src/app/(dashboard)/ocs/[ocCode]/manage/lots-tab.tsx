@@ -4,6 +4,14 @@ import { useState, useCallback, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import { toast } from "sonner";
 import { Input } from "@/components/ui/input";
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from "@/components/ui/table";
 import { updateLotField } from "./actions";
 import { getLotInvitationStatus } from "./invitation-actions";
 import { InviteStatusPopover } from "../lots/invite-status-popover";
@@ -141,17 +149,14 @@ export function LotsTab({ lots, ocId, isEditing = false, onLotUpdated, isLotOwne
 
   return (
     <div className="space-y-3">
-      {/* Table text bumped to text-base for readability — strata managers
-          scan this several times a day. Headers stay at text-sm font-medium
-          (normal case) so they're distinct without yelling.
-
-          Column widths: Lot/Unit headers use whitespace-nowrap so the
-          header text never breaks. Long body content (Name, Email) gets
-          truncate with min-w-0 so overflow gets an ellipsis instead of
-          wrapping. Email column capped narrower than Name since email
-          strings dominate available width otherwise. */}
-      <div className="overflow-x-auto rounded-lg border border-border">
-        <table className="w-full table-fixed text-base">
+      {/* Uses the design-system <Table variant="striped"> primitive — odd
+          rows white, even rows --muted, hover --secondary-hover. The
+          stripe colour is now a proper token instead of an arbitrary
+          hsl(). Column widths held with table-fixed + a <colgroup> so
+          Lot / Unit / Invite status never wrap onto two lines; long Name
+          / Email truncate with a title-attr fallback. */}
+      <div className="rounded-lg border border-border overflow-hidden">
+        <Table variant="striped" className="table-fixed">
           <colgroup>
             <col className="w-28" />
             <col className="w-28" />
@@ -161,40 +166,32 @@ export function LotsTab({ lots, ocId, isEditing = false, onLotUpdated, isLotOwne
             {!isLotOwner && <col className="w-40" />}
             {!isLotOwner && <col className="w-32" />}
           </colgroup>
-          <thead>
-            <tr className="bg-muted/40 text-sm font-medium text-muted-foreground border-b border-border">
-              <th className="px-4 py-3 text-left whitespace-nowrap">Lot number</th>
-              <th className="px-4 py-3 text-left whitespace-nowrap">Unit number</th>
-              <th className="px-4 py-3 text-left">Name</th>
-              {!isLotOwner && <th className="px-4 py-3 text-left">Email</th>}
-              <th className="px-4 py-3 text-left whitespace-nowrap">Units of entitlement</th>
-              {!isLotOwner && <th className="px-4 py-3 text-left whitespace-nowrap">Invite status</th>}
-              {!isLotOwner && <th className="px-4 py-3 text-right whitespace-nowrap">Balance</th>}
-            </tr>
-          </thead>
-          {/* Alternating row colours stay in the warm palette: odd rows
-              white, even rows a deeper warm beige than --muted so the
-              stripe is visible against the cream page bg without
-              introducing a cool slate tone (which clashed with the rest
-              of the brand). Hover lifts to --secondary at full opacity
-              — clearly distinct from both stripe shades. */}
-          <tbody className="[&_tr:nth-child(odd)]:bg-card [&_tr:nth-child(even)]:bg-[hsl(40,30%,90%)] [&_tr:hover]:!bg-secondary">
+          <TableHeader>
+            <TableRow>
+              <TableHead>Lot number</TableHead>
+              <TableHead>Unit number</TableHead>
+              <TableHead>Name</TableHead>
+              {!isLotOwner && <TableHead>Email</TableHead>}
+              <TableHead>Units of entitlement</TableHead>
+              {!isLotOwner && <TableHead>Invite status</TableHead>}
+              {!isLotOwner && <TableHead className="text-right">Balance</TableHead>}
+            </TableRow>
+          </TableHeader>
+          <TableBody>
             {sortedLots.map((lot) => {
               const ownerLabel =
                 lot.owner_display_name ??
                 (lot.owner_status === "pending_invitation" ? "Pending invitation" : null);
 
               return (
-                <tr
+                <TableRow
                   key={lot.id}
                   onClick={!isEditing && !isLotOwner ? () => router.push(`/ocs/${ocCode}/lots/${lot.id}`) : undefined}
-                  className={`h-14 transition-colors ${
-                    !isEditing && !isLotOwner ? "cursor-pointer" : ""
-                  }`}
+                  className={!isEditing && !isLotOwner ? "cursor-pointer" : ""}
                 >
-                  <td className="px-4 font-medium text-foreground tabular-nums whitespace-nowrap">{lot.lot_number}</td>
-                  <td className="px-4 text-muted-foreground tabular-nums whitespace-nowrap">{lot.unit_number ?? ""}</td>
-                  <td className="px-4 truncate">
+                  <TableCell className="font-medium text-foreground tabular-nums whitespace-nowrap">{lot.lot_number}</TableCell>
+                  <TableCell className="text-muted-foreground tabular-nums whitespace-nowrap">{lot.unit_number ?? ""}</TableCell>
+                  <TableCell className="truncate">
                     {ownerLabel ? (
                       <span className={`font-medium ${lot.owner_status === "member" ? "text-foreground" : "text-muted-foreground"}`} title={ownerLabel}>
                         {ownerLabel}
@@ -202,13 +199,13 @@ export function LotsTab({ lots, ocId, isEditing = false, onLotUpdated, isLotOwne
                     ) : (
                       <span className="text-muted-foreground">Unassigned</span>
                     )}
-                  </td>
+                  </TableCell>
                   {!isLotOwner && (
-                    <td className="px-4 text-muted-foreground truncate" title={lot.owner_contact_email ?? ""}>
+                    <TableCell className="text-muted-foreground truncate" title={lot.owner_contact_email ?? ""}>
                       {lot.owner_contact_email ?? ""}
-                    </td>
+                    </TableCell>
                   )}
-                  <td className="px-4">
+                  <TableCell>
                     <EditableCell
                       value={lot.lot_entitlement > 0 ? lot.lot_entitlement : null}
                       lotId={lot.id}
@@ -218,10 +215,10 @@ export function LotsTab({ lots, ocId, isEditing = false, onLotUpdated, isLotOwne
                       type="number"
                       onSaved={(v) => onLotUpdated(lot.id, "lot_entitlement", v)}
                     />
-                  </td>
+                  </TableCell>
                   {!isLotOwner && (
-                    <td
-                      className="px-4 whitespace-nowrap"
+                    <TableCell
+                      className="whitespace-nowrap"
                       // stopPropagation so clicking the pill doesn't also
                       // trigger the row's navigate-to-lot-detail handler.
                       onClick={(e) => e.stopPropagation()}
@@ -232,10 +229,10 @@ export function LotsTab({ lots, ocId, isEditing = false, onLotUpdated, isLotOwne
                         lotNumber={lot.lot_number}
                         status={getInviteStatusForLot(lot.id)}
                       />
-                    </td>
+                    </TableCell>
                   )}
                   {!isLotOwner && (
-                    <td className="px-4 text-right tabular-nums whitespace-nowrap">
+                    <TableCell className="text-right tabular-nums whitespace-nowrap">
                       {lot.balance === 0 ? (
                         <span className="text-[hsl(160,100%,37%)]">{formatCurrency(0)}</span>
                       ) : lot.balance > 0 ? (
@@ -243,20 +240,20 @@ export function LotsTab({ lots, ocId, isEditing = false, onLotUpdated, isLotOwne
                       ) : (
                         <span className="text-[hsl(160,100%,37%)]">{formatCurrency(lot.balance)}</span>
                       )}
-                    </td>
+                    </TableCell>
                   )}
-                </tr>
+                </TableRow>
               );
             })}
             {sortedLots.length === 0 && (
-              <tr>
-                <td colSpan={isLotOwner ? 4 : 7} className="px-4 py-12 text-center text-base text-muted-foreground">
+              <TableRow>
+                <TableCell colSpan={isLotOwner ? 4 : 7} className="py-12 text-center text-muted-foreground">
                   No lots found. Create lots from the oc setup wizard.
-                </td>
-              </tr>
+                </TableCell>
+              </TableRow>
             )}
-          </tbody>
-        </table>
+          </TableBody>
+        </Table>
       </div>
     </div>
   );

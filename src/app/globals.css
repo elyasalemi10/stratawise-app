@@ -30,6 +30,18 @@
   --color-muted: var(--muted);
   --color-muted-foreground: var(--muted-foreground);
 
+  /* Cool-muted — system / disabled / technical surfaces (codes, reference
+     numbers, read-only fields). Hue intentionally pulled toward midnight
+     (~210) so it reads as system-related rather than alien. Distinct from
+     --muted (which carries the soft-surface role for stripes / hovers). */
+  --color-cool-muted: var(--cool-muted);
+  --color-cool-muted-foreground: var(--cool-muted-foreground);
+
+  /* Secondary hover — exposed as a Tailwind utility so table-row hover and
+     button hover share the same darker token. Without this wiring the
+     hover value is only reachable as an arbitrary hsl(). */
+  --color-secondary-hover: var(--secondary-hover);
+
   /* Accent */
   --color-accent: var(--accent);
   --color-accent-foreground: var(--accent-foreground);
@@ -122,11 +134,25 @@
   --popover: hsl(0, 0%, 100%);
   --popover-foreground: hsl(208, 70%, 18%);
 
-  /* Muted */
-  --muted: hsl(220, 14%, 93%);                 /* slightly darker than bg */
+  /* Muted — soft surfaces (table stripes, banner backgrounds, hovered
+     menu items, disabled fields). Bumped from 93% → 88% lightness so it
+     actually separates from --background (96%); the old value was so
+     close to the page bg that nothing built on it read as distinct. */
+  --muted: hsl(220, 14%, 88%);
   --muted-foreground: hsl(211, 17%, 35%);      /* slate #4A5868 */
 
-  /* Accent */
+  /* Cool-muted — deliberately bluer than --muted so it stands apart from
+     soft-surface contexts. Reserved for system / disabled / technical
+     contexts: reference numbers, code blocks, read-only inputs that need
+     to read as "this is data the system owns" rather than "this is a
+     soft surface". Hue 210 ties it to the midnight foreground hue (208)
+     so it feels native rather than an outside borrow. */
+  --cool-muted: hsl(210, 25%, 90%);
+  --cool-muted-foreground: hsl(208, 30%, 30%);
+
+  /* Accent — kept lighter than --muted (was historically tied at 93%).
+     Now intentionally distinct so dropdown / menu-item hover stays a
+     soft tint while --muted carries the heavier soft-surface role. */
   --accent: hsl(220, 14%, 93%);
   --accent-foreground: hsl(208, 70%, 18%);
 
