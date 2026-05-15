@@ -2,7 +2,7 @@
 
 import { useMemo, useState } from "react";
 import { toast } from "sonner";
-import { Info, Loader2 } from "lucide-react";
+import { Loader2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -10,24 +10,22 @@ import { Checkbox } from "@/components/ui/checkbox";
 import { Switch } from "@/components/ui/switch";
 import { BankSelect } from "@/components/shared/bank-select";
 import { saveStep, type DraftJson } from "../actions";
-import { DraftDrnPanel } from "./_components/draft-drn-panel";
 
-// Common AU BSB prefixes → bank name. Not exhaustive — covers ~95% of real
-// trust-account openings. Full table (~2k entries) deferred.
+// Wizard Step 4 — Banking.
+//
+// Per-fund trust account details. Admin fund is always present. Capital
+// works + (optional) Maintenance plan can either share the admin fund's
+// account or have their own.
+//
+// Macquarie DEFT panel (DRN CSV import) lives in OC Settings post-creation;
+// not captured by the new wizard.
+
 const BSB_PREFIXES: Record<string, string> = {
   "01": "ANZ", "03": "Westpac", "06": "CBA", "08": "NAB",
   "18": "Macquarie Bank", "63": "Bendigo Bank",
   "73": "Westpac", "76": "Westpac",
 };
 
-function tierForLotCount(n: number, servicesOnly: boolean): number {
-  if (servicesOnly) return 5;
-  if (n >= 100) return 1;
-  if (n >= 51) return 2;
-  if (n >= 10) return 3;
-  if (n >= 3) return 4;
-  return 5;
-}
 function lookupBank(bsb: string): string | null {
   const digits = bsb.replace(/\D/g, "");
   if (digits.length < 2) return null;
@@ -44,10 +42,6 @@ function isValidAccountNumber(s: string): boolean {
   return /^\d{6,9}$/.test(s.replace(/\D/g, ""));
 }
 
-// Single-fund inputs. Defined at module scope so React doesn't unmount the
-// children on every parent render — that's what was stealing focus on every
-// keystroke (item 20: BSB / account-number boxes pushing the cursor out).
-
 type FundFields = {
   bankId: string;
   accountName: string;
@@ -55,10 +49,13 @@ type FundFields = {
   accountNumber: string;
 };
 
+interface InvalidFlags { bank: boolean; name: boolean; bsb: boolean; acc: boolean }
+const NO_INVALID: InvalidFlags = { bank: false, name: false, bsb: false, acc: false };
+
 interface FundFieldsProps {
   value: FundFields;
   onChange: (next: FundFields) => void;
-  invalid: { bank: boolean; name: boolean; bsb: boolean; acc: boolean };
+  invalid: InvalidFlags;
   idPrefix: string;
 }
 
@@ -123,10 +120,7 @@ function FundFieldsBlock({ value, onChange, invalid, idPrefix }: FundFieldsProps
   );
 }
 
-interface InvalidFlags { bank: boolean; name: boolean; bsb: boolean; acc: boolean }
-const NO_INVALID: InvalidFlags = { bank: false, name: false, bsb: false, acc: false };
-
-export function Page5Trust({
+export function Step4Banking({
   draftId,
   initialDraft,
   totalLots,
@@ -139,16 +133,15 @@ export function Page5Trust({
   onBack: () => void;
   onNext: () => void;
 }) {
-  const tier = tierForLotCount(totalLots, initialDraft.services_only ?? false);
+  // Tier-1/2 mandates a maintenance plan fund (force on, disable the toggle).
+  // Tier 3-5 default OFF; manager can opt in.
+  const tier = initialDraft.tier ?? 5;
   const isTier1or2 = tier <= 2;
 
-  // No prefilled account names. Older draft rows (pre-2026-05) sometimes
-  // baked an auto-generated "Owners Corporation {PS…} Trust Account" into
-  // admin_account_name; strip it on hydration so the field renders empty and
-  // the manager types the real, legally-registered account name.
   const legacyAutoName = /^Owners Corporation\s+PS\d{6}[A-Z]\s+Trust Account$/i;
   const stripLegacy = (s: string | undefined) =>
     s && legacyAutoName.test(s.trim()) ? "" : (s ?? "");
+
   const [admin, setAdmin] = useState<FundFields>({
     bankId: initialDraft.admin_bank_id ?? "",
     accountName: stripLegacy(initialDraft.admin_account_name),
@@ -166,8 +159,6 @@ export function Page5Trust({
     accountNumber: initialDraft.capital_account_number ?? "",
   });
 
-  // Tier 1/2 mandates a maintenance plan fund; force it on for those tiers.
-  // Tier 3-5 can opt in via the toggle.
   const [hasMaintenance, setHasMaintenance] = useState<boolean>(
     initialDraft.has_maintenance_plan_fund ?? isTier1or2,
   );
@@ -189,9 +180,6 @@ export function Page5Trust({
   function validateFund(f: FundFields): InvalidFlags {
     return {
       bank: !f.bankId,
-      // Allow any non-empty account name. Some OCs register short labels
-      // like "T" or "OC" on legacy trust accounts; 2-char minimum was
-      // unnecessarily strict.
       name: f.accountName.trim().length < 1,
       bsb: !isValidBsb(f.bsb),
       acc: !isValidAccountNumber(f.accountNumber),
@@ -215,10 +203,7 @@ export function Page5Trust({
       if (Object.values(mFlags).some(Boolean)) problems.push("Maintenance plan fund details");
     }
 
-    // No two ACTIVE funds may share a (BSB, account) unless they're explicitly
-    // tied to admin via the "same as admin" toggle. When we detect a duplicate
-    // we also flip the BSB + account flags on BOTH offending funds so the user
-    // sees red borders on the rows that need fixing — not just a toast.
+    // Duplicate (BSB, account) across two ACTIVE funds = error.
     type Slot = "admin" | "capital" | "maintenance";
     const pairs: Array<{ slot: Slot; label: string; bsb: string; acc: string }> = [
       { slot: "admin", label: "admin", bsb: admin.bsb, acc: admin.accountNumber },
@@ -273,7 +258,7 @@ export function Page5Trust({
         maintenance_account_name: !hasMaintenance || maintenanceSameAsAdmin ? undefined : maintenance.accountName.trim(),
         maintenance_bsb: !hasMaintenance || maintenanceSameAsAdmin ? undefined : maintenance.bsb,
         maintenance_account_number: !hasMaintenance || maintenanceSameAsAdmin ? undefined : maintenance.accountNumber,
-      }, 6);
+      }, 4, 1); // Advance to Step 4.1 (Opening balances).
       if (r.error) {
         setPending(false);
         toast.error(r.error);
@@ -283,7 +268,8 @@ export function Page5Trust({
     })();
   }
 
-  const macquarieSelected = admin.bankId === "macquarie";
+  // Silence unused-prop lint when totalLots isn't read directly here.
+  void totalLots;
 
   return (
     <div className="space-y-6">
@@ -291,12 +277,9 @@ export function Page5Trust({
         <h2 className="text-lg font-semibold text-foreground">Bank accounts</h2>
         <p className="mt-1 text-sm text-muted-foreground">
           The OC&apos;s funds — separate from your management company&apos;s operating account.
-          The admin fund is always present; capital works and (optionally) maintenance plan
-          can share the same account or use their own.
         </p>
       </div>
 
-      {/* Admin fund. */}
       <div className="rounded-md border border-border bg-card p-4 space-y-3">
         <h3 className="text-sm font-semibold text-foreground">Administrative fund</h3>
         <FundFieldsBlock
@@ -307,11 +290,8 @@ export function Page5Trust({
         />
       </div>
 
-      {/* Capital works fund. */}
       <div className="rounded-md border border-border bg-card p-4 space-y-3">
-        <div className="flex items-baseline justify-between">
-          <h3 className="text-sm font-semibold text-foreground">Capital works fund</h3>
-        </div>
+        <h3 className="text-sm font-semibold text-foreground">Capital works fund</h3>
         <div className="flex items-center gap-3">
           <Checkbox
             id="capital-same"
@@ -332,7 +312,6 @@ export function Page5Trust({
         )}
       </div>
 
-      {/* Maintenance plan fund (optional toggle; forced for Tier 1/2). */}
       <div className="rounded-md border border-border bg-card p-4 space-y-3">
         <div className="flex items-center justify-between gap-3">
           <h3 className="text-sm font-semibold text-foreground">Maintenance plan fund</h3>
@@ -340,7 +319,7 @@ export function Page5Trust({
             checked={hasMaintenance}
             onCheckedChange={(v) => setHasMaintenance(v === true)}
             disabled={isTier1or2}
-            aria-label="This OC has a maintenance plan fund"
+            aria-label="This OC has a maintenance plan reserve fund"
           />
         </div>
         {isTier1or2 && (
@@ -369,19 +348,6 @@ export function Page5Trust({
           </>
         )}
       </div>
-
-      {/* Macquarie DEFT info banner — keyed off admin fund's bank. */}
-      {macquarieSelected && (
-        <DraftDrnPanel
-          draftId={draftId}
-          initialMappings={initialDraft.lot_drns ?? []}
-          lots={(initialDraft.lots ?? []).map((l) => ({
-            lot_number: l.lot_number,
-            unit_number: l.unit_number ?? null,
-            owner_name: l.owner_name ?? null,
-          }))}
-        />
-      )}
 
       <div className="flex justify-between pt-2">
         <Button type="button" variant="secondary" onClick={onBack}>Back</Button>

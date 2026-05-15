@@ -38,6 +38,16 @@ interface OCData {
   tfn?: string | null;
   common_seal_text?: string | null;
   inspection_address?: string | null;
+  // Wizard-redesign additions.
+  annual_interest_rate_percent?: number | null;
+  interest_free_period_days?: number | null;
+  early_payment_incentive_percent?: number | null;
+  arrears_action_threshold_cents?: number | null;
+  levy_calculation_basis?: string | null;
+  default_delivery_method?: string | null;
+  meetings_postal_buffer_days?: number | null;
+  levies_postal_buffer_days?: number | null;
+  financial_postal_buffer_days?: number | null;
 }
 
 function EditableField({
@@ -163,6 +173,18 @@ export function SettingsContent({ oc: initial }: { oc: OCData }) {
     { value: "model", label: "Model rules" },
     { value: "custom", label: "Custom rules" },
   ];
+  const levyBasisOptions = [
+    { value: "lot_liability", label: "Lot liability (standard)" },
+    { value: "equal_per_lot", label: "Equal per lot" },
+    { value: "custom_apportionment", label: "Custom apportionment" },
+  ];
+  const deliveryOptions = [
+    { value: "postal", label: "Postal only" },
+    { value: "mixed", label: "Mixed" },
+    { value: "email", label: "Email by default" },
+  ];
+  const levyBasisLabels: Record<string, string> = Object.fromEntries(levyBasisOptions.map((o) => [o.value, o.label]));
+  const deliveryLabels: Record<string, string> = Object.fromEntries(deliveryOptions.map((o) => [o.value, o.label]));
 
   return (
     <div className="space-y-6">
@@ -208,6 +230,88 @@ export function SettingsContent({ oc: initial }: { oc: OCData }) {
             <EditableField label="Financial year starts" value={isEditing ? String(oc.financial_year_start_month) : fyMonth} field="financial_year_start_month" ocId={oc.id} isEditing={isEditing} type={isEditing ? "select" : "text"} options={monthOptions} onSaved={(v) => onFieldSaved("financial_year_start_month", v)} />
             <EditableField label="Billing cycle" value={isEditing ? oc.billing_cycle : (BILLING_LABELS[oc.billing_cycle] ?? oc.billing_cycle)} field="billing_cycle" ocId={oc.id} isEditing={isEditing} type={isEditing ? "select" : "text"} options={billingOptions} onSaved={(v) => onFieldSaved("billing_cycle", v)} />
             <EditableField label="Rules type" value={isEditing ? oc.rules_type : (oc.rules_type === "model" ? "Model rules" : "Custom rules")} field="rules_type" ocId={oc.id} isEditing={isEditing} type={isEditing ? "select" : "text"} options={rulesOptions} onSaved={(v) => onFieldSaved("rules_type", v)} />
+            <EditableField
+              label="Levy calculation basis"
+              value={isEditing ? (oc.levy_calculation_basis ?? "lot_liability") : (levyBasisLabels[oc.levy_calculation_basis ?? "lot_liability"] ?? "Lot liability")}
+              field="levy_calculation_basis"
+              ocId={oc.id}
+              isEditing={isEditing}
+              type={isEditing ? "select" : "text"}
+              options={levyBasisOptions}
+              onSaved={(v) => onFieldSaved("levy_calculation_basis", v)}
+            />
+            <EditableField
+              label="Early payment incentive (%)"
+              value={String(oc.early_payment_incentive_percent ?? 0)}
+              field="early_payment_incentive_percent"
+              ocId={oc.id}
+              isEditing={isEditing}
+              onSaved={(v) => onFieldSaved("early_payment_incentive_percent", v)}
+            />
+            <EditableField
+              label="Annual interest rate (%)"
+              value={String(oc.annual_interest_rate_percent ?? 0)}
+              field="annual_interest_rate_percent"
+              ocId={oc.id}
+              isEditing={isEditing}
+              onSaved={(v) => onFieldSaved("annual_interest_rate_percent", v)}
+            />
+            <EditableField
+              label="Interest-free period (days)"
+              value={String(oc.interest_free_period_days ?? 28)}
+              field="interest_free_period_days"
+              ocId={oc.id}
+              isEditing={isEditing}
+              onSaved={(v) => onFieldSaved("interest_free_period_days", v)}
+            />
+            <EditableField
+              label="Arrears action threshold (cents)"
+              value={String(oc.arrears_action_threshold_cents ?? 5000)}
+              field="arrears_action_threshold_cents"
+              ocId={oc.id}
+              isEditing={isEditing}
+              onSaved={(v) => onFieldSaved("arrears_action_threshold_cents", v)}
+            />
+          </CardContent>
+        </Card>
+
+        <Card>
+          <CardContent className="pt-5">
+            <h3 className="text-sm font-semibold text-foreground mb-3">Communications</h3>
+            <EditableField
+              label="Default delivery method"
+              value={isEditing ? (oc.default_delivery_method ?? "postal") : (deliveryLabels[oc.default_delivery_method ?? "postal"] ?? "Postal only")}
+              field="default_delivery_method"
+              ocId={oc.id}
+              isEditing={isEditing}
+              type={isEditing ? "select" : "text"}
+              options={deliveryOptions}
+              onSaved={(v) => onFieldSaved("default_delivery_method", v)}
+            />
+            <EditableField
+              label="Meetings postal buffer (days)"
+              value={String(oc.meetings_postal_buffer_days ?? 14)}
+              field="meetings_postal_buffer_days"
+              ocId={oc.id}
+              isEditing={isEditing}
+              onSaved={(v) => onFieldSaved("meetings_postal_buffer_days", v)}
+            />
+            <EditableField
+              label="Levies postal buffer (days)"
+              value={String(oc.levies_postal_buffer_days ?? 14)}
+              field="levies_postal_buffer_days"
+              ocId={oc.id}
+              isEditing={isEditing}
+              onSaved={(v) => onFieldSaved("levies_postal_buffer_days", v)}
+            />
+            <EditableField
+              label="Financial documents postal buffer (days)"
+              value={String(oc.financial_postal_buffer_days ?? 14)}
+              field="financial_postal_buffer_days"
+              ocId={oc.id}
+              isEditing={isEditing}
+              onSaved={(v) => onFieldSaved("financial_postal_buffer_days", v)}
+            />
           </CardContent>
         </Card>
 

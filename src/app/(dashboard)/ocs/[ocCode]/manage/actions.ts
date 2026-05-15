@@ -20,6 +20,14 @@ export async function updateOCField(
     "levy_year_start_month", "levies_per_year",
     "common_seal_text", "inspection_address", "manager_appointed", "administrator_appointed",
     "bank_bsb", "bank_account_number", "bank_account_name",
+    // Added in the wizard-redesign PR: editable on the OC settings page so
+    // wizard-captured data is round-trippable post-creation.
+    "building_name",
+    "annual_interest_rate_percent", "interest_free_period_days",
+    "early_payment_incentive_percent", "arrears_action_threshold_cents",
+    "levy_calculation_basis",
+    "meetings_postal_buffer_days", "levies_postal_buffer_days", "financial_postal_buffer_days",
+    "default_delivery_method",
   ];
 
   if (!allowedFields.includes(field)) {

@@ -41,6 +41,17 @@ export default async function OCSettingsPage({
         tfn: oc.tfn,
         common_seal_text: oc.common_seal_text ?? null,
         inspection_address: oc.inspection_address ?? null,
+        // Wizard-redesign additions. Cast since getOC() doesn't yet expose
+        // these on its typed return; the schema has them.
+        annual_interest_rate_percent: (oc as unknown as { annual_interest_rate_percent?: number | null }).annual_interest_rate_percent ?? 0,
+        interest_free_period_days: (oc as unknown as { interest_free_period_days?: number | null }).interest_free_period_days ?? 28,
+        early_payment_incentive_percent: (oc as unknown as { early_payment_incentive_percent?: number | null }).early_payment_incentive_percent ?? 0,
+        arrears_action_threshold_cents: (oc as unknown as { arrears_action_threshold_cents?: number | null }).arrears_action_threshold_cents ?? 5000,
+        levy_calculation_basis: (oc as unknown as { levy_calculation_basis?: string | null }).levy_calculation_basis ?? "lot_liability",
+        default_delivery_method: (oc as unknown as { default_delivery_method?: string | null }).default_delivery_method ?? "postal",
+        meetings_postal_buffer_days: (oc as unknown as { meetings_postal_buffer_days?: number | null }).meetings_postal_buffer_days ?? 14,
+        levies_postal_buffer_days: (oc as unknown as { levies_postal_buffer_days?: number | null }).levies_postal_buffer_days ?? 14,
+        financial_postal_buffer_days: (oc as unknown as { financial_postal_buffer_days?: number | null }).financial_postal_buffer_days ?? 14,
       }}
     />
   );

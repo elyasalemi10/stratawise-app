@@ -4,7 +4,7 @@ import { Skeleton } from "@/components/ui/skeleton";
 // Loading state for /ocs/new. Server component — has no access to
 // searchParams, so it CAN'T know which step the URL wants. We keep the
 // chrome (top bar with X + auto-save note) visible and render a flat row
-// of step-indicator dots without highlighting one — the in-component
+// of 4 step-indicator dots without highlighting one — the in-component
 // skeleton (which CAN read ?step=) takes over the moment the page mounts
 // and shows the correct active step. The handoff is invisible because
 // both layouts match.
@@ -20,15 +20,17 @@ export default function Loading() {
           and resume from the OC switcher in the sidebar.
         </p>
       </div>
-      {/* Flat step-indicator shape — 8 dots in a row, no active highlight.
+      {/* Flat step-indicator shape — 4 logo circles, no active highlight.
           Matches the spacing of the real StepIndicator so the swap is
           structurally identical. */}
-      <div className="mb-8 flex items-center justify-center gap-3">
-        {Array.from({ length: 8 }).map((_, i) => (
-          <div key={i} className="flex items-center gap-3">
-            <Skeleton className="h-8 w-8 rounded-full" />
-            <Skeleton className="h-3 w-16" />
-            {i < 7 && <Skeleton className="h-px w-6" />}
+      <div className="mb-8 flex items-start justify-center gap-4">
+        {Array.from({ length: 4 }).map((_, i) => (
+          <div key={i} className="flex items-start gap-3">
+            <div className="flex flex-col items-center gap-1.5">
+              <Skeleton className="h-10 w-10 rounded-full" />
+              <Skeleton className="h-3 w-20" />
+            </div>
+            {i < 3 && <Skeleton className="mt-5 h-px w-8" />}
           </div>
         ))}
       </div>

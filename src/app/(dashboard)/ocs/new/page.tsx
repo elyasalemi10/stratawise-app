@@ -5,23 +5,16 @@ import { useRouter, useSearchParams } from "next/navigation";
 import { Suspense } from "react";
 import { Skeleton } from "@/components/ui/skeleton";
 import { StepIndicator } from "./step-indicator";
-import { Page1Upload } from "./pages/page-1-upload";
-import { Page2Review } from "./pages/page-2-review";
-import { Page3Basics } from "./pages/page-3-basics";
-import { Page4Lots } from "./pages/page-4-lots";
-import { Page5Comms } from "./pages/page-5-comms";
-import { Page6Committee } from "./pages/page-6-committee";
-import { Page5Trust as Page7Trust } from "./pages/page-5-trust";
-import { Page8Balances } from "./pages/page-8-balances";
-// Rules + Insurance + Photo + Postal-buffer are no longer wizard steps.
-// Rules: defaults to Victoria's Model Rules; custom rules upload becomes
-//        a post-wizard task card on the OC dashboard.
-// Insurance: deferred entirely — CoCs typically arrive weeks after
-//        handover. Post-wizard task card.
-// Photo: moved to /ocs/[code]/settings — pure vanity, doesn't affect
-//        operations.
-// Postal buffer: silent defaults (14d for each category) saved at
-//        completeWizard time; manager can change from OC settings.
+import { EntryPopup } from "./pages/entry-popup";
+import { Step1General } from "./pages/step-1-general";
+import { Step1ManagementFee } from "./pages/step-1-1-management-fee";
+import { Step2Settings } from "./pages/step-2-settings";
+import { Step2CommsDefault } from "./pages/step-2-1-comms-default";
+import { Step3Lots } from "./pages/step-3-lots";
+import { Step3PostalContact } from "./pages/step-3-1-postal-contact";
+import { Step3DigitalConsent } from "./pages/step-3-2-digital-consent";
+import { Step4Banking } from "./pages/step-4-banking";
+import { Step4OpeningBalances } from "./pages/step-4-1-opening-balances";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { X } from "lucide-react";
@@ -31,37 +24,32 @@ import { revalidateSidebarFromClient } from "@/lib/sidebar-cache";
 type DraftRow = {
   id: string;
   current_step: number;
+  current_substep: number;
   parse_status: "none" | "pending" | "complete" | "failed" | "skipped";
   plan_filename: string | null;
-  rules_filename: string | null;
-  rules_parsed_json: { rules?: { rule_number: string; heading?: string | null; body: string }[] } | null;
-  insurance_doc_filename: string | null;
   parsed_json: { detected_ocs?: { oc_number: number; lot_count: number; oc_name?: string | null }[] } | null;
   draft_json: DraftJson;
   photo_storage_key: string | null;
-  /** Set once completeWizard has promoted this draft to an OC. The wizard
-   *  short-circuits on load if this is non-null so the user can't re-fire
-   *  Create OC and mint duplicates from the same draft. */
   promoted_oc_id: string | null;
   promoted_short_code: string | null;
 };
+
+// (step, sub) tuple for routing. Sub-step indices:
+//   Step 1: 0 = General, 1 = Management fee
+//   Step 2: 0 = Settings, 1 = Comms default
+//   Step 3: 0 = Lots,     1 = Postal & Contact, 2 = Digital consent
+//   Step 4: 0 = Banking,  1 = Opening balances
+function clampStep(n: number) { return Number.isFinite(n) && n >= 1 && n <= 4 ? n : 1; }
+function clampSubstep(n: number) { return Number.isFinite(n) && n >= 0 && n <= 2 ? n : 0; }
 
 function WizardContent() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const [draft, setDraft] = useState<DraftRow | null>(null);
   const [bootError, setBootError] = useState<string | null>(null);
-  // Seed step from the URL when present, so the skeleton + step indicator
-  // both land on the right step instantly. When the draft loads we re-set
-  // step to whatever the draft itself reports (URL might be stale).
-  const [step, setStep] = useState<number>(() => {
-    const fromUrl = parseInt(searchParams.get("step") ?? "", 10);
-    // Wizard is now 8 steps after the May refresh (rules + insurance +
-    // photo + postal-buffer moved out). Allow 1-9 in URL parsing for
-    // back-compat with old bookmarks pointing at step 9 (Balances) —
-    // we'll snap them to 8.
-    return Number.isFinite(fromUrl) && fromUrl >= 1 && fromUrl <= 8 ? fromUrl : Math.min(fromUrl, 8) || 1;
-  });
+  const [step, setStep] = useState<number>(() => clampStep(parseInt(searchParams.get("step") ?? "", 10) || 1));
+  const [substep, setSubstep] = useState<number>(() => clampSubstep(parseInt(searchParams.get("sub") ?? "", 10) || 0));
+  const [showEntryPopup, setShowEntryPopup] = useState(false);
   const [nextOcPrompt, setNextOcPrompt] = useState<{ ocCode: string; sourceDraftId: string; nextOcIndex: number; totalOcs: number } | null>(null);
   const [forkingNext, setForkingNext] = useState(false);
   const [cancelOpen, setCancelOpen] = useState(false);
@@ -74,61 +62,51 @@ function WizardContent() {
 
     const draftId = searchParams.get("draft");
     (async () => {
-      if (draftId) {
-        const r = await getDraft(draftId);
-        if (r.error || !r.draft) {
-          setBootError(r.error ?? "Draft not found");
-          return;
-        }
-        const d = r.draft as unknown as DraftRow;
-        // Idempotency guard: if this draft already promoted to an OC,
-        // sending the user back into the wizard would let them mash
-        // "Create OC" and mint duplicates. Bounce them to the OC's
-        // dashboard instead. The completeWizard server action ALSO
-        // guards against this — belt and braces.
-        if (d.promoted_oc_id && d.promoted_short_code) {
-          router.replace(`/ocs/${d.promoted_short_code}`);
-          return;
-        }
-        setDraft(d);
-        setStep(d.current_step);
+      const r = draftId ? await getDraft(draftId) : await createDraftAndLoad();
+      if (r.error || !r.draft) {
+        setBootError(r.error ?? "Could not start the wizard");
         return;
       }
-      // Single round-trip: server inserts + returns the full draft row so the
-      // wizard renders without a second getDraft hop (was the visible delay
-      // when first hitting /ocs/new — auth + insert + auth + select).
-      const c = await createDraftAndLoad();
-      if (c.error || !c.draft) {
-        setBootError(c.error ?? "Could not start the wizard");
+      const d = r.draft as unknown as DraftRow;
+      // Idempotency: a promoted draft redirects to the OC dashboard rather
+      // than letting the user mash Create OC and mint duplicates.
+      if (d.promoted_oc_id && d.promoted_short_code) {
+        router.replace(`/ocs/${d.promoted_short_code}`);
         return;
       }
-      const d = c.draft as unknown as DraftRow;
       setDraft(d);
-      setStep(d.current_step);
-      // Persist draft id in URL for refresh resumability.
-      const next = new URLSearchParams(searchParams.toString());
-      next.set("draft", d.id);
-      window.history.replaceState(null, "", `/ocs/new?${next.toString()}`);
-    })();
-  }, [searchParams]);
+      setStep(clampStep(d.current_step));
+      setSubstep(clampSubstep(d.current_substep));
+      // Entry popup only opens on a fresh draft — i.e. nothing decided yet
+      // about the plan PDF. Resumed drafts skip straight to whichever step
+      // they were on.
+      const isFreshDraft =
+        d.parse_status === "none" &&
+        d.current_step === 1 &&
+        d.current_substep === 0;
+      setShowEntryPopup(isFreshDraft);
 
-  function goToStep(n: number) {
-    setStep(n);
+      // Persist draft id in URL for refresh resumability.
+      if (!draftId) {
+        const next = new URLSearchParams(searchParams.toString());
+        next.set("draft", d.id);
+        window.history.replaceState(null, "", `/ocs/new?${next.toString()}`);
+      }
+    })();
+  }, [searchParams, router]);
+
+  function goTo(nextStep: number, nextSub: number) {
+    setStep(nextStep);
+    setSubstep(nextSub);
     const next = new URLSearchParams(searchParams.toString());
     if (draft) next.set("draft", draft.id);
-    next.set("step", String(n));
+    next.set("step", String(nextStep));
+    next.set("sub", String(nextSub));
     window.history.replaceState(null, "", `/ocs/new?${next.toString()}`);
-    // The dashboard layout sets overflow-y-auto on <main>, NOT on the
-    // window — so window.scrollTo is a silent no-op here. We have to
-    // target the actual scroll container. Smooth behaviour so the user's
-    // eye tracks back up rather than jump-cutting.
     if (typeof window !== "undefined") {
       const main = document.querySelector("main");
-      if (main) {
-        main.scrollTo({ top: 0, behavior: "smooth" });
-      } else {
-        window.scrollTo({ top: 0, behavior: "smooth" });
-      }
+      if (main) main.scrollTo({ top: 0, behavior: "smooth" });
+      else window.scrollTo({ top: 0, behavior: "smooth" });
     }
   }
 
@@ -136,6 +114,24 @@ function WizardContent() {
     if (!draft) return;
     const r = await getDraft(draft.id);
     if (r.draft) setDraft(r.draft as unknown as DraftRow);
+  }
+
+  // Sub-step transition table — Back navigates to the previous logical screen.
+  function back() {
+    if (step === 1 && substep === 0) {
+      // First screen: reopen the entry popup so the user can reconsider
+      // plan upload vs manual.
+      setShowEntryPopup(true);
+      return;
+    }
+    if (step === 1 && substep === 1) return goTo(1, 0);
+    if (step === 2 && substep === 0) return goTo(1, 1);
+    if (step === 2 && substep === 1) return goTo(2, 0);
+    if (step === 3 && substep === 0) return goTo(2, 1);
+    if (step === 3 && substep === 1) return goTo(3, 0);
+    if (step === 3 && substep === 2) return goTo(3, 1);
+    if (step === 4 && substep === 0) return goTo(3, 2);
+    if (step === 4 && substep === 1) return goTo(4, 0);
   }
 
   if (bootError) {
@@ -149,12 +145,6 @@ function WizardContent() {
   }
 
   if (!draft) {
-    // In-component skeleton (after route swap, while createDraftAndLoad is in
-    // flight). Mirrors loading.tsx exactly so users don't see one skeleton
-    // shape replaced by a different one when the draft finishes loading.
-    // Step indicator uses the seeded `step` (from ?step= or 1), so
-    // /ocs/new?draft=X&step=7 shows step 7 immediately rather than flashing
-    // step 1 first.
     return (
       <div className="mx-auto w-full max-w-5xl">
         <div className="relative mb-2 flex h-8 items-center">
@@ -191,11 +181,6 @@ function WizardContent() {
 
   return (
     <div className="mx-auto w-full max-w-5xl">
-      {/* Top bar: plain X (no border) in the corner + centered "what gets
-          saved" note. The wizard auto-saves at each step transition (when
-          you click Continue) — half-typed fields inside the current step
-          aren't persisted yet, so the note phrasing has to be explicit
-          rather than promising "everything is saved." */}
       <div className="relative mb-2 flex h-8 items-center">
         <button
           type="button"
@@ -212,85 +197,77 @@ function WizardContent() {
       </div>
       <StepIndicator current={step} />
       <div className="mt-2">
-        {step === 1 && (
-          <Page1Upload
-            draftId={draft.id}
-            initialStatus={draft.parse_status}
-            initialFilename={draft.plan_filename}
-            initialOcCount={draft.parsed_json?.detected_ocs?.length ?? 0}
-            initialLotCount={draft.parsed_json?.detected_ocs?.[0]?.lot_count ?? 0}
-            initialDetectedOcs={detectedOcs}
-            onNext={async () => {
-              await refreshDraft();
-              // Both the parsed-plan path and the skip-and-enter-manually
-              // path drop into Page 2 (Review) — that page renders an empty
-              // lot schedule fine when nothing was parsed.
-              goToStep(2);
-            }}
-          />
-        )}
-        {step === 2 && (
-          <Page2Review
+        {step === 1 && substep === 0 && (
+          <Step1General
             draftId={draft.id}
             initialDraft={draft.draft_json}
-            detectedOcs={detectedOcs}
-            onBack={() => goToStep(1)}
-            onNext={async () => { await refreshDraft(); goToStep(3); }}
+            onBack={back}
+            onNext={async () => { await refreshDraft(); goTo(1, 1); }}
           />
         )}
-        {step === 3 && (
-          <Page3Basics
+        {step === 1 && substep === 1 && (
+          <Step1ManagementFee
             draftId={draft.id}
             initialDraft={draft.draft_json}
-            initialPhotoKey={draft.photo_storage_key}
-            totalLots={totalLots}
-            onBack={() => goToStep(2)}
-            onNext={async () => { await refreshDraft(); goToStep(4); }}
+            onBack={back}
+            onNext={async () => { await refreshDraft(); goTo(2, 0); }}
           />
         )}
-        {step === 4 && (
-          <Page4Lots
+        {step === 2 && substep === 0 && (
+          <Step2Settings
             draftId={draft.id}
             initialDraft={draft.draft_json}
-            onBack={() => goToStep(3)}
-            onNext={async () => { await refreshDraft(); goToStep(5); }}
+            onBack={back}
+            onNext={async () => { await refreshDraft(); goTo(2, 1); }}
           />
         )}
-        {step === 5 && (
-          <Page5Comms
+        {step === 2 && substep === 1 && (
+          <Step2CommsDefault
             draftId={draft.id}
             initialDraft={draft.draft_json}
-            onBack={() => goToStep(4)}
-            onNext={async () => { await refreshDraft(); goToStep(6); }}
+            onBack={back}
+            onNext={async () => { await refreshDraft(); goTo(3, 0); }}
           />
         )}
-        {step === 6 && (
-          <Page6Committee
+        {step === 3 && substep === 0 && (
+          <Step3Lots
             draftId={draft.id}
             initialDraft={draft.draft_json}
-            onBack={() => goToStep(5)}
-            onNext={async () => { await refreshDraft(); goToStep(7); }}
+            onBack={back}
+            onNext={async () => { await refreshDraft(); goTo(3, 1); }}
           />
         )}
-        {step === 7 && (
-          <Page7Trust
+        {step === 3 && substep === 1 && (
+          <Step3PostalContact
+            draftId={draft.id}
+            initialDraft={draft.draft_json}
+            onBack={back}
+            onNext={async () => { await refreshDraft(); goTo(3, 2); }}
+          />
+        )}
+        {step === 3 && substep === 2 && (
+          <Step3DigitalConsent
+            draftId={draft.id}
+            initialDraft={draft.draft_json}
+            onBack={back}
+            onNext={async () => { await refreshDraft(); goTo(4, 0); }}
+          />
+        )}
+        {step === 4 && substep === 0 && (
+          <Step4Banking
             draftId={draft.id}
             initialDraft={draft.draft_json}
             totalLots={totalLots}
-            onBack={() => goToStep(6)}
-            onNext={async () => { await refreshDraft(); goToStep(8); }}
+            onBack={back}
+            onNext={async () => { await refreshDraft(); goTo(4, 1); }}
           />
         )}
-        {step === 8 && (
-          <Page8Balances
+        {step === 4 && substep === 1 && (
+          <Step4OpeningBalances
             draftId={draft.id}
             initialDraft={draft.draft_json}
-            onBack={() => goToStep(7)}
+            onBack={back}
             onComplete={(r) => {
-              // Clear the localStorage sidebar cache so the new OC appears in
-              // the picker immediately, without waiting 5 minutes for the TTL.
-              // The server-side cache tag is already invalidated by
-              // completeWizard() — this just nudges the client.
               revalidateSidebarFromClient();
               const detected = draft.parsed_json?.detected_ocs ?? [];
               if (r.sourceDraftId && typeof r.nextOcIndex === "number" && detected.length > 1) {
@@ -302,24 +279,29 @@ function WizardContent() {
                 });
                 return;
               }
-              // Hard navigate (not router.push) so the wizard fully unmounts
-              // before the OC dashboard renders. router.push does a soft
-              // client-side transition that kept Page 8 mounted underneath
-              // during the route swap, creating a visible flicker of "back
-              // to step 8 then forward to the dashboard" — looked like a
-              // redirect loop. Hard navigation kills the wizard tree
-              // outright, so there's nothing left to flicker.
               window.location.assign(`/ocs/${r.ocCode}?created=1`);
             }}
           />
         )}
       </div>
 
-      {/* Cancel-creation confirm. Draft stays in oc_drafts (visible in the
-          sidebar swapper "In progress" list) unless the user explicitly
-          discards it from the OC list page. The button below leaves the
-          wizard but preserves the row — that's what users almost always
-          want, and matches the auto-save hint shown next to the button. */}
+      {/* Entry popup. Mounted while showEntryPopup is true; closes on Done. */}
+      {showEntryPopup && draft && (
+        <EntryPopup
+          draftId={draft.id}
+          initialStatus={draft.parse_status}
+          initialFilename={draft.plan_filename}
+          initialDetectedOcs={detectedOcs}
+          onDone={async () => {
+            await refreshDraft();
+            setShowEntryPopup(false);
+            // Land on Step 1 General.
+            goTo(1, 0);
+          }}
+        />
+      )}
+
+      {/* Cancel-creation confirm. Draft stays in oc_drafts and is resumable. */}
       <Dialog open={cancelOpen} onOpenChange={setCancelOpen}>
         <DialogContent>
           <DialogHeader>
@@ -361,12 +343,8 @@ function WizardContent() {
                   setForkingNext(true);
                   const r = await createDraftFromDetectedOc(nextOcPrompt.sourceDraftId, nextOcPrompt.nextOcIndex);
                   setForkingNext(false);
-                  if (r.error || !r.draftId) {
-                    return;
-                  }
-                  // Hard navigation so the wizard fully resets with the new
-                  // draft id (skipping page 1).
-                  window.location.assign(`/ocs/new?draft=${r.draftId}&step=2`);
+                  if (r.error || !r.draftId) return;
+                  window.location.assign(`/ocs/new?draft=${r.draftId}&step=1&sub=0`);
                 }}
               >
                 {forkingNext ? "Loading…" : "Create the next OC"}
@@ -380,10 +358,6 @@ function WizardContent() {
 }
 
 function WizardOuter() {
-  // When the swapper navigates to a different draft (e.g. ?draft=A → ?draft=B),
-  // the URL changes but the inner WizardContent guards its bootstrap useEffect
-  // with `initialised.current` so it never reloads the new draft. Keying the
-  // inner component on the draft id forces a fresh mount on each draft swap.
   const searchParams = useSearchParams();
   const draftKey = searchParams.get("draft") ?? "new";
   return <WizardContent key={draftKey} />;

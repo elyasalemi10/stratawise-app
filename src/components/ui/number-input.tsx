@@ -18,12 +18,14 @@ import { cn } from "@/lib/utils";
 //
 // Dollar fields opt-in to `thousandsSeparator` to display "12,345,678" while
 // they type. The stored value (the string passed back via onChange) NEVER
-// contains commas — callers continue to call parseFloat on it directly. Commas
-// are visual only and are not counted as real characters; backspacing over a
-// comma deletes the digit before it.
+// contains commas — callers continue to call parseFloat on it directly.
+//
+// `prefix` and `suffix` are render slots — typically a small chip (e.g. "$",
+// "%", "days", "per year"). Same `+61` affix pattern as `<PhoneInput>`. Caller
+// passes ReactNode; the component handles the padding adjustment.
 
 export interface NumberInputProps
-  extends Omit<React.InputHTMLAttributes<HTMLInputElement>, "type" | "onChange" | "value"> {
+  extends Omit<React.InputHTMLAttributes<HTMLInputElement>, "type" | "onChange" | "value" | "prefix"> {
   value: string;
   onChange: (next: string) => void;
   /** Allow decimal point (default true). Set false for integer-only fields. */
@@ -39,6 +41,12 @@ export interface NumberInputProps
    *  contains commas; the formatting is purely visual. Default false. */
   thousandsSeparator?: boolean;
   invalid?: boolean;
+  /** Render-slot affix shown inside the input on the LEFT (e.g. "$"). The
+   *  component pads the left edge of the text input to make room. */
+  prefix?: React.ReactNode;
+  /** Render-slot affix shown inside the input on the RIGHT (e.g. "%", "days",
+   *  "per year"). The component pads the right edge of the text input. */
+  suffix?: React.ReactNode;
 }
 
 function sanitise(
@@ -109,6 +117,8 @@ export const NumberInput = React.forwardRef<HTMLInputElement, NumberInputProps>(
       onKeyDown,
       onPaste,
       className,
+      prefix,
+      suffix,
       ...rest
     },
     ref,
@@ -165,7 +175,7 @@ export const NumberInput = React.forwardRef<HTMLInputElement, NumberInputProps>(
 
     const display = thousandsSeparator ? formatWithCommas(value) : value;
 
-    return (
+    const input = (
       <Input
         ref={ref}
         type="text"
@@ -176,9 +186,31 @@ export const NumberInput = React.forwardRef<HTMLInputElement, NumberInputProps>(
         onKeyDown={handleKeyDown}
         onPaste={handlePaste}
         aria-invalid={invalid || undefined}
-        className={cn(className)}
+        className={cn(
+          prefix ? "pl-7" : undefined,
+          suffix ? "pr-16" : undefined,
+          className,
+        )}
         {...rest}
       />
+    );
+
+    if (!prefix && !suffix) return input;
+
+    return (
+      <div className="relative">
+        {prefix && (
+          <span className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-sm text-muted-foreground">
+            {prefix}
+          </span>
+        )}
+        {input}
+        {suffix && (
+          <span className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 text-xs text-muted-foreground">
+            {suffix}
+          </span>
+        )}
+      </div>
     );
   },
 );

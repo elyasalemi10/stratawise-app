@@ -62,6 +62,14 @@ export type DraftLot = {
    *  this gives a starting position so day-one digital notices aren't
    *  blocked. Empty array = no consent yet, owner gets paper. */
   digital_consent_categories?: string[];
+  /** Categories the manager wants the owner asked to consent to at portal
+   *  signup. Per-lot (replaces the OC-wide consent_categories_offered). Empty
+   *  array = no signup ask (manager already captured everything via
+   *  digital_consent_categories above). */
+  at_portal_signup_categories?: string[];
+  /** Individual or Company — wizard Step 3 captures this in the lot schedule
+   *  alongside the owner's name. Defaults to 'individual'. */
+  owner_type?: "individual" | "company";
 };
 
 /** Per-role committee snapshot captured during the wizard. The wizard
@@ -208,6 +216,46 @@ export type DraftJson = {
   opening_admin_balance?: number;
   opening_capital_works_balance?: number;
   opening_maintenance_plan_balance?: number;     // only when has_maintenance_plan_fund
+
+  // ─── New wizard (May 2026 redesign) ─────────────────────────────
+  //
+  // Step 1 — General. Several fields here overlap legacy ones above; the
+  // new wizard writes ONLY into these new names. completeWizard prefers
+  // the new value when both are present.
+  /** Friendly building/development name. Replaces trading_name. */
+  building_name?: string;
+  /** TFN as plaintext on the draft; encrypted via pgcrypto on the OC row at
+   *  completeWizard time. Never persisted plaintext beyond the draft JSONB
+   *  (which is access-controlled to the management company). */
+  tfn?: string;
+  /** Manager attested in Step 3 that the auto-computed tier is correct. */
+  tier_confirmed?: boolean;
+
+  // Step 1.1 — Management fee captured during the wizard.
+  management_fee?: {
+    structure: "fixed_monthly" | "per_lot_monthly" | "hybrid" | "quarterly_retainer";
+    fixed_amount_cents?: number;
+    per_lot_amount_cents?: number;
+    gst_applicable: boolean;
+    billing_method: "invoice_direct" | "include_in_levies";
+    contract_term: "rolling_12" | "term_24" | "custom";
+    contract_start_date?: string;
+    contract_end_date?: string;
+  };
+
+  // Step 2 — Financial settings.
+  /** lot_liability (default) | equal_per_lot | custom_apportionment. The
+   *  per-lot table editor + per-fund split dialog land in a follow-up PR —
+   *  for now picking Custom just stores the choice. */
+  levy_calculation_basis?: "lot_liability" | "equal_per_lot" | "custom_apportionment";
+  early_payment_incentive_percent?: number;
+  interest_on_overdue_enabled?: boolean;
+  annual_interest_rate_percent?: number;
+  interest_free_period_days?: number;
+  arrears_action_threshold_cents?: number;
+
+  // Step 3 — Management start date (was manager_appointment_date) is captured
+  // on Step 1; we just re-use the existing manager_appointment_date field.
 };
 
 // ─── Address title-casing ───────────────────────────────────────
@@ -621,9 +669,10 @@ export async function parseDraftWithGemini(draftId: string) {
       plan_number: parsed.plan_of_subdivision_number ?? undefined,
       oc_number: first?.oc_number ?? 1,
       oc_name: first?.oc_name ?? undefined,
-      // Use the building name from the plan as the default trading name —
-      // managers usually use the building's display name as the OC's
-      // friendly title.
+      // Seed both building_name (new) + trading_name (legacy) so either
+      // wizard surface picks it up. The plan parser's `building_name` is
+      // the building's display name (e.g. "The Grandview Apartments").
+      building_name: first?.building_name ?? undefined,
       trading_name: first?.building_name ?? undefined,
       address: cased.address ?? undefined,
       street_number: first?.street_number ?? undefined,
@@ -1178,6 +1227,7 @@ export async function saveStep(
   draftId: string,
   patch: Partial<DraftJson>,
   nextStep: number,
+  nextSubstep: number = 0,
 ) {
   try {
     const { draft } = await loadDraft(draftId);
@@ -1185,7 +1235,7 @@ export async function saveStep(
     const merged = { ...(draft.draft_json as DraftJson), ...patch };
     const { error } = await supabase
       .from("oc_drafts")
-      .update({ draft_json: merged, current_step: nextStep })
+      .update({ draft_json: merged, current_step: nextStep, current_substep: nextSubstep })
       .eq("id", draft.id);
     if (error) return { error: error.message };
     return { success: true };
@@ -1233,10 +1283,11 @@ export async function completeWizard(draftId: string) {
     }
 
     // Minimum viable: plan_number, address, at least 2 lots. owners_corporations.name
-    // is derived from trading_name → address; no separate "legal OC name" field.
+    // is derived from building_name (new) → trading_name (legacy) → address.
     if (!d.plan_number) return { error: "Plan number is required (page 2)" };
     if (!d.address) return { error: "Address is required (page 2)" };
-    const resolvedName = (d.trading_name?.trim() || d.address.trim()) || `Owners Corporation ${d.plan_number}`;
+    const resolvedBuildingName = (d.building_name?.trim() || d.trading_name?.trim() || "");
+    const resolvedName = resolvedBuildingName || d.address.trim() || `Owners Corporation ${d.plan_number}`;
     if (!d.lots || d.lots.length < 2) return { error: "At least 2 lots are required" };
     if (!d.admin_bsb || !d.admin_account_number || !d.admin_account_name || !d.admin_bank_id) {
       return { error: "Trust account details are required (page 5)" };
@@ -1269,7 +1320,12 @@ export async function completeWizard(draftId: string) {
       management_company_id: profile.management_company_id,
       plan_number: d.plan_number,
       name: resolvedName,
-      trading_name: d.trading_name || null,
+      // Write to BOTH the new building_name column (canonical going forward)
+      // AND the legacy trading_name column so older code paths (global
+      // search, sidebar swapper) still find the friendly name. Cleanup PR
+      // drops trading_name once those readers are migrated.
+      building_name: resolvedBuildingName || null,
+      trading_name: d.trading_name || resolvedBuildingName || null,
       oc_number: d.oc_number ?? 1,
       address: d.address,
       street_number: d.street_number || null,
@@ -1316,14 +1372,30 @@ export async function completeWizard(draftId: string) {
       meetings_postal_buffer_days: d.meetings_postal_buffer_days ?? 14,
       levies_postal_buffer_days: d.levies_postal_buffer_days ?? 14,
       financial_postal_buffer_days: d.financial_postal_buffer_days ?? 14,
-      // ABN + GST + manager appointment + tier + committee — all new
-      // fields captured during the May refresh.
+      // ABN + GST + management start + tier + committee — captured during
+      // the wizard. `oc_tier` is the live column (`tier` is unused legacy).
+      // Committee snapshot is no longer captured by the new wizard — for
+      // back-compat with older drafts we still write what was on the JSONB,
+      // but new drafts produce undefined here.
       abn: d.abn ?? null,
       gst_registered: d.gst_registered ?? false,
       manager_appointment_date: d.manager_appointment_date ?? null,
-      tier: d.tier ?? null,
+      oc_tier: d.tier ?? null,
+      tier_confirmed_at: d.tier_confirmed ? new Date().toISOString() : null,
+      tier_confirmed_by: d.tier_confirmed ? profile.id : null,
       has_active_committee: d.has_active_committee ?? true,
       last_agm_date: d.last_agm_date ?? null,
+      // Financial settings captured on Step 2 of the new wizard. Defaults
+      // match the existing column defaults so drafts that predate Step 2
+      // still produce a valid OC row.
+      annual_interest_rate_percent: d.annual_interest_rate_percent ?? 0,
+      interest_free_period_days: d.interest_free_period_days ?? 28,
+      early_payment_incentive_percent: d.early_payment_incentive_percent ?? 0,
+      arrears_action_threshold_cents: d.arrears_action_threshold_cents ?? 5000,
+      levy_calculation_basis: d.levy_calculation_basis ?? "lot_liability",
+      // Master toggle on Step 2. When the manager turns interest off entirely
+      // we set the boolean and zero the rate; the cron checks the boolean.
+      interest_enabled: d.interest_on_overdue_enabled ?? true,
       setup_step: 8,
       status: "active",
       created_by: profile.id,
@@ -1340,6 +1412,38 @@ export async function completeWizard(draftId: string) {
       role: "strata_manager",
       is_primary_contact: true,
     });
+
+    // TFN — encrypt and persist via the pgp_sym_encrypt RPC. Done after the
+    // OC row exists (we need oc.id). Non-fatal: if TFN_ENCRYPTION_KEY isn't
+    // configured we log + carry on rather than aborting OC creation.
+    if (d.tfn && d.tfn.trim()) {
+      const { setOcTfn } = await import("@/lib/crypto/tfn");
+      const r = await setOcTfn(oc.id, d.tfn.trim());
+      if (r.error) {
+        console.error("completeWizard: setOcTfn failed (non-fatal)", r.error);
+      }
+    }
+
+    // Management fee captured on Step 1.1. One ACTIVE row per OC; the partial
+    // unique index on (oc_id) WHERE status='active' enforces it.
+    if (d.management_fee) {
+      const mf = d.management_fee;
+      const { error: mfErr } = await supabase.from("management_fees").insert({
+        oc_id: oc.id,
+        fee_structure: mf.structure,
+        fixed_amount_cents: mf.fixed_amount_cents ?? null,
+        per_lot_amount_cents: mf.per_lot_amount_cents ?? null,
+        gst_applicable: mf.gst_applicable,
+        billing_method: mf.billing_method,
+        contract_term: mf.contract_term,
+        contract_start_date: mf.contract_start_date ?? d.manager_appointment_date ?? null,
+        contract_end_date: mf.contract_end_date ?? null,
+        status: "active",
+      });
+      if (mfErr) {
+        console.error("completeWizard: management_fees insert failed (non-fatal)", mfErr);
+      }
+    }
 
     // Insert lots — opening_balance carries per-lot arrears/credit at setup date.
     // Entitlement / liability are coerced to a number here; the submit
@@ -1366,6 +1470,12 @@ export async function completeWizard(draftId: string) {
     const lotByNumber = new Map<number, string>();
     for (const l of insertedLots) lotByNumber.set(l.lot_number, l.id);
 
+    // Per-lot payment_reference: {first 5 chars of OC short_code}-{lot # padded to 3}.
+    // Spec example: short_code='WHDPECRX', lot 1 → 'WHDPE-001'.
+    const refPrefix = oc.short_code.slice(0, 5).toUpperCase();
+    const paymentRefFor = (lotNumber: number) =>
+      `${refPrefix}-${String(lotNumber).padStart(3, "0")}`;
+
     const ownerRows = d.lots
       .map((l) => {
         const name = (l.owner_name ?? "").trim();
@@ -1375,16 +1485,19 @@ export async function completeWizard(draftId: string) {
         if (!name && !email && !phone && !postal) return null;
         const lotId = lotByNumber.get(l.lot_number);
         if (!lotId) return null;
-        // Initial digital-comms consent recorded by the manager on
-        // wizard page 5. source='manager_initial' (no IP / user-agent)
-        // because the manager is attesting on the owner's behalf — when
-        // the owner later signs up via the portal, that flow overwrites
-        // these with source='signup_flow' + their real IP + UA.
+        // Initial digital-comms consent recorded by the manager on Step 3.2
+        // of the wizard. source='manager_initial' (no IP / user-agent)
+        // because the manager is attesting on the owner's behalf — when the
+        // owner later signs up via the portal, that flow overwrites these
+        // with source='signup_flow' + their real IP + UA.
         const consentCats = l.digital_consent_categories ?? [];
         const hasConsent = consentCats.length > 0;
+        const signupCats = l.at_portal_signup_categories ?? [];
         return {
           lot_id: lotId,
+          oc_id: oc.id,
           name: name || "Owner",
+          owner_type: l.owner_type ?? "individual",
           email: email || null,
           phone: phone || null,
           postal_address: postal || null,
@@ -1395,6 +1508,8 @@ export async function completeWizard(draftId: string) {
           digital_consent_categories: consentCats,
           digital_consent_given_at: hasConsent ? new Date().toISOString() : null,
           digital_consent_source: hasConsent ? "manager_initial" as const : null,
+          at_portal_signup_categories: signupCats,
+          payment_reference: paymentRefFor(l.lot_number),
         };
       })
       .filter((x): x is NonNullable<typeof x> => x !== null);
@@ -1551,10 +1666,16 @@ export async function completeWizard(draftId: string) {
       }
     }
 
-    // Mark draft promoted.
+    // Mark draft promoted. promoted_short_code denormalises the OC's short
+    // code so the wizard's idempotency guard (page.tsx) doesn't have to JOIN
+    // back to owners_corporations on every load.
     await supabase
       .from("oc_drafts")
-      .update({ promoted_oc_id: oc.id, promoted_at: new Date().toISOString() })
+      .update({
+        promoted_oc_id: oc.id,
+        promoted_short_code: oc.short_code,
+        promoted_at: new Date().toISOString(),
+      })
       .eq("id", draft.id);
 
     // Item 22: persist the uploaded Plan-of-Subdivision PDF as a document on
@@ -1860,6 +1981,7 @@ export async function selectDetectedOc(
       plan_number: parsed?.plan_of_subdivision_number ?? current.plan_number,
       oc_number: target.oc_number,
       oc_name: target.oc_name ?? undefined,
+      building_name: target.building_name ?? undefined,
       trading_name: target.building_name ?? undefined,
       address: cased.address ?? undefined,
       street_number: target.street_number ?? undefined,
@@ -1935,6 +2057,7 @@ export async function createDraftFromDetectedOc(sourceDraftId: string, ocIndex: 
       plan_number: parsed?.plan_of_subdivision_number ?? undefined,
       oc_number: target.oc_number,
       oc_name: target.oc_name ?? undefined,
+      building_name: target.building_name ?? undefined,
       trading_name: target.building_name ?? undefined,
       address: cased.address ?? undefined,
       street_number: target.street_number ?? undefined,
