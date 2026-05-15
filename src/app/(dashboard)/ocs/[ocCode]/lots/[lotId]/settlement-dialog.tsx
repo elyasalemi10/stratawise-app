@@ -2,13 +2,12 @@
 
 import { useCallback, useRef, useState } from "react";
 import {
-  Check, FileText, Upload, AlertTriangle, X,
+  Check, FileText, Upload, AlertTriangle, Loader2, X,
 } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { Skeleton } from "@/components/ui/skeleton";
 import {
   Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle,
 } from "@/components/ui/dialog";
@@ -271,17 +270,20 @@ function UploadDropzone({
   );
 }
 
-// ─── Parsing skeleton ─────────────────────────────────────────────
+// ─── Parsing spinner ──────────────────────────────────────────────
+//
+// Mirrors the wizard's plan-of-subdivision upload step — a centred spinner
+// + filename + status copy reads as "we're working on it" more clearly
+// than rectangular skeletons (which suggest "structure is coming").
 
-function ParsingSkeleton({ message = "Reading the settlement document..." }: { message?: string }) {
+function ParsingSkeleton({ message = "Reading the settlement document…" }: { message?: string }) {
   return (
-    <div className="space-y-4 py-2">
-      <p className="text-sm text-muted-foreground">{message}</p>
-      <div className="space-y-3">
-        <Skeleton className="h-9 w-full" />
-        <Skeleton className="h-9 w-full" />
-        <Skeleton className="h-9 w-3/4" />
-      </div>
+    <div className="flex flex-col items-center justify-center gap-3 py-10 text-center">
+      <Loader2 className="h-8 w-8 animate-spin text-primary" />
+      <p className="text-sm font-medium text-foreground">{message}</p>
+      <p className="text-xs text-muted-foreground">
+        This usually takes 10–30 seconds.
+      </p>
     </div>
   );
 }

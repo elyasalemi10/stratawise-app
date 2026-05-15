@@ -273,6 +273,46 @@ export async function bulkInviteLotOwners(
   return { sent, skipped, failed, errors };
 }
 
+/** Fetch the most recent invitation row for a single lot so the invite-
+ *  status popover on /lots can render a timeline (sent / expires) + the
+ *  contact details captured at the time. Returns null when no row exists
+ *  (= "Not invited"). Caller maps the status to UI variants. */
+export async function getLotInvitation(
+  ocId: string,
+  lotId: string,
+): Promise<{
+  id: string;
+  email: string | null;
+  name: string | null;
+  phone: string | null;
+  status: "noted" | "pending" | "accepted" | "expired" | "revoked";
+  created_at: string;
+  expires_at: string | null;
+} | null> {
+  await requireOCAccess(ocId);
+  const supabase = createServerClient();
+
+  const { data } = await supabase
+    .from("invitations")
+    .select("id, email, name, phone, status, created_at, expires_at")
+    .eq("oc_id", ocId)
+    .eq("lot_id", lotId)
+    .order("created_at", { ascending: false })
+    .limit(1)
+    .maybeSingle();
+
+  if (!data) return null;
+  return {
+    id: data.id,
+    email: data.email,
+    name: data.name,
+    phone: data.phone,
+    status: data.status,
+    created_at: data.created_at,
+    expires_at: data.expires_at,
+  };
+}
+
 export async function getLotInvitationStatus(ocId: string, lotIds: string[]) {
   const supabase = createServerClient();
 

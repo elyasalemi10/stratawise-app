@@ -8,22 +8,26 @@ import {
   type ApplySettlementInput,
   type OwnershipHistoryEntry,
 } from "@/lib/validations/settlement";
+import { fetchObject } from "@/lib/storage/r2";
+import { runDocumentAiOcr } from "@/lib/google/document-ai";
 
 import { generateInviteCode } from "@/lib/invite-code";
 
-// ─── Settlement PDF auto-parse: temporarily disabled ────────────
+// ─── Settlement PDF parsing ─────────────────────────────────────
 //
-// Auto-parsing of Section 32 settlement statements used AWS Textract. With
-// the Textract removal we'll re-introduce parsing via Google Document AI's
-// OCR processor (the same path that'll OCR every uploaded document for
-// search indexing). Until then, parseSettlementForReview /
-// parseSettlementAndMatchLot return a not-available error and the manager
-// upload-and-assign manually.
+// First-cut: we run Document AI OCR on every uploaded settlement PDF and
+// store the sanitised raw text on `documents.ocr_text` (parallel run
+// pattern shared with the wizard's plan-of-subdivision flow — see
+// CLAUDE.md "Document OCR" rule). The raw text powers full-text search +
+// future Gemini structured extraction.
+//
+// Structured field extraction via Gemini (Settlement statement → new
+// owner name / settlement date / sale price / etc.) is deferred. The
+// parseSettlement* paths now return an empty SettlementReview so the
+// manager can complete the review form manually; once the Gemini prompt
+// + schema are written we drop the parsed nulls in here.
 
 type StubReturn = { data?: SettlementReview; error: string };
-
-const PARSE_DISABLED_MSG =
-  "Settlement auto-parse is temporarily unavailable. Upload the document and assign the owner manually — auto-parse returns when Document AI integration ships.";
 
 // ─── parseSettlementForReview ──────────────────────────────────
 
@@ -68,27 +72,171 @@ export interface SettlementReview {
   } | null;
 }
 
+// Empty review used as a fallback when structured-field extraction isn't
+// available yet (Gemini integration deferred). The manager fills the
+// review form by hand; the OCR raw text is still stored on the document.
+function emptyReview(args: {
+  documentName: string;
+  matchedLot: SettlementReview["matchedLot"];
+  expected: SettlementReview["expected"];
+  currentOwner: SettlementReview["currentOwner"];
+  pendingInvitationId: string | null;
+}): SettlementReview {
+  return {
+    parsed: {
+      lotNumber: null,
+      planNumber: null,
+      transferee: {
+        name: null, email: null, phone: null, postalAddress: null, dateOfBirth: null,
+      },
+      settlementDate: null,
+      salePriceCents: null,
+      contractDate: null,
+      conveyancer: { name: null, email: null },
+      additionalTransferees: [],
+    },
+    matches: { lotNumber: null, planNumber: null },
+    expected: args.expected,
+    currentOwner: args.currentOwner,
+    pendingInvitationId: args.pendingInvitationId,
+    documentName: args.documentName,
+    matchedLot: args.matchedLot,
+  };
+}
+
+/**
+ * Document AI OCR parallel run. Fetches the PDF from R2, runs OCR, and
+ * stores the sanitised raw text on the documents row. Non-fatal — a
+ * failure logs server-side but doesn't break the settlement flow (the
+ * manager can still complete review manually). Pattern matches the
+ * wizard's plan-of-subdivision OCR step.
+ */
+async function ocrSettlementDocument(documentId: string): Promise<void> {
+  const supabase = createServerClient();
+  const { data: doc, error } = await supabase
+    .from("documents")
+    .select("id, file_path, mime_type, ocr_status")
+    .eq("id", documentId)
+    .maybeSingle();
+  if (error || !doc) {
+    console.error("ocrSettlementDocument: document fetch failed", error);
+    return;
+  }
+  // Skip if already done (idempotent on retry / resume).
+  if (doc.ocr_status === "complete") return;
+  try {
+    const bytes = await fetchObject(doc.file_path);
+    const buffer = Buffer.from(bytes);
+    const result = await runDocumentAiOcr(buffer, doc.mime_type ?? "application/pdf");
+    await supabase
+      .from("documents")
+      .update({ ocr_text: result.text, ocr_status: "complete" })
+      .eq("id", documentId);
+  } catch (err) {
+    console.error("ocrSettlementDocument: OCR failed", err);
+    await supabase
+      .from("documents")
+      .update({ ocr_status: "failed" })
+      .eq("id", documentId);
+  }
+}
+
 export async function parseSettlementForReview(
-  _documentId: string,
-  _lotId: string,
+  documentId: string,
+  lotId: string,
 ): Promise<StubReturn> {
   await requireCompanyRole();
-  return { error: PARSE_DISABLED_MSG };
+  const supabase = createServerClient();
+
+  const { data: doc } = await supabase
+    .from("documents")
+    .select("id, file_name, oc_id, lot_id")
+    .eq("id", documentId)
+    .maybeSingle();
+  if (!doc) return { error: "Document not found" };
+  if (doc.lot_id !== lotId) return { error: "Document is not attached to this lot" };
+  await requireOCAccess(doc.oc_id);
+
+  const { data: lot } = await supabase
+    .from("lots")
+    .select("id, lot_number, unit_number, oc_id")
+    .eq("id", lotId)
+    .maybeSingle();
+  if (!lot) return { error: "Lot not found" };
+
+  const { data: ocRow } = await supabase
+    .from("owners_corporations")
+    .select("plan_number")
+    .eq("id", lot.oc_id)
+    .maybeSingle();
+
+  // Kick off OCR alongside the return — we don't block on it so the
+  // manager sees the review form immediately, and the raw text lands on
+  // the document row shortly after.
+  void ocrSettlementDocument(documentId);
+
+  return {
+    error: "",
+    data: emptyReview({
+      documentName: doc.file_name,
+      matchedLot: {
+        id: lot.id,
+        lotNumber: lot.lot_number,
+        unitNumber: lot.unit_number,
+      },
+      expected: {
+        lotNumber: lot.lot_number,
+        planNumber: ocRow?.plan_number ?? null,
+        planNumberNormalized: (ocRow?.plan_number ?? null)?.toUpperCase().replace(/\s+/g, "") ?? null,
+      },
+      currentOwner: null,
+      pendingInvitationId: null,
+    }),
+  };
 }
 
 // ─── parseSettlementAndMatchLot ──────────────────────────────
-// Bulk-upload entry point. The manager drops a PDF on the oc-level
-// lots page; we parse it, look up the lot in *this* oc by parsed lot
-// number + plan number, and if found update the document to attach it to the
-// lot. The manager confirms a single subsequent applySettlementToLot call.
+// Bulk-upload entry point used from the /lots page Tools dropdown. The
+// PDF is uploaded against the OC (not yet attached to a specific lot);
+// once the manager picks the lot in the review form we attach it.
 
 export async function parseSettlementAndMatchLot(
-  _documentId: string,
+  documentId: string,
   ocId: string,
 ): Promise<StubReturn> {
   await requireCompanyRole();
   await requireOCAccess(ocId);
-  return { error: PARSE_DISABLED_MSG };
+  const supabase = createServerClient();
+
+  const { data: doc } = await supabase
+    .from("documents")
+    .select("id, file_name, oc_id")
+    .eq("id", documentId)
+    .maybeSingle();
+  if (!doc) return { error: "Document not found" };
+
+  const { data: ocRow } = await supabase
+    .from("owners_corporations")
+    .select("plan_number")
+    .eq("id", ocId)
+    .maybeSingle();
+
+  void ocrSettlementDocument(documentId);
+
+  return {
+    error: "",
+    data: emptyReview({
+      documentName: doc.file_name,
+      matchedLot: null,
+      expected: {
+        lotNumber: null,
+        planNumber: ocRow?.plan_number ?? null,
+        planNumberNormalized: (ocRow?.plan_number ?? null)?.toUpperCase().replace(/\s+/g, "") ?? null,
+      },
+      currentOwner: null,
+      pendingInvitationId: null,
+    }),
+  };
 }
 
 // ─── applySettlementToLot ─────────────────────────────────────

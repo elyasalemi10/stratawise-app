@@ -3,10 +3,10 @@
 import { useState, useCallback, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import { toast } from "sonner";
-import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
 import { updateLotField } from "./actions";
 import { getLotInvitationStatus } from "./invitation-actions";
+import { InviteStatusPopover } from "../lots/invite-status-popover";
 import type { LotWithFinancials } from "@/lib/actions/oc";
 import { useOCCode } from "@/lib/oc-context";
 
@@ -121,36 +121,53 @@ export function LotsTab({ lots, ocId, isEditing = false, onLotUpdated, isLotOwne
   const formatCurrency = (n: number) =>
     new Intl.NumberFormat("en-AU", { style: "currency", currency: "AUD" }).format(Math.abs(n));
 
-  function getInviteStatusBadge(lotId: string) {
+  function getInviteStatusForLot(lotId: string): "not_invited" | "noted" | "pending" | "accepted" {
     const status = inviteStatus.get(lotId);
-    if (status === "accepted") return <Badge variant="success">Accepted</Badge>;
-    if (status === "pending") return <Badge variant="warning">Pending</Badge>;
-    if (status === "noted") return <Badge variant="info">Owner noted</Badge>;
-    return <Badge variant="neutral">Not invited</Badge>;
+    if (status === "accepted") return "accepted";
+    if (status === "pending") return "pending";
+    if (status === "noted") return "noted";
+    return "not_invited";
   }
 
   return (
     <div className="space-y-3">
       {/* Table text bumped to text-base for readability — strata managers
           scan this several times a day. Headers stay at text-sm font-medium
-          (normal case) so they're distinct without yelling. */}
+          (normal case) so they're distinct without yelling.
+
+          Column widths: Lot/Unit headers use whitespace-nowrap so the
+          header text never breaks. Long body content (Name, Email) gets
+          truncate with min-w-0 so overflow gets an ellipsis instead of
+          wrapping. Email column capped narrower than Name since email
+          strings dominate available width otherwise. */}
       <div className="overflow-x-auto rounded-lg border border-border">
-        <table className="w-full text-base">
+        <table className="w-full table-fixed text-base">
+          <colgroup>
+            <col className="w-28" />
+            <col className="w-28" />
+            <col />
+            {!isLotOwner && <col className="w-[22%]" />}
+            <col className="w-40" />
+            {!isLotOwner && <col className="w-40" />}
+            {!isLotOwner && <col className="w-32" />}
+          </colgroup>
           <thead>
             <tr className="bg-muted/40 text-sm font-medium text-muted-foreground border-b border-border">
-              <th className="px-4 py-3 text-left w-24">Lot number</th>
-              <th className="px-4 py-3 text-left w-24">Unit number</th>
+              <th className="px-4 py-3 text-left whitespace-nowrap">Lot number</th>
+              <th className="px-4 py-3 text-left whitespace-nowrap">Unit number</th>
               <th className="px-4 py-3 text-left">Name</th>
               {!isLotOwner && <th className="px-4 py-3 text-left">Email</th>}
-              <th className="px-4 py-3 text-left w-44">Units of entitlement</th>
-              {!isLotOwner && <th className="px-4 py-3 text-left w-40">Invite status</th>}
-              {!isLotOwner && <th className="px-4 py-3 text-right w-32">Balance</th>}
+              <th className="px-4 py-3 text-left whitespace-nowrap">Units of entitlement</th>
+              {!isLotOwner && <th className="px-4 py-3 text-left whitespace-nowrap">Invite status</th>}
+              {!isLotOwner && <th className="px-4 py-3 text-right whitespace-nowrap">Balance</th>}
             </tr>
           </thead>
-          {/* Alternating row colours + a slightly brighter hover. The hover
-              selector lives inside the same tbody descendant block so it
-              beats nth-child specificity. */}
-          <tbody className="[&_tr:nth-child(odd)]:bg-card [&_tr:nth-child(even)]:bg-muted/30 [&_tr:hover]:bg-muted/60">
+          {/* Alternating row colours: odd rows white, even rows a cool
+              slate-tinted grey so the stripe contrasts with our warm cream
+              page background (a same-warm-toned even row blends into it).
+              Hover bumps to bg-muted for a tracker-cursor that's
+              noticeable but doesn't fight the stripe. */}
+          <tbody className="[&_tr:nth-child(odd)]:bg-card [&_tr:nth-child(even)]:bg-[#F1F5F9] [&_tr:hover]:!bg-muted">
             {sortedLots.map((lot) => {
               const ownerLabel =
                 lot.owner_display_name ??
@@ -164,11 +181,11 @@ export function LotsTab({ lots, ocId, isEditing = false, onLotUpdated, isLotOwne
                     !isEditing && !isLotOwner ? "cursor-pointer" : ""
                   }`}
                 >
-                  <td className="px-4 font-medium text-foreground tabular-nums">{lot.lot_number}</td>
-                  <td className="px-4 text-muted-foreground tabular-nums">{lot.unit_number ?? ""}</td>
-                  <td className="px-4">
+                  <td className="px-4 font-medium text-foreground tabular-nums whitespace-nowrap">{lot.lot_number}</td>
+                  <td className="px-4 text-muted-foreground tabular-nums whitespace-nowrap">{lot.unit_number ?? ""}</td>
+                  <td className="px-4 truncate">
                     {ownerLabel ? (
-                      <span className={`font-medium ${lot.owner_status === "member" ? "text-foreground" : "text-muted-foreground"}`}>
+                      <span className={`font-medium ${lot.owner_status === "member" ? "text-foreground" : "text-muted-foreground"}`} title={ownerLabel}>
                         {ownerLabel}
                       </span>
                     ) : (
@@ -176,7 +193,7 @@ export function LotsTab({ lots, ocId, isEditing = false, onLotUpdated, isLotOwne
                     )}
                   </td>
                   {!isLotOwner && (
-                    <td className="px-4 text-muted-foreground">
+                    <td className="px-4 text-muted-foreground truncate" title={lot.owner_contact_email ?? ""}>
                       {lot.owner_contact_email ?? ""}
                     </td>
                   )}
@@ -191,9 +208,23 @@ export function LotsTab({ lots, ocId, isEditing = false, onLotUpdated, isLotOwne
                       onSaved={(v) => onLotUpdated(lot.id, "lot_entitlement", v)}
                     />
                   </td>
-                  {!isLotOwner && <td className="px-4">{getInviteStatusBadge(lot.id)}</td>}
                   {!isLotOwner && (
-                    <td className="px-4 text-right tabular-nums">
+                    <td
+                      className="px-4 whitespace-nowrap"
+                      // stopPropagation so clicking the pill doesn't also
+                      // trigger the row's navigate-to-lot-detail handler.
+                      onClick={(e) => e.stopPropagation()}
+                    >
+                      <InviteStatusPopover
+                        ocId={ocId}
+                        lotId={lot.id}
+                        lotNumber={lot.lot_number}
+                        status={getInviteStatusForLot(lot.id)}
+                      />
+                    </td>
+                  )}
+                  {!isLotOwner && (
+                    <td className="px-4 text-right tabular-nums whitespace-nowrap">
                       {lot.balance === 0 ? (
                         <span className="text-[hsl(160,100%,37%)]">{formatCurrency(0)}</span>
                       ) : lot.balance > 0 ? (
