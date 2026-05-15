@@ -130,12 +130,32 @@ export function Step1Upload({
       />
 
       {phase === "idle" && !filename && (
-        <div className="flex flex-col items-center gap-3 rounded-md border border-border bg-card px-4 py-10">
+        // Whole dropzone is one click target — click anywhere inside opens
+        // the file picker. Drag + drop also wired so a PDF dropped onto the
+        // panel triggers the upload directly.
+        <div
+          role="button"
+          tabIndex={0}
+          onClick={() => fileInputRef.current?.click()}
+          onKeyDown={(e) => {
+            if (e.key === "Enter" || e.key === " ") {
+              e.preventDefault();
+              fileInputRef.current?.click();
+            }
+          }}
+          onDragOver={(e) => { e.preventDefault(); }}
+          onDrop={(e) => {
+            e.preventDefault();
+            const file = e.dataTransfer.files[0];
+            if (file) void handleFile(file);
+          }}
+          className="flex cursor-pointer flex-col items-center gap-3 rounded-md border-2 border-dashed border-border bg-card px-4 py-10 outline-none transition-colors hover:border-primary/40 hover:bg-muted/40 focus-visible:ring-2 focus-visible:ring-primary/30"
+        >
           <Upload className="h-8 w-8 text-muted-foreground" />
-          <Button type="button" onClick={() => fileInputRef.current?.click()}>
-            Choose PDF
-          </Button>
-          <p className="text-xs text-muted-foreground">Up to 50 MB</p>
+          <p className="text-sm font-medium text-foreground">
+            Drop or click to upload your plan of subdivision
+          </p>
+          <p className="text-xs text-muted-foreground">PDF · up to 50 MB</p>
         </div>
       )}
 

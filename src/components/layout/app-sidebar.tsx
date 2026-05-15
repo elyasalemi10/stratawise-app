@@ -1075,8 +1075,15 @@ export function AppSidebar({
                     )}
                     aria-hidden={!isOpen}
                   >
+                    {/* Indent the children + draw a vertical guide line on
+                        the left so the items visibly belong to the
+                        accordion header above. The guide uses
+                        sidebar-foreground at a low alpha so it reads as a
+                        subtle structural cue, not chrome. */}
                     <div className="overflow-hidden">
-                      <SidebarMenu>{group.items.map(renderItem)}</SidebarMenu>
+                      <div className="ml-5 border-l border-sidebar-foreground/15 pl-1">
+                        <SidebarMenu>{group.items.map(renderItem)}</SidebarMenu>
+                      </div>
                     </div>
                   </div>
                 </SidebarGroupContent>

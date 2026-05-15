@@ -46,11 +46,12 @@ function TableHeader({ className, ...props }: React.ComponentProps<"thead">) {
   return (
     <thead
       data-slot="table-header"
-      // Per CLAUDE.md: header label in normal case (no uppercase, no
-      // tracking-wider). bg-muted/50 keeps it visually subordinate to body
-      // rows. Single border-b under the whole header is the only horizontal
-      // line in striped variant; bordered variant adds row-level borders.
-      className={cn("bg-muted/50 [&_tr]:border-b [&_tr]:border-border", className)}
+      // Navy header on top of the striped/bordered body. Reads as a
+      // primary surface label (the column names ARE the contract for
+      // every row below) instead of a passive muted strip. Children
+      // (TableHead) inherit text-primary-foreground via text-inherit.
+      // Per CLAUDE.md the labels themselves stay normal-case.
+      className={cn("bg-primary text-primary-foreground [&_tr]:border-b [&_tr]:border-border", className)}
       {...props}
     />
   );
@@ -106,9 +107,11 @@ function TableHead({ className, ...props }: React.ComponentProps<"th">) {
     <th
       data-slot="table-head"
       className={cn(
-        // Normal case (no uppercase). Slightly muted colour so it sits as
-        // metadata, not a row of data. h-12 to give the header label room.
-        "h-12 px-4 text-left align-middle text-sm font-medium text-muted-foreground whitespace-nowrap [&:has([role=checkbox])]:pr-0",
+        // Normal case (no uppercase). text-inherit so we pick up
+        // text-primary-foreground from the navy <TableHeader>; no
+        // standalone colour token so a bordered variant on a card-only
+        // surface could re-skin the header without rewriting TableHead.
+        "h-12 px-4 text-left align-middle text-sm font-medium text-inherit whitespace-nowrap [&:has([role=checkbox])]:pr-0",
         className,
       )}
       {...props}

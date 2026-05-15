@@ -66,6 +66,33 @@ export default async function LotDetailPage({
 
   const documents = (documentsResult.data as DocumentRecord[]) ?? [];
 
+  // Pull the current lot_owners row for the header chip (payment_reference,
+  // owner_type, occupancy) and Tenancy tab (tenant_*, digital consent).
+  // We don't migrate this read to the new owners table yet — the entity
+  // model only carries the universal fields (name/email/phone), not the
+  // per-lot bits (postal occupancy + tenant + consent), which still live
+  // on lot_owners.
+  const lotOwnerResult = await supabase
+    .from("lot_owners")
+    .select(
+      "owner_type, payment_reference, is_occupied_by_owner, tenant_name, tenant_email, tenant_phone, digital_consent_categories, at_portal_signup_categories, postal_address",
+    )
+    .eq("lot_id", lotId)
+    .order("created_at", { ascending: false })
+    .limit(1)
+    .maybeSingle();
+
+  const lotOwnerExtra = lotOwnerResult.data;
+
+  // Most recent payment timestamp for the "Last payment" header line.
+  const { data: lastPaymentRow } = await supabase
+    .from("payments")
+    .select("paid_at, amount")
+    .eq("lot_id", lotId)
+    .order("paid_at", { ascending: false })
+    .limit(1)
+    .maybeSingle();
+
   const [owner, ownershipHistory] = await Promise.all([
     getLotOwner(supabase, lotId),
     getLotOwnershipHistory(lotId),
@@ -79,6 +106,22 @@ export default async function LotDetailPage({
       balance={balance}
       documents={documents}
       ownershipHistory={ownershipHistory}
+      lotOwnerExtra={
+        lotOwnerExtra
+          ? {
+              owner_type: lotOwnerExtra.owner_type ?? null,
+              payment_reference: lotOwnerExtra.payment_reference ?? null,
+              is_occupied_by_owner: lotOwnerExtra.is_occupied_by_owner ?? null,
+              tenant_name: lotOwnerExtra.tenant_name ?? null,
+              tenant_email: lotOwnerExtra.tenant_email ?? null,
+              tenant_phone: lotOwnerExtra.tenant_phone ?? null,
+              digital_consent_categories: (lotOwnerExtra.digital_consent_categories as string[] | null) ?? [],
+              at_portal_signup_categories: (lotOwnerExtra.at_portal_signup_categories as string[] | null) ?? [],
+              postal_address: lotOwnerExtra.postal_address ?? null,
+            }
+          : null
+      }
+      lastPaymentAt={lastPaymentRow?.paid_at ?? null}
     />
   );
 }
