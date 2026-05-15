@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import { useRouter } from "next/navigation";
-import { Pencil, Check, FileSignature } from "lucide-react";
+import { FileSignature } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { LotsTab } from "../manage/lots-tab";
 import { SettlementDialog } from "./[lotId]/settlement-dialog";
@@ -22,17 +22,18 @@ export function LotsPageContent({
   void ocName;
   const router = useRouter();
   const [lots, setLots] = useState(initialLots);
-  const [isEditing, setIsEditing] = useState(false);
   const [settlementOpen, setSettlementOpen] = useState(false);
-  const totalEntitlement = lots.reduce((sum, lot) => sum + lot.lot_entitlement, 0);
 
+  // Edit-on-list is gone. Per-lot edits live on /ocs/[code]/lots/[lotId].
+  // We still expose `onLotUpdated` so any in-row mutation (settlement etc.)
+  // can refresh local state without a full router refresh.
   function onLotUpdated(lotId: string, field: string, value: string | number | null) {
     setLots((prev) =>
       prev.map((lot) =>
         lot.id === lotId
           ? { ...lot, [field]: field === "lot_entitlement" || field === "lot_liability" ? Number(value) || 0 : value }
-          : lot
-      )
+          : lot,
+      ),
     );
   }
 
@@ -44,25 +45,12 @@ export function LotsPageContent({
             <FileSignature className="mr-2 h-3.5 w-3.5" />
             Record settlement
           </Button>
-          {isEditing ? (
-            <Button variant="secondary" size="sm" onClick={() => setIsEditing(false)}>
-              <Check className="mr-2 h-3.5 w-3.5" />
-              Done
-            </Button>
-          ) : (
-            <Button variant="secondary" size="sm" onClick={() => setIsEditing(true)}>
-              <Pencil className="mr-2 h-3.5 w-3.5" />
-              Edit
-            </Button>
-          )}
         </div>
       )}
       <LotsTab
         lots={lots}
         ocId={ocId}
-        isEditing={isEditing}
         onLotUpdated={onLotUpdated}
-        totalEntitlement={totalEntitlement}
         isLotOwner={isLotOwner}
       />
 

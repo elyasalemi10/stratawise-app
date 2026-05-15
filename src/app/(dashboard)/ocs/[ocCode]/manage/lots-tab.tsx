@@ -2,24 +2,28 @@
 
 import { useState, useCallback, useEffect } from "react";
 import { useRouter } from "next/navigation";
-import { Mail, UserPlus, Pencil } from "lucide-react";
+import { ArrowUpDown } from "lucide-react";
 import { toast } from "sonner";
 import { Badge } from "@/components/ui/badge";
-import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { updateLotField } from "./actions";
 import { getLotInvitationStatus } from "./invitation-actions";
-import { InviteDialog } from "./invite-dialog";
 import type { LotWithFinancials } from "@/lib/actions/oc";
 import { useOCCode } from "@/lib/oc-context";
 
 interface LotsTabProps {
   lots: LotWithFinancials[];
   ocId: string;
-  isEditing: boolean;
   onLotUpdated: (lotId: string, field: string, value: string | number | null) => void;
-  totalEntitlement: number;
+  /** Optional: legacy /manage page can pass this to make cells editable. The
+   *  user-facing /lots page passes nothing — edits happen on the lot detail
+   *  page now. */
+  isEditing?: boolean;
   isLotOwner?: boolean;
+  /** Legacy: /manage previously rendered "Total units of entitlement" here.
+   *  Kept as an optional prop so the page still compiles; the value isn't
+   *  rendered any more per the no-totals spec. */
+  totalEntitlement?: number;
 }
 
 function EditableCell({
@@ -29,7 +33,6 @@ function EditableCell({
   ocId,
   isEditing,
   type = "text",
-  placeholder = "—",
   onSaved,
 }: {
   value: string | number | null;
@@ -38,7 +41,6 @@ function EditableCell({
   ocId: string;
   isEditing: boolean;
   type?: "text" | "number";
-  placeholder?: string;
   onSaved: (value: string | number | null) => void;
 }) {
   const [editValue, setEditValue] = useState(String(value ?? ""));
@@ -61,11 +63,13 @@ function EditableCell({
   }, [editValue, value, lotId, field, ocId, type, onSaved]);
 
   if (!isEditing) {
+    // Empty cells stay empty (CLAUDE.md). The visual silence is the
+    // indicator — no em-dash, no "Not set", no "N/A".
     if (type === "number" && value !== null && value !== undefined && Number(value) > 0) {
       return <span className="tabular-nums">{value}</span>;
     }
     if (value) return <span>{value}</span>;
-    return <span className="text-muted-foreground">{placeholder}</span>;
+    return null;
   }
 
   return (
@@ -87,19 +91,20 @@ function EditableCell({
   );
 }
 
-export function LotsTab({ lots, ocId, isEditing, onLotUpdated, totalEntitlement, isLotOwner }: LotsTabProps) {
+export function LotsTab({ lots, ocId, isEditing = false, onLotUpdated, isLotOwner, totalEntitlement }: LotsTabProps) {
+  // Consume the prop so the unused-prop lint doesn't fire on /manage — the
+  // value isn't rendered any more per the no-totals spec.
+  void totalEntitlement;
   const ocCode = useOCCode();
   const router = useRouter();
   const [sortAsc, setSortAsc] = useState(true);
   const [inviteStatus, setInviteStatus] = useState<Map<string, string>>(new Map());
-  const [inviteLot, setInviteLot] = useState<LotWithFinancials | null>(null);
 
   // Fetch invitation status for all lots
   useEffect(() => {
     const lotIds = lots.map((l) => l.id);
     if (lotIds.length === 0) return;
     getLotInvitationStatus(ocId, lotIds).then((statusMap) => {
-      // Server action returns a plain object, convert to Map
       const map = new Map<string, string>();
       if (statusMap instanceof Map) {
         statusMap.forEach((v, k) => map.set(k, v));
@@ -112,7 +117,7 @@ export function LotsTab({ lots, ocId, isEditing, onLotUpdated, totalEntitlement,
   }, [lots, ocId]);
 
   const sortedLots = [...lots].sort((a, b) =>
-    sortAsc ? a.lot_number - b.lot_number : b.lot_number - a.lot_number
+    sortAsc ? a.lot_number - b.lot_number : b.lot_number - a.lot_number,
   );
 
   const formatCurrency = (n: number) =>
@@ -128,60 +133,41 @@ export function LotsTab({ lots, ocId, isEditing, onLotUpdated, totalEntitlement,
 
   return (
     <div className="space-y-3">
-      <div className="flex items-center justify-end">
-        <div className="text-sm text-muted-foreground">
-          Total units of entitlement:{" "}
-          <span className="font-semibold text-foreground tabular-nums">
-            {totalEntitlement > 0 ? totalEntitlement : "—"}
-          </span>
-        </div>
-      </div>
-
       <div className="overflow-x-auto rounded-lg border border-border">
         <table className="w-full text-sm">
           <thead>
-            <tr className="bg-muted/50 text-xs font-medium uppercase tracking-wider text-muted-foreground">
-              <th className={`px-4 py-2.5 text-left ${isLotOwner ? "w-[40%]" : ""}`}>Owner</th>
-              {!isLotOwner && <th className="px-4 py-2.5 text-left">Email</th>}
-              <th className="px-4 py-2.5 text-left">Units of entitlement</th>
-              <th className="px-4 py-2.5 text-left">Unit number</th>
+            <tr className="bg-muted/40 text-xs font-medium text-muted-foreground border-b border-border">
               <th
-                className="px-4 py-2.5 text-left cursor-pointer hover:text-foreground select-none"
+                className="px-4 py-2.5 text-left cursor-pointer hover:text-foreground select-none w-32"
                 onClick={() => setSortAsc((v) => !v)}
               >
-                Lot # {sortAsc ? "↑" : "↓"}
+                <span className="inline-flex items-center gap-1.5">
+                  Lot number
+                  <ArrowUpDown className="h-3 w-3 opacity-60" />
+                </span>
               </th>
-              {!isLotOwner && <th className="px-4 py-2.5 text-left">Invite status</th>}
-              {!isLotOwner && <th className="px-4 py-2.5 text-right">Balance</th>}
-              {!isEditing && !isLotOwner && <th className="px-4 py-2.5 text-right w-20"></th>}
+              <th className="px-4 py-2.5 text-left">Name</th>
+              {!isLotOwner && <th className="px-4 py-2.5 text-left">Email</th>}
+              <th className="px-4 py-2.5 text-left w-40">Units of entitlement</th>
+              {!isLotOwner && <th className="px-4 py-2.5 text-left w-40">Invite status</th>}
+              {!isLotOwner && <th className="px-4 py-2.5 text-right w-32">Balance</th>}
             </tr>
           </thead>
-          <tbody>
+          <tbody className="[&_tr:nth-child(odd)]:bg-card [&_tr:nth-child(even)]:bg-muted/20">
             {sortedLots.map((lot) => {
-              const status = inviteStatus.get(lot.id);
-              const isAccepted = status === "accepted";
-              const ownerLabel = lot.owner_display_name
-                ?? (lot.owner_status === "pending_invitation" ? "Pending invitation" : null);
-
-              let buttonLabel: string;
-              let ButtonIcon: typeof Mail;
-              if (status === "pending") {
-                buttonLabel = "Edit / resend";
-                ButtonIcon = Mail;
-              } else if (status === "noted") {
-                buttonLabel = "Edit owner";
-                ButtonIcon = Pencil;
-              } else {
-                buttonLabel = "Add owner";
-                ButtonIcon = UserPlus;
-              }
+              const ownerLabel =
+                lot.owner_display_name ??
+                (lot.owner_status === "pending_invitation" ? "Pending invitation" : null);
 
               return (
                 <tr
                   key={lot.id}
                   onClick={!isEditing && !isLotOwner ? () => router.push(`/ocs/${ocCode}/lots/${lot.id}`) : undefined}
-                  className={`border-t border-border/50 h-12 transition-colors ${!isEditing && !isLotOwner ? "cursor-pointer hover:bg-muted/30" : ""}`}
+                  className={`h-12 transition-colors hover:bg-muted/40 ${
+                    !isEditing && !isLotOwner ? "cursor-pointer" : ""
+                  }`}
                 >
+                  <td className="px-4 font-medium text-foreground tabular-nums">{lot.lot_number}</td>
                   <td className="px-4">
                     {ownerLabel ? (
                       <span className={`font-medium ${lot.owner_status === "member" ? "text-foreground" : "text-muted-foreground"}`}>
@@ -193,7 +179,7 @@ export function LotsTab({ lots, ocId, isEditing, onLotUpdated, totalEntitlement,
                   </td>
                   {!isLotOwner && (
                     <td className="px-4 text-muted-foreground">
-                      {lot.owner_contact_email ?? "—"}
+                      {lot.owner_contact_email ?? ""}
                     </td>
                   )}
                   <td className="px-4">
@@ -204,22 +190,9 @@ export function LotsTab({ lots, ocId, isEditing, onLotUpdated, totalEntitlement,
                       ocId={ocId}
                       isEditing={isEditing}
                       type="number"
-                      placeholder="Not set"
                       onSaved={(v) => onLotUpdated(lot.id, "lot_entitlement", v)}
                     />
                   </td>
-                  <td className="px-4">
-                    <EditableCell
-                      value={lot.unit_number}
-                      lotId={lot.id}
-                      field="unit_number"
-                      ocId={ocId}
-                      isEditing={isEditing}
-                      placeholder="—"
-                      onSaved={(v) => onLotUpdated(lot.id, "unit_number", v)}
-                    />
-                  </td>
-                  <td className="px-4 font-medium text-foreground">{lot.lot_number}</td>
                   {!isLotOwner && <td className="px-4">{getInviteStatusBadge(lot.id)}</td>}
                   {!isLotOwner && (
                     <td className="px-4 text-right tabular-nums">
@@ -232,27 +205,12 @@ export function LotsTab({ lots, ocId, isEditing, onLotUpdated, totalEntitlement,
                       )}
                     </td>
                   )}
-                  {!isEditing && !isLotOwner && (
-                    <td className="px-4 text-right" onClick={(e) => e.stopPropagation()}>
-                      {!isAccepted && (
-                        <Button
-                          variant="ghost"
-                          size="sm"
-                          className="h-7 text-xs"
-                          onClick={() => setInviteLot(lot)}
-                        >
-                          <ButtonIcon className="mr-1 h-3 w-3" />
-                          {buttonLabel}
-                        </Button>
-                      )}
-                    </td>
-                  )}
                 </tr>
               );
             })}
             {sortedLots.length === 0 && (
               <tr>
-                <td colSpan={isEditing ? 7 : 8} className="px-4 py-12 text-center text-sm text-muted-foreground">
+                <td colSpan={isLotOwner ? 3 : 6} className="px-4 py-12 text-center text-sm text-muted-foreground">
                   No lots found. Create lots from the oc setup wizard.
                 </td>
               </tr>
@@ -260,23 +218,6 @@ export function LotsTab({ lots, ocId, isEditing, onLotUpdated, totalEntitlement,
           </tbody>
         </table>
       </div>
-
-      {/* Owner / invite dialog */}
-      {inviteLot && (
-        <InviteDialog
-          open={!!inviteLot}
-          onClose={() => {
-            setInviteLot(null);
-            router.refresh();
-          }}
-          ocId={ocId}
-          lotId={inviteLot.id}
-          lotNumber={inviteLot.lot_number}
-          prefillEmail={inviteLot.owner_contact_email ?? undefined}
-          prefillName={inviteLot.owner_display_name ?? undefined}
-          prefillPhone={inviteLot.owner_contact_phone ?? undefined}
-        />
-      )}
     </div>
   );
 }

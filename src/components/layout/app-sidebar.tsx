@@ -934,7 +934,7 @@ export function AppSidebar({
               </SidebarMenu>
             </SidebarGroupContent>
           </SidebarGroup>
-        ) : navGroups.map((group) => {
+        ) : navGroups.map((group, groupIdx) => {
           // PP4-D: longest-prefix-wins for active highlight, so a child route
           // (e.g. /reconciliation/mappings) doesn't also light up its parent
           // (/reconciliation). Prefix-only items still match deeper routes
@@ -1001,51 +1001,83 @@ export function AppSidebar({
             );
           };
 
+          // Thin divider before every group except the first — separates
+          // sections (and the dropdowns within them) so they don't run
+          // together visually.
+          const divider = groupIdx > 0 ? (
+            <div
+              aria-hidden
+              className="mx-3 my-1 h-px bg-sidebar-foreground/15"
+            />
+          ) : null;
+
           if (isFlat || !isAccordion) {
             return (
-              <SidebarGroup key={group.label || "_top"}>
-                {/* Keep the static label outside the OC dashboard so the
-                    Inbox / Overview / Management groupings still read as
-                    sections; inside an OC the flat 1-item groups drop the
-                    header entirely. */}
-                {!isFlat && group.label && (
-                  <SidebarGroupLabel>{group.label}</SidebarGroupLabel>
-                )}
-                <SidebarGroupContent>
-                  <SidebarMenu>{group.items.map(renderItem)}</SidebarMenu>
-                </SidebarGroupContent>
-              </SidebarGroup>
+              <div key={group.label || "_top"}>
+                {divider}
+                <SidebarGroup>
+                  {/* Keep the static label outside the OC dashboard so the
+                      Inbox / Overview / Management groupings still read as
+                      sections; inside an OC the flat 1-item groups drop the
+                      header entirely. */}
+                  {!isFlat && group.label && (
+                    <SidebarGroupLabel>{group.label}</SidebarGroupLabel>
+                  )}
+                  <SidebarGroupContent>
+                    <SidebarMenu>{group.items.map(renderItem)}</SidebarMenu>
+                  </SidebarGroupContent>
+                </SidebarGroup>
+              </div>
             );
           }
 
           // Accordion group — big nav-style header that toggles a panel of
           // sub-items. Picking another group closes this one (single-open).
+          // Items stay in the DOM and animate via the grid-rows trick
+          // (`grid-rows-[0fr] → 1fr`) so close transitions actually run
+          // instead of hard-snapping. The inner `overflow-hidden` is what
+          // clips the items during the height interpolation.
           const GroupIcon = GROUP_ICONS[group.label] ?? Briefcase;
           return (
-            <SidebarGroup key={group.label}>
-              <SidebarGroupContent>
-                <SidebarMenu>
-                  <SidebarMenuItem>
-                    <SidebarMenuButton
-                      size="lg"
-                      className="text-base [&>svg]:!size-5"
-                      aria-expanded={isOpen}
-                      onClick={() => setOpenGroup(isOpen ? null : group.label)}
-                    >
-                      <GroupIcon />
-                      <span>{group.label}</span>
-                      <ChevronDown
-                        className={cn(
-                          "ml-auto size-4 transition-transform",
-                          isOpen && "rotate-180",
-                        )}
-                      />
-                    </SidebarMenuButton>
-                  </SidebarMenuItem>
-                  {isOpen && group.items.map(renderItem)}
-                </SidebarMenu>
-              </SidebarGroupContent>
-            </SidebarGroup>
+            <div key={group.label}>
+              {divider}
+              <SidebarGroup>
+                <SidebarGroupContent>
+                  <SidebarMenu>
+                    <SidebarMenuItem>
+                      <SidebarMenuButton
+                        size="lg"
+                        className="text-base [&>svg]:!size-5"
+                        aria-expanded={isOpen}
+                        onClick={() => setOpenGroup(isOpen ? null : group.label)}
+                      >
+                        <GroupIcon />
+                        <span>{group.label}</span>
+                        <ChevronDown
+                          className={cn(
+                            "ml-auto size-4 transition-transform duration-200",
+                            isOpen && "rotate-180",
+                          )}
+                        />
+                      </SidebarMenuButton>
+                    </SidebarMenuItem>
+                  </SidebarMenu>
+                  <div
+                    className={cn(
+                      "grid transition-all duration-200 ease-out",
+                      isOpen
+                        ? "grid-rows-[1fr] opacity-100"
+                        : "grid-rows-[0fr] opacity-0 pointer-events-none",
+                    )}
+                    aria-hidden={!isOpen}
+                  >
+                    <div className="overflow-hidden">
+                      <SidebarMenu>{group.items.map(renderItem)}</SidebarMenu>
+                    </div>
+                  </div>
+                </SidebarGroupContent>
+              </SidebarGroup>
+            </div>
           );
         })}
       </SidebarContent>
