@@ -46,35 +46,71 @@ export async function getLotOwners(
 
   for (const id of lotIds) result.set(id, emptyOwner(id));
 
-  const { data: members } = await supabase
-    .from("oc_members")
-    .select("lot_id, profile_id, profiles!inner(id, first_name, last_name, email, phone)")
+  // ─── Source of truth #1: lot_ownerships + owners (new entity model) ──
+  //
+  // For OCs created post-entity-migration, every captured owner has an
+  // active lot_ownership pointing at an owner row. profile_id != null on
+  // the owner row means they've accepted a portal invite (= "member").
+  const { data: ownerships } = await supabase
+    .from("lot_ownerships")
+    .select("lot_id, owners!inner(id, name, email, phone, profile_id)")
     .in("lot_id", lotIds)
-    .eq("role", "lot_owner")
-    .is("left_at", null);
+    .is("end_date", null);
 
-  for (const m of members ?? []) {
-    if (!m.lot_id) continue;
+  for (const lo of ownerships ?? []) {
+    if (!lo.lot_id) continue;
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const profile = (m as any).profiles;
-    result.set(m.lot_id, {
-      lot_id: m.lot_id,
-      owner_status: "member",
-      owner_display_name: formatName(profile?.first_name ?? null, profile?.last_name ?? null),
-      owner_contact_email: profile?.email ?? null,
-      owner_contact_phone: profile?.phone ?? null,
-      profile_id: m.profile_id,
+    const owner = (lo as any).owners;
+    if (!owner) continue;
+    result.set(lo.lot_id, {
+      lot_id: lo.lot_id,
+      owner_status: owner.profile_id ? "member" : "pending_invitation",
+      owner_display_name: owner.name ?? null,
+      owner_contact_email: owner.email ?? null,
+      owner_contact_phone: owner.phone ?? null,
+      profile_id: owner.profile_id ?? null,
       invitation_id: null,
     });
   }
 
+  // ─── Source of truth #2: legacy oc_members (pre-entity-migration OCs) ─
+  //
+  // Dual-read fallback. Only fill lots that didn't resolve from the new
+  // tables. Once every reader is migrated AND legacy data is backfilled
+  // we drop this block.
   const lotsStillUnowned = lotIds.filter((id) => result.get(id)?.owner_status === "unowned");
-  if (lotsStillUnowned.length === 0) return result;
+  if (lotsStillUnowned.length > 0) {
+    const { data: members } = await supabase
+      .from("oc_members")
+      .select("lot_id, profile_id, profiles!inner(id, first_name, last_name, email, phone)")
+      .in("lot_id", lotsStillUnowned)
+      .eq("role", "lot_owner")
+      .is("left_at", null);
+
+    for (const m of members ?? []) {
+      if (!m.lot_id) continue;
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const profile = (m as any).profiles;
+      result.set(m.lot_id, {
+        lot_id: m.lot_id,
+        owner_status: "member",
+        owner_display_name: formatName(profile?.first_name ?? null, profile?.last_name ?? null),
+        owner_contact_email: profile?.email ?? null,
+        owner_contact_phone: profile?.phone ?? null,
+        profile_id: m.profile_id,
+        invitation_id: null,
+      });
+    }
+  }
+
+  // ─── Source of truth #3: invitations (pre-entity-migration OCs) ──
+  const stillUnowned = lotIds.filter((id) => result.get(id)?.owner_status === "unowned");
+  if (stillUnowned.length === 0) return result;
 
   const { data: invites } = await supabase
     .from("invitations")
     .select("id, lot_id, email, name, phone, created_at")
-    .in("lot_id", lotsStillUnowned)
+    .in("lot_id", stillUnowned)
     .in("status", ["pending", "noted"])
     .order("created_at", { ascending: false });
 

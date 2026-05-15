@@ -653,6 +653,76 @@ async function getLotOwnershipHistoryInner(
 ): Promise<OwnershipHistoryEntry[]> {
   const supabase = createServerClient();
 
+  // ─── Source of truth #1: lot_ownerships + owners + settlements ────────
+  //
+  // Newly-created OCs and any post-settlement transitions populate the
+  // entity tables. Each lot_ownership row carries its own settlement
+  // back-reference, so we can join all the way through without the
+  // audit_log workaround we used pre-migration.
+
+  const { data: ownerships } = await supabase
+    .from("lot_ownerships")
+    .select(
+      "id, start_date, end_date, is_primary_contact, is_financial, source_settlement_id, owners!inner(id, name, email, profile_id)",
+    )
+    .eq("lot_id", lotId)
+    .order("start_date", { ascending: false });
+
+  if (ownerships && ownerships.length > 0) {
+    const settlementIds = ownerships
+      .map((o) => o.source_settlement_id)
+      .filter((x): x is string => !!x);
+    const settlementDocs = new Map<string, { docId: string; fileName: string; filePath: string }>();
+    if (settlementIds.length > 0) {
+      const { data: settlementRows } = await supabase
+        .from("settlements")
+        .select("id, document_id, documents(id, file_name, file_path)")
+        .in("id", settlementIds);
+      for (const s of settlementRows ?? []) {
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        const doc = (s as any).documents;
+        if (doc) {
+          settlementDocs.set(s.id, {
+            docId: doc.id,
+            fileName: doc.file_name,
+            filePath: doc.file_path,
+          });
+        }
+      }
+    }
+    const publicBase = process.env.R2_PUBLIC_URL ?? null;
+    return ownerships.map((o) => {
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const owner = (o as any).owners;
+      const docInfo = o.source_settlement_id ? settlementDocs.get(o.source_settlement_id) ?? null : null;
+      return {
+        id: o.id,
+        profileId: owner?.profile_id ?? null,
+        name: owner?.name ?? null,
+        email: owner?.email ?? null,
+        // The OwnershipHistoryEntry type expects ISO timestamp strings.
+        // start_date is non-null in the schema; coerce to T00:00:00Z.
+        joinedAt: `${o.start_date}T00:00:00Z`,
+        leftAt: o.end_date ? `${o.end_date}T00:00:00Z` : null,
+        isPrimaryContact: o.is_primary_contact,
+        isFinancial: o.is_financial,
+        settlementDocument: docInfo
+          ? {
+              id: docInfo.docId,
+              fileName: docInfo.fileName,
+              publicUrl: publicBase ? `${publicBase}/${docInfo.filePath}` : null,
+            }
+          : null,
+      };
+    });
+  }
+
+  // ─── Source of truth #2: legacy oc_members + audit_log fallback ─
+  //
+  // Pre-entity-migration OCs have no lot_ownership rows yet. Read the
+  // historical oc_members rows + the audit_log "ownership_transfer"
+  // metadata for the settlement-doc backreference.
+
   const { data: members, error } = await supabase
     .from("oc_members")
     .select(
@@ -665,8 +735,6 @@ async function getLotOwnershipHistoryInner(
   if (error) throw new Error(`oc_members query failed: ${error.message}`);
   if (!members || members.length === 0) return [];
 
-  // Pull audit_log rows that reference these member rows so we can show the
-  // settlement document for each ended tenure.
   const memberIds = members.map((m) => m.id);
   const { data: auditRows } = await supabase
     .from("audit_log")

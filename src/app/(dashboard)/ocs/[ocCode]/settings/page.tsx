@@ -2,6 +2,8 @@ import { getOC } from "@/lib/actions/oc";
 import { getCurrentProfile } from "@/lib/auth";
 import { redirect } from "next/navigation";
 import { SettingsContent } from "./settings-content";
+import { ManagementCard } from "./management-card";
+import { getActiveManagementAgreement } from "@/lib/actions/management-transfer";
 
 import { resolveOCFromCode } from "@/lib/oc-resolver";
 
@@ -22,8 +24,20 @@ export default async function OCSettingsPage({
   if (!oc) redirect("/dashboard");
   if (profile?.role === "lot_owner") redirect(`/ocs/${ocCode}`);
 
+  // The active agreement row is the source of truth for "who manages this
+  // OC?" — owners_corporations.management_company_id is still maintained
+  // as a legacy pointer but the agreement record carries the audit trail.
+  const ocMgmtCompanyId = (oc as unknown as { management_company_id: string }).management_company_id;
+  const agreement = await getActiveManagementAgreement(ocId);
+
   return (
-    <SettingsContent
+    <div className="space-y-6">
+      <ManagementCard
+        ocId={ocId}
+        currentCompanyId={ocMgmtCompanyId}
+        agreement={agreement}
+      />
+      <SettingsContent
       oc={{
         id: oc.id,
         name: oc.name,
@@ -54,5 +68,6 @@ export default async function OCSettingsPage({
         financial_postal_buffer_days: (oc as unknown as { financial_postal_buffer_days?: number | null }).financial_postal_buffer_days ?? 14,
       }}
     />
+    </div>
   );
 }

@@ -209,6 +209,71 @@ export async function acceptInvitation(rawCode: string) {
       is_primary_contact: true,
     });
 
+    // ─── Entity-model link: connect the new profile to the owner row ─
+    //
+    // The active lot_ownership for this lot points at an `owners` row
+    // (created either via the wizard or applySettlementToLot). On accept,
+    // we attach this profile to that owner so future reads
+    // (getLotOwners, getLotOwnershipHistory) flip the owner_status to
+    // "member" without losing the email / contact / history we already
+    // captured. If no entity row exists yet (legacy OC pre-migration),
+    // we mint owner + lot_ownership rows fresh so the new tables are
+    // populated from this point forward.
+    if (invitation.lot_id) {
+      try {
+        // Find the OC's management_company_id (needed to scope the owners row).
+        const { data: ocRow } = await supabase
+          .from("owners_corporations")
+          .select("management_company_id")
+          .eq("id", invitation.oc_id)
+          .maybeSingle();
+        const managementCompanyId = ocRow?.management_company_id;
+
+        const { data: activeOwnership } = await supabase
+          .from("lot_ownerships")
+          .select("id, owner_id")
+          .eq("lot_id", invitation.lot_id)
+          .is("end_date", null)
+          .maybeSingle();
+
+        if (activeOwnership) {
+          await supabase
+            .from("owners")
+            .update({ profile_id: profile.id })
+            .eq("id", activeOwnership.owner_id);
+        } else if (managementCompanyId) {
+          // Legacy OC — no owner / lot_ownership yet. Create both.
+          const acceptDate = new Date().toISOString().slice(0, 10);
+          const { data: createdOwner } = await supabase
+            .from("owners")
+            .insert({
+              management_company_id: managementCompanyId,
+              owner_type: "individual",
+              name: invitation.name || [profile.first_name, profile.last_name].filter(Boolean).join(" ").trim() || invitation.email,
+              email: invitation.email ?? profile.email ?? null,
+              phone: invitation.phone ?? null,
+              profile_id: profile.id,
+            })
+            .select("id")
+            .single();
+          if (createdOwner) {
+            await supabase.from("lot_ownerships").insert({
+              lot_id: invitation.lot_id,
+              owner_id: createdOwner.id,
+              oc_id: invitation.oc_id,
+              start_date: acceptDate,
+              is_primary_contact: true,
+              is_financial: true,
+            });
+          }
+        }
+      } catch (err) {
+        // Entity-model writes are non-fatal — the legacy oc_member row
+        // above is enough for the existing read paths.
+        console.error("acceptInvitation: entity-model link failed (non-fatal)", err);
+      }
+    }
+
     // PP4-B: sweep bank_payer_mappings for active mappings on OTHER lots
     // sharing this owner's canonicalised name. Only flips active→ambiguous
     // (Addition 2: never auto-promotes). Owner name resolved from the
