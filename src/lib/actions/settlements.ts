@@ -10,6 +10,7 @@ import {
 } from "@/lib/validations/settlement";
 import { fetchObject } from "@/lib/storage/r2";
 import { runDocumentAiOcr } from "@/lib/google/document-ai";
+import { parseSettlementPdf, type ParsedSettlement } from "@/lib/parse-settlement";
 
 import { generateInviteCode } from "@/lib/invite-code";
 
@@ -72,46 +73,77 @@ export interface SettlementReview {
   } | null;
 }
 
-// Empty review used as a fallback when structured-field extraction isn't
-// available yet (Gemini integration deferred). The manager fills the
-// review form by hand; the OCR raw text is still stored on the document.
-function emptyReview(args: {
-  documentName: string;
-  matchedLot: SettlementReview["matchedLot"];
-  expected: SettlementReview["expected"];
-  currentOwner: SettlementReview["currentOwner"];
-  pendingInvitationId: string | null;
-}): SettlementReview {
+function emptyReviewParsed(): SettlementReview["parsed"] {
   return {
-    parsed: {
-      lotNumber: null,
-      planNumber: null,
-      transferee: {
-        name: null, email: null, phone: null, postalAddress: null, dateOfBirth: null,
-      },
-      settlementDate: null,
-      salePriceCents: null,
-      contractDate: null,
-      conveyancer: { name: null, email: null },
-      additionalTransferees: [],
+    lotNumber: null,
+    planNumber: null,
+    transferee: { name: null, email: null, phone: null, postalAddress: null, dateOfBirth: null },
+    settlementDate: null,
+    salePriceCents: null,
+    contractDate: null,
+    conveyancer: { name: null, email: null },
+    additionalTransferees: [],
+  };
+}
+
+function normalizePlanNumber(s: string | null | undefined): string | null {
+  if (!s) return null;
+  const trimmed = s.trim().toUpperCase().replace(/\s+/g, "");
+  return trimmed || null;
+}
+
+// Map Gemini's snake_case ParsedSettlement onto SettlementReview's
+// camelCase parsed shape. Keeps the storage / API layer (Gemini) and the
+// UI layer (review form) free to evolve independently — change one
+// without touching the other.
+function geminiToReviewParsed(p: ParsedSettlement): SettlementReview["parsed"] {
+  return {
+    lotNumber: p.lot_number,
+    planNumber: p.plan_number,
+    transferee: {
+      name: p.transferee.name,
+      email: p.transferee.email,
+      phone: p.transferee.phone,
+      postalAddress: p.transferee.postal_address,
+      dateOfBirth: p.transferee.date_of_birth,
     },
-    matches: { lotNumber: null, planNumber: null },
-    expected: args.expected,
-    currentOwner: args.currentOwner,
-    pendingInvitationId: args.pendingInvitationId,
-    documentName: args.documentName,
-    matchedLot: args.matchedLot,
+    settlementDate: p.settlement_date,
+    salePriceCents: p.sale_price_cents,
+    contractDate: p.contract_date,
+    conveyancer: { name: p.conveyancer.name, email: p.conveyancer.email },
+    additionalTransferees: p.additional_transferees,
+  };
+}
+
+function computeMatches(
+  parsed: SettlementReview["parsed"],
+  expected: SettlementReview["expected"],
+): SettlementReview["matches"] {
+  return {
+    lotNumber: parsed.lotNumber == null
+      ? null
+      : expected.lotNumber == null ? null : parsed.lotNumber === expected.lotNumber,
+    planNumber: parsed.planNumber == null
+      ? null
+      : expected.planNumberNormalized == null
+        ? null
+        : normalizePlanNumber(parsed.planNumber) === expected.planNumberNormalized,
   };
 }
 
 /**
- * Document AI OCR parallel run. Fetches the PDF from R2, runs OCR, and
- * stores the sanitised raw text on the documents row. Non-fatal — a
- * failure logs server-side but doesn't break the settlement flow (the
- * manager can still complete review manually). Pattern matches the
- * wizard's plan-of-subdivision OCR step.
+ * Fetch the PDF, then run Gemini structured extraction + Document AI OCR
+ * in PARALLEL. Gemini gates the review-form prefill; the OCR raw text
+ * gets persisted on the document row regardless (for full-text search).
+ *
+ * Returns the parsed-settlement fields (Gemini), or null if parsing
+ * failed / the model decided this isn't a settlement document. The
+ * caller falls back to an empty parsed shape in that case so the
+ * manager can complete the review manually.
  */
-async function ocrSettlementDocument(documentId: string): Promise<void> {
+async function parseAndOcrSettlement(
+  documentId: string,
+): Promise<ParsedSettlement | null> {
   const supabase = createServerClient();
   const { data: doc, error } = await supabase
     .from("documents")
@@ -119,26 +151,59 @@ async function ocrSettlementDocument(documentId: string): Promise<void> {
     .eq("id", documentId)
     .maybeSingle();
   if (error || !doc) {
-    console.error("ocrSettlementDocument: document fetch failed", error);
-    return;
+    console.error("parseAndOcrSettlement: document fetch failed", error);
+    return null;
   }
-  // Skip if already done (idempotent on retry / resume).
-  if (doc.ocr_status === "complete") return;
+
+  let bytes: Uint8Array;
   try {
-    const bytes = await fetchObject(doc.file_path);
-    const buffer = Buffer.from(bytes);
-    const result = await runDocumentAiOcr(buffer, doc.mime_type ?? "application/pdf");
+    bytes = await fetchObject(doc.file_path);
+  } catch (err) {
+    console.error("parseAndOcrSettlement: R2 fetch failed", err);
+    return null;
+  }
+  const buffer = Buffer.from(bytes);
+  const mimeType = doc.mime_type ?? "application/pdf";
+
+  // Skip OCR if already done — keeps the parse path idempotent.
+  const shouldOcr = doc.ocr_status !== "complete";
+
+  const [parseResult, ocrResult] = await Promise.allSettled([
+    parseSettlementPdf(buffer),
+    shouldOcr
+      ? runDocumentAiOcr(buffer, mimeType)
+      : Promise.resolve(null),
+  ]);
+
+  // Persist OCR raw text — fire and forget the update; failures log
+  // server-side but don't block the review form.
+  if (ocrResult.status === "fulfilled" && ocrResult.value) {
     await supabase
       .from("documents")
-      .update({ ocr_text: result.text, ocr_status: "complete" })
+      .update({ ocr_text: ocrResult.value.text, ocr_status: "complete" })
       .eq("id", documentId);
-  } catch (err) {
-    console.error("ocrSettlementDocument: OCR failed", err);
+  } else if (ocrResult.status === "rejected") {
+    console.error("parseAndOcrSettlement: OCR failed", ocrResult.reason);
     await supabase
       .from("documents")
       .update({ ocr_status: "failed" })
       .eq("id", documentId);
   }
+
+  if (parseResult.status === "rejected") {
+    console.error("parseAndOcrSettlement: Gemini parse failed", parseResult.reason);
+    return null;
+  }
+  const parsed = parseResult.value;
+  // Document-type gate — Gemini decided this isn't a settlement doc.
+  if (!parsed.is_settlement_document) {
+    console.warn(
+      "parseAndOcrSettlement: model rejected document",
+      parsed.document_type_guess,
+    );
+    return null;
+  }
+  return parsed;
 }
 
 export async function parseSettlementForReview(
@@ -170,35 +235,41 @@ export async function parseSettlementForReview(
     .eq("id", lot.oc_id)
     .maybeSingle();
 
-  // Kick off OCR alongside the return — we don't block on it so the
-  // manager sees the review form immediately, and the raw text lands on
-  // the document row shortly after.
-  void ocrSettlementDocument(documentId);
+  const expected: SettlementReview["expected"] = {
+    lotNumber: lot.lot_number,
+    planNumber: ocRow?.plan_number ?? null,
+    planNumberNormalized: normalizePlanNumber(ocRow?.plan_number),
+  };
 
+  // Gemini parse blocks the response so the review form opens already
+  // pre-filled — same UX as the wizard's plan-of-subdivision step. OCR
+  // raw-text persistence happens in parallel inside parseAndOcrSettlement.
+  const parsed = await parseAndOcrSettlement(documentId);
+
+  const parsedFields = parsed ? geminiToReviewParsed(parsed) : emptyReviewParsed();
   return {
     error: "",
-    data: emptyReview({
+    data: {
+      parsed: parsedFields,
+      matches: computeMatches(parsedFields, expected),
+      expected,
+      currentOwner: null,
+      pendingInvitationId: null,
       documentName: doc.file_name,
       matchedLot: {
         id: lot.id,
         lotNumber: lot.lot_number,
         unitNumber: lot.unit_number,
       },
-      expected: {
-        lotNumber: lot.lot_number,
-        planNumber: ocRow?.plan_number ?? null,
-        planNumberNormalized: (ocRow?.plan_number ?? null)?.toUpperCase().replace(/\s+/g, "") ?? null,
-      },
-      currentOwner: null,
-      pendingInvitationId: null,
-    }),
+    },
   };
 }
 
 // ─── parseSettlementAndMatchLot ──────────────────────────────
 // Bulk-upload entry point used from the /lots page Tools dropdown. The
 // PDF is uploaded against the OC (not yet attached to a specific lot);
-// once the manager picks the lot in the review form we attach it.
+// once Gemini extracts the lot + plan number we look up the matching
+// lot row in this OC and attach the document to it.
 
 export async function parseSettlementAndMatchLot(
   documentId: string,
@@ -221,21 +292,57 @@ export async function parseSettlementAndMatchLot(
     .eq("id", ocId)
     .maybeSingle();
 
-  void ocrSettlementDocument(documentId);
+  const ocExpected: SettlementReview["expected"] = {
+    lotNumber: null,
+    planNumber: ocRow?.plan_number ?? null,
+    planNumberNormalized: normalizePlanNumber(ocRow?.plan_number),
+  };
+
+  const parsed = await parseAndOcrSettlement(documentId);
+  const parsedFields = parsed ? geminiToReviewParsed(parsed) : emptyReviewParsed();
+
+  // Try to match the lot by parsed lot_number within the OC. plan_number
+  // matching is a secondary check — the OC scope is the primary filter.
+  let matchedLot: SettlementReview["matchedLot"] = null;
+  if (parsedFields.lotNumber != null) {
+    const { data: lotMatch } = await supabase
+      .from("lots")
+      .select("id, lot_number, unit_number")
+      .eq("oc_id", ocId)
+      .eq("lot_number", parsedFields.lotNumber)
+      .maybeSingle();
+    if (lotMatch) {
+      matchedLot = {
+        id: lotMatch.id,
+        lotNumber: lotMatch.lot_number,
+        unitNumber: lotMatch.unit_number,
+      };
+      // Attach the document to the matched lot so applySettlementToLot
+      // can find it via doc.lot_id later.
+      await supabase
+        .from("documents")
+        .update({ lot_id: lotMatch.id })
+        .eq("id", documentId);
+    }
+  }
+
+  const expected: SettlementReview["expected"] = {
+    lotNumber: matchedLot?.lotNumber ?? null,
+    planNumber: ocExpected.planNumber,
+    planNumberNormalized: ocExpected.planNumberNormalized,
+  };
 
   return {
     error: "",
-    data: emptyReview({
-      documentName: doc.file_name,
-      matchedLot: null,
-      expected: {
-        lotNumber: null,
-        planNumber: ocRow?.plan_number ?? null,
-        planNumberNormalized: (ocRow?.plan_number ?? null)?.toUpperCase().replace(/\s+/g, "") ?? null,
-      },
+    data: {
+      parsed: parsedFields,
+      matches: computeMatches(parsedFields, expected),
+      expected,
       currentOwner: null,
       pendingInvitationId: null,
-    }),
+      documentName: doc.file_name,
+      matchedLot,
+    },
   };
 }
 

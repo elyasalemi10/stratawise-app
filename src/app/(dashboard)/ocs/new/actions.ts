@@ -1547,6 +1547,81 @@ export async function completeWizard(draftId: string) {
       }
     }
 
+    // Entity-model writes: every captured lot owner also gets an owner
+    // row + an active lot_ownership row. profile_id stays NULL until the
+    // owner accepts a portal invite — at which point a future migration
+    // step (the accept flow) flips profile_id on the owner row. Both
+    // writes are non-fatal so a failure here can't break OC creation.
+    try {
+      const startDate = d.manager_appointment_date
+        ?? d.opening_balance_date
+        ?? new Date().toISOString().slice(0, 10);
+      const ownerEntityRows = d.lots
+        .map((l) => {
+          const name = (l.owner_name ?? "").trim();
+          const email = (l.owner_email ?? "").trim();
+          const phone = (l.owner_phone ?? "").trim();
+          const postal = (l.owner_postal_address ?? "").trim();
+          if (!name && !email && !phone && !postal) return null;
+          const lotId = lotByNumber.get(l.lot_number);
+          if (!lotId) return null;
+          return {
+            lot_id: lotId,
+            lot_number: l.lot_number,
+            owner_payload: {
+              management_company_id: profile.management_company_id,
+              owner_type: (l.owner_type ?? "individual") as "individual" | "company",
+              name: name || "Owner",
+              email: email || null,
+              phone: phone || null,
+              postal_address: postal || null,
+            },
+          };
+        })
+        .filter((x): x is NonNullable<typeof x> => x !== null);
+
+      if (ownerEntityRows.length > 0) {
+        const { data: insertedOwnerEntities, error: ownerInsertErr } = await supabase
+          .from("owners")
+          .insert(ownerEntityRows.map((r) => r.owner_payload))
+          .select("id");
+        if (ownerInsertErr) {
+          console.error("owners insert failed (non-fatal):", ownerInsertErr);
+        } else if (insertedOwnerEntities && insertedOwnerEntities.length === ownerEntityRows.length) {
+          const lotOwnershipRows = ownerEntityRows.map((r, i) => ({
+            lot_id: r.lot_id,
+            owner_id: insertedOwnerEntities[i].id,
+            oc_id: oc.id,
+            start_date: startDate,
+            is_primary_contact: true,
+            is_financial: true,
+          }));
+          const { error: lotOwnershipErr } = await supabase
+            .from("lot_ownerships")
+            .insert(lotOwnershipRows);
+          if (lotOwnershipErr) {
+            console.error("lot_ownerships insert failed (non-fatal):", lotOwnershipErr);
+          }
+        }
+      }
+
+      // management_agreements: every newly-created OC gets an active
+      // agreement row scoped to the current manager. Mirrors the backfill
+      // applied to existing OCs in the entity-model migration.
+      const { error: agreementErr } = await supabase
+        .from("management_agreements")
+        .insert({
+          oc_id: oc.id,
+          management_company_id: profile.management_company_id,
+          start_date: d.manager_appointment_date ?? new Date().toISOString().slice(0, 10),
+        });
+      if (agreementErr) {
+        console.error("management_agreements insert failed (non-fatal):", agreementErr);
+      }
+    } catch (err) {
+      console.error("entity-model writes failed (non-fatal)", err);
+    }
+
     // Committee snapshot. Only insert rows when the manager said the OC
     // has an active committee AND captured at least one name on Step 6.
     // Empty roles are dropped. lot_owner_id is resolved by mapping each
