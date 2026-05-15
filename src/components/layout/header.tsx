@@ -5,6 +5,7 @@ import { usePathname } from "next/navigation";
 import Link from "next/link";
 import { NotificationBell } from "./notification-bell";
 import { DocumentSearch } from "./document-search";
+import { HeaderOCSwitcher } from "./header-oc-switcher";
 import {
   setCachedOCs,
   SIDEBAR_REFRESH_EVENT,
@@ -141,32 +142,41 @@ export function Header({ initialOCs }: HeaderProps) {
 
   return (
     <div className="grid grid-cols-3 items-center flex-1 gap-4">
-      {/* Breadcrumbs — left */}
-      <nav className="flex items-center text-sm min-w-0">
-        {breadcrumbs.map((crumb, i) => (
-          <span key={i} className="flex items-center">
-            {i > 0 && <span className="mx-2 text-muted-foreground">/</span>}
-            {crumb.href && !crumb.isLast ? (
-              <Link
-                href={crumb.href}
-                className="text-muted-foreground hover:text-foreground transition-colors"
-              >
-                {crumb.label}
-              </Link>
-            ) : (
-              <span
-                className={
-                  crumb.isLast
-                    ? "font-medium text-foreground"
-                    : "text-muted-foreground"
-                }
-              >
-                {crumb.label}
-              </span>
-            )}
-          </span>
-        ))}
-      </nav>
+      {/* OC switcher + breadcrumbs — left. The switcher is the primary "where
+          am I?" surface; the breadcrumbs follow as a sub-path indicator. */}
+      <div className="flex items-center gap-2 min-w-0">
+        <HeaderOCSwitcher />
+        {breadcrumbs.length > 0 && (
+          <>
+            <span className="text-muted-foreground/40 shrink-0">/</span>
+            <nav className="flex items-center text-sm min-w-0 truncate">
+              {breadcrumbs.map((crumb, i) => (
+                <span key={i} className="flex items-center">
+                  {i > 0 && <span className="mx-2 text-muted-foreground">/</span>}
+                  {crumb.href && !crumb.isLast ? (
+                    <Link
+                      href={crumb.href}
+                      className="text-muted-foreground hover:text-foreground transition-colors"
+                    >
+                      {crumb.label}
+                    </Link>
+                  ) : (
+                    <span
+                      className={
+                        crumb.isLast
+                          ? "font-medium text-foreground"
+                          : "text-muted-foreground"
+                      }
+                    >
+                      {crumb.label}
+                    </span>
+                  )}
+                </span>
+              ))}
+            </nav>
+          </>
+        )}
+      </div>
 
       {/* Global document search — middle. Falls back to the page title when no
           query is active. */}
@@ -174,8 +184,7 @@ export function Header({ initialOCs }: HeaderProps) {
         <DocumentSearch />
       </div>
 
-      {/* Notification bell — right. Center title was removed: the sidebar's
-          larger switcher already shows the current dashboard. */}
+      {/* Notification bell — right. */}
       <div className="flex items-center justify-end">
         <NotificationBell />
       </div>
