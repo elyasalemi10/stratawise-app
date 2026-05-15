@@ -85,11 +85,13 @@ export default async function LotDetailPage({
   const lotOwnerExtra = lotOwnerResult.data;
 
   // Most recent payment timestamp for the "Last payment" header line.
+  // payments uses payment_date (not paid_at) — the latter is a levy_notices
+  // column. Picking the wrong one made the page server-render fail.
   const { data: lastPaymentRow } = await supabase
     .from("payments")
-    .select("paid_at, amount")
+    .select("payment_date, amount")
     .eq("lot_id", lotId)
-    .order("paid_at", { ascending: false })
+    .order("payment_date", { ascending: false })
     .limit(1)
     .maybeSingle();
 
@@ -121,7 +123,7 @@ export default async function LotDetailPage({
             }
           : null
       }
-      lastPaymentAt={lastPaymentRow?.paid_at ?? null}
+      lastPaymentAt={lastPaymentRow?.payment_date ?? null}
     />
   );
 }

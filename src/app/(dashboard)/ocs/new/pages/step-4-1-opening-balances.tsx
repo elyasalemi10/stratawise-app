@@ -227,7 +227,7 @@ export function Step4OpeningBalances({
 
           <div className="rounded-md border border-border bg-card overflow-hidden">
             <table className="w-full text-sm">
-              <thead className="bg-muted/40 text-muted-foreground">
+              <thead className="bg-primary text-primary-foreground">
                 <tr className="text-xs font-medium">
                   <th className="px-3 py-2 text-left w-20">Lot</th>
                   <th className="px-3 py-2 text-left">Name</th>

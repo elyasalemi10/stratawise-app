@@ -1363,7 +1363,7 @@ export async function completeWizard(draftId: string) {
       // Communications & consent policy — see migration
       // oc_and_lot_owner_digital_consent. Postal-default + signup-consent-on
       // matches Victorian regulatory practice.
-      default_delivery_method: d.default_delivery_method ?? "postal",
+      default_delivery_method: d.default_delivery_method ?? "mixed",
       collect_consent_on_signup: d.collect_consent_on_signup ?? true,
       consent_categories_offered: d.consent_categories_offered ?? ["levies", "agms", "minutes", "breach_notices", "financials"],
       // Buffer config moved to OC settings — save defaults silently

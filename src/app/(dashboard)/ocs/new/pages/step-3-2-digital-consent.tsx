@@ -90,18 +90,12 @@ export function Step3DigitalConsent({
       if (editColumn === "current") return { ...l, digital_consent_categories: editDraft };
       return { ...l, at_portal_signup_categories: editDraft };
     }));
-    if (editColumn === "current" && editDraft.length > 0) {
-      const lot = lots[editLotIdx];
-      if (!(lot?.owner_email ?? "").trim()) {
-        toast.warning(`Lot ${lot?.lot_number}: no email on file — add one on Step 3.1 so they can receive digital notices.`);
-      }
-    }
     setEditLotIdx(null);
   }
 
   async function onContinue() {
     setPending(true);
-    const r = await saveStep(draftId, { lots }, 3, 3); // Advance to Step 3 sub 3 (Comms default).
+    const r = await saveStep(draftId, { lots }, 4, 0); // Advance to Step 4 (Banking). Comms default moved to Settings.
     if (r.error) {
       setPending(false);
       toast.error(r.error);
@@ -126,8 +120,9 @@ export function Step3DigitalConsent({
       </div>
 
       {/* Bulk-set. Radio-style choices that auto-apply on click — no Apply
-          button. "Specific" surfaces a "pick" link that opens the category
-          dialog. */}
+          button. "Specific" reveals a dedicated "Pick consented items"
+          button BELOW the radio group instead of squeezing the link inside
+          the radio row, so it's discoverable when the option is selected. */}
       <div className="rounded-md border border-border bg-card p-4 space-y-3">
         <Label className="text-sm font-semibold text-foreground">Set default for all lots</Label>
         <div className="space-y-2">
@@ -154,26 +149,30 @@ export function Step3DigitalConsent({
                   {selected && <span className="h-2 w-2 rounded-full bg-primary" />}
                 </span>
                 <span className="text-sm text-foreground flex-1">{opt.label}</span>
-                {opt.value === "specific" && (
-                  <span
-                    role="button"
-                    onClick={(e) => { e.stopPropagation(); setBulkSpecificDialogOpen(true); }}
-                    className="text-xs underline text-primary cursor-pointer"
-                  >
-                    pick
-                  </span>
-                )}
               </button>
             );
           })}
         </div>
+        {bulkChoice === "specific" && (
+          <div className="pt-1">
+            <Button
+              type="button"
+              variant="secondary"
+              size="sm"
+              onClick={() => setBulkSpecificDialogOpen(true)}
+            >
+              <Pencil className="size-3.5" />
+              Pick consented items
+            </Button>
+          </div>
+        )}
       </div>
 
       {/* Per-lot table. Alternating row colours (#25); normal-case headers
           (#32); no row dividers. */}
       <div className="rounded-md border border-border bg-card overflow-hidden">
         <table className="w-full text-sm">
-          <thead className="bg-muted/40 text-muted-foreground">
+          <thead className="bg-primary text-primary-foreground">
             <tr className="text-xs font-medium">
               <th className="px-3 py-2 text-left w-24">Lot</th>
               <th className="px-3 py-2 text-left">Owner</th>

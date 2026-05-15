@@ -47,18 +47,19 @@ const LEVY_BASIS = [
 type LevyBasis = typeof LEVY_BASIS[number]["value"];
 
 function InlineYesNoToggle({ value, onChange }: { value: boolean; onChange: (v: boolean) => void }) {
+  // Toggle circle on the LEFT, Yes/No text on the right — matches Step 1.
   return (
     <button
       type="button"
       onClick={() => onChange(!value)}
-      className={`inline-flex items-center justify-between rounded-md border px-3 h-9 cursor-pointer transition-colors w-[180px] ${
+      className={`inline-flex items-center gap-2.5 rounded-md border px-3 h-9 cursor-pointer transition-colors w-[120px] ${
         value ? "border-primary bg-primary/5 text-foreground" : "border-border bg-card text-muted-foreground hover:border-primary/40"
       }`}
     >
-      <span className="text-sm">{value ? "Yes" : "No"}</span>
       <span className={`inline-flex h-5 w-9 items-center rounded-full transition-colors ${value ? "bg-primary" : "bg-border"}`}>
         <span className={`inline-block h-4 w-4 rounded-full bg-white transition-transform ${value ? "translate-x-4" : "translate-x-0.5"}`} />
       </span>
+      <span className="text-sm">{value ? "Yes" : "No"}</span>
     </button>
   );
 }
@@ -86,7 +87,7 @@ export function Step2Settings({
   const [earlyPaymentPct, setEarlyPaymentPct] = useState<string>(
     initialDraft.early_payment_incentive_percent != null
       ? String(initialDraft.early_payment_incentive_percent)
-      : "",
+      : "0",
   );
   const [earlyPaymentInvalid, setEarlyPaymentInvalid] = useState(false);
 

@@ -32,7 +32,13 @@ function pillFor(status: Status) {
   if (status === "accepted") return <Badge variant="success">Accepted</Badge>;
   if (status === "pending") return <Badge variant="warning">Pending</Badge>;
   if (status === "noted") return <Badge variant="info">Owner noted</Badge>;
-  return <Badge variant="neutral">Not invited</Badge>;
+  // Not-invited uses a bordered white pill (not bg-muted) so it stays
+  // legible on the striped table's grey rows — bg-muted matched the row.
+  return (
+    <Badge variant="neutral" className="bg-card border border-border text-muted-foreground">
+      Not invited
+    </Badge>
+  );
 }
 
 interface Invitation {

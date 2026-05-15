@@ -290,7 +290,7 @@ export function Step3Lots({
         }}
       >
         <table className="w-full text-sm">
-          <thead className="bg-muted/40 text-muted-foreground">
+          <thead className="bg-primary text-primary-foreground">
             <tr className="text-xs font-medium">
               <th className="px-2 py-2 text-left w-32">Type</th>
               <th className="px-2 py-2 text-left">Name</th>

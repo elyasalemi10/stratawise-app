@@ -7,7 +7,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { NumberInput } from "@/components/ui/number-input";
-import { NativeDateInput } from "@/components/shared/native-date-input";
+import { DatePicker } from "@/components/shared/date-picker";
 import { VicAddressAutocomplete, type ParsedAddress } from "@/components/shared/vic-address-autocomplete";
 import { saveStep, type DraftJson } from "../actions";
 
@@ -22,18 +22,21 @@ function InlineYesNoToggle({
   value: boolean;
   onChange: (v: boolean) => void;
 }) {
+  // Toggle circle on the LEFT, Yes/No text on the right. Reads as a
+  // sentence next to the field's label (which sits to the left of this
+  // button in the row).
   return (
     <button
       type="button"
       onClick={() => onChange(!value)}
-      className={`inline-flex items-center justify-between rounded-md border px-3 h-9 cursor-pointer transition-colors w-[180px] ${
+      className={`inline-flex items-center gap-2.5 rounded-md border px-3 h-9 cursor-pointer transition-colors w-[120px] ${
         value ? "border-primary bg-primary/5 text-foreground" : "border-border bg-card text-muted-foreground hover:border-primary/40"
       }`}
     >
-      <span className="text-sm">{value ? "Yes" : "No"}</span>
       <span className={`inline-flex h-5 w-9 items-center rounded-full transition-colors ${value ? "bg-primary" : "bg-border"}`}>
         <span className={`inline-block h-4 w-4 rounded-full bg-white transition-transform ${value ? "translate-x-4" : "translate-x-0.5"}`} />
       </span>
+      <span className="text-sm">{value ? "Yes" : "No"}</span>
     </button>
   );
 }
@@ -259,7 +262,7 @@ export function Step1General({
           <Label htmlFor="management-start-date">
             Management start date <span className="text-destructive">*</span>
           </Label>
-          <NativeDateInput
+          <DatePicker
             id="management-start-date"
             value={managementStartDate}
             onChange={(v) => { setManagementStartDate(v); if (managementStartDateInvalid) setManagementStartDateInvalid(false); }}

@@ -139,14 +139,18 @@ export function Step3PostalContact({
 
   // On mount, seed each owner-occupied lot's service address from the OC site
   // address WHEN it isn't already set (resumed drafts that already have
-  // values are left alone). Non-owner-occupied lots start blank.
+  // values are left alone). Non-owner-occupied lots start blank. The unit
+  // number is prepended ("Unit 12, 5 Smith St…") so the seeded address is
+  // already addressed to the lot rather than the building reception.
   const initialLots = useMemo<DraftLot[]>(() => {
     const seed = initialDraft.lots ?? [];
     return seed.map((l) => {
       const isOwnerOccupied = l.is_occupied_by_owner !== false;
       const hasPostal = (l.owner_postal_address ?? "").trim().length > 0;
       if (isOwnerOccupied && !hasPostal && ocSiteAddress) {
-        return { ...l, owner_postal_address: ocSiteAddress };
+        const unit = (l.unit_number ?? "").toString().trim();
+        const prefixed = unit ? `Unit ${unit}, ${ocSiteAddress}` : ocSiteAddress;
+        return { ...l, owner_postal_address: prefixed };
       }
       return l;
     });
@@ -284,7 +288,7 @@ export function Step3PostalContact({
 
         <div className="rounded-md border border-border bg-card overflow-hidden">
           <table className="w-full text-sm">
-            <thead className="bg-muted/40 text-muted-foreground">
+            <thead className="bg-primary text-primary-foreground">
               <tr className="text-xs font-medium">
                 <th className="px-3 py-2 text-left w-24">Lot</th>
                 <th className="px-3 py-2 text-left w-44">Owner</th>

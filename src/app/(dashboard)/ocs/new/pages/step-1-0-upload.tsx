@@ -224,15 +224,15 @@ export function Step1Upload({
       )}
 
       <div className="flex items-center justify-between pt-2">
-        <button
+        <Button
           type="button"
+          variant="secondary"
           onClick={onContinueManually}
           disabled={busy || skipping || continuePending}
-          className="inline-flex items-center gap-1.5 text-sm text-muted-foreground hover:text-foreground disabled:opacity-40 disabled:cursor-not-allowed cursor-pointer"
         >
-          {skipping && <Loader2 className="size-3.5 animate-spin" />}
+          {skipping && <Loader2 className="size-4 animate-spin" />}
           Continue manually
-        </button>
+        </Button>
         <Button
           type="button"
           onClick={onContinue}

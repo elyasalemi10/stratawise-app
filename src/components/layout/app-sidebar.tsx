@@ -658,28 +658,10 @@ export function AppSidebar({
   const [switcherQuery, setSwitcherQuery] = useState("");
 
   // Accordion: only ONE group open at a time. null = all collapsed. Picking a
-  // new group auto-closes the previous one. Persisted per-user so the choice
-  // survives reloads. The active route also auto-opens its containing group
-  // on navigation (handled in the render section).
-  const openGroupKey = `stratawise:sidebar-open-group:${profile?.userEmail ?? "anon"}`;
-  const [openGroup, setOpenGroupState] = useState<string | null>(null);
-  useEffect(() => {
-    if (typeof window === "undefined") return;
-    try {
-      const raw = window.localStorage.getItem(openGroupKey);
-      if (raw) setOpenGroupState(raw === "__none__" ? null : raw);
-    } catch {
-      /* corrupted — leave at default null */
-    }
-  }, [openGroupKey]);
-  function setOpenGroup(label: string | null) {
-    setOpenGroupState(label);
-    if (typeof window !== "undefined") {
-      try {
-        window.localStorage.setItem(openGroupKey, label ?? "__none__");
-      } catch { /* quota / private mode — keep in-memory only */ }
-    }
-  }
+  // new group auto-closes the previous one. NOT persisted — each page load
+  // starts collapsed; the active route auto-opens its containing group on
+  // navigation (handled in the render section).
+  const [openGroup, setOpenGroup] = useState<string | null>(null);
 
   // Refresh listener — fires after mutations (revalidateSidebarFromClient).
   // We don't fetch on mount any more (server hands us fresh data), but we
@@ -773,7 +755,7 @@ export function AppSidebar({
                   size="lg"
                   className="h-16 data-[state=open]:bg-sidebar-accent data-[state=open]:text-sidebar-accent-foreground"
                 >
-                  <div className="flex aspect-square size-9 items-center justify-center rounded-lg bg-sidebar-primary text-sidebar-primary-foreground shrink-0">
+                  <div className="flex aspect-square size-9 items-center justify-center rounded-lg bg-card text-primary shrink-0">
                     <Building2 className="size-4" />
                   </div>
                   <div className="grid flex-1 text-left leading-tight">

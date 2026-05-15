@@ -4,7 +4,7 @@ import { useEffect, useState } from "react";
 import { useSearchParams, useRouter } from "next/navigation";
 import Link from "next/link";
 import {
-  ChevronLeft, FileSignature, Mail, Phone, MapPin,
+  ChevronLeft, FileSignature, Mail, Phone, UserPlus,
   MoreVertical, Repeat, Hash, ShieldCheck, ShieldOff,
   History as HistoryIcon, Calendar, ExternalLink,
 } from "lucide-react";
@@ -21,10 +21,11 @@ import {
 import { LedgerTab } from "./lot-ledger-tab";
 import { DocumentManager } from "@/components/shared/document-manager";
 import { SettlementDialog } from "./settlement-dialog";
+import { InviteDialog } from "../../manage/invite-dialog";
 import type { DocumentRecord } from "@/lib/validations/documents";
 import type { OwnershipHistoryEntry } from "@/lib/validations/settlement";
 import type { LotOwnerInfo } from "@/lib/actions/lot-ownership";
-import { useOCCode, useOptionalOC } from "@/lib/oc-context";
+import { useOCCode } from "@/lib/oc-context";
 
 interface LotOwnerExtra {
   owner_type: string | null;
@@ -133,7 +134,6 @@ export function LotDetailContent({
   lastPaymentAt,
 }: LotDetailContentProps) {
   const ocCode = useOCCode();
-  const oc = useOptionalOC();
   const searchParams = useSearchParams();
   const router = useRouter();
   const rawTab = searchParams.get("tab") ?? "general";
@@ -142,6 +142,7 @@ export function LotDetailContent({
   const [lot, setLot] = useState(initialLot);
   void setLot;
   const [settlementOpen, setSettlementOpen] = useState(false);
+  const [addOwnerOpen, setAddOwnerOpen] = useState(false);
 
   useEffect(() => {
     if (rawTab === "payments") {
@@ -190,10 +191,6 @@ export function LotDetailContent({
               <h1 className="text-2xl font-semibold tracking-tight text-foreground">
                 Lot {lot.lot_number}{lot.unit_number ? ` · Unit ${lot.unit_number}` : ""}
               </h1>
-              <p className="mt-1 text-sm text-muted-foreground inline-flex items-center gap-1.5">
-                <MapPin className="h-3.5 w-3.5 shrink-0" />
-                <span className="truncate">{oc?.address ?? ""}</span>
-              </p>
             </div>
             <DropdownMenu>
               <DropdownMenuTrigger
@@ -205,6 +202,10 @@ export function LotDetailContent({
                 }
               />
               <DropdownMenuContent align="end" sideOffset={6}>
+                <DropdownMenuItem onClick={() => setAddOwnerOpen(true)}>
+                  <UserPlus className="mr-2 h-4 w-4" />
+                  {owner.owner_display_name ? "Update owner contact" : "Add owner"}
+                </DropdownMenuItem>
                 <DropdownMenuItem onClick={() => setSettlementOpen(true)}>
                   <FileSignature className="mr-2 h-4 w-4" />
                   Record settlement
@@ -270,11 +271,7 @@ export function LotDetailContent({
               <span className="text-muted-foreground">Current balance:</span>
               <span
                 className={`font-semibold tabular-nums ${
-                  balance > 0
-                    ? "text-destructive"
-                    : balance < 0
-                      ? "text-[hsl(160,100%,37%)]"
-                      : "text-foreground"
+                  balance > 0 ? "text-destructive" : "text-[hsl(160,100%,37%)]"
                 }`}
               >
                 {balance > 0 ? `-${formatCurrency(balance)}` : formatCurrency(balance)}
@@ -354,6 +351,17 @@ export function LotDetailContent({
         lotId={lot.id}
         lotNumber={Number(lot.lot_number)}
         onApplied={() => router.refresh()}
+      />
+
+      <InviteDialog
+        open={addOwnerOpen}
+        onClose={() => { setAddOwnerOpen(false); router.refresh(); }}
+        ocId={ocId}
+        lotId={lot.id}
+        lotNumber={Number(lot.lot_number)}
+        prefillName={owner.owner_display_name ?? undefined}
+        prefillEmail={owner.owner_contact_email ?? undefined}
+        prefillPhone={owner.owner_contact_phone ?? undefined}
       />
     </div>
   );
