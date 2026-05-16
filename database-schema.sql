@@ -205,8 +205,14 @@ CREATE TABLE management_companies (
 CREATE TABLE profiles (
   id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
   auth_user_id UUID UNIQUE REFERENCES auth.users(id) ON DELETE SET NULL,
-  email TEXT NOT NULL,
+  email TEXT NOT NULL,                              -- login identity (Clerk-mirrored), separate from lot-contact emails
   email_verified BOOLEAN NOT NULL DEFAULT false,    -- our own 6-digit OTP gate
+  -- Item 15: outbound email is sent FROM `<email_username>@<brand-domain>`. Auto-derived
+  -- from first_name + last_name at first onboarding; editable once per 30 days via
+  -- /settings. Old usernames are retained in profile_username_aliases so inbound mail
+  -- to an old address still routes to the same manager.
+  email_username TEXT,
+  email_username_changed_at TIMESTAMPTZ,
   first_name TEXT,
   last_name TEXT,
   phone TEXT,
@@ -221,6 +227,25 @@ CREATE TABLE profiles (
   created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
   updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
+
+CREATE UNIQUE INDEX IF NOT EXISTS profiles_email_username_unique
+  ON profiles(lower(email_username))
+  WHERE email_username IS NOT NULL;
+
+-- Item 15 — username alias forwarding. Every rename writes the previous username here
+-- so legacy inbound mail still reaches the manager until they explicitly retire it.
+CREATE TABLE profile_username_aliases (
+  id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+  username TEXT NOT NULL,
+  profile_id UUID NOT NULL REFERENCES profiles(id) ON DELETE CASCADE,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  retired_at TIMESTAMPTZ
+);
+CREATE UNIQUE INDEX IF NOT EXISTS profile_username_aliases_username_unique
+  ON profile_username_aliases(lower(username));
+CREATE INDEX IF NOT EXISTS idx_profile_username_aliases_profile
+  ON profile_username_aliases(profile_id);
+ALTER TABLE profile_username_aliases ENABLE ROW LEVEL SECURITY;
 
 -- Our own email verification — we send a 6-digit code via Resend (not Supabase's
 -- built-in magic link). The OTP is stored here until verified, then marked used.
@@ -464,6 +489,15 @@ CREATE INDEX idx_lots_oc ON lots(oc_id);
 -- rows; one owner across multiple lots = duplicated rows. invitation_id links
 -- to the pending invite that turns this contact into a portal user.
 -- ============================================================================
+-- Occupancy status (Item 14/18). Three-state enum is the canonical source of truth.
+-- is_occupied_by_owner is retained for back-compat with older readers but should be
+-- kept in sync at the application layer with occupancy_status.
+DO $$ BEGIN
+  IF NOT EXISTS (SELECT 1 FROM pg_type WHERE typname = 'lot_occupancy_status') THEN
+    CREATE TYPE lot_occupancy_status AS ENUM ('owner_occupied','tenanted','vacant');
+  END IF;
+END $$;
+
 CREATE TABLE lot_owners (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   lot_id UUID NOT NULL REFERENCES lots(id) ON DELETE CASCADE,
@@ -473,6 +507,8 @@ CREATE TABLE lot_owners (
   postal_address TEXT,
   share_fraction NUMERIC NOT NULL DEFAULT 1.0 CHECK (share_fraction > 0 AND share_fraction <= 1),
   is_occupied_by_owner BOOLEAN NOT NULL DEFAULT true,
+  occupancy_status lot_occupancy_status NOT NULL DEFAULT 'owner_occupied',
+  ownership_since DATE,  -- when this owner took ownership; nullable for pre-existing rows
   tenant_name TEXT,
   tenant_email TEXT,
   tenant_phone TEXT,
@@ -1283,6 +1319,13 @@ CREATE TABLE lot_ledger_entries (
   void_reason TEXT,
   voided_by_entry_id UUID REFERENCES lot_ledger_entries(id),  -- offset that voided this entry
   voids_entry_id UUID REFERENCES lot_ledger_entries(id),      -- set on offset entries, points back
+  -- Duplicate-payment detection (PP5-D). Set by detectLedgerDuplicate / markLedgerDuplicate
+  -- when an incoming payment hashes equal to an existing one within the 7-day window. The
+  -- self-FK on duplicate_of is required so PostgREST can resolve the embed used by
+  -- loadLotLedger (parent:lot_ledger_entries!duplicate_of(status)).
+  duplicate_of UUID REFERENCES lot_ledger_entries(id),
+  duplicate_status TEXT CHECK (duplicate_status IN ('suspected','confirmed','rejected')),
+  duplicate_metadata JSONB,
   -- Allocation priority (Prompt 4 PP4-A): walker iterates DEBITS in
   -- (allocation_priority ASC, entry_date ASC, created_at ASC) order.
   -- Lower number = walker visits first. Map: interest=1, levy=2,
@@ -1312,6 +1355,7 @@ CREATE INDEX idx_ledger_entries_lot_date    ON lot_ledger_entries(lot_id, entry_
 CREATE INDEX idx_ledger_entries_active_lot  ON lot_ledger_entries(lot_id) WHERE status = 'active';
 CREATE INDEX idx_ledger_entries_reference   ON lot_ledger_entries(reference) WHERE reference IS NOT NULL;
 CREATE INDEX idx_ledger_entries_levy_notice ON lot_ledger_entries(levy_notice_id) WHERE levy_notice_id IS NOT NULL;
+CREATE INDEX idx_ledger_entries_duplicate_of ON lot_ledger_entries(duplicate_of) WHERE duplicate_of IS NOT NULL;
 
 -- ============================================================================
 -- 47. LOT LEDGER STATE  (Prompt 1 — per-lot materialised balance summary)

@@ -1,12 +1,57 @@
 import { Resend } from "resend";
+import { createServerClient } from "@/lib/supabase";
+import { managerEmailFrom, brandDomain } from "@/lib/manager-username";
 
 function getResend() {
   return new Resend(process.env.RESEND_API_KEY);
 }
 
-const FROM_INVITES = process.env.RESEND_INVITES_FROM ?? "StrataWise <noreply@myocm.com.au>";
-const FROM_LEVIES = process.env.RESEND_LEVIES_FROM ?? "StrataWise <noreply@myocm.com.au>";
-const FROM_SYSTEM = process.env.RESEND_SYSTEM_FROM ?? "StrataWise <noreply@myocm.com.au>";
+// Brand + sender configuration. The brand domain (e.g. "stratawise.com.au") is
+// pulled from MANAGER_EMAIL_DOMAIN (preferred) / NEXT_PUBLIC_BRAND_DOMAIN /
+// fallback "stratawise.com.au" via brandDomain(). Brand display name is
+// NEXT_PUBLIC_BRAND_NAME (defaults to "StrataWise"). System-level senders
+// (verification codes, password resets) keep `noreply@...`; manager-initiated
+// senders should resolve `<email_username>@...` per Item 15.
+const BRAND_NAME = process.env.NEXT_PUBLIC_BRAND_NAME ?? "StrataWise";
+const FROM_INVITES =
+  process.env.RESEND_INVITES_FROM ?? `${BRAND_NAME} <noreply@${brandDomain()}>`;
+const FROM_LEVIES =
+  process.env.RESEND_LEVIES_FROM ?? `${BRAND_NAME} <noreply@${brandDomain()}>`;
+const FROM_SYSTEM =
+  process.env.RESEND_SYSTEM_FROM ?? `${BRAND_NAME} <noreply@${brandDomain()}>`;
+
+// Resolves the personalised FROM header for a given manager profile (Item 15).
+// Returns null if the manager hasn't got a username assigned yet — callers fall
+// back to the appropriate FROM_* constant.
+export async function resolveManagerFromHeader(
+  managerProfileId: string,
+): Promise<string | null> {
+  try {
+    const supabase = createServerClient();
+    const { data } = await supabase
+      .from("profiles")
+      .select("email_username, first_name, last_name, management_company_id")
+      .eq("id", managerProfileId)
+      .maybeSingle();
+    if (!data) return null;
+    let displayName: string | null = null;
+    if (data.management_company_id) {
+      const { data: company } = await supabase
+        .from("management_companies")
+        .select("name")
+        .eq("id", data.management_company_id)
+        .maybeSingle();
+      displayName = company?.name ?? null;
+    }
+    if (!displayName) {
+      displayName = [data.first_name, data.last_name].filter(Boolean).join(" ") || BRAND_NAME;
+    }
+    return managerEmailFrom(data.email_username, displayName);
+  } catch (err) {
+    console.error("[email] resolveManagerFromHeader failed:", err);
+    return null;
+  }
+}
 
 // EMAIL_DRY_RUN gate (PP6-C-1 retrofit). Set EMAIL_DRY_RUN=true in dev/staging
 // .env.local to short-circuit all sends with a console.log; production leaves
@@ -1007,6 +1052,46 @@ export async function sendFinalNoticeEmail(
   });
   if (error) {
     console.error("Failed to send levy_final_notice email:", error);
+    return { error: error.message };
+  }
+  return { success: true, id: data?.id ?? null };
+}
+
+// ─── Manager-initiated message (Item 15 — Communications tab "Send email") ──
+// Plain-text body wrapped in the brand shell. FROM resolves to
+// `<email_username>@<brand-domain>` for the manager who is sending. Falls back
+// to FROM_INVITES (noreply) if the manager hasn't got a username yet.
+export async function sendManagerMessageEmail(params: {
+  managerProfileId: string;
+  to: string;
+  subject: string;
+  bodyText: string;
+  ocName?: string | null;
+  companyLogoUrl?: string | null;
+}): Promise<EmailSendResult> {
+  const { managerProfileId, to, subject, bodyText, companyLogoUrl } = params;
+
+  if (isDryRun()) {
+    console.log(
+      `[email-dry-run] type=manager_message from-profile=${managerProfileId} to=${to} subject=${subject}`,
+    );
+    return { dryRun: true };
+  }
+
+  const from = (await resolveManagerFromHeader(managerProfileId)) ?? FROM_INVITES;
+
+  const html = brandShell(
+    `
+    <p style="margin:0 0 16px;color:#0E314C;font-size:14px;line-height:1.6;white-space:pre-wrap;">${escapeHtml(
+      bodyText,
+    )}</p>
+  `,
+    companyLogoUrl ?? null,
+  );
+
+  const { data, error } = await getResend().emails.send({ from, to, subject, html });
+  if (error) {
+    console.error("Failed to send manager_message email:", error);
     return { error: error.message };
   }
   return { success: true, id: data?.id ?? null };
