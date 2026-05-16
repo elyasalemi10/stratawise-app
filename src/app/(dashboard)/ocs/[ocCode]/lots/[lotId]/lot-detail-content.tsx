@@ -4,10 +4,13 @@ import { useEffect, useState } from "react";
 import { useSearchParams, useRouter } from "next/navigation";
 import {
   FileSignature, Mail, Phone, UserPlus,
-  MoreVertical, Repeat, Hash, ShieldCheck, ShieldOff,
-  ExternalLink,
+  MoreVertical, Hash,
+  Pencil,
 } from "lucide-react";
 import { useSetBreadcrumb } from "@/lib/breadcrumb-context";
+import { EditPopover } from "@/components/shared/edit-popover";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
@@ -234,13 +237,24 @@ export function LotDetailContent({
           </div>
 
           {/* Lot meta strip. tabular-nums on number values so columns of
-              digits line up. */}
+              digits line up. The "Edit lot details" trigger opens one popover
+              that lets the manager update unit number / entitlement / liability
+              together (Item 9). Lot number itself stays locked. */}
           <div className="flex flex-wrap items-center gap-x-5 gap-y-1 text-sm">
             <MetaPair label="Entitlement" value={lot.lot_entitlement ? String(lot.lot_entitlement) : ""} />
             <MetaPair label="Liability" value={lot.lot_liability ? String(lot.lot_liability) : ""} />
             {lotOwnerExtra?.payment_reference && (
               <MetaPair label="Reference" value={lotOwnerExtra.payment_reference} mono />
             )}
+            <LotDetailsEditPopover
+              lotId={lot.id}
+              initial={{
+                unit_number: lot.unit_number ?? "",
+                lot_entitlement: lot.lot_entitlement ?? null,
+                lot_liability: lot.lot_liability ?? null,
+              }}
+              onSaved={() => router.refresh()}
+            />
           </div>
 
           <div className="border-t border-border" />
@@ -420,6 +434,83 @@ function MetaPair({ label, value, mono }: { label: string; value: string; mono?:
         {value}
       </span>
     </span>
+  );
+}
+
+// ─── Lot details popover (unit number + entitlement + liability) ────────
+// Bundled into one popover so the manager can adjust all three identifiers
+// in one flow. `requireConfirmation` on EditPopover surfaces a "Confirm save"
+// step because these fields ripple into levy calculations + voting rights.
+
+function LotDetailsEditPopover({
+  lotId,
+  initial,
+  onSaved,
+}: {
+  lotId: string;
+  initial: { unit_number: string; lot_entitlement: number | null; lot_liability: number | null };
+  onSaved: () => void;
+}) {
+  const [unit, setUnit] = useState(initial.unit_number);
+  const [entitlement, setEntitlement] = useState(
+    initial.lot_entitlement !== null ? String(initial.lot_entitlement) : "",
+  );
+  const [liability, setLiability] = useState(
+    initial.lot_liability !== null ? String(initial.lot_liability) : "",
+  );
+
+  // Lazy-require the action only when this popover gets rendered.
+  return (
+    <EditPopover
+      label="Edit lot details"
+      renderTrigger={() => (
+        <button
+          type="button"
+          className="inline-flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground cursor-pointer"
+        >
+          <Pencil className="h-3 w-3" />
+          Edit
+        </button>
+      )}
+      requireConfirmation
+      confirmationMessage="These values drive levy calculations. Save anyway?"
+      onSave={async () => {
+        const entitlementNum = entitlement.trim() ? parseFloat(entitlement) : null;
+        const liabilityNum = liability.trim() ? parseFloat(liability) : null;
+        if (entitlementNum !== null && !Number.isFinite(entitlementNum)) {
+          return { ok: false as const, error: "Entitlement must be a number." };
+        }
+        if (liabilityNum !== null && !Number.isFinite(liabilityNum)) {
+          return { ok: false as const, error: "Liability must be a number." };
+        }
+        const { updateLotDetails } = await import("@/lib/actions/lot-edit");
+        const res = await updateLotDetails({
+          lot_id: lotId,
+          unit_number: unit.trim() || null,
+          lot_entitlement: entitlementNum,
+          lot_liability: liabilityNum,
+        });
+        if (res.ok) onSaved();
+        return res.ok ? { ok: true as const } : { ok: false as const, error: res.error };
+      }}
+    >
+      <Label>Unit number</Label>
+      <Input value={unit} onChange={(e) => setUnit(e.target.value)} placeholder="Unit number" />
+      <Label className="pt-1">Lot entitlement</Label>
+      <Input
+        value={entitlement}
+        onChange={(e) => setEntitlement(e.target.value)}
+        placeholder="Lot entitlement"
+        inputMode="decimal"
+      />
+      <Label className="pt-1">Lot liability</Label>
+      <Input
+        value={liability}
+        onChange={(e) => setLiability(e.target.value)}
+        placeholder="Lot liability"
+        inputMode="decimal"
+      />
+    </EditPopover>
   );
 }
 
