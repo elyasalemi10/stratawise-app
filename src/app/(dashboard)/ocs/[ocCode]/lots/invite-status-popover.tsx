@@ -1,12 +1,19 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { Calendar, Check, Loader2, Mail, MailOpen, Pencil, X } from "lucide-react";
+import { Calendar, Check, ChevronLeft, Loader2, Mail, MailOpen, Pencil, X } from "lucide-react";
+import { useRouter } from "next/navigation";
+import { toast } from "sonner";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
 import { Badge } from "@/components/ui/badge";
-import { InviteDialog } from "../manage/invite-dialog";
-import { getLotInvitation } from "../manage/invitation-actions";
+import {
+  getLotInvitation,
+  inviteLotOwner,
+  updateLotOwnerDetails,
+} from "../manage/invitation-actions";
 
 // Pill-triggered popover that shows the invite timeline + a single primary
 // action (Invite / Resend / nothing-to-do). Click the pill on a /lots row
@@ -51,17 +58,23 @@ interface Invitation {
   expires_at: string | null;
 }
 
+type ViewMode = "timeline" | "form";
+
 export function InviteStatusPopover({ ocId, lotId, lotNumber, status }: Props) {
   const [open, setOpen] = useState(false);
+  const [mode, setMode] = useState<ViewMode>("timeline");
   const [loading, setLoading] = useState(false);
   const [invitation, setInvitation] = useState<Invitation | null>(null);
-  const [inviteDialogOpen, setInviteDialogOpen] = useState(false);
+  const router = useRouter();
 
   // Fetch the latest invitation row only when the popover first opens —
   // keeps the /lots page snappy when there are dozens of rows. Refreshes
   // each time the popover reopens so a recent resend reflects immediately.
   useEffect(() => {
-    if (!open) return;
+    if (!open) {
+      setMode("timeline");
+      return;
+    }
     setLoading(true);
     getLotInvitation(ocId, lotId).then((inv) => {
       setInvitation(inv);
@@ -73,26 +86,26 @@ export function InviteStatusPopover({ ocId, lotId, lotNumber, status }: Props) {
   const isPending = status === "pending";
 
   return (
-    <>
-      <Popover open={open} onOpenChange={setOpen}>
-        <PopoverTrigger
-          render={
-            <button
-              type="button"
-              onClick={(e) => { e.stopPropagation(); }}
-              aria-label="View invite status"
-              className="inline-flex cursor-pointer items-center"
-            >
-              {pillFor(status)}
-            </button>
-          }
-        />
-        <PopoverContent
-          align="start"
-          sideOffset={6}
-          className="w-80 p-3"
-          onClick={(e) => e.stopPropagation()}
-        >
+    <Popover open={open} onOpenChange={setOpen}>
+      <PopoverTrigger
+        render={
+          <button
+            type="button"
+            onClick={(e) => { e.stopPropagation(); }}
+            aria-label="View invite status"
+            className="inline-flex cursor-pointer items-center"
+          >
+            {pillFor(status)}
+          </button>
+        }
+      />
+      <PopoverContent
+        align="start"
+        sideOffset={6}
+        className="w-96 p-3"
+        onClick={(e) => e.stopPropagation()}
+      >
+        {mode === "timeline" ? (
           <div className="space-y-3">
             {/* Header — status + key contact line */}
             <div className="flex items-start justify-between gap-2">
@@ -161,14 +174,10 @@ export function InviteStatusPopover({ ocId, lotId, lotNumber, status }: Props) {
               </ol>
             )}
 
-            {/* Primary action — single button per status. Accepted owners
-                get nothing actionable from the popover. */}
+            {/* Primary action — opens the inline form (Item 1 — no modal). */}
             <div className="flex justify-end gap-2 pt-1">
               {!isAccepted && (
-                <Button
-                  size="sm"
-                  onClick={() => { setInviteDialogOpen(true); setOpen(false); }}
-                >
+                <Button size="sm" onClick={() => setMode("form")}>
                   {invitation ? (
                     <>
                       <Mail className="mr-1.5 h-3 w-3" />
@@ -190,20 +199,152 @@ export function InviteStatusPopover({ ocId, lotId, lotNumber, status }: Props) {
               )}
             </div>
           </div>
-        </PopoverContent>
-      </Popover>
+        ) : (
+          <InvitePopoverForm
+            ocId={ocId}
+            lotId={lotId}
+            lotNumber={lotNumber}
+            initial={{
+              name: invitation?.name ?? "",
+              email: invitation?.email ?? "",
+              phone: invitation?.phone ?? "",
+            }}
+            onBack={() => setMode("timeline")}
+            onDone={() => {
+              setOpen(false);
+              router.refresh();
+            }}
+          />
+        )}
+      </PopoverContent>
+    </Popover>
+  );
+}
 
-      <InviteDialog
-        open={inviteDialogOpen}
-        onClose={() => setInviteDialogOpen(false)}
-        ocId={ocId}
-        lotId={lotId}
-        lotNumber={lotNumber}
-        prefillEmail={invitation?.email ?? undefined}
-        prefillName={invitation?.name ?? undefined}
-        prefillPhone={invitation?.phone ?? undefined}
-      />
-    </>
+interface InvitePopoverFormProps {
+  ocId: string;
+  lotId: string;
+  lotNumber: number;
+  initial: { name: string; email: string; phone: string };
+  onBack: () => void;
+  onDone: () => void;
+}
+
+function InvitePopoverForm({ ocId, lotId, lotNumber, initial, onBack, onDone }: InvitePopoverFormProps) {
+  const [name, setName] = useState(initial.name);
+  const [email, setEmail] = useState(initial.email);
+  const [phone, setPhone] = useState(initial.phone);
+  const [saving, setSaving] = useState(false);
+  const [sending, setSending] = useState(false);
+
+  async function saveOnly() {
+    if (!name.trim()) {
+      toast.error("Name is required");
+      return;
+    }
+    setSaving(true);
+    const result = await updateLotOwnerDetails(ocId, lotId, {
+      name: name.trim(),
+      email: email.trim() || null,
+      phone: phone.trim() || null,
+    });
+    setSaving(false);
+    if (result.error) {
+      toast.error(result.error);
+      return;
+    }
+    toast.success("Owner details saved");
+    onDone();
+  }
+
+  async function sendInvite() {
+    if (!name.trim()) {
+      toast.error("Name is required");
+      return;
+    }
+    if (!email.trim()) {
+      toast.error("Add an email address before sending an invitation");
+      return;
+    }
+    setSending(true);
+    const result = await inviteLotOwner(ocId, lotId, {
+      email: email.trim(),
+      name: name.trim(),
+      phone: phone.trim() || undefined,
+    });
+    setSending(false);
+    if (result.error) {
+      toast.error(result.error);
+      return;
+    }
+    toast.success("Invitation sent", { description: `Sent to ${email.trim()}.` });
+    onDone();
+  }
+
+  return (
+    <div className="space-y-3">
+      <div className="flex items-center gap-2 -ml-1">
+        <button
+          type="button"
+          onClick={onBack}
+          className="inline-flex h-6 w-6 items-center justify-center rounded-md text-muted-foreground hover:bg-muted hover:text-foreground cursor-pointer"
+          aria-label="Back"
+        >
+          <ChevronLeft className="h-4 w-4" />
+        </button>
+        <div className="min-w-0">
+          <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
+            Lot {lotNumber}
+          </p>
+          <p className="text-sm font-semibold text-foreground">Owner contact</p>
+        </div>
+      </div>
+
+      <div className="space-y-1.5">
+        <Label>
+          Full name <span className="text-destructive">*</span>
+        </Label>
+        <Input value={name} onChange={(e) => setName(e.target.value)} placeholder="Full name" />
+      </div>
+
+      <div className="space-y-1.5">
+        <Label>Email</Label>
+        <Input
+          type="email"
+          value={email}
+          onChange={(e) => setEmail(e.target.value)}
+          placeholder="Email"
+        />
+        <p className="text-xs text-muted-foreground">Required to send an invitation.</p>
+      </div>
+
+      <div className="space-y-1.5">
+        <Label>Phone</Label>
+        <Input value={phone} onChange={(e) => setPhone(e.target.value)} placeholder="Phone" />
+      </div>
+
+      <div className="flex items-center justify-end gap-2 pt-1">
+        <Button
+          type="button"
+          variant="secondary"
+          size="sm"
+          onClick={saveOnly}
+          disabled={saving || sending}
+        >
+          {saving && <Loader2 className="mr-1 h-3 w-3 animate-spin" />}
+          Save
+        </Button>
+        <Button
+          type="button"
+          size="sm"
+          onClick={sendInvite}
+          disabled={!email.trim() || saving || sending}
+        >
+          {sending && <Loader2 className="mr-1 h-3 w-3 animate-spin" />}
+          Save &amp; invite
+        </Button>
+      </div>
+    </div>
   );
 }
 
