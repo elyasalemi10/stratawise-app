@@ -5,6 +5,7 @@ import { headers } from "next/headers";
 import { createServerClient } from "@/lib/supabase";
 import { sendPasswordResetCodeEmail } from "@/lib/email";
 import { rateLimitCheck, getClientIp } from "@/lib/rate-limit";
+import { logAudit } from "@/lib/audit";
 
 // Our own password-reset flow — same 6-digit OTP machinery as signup
 // verification, but the user is NOT signed in, we look up by email, and
@@ -187,6 +188,16 @@ export async function resetPasswordWithCode(
     .from("email_verification_codes")
     .update({ used_at: nowIso })
     .eq("id", row.id);
+
+  // Item 10 — security-sensitive action; log to audit trail. Don't include the
+  // new password or the code in the audit row.
+  await logAudit({
+    profileId: profile.id,
+    action: "password_reset",
+    entityType: "profile",
+    entityId: profile.id,
+    metadata: { via: "email_code" },
+  });
 
   return { ok: true };
 }

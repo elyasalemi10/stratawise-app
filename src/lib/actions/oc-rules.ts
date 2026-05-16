@@ -3,6 +3,7 @@
 import { requireCompanyRole, requireOCAccess } from "@/lib/auth";
 import { createServerClient } from "@/lib/supabase";
 import { getSignedDownloadUrl } from "@/lib/storage/r2";
+import { logAudit } from "@/lib/audit";
 
 export type OCRule = {
   id: string;
@@ -66,7 +67,7 @@ export async function createOCRule(input: {
   rule_type: "registered" | "standing";
 }): Promise<{ success?: true; ruleId?: string; error?: string }> {
   try {
-    await requireCompanyRole();
+    const profile = await requireCompanyRole();
     await requireOCAccess(input.oc_id);
     const supabase = createServerClient();
 
@@ -100,6 +101,18 @@ export async function createOCRule(input: {
       console.error("createOCRule: insert failed", error);
       return { error: "Couldn't save the rule. Please try again." };
     }
+    await logAudit({
+      profileId: profile.id,
+      ocId: input.oc_id,
+      action: "create",
+      entityType: "rule",
+      entityId: data.id,
+      after: {
+        rule_number: input.rule_number,
+        heading: input.heading ?? null,
+        rule_type: input.rule_type,
+      },
+    });
     return { success: true, ruleId: data.id };
   } catch (err) {
     return { error: err instanceof Error ? err.message : "Unexpected error" };
@@ -119,12 +132,12 @@ export async function updateOCRule(input: {
   rule_type: "model" | "registered" | "standing";
 }): Promise<{ success?: true; error?: string }> {
   try {
-    await requireCompanyRole();
+    const profile = await requireCompanyRole();
     const supabase = createServerClient();
     // Resolve OC for access check.
     const { data: row } = await supabase
       .from("oc_rules")
-      .select("oc_id")
+      .select("oc_id, rule_number, heading, body, rule_type")
       .eq("id", input.rule_id)
       .single();
     if (!row?.oc_id) return { error: "Rule not found." };
@@ -144,6 +157,23 @@ export async function updateOCRule(input: {
       console.error("updateOCRule: update failed", error);
       return { error: "Couldn't save the changes." };
     }
+    await logAudit({
+      profileId: profile.id,
+      ocId: row.oc_id as string,
+      action: "update",
+      entityType: "rule",
+      entityId: input.rule_id,
+      before: {
+        rule_number: row.rule_number,
+        heading: row.heading,
+        rule_type: row.rule_type,
+      },
+      after: {
+        rule_number: input.rule_number,
+        heading: input.heading ?? null,
+        rule_type: input.rule_type,
+      },
+    });
     return { success: true };
   } catch (err) {
     return { error: err instanceof Error ? err.message : "Unexpected error" };
@@ -157,11 +187,11 @@ export async function updateOCRule(input: {
  */
 export async function deleteOCRule(rule_id: string): Promise<{ success?: true; error?: string }> {
   try {
-    await requireCompanyRole();
+    const profile = await requireCompanyRole();
     const supabase = createServerClient();
     const { data: row } = await supabase
       .from("oc_rules")
-      .select("oc_id")
+      .select("oc_id, rule_number, heading, body, rule_type")
       .eq("id", rule_id)
       .single();
     if (!row?.oc_id) return { error: "Rule not found." };
@@ -172,6 +202,19 @@ export async function deleteOCRule(rule_id: string): Promise<{ success?: true; e
       console.error("deleteOCRule: delete failed", error);
       return { error: "Couldn't delete the rule." };
     }
+    await logAudit({
+      profileId: profile.id,
+      ocId: row.oc_id as string,
+      action: "delete",
+      entityType: "rule",
+      entityId: rule_id,
+      before: {
+        rule_number: row.rule_number,
+        heading: row.heading,
+        body: row.body,
+        rule_type: row.rule_type,
+      },
+    });
     return { success: true };
   } catch (err) {
     return { error: err instanceof Error ? err.message : "Unexpected error" };

@@ -5,6 +5,7 @@ import { getCurrentProfile, requireOCAccess } from "@/lib/auth";
 import { createServerClient } from "@/lib/supabase";
 import { publicUrlFor } from "@/lib/storage/r2";
 import { countLotsWithOwner, getLotOwners, type LotOwnerStatus } from "@/lib/actions/lot-ownership";
+import { logAudit } from "@/lib/audit";
 
 /**
  * Call at the tail of every mutation server action that affects the sidebar
@@ -494,6 +495,13 @@ export async function deleteDraft(draftId: string): Promise<{ success?: true; er
       console.error("deleteDraft: delete failed", delErr);
       return { error: "Couldn't delete the draft — please try again." };
     }
+    await logAudit({
+      profileId: profile.id,
+      action: "delete",
+      entityType: "owners_corporation",
+      entityId: draftId,
+      metadata: { kind: "draft", deleted_files: keys.length },
+    });
     // Refresh the sidebar OC list since drafts appear there too.
     updateTag(`sidebar-ocs-${profile.management_company_id}`);
     return { success: true };
