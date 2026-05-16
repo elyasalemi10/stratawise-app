@@ -4,12 +4,14 @@ import { requireCompanyRole } from "@/lib/auth";
 import { createServerClient } from "@/lib/supabase";
 import { logAudit } from "@/lib/audit";
 import {
-  findAvailableUsername,
-  isUsernameAvailable,
   isValidUsername,
   isWithinCooldown,
   USERNAME_CHANGE_COOLDOWN_DAYS,
 } from "@/lib/manager-username";
+import {
+  findAvailableUsername,
+  isUsernameAvailable,
+} from "@/lib/manager-username-server";
 
 type Result<T> = { ok: true; data: T } | { ok: false; error: string };
 

@@ -1,13 +1,15 @@
-import "server-only";
-import { createServerClient } from "@/lib/supabase";
-
-// Manager email-username system (Item 15).
+// Pure helpers for the manager email-username system (Item 15). NO
+// "server-only" gate here so the file can be imported from modules that end
+// up in the client bundle (e.g. via notifications.ts → email.ts). The DB
+// helpers (isUsernameAvailable / findAvailableUsername) live in
+// src/lib/manager-username-server.ts and DO carry "server-only".
 //
-// Outbound manager email is sent from `<email_username>@<brand-domain>`. The brand
-// domain comes from MANAGER_EMAIL_DOMAIN (or NEXT_PUBLIC_BRAND_DOMAIN). The username
-// is auto-derived at first onboarding from first_name + last_name. Managers can
-// rename in /settings, but only once per 30 days. Every rename writes the old
-// username to profile_username_aliases so legacy inbound mail still resolves.
+// Outbound manager email is sent from `<email_username>@<brand-domain>`. The
+// brand domain comes from MANAGER_EMAIL_DOMAIN (or NEXT_PUBLIC_BRAND_DOMAIN).
+// The username is auto-derived at first onboarding from first_name + last_name.
+// Managers can rename in /settings, but only once per 30 days. Every rename
+// writes the old username to profile_username_aliases so legacy inbound mail
+// still resolves.
 
 const USERNAME_RX = /^[a-z0-9][a-z0-9._-]{1,38}[a-z0-9]$/;
 export const USERNAME_CHANGE_COOLDOWN_DAYS = 30;
@@ -31,8 +33,8 @@ function slugify(s: string | null | undefined): string {
 //   1. firstname.lastname
 //   2. f.lastname
 //   3. firstname.l
-//   4. firstname.lastname1, firstname.lastname2, ...
-// The numeric suffix loop is bounded — caller stops at the first available match.
+// The numeric fallback (firstname.lastname2, …) happens in the server helper
+// once we know which ones are taken.
 export function buildUsernameCandidates(firstName: string | null, lastName: string | null): string[] {
   const fn = slugify(firstName);
   const ln = slugify(lastName);
@@ -49,45 +51,8 @@ export function buildUsernameCandidates(firstName: string | null, lastName: stri
   return out.filter((c) => isValidUsername(c));
 }
 
-// Checks profiles + profile_username_aliases (case-insensitive). Returns true if
-// the username is free. Empty/invalid usernames return false.
-export async function isUsernameAvailable(candidate: string): Promise<boolean> {
-  if (!isValidUsername(candidate)) return false;
-  const lower = candidate.toLowerCase();
-  const supabase = createServerClient();
-
-  const [{ data: profileHit }, { data: aliasHit }] = await Promise.all([
-    supabase.from("profiles").select("id").ilike("email_username", lower).maybeSingle(),
-    supabase
-      .from("profile_username_aliases")
-      .select("id")
-      .ilike("username", lower)
-      .is("retired_at", null)
-      .maybeSingle(),
-  ]);
-  return !profileHit && !aliasHit;
-}
-
-// Finds the first available candidate from buildUsernameCandidates(), then if
-// none are free, falls back to `${first.last}{N}` starting at 2.
-export async function findAvailableUsername(
-  firstName: string | null,
-  lastName: string | null,
-): Promise<string | null> {
-  const candidates = buildUsernameCandidates(firstName, lastName);
-  for (const c of candidates) {
-    if (await isUsernameAvailable(c)) return c;
-  }
-  // Numeric fallback on the canonical "fn.ln" pattern.
-  const fn = slugify(firstName);
-  const ln = slugify(lastName);
-  const base = fn && ln ? `${fn}.${ln}` : fn || ln;
-  if (!base) return null;
-  for (let i = 2; i <= 99; i++) {
-    const candidate = `${base}${i}`;
-    if (isValidUsername(candidate) && (await isUsernameAvailable(candidate))) return candidate;
-  }
-  return null;
+export function slugifyForUsername(s: string | null | undefined): string {
+  return slugify(s);
 }
 
 // Cooldown check used by the /settings rename action.
