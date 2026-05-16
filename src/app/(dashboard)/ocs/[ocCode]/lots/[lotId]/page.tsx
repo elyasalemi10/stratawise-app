@@ -9,6 +9,7 @@ import {
   getActiveDrnsForLot,
   getPortalActivity,
 } from "@/lib/actions/lot-overview";
+import { listLotCommunications } from "@/lib/actions/lot-communications";
 import { LotDetailContent } from "./lot-detail-content";
 import type { DocumentRecord } from "@/lib/validations/documents";
 
@@ -108,6 +109,7 @@ export default async function LotDetailPage({
     activity,
     drns,
     portalActivity,
+    communications,
   ] = await Promise.all([
     getLotOwner(supabase, lotId),
     getLotOwnershipHistory(lotId),
@@ -115,6 +117,7 @@ export default async function LotDetailPage({
     getLotActivity(lotId, 50),
     getActiveDrnsForLot(lotId),
     getPortalActivity(lotId),
+    listLotCommunications(lotId),
   ]);
 
   return (
@@ -152,6 +155,7 @@ export default async function LotDetailPage({
       activity={activity}
       drns={drns}
       portalActivity={portalActivity}
+      communications={communications}
     />
   );
 }

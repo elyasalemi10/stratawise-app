@@ -28,6 +28,8 @@ import { LotOverviewTab } from "./tabs/lot-overview-tab";
 import { LotHistoryTab } from "./tabs/lot-history-tab";
 import { LotOwnerTab } from "./tabs/lot-owner-tab";
 import { LotTenancyTab } from "./tabs/lot-tenancy-tab";
+import { LotCommunicationsTab } from "./tabs/lot-communications-tab";
+import type { LotCommunicationRow } from "@/lib/actions/lot-communications";
 import type { DocumentRecord } from "@/lib/validations/documents";
 import type { OwnershipHistoryEntry } from "@/lib/validations/settlement";
 import type { LotOwnerInfo } from "@/lib/actions/lot-ownership";
@@ -70,6 +72,7 @@ interface LotDetailContentProps {
   activity: LotActivityEntry[];
   drns: LotDrn[];
   portalActivity: PortalActivity;
+  communications: LotCommunicationRow[];
 }
 
 const TABS = [
@@ -129,6 +132,7 @@ export function LotDetailContent({
   activity,
   drns,
   portalActivity,
+  communications,
 }: LotDetailContentProps) {
   const ocCode = useOCCode();
   const searchParams = useSearchParams();
@@ -389,7 +393,14 @@ export function LotDetailContent({
       </div>
 
       <div className={activeTab === "communications" ? "" : "hidden"}>
-        <PlaceholderTab name="Communications" />
+        <LotCommunicationsTab
+          ocId={ocId}
+          lotId={lot.id}
+          ownerEmail={owner.owner_contact_email ?? null}
+          ownerPhone={owner.owner_contact_phone ?? null}
+          ownerName={owner.owner_display_name ?? null}
+          initialCommunications={communications}
+        />
       </div>
 
       <div className={activeTab === "documents" ? "" : "hidden"}>
