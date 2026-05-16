@@ -8,7 +8,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { PhoneInput } from "@/components/shared/phone-input";
-import { EditPopover } from "@/components/shared/edit-popover";
+import { EditSheet } from "@/components/shared/edit-sheet";
 import { Home, Users, DoorOpen } from "lucide-react";
 import {
   updateTenant,
@@ -16,12 +16,8 @@ import {
 } from "@/lib/actions/lot-edit";
 import type { LotActivityEntry } from "@/lib/actions/lot-overview";
 
-// Tenancy tab (Item 14). Three states driven by lot_owners.occupancy_status:
-//   - owner_occupied: "This lot is owner-occupied" + Add tenant
-//   - tenanted: current tenant card with EditPopovers + Change/Mark vacant
-//   - vacant: "Lot is currently vacant" + Add new tenant
-// All states surface past tenant entries by reading audit_log rows where
-// entity_type='tenant' from the lot's activity feed.
+// Tenancy tab (Item 14). One Edit button per state opens a right-side drawer
+// (navbar width). No per-field pencil popovers anywhere.
 
 type Occupancy = "owner_occupied" | "tenanted" | "vacant";
 
@@ -38,14 +34,15 @@ export function LotTenancyTab(props: Props) {
   const router = useRouter();
   const { lotOwnerId, occupancyStatus, tenantName, tenantEmail, tenantPhone, activity } = props;
 
-  // Optimistic view of the tenant data + occupancy so saves feel instant
-  // even before router.refresh() lands.
+  // Optimistic view of the tenant + occupancy. The Edit drawer patches this
+  // on save so the card updates instantly; rolled back on failure.
   const [view, setView] = React.useState({
     occupancy: occupancyStatus,
     name: tenantName ?? "",
     email: tenantEmail ?? "",
     phone: tenantPhone ?? "",
   });
+
   React.useEffect(() => {
     setView({
       occupancy: occupancyStatus,
@@ -68,10 +65,21 @@ export function LotTenancyTab(props: Props) {
               The owner lives in the lot themselves — no tenant on file.
             </p>
             <div className="mt-4">
-              <AddTenantPopover
+              <TenancyEditSheet
                 lotOwnerId={lotOwnerId}
-                onSaved={() => router.refresh()}
+                initial={view}
                 triggerLabel="Add tenant"
+                title="Add tenant"
+                onPatch={(p) => setView((v) => ({ ...v, ...p }))}
+                onRollback={() =>
+                  setView({
+                    occupancy: occupancyStatus,
+                    name: tenantName ?? "",
+                    email: tenantEmail ?? "",
+                    phone: tenantPhone ?? "",
+                  })
+                }
+                onSaved={() => router.refresh()}
               />
             </div>
           </CardContent>
@@ -85,10 +93,21 @@ export function LotTenancyTab(props: Props) {
             <p className="text-sm font-medium text-foreground">This lot is currently vacant.</p>
             <p className="mt-1 text-xs text-muted-foreground">No tenant on file.</p>
             <div className="mt-4">
-              <AddTenantPopover
+              <TenancyEditSheet
                 lotOwnerId={lotOwnerId}
-                onSaved={() => router.refresh()}
+                initial={view}
                 triggerLabel="Add new tenant"
+                title="Add new tenant"
+                onPatch={(p) => setView((v) => ({ ...v, ...p }))}
+                onRollback={() =>
+                  setView({
+                    occupancy: occupancyStatus,
+                    name: tenantName ?? "",
+                    email: tenantEmail ?? "",
+                    phone: tenantPhone ?? "",
+                  })
+                }
+                onSaved={() => router.refresh()}
               />
             </div>
           </CardContent>
@@ -103,73 +122,28 @@ export function LotTenancyTab(props: Props) {
                 <Users className="h-4 w-4 text-muted-foreground" />
                 <h3 className="text-sm font-semibold text-foreground">Current tenant</h3>
               </div>
-              <div className="flex items-center gap-2">
-                {/* Change tenant = same popover as add, prefilled with current */}
-                <AddTenantPopover
-                  lotOwnerId={lotOwnerId}
-                  onSaved={() => router.refresh()}
-                  triggerLabel="Change tenant"
-                  initialValues={{ name: view.name, email: view.email, phone: view.phone }}
-                />
-                <MarkVacantPopover
-                  lotOwnerId={lotOwnerId}
-                  onSaved={() => router.refresh()}
-                />
-              </div>
+              <TenancyEditSheet
+                lotOwnerId={lotOwnerId}
+                initial={view}
+                triggerLabel="Edit"
+                title="Edit tenant"
+                onPatch={(p) => setView((v) => ({ ...v, ...p }))}
+                onRollback={() =>
+                  setView({
+                    occupancy: occupancyStatus,
+                    name: tenantName ?? "",
+                    email: tenantEmail ?? "",
+                    phone: tenantPhone ?? "",
+                  })
+                }
+                onSaved={() => router.refresh()}
+              />
             </div>
 
             <dl className="divide-y divide-border">
-              <TenantRow
-                label="Name"
-                value={view.name}
-                editLabel="Edit tenant name"
-                onSave={async (next) => {
-                  if (!lotOwnerId) return { ok: false as const, error: "Owner row missing" };
-                  const previous = view.name;
-                  setView((v) => ({ ...v, name: next }));
-                  const res = await updateTenant({
-                    lot_owner_id: lotOwnerId,
-                    tenant_name: next || null,
-                  });
-                  if (!res.ok) setView((v) => ({ ...v, name: previous }));
-                  if (res.ok) router.refresh();
-                  return res.ok ? { ok: true as const } : { ok: false as const, error: res.error };
-                }}
-                type="text"
-              />
-              <TenantRow
-                label="Email"
-                value={view.email}
-                editLabel="Edit tenant email"
-                onSave={async (next) => {
-                  if (!lotOwnerId) return { ok: false as const, error: "Owner row missing" };
-                  const previous = view.email;
-                  setView((v) => ({ ...v, email: next }));
-                  const res = await updateTenant({
-                    lot_owner_id: lotOwnerId,
-                    tenant_email: next || null,
-                  });
-                  if (!res.ok) setView((v) => ({ ...v, email: previous }));
-                  if (res.ok) router.refresh();
-                  return res.ok ? { ok: true as const } : { ok: false as const, error: res.error };
-                }}
-                type="email"
-              />
-              <TenantPhoneRow
-                value={view.phone}
-                onSave={async (next) => {
-                  if (!lotOwnerId) return { ok: false as const, error: "Owner row missing" };
-                  const previous = view.phone;
-                  setView((v) => ({ ...v, phone: next }));
-                  const res = await updateTenant({
-                    lot_owner_id: lotOwnerId,
-                    tenant_phone: next || null,
-                  });
-                  if (!res.ok) setView((v) => ({ ...v, phone: previous }));
-                  if (res.ok) router.refresh();
-                  return res.ok ? { ok: true as const } : { ok: false as const, error: res.error };
-                }}
-              />
+              <KvRow label="Name" value={view.name} />
+              <KvRow label="Email" value={view.email} />
+              <KvRow label="Phone" value={view.phone} />
             </dl>
           </CardContent>
         </Card>
@@ -184,9 +158,7 @@ export function LotTenancyTab(props: Props) {
                 <li key={row.id} className="py-2.5 text-sm">
                   <div className="flex items-baseline justify-between gap-2">
                     <div className="min-w-0">
-                      <p className="font-medium text-foreground">
-                        {humaniseTenantEvent(row)}
-                      </p>
+                      <p className="font-medium text-foreground">{humaniseTenantEvent(row)}</p>
                       {(row.before_state || row.after_state) && (
                         <p className="mt-0.5 text-xs text-muted-foreground truncate">
                           {summariseDiff(row.before_state, row.after_state)}
@@ -232,158 +204,174 @@ function summariseDiff(
     .join(", ");
 }
 
-interface TenantRowProps {
-  label: string;
-  value: string;
-  editLabel: string;
-  onSave: (next: string) => Promise<{ ok: true } | { ok: false; error: string }>;
-  type: "text" | "email";
-}
-
-function TenantRow({ label, value, editLabel, onSave, type }: TenantRowProps) {
-  const inputRef = React.useRef<HTMLInputElement>(null);
+function KvRow({ label, value }: { label: string; value: string }) {
   return (
     <div className="flex items-baseline justify-between gap-2 py-2.5">
       <dt className="text-sm text-muted-foreground">{label}</dt>
-      <dd className="flex items-center gap-2 min-w-0">
-        <span className="text-sm font-medium text-foreground truncate max-w-[280px]">
-          {value || <span className="text-muted-foreground italic">—</span>}
-        </span>
-        <EditPopover
-          label={editLabel}
-          onSave={async () => onSave(inputRef.current?.value?.trim() ?? "")}
-        >
-          <Label>{label}</Label>
-          <Input ref={inputRef} type={type} defaultValue={value} />
-        </EditPopover>
+      <dd className="text-sm font-medium text-foreground text-right max-w-[60%] truncate">
+        {value || <span className="text-muted-foreground italic">—</span>}
       </dd>
     </div>
   );
 }
 
-function TenantPhoneRow({
-  value,
-  onSave,
-}: {
-  value: string;
-  onSave: (next: string) => Promise<{ ok: true } | { ok: false; error: string }>;
-}) {
-  const [draft, setDraft] = React.useState(value);
-  React.useEffect(() => {
-    setDraft(value);
-  }, [value]);
-  return (
-    <div className="flex items-baseline justify-between gap-2 py-2.5">
-      <dt className="text-sm text-muted-foreground">Phone</dt>
-      <dd className="flex items-center gap-2 min-w-0">
-        <span className="text-sm font-medium text-foreground truncate max-w-[280px]">
-          {value || <span className="text-muted-foreground italic">—</span>}
-        </span>
-        <EditPopover
-          label="Edit tenant phone"
-          onSave={async () => onSave(draft)}
-        >
-          <Label>Phone</Label>
-          <PhoneInput value={draft} onChange={setDraft} />
-        </EditPopover>
-      </dd>
-    </div>
-  );
+// ─── Edit sheet ─────────────────────────────────────────────────────────────
+// Bundles occupancy + tenant fields into a single right-side drawer. The same
+// component handles "Add tenant" (occupancy=owner_occupied/vacant) and "Edit
+// tenant" (occupancy=tenanted) — the occupancy selector lets the manager flip
+// state inline (e.g. mark vacant) without leaving the drawer.
+
+interface TenantView {
+  occupancy: Occupancy;
+  name: string;
+  email: string;
+  phone: string;
 }
 
-interface AddTenantPopoverProps {
-  lotOwnerId: string | null;
-  onSaved: () => void;
-  triggerLabel: string;
-  initialValues?: { name: string; email: string; phone: string };
-}
-
-function AddTenantPopover({ lotOwnerId, onSaved, triggerLabel, initialValues }: AddTenantPopoverProps) {
-  const [name, setName] = React.useState(initialValues?.name ?? "");
-  const [email, setEmail] = React.useState(initialValues?.email ?? "");
-  const [phone, setPhone] = React.useState(initialValues?.phone ?? "");
-
-  return (
-    <EditPopover
-      label={triggerLabel}
-      renderTrigger={() => (
-        <Button size="sm" variant={initialValues ? "secondary" : "default"}>
-          {triggerLabel}
-        </Button>
-      )}
-      onSave={async () => {
-        if (!lotOwnerId) return { ok: false as const, error: "Owner row missing" };
-        if (!name.trim()) return { ok: false as const, error: "Tenant name is required" };
-        // Two-step: set occupancy to tenanted, then write the details.
-        const occ = await updateOccupancyStatus({
-          lot_owner_id: lotOwnerId,
-          occupancy_status: "tenanted",
-        });
-        if (!occ.ok) return { ok: false as const, error: occ.error };
-        const res = await updateTenant({
-          lot_owner_id: lotOwnerId,
-          tenant_name: name.trim(),
-          tenant_email: email.trim() || null,
-          tenant_phone: phone || null,
-        });
-        if (res.ok) onSaved();
-        return res.ok ? { ok: true as const } : { ok: false as const, error: res.error };
-      }}
-    >
-      <Label>Tenant name</Label>
-      <Input value={name} onChange={(e) => setName(e.target.value)} placeholder="Tenant name" />
-      <Label className="pt-1">Tenant email</Label>
-      <Input
-        type="email"
-        value={email}
-        onChange={(e) => setEmail(e.target.value)}
-        placeholder="Tenant email"
-      />
-      <Label className="pt-1">Tenant phone</Label>
-      <PhoneInput value={phone} onChange={setPhone} />
-    </EditPopover>
-  );
-}
-
-function MarkVacantPopover({
+function TenancyEditSheet({
   lotOwnerId,
+  initial,
+  triggerLabel,
+  title,
+  onPatch,
+  onRollback,
   onSaved,
 }: {
   lotOwnerId: string | null;
+  initial: TenantView;
+  triggerLabel: string;
+  title: string;
+  onPatch: (next: Partial<TenantView>) => void;
+  onRollback: () => void;
   onSaved: () => void;
 }) {
+  const [occupancy, setOccupancy] = React.useState<Occupancy>(
+    initial.occupancy === "tenanted" ? "tenanted" : "tenanted",
+  );
+  const [name, setName] = React.useState(initial.name);
+  const [email, setEmail] = React.useState(initial.email);
+  const [phone, setPhone] = React.useState(initial.phone);
   const [reason, setReason] = React.useState("");
+
   return (
-    <EditPopover
-      label="Mark lot vacant"
-      saveLabel="Mark vacant"
-      renderTrigger={() => (
-        <Button size="sm" variant="secondary">
-          Mark vacant
-        </Button>
-      )}
+    <EditSheet
+      label={title}
+      description="Tenant details are logged to the activity history."
+      triggerLabel={triggerLabel}
+      triggerVariant={initial.occupancy === "tenanted" ? "secondary" : "default"}
+      onOpenChange={(open) => {
+        if (open) {
+          setOccupancy(initial.occupancy === "owner_occupied" ? "tenanted" : initial.occupancy === "vacant" ? "tenanted" : "tenanted");
+          setName(initial.name);
+          setEmail(initial.email);
+          setPhone(initial.phone);
+          setReason("");
+        }
+      }}
       onSave={async () => {
         if (!lotOwnerId) return { ok: false as const, error: "Owner row missing" };
-        const res = await updateOccupancyStatus({
-          lot_owner_id: lotOwnerId,
-          occupancy_status: "vacant",
-          reason: reason.trim() || null,
+
+        if (occupancy === "tenanted" && !name.trim()) {
+          return { ok: false as const, error: "Tenant name is required when the lot is tenanted." };
+        }
+
+        // Step 1 — flip occupancy if it changed (vacant / owner_occupied resets
+        // the tenant fields server-side via updateOccupancyStatus).
+        if (occupancy !== initial.occupancy) {
+          const occRes = await updateOccupancyStatus({
+            lot_owner_id: lotOwnerId,
+            occupancy_status: occupancy,
+            reason: reason.trim() || null,
+          });
+          if (!occRes.ok) {
+            onRollback();
+            return { ok: false as const, error: occRes.error };
+          }
+        }
+
+        // Step 2 — write tenant details only when the lot ends up tenanted.
+        if (occupancy === "tenanted") {
+          const tenantRes = await updateTenant({
+            lot_owner_id: lotOwnerId,
+            tenant_name: name.trim() || null,
+            tenant_email: email.trim() || null,
+            tenant_phone: phone || null,
+          });
+          if (!tenantRes.ok) {
+            onRollback();
+            return { ok: false as const, error: tenantRes.error };
+          }
+        }
+
+        onPatch({
+          occupancy,
+          name: occupancy === "tenanted" ? name.trim() : "",
+          email: occupancy === "tenanted" ? email.trim() : "",
+          phone: occupancy === "tenanted" ? phone : "",
         });
-        if (res.ok) onSaved();
-        return res.ok ? { ok: true as const } : { ok: false as const, error: res.error };
+        onSaved();
+        return { ok: true as const };
       }}
     >
-      <p className="text-xs text-muted-foreground">
-        This clears the current tenant from the lot and marks it as vacant. Past tenant info is kept in
-        the activity log.
-      </p>
-      <Label>Reason (optional)</Label>
-      <Textarea
-        value={reason}
-        onChange={(e) => setReason(e.target.value)}
-        placeholder="e.g. lease ended 12 May"
-        rows={2}
-      />
-    </EditPopover>
+      <div className="space-y-1.5">
+        <Label>Occupancy</Label>
+        <div className="grid grid-cols-3 gap-1.5">
+          {[
+            { value: "tenanted" as const, label: "Tenanted" },
+            { value: "vacant" as const, label: "Vacant" },
+            { value: "owner_occupied" as const, label: "Owner-occupied" },
+          ].map((opt) => (
+            <button
+              key={opt.value}
+              type="button"
+              onClick={() => setOccupancy(opt.value)}
+              className={`h-9 rounded-md border text-xs font-medium transition-colors cursor-pointer ${
+                occupancy === opt.value
+                  ? "border-primary bg-primary text-primary-foreground"
+                  : "border-border bg-card text-muted-foreground hover:border-primary/40 hover:text-foreground"
+              }`}
+            >
+              {opt.label}
+            </button>
+          ))}
+        </div>
+      </div>
+
+      {occupancy === "tenanted" && (
+        <>
+          <div className="space-y-1.5">
+            <Label>
+              Tenant name <span className="text-destructive">*</span>
+            </Label>
+            <Input value={name} onChange={(e) => setName(e.target.value)} placeholder="Tenant name" />
+          </div>
+          <div className="space-y-1.5">
+            <Label>Tenant email</Label>
+            <Input
+              type="email"
+              value={email}
+              onChange={(e) => setEmail(e.target.value)}
+              placeholder="Tenant email"
+            />
+          </div>
+          <div className="space-y-1.5">
+            <Label>Tenant phone</Label>
+            <PhoneInput value={phone} onChange={setPhone} />
+          </div>
+        </>
+      )}
+
+      {occupancy !== "tenanted" && (
+        <div className="space-y-1.5">
+          <Label>Reason (optional)</Label>
+          <Textarea
+            value={reason}
+            onChange={(e) => setReason(e.target.value)}
+            placeholder={occupancy === "vacant" ? "e.g. lease ended 12 May" : "e.g. owner moving back in"}
+            rows={3}
+          />
+        </div>
+      )}
+    </EditSheet>
   );
 }

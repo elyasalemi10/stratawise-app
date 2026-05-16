@@ -5,10 +5,9 @@ import { useSearchParams, useRouter } from "next/navigation";
 import {
   FileSignature, Mail, Phone, UserPlus,
   MoreVertical, Hash,
-  Pencil,
 } from "lucide-react";
 import { useSetBreadcrumb } from "@/lib/breadcrumb-context";
-import { EditPopover } from "@/components/shared/edit-popover";
+import { EditSheet } from "@/components/shared/edit-sheet";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Card, CardContent } from "@/components/ui/card";
@@ -448,10 +447,11 @@ function MetaPair({ label, value, mono }: { label: string; value: string; mono?:
   );
 }
 
-// ─── Lot details popover (unit number + entitlement + liability) ────────
-// Bundled into one popover so the manager can adjust all three identifiers
-// in one flow. `requireConfirmation` on EditPopover surfaces a "Confirm save"
-// step because these fields ripple into levy calculations + voting rights.
+// ─── Lot details edit sheet (unit number + entitlement + liability) ──────
+// Single Edit button (right of the meta strip) opens a right-side drawer with
+// all three identifiers. `requireConfirmation` adds a "Confirm save" step
+// because these fields ripple into levy calculations + voting rights. Lot
+// number itself stays locked per Item 9.
 
 function LotDetailsEditPopover({
   lotId,
@@ -470,21 +470,21 @@ function LotDetailsEditPopover({
     initial.lot_liability !== null ? String(initial.lot_liability) : "",
   );
 
-  // Lazy-require the action only when this popover gets rendered.
   return (
-    <EditPopover
-      label="Edit lot details"
-      renderTrigger={() => (
-        <button
-          type="button"
-          className="inline-flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground cursor-pointer"
-        >
-          <Pencil className="h-3 w-3" />
-          Edit
-        </button>
-      )}
+    <EditSheet
+      label="Lot details"
+      description="Unit number, lot entitlement, and lot liability. Lot number itself can't be changed."
+      triggerLabel="Edit lot details"
+      triggerVariant="ghost"
       requireConfirmation
-      confirmationMessage="These values drive levy calculations. Save anyway?"
+      confirmationMessage="These values drive levy calculations and voting rights. Save anyway?"
+      onOpenChange={(open) => {
+        if (open) {
+          setUnit(initial.unit_number);
+          setEntitlement(initial.lot_entitlement !== null ? String(initial.lot_entitlement) : "");
+          setLiability(initial.lot_liability !== null ? String(initial.lot_liability) : "");
+        }
+      }}
       onSave={async () => {
         const entitlementNum = entitlement.trim() ? parseFloat(entitlement) : null;
         const liabilityNum = liability.trim() ? parseFloat(liability) : null;
@@ -505,23 +505,29 @@ function LotDetailsEditPopover({
         return res.ok ? { ok: true as const } : { ok: false as const, error: res.error };
       }}
     >
-      <Label>Unit number</Label>
-      <Input value={unit} onChange={(e) => setUnit(e.target.value)} placeholder="Unit number" />
-      <Label className="pt-1">Lot entitlement</Label>
-      <Input
-        value={entitlement}
-        onChange={(e) => setEntitlement(e.target.value)}
-        placeholder="Lot entitlement"
-        inputMode="decimal"
-      />
-      <Label className="pt-1">Lot liability</Label>
-      <Input
-        value={liability}
-        onChange={(e) => setLiability(e.target.value)}
-        placeholder="Lot liability"
-        inputMode="decimal"
-      />
-    </EditPopover>
+      <div className="space-y-1.5">
+        <Label>Unit number</Label>
+        <Input value={unit} onChange={(e) => setUnit(e.target.value)} placeholder="Unit number" />
+      </div>
+      <div className="space-y-1.5">
+        <Label>Lot entitlement</Label>
+        <Input
+          value={entitlement}
+          onChange={(e) => setEntitlement(e.target.value)}
+          placeholder="Lot entitlement"
+          inputMode="decimal"
+        />
+      </div>
+      <div className="space-y-1.5">
+        <Label>Lot liability</Label>
+        <Input
+          value={liability}
+          onChange={(e) => setLiability(e.target.value)}
+          placeholder="Lot liability"
+          inputMode="decimal"
+        />
+      </div>
+    </EditSheet>
   );
 }
 
