@@ -23,6 +23,8 @@ import { SettlementDialog } from "./settlement-dialog";
 import { InviteDialog } from "../../manage/invite-dialog";
 import { LotOverviewTab } from "./tabs/lot-overview-tab";
 import { LotHistoryTab } from "./tabs/lot-history-tab";
+import { LotOwnerTab } from "./tabs/lot-owner-tab";
+import { LotTenancyTab } from "./tabs/lot-tenancy-tab";
 import type { DocumentRecord } from "@/lib/validations/documents";
 import type { OwnershipHistoryEntry } from "@/lib/validations/settlement";
 import type { LotOwnerInfo } from "@/lib/actions/lot-ownership";
@@ -90,11 +92,6 @@ function formatLongDate(iso: string | null | undefined): string | null {
   });
 }
 
-function formatMonthYear(iso: string | null | undefined): string | null {
-  if (!iso) return null;
-  return new Date(iso).toLocaleDateString("en-AU", { month: "short", year: "numeric" });
-}
-
 function formatRelative(iso: string | null | undefined): string | null {
   if (!iso) return null;
   const then = new Date(iso).getTime();
@@ -115,29 +112,6 @@ function initials(name: string | null | undefined): string {
   if (parts.length === 1) return parts[0][0]?.toUpperCase() ?? "?";
   return `${parts[0][0] ?? ""}${parts[parts.length - 1][0] ?? ""}`.toUpperCase();
 }
-
-function durationLabel(from: string | null, to: string | null): string {
-  if (!from) return "";
-  const start = new Date(from);
-  const end = to ? new Date(to) : new Date();
-  let months = (end.getFullYear() - start.getFullYear()) * 12 + (end.getMonth() - start.getMonth());
-  if (end.getDate() < start.getDate()) months -= 1;
-  if (months < 0) months = 0;
-  const years = Math.floor(months / 12);
-  const rem = months % 12;
-  if (years === 0) return `${rem} mo`;
-  if (rem === 0) return `${years} yr`;
-  return `${years} yr ${rem} mo`;
-}
-
-const CONSENT_CATEGORY_LABELS: Record<string, string> = {
-  meetings: "Meetings",
-  levies: "Levies",
-  breach: "Breach",
-  financial_reports: "Financial reports",
-  general_correspondence: "General correspondence",
-};
-const TOTAL_CONSENT_CATEGORIES = 5;
 
 export function LotDetailContent({
   lot: initialLot,
@@ -199,6 +173,15 @@ export function LotDetailContent({
   const ownerSince = formatLongDate(activeHistoryEntry?.joinedAt ?? null);
   const portalActive = !!owner.profile_id;
   const consentCount = lotOwnerExtra?.digital_consent_categories?.length ?? 0;
+  // Canonical 3-state occupancy. Prefer the enum column; fall back to the
+  // legacy boolean + tenant heuristic for rows that pre-date the migration.
+  const resolvedOccupancy: "owner_occupied" | "tenanted" | "vacant" =
+    lotOwnerExtra?.occupancy_status ??
+    (isOwnerOccupied
+      ? "owner_occupied"
+      : lotOwnerExtra?.tenant_name
+        ? "tenanted"
+        : "vacant");
 
   const lastPaymentRelative = formatRelative(lastPaymentAt);
 
@@ -356,27 +339,30 @@ export function LotDetailContent({
       </div>
 
       <div className={activeTab === "owner" ? "" : "hidden"}>
-        <OwnerTab
+        <LotOwnerTab
+          lotOwnerId={lotOwnerExtra?.lot_owner_id ?? null}
           activeOwner={owner}
           activeHistoryEntry={activeHistoryEntry}
           pastHistoryEntries={pastHistoryEntries}
-          isOwnerOccupied={isOwnerOccupied}
-          ownerType={ownerType}
+          ownerType={lotOwnerExtra?.owner_type === "company" ? "company" : "individual"}
           paymentReference={lotOwnerExtra?.payment_reference ?? null}
           postalAddress={lotOwnerExtra?.postal_address ?? null}
           portalActive={portalActive}
-          consentCount={consentCount}
+          portalInviteAccepted={portalActive}
           consentCategories={lotOwnerExtra?.digital_consent_categories ?? []}
+          drns={drns}
           onTransfer={() => setSettlementOpen(true)}
         />
       </div>
 
       <div className={activeTab === "tenancy" ? "" : "hidden"}>
-        <TenancyTab
-          isOwnerOccupied={isOwnerOccupied}
+        <LotTenancyTab
+          lotOwnerId={lotOwnerExtra?.lot_owner_id ?? null}
+          occupancyStatus={resolvedOccupancy}
           tenantName={lotOwnerExtra?.tenant_name ?? null}
           tenantEmail={lotOwnerExtra?.tenant_email ?? null}
           tenantPhone={lotOwnerExtra?.tenant_phone ?? null}
+          activity={activity}
         />
       </div>
 
@@ -437,222 +423,10 @@ function MetaPair({ label, value, mono }: { label: string; value: string; mono?:
   );
 }
 
-// ─── General tab — lot identifiers only ─────────────────────────
-
-// Old GeneralTab / ReadOnlyRow removed — the new LotOverviewTab takes over.
-
-// ─── Owner tab — current card + previous owners ─────────────────
-
-function OwnerTab({
-  activeOwner,
-  activeHistoryEntry,
-  pastHistoryEntries,
-  isOwnerOccupied,
-  ownerType,
-  paymentReference,
-  postalAddress,
-  portalActive,
-  consentCount,
-  consentCategories,
-  onTransfer,
-}: {
-  activeOwner: LotOwnerInfo;
-  activeHistoryEntry: OwnershipHistoryEntry | null;
-  pastHistoryEntries: OwnershipHistoryEntry[];
-  isOwnerOccupied: boolean;
-  ownerType: string;
-  paymentReference: string | null;
-  postalAddress: string | null;
-  portalActive: boolean;
-  consentCount: number;
-  consentCategories: string[];
-  onTransfer: () => void;
-}) {
-  return (
-    <div className="space-y-6">
-      <div>
-        <h3 className="text-sm font-semibold text-foreground mb-3">Current owner</h3>
-        {activeOwner.owner_display_name ? (
-          <Card>
-            <CardContent className="pt-5 space-y-4">
-              <div className="flex items-start justify-between gap-4">
-                <div className="flex items-start gap-3 min-w-0">
-                  <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-primary text-primary-foreground text-sm font-semibold">
-                    {initials(activeOwner.owner_display_name)}
-                  </div>
-                  <div className="min-w-0">
-                    <p className="font-semibold text-foreground truncate">{activeOwner.owner_display_name}</p>
-                    <p className="text-xs text-muted-foreground">{ownerType}</p>
-                    <p className="text-xs text-muted-foreground">
-                      {isOwnerOccupied ? "Owner-occupied" : "Tenanted"}
-                      {activeHistoryEntry?.joinedAt && <> · Since {formatLongDate(activeHistoryEntry.joinedAt)}</>}
-                    </p>
-                  </div>
-                </div>
-                <Button variant="secondary" size="sm">Edit</Button>
-              </div>
-
-              <dl className="divide-y divide-border">
-                <KvRow label="Email" value={activeOwner.owner_contact_email ?? ""} />
-                <KvRow label="Phone" value={activeOwner.owner_contact_phone ?? ""} />
-                <KvRow label="Service address" value={postalAddress ?? ""} />
-                <KvRow label="Reference" value={paymentReference ?? ""} mono />
-                <KvRow
-                  label="Portal access"
-                  value={
-                    <span className="inline-flex items-center gap-1.5">
-                      {portalActive ? (
-                        <>
-                          <ShieldCheck className="h-3.5 w-3.5 text-[hsl(160,100%,37%)]" />
-                          Active
-                        </>
-                      ) : (
-                        <>
-                          <ShieldOff className="h-3.5 w-3.5 text-muted-foreground" />
-                          Not on the portal yet
-                        </>
-                      )}
-                    </span>
-                  }
-                />
-                <KvRow
-                  label="Digital consent"
-                  value={
-                    <span className="inline-flex items-center gap-2">
-                      <span>
-                        {consentCount} of {TOTAL_CONSENT_CATEGORIES}
-                        {consentCount > 0 && consentCount < TOTAL_CONSENT_CATEGORIES && " categories"}
-                        {consentCount === TOTAL_CONSENT_CATEGORIES && " — all categories"}
-                      </span>
-                      {consentCount > 0 && (
-                        <span
-                          className="text-xs text-muted-foreground"
-                          title={consentCategories.map((c) => CONSENT_CATEGORY_LABELS[c] ?? c).join(", ")}
-                        >
-                          ({consentCategories.map((c) => CONSENT_CATEGORY_LABELS[c] ?? c).join(", ")})
-                        </span>
-                      )}
-                    </span>
-                  }
-                />
-              </dl>
-
-              <div className="flex justify-center pt-2">
-                <Button variant="secondary" onClick={onTransfer}>
-                  <Repeat className="mr-2 h-3.5 w-3.5" />
-                  Transfer ownership
-                </Button>
-              </div>
-            </CardContent>
-          </Card>
-        ) : (
-          <Card>
-            <CardContent className="py-8 text-center text-sm text-muted-foreground">
-              No active owner on this lot. Record a settlement to assign one.
-            </CardContent>
-          </Card>
-        )}
-      </div>
-
-      {pastHistoryEntries.length > 0 && (
-        <div>
-          <h3 className="text-sm font-semibold text-foreground mb-3">Previous owners</h3>
-          <Card>
-            <CardContent className="pt-5 divide-y divide-border">
-              {pastHistoryEntries.map((entry) => (
-                <PastOwnerRow key={entry.id} entry={entry} />
-              ))}
-            </CardContent>
-          </Card>
-        </div>
-      )}
-    </div>
-  );
-}
-
-function KvRow({ label, value, mono }: { label: string; value: React.ReactNode; mono?: boolean }) {
-  return (
-    <div className="flex items-baseline justify-between py-2.5">
-      <dt className="text-sm text-muted-foreground">{label}</dt>
-      <dd className={`text-sm font-medium text-foreground text-right max-w-[60%] truncate ${mono ? "font-mono text-xs" : ""}`}>
-        {value || <span className="text-muted-foreground italic">—</span>}
-      </dd>
-    </div>
-  );
-}
-
-function PastOwnerRow({ entry }: { entry: OwnershipHistoryEntry }) {
-  const fromLabel = formatMonthYear(entry.joinedAt) ?? "";
-  const toLabel = entry.leftAt ? formatMonthYear(entry.leftAt) : "Current";
-  const duration = durationLabel(entry.joinedAt, entry.leftAt);
-  return (
-    <div className="py-3 first:pt-0 last:pb-0">
-      <div className="flex items-start justify-between gap-3">
-        <div className="min-w-0">
-          <p className="text-sm font-medium text-foreground truncate">
-            {entry.name ?? "Unknown owner"}
-          </p>
-          <p className="mt-0.5 text-xs text-muted-foreground">
-            {fromLabel} – {toLabel}{duration && ` · ${duration}`}
-          </p>
-          {entry.email && (
-            <p className="text-xs text-muted-foreground truncate" title={entry.email}>
-              {entry.email}
-            </p>
-          )}
-        </div>
-        {entry.settlementDocument?.publicUrl && (
-          <a
-            href={entry.settlementDocument.publicUrl}
-            target="_blank"
-            rel="noreferrer"
-            className="inline-flex items-center gap-1 text-xs text-primary hover:underline shrink-0"
-          >
-            <ExternalLink className="h-3 w-3" />
-            Settlement
-          </a>
-        )}
-      </div>
-    </div>
-  );
-}
-
-// ─── Tenancy tab ───────────────────────────────────────────────
-
-function TenancyTab({
-  isOwnerOccupied,
-  tenantName,
-  tenantEmail,
-  tenantPhone,
-}: {
-  isOwnerOccupied: boolean;
-  tenantName: string | null;
-  tenantEmail: string | null;
-  tenantPhone: string | null;
-}) {
-  if (isOwnerOccupied) {
-    return (
-      <Card>
-        <CardContent className="py-10 text-center">
-          <p className="text-sm font-medium text-foreground">This lot is owner-occupied.</p>
-          <p className="mt-1 text-xs text-muted-foreground">No tenant on file.</p>
-        </CardContent>
-      </Card>
-    );
-  }
-  return (
-    <Card>
-      <CardContent className="pt-5">
-        <h3 className="text-sm font-semibold text-foreground mb-3">Current tenant</h3>
-        <dl className="divide-y divide-border">
-          <KvRow label="Name" value={tenantName ?? ""} />
-          <KvRow label="Email" value={tenantEmail ?? ""} />
-          <KvRow label="Phone" value={tenantPhone ?? ""} />
-        </dl>
-      </CardContent>
-    </Card>
-  );
-}
+// Old GeneralTab / OwnerTab / TenancyTab removed — replaced by LotOverviewTab,
+// LotOwnerTab, and LotTenancyTab in ./tabs/. The legacy KvRow / PastOwnerRow
+// helpers moved into LotOwnerTab; durationLabel / formatMonthYear / initials
+// live there too.
 
 // ─── History tab ───────────────────────────────────────────────
 
