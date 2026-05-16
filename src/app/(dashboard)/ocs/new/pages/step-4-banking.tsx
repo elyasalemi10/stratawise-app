@@ -10,6 +10,7 @@ import { Checkbox } from "@/components/ui/checkbox";
 import { Switch } from "@/components/ui/switch";
 import { BankSelect } from "@/components/shared/bank-select";
 import { saveStep, type DraftJson } from "../actions";
+import { WizardActions } from "./_components/wizard-actions";
 
 // Wizard Step 4 — Banking.
 //
@@ -349,13 +350,34 @@ export function Step4Banking({
         )}
       </div>
 
-      <div className="flex justify-between pt-2">
-        <Button type="button" variant="secondary" onClick={onBack}>Back</Button>
-        <Button type="button" onClick={onContinue} disabled={pending}>
-          {pending && <Loader2 className="size-4 animate-spin" />}
-          Continue
-        </Button>
-      </div>
+      <WizardActions
+        draftId={draftId}
+        onBack={onBack}
+        onContinue={onContinue}
+        continuePending={pending}
+        getCurrentPatch={() => ({
+          bank_provider: admin.bankId === "macquarie" ? "macquarie_deft" : "other_csv",
+          has_maintenance_plan_fund: hasMaintenance,
+          admin_bank_id: admin.bankId,
+          admin_account_name: admin.accountName.trim() || undefined,
+          admin_bsb: admin.bsb,
+          admin_account_number: admin.accountNumber,
+          capital_same_as_admin: capitalSameAsAdmin,
+          capital_bank_id: capitalSameAsAdmin ? undefined : capital.bankId,
+          capital_account_name: capitalSameAsAdmin ? undefined : capital.accountName.trim() || undefined,
+          capital_bsb: capitalSameAsAdmin ? undefined : capital.bsb,
+          capital_account_number: capitalSameAsAdmin ? undefined : capital.accountNumber,
+          maintenance_same_as_admin: maintenanceSameAsAdmin,
+          maintenance_bank_id:
+            !hasMaintenance || maintenanceSameAsAdmin ? undefined : maintenance.bankId,
+          maintenance_account_name:
+            !hasMaintenance || maintenanceSameAsAdmin ? undefined : maintenance.accountName.trim() || undefined,
+          maintenance_bsb:
+            !hasMaintenance || maintenanceSameAsAdmin ? undefined : maintenance.bsb,
+          maintenance_account_number:
+            !hasMaintenance || maintenanceSameAsAdmin ? undefined : maintenance.accountNumber,
+        })}
+      />
     </div>
   );
 }

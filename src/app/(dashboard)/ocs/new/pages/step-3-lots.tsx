@@ -8,7 +8,6 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Checkbox } from "@/components/ui/checkbox";
 import { NumberInput } from "@/components/ui/number-input";
-import { Switch } from "@/components/ui/switch";
 import { PhoneInput } from "@/components/shared/phone-input";
 import {
   Select,
@@ -18,6 +17,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { saveStep, type DraftJson, type DraftLot } from "../actions";
+import { WizardActions } from "./_components/wizard-actions";
 
 // Wizard Step 3 sub-step 0 — Lots & Owners (main).
 
@@ -169,8 +169,17 @@ export function Step3Lots({
         problems.push(`Lot ${l.lot_number || i + 1}: lot liability is required (0 is allowed).`);
         nextLotErrors[i].liability = true;
       }
-      if (l.is_occupied_by_owner === false && !(l.tenant_name ?? "").trim()) {
-        problems.push(`Lot ${l.lot_number || i + 1}: tenant name is required when not owner-occupied.`);
+      // Item 18 — tenant required ONLY when occupancy is "tenanted". Vacant
+      // lots may legitimately have no tenant info yet.
+      const occ =
+        l.occupancy_status ??
+        (l.is_occupied_by_owner === false
+          ? (l.tenant_name ?? "").trim()
+            ? "tenanted"
+            : "vacant"
+          : "owner_occupied");
+      if (occ === "tenanted" && !(l.tenant_name ?? "").trim()) {
+        problems.push(`Lot ${l.lot_number || i + 1}: tenant name is required when the lot is tenanted (or set it to Vacant).`);
         nextLotErrors[i].tenantName = true;
       }
     });
@@ -289,6 +298,9 @@ export function Step3Lots({
           else if (e.key === "ArrowRight" && caret === len) move(row, col + 1);
         }}
       >
+        <p className="px-3 py-2 text-xs text-muted-foreground border-b border-border bg-muted/40">
+          Don&apos;t have tenant details yet? Set the lot to <strong>Vacant</strong> — you can add a tenant any time after the OC is created.
+        </p>
         <table className="w-full text-sm">
           <thead className="bg-primary text-primary-foreground">
             <tr className="text-xs font-medium">
@@ -298,14 +310,24 @@ export function Step3Lots({
               <th className="px-2 py-2 text-left w-24">Unit</th>
               <th className="px-2 py-2 text-left w-32">Entitlement</th>
               <th className="px-2 py-2 text-left w-32">Liability</th>
-              <th className="px-2 py-2 text-left w-36 whitespace-nowrap">Owner occupied</th>
+              <th className="px-2 py-2 text-left w-40 whitespace-nowrap">Occupancy</th>
               <th className="w-10" />
             </tr>
           </thead>
           <tbody className="[&_tr:nth-child(odd)]:bg-card [&_tr:nth-child(even)]:bg-muted/20">
             {lots.map((lot, idx) => {
               const errs = lotErrors[idx] ?? {};
-              const ownerOccupied = lot.is_occupied_by_owner !== false;
+              // Item 18 — resolve canonical occupancy. Either the explicit
+              // enum field or derive from the legacy boolean + tenant data.
+              const occupancyStatus: "owner_occupied" | "tenanted" | "vacant" =
+                lot.occupancy_status ??
+                (lot.is_occupied_by_owner === false
+                  ? (lot.tenant_name ?? "").trim()
+                    ? "tenanted"
+                    : "vacant"
+                  : "owner_occupied");
+              const ownerOccupied = occupancyStatus === "owner_occupied";
+              const isTenanted = occupancyStatus === "tenanted";
               return (
                 <Fragment key={idx}>
                   <tr>
@@ -366,16 +388,30 @@ export function Step3Lots({
                       />
                     </td>
                     <td className="px-2 py-1.5">
-                      <div className="inline-flex items-center gap-2">
-                        <Switch
-                          checked={ownerOccupied}
-                          onCheckedChange={(v) => updateLot(idx, { is_occupied_by_owner: v === true })}
-                          aria-label={`Owner occupied for lot ${lot.lot_number}`}
-                        />
-                        <span className={`text-xs font-medium ${ownerOccupied ? "text-foreground" : "text-muted-foreground"}`}>
-                          {ownerOccupied ? "Yes" : "No"}
-                        </span>
-                      </div>
+                      {/* Item 18 — 3-way occupancy selector; choosing "Vacant"
+                          skips the tenant inputs and is the default when the
+                          manager doesn't yet know the tenant. */}
+                      <Select
+                        value={occupancyStatus}
+                        onValueChange={(v) =>
+                          updateLot(idx, {
+                            occupancy_status: v as "owner_occupied" | "tenanted" | "vacant",
+                            is_occupied_by_owner: v === "owner_occupied",
+                            ...(v !== "tenanted"
+                              ? { tenant_name: undefined, tenant_email: undefined, tenant_phone: undefined }
+                              : {}),
+                          })
+                        }
+                      >
+                        <SelectTrigger className="h-8">
+                          <SelectValue />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="owner_occupied">Owner-occupied</SelectItem>
+                          <SelectItem value="tenanted">Tenanted</SelectItem>
+                          <SelectItem value="vacant">Vacant</SelectItem>
+                        </SelectContent>
+                      </Select>
                     </td>
                     <td className="px-2 py-1.5 text-right">
                       <button
@@ -389,7 +425,7 @@ export function Step3Lots({
                       </button>
                     </td>
                   </tr>
-                  {!ownerOccupied && (
+                  {isTenanted && (
                     <tr>
                       <td className="px-2 py-1.5" />
                       <td className="px-2 py-1.5" colSpan={7}>
@@ -456,13 +492,18 @@ export function Step3Lots({
         </div>
       </div>
 
-      <div className="flex justify-between pt-2">
-        <Button type="button" variant="secondary" onClick={onBack}>Back</Button>
-        <Button type="button" onClick={onContinue} disabled={pending}>
-          {pending && <Loader2 className="size-4 animate-spin" />}
-          Continue
-        </Button>
-      </div>
+      <WizardActions
+        draftId={draftId}
+        onBack={onBack}
+        onContinue={onContinue}
+        continuePending={pending}
+        getCurrentPatch={() => ({
+          lots,
+          total_lots: lots.length,
+          services_only: servicesOnly,
+          tier,
+        })}
+      />
     </div>
   );
 }

@@ -15,6 +15,7 @@ import {
 } from "@/components/ui/select";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import { saveStep, type DraftJson } from "../actions";
+import { WizardActions } from "./_components/wizard-actions";
 import { nextLevyDue, formatLevyDueDisplay, type LevyFrequency } from "@/lib/levy-cadence";
 
 const MONTHS = [
@@ -400,13 +401,31 @@ export function Step2Settings({
           </div>
         </div>
 
-        <div className="flex justify-between pt-2">
-          <Button type="button" variant="secondary" onClick={onBack}>Back</Button>
-          <Button type="button" onClick={onContinue} disabled={pending}>
-            {pending && <Loader2 className="size-4 animate-spin" />}
-            Continue
-          </Button>
-        </div>
+        <WizardActions
+          draftId={draftId}
+          onBack={onBack}
+          onContinue={onContinue}
+          continuePending={pending}
+          getCurrentPatch={() => {
+            const earlyParsed = parseFloat(earlyPaymentPct);
+            const annualRateParsed = parseFloat(annualRatePct);
+            const interestFreeParsed = parseInt(interestFreeDays, 10);
+            const thresholdParsed = parseFloat(arrearsThresholdDollars);
+            return {
+              financial_year_start_month: fyMonth,
+              financial_year_start_day: 1,
+              billing_cycle: levyFreq,
+              levy_calculation_basis: basis,
+              early_payment_incentive_percent: Number.isFinite(earlyParsed) ? earlyParsed : undefined,
+              interest_on_overdue_enabled: interestEnabled,
+              annual_interest_rate_percent: interestEnabled && Number.isFinite(annualRateParsed) ? annualRateParsed : 0,
+              interest_free_period_days: Number.isFinite(interestFreeParsed) ? interestFreeParsed : undefined,
+              arrears_action_threshold_cents: Number.isFinite(thresholdParsed)
+                ? Math.round(thresholdParsed * 100)
+                : undefined,
+            };
+          }}
+        />
       </div>
     </TooltipProvider>
   );

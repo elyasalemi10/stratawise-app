@@ -15,6 +15,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { saveStep, type DraftJson } from "../actions";
+import { WizardActions } from "./_components/wizard-actions";
 
 // Wizard Step 1 sub-step 2 — Management fee.
 
@@ -351,13 +352,26 @@ export function Step1ManagementFee({
         </div>
       </div>
 
-      <div className="flex justify-between pt-2">
-        <Button type="button" variant="secondary" onClick={onBack}>Back</Button>
-        <Button type="button" onClick={onContinue} disabled={pending}>
-          {pending && <Loader2 className="size-4 animate-spin" />}
-          Continue
-        </Button>
-      </div>
+      <WizardActions
+        draftId={draftId}
+        onBack={onBack}
+        onContinue={onContinue}
+        continuePending={pending}
+        getCurrentPatch={() => {
+          const fixedNumRaw = parseFloat(fixedAmount);
+          const perLotNumRaw = parseFloat(perLotAmount);
+          return {
+            management_fee: {
+              structure: structure as FeeStructure,
+              fixed_amount_cents: Number.isFinite(fixedNumRaw) ? Math.round(fixedNumRaw * 100) : undefined,
+              per_lot_amount_cents: Number.isFinite(perLotNumRaw) ? Math.round(perLotNumRaw * 100) : undefined,
+              gst_applicable: gstApplicable,
+              billing_method: (billingMethod as BillingMethod) || undefined,
+              contract_term: contractTerm,
+            },
+          };
+        }}
+      />
     </div>
   );
 }

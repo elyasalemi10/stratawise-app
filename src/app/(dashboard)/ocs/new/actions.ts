@@ -48,6 +48,11 @@ export type DraftLot = {
   owner_phone?: string;
   owner_postal_address?: string;
   is_occupied_by_owner?: boolean;
+  /** Item 18 - explicit 3-state occupancy. When set, supersedes the boolean.
+   *  - owner_occupied: lives in the lot themselves (no tenant block)
+   *  - tenanted: rented out (tenant fields required)
+   *  - vacant: no current occupant (tenant fields skipped) */
+  occupancy_status?: "owner_occupied" | "tenanted" | "vacant";
   tenant_name?: string;
   tenant_email?: string;
   tenant_phone?: string;
@@ -1244,6 +1249,26 @@ export async function saveStep(
   }
 }
 
+// Save without advancing the wizard pointer (Item 11). Same shape as saveStep
+// but skips validation and never moves current_step/current_substep — the
+// manager can leave the wizard, come back later, and resume on the exact same
+// page with whatever they had typed.
+export async function saveDraftPatch(draftId: string, patch: Partial<DraftJson>) {
+  try {
+    const { draft } = await loadDraft(draftId);
+    const supabase = createServerClient();
+    const merged = { ...(draft.draft_json as DraftJson), ...patch };
+    const { error } = await supabase
+      .from("oc_drafts")
+      .update({ draft_json: merged })
+      .eq("id", draft.id);
+    if (error) return { error: error.message };
+    return { success: true };
+  } catch (err) {
+    return { error: err instanceof Error ? err.message : "Unexpected error" };
+  }
+}
+
 // ─── completeWizard: promote draft to real OC + lots + lot_owners ─
 
 export async function completeWizard(draftId: string) {
@@ -1493,6 +1518,16 @@ export async function completeWizard(draftId: string) {
         const consentCats = l.digital_consent_categories ?? [];
         const hasConsent = consentCats.length > 0;
         const signupCats = l.at_portal_signup_categories ?? [];
+        // Resolve occupancy. The explicit enum wins; if the manager skipped
+        // tenant info (Item 18) we default to 'vacant'. Otherwise derive from
+        // the legacy boolean + tenant presence.
+        const occupancyStatus: "owner_occupied" | "tenanted" | "vacant" =
+          l.occupancy_status ??
+          (l.is_occupied_by_owner === false
+            ? l.tenant_name?.trim()
+              ? "tenanted"
+              : "vacant"
+            : "owner_occupied");
         return {
           lot_id: lotId,
           oc_id: oc.id,
@@ -1501,10 +1536,11 @@ export async function completeWizard(draftId: string) {
           email: email || null,
           phone: phone || null,
           postal_address: postal || null,
-          is_occupied_by_owner: l.is_occupied_by_owner ?? true,
-          tenant_name: l.tenant_name || null,
-          tenant_email: l.tenant_email || null,
-          tenant_phone: l.tenant_phone || null,
+          is_occupied_by_owner: occupancyStatus === "owner_occupied",
+          occupancy_status: occupancyStatus,
+          tenant_name: occupancyStatus === "tenanted" ? l.tenant_name || null : null,
+          tenant_email: occupancyStatus === "tenanted" ? l.tenant_email || null : null,
+          tenant_phone: occupancyStatus === "tenanted" ? l.tenant_phone || null : null,
           digital_consent_categories: consentCats,
           digital_consent_given_at: hasConsent ? new Date().toISOString() : null,
           digital_consent_source: hasConsent ? "manager_initial" as const : null,

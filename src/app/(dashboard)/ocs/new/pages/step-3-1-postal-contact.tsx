@@ -10,6 +10,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/u
 import { PhoneInput } from "@/components/shared/phone-input";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import { saveStep, type DraftJson, type DraftLot } from "../actions";
+import { WizardActions } from "./_components/wizard-actions";
 
 // Wizard Step 3 sub-step 1 — Service address & contact.
 //
@@ -312,9 +313,15 @@ export function Step3PostalContact({
                       </td>
                       <td className="px-3 py-1.5 text-muted-foreground truncate" title={lot.owner_name || ""}>
                         {lot.owner_name || "—"}
-                        {lot.is_occupied_by_owner === false && (
+                        {(lot.occupancy_status === "tenanted" ||
+                          (lot.occupancy_status == null && lot.is_occupied_by_owner === false && (lot.tenant_name ?? "").trim())) && (
                           <span className="ml-2 inline-flex items-center rounded-full bg-amber-50 text-amber-800 text-[10px] px-1.5 py-0.5 font-medium">
                             Tenanted
+                          </span>
+                        )}
+                        {lot.occupancy_status === "vacant" && (
+                          <span className="ml-2 inline-flex items-center rounded-full bg-cool-muted text-cool-muted-foreground text-[10px] px-1.5 py-0.5 font-medium">
+                            Vacant
                           </span>
                         )}
                       </td>
@@ -370,13 +377,13 @@ export function Step3PostalContact({
           </table>
         </div>
 
-        <div className="flex justify-between pt-2">
-          <Button type="button" variant="secondary" onClick={onBack}>Back</Button>
-          <Button type="button" onClick={onContinue} disabled={pending}>
-            {pending && <Loader2 className="size-4 animate-spin" />}
-            Continue
-          </Button>
-        </div>
+        <WizardActions
+          draftId={draftId}
+          onBack={onBack}
+          onContinue={onContinue}
+          continuePending={pending}
+          getCurrentPatch={() => ({ lots })}
+        />
 
         <Dialog open={csvDialogOpen} onOpenChange={setCsvDialogOpen}>
           <DialogContent className="sm:max-w-lg">

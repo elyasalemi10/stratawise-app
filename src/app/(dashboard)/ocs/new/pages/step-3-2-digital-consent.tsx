@@ -15,6 +15,7 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { saveStep, type DraftJson, type DraftLot } from "../actions";
+import { WizardActions } from "./_components/wizard-actions";
 
 // Wizard Step 3 sub-step 2 — Lot owner digital consent.
 
@@ -226,13 +227,13 @@ export function Step3DigitalConsent({
         </table>
       </div>
 
-      <div className="flex justify-between pt-2">
-        <Button type="button" variant="secondary" onClick={onBack}>Back</Button>
-        <Button type="button" onClick={onContinue} disabled={pending}>
-          {pending && <Loader2 className="size-4 animate-spin" />}
-          Continue
-        </Button>
-      </div>
+      <WizardActions
+        draftId={draftId}
+        onBack={onBack}
+        onContinue={onContinue}
+        continuePending={pending}
+        getCurrentPatch={() => ({ lots })}
+      />
 
       {/* Per-lot edit dialog. Checkboxes carry bg-card so they read against
           the popup's white surface. */}

@@ -10,6 +10,7 @@ import { NumberInput } from "@/components/ui/number-input";
 import { DatePicker } from "@/components/shared/date-picker";
 import { VicAddressAutocomplete, type ParsedAddress } from "@/components/shared/vic-address-autocomplete";
 import { saveStep, type DraftJson } from "../actions";
+import { WizardActions } from "./_components/wizard-actions";
 
 // Wizard Step 1 sub-step 1 — General.
 
@@ -315,13 +316,28 @@ export function Step1General({
         </div>
       </div>
 
-      <div className="flex justify-between pt-2">
-        <Button type="button" variant="secondary" onClick={onBack}>Back</Button>
-        <Button type="button" onClick={onContinue} disabled={pending}>
-          {pending && <Loader2 className="size-4 animate-spin" />}
-          Continue
-        </Button>
-      </div>
+      <WizardActions
+        draftId={draftId}
+        onBack={onBack}
+        onContinue={onContinue}
+        continuePending={pending}
+        getCurrentPatch={() => ({
+          plan_number: planNumber.trim() ? planNumber.toUpperCase() : undefined,
+          oc_number: ocNumber.trim() ? parseInt(ocNumber, 10) : undefined,
+          building_name: buildingName.trim() || undefined,
+          trading_name: buildingName.trim() || undefined,
+          address: address.formatted,
+          street_number: address.street_number,
+          street_name: address.street_name,
+          suburb: address.suburb,
+          state: "VIC",
+          postcode: address.postcode,
+          manager_appointment_date: managementStartDate || undefined,
+          gst_registered: gstRegistered,
+          abn: abn.replace(/\s+/g, "").trim() || undefined,
+          tfn: gstRegistered ? (tfn.replace(/\s+/g, "") || undefined) : undefined,
+        })}
+      />
     </div>
   );
 }

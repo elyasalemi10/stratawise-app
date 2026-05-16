@@ -9,6 +9,7 @@ import { Label } from "@/components/ui/label";
 import { NumberInput } from "@/components/ui/number-input";
 import { Switch } from "@/components/ui/switch";
 import { saveStep, completeWizard, type DraftJson, type DraftLot } from "../actions";
+import { WizardActions } from "./_components/wizard-actions";
 
 // Wizard Step 4 sub-step 1 — Opening balances.
 //
@@ -274,13 +275,25 @@ export function Step4OpeningBalances({
           </div>
         </div>
 
-        <div className="flex justify-between pt-2">
-          <Button type="button" variant="secondary" onClick={onBack}>Back</Button>
-          <Button type="button" onClick={onCreate} disabled={pending}>
-            {pending && <Loader2 className="size-4 animate-spin" />}
-            Create OC
-          </Button>
-        </div>
+        <WizardActions
+          draftId={draftId}
+          onBack={onBack}
+          onContinue={onCreate}
+          continueLabel="Create OC"
+          continuePending={pending}
+          getCurrentPatch={() => {
+            const adminN = parseFloat(admin);
+            const capitalN = parseFloat(capital);
+            const maintN = parseFloat(maintenance);
+            return {
+              opening_balance_date: managementStart || undefined,
+              opening_admin_balance: Number.isFinite(adminN) ? adminN : undefined,
+              opening_capital_works_balance: Number.isFinite(capitalN) ? capitalN : undefined,
+              opening_maintenance_plan_balance:
+                hasMaintenance && Number.isFinite(maintN) ? maintN : undefined,
+            };
+          }}
+        />
       </div>
     </TooltipProvider>
   );

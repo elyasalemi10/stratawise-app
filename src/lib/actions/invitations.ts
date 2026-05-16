@@ -132,6 +132,15 @@ export async function getInvitationByCode(rawCode: string) {
 }
 
 export async function acceptInvitation(rawCode: string) {
+  // Item 19 — email decoupling. Invitation lookup is by `code` ONLY; we do
+  // NOT require profile.email to match invitation.email. The same person can
+  // legitimately be on multiple OCs under different contact emails, but want
+  // to manage them all from a single platform login. The `lot_owners.email`
+  // column (OC-facing contact) stays untouched by this flow; only the
+  // entity-model `owners.profile_id` gets linked. Updates to lot_owners.email
+  // are blocked once status='accepted' (see updateLotOwnerContact in
+  // src/lib/actions/lot-edit.ts) — the owner then changes their contact
+  // email from the portal themselves.
   const code = normaliseInviteCode(rawCode);
   if (!code) return { error: "Invalid invite code" };
 
