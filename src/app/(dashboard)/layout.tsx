@@ -6,6 +6,7 @@ import { AppSidebar } from "@/components/layout/app-sidebar";
 import { Header } from "@/components/layout/header";
 import { getSidebarProfile } from "@/lib/actions/profile";
 import { getSidebarOCs } from "@/lib/actions/oc";
+import { BreadcrumbProvider } from "@/lib/breadcrumb-context";
 
 export default async function DashboardLayout({
   children,
@@ -29,20 +30,22 @@ export default async function DashboardLayout({
   const defaultOpen = cookieStore.get("sidebar_state")?.value !== "false";
 
   return (
-    <SidebarProvider defaultOpen={defaultOpen}>
-      <AppSidebar
-        initialProfile={sidebarProfile}
-        initialOCs={sidebarOCs}
-      />
-      <SidebarInset>
-        <header className="sticky top-0 z-30 flex h-16 shrink-0 items-center gap-3 border-b border-border bg-card px-4 lg:px-6">
-          <SidebarTrigger className="-ml-1" />
-          <Header initialOCs={sidebarOCs} />
-        </header>
-        <main className="flex-1 min-h-0 overflow-y-auto bg-background py-4 md:py-6 px-4 lg:px-6">
-          {children}
-        </main>
-      </SidebarInset>
-    </SidebarProvider>
+    <BreadcrumbProvider>
+      <SidebarProvider defaultOpen={defaultOpen}>
+        <AppSidebar
+          initialProfile={sidebarProfile}
+          initialOCs={sidebarOCs}
+        />
+        <SidebarInset>
+          <header className="sticky top-0 z-30 flex h-16 shrink-0 items-center gap-3 border-b border-border bg-card px-4 lg:px-6">
+            <SidebarTrigger className="-ml-1" />
+            <Header initialOCs={sidebarOCs} />
+          </header>
+          <main className="flex-1 min-h-0 overflow-y-auto bg-background py-4 md:py-6 px-4 lg:px-6">
+            {children}
+          </main>
+        </SidebarInset>
+      </SidebarProvider>
+    </BreadcrumbProvider>
   );
 }

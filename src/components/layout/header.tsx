@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect } from "react";
 import { usePathname } from "next/navigation";
 import Link from "next/link";
 import { NotificationBell } from "./notification-bell";
@@ -13,6 +13,7 @@ import {
   getSidebarOCs,
   type SidebarOC,
 } from "@/lib/actions/oc";
+import { useBreadcrumbOverride } from "@/lib/breadcrumb-context";
 
 const routeLabels: Record<string, string> = {
   dashboard: "Dashboard",
@@ -21,7 +22,7 @@ const routeLabels: Record<string, string> = {
   new: "New",
   levies: "Levies",
   meetings: "Meetings",
-  lots: "Lots & owners",
+  lots: "Lots & Owners",
   documents: "Documents",
   budgets: "Budgets",
   create: "Create",
@@ -66,10 +67,10 @@ function buildBreadcrumbs(pathname: string): Crumb[] {
       return [{ label: "Dashboard", href: null, isLast: true }];
     }
 
-    // /lots/[lotId] — show "Lots & owners > Owner details"
+    // /lots/[lotId] — show "Lots & Owners > Owner details"
     if (subPages.length === 2 && subPages[0] === "lots" && isUUID(subPages[1])) {
       return [
-        { label: "Lots & owners", href: `${base}/lots`, isLast: false },
+        { label: "Lots & Owners", href: `${base}/lots`, isLast: false },
         { label: "Owner details", href: null, isLast: true },
       ];
     }
@@ -122,7 +123,16 @@ interface HeaderProps {
 
 export function Header({ initialOCs }: HeaderProps) {
   const pathname = usePathname();
-  const breadcrumbs = buildBreadcrumbs(pathname);
+  const override = useBreadcrumbOverride();
+  // Page-set override takes precedence over the URL-derived breadcrumb so detail
+  // pages can render entity-specific labels (e.g. "Lot 12 · Unit 3A" — Item 4).
+  const breadcrumbs: Crumb[] = override
+    ? override.map((c, i, arr) => ({
+        label: c.label,
+        href: c.href ?? null,
+        isLast: i === arr.length - 1,
+      }))
+    : buildBreadcrumbs(pathname);
 
   // Sidebar cache is read by app-sidebar.tsx; we keep this header in sync so
   // a navigation event that mutates the OC list (e.g. wizard finish) re-seeds

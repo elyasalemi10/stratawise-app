@@ -2,12 +2,12 @@
 
 import { useEffect, useState } from "react";
 import { useSearchParams, useRouter } from "next/navigation";
-import Link from "next/link";
 import {
-  ChevronLeft, FileSignature, Mail, Phone, UserPlus,
+  FileSignature, Mail, Phone, UserPlus,
   MoreVertical, Repeat, Hash, ShieldCheck, ShieldOff,
   History as HistoryIcon, Calendar, ExternalLink,
 } from "lucide-react";
+import { useSetBreadcrumb } from "@/lib/breadcrumb-context";
 import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -52,7 +52,7 @@ interface LotDetailContentProps {
 }
 
 const TABS = [
-  { value: "general", label: "General" },
+  { value: "overview", label: "Overview" },
   { value: "owner", label: "Owner" },
   { value: "tenancy", label: "Tenancy" },
   { value: "ledger", label: "Ledger" },
@@ -136,17 +136,30 @@ export function LotDetailContent({
   const ocCode = useOCCode();
   const searchParams = useSearchParams();
   const router = useRouter();
-  const rawTab = searchParams.get("tab") ?? "general";
-  const initialTab = (rawTab === "payments" ? "ledger" : rawTab) as TabValue;
+  const rawTab = searchParams.get("tab") ?? "overview";
+  // Migrate legacy ?tab=general / ?tab=payments URLs to the new values.
+  const normalisedTab =
+    rawTab === "payments" ? "ledger" : rawTab === "general" ? "overview" : rawTab;
+  const initialTab = normalisedTab as TabValue;
   const [activeTab, setActiveTab] = useState<TabValue>(initialTab);
   const [lot, setLot] = useState(initialLot);
   void setLot;
   const [settlementOpen, setSettlementOpen] = useState(false);
   const [addOwnerOpen, setAddOwnerOpen] = useState(false);
 
+  // Item 4 — replace the generic "Owner details" breadcrumb with entity-specific
+  // "Lot N · Unit X" so the user can see at a glance which lot they're on.
+  useSetBreadcrumb([
+    { label: "Lots & Owners", href: `/ocs/${ocCode}/lots` },
+    {
+      label:
+        `Lot ${lot.lot_number}` + (lot.unit_number ? ` · Unit ${lot.unit_number}` : ""),
+    },
+  ]);
+
   useEffect(() => {
-    if (rawTab === "payments") {
-      window.history.replaceState(null, "", `/ocs/${ocCode}/lots/${lot.id}?tab=ledger`);
+    if (rawTab === "payments" || rawTab === "general") {
+      window.history.replaceState(null, "", `/ocs/${ocCode}/lots/${lot.id}?tab=${normalisedTab}`);
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
@@ -171,13 +184,9 @@ export function LotDetailContent({
 
   return (
     <div className="space-y-6">
-      <Link
-        href={`/ocs/${ocCode}/lots`}
-        className="inline-flex items-center gap-1 text-sm text-muted-foreground hover:text-foreground transition-colors"
-      >
-        <ChevronLeft className="h-4 w-4" />
-        Back to Lots & Owners
-      </Link>
+      {/* Item 3 — "Back to Lots & Owners" link removed. The breadcrumb is the
+          source of truth for navigation; the duplicate link wasted vertical
+          space and competed for the eye. */}
 
       {/* ─── Identity header ────────────────────────────────────────
           One bordered card holding lot identifiers, address, inline
@@ -192,6 +201,11 @@ export function LotDetailContent({
                 Lot {lot.lot_number}{lot.unit_number ? ` · Unit ${lot.unit_number}` : ""}
               </h1>
             </div>
+            {/* Item 7 — "Update owner contact" removed. The More actions menu
+                now only surfaces actions that can't be triggered inline from
+                a tab. "Add owner" only appears while the lot has no owner on
+                file — ownership changes after that go through Transfer
+                ownership in the Owner tab. */}
             <DropdownMenu>
               <DropdownMenuTrigger
                 render={
@@ -202,10 +216,12 @@ export function LotDetailContent({
                 }
               />
               <DropdownMenuContent align="end" sideOffset={6}>
-                <DropdownMenuItem onClick={() => setAddOwnerOpen(true)}>
-                  <UserPlus className="mr-2 h-4 w-4" />
-                  {owner.owner_display_name ? "Update owner contact" : "Add owner"}
-                </DropdownMenuItem>
+                {!owner.owner_display_name && (
+                  <DropdownMenuItem onClick={() => setAddOwnerOpen(true)}>
+                    <UserPlus className="mr-2 h-4 w-4" />
+                    Add owner
+                  </DropdownMenuItem>
+                )}
                 <DropdownMenuItem onClick={() => setSettlementOpen(true)}>
                   <FileSignature className="mr-2 h-4 w-4" />
                   Record settlement
@@ -265,8 +281,10 @@ export function LotDetailContent({
 
           <div className="border-t border-border" />
 
-          {/* Balance + last-payment row */}
-          <div className="flex flex-wrap items-baseline justify-between gap-x-6 gap-y-1 text-sm">
+          {/* Item 5 — Last payment moved left, adjacent to Current balance, so
+              the two financial facts about the lot live as one tight cluster
+              instead of being pushed to opposite ends of the row. */}
+          <div className="flex flex-wrap items-baseline gap-x-6 gap-y-1 text-sm">
             <div className="inline-flex items-baseline gap-2">
               <span className="text-muted-foreground">Current balance:</span>
               <span
@@ -278,24 +296,32 @@ export function LotDetailContent({
                 {balance > 0 && <span className="ml-1 text-xs font-normal text-muted-foreground">(owes)</span>}
               </span>
             </div>
-            <div className="text-muted-foreground">
-              Last payment: {lastPaymentRelative ?? "none"}
+            <div className="inline-flex items-baseline gap-2 text-muted-foreground">
+              <span>Last payment:</span>
+              <span className="font-medium text-foreground">
+                {lastPaymentRelative ?? "none"}
+              </span>
             </div>
           </div>
         </CardContent>
       </Card>
 
+      {/* Item 6 — tab strip spans the full content width with each trigger
+          flex-equal so labels sit on a balanced grid instead of huddled in the
+          left third of the page. */}
       <Tabs value={activeTab} onValueChange={onTabChange}>
-        <TabsList variant="line">
+        <TabsList variant="line" className="w-full justify-stretch border-b border-border">
           {TABS.map((tab) => (
-            <TabsTrigger key={tab.value} value={tab.value}>{tab.label}</TabsTrigger>
+            <TabsTrigger key={tab.value} value={tab.value} className="flex-1">
+              {tab.label}
+            </TabsTrigger>
           ))}
         </TabsList>
       </Tabs>
 
       {/* Tab content. Render all tabs once with `hidden` on the inactive
           ones so per-tab state (ledger filters, etc.) survives switching. */}
-      <div className={activeTab === "general" ? "" : "hidden"}>
+      <div className={activeTab === "overview" ? "" : "hidden"}>
         <GeneralTab lot={lot} />
       </div>
 
