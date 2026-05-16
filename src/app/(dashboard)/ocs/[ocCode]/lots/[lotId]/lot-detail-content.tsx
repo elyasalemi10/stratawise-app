@@ -5,11 +5,10 @@ import { useSearchParams, useRouter } from "next/navigation";
 import {
   FileSignature, Mail, Phone, UserPlus,
   MoreVertical, Repeat, Hash, ShieldCheck, ShieldOff,
-  History as HistoryIcon, Calendar, ExternalLink,
+  ExternalLink,
 } from "lucide-react";
 import { useSetBreadcrumb } from "@/lib/breadcrumb-context";
 import { Card, CardContent } from "@/components/ui/card";
-import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import {
@@ -22,15 +21,28 @@ import { LedgerTab } from "./lot-ledger-tab";
 import { DocumentManager } from "@/components/shared/document-manager";
 import { SettlementDialog } from "./settlement-dialog";
 import { InviteDialog } from "../../manage/invite-dialog";
+import { LotOverviewTab } from "./tabs/lot-overview-tab";
+import { LotHistoryTab } from "./tabs/lot-history-tab";
 import type { DocumentRecord } from "@/lib/validations/documents";
 import type { OwnershipHistoryEntry } from "@/lib/validations/settlement";
 import type { LotOwnerInfo } from "@/lib/actions/lot-ownership";
+import type {
+  NextLevyDue,
+  LotActivityEntry,
+  LotDrn,
+  PortalActivity,
+} from "@/lib/actions/lot-overview";
 import { useOCCode } from "@/lib/oc-context";
 
+type OccupancyStatus = "owner_occupied" | "tenanted" | "vacant" | null;
+
 interface LotOwnerExtra {
+  lot_owner_id: string | null;
   owner_type: string | null;
   payment_reference: string | null;
   is_occupied_by_owner: boolean | null;
+  occupancy_status: OccupancyStatus;
+  ownership_since: string | null;
   tenant_name: string | null;
   tenant_email: string | null;
   tenant_phone: string | null;
@@ -49,6 +61,10 @@ interface LotDetailContentProps {
   ownershipHistory: OwnershipHistoryEntry[];
   lotOwnerExtra: LotOwnerExtra | null;
   lastPaymentAt: string | null;
+  nextLevy: NextLevyDue | null;
+  activity: LotActivityEntry[];
+  drns: LotDrn[];
+  portalActivity: PortalActivity;
 }
 
 const TABS = [
@@ -132,6 +148,10 @@ export function LotDetailContent({
   ownershipHistory,
   lotOwnerExtra,
   lastPaymentAt,
+  nextLevy,
+  activity,
+  drns,
+  portalActivity,
 }: LotDetailContentProps) {
   const ocCode = useOCCode();
   const searchParams = useSearchParams();
@@ -322,7 +342,17 @@ export function LotDetailContent({
       {/* Tab content. Render all tabs once with `hidden` on the inactive
           ones so per-tab state (ledger filters, etc.) survives switching. */}
       <div className={activeTab === "overview" ? "" : "hidden"}>
-        <GeneralTab lot={lot} />
+        <LotOverviewTab
+          ownerDisplayName={owner.owner_display_name ?? null}
+          ownerType={ownerType}
+          ownershipSince={lotOwnerExtra?.ownership_since ?? null}
+          consentCategories={lotOwnerExtra?.digital_consent_categories ?? []}
+          portalLastActiveAt={portalActivity.last_active_at}
+          nextLevy={nextLevy}
+          activity={activity}
+          onViewAllActivity={() => onTabChange("history")}
+          onConsentClick={() => onTabChange("owner")}
+        />
       </div>
 
       <div className={activeTab === "owner" ? "" : "hidden"}>
@@ -367,7 +397,7 @@ export function LotDetailContent({
       </div>
 
       <div className={activeTab === "history" ? "" : "hidden"}>
-        <HistoryTab pastEntries={pastHistoryEntries} activeEntry={activeHistoryEntry} />
+        <LotHistoryTab activity={activity} />
       </div>
 
       <SettlementDialog
@@ -409,30 +439,7 @@ function MetaPair({ label, value, mono }: { label: string; value: string; mono?:
 
 // ─── General tab — lot identifiers only ─────────────────────────
 
-function GeneralTab({ lot }: { lot: { lot_number: number; unit_number: string | null; lot_entitlement: number; lot_liability: number } }) {
-  return (
-    <Card>
-      <CardContent className="pt-5">
-        <h3 className="text-sm font-semibold text-foreground mb-3">Lot details</h3>
-        <dl className="divide-y divide-border">
-          <ReadOnlyRow label="Lot number" value={String(lot.lot_number)} />
-          <ReadOnlyRow label="Unit number" value={lot.unit_number ?? ""} />
-          <ReadOnlyRow label="Entitlement" value={lot.lot_entitlement ? String(lot.lot_entitlement) : ""} />
-          <ReadOnlyRow label="Liability" value={lot.lot_liability ? String(lot.lot_liability) : ""} />
-        </dl>
-      </CardContent>
-    </Card>
-  );
-}
-
-function ReadOnlyRow({ label, value }: { label: string; value: string }) {
-  return (
-    <div className="flex items-baseline justify-between py-3">
-      <dt className="text-sm text-muted-foreground">{label}</dt>
-      <dd className="text-sm font-medium text-foreground">{value}</dd>
-    </div>
-  );
-}
+// Old GeneralTab / ReadOnlyRow removed — the new LotOverviewTab takes over.
 
 // ─── Owner tab — current card + previous owners ─────────────────
 
@@ -649,64 +656,9 @@ function TenancyTab({
 
 // ─── History tab ───────────────────────────────────────────────
 
-function HistoryTab({
-  activeEntry,
-  pastEntries,
-}: {
-  activeEntry: OwnershipHistoryEntry | null;
-  pastEntries: OwnershipHistoryEntry[];
-}) {
-  const all = activeEntry ? [activeEntry, ...pastEntries] : pastEntries;
-  if (all.length === 0) {
-    return (
-      <Card>
-        <CardContent className="py-10 text-center text-sm text-muted-foreground">
-          No ownership history yet for this lot.
-        </CardContent>
-      </Card>
-    );
-  }
-  return (
-    <Card>
-      <CardContent className="pt-5">
-        <div className="flex items-center gap-2 mb-3">
-          <HistoryIcon className="h-4 w-4 text-muted-foreground" />
-          <h3 className="text-sm font-semibold text-foreground">Ownership timeline</h3>
-        </div>
-        <ol className="space-y-3 border-l border-border pl-4 ml-1">
-          {all.map((entry) => (
-            <li key={entry.id} className="relative">
-              <span className="absolute -left-[18px] top-1 flex h-3 w-3 items-center justify-center rounded-full border-2 border-primary bg-card" />
-              <div className="flex items-start justify-between gap-3">
-                <div className="min-w-0">
-                  <div className="flex items-center gap-2">
-                    <p className="text-sm font-medium text-foreground truncate">{entry.name ?? "Unknown owner"}</p>
-                    {!entry.leftAt && <Badge variant="success">Current</Badge>}
-                  </div>
-                  <p className="mt-0.5 text-xs text-muted-foreground inline-flex items-center gap-1">
-                    <Calendar className="h-3 w-3" />
-                    {formatLongDate(entry.joinedAt)} → {entry.leftAt ? formatLongDate(entry.leftAt) : "Current"}
-                  </p>
-                </div>
-                {entry.settlementDocument?.publicUrl && (
-                  <a
-                    href={entry.settlementDocument.publicUrl}
-                    target="_blank"
-                    rel="noreferrer"
-                    className="inline-flex items-center gap-1 text-xs text-primary hover:underline shrink-0"
-                  >
-                    <ExternalLink className="h-3 w-3" />
-                    Settlement PDF
-                  </a>
-                )}
-              </div>
-            </li>
-          ))}
-        </ol>
-      </CardContent>
-    </Card>
-  );
-}
+// Old ownership-timeline HistoryTab removed — History tab now renders the
+// LotHistoryTab (audit log). Ownership timeline lives in the Owner tab via
+// the PastOwnerRow list (Item 17).
 
 // ─── Placeholder ───────────────────────────────────────────────
 

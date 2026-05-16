@@ -3,6 +3,12 @@ import { getCurrentProfile } from "@/lib/auth";
 import { createServerClient } from "@/lib/supabase";
 import { getLotOwner } from "@/lib/actions/lot-ownership";
 import { getLotOwnershipHistory } from "@/lib/actions/settlements";
+import {
+  getNextLevyDue,
+  getLotActivity,
+  getActiveDrnsForLot,
+  getPortalActivity,
+} from "@/lib/actions/lot-overview";
 import { LotDetailContent } from "./lot-detail-content";
 import type { DocumentRecord } from "@/lib/validations/documents";
 
@@ -75,7 +81,7 @@ export default async function LotDetailPage({
   const lotOwnerResult = await supabase
     .from("lot_owners")
     .select(
-      "owner_type, payment_reference, is_occupied_by_owner, tenant_name, tenant_email, tenant_phone, digital_consent_categories, at_portal_signup_categories, postal_address",
+      "id, owner_type, payment_reference, is_occupied_by_owner, occupancy_status, ownership_since, tenant_name, tenant_email, tenant_phone, digital_consent_categories, at_portal_signup_categories, postal_address",
     )
     .eq("lot_id", lotId)
     .order("created_at", { ascending: false })
@@ -95,9 +101,20 @@ export default async function LotDetailPage({
     .limit(1)
     .maybeSingle();
 
-  const [owner, ownershipHistory] = await Promise.all([
+  const [
+    owner,
+    ownershipHistory,
+    nextLevy,
+    activity,
+    drns,
+    portalActivity,
+  ] = await Promise.all([
     getLotOwner(supabase, lotId),
     getLotOwnershipHistory(lotId),
+    getNextLevyDue(lotId),
+    getLotActivity(lotId, 50),
+    getActiveDrnsForLot(lotId),
+    getPortalActivity(lotId),
   ]);
 
   return (
@@ -111,9 +128,16 @@ export default async function LotDetailPage({
       lotOwnerExtra={
         lotOwnerExtra
           ? {
+              lot_owner_id: lotOwnerExtra.id ?? null,
               owner_type: lotOwnerExtra.owner_type ?? null,
               payment_reference: lotOwnerExtra.payment_reference ?? null,
               is_occupied_by_owner: lotOwnerExtra.is_occupied_by_owner ?? null,
+              occupancy_status: (lotOwnerExtra.occupancy_status as
+                | "owner_occupied"
+                | "tenanted"
+                | "vacant"
+                | null) ?? null,
+              ownership_since: (lotOwnerExtra.ownership_since as string | null) ?? null,
               tenant_name: lotOwnerExtra.tenant_name ?? null,
               tenant_email: lotOwnerExtra.tenant_email ?? null,
               tenant_phone: lotOwnerExtra.tenant_phone ?? null,
@@ -124,6 +148,10 @@ export default async function LotDetailPage({
           : null
       }
       lastPaymentAt={lastPaymentRow?.payment_date ?? null}
+      nextLevy={nextLevy}
+      activity={activity}
+      drns={drns}
+      portalActivity={portalActivity}
     />
   );
 }

@@ -1,0 +1,224 @@
+"use client";
+
+import { Card, CardContent } from "@/components/ui/card";
+import { Button } from "@/components/ui/button";
+import { Calendar, Activity, ChevronRight } from "lucide-react";
+import type {
+  NextLevyDue,
+  LotActivityEntry,
+} from "@/lib/actions/lot-overview";
+
+// Overview tab (Item 12). Replaces the old "General" tab. Renders three cards:
+//   1. Next levy due — formatted "17th March 2026" with reference + amount
+//   2. Recent activity — last 5 audit-log entries scoped to this lot, with a
+//      "View all activity" link that switches to the History tab
+//   3. Snapshot — owner type, ownership-since (or "Not set"), portal last
+//      active, consent count (clickable → Owner tab)
+
+const TOTAL_CONSENT_CATEGORIES = 5;
+
+const ORDINAL_SUFFIX = (day: number): string => {
+  if (day >= 11 && day <= 13) return "th";
+  switch (day % 10) {
+    case 1: return "st";
+    case 2: return "nd";
+    case 3: return "rd";
+    default: return "th";
+  }
+};
+
+function formatOrdinalDate(iso: string | null | undefined): string | null {
+  if (!iso) return null;
+  const d = new Date(iso);
+  if (Number.isNaN(d.getTime())) return null;
+  const day = d.getDate();
+  const month = d.toLocaleDateString("en-AU", { month: "long" });
+  return `${day}${ORDINAL_SUFFIX(day)} ${month} ${d.getFullYear()}`;
+}
+
+function formatRelative(iso: string | null | undefined): string {
+  if (!iso) return "Never";
+  const then = new Date(iso).getTime();
+  if (Number.isNaN(then)) return "Never";
+  const diff = Date.now() - then;
+  const days = Math.floor(diff / (1000 * 60 * 60 * 24));
+  if (days === 0) return "today";
+  if (days === 1) return "yesterday";
+  if (days < 7) return `${days} days ago`;
+  if (days < 30) return `${Math.floor(days / 7)} weeks ago`;
+  if (days < 365) return `${Math.floor(days / 30)} months ago`;
+  return `${Math.floor(days / 365)} years ago`;
+}
+
+function formatCurrency(n: number): string {
+  return new Intl.NumberFormat("en-AU", { style: "currency", currency: "AUD" }).format(n);
+}
+
+interface Props {
+  ownerDisplayName: string | null;
+  ownerType: string;
+  ownershipSince: string | null;
+  consentCategories: string[];
+  portalLastActiveAt: string | null;
+  nextLevy: NextLevyDue | null;
+  activity: LotActivityEntry[];
+  onViewAllActivity: () => void;
+  onConsentClick: () => void;
+}
+
+export function LotOverviewTab({
+  ownerDisplayName,
+  ownerType,
+  ownershipSince,
+  consentCategories,
+  portalLastActiveAt,
+  nextLevy,
+  activity,
+  onViewAllActivity,
+  onConsentClick,
+}: Props) {
+  const recentActivity = activity.slice(0, 5);
+  const ownershipSinceLabel = formatOrdinalDate(ownershipSince) ?? "Not set";
+  const portalLabel = formatRelative(portalLastActiveAt);
+  const consentCount = consentCategories.length;
+
+  return (
+    <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
+      {/* Next levy due ---------------------------------------------------- */}
+      <Card>
+        <CardContent className="pt-5">
+          <div className="flex items-center gap-2 mb-2">
+            <Calendar className="h-4 w-4 text-muted-foreground" />
+            <h3 className="text-sm font-semibold text-foreground">Next levy due</h3>
+          </div>
+          {nextLevy ? (
+            <>
+              <p className="text-2xl font-bold tracking-tight text-foreground tabular-nums">
+                {formatOrdinalDate(nextLevy.due_date)}
+              </p>
+              <p className="mt-1 text-sm text-muted-foreground">
+                {formatCurrency(nextLevy.amount)}
+                <span className="mx-2">·</span>
+                <span className="font-mono text-xs">{nextLevy.reference_number}</span>
+              </p>
+            </>
+          ) : (
+            <p className="text-sm text-muted-foreground">No levy currently outstanding.</p>
+          )}
+        </CardContent>
+      </Card>
+
+      {/* Snapshot --------------------------------------------------------- */}
+      <Card>
+        <CardContent className="pt-5">
+          <h3 className="text-sm font-semibold text-foreground mb-3">Snapshot</h3>
+          <dl className="space-y-2.5 text-sm">
+            <SnapshotRow label="Owner" value={ownerDisplayName ?? "Unassigned"} sub={ownerType} />
+            <SnapshotRow label="Ownership since" value={ownershipSinceLabel} muted={!ownershipSince} />
+            <SnapshotRow label="Portal last active" value={portalLabel} muted={!portalLastActiveAt} />
+            <button
+              type="button"
+              onClick={onConsentClick}
+              className="flex w-full items-baseline justify-between gap-2 rounded-md py-1 text-left transition-colors hover:bg-muted/60 cursor-pointer"
+            >
+              <dt className="text-muted-foreground">Consent</dt>
+              <dd className="flex items-center gap-1 font-medium text-foreground">
+                {consentCount} of {TOTAL_CONSENT_CATEGORIES} categories
+                <ChevronRight className="h-3.5 w-3.5 text-muted-foreground" />
+              </dd>
+            </button>
+          </dl>
+        </CardContent>
+      </Card>
+
+      {/* Recent activity -------------------------------------------------- */}
+      <Card className="lg:col-span-2">
+        <CardContent className="pt-5">
+          <div className="flex items-center justify-between mb-3">
+            <div className="flex items-center gap-2">
+              <Activity className="h-4 w-4 text-muted-foreground" />
+              <h3 className="text-sm font-semibold text-foreground">Recent activity</h3>
+            </div>
+            {activity.length > 5 && (
+              <Button variant="ghost" size="sm" onClick={onViewAllActivity}>
+                View all activity
+                <ChevronRight className="ml-1 h-3.5 w-3.5" />
+              </Button>
+            )}
+          </div>
+          {recentActivity.length === 0 ? (
+            <p className="text-sm text-muted-foreground">No activity recorded yet.</p>
+          ) : (
+            <ol className="divide-y divide-border">
+              {recentActivity.map((row) => (
+                <li key={row.id} className="flex items-start justify-between gap-3 py-2.5 first:pt-0 last:pb-0">
+                  <div className="min-w-0">
+                    <p className="text-sm font-medium text-foreground">
+                      {describeAuditEvent(row)}
+                    </p>
+                    {row.actor_name && (
+                      <p className="mt-0.5 text-xs text-muted-foreground">by {row.actor_name}</p>
+                    )}
+                  </div>
+                  <span className="text-xs text-muted-foreground shrink-0">
+                    {formatRelative(row.created_at)}
+                  </span>
+                </li>
+              ))}
+            </ol>
+          )}
+        </CardContent>
+      </Card>
+    </div>
+  );
+}
+
+function SnapshotRow({
+  label,
+  value,
+  sub,
+  muted,
+}: {
+  label: string;
+  value: string;
+  sub?: string;
+  muted?: boolean;
+}) {
+  return (
+    <div className="flex items-baseline justify-between gap-2">
+      <dt className="text-muted-foreground">{label}</dt>
+      <dd className={`text-right font-medium ${muted ? "text-muted-foreground" : "text-foreground"}`}>
+        {value}
+        {sub && <span className="ml-1.5 text-xs font-normal text-muted-foreground">({sub})</span>}
+      </dd>
+    </div>
+  );
+}
+
+// Best-effort human label for an audit row. We keep this dictionary lean
+// (action+entity_type pairs we expect) and fall back to a generic phrase for
+// anything we haven't catalogued yet.
+function describeAuditEvent(row: LotActivityEntry): string {
+  const map: Record<string, string> = {
+    "create:lot_owner": "Owner contact captured",
+    "update:lot_owner": "Owner contact updated",
+    "accept:invitation": "Owner accepted portal invitation",
+    "create:invitation": "Portal invitation sent",
+    "send:invitation": "Portal invitation re-sent",
+    "update:lot": "Lot details updated",
+    "update:consent": "Consent updated",
+    "update:occupancy": "Occupancy status changed",
+    "create:tenant": "Tenant added",
+    "update:tenant": "Tenant details updated",
+    "delete:tenant": "Tenant removed",
+    "create:settlement": "Settlement recorded",
+    "create:levy_notice": "Levy notice issued",
+    "create:payment": "Payment recorded",
+    "send:sms": "SMS sent",
+    "send:email": "Email sent",
+    "create:phone_call": "Phone call logged",
+    "create:document": "Document uploaded",
+  };
+  const key = `${row.action}:${row.entity_type}`;
+  return map[key] ?? `${row.entity_type.replace(/_/g, " ")} ${row.action}`;
+}
