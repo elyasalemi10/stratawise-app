@@ -189,7 +189,7 @@ export function LotOverviewTab({
             </>
           ) : (
             <div className="flex flex-col items-center justify-center gap-1.5 py-4 text-center">
-              <CalendarCheck className="h-8 w-8 text-[color:var(--brand-gold)]" />
+              <CalendarCheck className="h-10 w-10 text-muted-foreground/40" />
               <p className="text-sm font-medium text-foreground">
                 {anyLevyEverIssued ? "All levies paid" : "No levies issued"}
               </p>
@@ -236,16 +236,14 @@ export function LotOverviewTab({
               <Activity className="h-4 w-4 text-[color:var(--brand-gold)]" />
               <h3 className="text-sm font-semibold text-foreground">Recent activity</h3>
             </div>
-            {activity.length > 5 && (
-              <Button variant="ghost" size="sm" onClick={onViewAllActivity}>
-                View all activity
-                <ChevronRight className="ml-1 h-3.5 w-3.5" />
-              </Button>
-            )}
+            <Button variant="ghost" size="sm" onClick={onViewAllActivity}>
+              See all
+              <ChevronRight className="ml-1 h-3.5 w-3.5" />
+            </Button>
           </div>
           {recentActivity.length === 0 ? (
             <div className="flex flex-col items-center justify-center gap-1.5 py-6 text-center">
-              <FileText className="h-8 w-8 text-[color:var(--brand-gold)]" />
+              <FileText className="h-10 w-10 text-muted-foreground/40" />
               <p className="text-sm font-medium text-foreground">
                 No activity yet
               </p>

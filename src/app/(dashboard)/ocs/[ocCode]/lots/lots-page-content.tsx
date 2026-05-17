@@ -17,6 +17,7 @@ import { Input } from "@/components/ui/input";
 import {
   DropdownMenu,
   DropdownMenuContent,
+  DropdownMenuGroup,
   DropdownMenuItem,
   DropdownMenuTrigger,
   DropdownMenuLabel,
@@ -194,39 +195,45 @@ export function LotsPageContent({
               }
             />
             <DropdownMenuContent align="end" sideOffset={6} className="min-w-[220px]">
-              <DropdownMenuLabel>Owner status</DropdownMenuLabel>
-              <DropdownMenuItem
-                onClick={() => setStatusFilter("all")}
-                className={statusFilter === "all" ? "font-semibold" : undefined}
-              >
-                All lots
-              </DropdownMenuItem>
-              <DropdownMenuItem
-                onClick={() => setStatusFilter("owner_on_file")}
-                className={
-                  statusFilter === "owner_on_file" ? "font-semibold" : undefined
-                }
-              >
-                Owner on file
-              </DropdownMenuItem>
-              <DropdownMenuItem
-                onClick={() => setStatusFilter("pending_invitation")}
-                className={
-                  statusFilter === "pending_invitation"
-                    ? "font-semibold"
-                    : undefined
-                }
-              >
-                Pending invitation
-              </DropdownMenuItem>
-              <DropdownMenuItem
-                onClick={() => setStatusFilter("no_owner")}
-                className={
-                  statusFilter === "no_owner" ? "font-semibold" : undefined
-                }
-              >
-                No owner assigned
-              </DropdownMenuItem>
+              {/* DropdownMenuLabel is a Menu.GroupLabel under the hood — base-ui
+                  throws "MenuGroupRootContext is missing" (error #31) if it's
+                  rendered outside a DropdownMenuGroup. Wrap every Label in a
+                  Group, even when the group has just one section. */}
+              <DropdownMenuGroup>
+                <DropdownMenuLabel>Owner status</DropdownMenuLabel>
+                <DropdownMenuItem
+                  onClick={() => setStatusFilter("all")}
+                  className={statusFilter === "all" ? "font-semibold" : undefined}
+                >
+                  All lots
+                </DropdownMenuItem>
+                <DropdownMenuItem
+                  onClick={() => setStatusFilter("owner_on_file")}
+                  className={
+                    statusFilter === "owner_on_file" ? "font-semibold" : undefined
+                  }
+                >
+                  Owner on file
+                </DropdownMenuItem>
+                <DropdownMenuItem
+                  onClick={() => setStatusFilter("pending_invitation")}
+                  className={
+                    statusFilter === "pending_invitation"
+                      ? "font-semibold"
+                      : undefined
+                  }
+                >
+                  Pending invitation
+                </DropdownMenuItem>
+                <DropdownMenuItem
+                  onClick={() => setStatusFilter("no_owner")}
+                  className={
+                    statusFilter === "no_owner" ? "font-semibold" : undefined
+                  }
+                >
+                  No owner assigned
+                </DropdownMenuItem>
+              </DropdownMenuGroup>
               {activeFilters > 0 && (
                 <>
                   <DropdownMenuSeparator />

@@ -148,9 +148,7 @@ export function LotOwnerTab(props: Props) {
     return (
       <Card>
         <CardContent className="flex flex-col items-center gap-4 py-12 text-center">
-          <div className="flex h-16 w-16 items-center justify-center rounded-full border border-[color:var(--brand-gold)]/30 bg-[color:var(--brand-gold)]/10">
-            <UserRound className="h-8 w-8 text-[color:var(--brand-gold)]" />
-          </div>
+          <UserRound className="h-12 w-12 text-muted-foreground/40" />
           <div className="space-y-1">
             <p className="text-base font-semibold text-foreground">
               No owner on file yet

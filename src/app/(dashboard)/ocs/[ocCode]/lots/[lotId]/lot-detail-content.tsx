@@ -286,13 +286,13 @@ export function LotDetailContent({
       <Tabs value={activeTab} onValueChange={onTabChange}>
         <TabsList
           variant="line"
-          className="h-auto w-full flex-wrap justify-stretch gap-1 rounded-md border border-border bg-card p-1.5 overflow-hidden"
+          className="h-auto w-full flex-wrap justify-stretch gap-1 rounded-md border border-border bg-card p-2"
         >
           {TABS.map((tab) => (
             <TabsTrigger
               key={tab.value}
               value={tab.value}
-              className="relative flex-1 h-11 rounded-sm border-0 text-sm font-medium text-muted-foreground transition-colors hover:bg-muted hover:text-foreground data-active:bg-transparent data-active:text-foreground data-active:after:bg-[color:var(--brand-gold)] data-active:after:opacity-100 data-active:after:inset-x-3 data-active:after:bottom-1 data-active:after:h-0.5 data-active:after:rounded-full"
+              className="relative flex-1 h-12 px-3 py-2 rounded-sm border-0 text-sm font-medium text-muted-foreground transition-colors hover:bg-muted hover:text-foreground data-active:bg-transparent data-active:text-foreground data-active:after:bg-[color:var(--brand-gold)] data-active:after:opacity-100 data-active:after:inset-x-3 data-active:after:bottom-1 data-active:after:h-0.5 data-active:after:rounded-full"
             >
               {tab.label}
             </TabsTrigger>

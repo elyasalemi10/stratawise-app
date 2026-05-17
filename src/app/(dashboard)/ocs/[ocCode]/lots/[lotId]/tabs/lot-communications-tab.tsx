@@ -849,11 +849,11 @@ function SendSmsDrawer({
         )}
       </div>
 
-      <div className="flex items-start gap-2 rounded-md border border-border bg-cool-muted p-3 text-sm">
+      <div className="flex items-start gap-2 text-sm">
         <Checkbox
           checked={billConsent}
           onCheckedChange={(v) => setBillConsent(v === true)}
-          className="mt-0.5"
+          className="mt-0.5 bg-card"
         />
         <span className="text-foreground">
           I understand I will be billed{" "}

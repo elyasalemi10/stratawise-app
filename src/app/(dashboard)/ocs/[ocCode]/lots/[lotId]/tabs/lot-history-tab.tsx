@@ -4,12 +4,6 @@ import * as React from "react";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import {
-  Dialog,
-  DialogContent,
-  DialogHeader,
-  DialogTitle,
-} from "@/components/ui/dialog";
-import {
   History as HistoryIcon,
   Pencil,
   ShieldCheck,
@@ -23,11 +17,8 @@ import {
 } from "lucide-react";
 import type { LotActivityEntry } from "@/lib/actions/lot-overview";
 
-// History tab — read-only audit trail for this lot. Rendered like the
-// Communications tab now: compact one-line rows that you click to open a
-// detail Dialog. Paginated client-side. The dialog UI varies by entry type
-// (settlement / payment / communication / contact edit / generic) so each
-// shows the bits that actually matter for that kind of event.
+// History tab — read-only audit trail for this lot. One-line rows, no
+// per-row detail dialog (the row IS the disclosure). Paginated client-side.
 
 const HISTORY_PAGE_SIZE = 20;
 
@@ -112,7 +103,6 @@ function titleFor(row: LotActivityEntry, category: Category): string {
 
 export function LotHistoryTab({ activity }: { activity: LotActivityEntry[] }) {
   const [page, setPage] = React.useState(0);
-  const [detail, setDetail] = React.useState<LotActivityEntry | null>(null);
 
   const totalPages = Math.max(1, Math.ceil(activity.length / HISTORY_PAGE_SIZE));
   const safePage = Math.min(page, totalPages - 1);
@@ -122,9 +112,12 @@ export function LotHistoryTab({ activity }: { activity: LotActivityEntry[] }) {
   if (activity.length === 0) {
     return (
       <Card>
-        <CardContent className="py-10 text-center text-sm text-muted-foreground">
-          <HistoryIcon className="mx-auto mb-2 h-6 w-6 opacity-40" />
-          No activity recorded yet for this lot.
+        <CardContent className="flex flex-col items-center gap-2 py-10 text-center">
+          <HistoryIcon className="h-10 w-10 text-muted-foreground/40" />
+          <p className="text-sm font-medium text-foreground">No activity yet</p>
+          <p className="text-xs text-muted-foreground">
+            Edits, levies and payments will show up here as they happen.
+          </p>
         </CardContent>
       </Card>
     );
@@ -147,29 +140,26 @@ export function LotHistoryTab({ activity }: { activity: LotActivityEntry[] }) {
               const category = classify(row);
               const Icon = iconFor(category);
               return (
-                <li key={row.id}>
-                  <button
-                    type="button"
-                    onClick={() => setDetail(row)}
-                    className="flex w-full items-center justify-between gap-3 py-3 text-left transition-colors hover:bg-muted/50 cursor-pointer rounded-md px-2 -mx-2"
-                  >
-                    <div className="flex min-w-0 items-center gap-3">
-                      <Icon className="h-4 w-4 shrink-0 text-[color:var(--brand-gold)]" />
-                      <div className="min-w-0">
-                        <p className="truncate text-sm font-medium text-foreground">
-                          {titleFor(row, category)}
+                <li
+                  key={row.id}
+                  className="flex items-center justify-between gap-3 py-3"
+                >
+                  <div className="flex min-w-0 items-center gap-3">
+                    <Icon className="h-4 w-4 shrink-0 text-muted-foreground" />
+                    <div className="min-w-0">
+                      <p className="truncate text-sm font-medium text-foreground">
+                        {titleFor(row, category)}
+                      </p>
+                      {row.actor_name && (
+                        <p className="text-xs text-muted-foreground">
+                          by {row.actor_name}
                         </p>
-                        {row.actor_name && (
-                          <p className="text-xs text-muted-foreground">
-                            by {row.actor_name}
-                          </p>
-                        )}
-                      </div>
+                      )}
                     </div>
-                    <span className="shrink-0 text-xs text-muted-foreground tabular-nums">
-                      {formatTime(row.created_at)}
-                    </span>
-                  </button>
+                  </div>
+                  <span className="shrink-0 text-xs text-muted-foreground tabular-nums">
+                    {formatTime(row.created_at)}
+                  </span>
                 </li>
               );
             })}
@@ -207,105 +197,6 @@ export function LotHistoryTab({ activity }: { activity: LotActivityEntry[] }) {
         </CardContent>
       </Card>
 
-      {detail && (
-        <ActivityDetailDialog row={detail} onClose={() => setDetail(null)} />
-      )}
     </>
-  );
-}
-
-function ActivityDetailDialog({
-  row,
-  onClose,
-}: {
-  row: LotActivityEntry;
-  onClose: () => void;
-}) {
-  const category = classify(row);
-  const Icon = iconFor(category);
-  const title = titleFor(row, category);
-
-  const metaEntries = Object.entries(row.metadata ?? {}).filter(
-    ([, v]) => v !== null && v !== undefined && v !== "",
-  );
-  const beforeEntries = Object.entries(row.before_state ?? {}).filter(
-    ([, v]) => v !== null && v !== undefined && v !== "",
-  );
-  const afterEntries = Object.entries(row.after_state ?? {}).filter(
-    ([, v]) => v !== null && v !== undefined && v !== "",
-  );
-
-  return (
-    <Dialog open onOpenChange={(o) => !o && onClose()}>
-      <DialogContent className="sm:max-w-lg">
-        <DialogHeader>
-          <DialogTitle className="flex items-center gap-2">
-            <Icon className="h-4 w-4 text-[color:var(--brand-gold)]" />
-            {title}
-          </DialogTitle>
-        </DialogHeader>
-
-        <div className="space-y-3 text-sm">
-          <DetailRow label="When" value={formatTime(row.created_at)} />
-          {row.actor_name && <DetailRow label="By" value={row.actor_name} />}
-          <DetailRow label="Action" value={humanise(row.action)} />
-          <DetailRow label="Entity" value={humanise(row.entity_type)} />
-        </div>
-
-        {(beforeEntries.length > 0 || afterEntries.length > 0) && (
-          <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-            {beforeEntries.length > 0 && (
-              <StatePanel title="Before" entries={beforeEntries} />
-            )}
-            {afterEntries.length > 0 && (
-              <StatePanel title="After" entries={afterEntries} />
-            )}
-          </div>
-        )}
-
-        {metaEntries.length > 0 && (
-          <StatePanel title="Details" entries={metaEntries} />
-        )}
-      </DialogContent>
-    </Dialog>
-  );
-}
-
-function DetailRow({ label, value }: { label: string; value: string }) {
-  return (
-    <div className="flex items-baseline justify-between gap-3">
-      <dt className="text-xs uppercase tracking-wide text-muted-foreground">
-        {label}
-      </dt>
-      <dd className="text-right text-sm font-medium text-foreground break-all">
-        {value}
-      </dd>
-    </div>
-  );
-}
-
-function StatePanel({
-  title,
-  entries,
-}: {
-  title: string;
-  entries: Array<[string, unknown]>;
-}) {
-  return (
-    <div className="rounded-md border border-border bg-cool-muted p-3">
-      <p className="text-xs uppercase tracking-wide text-muted-foreground mb-1.5">
-        {title}
-      </p>
-      <dl className="space-y-1 text-xs">
-        {entries.map(([k, v]) => (
-          <div key={k} className="grid grid-cols-2 gap-2">
-            <dt className="text-muted-foreground">{humanise(k)}</dt>
-            <dd className="text-right text-foreground break-words">
-              {typeof v === "object" ? JSON.stringify(v) : String(v)}
-            </dd>
-          </div>
-        ))}
-      </dl>
-    </div>
   );
 }
