@@ -40,12 +40,18 @@ type Props = PropsLotMode | PropsOCMode;
 
 type Stage = "upload" | "parsing" | "review" | "submitting";
 
+// "manual" mode lets the manager skip the PDF upload entirely and type the
+// new owner details by hand. The action accepts a null documentId in that
+// case and skips the document-attachment checks.
+type EntryMode = "pdf" | "manual";
+
 export function SettlementDialog(props: Props) {
   const { open, onClose, ocId, onApplied } = props;
   const knownLotId = props.lotId ?? null;
   const knownLotNumber = props.lotNumber ?? null;
 
   const [stage, setStage] = useState<Stage>("upload");
+  const [entryMode, setEntryMode] = useState<EntryMode>("pdf");
   const [documentId, setDocumentId] = useState<string | null>(null);
   const [review, setReview] = useState<SettlementReview | null>(null);
   const [dragging, setDragging] = useState(false);
@@ -61,10 +67,21 @@ export function SettlementDialog(props: Props) {
 
   const reset = useCallback(() => {
     setStage("upload");
+    setEntryMode("pdf");
     setDocumentId(null);
     setReview(null);
     setDragging(false);
     setName(""); setEmail(""); setPhone(""); setPostalAddress(""); setDateOfBirth(""); setSettlementDate("");
+  }, []);
+
+  // Manual entry — skip the PDF stage and jump straight to the review form
+  // with empty values. The action accepts documentId=null in this branch.
+  const startManualEntry = useCallback(() => {
+    setEntryMode("manual");
+    setDocumentId(null);
+    setReview(null);
+    setName(""); setEmail(""); setPhone(""); setPostalAddress(""); setDateOfBirth(""); setSettlementDate("");
+    setStage("review");
   }, []);
 
   const handleClose = useCallback(() => {
@@ -126,14 +143,17 @@ export function SettlementDialog(props: Props) {
   const targetLotNumber = knownLotNumber ?? review?.matchedLot?.lotNumber ?? null;
 
   const handleConfirm = useCallback(async () => {
-    if (!documentId || !targetLotId) return;
+    if (!targetLotId) return;
+    // In manual mode documentId is intentionally null — the action accepts it
+    // and skips the document-attachment check.
+    if (entryMode === "pdf" && !documentId) return;
     if (!name.trim() || !email.trim() || !settlementDate) {
       toast.error("Name, email and settlement date are required.");
       return;
     }
     setStage("submitting");
     const result = await applySettlementToLot({
-      documentId,
+      documentId: entryMode === "manual" ? null : documentId,
       lotId: targetLotId,
       newOwner: {
         name: name.trim(),
@@ -158,7 +178,7 @@ export function SettlementDialog(props: Props) {
     reset();
     onClose();
     onApplied?.();
-  }, [documentId, targetLotId, name, email, phone, postalAddress, dateOfBirth, settlementDate, review, targetLotNumber, reset, onClose, onApplied]);
+  }, [entryMode, documentId, targetLotId, name, email, phone, postalAddress, dateOfBirth, settlementDate, review, targetLotNumber, reset, onClose, onApplied]);
 
   // ─── Render ───────────────────────────────────────────────────
 
@@ -170,21 +190,51 @@ export function SettlementDialog(props: Props) {
         </DialogHeader>
 
         {stage === "upload" && (
-          <UploadDropzone
-            dragging={dragging}
-            setDragging={setDragging}
-            fileInputRef={fileInputRef}
-            onFile={startUpload}
-          />
+          <div className="space-y-3">
+            <UploadDropzone
+              dragging={dragging}
+              setDragging={setDragging}
+              fileInputRef={fileInputRef}
+              onFile={startUpload}
+            />
+            <div className="flex items-center gap-3 text-xs text-muted-foreground">
+              <span className="h-px flex-1 bg-border" />
+              <span>or</span>
+              <span className="h-px flex-1 bg-border" />
+            </div>
+            <Button
+              type="button"
+              variant="secondary"
+              className="w-full"
+              onClick={startManualEntry}
+            >
+              Enter settlement details manually
+            </Button>
+            <p className="text-center text-xs text-muted-foreground">
+              No PDF? Type the new owner details by hand.
+            </p>
+          </div>
         )}
 
         {stage === "parsing" && <ParsingSkeleton />}
 
-        {stage === "review" && review && targetLotNumber != null && (
+        {stage === "review" && entryMode === "pdf" && review && targetLotNumber != null && (
           <ReviewForm
             review={review}
             lotNumber={targetLotNumber}
             isMatched={!knownLotId}
+            name={name} setName={setName}
+            email={email} setEmail={setEmail}
+            phone={phone} setPhone={setPhone}
+            postalAddress={postalAddress} setPostalAddress={setPostalAddress}
+            dateOfBirth={dateOfBirth} setDateOfBirth={setDateOfBirth}
+            settlementDate={settlementDate} setSettlementDate={setSettlementDate}
+          />
+        )}
+
+        {stage === "review" && entryMode === "manual" && (
+          <ManualReviewForm
+            lotNumber={knownLotNumber}
             name={name} setName={setName}
             email={email} setEmail={setEmail}
             phone={phone} setPhone={setPhone}
@@ -479,4 +529,104 @@ function InfoRow({ label, value }: { label: string; value: string }) {
 
 function formatCents(cents: number): string {
   return new Intl.NumberFormat("en-AU", { style: "currency", currency: "AUD" }).format(cents / 100);
+}
+
+// ─── Manual review form ───────────────────────────────────────────
+// Used when the manager opts out of the PDF flow. Same field set as the
+// PDF-based form but without the match-pill / parsed-document banner.
+
+function ManualReviewForm(props: {
+  lotNumber: number | null;
+  name: string; setName: (v: string) => void;
+  email: string; setEmail: (v: string) => void;
+  phone: string; setPhone: (v: string) => void;
+  postalAddress: string; setPostalAddress: (v: string) => void;
+  dateOfBirth: string; setDateOfBirth: (v: string) => void;
+  settlementDate: string; setSettlementDate: (v: string) => void;
+}) {
+  return (
+    <div className="space-y-4 max-h-[60vh] overflow-y-auto pr-1">
+      <div className="rounded-md border border-border bg-muted/30 p-3 text-xs text-muted-foreground">
+        Recording settlement manually
+        {props.lotNumber != null ? ` for Lot ${props.lotNumber}` : ""}. No Notice
+        of Acquisition document will be attached.
+      </div>
+
+      <div className="space-y-3">
+        <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
+          New owner
+        </p>
+
+        <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+          <div className="space-y-1.5 sm:col-span-2">
+            <Label htmlFor="manual-settlement-name">
+              Name <span className="text-destructive">*</span>
+            </Label>
+            <Input
+              id="manual-settlement-name"
+              value={props.name}
+              onChange={(e) => props.setName(e.target.value)}
+              placeholder="Full legal name"
+            />
+          </div>
+          <div className="space-y-1.5">
+            <Label htmlFor="manual-settlement-email">
+              Email <span className="text-destructive">*</span>
+            </Label>
+            <Input
+              id="manual-settlement-email"
+              type="email"
+              value={props.email}
+              onChange={(e) => props.setEmail(e.target.value)}
+              placeholder="owner@example.com"
+            />
+          </div>
+          <div className="space-y-1.5">
+            <Label htmlFor="manual-settlement-phone">Phone</Label>
+            <Input
+              id="manual-settlement-phone"
+              value={props.phone}
+              onChange={(e) => props.setPhone(e.target.value)}
+            />
+          </div>
+          <div className="space-y-1.5 sm:col-span-2">
+            <Label htmlFor="manual-settlement-postal">Postal address</Label>
+            <Input
+              id="manual-settlement-postal"
+              value={props.postalAddress}
+              onChange={(e) => props.setPostalAddress(e.target.value)}
+              placeholder="Used as absent-owner address if different from the lot"
+            />
+          </div>
+          <div className="space-y-1.5">
+            <Label htmlFor="manual-settlement-dob">Date of birth</Label>
+            <Input
+              id="manual-settlement-dob"
+              type="date"
+              value={props.dateOfBirth}
+              onChange={(e) => props.setDateOfBirth(e.target.value)}
+            />
+          </div>
+          <div className="space-y-1.5">
+            <Label htmlFor="manual-settlement-date">
+              Settlement date <span className="text-destructive">*</span>
+            </Label>
+            <Input
+              id="manual-settlement-date"
+              type="date"
+              value={props.settlementDate}
+              onChange={(e) => props.setSettlementDate(e.target.value)}
+            />
+          </div>
+        </div>
+
+        <p className="text-xs text-muted-foreground">
+          The new owner will appear as{" "}
+          <span className="font-medium">Pending invitation</span> on this lot.
+          No email is sent — share the invitation link manually when you&apos;re
+          ready.
+        </p>
+      </div>
+    </div>
+  );
 }

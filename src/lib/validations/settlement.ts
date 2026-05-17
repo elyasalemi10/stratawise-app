@@ -4,7 +4,10 @@ const ISO_DATE = /^\d{4}-\d{2}-\d{2}$/;
 const isoDate = z.string().regex(ISO_DATE, "Invalid date");
 
 export const applySettlementSchema = z.object({
-  documentId: z.string().uuid(),
+  // Optional — when null, the settlement is being entered manually without a
+  // Notice of Acquisition PDF. The action then skips the document checks and
+  // records the settlement against the lot directly.
+  documentId: z.string().uuid().nullable().optional(),
   lotId: z.string().uuid(),
   newOwner: z.object({
     name: z.string().trim().min(1, "Name is required").max(200),

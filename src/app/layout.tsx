@@ -18,7 +18,7 @@ export const metadata: Metadata = {
       { url: "/stratawise-favicon.webp", type: "image/webp" },
       { url: "/stratawise-favicon.png", type: "image/png" },
     ],
-    apple: "/stratawise-favicon.png",
+    apple: "/stratawise-favicon.webp",
   },
 };
 

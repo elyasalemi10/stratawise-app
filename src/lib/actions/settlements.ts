@@ -358,21 +358,40 @@ export async function applySettlementToLot(input: ApplySettlementInput) {
 
   const supabase = createServerClient();
 
-  const { data: doc } = await supabase
-    .from("documents")
-    .select("id, oc_id, lot_id, file_name")
-    .eq("id", documentId)
-    .single();
+  // Two paths: (a) a settlement PDF was uploaded → use it as the source of
+  // truth for oc/lot lookup; (b) the manager is entering manually → resolve
+  // oc via the lot row directly.
+  let resolvedOcId: string;
+  let docMeta: { id: string; file_name: string } | null = null;
+  if (documentId) {
+    const { data: doc } = await supabase
+      .from("documents")
+      .select("id, oc_id, lot_id, file_name")
+      .eq("id", documentId)
+      .single();
 
-  if (!doc) return { error: "Document not found" };
-  if (doc.lot_id !== lotId) return { error: "Document is not attached to this lot" };
-  await requireOCAccess(doc.oc_id);
+    if (!doc) return { error: "Document not found" };
+    if (doc.lot_id !== lotId)
+      return { error: "Document is not attached to this lot" };
+    resolvedOcId = doc.oc_id;
+    docMeta = { id: doc.id, file_name: doc.file_name };
+  } else {
+    const { data: lotRow } = await supabase
+      .from("lots")
+      .select("oc_id")
+      .eq("id", lotId)
+      .single();
+    if (!lotRow) return { error: "Lot not found" };
+    resolvedOcId = lotRow.oc_id;
+  }
+  void docMeta;
+  await requireOCAccess(resolvedOcId);
 
   const { data: lot } = await supabase
     .from("lots")
     .select("id, lot_number")
     .eq("id", lotId)
-    .eq("oc_id", doc.oc_id)
+    .eq("oc_id", resolvedOcId)
     .single();
 
   if (!lot) return { error: "Lot not found in this oc" };
@@ -384,7 +403,7 @@ export async function applySettlementToLot(input: ApplySettlementInput) {
   const { data: ocRow } = await supabase
     .from("owners_corporations")
     .select("management_company_id")
-    .eq("id", doc.oc_id)
+    .eq("id", resolvedOcId)
     .single();
   if (!ocRow?.management_company_id) {
     return { error: "OC has no management company configured" };
@@ -411,7 +430,7 @@ export async function applySettlementToLot(input: ApplySettlementInput) {
 
     await supabase.from("audit_log").insert({
       profile_id: profile.id,
-      oc_id: doc.oc_id,
+      oc_id: resolvedOcId,
       action: "ownership_transfer",
       entity_type: "oc_member",
       entity_id: activeMember.id,
@@ -464,7 +483,7 @@ export async function applySettlementToLot(input: ApplySettlementInput) {
   const { data: invitation, error: invErr } = await supabase
     .from("invitations")
     .insert({
-      oc_id: doc.oc_id,
+      oc_id: resolvedOcId,
       lot_id: lotId,
       email: newOwner.email,
       name: newOwner.name,
@@ -527,7 +546,7 @@ export async function applySettlementToLot(input: ApplySettlementInput) {
         .insert({
           lot_id: lotId,
           owner_id: newOwnerId,
-          oc_id: doc.oc_id,
+          oc_id: resolvedOcId,
           start_date: settlementDate,
           is_primary_contact: true,
           is_financial: true,
@@ -545,7 +564,7 @@ export async function applySettlementToLot(input: ApplySettlementInput) {
       const { data: settlementRow, error: settlementErr } = await supabase
         .from("settlements")
         .insert({
-          oc_id: doc.oc_id,
+          oc_id: resolvedOcId,
           lot_id: lotId,
           document_id: documentId,
           settlement_date: settlementDate,
@@ -578,7 +597,7 @@ export async function applySettlementToLot(input: ApplySettlementInput) {
   // 4. Audit-log the new invitation side of the transfer.
   await supabase.from("audit_log").insert({
     profile_id: profile.id,
-    oc_id: doc.oc_id,
+    oc_id: resolvedOcId,
     action: "ownership_transfer",
     entity_type: "invitation",
     entity_id: invitation.id,
@@ -602,13 +621,13 @@ export async function applySettlementToLot(input: ApplySettlementInput) {
     const { data: oc } = await supabase
       .from("owners_corporations")
       .select("name, address")
-      .eq("id", doc.oc_id)
+      .eq("id", resolvedOcId)
       .single();
 
     const lotLabel = oc?.address ?? oc?.name ?? `Lot ${lot.lot_number}`;
     await supabase.from("notifications").insert({
       profile_id: activeMember.profile_id,
-      oc_id: doc.oc_id,
+      oc_id: resolvedOcId,
       type: "ownership_ended",
       title: "Ownership transferred",
       body: `Your ownership of ${lotLabel} ended on ${settlementDate}. Your historical records remain available under Past lots.`,

@@ -1126,12 +1126,13 @@ export async function sendManagerMessageEmail(params: {
   bodyText: string;
   ocName?: string | null;
   companyLogoUrl?: string | null;
+  attachments?: Array<{ filename: string; content: Buffer; contentType: string }>;
 }): Promise<EmailSendResult> {
-  const { managerProfileId, to, subject, bodyText, companyLogoUrl } = params;
+  const { managerProfileId, to, subject, bodyText, companyLogoUrl, attachments } = params;
 
   if (isDryRun()) {
     console.log(
-      `[email-dry-run] type=manager_message from-profile=${managerProfileId} to=${to} subject=${subject}`,
+      `[email-dry-run] type=manager_message from-profile=${managerProfileId} to=${to} subject=${subject} attachments=${attachments?.length ?? 0}`,
     );
     return { dryRun: true };
   }
@@ -1147,7 +1148,15 @@ export async function sendManagerMessageEmail(params: {
     companyLogoUrl ?? null,
   );
 
-  const { data, error } = await getResend().emails.send({ from, to, subject, html });
+  const { data, error } = await getResend().emails.send({
+    from,
+    to,
+    subject,
+    html,
+    ...(attachments && attachments.length > 0
+      ? { attachments }
+      : {}),
+  });
   if (error) {
     console.error("Failed to send manager_message email:", error);
     return { error: error.message };

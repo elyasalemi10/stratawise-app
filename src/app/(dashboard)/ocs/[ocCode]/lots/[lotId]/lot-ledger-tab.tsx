@@ -47,6 +47,7 @@ import { getBankAccountsForOC } from "@/lib/actions/bank-transactions";
 import { RecordCashReceiptDialog } from "@/components/shared/record-cash-receipt-dialog";
 import { RecordAdjustmentDialog } from "@/components/shared/record-adjustment-dialog";
 import { DuplicateBadge } from "@/components/shared/duplicate-badge";
+import { DatePicker } from "@/components/shared/date-picker";
 import {
   LedgerDuplicateReviewDialog,
   type LedgerDuplicateReviewPayload,
@@ -542,23 +543,17 @@ export function LedgerTab({
           </Select>
 
           <div className="flex items-center gap-1.5">
-            <Label className="text-xs text-muted-foreground">From</Label>
-            <input
-              type="date"
-              value={dateFrom}
-              onChange={(e) => setDateFrom(e.target.value)}
-              className="h-9 rounded-md border border-border bg-background px-2 text-sm text-foreground outline-none focus:ring-2 focus:ring-primary/20"
-            />
+            <Label className="text-xs text-foreground">From</Label>
+            <div className="w-44">
+              <DatePicker value={dateFrom} onChange={setDateFrom} placeholder="From" />
+            </div>
           </div>
 
           <div className="flex items-center gap-1.5">
-            <Label className="text-xs text-muted-foreground">To</Label>
-            <input
-              type="date"
-              value={dateTo}
-              onChange={(e) => setDateTo(e.target.value)}
-              className="h-9 rounded-md border border-border bg-background px-2 text-sm text-foreground outline-none focus:ring-2 focus:ring-primary/20"
-            />
+            <Label className="text-xs text-foreground">To</Label>
+            <div className="w-44">
+              <DatePicker value={dateTo} onChange={setDateTo} placeholder="To" />
+            </div>
           </div>
 
           <div className="flex items-center gap-2">
@@ -664,7 +659,7 @@ export function LedgerTab({
                       </td>
                       <td className="px-3 py-2">
                         {entry.entry_type === "credit" ? (
-                          <Badge className="rounded-full bg-secondary/10 text-secondary hover:bg-secondary/10">
+                          <Badge className="rounded-full bg-[hsl(160,60%,92%)] text-[hsl(160,100%,28%)] hover:bg-[hsl(160,60%,92%)]">
                             Credit
                           </Badge>
                         ) : (
@@ -677,14 +672,14 @@ export function LedgerTab({
                         {CATEGORY_LABELS[entry.category]}
                       </td>
                       <td className={cn("px-3 py-2 text-foreground max-w-xs truncate", voided && "line-through")} title={entry.description ?? ""}>
-                        {entry.description || <span className="text-muted-foreground italic">—</span>}
+                        {entry.description || ""}
                       </td>
                       <td className={cn("px-3 py-2 font-mono text-xs text-foreground", voided && "line-through")}>
-                        {entry.reference || <span className="text-muted-foreground font-sans not-italic">—</span>}
+                        {entry.reference || ""}
                       </td>
                       <td className={cn(
                         "px-3 py-2 text-right tabular-nums font-medium",
-                        voided ? "text-muted-foreground" : entry.entry_type === "credit" ? "text-secondary" : "text-destructive",
+                        voided ? "text-muted-foreground" : entry.entry_type === "credit" ? "text-[hsl(160,100%,28%)]" : "text-destructive",
                         voided && "line-through",
                       )}>
                         {entry.entry_type === "debit" ? "-" : "+"}{formatCurrency(entry.amount)}
@@ -692,9 +687,9 @@ export function LedgerTab({
                       {fundFilter !== "all" && (
                         <td className={cn(
                           "px-3 py-2 text-right tabular-nums font-medium",
-                          runBal !== undefined && runBal < 0 ? "text-destructive" : "text-secondary",
+                          runBal !== undefined && runBal < 0 ? "text-destructive" : "text-[hsl(160,100%,28%)]",
                         )}>
-                          {runBal !== undefined ? formatCurrency(runBal) : "—"}
+                          {runBal !== undefined ? formatCurrency(runBal) : ""}
                         </td>
                       )}
                       <td className="px-3 py-2">
@@ -704,7 +699,7 @@ export function LedgerTab({
                               Voided
                             </Badge>
                           ) : (
-                            <Badge className="rounded-full bg-secondary/10 text-secondary hover:bg-secondary/10">
+                            <Badge className="rounded-full bg-[color:var(--brand-gold)]/15 text-[color:var(--brand-gold)] hover:bg-[color:var(--brand-gold)]/15">
                               Active
                             </Badge>
                           )}
@@ -849,7 +844,7 @@ function KpiCard({
         <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">{label}</p>
         <p className={cn(
           "mt-2 text-xl font-bold tabular-nums",
-          negative ? "text-destructive" : "text-secondary",
+          negative ? "text-destructive" : "text-foreground",
         )}>
           {value}
         </p>

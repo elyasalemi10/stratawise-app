@@ -67,10 +67,11 @@ export async function middleware(request: NextRequest) {
 
   const pathname = request.nextUrl.pathname;
 
-  // Unauthenticated user on a protected route → /sign-in?next=<path>
+  // Unauthenticated user on a protected route → /?next=<path>
+  // (Canonical login is now "/"; /sign-in still works via the legacy route.)
   if (!user && !isPublic(pathname)) {
     const url = request.nextUrl.clone();
-    url.pathname = "/sign-in";
+    url.pathname = "/";
     url.searchParams.set("next", pathname);
     return NextResponse.redirect(url);
   }

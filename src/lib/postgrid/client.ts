@@ -15,10 +15,11 @@ import "server-only";
 // HTTP 401 "OperationalError: Invalid API key." (Verified locally by
 // scripts/test-postgrid-addver.ts.)
 //
-// Env vars (test = sandbox, live = production):
+// Env vars (live = production; test keys retained for local-only debugging):
 //   POSTGRID_PRINT_TEST_API_KEY    POSTGRID_PRINT_API_KEY
 //   POSTGRID_ADDVER_TEST_API_KEY   POSTGRID_ADDVER_API_KEY
-//   POSTGRID_MODE                  — "test" (default) | "live"
+//
+// Mode is hard-coded to "live" — POSTGRID_MODE is no longer read.
 //
 // IMPORTANT: PostGrid keys come in two flavours, distinguished by prefix:
 //   • test_pk_… / live_pk_…  — PUBLIC key. Browser-only. PostGrid checks
@@ -44,9 +45,10 @@ import "server-only";
 export type PostGridMode = "test" | "live";
 export type PostGridProduct = "print" | "addver";
 
+// PostGrid mode is hard-coded — the env override was removed because every
+// environment that talks to PostGrid (dev, staging, prod) is on live keys.
 function resolveMode(): PostGridMode {
-  const m = (process.env.POSTGRID_MODE ?? "test").trim().toLowerCase();
-  return m === "live" ? "live" : "test";
+  return "live";
 }
 
 /** Returns the API key for the given product+mode, or null if not

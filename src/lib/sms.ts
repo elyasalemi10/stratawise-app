@@ -17,12 +17,18 @@ export interface SmsSendResult {
   dryRun?: boolean;
 }
 
+// The Mobile Message dashboard issues an "API key" string per account. Their
+// HTTP Basic auth pairs the account username with that key in the password
+// slot. MOBILE_MESSAGE_API_KEY is the canonical env var; MOBILE_MESSAGE_PASSWORD
+// is kept as a fallback for any older deployments still using that name.
+function mobileMessagePassword(): string | undefined {
+  return process.env.MOBILE_MESSAGE_API_KEY ?? process.env.MOBILE_MESSAGE_PASSWORD;
+}
+
 function isDryRun(): boolean {
-  // Same gate as email: any non-prod env where MOBILE_MESSAGE_DRY_RUN=true
-  // or where credentials are absent → log + return without sending.
   if (process.env.SMS_DRY_RUN === "true") return true;
   if (!process.env.MOBILE_MESSAGE_USERNAME) return true;
-  if (!process.env.MOBILE_MESSAGE_PASSWORD) return true;
+  if (!mobileMessagePassword()) return true;
   return false;
 }
 
@@ -54,7 +60,7 @@ export async function sendSms(params: {
   }
 
   const auth = Buffer.from(
-    `${process.env.MOBILE_MESSAGE_USERNAME}:${process.env.MOBILE_MESSAGE_PASSWORD}`,
+    `${process.env.MOBILE_MESSAGE_USERNAME}:${mobileMessagePassword()}`,
   ).toString("base64");
 
   const sender =

@@ -37,6 +37,17 @@ interface EditSheetProps {
   disabled?: boolean;
   /** Reset internal state (e.g. confirmation step) when the sheet closes. */
   onOpenChange?: (open: boolean) => void;
+  /**
+   * The small uppercase caption above the drawer title. Defaults to "Edit"
+   * for the rename/update use case the component was originally built for.
+   * Pass null to hide the caption entirely (e.g. when the drawer carries a
+   * non-edit action like "Send" or "Log").
+   */
+  headerKicker?: string | null;
+  /** Controlled open state. When provided, the drawer ignores its built-in
+   * trigger and is driven entirely by this prop + onOpenChange. Useful when
+   * the drawer is opened from somewhere else in the UI (e.g. a dropdown). */
+  open?: boolean;
 }
 
 export function EditSheet({
@@ -55,14 +66,18 @@ export function EditSheet({
   confirmationMessage = "Save these changes? This can't be undone without manual correction.",
   disabled = false,
   onOpenChange,
+  headerKicker = "Edit",
+  open: controlledOpen,
 }: EditSheetProps) {
-  const [open, setOpen] = React.useState(false);
+  const [uncontrolledOpen, setUncontrolledOpen] = React.useState(false);
+  const isControlled = controlledOpen !== undefined;
+  const open = isControlled ? controlledOpen : uncontrolledOpen;
   const [pending, setPending] = React.useState(false);
   const [confirming, setConfirming] = React.useState(false);
   const [error, setError] = React.useState<string | null>(null);
 
   function handleOpenChange(next: boolean) {
-    setOpen(next);
+    if (!isControlled) setUncontrolledOpen(next);
     if (!next) {
       setPending(false);
       setConfirming(false);
@@ -111,11 +126,15 @@ export function EditSheet({
         showCloseButton={false}
         className="w-full sm:max-w-sm p-0 gap-0 bg-card"
       >
-        {/* Header strip — navy + gold accents to read as a primary surface. */}
+        {/* Header strip — drawer kicker (defaults to "Edit") sits above the
+            label; pass headerKicker={null} to drop the eyebrow entirely for
+            non-edit drawers like Send / Log. */}
         <div className="border-b border-border bg-card px-5 pt-5 pb-4">
-          <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
-            Edit
-          </p>
+          {headerKicker && (
+            <p className="text-xs font-medium uppercase tracking-wide text-[color:var(--brand-gold)]">
+              {headerKicker}
+            </p>
+          )}
           <h2 className="mt-0.5 text-base font-semibold text-foreground">{label}</h2>
           {description && (
             <p className="mt-1 text-xs text-muted-foreground">{description}</p>

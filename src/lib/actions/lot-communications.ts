@@ -7,6 +7,7 @@ import { logAudit } from "@/lib/audit";
 import { sendSms, normaliseAuMobile } from "@/lib/sms";
 import { sendManagerMessageEmail } from "@/lib/email";
 import { ensureManagerUsername } from "@/lib/actions/manager-username";
+import { recordCommunicationCharge } from "@/lib/communication-credits";
 
 // Communications tab server actions (Item 15). Each path:
 //   1. Validates with Zod
@@ -150,6 +151,20 @@ export async function sendLotSms(
     metadata: { lot_id: parsed.data.lot_id },
   });
 
+  // Record a billable charge against the manager's company. Each ~160-char
+  // segment counts as one SMS — Mobile Message bills per segment.
+  if (smsResult.ok && !smsResult.dryRun && profile.management_company_id) {
+    const segments = Math.max(1, Math.ceil(parsed.data.body.length / 160));
+    await recordCommunicationCharge(supabase, {
+      managementCompanyId: profile.management_company_id,
+      ocId: parsed.data.oc_id,
+      communicationLogId: row.id as string,
+      channel: "sms",
+      units: segments,
+      metadata: { recipient_phone: normalised, length: parsed.data.body.length },
+    });
+  }
+
   if (!smsResult.ok) return { ok: false, error: smsResult.error ?? "Could not send SMS." };
   return { ok: true, data: { id: row.id as string } };
 }
@@ -158,12 +173,19 @@ export async function sendLotSms(
 // FROM resolves to `<email_username>@<brand-domain>`; we lazy-derive the
 // manager's username on first use via ensureManagerUsername.
 
+const attachmentSchema = z.object({
+  filename: z.string().trim().min(1).max(200),
+  contentType: z.string().trim().min(1).max(120),
+  base64: z.string().min(1),
+});
+
 const sendEmailSchema = z.object({
   oc_id: z.string().uuid(),
   lot_id: z.string().uuid(),
   recipient_email: z.string().email(),
   subject: z.string().trim().min(1).max(200),
   body: z.string().trim().min(1).max(20000),
+  attachments: z.array(attachmentSchema).max(5).optional(),
 });
 
 export async function sendLotEmail(
@@ -179,11 +201,18 @@ export async function sendLotEmail(
   // noreply address — the user can see the resulting log row and fix later.
   await ensureManagerUsername();
 
+  const attachments = (parsed.data.attachments ?? []).map((a) => ({
+    filename: a.filename,
+    contentType: a.contentType,
+    content: Buffer.from(a.base64, "base64"),
+  }));
+
   const result = await sendManagerMessageEmail({
     managerProfileId: profile.id,
     to: parsed.data.recipient_email,
     subject: parsed.data.subject,
     bodyText: parsed.data.body,
+    attachments: attachments.length > 0 ? attachments : undefined,
   });
 
   let status: "sent" | "failed" | "queued" = "sent";

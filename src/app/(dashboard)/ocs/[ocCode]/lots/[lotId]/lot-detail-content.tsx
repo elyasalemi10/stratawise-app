@@ -3,13 +3,10 @@
 import { useEffect, useState } from "react";
 import { useSearchParams, useRouter } from "next/navigation";
 import {
-  FileSignature, Mail, Phone, UserPlus,
+  FileSignature, UserPlus,
   MoreVertical, Hash,
 } from "lucide-react";
 import { useSetBreadcrumb } from "@/lib/breadcrumb-context";
-import { EditSheet } from "@/components/shared/edit-sheet";
-import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
@@ -176,9 +173,9 @@ export function LotDetailContent({
 
   const ownerType = lotOwnerExtra?.owner_type === "company" ? "Company" : "Individual";
   const isOwnerOccupied = lotOwnerExtra?.is_occupied_by_owner !== false;
-  const ownerSince = formatLongDate(activeHistoryEntry?.joinedAt ?? null);
+  void formatLongDate;
+  void initials;
   const portalActive = !!owner.profile_id;
-  const consentCount = lotOwnerExtra?.digital_consent_categories?.length ?? 0;
   // Canonical 3-state occupancy. Prefer the enum column; fall back to the
   // legacy boolean + tenant heuristic for rows that pre-date the migration.
   const resolvedOccupancy: "owner_occupied" | "tenanted" | "vacant" =
@@ -191,30 +188,30 @@ export function LotDetailContent({
 
   const lastPaymentRelative = formatRelative(lastPaymentAt);
 
+  // Top header line: "Lot 2 · Unit 2 - Owner name" (or no unit, no owner —
+  // pieces drop off gracefully). The lot details (entitlement / liability /
+  // edit) now live in a card inside the Overview tab, so this header is just
+  // identity + the cross-tab Actions menu + the financial line.
+  const headerOwnerSuffix = owner.owner_display_name
+    ? ` - ${owner.owner_display_name}`
+    : "";
+
   return (
     <div className="space-y-6">
-      {/* Item 3 — "Back to Lots & Owners" link removed. The breadcrumb is the
-          source of truth for navigation; the duplicate link wasted vertical
-          space and competed for the eye. */}
-
       {/* ─── Identity header ────────────────────────────────────────
-          One bordered card holding lot identifiers, address, inline
-          metadata (entitlement / liability / reference), current owner
-          snapshot, balance + last-payment line. Mirrors the user's
-          mockup — every fact about THIS lot above the tab strip. */}
+          Lot label, primary actions, and the balance / last-payment line.
+          Owner snapshot + lot meta strip moved into the Overview tab so
+          the header stays focused on identification + cross-tab actions. */}
       <Card>
         <CardContent className="pt-5 space-y-4">
           <div className="flex items-start justify-between gap-4">
             <div className="min-w-0">
               <h1 className="text-2xl font-semibold tracking-tight text-foreground">
-                Lot {lot.lot_number}{lot.unit_number ? ` · Unit ${lot.unit_number}` : ""}
+                Lot {lot.lot_number}
+                {lot.unit_number ? ` · Unit ${lot.unit_number}` : ""}
+                {headerOwnerSuffix}
               </h1>
             </div>
-            {/* Item 7 — "Update owner contact" removed. The More actions menu
-                now only surfaces actions that can't be triggered inline from
-                a tab. "Add owner" only appears while the lot has no owner on
-                file — ownership changes after that go through Transfer
-                ownership in the Owner tab. */}
             <DropdownMenu>
               <DropdownMenuTrigger
                 render={
@@ -239,107 +236,52 @@ export function LotDetailContent({
             </DropdownMenu>
           </div>
 
-          {/* Lot meta strip. tabular-nums on number values so columns of
-              digits line up. The "Edit lot details" trigger opens one popover
-              that lets the manager update unit number / entitlement / liability
-              together (Item 9). Lot number itself stays locked. */}
-          <div className="flex flex-wrap items-center gap-x-5 gap-y-1 text-sm">
-            <MetaPair label="Entitlement" value={lot.lot_entitlement ? String(lot.lot_entitlement) : ""} />
-            <MetaPair label="Liability" value={lot.lot_liability ? String(lot.lot_liability) : ""} />
-            {lotOwnerExtra?.payment_reference && (
-              <MetaPair label="Reference" value={lotOwnerExtra.payment_reference} mono />
-            )}
-            <LotDetailsEditPopover
-              lotId={lot.id}
-              initial={{
-                unit_number: lot.unit_number ?? "",
-                lot_entitlement: lot.lot_entitlement ?? null,
-                lot_liability: lot.lot_liability ?? null,
-              }}
-              onSaved={() => router.refresh()}
-            />
-          </div>
-
           <div className="border-t border-border" />
 
-          {/* Current owner snapshot — single row with avatar + contacts. */}
-          <div>
-            <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground mb-2">
-              Current owner
-            </p>
-            {owner.owner_display_name ? (
-              <div className="flex items-start gap-3">
-                <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-primary text-primary-foreground text-sm font-semibold">
-                  {initials(owner.owner_display_name)}
-                </div>
-                <div className="min-w-0 flex-1">
-                  <p className="font-semibold text-foreground truncate">{owner.owner_display_name}</p>
-                  <p className="text-xs text-muted-foreground">
-                    {ownerType} · {isOwnerOccupied ? "Owner-occupied" : "Tenanted"}
-                    {ownerSince && <> · Since {ownerSince}</>}
-                  </p>
-                  <div className="mt-1 flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-muted-foreground">
-                    {owner.owner_contact_phone && (
-                      <span className="inline-flex items-center gap-1">
-                        <Phone className="h-3 w-3" />
-                        {owner.owner_contact_phone}
-                      </span>
-                    )}
-                    {owner.owner_contact_email && (
-                      <span className="inline-flex items-center gap-1">
-                        <Mail className="h-3 w-3" />
-                        {owner.owner_contact_email}
-                      </span>
-                    )}
-                  </div>
-                </div>
-              </div>
-            ) : (
-              <p className="text-sm text-muted-foreground">Unassigned — no owner on file yet.</p>
-            )}
-          </div>
-
-          <div className="border-t border-border" />
-
-          {/* Item 5 — Last payment moved left, adjacent to Current balance, so
-              the two financial facts about the lot live as one tight cluster
-              instead of being pushed to opposite ends of the row. */}
-          <div className="flex flex-wrap items-baseline gap-x-6 gap-y-1 text-sm">
+          {/* Financial facts at-a-glance. Sized up vs. the previous label/value
+              line so the manager can read balance + last-payment without
+              squinting. Gold underline on "Current balance" / "Last payment"
+              labels nudges them as headline data rather than form labels. */}
+          <div className="flex flex-wrap items-baseline gap-x-8 gap-y-2 text-base">
             <div className="inline-flex items-baseline gap-2">
               <span className="text-muted-foreground">Current balance:</span>
               <span
-                className={`font-semibold tabular-nums ${
+                className={`text-lg font-semibold tabular-nums ${
                   balance > 0 ? "text-destructive" : "text-[hsl(160,100%,37%)]"
                 }`}
               >
                 {balance > 0 ? `-${formatCurrency(balance)}` : formatCurrency(balance)}
-                {balance > 0 && <span className="ml-1 text-xs font-normal text-muted-foreground">(owes)</span>}
+                {balance > 0 && (
+                  <span className="ml-1 text-sm font-normal text-muted-foreground">
+                    (owes)
+                  </span>
+                )}
               </span>
             </div>
-            <div className="inline-flex items-baseline gap-2 text-muted-foreground">
-              <span>Last payment:</span>
-              <span className="font-medium text-foreground">
-                {lastPaymentRelative ?? "none"}
+            <div className="inline-flex items-baseline gap-2">
+              <span className="text-muted-foreground">Last payment:</span>
+              <span className="text-lg font-semibold text-foreground">
+                {lastPaymentRelative ?? "No payments yet"}
               </span>
             </div>
           </div>
         </CardContent>
       </Card>
 
-      {/* Tab strip spans the full content width; each trigger is rendered as
-          a white pill on the grey page bg so they read as discrete clickable
-          tiles instead of muted text labels. Active tab fills with primary
-          (midnight) + white text. */}
+      {/* Tab strip — shadcn line tabs sitting inside a white bar so they read
+          as a single clickable surface with a gold-accent indicator beneath
+          the active tab. Active tab uses primary text (midnight) on white;
+          inactive tabs use muted-foreground and snap to foreground on hover. */}
       <Tabs value={activeTab} onValueChange={onTabChange}>
         <TabsList
           variant="line"
-          className="h-auto w-full flex-wrap justify-stretch gap-1.5 border-none bg-transparent p-0"
+          className="h-auto w-full flex-wrap justify-stretch gap-1 rounded-md border border-border bg-card p-1"
         >
           {TABS.map((tab) => (
             <TabsTrigger
               key={tab.value}
               value={tab.value}
-              className="flex-1 h-10 rounded-md border border-border bg-card text-sm font-medium text-foreground transition-colors hover:bg-secondary hover:text-foreground data-active:bg-primary data-active:text-primary-foreground data-active:border-primary data-active:after:hidden"
+              className="relative flex-1 h-9 rounded-sm border-0 text-sm font-medium text-muted-foreground transition-colors hover:bg-muted hover:text-foreground data-active:bg-transparent data-active:text-foreground data-active:after:bg-[color:var(--brand-gold)] data-active:after:opacity-100 data-active:after:inset-x-2 data-active:after:bottom-[-2px] data-active:after:h-0.5 data-active:after:rounded-full"
             >
               {tab.label}
             </TabsTrigger>
@@ -352,7 +294,10 @@ export function LotDetailContent({
       <div className={activeTab === "overview" ? "" : "hidden"}>
         <LotOverviewTab
           ownerDisplayName={owner.owner_display_name ?? null}
+          ownerEmail={owner.owner_contact_email ?? null}
+          ownerPhone={owner.owner_contact_phone ?? null}
           ownerType={ownerType}
+          isOwnerOccupied={isOwnerOccupied}
           ownershipSince={lotOwnerExtra?.ownership_since ?? null}
           consentCategories={lotOwnerExtra?.digital_consent_categories ?? []}
           portalLastActiveAt={portalActivity.last_active_at}
@@ -360,6 +305,15 @@ export function LotDetailContent({
           activity={activity}
           onViewAllActivity={() => onTabChange("history")}
           onConsentClick={() => onTabChange("owner")}
+          lotDetails={{
+            id: lot.id,
+            lot_number: Number(lot.lot_number),
+            unit_number: lot.unit_number ?? null,
+            lot_entitlement: lot.lot_entitlement ?? null,
+            lot_liability: lot.lot_liability ?? null,
+            payment_reference: lotOwnerExtra?.payment_reference ?? null,
+          }}
+          onLotDetailsSaved={() => router.refresh()}
         />
       </div>
 
@@ -441,103 +395,8 @@ export function LotDetailContent({
   );
 }
 
-// ─── Identity-strip MetaPair ────────────────────────────────────
-
-function MetaPair({ label, value, mono }: { label: string; value: string; mono?: boolean }) {
-  if (!value) return null;
-  return (
-    <span className="inline-flex items-baseline gap-1.5">
-      <span className="text-xs text-muted-foreground">{label}:</span>
-      <span className={`font-semibold text-foreground tabular-nums ${mono ? "font-mono text-xs" : ""}`}>
-        {value}
-      </span>
-    </span>
-  );
-}
-
-// ─── Lot details edit sheet (unit number + entitlement + liability) ──────
-// Single Edit button (right of the meta strip) opens a right-side drawer with
-// all three identifiers. `requireConfirmation` adds a "Confirm save" step
-// because these fields ripple into levy calculations + voting rights. Lot
-// number itself stays locked per Item 9.
-
-function LotDetailsEditPopover({
-  lotId,
-  initial,
-  onSaved,
-}: {
-  lotId: string;
-  initial: { unit_number: string; lot_entitlement: number | null; lot_liability: number | null };
-  onSaved: () => void;
-}) {
-  const [unit, setUnit] = useState(initial.unit_number);
-  const [entitlement, setEntitlement] = useState(
-    initial.lot_entitlement !== null ? String(initial.lot_entitlement) : "",
-  );
-  const [liability, setLiability] = useState(
-    initial.lot_liability !== null ? String(initial.lot_liability) : "",
-  );
-
-  return (
-    <EditSheet
-      label="Lot details"
-      description="Unit number, lot entitlement, and lot liability. Lot number itself can't be changed."
-      triggerLabel="Edit lot details"
-      triggerVariant="ghost"
-      requireConfirmation
-      confirmationMessage="These values drive levy calculations and voting rights. Save anyway?"
-      onOpenChange={(open) => {
-        if (open) {
-          setUnit(initial.unit_number);
-          setEntitlement(initial.lot_entitlement !== null ? String(initial.lot_entitlement) : "");
-          setLiability(initial.lot_liability !== null ? String(initial.lot_liability) : "");
-        }
-      }}
-      onSave={async () => {
-        const entitlementNum = entitlement.trim() ? parseFloat(entitlement) : null;
-        const liabilityNum = liability.trim() ? parseFloat(liability) : null;
-        if (entitlementNum !== null && !Number.isFinite(entitlementNum)) {
-          return { ok: false as const, error: "Entitlement must be a number." };
-        }
-        if (liabilityNum !== null && !Number.isFinite(liabilityNum)) {
-          return { ok: false as const, error: "Liability must be a number." };
-        }
-        const { updateLotDetails } = await import("@/lib/actions/lot-edit");
-        const res = await updateLotDetails({
-          lot_id: lotId,
-          unit_number: unit.trim() || null,
-          lot_entitlement: entitlementNum,
-          lot_liability: liabilityNum,
-        });
-        if (res.ok) onSaved();
-        return res.ok ? { ok: true as const } : { ok: false as const, error: res.error };
-      }}
-    >
-      <div className="space-y-1.5">
-        <Label>Unit number</Label>
-        <Input value={unit} onChange={(e) => setUnit(e.target.value)} placeholder="Unit number" />
-      </div>
-      <div className="space-y-1.5">
-        <Label>Lot entitlement</Label>
-        <Input
-          value={entitlement}
-          onChange={(e) => setEntitlement(e.target.value)}
-          placeholder="Lot entitlement"
-          inputMode="decimal"
-        />
-      </div>
-      <div className="space-y-1.5">
-        <Label>Lot liability</Label>
-        <Input
-          value={liability}
-          onChange={(e) => setLiability(e.target.value)}
-          placeholder="Lot liability"
-          inputMode="decimal"
-        />
-      </div>
-    </EditSheet>
-  );
-}
+// LotDetailsEditPopover relocated into LotOverviewTab — it now lives next
+// to the new "Lot details" card on the Overview tab. See lot-overview-tab.tsx.
 
 // Old GeneralTab / OwnerTab / TenancyTab removed — replaced by LotOverviewTab,
 // LotOwnerTab, and LotTenancyTab in ./tabs/. The legacy KvRow / PastOwnerRow

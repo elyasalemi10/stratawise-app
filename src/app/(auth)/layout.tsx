@@ -26,10 +26,10 @@ export default function AuthLayout({
       <div className="flex w-full lg:w-1/2 flex-col items-center justify-center bg-card px-6 py-12">
         <div className="flex w-full max-w-lg flex-col items-center">
           <Image
-            src="/stratawise-favicon.webp"
+            src="/stratawise-icon.webp"
             alt="StrataWise"
-            width={120}
-            height={120}
+            width={129}
+            height={145}
             priority
             className="mb-8 h-16 w-auto"
           />
