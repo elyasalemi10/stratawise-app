@@ -1282,6 +1282,7 @@ export async function sendBatchEmails(ocId: string, batchId: string) {
         periodLabel: batch?.period_label ?? "",
         pdfBuffer,
         pdfFilename: `${levy.reference_number}.pdf`,
+        ocId,
       });
 
       // Mark as issued
@@ -1441,6 +1442,7 @@ export async function resendBatchEmails(ocId: string, batchId: string) {
         periodLabel: batch?.period_label ?? "",
         pdfBuffer,
         pdfFilename: `${levy.reference_number}.pdf`,
+        ocId,
       });
 
       sentCount++;

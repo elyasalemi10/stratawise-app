@@ -7,22 +7,21 @@ function getResend() {
 }
 
 // Brand + sender configuration. The brand domain (e.g. "stratawise.com.au") is
-// pulled from MANAGER_EMAIL_DOMAIN (preferred) / NEXT_PUBLIC_BRAND_DOMAIN /
-// fallback "stratawise.com.au" via brandDomain(). Brand display name is
-// NEXT_PUBLIC_BRAND_NAME (defaults to "StrataWise"). System-level senders
-// (verification codes, password resets) keep `noreply@...`; manager-initiated
-// senders should resolve `<email_username>@...` per Item 15.
+// pulled from RESEND_SUFFIX via brandDomain(). Brand display name is
+// NEXT_PUBLIC_BRAND_NAME (defaults to "StrataWise"). Every manager-initiated
+// send (invites, levies, overdue chase, payment receipts, claim updates,
+// communications tab messages) resolves a FROM header of the form
+// "Manager Name - Company <username@brand-domain>" via resolveManagerFromHeader
+// or resolveOcSenderFromHeader. Only true system mail (email verification,
+// password reset) stays on the noreply identity below.
 const BRAND_NAME = process.env.NEXT_PUBLIC_BRAND_NAME ?? "StrataWise";
-const FROM_INVITES =
-  process.env.RESEND_INVITES_FROM ?? `${BRAND_NAME} <noreply@${brandDomain()}>`;
-const FROM_LEVIES =
-  process.env.RESEND_LEVIES_FROM ?? `${BRAND_NAME} <noreply@${brandDomain()}>`;
-const FROM_SYSTEM =
-  process.env.RESEND_SYSTEM_FROM ?? `${BRAND_NAME} <noreply@${brandDomain()}>`;
+function noreplyFrom(): string {
+  return `${BRAND_NAME} <noreply@${brandDomain()}>`;
+}
 
-// Resolves the personalised FROM header for a given manager profile (Item 15).
-// Returns null if the manager hasn't got a username assigned yet — callers fall
-// back to the appropriate FROM_* constant.
+// Resolves the personalised FROM header for a given manager profile. Returns
+// null if the manager hasn't been assigned a username yet — callers fall back
+// to resolveOcSenderFromHeader (OC's primary manager) or the noreply identity.
 export async function resolveManagerFromHeader(
   managerProfileId: string,
 ): Promise<string | null> {
@@ -34,23 +33,53 @@ export async function resolveManagerFromHeader(
       .eq("id", managerProfileId)
       .maybeSingle();
     if (!data) return null;
-    let displayName: string | null = null;
+    const personName =
+      [data.first_name, data.last_name].filter(Boolean).join(" ") || null;
+    let companyName: string | null = null;
     if (data.management_company_id) {
       const { data: company } = await supabase
         .from("management_companies")
         .select("name")
         .eq("id", data.management_company_id)
         .maybeSingle();
-      displayName = company?.name ?? null;
+      companyName = company?.name ?? null;
     }
-    if (!displayName) {
-      displayName = [data.first_name, data.last_name].filter(Boolean).join(" ") || BRAND_NAME;
-    }
-    return managerEmailFrom(data.email_username, displayName);
+    return managerEmailFrom(data.email_username, personName, companyName);
   } catch (err) {
     console.error("[email] resolveManagerFromHeader failed:", err);
     return null;
   }
+}
+
+// Resolves the FROM header for an OC-scoped send (levies, overdue notices,
+// payment receipts, claim emails) when there's no specific manager initiating
+// the action — e.g. a Trigger.dev cron or a reconciliation auto-match. Picks
+// the longest-tenured active strata_manager for the OC. Falls back to the
+// noreply identity when no manager is assigned yet.
+export async function resolveOcSenderFromHeader(
+  ocId: string | null | undefined,
+): Promise<string> {
+  if (!ocId) return noreplyFrom();
+  try {
+    const supabase = createServerClient();
+    const { data: member } = await supabase
+      .from("oc_members")
+      .select("profile_id, joined_at")
+      .eq("oc_id", ocId)
+      .eq("role", "strata_manager")
+      .is("left_at", null)
+      .order("joined_at", { ascending: true })
+      .limit(1)
+      .maybeSingle();
+    const profileId = (member as { profile_id: string } | null)?.profile_id;
+    if (profileId) {
+      const from = await resolveManagerFromHeader(profileId);
+      if (from) return from;
+    }
+  } catch (err) {
+    console.error("[email] resolveOcSenderFromHeader failed:", err);
+  }
+  return noreplyFrom();
 }
 
 // EMAIL_DRY_RUN gate (PP6-C-1 retrofit). Set EMAIL_DRY_RUN=true in dev/staging
@@ -79,6 +108,11 @@ interface SendInvitationEmailParams {
   inviteUrl: string;
   invitedByName?: string;
   companyLogoUrl?: string | null;
+  // Optional resolved sender (e.g. inviter's "Name - Company <addr>"). When
+  // omitted, the OC's primary manager is resolved and used. Final fallback
+  // is the brand noreply identity.
+  ocId?: string | null;
+  inviterProfileId?: string | null;
 }
 
 // ─── Email verification (6-digit OTP) ──────────────────────────────────────
@@ -105,7 +139,7 @@ export async function sendPasswordResetCodeEmail({
   }
 
   const { error } = await getResend().emails.send({
-    from: FROM_SYSTEM,
+    from: noreplyFrom(),
     to,
     subject: `Your StrataWise password reset code: ${code}`,
     html: `
@@ -144,7 +178,7 @@ export async function sendVerificationCodeEmail({
   }
 
   const { error } = await getResend().emails.send({
-    from: FROM_SYSTEM,
+    from: noreplyFrom(),
     to,
     subject: `Your StrataWise verification code: ${code}`,
     html: `
@@ -180,6 +214,8 @@ export async function sendInvitationEmail({
   inviteUrl,
   invitedByName,
   companyLogoUrl,
+  ocId,
+  inviterProfileId,
 }: SendInvitationEmailParams) {
   const roleLabel = role === "lot_owner" ? "lot owner" : "strata manager";
   const greeting = inviteeName ? `Hi ${inviteeName},` : "Hi,";
@@ -191,8 +227,12 @@ export async function sendInvitationEmail({
     return { success: true };
   }
 
+  const from =
+    (inviterProfileId && (await resolveManagerFromHeader(inviterProfileId))) ||
+    (await resolveOcSenderFromHeader(ocId ?? null));
+
   const { error } = await getResend().emails.send({
-    from: FROM_INVITES,
+    from,
     to,
     subject: `You've been invited to ${ocName}`,
     html: `
@@ -239,6 +279,7 @@ interface SendLevyEmailParams {
   periodLabel: string;
   pdfBuffer: Buffer;
   pdfFilename: string;
+  ocId?: string | null;
 }
 
 export async function sendLevyEmail({
@@ -253,6 +294,7 @@ export async function sendLevyEmail({
   periodLabel,
   pdfBuffer,
   pdfFilename,
+  ocId,
 }: SendLevyEmailParams) {
   const greeting = ownerName ? `Hi ${ownerName},` : "Hi,";
   const logoHtml = logoImg(companyLogoUrl);
@@ -262,8 +304,10 @@ export async function sendLevyEmail({
     return { success: true };
   }
 
+  const from = await resolveOcSenderFromHeader(ocId ?? null);
+
   const { error } = await getResend().emails.send({
-    from: FROM_LEVIES,
+    from,
     to,
     subject: `Levy Notice — ${ocName} — ${periodLabel}`,
     html: `
@@ -326,7 +370,7 @@ async function sendSystemEmail(
     return { success: true };
   }
   const { error } = await getResend().emails.send({
-    from: FROM_SYSTEM,
+    from: noreplyFrom(),
     to,
     subject,
     html: bodyHtml,
@@ -472,6 +516,10 @@ interface SharedSenderHeader {
   // text-only header (current management_companies typically have
   // logo_url=NULL until the manager UI for upload ships in 6.5).
   companyLogoUrl?: string | null;
+  // OC id used by resolveOcSenderFromHeader to pick the active manager whose
+  // identity becomes the FROM header. Optional — falls back to the brand
+  // noreply identity when missing.
+  ocId?: string | null;
 }
 
 function greeting(ownerName: string | null): string {
@@ -510,13 +558,15 @@ export interface SendPaymentReceivedEmailParams extends SharedSenderHeader {
 export async function sendPaymentReceivedEmail(
   params: SendPaymentReceivedEmailParams,
 ): Promise<EmailSendResult> {
-  const { to, ownerName, ocName, ocAddress, amount, paymentDate, description, lotLabel, reference, ocShortCode, companyLogoUrl } = params;
+  const { to, ownerName, ocName, ocAddress, amount, paymentDate, description, lotLabel, reference, ocShortCode, companyLogoUrl, ocId } = params;
   const subject = `Payment received — ${ocName}`;
 
   if (isDryRun()) {
     console.log(`[email-dry-run] type=payment_received to=${to} amount=${amount.toFixed(2)} subject="${subject}"`);
     return { dryRun: true };
   }
+
+  const from = await resolveOcSenderFromHeader(ocId ?? null);
 
   const refLine = reference
     ? `<p style="margin:0 0 4px;font-size:13px;color:#4A5868;">Reference</p><p style="margin:0 0 12px;font-size:14px;color:#0E314C;">${escapeHtml(reference)}</p>`
@@ -548,7 +598,7 @@ export async function sendPaymentReceivedEmail(
   `, companyLogoUrl);
 
   const { data, error } = await getResend().emails.send({
-    from: FROM_LEVIES,
+    from,
     to,
     subject,
     html,
@@ -579,7 +629,7 @@ export interface SendOverdueReminderEmailParams extends SharedSenderHeader {
 export async function sendOverdueReminderEmail(
   params: SendOverdueReminderEmailParams,
 ): Promise<EmailSendResult> {
-  const { to, ownerName, ocName, ocAddress, referenceNumber, amountOutstanding, daysOverdue, dueDate, penaltyInterestAccrued, ocShortCode, companyLogoUrl, pdfBuffer, pdfFilename } = params;
+  const { to, ownerName, ocName, ocAddress, referenceNumber, amountOutstanding, daysOverdue, dueDate, penaltyInterestAccrued, ocShortCode, companyLogoUrl, pdfBuffer, pdfFilename, ocId } = params;
   const subject = `Your levy is overdue — ${ocName}`;
 
   if (isDryRun()) {
@@ -626,8 +676,10 @@ export async function sendOverdueReminderEmail(
     </p>
   `, companyLogoUrl);
 
+  const from = await resolveOcSenderFromHeader(ocId ?? null);
+
   const { data, error } = await getResend().emails.send({
-    from: FROM_LEVIES,
+    from,
     to,
     subject,
     html,
@@ -663,13 +715,15 @@ export interface SendClaimMatchedEmailParams extends SharedSenderHeader {
 export async function sendClaimMatchedEmail(
   params: SendClaimMatchedEmailParams,
 ): Promise<EmailSendResult> {
-  const { to, ownerName, ocName, ocAddress, amount, claimDate, paymentMethod, lotLabel, ocShortCode, companyLogoUrl } = params;
+  const { to, ownerName, ocName, ocAddress, amount, claimDate, paymentMethod, lotLabel, ocShortCode, companyLogoUrl, ocId } = params;
   const subject = `Your payment has been confirmed — ${ocName}`;
 
   if (isDryRun()) {
     console.log(`[email-dry-run] type=claim_matched to=${to} amount=${amount.toFixed(2)} subject="${subject}"`);
     return { dryRun: true };
   }
+
+  const from = await resolveOcSenderFromHeader(ocId ?? null);
 
   const ctaBlock = buildCtaBlock(
     ocShortCode,
@@ -697,7 +751,7 @@ export async function sendClaimMatchedEmail(
   `, companyLogoUrl);
 
   const { data, error } = await getResend().emails.send({
-    from: FROM_LEVIES,
+    from,
     to,
     subject,
     html,
@@ -722,13 +776,15 @@ export interface SendClaimRejectedEmailParams extends SharedSenderHeader {
 export async function sendClaimRejectedEmail(
   params: SendClaimRejectedEmailParams,
 ): Promise<EmailSendResult> {
-  const { to, ownerName, ocName, ocAddress, amount, claimDate, rejectionReason, lotLabel, ocShortCode, companyLogoUrl } = params;
+  const { to, ownerName, ocName, ocAddress, amount, claimDate, rejectionReason, lotLabel, ocShortCode, companyLogoUrl, ocId } = params;
   const subject = `Update on your payment claim — ${ocName}`;
 
   if (isDryRun()) {
     console.log(`[email-dry-run] type=claim_rejected to=${to} amount=${amount.toFixed(2)} subject="${subject}"`);
     return { dryRun: true };
   }
+
+  const from = await resolveOcSenderFromHeader(ocId ?? null);
 
   const ctaBlock = buildCtaBlock(
     ocShortCode,
@@ -758,7 +814,7 @@ export async function sendClaimRejectedEmail(
   `, companyLogoUrl);
 
   const { data, error } = await getResend().emails.send({
-    from: FROM_LEVIES,
+    from,
     to,
     subject,
     html,
@@ -832,12 +888,10 @@ export async function sendNewClaimSubmittedEmail(
     </p>
   `, companyLogoUrl);
 
-  // Use FROM_SYSTEM for managerial system-generated notifications.
-  // Currently both FROM_LEVIES and FROM_SYSTEM resolve to the same address
-  // in env config, but the semantic split matters for future per-domain
-  // sender identity (e.g. system@myocm.com.au vs payments@myocm.com.au).
+  // Goes to managers; sender stays as the brand noreply identity (this is a
+  // system fan-out, not a person-to-person message).
   const { data, error } = await getResend().emails.send({
-    from: FROM_SYSTEM,
+    from: noreplyFrom(),
     to,
     subject,
     html,
@@ -905,7 +959,7 @@ export async function sendSecondReminderEmail(
     to, ownerName, ocName, ocAddress,
     referenceNumber, amountOutstanding, daysOverdue, dueDate,
     penaltyInterestAccrued, ocShortCode, companyLogoUrl,
-    pdfBuffer, pdfFilename,
+    pdfBuffer, pdfFilename, ocId,
   } = params;
   const subject = `Second reminder — levy overdue ${daysOverdue}+ days — ${ocName}`;
 
@@ -945,8 +999,10 @@ export async function sendSecondReminderEmail(
     </p>
   `, companyLogoUrl);
 
+  const from = await resolveOcSenderFromHeader(ocId ?? null);
+
   const { data, error } = await getResend().emails.send({
-    from: FROM_LEVIES,
+    from,
     to,
     subject,
     html,
@@ -990,7 +1046,7 @@ export async function sendFinalNoticeEmail(
     to, ownerName, ocName, ocAddress,
     referenceNumber, amountOutstanding, daysOverdue, dueDate,
     penaltyInterestAccrued, ocShortCode, companyLogoUrl,
-    pdfBuffer, pdfFilename,
+    pdfBuffer, pdfFilename, ocId,
   } = params;
   const subject = `FINAL NOTICE — outstanding levy — ${ocName}`;
 
@@ -1033,8 +1089,10 @@ export async function sendFinalNoticeEmail(
     </p>
   `, companyLogoUrl);
 
+  const from = await resolveOcSenderFromHeader(ocId ?? null);
+
   const { data, error } = await getResend().emails.send({
-    from: FROM_LEVIES,
+    from,
     to,
     subject,
     html,
@@ -1057,10 +1115,10 @@ export async function sendFinalNoticeEmail(
   return { success: true, id: data?.id ?? null };
 }
 
-// ─── Manager-initiated message (Item 15 — Communications tab "Send email") ──
-// Plain-text body wrapped in the brand shell. FROM resolves to
-// `<email_username>@<brand-domain>` for the manager who is sending. Falls back
-// to FROM_INVITES (noreply) if the manager hasn't got a username yet.
+// ─── Manager-initiated message (Communications tab "Send email") ──
+// Plain-text body wrapped in the brand shell. FROM resolves to the manager's
+// own "Name - Company <username@brand-domain>" identity. Falls back to the
+// brand noreply when the manager hasn't picked a username yet.
 export async function sendManagerMessageEmail(params: {
   managerProfileId: string;
   to: string;
@@ -1078,7 +1136,7 @@ export async function sendManagerMessageEmail(params: {
     return { dryRun: true };
   }
 
-  const from = (await resolveManagerFromHeader(managerProfileId)) ?? FROM_INVITES;
+  const from = (await resolveManagerFromHeader(managerProfileId)) ?? noreplyFrom();
 
   const html = brandShell(
     `

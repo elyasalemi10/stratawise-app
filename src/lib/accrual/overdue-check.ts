@@ -275,6 +275,7 @@ async function processOverdueLevy(
     penaltyInterestAccrued,
     ocShortCode,
     companyLogoUrl,
+    ocId: levy.oc_id,
   };
 
   // ─── communication_log queued ────────────────────────────────────

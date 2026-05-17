@@ -83,6 +83,7 @@ export async function inviteStrataManager(data: { email: string; name: string })
     ocAddress: "",
     inviteUrl,
     companyLogoUrl,
+    inviterProfileId: profile.id,
   });
 
   return { success: true, code: invitation.code };

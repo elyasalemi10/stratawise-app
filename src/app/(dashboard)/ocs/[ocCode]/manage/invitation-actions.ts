@@ -223,6 +223,8 @@ export async function inviteLotOwner(
     lotNumber: lot?.lot_number ?? null,
     inviteUrl,
     companyLogoUrl,
+    ocId,
+    inviterProfileId: profile.id,
   });
 
   revalidatePath("/ocs/[ocCode]/manage", "page");

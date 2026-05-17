@@ -326,13 +326,21 @@ export function LotDetailContent({
         </CardContent>
       </Card>
 
-      {/* Item 6 — tab strip spans the full content width with each trigger
-          flex-equal so labels sit on a balanced grid instead of huddled in the
-          left third of the page. */}
+      {/* Tab strip spans the full content width; each trigger is rendered as
+          a white pill on the grey page bg so they read as discrete clickable
+          tiles instead of muted text labels. Active tab fills with primary
+          (midnight) + white text. */}
       <Tabs value={activeTab} onValueChange={onTabChange}>
-        <TabsList variant="line" className="w-full justify-stretch border-b border-border">
+        <TabsList
+          variant="line"
+          className="h-auto w-full flex-wrap justify-stretch gap-1.5 border-none bg-transparent p-0"
+        >
           {TABS.map((tab) => (
-            <TabsTrigger key={tab.value} value={tab.value} className="flex-1">
+            <TabsTrigger
+              key={tab.value}
+              value={tab.value}
+              className="flex-1 h-10 rounded-md border border-border bg-card text-sm font-medium text-foreground transition-colors hover:bg-secondary hover:text-foreground data-active:bg-primary data-active:text-primary-foreground data-active:border-primary data-active:after:hidden"
+            >
               {tab.label}
             </TabsTrigger>
           ))}

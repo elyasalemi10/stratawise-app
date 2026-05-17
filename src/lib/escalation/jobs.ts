@@ -405,6 +405,7 @@ async function processEscalationInstance(
       companyLogoUrl,
       pdfBuffer: attachmentBuffer,
       pdfFilename: attachmentFilename,
+      ocId: levy.oc_id,
     },
   });
 

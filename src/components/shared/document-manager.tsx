@@ -366,7 +366,7 @@ export function DocumentManager({ ocId, lotId, initialDocuments, readOnly }: Doc
           the page. Click-through disabled so the underlying page handles the
           drop (handled by the window listener in the effect above). */}
       {!readOnly && dragging && (
-        <div className="fixed inset-0 z-[60] pointer-events-none flex items-center justify-center bg-foreground/30 backdrop-blur-sm">
+        <div className="fixed inset-0 z-[60] pointer-events-none flex items-center justify-center bg-white/50">
           <div
             onDragOver={(e) => e.preventDefault()}
             onDrop={handleDrop}

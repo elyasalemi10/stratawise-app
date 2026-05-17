@@ -71,6 +71,7 @@ export function isWithinCooldown(lastChangedAt: Date | string | null | undefined
 
 export function brandDomain(): string {
   return (
+    process.env.RESEND_SUFFIX ??
     process.env.MANAGER_EMAIL_DOMAIN ??
     process.env.NEXT_PUBLIC_BRAND_DOMAIN ??
     "stratawise.com.au"
@@ -85,17 +86,22 @@ export function managerEmailAddress(username: string | null | undefined): string
   return `${username.toLowerCase()}@${brandDomain()}`;
 }
 
-// Standardised FROM header. brandName is the company display name (e.g.
-// "StrataWise"), defaults to env.NEXT_PUBLIC_BRAND_NAME or "StrataWise".
+// Standardised FROM header for manager-initiated mail. Renders as
+// "Manager Name - Company <username@brand-domain>" so the recipient sees who
+// they're hearing from and which managing agency they represent. Falls back
+// gracefully when either name component is missing.
 export function managerEmailFrom(
   username: string | null | undefined,
-  displayName: string | null | undefined,
+  personName: string | null | undefined,
+  companyName: string | null | undefined,
 ): string | null {
   const addr = managerEmailAddress(username);
   if (!addr) return null;
-  const brand =
-    displayName?.trim() ||
+  const person = personName?.trim() || "";
+  const company =
+    companyName?.trim() ||
     process.env.NEXT_PUBLIC_BRAND_NAME ||
     "StrataWise";
-  return `${brand} <${addr}>`;
+  const display = person ? `${person} - ${company}` : company;
+  return `${display} <${addr}>`;
 }

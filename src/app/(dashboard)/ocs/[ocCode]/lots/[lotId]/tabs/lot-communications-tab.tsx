@@ -10,6 +10,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { PhoneInput } from "@/components/shared/phone-input";
 import { NumberInput } from "@/components/ui/number-input";
 import { EditPopover } from "@/components/shared/edit-popover";
+import { EditSheet } from "@/components/shared/edit-sheet";
 import {
   Select,
   SelectContent,
@@ -30,6 +31,7 @@ import {
   sendLotEmail,
   type LotCommunicationRow,
 } from "@/lib/actions/lot-communications";
+import { getManagerSendAddress } from "@/lib/actions/manager-username";
 
 // Communications tab (Item 15). Three primary actions in a top button row, a
 // running ledger of past communications below.
@@ -69,7 +71,7 @@ export function LotCommunicationsTab(props: Props) {
                 ownerPhone={ownerPhone}
                 onSaved={() => router.refresh()}
               />
-              <SendEmailPopover
+              <SendEmailDrawer
                 ocId={ocId}
                 lotId={lotId}
                 ownerEmail={ownerEmail}
@@ -245,7 +247,7 @@ function LogCallPopover({
   );
 }
 
-function SendEmailPopover({
+function SendEmailDrawer({
   ocId,
   lotId,
   ownerEmail,
@@ -261,16 +263,42 @@ function SendEmailPopover({
   const [to, setTo] = React.useState(ownerEmail ?? "");
   const [subject, setSubject] = React.useState("");
   const [body, setBody] = React.useState("");
+  const [senderAddress, setSenderAddress] = React.useState<string | null>(null);
+  const senderFetchedRef = React.useRef(false);
+
+  // Fetch the manager's outbound address the first time the drawer opens.
+  // ensureManagerUsername runs server-side and is idempotent, so subsequent
+  // opens are no-ops.
+  async function loadSenderAddress() {
+    if (senderFetchedRef.current) return;
+    senderFetchedRef.current = true;
+    try {
+      const res = await getManagerSendAddress();
+      setSenderAddress(res.address ?? null);
+    } catch {
+      setSenderAddress(null);
+    }
+  }
+
+  const ownerHasEmail = !!(ownerEmail && ownerEmail.trim());
 
   return (
-    <EditPopover
+    <EditSheet
       label="Send email"
+      description={
+        ownerName ? `To ${ownerName}` : "Choose where this email should go"
+      }
+      triggerLabel="Send email"
+      onOpenChange={(open) => {
+        if (open) loadSenderAddress();
+      }}
       renderTrigger={() => (
         <Button size="sm">
           <Mail className="mr-1.5 h-3.5 w-3.5" />
           Send email
         </Button>
       )}
+      saveLabel="Send email"
       onSave={async () => {
         if (!to.trim()) return { ok: false as const, error: "Recipient email is required." };
         if (!subject.trim()) return { ok: false as const, error: "Subject is required." };
@@ -286,21 +314,55 @@ function SendEmailPopover({
         return res.ok ? { ok: true as const } : { ok: false as const, error: res.error };
       }}
     >
-      <p className="text-xs text-muted-foreground">
-        Sent from your personal StrataWise email address. {ownerName ? `To ${ownerName}.` : ""}
-      </p>
-      <Label>To</Label>
-      <Input type="email" value={to} onChange={(e) => setTo(e.target.value)} placeholder="To" />
-      <Label className="pt-1">Subject</Label>
-      <Input value={subject} onChange={(e) => setSubject(e.target.value)} placeholder="Subject" />
-      <Label className="pt-1">Message</Label>
-      <Textarea
-        value={body}
-        onChange={(e) => setBody(e.target.value)}
-        placeholder="Write your message…"
-        rows={6}
-      />
-    </EditPopover>
+      <div className="rounded-md border border-border bg-cool-muted px-3 py-2 text-xs text-cool-muted-foreground">
+        <p>
+          Sending from{" "}
+          <span className="font-medium text-foreground">
+            {senderAddress ?? "your StrataWise email address"}
+          </span>
+          .
+        </p>
+        <p className="mt-1">Replies come back to your inbox.</p>
+      </div>
+
+      <div className="space-y-1.5">
+        <Label htmlFor="comm-to">To</Label>
+        <Input
+          id="comm-to"
+          type="email"
+          value={to}
+          onChange={(e) => setTo(e.target.value)}
+          placeholder="Recipient email"
+        />
+        {!ownerHasEmail && (
+          <p className="text-xs text-destructive">
+            This owner doesn&apos;t have an email on file — type one above to send
+            anyway. It won&apos;t be saved to the owner&apos;s details.
+          </p>
+        )}
+      </div>
+
+      <div className="space-y-1.5">
+        <Label htmlFor="comm-subject">Subject</Label>
+        <Input
+          id="comm-subject"
+          value={subject}
+          onChange={(e) => setSubject(e.target.value)}
+          placeholder="Subject"
+        />
+      </div>
+
+      <div className="space-y-1.5">
+        <Label htmlFor="comm-body">Message</Label>
+        <Textarea
+          id="comm-body"
+          value={body}
+          onChange={(e) => setBody(e.target.value)}
+          placeholder="Write your message…"
+          rows={10}
+        />
+      </div>
+    </EditSheet>
   );
 }
 

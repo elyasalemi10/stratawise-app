@@ -6,6 +6,7 @@ import { logAudit } from "@/lib/audit";
 import {
   isValidUsername,
   isWithinCooldown,
+  managerEmailAddress,
   USERNAME_CHANGE_COOLDOWN_DAYS,
 } from "@/lib/manager-username";
 import {
@@ -14,6 +15,16 @@ import {
 } from "@/lib/manager-username-server";
 
 type Result<T> = { ok: true; data: T } | { ok: false; error: string };
+
+// Returns the signed-in manager's outbound email address (e.g.
+// "max.smith@stratawise.com.au"). Lazy-creates the username if missing so the
+// returned value is always sendable.
+export async function getManagerSendAddress(): Promise<{ address: string } | { address: null }> {
+  const created = await ensureManagerUsername();
+  if (!created.ok) return { address: null };
+  const addr = managerEmailAddress(created.data.username);
+  return { address: addr ?? null };
+}
 
 // Ensures the signed-in manager has an email_username. Idempotent — no-op when one
 // already exists. Run lazily from places that need the address (e.g. before sending

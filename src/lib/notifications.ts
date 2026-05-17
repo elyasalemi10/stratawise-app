@@ -310,6 +310,7 @@ export async function emitPaymentReceivedEmail(
     reference: cr.reference,
     ocShortCode,
     companyLogoUrl,
+    ocId: cr.oc_id,
   };
 
   // Step 6: communication_log insert (queued state).
@@ -460,6 +461,7 @@ export async function emitClaimMatchedEmail(
     lotLabel,
     ocShortCode,
     companyLogoUrl,
+    ocId: claim.oc_id,
   };
 
   const { data: logRow } = await supabase
@@ -540,6 +542,7 @@ export async function emitClaimRejectedEmail(
     lotLabel,
     ocShortCode,
     companyLogoUrl,
+    ocId: claim.oc_id,
   };
 
   const { data: logRow } = await supabase
