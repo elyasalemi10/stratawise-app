@@ -34,24 +34,25 @@ export function NotificationBell() {
   const [loaded, setLoaded] = useState(false);
   const ref = useRef<HTMLDivElement>(null);
 
-  // Fetch on mount
-  // Fetch on mount, then refresh the unread badge every 60 seconds while
-  // the tab is visible. Pauses on tab-hidden so we don't burn DB round-trips
-  // on backgrounded tabs; resumes (and fires once immediately) when the tab
-  // comes back. 60s is the trade-off between freshness and load — the user
-  // can always tap the bell to force a fetch.
+  // Fetch BOTH the unread count AND the most-recent notifications on
+  // mount so the dropdown shows real content the first time it's opened
+  // instead of an "empty" flash that gets replaced 200ms later. Then
+  // refresh both every 60 seconds while the tab is visible. Pauses on
+  // tab-hidden, resumes immediately on visibility-change.
   useEffect(() => {
     let cancelled = false;
     const refresh = () => {
       if (typeof document !== "undefined" && document.visibilityState === "hidden") {
         return;
       }
-      getUnreadCount().then((count) => {
-        if (!cancelled) {
+      Promise.all([getUnreadCount(), getNotifications(15)]).then(
+        ([count, rows]) => {
+          if (cancelled) return;
           setUnreadCount(count);
+          setNotifications(rows);
           setLoaded(true);
-        }
-      });
+        },
+      );
     };
     refresh();
     const interval = window.setInterval(refresh, 60_000);
@@ -66,7 +67,7 @@ export function NotificationBell() {
     };
   }, []);
 
-  // Fetch full list when opened
+  // Re-fetch when the dropdown opens so stale rows are replaced fast.
   useEffect(() => {
     if (open) {
       getNotifications(15).then(setNotifications);
@@ -92,8 +93,15 @@ export function NotificationBell() {
       );
       setUnreadCount((c) => Math.max(0, c - 1));
     }
-    if (notification.link) {
-      router.push(notification.link);
+    // email_reply notifications ALWAYS go to /inbox?n=<id>, ignoring any
+    // legacy `link` stored on the row (older rows pointed at the lot's
+    // communications tab, which double-navigated and bounced to /dashboard).
+    const target =
+      notification.type === "email_reply"
+        ? `/inbox?n=${notification.id}`
+        : notification.link;
+    if (target) {
+      router.push(target);
       setOpen(false);
     }
   }

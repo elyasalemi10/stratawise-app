@@ -295,8 +295,15 @@ export function LotDetailContent({
           border, and the active `::after` is positioned 2px ABOVE the
           trigger's bottom edge (not below it) — that's what was previously
           getting clipped. Tabs wrap onto a second row on narrow viewports. */}
+      {/* Tab strip — proper shadcn line tab inside a white card. The CVA on
+          TabsTrigger sets `group-data-horizontal/tabs:after:bottom-[-5px]`
+          which puts the active underline OUTSIDE the trigger; we override
+          with the same variant prefix so tailwind-merge keeps ours, then
+          render a manual gold bar via the `after` pseudo-element. Container
+          padding (`p-0` + trigger `pb-2`) leaves space for the underline
+          INSIDE the card. */}
       <Tabs value={activeTab} onValueChange={onTabChange}>
-        <div className="overflow-hidden rounded-md border border-border bg-card">
+        <div className="rounded-md border border-border bg-card">
           <TabsList
             variant="line"
             className="h-auto w-full flex-wrap justify-stretch gap-0 border-none bg-transparent p-0"
@@ -305,7 +312,7 @@ export function LotDetailContent({
               <TabsTrigger
                 key={tab.value}
                 value={tab.value}
-                className="relative flex-1 min-w-[6.5rem] h-12 rounded-none border-0 text-sm font-medium text-muted-foreground bg-transparent transition-colors hover:text-foreground hover:bg-transparent data-active:bg-transparent data-active:text-foreground data-active:after:bg-[color:var(--brand-gold)] data-active:after:opacity-100 data-active:after:inset-x-3 data-active:after:bottom-1 data-active:after:h-0.5 data-active:after:rounded-full"
+                className="relative flex-1 min-w-[6.5rem] h-12 rounded-none border-0 text-sm font-medium text-muted-foreground bg-transparent transition-colors hover:text-foreground hover:bg-transparent data-active:bg-transparent data-active:text-foreground group-data-horizontal/tabs:after:inset-x-3 group-data-horizontal/tabs:after:bottom-1 group-data-horizontal/tabs:after:h-0.5 data-active:after:bg-[color:var(--brand-gold)] data-active:after:rounded-full"
               >
                 {tab.label}
               </TabsTrigger>

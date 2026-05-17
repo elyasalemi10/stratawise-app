@@ -181,7 +181,7 @@ export function InboxContent({
               </p>
             </div>
 
-            {openNotification.link && (
+            {openNotification.link && openNotification.type !== "email_reply" && (
               <div className="pt-4 mt-4 border-t border-border">
                 <Button
                   variant="default"
