@@ -6,6 +6,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { EditSheet } from "@/components/shared/edit-sheet";
+import { EmptyState } from "@/components/shared/empty-state";
 import {
   Calendar,
   Activity,
@@ -188,17 +189,16 @@ export function LotOverviewTab({
               </p>
             </>
           ) : (
-            <div className="flex flex-col items-center justify-center gap-1.5 py-4 text-center">
-              <CalendarCheck className="h-10 w-10 text-muted-foreground/40" />
-              <p className="text-sm font-medium text-foreground">
-                {anyLevyEverIssued ? "All levies paid" : "No levies issued"}
-              </p>
-              <p className="text-xs text-muted-foreground">
-                {anyLevyEverIssued
+            <EmptyState
+              icon={CalendarCheck}
+              title={anyLevyEverIssued ? "All levies paid" : "No levies issued"}
+              description={
+                anyLevyEverIssued
                   ? "Nothing outstanding on this lot."
-                  : "No levy notice has been issued for this lot yet."}
-              </p>
-            </div>
+                  : "No levy notice has been issued for this lot yet."
+              }
+              card={false}
+            />
           )}
         </CardContent>
       </Card>
@@ -242,15 +242,12 @@ export function LotOverviewTab({
             </Button>
           </div>
           {recentActivity.length === 0 ? (
-            <div className="flex flex-col items-center justify-center gap-1.5 py-6 text-center">
-              <FileText className="h-10 w-10 text-muted-foreground/40" />
-              <p className="text-sm font-medium text-foreground">
-                No activity yet
-              </p>
-              <p className="text-xs text-muted-foreground">
-                Owner updates, levies and payments will show up here as they happen.
-              </p>
-            </div>
+            <EmptyState
+              icon={FileText}
+              title="No activity yet"
+              description="Owner updates, levies and payments will show up here as they happen."
+              card={false}
+            />
           ) : (
             <ol className="divide-y divide-border">
               {recentActivity.map((row) => (

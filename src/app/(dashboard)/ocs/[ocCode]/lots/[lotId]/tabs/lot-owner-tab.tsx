@@ -9,6 +9,7 @@ import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { PhoneInput } from "@/components/shared/phone-input";
 import { EditSheet } from "@/components/shared/edit-sheet";
+import { EmptyState } from "@/components/shared/empty-state";
 import {
   Select,
   SelectContent,
@@ -146,23 +147,17 @@ export function LotOwnerTab(props: Props) {
 
   if (!activeOwner.owner_display_name) {
     return (
-      <Card>
-        <CardContent className="flex flex-col items-center gap-4 py-12 text-center">
-          <UserRound className="h-12 w-12 text-muted-foreground/40" />
-          <div className="space-y-1">
-            <p className="text-base font-semibold text-foreground">
-              No owner on file yet
-            </p>
-            <p className="text-sm text-muted-foreground">
-              Record the settlement to assign the new owner to this lot.
-            </p>
-          </div>
+      <EmptyState
+        icon={UserRound}
+        title="No owner on file yet"
+        description="Record the settlement to assign the new owner to this lot."
+        action={
           <Button onClick={onTransfer}>
             <FileSignature className="h-4 w-4" />
             Record settlement
           </Button>
-        </CardContent>
-      </Card>
+        }
+      />
     );
   }
 

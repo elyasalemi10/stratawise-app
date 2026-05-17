@@ -31,7 +31,10 @@ function Calendar({
     <DayPicker
       showOutsideDays={showOutsideDays}
       className={cn(
-        "group/calendar bg-muted [--cell-radius:var(--radius-md)] [--cell-size:--spacing(7)] in-data-[slot=card-content]:bg-transparent in-data-[slot=popover-content]:bg-transparent",
+        // Plain card-coloured calendar. No more navy strip up top — the
+        // simple shadcn layout reads better when embedded in dialogs /
+        // drawers and against the page grey.
+        "group/calendar bg-card [--cell-radius:var(--radius-md)] [--cell-size:--spacing(7)] in-data-[slot=card-content]:bg-transparent in-data-[slot=popover-content]:bg-transparent",
         String.raw`rtl:**:[.rdp-button\_next>svg]:rotate-180`,
         String.raw`rtl:**:[.rdp-button\_previous>svg]:rotate-180`,
         className
@@ -51,33 +54,26 @@ function Calendar({
         ),
         month: cn("flex w-full flex-col gap-3", defaultClassNames.month),
         nav: cn(
-          // react-day-picker stacks the nav (prev/next chevrons) ABOVE the
-          // month_caption via absolute positioning. If we paint the nav navy,
-          // the navy fill covers the month_caption underneath, hiding the
-          // "May 2026" label. So: transparent nav, navy lives on the
-          // month_caption row, chevrons inherit white text from the
-          // descendant selector below.
-          "absolute inset-x-0 top-0 flex w-full items-center justify-between gap-1 bg-transparent px-1 py-1 z-10 [&_*]:text-primary-foreground",
+          // Plain transparent strip with foreground chevrons — no more navy
+          // navigation bar. Sits above the month_caption via absolute
+          // positioning courtesy of react-day-picker.
+          "absolute inset-x-0 top-0 flex w-full items-center justify-between gap-1 bg-transparent px-1 py-1 z-10",
           defaultClassNames.nav
         ),
         button_previous: cn(
           buttonVariants({ variant: buttonVariant }),
-          // Chevrons sit on the navy nav strip — paint them white and hover
-          // with a subtle white-tinted background so they read against the
-          // dark surface.
-          "size-(--cell-size) p-0 select-none aria-disabled:opacity-50 text-primary-foreground hover:bg-primary-foreground/15 hover:text-primary-foreground",
+          "size-(--cell-size) p-0 select-none aria-disabled:opacity-50",
           defaultClassNames.button_previous
         ),
         button_next: cn(
           buttonVariants({ variant: buttonVariant }),
-          "size-(--cell-size) p-0 select-none aria-disabled:opacity-50 text-primary-foreground hover:bg-primary-foreground/15 hover:text-primary-foreground",
+          "size-(--cell-size) p-0 select-none aria-disabled:opacity-50",
           defaultClassNames.button_next
         ),
         month_caption: cn(
-          // This row is the actual navy strip the user sees. nav (chevrons)
-          // sits transparent above it. `relative` keeps the bg in normal
-          // flow under the absolute nav; [&_*] paints the month label white.
-          "relative flex h-(--cell-size) w-full items-center justify-center px-(--cell-size) bg-primary [&_*]:text-primary-foreground",
+          // Plain month / year label on transparent — same height as the
+          // nav row above so the chevrons sit either side of the label.
+          "relative flex h-(--cell-size) w-full items-center justify-center px-(--cell-size)",
           defaultClassNames.month_caption
         ),
         dropdowns: cn(
@@ -93,13 +89,10 @@ function Calendar({
           defaultClassNames.dropdown
         ),
         caption_label: cn(
-          // White text on the navy nav strip (parent bg-primary). Without
-          // forcing text-primary-foreground here the label inherits the
-          // default foreground (midnight) which is invisible on midnight.
-          "font-medium select-none text-primary-foreground",
+          "font-medium select-none text-foreground",
           captionLayout === "label"
             ? "text-sm"
-            : "flex items-center gap-1 rounded-(--cell-radius) text-sm [&>svg]:size-3.5 [&>svg]:text-primary-foreground",
+            : "flex items-center gap-1 rounded-(--cell-radius) text-sm [&>svg]:size-3.5 [&>svg]:text-foreground",
           defaultClassNames.caption_label
         ),
         table: "w-full border-collapse px-2 pb-2",

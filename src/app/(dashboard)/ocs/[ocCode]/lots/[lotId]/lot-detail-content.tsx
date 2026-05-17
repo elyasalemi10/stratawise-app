@@ -8,6 +8,7 @@ import {
 } from "lucide-react";
 import { useSetBreadcrumb } from "@/lib/breadcrumb-context";
 import { Card, CardContent } from "@/components/ui/card";
+import { EmptyState } from "@/components/shared/empty-state";
 import { Button } from "@/components/ui/button";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import {
@@ -16,7 +17,7 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
-import { LedgerTab } from "./lot-ledger-tab";
+import { LotLeviesTab } from "./tabs/lot-levies-tab";
 import { DocumentManager } from "@/components/shared/document-manager";
 import { SettlementDialog } from "./settlement-dialog";
 import { InviteDialog } from "../../manage/invite-dialog";
@@ -280,24 +281,28 @@ export function LotDetailContent({
         </CardContent>
       </Card>
 
-      {/* Tab strip — shadcn line tabs sit inside a white bar; the gold
-          underline indicator stays INSIDE the bar (bottom-1) so it reads as
-          part of the same clickable surface instead of poking out below it. */}
+      {/* Tab strip — plain shadcn line tabs inside a single white card.
+          Triggers are pure text (no per-trigger background, no hover-pill).
+          Active state: foreground text + a 2px gold underline that sits at
+          the bottom EDGE of the card (cell-aligned via bottom-0 + h-0.5).
+          The card carries the visual surface; the tabs are just labels. */}
       <Tabs value={activeTab} onValueChange={onTabChange}>
-        <TabsList
-          variant="line"
-          className="h-auto w-full flex-wrap justify-stretch gap-1 rounded-md border border-border bg-card p-2"
-        >
-          {TABS.map((tab) => (
-            <TabsTrigger
-              key={tab.value}
-              value={tab.value}
-              className="relative flex-1 h-12 px-3 py-2 rounded-sm border-0 text-sm font-medium text-muted-foreground transition-colors hover:bg-muted hover:text-foreground data-active:bg-transparent data-active:text-foreground data-active:after:bg-[color:var(--brand-gold)] data-active:after:opacity-100 data-active:after:inset-x-3 data-active:after:bottom-1 data-active:after:h-0.5 data-active:after:rounded-full"
-            >
-              {tab.label}
-            </TabsTrigger>
-          ))}
-        </TabsList>
+        <div className="overflow-x-auto rounded-md border border-border bg-card">
+          <TabsList
+            variant="line"
+            className="h-12 w-full flex-nowrap justify-stretch gap-0 border-none bg-transparent p-0"
+          >
+            {TABS.map((tab) => (
+              <TabsTrigger
+                key={tab.value}
+                value={tab.value}
+                className="relative flex-1 h-12 rounded-none border-0 text-sm font-medium text-muted-foreground bg-transparent transition-colors hover:text-foreground hover:bg-transparent data-active:bg-transparent data-active:text-foreground data-active:after:bg-[color:var(--brand-gold)] data-active:after:opacity-100 data-active:after:inset-x-0 data-active:after:bottom-0 data-active:after:h-0.5 data-active:after:rounded-none"
+              >
+                {tab.label}
+              </TabsTrigger>
+            ))}
+          </TabsList>
+        </div>
       </Tabs>
 
       {/* Tab content. Render all tabs once with `hidden` on the inactive
@@ -358,11 +363,11 @@ export function LotDetailContent({
       </div>
 
       <div className={activeTab === "ledger" ? "" : "hidden"}>
-        <LedgerTab ocId={ocId} lotId={lot.id} />
+        <ComingSoonTab name="Ledger" />
       </div>
 
       <div className={activeTab === "levies" ? "" : "hidden"}>
-        <PlaceholderTab name="Levies" />
+        <LotLeviesTab lotId={lot.id} />
       </div>
 
       <div className={activeTab === "communications" ? "" : "hidden"}>
@@ -422,15 +427,14 @@ export function LotDetailContent({
 // LotHistoryTab (audit log). Ownership timeline lives in the Owner tab via
 // the PastOwnerRow list (Item 17).
 
-// ─── Placeholder ───────────────────────────────────────────────
+// ─── Coming soon ───────────────────────────────────────────────
 
-function PlaceholderTab({ name }: { name: string }) {
+function ComingSoonTab({ name }: { name: string }) {
   return (
-    <Card>
-      <CardContent className="py-10 text-center text-sm text-muted-foreground">
-        <Hash className="mx-auto mb-2 h-6 w-6 opacity-40" />
-        {name} tab coming soon.
-      </CardContent>
-    </Card>
+    <EmptyState
+      icon={Hash}
+      title={`${name} — coming soon`}
+      description="We're still building this tab."
+    />
   );
 }

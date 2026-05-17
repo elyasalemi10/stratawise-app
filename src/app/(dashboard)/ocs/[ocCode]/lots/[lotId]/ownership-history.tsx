@@ -1,6 +1,7 @@
 import { ExternalLink, History } from "lucide-react";
 import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
+import { EmptyState } from "@/components/shared/empty-state";
 import type { OwnershipHistoryEntry } from "@/lib/validations/settlement";
 
 interface Props {
@@ -17,12 +18,11 @@ function formatDate(iso: string | null): string {
 export function OwnershipHistory({ history }: Props) {
   if (history.length === 0) {
     return (
-      <Card>
-        <CardContent className="flex flex-col items-center justify-center py-10 text-center">
-          <History className="h-8 w-8 text-muted-foreground/30" />
-          <p className="mt-3 text-sm text-muted-foreground">No accepted owners yet for this lot.</p>
-        </CardContent>
-      </Card>
+      <EmptyState
+        icon={History}
+        title="No ownership history"
+        description="Past and current owners will appear here once the lot has had at least one accepted owner."
+      />
     );
   }
 

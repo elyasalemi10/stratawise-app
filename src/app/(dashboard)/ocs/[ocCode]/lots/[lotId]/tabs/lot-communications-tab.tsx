@@ -10,6 +10,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { PhoneInput } from "@/components/shared/phone-input";
 import { NumberInput } from "@/components/ui/number-input";
 import { EditSheet } from "@/components/shared/edit-sheet";
+import { EmptyState } from "@/components/shared/empty-state";
 import {
   Dialog,
   DialogContent,
@@ -196,9 +197,12 @@ function CommunicationHistoryList({
 
   if (rows.length === 0) {
     return (
-      <p className="text-sm text-muted-foreground">
-        No communications logged for this lot yet.
-      </p>
+      <EmptyState
+        icon={MessageSquare}
+        title="No communications yet"
+        description="Calls, SMS and emails to the lot owner will show up here."
+        card={false}
+      />
     );
   }
 

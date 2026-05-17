@@ -3,6 +3,7 @@
 import * as React from "react";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
+import { EmptyState } from "@/components/shared/empty-state";
 import {
   History as HistoryIcon,
   Pencil,
@@ -111,15 +112,11 @@ export function LotHistoryTab({ activity }: { activity: LotActivityEntry[] }) {
 
   if (activity.length === 0) {
     return (
-      <Card>
-        <CardContent className="flex flex-col items-center gap-2 py-10 text-center">
-          <HistoryIcon className="h-10 w-10 text-muted-foreground/40" />
-          <p className="text-sm font-medium text-foreground">No activity yet</p>
-          <p className="text-xs text-muted-foreground">
-            Edits, levies and payments will show up here as they happen.
-          </p>
-        </CardContent>
-      </Card>
+      <EmptyState
+        icon={HistoryIcon}
+        title="No activity yet"
+        description="Edits, levies and payments will show up here as they happen."
+      />
     );
   }
 

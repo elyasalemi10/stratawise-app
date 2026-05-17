@@ -3,12 +3,11 @@
 import { useState, useRef, useCallback, useEffect } from "react";
 import {
   FileText, Upload, Download, Pencil, Trash2, X,
-  FileSpreadsheet, FileImage, File,
+  FileSpreadsheet, FileImage, File, Loader2,
 } from "lucide-react";
 import { toast } from "sonner";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
 import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import type { DocumentRecord } from "@/lib/validations/documents";
 import { ALLOWED_EXTENSIONS } from "@/lib/validations/documents";
@@ -195,16 +194,29 @@ export function DocumentManager({ ocId, lotId, initialDocuments, readOnly }: Doc
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [readOnly]);
 
+  // Split the filename into its display stem + locked .ext suffix. We only
+  // ever ask the user to rename the stem; the extension follows the binary
+  // and must stay attached so OS-level apps still know how to open the file.
+  function splitFilename(filename: string): { stem: string; ext: string } {
+    const lastDot = filename.lastIndexOf(".");
+    if (lastDot <= 0 || lastDot === filename.length - 1) {
+      return { stem: filename, ext: "" };
+    }
+    return { stem: filename.slice(0, lastDot), ext: filename.slice(lastDot) };
+  }
+
   async function handleRename() {
     if (!renameDoc || !renameName.trim()) return;
+    const { ext } = splitFilename(renameDoc.file_name);
+    const newName = `${renameName.trim()}${ext}`;
     const res = await fetch(`/api/documents/${renameDoc.id}`, {
       method: "PATCH",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ name: renameName.trim() }),
+      body: JSON.stringify({ name: newName }),
     });
     if (res.ok) {
       setDocuments((prev) =>
-        prev.map((d) => (d.id === renameDoc.id ? { ...d, file_name: renameName.trim() } : d))
+        prev.map((d) => (d.id === renameDoc.id ? { ...d, file_name: newName } : d))
       );
       setRenameDoc(null);
     } else {
@@ -328,43 +340,10 @@ export function DocumentManager({ ocId, lotId, initialDocuments, readOnly }: Doc
         </div>
       )}
 
-      {/* Upload progress bars */}
-      {uploads.length > 0 && (
-        <div className="space-y-2">
-          {uploads.map((upload) => (
-            <div key={upload.id} className="flex items-center gap-3 rounded-md border border-border p-3">
-              <FileText className="h-4 w-4 text-muted-foreground shrink-0" />
-              <div className="flex-1 min-w-0">
-                <p className="text-sm text-foreground truncate">{upload.fileName}</p>
-                {upload.error ? (
-                  <p className="text-xs text-destructive">{upload.error}</p>
-                ) : (
-                  <div className="mt-1 h-1.5 w-full rounded-full bg-muted overflow-hidden">
-                    <div
-                      className="h-full bg-primary rounded-full transition-all duration-200"
-                      style={{ width: `${upload.progress}%` }}
-                    />
-                  </div>
-                )}
-              </div>
-              <span className="text-xs text-muted-foreground tabular-nums shrink-0">
-                {upload.error ? "" : `${upload.progress}%`}
-              </span>
-              {upload.error && (
-                <button
-                  type="button"
-                  onClick={() => setUploads((prev) => prev.filter((u) => u.id !== upload.id))}
-                  className="text-muted-foreground hover:text-foreground"
-                >
-                  <X className="h-3.5 w-3.5" />
-                </button>
-              )}
-            </div>
-          ))}
-        </div>
-      )}
-
-      {/* Document grid. Flat list filtered by selected category. */}
+      {/* Document grid — in-flight uploads render as ghost cards at the
+          front of the grid with a spinning wheel where the preview / icon
+          would normally sit, so the user sees one consistent surface
+          instead of a separate progress strip above the grid. */}
       {(() => {
         const visibleDocs = filterCategory === "all"
           ? documents
@@ -376,13 +355,15 @@ export function DocumentManager({ ocId, lotId, initialDocuments, readOnly }: Doc
         if (visibleDocs.length === 0 && uploads.length === 0) {
           return (
             <Card>
-              <CardContent className="flex flex-col items-center justify-center py-16 text-center">
-                <FileText className="h-10 w-10 text-muted-foreground/30" />
-                <p className="mt-3 text-sm font-medium text-foreground">
-                  {filterCategory === "all" ? "No documents yet" : "No documents in this category"}
+              <CardContent className="flex flex-col items-center gap-3 py-16 text-center">
+                <FileText className="h-12 w-12 text-muted-foreground/40" />
+                <p className="text-base font-semibold text-foreground">
+                  No documents yet
                 </p>
-                <p className="mt-1 text-xs text-muted-foreground">
-                  {readOnly ? "Documents will appear here once uploaded by your strata manager." : "Click Upload above, or drag files anywhere on the page."}
+                <p className="text-sm text-muted-foreground">
+                  {readOnly
+                    ? "Documents will appear here once uploaded by your strata manager."
+                    : "Click Upload above, or drag files anywhere on the page."}
                 </p>
               </CardContent>
             </Card>
@@ -390,6 +371,46 @@ export function DocumentManager({ ocId, lotId, initialDocuments, readOnly }: Doc
         }
         return (
         <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
+          {uploads.map((upload) => (
+            <Card key={upload.id} className="relative">
+              <CardContent className="p-3">
+                <div className="flex h-24 items-center justify-center rounded-md bg-muted/50 mb-3 overflow-hidden">
+                  {upload.error ? (
+                    <FileText className="h-8 w-8 text-destructive/60" />
+                  ) : (
+                    <Loader2 className="h-7 w-7 animate-spin text-[color:var(--brand-gold)]" />
+                  )}
+                </div>
+                <p
+                  className="truncate text-sm font-medium text-foreground"
+                  title={upload.fileName}
+                >
+                  {upload.fileName}
+                </p>
+                <p className="mt-0.5 text-xs text-muted-foreground">
+                  {upload.error ? (
+                    <span className="text-destructive">{upload.error}</span>
+                  ) : (
+                    "Uploading…"
+                  )}
+                </p>
+                {upload.error && (
+                  <button
+                    type="button"
+                    onClick={() =>
+                      setUploads((prev) =>
+                        prev.filter((u) => u.id !== upload.id),
+                      )
+                    }
+                    className="absolute right-2 top-2 rounded-md p-1 text-muted-foreground hover:text-foreground"
+                    aria-label="Dismiss failed upload"
+                  >
+                    <X className="h-3.5 w-3.5" />
+                  </button>
+                )}
+              </CardContent>
+            </Card>
+          ))}
           {visibleDocs.map((doc) => {
             const isImage = doc.mime_type?.startsWith("image/");
             return (
@@ -442,7 +463,13 @@ export function DocumentManager({ ocId, lotId, initialDocuments, readOnly }: Doc
                       <>
                         <button
                           type="button"
-                          onClick={() => { setRenameDoc(doc); setRenameName(doc.file_name); }}
+                          onClick={() => {
+                            setRenameDoc(doc);
+                            // Only the stem goes into the input; the
+                            // extension is rendered as a locked suffix
+                            // (see the rename Dialog below).
+                            setRenameName(splitFilename(doc.file_name).stem);
+                          }}
                           className="flex h-7 w-7 items-center justify-center rounded-md text-muted-foreground hover:bg-muted hover:text-foreground"
                           title="Rename"
                         >
@@ -510,20 +537,38 @@ export function DocumentManager({ ocId, lotId, initialDocuments, readOnly }: Doc
         </DialogContent>
       </Dialog>
 
-      {/* Rename dialog */}
+      {/* Rename dialog — extension is locked as a non-editable suffix
+          (same pattern as the +61 prefix on PhoneInput). The textbox only
+          carries the filename stem; the extension comes from the original
+          upload and rides along on save. */}
       <Dialog open={!!renameDoc} onOpenChange={() => setRenameDoc(null)}>
         <DialogContent>
           <DialogHeader>
             <DialogTitle>Rename document</DialogTitle>
           </DialogHeader>
-          <Input
-            value={renameName}
-            onChange={(e) => setRenameName(e.target.value)}
-            onKeyDown={(e) => { if (e.key === "Enter") handleRename(); }}
-          />
+          <div className="flex items-stretch overflow-hidden rounded-md border border-border bg-card focus-within:ring-2 focus-within:ring-primary/20">
+            <input
+              value={renameName}
+              onChange={(e) => setRenameName(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === "Enter") handleRename();
+              }}
+              className="min-w-0 flex-1 bg-transparent px-3 py-2 text-sm outline-none"
+              autoFocus
+            />
+            {renameDoc && (
+              <span className="inline-flex shrink-0 items-center border-l border-border bg-muted px-3 py-2 text-sm font-mono text-muted-foreground">
+                {splitFilename(renameDoc.file_name).ext || ""}
+              </span>
+            )}
+          </div>
           <DialogFooter>
-            <Button variant="ghost" onClick={() => setRenameDoc(null)}>Cancel</Button>
-            <Button onClick={handleRename} disabled={!renameName.trim()}>Rename</Button>
+            <Button variant="secondary" onClick={() => setRenameDoc(null)}>
+              Cancel
+            </Button>
+            <Button onClick={handleRename} disabled={!renameName.trim()}>
+              Rename
+            </Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>

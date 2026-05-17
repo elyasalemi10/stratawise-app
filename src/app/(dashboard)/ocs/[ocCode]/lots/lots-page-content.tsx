@@ -14,20 +14,36 @@ import {
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { Checkbox } from "@/components/ui/checkbox";
+import {
+  Dialog,
+  DialogContent,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
 import {
   DropdownMenu,
   DropdownMenuContent,
-  DropdownMenuGroup,
   DropdownMenuItem,
   DropdownMenuTrigger,
-  DropdownMenuLabel,
-  DropdownMenuSeparator,
 } from "@/components/ui/dropdown-menu";
 import { LotsTab } from "../manage/lots-tab";
 import { getLotInvitationStatus } from "../manage/invitation-actions";
 import { SettlementDialog } from "./[lotId]/settlement-dialog";
 import { BulkInviteDialog } from "./bulk-invite-dialog";
 import type { LotWithFinancials } from "@/lib/actions/oc";
+
+type OwnerStatusFilter =
+  | "owner_on_file"
+  | "pending_invitation"
+  | "no_owner";
+
+const FILTER_OPTIONS: Array<{ value: OwnerStatusFilter; label: string }> = [
+  { value: "owner_on_file", label: "Owner on file" },
+  { value: "pending_invitation", label: "Pending invitation" },
+  { value: "no_owner", label: "No owner assigned" },
+];
 
 // Client-side CSV export — pulls straight from the in-memory lots prop so
 // there's no extra round-trip. Sort by lot_number for stable ordering. The
@@ -78,12 +94,19 @@ export function LotsPageContent({
   const [settlementOpen, setSettlementOpen] = useState(false);
   const [bulkInviteOpen, setBulkInviteOpen] = useState(false);
   const [searchText, setSearchText] = useState("");
-  // Filter slice: status of the owner record. Lightweight client-side
-  // narrow over the in-memory lots array — /lots is intentionally not
-  // paginated, so a Map.filter() is plenty even for a few hundred lots.
-  const [statusFilter, setStatusFilter] = useState<
-    "all" | "owner_on_file" | "no_owner" | "pending_invitation"
-  >("all");
+  // Multi-select filter over owner status. Lightweight client-side narrow
+  // over the in-memory lots array — /lots is intentionally not paginated,
+  // so an Array.filter() is plenty even for a few hundred lots. Empty set
+  // = no filter applied.
+  const [statusFilter, setStatusFilter] = useState<Set<OwnerStatusFilter>>(
+    () => new Set(),
+  );
+  const [filterDialogOpen, setFilterDialogOpen] = useState(false);
+  // Draft state while the dialog is open so users can tick around without
+  // immediately filtering the table. Committed to statusFilter on Save.
+  const [draftStatusFilter, setDraftStatusFilter] = useState<Set<OwnerStatusFilter>>(
+    () => new Set(),
+  );
   // Single source of truth for invite-status — fetched once here and
   // handed down to both LotsTab (for the per-row pill) and BulkInviteDialog
   // (for eligibility counts). Previously each component re-fetched the
@@ -121,13 +144,16 @@ export function LotsPageContent({
   const filteredLots = useMemo(() => {
     const needle = searchText.trim().toLowerCase();
     return lots.filter((lot) => {
-      if (statusFilter === "owner_on_file" && lot.owner_status !== "member") return false;
-      if (statusFilter === "no_owner" && !!lot.owner_display_name) return false;
-      if (
-        statusFilter === "pending_invitation" &&
-        lot.owner_status !== "pending_invitation"
-      )
-        return false;
+      if (statusFilter.size > 0) {
+        const matchesAny = Array.from(statusFilter).some((f) => {
+          if (f === "owner_on_file") return lot.owner_status === "member";
+          if (f === "no_owner") return !lot.owner_display_name;
+          if (f === "pending_invitation")
+            return lot.owner_status === "pending_invitation";
+          return false;
+        });
+        if (!matchesAny) return false;
+      }
       if (!needle) return true;
       const haystacks = [
         String(lot.lot_number),
@@ -141,7 +167,24 @@ export function LotsPageContent({
   }, [lots, searchText, statusFilter]);
 
   const activeFilters =
-    (statusFilter !== "all" ? 1 : 0) + (searchText.trim() ? 1 : 0);
+    statusFilter.size + (searchText.trim() ? 1 : 0);
+
+  function openFilterDialog() {
+    setDraftStatusFilter(new Set(statusFilter));
+    setFilterDialogOpen(true);
+  }
+  function saveFilterDialog() {
+    setStatusFilter(new Set(draftStatusFilter));
+    setFilterDialogOpen(false);
+  }
+  function toggleDraftFilter(value: OwnerStatusFilter, checked: boolean) {
+    setDraftStatusFilter((prev) => {
+      const next = new Set(prev);
+      if (checked) next.add(value);
+      else next.delete(value);
+      return next;
+    });
+  }
 
   function exportCsv() {
     const blob = new Blob([lotsToCsv(lots)], { type: "text/csv;charset=utf-8;" });
@@ -179,76 +222,19 @@ export function LotsPageContent({
             )}
           </div>
 
-          <DropdownMenu>
-            <DropdownMenuTrigger
-              render={
-                <Button variant="secondary" size="sm">
-                  <Filter className="mr-2 h-3.5 w-3.5" />
-                  Filter
-                  {activeFilters > 0 && (
-                    <span className="ml-1.5 inline-flex h-4 min-w-4 items-center justify-center rounded-full bg-[color:var(--brand-gold)] px-1 text-[10px] font-semibold text-white">
-                      {activeFilters}
-                    </span>
-                  )}
-                  <ChevronDown className="ml-1 h-3.5 w-3.5" />
-                </Button>
-              }
-            />
-            <DropdownMenuContent align="end" sideOffset={6} className="min-w-[220px]">
-              {/* DropdownMenuLabel is a Menu.GroupLabel under the hood — base-ui
-                  throws "MenuGroupRootContext is missing" (error #31) if it's
-                  rendered outside a DropdownMenuGroup. Wrap every Label in a
-                  Group, even when the group has just one section. */}
-              <DropdownMenuGroup>
-                <DropdownMenuLabel>Owner status</DropdownMenuLabel>
-                <DropdownMenuItem
-                  onClick={() => setStatusFilter("all")}
-                  className={statusFilter === "all" ? "font-semibold" : undefined}
-                >
-                  All lots
-                </DropdownMenuItem>
-                <DropdownMenuItem
-                  onClick={() => setStatusFilter("owner_on_file")}
-                  className={
-                    statusFilter === "owner_on_file" ? "font-semibold" : undefined
-                  }
-                >
-                  Owner on file
-                </DropdownMenuItem>
-                <DropdownMenuItem
-                  onClick={() => setStatusFilter("pending_invitation")}
-                  className={
-                    statusFilter === "pending_invitation"
-                      ? "font-semibold"
-                      : undefined
-                  }
-                >
-                  Pending invitation
-                </DropdownMenuItem>
-                <DropdownMenuItem
-                  onClick={() => setStatusFilter("no_owner")}
-                  className={
-                    statusFilter === "no_owner" ? "font-semibold" : undefined
-                  }
-                >
-                  No owner assigned
-                </DropdownMenuItem>
-              </DropdownMenuGroup>
-              {activeFilters > 0 && (
-                <>
-                  <DropdownMenuSeparator />
-                  <DropdownMenuItem
-                    onClick={() => {
-                      setSearchText("");
-                      setStatusFilter("all");
-                    }}
-                  >
-                    Clear filters
-                  </DropdownMenuItem>
-                </>
-              )}
-            </DropdownMenuContent>
-          </DropdownMenu>
+          <Button
+            variant="secondary"
+            size="sm"
+            onClick={openFilterDialog}
+          >
+            <Filter className="mr-2 h-3.5 w-3.5" />
+            Filter
+            {activeFilters > 0 && (
+              <span className="ml-1.5 inline-flex h-4 min-w-4 items-center justify-center rounded-full bg-[color:var(--brand-gold)] px-1 text-[10px] font-semibold text-white">
+                {activeFilters}
+              </span>
+            )}
+          </Button>
 
           <DropdownMenu>
             <DropdownMenuTrigger
@@ -291,6 +277,56 @@ export function LotsPageContent({
         isLotOwner={isLotOwner}
         inviteStatusMap={inviteStatus}
       />
+
+      <Dialog open={filterDialogOpen} onOpenChange={setFilterDialogOpen}>
+        <DialogContent className="sm:max-w-sm">
+          <DialogHeader>
+            <DialogTitle>Filter lots</DialogTitle>
+          </DialogHeader>
+          <div className="space-y-3">
+            <p className="text-xs uppercase tracking-wide text-muted-foreground">
+              Owner status
+            </p>
+            <div className="space-y-2.5">
+              {FILTER_OPTIONS.map((opt) => {
+                const checked = draftStatusFilter.has(opt.value);
+                return (
+                  <div key={opt.value} className="flex items-start gap-2">
+                    {/* Per CLAUDE.md: <Label> isn't paired to the checkbox
+                        via htmlFor — only the checkbox itself toggles. */}
+                    <Checkbox
+                      checked={checked}
+                      onCheckedChange={(v) =>
+                        toggleDraftFilter(opt.value, v === true)
+                      }
+                      className="mt-0.5 bg-card"
+                    />
+                    <span className="text-sm text-foreground">{opt.label}</span>
+                  </div>
+                );
+              })}
+            </div>
+            <p className="text-xs text-muted-foreground">
+              Lots that match ANY of the ticked statuses will be shown.
+              Leave everything unticked to see all lots.
+            </p>
+          </div>
+          <DialogFooter>
+            <Button
+              variant="secondary"
+              size="sm"
+              onClick={() => {
+                setDraftStatusFilter(new Set());
+              }}
+            >
+              Clear
+            </Button>
+            <Button size="sm" onClick={saveFilterDialog}>
+              Save
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
 
       {!isLotOwner && (
         <>

@@ -3,8 +3,9 @@
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { toast } from "sonner";
-import { ChevronDown, ExternalLink, FileText, Loader2, Pencil, Plus, Scale, Trash2, X } from "lucide-react";
+import { ChevronDown, ExternalLink, FileText, Loader2, Pencil, Plus, Scale, ScrollText, Trash2, X } from "lucide-react";
 import { Card, CardContent } from "@/components/ui/card";
+import { EmptyState } from "@/components/shared/empty-state";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { Button } from "@/components/ui/button";
@@ -333,11 +334,19 @@ export function RulesList({ ocId, ocCode, rules, sourceDocumentName }: Props) {
       <div className={`flex flex-col gap-4 ${viewerOpen ? "lg:flex-row" : ""}`}>
         <div className={viewerOpen ? "lg:flex-1 lg:min-w-0" : "w-full"}>
           {filtered.length === 0 ? (
-            <Card>
-              <CardContent className="py-10 text-center text-sm text-muted-foreground">
-                {query.trim() ? <>No rules match &ldquo;{query.trim()}&rdquo;.</> : "No rules yet — add one above."}
-              </CardContent>
-            </Card>
+            <EmptyState
+              icon={ScrollText}
+              title={
+                query.trim()
+                  ? `No rules match "${query.trim()}"`
+                  : "No rules yet"
+              }
+              description={
+                query.trim()
+                  ? "Try a shorter search term or clear the filter."
+                  : "Add the first rule using the form above."
+              }
+            />
           ) : (
             <div className="space-y-2">
               {filtered.map((rule) => {

@@ -107,11 +107,12 @@ export function DatePicker({
               position: "fixed",
               top: position.top,
               left: position.left,
-              minWidth: position.width,
               zIndex: 70,
             }}
-            className="rounded-lg border border-border bg-muted shadow-md"
           >
+            {/* Plain Calendar inside a `rounded-lg border` container — same
+                shape as the shadcn demo. Calendar paints its own bg-card so
+                the surrounding border is the only chrome. */}
             <Calendar
               mode="single"
               selected={date}
@@ -123,6 +124,7 @@ export function DatePicker({
                 }
                 setOpen(false);
               }}
+              className="rounded-lg border border-border shadow-md"
             />
           </div>,
           document.body,

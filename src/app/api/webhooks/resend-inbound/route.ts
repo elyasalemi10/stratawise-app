@@ -1,20 +1,21 @@
 import { NextRequest, NextResponse } from "next/server";
+import { Webhook } from "svix";
 import { createServerClient } from "@/lib/supabase";
 
 // Inbound email webhook for owner replies to manager-sent mail.
 //
 // External setup required to make this fire:
 //   1. DNS — point MX records for the brand domain (RESEND_SUFFIX, e.g.
-//      stratawise.com.au) at Resend's inbound service (or set up a separate
-//      inbound parser via SES/Mailgun and have it POST here in the same
-//      shape). See https://resend.com/docs/inbound for the current MX
-//      values + verification token.
-//   2. Resend dashboard — under "Inbound", create a forwarding rule for the
-//      domain and set the webhook destination to:
-//        POST {APP_URL}/api/webhooks/resend-inbound
-//      Set the secret env var `RESEND_INBOUND_SECRET` to a random token and
-//      configure Resend to send it as the `Authorization: Bearer <secret>`
-//      header.
+//      stratawise.com.au) at Resend's inbound service. See
+//      https://resend.com/docs/inbound for the current MX values.
+//   2. Resend dashboard — under "Webhooks", create a webhook with the
+//      endpoint URL `{APP_URL}/api/webhooks/resend-inbound`, subscribed to
+//      the "email.received" event. Copy the webhook signing secret
+//      (starts with `whsec_`).
+//   3. App env — set `RESEND_INBOUND_WEBHOOK_SECRET` to the `whsec_` value
+//      from the dashboard. Resend signs every inbound webhook with the
+//      Standard Webhooks format (Svix); we verify the signature using
+//      that secret, NOT a bearer token.
 //
 // What this handler does on every accepted inbound:
 //   - parses the recipient address (e.g. "manager.username@stratawise.com.au")
@@ -25,69 +26,103 @@ import { createServerClient } from "@/lib/supabase";
 //     visible alongside the outbound on the lot detail page
 //   - inserts a notification for that manager so the reply lands in their
 //     in-app inbox
-//
-// Notes:
-//   - Authorisation is via a shared-secret bearer token. Resend does not
-//     sign inbound payloads the same way it signs outbound delivery events,
-//     so the shared secret is what authenticates the call.
-//   - Email envelopes do NOT carry a reliable "in-reply-to" linking us back
-//     to a specific outbound id, so we match by (recipient, subject) within
-//     the last 30 days. The header `In-Reply-To` is captured when present
-//     and stored on metadata for richer threading later.
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
 interface InboundPayload {
-  from?: { email?: string; name?: string } | string;
-  to?: Array<{ email?: string; name?: string }> | string[];
-  subject?: string;
-  text?: string;
-  html?: string;
-  headers?: Record<string, string>;
-  // Resend / SES inbound formats vary; pull what we need with defensive
-  // typing so we never throw on a shape we don't recognise.
+  type?: string;
+  data?: {
+    from?: { email?: string; name?: string } | string;
+    to?: Array<{ email?: string; name?: string }> | string[];
+    // Resend may surface the destination address on different fields
+    // depending on the event shape. We probe `to[]` first, then `email`,
+    // then `headers.to`.
+    email?: string;
+    subject?: string;
+    text?: string;
+    html?: string;
+    headers?: Record<string, string>;
+    in_reply_to?: string;
+  };
 }
 
 function pickRecipientEmail(payload: InboundPayload): string | null {
-  if (!payload.to) return null;
-  if (Array.isArray(payload.to)) {
-    const first = payload.to[0];
-    if (typeof first === "string") return first.toLowerCase().trim();
+  const d = payload.data ?? {};
+  if (Array.isArray(d.to)) {
+    const first = d.to[0];
+    if (typeof first === "string") return first.toLowerCase().trim() || null;
     return (first?.email ?? "").toLowerCase().trim() || null;
+  }
+  if (typeof d.email === "string") return d.email.toLowerCase().trim() || null;
+  const headerTo = d.headers?.to;
+  if (typeof headerTo === "string") {
+    // Strip any "Name <addr>" wrapper.
+    const m = headerTo.match(/<([^>]+)>/);
+    return (m ? m[1] : headerTo).toLowerCase().trim() || null;
   }
   return null;
 }
 
 function pickSenderEmail(payload: InboundPayload): string | null {
-  if (!payload.from) return null;
-  if (typeof payload.from === "string") return payload.from.toLowerCase().trim();
-  return (payload.from.email ?? "").toLowerCase().trim() || null;
+  const d = payload.data ?? {};
+  if (!d.from) {
+    const fromHeader = d.headers?.from;
+    if (typeof fromHeader === "string") {
+      const m = fromHeader.match(/<([^>]+)>/);
+      return (m ? m[1] : fromHeader).toLowerCase().trim() || null;
+    }
+    return null;
+  }
+  if (typeof d.from === "string") return d.from.toLowerCase().trim() || null;
+  return (d.from.email ?? "").toLowerCase().trim() || null;
 }
 
 export async function POST(request: NextRequest) {
-  const expectedAuth = process.env.RESEND_INBOUND_SECRET;
-  if (!expectedAuth) {
-    console.error("resend-inbound: RESEND_INBOUND_SECRET is not configured");
+  const secret = process.env.RESEND_INBOUND_WEBHOOK_SECRET;
+  if (!secret) {
+    console.error(
+      "resend-inbound: RESEND_INBOUND_WEBHOOK_SECRET is not set; cannot verify signatures",
+    );
     return NextResponse.json({ error: "unconfigured" }, { status: 503 });
   }
 
-  const authHeader = request.headers.get("authorization") ?? "";
-  if (authHeader !== `Bearer ${expectedAuth}`) {
-    return NextResponse.json({ error: "unauthorised" }, { status: 401 });
+  const svixId = request.headers.get("svix-id");
+  const svixTimestamp = request.headers.get("svix-timestamp");
+  const svixSignature = request.headers.get("svix-signature");
+  if (!svixId || !svixTimestamp || !svixSignature) {
+    console.warn("resend-inbound: missing svix-* headers; rejecting");
+    return NextResponse.json({ error: "missing_signature" }, { status: 401 });
   }
+
+  // svix.Webhook.verify requires the RAW body — calling request.json()
+  // first would consume the stream and break HMAC.
+  const rawBody = await request.text();
 
   let payload: InboundPayload;
   try {
-    payload = (await request.json()) as InboundPayload;
-  } catch {
-    return NextResponse.json({ error: "invalid_json" }, { status: 400 });
+    const wh = new Webhook(secret);
+    payload = wh.verify(rawBody, {
+      "svix-id": svixId,
+      "svix-timestamp": svixTimestamp,
+      "svix-signature": svixSignature,
+    }) as InboundPayload;
+  } catch (err) {
+    console.error("resend-inbound: signature verification failed", err);
+    return NextResponse.json({ error: "invalid_signature" }, { status: 401 });
+  }
+
+  // Resend's only inbound-relevant event today is "email.received". Anything
+  // else (delivery callbacks etc.) is accepted but ignored.
+  if (payload.type && payload.type !== "email.received") {
+    return NextResponse.json({ status: "ignored", type: payload.type });
   }
 
   const recipient = pickRecipientEmail(payload);
   const sender = pickSenderEmail(payload);
   if (!recipient || !sender) {
-    return NextResponse.json({ error: "missing_addresses" }, { status: 400 });
+    console.warn("resend-inbound: missing addresses", { recipient, sender });
+    return NextResponse.json({ status: "missing_addresses" });
   }
 
   const supabase = createServerClient();
@@ -117,22 +152,18 @@ export async function POST(request: NextRequest) {
   }
 
   if (!managerProfileId) {
-    // Unknown recipient — log and bail with 200 so the inbound service
-    // doesn't endlessly retry. The owner's email is dropped.
     console.warn(
       `resend-inbound: no manager found for recipient ${recipient}`,
     );
     return NextResponse.json({ status: "no_manager" });
   }
 
-  const subject = (payload.subject ?? "").trim();
-  const body = payload.text ?? stripHtml(payload.html ?? "");
-  const inReplyToHeader = payload.headers?.["in-reply-to"] ?? null;
+  const d = payload.data ?? {};
+  const subject = (d.subject ?? "").trim();
+  const body = d.text ?? stripHtml(d.html ?? "");
+  const inReplyToHeader = d.in_reply_to ?? d.headers?.["in-reply-to"] ?? null;
 
-  // Try to find the outbound email this is a reply to. Best-effort —
-  // recipient on the OUTBOUND row equals the inbound SENDER, plus a
-  // subject match (stripping the leading "Re:"). 30-day window keeps the
-  // query cheap.
+  // Try to find the outbound email this is a reply to.
   const sinceIso = new Date(
     Date.now() - 30 * 24 * 60 * 60 * 1000,
   ).toISOString();
@@ -162,7 +193,6 @@ export async function POST(request: NextRequest) {
     }
   }
 
-  // Log the inbound communication row. direction='inbound' is the marker.
   const { data: logRow, error: logErr } = await supabase
     .from("communication_log")
     .insert({
@@ -191,7 +221,6 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: "log_insert_failed" }, { status: 500 });
   }
 
-  // Drop a notification in the manager's in-app inbox.
   await supabase.from("notifications").insert({
     profile_id: managerProfileId,
     oc_id: outboundOcId,
@@ -211,7 +240,7 @@ export async function POST(request: NextRequest) {
 
 // Cheap HTML-strip for clients that send html-only inbound. Strips tags,
 // collapses runs of whitespace. Not bullet-proof but good enough for a
-// preview snippet; the original HTML stays in payload.html for later.
+// preview snippet; the original HTML stays in payload.data.html for later.
 function stripHtml(html: string): string {
   return html
     .replace(/<style[\s\S]*?<\/style>/gi, "")
