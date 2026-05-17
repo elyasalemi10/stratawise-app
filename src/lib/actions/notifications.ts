@@ -12,6 +12,10 @@ export interface Notification {
   read_at: string | null;
   created_at: string;
   oc_id: string | null;
+  // Free-form metadata. For email_reply we stash
+  // { communication_log_id, sender_email } so the inbox detail view can
+  // fetch the inbound email body without a second round-trip per row.
+  metadata: Record<string, unknown> | null;
 }
 
 export async function getNotifications(limit = 20): Promise<Notification[]> {
@@ -21,7 +25,7 @@ export async function getNotifications(limit = 20): Promise<Notification[]> {
   const supabase = createServerClient();
   const { data } = await supabase
     .from("notifications")
-    .select("id, type, title, body, link, read_at, created_at, oc_id")
+    .select("id, type, title, body, link, read_at, created_at, oc_id, metadata")
     .eq("profile_id", profile.id)
     .order("created_at", { ascending: false })
     .limit(limit);
@@ -36,6 +40,7 @@ export async function getNotifications(limit = 20): Promise<Notification[]> {
     read_at: n.read_at,
     created_at: n.created_at,
     oc_id: n.oc_id,
+    metadata: (n.metadata as Record<string, unknown> | null) ?? null,
   }));
 }
 

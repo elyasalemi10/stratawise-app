@@ -208,33 +208,72 @@ export async function POST(request: NextRequest) {
   const body = d.text ?? stripHtml(d.html ?? "");
   const inReplyToHeader = d.in_reply_to ?? d.headers?.["in-reply-to"] ?? null;
 
-  // Try to find the outbound email this is a reply to.
-  const sinceIso = new Date(
-    Date.now() - 30 * 24 * 60 * 60 * 1000,
-  ).toISOString();
-  const normalisedSubject = subject.replace(/^\s*(re|fw|fwd):\s*/i, "");
+  // ─── Auto-match the outbound thread ─────────────────────────────────
+  // Try in order:
+  //   1. In-Reply-To header → outbound.external_id (Resend's email id).
+  //      This is the authoritative signal — when present, it's an exact
+  //      thread match regardless of subject changes.
+  //   2. Recipient + normalised subject within 30 days (best-effort
+  //      fallback for clients that drop In-Reply-To, or replies that
+  //      came in via a forwarded thread).
   let outboundOcId: string | null = null;
   let outboundLogId: string | null = null;
   let outboundLotId: string | null = null;
-  if (normalisedSubject) {
+
+  // Extract the bare email id from "<email-id@resend.dev>" / similar.
+  // RFC822 Message-IDs are angle-bracketed; we keep what's inside.
+  const inReplyToId = (() => {
+    if (!inReplyToHeader) return null;
+    const trimmed = inReplyToHeader.trim();
+    const m = trimmed.match(/<([^>]+)>/);
+    const inner = (m ? m[1] : trimmed).trim();
+    if (!inner) return null;
+    // The "<uuid>@resend.dev" form — pull the uuid portion. If the host
+    // isn't resend.dev, we still try the raw value below.
+    const at = inner.indexOf("@");
+    return at > 0 ? inner.slice(0, at) : inner;
+  })();
+
+  if (inReplyToId) {
     const { data: outbound } = await supabase
       .from("communication_log")
-      .select("id, oc_id, lot_id, subject")
-      .eq("sender_profile_id", managerProfileId)
+      .select("id, oc_id, lot_id")
       .eq("channel", "email")
       .eq("direction", "outbound")
-      .eq("recipient_email", sender)
-      .gte("created_at", sinceIso)
-      .order("created_at", { ascending: false })
-      .limit(20);
-    const match = (outbound ?? []).find((row) => {
-      const s = String(row.subject ?? "").replace(/^\s*(re|fw|fwd):\s*/i, "");
-      return s.toLowerCase() === normalisedSubject.toLowerCase();
-    });
-    if (match) {
-      outboundLogId = match.id as string;
-      outboundOcId = (match.oc_id as string | null) ?? null;
-      outboundLotId = (match.lot_id as string | null) ?? null;
+      .eq("external_id", inReplyToId)
+      .maybeSingle();
+    if (outbound) {
+      outboundLogId = outbound.id as string;
+      outboundOcId = (outbound.oc_id as string | null) ?? null;
+      outboundLotId = (outbound.lot_id as string | null) ?? null;
+    }
+  }
+
+  if (!outboundLogId) {
+    const sinceIso = new Date(
+      Date.now() - 30 * 24 * 60 * 60 * 1000,
+    ).toISOString();
+    const normalisedSubject = subject.replace(/^\s*(re|fw|fwd):\s*/i, "");
+    if (normalisedSubject) {
+      const { data: outbound } = await supabase
+        .from("communication_log")
+        .select("id, oc_id, lot_id, subject")
+        .eq("sender_profile_id", managerProfileId)
+        .eq("channel", "email")
+        .eq("direction", "outbound")
+        .eq("recipient_email", sender)
+        .gte("created_at", sinceIso)
+        .order("created_at", { ascending: false })
+        .limit(20);
+      const match = (outbound ?? []).find((row) => {
+        const s = String(row.subject ?? "").replace(/^\s*(re|fw|fwd):\s*/i, "");
+        return s.toLowerCase() === normalisedSubject.toLowerCase();
+      });
+      if (match) {
+        outboundLogId = match.id as string;
+        outboundOcId = (match.oc_id as string | null) ?? null;
+        outboundLotId = (match.lot_id as string | null) ?? null;
+      }
     }
   }
 
@@ -266,19 +305,35 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: "log_insert_failed" }, { status: 500 });
   }
 
-  await supabase.from("notifications").insert({
-    profile_id: managerProfileId,
-    oc_id: outboundOcId,
-    type: "email_reply",
-    title: `Reply from ${sender}`,
-    body: subject
-      ? `Re: ${subject}`
-      : (body || "").slice(0, 140),
-    link:
-      outboundOcId && outboundLotId
-        ? `/ocs/${outboundOcId}/lots/${outboundLotId}?tab=communications`
-        : "/inbox",
-  });
+  // Drop the reply in the manager's in-app inbox. The link points at
+  // /inbox?n=<notification_id> so clicking opens the full email view
+  // (subject, body, attachments, Reply button) — NOT the per-lot
+  // communications tab — so unmatched replies still have a home and
+  // matched ones get associated from the same surface.
+  const { data: notif } = await supabase
+    .from("notifications")
+    .insert({
+      profile_id: managerProfileId,
+      oc_id: outboundOcId,
+      type: "email_reply",
+      title: subject ? `Re: ${subject}` : `Reply from ${sender}`,
+      body: (body || "").slice(0, 200),
+      // Link is populated by the UPDATE below once we know the id.
+      link: null,
+      metadata: {
+        communication_log_id: logRow.id,
+        sender_email: sender,
+      },
+    })
+    .select("id")
+    .single();
+
+  if (notif) {
+    await supabase
+      .from("notifications")
+      .update({ link: `/inbox?n=${notif.id}` })
+      .eq("id", notif.id);
+  }
 
   return NextResponse.json({ status: "logged", id: logRow.id });
 }

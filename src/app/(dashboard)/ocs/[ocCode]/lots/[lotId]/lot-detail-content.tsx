@@ -289,12 +289,14 @@ export function LotDetailContent({
           Active state: foreground text + a 2px gold underline that sits at
           the bottom EDGE of the card (cell-aligned via bottom-0 + h-0.5).
           The card carries the visual surface; the tabs are just labels. */}
-      {/* Tab strip — one white card; tabs wrap onto a second row on narrow
-          viewports instead of triggering horizontal scroll. The active gold
-          underline rides flush with the BOTTOM of the row the trigger is on,
-          so every row keeps its own indicator. */}
+      {/* Tab strip — one white card; the entire shadcn line tab (label + gold
+          active underline) lives INSIDE the card. The container wraps with
+          `overflow-hidden` so the underline can't poke past the rounded
+          border, and the active `::after` is positioned 2px ABOVE the
+          trigger's bottom edge (not below it) — that's what was previously
+          getting clipped. Tabs wrap onto a second row on narrow viewports. */}
       <Tabs value={activeTab} onValueChange={onTabChange}>
-        <div className="rounded-md border border-border bg-card">
+        <div className="overflow-hidden rounded-md border border-border bg-card">
           <TabsList
             variant="line"
             className="h-auto w-full flex-wrap justify-stretch gap-0 border-none bg-transparent p-0"
@@ -303,7 +305,7 @@ export function LotDetailContent({
               <TabsTrigger
                 key={tab.value}
                 value={tab.value}
-                className="relative flex-1 min-w-[6.5rem] h-12 rounded-none border-0 text-sm font-medium text-muted-foreground bg-transparent transition-colors hover:text-foreground hover:bg-transparent data-active:bg-transparent data-active:text-foreground data-active:after:bg-[color:var(--brand-gold)] data-active:after:opacity-100 data-active:after:inset-x-0 data-active:after:bottom-0 data-active:after:h-0.5 data-active:after:rounded-none"
+                className="relative flex-1 min-w-[6.5rem] h-12 rounded-none border-0 text-sm font-medium text-muted-foreground bg-transparent transition-colors hover:text-foreground hover:bg-transparent data-active:bg-transparent data-active:text-foreground data-active:after:bg-[color:var(--brand-gold)] data-active:after:opacity-100 data-active:after:inset-x-3 data-active:after:bottom-1 data-active:after:h-0.5 data-active:after:rounded-full"
               >
                 {tab.label}
               </TabsTrigger>

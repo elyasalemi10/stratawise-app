@@ -295,6 +295,17 @@ function formatShortDate(iso: string): string {
   });
 }
 
+// Date-only formatter for call_date (when the call happened) — the manager
+// only ever picks a date in the form, never a time of day, so showing
+// "13:00" in the detail dialog is misleading.
+function formatDateOnly(iso: string): string {
+  return new Date(iso).toLocaleDateString("en-AU", {
+    day: "numeric",
+    month: "short",
+    year: "numeric",
+  });
+}
+
 // ─── Detail dialog ─────────────────────────────────────────────────────────
 
 function CommunicationDetailDialog({
@@ -433,7 +444,7 @@ function CallDetailDialog({
           <HeaderField label="Number" value={row.recipient_phone ?? "—"} />
           <HeaderField
             label="Call date"
-            value={formatShortDate(row.sent_at ?? row.created_at)}
+            value={formatDateOnly(row.sent_at ?? row.created_at)}
           />
           <HeaderField
             label="Logged on"
