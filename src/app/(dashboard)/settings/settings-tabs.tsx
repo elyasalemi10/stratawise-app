@@ -8,6 +8,7 @@ import { SecurityTab } from "./security-tab";
 import { NotificationsTab } from "./notifications-tab";
 import { CompanyTab } from "./company-tab";
 import { TeamTab } from "./team-tab";
+import { EmailTab, type MailProviderConfig } from "./email-tab";
 import type { Profile } from "@/lib/auth";
 import type { TeamMember } from "@/lib/actions/team";
 import type { NotificationPrefRow, AutoOptOutEntry } from "./page";
@@ -30,12 +31,16 @@ function TabsInner({
   teamMembers,
   currentPreferences,
   autoOptOuts,
+  mailProvider,
+  gmailOauthClientId,
 }: {
   profile: Profile;
   company: CompanyData | null;
   teamMembers: TeamMember[];
   currentPreferences: NotificationPrefRow[];
   autoOptOuts: AutoOptOutEntry[];
+  mailProvider: MailProviderConfig;
+  gmailOauthClientId: string | null;
 }) {
   const searchParams = useSearchParams();
   const initialTab = searchParams.get("tab") ?? "profile";
@@ -58,6 +63,7 @@ function TabsInner({
           {isManager && <TabsTrigger value="team">Team</TabsTrigger>}
           <TabsTrigger value="security">Security</TabsTrigger>
           <TabsTrigger value="notifications">Notifications</TabsTrigger>
+          {isManager && <TabsTrigger value="email">Email</TabsTrigger>}
         </TabsList>
       </Tabs>
 
@@ -88,6 +94,14 @@ function TabsInner({
             autoOptOuts={autoOptOuts}
           />
         </div>
+        {isManager && (
+          <div className={activeTab === "email" ? "" : "hidden"}>
+            <EmailTab
+              initial={mailProvider}
+              oauthClientId={gmailOauthClientId}
+            />
+          </div>
+        )}
       </div>
     </div>
   );
@@ -99,12 +113,16 @@ export function SettingsTabs({
   teamMembers,
   currentPreferences,
   autoOptOuts,
+  mailProvider,
+  gmailOauthClientId,
 }: {
   profile: Profile;
   company: CompanyData | null;
   teamMembers: TeamMember[];
   currentPreferences: NotificationPrefRow[];
   autoOptOuts: AutoOptOutEntry[];
+  mailProvider: MailProviderConfig;
+  gmailOauthClientId: string | null;
 }) {
   return (
     <Suspense>
@@ -114,6 +132,8 @@ export function SettingsTabs({
         teamMembers={teamMembers}
         currentPreferences={currentPreferences}
         autoOptOuts={autoOptOuts}
+        mailProvider={mailProvider}
+        gmailOauthClientId={gmailOauthClientId}
       />
     </Suspense>
   );

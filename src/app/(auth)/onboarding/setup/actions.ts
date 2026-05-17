@@ -234,6 +234,52 @@ export async function sendInvitations(invites: { email: string; name: string }[]
   return { sent: validInvites.length };
 }
 
+// ─── Step 3: Mail provider ────────────────────────────────────────────────
+// Sets the company's mail_provider. For gmail/outlook we ALSO stash a
+// domain into mail_provider_config so the dispatcher knows which mailbox
+// to impersonate when sending. Customers can change or disconnect from
+// /settings later — disconnecting falls back to 'stratawise' with
+// `<email_username>@stratawise.com.au`.
+
+interface SaveMailProviderInput {
+  provider: "stratawise" | "gmail" | "outlook";
+  domain?: string | null;
+}
+
+export async function saveMailProvider(input: SaveMailProviderInput) {
+  const userId = await getAuthUserId();
+  if (!userId) throw new Error("Not authenticated");
+
+  const profile = await getProfileId(userId);
+  if (!profile?.management_company_id) {
+    return { error: "No management company found. Please complete Step 1 first." };
+  }
+
+  if (input.provider !== "stratawise" && !input.domain?.trim()) {
+    return {
+      error:
+        "Add the domain your firm sends from (e.g. acmestrata.com.au) so we know which mailbox to send through.",
+    };
+  }
+
+  const supabase = createServerClient();
+  const { error } = await supabase
+    .from("management_companies")
+    .update({
+      mail_provider: input.provider,
+      mail_provider_config:
+        input.provider === "stratawise"
+          ? null
+          : { domain: input.domain!.trim().toLowerCase() },
+      mail_provider_configured_at: new Date().toISOString(),
+      mail_provider_configured_by: profile.id,
+    })
+    .eq("id", profile.management_company_id);
+
+  if (error) return { error: error.message };
+  return { ok: true as const };
+}
+
 export async function getOnboardingState() {
   const userId = await getAuthUserId();
   if (!userId) return { state: "no-auth" as const };

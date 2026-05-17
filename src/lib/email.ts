@@ -1137,6 +1137,21 @@ export async function sendManagerMessageEmail(params: {
     return { dryRun: true };
   }
 
+  // Dispatch based on the manager's company mail_provider:
+  //   stratawise → Resend transport, FROM <username>@stratawise.com.au
+  //   gmail      → Gmail API via DWD impersonation (transport pending)
+  //   outlook    → Microsoft Graph (transport pending)
+  // Gmail/Outlook transports are scaffolded — until the credentials land
+  // we fall through to Resend with a console.warn so outbound never
+  // breaks silently while the integration rolls out per firm.
+  const dispatch = await resolveDispatchProvider(managerProfileId);
+
+  if (dispatch.provider === "gmail" || dispatch.provider === "outlook") {
+    console.warn(
+      `[email] ${dispatch.provider} send-as is configured for company ${dispatch.companyId} but the transport hasn't shipped yet — falling back to Resend for this send. (domain: ${dispatch.domain ?? "n/a"})`,
+    );
+  }
+
   const from = (await resolveManagerFromHeader(managerProfileId)) ?? noreplyFrom();
 
   // Plain, left-aligned email body. We escape HTML to neutralise injection
@@ -1167,4 +1182,50 @@ export async function sendManagerMessageEmail(params: {
     return { error: error.message };
   }
   return { success: true, id: data?.id ?? null };
+}
+
+// ─── Mail provider dispatch helper ─────────────────────────────────────
+// Resolves which transport to use for a given manager. Per-firm via
+// management_companies.mail_provider. Falls back to stratawise on lookup
+// failure so outbound mail never silently breaks.
+interface MailDispatch {
+  provider: "stratawise" | "gmail" | "outlook";
+  companyId: string | null;
+  domain: string | null;
+}
+
+async function resolveDispatchProvider(
+  managerProfileId: string,
+): Promise<MailDispatch> {
+  try {
+    const supabase = createServerClient();
+    const { data: profile } = await supabase
+      .from("profiles")
+      .select("management_company_id")
+      .eq("id", managerProfileId)
+      .maybeSingle();
+    const companyId =
+      (profile as { management_company_id: string | null } | null)
+        ?.management_company_id ?? null;
+    if (!companyId) {
+      return { provider: "stratawise", companyId: null, domain: null };
+    }
+    const { data: company } = await supabase
+      .from("management_companies")
+      .select("mail_provider, mail_provider_config")
+      .eq("id", companyId)
+      .maybeSingle();
+    const row = company as {
+      mail_provider: "stratawise" | "gmail" | "outlook" | null;
+      mail_provider_config: { domain?: string } | null;
+    } | null;
+    return {
+      provider: row?.mail_provider ?? "stratawise",
+      companyId,
+      domain: row?.mail_provider_config?.domain ?? null,
+    };
+  } catch (err) {
+    console.error("[email] resolveDispatchProvider failed:", err);
+    return { provider: "stratawise", companyId: null, domain: null };
+  }
 }

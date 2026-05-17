@@ -123,6 +123,16 @@ function SignInContent() {
           {pending && <Loader2 className="size-4 animate-spin" />}
           Sign in
         </Button>
+
+        <p className="text-center text-sm text-muted-foreground">
+          New to StrataWise?{" "}
+          <Link
+            href="/sign-up"
+            className="font-medium text-[color:var(--brand-gold)] hover:underline"
+          >
+            Create an account
+          </Link>
+        </p>
       </form>
     </div>
   );

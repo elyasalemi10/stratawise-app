@@ -32,6 +32,7 @@ export default async function SettingsPage() {
     teamMembers,
     prefsResult,
     optOutAuditsResult,
+    mailProviderResult,
   ] = await Promise.all([
     isManager ? getCompanyData() : Promise.resolve(null),
     isManager ? getTeamMembers() : Promise.resolve([]),
@@ -45,7 +46,33 @@ export default async function SettingsPage() {
       .eq("profile_id", profile.id)
       .eq("action", "communication.opt_out_auto")
       .order("created_at", { ascending: false }),
+    isManager && profile.management_company_id
+      ? supabase
+          .from("management_companies")
+          .select(
+            "mail_provider, mail_provider_config, mail_provider_configured_at",
+          )
+          .eq("id", profile.management_company_id)
+          .maybeSingle()
+      : Promise.resolve({ data: null }),
   ]);
+
+  const mailRow = (mailProviderResult.data ?? null) as {
+    mail_provider: "stratawise" | "gmail" | "outlook";
+    mail_provider_config: { domain?: string } | null;
+    mail_provider_configured_at: string | null;
+  } | null;
+  const mailProvider = {
+    provider: mailRow?.mail_provider ?? ("stratawise" as const),
+    domain: mailRow?.mail_provider_config?.domain ?? null,
+    configured_at: mailRow?.mail_provider_configured_at ?? null,
+  };
+
+  // Surface the GCP service-account Client ID (the 21-digit number
+  // customers paste into their Google Workspace admin) so the Email tab
+  // can render it inline + with a copy button. Null when Gmail integration
+  // isn't configured yet — the tab swaps to a "coming soon" callout.
+  const gmailOauthClientId = process.env.GMAIL_OAUTH_CLIENT_ID ?? null;
 
   const currentPreferences = (prefsResult.data ?? []) as NotificationPrefRow[];
 
@@ -76,6 +103,8 @@ export default async function SettingsPage() {
       teamMembers={teamMembers}
       currentPreferences={currentPreferences}
       autoOptOuts={autoOptOuts}
+      mailProvider={mailProvider}
+      gmailOauthClientId={gmailOauthClientId}
     />
   );
 }

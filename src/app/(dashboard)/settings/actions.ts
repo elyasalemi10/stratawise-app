@@ -146,3 +146,62 @@ export async function uploadCompanySignature(formData: FormData): Promise<{ url?
 
   return { url: publicUrl };
 }
+
+
+// ─── Mail provider (Settings → Email tab) ─────────────────────────────────
+
+interface UpdateMailProviderInput {
+  provider: "stratawise" | "gmail" | "outlook";
+  domain: string | null;
+}
+
+export async function updateMailProvider(input: UpdateMailProviderInput) {
+  const profile = await getCurrentProfile();
+  if (!profile || !profile.management_company_id) {
+    return { error: "Not authenticated" };
+  }
+  if (profile.company_role !== "admin") {
+    return { error: "Only company admins can change this." };
+  }
+  if (input.provider !== "stratawise" && !input.domain?.trim()) {
+    return { error: "Enter the email domain your firm sends from." };
+  }
+
+  const supabase = createServerClient();
+  const { error } = await supabase
+    .from("management_companies")
+    .update({
+      mail_provider: input.provider,
+      mail_provider_config:
+        input.provider === "stratawise"
+          ? null
+          : { domain: input.domain!.trim().toLowerCase() },
+      mail_provider_configured_at: new Date().toISOString(),
+      mail_provider_configured_by: profile.id,
+    })
+    .eq("id", profile.management_company_id);
+  if (error) return { error: error.message };
+  return { ok: true as const };
+}
+
+export async function disconnectMailProvider() {
+  const profile = await getCurrentProfile();
+  if (!profile || !profile.management_company_id) {
+    return { error: "Not authenticated" };
+  }
+  if (profile.company_role !== "admin") {
+    return { error: "Only company admins can change this." };
+  }
+  const supabase = createServerClient();
+  const { error } = await supabase
+    .from("management_companies")
+    .update({
+      mail_provider: "stratawise",
+      mail_provider_config: null,
+      mail_provider_configured_at: new Date().toISOString(),
+      mail_provider_configured_by: profile.id,
+    })
+    .eq("id", profile.management_company_id);
+  if (error) return { error: error.message };
+  return { ok: true as const };
+}
