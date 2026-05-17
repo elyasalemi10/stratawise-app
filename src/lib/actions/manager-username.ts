@@ -26,6 +26,18 @@ export async function getManagerSendAddress(): Promise<{ address: string } | { a
   return { address: addr ?? null };
 }
 
+// Returns the SMS sender id the platform sends from (the value we feed to
+// Mobile Message). Used by the communications-tab SMS detail dialog so the
+// "From" row matches the value that landed on the recipient's handset.
+export async function getSmsSenderId(): Promise<{ sender: string | null }> {
+  await requireCompanyRole();
+  const sender =
+    process.env.MOBILE_MESSAGE_SENDER_ID ??
+    process.env.MOBILE_MESSAGE_SENDER ??
+    null;
+  return { sender };
+}
+
 // Ensures the signed-in manager has an email_username. Idempotent — no-op when one
 // already exists. Run lazily from places that need the address (e.g. before sending
 // an outbound email from this manager).

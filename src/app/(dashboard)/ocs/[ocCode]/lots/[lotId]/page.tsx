@@ -8,6 +8,7 @@ import {
   getLotActivity,
   getActiveDrnsForLot,
   getPortalActivity,
+  hasAnyLevyEverBeenIssued,
 } from "@/lib/actions/lot-overview";
 import { listLotCommunications } from "@/lib/actions/lot-communications";
 import { LotDetailContent } from "./lot-detail-content";
@@ -33,12 +34,19 @@ export default async function LotDetailPage({
 
   const supabase = createServerClient();
 
-  const { data: lot } = await supabase
-    .from("lots")
-    .select("*")
-    .eq("id", lotId)
-    .eq("oc_id", ocId)
-    .single();
+  const [{ data: lot }, { data: oc }] = await Promise.all([
+    supabase
+      .from("lots")
+      .select("*")
+      .eq("id", lotId)
+      .eq("oc_id", ocId)
+      .single(),
+    supabase
+      .from("owners_corporations")
+      .select("address")
+      .eq("id", ocId)
+      .single(),
+  ]);
 
   if (!lot) {
     return (
@@ -106,6 +114,7 @@ export default async function LotDetailPage({
     owner,
     ownershipHistory,
     nextLevy,
+    anyLevyEver,
     activity,
     drns,
     portalActivity,
@@ -114,6 +123,7 @@ export default async function LotDetailPage({
     getLotOwner(supabase, lotId),
     getLotOwnershipHistory(lotId),
     getNextLevyDue(lotId),
+    hasAnyLevyEverBeenIssued(lotId),
     getLotActivity(lotId, 50),
     getActiveDrnsForLot(lotId),
     getPortalActivity(lotId),
@@ -152,6 +162,12 @@ export default async function LotDetailPage({
       }
       lastPaymentAt={lastPaymentRow?.payment_date ?? null}
       nextLevy={nextLevy}
+      anyLevyEverIssued={anyLevyEver}
+      lotAddress={
+        oc?.address
+          ? `${lot.unit_number ? `Unit ${lot.unit_number} / ` : ""}${oc.address}`
+          : null
+      }
       activity={activity}
       drns={drns}
       portalActivity={portalActivity}

@@ -30,6 +30,19 @@ export async function getNextLevyDue(lotId: string): Promise<NextLevyDue | null>
   };
 }
 
+// Returns true when any levy notice has ever been issued for the lot
+// (regardless of paid / outstanding / cancelled state). The Overview tab
+// uses this to distinguish "no levies issued yet" from "all levies paid"
+// when there's nothing outstanding.
+export async function hasAnyLevyEverBeenIssued(lotId: string): Promise<boolean> {
+  const supabase = createServerClient();
+  const { count } = await supabase
+    .from("levy_notices")
+    .select("id", { count: "exact", head: true })
+    .eq("lot_id", lotId);
+  return (count ?? 0) > 0;
+}
+
 export interface LotActivityEntry {
   id: string;
   created_at: string;

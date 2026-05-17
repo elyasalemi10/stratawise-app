@@ -63,8 +63,16 @@ export async function sendSms(params: {
     `${process.env.MOBILE_MESSAGE_USERNAME}:${mobileMessagePassword()}`,
   ).toString("base64");
 
+  // Mobile Message rejects any sender id that isn't pre-approved on the
+  // account. MOBILE_MESSAGE_SENDER_ID is the canonical env var (the
+  // dashboard surfaces it as "Sender ID"); MOBILE_MESSAGE_SENDER is kept
+  // as a fallback for older deployments. Falling back to "StrataWise" is
+  // only useful when neither is set AND that string has been registered.
   const sender =
-    params.senderName ?? process.env.MOBILE_MESSAGE_SENDER ?? "StrataWise";
+    params.senderName ??
+    process.env.MOBILE_MESSAGE_SENDER_ID ??
+    process.env.MOBILE_MESSAGE_SENDER ??
+    "StrataWise";
 
   try {
     const res = await fetch(ENDPOINT, {

@@ -84,6 +84,10 @@ interface Props {
   consentCategories: string[];
   portalLastActiveAt: string | null;
   nextLevy: NextLevyDue | null;
+  // True when this lot has had at least one levy notice issued in its
+  // lifetime. Drives the empty state copy: "No levies issued" vs "All
+  // levies paid".
+  anyLevyEverIssued: boolean;
   activity: LotActivityEntry[];
   onViewAllActivity: () => void;
   onConsentClick: () => void;
@@ -101,6 +105,7 @@ export function LotOverviewTab({
   consentCategories,
   portalLastActiveAt,
   nextLevy,
+  anyLevyEverIssued,
   activity,
   onViewAllActivity,
   onConsentClick,
@@ -186,10 +191,12 @@ export function LotOverviewTab({
             <div className="flex flex-col items-center justify-center gap-1.5 py-4 text-center">
               <CalendarCheck className="h-8 w-8 text-[color:var(--brand-gold)]" />
               <p className="text-sm font-medium text-foreground">
-                All levies paid
+                {anyLevyEverIssued ? "All levies paid" : "No levies issued"}
               </p>
               <p className="text-xs text-muted-foreground">
-                No outstanding levy notice.
+                {anyLevyEverIssued
+                  ? "Nothing outstanding on this lot."
+                  : "No levy notice has been issued for this lot yet."}
               </p>
             </div>
           )}

@@ -16,7 +16,6 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import Image from "next/image";
 import {
   Repeat,
   ShieldCheck,
@@ -25,6 +24,7 @@ import {
   Mail,
   Hash,
   FileSignature,
+  UserRound,
 } from "lucide-react";
 import type { LotOwnerInfo } from "@/lib/actions/lot-ownership";
 import type { OwnershipHistoryEntry } from "@/lib/validations/settlement";
@@ -148,13 +148,9 @@ export function LotOwnerTab(props: Props) {
     return (
       <Card>
         <CardContent className="flex flex-col items-center gap-4 py-12 text-center">
-          <Image
-            src="/stratawise-icon.webp"
-            alt=""
-            width={72}
-            height={81}
-            className="h-16 w-auto opacity-90"
-          />
+          <div className="flex h-16 w-16 items-center justify-center rounded-full border border-[color:var(--brand-gold)]/30 bg-[color:var(--brand-gold)]/10">
+            <UserRound className="h-8 w-8 text-[color:var(--brand-gold)]" />
+          </div>
           <div className="space-y-1">
             <p className="text-base font-semibold text-foreground">
               No owner on file yet

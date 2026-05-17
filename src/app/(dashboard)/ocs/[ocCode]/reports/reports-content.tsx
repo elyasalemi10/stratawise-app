@@ -12,6 +12,7 @@ import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
 import { Input } from "@/components/ui/input";
+import { DatePicker } from "@/components/shared/date-picker";
 import {
   getLevyHistory,
   getInsuranceStatus,
@@ -366,9 +367,9 @@ export function ReportsContent({
 
             {/* PP7-B: As-of date for Outstanding arrears */}
             {reportType === "outstanding_arrears" && (
-              <div className="space-y-1.5 min-w-[160px]">
+              <div className="space-y-1.5 min-w-[180px]">
                 <Label>As of</Label>
-                <Input type="date" value={asOfDate} onChange={(e) => setAsOfDate(e.target.value)} className="h-9" />
+                <DatePicker value={asOfDate} onChange={setAsOfDate} />
               </div>
             )}
 
@@ -390,13 +391,13 @@ export function ReportsContent({
                     ))}
                   </select>
                 </div>
-                <div className="space-y-1.5 min-w-[140px]">
+                <div className="space-y-1.5 min-w-[160px]">
                   <Label>From</Label>
-                  <Input type="date" value={rangeFrom} onChange={(e) => setRangeFrom(e.target.value)} className="h-9" />
+                  <DatePicker value={rangeFrom} onChange={setRangeFrom} />
                 </div>
-                <div className="space-y-1.5 min-w-[140px]">
+                <div className="space-y-1.5 min-w-[160px]">
                   <Label>To</Label>
-                  <Input type="date" value={rangeTo} onChange={(e) => setRangeTo(e.target.value)} className="h-9" />
+                  <DatePicker value={rangeTo} onChange={setRangeTo} />
                 </div>
               </>
             )}
@@ -404,13 +405,13 @@ export function ReportsContent({
             {/* PP7-B: Date range for Trust account summary */}
             {reportType === "trust_account_summary" && (
               <>
-                <div className="space-y-1.5 min-w-[140px]">
+                <div className="space-y-1.5 min-w-[160px]">
                   <Label>From</Label>
-                  <Input type="date" value={rangeFrom} onChange={(e) => setRangeFrom(e.target.value)} className="h-9" />
+                  <DatePicker value={rangeFrom} onChange={setRangeFrom} />
                 </div>
-                <div className="space-y-1.5 min-w-[140px]">
+                <div className="space-y-1.5 min-w-[160px]">
                   <Label>To</Label>
-                  <Input type="date" value={rangeTo} onChange={(e) => setRangeTo(e.target.value)} className="h-9" />
+                  <DatePicker value={rangeTo} onChange={setRangeTo} />
                 </div>
               </>
             )}

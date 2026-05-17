@@ -8,7 +8,7 @@ import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
-import { NativeDateInput } from "@/components/shared/native-date-input";
+import { DatePicker } from "@/components/shared/date-picker";
 import {
   Dialog,
   DialogContent,
@@ -167,7 +167,7 @@ export function ManagementCard({
 
             <div className="space-y-1.5">
               <Label>Transfer date</Label>
-              <NativeDateInput value={date} onChange={setDate} />
+              <DatePicker value={date} onChange={setDate} />
             </div>
 
             <div className="space-y-1.5">

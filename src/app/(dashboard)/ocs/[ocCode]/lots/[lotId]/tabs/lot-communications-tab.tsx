@@ -48,7 +48,10 @@ import {
   sendLotEmail,
   type LotCommunicationRow,
 } from "@/lib/actions/lot-communications";
-import { getManagerSendAddress } from "@/lib/actions/manager-username";
+import {
+  getManagerSendAddress,
+  getSmsSenderId,
+} from "@/lib/actions/manager-username";
 
 // Communications tab: one "Actions" dropdown that opens a drawer per action
 // (Send email / Send SMS / Log phone call). History below renders one row per
@@ -306,9 +309,10 @@ function CommunicationDetailDialog({
   return <CallDetailDialog row={row} onClose={onClose} />;
 }
 
-// Email preview — From / To stacked rows; Subject in a single-line
-// horizontally-scrollable strip; Body in a tall vertically-scrollable box
-// that respects the manager's line breaks.
+// Email preview — wider dialog with a visible grey outer border. Each row
+// is its own bordered strip so long values don't push out past the dialog
+// edge — From / To wrap, Subject scrolls horizontally, Body scrolls
+// vertically.
 function EmailDetailDialog({
   row,
   onClose,
@@ -318,7 +322,7 @@ function EmailDetailDialog({
 }) {
   return (
     <Dialog open onOpenChange={(o) => !o && onClose()}>
-      <DialogContent className="sm:max-w-xl">
+      <DialogContent className="sm:max-w-2xl rounded-xl border border-border shadow-md">
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2">
             <Mail className="h-4 w-4 text-[color:var(--brand-gold)]" />
@@ -326,7 +330,7 @@ function EmailDetailDialog({
           </DialogTitle>
         </DialogHeader>
 
-        <div className="space-y-3 text-sm">
+        <div className="space-y-3 text-sm overflow-hidden">
           <HeaderField label="From" value={row.actor_name ?? "—"} />
           <HeaderField label="To" value={row.recipient_email ?? "—"} />
           <HeaderField
@@ -339,7 +343,7 @@ function EmailDetailDialog({
             <p className="text-xs uppercase tracking-wide text-muted-foreground mb-1">
               Body
             </p>
-            <div className="h-72 overflow-y-auto whitespace-pre-wrap rounded-md border border-border bg-card p-3 text-sm leading-relaxed text-foreground">
+            <div className="h-80 overflow-y-auto whitespace-pre-wrap break-words rounded-md border border-border bg-card p-3 text-sm leading-relaxed text-foreground">
               {row.body_preview || "(empty)"}
             </div>
           </div>
@@ -356,9 +360,23 @@ function SmsDetailDialog({
   row: LotCommunicationRow;
   onClose: () => void;
 }) {
+  // Pull the platform-level SMS sender id so the "From" row matches what
+  // landed on the recipient's handset — the manager's profile name only
+  // shows up in the audit log, not in the SMS itself.
+  const [senderId, setSenderId] = React.useState<string | null>(null);
+  React.useEffect(() => {
+    let cancelled = false;
+    getSmsSenderId().then((res) => {
+      if (!cancelled) setSenderId(res.sender);
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
   return (
     <Dialog open onOpenChange={(o) => !o && onClose()}>
-      <DialogContent className="sm:max-w-md">
+      <DialogContent className="sm:max-w-md rounded-xl border border-border shadow-md">
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2">
             <MessageSquare className="h-4 w-4 text-[color:var(--brand-gold)]" />
@@ -366,15 +384,18 @@ function SmsDetailDialog({
           </DialogTitle>
         </DialogHeader>
 
-        <div className="space-y-3 text-sm">
-          <HeaderField label="From" value={row.actor_name ?? "—"} />
+        <div className="space-y-3 text-sm overflow-hidden">
+          <HeaderField label="From" value={senderId ?? "—"} />
           <HeaderField label="To" value={row.recipient_phone ?? "—"} />
           <HeaderField label="Sent" value={formatShortDate(row.created_at)} />
+          {row.actor_name && (
+            <HeaderField label="Logged by" value={row.actor_name} />
+          )}
           <div>
             <p className="text-xs uppercase tracking-wide text-muted-foreground mb-1">
               Message
             </p>
-            <div className="max-h-72 overflow-y-auto whitespace-pre-wrap rounded-md border border-border bg-card p-3 text-sm leading-relaxed text-foreground">
+            <div className="max-h-72 overflow-y-auto whitespace-pre-wrap break-words rounded-md border border-border bg-card p-3 text-sm leading-relaxed text-foreground">
               {row.body_preview || "(empty)"}
             </div>
           </div>
@@ -395,7 +416,7 @@ function CallDetailDialog({
     row.direction === "inbound" ? "Inbound call" : "Outbound call";
   return (
     <Dialog open onOpenChange={(o) => !o && onClose()}>
-      <DialogContent className="sm:max-w-md">
+      <DialogContent className="sm:max-w-md rounded-xl border border-border shadow-md">
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2">
             <PhoneIcon className="h-4 w-4 text-[color:var(--brand-gold)]" />
@@ -403,7 +424,7 @@ function CallDetailDialog({
           </DialogTitle>
         </DialogHeader>
 
-        <div className="space-y-3 text-sm">
+        <div className="space-y-3 text-sm overflow-hidden">
           <HeaderField label="Logged by" value={row.actor_name ?? "—"} />
           <HeaderField label="Number" value={row.recipient_phone ?? "—"} />
           <HeaderField label="Date" value={formatShortDate(row.created_at)} />
@@ -418,7 +439,7 @@ function CallDetailDialog({
               <p className="text-xs uppercase tracking-wide text-muted-foreground mb-1">
                 Notes
               </p>
-              <div className="max-h-72 overflow-y-auto whitespace-pre-wrap rounded-md border border-border bg-card p-3 text-sm leading-relaxed text-foreground">
+              <div className="max-h-72 overflow-y-auto whitespace-pre-wrap break-words rounded-md border border-border bg-card p-3 text-sm leading-relaxed text-foreground">
                 {row.body_preview}
               </div>
             </div>

@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import {
   Check, FileText, Upload, AlertTriangle, Loader2, X,
 } from "lucide-react";
@@ -11,6 +11,8 @@ import { Label } from "@/components/ui/label";
 import {
   Sheet, SheetContent, SheetHeader, SheetTitle,
 } from "@/components/ui/sheet";
+import { DatePicker } from "@/components/shared/date-picker";
+import { PlacesAutocomplete } from "@/components/shared/places-autocomplete";
 import {
   parseSettlementForReview,
   parseSettlementAndMatchLot,
@@ -24,6 +26,10 @@ interface PropsLotMode {
   ocId: string;
   lotId: string;
   lotNumber: number;
+  /** Optional default postal address used to pre-fill the new owner's
+   *  service address — typically "Unit X / <oc address>" of the lot
+   *  currently being transferred. */
+  lotAddress?: string | null;
   onApplied?: () => void;
 }
 
@@ -33,6 +39,7 @@ interface PropsOCMode {
   ocId: string;
   lotId?: undefined;
   lotNumber?: undefined;
+  lotAddress?: undefined;
   onApplied?: () => void;
 }
 
@@ -49,6 +56,7 @@ export function SettlementDialog(props: Props) {
   const { open, onClose, ocId, onApplied } = props;
   const knownLotId = props.lotId ?? null;
   const knownLotNumber = props.lotNumber ?? null;
+  const knownLotAddress = props.lotAddress ?? null;
 
   const [stage, setStage] = useState<Stage>("upload");
   const [entryMode, setEntryMode] = useState<EntryMode>("pdf");
@@ -75,14 +83,28 @@ export function SettlementDialog(props: Props) {
   }, []);
 
   // Manual entry — skip the PDF stage and jump straight to the review form
-  // with empty values. The action accepts documentId=null in this branch.
+  // with empty values. Pre-fill the postal address with the current lot's
+  // own address (e.g. "Unit 2 / 14 Smith St, Hawthorn VIC 3122") so the
+  // common case "owner lives at the lot" is one click away.
   const startManualEntry = useCallback(() => {
     setEntryMode("manual");
     setDocumentId(null);
     setReview(null);
-    setName(""); setEmail(""); setPhone(""); setPostalAddress(""); setDateOfBirth(""); setSettlementDate("");
+    setName(""); setEmail(""); setPhone("");
+    setPostalAddress(knownLotAddress ?? "");
+    setDateOfBirth(""); setSettlementDate("");
     setStage("review");
-  }, []);
+  }, [knownLotAddress]);
+
+  // Re-seed the postal address whenever the drawer (re)opens onto the
+  // manual path — covers the case where the manager swaps lots without
+  // unmounting the SettlementDialog instance.
+  useEffect(() => {
+    if (open && entryMode === "manual" && knownLotAddress && !postalAddress) {
+      setPostalAddress(knownLotAddress);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [open, entryMode, knownLotAddress]);
 
   const handleClose = useCallback(() => {
     if (stage === "parsing" || stage === "submitting") return;
@@ -249,6 +271,7 @@ export function SettlementDialog(props: Props) {
         {stage === "review" && entryMode === "manual" && (
           <ManualReviewForm
             lotNumber={knownLotNumber}
+            lotAddress={knownLotAddress}
             name={name} setName={setName}
             email={email} setEmail={setEmail}
             phone={phone} setPhone={setPhone}
@@ -466,15 +489,30 @@ function ReviewForm(props: {
           </div>
           <div className="space-y-1.5 sm:col-span-2">
             <Label htmlFor="settlement-postal">Postal address</Label>
-            <Input id="settlement-postal" value={props.postalAddress} onChange={(e) => props.setPostalAddress(e.target.value)} placeholder="For correspondence — used as absent-owner address if different from the lot" />
+            <PlacesAutocomplete
+              id="settlement-postal"
+              value={props.postalAddress}
+              onChange={props.setPostalAddress}
+              placeholder="For correspondence — used as absent-owner address if different from the lot"
+            />
           </div>
           <div className="space-y-1.5">
             <Label htmlFor="settlement-dob">Date of birth</Label>
-            <Input id="settlement-dob" type="date" value={props.dateOfBirth} onChange={(e) => props.setDateOfBirth(e.target.value)} />
+            <DatePicker
+              id="settlement-dob"
+              value={props.dateOfBirth}
+              onChange={props.setDateOfBirth}
+            />
           </div>
           <div className="space-y-1.5">
-            <Label htmlFor="settlement-date">Settlement date <span className="text-destructive">*</span></Label>
-            <Input id="settlement-date" type="date" value={props.settlementDate} onChange={(e) => props.setSettlementDate(e.target.value)} />
+            <Label htmlFor="settlement-date">
+              Settlement date <span className="text-destructive">*</span>
+            </Label>
+            <DatePicker
+              id="settlement-date"
+              value={props.settlementDate}
+              onChange={props.setSettlementDate}
+            />
           </div>
         </div>
 
@@ -561,6 +599,7 @@ function formatCents(cents: number): string {
 
 function ManualReviewForm(props: {
   lotNumber: number | null;
+  lotAddress: string | null;
   name: string; setName: (v: string) => void;
   email: string; setEmail: (v: string) => void;
   phone: string; setPhone: (v: string) => void;
@@ -568,14 +607,9 @@ function ManualReviewForm(props: {
   dateOfBirth: string; setDateOfBirth: (v: string) => void;
   settlementDate: string; setSettlementDate: (v: string) => void;
 }) {
+  void props.lotNumber;
   return (
     <div className="space-y-4 max-h-[60vh] overflow-y-auto pr-1">
-      <div className="rounded-md border border-border bg-muted/30 p-3 text-xs text-muted-foreground">
-        Recording settlement manually
-        {props.lotNumber != null ? ` for Lot ${props.lotNumber}` : ""}. No Notice
-        of Acquisition document will be attached.
-      </div>
-
       <div className="space-y-3">
         <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
           New owner
@@ -615,31 +649,35 @@ function ManualReviewForm(props: {
             <Label htmlFor="manual-settlement-postal">
               Postal address <span className="text-destructive">*</span>
             </Label>
-            <Input
+            <PlacesAutocomplete
               id="manual-settlement-postal"
               value={props.postalAddress}
-              onChange={(e) => props.setPostalAddress(e.target.value)}
+              onChange={props.setPostalAddress}
               placeholder="Used as the absent-owner / service address for paper notices"
             />
+            {props.lotAddress && props.postalAddress === props.lotAddress && (
+              <p className="text-xs text-muted-foreground">
+                Pre-filled with the lot&apos;s own address — change it if the
+                owner is absentee.
+              </p>
+            )}
           </div>
           <div className="space-y-1.5">
             <Label htmlFor="manual-settlement-dob">Date of birth</Label>
-            <Input
+            <DatePicker
               id="manual-settlement-dob"
-              type="date"
               value={props.dateOfBirth}
-              onChange={(e) => props.setDateOfBirth(e.target.value)}
+              onChange={props.setDateOfBirth}
             />
           </div>
           <div className="space-y-1.5">
             <Label htmlFor="manual-settlement-date">
               Settlement date <span className="text-destructive">*</span>
             </Label>
-            <Input
+            <DatePicker
               id="manual-settlement-date"
-              type="date"
               value={props.settlementDate}
-              onChange={(e) => props.setSettlementDate(e.target.value)}
+              onChange={props.setSettlementDate}
             />
           </div>
         </div>

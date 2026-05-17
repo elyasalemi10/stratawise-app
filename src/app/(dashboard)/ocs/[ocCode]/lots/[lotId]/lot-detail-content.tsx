@@ -65,6 +65,8 @@ interface LotDetailContentProps {
   lotOwnerExtra: LotOwnerExtra | null;
   lastPaymentAt: string | null;
   nextLevy: NextLevyDue | null;
+  anyLevyEverIssued: boolean;
+  lotAddress: string | null;
   activity: LotActivityEntry[];
   drns: LotDrn[];
   portalActivity: PortalActivity;
@@ -125,6 +127,8 @@ export function LotDetailContent({
   lotOwnerExtra,
   lastPaymentAt,
   nextLevy,
+  anyLevyEverIssued,
+  lotAddress,
   activity,
   drns,
   portalActivity,
@@ -282,13 +286,13 @@ export function LotDetailContent({
       <Tabs value={activeTab} onValueChange={onTabChange}>
         <TabsList
           variant="line"
-          className="h-auto w-full flex-wrap justify-stretch gap-1 rounded-md border border-border bg-card p-1 overflow-hidden"
+          className="h-auto w-full flex-wrap justify-stretch gap-1 rounded-md border border-border bg-card p-1.5 overflow-hidden"
         >
           {TABS.map((tab) => (
             <TabsTrigger
               key={tab.value}
               value={tab.value}
-              className="relative flex-1 h-9 rounded-sm border-0 text-sm font-medium text-muted-foreground transition-colors hover:bg-muted hover:text-foreground data-active:bg-transparent data-active:text-foreground data-active:after:bg-[color:var(--brand-gold)] data-active:after:opacity-100 data-active:after:inset-x-3 data-active:after:bottom-1 data-active:after:h-0.5 data-active:after:rounded-full"
+              className="relative flex-1 h-11 rounded-sm border-0 text-sm font-medium text-muted-foreground transition-colors hover:bg-muted hover:text-foreground data-active:bg-transparent data-active:text-foreground data-active:after:bg-[color:var(--brand-gold)] data-active:after:opacity-100 data-active:after:inset-x-3 data-active:after:bottom-1 data-active:after:h-0.5 data-active:after:rounded-full"
             >
               {tab.label}
             </TabsTrigger>
@@ -309,6 +313,7 @@ export function LotDetailContent({
           consentCategories={lotOwnerExtra?.digital_consent_categories ?? []}
           portalLastActiveAt={portalActivity.last_active_at}
           nextLevy={nextLevy}
+          anyLevyEverIssued={anyLevyEverIssued}
           activity={activity}
           onViewAllActivity={() => onTabChange("history")}
           onConsentClick={() => onTabChange("owner")}
@@ -385,6 +390,7 @@ export function LotDetailContent({
         ocId={ocId}
         lotId={lot.id}
         lotNumber={Number(lot.lot_number)}
+        lotAddress={lotAddress}
         onApplied={() => router.refresh()}
       />
 
