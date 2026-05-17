@@ -3,7 +3,7 @@
 import * as React from "react";
 import { useRouter } from "next/navigation";
 import { Card, CardContent } from "@/components/ui/card";
-import { Button } from "@/components/ui/button";
+import { EmptyState } from "@/components/shared/empty-state";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
@@ -57,61 +57,55 @@ export function LotTenancyTab(props: Props) {
   return (
     <div className="space-y-6">
       {view.occupancy === "owner_occupied" && (
-        <Card>
-          <CardContent className="py-10 flex flex-col items-center text-center">
-            <Home className="mb-3 h-8 w-8 text-muted-foreground" />
-            <p className="text-sm font-medium text-foreground">This lot is owner-occupied.</p>
-            <p className="mt-1 text-xs text-muted-foreground">
-              The owner lives in the lot themselves — no tenant on file.
-            </p>
-            <div className="mt-4">
-              <TenancyEditSheet
-                lotOwnerId={lotOwnerId}
-                initial={view}
-                triggerLabel="Add tenant"
-                title="Add tenant"
-                onPatch={(p) => setView((v) => ({ ...v, ...p }))}
-                onRollback={() =>
-                  setView({
-                    occupancy: occupancyStatus,
-                    name: tenantName ?? "",
-                    email: tenantEmail ?? "",
-                    phone: tenantPhone ?? "",
-                  })
-                }
-                onSaved={() => router.refresh()}
-              />
-            </div>
-          </CardContent>
-        </Card>
+        <EmptyState
+          icon={Home}
+          title="This lot is owner-occupied"
+          description="The owner lives in the lot themselves — no tenant on file."
+          action={
+            <TenancyEditSheet
+              lotOwnerId={lotOwnerId}
+              initial={view}
+              triggerLabel="Add tenant"
+              title="Add tenant"
+              onPatch={(p) => setView((v) => ({ ...v, ...p }))}
+              onRollback={() =>
+                setView({
+                  occupancy: occupancyStatus,
+                  name: tenantName ?? "",
+                  email: tenantEmail ?? "",
+                  phone: tenantPhone ?? "",
+                })
+              }
+              onSaved={() => router.refresh()}
+            />
+          }
+        />
       )}
 
       {view.occupancy === "vacant" && (
-        <Card>
-          <CardContent className="py-10 flex flex-col items-center text-center">
-            <DoorOpen className="mb-3 h-8 w-8 text-muted-foreground" />
-            <p className="text-sm font-medium text-foreground">This lot is currently vacant.</p>
-            <p className="mt-1 text-xs text-muted-foreground">No tenant on file.</p>
-            <div className="mt-4">
-              <TenancyEditSheet
-                lotOwnerId={lotOwnerId}
-                initial={view}
-                triggerLabel="Add new tenant"
-                title="Add new tenant"
-                onPatch={(p) => setView((v) => ({ ...v, ...p }))}
-                onRollback={() =>
-                  setView({
-                    occupancy: occupancyStatus,
-                    name: tenantName ?? "",
-                    email: tenantEmail ?? "",
-                    phone: tenantPhone ?? "",
-                  })
-                }
-                onSaved={() => router.refresh()}
-              />
-            </div>
-          </CardContent>
-        </Card>
+        <EmptyState
+          icon={DoorOpen}
+          title="This lot is currently vacant"
+          description="No tenant on file."
+          action={
+            <TenancyEditSheet
+              lotOwnerId={lotOwnerId}
+              initial={view}
+              triggerLabel="Add new tenant"
+              title="Add new tenant"
+              onPatch={(p) => setView((v) => ({ ...v, ...p }))}
+              onRollback={() =>
+                setView({
+                  occupancy: occupancyStatus,
+                  name: tenantName ?? "",
+                  email: tenantEmail ?? "",
+                  phone: tenantPhone ?? "",
+                })
+              }
+              onSaved={() => router.refresh()}
+            />
+          }
+        />
       )}
 
       {view.occupancy === "tenanted" && (

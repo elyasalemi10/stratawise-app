@@ -35,11 +35,35 @@ export function NotificationBell() {
   const ref = useRef<HTMLDivElement>(null);
 
   // Fetch on mount
+  // Fetch on mount, then refresh the unread badge every 60 seconds while
+  // the tab is visible. Pauses on tab-hidden so we don't burn DB round-trips
+  // on backgrounded tabs; resumes (and fires once immediately) when the tab
+  // comes back. 60s is the trade-off between freshness and load — the user
+  // can always tap the bell to force a fetch.
   useEffect(() => {
-    getUnreadCount().then((count) => {
-      setUnreadCount(count);
-      setLoaded(true);
-    });
+    let cancelled = false;
+    const refresh = () => {
+      if (typeof document !== "undefined" && document.visibilityState === "hidden") {
+        return;
+      }
+      getUnreadCount().then((count) => {
+        if (!cancelled) {
+          setUnreadCount(count);
+          setLoaded(true);
+        }
+      });
+    };
+    refresh();
+    const interval = window.setInterval(refresh, 60_000);
+    const onVisibility = () => {
+      if (document.visibilityState === "visible") refresh();
+    };
+    document.addEventListener("visibilitychange", onVisibility);
+    return () => {
+      cancelled = true;
+      window.clearInterval(interval);
+      document.removeEventListener("visibilitychange", onVisibility);
+    };
   }, []);
 
   // Fetch full list when opened

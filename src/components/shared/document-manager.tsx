@@ -387,13 +387,11 @@ export function DocumentManager({ ocId, lotId, initialDocuments, readOnly }: Doc
                 >
                   {upload.fileName}
                 </p>
-                <p className="mt-0.5 text-xs text-muted-foreground">
-                  {upload.error ? (
-                    <span className="text-destructive">{upload.error}</span>
-                  ) : (
-                    "Uploading…"
-                  )}
-                </p>
+                {upload.error && (
+                  <p className="mt-0.5 text-xs text-destructive">
+                    {upload.error}
+                  </p>
+                )}
                 {upload.error && (
                   <button
                     type="button"

@@ -114,6 +114,7 @@ export async function PATCH(
     entity_id: id,
     before_state: { file_name: doc.file_name },
     after_state: { file_name: newName },
+    metadata: doc.lot_id ? { lot_id: doc.lot_id } : null,
   });
 
   return NextResponse.json(updated);
@@ -166,6 +167,7 @@ export async function DELETE(
     entity_type: "document",
     entity_id: id,
     before_state: { file_name: doc.file_name, file_path: doc.file_path },
+    metadata: doc.lot_id ? { lot_id: doc.lot_id } : null,
   });
 
   return NextResponse.json({ success: true });

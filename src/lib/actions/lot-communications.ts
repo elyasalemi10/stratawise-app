@@ -24,6 +24,12 @@ const logPhoneCallSchema = z.object({
   lot_id: z.string().uuid(),
   recipient_phone: z.string().trim().min(1).max(40),
   direction: z.enum(["outbound", "inbound"]),
+  // ISO yyyy-MM-dd — when the call actually happened (mapped to sent_at).
+  // Optional; if missing we default to the row's created_at via the DB.
+  call_date: z
+    .string()
+    .regex(/^\d{4}-\d{2}-\d{2}$/, "Invalid date")
+    .optional(),
   duration_seconds: z.number().int().min(0).max(60 * 60 * 12).nullable().optional(),
   notes: z.string().trim().min(1).max(2000),
 });
@@ -36,6 +42,14 @@ export async function logPhoneCall(
 
   const profile = await requireCompanyRole();
   const supabase = createServerClient();
+
+  // sent_at = when the call actually happened (driven by call_date input).
+  // created_at = when the manager logged it (DB default = now). Splitting the
+  // two means a manager can backfill yesterday's call without losing the
+  // logged-at audit timestamp.
+  const callHappenedAt = parsed.data.call_date
+    ? new Date(`${parsed.data.call_date}T00:00:00`).toISOString()
+    : new Date().toISOString();
 
   const { data: row, error } = await supabase
     .from("communication_log")
@@ -51,7 +65,7 @@ export async function logPhoneCall(
       body_preview: parsed.data.notes.slice(0, 200),
       body_full: parsed.data.notes,
       status: "logged",
-      sent_at: new Date().toISOString(),
+      sent_at: callHappenedAt,
     })
     .select("id")
     .single();
@@ -280,6 +294,10 @@ export async function sendLotEmail(
 export interface LotCommunicationRow {
   id: string;
   created_at: string;
+  // sent_at = when the event happened (call date, email/SMS send time).
+  // created_at = when the row was written (audit log). For phone calls
+  // these differ when a manager back-logs an older call.
+  sent_at: string | null;
   channel: string;
   type: string;
   direction: string | null;
@@ -299,7 +317,7 @@ export async function listLotCommunications(lotId: string): Promise<LotCommunica
   const { data } = await supabase
     .from("communication_log")
     .select(
-      "id, created_at, channel, type, direction, subject, body_preview, recipient_email, recipient_phone, duration_seconds, status, sender_profile_id",
+      "id, created_at, sent_at, channel, type, direction, subject, body_preview, recipient_email, recipient_phone, duration_seconds, status, sender_profile_id",
     )
     .eq("lot_id", lotId)
     .order("created_at", { ascending: false })
@@ -324,6 +342,7 @@ export async function listLotCommunications(lotId: string): Promise<LotCommunica
   return rows.map((r) => ({
     id: r.id as string,
     created_at: r.created_at as string,
+    sent_at: (r.sent_at as string | null) ?? null,
     channel: r.channel as string,
     type: r.type as string,
     direction: (r.direction as string) ?? null,

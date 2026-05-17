@@ -96,7 +96,10 @@ function titleFor(row: LotActivityEntry, category: Category): string {
     case "consent":    return "Consent updated";
     case "contact":    return "Owner contact updated";
     case "payment":    return "Payment recorded";
-    case "document":   return "Document uploaded";
+    case "document":
+      if (row.action === "rename") return "Document renamed";
+      if (row.action === "delete") return "Document removed";
+      return "Document uploaded";
     case "levy":       return row.action === "create" ? "Levy issued" : humanise(`${row.entity_type} ${row.action}`);
     default:           return humanise(`${row.entity_type} ${row.action}`);
   }

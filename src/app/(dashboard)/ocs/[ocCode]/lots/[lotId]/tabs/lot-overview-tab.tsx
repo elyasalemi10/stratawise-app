@@ -426,6 +426,9 @@ function describeAuditEvent(row: LotActivityEntry): string {
     "send:email": "Email sent",
     "create:phone_call": "Phone call logged",
     "create:document": "Document uploaded",
+    "upload:document": "Document uploaded",
+    "rename:document": "Document renamed",
+    "delete:document": "Document removed",
   };
   const key = `${row.action}:${row.entity_type}`;
   return map[key] ?? `${row.entity_type.replace(/_/g, " ")} ${row.action}`;

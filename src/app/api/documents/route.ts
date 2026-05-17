@@ -5,6 +5,7 @@ import { requireCompanyRole, requireOCAccess } from "@/lib/auth";
 import { ALLOWED_DOCUMENT_TYPES, MAX_DOCUMENT_SIZE } from "@/lib/validations/documents";
 import { uploadObject, publicUrlFor } from "@/lib/storage/r2";
 import { ingestDocumentOcr, isOcrable } from "@/lib/ocr/ingest";
+import { tasks } from "@trigger.dev/sdk";
 
 const UUID_REGEX = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
@@ -110,15 +111,34 @@ export async function POST(request: NextRequest) {
     entity_type: "document",
     entity_id: doc.id,
     after_state: { file_name: safeName, category, lot_id: lotId || null },
+    // metadata.lot_id is what lot-overview's activity feed filters on — without
+    // it the lot's History tab never surfaces document uploads.
+    metadata: lotId ? { lot_id: lotId } : null,
   });
 
-  // Kick OCR after the response so the client isn't blocked for 10-30s on a
-  // Document AI round-trip. Vercel keeps the function alive for the duration
-  // of `after()`. Failures land on the document row as ocr_status='failed'.
+  // Kick OCR on the Trigger.dev worker so the client returns instantly and
+  // the OCR doesn't have to share the serverless function's RAM / time
+  // budget. The task id matches trigger/ocr-documents.ts's `id`. A fallback
+  // to the in-process pipeline runs only when TRIGGER_SECRET_KEY isn't
+  // configured (local dev without Trigger.dev) — production always queues.
   if (willOcr) {
-    after(async () => {
-      await ingestDocumentOcr(doc.id);
-    });
+    if (process.env.TRIGGER_SECRET_KEY) {
+      try {
+        await tasks.trigger("ocr-document", { documentId: doc.id });
+      } catch (err) {
+        console.error(
+          "documents.POST: failed to queue ocr-document, falling back to in-process OCR",
+          err,
+        );
+        after(async () => {
+          await ingestDocumentOcr(doc.id);
+        });
+      }
+    } else {
+      after(async () => {
+        await ingestDocumentOcr(doc.id);
+      });
+    }
   }
 
   return NextResponse.json({

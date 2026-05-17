@@ -27,6 +27,7 @@ import { LotOwnerTab } from "./tabs/lot-owner-tab";
 import { LotTenancyTab } from "./tabs/lot-tenancy-tab";
 import { LotCommunicationsTab } from "./tabs/lot-communications-tab";
 import type { LotCommunicationRow } from "@/lib/actions/lot-communications";
+import type { LotEngagement } from "@/lib/actions/lot-engagement";
 import type { DocumentRecord } from "@/lib/validations/documents";
 import type { OwnershipHistoryEntry } from "@/lib/validations/settlement";
 import type { LotOwnerInfo } from "@/lib/actions/lot-ownership";
@@ -72,6 +73,7 @@ interface LotDetailContentProps {
   drns: LotDrn[];
   portalActivity: PortalActivity;
   communications: LotCommunicationRow[];
+  engagement: LotEngagement;
 }
 
 const TABS = [
@@ -134,6 +136,7 @@ export function LotDetailContent({
   drns,
   portalActivity,
   communications,
+  engagement,
 }: LotDetailContentProps) {
   const ocCode = useOCCode();
   const searchParams = useSearchParams();
@@ -286,17 +289,21 @@ export function LotDetailContent({
           Active state: foreground text + a 2px gold underline that sits at
           the bottom EDGE of the card (cell-aligned via bottom-0 + h-0.5).
           The card carries the visual surface; the tabs are just labels. */}
+      {/* Tab strip — one white card; tabs wrap onto a second row on narrow
+          viewports instead of triggering horizontal scroll. The active gold
+          underline rides flush with the BOTTOM of the row the trigger is on,
+          so every row keeps its own indicator. */}
       <Tabs value={activeTab} onValueChange={onTabChange}>
-        <div className="overflow-x-auto rounded-md border border-border bg-card">
+        <div className="rounded-md border border-border bg-card">
           <TabsList
             variant="line"
-            className="h-12 w-full flex-nowrap justify-stretch gap-0 border-none bg-transparent p-0"
+            className="h-auto w-full flex-wrap justify-stretch gap-0 border-none bg-transparent p-0"
           >
             {TABS.map((tab) => (
               <TabsTrigger
                 key={tab.value}
                 value={tab.value}
-                className="relative flex-1 h-12 rounded-none border-0 text-sm font-medium text-muted-foreground bg-transparent transition-colors hover:text-foreground hover:bg-transparent data-active:bg-transparent data-active:text-foreground data-active:after:bg-[color:var(--brand-gold)] data-active:after:opacity-100 data-active:after:inset-x-0 data-active:after:bottom-0 data-active:after:h-0.5 data-active:after:rounded-none"
+                className="relative flex-1 min-w-[6.5rem] h-12 rounded-none border-0 text-sm font-medium text-muted-foreground bg-transparent transition-colors hover:text-foreground hover:bg-transparent data-active:bg-transparent data-active:text-foreground data-active:after:bg-[color:var(--brand-gold)] data-active:after:opacity-100 data-active:after:inset-x-0 data-active:after:bottom-0 data-active:after:h-0.5 data-active:after:rounded-none"
               >
                 {tab.label}
               </TabsTrigger>
@@ -347,6 +354,7 @@ export function LotDetailContent({
           portalInviteAccepted={portalActive}
           consentCategories={lotOwnerExtra?.digital_consent_categories ?? []}
           drns={drns}
+          engagement={engagement}
           onTransfer={() => setSettlementOpen(true)}
         />
       </div>

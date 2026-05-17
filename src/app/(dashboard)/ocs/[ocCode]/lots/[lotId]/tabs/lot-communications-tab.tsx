@@ -431,7 +431,14 @@ function CallDetailDialog({
         <div className="space-y-3 text-sm overflow-hidden">
           <HeaderField label="Logged by" value={row.actor_name ?? "—"} />
           <HeaderField label="Number" value={row.recipient_phone ?? "—"} />
-          <HeaderField label="Date" value={formatShortDate(row.created_at)} />
+          <HeaderField
+            label="Call date"
+            value={formatShortDate(row.sent_at ?? row.created_at)}
+          />
+          <HeaderField
+            label="Logged on"
+            value={formatShortDate(row.created_at)}
+          />
           {row.duration_seconds !== null && row.duration_seconds !== undefined && (
             <HeaderField
               label="Duration"
@@ -924,10 +931,12 @@ function LogCallDrawer({
           lot_id: lotId,
           recipient_phone: phone,
           direction,
+          // The day the call actually happened — recorded on sent_at on the
+          // server. The row's created_at (always "now") is the audit-trail
+          // "logged on" date, kept separate.
+          call_date: callDate || undefined,
           duration_seconds: durationSeconds,
-          notes: callDate
-            ? `[${callDate}] ${notes}`
-            : notes,
+          notes,
         });
         if (res.ok) onSaved();
         return res.ok

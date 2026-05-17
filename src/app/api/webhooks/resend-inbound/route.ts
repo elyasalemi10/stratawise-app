@@ -47,21 +47,36 @@ interface InboundPayload {
   };
 }
 
-function pickRecipientEmail(payload: InboundPayload): string | null {
+function pickAllRecipientEmails(payload: InboundPayload): string[] {
   const d = payload.data ?? {};
+  const out: string[] = [];
+
   if (Array.isArray(d.to)) {
-    const first = d.to[0];
-    if (typeof first === "string") return first.toLowerCase().trim() || null;
-    return (first?.email ?? "").toLowerCase().trim() || null;
+    for (const entry of d.to) {
+      if (typeof entry === "string") {
+        const clean = entry.toLowerCase().trim();
+        if (clean) out.push(clean);
+      } else if (entry?.email) {
+        const clean = entry.email.toLowerCase().trim();
+        if (clean) out.push(clean);
+      }
+    }
   }
-  if (typeof d.email === "string") return d.email.toLowerCase().trim() || null;
+  if (typeof d.email === "string") {
+    const clean = d.email.toLowerCase().trim();
+    if (clean) out.push(clean);
+  }
   const headerTo = d.headers?.to;
   if (typeof headerTo === "string") {
-    // Strip any "Name <addr>" wrapper.
-    const m = headerTo.match(/<([^>]+)>/);
-    return (m ? m[1] : headerTo).toLowerCase().trim() || null;
+    // Split multi-address To header ("a@x.com, b@x.com") and strip any
+    // "Name <addr>" wrappers.
+    for (const part of headerTo.split(",")) {
+      const m = part.match(/<([^>]+)>/);
+      const clean = (m ? m[1] : part).toLowerCase().trim();
+      if (clean) out.push(clean);
+    }
   }
-  return null;
+  return Array.from(new Set(out));
 }
 
 function pickSenderEmail(payload: InboundPayload): string | null {
@@ -118,10 +133,18 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ status: "ignored", type: payload.type });
   }
 
-  const recipient = pickRecipientEmail(payload);
+  // Resend may push the same email to several `to[]` entries (cc/bcc folding
+  // depending on the inbound rule). We try every recipient address until one
+  // resolves to a known manager — the first match wins.
+  const recipients = pickAllRecipientEmails(payload);
   const sender = pickSenderEmail(payload);
-  if (!recipient || !sender) {
-    console.warn("resend-inbound: missing addresses", { recipient, sender });
+  if (recipients.length === 0 || !sender) {
+    console.warn("resend-inbound: missing addresses", {
+      recipients,
+      sender,
+      rawTo: payload.data?.to,
+      rawHeadersTo: payload.data?.headers?.to,
+    });
     return NextResponse.json({ status: "missing_addresses" });
   }
 
@@ -129,34 +152,56 @@ export async function POST(request: NextRequest) {
 
   // Recipient lookup: "<email_username>@<brand-domain>" → manager profile.
   // Falls back to scanning profile_username_aliases so legacy usernames keep
-  // working after a manager renames themselves.
-  const usernamePart = recipient.split("@")[0]?.toLowerCase() ?? "";
-  const { data: profile } = await supabase
-    .from("profiles")
-    .select("id, management_company_id")
-    .ilike("email_username", usernamePart)
-    .maybeSingle();
+  // working after a manager renames themselves. Both lookups use ILIKE so
+  // case differences in the inbound recipient never matter.
+  let managerProfileId: string | null = null;
+  let matchedRecipient: string | null = null;
+  const triedUsernameParts: string[] = [];
 
-  let managerProfileId: string | null =
-    (profile as { id: string } | null)?.id ?? null;
+  for (const recipient of recipients) {
+    const usernamePart = recipient.split("@")[0]?.toLowerCase().trim() ?? "";
+    if (!usernamePart) continue;
+    triedUsernameParts.push(usernamePart);
 
-  if (!managerProfileId) {
+    const { data: profile } = await supabase
+      .from("profiles")
+      .select("id, management_company_id")
+      .ilike("email_username", usernamePart)
+      .maybeSingle();
+    if ((profile as { id: string } | null)?.id) {
+      managerProfileId = (profile as { id: string }).id;
+      matchedRecipient = recipient;
+      break;
+    }
+
     const { data: alias } = await supabase
       .from("profile_username_aliases")
       .select("profile_id")
       .ilike("username", usernamePart)
       .is("retired_at", null)
       .maybeSingle();
-    managerProfileId =
-      (alias as { profile_id: string } | null)?.profile_id ?? null;
+    if ((alias as { profile_id: string } | null)?.profile_id) {
+      managerProfileId = (alias as { profile_id: string }).profile_id;
+      matchedRecipient = recipient;
+      break;
+    }
   }
 
   if (!managerProfileId) {
     console.warn(
-      `resend-inbound: no manager found for recipient ${recipient}`,
+      "resend-inbound: no manager matched",
+      JSON.stringify({
+        recipients,
+        triedUsernameParts,
+        sender,
+      }),
     );
-    return NextResponse.json({ status: "no_manager" });
+    return NextResponse.json({
+      status: "no_manager",
+      tried: triedUsernameParts,
+    });
   }
+  const recipient = matchedRecipient!;
 
   const d = payload.data ?? {};
   const subject = (d.subject ?? "").trim();

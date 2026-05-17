@@ -26,10 +26,13 @@ import {
   Hash,
   FileSignature,
   UserRound,
+  Vote,
+  CalendarDays,
 } from "lucide-react";
 import type { LotOwnerInfo } from "@/lib/actions/lot-ownership";
 import type { OwnershipHistoryEntry } from "@/lib/validations/settlement";
 import type { LotDrn } from "@/lib/actions/lot-overview";
+import type { LotEngagement } from "@/lib/actions/lot-engagement";
 import {
   updateLotOwnerContact,
   updateConsentCategories,
@@ -95,6 +98,7 @@ interface Props {
   portalInviteAccepted: boolean;
   consentCategories: string[];
   drns: LotDrn[];
+  engagement: LotEngagement;
   onTransfer: () => void;
 }
 
@@ -111,6 +115,7 @@ export function LotOwnerTab(props: Props) {
     portalInviteAccepted,
     consentCategories,
     drns,
+    engagement,
     onTransfer,
   } = props;
 
@@ -300,6 +305,9 @@ export function LotOwnerTab(props: Props) {
           Transfer ownership
         </Button>
       </div>
+
+      {/* Engagement (meeting attendance + voting history) ------------------- */}
+      <EngagementCard engagement={engagement} />
 
       {/* Previous owners ---------------------------------------------------- */}
       {pastHistoryEntries.length > 0 && (
@@ -600,6 +608,153 @@ function PastOwnerRow({ entry }: { entry: OwnershipHistoryEntry }) {
           </a>
         )}
       </div>
+    </div>
+  );
+}
+
+
+// ─── Engagement card ────────────────────────────────────────────────────────
+// Surfaces this lot's meeting participation + voting history. Numbers come
+// from the lot_engagement read model (votes.lot_id → meetings via
+// agenda_items). Renders an EmptyState when the lot hasn't taken part in
+// any meeting yet.
+
+function formatChoice(choice: string): string {
+  return choice
+    .replace(/_/g, " ")
+    .replace(/\b\w/g, (c) => c.toUpperCase());
+}
+
+function formatMeetingType(type: string | null): string {
+  if (!type) return "Meeting";
+  return type
+    .replace(/_/g, " ")
+    .replace(/\b\w/g, (c) => c.toUpperCase());
+}
+
+function EngagementCard({ engagement }: { engagement: LotEngagement }) {
+  const lastMeetingLabel = engagement.lastMeetingAt
+    ? formatLongDate(engagement.lastMeetingAt)
+    : null;
+
+  if (engagement.meetingsAttended === 0) {
+    return (
+      <Card>
+        <CardContent className="pt-5">
+          <div className="flex items-center gap-2 mb-3">
+            <Vote className="h-4 w-4 text-[color:var(--brand-gold)]" />
+            <h3 className="text-sm font-semibold text-foreground">Engagement</h3>
+          </div>
+          <div className="flex flex-col items-center gap-2 py-6 text-center">
+            <Vote className="h-10 w-10 text-muted-foreground/40" />
+            <p className="text-sm font-medium text-foreground">
+              No meeting activity yet
+            </p>
+            <p className="text-xs text-muted-foreground">
+              Once this lot has voted in or attended a meeting, it&apos;ll
+              show up here.
+            </p>
+          </div>
+        </CardContent>
+      </Card>
+    );
+  }
+
+  return (
+    <Card>
+      <CardContent className="pt-5 space-y-4">
+        <div className="flex items-center gap-2">
+          <Vote className="h-4 w-4 text-[color:var(--brand-gold)]" />
+          <h3 className="text-sm font-semibold text-foreground">Engagement</h3>
+        </div>
+
+        <div className="grid grid-cols-3 gap-3">
+          <EngagementStat
+            label="Meetings"
+            value={engagement.meetingsAttended}
+            sub={lastMeetingLabel ? `Last: ${lastMeetingLabel}` : undefined}
+          />
+          <EngagementStat label="Votes cast" value={engagement.votesCast} />
+          <EngagementStat label="By proxy" value={engagement.proxiesGiven} />
+        </div>
+
+        {engagement.choices.length > 0 && (
+          <div>
+            <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground mb-2">
+              Vote breakdown
+            </p>
+            <div className="flex flex-wrap gap-1.5">
+              {engagement.choices.map((c) => (
+                <span
+                  key={c.choice}
+                  className="inline-flex items-center gap-1.5 rounded-full bg-muted px-2.5 py-1 text-xs text-foreground"
+                >
+                  <span className="font-medium">{formatChoice(c.choice)}</span>
+                  <span className="text-muted-foreground tabular-nums">
+                    {c.count}
+                  </span>
+                </span>
+              ))}
+            </div>
+          </div>
+        )}
+
+        {engagement.recentMeetings.length > 0 && (
+          <div>
+            <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground mb-2">
+              Recent meetings
+            </p>
+            <ul className="divide-y divide-border">
+              {engagement.recentMeetings.map((m) => (
+                <li
+                  key={m.meeting_id}
+                  className="flex items-center justify-between gap-3 py-2"
+                >
+                  <div className="flex min-w-0 items-center gap-2">
+                    <CalendarDays className="h-4 w-4 shrink-0 text-muted-foreground" />
+                    <div className="min-w-0">
+                      <p className="truncate text-sm font-medium text-foreground">
+                        {m.title ||
+                          m.reference_number ||
+                          formatMeetingType(m.meeting_type)}
+                      </p>
+                      <p className="text-xs text-muted-foreground">
+                        {formatLongDate(m.date_time)} · {m.votes_cast}{" "}
+                        {m.votes_cast === 1 ? "vote" : "votes"}
+                        {m.proxies_given > 0 && (
+                          <> · {m.proxies_given} by proxy</>
+                        )}
+                      </p>
+                    </div>
+                  </div>
+                </li>
+              ))}
+            </ul>
+          </div>
+        )}
+      </CardContent>
+    </Card>
+  );
+}
+
+function EngagementStat({
+  label,
+  value,
+  sub,
+}: {
+  label: string;
+  value: number;
+  sub?: string;
+}) {
+  return (
+    <div className="rounded-md border border-border bg-card px-3 py-2">
+      <p className="text-xs uppercase tracking-wide text-muted-foreground">
+        {label}
+      </p>
+      <p className="mt-0.5 text-xl font-bold text-foreground tabular-nums">
+        {value}
+      </p>
+      {sub && <p className="text-[11px] text-muted-foreground">{sub}</p>}
     </div>
   );
 }
