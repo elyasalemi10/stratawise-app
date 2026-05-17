@@ -184,6 +184,51 @@ export async function updateMailProvider(input: UpdateMailProviderInput) {
   return { ok: true as const };
 }
 
+// Test connection — calls Gmail's users.getProfile via DWD impersonation.
+// Surfaces the exact failure reason so admins can self-diagnose during the
+// 24-hour DWD propagation window (unauthorized_client, forbidden, etc.).
+export async function testGmailMailbox(input: { managerEmail: string }) {
+  const profile = await getCurrentProfile();
+  if (!profile) return { error: "Not authenticated" };
+  if (profile.company_role !== "admin") {
+    return { error: "Only company admins can run the test." };
+  }
+  const target = input.managerEmail?.trim().toLowerCase();
+  if (!target || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(target)) {
+    return { error: "Enter a mailbox to test (e.g. you@yourfirm.com.au)." };
+  }
+  const { testGmailConnection } = await import("@/lib/google/gmail-client");
+  const result = await testGmailConnection(target);
+  if (result.ok) {
+    // Successful test = mailbox is reachable via DWD. Register a row in
+    // gmail_mailbox_subscriptions so the daily watch-refresh cron picks
+    // it up + Pub/Sub pushes start landing on /api/webhooks/gmail-push.
+    if (profile.management_company_id) {
+      const supabase = createServerClient();
+      await supabase
+        .from("gmail_mailbox_subscriptions")
+        .upsert(
+          {
+            management_company_id: profile.management_company_id,
+            mailbox_email: target,
+            manager_profile_id: profile.id,
+            updated_at: new Date().toISOString(),
+          },
+          { onConflict: "management_company_id,mailbox_email" },
+        );
+    }
+    return {
+      ok: true as const,
+      email: result.email,
+      messagesTotal: result.messagesTotal,
+    };
+  }
+  return {
+    error: result.error,
+    reason: result.reason,
+  };
+}
+
 export async function disconnectMailProvider() {
   const profile = await getCurrentProfile();
   if (!profile || !profile.management_company_id) {

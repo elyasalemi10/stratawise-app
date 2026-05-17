@@ -1,6 +1,7 @@
 import { Resend } from "resend";
 import { createServerClient } from "@/lib/supabase";
 import { managerEmailFrom, brandDomain } from "@/lib/manager-username";
+import { sendViaGmail, isGmailConfigured } from "@/lib/google/gmail-client";
 
 function getResend() {
   return new Resend(process.env.RESEND_API_KEY);
@@ -1139,35 +1140,83 @@ export async function sendManagerMessageEmail(params: {
 
   // Dispatch based on the manager's company mail_provider:
   //   stratawise → Resend transport, FROM <username>@stratawise.com.au
-  //   gmail      → Gmail API via DWD impersonation (transport pending)
-  //   outlook    → Microsoft Graph (transport pending)
-  // Gmail/Outlook transports are scaffolded — until the credentials land
-  // we fall through to Resend with a console.warn so outbound never
-  // breaks silently while the integration rolls out per firm.
+  //   gmail      → Gmail API via DWD impersonation (real transport below)
+  //   outlook    → Microsoft Graph (transport pending — falls through to
+  //                Resend for now with a console.warn)
   const dispatch = await resolveDispatchProvider(managerProfileId);
 
-  if (dispatch.provider === "gmail" || dispatch.provider === "outlook") {
+  const htmlBodyEscaped = escapeHtml(bodyText).replace(/\r?\n/g, "<br />");
+  const html = `
+    <div style="font-family:Inter,system-ui,sans-serif;max-width:600px;margin:0;padding:0;color:#0E314C;font-size:14px;line-height:1.6;text-align:left;">
+      ${htmlBodyEscaped}
+    </div>
+  `;
+  void companyLogoUrl;
+
+  // Gmail send-as. Requires the platform's service account JSON + the
+  // customer Workspace admin to have authorised our Client ID against
+  // GMAIL_SCOPES. Falls back to Resend on retryable failures (rate limit
+  // after one retry) — fatal failures (unauthorized_client, forbidden)
+  // surface to the caller so the manager sees a real error and can fix
+  // their DWD grant from /settings → Email.
+  if (dispatch.provider === "gmail" && isGmailConfigured()) {
+    const senderEmail = await resolveManagerSenderEmail(
+      managerProfileId,
+      dispatch.domain,
+    );
+    if (senderEmail) {
+      const displayName = await resolveManagerDisplayName(managerProfileId);
+      const result = await sendViaGmail({
+        managerEmail: senderEmail,
+        to,
+        subject,
+        htmlBody: html,
+        fromDisplayName: displayName,
+        attachments,
+      });
+      if (result.ok) {
+        // We store Gmail's RFC822 Message-ID as external_id (NOT the
+        // internal Gmail id), so the inbound webhook can match replies'
+        // In-Reply-To headers exactly the same way as Resend.
+        return {
+          success: true,
+          id: result.rfc822MessageId || result.messageId,
+        };
+      }
+      if (!result.retryable) {
+        console.error(
+          "[email] Gmail send failed for",
+          senderEmail,
+          ":",
+          result.error,
+        );
+        return { error: result.error };
+      }
+      console.warn(
+        "[email] Gmail rate-limited after retry, falling back to Resend for this send.",
+      );
+    } else {
+      console.warn(
+        "[email] mail_provider=gmail but couldn't resolve a sender mailbox under domain",
+        dispatch.domain,
+        "— falling back to Resend.",
+      );
+    }
+  }
+
+  if (dispatch.provider === "outlook") {
     console.warn(
-      `[email] ${dispatch.provider} send-as is configured for company ${dispatch.companyId} but the transport hasn't shipped yet — falling back to Resend for this send. (domain: ${dispatch.domain ?? "n/a"})`,
+      `[email] outlook send-as configured for company ${dispatch.companyId} but Microsoft Graph transport hasn't shipped yet — falling back to Resend.`,
     );
   }
 
   const from = (await resolveManagerFromHeader(managerProfileId)) ?? noreplyFrom();
 
   // Plain, left-aligned email body. We escape HTML to neutralise injection
-  // from owner-typed content, then convert newlines to <br/> so every email
-  // client (Gmail, Outlook, Apple Mail) preserves the manager's line breaks
-  // — some clients silently strip the white-space:pre-wrap CSS. No outer
-  // brand shell; this should read as a personal message, not a transactional
-  // template.
-  void companyLogoUrl;
-  const htmlBody = escapeHtml(bodyText).replace(/\r?\n/g, "<br />");
-  const html = `
-    <div style="font-family:Inter,system-ui,sans-serif;max-width:600px;margin:0;padding:0;color:#0E314C;font-size:14px;line-height:1.6;text-align:left;">
-      ${htmlBody}
-    </div>
-  `;
-
+  // from owner-typed content, then convert newlines to <br/> so every
+  // email client (Gmail, Outlook, Apple Mail) preserves the manager's
+  // line breaks. `html` is already built above so the Gmail branch can
+  // reuse it; falling through here means we're sending via Resend.
   const { data, error } = await getResend().emails.send({
     from,
     to,
@@ -1192,6 +1241,73 @@ interface MailDispatch {
   provider: "stratawise" | "gmail" | "outlook";
   companyId: string | null;
   domain: string | null;
+}
+
+// For a Gmail-routed send, the FROM mailbox MUST be on the firm's
+// authorised domain (DWD only grants impersonation against that domain).
+// We use the manager's profile.email when its domain matches the firm's
+// mail_provider_config.domain; otherwise we synthesise
+// `<email_username>@<firm-domain>` and impersonate that. Falls back to
+// null when no usable mailbox exists, which sends caller back to Resend.
+async function resolveManagerSenderEmail(
+  managerProfileId: string,
+  firmDomain: string | null,
+): Promise<string | null> {
+  if (!firmDomain) return null;
+  try {
+    const supabase = createServerClient();
+    const { data } = await supabase
+      .from("profiles")
+      .select("email, email_username")
+      .eq("id", managerProfileId)
+      .maybeSingle();
+    if (!data) return null;
+    const profile = data as {
+      email: string | null;
+      email_username: string | null;
+    };
+    const emailDomain = profile.email?.split("@")[1]?.toLowerCase() ?? "";
+    if (profile.email && emailDomain === firmDomain.toLowerCase()) {
+      return profile.email.toLowerCase().trim();
+    }
+    if (profile.email_username) {
+      return `${profile.email_username.toLowerCase()}@${firmDomain.toLowerCase()}`;
+    }
+    return null;
+  } catch (err) {
+    console.error("[email] resolveManagerSenderEmail failed:", err);
+    return null;
+  }
+}
+
+async function resolveManagerDisplayName(
+  managerProfileId: string,
+): Promise<string | undefined> {
+  try {
+    const supabase = createServerClient();
+    const { data } = await supabase
+      .from("profiles")
+      .select("first_name, last_name, management_company_id")
+      .eq("id", managerProfileId)
+      .maybeSingle();
+    if (!data) return undefined;
+    const person = [data.first_name, data.last_name].filter(Boolean).join(" ");
+    let company: string | null = null;
+    if (data.management_company_id) {
+      const { data: companyRow } = await supabase
+        .from("management_companies")
+        .select("name")
+        .eq("id", data.management_company_id)
+        .maybeSingle();
+      company = (companyRow as { name: string | null } | null)?.name ?? null;
+    }
+    if (person && company) return `${person} - ${company}`;
+    if (person) return person;
+    if (company) return company;
+    return undefined;
+  } catch {
+    return undefined;
+  }
 }
 
 async function resolveDispatchProvider(

@@ -19,6 +19,7 @@ import { cn } from "@/lib/utils";
 import {
   updateMailProvider,
   disconnectMailProvider,
+  testGmailMailbox,
 } from "./actions";
 
 // Settings → Email tab. Lets the manager (admins only) swap or disconnect
@@ -266,10 +267,81 @@ function GmailAuthorisationCard({
         copied={copied === "scopes"}
       />
 
+      <TestConnectionRow />
+
       <p className="text-muted-foreground">
         Usually works in minutes; Google sometimes takes up to 24 hours to
         propagate the grant.
       </p>
+    </div>
+  );
+}
+
+function TestConnectionRow() {
+  const [target, setTarget] = useState("");
+  const [pending, setPending] = useState(false);
+  const [result, setResult] = useState<
+    | { ok: true; email: string; messagesTotal: number | null }
+    | { ok: false; message: string; reason: string }
+    | null
+  >(null);
+
+  async function handleTest() {
+    if (!target.trim()) {
+      toast.error("Enter a mailbox on your domain to test.");
+      return;
+    }
+    setPending(true);
+    setResult(null);
+    const res = await testGmailMailbox({ managerEmail: target.trim() });
+    setPending(false);
+    if ("ok" in res && res.ok) {
+      setResult({
+        ok: true,
+        email: res.email,
+        messagesTotal: res.messagesTotal,
+      });
+    } else if ("error" in res) {
+      setResult({
+        ok: false,
+        message: res.error,
+        reason: (res as { reason?: string }).reason ?? "",
+      });
+    }
+  }
+
+  return (
+    <div className="space-y-1.5">
+      <p className="text-[11px] font-medium uppercase tracking-wide text-muted-foreground">
+        Test connection
+      </p>
+      <div className="flex items-center gap-2">
+        <Input
+          value={target}
+          onChange={(e) => setTarget(e.target.value)}
+          placeholder="you@yourfirm.com.au"
+          className="h-9"
+        />
+        <Button size="sm" onClick={handleTest} disabled={pending}>
+          {pending && <Loader2 className="mr-1.5 h-3.5 w-3.5 animate-spin" />}
+          Test
+        </Button>
+      </div>
+      {result?.ok && (
+        <p className="text-xs text-[hsl(160,100%,28%)]">
+          Connected as <span className="font-mono">{result.email}</span>
+          {result.messagesTotal !== null
+            ? ` · ${result.messagesTotal} messages in mailbox`
+            : ""}
+          .
+        </p>
+      )}
+      {result && !result.ok && (
+        <p className="text-xs text-destructive">
+          {result.message}
+          {result.reason ? ` (${result.reason})` : ""}
+        </p>
+      )}
     </div>
   );
 }
