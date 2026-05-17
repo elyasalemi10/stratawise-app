@@ -1,14 +1,26 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
-import { ChevronDown, Download, FileSignature, MailCheck, Wrench } from "lucide-react";
+import {
+  ChevronDown,
+  Download,
+  FileSignature,
+  Filter,
+  MailCheck,
+  Search,
+  Wrench,
+  X,
+} from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
 import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
   DropdownMenuTrigger,
+  DropdownMenuLabel,
+  DropdownMenuSeparator,
 } from "@/components/ui/dropdown-menu";
 import { LotsTab } from "../manage/lots-tab";
 import { getLotInvitationStatus } from "../manage/invitation-actions";
@@ -64,6 +76,13 @@ export function LotsPageContent({
   const [lots, setLots] = useState(initialLots);
   const [settlementOpen, setSettlementOpen] = useState(false);
   const [bulkInviteOpen, setBulkInviteOpen] = useState(false);
+  const [searchText, setSearchText] = useState("");
+  // Filter slice: status of the owner record. Lightweight client-side
+  // narrow over the in-memory lots array — /lots is intentionally not
+  // paginated, so a Map.filter() is plenty even for a few hundred lots.
+  const [statusFilter, setStatusFilter] = useState<
+    "all" | "owner_on_file" | "no_owner" | "pending_invitation"
+  >("all");
   // Single source of truth for invite-status — fetched once here and
   // handed down to both LotsTab (for the per-row pill) and BulkInviteDialog
   // (for eligibility counts). Previously each component re-fetched the
@@ -98,6 +117,31 @@ export function LotsPageContent({
     );
   }
 
+  const filteredLots = useMemo(() => {
+    const needle = searchText.trim().toLowerCase();
+    return lots.filter((lot) => {
+      if (statusFilter === "owner_on_file" && lot.owner_status !== "member") return false;
+      if (statusFilter === "no_owner" && !!lot.owner_display_name) return false;
+      if (
+        statusFilter === "pending_invitation" &&
+        lot.owner_status !== "pending_invitation"
+      )
+        return false;
+      if (!needle) return true;
+      const haystacks = [
+        String(lot.lot_number),
+        lot.unit_number ?? "",
+        lot.owner_display_name ?? "",
+        lot.owner_contact_email ?? "",
+        lot.owner_contact_phone ?? "",
+      ];
+      return haystacks.some((s) => s.toLowerCase().includes(needle));
+    });
+  }, [lots, searchText, statusFilter]);
+
+  const activeFilters =
+    (statusFilter !== "all" ? 1 : 0) + (searchText.trim() ? 1 : 0);
+
   function exportCsv() {
     const blob = new Blob([lotsToCsv(lots)], { type: "text/csv;charset=utf-8;" });
     const url = URL.createObjectURL(blob);
@@ -113,7 +157,92 @@ export function LotsPageContent({
   return (
     <div className="space-y-6">
       {!isLotOwner && (
-        <div className="flex justify-end items-center gap-2">
+        <div className="flex flex-wrap items-center gap-2">
+          <div className="relative flex-1 min-w-[12rem] max-w-md">
+            <Search className="pointer-events-none absolute left-2.5 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-muted-foreground" />
+            <Input
+              value={searchText}
+              onChange={(e) => setSearchText(e.target.value)}
+              placeholder="Search lots, owners, email or phone"
+              className="h-9 pl-8 pr-8"
+            />
+            {searchText && (
+              <button
+                type="button"
+                onClick={() => setSearchText("")}
+                className="absolute right-1.5 top-1/2 -translate-y-1/2 rounded-md p-1 text-muted-foreground hover:text-foreground"
+                aria-label="Clear search"
+              >
+                <X className="h-3.5 w-3.5" />
+              </button>
+            )}
+          </div>
+
+          <DropdownMenu>
+            <DropdownMenuTrigger
+              render={
+                <Button variant="secondary" size="sm">
+                  <Filter className="mr-2 h-3.5 w-3.5" />
+                  Filter
+                  {activeFilters > 0 && (
+                    <span className="ml-1.5 inline-flex h-4 min-w-4 items-center justify-center rounded-full bg-[color:var(--brand-gold)] px-1 text-[10px] font-semibold text-white">
+                      {activeFilters}
+                    </span>
+                  )}
+                  <ChevronDown className="ml-1 h-3.5 w-3.5" />
+                </Button>
+              }
+            />
+            <DropdownMenuContent align="end" sideOffset={6} className="min-w-[220px]">
+              <DropdownMenuLabel>Owner status</DropdownMenuLabel>
+              <DropdownMenuItem
+                onClick={() => setStatusFilter("all")}
+                className={statusFilter === "all" ? "font-semibold" : undefined}
+              >
+                All lots
+              </DropdownMenuItem>
+              <DropdownMenuItem
+                onClick={() => setStatusFilter("owner_on_file")}
+                className={
+                  statusFilter === "owner_on_file" ? "font-semibold" : undefined
+                }
+              >
+                Owner on file
+              </DropdownMenuItem>
+              <DropdownMenuItem
+                onClick={() => setStatusFilter("pending_invitation")}
+                className={
+                  statusFilter === "pending_invitation"
+                    ? "font-semibold"
+                    : undefined
+                }
+              >
+                Pending invitation
+              </DropdownMenuItem>
+              <DropdownMenuItem
+                onClick={() => setStatusFilter("no_owner")}
+                className={
+                  statusFilter === "no_owner" ? "font-semibold" : undefined
+                }
+              >
+                No owner assigned
+              </DropdownMenuItem>
+              {activeFilters > 0 && (
+                <>
+                  <DropdownMenuSeparator />
+                  <DropdownMenuItem
+                    onClick={() => {
+                      setSearchText("");
+                      setStatusFilter("all");
+                    }}
+                  >
+                    Clear filters
+                  </DropdownMenuItem>
+                </>
+              )}
+            </DropdownMenuContent>
+          </DropdownMenu>
+
           <DropdownMenu>
             <DropdownMenuTrigger
               render={
@@ -141,8 +270,15 @@ export function LotsPageContent({
           </DropdownMenu>
         </div>
       )}
+
+      {activeFilters > 0 && (
+        <p className="text-xs text-muted-foreground">
+          Showing {filteredLots.length} of {lots.length} lots
+        </p>
+      )}
+
       <LotsTab
-        lots={lots}
+        lots={filteredLots}
         ocId={ocId}
         onLotUpdated={onLotUpdated}
         isLotOwner={isLotOwner}

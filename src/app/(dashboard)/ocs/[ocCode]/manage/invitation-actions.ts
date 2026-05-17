@@ -315,6 +315,43 @@ export async function getLotInvitation(
   };
 }
 
+/** Returns the full invite history for a lot (most-recent first). Used by
+ *  the invite-status popup so the manager can see every send, expiry,
+ *  acceptance and revocation against this lot in one place. */
+export async function getLotInvitationHistory(
+  ocId: string,
+  lotId: string,
+): Promise<Array<{
+  id: string;
+  email: string | null;
+  name: string | null;
+  phone: string | null;
+  status: "noted" | "pending" | "accepted" | "expired" | "revoked";
+  created_at: string;
+  expires_at: string | null;
+}>> {
+  await requireOCAccess(ocId);
+  const supabase = createServerClient();
+
+  const { data } = await supabase
+    .from("invitations")
+    .select("id, email, name, phone, status, created_at, expires_at")
+    .eq("oc_id", ocId)
+    .eq("lot_id", lotId)
+    .order("created_at", { ascending: false })
+    .limit(50);
+
+  return (data ?? []).map((row) => ({
+    id: row.id,
+    email: row.email,
+    name: row.name,
+    phone: row.phone,
+    status: row.status,
+    created_at: row.created_at,
+    expires_at: row.expires_at,
+  }));
+}
+
 export async function getLotInvitationStatus(ocId: string, lotIds: string[]) {
   const supabase = createServerClient();
 

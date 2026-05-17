@@ -259,29 +259,36 @@ export function LotDetailContent({
               </span>
             </div>
             <div className="inline-flex items-baseline gap-2">
-              <span className="text-muted-foreground">Last payment:</span>
-              <span className="text-lg font-semibold text-foreground">
-                {lastPaymentRelative ?? "No payments yet"}
-              </span>
+              {lastPaymentRelative ? (
+                <>
+                  <span className="text-muted-foreground">Last payment:</span>
+                  <span className="text-lg font-semibold text-foreground">
+                    {lastPaymentRelative}
+                  </span>
+                </>
+              ) : (
+                <span className="text-lg font-semibold text-muted-foreground">
+                  No payments yet
+                </span>
+              )}
             </div>
           </div>
         </CardContent>
       </Card>
 
-      {/* Tab strip — shadcn line tabs sitting inside a white bar so they read
-          as a single clickable surface with a gold-accent indicator beneath
-          the active tab. Active tab uses primary text (midnight) on white;
-          inactive tabs use muted-foreground and snap to foreground on hover. */}
+      {/* Tab strip — shadcn line tabs sit inside a white bar; the gold
+          underline indicator stays INSIDE the bar (bottom-1) so it reads as
+          part of the same clickable surface instead of poking out below it. */}
       <Tabs value={activeTab} onValueChange={onTabChange}>
         <TabsList
           variant="line"
-          className="h-auto w-full flex-wrap justify-stretch gap-1 rounded-md border border-border bg-card p-1"
+          className="h-auto w-full flex-wrap justify-stretch gap-1 rounded-md border border-border bg-card p-1 overflow-hidden"
         >
           {TABS.map((tab) => (
             <TabsTrigger
               key={tab.value}
               value={tab.value}
-              className="relative flex-1 h-9 rounded-sm border-0 text-sm font-medium text-muted-foreground transition-colors hover:bg-muted hover:text-foreground data-active:bg-transparent data-active:text-foreground data-active:after:bg-[color:var(--brand-gold)] data-active:after:opacity-100 data-active:after:inset-x-2 data-active:after:bottom-[-2px] data-active:after:h-0.5 data-active:after:rounded-full"
+              className="relative flex-1 h-9 rounded-sm border-0 text-sm font-medium text-muted-foreground transition-colors hover:bg-muted hover:text-foreground data-active:bg-transparent data-active:text-foreground data-active:after:bg-[color:var(--brand-gold)] data-active:after:opacity-100 data-active:after:inset-x-3 data-active:after:bottom-1 data-active:after:h-0.5 data-active:after:rounded-full"
             >
               {tab.label}
             </TabsTrigger>

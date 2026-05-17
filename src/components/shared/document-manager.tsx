@@ -13,26 +13,10 @@ import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from "
 import type { DocumentRecord } from "@/lib/validations/documents";
 import { ALLOWED_EXTENSIONS } from "@/lib/validations/documents";
 
-// Categories drive both the filter row above the grid and the upload-tag row.
-// "all" is the filter sentinel; it's not a valid tag for new uploads.
-const CATEGORY_FILTER_OPTIONS = [
-  { value: "all", label: "All" },
-  { value: "general", label: "General" },
-  { value: "insurance", label: "Insurance" },
-  { value: "levies", label: "Levies" },
-  { value: "meetings", label: "Meetings" },
-  { value: "legal", label: "Legal" },
-  { value: "maintenance", label: "Maintenance" },
-];
-
-const UPLOAD_CATEGORY_OPTIONS = [
-  { value: "other", label: "General" },
-  { value: "insurance", label: "Insurance" },
-  { value: "levies", label: "Levies" },
-  { value: "meetings", label: "Meetings" },
-  { value: "legal", label: "Legal" },
-  { value: "maintenance", label: "Maintenance" },
-];
+// Categories used to drive a filter row + upload-tag pill row above the
+// grid. Both UIs are gone; documents always show as a flat list and new
+// uploads default to "other" (General). The category column is still
+// captured on each row for sorting / search infrastructure.
 
 interface UploadProgress {
   id: string;
@@ -97,11 +81,12 @@ export function DocumentManager({ ocId, lotId, initialDocuments, readOnly }: Doc
   const [deleteDoc, setDeleteDoc] = useState<DocWithUrl | null>(null);
   const [deleting, setDeleting] = useState(false);
   const [previewDoc, setPreviewDoc] = useState<DocWithUrl | null>(null);
-  // Upload-time tag. "all" is the filter sentinel and isn't a valid tag for new
-  // uploads — when the filter is "all", new uploads default to "other".
-  const [selectedCategory, setSelectedCategory] = useState<string>("other");
-  // Filter: which category to display. "all" = show everything.
-  const [filterCategory, setFilterCategory] = useState<string>("all");
+  // Upload-time tag and active filter. The user-facing pill rows for both
+  // are gone; selectedCategory always defaults to "other" (General) and the
+  // filter stays on "all" (show every document). Constants kept so the
+  // underlying filtering/sorting infra continues to work.
+  const selectedCategory = "other";
+  const filterCategory = "all";
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [exporting, setExporting] = useState(false);
 
@@ -270,28 +255,13 @@ export function DocumentManager({ ocId, lotId, initialDocuments, readOnly }: Doc
 
   return (
     <div className="space-y-4">
-      {/* Category filter pills + Upload + Export. Drop the folder tree entirely
-          — categories ARE the folders for retrieval; Export reshapes the flat
-          set into a folder structure when the user actually wants one. */}
-      <div className="flex items-center justify-between gap-3">
-        <div className="flex flex-wrap items-center gap-2">
-          {CATEGORY_FILTER_OPTIONS.map((opt) => (
-            <button
-              key={opt.value}
-              type="button"
-              onClick={() => setFilterCategory(opt.value)}
-              className={`px-3 py-1 rounded-full text-xs font-medium cursor-pointer transition-colors ${
-                filterCategory === opt.value
-                  ? "bg-primary text-primary-foreground"
-                  : "bg-muted text-muted-foreground hover:bg-muted/80"
-              }`}
-            >
-              {opt.label}
-            </button>
-          ))}
-        </div>
+      {/* Top toolbar — just Export + Upload now. Category filter pills and
+          the "New uploads tagged as" row are gone; categories are still
+          attached to each document automatically (see selectedCategory state
+          which defaults to "other") and surface on the per-row chip. */}
+      <div className="flex items-center justify-end gap-2">
         {!readOnly && (
-          <div className="flex items-center gap-2">
+          <>
             <Button
               variant="outline"
               size="sm"
@@ -334,33 +304,9 @@ export function DocumentManager({ ocId, lotId, initialDocuments, readOnly }: Doc
                 e.target.value = "";
               }}
             />
-          </div>
+          </>
         )}
       </div>
-
-      {/* Tag row for uploads (only when readOnly=false). Separate from the
-          filter pills above because they answer different questions: filter =
-          "what do I want to see now"; tag = "what should new uploads be
-          tagged as." */}
-      {!readOnly && (
-        <div className="flex flex-wrap items-center gap-2 text-xs">
-          <span className="text-muted-foreground">New uploads tagged as:</span>
-          {UPLOAD_CATEGORY_OPTIONS.map((opt) => (
-            <button
-              key={opt.value}
-              type="button"
-              onClick={() => setSelectedCategory(opt.value)}
-              className={`px-2 py-0.5 rounded-full font-medium cursor-pointer transition-colors ${
-                selectedCategory === opt.value
-                  ? "bg-primary/10 text-primary border border-primary/40"
-                  : "border border-border text-muted-foreground hover:bg-muted/80"
-              }`}
-            >
-              {opt.label}
-            </button>
-          ))}
-        </div>
-      )}
 
       {/* Floating drag overlay — appears when the user drags files anywhere on
           the page. Click-through disabled so the underlying page handles the

@@ -11,9 +11,25 @@ export const applySettlementSchema = z.object({
   lotId: z.string().uuid(),
   newOwner: z.object({
     name: z.string().trim().min(1, "Name is required").max(200),
-    email: z.string().trim().toLowerCase().email("A valid email is required"),
+    // Email is optional — wizard contract per CLAUDE.md treats postal address
+    // as the mandatory contact channel. When supplied it must still parse as
+    // an email so noisy "n/a"-style input is rejected up-front.
+    email: z
+      .string()
+      .trim()
+      .toLowerCase()
+      .max(200)
+      .optional()
+      .transform((v) => (v ? v : ""))
+      .refine((v) => v === "" || /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(v), {
+        message: "A valid email is required",
+      }),
     phone: z.string().trim().max(50).nullable().optional().transform((v) => v || null),
-    postalAddress: z.string().trim().max(500).nullable().optional().transform((v) => v || null),
+    postalAddress: z
+      .string()
+      .trim()
+      .min(1, "Postal address is required")
+      .max(500),
     dateOfBirth: isoDate.nullable().optional().transform((v) => v || null),
   }),
   settlementDate: isoDate,

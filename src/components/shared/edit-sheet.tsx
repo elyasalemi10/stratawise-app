@@ -48,6 +48,10 @@ interface EditSheetProps {
    * trigger and is driven entirely by this prop + onOpenChange. Useful when
    * the drawer is opened from somewhere else in the UI (e.g. a dropdown). */
   open?: boolean;
+  /** Override the success toast that defaults to `${label} updated`. Pass
+   * null to suppress the toast entirely (e.g. when the parent wants to
+   * emit its own contextual toast on save). */
+  successToast?: string | null;
 }
 
 export function EditSheet({
@@ -68,6 +72,7 @@ export function EditSheet({
   onOpenChange,
   headerKicker = "Edit",
   open: controlledOpen,
+  successToast,
 }: EditSheetProps) {
   const [uncontrolledOpen, setUncontrolledOpen] = React.useState(false);
   const isControlled = controlledOpen !== undefined;
@@ -98,7 +103,9 @@ export function EditSheet({
     setPending(false);
     if (result.ok) {
       handleOpenChange(false);
-      toast.success(`${label} updated`);
+      if (successToast !== null) {
+        toast.success(successToast ?? `${label} updated`);
+      }
     } else {
       optimistic?.rollback();
       setError(result.error);

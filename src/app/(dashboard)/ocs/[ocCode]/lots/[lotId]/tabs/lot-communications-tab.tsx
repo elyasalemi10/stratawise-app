@@ -39,6 +39,8 @@ import {
   Send,
   ChevronDown,
 } from "lucide-react";
+import { Checkbox } from "@/components/ui/checkbox";
+import { DatePicker } from "@/components/shared/date-picker";
 import { toast } from "sonner";
 import {
   logPhoneCall,
@@ -72,18 +74,14 @@ export function LotCommunicationsTab(props: Props) {
 
   return (
     <div className="space-y-6">
-      {/* Actions dropdown — replaces the old "Reach out" three-button bar. */}
+      {/* Communication history — Actions dropdown lives in the header row of
+          this single card. The standalone "Reach out" tile is gone. */}
       <Card>
-        <CardContent className="pt-5">
-          <div className="flex flex-wrap items-center justify-between gap-3">
-            <div>
-              <h3 className="text-sm font-semibold text-foreground">
-                Reach out
-              </h3>
-              <p className="mt-0.5 text-xs text-muted-foreground">
-                Every send is logged against this lot. SMS sends are billable.
-              </p>
-            </div>
+        <CardContent className="pt-5 space-y-4">
+          <div className="flex items-center justify-between gap-3">
+            <h3 className="text-sm font-semibold text-foreground">
+              Communication history
+            </h3>
             <DropdownMenu>
               <DropdownMenuTrigger
                 render={
@@ -109,30 +107,10 @@ export function LotCommunicationsTab(props: Props) {
               </DropdownMenuContent>
             </DropdownMenu>
           </div>
-        </CardContent>
-      </Card>
-
-      {/* Communication history */}
-      <Card>
-        <CardContent className="pt-5">
-          <h3 className="text-sm font-semibold text-foreground mb-3">
-            Communication history
-          </h3>
-          {initialCommunications.length === 0 ? (
-            <p className="text-sm text-muted-foreground">
-              No communications logged for this lot yet.
-            </p>
-          ) : (
-            <ol className="divide-y divide-border">
-              {initialCommunications.map((row) => (
-                <CommunicationRow
-                  key={row.id}
-                  row={row}
-                  onClick={() => setDetail(row)}
-                />
-              ))}
-            </ol>
-          )}
+          <CommunicationHistoryList
+            rows={initialCommunications}
+            onRowClick={(row) => setDetail(row)}
+          />
         </CardContent>
       </Card>
 
@@ -177,7 +155,93 @@ export function LotCommunicationsTab(props: Props) {
   );
 }
 
-// ─── History row (compact; click to expand) ────────────────────────────────
+// Page size for the in-card pagination control. Small enough to stay above
+// the fold on a typical lot detail; large enough that an active lot isn't
+// click-click-clicking through eight rows of history.
+const HISTORY_PAGE_SIZE = 15;
+const MAX_SUBJECT_CHARS = 60;
+
+function truncateSubject(subject: string | null): string {
+  if (!subject) return "(no subject)";
+  if (subject.length <= MAX_SUBJECT_CHARS) return subject;
+  return `${subject.slice(0, MAX_SUBJECT_CHARS - 1).trimEnd()}…`;
+}
+
+function rowTitle(row: LotCommunicationRow): string {
+  if (row.channel === "voice") {
+    return row.direction === "inbound" ? "Inbound call" : "Outbound call";
+  }
+  if (row.channel === "sms") {
+    return "SMS";
+  }
+  // email
+  return `Email: ${truncateSubject(row.subject)}`;
+}
+
+function CommunicationHistoryList({
+  rows,
+  onRowClick,
+}: {
+  rows: LotCommunicationRow[];
+  onRowClick: (row: LotCommunicationRow) => void;
+}) {
+  const [page, setPage] = React.useState(0);
+  const totalPages = Math.max(1, Math.ceil(rows.length / HISTORY_PAGE_SIZE));
+  const safePage = Math.min(page, totalPages - 1);
+  const start = safePage * HISTORY_PAGE_SIZE;
+  const visible = rows.slice(start, start + HISTORY_PAGE_SIZE);
+
+  if (rows.length === 0) {
+    return (
+      <p className="text-sm text-muted-foreground">
+        No communications logged for this lot yet.
+      </p>
+    );
+  }
+
+  return (
+    <div className="space-y-3">
+      <ol className="divide-y divide-border">
+        {visible.map((row) => (
+          <CommunicationRow
+            key={row.id}
+            row={row}
+            onClick={() => onRowClick(row)}
+          />
+        ))}
+      </ol>
+      {totalPages > 1 && (
+        <div className="flex items-center justify-between gap-3 pt-1 text-xs text-muted-foreground">
+          <span>
+            Showing {start + 1}–{Math.min(start + HISTORY_PAGE_SIZE, rows.length)} of{" "}
+            {rows.length}
+          </span>
+          <div className="flex items-center gap-1">
+            <Button
+              variant="secondary"
+              size="sm"
+              onClick={() => setPage((p) => Math.max(0, p - 1))}
+              disabled={safePage === 0}
+            >
+              Previous
+            </Button>
+            <span className="px-2 tabular-nums">
+              Page {safePage + 1} of {totalPages}
+            </span>
+            <Button
+              variant="secondary"
+              size="sm"
+              onClick={() => setPage((p) => Math.min(totalPages - 1, p + 1))}
+              disabled={safePage >= totalPages - 1}
+            >
+              Next
+            </Button>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
 
 function CommunicationRow({
   row,
@@ -192,12 +256,6 @@ function CommunicationRow({
       : row.channel === "sms"
         ? MessageSquare
         : PhoneIcon;
-  const title =
-    row.channel === "voice"
-      ? row.direction === "inbound"
-        ? "Inbound call"
-        : "Outbound call"
-      : row.subject || "Message";
 
   return (
     <li>
@@ -208,30 +266,15 @@ function CommunicationRow({
       >
         <div className="flex min-w-0 items-center gap-3">
           <Icon className="h-4 w-4 shrink-0 text-[color:var(--brand-gold)]" />
-          <p className="truncate text-sm font-medium text-foreground">{title}</p>
-          <StatusPill status={row.status} />
+          <p className="truncate text-sm font-medium text-foreground">
+            {rowTitle(row)}
+          </p>
         </div>
         <span className="shrink-0 text-xs text-muted-foreground tabular-nums">
           {formatShortDate(row.created_at)}
         </span>
       </button>
     </li>
-  );
-}
-
-function StatusPill({ status }: { status: string }) {
-  const tone =
-    status === "sent" || status === "delivered" || status === "logged"
-      ? "bg-[color:var(--brand-gold)]/15 text-[color:var(--brand-gold)]"
-      : status === "failed" || status === "bounced"
-        ? "bg-destructive/10 text-destructive"
-        : "bg-cool-muted text-cool-muted-foreground";
-  return (
-    <span
-      className={`inline-flex items-center rounded-full px-2 py-0.5 text-[10px] font-medium ${tone}`}
-    >
-      {status}
-    </span>
   );
 }
 
@@ -254,62 +297,159 @@ function CommunicationDetailDialog({
   row: LotCommunicationRow;
   onClose: () => void;
 }) {
-  const Icon =
-    row.channel === "email"
-      ? Mail
-      : row.channel === "sms"
-        ? MessageSquare
-        : PhoneIcon;
-  const title =
-    row.channel === "voice"
-      ? row.direction === "inbound"
-        ? "Inbound call"
-        : "Outbound call"
-      : row.subject || "Message";
-  const recipient = row.recipient_email ?? row.recipient_phone ?? "—";
+  if (row.channel === "email") {
+    return <EmailDetailDialog row={row} onClose={onClose} />;
+  }
+  if (row.channel === "sms") {
+    return <SmsDetailDialog row={row} onClose={onClose} />;
+  }
+  return <CallDetailDialog row={row} onClose={onClose} />;
+}
 
+// Email preview — From / To stacked rows; Subject in a single-line
+// horizontally-scrollable strip; Body in a tall vertically-scrollable box
+// that respects the manager's line breaks.
+function EmailDetailDialog({
+  row,
+  onClose,
+}: {
+  row: LotCommunicationRow;
+  onClose: () => void;
+}) {
   return (
     <Dialog open onOpenChange={(o) => !o && onClose()}>
-      <DialogContent className="sm:max-w-lg">
+      <DialogContent className="sm:max-w-xl">
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2">
-            <Icon className="h-4 w-4 text-[color:var(--brand-gold)]" />
-            {title}
+            <Mail className="h-4 w-4 text-[color:var(--brand-gold)]" />
+            Email
           </DialogTitle>
         </DialogHeader>
 
-        <dl className="space-y-2 text-sm">
-          <DetailRow label="To" value={recipient} />
-          <DetailRow label="Date" value={formatShortDate(row.created_at)} />
-          <DetailRow label="Status" value={row.status} />
-          {row.actor_name && <DetailRow label="From" value={row.actor_name} />}
-          {row.duration_seconds !== null && row.duration_seconds !== undefined && (
-            <DetailRow
-              label="Duration"
-              value={`${Math.floor(row.duration_seconds / 60)} min`}
-            />
-          )}
-        </dl>
-
-        {row.body_preview && (
-          <div className="rounded-md border border-border bg-cool-muted p-3 text-sm leading-relaxed text-foreground whitespace-pre-wrap max-h-80 overflow-y-auto">
-            {row.body_preview}
+        <div className="space-y-3 text-sm">
+          <HeaderField label="From" value={row.actor_name ?? "—"} />
+          <HeaderField label="To" value={row.recipient_email ?? "—"} />
+          <HeaderField
+            label="Subject"
+            value={row.subject ?? "(no subject)"}
+            scrollX
+          />
+          <HeaderField label="Sent" value={formatShortDate(row.created_at)} />
+          <div>
+            <p className="text-xs uppercase tracking-wide text-muted-foreground mb-1">
+              Body
+            </p>
+            <div className="h-72 overflow-y-auto whitespace-pre-wrap rounded-md border border-border bg-card p-3 text-sm leading-relaxed text-foreground">
+              {row.body_preview || "(empty)"}
+            </div>
           </div>
-        )}
+        </div>
       </DialogContent>
     </Dialog>
   );
 }
 
-function DetailRow({ label, value }: { label: string; value: string }) {
+function SmsDetailDialog({
+  row,
+  onClose,
+}: {
+  row: LotCommunicationRow;
+  onClose: () => void;
+}) {
   return (
-    <div className="flex items-baseline justify-between gap-3">
-      <dt className="text-xs uppercase tracking-wide text-muted-foreground">
+    <Dialog open onOpenChange={(o) => !o && onClose()}>
+      <DialogContent className="sm:max-w-md">
+        <DialogHeader>
+          <DialogTitle className="flex items-center gap-2">
+            <MessageSquare className="h-4 w-4 text-[color:var(--brand-gold)]" />
+            SMS
+          </DialogTitle>
+        </DialogHeader>
+
+        <div className="space-y-3 text-sm">
+          <HeaderField label="From" value={row.actor_name ?? "—"} />
+          <HeaderField label="To" value={row.recipient_phone ?? "—"} />
+          <HeaderField label="Sent" value={formatShortDate(row.created_at)} />
+          <div>
+            <p className="text-xs uppercase tracking-wide text-muted-foreground mb-1">
+              Message
+            </p>
+            <div className="max-h-72 overflow-y-auto whitespace-pre-wrap rounded-md border border-border bg-card p-3 text-sm leading-relaxed text-foreground">
+              {row.body_preview || "(empty)"}
+            </div>
+          </div>
+        </div>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
+function CallDetailDialog({
+  row,
+  onClose,
+}: {
+  row: LotCommunicationRow;
+  onClose: () => void;
+}) {
+  const title =
+    row.direction === "inbound" ? "Inbound call" : "Outbound call";
+  return (
+    <Dialog open onOpenChange={(o) => !o && onClose()}>
+      <DialogContent className="sm:max-w-md">
+        <DialogHeader>
+          <DialogTitle className="flex items-center gap-2">
+            <PhoneIcon className="h-4 w-4 text-[color:var(--brand-gold)]" />
+            {title}
+          </DialogTitle>
+        </DialogHeader>
+
+        <div className="space-y-3 text-sm">
+          <HeaderField label="Logged by" value={row.actor_name ?? "—"} />
+          <HeaderField label="Number" value={row.recipient_phone ?? "—"} />
+          <HeaderField label="Date" value={formatShortDate(row.created_at)} />
+          {row.duration_seconds !== null && row.duration_seconds !== undefined && (
+            <HeaderField
+              label="Duration"
+              value={`${Math.floor(row.duration_seconds / 60)} min`}
+            />
+          )}
+          {row.body_preview && (
+            <div>
+              <p className="text-xs uppercase tracking-wide text-muted-foreground mb-1">
+                Notes
+              </p>
+              <div className="max-h-72 overflow-y-auto whitespace-pre-wrap rounded-md border border-border bg-card p-3 text-sm leading-relaxed text-foreground">
+                {row.body_preview}
+              </div>
+            </div>
+          )}
+        </div>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
+function HeaderField({
+  label,
+  value,
+  scrollX,
+}: {
+  label: string;
+  value: string;
+  scrollX?: boolean;
+}) {
+  return (
+    <div>
+      <p className="text-xs uppercase tracking-wide text-muted-foreground">
         {label}
-      </dt>
-      <dd className="text-right text-sm font-medium text-foreground break-all">
+      </p>
+      <div
+        className={`mt-0.5 rounded-md border border-border bg-card px-3 py-1.5 text-sm font-medium text-foreground ${
+          scrollX ? "overflow-x-auto whitespace-nowrap" : "break-words"
+        }`}
+      >
         {value}
-      </dd>
+      </div>
     </div>
   );
 }
@@ -415,6 +555,7 @@ function SendEmailDrawer({
       }}
       renderTrigger={() => <span />}
       saveLabel="Send email"
+      successToast="Email sent"
       onSave={async () => {
         if (!to.trim()) return { ok: false as const, error: "Recipient email is required." };
         if (!subject.trim()) return { ok: false as const, error: "Subject is required." };
@@ -540,6 +681,48 @@ function SendEmailDrawer({
 }
 
 // ─── Send SMS drawer ────────────────────────────────────────────────────────
+// GSM-7 character + segment math (per Mobile Message). The "extended set"
+// characters (curly braces, pipe, backslash, tilde, caret, euro) eat 2 chars
+// each because GSM-7 encodes them with an escape byte. Anything outside the
+// supported set blocks the send: no Unicode / emoji / non-Latin scripts.
+
+const GSM7_SINGLE = new Set(
+  // Letters (caseless), digits, the basic GSM-7 punctuation, accented Euro
+  // characters, lowercase Greek that GSM-7 supports directly. Whitespace
+  // (space, newline, carriage return, tab) counts as 1.
+  [
+    ..."abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789",
+    ..." \n\r\t",
+    ...".,?!:;'\"-_/&@#%$*+=()<>§",
+    ..."äöüñéèìòùàÄÖÜÆæßÉ",
+    ..."αβγδεζηικλμνξοπρστυφχψω", // lowercase Greek subset present in GSM-7
+  ],
+);
+const GSM7_EXTENDED = new Set([..."[]{}|\\~^€"]);
+
+type SmsCounted = {
+  units: number;
+  segments: number;
+  costCents: number;
+  invalidChars: string[];
+};
+
+function countSmsUnits(body: string): SmsCounted {
+  let units = 0;
+  const invalid: string[] = [];
+  for (const ch of body) {
+    if (GSM7_SINGLE.has(ch)) units += 1;
+    else if (GSM7_EXTENDED.has(ch)) units += 2;
+    else if (ch && !invalid.includes(ch)) invalid.push(ch);
+  }
+  // Mobile Message rule: ≤160 units = 1 segment; otherwise 153 per segment.
+  const segments = units === 0
+    ? 0
+    : units <= 160
+      ? 1
+      : Math.ceil(units / 153);
+  return { units, segments, costCents: segments * 3, invalidChars: invalid };
+}
 
 function SendSmsDrawer({
   ocId,
@@ -556,12 +739,17 @@ function SendSmsDrawer({
 }) {
   const [phone, setPhone] = React.useState(ownerPhone ?? "");
   const [body, setBody] = React.useState("");
+  const [billConsent, setBillConsent] = React.useState(false);
   const ownerHasPhone = !!(ownerPhone && ownerPhone.trim());
+
+  const counted = countSmsUnits(body);
+  const hasInvalid = counted.invalidChars.length > 0;
+  const costLabel = `${counted.costCents}c`;
 
   return (
     <EditSheet
       label="Send SMS"
-      description="Sent via Mobile Message. Each send is billable."
+      description="Sent via Mobile Message. GSM-7 only — no emoji or non-Latin scripts."
       headerKicker={null}
       open
       onOpenChange={(o) => {
@@ -569,13 +757,23 @@ function SendSmsDrawer({
       }}
       renderTrigger={() => <span />}
       saveLabel="Send SMS"
-      requireConfirmation
-      confirmationMessage="SMS sends are billable. Send anyway?"
+      successToast="SMS sent"
+      disabled={!billConsent || hasInvalid || counted.units === 0}
       onSave={async () => {
         if (!phone.trim())
           return { ok: false as const, error: "Recipient mobile is required." };
         if (!body.trim())
           return { ok: false as const, error: "Message body is required." };
+        if (hasInvalid)
+          return {
+            ok: false as const,
+            error: `Unsupported character: ${counted.invalidChars.join(" ")}`,
+          };
+        if (!billConsent)
+          return {
+            ok: false as const,
+            error: "Confirm the billing checkbox to send.",
+          };
         const res = await sendLotSms({
           oc_id: ocId,
           lot_id: lotId,
@@ -590,7 +788,9 @@ function SendSmsDrawer({
       }}
     >
       <div className="space-y-1.5">
-        <Label>To</Label>
+        <Label>
+          To <span className="text-destructive">*</span>
+        </Label>
         <PhoneInput value={phone} onChange={setPhone} />
         {!ownerHasPhone && (
           <p className="text-xs text-destructive">
@@ -601,14 +801,46 @@ function SendSmsDrawer({
       </div>
 
       <div className="space-y-1.5">
-        <Label>Message ({body.length}/320)</Label>
+        <div className="flex items-baseline justify-between">
+          <Label>
+            Message <span className="text-destructive">*</span>
+          </Label>
+          <span className="text-xs text-muted-foreground tabular-nums">
+            {counted.units} chars · {counted.segments} segment
+            {counted.segments === 1 ? "" : "s"}
+          </span>
+        </div>
         <Textarea
           value={body}
-          onChange={(e) => setBody(e.target.value.slice(0, 320))}
+          onChange={(e) => setBody(e.target.value)}
           placeholder="Write your SMS…"
           rows={6}
           className="max-h-60 resize-none overflow-y-auto"
         />
+        {hasInvalid && (
+          <p className="text-xs text-destructive">
+            Unsupported character{counted.invalidChars.length === 1 ? "" : "s"}:{" "}
+            <span className="font-mono">
+              {counted.invalidChars.join(" ")}
+            </span>
+            . Remove emoji / non-Latin text before sending.
+          </p>
+        )}
+      </div>
+
+      <div className="flex items-start gap-2 rounded-md border border-border bg-cool-muted p-3 text-sm">
+        <Checkbox
+          checked={billConsent}
+          onCheckedChange={(v) => setBillConsent(v === true)}
+          className="mt-0.5"
+        />
+        <span className="text-foreground">
+          I understand I will be billed{" "}
+          <span className="font-semibold text-[color:var(--brand-gold)]">
+            {costLabel}
+          </span>{" "}
+          for this SMS.
+        </span>
       </div>
     </EditSheet>
   );
@@ -630,9 +862,13 @@ function LogCallDrawer({
   onSaved: () => void;
 }) {
   const [phone, setPhone] = React.useState(ownerPhone ?? "");
-  const [direction, setDirection] = React.useState<"outbound" | "inbound">(
-    "outbound",
+  const [direction, setDirection] = React.useState<"" | "outbound" | "inbound">(
+    "",
   );
+  const [callDate, setCallDate] = React.useState<string>(() => {
+    // Default to today (ISO yyyy-mm-dd).
+    return new Date().toISOString().slice(0, 10);
+  });
   const [durationMinutes, setDurationMinutes] = React.useState<string>("");
   const [notes, setNotes] = React.useState("");
 
@@ -647,7 +883,12 @@ function LogCallDrawer({
       }}
       renderTrigger={() => <span />}
       saveLabel="Save call log"
+      successToast="Phone call logged"
       onSave={async () => {
+        if (!direction)
+          return { ok: false as const, error: "Please choose Inbound or Outbound." };
+        if (!phone.trim())
+          return { ok: false as const, error: "Phone number is required." };
         if (!notes.trim())
           return { ok: false as const, error: "Please add a short note." };
         const durationSeconds = durationMinutes.trim()
@@ -656,10 +897,12 @@ function LogCallDrawer({
         const res = await logPhoneCall({
           oc_id: ocId,
           lot_id: lotId,
-          recipient_phone: phone || "Unknown",
+          recipient_phone: phone,
           direction,
           duration_seconds: durationSeconds,
-          notes,
+          notes: callDate
+            ? `[${callDate}] ${notes}`
+            : notes,
         });
         if (res.ok) onSaved();
         return res.ok
@@ -668,15 +911,28 @@ function LogCallDrawer({
       }}
     >
       <div className="space-y-1.5">
-        <Label>Direction</Label>
+        <Label>
+          Direction <span className="text-destructive">*</span>
+        </Label>
         <Select
           value={direction}
           onValueChange={(v) => setDirection(v as "outbound" | "inbound")}
         >
-          <SelectTrigger>
-            <SelectValue />
+          {/* Wider trigger so the trailing hint ("(I called them)" / "(they
+              called me)") never truncates. base-ui's <SelectValue> defaults
+              to the raw value string when SelectItem children are not
+              registered with a label — we override via a child render so the
+              trigger reads as "Outbound", not "outbound". */}
+          <SelectTrigger className="w-full">
+            <SelectValue placeholder="Choose direction">
+              {direction === "outbound"
+                ? "Outbound (I called them)"
+                : direction === "inbound"
+                  ? "Inbound (they called me)"
+                  : null}
+            </SelectValue>
           </SelectTrigger>
-          <SelectContent>
+          <SelectContent className="min-w-[18rem]">
             <SelectItem value="outbound">Outbound (I called them)</SelectItem>
             <SelectItem value="inbound">Inbound (they called me)</SelectItem>
           </SelectContent>
@@ -684,8 +940,15 @@ function LogCallDrawer({
       </div>
 
       <div className="space-y-1.5">
-        <Label>Phone number</Label>
+        <Label>
+          Phone number <span className="text-destructive">*</span>
+        </Label>
         <PhoneInput value={phone} onChange={setPhone} />
+      </div>
+
+      <div className="space-y-1.5">
+        <Label>Call date</Label>
+        <DatePicker value={callDate} onChange={setCallDate} />
       </div>
 
       <div className="space-y-1.5">

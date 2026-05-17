@@ -168,7 +168,9 @@
   --sidebar-primary: hsl(40, 57%, 57%);
   --sidebar-primary-foreground: hsl(208, 70%, 18%);
   --sidebar-accent: hsl(208, 70%, 24%);
-  --sidebar-accent-foreground: hsl(40, 30%, 88%);
+  /* Active + hover items render gold so the current page is unmistakable
+     against the warm-light default text on a midnight sidebar. */
+  --sidebar-accent-foreground: hsl(40, 57%, 57%);
   --sidebar-active: hsl(40, 57%, 57%);
   --sidebar-active-bg: hsl(208, 70%, 24%);
   --sidebar-border: hsl(0, 0%, 100%, 0.08);

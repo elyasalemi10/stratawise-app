@@ -485,7 +485,7 @@ export async function applySettlementToLot(input: ApplySettlementInput) {
     .insert({
       oc_id: resolvedOcId,
       lot_id: lotId,
-      email: newOwner.email,
+      email: newOwner.email || null,
       name: newOwner.name,
       phone: newOwner.phone,
       role: "lot_owner",

@@ -1139,14 +1139,19 @@ export async function sendManagerMessageEmail(params: {
 
   const from = (await resolveManagerFromHeader(managerProfileId)) ?? noreplyFrom();
 
-  const html = brandShell(
-    `
-    <p style="margin:0 0 16px;color:#0E314C;font-size:14px;line-height:1.6;white-space:pre-wrap;">${escapeHtml(
-      bodyText,
-    )}</p>
-  `,
-    companyLogoUrl ?? null,
-  );
+  // Plain, left-aligned email body. We escape HTML to neutralise injection
+  // from owner-typed content, then convert newlines to <br/> so every email
+  // client (Gmail, Outlook, Apple Mail) preserves the manager's line breaks
+  // — some clients silently strip the white-space:pre-wrap CSS. No outer
+  // brand shell; this should read as a personal message, not a transactional
+  // template.
+  void companyLogoUrl;
+  const htmlBody = escapeHtml(bodyText).replace(/\r?\n/g, "<br />");
+  const html = `
+    <div style="font-family:Inter,system-ui,sans-serif;max-width:600px;margin:0;padding:0;color:#0E314C;font-size:14px;line-height:1.6;text-align:left;">
+      ${htmlBody}
+    </div>
+  `;
 
   const { data, error } = await getResend().emails.send({
     from,

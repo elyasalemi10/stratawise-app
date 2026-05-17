@@ -6,7 +6,14 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { EditSheet } from "@/components/shared/edit-sheet";
-import { Calendar, Activity, ChevronRight, Hash } from "lucide-react";
+import {
+  Calendar,
+  Activity,
+  ChevronRight,
+  Hash,
+  CalendarCheck,
+  FileText,
+} from "lucide-react";
 import type {
   NextLevyDue,
   LotActivityEntry,
@@ -176,7 +183,15 @@ export function LotOverviewTab({
               </p>
             </>
           ) : (
-            <p className="text-sm text-muted-foreground">No levy currently outstanding.</p>
+            <div className="flex flex-col items-center justify-center gap-1.5 py-4 text-center">
+              <CalendarCheck className="h-8 w-8 text-[color:var(--brand-gold)]" />
+              <p className="text-sm font-medium text-foreground">
+                All levies paid
+              </p>
+              <p className="text-xs text-muted-foreground">
+                No outstanding levy notice.
+              </p>
+            </div>
           )}
         </CardContent>
       </Card>
@@ -189,17 +204,19 @@ export function LotOverviewTab({
             <SnapshotRow label="Owner" value={ownerDisplayName ?? "Unassigned"} sub={ownerType} />
             <SnapshotRow label="Ownership since" value={ownershipSinceLabel} muted={!ownershipSince} />
             <SnapshotRow label="Portal last active" value={portalLabel} muted={!portalLastActiveAt} />
-            <button
-              type="button"
-              onClick={onConsentClick}
-              className="flex w-full items-baseline justify-between gap-2 rounded-md py-1 text-left transition-colors hover:bg-muted/60 cursor-pointer"
-            >
+            <div className="flex items-baseline justify-between gap-2">
               <dt className="text-muted-foreground">Consent</dt>
-              <dd className="flex items-center gap-1 font-medium text-foreground">
-                {consentCount} of {TOTAL_CONSENT_CATEGORIES} categories
-                <ChevronRight className="h-3.5 w-3.5 text-muted-foreground" />
+              <dd className="text-right">
+                <button
+                  type="button"
+                  onClick={onConsentClick}
+                  className="inline-flex items-center gap-1 text-sm font-medium text-blue-600 underline-offset-4 hover:underline cursor-pointer"
+                >
+                  {consentCount} of {TOTAL_CONSENT_CATEGORIES} categories
+                  <ChevronRight className="h-3.5 w-3.5" />
+                </button>
               </dd>
-            </button>
+            </div>
           </dl>
         </CardContent>
       </Card>
@@ -220,7 +237,15 @@ export function LotOverviewTab({
             )}
           </div>
           {recentActivity.length === 0 ? (
-            <p className="text-sm text-muted-foreground">No activity recorded yet.</p>
+            <div className="flex flex-col items-center justify-center gap-1.5 py-6 text-center">
+              <FileText className="h-8 w-8 text-[color:var(--brand-gold)]" />
+              <p className="text-sm font-medium text-foreground">
+                No activity yet
+              </p>
+              <p className="text-xs text-muted-foreground">
+                Owner updates, levies and payments will show up here as they happen.
+              </p>
+            </div>
           ) : (
             <ol className="divide-y divide-border">
               {recentActivity.map((row) => (

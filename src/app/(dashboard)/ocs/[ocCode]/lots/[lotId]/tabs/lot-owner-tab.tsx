@@ -16,6 +16,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
+import Image from "next/image";
 import {
   Repeat,
   ShieldCheck,
@@ -23,6 +24,7 @@ import {
   ExternalLink,
   Mail,
   Hash,
+  FileSignature,
 } from "lucide-react";
 import type { LotOwnerInfo } from "@/lib/actions/lot-ownership";
 import type { OwnershipHistoryEntry } from "@/lib/validations/settlement";
@@ -145,8 +147,26 @@ export function LotOwnerTab(props: Props) {
   if (!activeOwner.owner_display_name) {
     return (
       <Card>
-        <CardContent className="py-8 text-center text-sm text-muted-foreground">
-          No active owner on this lot. Record a settlement to assign one.
+        <CardContent className="flex flex-col items-center gap-4 py-12 text-center">
+          <Image
+            src="/stratawise-icon.webp"
+            alt=""
+            width={72}
+            height={81}
+            className="h-16 w-auto opacity-90"
+          />
+          <div className="space-y-1">
+            <p className="text-base font-semibold text-foreground">
+              No owner on file yet
+            </p>
+            <p className="text-sm text-muted-foreground">
+              Record the settlement to assign the new owner to this lot.
+            </p>
+          </div>
+          <Button onClick={onTransfer}>
+            <FileSignature className="h-4 w-4" />
+            Record settlement
+          </Button>
         </CardContent>
       </Card>
     );

@@ -88,8 +88,26 @@ export async function sendSms(params: {
       console.error("[sms] send failed:", res.status, text);
       return { ok: false, error: `SMS provider returned ${res.status}` };
     }
-    const json = (await res.json().catch(() => null)) as { results?: Array<{ message_id?: string }> } | null;
-    return { ok: true, id: json?.results?.[0]?.message_id };
+    // Mobile Message returns HTTP 200 even when a per-message send fails
+    // (e.g. unregistered sender id). The per-message status carries the
+    // real outcome — treat anything that's not "success" as a failure so
+    // the user sees the actual reason instead of a false "sent" toast.
+    type MobileMessageResult = {
+      status?: string;
+      error?: string;
+      message_id?: string;
+    };
+    const json =
+      (await res.json().catch(() => null)) as {
+        results?: MobileMessageResult[];
+      } | null;
+    const first = json?.results?.[0];
+    if (first && first.status && first.status !== "success") {
+      const reason = first.error || `provider rejected (${first.status})`;
+      console.error("[sms] per-message failure:", reason, first);
+      return { ok: false, error: `Could not send SMS — ${reason}` };
+    }
+    return { ok: true, id: first?.message_id };
   } catch (err) {
     console.error("[sms] send threw:", err);
     return { ok: false, error: "Could not send SMS — please try again." };

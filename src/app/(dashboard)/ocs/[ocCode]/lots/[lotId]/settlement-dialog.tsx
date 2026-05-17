@@ -9,8 +9,8 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import {
-  Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle,
-} from "@/components/ui/dialog";
+  Sheet, SheetContent, SheetHeader, SheetTitle,
+} from "@/components/ui/sheet";
 import {
   parseSettlementForReview,
   parseSettlementAndMatchLot,
@@ -147,8 +147,14 @@ export function SettlementDialog(props: Props) {
     // In manual mode documentId is intentionally null — the action accepts it
     // and skips the document-attachment check.
     if (entryMode === "pdf" && !documentId) return;
-    if (!name.trim() || !email.trim() || !settlementDate) {
-      toast.error("Name, email and settlement date are required.");
+    // Per the OC creation wizard contract: name + postal address +
+    // settlement date are mandatory for every new owner; email is optional.
+    if (!name.trim() || !settlementDate) {
+      toast.error("Name and settlement date are required.");
+      return;
+    }
+    if (!postalAddress.trim()) {
+      toast.error("Postal address is required (used for paper notices).");
       return;
     }
     setStage("submitting");
@@ -159,7 +165,7 @@ export function SettlementDialog(props: Props) {
         name: name.trim(),
         email: email.trim(),
         phone: phone.trim() || null,
-        postalAddress: postalAddress.trim() || null,
+        postalAddress: postalAddress.trim(),
         dateOfBirth: dateOfBirth || null,
       },
       settlementDate,
@@ -183,11 +189,22 @@ export function SettlementDialog(props: Props) {
   // ─── Render ───────────────────────────────────────────────────
 
   return (
-    <Dialog open={open} onOpenChange={handleClose}>
-      <DialogContent className="sm:max-w-2xl">
-        <DialogHeader>
-          <DialogTitle>Record settlement</DialogTitle>
-        </DialogHeader>
+    <Sheet open={open} onOpenChange={(o) => { if (!o) handleClose(); }}>
+      <SheetContent
+        side="right"
+        showCloseButton={false}
+        className="w-full sm:max-w-lg p-0 gap-0 bg-card flex flex-col"
+      >
+        <SheetHeader className="border-b border-border bg-card px-5 pt-5 pb-4 gap-0.5">
+          <SheetTitle className="text-base font-semibold text-foreground">
+            Record settlement
+          </SheetTitle>
+          <p className="text-xs text-muted-foreground">
+            Upload a Notice of Acquisition PDF or enter the owner details manually.
+          </p>
+        </SheetHeader>
+
+        <div className="flex-1 overflow-y-auto px-5 py-4 space-y-4">
 
         {stage === "upload" && (
           <div className="space-y-3">
@@ -210,9 +227,6 @@ export function SettlementDialog(props: Props) {
             >
               Enter settlement details manually
             </Button>
-            <p className="text-center text-xs text-muted-foreground">
-              No PDF? Type the new owner details by hand.
-            </p>
           </div>
         )}
 
@@ -246,19 +260,27 @@ export function SettlementDialog(props: Props) {
 
         {stage === "submitting" && <ParsingSkeleton message="Applying settlement..." />}
 
-        {/* Cancel button removed — the dialog's built-in close (X corner +
-            ESC + outside click) is enough. Confirm stays as the primary
-            action when we reach the review stage. */}
+        </div>
+
+        {/* Sticky footer with Confirm action when on the review stage. */}
         {stage === "review" && (
-          <DialogFooter>
-            <Button type="button" onClick={handleConfirm}>
+          <div className="border-t border-border bg-card px-5 py-3 flex items-center justify-end gap-2">
+            <Button
+              type="button"
+              variant="secondary"
+              size="sm"
+              onClick={handleClose}
+            >
+              Cancel
+            </Button>
+            <Button type="button" size="sm" onClick={handleConfirm}>
               <Check className="h-4 w-4" />
               Confirm and assign
             </Button>
-          </DialogFooter>
+          </div>
         )}
-      </DialogContent>
-    </Dialog>
+      </SheetContent>
+    </Sheet>
   );
 }
 
@@ -295,7 +317,9 @@ function UploadDropzone({
         if (file) onFile(file);
       }}
       className={`flex cursor-pointer flex-col items-center justify-center rounded-md border-2 border-dashed p-10 text-center transition-colors outline-none focus-visible:ring-2 focus-visible:ring-primary/30 ${
-        dragging ? "border-primary bg-primary/5" : "border-border bg-muted/30 hover:border-primary/40 hover:bg-muted/40"
+        dragging
+          ? "border-primary bg-primary/5"
+          : "border-border bg-card hover:border-primary/40"
       }`}
     >
       <Upload className="h-8 w-8 text-muted-foreground/50" />
@@ -570,9 +594,7 @@ function ManualReviewForm(props: {
             />
           </div>
           <div className="space-y-1.5">
-            <Label htmlFor="manual-settlement-email">
-              Email <span className="text-destructive">*</span>
-            </Label>
+            <Label htmlFor="manual-settlement-email">Email</Label>
             <Input
               id="manual-settlement-email"
               type="email"
@@ -590,12 +612,14 @@ function ManualReviewForm(props: {
             />
           </div>
           <div className="space-y-1.5 sm:col-span-2">
-            <Label htmlFor="manual-settlement-postal">Postal address</Label>
+            <Label htmlFor="manual-settlement-postal">
+              Postal address <span className="text-destructive">*</span>
+            </Label>
             <Input
               id="manual-settlement-postal"
               value={props.postalAddress}
               onChange={(e) => props.setPostalAddress(e.target.value)}
-              placeholder="Used as absent-owner address if different from the lot"
+              placeholder="Used as the absent-owner / service address for paper notices"
             />
           </div>
           <div className="space-y-1.5">
