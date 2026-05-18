@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import { toast } from "sonner";
 import {
   Mail,
@@ -17,9 +17,8 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { cn } from "@/lib/utils";
 import {
-  updateMailProvider,
+  saveGmailSetup,
   disconnectMailProvider,
-  testGmailMailbox,
 } from "./actions";
 
 // Settings → Email tab. Lets the manager (admins only) swap or disconnect
@@ -35,6 +34,7 @@ export interface MailProviderConfig {
 export function EmailTab({
   initial,
   oauthClientId,
+  initialMailboxPrefix,
 }: {
   initial: MailProviderConfig;
   // The 21-digit GCP service account Client ID customers paste into their
@@ -42,26 +42,67 @@ export function EmailTab({
   // platform hasn't configured Gmail yet; we hide the copy button + show
   // a "coming soon" line in that case.
   oauthClientId: string | null;
+  // Pre-filled prefix on revisit — derived server-side from the manager's
+  // existing gmail_mailbox_subscriptions row (the "elyas" in
+  // elyas@yourfirm.com.au).
+  initialMailboxPrefix: string;
 }) {
   const [provider, setProvider] = useState<MailProviderConfig["provider"]>(
     initial.provider,
   );
   const [domain, setDomain] = useState(initial.domain ?? "");
+  const [mailboxPrefix, setMailboxPrefix] = useState(initialMailboxPrefix);
   const [pending, setPending] = useState(false);
+  const [saveResult, setSaveResult] = useState<
+    | { kind: "success"; mailbox: string; watching: boolean; watchError?: string }
+    | { kind: "test_failed"; message: string; reason?: string }
+    | null
+  >(null);
+
+  const mailboxPreview = useMemo(() => {
+    const p = mailboxPrefix.trim().toLowerCase();
+    const d = domain.trim().toLowerCase();
+    if (!p || !d) return "";
+    return `${p}@${d}`;
+  }, [mailboxPrefix, domain]);
 
   async function handleSave() {
     if (provider !== "stratawise" && !domain.trim()) {
       toast.error("Enter your firm's email domain.");
       return;
     }
+    if (provider === "gmail" && !mailboxPrefix.trim()) {
+      toast.error("Enter your mailbox prefix (the part before the @).");
+      return;
+    }
     setPending(true);
-    const res = await updateMailProvider({
+    setSaveResult(null);
+    const res = await saveGmailSetup({
       provider,
       domain: provider === "stratawise" ? null : domain.trim(),
+      mailboxPrefix: provider === "gmail" ? mailboxPrefix.trim() : null,
     });
     setPending(false);
-    if ("error" in res) {
-      toast.error(res.error);
+    if ("error" in res && res.error) {
+      // For Gmail test failures we surface verbatim — admins need the
+      // reason (unauthorized_client, forbidden, not_found) to fix DWD.
+      const message = res.error;
+      setSaveResult({
+        kind: "test_failed",
+        message,
+        reason: (res as { reason?: string }).reason,
+      });
+      toast.error(message);
+      return;
+    }
+    if (provider === "gmail" && "mailbox" in res && res.mailbox) {
+      setSaveResult({
+        kind: "success",
+        mailbox: res.mailbox,
+        watching: res.watching ?? false,
+        watchError: res.watchError,
+      });
+      toast.success("Email setup saved");
       return;
     }
     toast.success("Email provider saved");
@@ -77,6 +118,8 @@ export function EmailTab({
     }
     setProvider("stratawise");
     setDomain("");
+    setMailboxPrefix("");
+    setSaveResult(null);
     toast.success("Switched back to stratawise.com.au");
   }
 
@@ -138,11 +181,69 @@ export function EmailTab({
               </div>
 
               {provider === "gmail" && (
+                <div className="space-y-1.5">
+                  <Label htmlFor="mailbox-prefix">
+                    Your mailbox prefix <span className="text-destructive">*</span>
+                  </Label>
+                  <div className="flex items-center gap-1">
+                    <Input
+                      id="mailbox-prefix"
+                      value={mailboxPrefix}
+                      onChange={(e) => setMailboxPrefix(e.target.value)}
+                      placeholder="Mailbox prefix"
+                      className="flex-1"
+                    />
+                    <span className="text-sm text-muted-foreground whitespace-nowrap">
+                      @{domain || "yourfirm.com.au"}
+                    </span>
+                  </div>
+                  <p className="text-xs text-muted-foreground">
+                    The part of your Workspace email before the{" "}
+                    <span className="font-mono">@</span>. Outbound sends will
+                    come from{" "}
+                    <span className="font-mono">
+                      {mailboxPreview || "yourname@yourfirm.com.au"}
+                    </span>
+                    .
+                  </p>
+                </div>
+              )}
+
+              {provider === "gmail" && (
                 <GmailAuthorisationCard oauthClientId={oauthClientId} />
               )}
               {provider === "outlook" && <OutlookAuthorisationCard />}
 
               <ReadWriteDisclosure />
+
+              {saveResult?.kind === "success" && (
+                <div className="rounded-md border border-[color:var(--brand-gold)]/30 bg-card p-3 text-xs space-y-1">
+                  <p className="text-foreground">
+                    Connected as{" "}
+                    <span className="font-mono font-medium">
+                      {saveResult.mailbox}
+                    </span>
+                    .
+                  </p>
+                  {saveResult.watching ? (
+                    <p className="text-[hsl(160,100%,28%)]">
+                      Inbox sync is live — replies will land in your StrataWise
+                      inbox within a few seconds.
+                    </p>
+                  ) : (
+                    <p className="text-warning">
+                      Send works, but inbox sync isn&apos;t active yet
+                      {saveResult.watchError ? `: ${saveResult.watchError}` : "."}
+                    </p>
+                  )}
+                </div>
+              )}
+              {saveResult?.kind === "test_failed" && (
+                <div className="rounded-md border border-destructive/30 bg-destructive/5 p-3 text-xs text-destructive">
+                  {saveResult.message}
+                  {saveResult.reason ? ` (${saveResult.reason})` : ""}
+                </div>
+              )}
             </div>
           )}
 
@@ -267,104 +368,10 @@ function GmailAuthorisationCard({
         copied={copied === "scopes"}
       />
 
-      <TestConnectionRow />
-
       <p className="text-muted-foreground">
         Usually works in minutes; Google sometimes takes up to 24 hours to
         propagate the grant.
       </p>
-    </div>
-  );
-}
-
-function TestConnectionRow() {
-  const [target, setTarget] = useState("");
-  const [pending, setPending] = useState(false);
-  const [result, setResult] = useState<
-    | {
-        ok: true;
-        email: string;
-        messagesTotal: number | null;
-        watching: boolean;
-        watchError?: string;
-      }
-    | { ok: false; message: string; reason: string }
-    | null
-  >(null);
-
-  async function handleTest() {
-    if (!target.trim()) {
-      toast.error("Enter a mailbox on your domain to test.");
-      return;
-    }
-    setPending(true);
-    setResult(null);
-    const res = await testGmailMailbox({ managerEmail: target.trim() });
-    setPending(false);
-    if ("ok" in res && res.ok) {
-      setResult({
-        ok: true,
-        email: res.email,
-        messagesTotal: res.messagesTotal,
-        watching: (res as { watching?: boolean }).watching ?? false,
-        watchError: (res as { watchError?: string }).watchError,
-      });
-    } else if ("error" in res) {
-      setResult({
-        ok: false,
-        message: res.error,
-        reason: (res as { reason?: string }).reason ?? "",
-      });
-    }
-  }
-
-  return (
-    <div className="space-y-1.5">
-      <p className="text-[11px] font-medium uppercase tracking-wide text-muted-foreground">
-        Test connection
-      </p>
-      <div className="flex items-center gap-2">
-        <Input
-          value={target}
-          onChange={(e) => setTarget(e.target.value)}
-          placeholder="you@yourfirm.com.au"
-          className="h-9"
-        />
-        <Button size="sm" onClick={handleTest} disabled={pending}>
-          {pending && <Loader2 className="mr-1.5 h-3.5 w-3.5 animate-spin" />}
-          Test
-        </Button>
-      </div>
-      {result?.ok && (
-        <div className="space-y-1">
-          <p className="text-xs text-[hsl(160,100%,28%)]">
-            Connected as <span className="font-mono">{result.email}</span>
-            {result.messagesTotal !== null
-              ? ` · ${result.messagesTotal} messages in mailbox`
-              : ""}
-            .
-          </p>
-          {result.watching ? (
-            <p className="text-xs text-[hsl(160,100%,28%)]">
-              Inbox sync is live — new replies will land in your StrataWise
-              inbox within a few seconds.
-            </p>
-          ) : (
-            <p className="text-xs text-warning">
-              Send works, but inbox sync isn&apos;t active yet
-              {result.watchError ? `: ${result.watchError}` : "."} Check that
-              GMAIL_PUBSUB_TOPIC is set and the Pub/Sub topic has the Gmail
-              push principal as a publisher.
-            </p>
-          )}
-        </div>
-      )}
-      {result && !result.ok && (
-        <p className="text-xs text-destructive">
-          {result.message}
-          {result.reason ? ` (${result.reason})` : ""}
-        </p>
-      )}
     </div>
   );
 }

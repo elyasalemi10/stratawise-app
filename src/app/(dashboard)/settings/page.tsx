@@ -33,6 +33,7 @@ export default async function SettingsPage() {
     prefsResult,
     optOutAuditsResult,
     mailProviderResult,
+    mailboxSubResult,
   ] = await Promise.all([
     isManager ? getCompanyData() : Promise.resolve(null),
     isManager ? getTeamMembers() : Promise.resolve([]),
@@ -55,6 +56,13 @@ export default async function SettingsPage() {
           .eq("id", profile.management_company_id)
           .maybeSingle()
       : Promise.resolve({ data: null }),
+    isManager
+      ? supabase
+          .from("gmail_mailbox_subscriptions")
+          .select("mailbox_email")
+          .eq("manager_profile_id", profile.id)
+          .maybeSingle()
+      : Promise.resolve({ data: null }),
   ]);
 
   const mailRow = (mailProviderResult.data ?? null) as {
@@ -67,6 +75,13 @@ export default async function SettingsPage() {
     domain: mailRow?.mail_provider_config?.domain ?? null,
     configured_at: mailRow?.mail_provider_configured_at ?? null,
   };
+
+  // Derive the manager's current mailbox prefix (the part before "@") from
+  // their gmail_mailbox_subscriptions row, if any. Lets the Email tab
+  // pre-fill the prefix input on revisit.
+  const subMailbox = (mailboxSubResult.data as { mailbox_email: string | null } | null)
+    ?.mailbox_email ?? null;
+  const initialMailboxPrefix = subMailbox?.split("@")[0] ?? "";
 
   // Surface the GCP service-account Client ID (the 21-digit number
   // customers paste into their Google Workspace admin) so the Email tab
@@ -105,6 +120,7 @@ export default async function SettingsPage() {
       autoOptOuts={autoOptOuts}
       mailProvider={mailProvider}
       gmailOauthClientId={gmailOauthClientId}
+      initialMailboxPrefix={initialMailboxPrefix}
     />
   );
 }

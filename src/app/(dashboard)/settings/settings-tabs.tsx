@@ -33,6 +33,7 @@ function TabsInner({
   autoOptOuts,
   mailProvider,
   gmailOauthClientId,
+  initialMailboxPrefix,
 }: {
   profile: Profile;
   company: CompanyData | null;
@@ -41,6 +42,7 @@ function TabsInner({
   autoOptOuts: AutoOptOutEntry[];
   mailProvider: MailProviderConfig;
   gmailOauthClientId: string | null;
+  initialMailboxPrefix: string;
 }) {
   const searchParams = useSearchParams();
   const initialTab = searchParams.get("tab") ?? "profile";
@@ -99,6 +101,7 @@ function TabsInner({
             <EmailTab
               initial={mailProvider}
               oauthClientId={gmailOauthClientId}
+              initialMailboxPrefix={initialMailboxPrefix}
             />
           </div>
         )}
@@ -115,6 +118,7 @@ export function SettingsTabs({
   autoOptOuts,
   mailProvider,
   gmailOauthClientId,
+  initialMailboxPrefix,
 }: {
   profile: Profile;
   company: CompanyData | null;
@@ -123,6 +127,7 @@ export function SettingsTabs({
   autoOptOuts: AutoOptOutEntry[];
   mailProvider: MailProviderConfig;
   gmailOauthClientId: string | null;
+  initialMailboxPrefix: string;
 }) {
   return (
     <Suspense>
@@ -134,6 +139,7 @@ export function SettingsTabs({
         autoOptOuts={autoOptOuts}
         mailProvider={mailProvider}
         gmailOauthClientId={gmailOauthClientId}
+        initialMailboxPrefix={initialMailboxPrefix}
       />
     </Suspense>
   );

@@ -149,13 +149,30 @@ export async function uploadCompanySignature(formData: FormData): Promise<{ url?
 
 
 // ─── Mail provider (Settings → Email tab) ─────────────────────────────────
-
-interface UpdateMailProviderInput {
+// Combined Gmail setup save. Replaces the two-step (test → save) flow with a
+// single action that takes the manager's mailbox prefix (e.g. "elyas"),
+// composes the full address against the firm's domain (elyas@upscalewithai.com.au),
+// tests the DWD impersonation, kicks off Gmail Pub/Sub watch immediately,
+// upserts gmail_mailbox_subscriptions so outbound sends know which mailbox
+// to impersonate, and persists provider+domain on management_companies.
+//
+// Validation:
+//   - admin role required
+//   - domain required when provider=gmail/outlook
+//   - prefix required when provider=gmail (used as sender mailbox + tested)
+//   - prefix must be a valid local-part (letters, digits, dot, dash, underscore)
+//
+// Returns:
+//   { ok, mailbox, watching, watchError? }  on success
+//   { error, reason? }                     on test failure (so the UI can
+//                                          show the verbatim DWD reason)
+interface SaveGmailSetupInput {
   provider: "stratawise" | "gmail" | "outlook";
   domain: string | null;
+  mailboxPrefix: string | null;
 }
 
-export async function updateMailProvider(input: UpdateMailProviderInput) {
+export async function saveGmailSetup(input: SaveGmailSetupInput) {
   const profile = await getCurrentProfile();
   if (!profile || !profile.management_company_id) {
     return { error: "Not authenticated" };
@@ -163,104 +180,106 @@ export async function updateMailProvider(input: UpdateMailProviderInput) {
   if (profile.company_role !== "admin") {
     return { error: "Only company admins can change this." };
   }
-  if (input.provider !== "stratawise" && !input.domain?.trim()) {
-    return { error: "Enter the email domain your firm sends from." };
+
+  const domain = input.domain?.trim().toLowerCase() ?? "";
+  const prefix = input.mailboxPrefix?.trim().toLowerCase() ?? "";
+
+  if (input.provider !== "stratawise") {
+    if (!domain) return { error: "Enter the email domain your firm sends from." };
+    if (!/^[a-z0-9-]+(\.[a-z0-9-]+)+$/.test(domain)) {
+      return { error: "That domain doesn't look right (e.g. acmestrata.com.au)." };
+    }
+  }
+  if (input.provider === "gmail") {
+    if (!prefix) {
+      return { error: "Enter your mailbox prefix (the part before the @)." };
+    }
+    if (!/^[a-z0-9._-]+$/.test(prefix)) {
+      return { error: "Prefix can only contain letters, digits, dot, dash or underscore." };
+    }
   }
 
   const supabase = createServerClient();
-  const { error } = await supabase
+
+  // Provider + domain go on the company row regardless of test outcome —
+  // disconnecting is one click away, and the admin may want to switch back
+  // to stratawise without re-running the prefix test.
+  const { error: companyErr } = await supabase
     .from("management_companies")
     .update({
       mail_provider: input.provider,
       mail_provider_config:
-        input.provider === "stratawise"
-          ? null
-          : { domain: input.domain!.trim().toLowerCase() },
+        input.provider === "stratawise" ? null : { domain },
       mail_provider_configured_at: new Date().toISOString(),
       mail_provider_configured_by: profile.id,
     })
     .eq("id", profile.management_company_id);
-  if (error) return { error: error.message };
-  return { ok: true as const };
-}
+  if (companyErr) return { error: companyErr.message };
 
-// Test connection — calls Gmail's users.getProfile via DWD impersonation.
-// Surfaces the exact failure reason so admins can self-diagnose during the
-// 24-hour DWD propagation window (unauthorized_client, forbidden, etc.).
-export async function testGmailMailbox(input: { managerEmail: string }) {
-  const profile = await getCurrentProfile();
-  if (!profile) return { error: "Not authenticated" };
-  if (profile.company_role !== "admin") {
-    return { error: "Only company admins can run the test." };
+  // Non-Gmail flows have nothing further to set up here.
+  if (input.provider !== "gmail") {
+    return { ok: true as const };
   }
-  const target = input.managerEmail?.trim().toLowerCase();
-  if (!target || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(target)) {
-    return { error: "Enter a mailbox to test (e.g. you@yourfirm.com.au)." };
-  }
-  const { testGmailConnection } = await import("@/lib/google/gmail-client");
-  const result = await testGmailConnection(target);
-  if (result.ok) {
-    // Successful test = mailbox is reachable via DWD. Register a row in
-    // gmail_mailbox_subscriptions AND call users.watch() immediately so
-    // Pub/Sub starts publishing changes right away. (The daily
-    // gmail-watch-refresh cron only handles renewals — without this
-    // synchronous watch call the mailbox stays unwatched until the
-    // first 02:00 AEDT run, which is why new connections weren't
-    // receiving inbound mail.)
-    let watchInfo: { historyId: string; expiresAt: string } | null = null;
-    let watchError: string | null = null;
-    const topic = process.env.GMAIL_PUBSUB_TOPIC;
-    if (topic && profile.management_company_id) {
-      const { watchMailbox } = await import("@/lib/google/gmail-client");
-      const w = await watchMailbox(target, topic);
-      if (w.ok) {
-        watchInfo = {
-          historyId: w.historyId,
-          expiresAt: new Date(
-            Number(w.expiration) || Date.now() + 7 * 24 * 60 * 60 * 1000,
-          ).toISOString(),
-        };
-      } else {
-        watchError = w.error;
-        console.error(
-          "testGmailMailbox: watch() failed for",
-          target,
-          ":",
-          w.error,
-        );
-      }
-    }
 
-    if (profile.management_company_id) {
-      const supabase = createServerClient();
-      await supabase
-        .from("gmail_mailbox_subscriptions")
-        .upsert(
-          {
-            management_company_id: profile.management_company_id,
-            mailbox_email: target,
-            manager_profile_id: profile.id,
-            history_id: watchInfo?.historyId ?? null,
-            watch_expires_at: watchInfo?.expiresAt ?? null,
-            watch_last_renewed_at: watchInfo ? new Date().toISOString() : null,
-            last_error: watchError,
-            updated_at: new Date().toISOString(),
-          },
-          { onConflict: "management_company_id,mailbox_email" },
-        );
-    }
-    return {
-      ok: true as const,
-      email: result.email,
-      messagesTotal: result.messagesTotal,
-      // Surface watch state to the UI so the admin sees whether inbound is live.
-      watching: !!watchInfo,
-      watchError: watchError ?? undefined,
-    };
+  const mailbox = `${prefix}@${domain}`;
+  const { testGmailConnection, watchMailbox } = await import(
+    "@/lib/google/gmail-client"
+  );
+
+  const test = await testGmailConnection(mailbox);
+  if (!test.ok) {
+    return { error: test.error, reason: test.reason };
   }
+
+  // Successful test → kick off users.watch() so inbound sync goes live
+  // immediately, then upsert the subscription with the resulting history
+  // cursor. Watch failures are logged but do NOT fail the save — sends
+  // still work, the admin just sees an inbound-sync warning on the row.
+  let watchInfo: { historyId: string; expiresAt: string } | null = null;
+  let watchError: string | null = null;
+  const topic = process.env.GMAIL_PUBSUB_TOPIC;
+  if (topic) {
+    const w = await watchMailbox(mailbox, topic);
+    if (w.ok) {
+      watchInfo = {
+        historyId: w.historyId,
+        expiresAt: new Date(
+          Number(w.expiration) || Date.now() + 7 * 24 * 60 * 60 * 1000,
+        ).toISOString(),
+      };
+    } else {
+      watchError = w.error;
+      console.error(
+        "saveGmailSetup: watch() failed for",
+        mailbox,
+        ":",
+        w.error,
+      );
+    }
+  }
+
+  await supabase
+    .from("gmail_mailbox_subscriptions")
+    .upsert(
+      {
+        management_company_id: profile.management_company_id,
+        mailbox_email: mailbox,
+        manager_profile_id: profile.id,
+        history_id: watchInfo?.historyId ?? null,
+        watch_expires_at: watchInfo?.expiresAt ?? null,
+        watch_last_renewed_at: watchInfo ? new Date().toISOString() : null,
+        last_error: watchError,
+        updated_at: new Date().toISOString(),
+      },
+      { onConflict: "management_company_id,mailbox_email" },
+    );
+
   return {
-    error: result.error,
-    reason: result.reason,
+    ok: true as const,
+    mailbox,
+    messagesTotal: test.messagesTotal,
+    watching: !!watchInfo,
+    watchError: watchError ?? undefined,
   };
 }
 
