@@ -8,7 +8,7 @@ import {
   MANDATORY_NOTIFICATION_TYPES,
   MANAGERIAL_NOTIFICATION_TYPES,
   type NotificationType,
-} from "@/lib/notifications";
+} from "@/lib/notification-types";
 import { updateNotificationPreferences } from "@/lib/actions/notification-preferences";
 import { Button } from "@/components/ui/button";
 import { Switch } from "@/components/ui/switch";
