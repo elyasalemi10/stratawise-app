@@ -3,6 +3,7 @@ import { getCurrentProfile } from "@/lib/auth";
 import { getCompanyData } from "./actions";
 import { getTeamMembers } from "@/lib/actions/team";
 import { createServerClient } from "@/lib/supabase";
+import { brandDomain } from "@/lib/manager-username";
 import { SettingsTabs } from "./settings-tabs";
 
 export interface NotificationPrefRow {
@@ -34,6 +35,7 @@ export default async function SettingsPage() {
     optOutAuditsResult,
     mailProviderResult,
     mailboxSubResult,
+    managerUsernameResult,
   ] = await Promise.all([
     isManager ? getCompanyData() : Promise.resolve(null),
     isManager ? getTeamMembers() : Promise.resolve([]),
@@ -63,6 +65,13 @@ export default async function SettingsPage() {
           .eq("manager_profile_id", profile.id)
           .maybeSingle()
       : Promise.resolve({ data: null }),
+    isManager
+      ? supabase
+          .from("profiles")
+          .select("email_username")
+          .eq("id", profile.id)
+          .maybeSingle()
+      : Promise.resolve({ data: null }),
   ]);
 
   const mailRow = (mailProviderResult.data ?? null) as {
@@ -82,6 +91,16 @@ export default async function SettingsPage() {
   const subMailbox = (mailboxSubResult.data as { mailbox_email: string | null } | null)
     ?.mailbox_email ?? null;
   const initialMailboxPrefix = subMailbox?.split("@")[0] ?? "";
+
+  // The always-on StrataWise alias every onboarded manager has —
+  // <email_username>@stratawise.com.au — used as the fallback when they
+  // disconnect their own mailbox.
+  const managerUsername =
+    (managerUsernameResult.data as { email_username: string | null } | null)
+      ?.email_username ?? null;
+  const stratawiseFallbackEmail = managerUsername
+    ? `${managerUsername}@${brandDomain()}`
+    : `noreply@${brandDomain()}`;
 
   // Surface the GCP service-account Client ID (the 21-digit number
   // customers paste into their Google Workspace admin) so the Email tab
@@ -121,6 +140,7 @@ export default async function SettingsPage() {
       mailProvider={mailProvider}
       gmailOauthClientId={gmailOauthClientId}
       initialMailboxPrefix={initialMailboxPrefix}
+      stratawiseFallbackEmail={stratawiseFallbackEmail}
     />
   );
 }

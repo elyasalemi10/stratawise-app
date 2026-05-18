@@ -123,7 +123,7 @@ function VerifyEmailContent() {
             className="inline-flex h-9 items-center gap-2 rounded-md border border-border bg-card px-4 text-sm font-medium text-foreground transition-colors hover:bg-muted"
           >
             <Image
-              src="/logos/gmail-logo.webp"
+              src="/logos/gmail.webp"
               alt=""
               width={16}
               height={16}

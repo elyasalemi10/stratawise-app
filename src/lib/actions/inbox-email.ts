@@ -289,6 +289,34 @@ export async function associateInboxEmailToLot(
   return { ok: true, data: { id: parsed.data.communicationLogId } };
 }
 
+// ─── Remove from inbox (dismisses notification, keeps comm_log audit) ──
+
+export async function removeInboxEmail(
+  notificationId: string,
+): Promise<Result<{ id: string }>> {
+  if (!notificationId) return { ok: false, error: "Missing notification id" };
+  const profile = await requireCompanyRole();
+  const supabase = createServerClient();
+
+  const { data: notif } = await supabase
+    .from("notifications")
+    .select("id, profile_id")
+    .eq("id", notificationId)
+    .maybeSingle();
+  if (!notif || (notif as { profile_id: string }).profile_id !== profile.id) {
+    return { ok: false, error: "You don't have access to this notification" };
+  }
+
+  const { error } = await supabase
+    .from("notifications")
+    .delete()
+    .eq("id", notificationId)
+    .eq("profile_id", profile.id);
+  if (error) return { ok: false, error: error.message };
+
+  return { ok: true, data: { id: notificationId } };
+}
+
 // ─── OC / Lot lookups for the associate picker ─────────────────────────
 
 export interface OcPickerOption {

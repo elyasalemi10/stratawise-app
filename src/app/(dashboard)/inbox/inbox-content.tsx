@@ -1,5 +1,6 @@
 "use client";
 
+import Image from "next/image";
 import { useEffect, useMemo, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import {
@@ -14,6 +15,10 @@ import {
   Reply,
   Loader2,
   Link as LinkIcon,
+  MoreVertical,
+  Trash2,
+  ExternalLink,
+  Tag,
 } from "lucide-react";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -26,9 +31,17 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+  DropdownMenuSeparator,
+} from "@/components/ui/dropdown-menu";
 import { EditSheet } from "@/components/shared/edit-sheet";
 import { EmptyState } from "@/components/shared/empty-state";
 import { toast } from "sonner";
+import { cn } from "@/lib/utils";
 import { formatDateLong } from "@/lib/utils";
 import {
   markAsRead,
@@ -41,6 +54,7 @@ import {
   associateInboxEmailToLot,
   listOcsForAssociate,
   listLotsForAssociate,
+  removeInboxEmail,
   type InboxEmailDetail,
   type OcPickerOption,
   type LotPickerOption,
@@ -66,6 +80,60 @@ const TYPE_COLORS: Record<string, string> = {
   system: "bg-muted text-muted-foreground",
 };
 
+// Detect which provider a sender belongs to from the email-address domain.
+// Conservative — we only assert the brand when the domain is a known
+// consumer/Workspace endpoint. Custom firm domains hit "unknown" and fall
+// back to the generic mail glyph.
+type Provider = "gmail" | "outlook" | "unknown";
+const GMAIL_DOMAINS = new Set(["gmail.com", "googlemail.com"]);
+const OUTLOOK_DOMAINS = new Set([
+  "outlook.com",
+  "outlook.com.au",
+  "hotmail.com",
+  "hotmail.com.au",
+  "live.com",
+  "live.com.au",
+  "msn.com",
+]);
+function detectProvider(email: string | null | undefined): Provider {
+  if (!email) return "unknown";
+  const domain = email.split("@")[1]?.toLowerCase() ?? "";
+  if (!domain) return "unknown";
+  if (GMAIL_DOMAINS.has(domain)) return "gmail";
+  if (OUTLOOK_DOMAINS.has(domain)) return "outlook";
+  return "unknown";
+}
+
+function ProviderIcon({ email, size = "sm" }: { email: string | null | undefined; size?: "sm" | "md" }) {
+  const provider = detectProvider(email);
+  const px = size === "md" ? 20 : 14;
+  if (provider === "gmail") {
+    return (
+      <Image
+        src="/logos/gmail.webp"
+        alt="Gmail"
+        width={px}
+        height={px}
+        className={cn(size === "md" ? "size-5" : "size-3.5", "object-contain")}
+      />
+    );
+  }
+  if (provider === "outlook") {
+    return (
+      <Image
+        src="/logos/outlook.webp"
+        alt="Outlook"
+        width={px}
+        height={px}
+        className={cn(size === "md" ? "size-5" : "size-3.5", "object-contain")}
+      />
+    );
+  }
+  return (
+    <Mail className={cn(size === "md" ? "size-5" : "size-3.5", "text-muted-foreground")} />
+  );
+}
+
 function timeAgo(dateStr: string): string {
   const diff = Date.now() - new Date(dateStr).getTime();
   const minutes = Math.floor(diff / 60000);
@@ -88,8 +156,7 @@ export function InboxContent({
   const [notifications, setNotifications] = useState(initial);
   const [openId, setOpenId] = useState<string | null>(null);
 
-  // Sync the open notification with `?n=<id>` so the bell + the route both
-  // point at the same surface and reloads stay deep-linked.
+  // Sync the open notification with `?n=<id>`.
   const urlOpenId = searchParams.get("n");
   useEffect(() => {
     if (urlOpenId && urlOpenId !== openId) {
@@ -98,8 +165,21 @@ export function InboxContent({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [urlOpenId]);
 
+  // Per-notification sender email cache so we can show the provider icon on
+  // the list row without re-fetching each open. Populated lazily as emails
+  // are opened; falls back to `notification.metadata.sender_email` when
+  // present (we stash it on the notification at ingest for email_reply).
+  const senderCache = useMemo(() => {
+    const map: Record<string, string | null> = {};
+    for (const n of notifications) {
+      const meta = (n.metadata ?? {}) as { sender_email?: string };
+      if (meta.sender_email) map[n.id] = meta.sender_email;
+    }
+    return map;
+  }, [notifications]);
+
   const unreadCount = notifications.filter((n) => !n.read_at).length;
-  const openNotification = notifications.find((n) => n.id === openId);
+  const openNotification = notifications.find((n) => n.id === openId) ?? null;
 
   async function handleOpen(notification: Notification) {
     setOpenId(notification.id);
@@ -132,161 +212,212 @@ export function InboxContent({
     );
   }
 
-  // Single notification view
-  if (openNotification) {
-    if (openNotification.type === "email_reply") {
-      return (
-        <EmailNotificationView
-          notification={openNotification}
-          onBack={handleClose}
-        />
-      );
+  async function handleRemove(notificationId: string) {
+    const res = await removeInboxEmail(notificationId);
+    if (!res.ok) {
+      toast.error(res.error);
+      return;
     }
-    const Icon = TYPE_ICONS[openNotification.type] ?? Info;
+    setNotifications((prev) => prev.filter((n) => n.id !== notificationId));
+    if (openId === notificationId) {
+      handleClose();
+    }
+    toast.success("Removed from inbox");
+  }
+
+  if (notifications.length === 0) {
     return (
-      <div className="space-y-6">
-        <div>
-          <button
-            type="button"
-            onClick={handleClose}
-            className="inline-flex h-8 w-8 items-center justify-center rounded-md hover:bg-muted cursor-pointer"
-          >
-            <ArrowLeft className="h-4 w-4" />
-          </button>
-        </div>
-
-        <Card>
-          <CardContent className="pt-5">
-            <div className="flex items-start gap-3 pb-4 border-b border-border">
-              <div
-                className={`flex h-10 w-10 items-center justify-center rounded-full shrink-0 ${
-                  TYPE_COLORS[openNotification.type] ?? TYPE_COLORS.system
-                }`}
-              >
-                <Icon className="h-5 w-5" />
-              </div>
-              <div className="flex-1">
-                <h2 className="text-base font-semibold text-foreground">
-                  {openNotification.title}
-                </h2>
-                <p className="text-xs text-muted-foreground mt-0.5">
-                  {formatDateLong(openNotification.created_at)}
-                </p>
-              </div>
-            </div>
-
-            <div className="pt-4">
-              <p className="text-sm text-foreground leading-relaxed">
-                {openNotification.message}
-              </p>
-            </div>
-
-            {openNotification.link && openNotification.type !== "email_reply" && (
-              <div className="pt-4 mt-4 border-t border-border">
-                <Button
-                  variant="default"
-                  size="sm"
-                  onClick={() => router.push(openNotification.link!)}
-                  className="cursor-pointer"
-                >
-                  View details
-                </Button>
-              </div>
-            )}
-          </CardContent>
-        </Card>
-      </div>
+      <EmptyState
+        icon={Inbox}
+        title="All caught up"
+        description="You'll receive notifications here for levy notices, owner replies, insurance alerts, meetings, and more."
+      />
     );
   }
 
-  // Notification list
   return (
-    <div className="space-y-6">
-      {unreadCount > 0 && (
-        <div className="flex justify-end">
-          <Button
-            variant="outline"
-            size="sm"
-            onClick={handleMarkAllRead}
-            className="cursor-pointer"
-          >
-            <Check className="mr-2 h-3.5 w-3.5" />
-            Mark all as read ({unreadCount})
-          </Button>
-        </div>
-      )}
-
-      {notifications.length === 0 ? (
-        <EmptyState
-          icon={Inbox}
-          title="All caught up"
-          description="You'll receive notifications here for levy notices, owner replies, insurance alerts, meetings, and more."
-        />
-      ) : (
-        <Card className="overflow-hidden">
-          <CardContent className="p-0">
-            <div className="divide-y divide-border">
-              {notifications.map((n) => {
-                const Icon = TYPE_ICONS[n.type] ?? Info;
-                const isUnread = !n.read_at;
-
-                return (
-                  <button
-                    key={n.id}
-                    type="button"
-                    onClick={() => handleOpen(n)}
-                    className={`flex w-full items-center gap-3 px-4 py-3 text-left transition-colors cursor-pointer ${
-                      isUnread ? "bg-primary/5 hover:bg-primary/10" : "hover:bg-muted/30"
-                    }`}
-                  >
-                    <div
-                      className={`flex h-8 w-8 items-center justify-center rounded-full shrink-0 ${
-                        TYPE_COLORS[n.type] ?? TYPE_COLORS.system
-                      }`}
-                    >
-                      <Icon className="h-3.5 w-3.5" />
-                    </div>
-                    <div className="flex-1 min-w-0">
-                      <div className="flex items-center gap-2">
-                        <p
-                          className={`text-sm truncate ${
-                            isUnread
-                              ? "font-semibold text-foreground"
-                              : "text-foreground"
-                          }`}
-                        >
-                          {n.title}
-                        </p>
-                        <span className="text-xs text-muted-foreground/60 shrink-0">
-                          {timeAgo(n.created_at)}
-                        </span>
-                      </div>
-                      <p className="text-xs text-muted-foreground truncate mt-0.5">
-                        {n.message}
-                      </p>
-                    </div>
-                    {isUnread && (
-                      <div className="h-2 w-2 rounded-full bg-primary shrink-0" />
-                    )}
-                  </button>
-                );
-              })}
+    <div className="grid grid-cols-1 gap-4 lg:grid-cols-[360px_1fr]">
+      <Card
+        className={cn(
+          "overflow-hidden",
+          openNotification && "hidden lg:block",
+        )}
+      >
+        <CardContent className="p-0">
+          {unreadCount > 0 && (
+            <div className="flex items-center justify-between gap-2 border-b border-border bg-muted/40 px-3 py-2">
+              <p className="text-xs text-muted-foreground">
+                {unreadCount} unread
+              </p>
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={handleMarkAllRead}
+                className="h-7 cursor-pointer text-xs"
+              >
+                <Check className="mr-1 size-3" />
+                Mark all read
+              </Button>
             </div>
-          </CardContent>
-        </Card>
-      )}
+          )}
+          <div className="divide-y divide-border max-h-[calc(100vh-12rem)] overflow-y-auto">
+            {notifications.map((n) => {
+              const Icon = TYPE_ICONS[n.type] ?? Info;
+              const isUnread = !n.read_at;
+              const isOpen = n.id === openId;
+              const senderEmail = senderCache[n.id] ?? null;
+              const showProvider = n.type === "email_reply";
+
+              return (
+                <button
+                  key={n.id}
+                  type="button"
+                  onClick={() => handleOpen(n)}
+                  className={cn(
+                    "flex w-full items-center gap-3 px-3 py-3 text-left transition-colors cursor-pointer",
+                    isOpen
+                      ? "bg-primary/10"
+                      : isUnread
+                        ? "bg-primary/5 hover:bg-primary/10"
+                        : "hover:bg-muted/30",
+                  )}
+                >
+                  <div
+                    className={cn(
+                      "flex h-8 w-8 items-center justify-center rounded-full shrink-0",
+                      TYPE_COLORS[n.type] ?? TYPE_COLORS.system,
+                    )}
+                  >
+                    {showProvider ? (
+                      <ProviderIcon email={senderEmail} size="md" />
+                    ) : (
+                      <Icon className="h-3.5 w-3.5" />
+                    )}
+                  </div>
+                  <div className="flex-1 min-w-0">
+                    <div className="flex items-center gap-2">
+                      <p
+                        className={cn(
+                          "text-sm truncate",
+                          isUnread
+                            ? "font-semibold text-foreground"
+                            : "text-foreground",
+                        )}
+                      >
+                        {n.title}
+                      </p>
+                      <span className="ml-auto text-xs text-muted-foreground/60 shrink-0">
+                        {timeAgo(n.created_at)}
+                      </span>
+                    </div>
+                    <p className="text-xs text-muted-foreground truncate mt-0.5">
+                      {n.message}
+                    </p>
+                  </div>
+                  {isUnread && (
+                    <div className="h-2 w-2 rounded-full bg-primary shrink-0" />
+                  )}
+                </button>
+              );
+            })}
+          </div>
+        </CardContent>
+      </Card>
+
+      <div className={cn(!openNotification && "hidden lg:block")}>
+        {openNotification ? (
+          openNotification.type === "email_reply" ? (
+            <EmailDetailPane
+              key={openNotification.id}
+              notification={openNotification}
+              onBack={handleClose}
+              onRemove={() => handleRemove(openNotification.id)}
+            />
+          ) : (
+            <GenericDetailPane
+              notification={openNotification}
+              onBack={handleClose}
+              onRouteTo={(href) => router.push(href)}
+            />
+          )
+        ) : (
+          <Card>
+            <CardContent className="flex h-full min-h-[20rem] flex-col items-center justify-center gap-2 py-12 text-sm text-muted-foreground">
+              <Mail className="size-10 text-muted-foreground/40" />
+              <p>Pick an email from the list to read it.</p>
+            </CardContent>
+          </Card>
+        )}
+      </div>
     </div>
   );
 }
 
-// ─── Email reply view ─────────────────────────────────────────────────────
+// ─── Generic (non-email) detail pane ──────────────────────────────────────
 
-function EmailNotificationView({
+function GenericDetailPane({
   notification,
   onBack,
+  onRouteTo,
 }: {
   notification: Notification;
   onBack: () => void;
+  onRouteTo: (href: string) => void;
+}) {
+  const Icon = TYPE_ICONS[notification.type] ?? Info;
+  return (
+    <Card>
+      <CardContent className="pt-5">
+        <BackBar onBack={onBack} compact />
+        <div className="flex items-start gap-3 pb-4 border-b border-border">
+          <div
+            className={cn(
+              "flex h-10 w-10 items-center justify-center rounded-full shrink-0",
+              TYPE_COLORS[notification.type] ?? TYPE_COLORS.system,
+            )}
+          >
+            <Icon className="h-5 w-5" />
+          </div>
+          <div className="flex-1">
+            <h2 className="text-base font-semibold text-foreground">
+              {notification.title}
+            </h2>
+            <p className="text-xs text-muted-foreground mt-0.5">
+              {formatDateLong(notification.created_at)}
+            </p>
+          </div>
+        </div>
+        <div className="pt-4">
+          <p className="text-sm text-foreground leading-relaxed">
+            {notification.message}
+          </p>
+        </div>
+        {notification.link && (
+          <div className="pt-4 mt-4 border-t border-border">
+            <Button
+              variant="default"
+              size="sm"
+              onClick={() => onRouteTo(notification.link!)}
+            >
+              View details
+            </Button>
+          </div>
+        )}
+      </CardContent>
+    </Card>
+  );
+}
+
+// ─── Email detail pane ────────────────────────────────────────────────────
+
+function EmailDetailPane({
+  notification,
+  onBack,
+  onRemove,
+}: {
+  notification: Notification;
+  onBack: () => void;
+  onRemove: () => Promise<void> | void;
 }) {
   const communicationLogId = (notification.metadata?.communication_log_id ??
     null) as string | null;
@@ -322,127 +453,156 @@ function EmailNotificationView({
 
   if (error) {
     return (
-      <div className="space-y-6">
-        <BackBar onBack={onBack} />
-        <EmptyState icon={Mail} title="Email unavailable" description={error} />
-      </div>
+      <Card>
+        <CardContent className="pt-5 space-y-4">
+          <BackBar onBack={onBack} compact />
+          <EmptyState icon={Mail} title="Email unavailable" description={error} card={false} />
+        </CardContent>
+      </Card>
     );
   }
 
   if (!detail) {
     return (
-      <div className="space-y-6">
-        <BackBar onBack={onBack} />
-        <Card>
-          <CardContent className="flex items-center justify-center gap-2 py-12 text-sm text-muted-foreground">
+      <Card>
+        <CardContent className="pt-5 space-y-4">
+          <BackBar onBack={onBack} compact />
+          <div className="flex items-center justify-center gap-2 py-12 text-sm text-muted-foreground">
             <Loader2 className="h-4 w-4 animate-spin" />
             Loading email…
-          </CardContent>
-        </Card>
-      </div>
+          </div>
+        </CardContent>
+      </Card>
     );
   }
 
+  const provider = detectProvider(detail.sender_email);
+  const openInProviderUrl =
+    provider === "gmail"
+      ? `https://mail.google.com/mail/u/0/#search/${encodeURIComponent(detail.sender_email)}`
+      : provider === "outlook"
+        ? `https://outlook.office.com/mail/0/${encodeURIComponent(detail.sender_email)}`
+        : null;
+
   return (
-    <div className="space-y-6">
-      <BackBar onBack={onBack} />
+    <Card>
+      <CardContent className="pt-5 space-y-4">
+        <BackBar onBack={onBack} compact />
 
-      <Card>
-        <CardContent className="pt-5 space-y-4">
-          {/* Header */}
-          <div className="flex items-start justify-between gap-3 pb-4 border-b border-border">
-            <div className="flex items-start gap-3">
-              <div className="flex h-10 w-10 items-center justify-center rounded-full bg-[color:var(--brand-gold)]/15 text-[color:var(--brand-gold)] shrink-0">
-                <Mail className="h-5 w-5" />
-              </div>
-              <div className="min-w-0">
-                <h2 className="text-base font-semibold text-foreground break-words">
-                  {detail.subject || "(no subject)"}
-                </h2>
-                <p className="text-xs text-muted-foreground mt-0.5">
-                  {formatDateLong(detail.sent_at ?? detail.created_at)}
-                </p>
-              </div>
+        {/* Header */}
+        <div className="flex items-start justify-between gap-3 pb-4 border-b border-border">
+          <div className="flex items-start gap-3 min-w-0">
+            <div className="flex h-10 w-10 items-center justify-center rounded-full bg-card border border-border shrink-0">
+              <ProviderIcon email={detail.sender_email} size="md" />
             </div>
-            <div className="flex items-center gap-2 shrink-0">
-              <Button size="sm" onClick={() => setReplyOpen(true)}>
-                <Reply className="mr-1.5 h-3.5 w-3.5" />
-                Reply
-              </Button>
+            <div className="min-w-0">
+              <h2 className="text-base font-semibold text-foreground break-words">
+                {detail.subject || "(no subject)"}
+              </h2>
+              <p className="text-xs text-muted-foreground mt-0.5">
+                {formatDateLong(detail.sent_at ?? detail.created_at)}
+              </p>
             </div>
           </div>
-
-          {/* Address fields */}
-          <div className="grid grid-cols-1 gap-2 sm:grid-cols-[auto_1fr] text-sm">
-            <span className="text-xs uppercase tracking-wide text-muted-foreground sm:pt-0.5">
-              From
-            </span>
-            <span className="font-medium text-foreground break-all">
-              {detail.sender_email || "—"}
-            </span>
-            <span className="text-xs uppercase tracking-wide text-muted-foreground sm:pt-0.5">
-              To
-            </span>
-            <span className="text-foreground break-all">
-              {detail.recipient_email}
-            </span>
-            <span className="text-xs uppercase tracking-wide text-muted-foreground sm:pt-0.5">
-              Lot
-            </span>
-            <span className="flex items-center gap-2 flex-wrap text-foreground">
-              {detail.oc_id && detail.lot_id ? (
-                <a
-                  href={`/ocs/${detail.oc_id}/lots/${detail.lot_id}?tab=communications`}
-                  className="inline-flex items-center gap-1 text-blue-600 underline-offset-4 hover:underline"
-                >
-                  {detail.oc_name ?? "OC"} · {detail.lot_label ?? "Lot"}
-                  <LinkIcon className="h-3 w-3" />
-                </a>
-              ) : (
-                <>
-                  <span className="text-muted-foreground">Not associated</span>
-                  <Button
-                    variant="secondary"
-                    size="sm"
-                    onClick={() => setAssociateOpen(true)}
-                  >
+          <div className="flex items-center gap-2 shrink-0">
+            <Button size="sm" onClick={() => setReplyOpen(true)}>
+              <Reply className="mr-1.5 h-3.5 w-3.5" />
+              Reply
+            </Button>
+            <DropdownMenu>
+              <DropdownMenuTrigger
+                render={
+                  <Button variant="secondary" size="icon" className="h-9 w-9" />
+                }
+              >
+                <MoreVertical className="size-4" />
+                <span className="sr-only">Actions</span>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="end" className="w-56">
+                {!detail.oc_id && (
+                  <DropdownMenuItem onClick={() => setAssociateOpen(true)}>
+                    <Tag className="mr-2 size-4" />
                     Associate with lot
-                  </Button>
-                </>
-              )}
-            </span>
-          </div>
-
-          {/* Body */}
-          <div className="rounded-md border border-border bg-cool-muted p-4 max-h-[40rem] overflow-y-auto whitespace-pre-wrap text-sm leading-relaxed text-foreground">
-            {detail.body || "(empty)"}
-          </div>
-
-          {/* Original outbound thread, if matched */}
-          {detail.outbound && (
-            <details className="rounded-md border border-border bg-card">
-              <summary className="cursor-pointer px-3 py-2 text-xs font-medium uppercase tracking-wide text-muted-foreground">
-                In reply to —{" "}
-                {detail.outbound.subject ?? "(no subject)"}
-                {detail.outbound.sent_at && (
-                  <> · {formatDateLong(detail.outbound.sent_at)}</>
+                  </DropdownMenuItem>
                 )}
-              </summary>
-              <div className="border-t border-border p-3 whitespace-pre-wrap text-sm text-muted-foreground">
-                {detail.outbound.body || "(no body)"}
-              </div>
-            </details>
-          )}
+                {openInProviderUrl && (
+                  <DropdownMenuItem
+                    onClick={() => window.open(openInProviderUrl, "_blank", "noopener,noreferrer")}
+                  >
+                    <ExternalLink className="mr-2 size-4" />
+                    Open in {provider === "gmail" ? "Gmail" : "Outlook"}
+                  </DropdownMenuItem>
+                )}
+                {(!detail.oc_id || openInProviderUrl) && <DropdownMenuSeparator />}
+                <DropdownMenuItem
+                  onClick={() => onRemove()}
+                  className="text-destructive focus:text-destructive"
+                >
+                  <Trash2 className="mr-2 size-4" />
+                  Remove from inbox
+                </DropdownMenuItem>
+              </DropdownMenuContent>
+            </DropdownMenu>
+          </div>
+        </div>
 
-          {/* Attachments — Resend's inbound carries them, but we don't yet
-              persist attachments to R2 from this route. The slot is here so
-              future work landing the storage piece doesn't have to refactor
-              the UI. */}
-          <p className="text-xs text-muted-foreground">
-            Attachments not yet supported on inbound replies.
-          </p>
-        </CardContent>
-      </Card>
+        {/* Address fields */}
+        <div className="grid grid-cols-1 gap-2 sm:grid-cols-[auto_1fr] text-sm">
+          <span className="text-xs uppercase tracking-wide text-muted-foreground sm:pt-0.5">
+            From
+          </span>
+          <span className="font-medium text-foreground break-all">
+            {detail.sender_email || "—"}
+          </span>
+          <span className="text-xs uppercase tracking-wide text-muted-foreground sm:pt-0.5">
+            To
+          </span>
+          <span className="text-foreground break-all">
+            {detail.recipient_email}
+          </span>
+          <span className="text-xs uppercase tracking-wide text-muted-foreground sm:pt-0.5">
+            Lot
+          </span>
+          <span className="flex items-center gap-2 flex-wrap text-foreground">
+            {detail.oc_id && detail.lot_id ? (
+              <a
+                href={`/ocs/${detail.oc_id}/lots/${detail.lot_id}?tab=communications`}
+                className="inline-flex items-center gap-1 text-blue-600 underline-offset-4 hover:underline"
+              >
+                {detail.oc_name ?? "OC"} · {detail.lot_label ?? "Lot"}
+                <LinkIcon className="h-3 w-3" />
+              </a>
+            ) : (
+              <span className="text-muted-foreground">Not associated</span>
+            )}
+          </span>
+        </div>
+
+        {/* Body */}
+        <div className="rounded-md border border-border bg-cool-muted p-4 max-h-[40rem] overflow-y-auto whitespace-pre-wrap text-sm leading-relaxed text-foreground">
+          {detail.body || "(empty)"}
+        </div>
+
+        {/* Original outbound thread, if matched */}
+        {detail.outbound && (
+          <details className="rounded-md border border-border bg-card">
+            <summary className="cursor-pointer px-3 py-2 text-xs font-medium uppercase tracking-wide text-muted-foreground">
+              In reply to —{" "}
+              {detail.outbound.subject ?? "(no subject)"}
+              {detail.outbound.sent_at && (
+                <> · {formatDateLong(detail.outbound.sent_at)}</>
+              )}
+            </summary>
+            <div className="border-t border-border p-3 whitespace-pre-wrap text-sm text-muted-foreground">
+              {detail.outbound.body || "(no body)"}
+            </div>
+          </details>
+        )}
+
+        <p className="text-xs text-muted-foreground">
+          Attachments not yet supported on inbound replies.
+        </p>
+      </CardContent>
 
       <ReplyDrawer
         open={replyOpen}
@@ -468,13 +628,13 @@ function EmailNotificationView({
           );
         }}
       />
-    </div>
+    </Card>
   );
 }
 
-function BackBar({ onBack }: { onBack: () => void }) {
+function BackBar({ onBack, compact = false }: { onBack: () => void; compact?: boolean }) {
   return (
-    <div>
+    <div className={cn(compact ? "lg:hidden" : "")}>
       <button
         type="button"
         onClick={onBack}
