@@ -1377,12 +1377,22 @@ interface MailDispatch {
   domain: string | null;
 }
 
-// For a Gmail-routed send, the FROM mailbox MUST be on the firm's
-// authorised domain (DWD only grants impersonation against that domain).
-// We use the manager's profile.email when its domain matches the firm's
-// mail_provider_config.domain; otherwise we synthesise
-// `<email_username>@<firm-domain>` and impersonate that. Falls back to
-// null when no usable mailbox exists, which sends caller back to Resend.
+// For a Gmail-routed send, the FROM mailbox MUST be a real Workspace mailbox
+// the admin has authorised our service account against. The only mailbox we
+// KNOW is valid is whatever they tested under Settings → Email (which we
+// stored on gmail_mailbox_subscriptions). The manager's profile.email is
+// usually their personal address (e.g. an outlook.com / gmail.com signup)
+// and synthesising `<email_username>@<firm-domain>` produced invalid_grant
+// because that mailbox didn't exist in Workspace.
+//
+// Resolution order:
+//   1. gmail_mailbox_subscriptions row keyed by manager_profile_id
+//      (the mailbox THIS manager confirmed during test-connection).
+//   2. Any subscription for the same management_company (a manager whose
+//      personal profile email isn't on the firm domain but whose firm
+//      has at least one verified mailbox — we send from that).
+//   3. profile.email if its domain matches firm-domain.
+//   4. null → caller falls back to Resend.
 async function resolveManagerSenderEmail(
   managerProfileId: string,
   firmDomain: string | null,
@@ -1390,23 +1400,45 @@ async function resolveManagerSenderEmail(
   if (!firmDomain) return null;
   try {
     const supabase = createServerClient();
-    const { data } = await supabase
+    const { data: profileRow } = await supabase
       .from("profiles")
-      .select("email, email_username")
+      .select("email, management_company_id")
       .eq("id", managerProfileId)
       .maybeSingle();
-    if (!data) return null;
-    const profile = data as {
+    const profile = (profileRow as {
       email: string | null;
-      email_username: string | null;
-    };
-    const emailDomain = profile.email?.split("@")[1]?.toLowerCase() ?? "";
-    if (profile.email && emailDomain === firmDomain.toLowerCase()) {
+      management_company_id: string | null;
+    } | null) ?? null;
+
+    // (1) per-manager confirmed mailbox.
+    const { data: own } = await supabase
+      .from("gmail_mailbox_subscriptions")
+      .select("mailbox_email")
+      .eq("manager_profile_id", managerProfileId)
+      .maybeSingle();
+    const ownMailbox = (own as { mailbox_email: string | null } | null)
+      ?.mailbox_email;
+    if (ownMailbox) return ownMailbox.toLowerCase().trim();
+
+    // (2) any verified mailbox in the firm.
+    if (profile?.management_company_id) {
+      const { data: firmRow } = await supabase
+        .from("gmail_mailbox_subscriptions")
+        .select("mailbox_email")
+        .eq("management_company_id", profile.management_company_id)
+        .limit(1)
+        .maybeSingle();
+      const firmMailbox = (firmRow as { mailbox_email: string | null } | null)
+        ?.mailbox_email;
+      if (firmMailbox) return firmMailbox.toLowerCase().trim();
+    }
+
+    // (3) profile email on the firm domain.
+    const emailDomain = profile?.email?.split("@")[1]?.toLowerCase() ?? "";
+    if (profile?.email && emailDomain === firmDomain.toLowerCase()) {
       return profile.email.toLowerCase().trim();
     }
-    if (profile.email_username) {
-      return `${profile.email_username.toLowerCase()}@${firmDomain.toLowerCase()}`;
-    }
+
     return null;
   } catch (err) {
     console.error("[email] resolveManagerSenderEmail failed:", err);

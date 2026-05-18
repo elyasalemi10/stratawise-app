@@ -301,14 +301,20 @@ function EmailNotificationView({
       return;
     }
     let cancelled = false;
-    getInboxEmail(communicationLogId).then((res) => {
-      if (cancelled) return;
-      if (res.ok) {
-        setDetail(res.data);
-      } else {
-        setError(res.error);
-      }
-    });
+    getInboxEmail(communicationLogId)
+      .then((res) => {
+        if (cancelled) return;
+        if (res.ok) {
+          setDetail(res.data);
+        } else {
+          setError(res.error);
+        }
+      })
+      .catch((err) => {
+        if (cancelled) return;
+        console.error("getInboxEmail threw:", err);
+        setError("This email couldn't be loaded. Please refresh and try again.");
+      });
     return () => {
       cancelled = true;
     };
