@@ -201,8 +201,36 @@ export async function testGmailMailbox(input: { managerEmail: string }) {
   const result = await testGmailConnection(target);
   if (result.ok) {
     // Successful test = mailbox is reachable via DWD. Register a row in
-    // gmail_mailbox_subscriptions so the daily watch-refresh cron picks
-    // it up + Pub/Sub pushes start landing on /api/webhooks/gmail-push.
+    // gmail_mailbox_subscriptions AND call users.watch() immediately so
+    // Pub/Sub starts publishing changes right away. (The daily
+    // gmail-watch-refresh cron only handles renewals — without this
+    // synchronous watch call the mailbox stays unwatched until the
+    // first 02:00 AEDT run, which is why new connections weren't
+    // receiving inbound mail.)
+    let watchInfo: { historyId: string; expiresAt: string } | null = null;
+    let watchError: string | null = null;
+    const topic = process.env.GMAIL_PUBSUB_TOPIC;
+    if (topic && profile.management_company_id) {
+      const { watchMailbox } = await import("@/lib/google/gmail-client");
+      const w = await watchMailbox(target, topic);
+      if (w.ok) {
+        watchInfo = {
+          historyId: w.historyId,
+          expiresAt: new Date(
+            Number(w.expiration) || Date.now() + 7 * 24 * 60 * 60 * 1000,
+          ).toISOString(),
+        };
+      } else {
+        watchError = w.error;
+        console.error(
+          "testGmailMailbox: watch() failed for",
+          target,
+          ":",
+          w.error,
+        );
+      }
+    }
+
     if (profile.management_company_id) {
       const supabase = createServerClient();
       await supabase
@@ -212,6 +240,10 @@ export async function testGmailMailbox(input: { managerEmail: string }) {
             management_company_id: profile.management_company_id,
             mailbox_email: target,
             manager_profile_id: profile.id,
+            history_id: watchInfo?.historyId ?? null,
+            watch_expires_at: watchInfo?.expiresAt ?? null,
+            watch_last_renewed_at: watchInfo ? new Date().toISOString() : null,
+            last_error: watchError,
             updated_at: new Date().toISOString(),
           },
           { onConflict: "management_company_id,mailbox_email" },
@@ -221,6 +253,9 @@ export async function testGmailMailbox(input: { managerEmail: string }) {
       ok: true as const,
       email: result.email,
       messagesTotal: result.messagesTotal,
+      // Surface watch state to the UI so the admin sees whether inbound is live.
+      watching: !!watchInfo,
+      watchError: watchError ?? undefined,
     };
   }
   return {

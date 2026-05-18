@@ -91,6 +91,127 @@ function isDryRun(): boolean {
   return process.env.EMAIL_DRY_RUN === "true";
 }
 
+// ─── Unified transport (Gmail or Resend) ──────────────────────────────────
+//
+// Every manager-facing send (invitations, levies, overdue reminders,
+// payment receipts, claim emails, manager messages) routes through here.
+// True system-only sends — verification codes, password reset, Basiq
+// system notifications — keep using getResend() directly because they
+// represent the platform speaking on its own behalf, not on behalf of a
+// management firm.
+//
+// Dispatch rules:
+//   provider=gmail + JSON key present + we can resolve a sender mailbox
+//     under the firm's domain → sendViaGmail (returns RFC822 Message-ID)
+//   any retryable Gmail failure (rate limit after 1s retry) OR mailbox
+//     can't be resolved OR provider=outlook (transport pending) OR
+//     provider=stratawise → fall through to Resend with the caller's
+//     `resendFrom` (a "Name <addr>" header).
+//
+// The "from-resolution" responsibility stays with the caller: we want each
+// sender to make its own decision about *who* the "from" is so the audit
+// trail captures intent (the inviter for invitations, the OC's primary
+// manager for OC-scoped sends, the recipient profile for managerial
+// notifications). The dispatcher just picks the TRANSPORT.
+
+interface TransportSendOptions {
+  /** Specific manager profile to impersonate (preferred). */
+  managerProfileId?: string | null;
+  /** OC scope — used to find the firm's primary manager when no
+   *  managerProfileId is given. */
+  ocId?: string | null;
+  to: string;
+  subject: string;
+  html: string;
+  attachments?: Array<{ filename: string; content: Buffer; contentType: string }>;
+  /** FROM header used when we fall back to Resend. Required because we
+   *  always know it server-side at the call site. */
+  resendFrom: string;
+}
+
+async function transportSend(
+  opts: TransportSendOptions,
+): Promise<{ data: { id: string } | null; error: { message: string } | null }> {
+  const { to, subject, html, attachments, resendFrom } = opts;
+
+  // Resolve the manager profile we'd impersonate on Gmail.
+  let managerProfileId = opts.managerProfileId ?? null;
+  if (!managerProfileId && opts.ocId) {
+    managerProfileId = await resolveOcPrimaryManagerProfileId(opts.ocId);
+  }
+
+  if (managerProfileId && isGmailConfigured()) {
+    const dispatch = await resolveDispatchProvider(managerProfileId);
+    if (dispatch.provider === "gmail") {
+      const senderEmail = await resolveManagerSenderEmail(
+        managerProfileId,
+        dispatch.domain,
+      );
+      if (senderEmail) {
+        const displayName = await resolveManagerDisplayName(managerProfileId);
+        const result = await sendViaGmail({
+          managerEmail: senderEmail,
+          to,
+          subject,
+          htmlBody: html,
+          fromDisplayName: displayName,
+          attachments,
+        });
+        if (result.ok) {
+          // Gmail's RFC822 Message-ID is what landed on the recipient's
+          // headers, which is what their reply's In-Reply-To will quote.
+          // Store THAT as the row's external_id so inbound webhook matches.
+          return {
+            data: { id: result.rfc822MessageId || result.messageId },
+            error: null,
+          };
+        }
+        if (!result.retryable) {
+          return { data: null, error: { message: result.error } };
+        }
+        console.warn(
+          "[email] Gmail rate-limited after retry, falling back to Resend.",
+        );
+      } else {
+        console.warn(
+          "[email] mail_provider=gmail but couldn't resolve a sender mailbox under domain",
+          dispatch.domain,
+          "— falling back to Resend.",
+        );
+      }
+    }
+  }
+
+  return getResend().emails.send({
+    from: resendFrom,
+    to,
+    subject,
+    html,
+    ...(attachments && attachments.length > 0 ? { attachments } : {}),
+  });
+}
+
+async function resolveOcPrimaryManagerProfileId(
+  ocId: string,
+): Promise<string | null> {
+  try {
+    const supabase = createServerClient();
+    const { data } = await supabase
+      .from("oc_members")
+      .select("profile_id, joined_at")
+      .eq("oc_id", ocId)
+      .eq("role", "strata_manager")
+      .is("left_at", null)
+      .order("joined_at", { ascending: true })
+      .limit(1)
+      .maybeSingle();
+    return (data as { profile_id: string } | null)?.profile_id ?? null;
+  } catch (err) {
+    console.error("[email] resolveOcPrimaryManagerProfileId failed:", err);
+    return null;
+  }
+}
+
 // Uniform result type for the 4 new owner-facing senders introduced in
 // PP6-C-1. Existing 5 senders (invitation/levy/basiq×3) keep their original
 // `{ success } | { error }` shape — retrofit is limited to the DRY_RUN gate.
@@ -232,8 +353,9 @@ export async function sendInvitationEmail({
     (inviterProfileId && (await resolveManagerFromHeader(inviterProfileId))) ||
     (await resolveOcSenderFromHeader(ocId ?? null));
 
-  const { error } = await getResend().emails.send({
-    from,
+  const { error } = await transportSend({
+    managerProfileId: inviterProfileId ?? null,
+    ocId: ocId ?? null,
     to,
     subject: `You've been invited to ${ocName}`,
     html: `
@@ -256,6 +378,7 @@ export async function sendInvitationEmail({
         </p>
       </div>
     `,
+    resendFrom: from,
   });
 
   if (error) {
@@ -307,8 +430,8 @@ export async function sendLevyEmail({
 
   const from = await resolveOcSenderFromHeader(ocId ?? null);
 
-  const { error } = await getResend().emails.send({
-    from,
+  const { error } = await transportSend({
+    ocId: ocId ?? null,
     to,
     subject: `Levy Notice — ${ocName} — ${periodLabel}`,
     html: `
@@ -340,6 +463,7 @@ export async function sendLevyEmail({
         contentType: "application/pdf",
       },
     ],
+    resendFrom: from,
   });
 
   if (error) {
@@ -598,11 +722,12 @@ export async function sendPaymentReceivedEmail(
     ${ctaBlock}
   `, companyLogoUrl);
 
-  const { data, error } = await getResend().emails.send({
-    from,
+  const { data, error } = await transportSend({
+    ocId: ocId ?? null,
     to,
     subject,
     html,
+    resendFrom: from,
   });
   if (error) {
     console.error("Failed to send payment_received email:", error);
@@ -679,22 +804,21 @@ export async function sendOverdueReminderEmail(
 
   const from = await resolveOcSenderFromHeader(ocId ?? null);
 
-  const { data, error } = await getResend().emails.send({
-    from,
+  const { data, error } = await transportSend({
+    ocId: ocId ?? null,
     to,
     subject,
     html,
-    ...(pdfBuffer
-      ? {
-          attachments: [
-            {
-              filename: pdfFilename ?? `${referenceNumber}.pdf`,
-              content: pdfBuffer,
-              contentType: "application/pdf",
-            },
-          ],
-        }
-      : {}),
+    attachments: pdfBuffer
+      ? [
+          {
+            filename: pdfFilename ?? `${referenceNumber}.pdf`,
+            content: pdfBuffer,
+            contentType: "application/pdf",
+          },
+        ]
+      : undefined,
+    resendFrom: from,
   });
   if (error) {
     console.error("Failed to send overdue_reminder email:", error);
@@ -751,11 +875,12 @@ export async function sendClaimMatchedEmail(
     ${ctaBlock}
   `, companyLogoUrl);
 
-  const { data, error } = await getResend().emails.send({
-    from,
+  const { data, error } = await transportSend({
+    ocId: ocId ?? null,
     to,
     subject,
     html,
+    resendFrom: from,
   });
   if (error) {
     console.error("Failed to send claim_matched email:", error);
@@ -814,11 +939,12 @@ export async function sendClaimRejectedEmail(
     ${ctaBlock}
   `, companyLogoUrl);
 
-  const { data, error } = await getResend().emails.send({
-    from,
+  const { data, error } = await transportSend({
+    ocId: ocId ?? null,
     to,
     subject,
     html,
+    resendFrom: from,
   });
   if (error) {
     console.error("Failed to send claim_rejected email:", error);
@@ -841,12 +967,16 @@ export interface SendNewClaimSubmittedEmailParams {
   notes: string | null;
   ocShortCode: string;
   companyLogoUrl?: string | null;
+  // Optional OC id — when provided, the send routes through the firm's
+  // configured mail provider (Gmail send-as) so manager-to-manager
+  // notifications land in the firm's domain instead of the brand noreply.
+  ocId?: string | null;
 }
 
 export async function sendNewClaimSubmittedEmail(
   params: SendNewClaimSubmittedEmailParams,
 ): Promise<EmailSendResult> {
-  const { to, managerName, ocName, lotLabel, ownerName, amount, claimDate, paymentMethod, notes, ocShortCode, companyLogoUrl } = params;
+  const { to, managerName, ocName, lotLabel, ownerName, amount, claimDate, paymentMethod, notes, ocShortCode, companyLogoUrl, ocId } = params;
   const subject = `New owner payment claim — ${ocName} ${lotLabel}`;
 
   if (isDryRun()) {
@@ -889,13 +1019,19 @@ export async function sendNewClaimSubmittedEmail(
     </p>
   `, companyLogoUrl);
 
-  // Goes to managers; sender stays as the brand noreply identity (this is a
-  // system fan-out, not a person-to-person message).
-  const { data, error } = await getResend().emails.send({
-    from: noreplyFrom(),
+  // Goes to managers within the same firm. Falls back to the brand noreply
+  // identity when no OC scope is supplied — but with ocId we route via the
+  // firm's primary manager mailbox so the notification reads as coming from
+  // their own firm (and routes through Gmail when configured).
+  const resendFrom = ocId
+    ? await resolveOcSenderFromHeader(ocId)
+    : noreplyFrom();
+  const { data, error } = await transportSend({
+    ocId: ocId ?? null,
     to,
     subject,
     html,
+    resendFrom,
   });
   if (error) {
     console.error("Failed to send new_claim_submitted email:", error);
@@ -1002,22 +1138,21 @@ export async function sendSecondReminderEmail(
 
   const from = await resolveOcSenderFromHeader(ocId ?? null);
 
-  const { data, error } = await getResend().emails.send({
-    from,
+  const { data, error } = await transportSend({
+    ocId: ocId ?? null,
     to,
     subject,
     html,
-    ...(pdfBuffer
-      ? {
-          attachments: [
-            {
-              filename: pdfFilename ?? `${referenceNumber}.pdf`,
-              content: pdfBuffer,
-              contentType: "application/pdf",
-            },
-          ],
-        }
-      : {}),
+    attachments: pdfBuffer
+      ? [
+          {
+            filename: pdfFilename ?? `${referenceNumber}.pdf`,
+            content: pdfBuffer,
+            contentType: "application/pdf",
+          },
+        ]
+      : undefined,
+    resendFrom: from,
   });
   if (error) {
     console.error("Failed to send second_reminder email:", error);
@@ -1092,22 +1227,21 @@ export async function sendFinalNoticeEmail(
 
   const from = await resolveOcSenderFromHeader(ocId ?? null);
 
-  const { data, error } = await getResend().emails.send({
-    from,
+  const { data, error } = await transportSend({
+    ocId: ocId ?? null,
     to,
     subject,
     html,
-    ...(pdfBuffer
-      ? {
-          attachments: [
-            {
-              filename: pdfFilename ?? `final-notice-${referenceNumber}.pdf`,
-              content: pdfBuffer,
-              contentType: "application/pdf",
-            },
-          ],
-        }
-      : {}),
+    attachments: pdfBuffer
+      ? [
+          {
+            filename: pdfFilename ?? `final-notice-${referenceNumber}.pdf`,
+            content: pdfBuffer,
+            contentType: "application/pdf",
+          },
+        ]
+      : undefined,
+    resendFrom: from,
   });
   if (error) {
     console.error("Failed to send levy_final_notice email:", error);

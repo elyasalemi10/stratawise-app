@@ -281,7 +281,13 @@ function TestConnectionRow() {
   const [target, setTarget] = useState("");
   const [pending, setPending] = useState(false);
   const [result, setResult] = useState<
-    | { ok: true; email: string; messagesTotal: number | null }
+    | {
+        ok: true;
+        email: string;
+        messagesTotal: number | null;
+        watching: boolean;
+        watchError?: string;
+      }
     | { ok: false; message: string; reason: string }
     | null
   >(null);
@@ -300,6 +306,8 @@ function TestConnectionRow() {
         ok: true,
         email: res.email,
         messagesTotal: res.messagesTotal,
+        watching: (res as { watching?: boolean }).watching ?? false,
+        watchError: (res as { watchError?: string }).watchError,
       });
     } else if ("error" in res) {
       setResult({
@@ -328,13 +336,28 @@ function TestConnectionRow() {
         </Button>
       </div>
       {result?.ok && (
-        <p className="text-xs text-[hsl(160,100%,28%)]">
-          Connected as <span className="font-mono">{result.email}</span>
-          {result.messagesTotal !== null
-            ? ` · ${result.messagesTotal} messages in mailbox`
-            : ""}
-          .
-        </p>
+        <div className="space-y-1">
+          <p className="text-xs text-[hsl(160,100%,28%)]">
+            Connected as <span className="font-mono">{result.email}</span>
+            {result.messagesTotal !== null
+              ? ` · ${result.messagesTotal} messages in mailbox`
+              : ""}
+            .
+          </p>
+          {result.watching ? (
+            <p className="text-xs text-[hsl(160,100%,28%)]">
+              Inbox sync is live — new replies will land in your StrataWise
+              inbox within a few seconds.
+            </p>
+          ) : (
+            <p className="text-xs text-warning">
+              Send works, but inbox sync isn&apos;t active yet
+              {result.watchError ? `: ${result.watchError}` : "."} Check that
+              GMAIL_PUBSUB_TOPIC is set and the Pub/Sub topic has the Gmail
+              push principal as a publisher.
+            </p>
+          )}
+        </div>
       )}
       {result && !result.ok && (
         <p className="text-xs text-destructive">

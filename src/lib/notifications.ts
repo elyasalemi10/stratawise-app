@@ -666,6 +666,7 @@ export async function emitNewClaimSubmitted(
       notes: null,
       ocShortCode,
       companyLogoUrl,
+      ocId: claim.oc_id,
     };
 
     const { data: logRow } = await supabase
