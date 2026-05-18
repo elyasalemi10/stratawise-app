@@ -284,41 +284,24 @@ export function LotDetailContent({
         </CardContent>
       </Card>
 
-      {/* Tab strip — plain shadcn line tabs inside a single white card.
-          Triggers are pure text (no per-trigger background, no hover-pill).
-          Active state: foreground text + a 2px gold underline that sits at
-          the bottom EDGE of the card (cell-aligned via bottom-0 + h-0.5).
-          The card carries the visual surface; the tabs are just labels. */}
-      {/* Tab strip — one white card; the entire shadcn line tab (label + gold
-          active underline) lives INSIDE the card. The container wraps with
-          `overflow-hidden` so the underline can't poke past the rounded
-          border, and the active `::after` is positioned 2px ABOVE the
-          trigger's bottom edge (not below it) — that's what was previously
-          getting clipped. Tabs wrap onto a second row on narrow viewports. */}
-      {/* Tab strip — proper shadcn line tab inside a white card. The CVA on
-          TabsTrigger sets `group-data-horizontal/tabs:after:bottom-[-5px]`
-          which puts the active underline OUTSIDE the trigger; we override
-          with the same variant prefix so tailwind-merge keeps ours, then
-          render a manual gold bar via the `after` pseudo-element. Container
-          padding (`p-0` + trigger `pb-2`) leaves space for the underline
-          INSIDE the card. */}
+      {/* Tab strip — bare shadcn line tabs. No container card; the row sits
+          directly on the page background so the active gold underline reads
+          as the row separator. Tabs wrap onto a second row on narrow viewports. */}
       <Tabs value={activeTab} onValueChange={onTabChange}>
-        <div className="rounded-md border border-border bg-card">
-          <TabsList
-            variant="line"
-            className="h-auto w-full flex-wrap justify-stretch gap-0 border-none bg-transparent p-0"
-          >
-            {TABS.map((tab) => (
-              <TabsTrigger
-                key={tab.value}
-                value={tab.value}
-                className="relative flex-1 min-w-[6.5rem] h-12 rounded-none border-0 text-sm font-medium text-muted-foreground bg-transparent transition-colors hover:text-foreground hover:bg-transparent data-active:bg-transparent data-active:text-foreground group-data-horizontal/tabs:after:inset-x-3 group-data-horizontal/tabs:after:bottom-1 group-data-horizontal/tabs:after:h-0.5 data-active:after:bg-[color:var(--brand-gold)] data-active:after:rounded-full"
-              >
-                {tab.label}
-              </TabsTrigger>
-            ))}
-          </TabsList>
-        </div>
+        <TabsList
+          variant="line"
+          className="h-auto w-full flex-wrap justify-start gap-0 border-b border-border bg-transparent p-0"
+        >
+          {TABS.map((tab) => (
+            <TabsTrigger
+              key={tab.value}
+              value={tab.value}
+              className="relative h-11 min-w-[6.5rem] rounded-none border-0 px-4 text-sm font-medium text-muted-foreground bg-transparent transition-colors hover:text-foreground hover:bg-transparent data-active:bg-transparent data-active:text-foreground group-data-horizontal/tabs:after:inset-x-2 group-data-horizontal/tabs:after:-bottom-px group-data-horizontal/tabs:after:h-0.5 data-active:after:bg-[color:var(--brand-gold)] data-active:after:rounded-full"
+            >
+              {tab.label}
+            </TabsTrigger>
+          ))}
+        </TabsList>
       </Tabs>
 
       {/* Tab content. Render all tabs once with `hidden` on the inactive

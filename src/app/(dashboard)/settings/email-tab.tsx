@@ -74,7 +74,7 @@ export function EmailTab({
       : null,
   );
   const [editing, setEditing] = useState(
-    initial.provider === "stratawise" || (initial.provider === "gmail" && !initialMailboxPrefix),
+    initial.provider === "gmail" && !initialMailboxPrefix,
   );
 
   if (!editing && config.provider !== "stratawise") {
@@ -94,10 +94,18 @@ export function EmailTab({
             setConfig({ provider: "stratawise", domain: null, configured_at: null });
             setMailboxPrefix("");
             setSavedMailbox(null);
-            setEditing(true);
           }}
         />
       </div>
+    );
+  }
+
+  if (!editing && config.provider === "stratawise") {
+    return (
+      <StratawiseDefaultView
+        stratawiseFallbackEmail={stratawiseFallbackEmail}
+        onConnect={() => setEditing(true)}
+      />
     );
   }
 
@@ -236,6 +244,54 @@ function ConnectedView({
   );
 }
 
+// ─── Default state (no 3rd-party mailbox connected) ────────────────────
+// Reads as "you're already set up, here's your address, want to send from
+// your own firm instead?" rather than dumping the manager straight into a
+// blank wizard. Disconnecting always lands back here.
+function StratawiseDefaultView({
+  stratawiseFallbackEmail,
+  onConnect,
+}: {
+  stratawiseFallbackEmail: string;
+  onConnect: () => void;
+}) {
+  return (
+    <Card>
+      <CardContent className="pt-5 space-y-5">
+        <div className="flex items-start gap-4">
+          <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-md border border-border bg-card">
+            <Mail className="size-6 text-primary" />
+          </div>
+          <div className="flex-1 min-w-0">
+            <p className="text-sm font-semibold text-foreground">StrataWise email</p>
+            <p className="text-sm text-foreground break-all font-mono">
+              {stratawiseFallbackEmail}
+            </p>
+            <p className="mt-1 text-xs text-muted-foreground">
+              You&apos;re using your free StrataWise address. Outbound mail to
+              owners goes from here, replies come back to your inbox.
+            </p>
+          </div>
+        </div>
+
+        <div className="rounded-md border border-border bg-cool-muted p-3 text-xs text-muted-foreground">
+          Want owners to see your firm&apos;s own domain instead? Connect a
+          Gmail or Outlook mailbox under your firm. We only{" "}
+          <span className="font-medium text-foreground">read</span> and{" "}
+          <span className="font-medium text-foreground">send</span> — we never
+          delete anything.
+        </div>
+
+        <div>
+          <Button size="sm" onClick={onConnect}>
+            Connect a third-party mailbox
+          </Button>
+        </div>
+      </CardContent>
+    </Card>
+  );
+}
+
 // ─── Wizard view (provider picker → domain → tutorial → prefix → save) ──
 
 function Wizard({
@@ -351,19 +407,25 @@ function Wizard({
           </div>
 
           <div className="space-y-1.5">
-            <Tooltip>
-              <TooltipTrigger
-                render={
-                  <Label htmlFor="mail-domain" className="inline-flex items-center gap-1 cursor-help" />
-                }
-              >
-                Email domain <span className="text-destructive">*</span>
-                <Info className="size-3.5 text-muted-foreground" />
-              </TooltipTrigger>
-              <TooltipContent>
-                The bit after the @ in your business email.
-              </TooltipContent>
-            </Tooltip>
+            <Label htmlFor="mail-domain" className="inline-flex items-center gap-1">
+              Email domain <span className="text-destructive">*</span>
+              <Tooltip>
+                <TooltipTrigger
+                  render={
+                    <button
+                      type="button"
+                      aria-label="What is this?"
+                      className="inline-flex items-center justify-center text-muted-foreground hover:text-foreground cursor-help"
+                    />
+                  }
+                >
+                  <Info className="size-3.5" />
+                </TooltipTrigger>
+                <TooltipContent>
+                  The bit after the @ in your business email.
+                </TooltipContent>
+              </Tooltip>
+            </Label>
             <Input
               id="mail-domain"
               value={domain}
@@ -386,7 +448,7 @@ function Wizard({
                     value={mailboxPrefix}
                     onChange={(e) => onMailboxPrefixChange(e.target.value)}
                     placeholder="Mailbox prefix"
-                    className="flex-1"
+                    className="w-44"
                   />
                   <span className="text-sm text-muted-foreground whitespace-nowrap">
                     @{domain ? sanitizeDomain(domain) : "yourfirm.com.au"}

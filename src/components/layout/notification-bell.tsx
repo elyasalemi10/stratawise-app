@@ -159,8 +159,10 @@ export function NotificationBell() {
                     key={n.id}
                     type="button"
                     onClick={() => handleClick(n)}
-                    className={`flex w-full items-start gap-3 px-3 py-2.5 text-left hover:bg-muted/50 transition-colors cursor-pointer border-b border-border/50 last:border-b-0 ${
-                      !n.read_at ? "bg-primary/5" : ""
+                    className={`flex w-full items-start gap-3 px-3 py-2.5 text-left transition-colors cursor-pointer border-b border-border/50 last:border-b-0 ${
+                      !n.read_at
+                        ? "bg-primary/5 hover:bg-primary/10"
+                        : "bg-muted/40 hover:bg-muted/60"
                     }`}
                   >
                     <div className={`flex h-7 w-7 items-center justify-center rounded-md shrink-0 mt-0.5 ${
@@ -169,10 +171,14 @@ export function NotificationBell() {
                       <Icon className="h-3.5 w-3.5" />
                     </div>
                     <div className="flex-1 min-w-0">
-                      <p className={`text-sm ${!n.read_at ? "font-medium text-foreground" : "text-foreground"}`}>
+                      <p className={`text-sm ${
+                        !n.read_at ? "font-medium text-foreground" : "text-muted-foreground"
+                      }`}>
                         {n.title}
                       </p>
-                      <p className="text-xs text-muted-foreground mt-0.5 line-clamp-2">{n.message}</p>
+                      <p className={`text-xs mt-0.5 line-clamp-2 ${
+                        !n.read_at ? "text-muted-foreground" : "text-muted-foreground/70"
+                      }`}>{n.message}</p>
                       <p className="text-xs text-muted-foreground/60 mt-1">{timeAgo(n.created_at)}</p>
                     </div>
                     {!n.read_at && (

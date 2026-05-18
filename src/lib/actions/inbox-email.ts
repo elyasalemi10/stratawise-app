@@ -415,6 +415,99 @@ export async function removeInboxEmail(
   return { ok: true, data: { id: notificationId } };
 }
 
+// ─── People search for the link-to-lot combobox ────────────────────────
+//
+// Returns a flat list of OWNERSHIPS the manager can choose from, sorted by
+// owner name. Multi-lot owners surface as multiple rows so the manager can
+// pick which lot the email relates to. The underlying email link still
+// stores (oc_id, lot_id) — owners aren't a first-class entity for
+// documents/comms — but the picker UX is "search people."
+//
+// q is a substring against owner name / OC name / lot label, case-
+// insensitive. Capped at 50 results so the dropdown stays usable.
+
+export interface PersonOwnershipOption {
+  // Stable composite id used as the value in the combobox; encodes both
+  // sides so the parent can derive (oc_id, lot_id) without a second
+  // round-trip.
+  key: string;
+  oc_id: string;
+  lot_id: string;
+  oc_name: string;
+  oc_short_code: string;
+  lot_label: string;
+  owner_name: string;
+  owner_email: string | null;
+}
+
+export async function searchPeopleForAssociate(
+  q: string,
+): Promise<PersonOwnershipOption[]> {
+  const profile = await requireCompanyRole();
+  if (!profile.management_company_id) return [];
+  const supabase = createServerClient();
+
+  // Step 1: candidate OCs for this firm. Bounded by the firm's portfolio
+  // (typically 10s-100s) — cheaper to fetch upfront than to join 4-way.
+  const { data: ocs } = await supabase
+    .from("owners_corporations")
+    .select("id, name, short_code")
+    .eq("management_company_id", profile.management_company_id);
+  const ocMap = new Map<string, { name: string; short_code: string }>();
+  for (const oc of (ocs ?? []) as Array<{ id: string; name: string; short_code: string }>) {
+    ocMap.set(oc.id, { name: oc.name, short_code: oc.short_code });
+  }
+  if (ocMap.size === 0) return [];
+
+  // Step 2: lots in those OCs.
+  const ocIds = Array.from(ocMap.keys());
+  const { data: lots } = await supabase
+    .from("lots")
+    .select("id, oc_id, lot_number, unit_number")
+    .in("oc_id", ocIds)
+    .limit(2000);
+  const lotMap = new Map<string, { oc_id: string; label: string }>();
+  for (const l of (lots ?? []) as Array<{ id: string; oc_id: string; lot_number: number; unit_number: string | null }>) {
+    const label = `Lot ${l.lot_number}${l.unit_number ? ` · Unit ${l.unit_number}` : ""}`;
+    lotMap.set(l.id, { oc_id: l.oc_id, label });
+  }
+  if (lotMap.size === 0) return [];
+
+  // Step 3: current owners across those lots.
+  const lotIds = Array.from(lotMap.keys());
+  const { data: owners } = await supabase
+    .from("lot_owners")
+    .select("lot_id, name, email")
+    .in("lot_id", lotIds);
+
+  const needle = q.trim().toLowerCase();
+  const rows: PersonOwnershipOption[] = [];
+  for (const o of (owners ?? []) as Array<{ lot_id: string; name: string | null; email: string | null }>) {
+    const lot = lotMap.get(o.lot_id);
+    if (!lot) continue;
+    const oc = ocMap.get(lot.oc_id);
+    if (!oc) continue;
+    const ownerName = (o.name ?? "").trim() || "Unnamed owner";
+    if (needle) {
+      const haystack = `${ownerName} ${oc.name} ${lot.label} ${o.email ?? ""}`.toLowerCase();
+      if (!haystack.includes(needle)) continue;
+    }
+    rows.push({
+      key: `${lot.oc_id}:${o.lot_id}`,
+      oc_id: lot.oc_id,
+      lot_id: o.lot_id,
+      oc_name: oc.name,
+      oc_short_code: oc.short_code,
+      lot_label: lot.label,
+      owner_name: ownerName,
+      owner_email: o.email,
+    });
+  }
+
+  rows.sort((a, b) => a.owner_name.localeCompare(b.owner_name));
+  return rows.slice(0, 50);
+}
+
 // ─── OC / Lot lookups for the associate picker ─────────────────────────
 
 export interface OcPickerOption {

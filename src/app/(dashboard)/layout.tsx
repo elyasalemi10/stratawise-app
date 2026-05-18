@@ -41,8 +41,8 @@ export default async function DashboardLayout({
             <SidebarTrigger className="-ml-1" />
             <Header initialOCs={sidebarOCs} />
           </header>
-          <main className="flex-1 min-h-0 overflow-y-auto bg-background py-4 md:py-6 px-4 lg:px-6">
-            {children}
+          <main className="flex-1 min-h-0 min-w-0 overflow-y-auto overflow-x-hidden bg-background py-4 md:py-6 px-4 lg:px-6">
+            <div className="min-w-0">{children}</div>
           </main>
         </SidebarInset>
       </SidebarProvider>

@@ -1,7 +1,7 @@
 "use client";
 
 import Image from "next/image";
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import {
   Inbox,
@@ -22,18 +22,19 @@ import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
-import {
   Tooltip,
   TooltipContent,
   TooltipProvider,
   TooltipTrigger,
 } from "@/components/ui/tooltip";
+import {
+  Command,
+  CommandEmpty,
+  CommandGroup,
+  CommandInput,
+  CommandItem,
+  CommandList,
+} from "@/components/ui/command";
 import { EditSheet } from "@/components/shared/edit-sheet";
 import { EmptyState } from "@/components/shared/empty-state";
 import { toast } from "sonner";
@@ -48,12 +49,10 @@ import {
   getInboxEmail,
   replyToInboxEmail,
   associateInboxEmailToLot,
-  listOcsForAssociate,
-  listLotsForAssociate,
+  searchPeopleForAssociate,
   removeInboxEmail,
   type InboxEmailDetail,
-  type OcPickerOption,
-  type LotPickerOption,
+  type PersonOwnershipOption,
 } from "@/lib/actions/inbox-email";
 
 const TYPE_ICONS: Record<string, typeof FileText> = {
@@ -473,25 +472,25 @@ function EmailDetailPane({
                 <Reply className="mr-1.5 h-3.5 w-3.5" />
                 Reply
               </Button>
-              {!detail.oc_id && (
-                <Tooltip>
-                  <TooltipTrigger
-                    render={
-                      <Button
-                        variant="secondary"
-                        size="sm"
-                        onClick={() => setAssociateOpen(true)}
-                      />
-                    }
-                  >
-                    <LinkIcon className="mr-1.5 h-3.5 w-3.5" />
-                    Link to lot
-                  </TooltipTrigger>
-                  <TooltipContent>
-                    Tag this email to a lot so it shows on the lot&apos;s Communications tab.
-                  </TooltipContent>
-                </Tooltip>
-              )}
+              <Tooltip>
+                <TooltipTrigger
+                  render={
+                    <Button
+                      variant="secondary"
+                      size="sm"
+                      onClick={() => setAssociateOpen(true)}
+                    />
+                  }
+                >
+                  <LinkIcon className="mr-1.5 h-3.5 w-3.5" />
+                  {detail.oc_id ? "Change lot" : "Link to lot"}
+                </TooltipTrigger>
+                <TooltipContent>
+                  {detail.oc_id
+                    ? "Re-link this email to a different lot."
+                    : "Tag this email to a lot so it shows on the lot's Communications tab."}
+                </TooltipContent>
+              </Tooltip>
               {openInProviderUrl && (
                 <Tooltip>
                   <TooltipTrigger
@@ -707,7 +706,13 @@ function ReplyDrawer({
   );
 }
 
-// ─── Associate drawer ────────────────────────────────────────────────────
+// ─── Associate drawer (people search) ───────────────────────────────────
+//
+// Combobox of OWNERSHIPS — searchable by owner name, OC name, lot label,
+// or email. Multi-lot owners surface as multiple rows. Selection writes
+// (oc_id, lot_id) onto the inbound row so it appears on the lot's
+// Communications tab; we don't store anything about the OWNER because
+// documents/comms are lot-keyed in this codebase.
 
 function AssociateDrawer({
   open,
@@ -720,113 +725,128 @@ function AssociateDrawer({
   communicationLogId: string;
   onSaved: (ocId: string, lotId: string | null) => void;
 }) {
-  const [ocs, setOcs] = useState<OcPickerOption[]>([]);
-  const [lots, setLots] = useState<LotPickerOption[]>([]);
-  const [ocId, setOcId] = useState("");
-  const [lotId, setLotId] = useState<string>("");
+  const [query, setQuery] = useState("");
+  const [people, setPeople] = useState<PersonOwnershipOption[]>([]);
+  const [loading, setLoading] = useState(false);
+  const [selected, setSelected] = useState<PersonOwnershipOption | null>(null);
+
+  // Debounced search. Empty query returns the first page (most recent
+  // owners by name) so the dropdown is never blank on open.
+  useEffect(() => {
+    if (!open) return;
+    let cancelled = false;
+    setLoading(true);
+    const t = window.setTimeout(() => {
+      searchPeopleForAssociate(query)
+        .then((rows) => {
+          if (cancelled) return;
+          setPeople(rows);
+        })
+        .finally(() => {
+          if (!cancelled) setLoading(false);
+        });
+    }, 180);
+    return () => {
+      cancelled = true;
+      window.clearTimeout(t);
+    };
+  }, [query, open]);
 
   useEffect(() => {
     if (!open) {
-      setOcs([]);
-      setLots([]);
-      setOcId("");
-      setLotId("");
-      return;
+      setQuery("");
+      setPeople([]);
+      setSelected(null);
     }
-    listOcsForAssociate().then(setOcs);
   }, [open]);
-
-  useEffect(() => {
-    if (!ocId) {
-      setLots([]);
-      setLotId("");
-      return;
-    }
-    listLotsForAssociate(ocId).then(setLots);
-  }, [ocId]);
-
-  const ocLabel = useMemo(
-    () => ocs.find((o) => o.id === ocId)?.name ?? null,
-    [ocs, ocId],
-  );
-  const lotLabel = useMemo(
-    () => lots.find((l) => l.id === lotId)?.label ?? null,
-    [lots, lotId],
-  );
 
   if (!open) return null;
   return (
     <EditSheet
-      label="Associate with lot"
-      description="Pick the OC and lot this email relates to. The email will appear on the lot's Communications tab."
+      label="Link this email to a lot"
+      description="Search owners by name, lot, OC, or email. We'll attach the email to that owner's lot so it appears on the lot's Communications tab."
       headerKicker={null}
       open
       onOpenChange={(o) => {
         if (!o) onClose();
       }}
       renderTrigger={() => <span />}
-      saveLabel="Save association"
-      successToast="Email associated"
+      saveLabel="Link to lot"
+      successToast="Email linked"
       onSave={async () => {
-        if (!ocId)
-          return { ok: false as const, error: "Pick an Owners Corporation." };
+        if (!selected) {
+          return { ok: false as const, error: "Pick an owner to link to." };
+        }
         const res = await associateInboxEmailToLot({
           communicationLogId,
-          oc_id: ocId,
-          lot_id: lotId || null,
+          oc_id: selected.oc_id,
+          lot_id: selected.lot_id,
         });
         if (res.ok) {
-          onSaved(ocId, lotId || null);
-          toast.success("Email associated");
+          onSaved(selected.oc_id, selected.lot_id);
         }
         return res.ok
           ? { ok: true as const }
           : { ok: false as const, error: res.error };
       }}
     >
-      <div className="space-y-1.5">
-        <Label>
-          Owners Corporation <span className="text-destructive">*</span>
-        </Label>
-        <Select value={ocId} onValueChange={(v) => setOcId(v ?? "")}>
-          <SelectTrigger className="w-full">
-            <SelectValue placeholder="Choose an OC">{ocLabel}</SelectValue>
-          </SelectTrigger>
-          <SelectContent>
-            {ocs.map((o) => (
-              <SelectItem key={o.id} value={o.id}>
-                {o.name}
-              </SelectItem>
-            ))}
-          </SelectContent>
-        </Select>
-      </div>
-
-      <div className="space-y-1.5">
-        <Label>Lot</Label>
-        <Select
-          value={lotId}
-          onValueChange={(v) => setLotId(v ?? "")}
-          disabled={!ocId || lots.length === 0}
-        >
-          <SelectTrigger className="w-full">
-            <SelectValue placeholder={ocId ? "Optional — choose a lot" : "Pick an OC first"}>
-              {lotLabel}
-            </SelectValue>
-          </SelectTrigger>
-          <SelectContent>
-            {lots.map((l) => (
-              <SelectItem key={l.id} value={l.id}>
-                {l.label}
-                {l.owner_name && (
-                  <span className="ml-2 text-xs text-muted-foreground">
-                    {l.owner_name}
-                  </span>
-                )}
-              </SelectItem>
-            ))}
-          </SelectContent>
-        </Select>
+      <div className="space-y-2">
+        <Label>Owner</Label>
+        <Command shouldFilter={false} className="rounded-md border border-border bg-card">
+          <CommandInput
+            value={query}
+            onValueChange={setQuery}
+            placeholder="Search owners, lots, OCs…"
+          />
+          <CommandList className="max-h-72">
+            {loading && <div className="px-3 py-6 text-center text-xs text-muted-foreground">Searching…</div>}
+            {!loading && people.length === 0 && (
+              <CommandEmpty>No matching owners.</CommandEmpty>
+            )}
+            {!loading && people.length > 0 && (
+              <CommandGroup>
+                {people.map((p) => (
+                  <CommandItem
+                    key={p.key}
+                    value={p.key}
+                    onSelect={() => setSelected(p)}
+                    className={cn(
+                      "flex flex-col items-start gap-0.5",
+                      selected?.key === p.key && "bg-primary/10",
+                    )}
+                  >
+                    <p className="text-sm font-medium text-foreground">
+                      {p.owner_name}
+                      {p.owner_email && (
+                        <span className="ml-2 text-xs font-normal text-muted-foreground">
+                          {p.owner_email}
+                        </span>
+                      )}
+                    </p>
+                    <p className="text-xs text-muted-foreground">
+                      {p.oc_name} · {p.lot_label}
+                    </p>
+                  </CommandItem>
+                ))}
+              </CommandGroup>
+            )}
+          </CommandList>
+        </Command>
+        {selected && (
+          <div className="flex items-center justify-between gap-2 rounded-md border border-border bg-cool-muted px-3 py-2 text-xs">
+            <span className="text-foreground">
+              Linking to <span className="font-medium">{selected.owner_name}</span> ·{" "}
+              {selected.oc_name} · {selected.lot_label}
+            </span>
+            <button
+              type="button"
+              onClick={() => setSelected(null)}
+              className="text-muted-foreground hover:text-foreground cursor-pointer"
+            >
+              Clear
+            </button>
+          </div>
+        )}
       </div>
     </EditSheet>
   );
