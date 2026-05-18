@@ -228,7 +228,10 @@ export async function saveGmailSetup(input: SaveGmailSetupInput) {
 
   const test = await testGmailConnection(mailbox);
   if (!test.ok) {
-    return { error: test.error, reason: test.reason };
+    return {
+      error: humaniseDwdError(test.error, test.reason, mailbox),
+      reason: test.reason,
+    };
   }
 
   // Successful test → kick off users.watch() so inbound sync goes live
@@ -303,4 +306,30 @@ export async function disconnectMailProvider() {
     .eq("id", profile.management_company_id);
   if (error) return { error: error.message };
   return { ok: true as const };
+}
+
+// Maps Google's raw OAuth / Gmail-API error names onto plain-English copy.
+// Reads the verbatim message ALSO (not just the reason) because the
+// gmail-client error string sometimes embeds the reason at the start
+// ("invalid_grant: Invalid email or User ID") and sometimes only as
+// "reason" on the result.
+function humaniseDwdError(
+  rawMessage: string,
+  reason: string | null | undefined,
+  mailbox: string,
+): string {
+  const blob = `${rawMessage} ${reason ?? ""}`.toLowerCase();
+  if (blob.includes("invalid_grant") || blob.includes("invalid email") || blob.includes("user not found") || blob.includes("not found")) {
+    return `We couldn't impersonate ${mailbox}. Check that this mailbox exists in your Workspace and the prefix is exactly what's before the "@".`;
+  }
+  if (blob.includes("unauthorized_client") || blob.includes("unauthorized")) {
+    return `Your Workspace admin hasn't authorised StrataWise for this domain yet. Double-check the Client ID and OAuth scopes match what we showed in the tutorial.`;
+  }
+  if (blob.includes("forbidden") || blob.includes("insufficient")) {
+    return `StrataWise was authorised but is missing the gmail.send / gmail.modify scopes. Re-open Domain-Wide Delegation and confirm both scopes are listed.`;
+  }
+  if (blob.includes("invalid_scope")) {
+    return `One of the OAuth scopes wasn't accepted. Re-copy the scopes from Step 3 (they need to match exactly, including the comma).`;
+  }
+  return `Gmail couldn't reach ${mailbox}. ${rawMessage}`;
 }

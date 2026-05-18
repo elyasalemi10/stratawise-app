@@ -15,10 +15,7 @@ import {
   Reply,
   Loader2,
   Link as LinkIcon,
-  MoreVertical,
   Trash2,
-  ExternalLink,
-  Tag,
 } from "lucide-react";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -32,12 +29,11 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuTrigger,
-  DropdownMenuSeparator,
-} from "@/components/ui/dropdown-menu";
+  Tooltip,
+  TooltipContent,
+  TooltipProvider,
+  TooltipTrigger,
+} from "@/components/ui/tooltip";
 import { EditSheet } from "@/components/shared/edit-sheet";
 import { EmptyState } from "@/components/shared/empty-state";
 import { toast } from "sonner";
@@ -80,58 +76,29 @@ const TYPE_COLORS: Record<string, string> = {
   system: "bg-muted text-muted-foreground",
 };
 
-// Detect which provider a sender belongs to from the email-address domain.
-// Conservative — we only assert the brand when the domain is a known
-// consumer/Workspace endpoint. Custom firm domains hit "unknown" and fall
-// back to the generic mail glyph.
-type Provider = "gmail" | "outlook" | "unknown";
-const GMAIL_DOMAINS = new Set(["gmail.com", "googlemail.com"]);
-const OUTLOOK_DOMAINS = new Set([
-  "outlook.com",
-  "outlook.com.au",
-  "hotmail.com",
-  "hotmail.com.au",
-  "live.com",
-  "live.com.au",
-  "msn.com",
-]);
-function detectProvider(email: string | null | undefined): Provider {
-  if (!email) return "unknown";
-  const domain = email.split("@")[1]?.toLowerCase() ?? "";
-  if (!domain) return "unknown";
-  if (GMAIL_DOMAINS.has(domain)) return "gmail";
-  if (OUTLOOK_DOMAINS.has(domain)) return "outlook";
-  return "unknown";
-}
+// Provider hint comes from the SERVER (inbox metadata + gmail_mailbox_subscriptions
+// lookup) — NOT from the sender's email domain. A reply from any address still
+// arrived via the Gmail webhook, so the Gmail glyph is what reflects "how it
+// got here." Sender-domain inference was misleading (a gmail-pushed reply
+// from joe@randomfirm.com was rendering as a generic mail icon).
+type Provider = "gmail" | "outlook" | null;
 
-function ProviderIcon({ email, size = "sm" }: { email: string | null | undefined; size?: "sm" | "md" }) {
-  const provider = detectProvider(email);
+function ProviderIcon({
+  provider,
+  size = "sm",
+}: {
+  provider: Provider;
+  size?: "sm" | "md";
+}) {
   const px = size === "md" ? 20 : 14;
+  const klass = cn(size === "md" ? "size-5" : "size-3.5", "object-contain");
   if (provider === "gmail") {
-    return (
-      <Image
-        src="/logos/gmail.webp"
-        alt="Gmail"
-        width={px}
-        height={px}
-        className={cn(size === "md" ? "size-5" : "size-3.5", "object-contain")}
-      />
-    );
+    return <Image src="/logos/gmail.webp" alt="Gmail" width={px} height={px} className={klass} />;
   }
   if (provider === "outlook") {
-    return (
-      <Image
-        src="/logos/outlook.webp"
-        alt="Outlook"
-        width={px}
-        height={px}
-        className={cn(size === "md" ? "size-5" : "size-3.5", "object-contain")}
-      />
-    );
+    return <Image src="/logos/outlook.webp" alt="Outlook" width={px} height={px} className={klass} />;
   }
-  return (
-    <Mail className={cn(size === "md" ? "size-5" : "size-3.5", "text-muted-foreground")} />
-  );
+  return <Mail className={cn(size === "md" ? "size-5" : "size-3.5", "text-muted-foreground")} />;
 }
 
 function timeAgo(dateStr: string): string {
@@ -148,8 +115,10 @@ function timeAgo(dateStr: string): string {
 
 export function InboxContent({
   notifications: initial,
+  rowProviders,
 }: {
   notifications: Notification[];
+  rowProviders: Record<string, "gmail" | "outlook">;
 }) {
   const router = useRouter();
   const searchParams = useSearchParams();
@@ -164,19 +133,6 @@ export function InboxContent({
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [urlOpenId]);
-
-  // Per-notification sender email cache so we can show the provider icon on
-  // the list row without re-fetching each open. Populated lazily as emails
-  // are opened; falls back to `notification.metadata.sender_email` when
-  // present (we stash it on the notification at ingest for email_reply).
-  const senderCache = useMemo(() => {
-    const map: Record<string, string | null> = {};
-    for (const n of notifications) {
-      const meta = (n.metadata ?? {}) as { sender_email?: string };
-      if (meta.sender_email) map[n.id] = meta.sender_email;
-    }
-    return map;
-  }, [notifications]);
 
   const unreadCount = notifications.filter((n) => !n.read_at).length;
   const openNotification = notifications.find((n) => n.id === openId) ?? null;
@@ -265,7 +221,7 @@ export function InboxContent({
               const Icon = TYPE_ICONS[n.type] ?? Info;
               const isUnread = !n.read_at;
               const isOpen = n.id === openId;
-              const senderEmail = senderCache[n.id] ?? null;
+              const provider = rowProviders[n.id] ?? null;
               const showProvider = n.type === "email_reply";
 
               return (
@@ -285,11 +241,13 @@ export function InboxContent({
                   <div
                     className={cn(
                       "flex h-8 w-8 items-center justify-center rounded-full shrink-0",
-                      TYPE_COLORS[n.type] ?? TYPE_COLORS.system,
+                      showProvider
+                        ? "bg-card border border-border"
+                        : (TYPE_COLORS[n.type] ?? TYPE_COLORS.system),
                     )}
                   >
                     {showProvider ? (
-                      <ProviderIcon email={senderEmail} size="md" />
+                      <ProviderIcon provider={provider} size="md" />
                     ) : (
                       <Icon className="h-3.5 w-3.5" />
                     )}
@@ -476,107 +434,139 @@ function EmailDetailPane({
     );
   }
 
-  const provider = detectProvider(detail.sender_email);
+  const provider = detail.inbox_provider;
+  // Prefer the Gmail-internal messageId stashed on the notification — that
+  // deep-links straight to the conversation. Falls back to a sender-keyed
+  // search when older ingests didn't capture the id.
   const openInProviderUrl =
-    provider === "gmail"
-      ? `https://mail.google.com/mail/u/0/#search/${encodeURIComponent(detail.sender_email)}`
-      : provider === "outlook"
-        ? `https://outlook.office.com/mail/0/${encodeURIComponent(detail.sender_email)}`
-        : null;
+    provider === "gmail" && detail.gmail_message_id
+      ? `https://mail.google.com/mail/u/0/#inbox/${detail.gmail_message_id}`
+      : provider === "gmail"
+        ? `https://mail.google.com/mail/u/0/#search/${encodeURIComponent(detail.sender_email)}`
+        : provider === "outlook"
+          ? `https://outlook.office.com/mail/0/${encodeURIComponent(detail.sender_email)}`
+          : null;
 
   return (
-    <Card>
-      <CardContent className="pt-5 space-y-4">
-        <BackBar onBack={onBack} compact />
+    <TooltipProvider delay={120}>
+      <Card>
+        <CardContent className="pt-5 space-y-4">
+          <BackBar onBack={onBack} compact />
 
-        {/* Header */}
-        <div className="flex items-start justify-between gap-3 pb-4 border-b border-border">
-          <div className="flex items-start gap-3 min-w-0">
-            <div className="flex h-10 w-10 items-center justify-center rounded-full bg-card border border-border shrink-0">
-              <ProviderIcon email={detail.sender_email} size="md" />
+          {/* Header */}
+          <div className="flex items-start justify-between gap-3 pb-4 border-b border-border">
+            <div className="flex items-start gap-3 min-w-0">
+              <div className="flex h-10 w-10 items-center justify-center rounded-full bg-card border border-border shrink-0">
+                <ProviderIcon provider={provider} size="md" />
+              </div>
+              <div className="min-w-0">
+                <h2 className="text-base font-semibold text-foreground break-words">
+                  {detail.subject || "(no subject)"}
+                </h2>
+                <p className="text-xs text-muted-foreground mt-0.5">
+                  {formatDateLong(detail.sent_at ?? detail.created_at)}
+                </p>
+              </div>
             </div>
-            <div className="min-w-0">
-              <h2 className="text-base font-semibold text-foreground break-words">
-                {detail.subject || "(no subject)"}
-              </h2>
-              <p className="text-xs text-muted-foreground mt-0.5">
-                {formatDateLong(detail.sent_at ?? detail.created_at)}
-              </p>
-            </div>
-          </div>
-          <div className="flex items-center gap-2 shrink-0">
-            <Button size="sm" onClick={() => setReplyOpen(true)}>
-              <Reply className="mr-1.5 h-3.5 w-3.5" />
-              Reply
-            </Button>
-            <DropdownMenu>
-              <DropdownMenuTrigger
-                render={
-                  <Button variant="secondary" size="icon" className="h-9 w-9" />
-                }
-              >
-                <MoreVertical className="size-4" />
-                <span className="sr-only">Actions</span>
-              </DropdownMenuTrigger>
-              <DropdownMenuContent align="end" className="w-56">
-                {!detail.oc_id && (
-                  <DropdownMenuItem onClick={() => setAssociateOpen(true)}>
-                    <Tag className="mr-2 size-4" />
-                    Associate with lot
-                  </DropdownMenuItem>
-                )}
-                {openInProviderUrl && (
-                  <DropdownMenuItem
-                    onClick={() => window.open(openInProviderUrl, "_blank", "noopener,noreferrer")}
+            <div className="flex items-center gap-1.5 shrink-0">
+              <Button size="sm" onClick={() => setReplyOpen(true)}>
+                <Reply className="mr-1.5 h-3.5 w-3.5" />
+                Reply
+              </Button>
+              {!detail.oc_id && (
+                <Tooltip>
+                  <TooltipTrigger
+                    render={
+                      <Button
+                        variant="secondary"
+                        size="sm"
+                        onClick={() => setAssociateOpen(true)}
+                      />
+                    }
                   >
-                    <ExternalLink className="mr-2 size-4" />
-                    Open in {provider === "gmail" ? "Gmail" : "Outlook"}
-                  </DropdownMenuItem>
-                )}
-                {(!detail.oc_id || openInProviderUrl) && <DropdownMenuSeparator />}
-                <DropdownMenuItem
-                  onClick={() => onRemove()}
-                  className="text-destructive focus:text-destructive"
+                    <LinkIcon className="mr-1.5 h-3.5 w-3.5" />
+                    Link to lot
+                  </TooltipTrigger>
+                  <TooltipContent>
+                    Tag this email to a lot so it shows on the lot&apos;s Communications tab.
+                  </TooltipContent>
+                </Tooltip>
+              )}
+              {openInProviderUrl && (
+                <Tooltip>
+                  <TooltipTrigger
+                    render={
+                      <Button
+                        variant="secondary"
+                        size="icon"
+                        className="h-9 w-9"
+                        onClick={() =>
+                          window.open(openInProviderUrl, "_blank", "noopener,noreferrer")
+                        }
+                      />
+                    }
+                  >
+                    {provider === "gmail" ? (
+                      <Image src="/logos/gmail.webp" alt="" width={18} height={18} className="size-4 object-contain" />
+                    ) : (
+                      <Image src="/logos/outlook.webp" alt="" width={18} height={18} className="size-4 object-contain" />
+                    )}
+                    <span className="sr-only">Open in {provider === "gmail" ? "Gmail" : "Outlook"}</span>
+                  </TooltipTrigger>
+                  <TooltipContent>
+                    Open the original in {provider === "gmail" ? "Gmail" : "Outlook"}.
+                  </TooltipContent>
+                </Tooltip>
+              )}
+              <Tooltip>
+                <TooltipTrigger
+                  render={
+                    <Button
+                      variant="secondary"
+                      size="icon"
+                      className="h-9 w-9 text-destructive hover:text-destructive"
+                      onClick={() => onRemove()}
+                    />
+                  }
                 >
-                  <Trash2 className="mr-2 size-4" />
-                  Remove from inbox
-                </DropdownMenuItem>
-              </DropdownMenuContent>
-            </DropdownMenu>
+                  <Trash2 className="size-4" />
+                  <span className="sr-only">Remove from inbox</span>
+                </TooltipTrigger>
+                <TooltipContent>
+                  Removes from your StrataWise inbox only — the original stays in
+                  {provider === "gmail" ? " Gmail" : provider === "outlook" ? " Outlook" : " your mailbox"}.
+                </TooltipContent>
+              </Tooltip>
+            </div>
           </div>
-        </div>
 
-        {/* Address fields */}
-        <div className="grid grid-cols-1 gap-2 sm:grid-cols-[auto_1fr] text-sm">
-          <span className="text-xs uppercase tracking-wide text-muted-foreground sm:pt-0.5">
-            From
-          </span>
-          <span className="font-medium text-foreground break-all">
-            {detail.sender_email || "—"}
-          </span>
-          <span className="text-xs uppercase tracking-wide text-muted-foreground sm:pt-0.5">
-            To
-          </span>
-          <span className="text-foreground break-all">
-            {detail.recipient_email}
-          </span>
-          <span className="text-xs uppercase tracking-wide text-muted-foreground sm:pt-0.5">
-            Lot
-          </span>
-          <span className="flex items-center gap-2 flex-wrap text-foreground">
-            {detail.oc_id && detail.lot_id ? (
-              <a
-                href={`/ocs/${detail.oc_id}/lots/${detail.lot_id}?tab=communications`}
-                className="inline-flex items-center gap-1 text-blue-600 underline-offset-4 hover:underline"
-              >
-                {detail.oc_name ?? "OC"} · {detail.lot_label ?? "Lot"}
-                <LinkIcon className="h-3 w-3" />
-              </a>
-            ) : (
-              <span className="text-muted-foreground">Not associated</span>
-            )}
-          </span>
-        </div>
+          {/* Address fields — inline label-prefixed style */}
+          <div className="space-y-1.5 text-sm">
+            <p className="text-foreground">
+              <span className="text-muted-foreground">From: </span>
+              <span className="font-medium break-all">
+                {detail.sender_email || "—"}
+              </span>
+            </p>
+            <p className="text-foreground">
+              <span className="text-muted-foreground">To: </span>
+              <span className="break-all">{detail.recipient_email}</span>
+            </p>
+            <p className="text-foreground flex items-center gap-2 flex-wrap">
+              <span className="text-muted-foreground">Lot: </span>
+              {detail.oc_id && detail.lot_id ? (
+                <a
+                  href={`/ocs/${detail.oc_id}/lots/${detail.lot_id}?tab=communications`}
+                  className="inline-flex items-center gap-1 text-blue-600 underline-offset-4 hover:underline"
+                >
+                  {detail.oc_name ?? "OC"} · {detail.lot_label ?? "Lot"}
+                  <LinkIcon className="h-3 w-3" />
+                </a>
+              ) : (
+                <span className="text-muted-foreground">Not associated</span>
+              )}
+            </p>
+          </div>
 
         {/* Body */}
         <div className="rounded-md border border-border bg-cool-muted p-4 max-h-[40rem] overflow-y-auto whitespace-pre-wrap text-sm leading-relaxed text-foreground">
@@ -602,33 +592,34 @@ function EmailDetailPane({
         <p className="text-xs text-muted-foreground">
           Attachments not yet supported on inbound replies.
         </p>
-      </CardContent>
+        </CardContent>
 
-      <ReplyDrawer
-        open={replyOpen}
-        onClose={() => setReplyOpen(false)}
-        detail={detail}
-        onSent={() => setReplyOpen(false)}
-      />
+        <ReplyDrawer
+          open={replyOpen}
+          onClose={() => setReplyOpen(false)}
+          detail={detail}
+          onSent={() => setReplyOpen(false)}
+        />
 
-      <AssociateDrawer
-        open={associateOpen}
-        onClose={() => setAssociateOpen(false)}
-        communicationLogId={detail.id}
-        onSaved={(ocId, lotId) => {
-          setAssociateOpen(false);
-          setDetail((d) =>
-            d
-              ? {
-                  ...d,
-                  oc_id: ocId,
-                  lot_id: lotId,
-                }
-              : d,
-          );
-        }}
-      />
-    </Card>
+        <AssociateDrawer
+          open={associateOpen}
+          onClose={() => setAssociateOpen(false)}
+          communicationLogId={detail.id}
+          onSaved={(ocId, lotId) => {
+            setAssociateOpen(false);
+            setDetail((d) =>
+              d
+                ? {
+                    ...d,
+                    oc_id: ocId,
+                    lot_id: lotId,
+                  }
+                : d,
+            );
+          }}
+        />
+      </Card>
+    </TooltipProvider>
   );
 }
 

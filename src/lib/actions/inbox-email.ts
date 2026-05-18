@@ -40,6 +40,15 @@ export interface InboxEmailDetail {
   lot_id: string | null;
   oc_name: string | null;
   lot_label: string | null;
+  // Which transport delivered this inbound — "gmail" when the row came in
+  // via the Pub/Sub gmail-push webhook (regardless of sender domain),
+  // "outlook" when Microsoft Graph ships, else null.
+  inbox_provider: "gmail" | "outlook" | null;
+  // Gmail-internal ids stashed on the notification when ingested via
+  // gmail-push, used to deep-link the "Open in Gmail" action straight to
+  // the message instead of a search query.
+  gmail_message_id: string | null;
+  gmail_thread_id: string | null;
   // The outbound row this is a reply to (when auto-match found one).
   outbound: {
     id: string;
@@ -82,9 +91,25 @@ export async function getInboxEmail(
     .eq("profile_id", profile.id)
     .filter("metadata->>communication_log_id", "eq", communicationLogId)
     .maybeSingle();
-  const senderEmail =
-    ((notif as { metadata: { sender_email?: string } | null } | null)?.metadata
-      ?.sender_email as string | undefined) ?? "";
+  const notifMeta =
+    ((notif as { metadata: Record<string, unknown> | null } | null)?.metadata) ?? {};
+  const senderEmail = (notifMeta.sender_email as string | undefined) ?? "";
+  const metaProvider = notifMeta.provider as "gmail" | "outlook" | undefined;
+  const gmailMessageId = (notifMeta.gmail_message_id as string | undefined) ?? null;
+  const gmailThreadId = (notifMeta.gmail_thread_id as string | undefined) ?? null;
+
+  // Fallback provider resolution for rows ingested before we started
+  // tagging notification metadata with provider/gmail_message_id —
+  // checks the inbound row's recipient against gmail_mailbox_subscriptions.
+  let inboxProvider: "gmail" | "outlook" | null = metaProvider ?? null;
+  if (!inboxProvider && row.recipient_email) {
+    const { data: sub } = await supabase
+      .from("gmail_mailbox_subscriptions")
+      .select("id")
+      .eq("mailbox_email", (row.recipient_email as string).toLowerCase())
+      .maybeSingle();
+    if (sub) inboxProvider = "gmail";
+  }
 
   let outbound: InboxEmailDetail["outbound"] = null;
   if (row.related_entity_type === "communication_log" && row.related_entity_id) {
@@ -139,6 +164,9 @@ export async function getInboxEmail(
       lot_id: (row.lot_id as string | null) ?? null,
       oc_name: ocName,
       lot_label: lotLabel,
+      inbox_provider: inboxProvider,
+      gmail_message_id: gmailMessageId,
+      gmail_thread_id: gmailThreadId,
       outbound,
     },
   };
@@ -287,6 +315,76 @@ export async function associateInboxEmailToLot(
   });
 
   return { ok: true, data: { id: parsed.data.communicationLogId } };
+}
+
+// ─── Per-row provider hint for the inbox list ─────────────────────────
+//
+// Returns a Record<notificationId, "gmail" | "outlook"> for the email_reply
+// notifications whose `metadata.provider` is set (newer rows) OR whose
+// underlying communication_log.recipient_email matches a row in
+// gmail_mailbox_subscriptions for the firm (backfill for older rows
+// ingested before we tagged metadata). Anything we can't confidently
+// attribute is omitted — the client falls back to a generic Mail glyph.
+
+export async function resolveInboxRowProviders(
+  notifications: Array<{
+    id: string;
+    type: string;
+    metadata: Record<string, unknown> | null;
+  }>,
+): Promise<Record<string, "gmail" | "outlook">> {
+  const out: Record<string, "gmail" | "outlook"> = {};
+  const need: Array<{ id: string; commLogId: string }> = [];
+
+  for (const n of notifications) {
+    if (n.type !== "email_reply") continue;
+    const meta = (n.metadata ?? {}) as Record<string, unknown>;
+    const tagged = meta.provider as "gmail" | "outlook" | undefined;
+    if (tagged === "gmail" || tagged === "outlook") {
+      out[n.id] = tagged;
+      continue;
+    }
+    const commLogId = meta.communication_log_id as string | undefined;
+    if (commLogId) need.push({ id: n.id, commLogId });
+  }
+
+  if (need.length === 0) return out;
+
+  const supabase = createServerClient();
+  const { data: rows } = await supabase
+    .from("communication_log")
+    .select("id, recipient_email")
+    .in(
+      "id",
+      need.map((n) => n.commLogId),
+    );
+  const recipientByCommLog = new Map<string, string>();
+  for (const r of (rows ?? []) as Array<{ id: string; recipient_email: string | null }>) {
+    if (r.recipient_email) {
+      recipientByCommLog.set(r.id, r.recipient_email.toLowerCase());
+    }
+  }
+
+  const uniqueMailboxes = Array.from(new Set(recipientByCommLog.values()));
+  if (uniqueMailboxes.length === 0) return out;
+
+  const { data: subs } = await supabase
+    .from("gmail_mailbox_subscriptions")
+    .select("mailbox_email")
+    .in("mailbox_email", uniqueMailboxes);
+  const gmailMailboxes = new Set(
+    ((subs ?? []) as Array<{ mailbox_email: string }>).map((s) =>
+      s.mailbox_email.toLowerCase(),
+    ),
+  );
+
+  for (const n of need) {
+    const recipient = recipientByCommLog.get(n.commLogId);
+    if (recipient && gmailMailboxes.has(recipient)) {
+      out[n.id] = "gmail";
+    }
+  }
+  return out;
 }
 
 // ─── Remove from inbox (dismisses notification, keeps comm_log audit) ──

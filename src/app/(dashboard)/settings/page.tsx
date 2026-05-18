@@ -61,7 +61,7 @@ export default async function SettingsPage() {
     isManager
       ? supabase
           .from("gmail_mailbox_subscriptions")
-          .select("mailbox_email")
+          .select("mailbox_email, last_error")
           .eq("manager_profile_id", profile.id)
           .maybeSingle()
       : Promise.resolve({ data: null }),
@@ -88,9 +88,15 @@ export default async function SettingsPage() {
   // Derive the manager's current mailbox prefix (the part before "@") from
   // their gmail_mailbox_subscriptions row, if any. Lets the Email tab
   // pre-fill the prefix input on revisit.
-  const subMailbox = (mailboxSubResult.data as { mailbox_email: string | null } | null)
-    ?.mailbox_email ?? null;
+  const subRow = (mailboxSubResult.data as { mailbox_email: string | null; last_error: string | null } | null) ?? null;
+  const subMailbox = subRow?.mailbox_email ?? null;
   const initialMailboxPrefix = subMailbox?.split("@")[0] ?? "";
+
+  // Auth-shaped errors persisted by the gmail-push webhook (or watch-refresh
+  // cron) indicate the Workspace admin revoked our DWD entry — surface a
+  // banner so the manager knows to re-add it instead of silently going dark.
+  const dwdRevoked = !!subRow?.last_error && /unauthorized|invalid_grant|forbidden|401|403/i.test(subRow.last_error);
+  const mailboxIntegrationError = subRow?.last_error ?? null;
 
   // The always-on StrataWise alias every onboarded manager has —
   // <email_username>@stratawise.com.au — used as the fallback when they
@@ -141,6 +147,8 @@ export default async function SettingsPage() {
       gmailOauthClientId={gmailOauthClientId}
       initialMailboxPrefix={initialMailboxPrefix}
       stratawiseFallbackEmail={stratawiseFallbackEmail}
+      dwdRevoked={dwdRevoked}
+      mailboxIntegrationError={mailboxIntegrationError}
     />
   );
 }

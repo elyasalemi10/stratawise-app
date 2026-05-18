@@ -10,11 +10,18 @@ import {
   CheckCircle2,
   Mail,
   AlertTriangle,
+  Info,
 } from "lucide-react";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipProvider,
+  TooltipTrigger,
+} from "@/components/ui/tooltip";
 import { cn } from "@/lib/utils";
 import { GmailSetupTutorial } from "@/components/shared/gmail-setup-tutorial";
 import { saveGmailSetup, disconnectMailProvider } from "./actions";
@@ -45,6 +52,8 @@ export function EmailTab({
   oauthClientId,
   initialMailboxPrefix,
   stratawiseFallbackEmail,
+  dwdRevoked,
+  mailboxIntegrationError,
 }: {
   initial: MailProviderConfig;
   oauthClientId: string | null;
@@ -52,6 +61,10 @@ export function EmailTab({
   // The manager's <username>@stratawise.com.au alias (always present once
   // they've onboarded). Used as the read-out for "your fallback address".
   stratawiseFallbackEmail: string;
+  // Set when gmail_mailbox_subscriptions.last_error matches an auth-shape
+  // failure (admin removed the DWD entry). Drives the revoked banner.
+  dwdRevoked: boolean;
+  mailboxIntegrationError: string | null;
 }) {
   const [config, setConfig] = useState<MailProviderConfig>(initial);
   const [mailboxPrefix, setMailboxPrefix] = useState(initialMailboxPrefix);
@@ -66,18 +79,25 @@ export function EmailTab({
 
   if (!editing && config.provider !== "stratawise") {
     return (
-      <ConnectedView
-        config={config}
-        savedMailbox={savedMailbox}
-        stratawiseFallbackEmail={stratawiseFallbackEmail}
-        onChangeMailbox={() => setEditing(true)}
-        onDisconnected={() => {
-          setConfig({ provider: "stratawise", domain: null, configured_at: null });
-          setMailboxPrefix("");
-          setSavedMailbox(null);
-          setEditing(true);
-        }}
-      />
+      <div className="space-y-4">
+        {dwdRevoked && (
+          <RevokedBanner
+            error={mailboxIntegrationError}
+            onReconnect={() => setEditing(true)}
+          />
+        )}
+        <ConnectedView
+          config={config}
+          savedMailbox={savedMailbox}
+          stratawiseFallbackEmail={stratawiseFallbackEmail}
+          onDisconnected={() => {
+            setConfig({ provider: "stratawise", domain: null, configured_at: null });
+            setMailboxPrefix("");
+            setSavedMailbox(null);
+            setEditing(true);
+          }}
+        />
+      </div>
     );
   }
 
@@ -115,13 +135,11 @@ function ConnectedView({
   config,
   savedMailbox,
   stratawiseFallbackEmail,
-  onChangeMailbox,
   onDisconnected,
 }: {
   config: MailProviderConfig;
   savedMailbox: string | null;
   stratawiseFallbackEmail: string;
-  onChangeMailbox: () => void;
   onDisconnected: () => void;
 }) {
   const [pending, setPending] = useState(false);
@@ -192,17 +210,14 @@ function ConnectedView({
 
           <div className="rounded-md border border-border bg-cool-muted p-3 text-xs text-muted-foreground">
             <p>
-              <span className="font-medium text-foreground">Fallback:</span> if
-              you disconnect, outbound mail goes from{" "}
-              <span className="font-mono">{stratawiseFallbackEmail}</span> —
-              your account-wide StrataWise alias. Set up once at signup, always
-              available, nothing to configure.
+              <span className="font-medium text-foreground">Fallback:</span>{" "}
+              <span className="font-mono">{stratawiseFallbackEmail}</span>
             </p>
           </div>
 
           <div className="flex flex-wrap items-center gap-2">
             <Button
-              variant="secondary"
+              variant="destructive"
               size="sm"
               onClick={handleDisconnect}
               disabled={pending}
@@ -213,14 +228,6 @@ function ConnectedView({
                 <Unplug className="mr-1.5 h-3.5 w-3.5" />
               )}
               Disconnect
-            </Button>
-            <Button
-              variant="secondary"
-              size="sm"
-              onClick={onChangeMailbox}
-              disabled={pending}
-            >
-              Change mailbox
             </Button>
           </div>
         </CardContent>
@@ -312,7 +319,8 @@ function Wizard({
   }
 
   return (
-    <div className="space-y-6">
+    <TooltipProvider delay={120}>
+      <div className="space-y-6">
       <Card>
         <CardContent className="pt-5 space-y-5">
           <div>
@@ -343,21 +351,25 @@ function Wizard({
           </div>
 
           <div className="space-y-1.5">
-            <Label htmlFor="mail-domain">
-              Email domain <span className="text-destructive">*</span>
-            </Label>
+            <Tooltip>
+              <TooltipTrigger
+                render={
+                  <Label htmlFor="mail-domain" className="inline-flex items-center gap-1 cursor-help" />
+                }
+              >
+                Email domain <span className="text-destructive">*</span>
+                <Info className="size-3.5 text-muted-foreground" />
+              </TooltipTrigger>
+              <TooltipContent>
+                The bit after the @ in your business email.
+              </TooltipContent>
+            </Tooltip>
             <Input
               id="mail-domain"
               value={domain}
               onChange={(e) => setDomain(e.target.value)}
               placeholder="Firm domain"
             />
-            <p className="text-xs text-muted-foreground">
-              The bit after the <span className="font-mono">@</span> in your
-              firm&apos;s email — paste any way you like (we&apos;ll strip{" "}
-              <span className="font-mono">https://</span>, <span className="font-mono">www.</span>,
-              and trailing slashes).
-            </p>
           </div>
 
           {provider === "gmail" && (
@@ -398,11 +410,12 @@ function Wizard({
           {errorResult && (
             <div className="flex items-start gap-2 rounded-md border border-destructive/30 bg-destructive/5 p-3 text-xs text-destructive">
               <AlertTriangle className="size-4 shrink-0 mt-0.5" />
-              <div>
+              <div className="space-y-1">
                 <p className="font-medium">{errorResult.message}</p>
-                {errorResult.reason && (
-                  <p className="mt-0.5 opacity-80">Reason: {errorResult.reason}</p>
-                )}
+                <p className="opacity-80">
+                  Google sometimes takes a few minutes (up to 24h in rare cases) to
+                  propagate the grant — wait and try Save again.
+                </p>
               </div>
             </div>
           )}
@@ -420,7 +433,8 @@ function Wizard({
           </div>
         </CardContent>
       </Card>
-    </div>
+      </div>
+    </TooltipProvider>
   );
 }
 
@@ -475,6 +489,45 @@ function OutlookAuthorisationCard() {
         Outlook send-as ships behind a feature flag — your domain choice is
         saved; we&apos;ll enable transport for your firm shortly.
       </p>
+    </div>
+  );
+}
+
+// Surfaces when gmail_mailbox_subscriptions.last_error is an auth-shape
+// failure — i.e. the Workspace admin removed our DWD entry, the firm's
+// IT changed the OAuth scopes, or Google revoked the grant for some
+// other reason. Without this banner outbound mail silently falls back
+// to the @stratawise.com.au alias and inbound just goes dark, which
+// is a poor user experience.
+function RevokedBanner({
+  error,
+  onReconnect,
+}: {
+  error: string | null;
+  onReconnect: () => void;
+}) {
+  return (
+    <div className="flex items-start gap-3 rounded-md border border-destructive/30 bg-destructive/5 p-4 text-sm">
+      <AlertTriangle className="h-5 w-5 shrink-0 mt-0.5 text-destructive" />
+      <div className="flex-1 space-y-2">
+        <div>
+          <p className="font-medium text-destructive">Gmail connection needs reconnecting</p>
+          <p className="mt-0.5 text-xs text-muted-foreground leading-relaxed">
+            Your Workspace admin appears to have removed StrataWise from
+            Domain-Wide Delegation, or Google revoked our grant. Outbound
+            mail has fallen back to your StrataWise alias and inbox sync
+            is paused until you reconnect.
+          </p>
+          {error && (
+            <p className="mt-1 text-xs text-muted-foreground/80 font-mono break-all">
+              {error}
+            </p>
+          )}
+        </div>
+        <Button size="sm" onClick={onReconnect}>
+          Reconnect
+        </Button>
+      </div>
     </div>
   );
 }

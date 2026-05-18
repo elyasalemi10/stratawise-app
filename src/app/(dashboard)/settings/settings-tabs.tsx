@@ -35,6 +35,8 @@ function TabsInner({
   gmailOauthClientId,
   initialMailboxPrefix,
   stratawiseFallbackEmail,
+  dwdRevoked,
+  mailboxIntegrationError,
 }: {
   profile: Profile;
   company: CompanyData | null;
@@ -45,6 +47,8 @@ function TabsInner({
   gmailOauthClientId: string | null;
   initialMailboxPrefix: string;
   stratawiseFallbackEmail: string;
+  dwdRevoked: boolean;
+  mailboxIntegrationError: string | null;
 }) {
   const searchParams = useSearchParams();
   const initialTab = searchParams.get("tab") ?? "profile";
@@ -105,6 +109,8 @@ function TabsInner({
               oauthClientId={gmailOauthClientId}
               initialMailboxPrefix={initialMailboxPrefix}
               stratawiseFallbackEmail={stratawiseFallbackEmail}
+              dwdRevoked={dwdRevoked}
+              mailboxIntegrationError={mailboxIntegrationError}
             />
           </div>
         )}
@@ -123,6 +129,8 @@ export function SettingsTabs({
   gmailOauthClientId,
   initialMailboxPrefix,
   stratawiseFallbackEmail,
+  dwdRevoked,
+  mailboxIntegrationError,
 }: {
   profile: Profile;
   company: CompanyData | null;
@@ -133,6 +141,8 @@ export function SettingsTabs({
   gmailOauthClientId: string | null;
   initialMailboxPrefix: string;
   stratawiseFallbackEmail: string;
+  dwdRevoked: boolean;
+  mailboxIntegrationError: string | null;
 }) {
   return (
     <Suspense>
@@ -146,6 +156,8 @@ export function SettingsTabs({
         gmailOauthClientId={gmailOauthClientId}
         initialMailboxPrefix={initialMailboxPrefix}
         stratawiseFallbackEmail={stratawiseFallbackEmail}
+        dwdRevoked={dwdRevoked}
+        mailboxIntegrationError={mailboxIntegrationError}
       />
     </Suspense>
   );

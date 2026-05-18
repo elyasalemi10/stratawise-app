@@ -131,6 +131,17 @@ export async function POST(request: NextRequest) {
   const diff = await listHistorySince(mailbox, startHistoryId);
   if (!diff.ok) {
     console.error("gmail-push: history list failed for", mailbox, diff.error);
+    // Persist the error onto the subscription so Settings → Email can
+    // surface an actionable banner. Auth-shaped failures
+    // (unauthorized_client / invalid_grant / 401 / 403) usually mean the
+    // Workspace admin removed our DWD entry; the banner prompts a re-add.
+    await supabase
+      .from("gmail_mailbox_subscriptions")
+      .update({
+        last_error: diff.error.slice(0, 500),
+        updated_at: new Date().toISOString(),
+      })
+      .eq("id", sub.id);
     return NextResponse.json({ status: "history_failed", error: diff.error });
   }
 
@@ -154,6 +165,7 @@ export async function POST(request: NextRequest) {
     .from("gmail_mailbox_subscriptions")
     .update({
       history_id: diff.latestHistoryId,
+      last_error: null,
       updated_at: new Date().toISOString(),
     })
     .eq("id", sub.id);
@@ -274,6 +286,13 @@ async function ingestInboundMessage(
       metadata: {
         communication_log_id: (logRow as { id: string }).id,
         sender_email: msg.from,
+        // Provider + Gmail-internal ids so the inbox can show the Gmail
+        // glyph (regardless of sender domain) and deep-link the
+        // "Open in Gmail" action straight to the message instead of a
+        // search query.
+        provider: "gmail",
+        gmail_message_id: msg.id,
+        gmail_thread_id: msg.threadId,
       },
     })
     .select("id")
