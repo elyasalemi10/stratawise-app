@@ -31,8 +31,30 @@ export const applySettlementSchema = z.object({
       .min(1, "Postal address is required")
       .max(500),
     dateOfBirth: isoDate.nullable().optional().transform((v) => v || null),
+    // Set to true when the manager already ran PostGrid verification on
+    // the postal address through the AddressInput component — the server
+    // skips re-verification in that case, matching the lot-edit pattern.
+    verifiedPostal: z.boolean().optional().default(false),
   }),
   settlementDate: isoDate,
+  // Three-state occupancy on settlement: owner-occupied, tenanted, or
+  // vacant. Optional so legacy callers without the field still validate;
+  // when present we update the new lot_owners row to match.
+  occupancyStatus: z.enum(["owner_occupied", "tenanted", "vacant"]).optional(),
+  // Tenant details, used only when occupancyStatus === 'tenanted'.
+  tenantName: z.string().trim().max(200).nullable().optional().transform((v) => v || null),
+  tenantEmail: z
+    .string()
+    .trim()
+    .toLowerCase()
+    .max(200)
+    .nullable()
+    .optional()
+    .transform((v) => (v ? v : null))
+    .refine((v) => v === null || /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(v), {
+      message: "Invalid tenant email",
+    }),
+  tenantPhone: z.string().trim().max(50).nullable().optional().transform((v) => v || null),
   // Manager confirms even when lot/plan don't match the PDF.
   acknowledgeMismatch: z.boolean().default(false),
 });

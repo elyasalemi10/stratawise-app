@@ -109,6 +109,7 @@ const lotOwnerMainNavGroups = [
       { href: "/dashboard", label: "Dashboard", icon: LayoutDashboard },
       { href: "/levies", label: "Levies", icon: Wallet },
       { href: "/meetings", label: "Meetings", icon: CalendarCheck },
+      { href: "/trust-accounts", label: "Trust accounts", icon: Landmark },
     ],
   },
 ];

@@ -72,6 +72,10 @@ export function SettlementDialog(props: Props) {
   const [postalAddress, setPostalAddress] = useState("");
   const [dateOfBirth, setDateOfBirth] = useState("");
   const [settlementDate, setSettlementDate] = useState("");
+  const [occupancy, setOccupancy] = useState<"owner_occupied" | "tenanted" | "vacant">("owner_occupied");
+  const [tenantName, setTenantName] = useState("");
+  const [tenantEmail, setTenantEmail] = useState("");
+  const [tenantPhone, setTenantPhone] = useState("");
 
   const reset = useCallback(() => {
     setStage("upload");
@@ -80,6 +84,7 @@ export function SettlementDialog(props: Props) {
     setReview(null);
     setDragging(false);
     setName(""); setEmail(""); setPhone(""); setPostalAddress(""); setDateOfBirth(""); setSettlementDate("");
+    setOccupancy("owner_occupied"); setTenantName(""); setTenantEmail(""); setTenantPhone("");
   }, []);
 
   // Manual entry — skip the PDF stage and jump straight to the review form
@@ -189,8 +194,13 @@ export function SettlementDialog(props: Props) {
         phone: phone.trim() || null,
         postalAddress: postalAddress.trim(),
         dateOfBirth: dateOfBirth || null,
+        verifiedPostal: false,
       },
       settlementDate,
+      occupancyStatus: occupancy,
+      tenantName: occupancy === "tenanted" ? tenantName.trim() || null : null,
+      tenantEmail: occupancy === "tenanted" ? tenantEmail.trim() || null : null,
+      tenantPhone: occupancy === "tenanted" ? tenantPhone.trim() || null : null,
       acknowledgeMismatch: review ? !(review.matches.lotNumber !== false && review.matches.planNumber !== false) : false,
     });
 
@@ -206,7 +216,7 @@ export function SettlementDialog(props: Props) {
     reset();
     onClose();
     onApplied?.();
-  }, [entryMode, documentId, targetLotId, name, email, phone, postalAddress, dateOfBirth, settlementDate, review, targetLotNumber, reset, onClose, onApplied]);
+  }, [entryMode, documentId, targetLotId, name, email, phone, postalAddress, dateOfBirth, settlementDate, occupancy, tenantName, tenantEmail, tenantPhone, review, targetLotNumber, reset, onClose, onApplied]);
 
   // ─── Render ───────────────────────────────────────────────────
 
@@ -265,6 +275,10 @@ export function SettlementDialog(props: Props) {
             postalAddress={postalAddress} setPostalAddress={setPostalAddress}
             dateOfBirth={dateOfBirth} setDateOfBirth={setDateOfBirth}
             settlementDate={settlementDate} setSettlementDate={setSettlementDate}
+            occupancy={occupancy} setOccupancy={setOccupancy}
+            tenantName={tenantName} setTenantName={setTenantName}
+            tenantEmail={tenantEmail} setTenantEmail={setTenantEmail}
+            tenantPhone={tenantPhone} setTenantPhone={setTenantPhone}
           />
         )}
 
@@ -278,6 +292,10 @@ export function SettlementDialog(props: Props) {
             postalAddress={postalAddress} setPostalAddress={setPostalAddress}
             dateOfBirth={dateOfBirth} setDateOfBirth={setDateOfBirth}
             settlementDate={settlementDate} setSettlementDate={setSettlementDate}
+            occupancy={occupancy} setOccupancy={setOccupancy}
+            tenantName={tenantName} setTenantName={setTenantName}
+            tenantEmail={tenantEmail} setTenantEmail={setTenantEmail}
+            tenantPhone={tenantPhone} setTenantPhone={setTenantPhone}
           />
         )}
 
@@ -397,6 +415,11 @@ function ReviewForm(props: {
   postalAddress: string; setPostalAddress: (v: string) => void;
   dateOfBirth: string; setDateOfBirth: (v: string) => void;
   settlementDate: string; setSettlementDate: (v: string) => void;
+  occupancy: "owner_occupied" | "tenanted" | "vacant";
+  setOccupancy: (v: "owner_occupied" | "tenanted" | "vacant") => void;
+  tenantName: string; setTenantName: (v: string) => void;
+  tenantEmail: string; setTenantEmail: (v: string) => void;
+  tenantPhone: string; setTenantPhone: (v: string) => void;
 }) {
   const { review, lotNumber, isMatched } = props;
   const couldNotExtract = !review.parsed.transferee.name && !review.parsed.lotNumber && !review.parsed.settlementDate;
@@ -516,6 +539,14 @@ function ReviewForm(props: {
           </div>
         </div>
 
+        <OccupancyTenantBlock
+          occupancy={props.occupancy}
+          setOccupancy={props.setOccupancy}
+          tenantName={props.tenantName} setTenantName={props.setTenantName}
+          tenantEmail={props.tenantEmail} setTenantEmail={props.setTenantEmail}
+          tenantPhone={props.tenantPhone} setTenantPhone={props.setTenantPhone}
+        />
+
         <p className="text-xs text-muted-foreground">
           The new owner will appear as <span className="font-medium">Pending invitation</span> on this lot.
           No email is sent — share the invitation link manually when you&apos;re ready.
@@ -606,6 +637,11 @@ function ManualReviewForm(props: {
   postalAddress: string; setPostalAddress: (v: string) => void;
   dateOfBirth: string; setDateOfBirth: (v: string) => void;
   settlementDate: string; setSettlementDate: (v: string) => void;
+  occupancy: "owner_occupied" | "tenanted" | "vacant";
+  setOccupancy: (v: "owner_occupied" | "tenanted" | "vacant") => void;
+  tenantName: string; setTenantName: (v: string) => void;
+  tenantEmail: string; setTenantEmail: (v: string) => void;
+  tenantPhone: string; setTenantPhone: (v: string) => void;
 }) {
   void props.lotNumber;
   return (
@@ -682,6 +718,14 @@ function ManualReviewForm(props: {
           </div>
         </div>
 
+        <OccupancyTenantBlock
+          occupancy={props.occupancy}
+          setOccupancy={props.setOccupancy}
+          tenantName={props.tenantName} setTenantName={props.setTenantName}
+          tenantEmail={props.tenantEmail} setTenantEmail={props.setTenantEmail}
+          tenantPhone={props.tenantPhone} setTenantPhone={props.setTenantPhone}
+        />
+
         <p className="text-xs text-muted-foreground">
           The new owner will appear as{" "}
           <span className="font-medium">Pending invitation</span> on this lot.
@@ -689,6 +733,92 @@ function ManualReviewForm(props: {
           ready.
         </p>
       </div>
+    </div>
+  );
+}
+
+// Three-state occupancy radio pair + tenant detail fields (only render
+// when tenanted). Shared between the PDF-flow ReviewForm and the
+// type-it-out ManualReviewForm so they ask the same questions.
+function OccupancyTenantBlock({
+  occupancy,
+  setOccupancy,
+  tenantName, setTenantName,
+  tenantEmail, setTenantEmail,
+  tenantPhone, setTenantPhone,
+}: {
+  occupancy: "owner_occupied" | "tenanted" | "vacant";
+  setOccupancy: (v: "owner_occupied" | "tenanted" | "vacant") => void;
+  tenantName: string; setTenantName: (v: string) => void;
+  tenantEmail: string; setTenantEmail: (v: string) => void;
+  tenantPhone: string; setTenantPhone: (v: string) => void;
+}) {
+  const OPTIONS: Array<{ value: typeof occupancy; label: string }> = [
+    { value: "owner_occupied", label: "Owner-occupied" },
+    { value: "tenanted", label: "Tenanted" },
+    { value: "vacant", label: "Vacant" },
+  ];
+  return (
+    <div className="space-y-3 rounded-md border border-border bg-card p-3">
+      <div className="space-y-1.5">
+        <Label>Occupancy</Label>
+        <div role="radiogroup" className="inline-flex rounded-md border border-border bg-cool-muted p-0.5">
+          {OPTIONS.map((opt) => {
+            const active = occupancy === opt.value;
+            return (
+              <button
+                key={opt.value}
+                type="button"
+                role="radio"
+                aria-checked={active}
+                onClick={() => setOccupancy(opt.value)}
+                className={
+                  "px-3 py-1 text-xs font-medium rounded transition-colors cursor-pointer " +
+                  (active
+                    ? "bg-card text-foreground shadow-sm"
+                    : "text-muted-foreground hover:text-foreground")
+                }
+              >
+                {opt.label}
+              </button>
+            );
+          })}
+        </div>
+      </div>
+      {occupancy === "tenanted" && (
+        <div className="space-y-3 pt-1 border-t border-border">
+          <p className="text-xs uppercase tracking-wide text-muted-foreground">Tenant</p>
+          <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+            <div className="space-y-1.5 sm:col-span-2">
+              <Label htmlFor="settlement-tenant-name">Tenant name</Label>
+              <Input
+                id="settlement-tenant-name"
+                value={tenantName}
+                onChange={(e) => setTenantName(e.target.value)}
+                placeholder="Full name"
+              />
+            </div>
+            <div className="space-y-1.5">
+              <Label htmlFor="settlement-tenant-email">Tenant email</Label>
+              <Input
+                id="settlement-tenant-email"
+                type="email"
+                value={tenantEmail}
+                onChange={(e) => setTenantEmail(e.target.value)}
+                placeholder="tenant@example.com"
+              />
+            </div>
+            <div className="space-y-1.5">
+              <Label htmlFor="settlement-tenant-phone">Tenant phone</Label>
+              <Input
+                id="settlement-tenant-phone"
+                value={tenantPhone}
+                onChange={(e) => setTenantPhone(e.target.value)}
+              />
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

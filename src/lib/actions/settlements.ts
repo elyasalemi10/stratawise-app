@@ -594,6 +594,75 @@ export async function applySettlementToLot(input: ApplySettlementInput) {
     console.error("applySettlementToLot: entity-model writes failed (non-fatal)", err);
   }
 
+  // 3b. Sync the legacy lot_owners row that the lot detail page still
+  // reads from (owner identity, postal address + verification status,
+  // occupancy, tenant). Best-effort — failures are logged but don't
+  // break the settlement.
+  try {
+    const { verifyAddress } = await import("@/lib/postgrid/client");
+    let postalVerificationStatus: string | null = null;
+    let postalVerificationId: string | null = null;
+    let postalVerifiedAt: string | null = null;
+    if (newOwner.postalAddress && !parsed.data.newOwner.verifiedPostal) {
+      try {
+        const verifyResult = await verifyAddress({
+          line1: newOwner.postalAddress,
+          city: "",
+          provinceOrState: "VIC",
+          postalOrZip: "",
+          country: "AU",
+        });
+        postalVerificationStatus = verifyResult.status;
+        postalVerificationId = verifyResult.verificationId;
+        if (verifyResult.status === "verified") {
+          postalVerifiedAt = new Date().toISOString();
+        }
+      } catch (postgridErr) {
+        console.warn("applySettlementToLot: PostGrid verify failed (non-fatal)", postgridErr);
+        postalVerificationStatus = "unchecked";
+      }
+    }
+
+    // Occupancy normalisation. New owners default to owner-occupied unless
+    // the manager flagged the lot as tenanted / vacant on the settlement
+    // form. Tenant fields are only persisted when occupancy === tenanted.
+    const occupancy = parsed.data.occupancyStatus ?? null;
+    const ownerOccupied = occupancy === null ? null : occupancy === "owner_occupied";
+
+    // End any active lot_owners row for this lot (left_at semantics
+    // aren't on this table, so we just close-out the row to "ended" by
+    // setting ownership_until). Then insert the new owner.
+    await supabase
+      .from("lot_owners")
+      .update({ ownership_until: settlementDate })
+      .eq("lot_id", lotId)
+      .is("ownership_until", null);
+
+    await supabase.from("lot_owners").insert({
+      lot_id: lotId,
+      name: newOwner.name,
+      email: newOwner.email || null,
+      phone: newOwner.phone,
+      postal_address: newOwner.postalAddress,
+      ...(postalVerificationStatus
+        ? {
+            postal_address_verification_status: postalVerificationStatus,
+            postal_address_verification_id: postalVerificationId,
+            postal_address_verified_at: postalVerifiedAt,
+          }
+        : {}),
+      owner_type: "individual",
+      ownership_since: settlementDate,
+      occupancy_status: occupancy,
+      is_occupied_by_owner: ownerOccupied,
+      tenant_name: occupancy === "tenanted" ? parsed.data.tenantName : null,
+      tenant_email: occupancy === "tenanted" ? parsed.data.tenantEmail : null,
+      tenant_phone: occupancy === "tenanted" ? parsed.data.tenantPhone : null,
+    });
+  } catch (err) {
+    console.error("applySettlementToLot: lot_owners sync failed (non-fatal)", err);
+  }
+
   // 4. Audit-log the new invitation side of the transfer.
   await supabase.from("audit_log").insert({
     profile_id: profile.id,
