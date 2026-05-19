@@ -24,6 +24,11 @@ const PUBLIC_PATHS = [
 // are NOT in this list because they require an active session.
 const SIGNED_IN_REDIRECT_AWAY = ["/sign-in", "/sign-up", "/forgot-password", "/"];
 
+// Routes inside /admin that must remain reachable BEFORE MFA is satisfied
+// (otherwise we'd redirect-loop a super_admin who's still completing
+// enrolment or the per-session challenge).
+const ADMIN_PRE_MFA_PATHS = ["/admin/mfa-enroll", "/admin/mfa-challenge"];
+
 function isPublic(pathname: string): boolean {
   return PUBLIC_PATHS.some((p) => pathname === p || pathname.startsWith(p + "/"));
 }
@@ -86,6 +91,58 @@ export async function middleware(request: NextRequest) {
     url.pathname = "/dashboard";
     url.search = "";
     return NextResponse.redirect(url);
+  }
+
+  // Super admin routing.
+  //
+  // We don't want non-super-admins poking around /admin even by typo, and
+  // we don't want a super_admin landing on /dashboard with full access
+  // before they've cleared MFA for the session. The role + AAL lookup is
+  // cheap (two DB calls), runs only when a session exists, and skips the
+  // pre-MFA pages so the enrol / challenge dance can complete.
+  if (user) {
+    const isAdminRoute = pathname === "/admin" || pathname.startsWith("/admin/");
+    const isPreMfaRoute = ADMIN_PRE_MFA_PATHS.some(
+      (p) => pathname === p || pathname.startsWith(p + "/"),
+    );
+
+    if (isAdminRoute) {
+      const { data: profileRow } = await supabase
+        .from("profiles")
+        .select("role")
+        .eq("auth_user_id", user.id)
+        .maybeSingle();
+      const role = (profileRow as { role?: string } | null)?.role ?? null;
+
+      if (role !== "super_admin") {
+        const url = request.nextUrl.clone();
+        url.pathname = "/dashboard";
+        url.search = "";
+        return NextResponse.redirect(url);
+      }
+
+      // Super admin on an admin route, but session hasn't cleared MFA yet
+      // (aal1 = email + password only, aal2 = TOTP verified). Send them
+      // to the right MFA page UNLESS that's already the destination.
+      if (!isPreMfaRoute) {
+        const { data: aalData } =
+          await supabase.auth.mfa.getAuthenticatorAssuranceLevel();
+        const aal = aalData?.currentLevel ?? "aal1";
+
+        if (aal !== "aal2") {
+          const { data: factorData } = await supabase.auth.mfa.listFactors();
+          const hasVerifiedTotp = (factorData?.totp ?? []).some(
+            (f) => f.status === "verified",
+          );
+          const url = request.nextUrl.clone();
+          url.pathname = hasVerifiedTotp
+            ? "/admin/mfa-challenge"
+            : "/admin/mfa-enroll";
+          url.search = "";
+          return NextResponse.redirect(url);
+        }
+      }
+    }
   }
 
   return response;

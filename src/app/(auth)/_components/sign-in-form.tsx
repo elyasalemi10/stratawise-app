@@ -42,6 +42,27 @@ function SignInContent() {
       return;
     }
 
+    // Super-admin branch: send them to /admin which itself enforces MFA.
+    // Both the enrol and challenge pages live under /admin and own their
+    // gates, so we always land on /admin and let it decide where to go.
+    // Non-admin users continue to the caller-supplied next path (default
+    // /dashboard).
+    try {
+      const me = await supabase
+        .from("profiles")
+        .select("role")
+        .single();
+      const role = (me.data as { role?: string } | null)?.role ?? null;
+      if (role === "super_admin") {
+        window.location.href = "/admin";
+        return;
+      }
+    } catch {
+      // If profile lookup fails for any reason, fall through to the
+      // standard /dashboard landing — that page will redirect onwards
+      // appropriately based on onboarding state.
+    }
+
     window.location.href = nextPath;
   }
 
