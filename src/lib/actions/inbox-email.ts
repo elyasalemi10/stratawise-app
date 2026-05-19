@@ -56,6 +56,15 @@ export interface InboxEmailDetail {
     sent_at: string | null;
     body: string | null;
   } | null;
+  // Inbound attachments persisted by the gmail-push webhook into R2.
+  // Empty array when none.
+  attachments: Array<{
+    id: string;
+    filename: string;
+    mime_type: string;
+    size_bytes: number;
+    url: string;
+  }>;
 }
 
 export async function getInboxEmail(
@@ -150,6 +159,26 @@ export async function getInboxEmail(
     }
   }
 
+  // Inbound attachments (R2-backed) for this comm-log row.
+  const { data: attRows } = await supabase
+    .from("inbound_email_attachments")
+    .select("id, filename, mime_type, size_bytes, r2_url")
+    .eq("communication_log_id", communicationLogId)
+    .order("created_at", { ascending: true });
+  const attachments = ((attRows ?? []) as Array<{
+    id: string;
+    filename: string;
+    mime_type: string;
+    size_bytes: number;
+    r2_url: string;
+  }>).map((a) => ({
+    id: a.id,
+    filename: a.filename,
+    mime_type: a.mime_type,
+    size_bytes: a.size_bytes,
+    url: a.r2_url,
+  }));
+
   return {
     ok: true,
     data: {
@@ -168,6 +197,7 @@ export async function getInboxEmail(
       gmail_message_id: gmailMessageId,
       gmail_thread_id: gmailThreadId,
       outbound,
+      attachments,
     },
   };
 }

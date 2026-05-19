@@ -1,6 +1,8 @@
 "use client";
 
 import Image from "next/image";
+import ReactMarkdown from "react-markdown";
+import remarkGfm from "remark-gfm";
 import { useEffect, useMemo, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import {
@@ -17,6 +19,7 @@ import {
   Link as LinkIcon,
   Trash2,
   ChevronDown,
+  Paperclip,
 } from "lucide-react";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -103,6 +106,12 @@ function ProviderIcon({
     return <Image src="/logos/outlook.webp" alt="Outlook" width={px} height={px} className={klass} />;
   }
   return <Mail className={cn(size === "md" ? "size-5" : "size-3.5", "text-muted-foreground")} />;
+}
+
+function formatBytes(n: number): string {
+  if (n < 1024) return `${n} B`;
+  if (n < 1024 * 1024) return `${(n / 1024).toFixed(0)} KB`;
+  return `${(n / (1024 * 1024)).toFixed(1)} MB`;
 }
 
 function timeAgo(dateStr: string): string {
@@ -590,9 +599,19 @@ function EmailDetailPane({
             </p>
           </div>
 
-        {/* Body */}
-        <div className="rounded-md border border-border bg-cool-muted p-4 max-h-[40rem] overflow-y-auto whitespace-pre-wrap text-sm leading-relaxed text-foreground">
-          {detail.body || "(empty)"}
+        {/* Body — markdown-rendered. Emails from Gmail/Outlook composers
+            usually arrive as plain text but commonly contain markdown
+            (auto-quoted links, bullet lists, *bold*) that managers expect
+            to read formatted. remark-gfm picks up tables, autolinks, and
+            strikethrough. */}
+        <div className="rounded-md border border-border bg-cool-muted p-4 max-h-[40rem] overflow-y-auto text-sm leading-relaxed text-foreground prose prose-sm max-w-none prose-headings:text-foreground prose-strong:text-foreground prose-a:text-blue-600">
+          {detail.body ? (
+            <ReactMarkdown remarkPlugins={[remarkGfm]}>
+              {detail.body}
+            </ReactMarkdown>
+          ) : (
+            <p className="text-muted-foreground">(empty)</p>
+          )}
         </div>
 
         {/* Original outbound thread, if matched */}
@@ -605,15 +624,46 @@ function EmailDetailPane({
                 <> · {formatDateLong(detail.outbound.sent_at)}</>
               )}
             </summary>
-            <div className="border-t border-border p-3 whitespace-pre-wrap text-sm text-muted-foreground">
-              {detail.outbound.body || "(no body)"}
+            <div className="border-t border-border p-3 text-sm text-muted-foreground prose prose-sm max-w-none prose-headings:text-foreground prose-a:text-blue-600">
+              {detail.outbound.body ? (
+                <ReactMarkdown remarkPlugins={[remarkGfm]}>
+                  {detail.outbound.body}
+                </ReactMarkdown>
+              ) : (
+                "(no body)"
+              )}
             </div>
           </details>
         )}
 
-        <p className="text-xs text-muted-foreground">
-          Attachments not yet supported on inbound replies.
-        </p>
+        {detail.attachments.length > 0 && (
+          <div className="space-y-1.5">
+            <p className="text-xs uppercase tracking-wide text-muted-foreground">
+              Attachments
+            </p>
+            <ul className="space-y-1">
+              {detail.attachments.map((att) => (
+                <li key={att.id}>
+                  <a
+                    href={att.url}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    download={att.filename}
+                    className="flex items-center justify-between gap-2 rounded-md border border-border bg-card px-2.5 py-1.5 text-xs hover:bg-muted/40 cursor-pointer"
+                  >
+                    <span className="inline-flex items-center gap-2 min-w-0">
+                      <Paperclip className="h-3.5 w-3.5 shrink-0 text-muted-foreground" />
+                      <span className="truncate text-foreground">{att.filename}</span>
+                    </span>
+                    <span className="shrink-0 text-muted-foreground tabular-nums">
+                      {formatBytes(att.size_bytes)}
+                    </span>
+                  </a>
+                </li>
+              ))}
+            </ul>
+          </div>
+        )}
         </CardContent>
 
         <ReplyDrawer

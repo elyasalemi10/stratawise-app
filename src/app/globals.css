@@ -2,6 +2,11 @@
 @import "tw-animate-css";
 @import "shadcn/tailwind.css";
 
+/* Markdown rendering uses Tailwind Typography's `prose` classes — wires
+   up sane defaults for headings, lists, code, links inside the inbox
+   email body. Loaded via Tailwind v4's @plugin directive. */
+@plugin "@tailwindcss/typography";
+
 @custom-variant dark (&:is(.dark *));
 
 @theme inline {

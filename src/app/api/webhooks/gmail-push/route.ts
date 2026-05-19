@@ -2,8 +2,10 @@ import { NextRequest, NextResponse } from "next/server";
 import { createServerClient } from "@/lib/supabase";
 import {
   getFullMessage,
+  getMessageAttachment,
   listHistorySince,
 } from "@/lib/google/gmail-client";
+import { uploadObject } from "@/lib/storage/r2";
 
 // Gmail Push notification webhook.
 //
@@ -194,7 +196,18 @@ interface FetchedMessageShape {
   text: string;
   html: string | null;
   receivedAt: string;
+  attachments: Array<{
+    attachmentId: string | null;
+    filename: string;
+    mimeType: string;
+    size: number;
+  }>;
 }
+
+// Cap per-attachment size at 25MB (Gmail's send cap is 25MB anyway, and
+// our R2 bucket pricing is per-GB so keeping the ceiling sane keeps
+// surprise costs out of inbound mail).
+const MAX_INBOUND_ATTACHMENT_BYTES = 25 * 1024 * 1024;
 
 async function ingestInboundMessage(
   supabase: ReturnType<typeof createServerClient>,
@@ -283,6 +296,53 @@ async function ingestInboundMessage(
   if (!logRow) {
     console.error("gmail-push: failed to insert inbound row for", msg.id);
     return;
+  }
+
+  // Pull + persist attachments. Each one is its own Gmail API call so we
+  // sequence them rather than parallelise (also keeps R2 upload load
+  // predictable). Skip anything over 25MB to bound storage cost; the
+  // user can still see it in Gmail via the deep link.
+  const commLogId = (logRow as { id: string }).id;
+  for (const att of msg.attachments) {
+    if (!att.attachmentId) continue;
+    if (att.size > MAX_INBOUND_ATTACHMENT_BYTES) {
+      console.warn(
+        `gmail-push: skipping oversize attachment ${att.filename} (${att.size}b) on msg ${msg.id}`,
+      );
+      continue;
+    }
+    const fetched = await getMessageAttachment(
+      sub.mailbox_email,
+      msg.id,
+      att.attachmentId,
+    );
+    if (!fetched.ok) {
+      console.warn(
+        `gmail-push: attachment fetch failed for ${att.filename}:`,
+        fetched.error,
+      );
+      continue;
+    }
+    // Sanitise filename for the R2 key — strip path separators, keep
+    // visible chars only. The original filename stays on the DB row.
+    const safeName = att.filename.replace(/[/\\?%*:|"<>]/g, "_");
+    const r2Key = `inbound-emails/${commLogId}/${safeName}`;
+    try {
+      const upload = await uploadObject(r2Key, fetched.bytes, att.mimeType);
+      await supabase.from("inbound_email_attachments").insert({
+        communication_log_id: commLogId,
+        filename: att.filename,
+        mime_type: att.mimeType,
+        size_bytes: att.size,
+        r2_key: r2Key,
+        r2_url: upload.publicUrl,
+      });
+    } catch (err) {
+      console.error(
+        `gmail-push: R2 upload / row insert failed for ${att.filename}:`,
+        err,
+      );
+    }
   }
 
   const { data: notif } = await supabase

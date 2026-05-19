@@ -377,6 +377,16 @@ export interface FetchedGmailMessage {
   text: string;
   html: string | null;
   receivedAt: string;
+  // Inline metadata for any non-body part with a filename. The bytes are
+  // NOT fetched here (each attachment is a separate Gmail API call); the
+  // webhook iterates this list and pulls bytes via getMessageAttachment
+  // only for the ones it wants to persist.
+  attachments: Array<{
+    attachmentId: string | null;
+    filename: string;
+    mimeType: string;
+    size: number;
+  }>;
 }
 
 function decodeBase64Url(input: string): string {
@@ -432,6 +442,68 @@ function stripHtml(html: string): string {
     .trim();
 }
 
+// Walks a Gmail payload tree and collects every "real" attachment — a
+// part with a filename + non-body attachmentId. Skips inline images
+// without filenames and the body parts (text/plain, text/html).
+function extractAttachments(
+  payload: {
+    mimeType?: string | null;
+    filename?: string | null;
+    body?: { attachmentId?: string | null; size?: number | null } | null;
+    parts?: Array<{
+      mimeType?: string | null;
+      filename?: string | null;
+      body?: { attachmentId?: string | null; size?: number | null } | null;
+      parts?: unknown;
+    }> | null;
+  } | null | undefined,
+): FetchedGmailMessage["attachments"] {
+  const out: FetchedGmailMessage["attachments"] = [];
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const walk = (parts: any[] | null | undefined) => {
+    for (const part of parts ?? []) {
+      if (part.filename && part.body?.attachmentId) {
+        out.push({
+          attachmentId: part.body.attachmentId,
+          filename: part.filename,
+          mimeType: part.mimeType ?? "application/octet-stream",
+          size: part.body.size ?? 0,
+        });
+      }
+      if (part.parts) walk(part.parts);
+    }
+  };
+  walk(payload?.parts ?? []);
+  return out;
+}
+
+// Pulls the bytes for a single attachment. Gmail returns base64url —
+// we decode to a Buffer for direct upload to R2.
+export async function getMessageAttachment(
+  managerEmail: string,
+  messageId: string,
+  attachmentId: string,
+): Promise<{ ok: true; bytes: Buffer } | { ok: false; error: string }> {
+  try {
+    const gmail = getGmailClient(managerEmail);
+    const res = await gmail.users.messages.attachments.get({
+      userId: "me",
+      messageId,
+      id: attachmentId,
+    });
+    const data = res.data.data;
+    if (!data) return { ok: false, error: "Attachment had no data" };
+    const padded =
+      data.replace(/-/g, "+").replace(/_/g, "/") +
+      "=".repeat((4 - (data.length % 4)) % 4);
+    return { ok: true, bytes: Buffer.from(padded, "base64") };
+  } catch (err) {
+    const message =
+      (err as GoogleApiError)?.message ?? "Failed to fetch attachment";
+    return { ok: false, error: message };
+  }
+}
+
 export async function getFullMessage(
   managerEmail: string,
   messageId: string,
@@ -462,6 +534,7 @@ export async function getFullMessage(
     const to = (toMatch ? toMatch[1] : toHeader).toLowerCase().trim();
 
     const body = extractBody(res.data.payload ?? undefined);
+    const attachments = extractAttachments(res.data.payload ?? undefined);
 
     return {
       ok: true,
@@ -477,6 +550,7 @@ export async function getFullMessage(
         receivedAt: receivedDate
           ? new Date(receivedDate).toISOString()
           : new Date(Number(res.data.internalDate ?? Date.now())).toISOString(),
+        attachments,
       },
     };
   } catch (err) {
