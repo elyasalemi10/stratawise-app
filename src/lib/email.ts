@@ -180,6 +180,43 @@ async function transportSend(
         );
       }
     }
+    // Outlook send-as path. Requires the customer admin to have
+    // granted consent (tenant_id stored on mail_provider_config) and
+    // a confirmed mailbox row in outlook_mailbox_subscriptions.
+    if (dispatch.provider === "outlook" && dispatch.tenantId) {
+      const { sendViaOutlook, isOutlookConfigured } = await import(
+        "@/lib/outlook/graph-client"
+      );
+      if (isOutlookConfigured()) {
+        const supabase = createServerClient();
+        const { data: sub } = await supabase
+          .from("outlook_mailbox_subscriptions")
+          .select("mailbox_email")
+          .eq("manager_profile_id", managerProfileId)
+          .maybeSingle();
+        const mailbox = (sub as { mailbox_email: string | null } | null)?.mailbox_email;
+        if (mailbox) {
+          const result = await sendViaOutlook({
+            tenantId: dispatch.tenantId,
+            mailbox,
+            to,
+            subject,
+            htmlBody: html,
+            attachments,
+          });
+          if (result.ok) {
+            // Graph's sendMail returns 202 with no body — no RFC822
+            // id we can capture synchronously. Inbound matching for
+            // Outlook will fall back to subject + sender heuristics.
+            return { data: { id: "" }, error: null };
+          }
+          if (!result.retryable) {
+            return { data: null, error: { message: result.error } };
+          }
+          console.warn("[email] Outlook rate-limited after retry, falling back to Resend.");
+        }
+      }
+    }
   }
 
   return getResend().emails.send({
@@ -1375,6 +1412,7 @@ interface MailDispatch {
   provider: "stratawise" | "gmail" | "outlook";
   companyId: string | null;
   domain: string | null;
+  tenantId: string | null;
 }
 
 // For a Gmail-routed send, the FROM mailbox MUST be a real Workspace mailbox
@@ -1490,7 +1528,7 @@ async function resolveDispatchProvider(
       (profile as { management_company_id: string | null } | null)
         ?.management_company_id ?? null;
     if (!companyId) {
-      return { provider: "stratawise", companyId: null, domain: null };
+      return { provider: "stratawise", companyId: null, domain: null, tenantId: null };
     }
     const { data: company } = await supabase
       .from("management_companies")
@@ -1499,15 +1537,16 @@ async function resolveDispatchProvider(
       .maybeSingle();
     const row = company as {
       mail_provider: "stratawise" | "gmail" | "outlook" | null;
-      mail_provider_config: { domain?: string } | null;
+      mail_provider_config: { domain?: string; tenant_id?: string } | null;
     } | null;
     return {
       provider: row?.mail_provider ?? "stratawise",
       companyId,
       domain: row?.mail_provider_config?.domain ?? null,
+      tenantId: row?.mail_provider_config?.tenant_id ?? null,
     };
   } catch (err) {
     console.error("[email] resolveDispatchProvider failed:", err);
-    return { provider: "stratawise", companyId: null, domain: null };
+    return { provider: "stratawise", companyId: null, domain: null, tenantId: null };
   }
 }
