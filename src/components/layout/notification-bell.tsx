@@ -1,18 +1,54 @@
 "use client";
 
+import Image from "next/image";
 import { useState, useEffect, useRef } from "react";
 import { useRouter } from "next/navigation";
 import { Bell, Check, FileText, Shield, CalendarDays, Mail, Info } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { cn } from "@/lib/utils";
 import { getNotifications, getUnreadCount, markAsRead, markAllAsRead, type Notification } from "@/lib/actions/notifications";
+import { resolveInboxRowProviders } from "@/lib/actions/inbox-email";
 
 const TYPE_ICONS: Record<string, typeof FileText> = {
   levy_issued: FileText,
   insurance_expiry: Shield,
   meeting_notice: CalendarDays,
   invitation: Mail,
+  email_reply: Mail,
   system: Info,
 };
+
+const TYPE_COLORS: Record<string, string> = {
+  levy_issued: "text-blue-600",
+  insurance_expiry: "text-amber-600",
+  meeting_notice: "text-purple-600",
+  invitation: "text-green-600",
+  payment_received: "text-emerald-600",
+  email_reply: "text-[color:var(--brand-gold)]",
+  system: "text-muted-foreground",
+};
+
+// Renders the provider glyph (Gmail/Outlook) for email_reply rows, falling
+// back to the type icon for everything else.
+function NotifIcon({
+  type,
+  provider,
+}: {
+  type: string;
+  provider: "gmail" | "outlook" | null | undefined;
+}) {
+  if (type === "email_reply") {
+    if (provider === "gmail") {
+      return <Image src="/logos/gmail.webp" alt="Gmail" width={16} height={16} className="size-4 object-contain" />;
+    }
+    if (provider === "outlook") {
+      return <Image src="/logos/outlook.webp" alt="Outlook" width={16} height={16} className="size-4 object-contain" />;
+    }
+  }
+  const Icon = TYPE_ICONS[type] ?? Info;
+  const tint = TYPE_COLORS[type] ?? "text-muted-foreground";
+  return <Icon className={cn("size-4", tint)} />;
+}
 
 function timeAgo(dateStr: string): string {
   const diff = Date.now() - new Date(dateStr).getTime();
@@ -30,6 +66,7 @@ export function NotificationBell() {
   const router = useRouter();
   const [open, setOpen] = useState(false);
   const [notifications, setNotifications] = useState<Notification[]>([]);
+  const [providers, setProviders] = useState<Record<string, "gmail" | "outlook">>({});
   const [unreadCount, setUnreadCount] = useState(0);
   const [loaded, setLoaded] = useState(false);
   const ref = useRef<HTMLDivElement>(null);
@@ -46,11 +83,21 @@ export function NotificationBell() {
         return;
       }
       Promise.all([getUnreadCount(), getNotifications(15)]).then(
-        ([count, rows]) => {
+        async ([count, rows]) => {
           if (cancelled) return;
           setUnreadCount(count);
           setNotifications(rows);
           setLoaded(true);
+          // Resolve Gmail/Outlook provider for any email_reply rows so the
+          // dropdown shows the right glyph instead of the generic Mail icon.
+          if (rows.some((r) => r.type === "email_reply")) {
+            try {
+              const p = await resolveInboxRowProviders(rows);
+              if (!cancelled) setProviders(p);
+            } catch {
+              // non-fatal
+            }
+          }
         },
       );
     };
@@ -153,7 +200,7 @@ export function NotificationBell() {
               </div>
             ) : (
               notifications.map((n) => {
-                const Icon = TYPE_ICONS[n.type] ?? Info;
+                const provider = providers[n.id] ?? null;
                 return (
                   <button
                     key={n.id}
@@ -165,10 +212,8 @@ export function NotificationBell() {
                         : "bg-muted/40 hover:bg-muted/60"
                     }`}
                   >
-                    <div className={`flex h-7 w-7 items-center justify-center rounded-md shrink-0 mt-0.5 ${
-                      !n.read_at ? "bg-primary/10 text-primary" : "bg-muted text-muted-foreground"
-                    }`}>
-                      <Icon className="h-3.5 w-3.5" />
+                    <div className="flex h-7 w-7 items-center justify-center shrink-0 mt-0.5">
+                      <NotifIcon type={n.type} provider={provider} />
                     </div>
                     <div className="flex-1 min-w-0">
                       <p className={`text-sm ${

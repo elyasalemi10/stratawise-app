@@ -284,19 +284,19 @@ export function LotDetailContent({
         </CardContent>
       </Card>
 
-      {/* Tab strip — bare shadcn line tabs. No container card; the row sits
-          directly on the page background so the active gold underline reads
-          as the row separator. Tabs wrap onto a second row on narrow viewports. */}
+      {/* Tab strip — bare shadcn line tabs. No container card, no border-b:
+          the active gold underline is the only visible separator. Tabs
+          wrap onto a second row on narrow viewports. */}
       <Tabs value={activeTab} onValueChange={onTabChange}>
         <TabsList
           variant="line"
-          className="h-auto w-full flex-wrap justify-start gap-0 border-b border-border bg-transparent p-0"
+          className="h-auto w-full flex-wrap justify-start gap-0 border-0 bg-transparent p-0"
         >
           {TABS.map((tab) => (
             <TabsTrigger
               key={tab.value}
               value={tab.value}
-              className="relative h-11 min-w-[6.5rem] rounded-none border-0 px-4 text-sm font-medium text-muted-foreground bg-transparent transition-colors hover:text-foreground hover:bg-transparent data-active:bg-transparent data-active:text-foreground group-data-horizontal/tabs:after:inset-x-2 group-data-horizontal/tabs:after:-bottom-px group-data-horizontal/tabs:after:h-0.5 data-active:after:bg-[color:var(--brand-gold)] data-active:after:rounded-full"
+              className="relative h-11 min-w-[6.5rem] rounded-none border-0 px-4 text-sm font-medium text-muted-foreground bg-transparent transition-colors hover:text-foreground hover:bg-transparent data-active:bg-transparent data-active:text-foreground group-data-horizontal/tabs:after:inset-x-2 group-data-horizontal/tabs:after:bottom-0 group-data-horizontal/tabs:after:h-0.5 data-active:after:bg-[color:var(--brand-gold)] data-active:after:rounded-full"
             >
               {tab.label}
             </TabsTrigger>

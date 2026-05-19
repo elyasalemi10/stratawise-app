@@ -295,6 +295,46 @@ export async function disconnectMailProvider() {
     return { error: "Only company admins can change this." };
   }
   const supabase = createServerClient();
+
+  // 1. Tear down every mailbox subscription for this firm BEFORE flipping
+  // mail_provider — otherwise the gmail-push webhook can still find a
+  // subscription row and ingest in-flight notifications. For each mailbox:
+  //   - call users.stop() so Gmail halts Pub/Sub publishing (best-effort;
+  //     failures don't block the disconnect because we delete the row
+  //     anyway, and the webhook's no-subscription guard ignores any
+  //     late-arriving events).
+  //   - delete the gmail_mailbox_subscriptions row.
+  const { data: subs } = await supabase
+    .from("gmail_mailbox_subscriptions")
+    .select("id, mailbox_email")
+    .eq("management_company_id", profile.management_company_id);
+  const subscriptions = (subs ?? []) as Array<{ id: string; mailbox_email: string }>;
+
+  if (subscriptions.length > 0) {
+    const { stopMailboxWatch } = await import("@/lib/google/gmail-client");
+    await Promise.all(
+      subscriptions.map(async (s) => {
+        try {
+          await stopMailboxWatch(s.mailbox_email);
+        } catch (err) {
+          console.warn(
+            "disconnectMailProvider: stop watch failed for",
+            s.mailbox_email,
+            err,
+          );
+        }
+      }),
+    );
+    await supabase
+      .from("gmail_mailbox_subscriptions")
+      .delete()
+      .eq("management_company_id", profile.management_company_id);
+  }
+
+  // 2. Flip the firm's mail_provider back to stratawise so outbound mail
+  // routes through the Resend fallback (the manager's
+  // <username>@stratawise.com.au alias) instead of trying to impersonate
+  // a mailbox we no longer have rights to.
   const { error } = await supabase
     .from("management_companies")
     .update({
@@ -305,7 +345,7 @@ export async function disconnectMailProvider() {
     })
     .eq("id", profile.management_company_id);
   if (error) return { error: error.message };
-  return { ok: true as const };
+  return { ok: true as const, mailboxesRemoved: subscriptions.length };
 }
 
 // Maps Google's raw OAuth / Gmail-API error names onto plain-English copy.

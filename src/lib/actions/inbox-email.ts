@@ -317,6 +317,47 @@ export async function associateInboxEmailToLot(
   return { ok: true, data: { id: parsed.data.communicationLogId } };
 }
 
+// ─── Prefetch the top N email_reply details so opening them is instant ─
+//
+// Server-side helper called from /inbox/page.tsx. We pre-load detail for
+// the most recent unread (or, if none, read) email_reply notifications so
+// the client doesn't show "Loading email…" the first time the manager
+// clicks one. The client treats the returned map as a cache, falling back
+// to getInboxEmail() for any id not present.
+//
+// Capped at `limit` (default 5) — enough to make the "click → instant
+// open" experience real for the unread set without blowing the
+// server-component data budget on rare cases.
+
+export async function prefetchInboxEmails(
+  notifications: Array<{
+    id: string;
+    type: string;
+    read_at: string | null;
+    metadata: Record<string, unknown> | null;
+  }>,
+  limit = 5,
+): Promise<Record<string, InboxEmailDetail>> {
+  // Pick unread email_reply first, then fill from read ones to reach `limit`.
+  const emailReplies = notifications.filter((n) => n.type === "email_reply");
+  const unread = emailReplies.filter((n) => !n.read_at);
+  const read = emailReplies.filter((n) => !!n.read_at);
+  const picked = [...unread, ...read].slice(0, limit);
+
+  const out: Record<string, InboxEmailDetail> = {};
+  for (const n of picked) {
+    const commLogId = (n.metadata ?? {})["communication_log_id"] as string | undefined;
+    if (!commLogId) continue;
+    try {
+      const res = await getInboxEmail(commLogId);
+      if (res.ok) out[n.id] = res.data;
+    } catch (err) {
+      console.warn("prefetchInboxEmails: skipped", n.id, err);
+    }
+  }
+  return out;
+}
+
 // ─── Per-row provider hint for the inbox list ─────────────────────────
 //
 // Returns a Record<notificationId, "gmail" | "outlook"> for the email_reply

@@ -28,6 +28,11 @@ import {
   TooltipTrigger,
 } from "@/components/ui/tooltip";
 import {
+  Popover,
+  PopoverContent,
+  PopoverTrigger,
+} from "@/components/ui/popover";
+import {
   Command,
   CommandEmpty,
   CommandGroup,
@@ -115,9 +120,14 @@ function timeAgo(dateStr: string): string {
 export function InboxContent({
   notifications: initial,
   rowProviders,
+  prefetchedEmails,
 }: {
   notifications: Notification[];
   rowProviders: Record<string, "gmail" | "outlook">;
+  // Pre-fetched detail for the top N unread email_reply rows so opening
+  // any of them is instant (no "Loading email…" flash). Anything not in
+  // this map falls back to getInboxEmail() on demand.
+  prefetchedEmails: Record<string, InboxEmailDetail>;
 }) {
   const router = useRouter();
   const searchParams = useSearchParams();
@@ -191,16 +201,16 @@ export function InboxContent({
   }
 
   return (
-    <div className="grid grid-cols-1 gap-4 lg:grid-cols-[360px_1fr]">
+    <div className="grid h-[calc(100vh-7rem)] grid-cols-1 gap-4 lg:grid-cols-[360px_1fr]">
       <Card
         className={cn(
-          "overflow-hidden",
-          openNotification && "hidden lg:block",
+          "flex flex-col overflow-hidden h-full lg:sticky lg:top-4",
+          openNotification && "hidden lg:flex",
         )}
       >
-        <CardContent className="p-0">
+        <CardContent className="p-0 flex flex-col min-h-0 flex-1">
           {unreadCount > 0 && (
-            <div className="flex items-center justify-between gap-2 border-b border-border bg-muted/40 px-3 py-2">
+            <div className="flex items-center justify-between gap-2 border-b border-border bg-muted/40 px-3 py-2 shrink-0">
               <p className="text-xs text-muted-foreground">
                 {unreadCount} unread
               </p>
@@ -215,7 +225,10 @@ export function InboxContent({
               </Button>
             </div>
           )}
-          <div className="divide-y divide-border max-h-[calc(100vh-12rem)] overflow-y-auto">
+          {/* Scroll-hidden list — content fills the panel and you scroll by
+              wheel / touchpad / arrow keys. No visible bar (matches the
+              global no-scrollbar treatment for body / dashboard <main>). */}
+          <div className="divide-y divide-border flex-1 min-h-0 overflow-y-auto [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
             {notifications.map((n) => {
               const Icon = TYPE_ICONS[n.type] ?? Info;
               const isUnread = !n.read_at;
@@ -237,18 +250,16 @@ export function InboxContent({
                         : "hover:bg-muted/30",
                   )}
                 >
-                  <div
-                    className={cn(
-                      "flex h-8 w-8 items-center justify-center rounded-full shrink-0",
-                      showProvider
-                        ? "bg-card border border-border"
-                        : (TYPE_COLORS[n.type] ?? TYPE_COLORS.system),
-                    )}
-                  >
+                  <div className="flex h-8 w-8 items-center justify-center shrink-0">
                     {showProvider ? (
                       <ProviderIcon provider={provider} size="md" />
                     ) : (
-                      <Icon className="h-3.5 w-3.5" />
+                      <Icon className={cn(
+                        "h-4 w-4",
+                        // Tint matches the previous chip background's accent so the row
+                        // still communicates type at a glance, just without the circle.
+                        (TYPE_COLORS[n.type] ?? TYPE_COLORS.system).split(" ").find((c) => c.startsWith("text-")) ?? "text-muted-foreground",
+                      )} />
                     )}
                   </div>
                   <div className="flex-1 min-w-0">
@@ -281,7 +292,7 @@ export function InboxContent({
         </CardContent>
       </Card>
 
-      <div className={cn(!openNotification && "hidden lg:block")}>
+      <div className={cn("min-h-0 overflow-y-auto [scrollbar-width:none] [&::-webkit-scrollbar]:hidden", !openNotification && "hidden lg:block")}>
         {openNotification ? (
           openNotification.type === "email_reply" ? (
             <EmailDetailPane
@@ -289,6 +300,7 @@ export function InboxContent({
               notification={openNotification}
               onBack={handleClose}
               onRemove={() => handleRemove(openNotification.id)}
+              prefetched={prefetchedEmails[openNotification.id] ?? null}
             />
           ) : (
             <GenericDetailPane
@@ -327,14 +339,10 @@ function GenericDetailPane({
       <CardContent className="pt-5">
         <BackBar onBack={onBack} compact />
         <div className="flex items-start gap-3 pb-4 border-b border-border">
-          <div
-            className={cn(
-              "flex h-10 w-10 items-center justify-center rounded-full shrink-0",
-              TYPE_COLORS[notification.type] ?? TYPE_COLORS.system,
-            )}
-          >
-            <Icon className="h-5 w-5" />
-          </div>
+          <Icon className={cn(
+            "h-5 w-5 mt-0.5 shrink-0",
+            (TYPE_COLORS[notification.type] ?? TYPE_COLORS.system).split(" ").find((c) => c.startsWith("text-")) ?? "text-muted-foreground",
+          )} />
           <div className="flex-1">
             <h2 className="text-base font-semibold text-foreground">
               {notification.title}
@@ -371,17 +379,21 @@ function EmailDetailPane({
   notification,
   onBack,
   onRemove,
+  prefetched,
 }: {
   notification: Notification;
   onBack: () => void;
   onRemove: () => Promise<void> | void;
+  prefetched: InboxEmailDetail | null;
 }) {
   const communicationLogId = (notification.metadata?.communication_log_id ??
     null) as string | null;
-  const [detail, setDetail] = useState<InboxEmailDetail | null>(null);
+  // Seed with the server-prefetched detail so the first paint shows the
+  // body instead of a loading spinner. We still re-fetch in the background
+  // so stale prefetches (e.g. assoc was set in another tab) overwrite.
+  const [detail, setDetail] = useState<InboxEmailDetail | null>(prefetched);
   const [error, setError] = useState<string | null>(null);
   const [replyOpen, setReplyOpen] = useState(false);
-  const [associateOpen, setAssociateOpen] = useState(false);
 
   useEffect(() => {
     if (!communicationLogId) {
@@ -394,18 +406,22 @@ function EmailDetailPane({
         if (cancelled) return;
         if (res.ok) {
           setDetail(res.data);
-        } else {
+        } else if (!prefetched) {
+          // Only surface the error when we have nothing else to show.
           setError(res.error);
         }
       })
       .catch((err) => {
         if (cancelled) return;
         console.error("getInboxEmail threw:", err);
-        setError("This email couldn't be loaded. Please refresh and try again.");
+        if (!prefetched) {
+          setError("This email couldn't be loaded. Please refresh and try again.");
+        }
       });
     return () => {
       cancelled = true;
     };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [communicationLogId]);
 
   if (error) {
@@ -455,9 +471,7 @@ function EmailDetailPane({
           {/* Header */}
           <div className="flex items-start justify-between gap-3 pb-4 border-b border-border">
             <div className="flex items-start gap-3 min-w-0">
-              <div className="flex h-10 w-10 items-center justify-center rounded-full bg-card border border-border shrink-0">
-                <ProviderIcon provider={provider} size="md" />
-              </div>
+              <ProviderIcon provider={provider} size="md" />
               <div className="min-w-0">
                 <h2 className="text-base font-semibold text-foreground break-words">
                   {detail.subject || "(no subject)"}
@@ -472,25 +486,22 @@ function EmailDetailPane({
                 <Reply className="mr-1.5 h-3.5 w-3.5" />
                 Reply
               </Button>
-              <Tooltip>
-                <TooltipTrigger
-                  render={
-                    <Button
-                      variant="secondary"
-                      size="sm"
-                      onClick={() => setAssociateOpen(true)}
-                    />
+              <LinkToLotPopover
+                isLinked={!!detail.oc_id}
+                onPick={async (option) => {
+                  const res = await associateInboxEmailToLot({
+                    communicationLogId: detail.id,
+                    oc_id: option.oc_id,
+                    lot_id: option.lot_id,
+                  });
+                  if (res.ok) {
+                    setDetail((d) => (d ? { ...d, oc_id: option.oc_id, lot_id: option.lot_id } : d));
+                    toast.success(`Linked to ${option.owner_name} · ${option.lot_label}`);
+                  } else {
+                    toast.error(res.error);
                   }
-                >
-                  <LinkIcon className="mr-1.5 h-3.5 w-3.5" />
-                  {detail.oc_id ? "Change lot" : "Link to lot"}
-                </TooltipTrigger>
-                <TooltipContent>
-                  {detail.oc_id
-                    ? "Re-link this email to a different lot."
-                    : "Tag this email to a lot so it shows on the lot's Communications tab."}
-                </TooltipContent>
-              </Tooltip>
+                }}
+              />
               {openInProviderUrl && (
                 <Tooltip>
                   <TooltipTrigger
@@ -599,24 +610,6 @@ function EmailDetailPane({
           detail={detail}
           onSent={() => setReplyOpen(false)}
         />
-
-        <AssociateDrawer
-          open={associateOpen}
-          onClose={() => setAssociateOpen(false)}
-          communicationLogId={detail.id}
-          onSaved={(ocId, lotId) => {
-            setAssociateOpen(false);
-            setDetail((d) =>
-              d
-                ? {
-                    ...d,
-                    oc_id: ocId,
-                    lot_id: lotId,
-                  }
-                : d,
-            );
-          }}
-        />
       </Card>
     </TooltipProvider>
   );
@@ -714,24 +707,24 @@ function ReplyDrawer({
 // Communications tab; we don't store anything about the OWNER because
 // documents/comms are lot-keyed in this codebase.
 
-function AssociateDrawer({
-  open,
-  onClose,
-  communicationLogId,
-  onSaved,
+// LinkToLotPopover — inline combobox: click the button, a popover opens
+// directly below it with a search field + result list. No drawer, no
+// dialog. Selecting a row calls onPick and closes the popover. Rows are
+// rendered as "Owner Name — Lot N · Unit X — PSnnnnnnX" so multi-lot
+// owners are unambiguous at a glance.
+
+function LinkToLotPopover({
+  isLinked,
+  onPick,
 }: {
-  open: boolean;
-  onClose: () => void;
-  communicationLogId: string;
-  onSaved: (ocId: string, lotId: string | null) => void;
+  isLinked: boolean;
+  onPick: (option: PersonOwnershipOption) => Promise<void> | void;
 }) {
+  const [open, setOpen] = useState(false);
   const [query, setQuery] = useState("");
   const [people, setPeople] = useState<PersonOwnershipOption[]>([]);
   const [loading, setLoading] = useState(false);
-  const [selected, setSelected] = useState<PersonOwnershipOption | null>(null);
 
-  // Debounced search. Empty query returns the first page (most recent
-  // owners by name) so the dropdown is never blank on open.
   useEffect(() => {
     if (!open) return;
     let cancelled = false;
@@ -752,54 +745,27 @@ function AssociateDrawer({
     };
   }, [query, open]);
 
-  useEffect(() => {
-    if (!open) {
-      setQuery("");
-      setPeople([]);
-      setSelected(null);
-    }
-  }, [open]);
-
-  if (!open) return null;
   return (
-    <EditSheet
-      label="Link this email to a lot"
-      description="Search owners by name, lot, OC, or email. We'll attach the email to that owner's lot so it appears on the lot's Communications tab."
-      headerKicker={null}
-      open
-      onOpenChange={(o) => {
-        if (!o) onClose();
-      }}
-      renderTrigger={() => <span />}
-      saveLabel="Link to lot"
-      successToast="Email linked"
-      onSave={async () => {
-        if (!selected) {
-          return { ok: false as const, error: "Pick an owner to link to." };
-        }
-        const res = await associateInboxEmailToLot({
-          communicationLogId,
-          oc_id: selected.oc_id,
-          lot_id: selected.lot_id,
-        });
-        if (res.ok) {
-          onSaved(selected.oc_id, selected.lot_id);
-        }
-        return res.ok
-          ? { ok: true as const }
-          : { ok: false as const, error: res.error };
-      }}
-    >
-      <div className="space-y-2">
-        <Label>Owner</Label>
-        <Command shouldFilter={false} className="rounded-md border border-border bg-card">
+    <Popover open={open} onOpenChange={setOpen}>
+      <PopoverTrigger
+        render={<Button variant="secondary" size="sm" />}
+      >
+        <LinkIcon className="mr-1.5 h-3.5 w-3.5" />
+        {isLinked ? "Change lot" : "Link to lot"}
+      </PopoverTrigger>
+      <PopoverContent align="end" className="w-96 p-0">
+        <Command shouldFilter={false}>
           <CommandInput
             value={query}
             onValueChange={setQuery}
-            placeholder="Search owners, lots, OCs…"
+            placeholder="Search owners, lots, or OC plan number…"
           />
-          <CommandList className="max-h-72">
-            {loading && <div className="px-3 py-6 text-center text-xs text-muted-foreground">Searching…</div>}
+          <CommandList className="max-h-80">
+            {loading && (
+              <div className="px-3 py-6 text-center text-xs text-muted-foreground">
+                Searching…
+              </div>
+            )}
             {!loading && people.length === 0 && (
               <CommandEmpty>No matching owners.</CommandEmpty>
             )}
@@ -809,22 +775,20 @@ function AssociateDrawer({
                   <CommandItem
                     key={p.key}
                     value={p.key}
-                    onSelect={() => setSelected(p)}
-                    className={cn(
-                      "flex flex-col items-start gap-0.5",
-                      selected?.key === p.key && "bg-primary/10",
-                    )}
+                    onSelect={async () => {
+                      setOpen(false);
+                      await onPick(p);
+                    }}
+                    className="flex flex-col items-start gap-0.5"
                   >
                     <p className="text-sm font-medium text-foreground">
                       {p.owner_name}
-                      {p.owner_email && (
-                        <span className="ml-2 text-xs font-normal text-muted-foreground">
-                          {p.owner_email}
-                        </span>
-                      )}
                     </p>
                     <p className="text-xs text-muted-foreground">
-                      {p.oc_name} · {p.lot_label}
+                      {p.lot_label}
+                      <span className="font-mono ml-2 text-muted-foreground/70">
+                        {p.oc_short_code}
+                      </span>
                     </p>
                   </CommandItem>
                 ))}
@@ -832,22 +796,7 @@ function AssociateDrawer({
             )}
           </CommandList>
         </Command>
-        {selected && (
-          <div className="flex items-center justify-between gap-2 rounded-md border border-border bg-cool-muted px-3 py-2 text-xs">
-            <span className="text-foreground">
-              Linking to <span className="font-medium">{selected.owner_name}</span> ·{" "}
-              {selected.oc_name} · {selected.lot_label}
-            </span>
-            <button
-              type="button"
-              onClick={() => setSelected(null)}
-              className="text-muted-foreground hover:text-foreground cursor-pointer"
-            >
-              Clear
-            </button>
-          </div>
-        )}
-      </div>
-    </EditSheet>
+      </PopoverContent>
+    </Popover>
   );
 }

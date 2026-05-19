@@ -317,6 +317,26 @@ export async function watchMailbox(
   }
 }
 
+// Counter-part to watchMailbox — calls users.stop() so Gmail stops
+// publishing history events to our Pub/Sub topic. MUST be called when a
+// manager disconnects, otherwise inbound keeps landing in /inbox until the
+// 7-day watch window naturally expires. Failures are non-fatal — we still
+// delete the subscription row so the gmail-push webhook ignores any
+// in-flight events.
+export async function stopMailboxWatch(
+  managerEmail: string,
+): Promise<{ ok: true } | { ok: false; error: string }> {
+  try {
+    const gmail = getGmailClient(managerEmail);
+    await gmail.users.stop({ userId: "me" });
+    return { ok: true };
+  } catch (err) {
+    const message =
+      (err as GoogleApiError)?.message ?? "Failed to stop Gmail watch";
+    return { ok: false, error: message };
+  }
+}
+
 export async function listHistorySince(
   managerEmail: string,
   startHistoryId: string,

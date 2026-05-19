@@ -201,15 +201,19 @@
 
   /* Hide the page-level browser scrollbar across the app. Inner scroll
      containers (rule lists inside parsed-rules cards, popovers, modal bodies,
-     etc.) keep their own scrollbar — only the body's vertical bar disappears,
-     since seeing a thin grey bar against the brand background looks scrappy.
-     Page is still scrollable via wheel/touchpad/keyboard. */
-  html, body {
+     etc.) keep their own scrollbar — only the body / dashboard <main>
+     vertical bar disappears, since seeing a thin grey bar against the brand
+     background looks scrappy. Page is still scrollable via
+     wheel/touchpad/keyboard. The dashboard's <main> wraps every authenticated
+     page (settings, inbox, OC pages, etc.) and is the actual scrolling
+     container Next.js uses, so it gets the same treatment as body. */
+  html, body, main[data-slot="sidebar-inset"] > main {
     scrollbar-width: none;            /* Firefox */
     -ms-overflow-style: none;         /* IE / old Edge */
   }
   html::-webkit-scrollbar,
-  body::-webkit-scrollbar {
+  body::-webkit-scrollbar,
+  main[data-slot="sidebar-inset"] > main::-webkit-scrollbar {
     display: none;                    /* Chrome / Safari / WebKit */
   }
 

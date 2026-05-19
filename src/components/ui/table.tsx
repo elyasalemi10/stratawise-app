@@ -67,7 +67,7 @@ function TableBody({ className, ...props }: React.ComponentProps<"tbody">) {
         // is darker than muted (the stripe), so the cursor row is distinct
         // regardless of whether it landed on white or muted.
         variant === "striped" &&
-          "[&_tr:nth-child(odd)]:bg-card [&_tr:nth-child(even)]:bg-muted [&_tr:hover]:!bg-secondary-hover",
+          "[&_tr:nth-child(odd)]:bg-card [&_tr:nth-child(even)]:bg-muted/40 [&_tr:hover]:!bg-secondary-hover",
         // Bordered — flat white rows + per-row underline; hover bumps to
         // muted (works because there's no stripe to compete with).
         variant === "bordered" &&
