@@ -396,6 +396,21 @@ function decodeBase64Url(input: string): string {
   return Buffer.from(padded, "base64").toString("utf-8");
 }
 
+// Some senders (Apple Mail HTML-only, marketing platforms) drop a
+// near-empty text/plain part with only a "this email is best viewed in
+// an HTML-supported client" placeholder. If the text part matches that
+// pattern, fall back to stripHtml(html) so the inbox shows real content
+// instead of the placeholder.
+function isHtmlOnlyPlaceholder(text: string): boolean {
+  const t = text.trim().toLowerCase();
+  if (!t) return true;
+  return (
+    /best viewed (?:in|using) an? html(?:[ -]?supported|[ -]?capable|[ -]?compatible|[ -]?aware)?( email)? client/i.test(
+      t,
+    ) || /this email .{0,40}? html.{0,40}? client/i.test(t)
+  );
+}
+
 function extractBody(
   payload: {
     mimeType?: string | null;
@@ -430,6 +445,11 @@ function extractBody(
     }
   };
   walk(payload.parts);
+  // Prefer the html-stripped version when text is just the HTML-client
+  // placeholder; otherwise honour the explicit text/plain part.
+  if (html && isHtmlOnlyPlaceholder(text)) {
+    return { text: stripHtml(html), html };
+  }
   return { text: text || (html ? stripHtml(html) : ""), html };
 }
 

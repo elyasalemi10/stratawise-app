@@ -78,7 +78,29 @@ export function Step4OpeningBalances({
     return Number.isFinite(n) ? n : NaN as unknown as number;
   }
 
+  // When the manager opted to defer banking on Step 4 there are no bank
+  // accounts to seed with opening balances. Skip every numeric check and
+  // jump straight to completeWizard; the OC ships without a bank_accounts
+  // row and Settings → Banking handles the rest later.
+  const bankingDeferred = initialDraft.banking_deferred === true;
+
   async function onCreate() {
+    if (bankingDeferred) {
+      setPending(true);
+      const result = await completeWizard(draftId);
+      setPending(false);
+      if (result.error || !result.ocCode) {
+        toast.error(result.error ?? "Failed to create the OC");
+        return;
+      }
+      onComplete({
+        ocCode: result.ocCode,
+        sourceDraftId: result.sourceDraftId,
+        nextOcIndex: result.nextOcIndex,
+      });
+      return;
+    }
+
     if (!managementStart) {
       toast.error("Management start date is missing. Go back to Step 1 to set it.");
       return;
@@ -137,6 +159,28 @@ export function Step4OpeningBalances({
       sourceDraftId: result.sourceDraftId,
       nextOcIndex: result.nextOcIndex,
     });
+  }
+
+  if (bankingDeferred) {
+    return (
+      <div className="space-y-6">
+        <div className="text-center">
+          <h2 className="text-lg font-semibold text-foreground">Ready to create</h2>
+          <p className="mt-1 text-sm text-muted-foreground">
+            You opted to set up bank accounts later. The OC is ready to be
+            created — opening balances will be captured when you configure
+            banking from Settings → Banking.
+          </p>
+        </div>
+        <div className="flex items-center justify-between pt-2">
+          <Button type="button" variant="secondary" onClick={onBack}>Back</Button>
+          <Button type="button" onClick={onCreate} disabled={pending}>
+            {pending && <Loader2 className="size-4 animate-spin" />}
+            Create OC
+          </Button>
+        </div>
+      </div>
+    );
   }
 
   return (

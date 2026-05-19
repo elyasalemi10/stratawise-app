@@ -17,7 +17,11 @@
 
 import type { SupabaseClient } from "@supabase/supabase-js";
 
-const SYSTEM_ACCRUAL_AUTH_ID = "system_accrual_cron";
+// Bootstrap system profile email. `profiles.auth_user_id` is a UUID column,
+// so the original "system_accrual_cron" string literal couldn't be looked
+// up there — switched to the dedicated email row created by the
+// 20260520_bootstrap_system_cron_profile migration.
+const SYSTEM_ACCRUAL_EMAIL = "system-cron@stratawise.internal";
 
 export interface AccrualJobInput {
   ocId: string;
@@ -52,12 +56,17 @@ export async function resolveSystemProfileId(
   const { data, error } = await supabase
     .from("profiles")
     .select("id")
-    .eq("auth_user_id", SYSTEM_ACCRUAL_AUTH_ID)
-    .single();
+    .eq("email", SYSTEM_ACCRUAL_EMAIL)
+    .maybeSingle();
 
-  if (error || !data) {
+  if (error) {
     throw new Error(
-      `system profile '${SYSTEM_ACCRUAL_AUTH_ID}' not found — apply PP6-A schema delta`,
+      `system profile lookup failed for ${SYSTEM_ACCRUAL_EMAIL}: ${error.message}`,
+    );
+  }
+  if (!data) {
+    throw new Error(
+      `system profile '${SYSTEM_ACCRUAL_EMAIL}' not found — apply migration 20260520_bootstrap_system_cron_profile`,
     );
   }
   return (data as { id: string }).id;

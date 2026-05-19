@@ -313,12 +313,6 @@ export function Step3PostalContact({
                       </td>
                       <td className="px-3 py-1.5 text-muted-foreground truncate" title={lot.owner_name || ""}>
                         {lot.owner_name || "—"}
-                        {(lot.occupancy_status === "tenanted" ||
-                          (lot.occupancy_status == null && lot.is_occupied_by_owner === false && (lot.tenant_name ?? "").trim())) && (
-                          <span className="ml-2 inline-flex items-center rounded-full bg-amber-50 text-amber-800 text-[10px] px-1.5 py-0.5 font-medium">
-                            Tenanted
-                          </span>
-                        )}
                         {lot.occupancy_status === "vacant" && (
                           <span className="ml-2 inline-flex items-center rounded-full bg-cool-muted text-cool-muted-foreground text-[10px] px-1.5 py-0.5 font-medium">
                             Vacant

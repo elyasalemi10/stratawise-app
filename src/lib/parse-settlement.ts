@@ -26,7 +26,11 @@ export type ParsedSettlement = {
     email: string | null;
     phone: string | null;
     postal_address: string | null;
-    date_of_birth: string | null; // ISO yyyy-mm-dd
+    // Date of birth was removed (2026-05). We intentionally do NOT
+    // extract or store it — it's not required for strata correspondence
+    // and minimises the PII footprint. Kept here as `null` for
+    // downstream consumers that haven't migrated yet.
+    date_of_birth: null;
   };
   settlement_date: string | null; // ISO yyyy-mm-dd
   sale_price_cents: number | null;
@@ -64,9 +68,8 @@ const RESPONSE_SCHEMA = {
         email: { type: Type.STRING, nullable: true, description: "Email address of the incoming owner, if shown anywhere on the form. Null if not present." },
         phone: { type: Type.STRING, nullable: true, description: "Phone number of the incoming owner. Null if not present." },
         postal_address: { type: Type.STRING, nullable: true, description: "Postal / service address for the new owner (often different from the lot itself when the owner is non-resident). Null if not present." },
-        date_of_birth: { type: Type.STRING, nullable: true, description: "ISO yyyy-mm-dd. Null if not present." },
       },
-      required: ["name", "email", "phone", "postal_address", "date_of_birth"],
+      required: ["name", "email", "phone", "postal_address"],
     },
     settlement_date: {
       type: Type.STRING,
@@ -127,7 +130,6 @@ Field-by-field rules:
 - Dates: ISO yyyy-mm-dd. AU forms use DD/MM/YYYY; convert. If only a partial date is visible (e.g. month + year), return null rather than guess.
 - lot_number and plan_number come from the title reference ("Lot 7 on PS812345X" → lot_number 7, plan_number "PS812345X"). Plan-of-Subdivision format: PS + 6 digits + 1 letter, upper-case.
 - postal_address is the new owner's CORRESPONDENCE address (often outside the building when they're a non-resident landlord). It may differ from the lot's address.
-- date_of_birth: present on conveyancing identity forms / VOI checks. Null if not shown.
 - conveyancer: the settlement agent acting for the BUYER. Name + email only. Null fields if you can't see them.
 
 Document-type gate:
@@ -190,5 +192,16 @@ export async function parseSettlementPdf(pdfBytes: Buffer): Promise<ParsedSettle
     console.error("parseSettlementPdf: empty response from model");
     throw new Error("Automatic settlement parsing returned no data.");
   }
-  return JSON.parse(text) as ParsedSettlement;
+  const parsed = JSON.parse(text) as Omit<ParsedSettlement, "transferee"> & {
+    transferee: Omit<ParsedSettlement["transferee"], "date_of_birth"> & {
+      date_of_birth?: null;
+    };
+  };
+  // Pin date_of_birth to null regardless of what comes back — the schema
+  // no longer asks for it, but defending against schema drift keeps
+  // downstream consumers from seeing `undefined`.
+  return {
+    ...parsed,
+    transferee: { ...parsed.transferee, date_of_birth: null },
+  };
 }

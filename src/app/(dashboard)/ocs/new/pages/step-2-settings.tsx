@@ -260,14 +260,18 @@ export function Step2Settings({
                       <TooltipContent>Annual rate charged on unpaid levies once the interest-free period ends.</TooltipContent>
                     </Tooltip>
                   </div>
-                  <NumberInput
-                    id="annual-rate"
-                    value={annualRatePct}
-                    onChange={(v) => { setAnnualRatePct(v); if (annualRateInvalid) setAnnualRateInvalid(false); }}
-                    suffix="per year"
-                    invalid={annualRateInvalid}
-                    placeholder="Rate"
-                  />
+                  <div className="flex items-center gap-2">
+                    <NumberInput
+                      id="annual-rate"
+                      value={annualRatePct}
+                      onChange={(v) => { setAnnualRatePct(v); if (annualRateInvalid) setAnnualRateInvalid(false); }}
+                      suffix="%"
+                      invalid={annualRateInvalid}
+                      placeholder="Rate"
+                      className="flex-1"
+                    />
+                    <span className="text-sm text-muted-foreground whitespace-nowrap">per year</span>
+                  </div>
                 </div>
               </div>
             )}

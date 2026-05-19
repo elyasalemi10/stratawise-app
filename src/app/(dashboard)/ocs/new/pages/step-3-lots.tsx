@@ -274,10 +274,18 @@ export function Step3Lots({
           />
         </div>
         {/* Services-only — matches the GST-Registered row on Step 1: label
-            on the left, inline Yes/No toggle on the right, no card. */}
+            on the left, inline Yes/No toggle on the right, no card.
+            Toggling services-only changes the computed tier, so the
+            tier-confirm checkbox below must be re-ticked to advance. */}
         <div className="flex h-9 items-center gap-3 self-end">
           <Label htmlFor="services-only">Services-only OC</Label>
-          <InlineYesNoToggle value={servicesOnly} onChange={setServicesOnly} />
+          <InlineYesNoToggle
+            value={servicesOnly}
+            onChange={(v) => {
+              setServicesOnly(v);
+              if (tierConfirmed) setTierConfirmed(false);
+            }}
+          />
         </div>
       </div>
 

@@ -145,6 +145,10 @@ export type DraftJson = {
   // Whether this OC holds a third "maintenance plan" reserve fund. Tier 1/2
   // is mandatory (the UI forces this on); higher tiers can opt in.
   has_maintenance_plan_fund?: boolean;
+  // If set, the manager opted out of configuring bank accounts during the
+  // wizard. completeWizard will skip the bank_accounts insert and the
+  // post-creation Settings → Banking page will prompt to finish setup.
+  banking_deferred?: boolean;
   // Admin fund — always present.
   admin_bank_id?: string;        // e.g. "macquarie"
   admin_account_name?: string;
@@ -1314,22 +1318,32 @@ export async function completeWizard(draftId: string) {
     const resolvedBuildingName = (d.building_name?.trim() || d.trading_name?.trim() || "");
     const resolvedName = resolvedBuildingName || d.address.trim() || `Owners Corporation ${d.plan_number}`;
     if (!d.lots || d.lots.length < 2) return { error: "At least 2 lots are required" };
-    if (!d.admin_bsb || !d.admin_account_number || !d.admin_account_name || !d.admin_bank_id) {
-      return { error: "Trust account details are required (page 5)" };
+
+    // Banking can be deferred — see step-4-banking.tsx. When the manager
+    // ticked "set up later", skip every bank-account / opening-balance
+    // gate and complete the OC without any bank_accounts rows.
+    const bankingDeferred = !!d.banking_deferred;
+
+    if (!bankingDeferred) {
+      if (!d.admin_bsb || !d.admin_account_number || !d.admin_account_name || !d.admin_bank_id) {
+        return { error: "Trust account details are required (page 5)" };
+      }
+      if (!d.opening_balance_date) return { error: "Opening balance date is required (page 6)" };
     }
-    if (!d.opening_balance_date) return { error: "Opening balance date is required (page 6)" };
 
     // Resolve per-fund bank details. Capital and maintenance can either share
-    // the admin account or have their own.
+    // the admin account or have their own. Skipped when banking is deferred.
     const capitalShared = d.capital_same_as_admin ?? true;
-    const capital = capitalShared
-      ? { bank_id: d.admin_bank_id, account_name: d.admin_account_name, bsb: d.admin_bsb, account_number: d.admin_account_number }
-      : { bank_id: d.capital_bank_id, account_name: d.capital_account_name, bsb: d.capital_bsb, account_number: d.capital_account_number };
-    if (!capital.bsb || !capital.account_number || !capital.account_name || !capital.bank_id) {
+    const capital = bankingDeferred
+      ? null
+      : capitalShared
+        ? { bank_id: d.admin_bank_id, account_name: d.admin_account_name, bsb: d.admin_bsb, account_number: d.admin_account_number }
+        : { bank_id: d.capital_bank_id, account_name: d.capital_account_name, bsb: d.capital_bsb, account_number: d.capital_account_number };
+    if (capital && (!capital.bsb || !capital.account_number || !capital.account_name || !capital.bank_id)) {
       return { error: "Capital works trust account details are required (page 5)" };
     }
 
-    const hasMaintenance = !!d.has_maintenance_plan_fund;
+    const hasMaintenance = !bankingDeferred && !!d.has_maintenance_plan_fund;
     const maintenanceShared = d.maintenance_same_as_admin ?? true;
     const maintenance = !hasMaintenance ? null
       : maintenanceShared
@@ -1689,6 +1703,11 @@ export async function completeWizard(draftId: string) {
     // wizard used to swallow them silently, so a constraint trip (e.g. on
     // the now-removed global unique) produced an OC with zero bank rows
     // and a baffled manager on the bank-account page.
+    //
+    // When `banking_deferred` was ticked, skip the entire block; the
+    // resulting OC has no bank_accounts rows until the manager
+    // configures them later from Settings → Banking.
+    if (!bankingDeferred) {
     const { error: adminBankErr } = await supabase.from("bank_accounts").insert({
       oc_id: oc.id,
       fund_type: "administrative",
@@ -1706,10 +1725,10 @@ export async function completeWizard(draftId: string) {
     const { error: capitalBankErr } = await supabase.from("bank_accounts").insert({
       oc_id: oc.id,
       fund_type: "capital_works",
-      bank_name: capital.bank_id ?? null,
-      account_name: capital.account_name!,
-      bsb: capital.bsb!,
-      account_number: capital.account_number!,
+      bank_name: capital!.bank_id ?? null,
+      account_name: capital!.account_name!,
+      bsb: capital!.bsb!,
+      account_number: capital!.account_number!,
       opening_balance: d.opening_capital_works_balance ?? 0,
       opening_balance_date: d.opening_balance_date,
     });
@@ -1733,6 +1752,7 @@ export async function completeWizard(draftId: string) {
         return { error: "Couldn't save the maintenance plan fund bank account. Please check the details and try again." };
       }
     }
+    } // end if (!bankingDeferred)
 
     // DRN mappings (Macquarie only). The wizard staged rows in
     // draft_json.lot_drns keyed by lot_number; now that lots exist we resolve

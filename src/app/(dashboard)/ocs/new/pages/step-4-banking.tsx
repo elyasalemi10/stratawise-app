@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useState } from "react";
 import { toast } from "sonner";
 import { Loader2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
@@ -21,17 +21,6 @@ import { WizardActions } from "./_components/wizard-actions";
 // Macquarie DEFT panel (DRN CSV import) lives in OC Settings post-creation;
 // not captured by the new wizard.
 
-const BSB_PREFIXES: Record<string, string> = {
-  "01": "ANZ", "03": "Westpac", "06": "CBA", "08": "NAB",
-  "18": "Macquarie Bank", "63": "Bendigo Bank",
-  "73": "Westpac", "76": "Westpac",
-};
-
-function lookupBank(bsb: string): string | null {
-  const digits = bsb.replace(/\D/g, "");
-  if (digits.length < 2) return null;
-  return BSB_PREFIXES[digits.slice(0, 2)] ?? null;
-}
 function formatBsb(input: string): string {
   const d = input.replace(/\D/g, "").slice(0, 6);
   return d.length <= 3 ? d : `${d.slice(0, 3)}-${d.slice(3)}`;
@@ -61,7 +50,6 @@ interface FundFieldsProps {
 }
 
 function FundFieldsBlock({ value, onChange, invalid, idPrefix }: FundFieldsProps) {
-  const detected = useMemo(() => lookupBank(value.bsb), [value.bsb]);
   return (
     <div className="space-y-3">
       <div className="space-y-1.5">
@@ -101,7 +89,6 @@ function FundFieldsBlock({ value, onChange, invalid, idPrefix }: FundFieldsProps
             maxLength={7}
             aria-invalid={invalid.bsb || undefined}
           />
-          {detected && <p className="text-xs text-muted-foreground">Matches {detected}</p>}
         </div>
         <div className="space-y-1.5">
           <Label htmlFor={`${idPrefix}-acc`}>
@@ -178,6 +165,15 @@ export function Step4Banking({
   const [maintenanceInvalid, setMaintenanceInvalid] = useState<InvalidFlags>(NO_INVALID);
   const [pending, setPending] = useState(false);
 
+  // Optional banking: many strata managers prefer to onboard the OC
+  // first and circle back to bank accounts once the trust account is
+  // open (often days later). Ticking "set up later" skips this step's
+  // validation entirely and saves nothing — they'll configure it from
+  // Settings → Banking after the OC is live.
+  const [skipBanking, setSkipBanking] = useState<boolean>(
+    initialDraft.banking_deferred ?? false,
+  );
+
   function validateFund(f: FundFields): InvalidFlags {
     return {
       bank: !f.bankId,
@@ -188,6 +184,30 @@ export function Step4Banking({
   }
 
   function onContinue() {
+    if (skipBanking) {
+      setPending(true);
+      void (async () => {
+        const r = await saveStep(draftId, {
+          banking_deferred: true,
+          bank_provider: undefined,
+          has_maintenance_plan_fund: false,
+          admin_bank_id: undefined,
+          admin_account_name: undefined,
+          admin_bsb: undefined,
+          admin_account_number: undefined,
+          capital_same_as_admin: true,
+          maintenance_same_as_admin: true,
+        }, 4, 1);
+        if (r.error) {
+          setPending(false);
+          toast.error(r.error);
+          return;
+        }
+        await onNext();
+      })();
+      return;
+    }
+
     const problems: string[] = [];
     const adminFlags = validateFund(admin);
     if (Object.values(adminFlags).some(Boolean)) problems.push("Admin fund details");
@@ -243,6 +263,7 @@ export function Step4Banking({
     setPending(true);
     void (async () => {
       const r = await saveStep(draftId, {
+        banking_deferred: false,
         bank_provider: admin.bankId === "macquarie" ? "macquarie_deft" : "other_csv",
         has_maintenance_plan_fund: hasMaintenance,
         admin_bank_id: admin.bankId,
@@ -281,7 +302,23 @@ export function Step4Banking({
         </p>
       </div>
 
-      <div className="rounded-md border border-border bg-card p-4 space-y-3">
+      <div className="flex items-center gap-3 rounded-md border border-border bg-card p-3">
+        <Checkbox
+          id="banking-deferred"
+          checked={skipBanking}
+          onCheckedChange={(v) => setSkipBanking(v === true)}
+        />
+        <div className="text-sm">
+          <Label htmlFor="banking-deferred" className="font-medium text-foreground">
+            I&apos;ll set up the bank accounts later
+          </Label>
+          <p className="text-xs text-muted-foreground mt-0.5">
+            Skip this step and finish the OC. You can add accounts any time from Settings → Banking. Levy distribution stays paused until accounts exist.
+          </p>
+        </div>
+      </div>
+
+      <div className={`rounded-md border border-border bg-card p-4 space-y-3 ${skipBanking ? "opacity-50 pointer-events-none" : ""}`}>
         <h3 className="text-sm font-semibold text-foreground">Administrative fund</h3>
         <FundFieldsBlock
           value={admin}
@@ -291,7 +328,7 @@ export function Step4Banking({
         />
       </div>
 
-      <div className="rounded-md border border-border bg-card p-4 space-y-3">
+      <div className={`rounded-md border border-border bg-card p-4 space-y-3 ${skipBanking ? "opacity-50 pointer-events-none" : ""}`}>
         <h3 className="text-sm font-semibold text-foreground">Capital works fund</h3>
         <div className="flex items-center gap-3">
           <Checkbox
@@ -313,7 +350,7 @@ export function Step4Banking({
         )}
       </div>
 
-      <div className="rounded-md border border-border bg-card p-4 space-y-3">
+      <div className={`rounded-md border border-border bg-card p-4 space-y-3 ${skipBanking ? "opacity-50 pointer-events-none" : ""}`}>
         <div className="flex items-center justify-between gap-3">
           <h3 className="text-sm font-semibold text-foreground">Maintenance plan fund</h3>
           <Switch

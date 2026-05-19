@@ -932,7 +932,6 @@ function SendSmsDrawer({
   return (
     <EditSheet
       label="Send SMS"
-      description="Sent via Mobile Message. GSM-7 only — no emoji or non-Latin scripts."
       headerKicker={null}
       open
       onOpenChange={(o) => {

@@ -249,11 +249,6 @@ export function Step1General({
             onChange={(v) => { setAddress(v); if (addressInvalid) setAddressInvalid(false); }}
             error={addressInvalid}
           />
-          {addressInvalid && (
-            <p className="text-xs text-destructive">
-              Address must include street number, street name, suburb, and postcode.
-            </p>
-          )}
         </div>
 
         <div className="space-y-1.5">

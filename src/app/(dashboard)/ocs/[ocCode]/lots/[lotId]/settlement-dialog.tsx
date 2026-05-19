@@ -1,8 +1,9 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState } from "react";
+import { useRouter } from "next/navigation";
 import {
-  Check, FileText, Upload, AlertTriangle, Loader2, X,
+  Check, Upload, AlertTriangle, Loader2,
 } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
@@ -11,12 +12,16 @@ import { Label } from "@/components/ui/label";
 import {
   Sheet, SheetContent, SheetHeader, SheetTitle,
 } from "@/components/ui/sheet";
+import {
+  Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter,
+} from "@/components/ui/dialog";
 import { DatePicker } from "@/components/shared/date-picker";
 import { PlacesAutocomplete } from "@/components/shared/places-autocomplete";
 import {
   parseSettlementForReview,
   parseSettlementAndMatchLot,
   applySettlementToLot,
+  findLotByNumberInOc,
   type SettlementReview,
 } from "@/lib/actions/settlements";
 
@@ -54,9 +59,17 @@ type EntryMode = "pdf" | "manual";
 
 export function SettlementDialog(props: Props) {
   const { open, onClose, ocId, onApplied } = props;
+  const router = useRouter();
   const knownLotId = props.lotId ?? null;
   const knownLotNumber = props.lotNumber ?? null;
   const knownLotAddress = props.lotAddress ?? null;
+
+  // 2-step mismatch confirmation. Step "plan" runs first (highest stakes —
+  // wrong plan-of-subdivision = wrong building entirely); "lot" runs only
+  // after plan is acknowledged (or matched), so the manager can either
+  // confirm in place or jump to the lot the document actually mentions.
+  const [mismatchStep, setMismatchStep] = useState<"plan" | "lot" | null>(null);
+  const [jumpingToLot, setJumpingToLot] = useState(false);
 
   const [stage, setStage] = useState<Stage>("upload");
   const [entryMode, setEntryMode] = useState<EntryMode>("pdf");
@@ -66,14 +79,16 @@ export function SettlementDialog(props: Props) {
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   // Editable form state, prefilled from parsed PDF.
+  // Date of birth was removed in 2026-05 — it isn't load-bearing for
+  // strata correspondence and we don't want to be the one storing it.
   const [name, setName] = useState("");
   const [email, setEmail] = useState("");
   const [phone, setPhone] = useState("");
   const [postalAddress, setPostalAddress] = useState("");
-  const [dateOfBirth, setDateOfBirth] = useState("");
   const [settlementDate, setSettlementDate] = useState("");
   const [occupancy, setOccupancy] = useState<"owner_occupied" | "tenanted" | "vacant">("owner_occupied");
   const [tenantName, setTenantName] = useState("");
+  const [tenantNameInvalid, setTenantNameInvalid] = useState(false);
   const [tenantEmail, setTenantEmail] = useState("");
   const [tenantPhone, setTenantPhone] = useState("");
 
@@ -83,8 +98,8 @@ export function SettlementDialog(props: Props) {
     setDocumentId(null);
     setReview(null);
     setDragging(false);
-    setName(""); setEmail(""); setPhone(""); setPostalAddress(""); setDateOfBirth(""); setSettlementDate("");
-    setOccupancy("owner_occupied"); setTenantName(""); setTenantEmail(""); setTenantPhone("");
+    setName(""); setEmail(""); setPhone(""); setPostalAddress(""); setSettlementDate("");
+    setOccupancy("owner_occupied"); setTenantName(""); setTenantNameInvalid(false); setTenantEmail(""); setTenantPhone("");
   }, []);
 
   // Manual entry — skip the PDF stage and jump straight to the review form
@@ -97,7 +112,7 @@ export function SettlementDialog(props: Props) {
     setReview(null);
     setName(""); setEmail(""); setPhone("");
     setPostalAddress(knownLotAddress ?? "");
-    setDateOfBirth(""); setSettlementDate("");
+    setSettlementDate("");
     setStage("review");
   }, [knownLotAddress]);
 
@@ -110,6 +125,51 @@ export function SettlementDialog(props: Props) {
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open, entryMode, knownLotAddress]);
+
+  // Hydrate from the "Go to lot X" sessionStorage hand-off so the new
+  // lot's drawer opens with the same parsed data the user was reviewing
+  // on the wrong lot. One-shot — clear after read.
+  useEffect(() => {
+    if (!open || !knownLotId || typeof window === "undefined") return;
+    const key = `sw:settlement-prefill:${knownLotId}`;
+    const raw = sessionStorage.getItem(key);
+    if (!raw) return;
+    try {
+      const payload = JSON.parse(raw) as {
+        documentId?: string | null;
+        name?: string;
+        email?: string;
+        phone?: string;
+        postalAddress?: string;
+        settlementDate?: string;
+        occupancy?: "owner_occupied" | "tenanted" | "vacant";
+        tenantName?: string;
+        tenantEmail?: string;
+        tenantPhone?: string;
+      };
+      // No PDF re-parse — the existing document was already attached to
+      // the OTHER lot. Drop the manager into manual mode with the form
+      // pre-filled so they can finish without re-uploading.
+      setEntryMode("manual");
+      setDocumentId(null);
+      if (payload.name) setName(payload.name);
+      if (payload.email) setEmail(payload.email);
+      if (payload.phone) setPhone(payload.phone);
+      if (payload.postalAddress) setPostalAddress(payload.postalAddress);
+      if (payload.settlementDate) setSettlementDate(payload.settlementDate);
+      if (payload.occupancy) setOccupancy(payload.occupancy);
+      if (payload.tenantName) setTenantName(payload.tenantName);
+      if (payload.tenantEmail) setTenantEmail(payload.tenantEmail);
+      if (payload.tenantPhone) setTenantPhone(payload.tenantPhone);
+      setStage("review");
+      toast.success("Carried your settlement details across to this lot.");
+    } catch (err) {
+      console.warn("settlement prefill parse failed", err);
+    } finally {
+      sessionStorage.removeItem(key);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [open, knownLotId]);
 
   const handleClose = useCallback(() => {
     if (stage === "parsing" || stage === "submitting") return;
@@ -152,7 +212,6 @@ export function SettlementDialog(props: Props) {
       setEmail(data.parsed.transferee.email ?? "");
       setPhone(data.parsed.transferee.phone ?? "");
       setPostalAddress(data.parsed.transferee.postalAddress ?? "");
-      setDateOfBirth(data.parsed.transferee.dateOfBirth ?? "");
       setSettlementDate(data.parsed.settlementDate ?? "");
       setStage("review");
     } catch (err) {
@@ -169,21 +228,29 @@ export function SettlementDialog(props: Props) {
   const targetLotId = knownLotId ?? review?.matchedLot?.id ?? null;
   const targetLotNumber = knownLotNumber ?? review?.matchedLot?.lotNumber ?? null;
 
-  const handleConfirm = useCallback(async () => {
-    if (!targetLotId) return;
-    // In manual mode documentId is intentionally null — the action accepts it
-    // and skips the document-attachment check.
-    if (entryMode === "pdf" && !documentId) return;
-    // Per the OC creation wizard contract: name + postal address +
-    // settlement date are mandatory for every new owner; email is optional.
+  // Local validation that runs before either the mismatch popup OR the
+  // direct submit fires. Returns true if the form is ready to send.
+  const validateForm = useCallback((): boolean => {
+    if (!targetLotId) return false;
+    if (entryMode === "pdf" && !documentId) return false;
     if (!name.trim() || !settlementDate) {
       toast.error("Name and settlement date are required.");
-      return;
+      return false;
     }
     if (!postalAddress.trim()) {
       toast.error("Postal address is required (used for paper notices).");
-      return;
+      return false;
     }
+    if (occupancy === "tenanted" && !tenantName.trim()) {
+      setTenantNameInvalid(true);
+      toast.error("Tenant name is required when the lot is tenanted.");
+      return false;
+    }
+    return true;
+  }, [targetLotId, entryMode, documentId, name, settlementDate, postalAddress, occupancy, tenantName]);
+
+  const submitSettlement = useCallback(async () => {
+    if (!targetLotId) return;
     setStage("submitting");
     const result = await applySettlementToLot({
       documentId: entryMode === "manual" ? null : documentId,
@@ -193,7 +260,7 @@ export function SettlementDialog(props: Props) {
         email: email.trim(),
         phone: phone.trim() || null,
         postalAddress: postalAddress.trim(),
-        dateOfBirth: dateOfBirth || null,
+        dateOfBirth: null,
         verifiedPostal: false,
       },
       settlementDate,
@@ -214,9 +281,82 @@ export function SettlementDialog(props: Props) {
       description: `New owner ${name.trim()} is now pending acceptance${targetLotNumber != null ? ` for Lot ${targetLotNumber}` : ""}.`,
     });
     reset();
+    setMismatchStep(null);
     onClose();
     onApplied?.();
-  }, [entryMode, documentId, targetLotId, name, email, phone, postalAddress, dateOfBirth, settlementDate, occupancy, tenantName, tenantEmail, tenantPhone, review, targetLotNumber, reset, onClose, onApplied]);
+  }, [entryMode, documentId, targetLotId, name, email, phone, postalAddress, settlementDate, occupancy, tenantName, tenantEmail, tenantPhone, review, targetLotNumber, reset, onClose, onApplied]);
+
+  // Entry point fired by the footer's "Confirm and assign" button.
+  // If the parsed PDF says a different plan or lot than the one the
+  // manager is applying to, open the 2-step mismatch popup first.
+  const handleConfirm = useCallback(() => {
+    if (!validateForm()) return;
+    if (entryMode === "pdf" && review) {
+      if (review.matches.planNumber === false) {
+        setMismatchStep("plan");
+        return;
+      }
+      if (review.matches.lotNumber === false) {
+        setMismatchStep("lot");
+        return;
+      }
+    }
+    void submitSettlement();
+  }, [validateForm, entryMode, review, submitSettlement]);
+
+  // "Go to lot X" branch: look up the lot the parser thinks the document
+  // is for, stash the parsed data + form values in sessionStorage, then
+  // navigate. The destination lot page reads that payload on mount and
+  // pops the settlement drawer pre-filled.
+  const handleJumpToParsedLot = useCallback(async () => {
+    if (!review?.parsed.lotNumber) return;
+    setJumpingToLot(true);
+    const res = await findLotByNumberInOc(ocId, review.parsed.lotNumber);
+    setJumpingToLot(false);
+    if (!res.ok) {
+      toast.error(res.error);
+      return;
+    }
+    // Carry the in-flight form across the navigation so the manager
+    // doesn't retype anything. Keys are scoped per-lot so two tabs
+    // don't collide.
+    if (typeof window !== "undefined") {
+      sessionStorage.setItem(
+        `sw:settlement-prefill:${res.lotId}`,
+        JSON.stringify({
+          documentId,
+          name,
+          email,
+          phone,
+          postalAddress,
+          settlementDate,
+          occupancy,
+          tenantName,
+          tenantEmail,
+          tenantPhone,
+          source: "wrong-lot-jump",
+        }),
+      );
+    }
+    setMismatchStep(null);
+    onClose();
+    router.push(`/ocs/${res.ocShortCode}/lots/${res.lotId}?settlement=open`);
+  }, [
+    review,
+    ocId,
+    documentId,
+    name,
+    email,
+    phone,
+    postalAddress,
+    settlementDate,
+    occupancy,
+    tenantName,
+    tenantEmail,
+    tenantPhone,
+    onClose,
+    router,
+  ]);
 
   // ─── Render ───────────────────────────────────────────────────
 
@@ -273,10 +413,10 @@ export function SettlementDialog(props: Props) {
             email={email} setEmail={setEmail}
             phone={phone} setPhone={setPhone}
             postalAddress={postalAddress} setPostalAddress={setPostalAddress}
-            dateOfBirth={dateOfBirth} setDateOfBirth={setDateOfBirth}
             settlementDate={settlementDate} setSettlementDate={setSettlementDate}
             occupancy={occupancy} setOccupancy={setOccupancy}
-            tenantName={tenantName} setTenantName={setTenantName}
+            tenantName={tenantName} setTenantName={(v) => { setTenantName(v); if (tenantNameInvalid) setTenantNameInvalid(false); }}
+            tenantNameInvalid={tenantNameInvalid}
             tenantEmail={tenantEmail} setTenantEmail={setTenantEmail}
             tenantPhone={tenantPhone} setTenantPhone={setTenantPhone}
           />
@@ -290,10 +430,10 @@ export function SettlementDialog(props: Props) {
             email={email} setEmail={setEmail}
             phone={phone} setPhone={setPhone}
             postalAddress={postalAddress} setPostalAddress={setPostalAddress}
-            dateOfBirth={dateOfBirth} setDateOfBirth={setDateOfBirth}
             settlementDate={settlementDate} setSettlementDate={setSettlementDate}
             occupancy={occupancy} setOccupancy={setOccupancy}
-            tenantName={tenantName} setTenantName={setTenantName}
+            tenantName={tenantName} setTenantName={(v) => { setTenantName(v); if (tenantNameInvalid) setTenantNameInvalid(false); }}
+            tenantNameInvalid={tenantNameInvalid}
             tenantEmail={tenantEmail} setTenantEmail={setTenantEmail}
             tenantPhone={tenantPhone} setTenantPhone={setTenantPhone}
           />
@@ -320,6 +460,92 @@ export function SettlementDialog(props: Props) {
             </Button>
           </div>
         )}
+
+        <Dialog
+          open={mismatchStep !== null}
+          onOpenChange={(o) => { if (!o) setMismatchStep(null); }}
+        >
+          <DialogContent className="sm:max-w-md">
+            {mismatchStep === "plan" && review && (
+              <>
+                <DialogHeader>
+                  <DialogTitle>This document is for a different plan</DialogTitle>
+                  <DialogDescription>
+                    The document references plan{" "}
+                    <span className="font-medium text-foreground">
+                      {review.parsed.planNumber ?? "—"}
+                    </span>
+                    , but this OC is plan{" "}
+                    <span className="font-medium text-foreground">
+                      {review.expected.planNumber ?? "—"}
+                    </span>
+                    . Are you sure this is the right document?
+                  </DialogDescription>
+                </DialogHeader>
+                <DialogFooter>
+                  <Button
+                    type="button"
+                    variant="secondary"
+                    onClick={() => setMismatchStep(null)}
+                  >
+                    Cancel
+                  </Button>
+                  <Button
+                    type="button"
+                    onClick={() => {
+                      if (review.matches.lotNumber === false) {
+                        setMismatchStep("lot");
+                      } else {
+                        setMismatchStep(null);
+                        void submitSettlement();
+                      }
+                    }}
+                  >
+                    I&apos;m sure — continue
+                  </Button>
+                </DialogFooter>
+              </>
+            )}
+            {mismatchStep === "lot" && review && (
+              <>
+                <DialogHeader>
+                  <DialogTitle>This document is for a different lot</DialogTitle>
+                  <DialogDescription>
+                    The document references{" "}
+                    <span className="font-medium text-foreground">
+                      Lot {review.parsed.lotNumber ?? "—"}
+                    </span>
+                    , but you&apos;re applying it to{" "}
+                    <span className="font-medium text-foreground">
+                      Lot {targetLotNumber ?? "—"}
+                    </span>
+                    . What would you like to do?
+                  </DialogDescription>
+                </DialogHeader>
+                <DialogFooter className="flex-col sm:flex-row sm:justify-end gap-2">
+                  <Button
+                    type="button"
+                    variant="secondary"
+                    onClick={handleJumpToParsedLot}
+                    disabled={jumpingToLot}
+                  >
+                    {jumpingToLot && <Loader2 className="size-3.5 animate-spin" />}
+                    Go to Lot {review.parsed.lotNumber}
+                  </Button>
+                  <Button
+                    type="button"
+                    onClick={() => {
+                      setMismatchStep(null);
+                      void submitSettlement();
+                    }}
+                  >
+                    I&apos;m sure — apply to Lot {targetLotNumber}
+                  </Button>
+                </DialogFooter>
+              </>
+            )}
+          </DialogContent>
+        </Dialog>
       </SheetContent>
     </Sheet>
   );
@@ -413,52 +639,19 @@ function ReviewForm(props: {
   email: string; setEmail: (v: string) => void;
   phone: string; setPhone: (v: string) => void;
   postalAddress: string; setPostalAddress: (v: string) => void;
-  dateOfBirth: string; setDateOfBirth: (v: string) => void;
   settlementDate: string; setSettlementDate: (v: string) => void;
   occupancy: "owner_occupied" | "tenanted" | "vacant";
   setOccupancy: (v: "owner_occupied" | "tenanted" | "vacant") => void;
   tenantName: string; setTenantName: (v: string) => void;
+  tenantNameInvalid: boolean;
   tenantEmail: string; setTenantEmail: (v: string) => void;
   tenantPhone: string; setTenantPhone: (v: string) => void;
 }) {
-  const { review, lotNumber, isMatched } = props;
+  const { review } = props;
   const couldNotExtract = !review.parsed.transferee.name && !review.parsed.lotNumber && !review.parsed.settlementDate;
 
   return (
     <div className="space-y-4 max-h-[78vh] overflow-y-auto pr-1">
-      {isMatched && review.matchedLot && (
-        <div className="flex items-start gap-2 rounded-md border border-[hsl(160,100%,37%)]/30 bg-[hsl(160,100%,37%)]/10 px-3 py-2 text-xs text-[hsl(160,100%,30%)]">
-          <Check className="h-4 w-4 shrink-0 mt-0.5" />
-          <span>
-            Matched <span className="font-medium">Lot {review.matchedLot.lotNumber}{review.matchedLot.unitNumber ? ` (Unit ${review.matchedLot.unitNumber})` : ""}</span> in this oc based on the lot and plan numbers in the PDF.
-          </span>
-        </div>
-      )}
-
-      {/* Document + match summary */}
-      <div className="rounded-md border border-border bg-muted/20 p-3">
-        <div className="flex items-start gap-3">
-          <FileText className="h-5 w-5 text-red-500 mt-0.5 shrink-0" />
-          <div className="min-w-0 flex-1">
-            <p className="text-sm font-medium text-foreground truncate">{review.documentName}</p>
-            <div className="mt-1 flex flex-wrap gap-3 text-xs text-muted-foreground">
-              <MatchPill
-                label="Lot number"
-                expected={String(review.expected.lotNumber ?? lotNumber)}
-                actual={review.parsed.lotNumber == null ? null : String(review.parsed.lotNumber)}
-                match={review.matches.lotNumber}
-              />
-              <MatchPill
-                label="Plan"
-                expected={review.expected.planNumberNormalized ?? review.expected.planNumber ?? "—"}
-                actual={review.parsed.planNumber}
-                match={review.matches.planNumber}
-              />
-            </div>
-          </div>
-        </div>
-      </div>
-
       {couldNotExtract && (
         <div className="flex items-start gap-2 rounded-md border border-amber-500/30 bg-amber-500/10 px-3 py-2 text-xs text-amber-900">
           <AlertTriangle className="h-4 w-4 shrink-0 mt-0.5" />
@@ -519,15 +712,7 @@ function ReviewForm(props: {
               placeholder="For correspondence — used as absent-owner address if different from the lot"
             />
           </div>
-          <div className="space-y-1.5">
-            <Label htmlFor="settlement-dob">Date of birth</Label>
-            <DatePicker
-              id="settlement-dob"
-              value={props.dateOfBirth}
-              onChange={props.setDateOfBirth}
-            />
-          </div>
-          <div className="space-y-1.5">
+          <div className="space-y-1.5 sm:col-span-2">
             <Label htmlFor="settlement-date">
               Settlement date <span className="text-destructive">*</span>
             </Label>
@@ -543,6 +728,7 @@ function ReviewForm(props: {
           occupancy={props.occupancy}
           setOccupancy={props.setOccupancy}
           tenantName={props.tenantName} setTenantName={props.setTenantName}
+          tenantNameInvalid={props.tenantNameInvalid}
           tenantEmail={props.tenantEmail} setTenantEmail={props.setTenantEmail}
           tenantPhone={props.tenantPhone} setTenantPhone={props.setTenantPhone}
         />
@@ -552,77 +738,10 @@ function ReviewForm(props: {
           No email is sent — share the invitation link manually when you&apos;re ready.
         </p>
       </div>
-
-      {/* Sale info — read-only context */}
-      {(review.parsed.salePriceCents != null || review.parsed.contractDate || review.parsed.conveyancer.name) && (
-        <div className="rounded-md border border-border p-3 text-xs space-y-1">
-          <p className="font-medium uppercase tracking-wide text-muted-foreground">From the document</p>
-          {review.parsed.salePriceCents != null && (
-            <InfoRow label="Sale price" value={formatCents(review.parsed.salePriceCents)} />
-          )}
-          {review.parsed.contractDate && (
-            <InfoRow label="Contract date" value={review.parsed.contractDate} />
-          )}
-          {review.parsed.conveyancer.name && (
-            <InfoRow label="Conveyancer" value={`${review.parsed.conveyancer.name}${review.parsed.conveyancer.email ? ` · ${review.parsed.conveyancer.email}` : ""}`} />
-          )}
-          {review.parsed.additionalTransferees.length > 0 && (
-            <InfoRow
-              label="Joint owners"
-              value={`${review.parsed.additionalTransferees.length} additional transferee(s) recorded — invite manually if required.`}
-            />
-          )}
-        </div>
-      )}
     </div>
   );
 }
 
-// ─── Helpers ──────────────────────────────────────────────────────
-
-function MatchPill({
-  label, expected, actual, match,
-}: {
-  label: string;
-  expected: string;
-  actual: string | null;
-  match: boolean | null;
-}) {
-  if (match === null) {
-    return (
-      <span className="inline-flex items-center gap-1">
-        <span className="text-muted-foreground">{label}: not in PDF</span>
-      </span>
-    );
-  }
-  if (match) {
-    return (
-      <span className="inline-flex items-center gap-1 text-[hsl(160,100%,30%)]">
-        <Check className="h-3 w-3" />
-        {label} {actual} matches
-      </span>
-    );
-  }
-  return (
-    <span className="inline-flex items-center gap-1 text-amber-900">
-      <X className="h-3 w-3" />
-      {label} {actual} ≠ {expected}
-    </span>
-  );
-}
-
-function InfoRow({ label, value }: { label: string; value: string }) {
-  return (
-    <div className="flex items-baseline justify-between gap-3">
-      <span className="text-muted-foreground">{label}</span>
-      <span className="text-foreground text-right">{value}</span>
-    </div>
-  );
-}
-
-function formatCents(cents: number): string {
-  return new Intl.NumberFormat("en-AU", { style: "currency", currency: "AUD" }).format(cents / 100);
-}
 
 // ─── Manual review form ───────────────────────────────────────────
 // Used when the manager opts out of the PDF flow. Same field set as the
@@ -635,11 +754,11 @@ function ManualReviewForm(props: {
   email: string; setEmail: (v: string) => void;
   phone: string; setPhone: (v: string) => void;
   postalAddress: string; setPostalAddress: (v: string) => void;
-  dateOfBirth: string; setDateOfBirth: (v: string) => void;
   settlementDate: string; setSettlementDate: (v: string) => void;
   occupancy: "owner_occupied" | "tenanted" | "vacant";
   setOccupancy: (v: "owner_occupied" | "tenanted" | "vacant") => void;
   tenantName: string; setTenantName: (v: string) => void;
+  tenantNameInvalid: boolean;
   tenantEmail: string; setTenantEmail: (v: string) => void;
   tenantPhone: string; setTenantPhone: (v: string) => void;
 }) {
@@ -698,15 +817,7 @@ function ManualReviewForm(props: {
               </p>
             )}
           </div>
-          <div className="space-y-1.5">
-            <Label htmlFor="manual-settlement-dob">Date of birth</Label>
-            <DatePicker
-              id="manual-settlement-dob"
-              value={props.dateOfBirth}
-              onChange={props.setDateOfBirth}
-            />
-          </div>
-          <div className="space-y-1.5">
+          <div className="space-y-1.5 sm:col-span-2">
             <Label htmlFor="manual-settlement-date">
               Settlement date <span className="text-destructive">*</span>
             </Label>
@@ -722,6 +833,7 @@ function ManualReviewForm(props: {
           occupancy={props.occupancy}
           setOccupancy={props.setOccupancy}
           tenantName={props.tenantName} setTenantName={props.setTenantName}
+          tenantNameInvalid={props.tenantNameInvalid}
           tenantEmail={props.tenantEmail} setTenantEmail={props.setTenantEmail}
           tenantPhone={props.tenantPhone} setTenantPhone={props.setTenantPhone}
         />
@@ -744,12 +856,14 @@ function OccupancyTenantBlock({
   occupancy,
   setOccupancy,
   tenantName, setTenantName,
+  tenantNameInvalid,
   tenantEmail, setTenantEmail,
   tenantPhone, setTenantPhone,
 }: {
   occupancy: "owner_occupied" | "tenanted" | "vacant";
   setOccupancy: (v: "owner_occupied" | "tenanted" | "vacant") => void;
   tenantName: string; setTenantName: (v: string) => void;
+  tenantNameInvalid: boolean;
   tenantEmail: string; setTenantEmail: (v: string) => void;
   tenantPhone: string; setTenantPhone: (v: string) => void;
 }) {
@@ -790,12 +904,15 @@ function OccupancyTenantBlock({
           <p className="text-xs uppercase tracking-wide text-muted-foreground">Tenant</p>
           <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
             <div className="space-y-1.5 sm:col-span-2">
-              <Label htmlFor="settlement-tenant-name">Tenant name</Label>
+              <Label htmlFor="settlement-tenant-name">
+                Tenant name <span className="text-destructive">*</span>
+              </Label>
               <Input
                 id="settlement-tenant-name"
                 value={tenantName}
                 onChange={(e) => setTenantName(e.target.value)}
                 placeholder="Full name"
+                aria-invalid={tenantNameInvalid || undefined}
               />
             </div>
             <div className="space-y-1.5">

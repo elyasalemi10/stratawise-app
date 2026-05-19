@@ -103,9 +103,12 @@ function WizardContent() {
     next.set("sub", String(nextSub));
     window.history.replaceState(null, "", `/ocs/new?${next.toString()}`);
     if (typeof window !== "undefined") {
+      // Instant jump rather than smooth — smooth scroll happens AFTER
+      // the new step renders, so the manager briefly sees the bottom of
+      // the previous step still while the page slides up.
       const main = document.querySelector("main");
-      if (main) main.scrollTo({ top: 0, behavior: "smooth" });
-      else window.scrollTo({ top: 0, behavior: "smooth" });
+      if (main) main.scrollTo({ top: 0 });
+      else window.scrollTo({ top: 0 });
     }
   }
 

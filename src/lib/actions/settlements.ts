@@ -348,6 +348,34 @@ export async function parseSettlementAndMatchLot(
 
 // ─── applySettlementToLot ─────────────────────────────────────
 
+// Server-side lookup used by the "Go to lot X" branch of the
+// wrong-lot-number confirmation popup in the settlement drawer. Returns
+// the lot's id + short_code so the UI can navigate to
+// /ocs/{shortCode}/lots/{id}?settlement=open with the parsed data
+// shuttled via sessionStorage.
+export async function findLotByNumberInOc(
+  ocId: string,
+  lotNumber: number,
+): Promise<{ ok: true; lotId: string; ocShortCode: string } | { ok: false; error: string }> {
+  await requireCompanyRole();
+  await requireOCAccess(ocId);
+  const supabase = createServerClient();
+  const { data: lot } = await supabase
+    .from("lots")
+    .select("id, oc_id")
+    .eq("oc_id", ocId)
+    .eq("lot_number", lotNumber)
+    .maybeSingle();
+  if (!lot) return { ok: false, error: `Lot ${lotNumber} doesn't exist in this OC.` };
+  const { data: oc } = await supabase
+    .from("owners_corporations")
+    .select("short_code")
+    .eq("id", ocId)
+    .maybeSingle();
+  if (!oc?.short_code) return { ok: false, error: "OC missing short code." };
+  return { ok: true, lotId: lot.id as string, ocShortCode: oc.short_code as string };
+}
+
 export async function applySettlementToLot(input: ApplySettlementInput) {
   const profile = await requireCompanyRole();
   const parsed = applySettlementSchema.safeParse(input);

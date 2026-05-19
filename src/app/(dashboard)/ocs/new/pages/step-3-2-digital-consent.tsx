@@ -51,18 +51,26 @@ export function Step3DigitalConsent({
   const [editColumn, setEditColumn] = useState<"current" | "signup">("current");
   const [editDraft, setEditDraft] = useState<string[]>([]);
 
+  // Helper: at-portal-signup is the REMAINDER — categories the owner
+  // hasn't consented to yet, so the portal can ask them about those at
+  // first sign-in. (Asking them about something they've already consented
+  // to is pointless.)
+  function remainder(current: string[]): string[] {
+    return ALL_CATEGORY_VALUES.filter((c) => !current.includes(c));
+  }
+
   // Bulk-set is auto-applied: picking a radio rewrites every lot's state
-  // immediately. Both columns (current consent + at-portal-signup) get the
-  // bulk pick written explicitly so that opening the per-lot edit dialog
-  // reflects the bulk action instead of falling back to "all ticked".
-  // Per-lot edits override the bulk for that specific lot only.
+  // immediately. Both columns (current consent + at-portal-signup) get
+  // written explicitly: signup = ALL − current, so the per-lot edit
+  // reflects the bulk action and the invariant
+  // "signup categories disjoint from current consent" always holds.
   function pickBulk(choice: BulkChoice) {
     setBulkChoice(choice);
     if (choice === "all") {
       setLots((prev) => prev.map((l) => ({
         ...l,
         digital_consent_categories: [...ALL_CATEGORY_VALUES],
-        at_portal_signup_categories: [...ALL_CATEGORY_VALUES],
+        at_portal_signup_categories: [],
       })));
     } else if (choice === "none") {
       setLots((prev) => prev.map((l) => ({
@@ -71,10 +79,11 @@ export function Step3DigitalConsent({
         at_portal_signup_categories: [...ALL_CATEGORY_VALUES],
       })));
     } else if (choice === "specific") {
+      const sig = remainder(bulkSpecific);
       setLots((prev) => prev.map((l) => ({
         ...l,
         digital_consent_categories: [...bulkSpecific],
-        at_portal_signup_categories: [...bulkSpecific],
+        at_portal_signup_categories: sig,
       })));
     }
   }
@@ -85,10 +94,11 @@ export function Step3DigitalConsent({
   function applySpecificEdit(next: string[]) {
     setBulkSpecific(next);
     if (bulkChoice === "specific") {
+      const sig = remainder(next);
       setLots((prev) => prev.map((l) => ({
         ...l,
         digital_consent_categories: [...next],
-        at_portal_signup_categories: [...next],
+        at_portal_signup_categories: sig,
       })));
     }
   }
@@ -107,8 +117,25 @@ export function Step3DigitalConsent({
     if (editLotIdx == null) return;
     setLots((prev) => prev.map((l, i) => {
       if (i !== editLotIdx) return l;
-      if (editColumn === "current") return { ...l, digital_consent_categories: editDraft };
-      return { ...l, at_portal_signup_categories: editDraft };
+      if (editColumn === "current") {
+        // Changing current consent shifts the "remainder" for the signup
+        // column. Clamp so signup never contains a category already in
+        // current consent (the user can still narrow it further later).
+        const cur = editDraft;
+        const sig = (l.at_portal_signup_categories ?? remainder(cur)).filter(
+          (c) => !cur.includes(c),
+        );
+        return {
+          ...l,
+          digital_consent_categories: cur,
+          at_portal_signup_categories: sig,
+        };
+      }
+      // Signup edit: never include a category that's already in current
+      // (the dialog disables those rows, but defend on submit anyway).
+      const cur = l.digital_consent_categories ?? [];
+      const sig = editDraft.filter((c) => !cur.includes(c));
+      return { ...l, at_portal_signup_categories: sig };
     }));
     setEditLotIdx(null);
   }
@@ -272,34 +299,76 @@ export function Step3DigitalConsent({
             </DialogDescription>
           </DialogHeader>
           <div className="space-y-2">
-            <div className="flex items-center gap-2 rounded-md border border-border bg-muted/30 px-3 py-2">
-              <Checkbox
-                checked={editDraft.length === CATEGORIES.length}
-                onCheckedChange={(v) => setEditDraft(v === true ? [...ALL_CATEGORY_VALUES] : [])}
-                className="bg-card"
-              />
-              <Label className="text-sm font-medium text-foreground">Master toggle — all categories</Label>
-            </div>
-            {CATEGORIES.map((c) => {
-              const checked = editDraft.includes(c.value);
-              return (
-                <div key={c.value} className="flex items-start gap-2 px-1">
-                  <Checkbox
-                    checked={checked}
-                    onCheckedChange={() =>
-                      setEditDraft((prev) =>
-                        prev.includes(c.value) ? prev.filter((x) => x !== c.value) : [...prev, c.value],
-                      )
-                    }
-                    className="bg-card"
-                  />
-                  <div className="-mt-0.5">
-                    <Label className="text-sm text-foreground">{c.label}</Label>
-                    <p className="text-xs text-muted-foreground">{c.hint}</p>
-                  </div>
-                </div>
+            {(() => {
+              // When editing the signup column, lock out any category
+              // that's already in the lot's current consent — the owner
+              // can't be asked to opt-in to something they've already
+              // consented to. The master toggle then ticks/clears only
+              // the unlocked subset.
+              const currentForLot =
+                editColumn === "signup" && editLotIdx != null
+                  ? lots[editLotIdx]?.digital_consent_categories ?? []
+                  : [];
+              const lockedFor = (val: string) =>
+                editColumn === "signup" && currentForLot.includes(val);
+              const unlockedAll = CATEGORIES.filter((c) => !lockedFor(c.value)).map(
+                (c) => c.value,
               );
-            })}
+              const allUnlockedTicked =
+                unlockedAll.length > 0 &&
+                unlockedAll.every((v) => editDraft.includes(v));
+              return (
+                <>
+                  <div className="flex items-center gap-2 rounded-md border border-border bg-muted/30 px-3 py-2">
+                    <Checkbox
+                      checked={allUnlockedTicked}
+                      onCheckedChange={(v) =>
+                        setEditDraft(v === true ? [...unlockedAll] : [])
+                      }
+                      className="bg-card"
+                    />
+                    <Label className="text-sm font-medium text-foreground">
+                      Master toggle — all categories
+                    </Label>
+                  </div>
+                  {CATEGORIES.map((c) => {
+                    const locked = lockedFor(c.value);
+                    const checked = editDraft.includes(c.value);
+                    return (
+                      <div
+                        key={c.value}
+                        className={`flex items-start gap-2 px-1 ${locked ? "opacity-50" : ""}`}
+                      >
+                        <Checkbox
+                          checked={locked ? true : checked}
+                          disabled={locked}
+                          onCheckedChange={() => {
+                            if (locked) return;
+                            setEditDraft((prev) =>
+                              prev.includes(c.value)
+                                ? prev.filter((x) => x !== c.value)
+                                : [...prev, c.value],
+                            );
+                          }}
+                          className="bg-card"
+                        />
+                        <div className="-mt-0.5">
+                          <Label className="text-sm text-foreground">
+                            {c.label}
+                            {locked && (
+                              <span className="ml-1 text-xs text-muted-foreground">
+                                (already consented)
+                              </span>
+                            )}
+                          </Label>
+                          <p className="text-xs text-muted-foreground">{c.hint}</p>
+                        </div>
+                      </div>
+                    );
+                  })}
+                </>
+              );
+            })()}
             <div className="rounded-md border border-border bg-muted/20 p-3 mt-2 flex items-start gap-2">
               <Info className="h-3.5 w-3.5 mt-0.5 text-muted-foreground shrink-0" />
               <p className="text-xs text-muted-foreground">

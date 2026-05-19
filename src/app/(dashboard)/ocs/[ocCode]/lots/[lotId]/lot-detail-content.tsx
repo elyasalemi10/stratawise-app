@@ -152,7 +152,13 @@ export function LotDetailContent({
   const [activeTab, setActiveTab] = useState<TabValue>(initialTab);
   const [lot, setLot] = useState(initialLot);
   void setLot;
-  const [settlementOpen, setSettlementOpen] = useState(false);
+  // Auto-open the settlement drawer when the URL says so. Used by the
+  // wrong-lot-number jump in the settlement dialog — the source page
+  // pops `?settlement=open` here and the prefill payload is read by
+  // SettlementDialog itself from sessionStorage on mount.
+  const [settlementOpen, setSettlementOpen] = useState(
+    searchParams.get("settlement") === "open",
+  );
   const [addOwnerOpen, setAddOwnerOpen] = useState(false);
   // When the manager picks "Send email" / "Send SMS" from More actions on
   // any tab, we jump to Communications and tell that tab to auto-open
