@@ -175,40 +175,59 @@ export const NumberInput = React.forwardRef<HTMLInputElement, NumberInputProps>(
 
     const display = thousandsSeparator ? formatWithCommas(value) : value;
 
-    const input = (
-      <Input
-        ref={ref}
-        type="text"
-        inputMode={allowDecimal ? "decimal" : "numeric"}
-        autoComplete="off"
-        value={display}
-        onChange={handleChange}
-        onKeyDown={handleKeyDown}
-        onPaste={handlePaste}
-        aria-invalid={invalid || undefined}
+    if (!prefix && !suffix) {
+      return (
+        <Input
+          ref={ref}
+          type="text"
+          inputMode={allowDecimal ? "decimal" : "numeric"}
+          autoComplete="off"
+          value={display}
+          onChange={handleChange}
+          onKeyDown={handleKeyDown}
+          onPaste={handlePaste}
+          aria-invalid={invalid || undefined}
+          className={className}
+          {...rest}
+        />
+      );
+    }
+
+    // With an affix we render a single rounded shell with grey prefix / suffix
+    // chips and a borderless input in between. Matches the +61 PhoneInput so
+    // every "static prefix on an input" reads the same way site-wide.
+    return (
+      <div
         className={cn(
-          prefix ? "pl-7" : undefined,
-          suffix ? "pr-16" : undefined,
+          "flex h-9 w-full overflow-hidden rounded-md border bg-card text-sm transition-colors focus-within:ring-2",
+          invalid
+            ? "border-destructive focus-within:border-destructive focus-within:ring-destructive/20"
+            : "border-border focus-within:border-primary focus-within:ring-primary/20",
           className,
         )}
-        {...rest}
-      />
-    );
-
-    if (!prefix && !suffix) return input;
-
-    return (
-      <div className="relative">
+      >
         {prefix && (
-          <span className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-sm text-muted-foreground">
+          <div className="flex items-center border-r border-border bg-cool-muted px-3 text-sm font-medium text-cool-muted-foreground select-none">
             {prefix}
-          </span>
+          </div>
         )}
-        {input}
+        <input
+          ref={ref}
+          type="text"
+          inputMode={allowDecimal ? "decimal" : "numeric"}
+          autoComplete="off"
+          value={display}
+          onChange={handleChange}
+          onKeyDown={handleKeyDown}
+          onPaste={handlePaste}
+          aria-invalid={invalid || undefined}
+          className="flex-1 min-w-0 bg-transparent px-3 outline-none placeholder:text-muted-foreground"
+          {...rest}
+        />
         {suffix && (
-          <span className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 text-xs text-muted-foreground">
+          <div className="flex items-center border-l border-border bg-cool-muted px-3 text-sm font-medium text-cool-muted-foreground select-none">
             {suffix}
-          </span>
+          </div>
         )}
       </div>
     );

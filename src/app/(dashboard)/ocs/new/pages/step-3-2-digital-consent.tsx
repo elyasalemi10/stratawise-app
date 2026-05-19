@@ -52,15 +52,30 @@ export function Step3DigitalConsent({
   const [editDraft, setEditDraft] = useState<string[]>([]);
 
   // Bulk-set is auto-applied: picking a radio rewrites every lot's state
-  // immediately. No "Apply to N lots" button.
+  // immediately. Both columns (current consent + at-portal-signup) get the
+  // bulk pick written explicitly so that opening the per-lot edit dialog
+  // reflects the bulk action instead of falling back to "all ticked".
+  // Per-lot edits override the bulk for that specific lot only.
   function pickBulk(choice: BulkChoice) {
     setBulkChoice(choice);
     if (choice === "all") {
-      setLots((prev) => prev.map((l) => ({ ...l, digital_consent_categories: [...ALL_CATEGORY_VALUES] })));
+      setLots((prev) => prev.map((l) => ({
+        ...l,
+        digital_consent_categories: [...ALL_CATEGORY_VALUES],
+        at_portal_signup_categories: [...ALL_CATEGORY_VALUES],
+      })));
     } else if (choice === "none") {
-      setLots((prev) => prev.map((l) => ({ ...l, digital_consent_categories: [], at_portal_signup_categories: [...ALL_CATEGORY_VALUES] })));
+      setLots((prev) => prev.map((l) => ({
+        ...l,
+        digital_consent_categories: [],
+        at_portal_signup_categories: [...ALL_CATEGORY_VALUES],
+      })));
     } else if (choice === "specific") {
-      setLots((prev) => prev.map((l) => ({ ...l, digital_consent_categories: [...bulkSpecific] })));
+      setLots((prev) => prev.map((l) => ({
+        ...l,
+        digital_consent_categories: [...bulkSpecific],
+        at_portal_signup_categories: [...bulkSpecific],
+      })));
     }
   }
 
@@ -70,7 +85,11 @@ export function Step3DigitalConsent({
   function applySpecificEdit(next: string[]) {
     setBulkSpecific(next);
     if (bulkChoice === "specific") {
-      setLots((prev) => prev.map((l) => ({ ...l, digital_consent_categories: [...next] })));
+      setLots((prev) => prev.map((l) => ({
+        ...l,
+        digital_consent_categories: [...next],
+        at_portal_signup_categories: [...next],
+      })));
     }
   }
 

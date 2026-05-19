@@ -267,16 +267,13 @@ export function RecordAdjustmentDialog({
                 <FormItem>
                   <FormLabel>Amount</FormLabel>
                   <FormControl>
-                    <div className="relative">
-                      <span className="absolute left-3 top-2.5 text-sm text-muted-foreground">$</span>
-                      <NumberInput
-                        thousandsSeparator
-                        placeholder="Amount"
-                        className="pl-6"
-                        value={field.value != null ? String(field.value) : ""}
-                        onChange={(v) => field.onChange(v ? parseFloat(v) : undefined)}
-                      />
-                    </div>
+                    <NumberInput
+                      thousandsSeparator
+                      placeholder="Amount"
+                      prefix="$"
+                      value={field.value != null ? String(field.value) : ""}
+                      onChange={(v) => field.onChange(v ? parseFloat(v) : undefined)}
+                    />
                   </FormControl>
                   <FormMessage />
                 </FormItem>

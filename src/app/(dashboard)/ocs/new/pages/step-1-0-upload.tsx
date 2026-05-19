@@ -113,7 +113,8 @@ export function Step1Upload({
       <div className="text-center">
         <h2 className="text-lg font-semibold text-foreground">Upload your plan of subdivision</h2>
         <p className="mt-1 text-sm text-muted-foreground">
-          We&apos;ll read your document and pre-fill the OC details, lot schedule, and entitlements. You can skip this and enter everything manually.
+          We&apos;ll read your document and pre-fill the OC details, lot schedule, and entitlements. You can skip this and{" "}
+          <span className="font-medium text-[color:var(--brand-gold)]">enter everything manually</span>.
         </p>
       </div>
 

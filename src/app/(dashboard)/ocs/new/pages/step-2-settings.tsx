@@ -201,15 +201,14 @@ export function Step2Settings({
               (lot_liability / 0%) cover the vast majority of OCs at sign-up. */}
 
           {/* Interest on overdue — inline-toggle row (no card), revealing the
-              two sub-fields beside it when Yes. Toggle sits BEFORE the
-              label so the manager reads "[on/off] Interest on overdue
-              levies" as one phrase. */}
+              two sub-fields beside it when Yes. Label sits on the left, toggle
+              pushed to the right edge of the row. */}
           <div className="space-y-3">
-            <div className="flex items-center gap-3">
-              <InlineYesNoToggle value={interestEnabled} onChange={setInterestEnabled} />
+            <div className="flex items-center justify-between gap-3">
               <Label>
                 Interest on overdue levies <span className="text-destructive">*</span>
               </Label>
+              <InlineYesNoToggle value={interestEnabled} onChange={setInterestEnabled} />
             </div>
             {interestEnabled && (
               <div className="grid grid-cols-2 gap-4">

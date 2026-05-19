@@ -538,7 +538,25 @@ function EmailDetailPane({
                     lot_id: option.lot_id,
                   });
                   if (res.ok) {
-                    setDetail((d) => (d ? { ...d, oc_id: option.oc_id, lot_id: option.lot_id } : d));
+                    // The detail panel renders the "Lot:" line from
+                    // `oc_short_code`, `lot_label`, and `lot_link_label` —
+                    // not just `oc_id` / `lot_id`. Update all of them
+                    // locally so the panel reflects the new link without a
+                    // server round-trip; otherwise the line keeps reading
+                    // "Not associated" until the page is reloaded.
+                    setDetail((d) =>
+                      d
+                        ? {
+                            ...d,
+                            oc_id: option.oc_id,
+                            lot_id: option.lot_id,
+                            oc_name: option.oc_name,
+                            oc_short_code: option.oc_short_code,
+                            lot_label: option.lot_label,
+                            lot_link_label: `${option.oc_name} · ${option.lot_label}`,
+                          }
+                        : d,
+                    );
                     toast.success(`Linked to ${option.owner_name} · ${option.lot_label}`);
                   } else {
                     toast.error(res.error);

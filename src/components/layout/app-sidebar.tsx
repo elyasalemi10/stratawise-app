@@ -79,13 +79,8 @@ const managerMainNavGroups = [
   {
     label: "",
     items: [
-      { href: "/inbox", label: "Inbox", icon: Inbox },
-    ],
-  },
-  {
-    label: "Overview",
-    items: [
       { href: "/dashboard", label: "Dashboard", icon: LayoutDashboard },
+      { href: "/inbox", label: "Inbox", icon: Inbox },
     ],
   },
   {

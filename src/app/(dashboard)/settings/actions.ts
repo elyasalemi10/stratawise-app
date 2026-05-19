@@ -1,5 +1,6 @@
 "use server";
 
+import { cookies } from "next/headers";
 import { createServerClient } from "@/lib/supabase";
 import { createSupabaseServerClient } from "@/lib/supabase-server";
 import { getCurrentProfile, getAuthUserId } from "@/lib/auth";
@@ -341,7 +342,18 @@ export async function startOutlookConsent(input: StartOutlookConsentInput) {
     .eq("id", profile.management_company_id);
 
   // CSRF state cookie — verified on the callback. Random 32-byte hex.
+  // Set httpOnly here in the server action so the cookie can't be read by
+  // the browser; the callback only needs to compare it against the state
+  // querystring Microsoft echoes back.
   const state = crypto.randomUUID().replace(/-/g, "");
+  const cookieStore = await cookies();
+  cookieStore.set("outlook_consent_state", state, {
+    httpOnly: true,
+    secure: process.env.NODE_ENV === "production",
+    sameSite: "lax",
+    path: "/",
+    maxAge: 60 * 15,
+  });
   const redirectUri = `${appUrl}/api/outlook/consent-callback`;
   const consentUrl =
     `https://login.microsoftonline.com/organizations/adminconsent?` +

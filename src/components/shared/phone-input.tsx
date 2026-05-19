@@ -56,7 +56,7 @@ export function PhoneInput({ value, onChange, error, id }: PhoneInputProps) {
           : "border-border focus-within:border-primary focus-within:ring-primary/20",
       )}
     >
-      <div className="flex items-center border-r border-border bg-muted/40 px-3 text-sm font-medium text-muted-foreground select-none">
+      <div className="flex items-center border-r border-border bg-cool-muted px-3 text-sm font-medium text-cool-muted-foreground select-none">
         +61
       </div>
       <input

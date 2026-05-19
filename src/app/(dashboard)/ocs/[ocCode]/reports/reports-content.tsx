@@ -491,9 +491,9 @@ export function ReportsContent({
                 </div>
                 <div className="space-y-1.5">
                   <Label className="text-xs">8. Total funds held</Label>
-                  <div className="relative">
-                    <span className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-sm text-muted-foreground">$</span>
-                    <Input value={certFunds} onChange={(e) => setCertFunds(e.target.value)} placeholder="20,650.00" className="h-8 text-sm pl-6" />
+                  <div className="flex h-8 w-full overflow-hidden rounded-md border border-border bg-card text-sm transition-colors focus-within:border-primary focus-within:ring-2 focus-within:ring-primary/20">
+                    <div className="flex items-center border-r border-border bg-cool-muted px-2.5 text-sm font-medium text-cool-muted-foreground select-none">$</div>
+                    <input value={certFunds} onChange={(e) => setCertFunds(e.target.value)} placeholder="Total funds held" className="flex-1 min-w-0 bg-transparent px-3 outline-none placeholder:text-muted-foreground" />
                   </div>
                 </div>
                 <div className="space-y-1.5">

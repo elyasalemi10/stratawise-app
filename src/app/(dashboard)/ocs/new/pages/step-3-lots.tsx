@@ -7,7 +7,6 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Checkbox } from "@/components/ui/checkbox";
-import { Switch } from "@/components/ui/switch";
 import { NumberInput } from "@/components/ui/number-input";
 import { PhoneInput } from "@/components/shared/phone-input";
 import {
@@ -21,6 +20,23 @@ import { saveStep, type DraftJson, type DraftLot } from "../actions";
 import { WizardActions } from "./_components/wizard-actions";
 
 // Wizard Step 3 sub-step 0 — Lots & Owners (main).
+
+function InlineYesNoToggle({ value, onChange }: { value: boolean; onChange: (v: boolean) => void }) {
+  return (
+    <button
+      type="button"
+      onClick={() => onChange(!value)}
+      className={`inline-flex items-center gap-2.5 rounded-md border px-3 h-9 cursor-pointer transition-colors w-[120px] ${
+        value ? "border-primary bg-primary/5 text-foreground" : "border-border bg-card text-muted-foreground hover:border-primary/40"
+      }`}
+    >
+      <span className={`inline-flex h-5 w-9 items-center rounded-full transition-colors ${value ? "bg-primary" : "bg-border"}`}>
+        <span className={`inline-block h-4 w-4 rounded-full bg-white transition-transform ${value ? "translate-x-4" : "translate-x-0.5"}`} />
+      </span>
+      <span className="text-sm">{value ? "Yes" : "No"}</span>
+    </button>
+  );
+}
 
 function computeAutoTier(lotCount: number, servicesOnly: boolean): { tier: number; description: string } {
   if (servicesOnly) return { tier: 5, description: "services-only" };
@@ -207,7 +223,7 @@ export function Step3Lots({
     setLotErrors(nextLotErrors);
 
     if (!tierConfirmed) {
-      problems.push("Confirm the computed tier is correct before continuing.");
+      problems.push("Confirm the tier is correct.");
       setTierConfirmedInvalid(true);
     } else {
       setTierConfirmedInvalid(false);
@@ -257,23 +273,11 @@ export function Step3Lots({
             placeholder="Count"
           />
         </div>
-        {/* Services-only — single inline toggle. Switch reads as a yes/no
-            choice rather than a checkbox-in-a-card; helper text sits below
-            so the row stays compact. */}
-        <div className="rounded-md border border-border bg-card p-4">
-          <div className="flex items-center justify-between gap-3">
-            <Label htmlFor="services-only" className="text-sm font-semibold text-foreground">
-              Services-only scheme
-            </Label>
-            <Switch
-              id="services-only"
-              checked={servicesOnly}
-              onCheckedChange={(v) => setServicesOnly(v === true)}
-            />
-          </div>
-          <p className="text-xs text-muted-foreground mt-1">
-            Turn on if this OC exists only to share services with no residential / commercial lots. Forces Tier 5.
-          </p>
+        {/* Services-only — matches the GST-Registered row on Step 1: label
+            on the left, inline Yes/No toggle on the right, no card. */}
+        <div className="flex h-9 items-center gap-3 self-end">
+          <Label htmlFor="services-only">Services-only OC</Label>
+          <InlineYesNoToggle value={servicesOnly} onChange={setServicesOnly} />
         </div>
       </div>
 
@@ -496,7 +500,7 @@ export function Step3Lots({
           />
           <div className="-mt-0.5">
             <Label className="text-sm text-foreground">
-              I confirm this tier is correct for this OC <span className="text-destructive">*</span>
+              Confirm the tier is correct <span className="text-destructive">*</span>
             </Label>
           </div>
         </div>

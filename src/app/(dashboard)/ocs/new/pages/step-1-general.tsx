@@ -218,17 +218,14 @@ export function Step1General({
             <Label htmlFor="oc-number">
               OC Number <span className="text-destructive">*</span>
             </Label>
-            <div className="relative">
-              <span className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-sm text-muted-foreground">OC-</span>
-              <NumberInput
-                id="oc-number"
-                allowDecimal={false}
-                value={ocNumber}
-                onChange={(v) => { setOcNumber(v); if (ocNumberInvalid) setOcNumberInvalid(false); }}
-                invalid={ocNumberInvalid}
-                className="pl-10"
-              />
-            </div>
+            <NumberInput
+              id="oc-number"
+              allowDecimal={false}
+              value={ocNumber}
+              onChange={(v) => { setOcNumber(v); if (ocNumberInvalid) setOcNumberInvalid(false); }}
+              invalid={ocNumberInvalid}
+              prefix="OC-"
+            />
           </div>
         </div>
 
@@ -273,7 +270,7 @@ export function Step1General({
 
         {/* GST as a flat inline-toggle row (matching other fields), then ABN +
             TFN as their own labelled inputs in the grid below. */}
-        <div className="flex items-center justify-between gap-3">
+        <div className="flex items-center gap-3">
           <Label htmlFor="gst-toggle">GST Registered</Label>
           <InlineYesNoToggle value={gstRegistered} onChange={setGstRegistered} />
         </div>

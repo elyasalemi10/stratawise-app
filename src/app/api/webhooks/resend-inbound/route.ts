@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { Webhook } from "svix";
+import { Resend } from "resend";
 import { createServerClient } from "@/lib/supabase";
 
 // Inbound email webhook for owner replies to manager-sent mail.
@@ -33,6 +34,11 @@ export const dynamic = "force-dynamic";
 interface InboundPayload {
   type?: string;
   data?: {
+    // Resend's `email.received` webhook v2 sends `email_id` (the inbound
+    // email's id) and `message_id` (RFC822 Message-ID header). Body is
+    // NOT included — we fetch it via the receiving API below.
+    email_id?: string;
+    message_id?: string;
     from?: { email?: string; name?: string } | string;
     to?: Array<{ email?: string; name?: string }> | string[];
     // Resend may surface the destination address on different fields
@@ -40,6 +46,8 @@ interface InboundPayload {
     // then `headers.to`.
     email?: string;
     subject?: string;
+    // `text` / `html` only populated on the legacy inbound webhook shape;
+    // current shape requires a follow-up GET /emails/receiving/{id}.
     text?: string;
     html?: string;
     headers?: Record<string, string>;
@@ -205,7 +213,40 @@ export async function POST(request: NextRequest) {
 
   const d = payload.data ?? {};
   const subject = (d.subject ?? "").trim();
-  const body = d.text ?? stripHtml(d.html ?? "");
+
+  // Body fetch.
+  //
+  // Resend's `email.received` webhook only carries metadata (from / to /
+  // subject / message_id / attachment list); the body lives behind a
+  // separate `GET /emails/receiving/{id}` call. The older legacy payload
+  // shape included `text` / `html` inline — fall back to those when
+  // present so this handler stays backwards-compatible with either feed.
+  let body = d.text ?? stripHtml(d.html ?? "");
+  const inboundEmailId = d.email_id ?? null;
+  let fetchedHtml: string | null = null;
+  if (!body && inboundEmailId && process.env.RESEND_API_KEY) {
+    try {
+      const resend = new Resend(process.env.RESEND_API_KEY);
+      const fetched = await resend.emails.receiving.get(inboundEmailId);
+      if (fetched.data) {
+        const t = (fetched.data.text ?? "").trim();
+        body = t || stripHtml(fetched.data.html ?? "");
+        fetchedHtml = fetched.data.html ?? null;
+      } else if (fetched.error) {
+        console.warn(
+          "resend-inbound: receiving.get failed for",
+          inboundEmailId,
+          fetched.error,
+        );
+      }
+    } catch (err) {
+      console.warn("resend-inbound: receiving.get threw", err);
+    }
+  }
+  // Suppress the no-unused-vars lint while keeping the fetched HTML
+  // available for future surface area (rich rendering, signature stripping).
+  void fetchedHtml;
+
   const inReplyToHeader = d.in_reply_to ?? d.headers?.["in-reply-to"] ?? null;
 
   // ─── Auto-match the outbound thread ─────────────────────────────────
@@ -316,7 +357,15 @@ export async function POST(request: NextRequest) {
       profile_id: managerProfileId,
       oc_id: outboundOcId,
       type: "email_reply",
-      title: subject ? `Re: ${subject}` : `Reply from ${sender}`,
+      // Only mark the notification as "Re:" when it's actually a reply to a
+      // known outbound thread and the subject doesn't already start with
+      // "Re:". Cold inbound (no matched outboundLogId) keeps the original
+      // subject verbatim.
+      title: subject
+        ? outboundLogId && !/^re:\s/i.test(subject)
+          ? `Re: ${subject}`
+          : subject
+        : `New message from ${sender}`,
       body: (body || "").slice(0, 200),
       // Link is populated by the UPDATE below once we know the id.
       link: null,
