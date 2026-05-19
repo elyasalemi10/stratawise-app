@@ -108,6 +108,28 @@ function ProviderIcon({
   return <Mail className={cn(size === "md" ? "size-5" : "size-3.5", "text-muted-foreground")} />;
 }
 
+// Compact one-line preview text: strip the obvious markdown / HTML
+// noise so notification rows don't read like `**Message not delivered**`.
+// Used for list-row + bell-dropdown previews — the full body still
+// gets the proper ReactMarkdown render in the detail pane.
+function stripMarkdownForPreview(s: string | null | undefined): string {
+  if (!s) return "";
+  return s
+    // Strip ** / __ bold / italic markers
+    .replace(/(\*\*|__)(.*?)\1/g, "$2")
+    .replace(/(\*|_)(.*?)\1/g, "$2")
+    // Strip [text](href) link markdown → keep `text`
+    .replace(/\[([^\]]+)\]\([^)]+\)/g, "$1")
+    // Strip leading > quote / # heading markers
+    .replace(/^\s*>+\s?/gm, "")
+    .replace(/^\s*#{1,6}\s?/gm, "")
+    // Strip backtick code fences
+    .replace(/`+/g, "")
+    // Collapse runs of whitespace + newlines into single spaces.
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
 function formatBytes(n: number): string {
   if (n < 1024) return `${n} B`;
   if (n < 1024 * 1024) return `${(n / 1024).toFixed(0)} KB`;
@@ -292,7 +314,7 @@ export function InboxContent({
                       </span>
                     </div>
                     <p className="text-xs text-muted-foreground truncate mt-0.5">
-                      {n.message}
+                      {stripMarkdownForPreview(n.message)}
                     </p>
                   </div>
                   {isUnread && (
@@ -585,12 +607,12 @@ function EmailDetailPane({
             </p>
             <p className="text-foreground flex items-center gap-2 flex-wrap">
               <span className="text-muted-foreground">Lot: </span>
-              {detail.oc_id && detail.lot_id ? (
+              {detail.oc_short_code && detail.lot_id ? (
                 <a
-                  href={`/ocs/${detail.oc_id}/lots/${detail.lot_id}?tab=communications`}
+                  href={`/ocs/${detail.oc_short_code}/lots/${detail.lot_id}?tab=communications`}
                   className="inline-flex items-center gap-1 text-blue-600 underline-offset-4 hover:underline"
                 >
-                  {detail.oc_name ?? "OC"} · {detail.lot_label ?? "Lot"}
+                  {detail.lot_link_label ?? "View lot"}
                   <LinkIcon className="h-3 w-3" />
                 </a>
               ) : (

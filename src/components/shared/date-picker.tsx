@@ -50,9 +50,21 @@ export function DatePicker({
       const trigger = triggerRef.current;
       if (!trigger) return;
       const rect = trigger.getBoundingClientRect();
+      // Calendar width ≈ 280px. Clamp `left` so the popup never spills past
+      // the viewport on either side (8px gutter). If the natural left
+      // would push it off-screen-right, align the calendar's right edge to
+      // the trigger's right edge instead.
+      const CALENDAR_W = 300;
+      const GUTTER = 8;
+      const vw = window.innerWidth;
+      let left = rect.left;
+      if (left + CALENDAR_W + GUTTER > vw) {
+        left = Math.max(GUTTER, rect.right - CALENDAR_W);
+      }
+      if (left < GUTTER) left = GUTTER;
       setPosition({
         top: rect.bottom + 4,
-        left: rect.left,
+        left,
         width: rect.width,
       });
     }

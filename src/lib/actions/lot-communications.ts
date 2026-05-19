@@ -32,6 +32,10 @@ const logPhoneCallSchema = z.object({
     .optional(),
   duration_seconds: z.number().int().min(0).max(60 * 60 * 12).nullable().optional(),
   notes: z.string().trim().min(1).max(2000),
+  // Same confidentiality model as email / SMS — hide from future owners
+  // when true. Useful for sensitive owner conversations the manager
+  // doesn't want surfacing on the next owner's history.
+  confidential: z.boolean().optional().default(false),
 });
 
 export async function logPhoneCall(
@@ -51,6 +55,18 @@ export async function logPhoneCall(
     ? new Date(`${parsed.data.call_date}T00:00:00`).toISOString()
     : new Date().toISOString();
 
+  // Snapshot current owner so future owners can't see confidential call
+  // notes. Matches the email + SMS path.
+  const { data: currentOwnerRow } = await supabase
+    .from("lot_owners")
+    .select("id")
+    .eq("lot_id", parsed.data.lot_id)
+    .order("created_at", { ascending: false })
+    .limit(1)
+    .maybeSingle();
+  const currentLotOwnerId =
+    (currentOwnerRow as { id: string } | null)?.id ?? null;
+
   const { data: row, error } = await supabase
     .from("communication_log")
     .insert({
@@ -66,6 +82,8 @@ export async function logPhoneCall(
       body_full: parsed.data.notes,
       status: "logged",
       sent_at: callHappenedAt,
+      confidential: parsed.data.confidential,
+      lot_owner_id_at_creation: currentLotOwnerId,
     })
     .select("id")
     .single();

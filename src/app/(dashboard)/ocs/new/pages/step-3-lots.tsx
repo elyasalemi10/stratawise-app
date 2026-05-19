@@ -7,6 +7,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Checkbox } from "@/components/ui/checkbox";
+import { Switch } from "@/components/ui/switch";
 import { NumberInput } from "@/components/ui/number-input";
 import { PhoneInput } from "@/components/shared/phone-input";
 import {
@@ -31,10 +32,12 @@ function computeAutoTier(lotCount: number, servicesOnly: boolean): { tier: numbe
 }
 
 function defaultLot(idx: number): DraftLot {
-  // 1-based chronological default for both lot_number and unit_number.
+  // 1-based chronological default for lot_number only. Unit number stays
+  // blank so the manager has to enter it explicitly (Victorian strata
+  // plans don't guarantee unit number == lot number, and the previous
+  // auto-fill produced silent bugs where new lots got mislabelled).
   return {
     lot_number: idx + 1,
-    unit_number: String(idx + 1),
     owner_type: "individual",
   };
 }
@@ -134,7 +137,12 @@ export function Step3Lots({
     const unitNumberCounts = new Map<string, number[]>();
 
     lots.forEach((l, i) => {
-      if (!l.owner_type) {
+      // owner_type defaults to "individual" in the UI dropdown, so the
+      // stored undefined-value case should pass validation as if the user
+      // had explicitly picked Individual. The previous check flagged
+      // every default-Individual row red on Continue.
+      const ownerType = l.owner_type ?? "individual";
+      if (ownerType !== "individual" && ownerType !== "company") {
         problems.push(`Lot ${l.lot_number || i + 1}: type is required.`);
         nextLotErrors[i].type = true;
       }
@@ -249,24 +257,23 @@ export function Step3Lots({
             placeholder="Count"
           />
         </div>
-        {/* Services-only as a card. The checkbox + helper sits inside its own
-            bordered card so it reads as a stand-alone decision, not a stray
-            tick next to the lot count. */}
+        {/* Services-only — single inline toggle. Switch reads as a yes/no
+            choice rather than a checkbox-in-a-card; helper text sits below
+            so the row stays compact. */}
         <div className="rounded-md border border-border bg-card p-4">
-          <div className="flex items-start gap-3">
-            <Checkbox
+          <div className="flex items-center justify-between gap-3">
+            <Label htmlFor="services-only" className="text-sm font-semibold text-foreground">
+              Services-only scheme
+            </Label>
+            <Switch
               id="services-only"
               checked={servicesOnly}
               onCheckedChange={(v) => setServicesOnly(v === true)}
-              className="bg-card"
             />
-            <div className="-mt-0.5">
-              <Label className="text-sm font-semibold text-foreground">Services-only scheme</Label>
-              <p className="text-xs text-muted-foreground mt-0.5">
-                Tick if this OC exists only to share services with no residential / commercial lots. Forces Tier 5.
-              </p>
-            </div>
           </div>
+          <p className="text-xs text-muted-foreground mt-1">
+            Turn on if this OC exists only to share services with no residential / commercial lots. Forces Tier 5.
+          </p>
         </div>
       </div>
 
@@ -298,9 +305,6 @@ export function Step3Lots({
           else if (e.key === "ArrowRight" && caret === len) move(row, col + 1);
         }}
       >
-        <p className="px-3 py-2 text-xs text-muted-foreground border-b border-border bg-muted/40">
-          Don&apos;t have tenant details yet? Set the lot to <strong>Vacant</strong> — you can add a tenant any time after the OC is created.
-        </p>
         <table className="w-full text-sm">
           <thead className="bg-primary text-primary-foreground">
             <tr className="text-xs font-medium">
@@ -404,7 +408,13 @@ export function Step3Lots({
                         }
                       >
                         <SelectTrigger className="h-8">
-                          <SelectValue />
+                          <SelectValue placeholder="Pick occupancy">
+                            {occupancyStatus === "owner_occupied"
+                              ? "Owner-occupied"
+                              : occupancyStatus === "tenanted"
+                                ? "Tenanted"
+                                : "Vacant"}
+                          </SelectValue>
                         </SelectTrigger>
                         <SelectContent>
                           <SelectItem value="owner_occupied">Owner-occupied</SelectItem>

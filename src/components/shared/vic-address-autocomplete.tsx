@@ -401,7 +401,7 @@ export function VicAddressAutocomplete({ value, onChange, id, error }: Props) {
           <button
             type="button"
             onClick={() => { setMode("search"); setSearchInput(""); }}
-            className="text-xs text-primary hover:underline cursor-pointer"
+            className="text-xs font-medium text-[color:var(--brand-gold)] hover:underline cursor-pointer"
           >
             Search by address instead
           </button>

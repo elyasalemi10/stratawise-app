@@ -425,7 +425,7 @@ function ReviewForm(props: {
   const couldNotExtract = !review.parsed.transferee.name && !review.parsed.lotNumber && !review.parsed.settlementDate;
 
   return (
-    <div className="space-y-4 max-h-[60vh] overflow-y-auto pr-1">
+    <div className="space-y-4 max-h-[78vh] overflow-y-auto pr-1">
       {isMatched && review.matchedLot && (
         <div className="flex items-start gap-2 rounded-md border border-[hsl(160,100%,37%)]/30 bg-[hsl(160,100%,37%)]/10 px-3 py-2 text-xs text-[hsl(160,100%,30%)]">
           <Check className="h-4 w-4 shrink-0 mt-0.5" />
@@ -645,7 +645,7 @@ function ManualReviewForm(props: {
 }) {
   void props.lotNumber;
   return (
-    <div className="space-y-4 max-h-[60vh] overflow-y-auto pr-1">
+    <div className="space-y-4 max-h-[78vh] overflow-y-auto pr-1">
       <div className="space-y-3">
         <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
           New owner
@@ -786,7 +786,7 @@ function OccupancyTenantBlock({
         </div>
       </div>
       {occupancy === "tenanted" && (
-        <div className="space-y-3 pt-1 border-t border-border">
+        <div className="space-y-2 border-t border-border pt-2">
           <p className="text-xs uppercase tracking-wide text-muted-foreground">Tenant</p>
           <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
             <div className="space-y-1.5 sm:col-span-2">

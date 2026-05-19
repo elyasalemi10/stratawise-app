@@ -112,8 +112,7 @@ function WizardContent() {
       return;
     }
     if (step === 1 && substep === 1) return goTo(1, 0);
-    if (step === 1 && substep === 2) return goTo(1, 1);
-    if (step === 2 && substep === 0) return goTo(1, 2);
+    if (step === 2 && substep === 0) return goTo(1, 1);
     if (step === 3 && substep === 0) return goTo(2, 0);
     if (step === 3 && substep === 1) return goTo(3, 0);
     if (step === 3 && substep === 2) return goTo(3, 1);
@@ -188,15 +187,10 @@ function WizardContent() {
           />
         )}
         {step === 1 && substep === 1 && (
+          // Step 1.2 (Management fee) removed per item 4 — managers
+          // bill the OC externally, the platform doesn't model the fee
+          // any more. Jump straight from General to Settings.
           <Step1General
-            draftId={draft.id}
-            initialDraft={draft.draft_json}
-            onBack={back}
-            onNext={async () => { await refreshDraft(); goTo(1, 2); }}
-          />
-        )}
-        {step === 1 && substep === 2 && (
-          <Step1ManagementFee
             draftId={draft.id}
             initialDraft={draft.draft_json}
             onBack={back}

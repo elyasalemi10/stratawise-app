@@ -50,6 +50,23 @@ function NotifIcon({
   return <Icon className={cn("size-4", tint)} />;
 }
 
+// Strip obvious markdown noise (** __ [text](url) > # `) from preview
+// strings so a Gmail-bounce snippet doesn't render as `**Message not
+// delivered**`. Detail panes still render the full body via
+// ReactMarkdown — this is for tiny inline previews only.
+function stripMarkdownForPreview(s: string | null | undefined): string {
+  if (!s) return "";
+  return s
+    .replace(/(\*\*|__)(.*?)\1/g, "$2")
+    .replace(/(\*|_)(.*?)\1/g, "$2")
+    .replace(/\[([^\]]+)\]\([^)]+\)/g, "$1")
+    .replace(/^\s*>+\s?/gm, "")
+    .replace(/^\s*#{1,6}\s?/gm, "")
+    .replace(/`+/g, "")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
 function timeAgo(dateStr: string): string {
   const diff = Date.now() - new Date(dateStr).getTime();
   const minutes = Math.floor(diff / 60000);
@@ -223,7 +240,7 @@ export function NotificationBell() {
                       </p>
                       <p className={`text-xs mt-0.5 line-clamp-2 ${
                         !n.read_at ? "text-muted-foreground" : "text-muted-foreground/70"
-                      }`}>{n.message}</p>
+                      }`}>{stripMarkdownForPreview(n.message)}</p>
                       <p className="text-xs text-muted-foreground/60 mt-1">{timeAgo(n.created_at)}</p>
                     </div>
                     {!n.read_at && (

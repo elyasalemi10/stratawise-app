@@ -1449,26 +1449,10 @@ export async function completeWizard(draftId: string) {
       }
     }
 
-    // Management fee captured on Step 1.1. One ACTIVE row per OC; the partial
-    // unique index on (oc_id) WHERE status='active' enforces it.
-    if (d.management_fee) {
-      const mf = d.management_fee;
-      const { error: mfErr } = await supabase.from("management_fees").insert({
-        oc_id: oc.id,
-        fee_structure: mf.structure,
-        fixed_amount_cents: mf.fixed_amount_cents ?? null,
-        per_lot_amount_cents: mf.per_lot_amount_cents ?? null,
-        gst_applicable: mf.gst_applicable,
-        billing_method: mf.billing_method,
-        contract_term: mf.contract_term,
-        contract_start_date: mf.contract_start_date ?? d.manager_appointment_date ?? null,
-        contract_end_date: mf.contract_end_date ?? null,
-        status: "active",
-      });
-      if (mfErr) {
-        console.error("completeWizard: management_fees insert failed (non-fatal)", mfErr);
-      }
-    }
+    // Management-fee step removed (item 4): managers bill the OC outside
+    // the platform, so we stopped capturing fee + contract term during OC
+    // creation. The legacy draft.management_fee field is intentionally
+    // ignored here even if an in-progress draft still has it.
 
     // Insert lots — opening_balance carries per-lot arrears/credit at setup date.
     // Entitlement / liability are coerced to a number here; the submit

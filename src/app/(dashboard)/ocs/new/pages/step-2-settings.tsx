@@ -81,17 +81,6 @@ export function Step2Settings({
     (initialDraft.billing_cycle as LevyFrequency | undefined) ?? "quarterly",
   );
 
-  const [basis, setBasis] = useState<LevyBasis>(
-    initialDraft.levy_calculation_basis ?? "lot_liability",
-  );
-
-  const [earlyPaymentPct, setEarlyPaymentPct] = useState<string>(
-    initialDraft.early_payment_incentive_percent != null
-      ? String(initialDraft.early_payment_incentive_percent)
-      : "0",
-  );
-  const [earlyPaymentInvalid, setEarlyPaymentInvalid] = useState(false);
-
   const [interestEnabled, setInterestEnabled] = useState<boolean>(
     initialDraft.interest_on_overdue_enabled ?? false,
   );
@@ -108,31 +97,10 @@ export function Step2Settings({
   );
   const [annualRateInvalid, setAnnualRateInvalid] = useState(false);
 
-  const [arrearsThresholdDollars, setArrearsThresholdDollars] = useState<string>(
-    initialDraft.arrears_action_threshold_cents != null
-      ? String(initialDraft.arrears_action_threshold_cents / 100)
-      : "",
-  );
-  const [arrearsInvalid, setArrearsInvalid] = useState(false);
-
   const [pending, setPending] = useState(false);
-
-  const firstLevyDate = useMemo(() => {
-    const msd = initialDraft.manager_appointment_date;
-    if (!msd) return null;
-    return nextLevyDue(fyMonth, levyFreq, msd);
-  }, [fyMonth, levyFreq, initialDraft.manager_appointment_date]);
 
   async function onContinue() {
     const problems: string[] = [];
-
-    const earlyN = parseFloat(earlyPaymentPct || "0");
-    if (!Number.isFinite(earlyN) || earlyN < 0 || earlyN > 100) {
-      problems.push("Early payment incentive must be between 0% and 100%.");
-      setEarlyPaymentInvalid(true);
-    } else {
-      setEarlyPaymentInvalid(false);
-    }
 
     let interestFreeN = 28;
     let annualRateN = 0;
@@ -158,14 +126,6 @@ export function Step2Settings({
       setAnnualRateInvalid(false);
     }
 
-    const thresholdDollars = parseFloat(arrearsThresholdDollars || "0");
-    if (!Number.isFinite(thresholdDollars) || thresholdDollars < 0) {
-      problems.push("Arrears action threshold must be $0 or greater.");
-      setArrearsInvalid(true);
-    } else {
-      setArrearsInvalid(false);
-    }
-
     if (problems.length) {
       toast.error(problems.length === 1 ? problems[0] : "Fix the highlighted fields.");
       return;
@@ -176,12 +136,9 @@ export function Step2Settings({
       financial_year_start_month: fyMonth,
       financial_year_start_day: 1,
       billing_cycle: levyFreq,
-      levy_calculation_basis: basis,
-      early_payment_incentive_percent: earlyN,
       interest_on_overdue_enabled: interestEnabled,
       annual_interest_rate_percent: interestEnabled ? annualRateN : 0,
       interest_free_period_days: interestFreeN,
-      arrears_action_threshold_cents: Math.round(thresholdDollars * 100),
     }, 3, 0); // Advance straight to Step 3 (Lots & Owners); Comms now lives on Step 3.3.
     if (r.error) {
       setPending(false);
@@ -235,80 +192,24 @@ export function Step2Settings({
             </div>
           </div>
 
-          {/* Live "first levy due" line. White panel, narrow width matching the
-              fields above. */}
-          <div className="inline-flex items-center gap-2 rounded-md border border-border bg-card px-3 py-2 text-sm text-foreground">
-            <span className="font-medium">First levy due:</span>
-            <span className="tabular-nums">{formatLevyDueDisplay(firstLevyDate)}</span>
-            {!firstLevyDate && (
-              <span className="ml-1 text-xs text-muted-foreground">(set management start date on Step 1)</span>
-            )}
-          </div>
+          {/* (First levy due helper removed per item 7 — derivable from
+              the FY + cadence later and was creating noise at setup time.) */}
 
-          <div className="space-y-1.5">
-            <div className="flex items-center gap-1.5">
-              <Label htmlFor="levy-basis">
-                Levy calculation basis <span className="text-destructive">*</span>
-              </Label>
-              <Tooltip>
-                <TooltipTrigger
-                  render={
-                    <button type="button" aria-label="Levy calculation basis explained" className="text-muted-foreground hover:text-foreground cursor-help">
-                      <Info className="h-3.5 w-3.5" />
-                    </button>
-                  }
-                />
-                <TooltipContent>
-                  How each lot&apos;s share of a levy is computed: by lot liability (standard), split evenly per lot, or a custom per-lot apportionment.
-                </TooltipContent>
-              </Tooltip>
-            </div>
-            <Select value={basis} onValueChange={(v) => setBasis((v as LevyBasis) ?? "lot_liability")}>
-              <SelectTrigger id="levy-basis" className="w-full">
-                <SelectValue>{LEVY_BASIS.find((b) => b.value === basis)?.label ?? "Pick a basis"}</SelectValue>
-              </SelectTrigger>
-              <SelectContent>
-                {LEVY_BASIS.map((b) => (
-                  <SelectItem key={b.value} value={b.value}>{b.label}</SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-            {basis === "custom_apportionment" && (
-              <div className="rounded-md border border-amber-200 bg-amber-50 p-3 mt-2">
-                <div className="flex items-start gap-2">
-                  <Info className="mt-0.5 h-4 w-4 text-amber-600 shrink-0" />
-                  <p className="text-xs text-amber-900">
-                    <strong>Per-lot percentage editor coming soon.</strong> We&apos;ll save Custom apportionment as the basis; set the per-lot percentages from <em>Settings → Financial</em> once the editor ships.
-                  </p>
-                </div>
-              </div>
-            )}
-          </div>
-
-          {/* Early payment — narrower input (was full-width); placeholder is
-              description text, not a sample number. */}
-          <div className="space-y-1.5 w-44">
-            <Label htmlFor="early-payment">
-              Early payment incentive <span className="text-destructive">*</span>
-            </Label>
-            <NumberInput
-              id="early-payment"
-              value={earlyPaymentPct}
-              onChange={(v) => { setEarlyPaymentPct(v); if (earlyPaymentInvalid) setEarlyPaymentInvalid(false); }}
-              suffix="%"
-              invalid={earlyPaymentInvalid}
-              placeholder="Discount"
-            />
-          </div>
+          {/* Levy calculation basis + early payment incentive moved out of
+              OC creation per item 8 — both are now configurable from the
+              per-OC Settings → Financial page after creation. Defaults
+              (lot_liability / 0%) cover the vast majority of OCs at sign-up. */}
 
           {/* Interest on overdue — inline-toggle row (no card), revealing the
-              two sub-fields beside it when Yes. */}
+              two sub-fields beside it when Yes. Toggle sits BEFORE the
+              label so the manager reads "[on/off] Interest on overdue
+              levies" as one phrase. */}
           <div className="space-y-3">
-            <div className="flex items-center justify-between gap-3">
+            <div className="flex items-center gap-3">
+              <InlineYesNoToggle value={interestEnabled} onChange={setInterestEnabled} />
               <Label>
                 Interest on overdue levies <span className="text-destructive">*</span>
               </Label>
-              <InlineYesNoToggle value={interestEnabled} onChange={setInterestEnabled} />
             </div>
             {interestEnabled && (
               <div className="grid grid-cols-2 gap-4">
@@ -373,32 +274,6 @@ export function Step2Settings({
             )}
           </div>
 
-          <div className="space-y-1.5 w-56">
-            <div className="flex items-center gap-1.5">
-              <Label htmlFor="arrears-threshold">
-                Arrears action threshold <span className="text-destructive">*</span>
-              </Label>
-              <Tooltip>
-                <TooltipTrigger
-                  render={
-                    <button type="button" aria-label="Arrears action threshold explained" className="text-muted-foreground hover:text-foreground cursor-help">
-                      <Info className="h-3.5 w-3.5" />
-                    </button>
-                  }
-                />
-                <TooltipContent>The smallest unpaid balance that triggers reminders. Smaller debts are ignored but still tracked.</TooltipContent>
-              </Tooltip>
-            </div>
-            <NumberInput
-              id="arrears-threshold"
-              thousandsSeparator
-              prefix="$"
-              value={arrearsThresholdDollars}
-              onChange={(v) => { setArrearsThresholdDollars(v); if (arrearsInvalid) setArrearsInvalid(false); }}
-              invalid={arrearsInvalid}
-              placeholder="Amount"
-            />
-          </div>
         </div>
 
         <WizardActions
@@ -407,22 +282,15 @@ export function Step2Settings({
           onContinue={onContinue}
           continuePending={pending}
           getCurrentPatch={() => {
-            const earlyParsed = parseFloat(earlyPaymentPct);
             const annualRateParsed = parseFloat(annualRatePct);
             const interestFreeParsed = parseInt(interestFreeDays, 10);
-            const thresholdParsed = parseFloat(arrearsThresholdDollars);
             return {
               financial_year_start_month: fyMonth,
               financial_year_start_day: 1,
               billing_cycle: levyFreq,
-              levy_calculation_basis: basis,
-              early_payment_incentive_percent: Number.isFinite(earlyParsed) ? earlyParsed : undefined,
               interest_on_overdue_enabled: interestEnabled,
               annual_interest_rate_percent: interestEnabled && Number.isFinite(annualRateParsed) ? annualRateParsed : 0,
               interest_free_period_days: Number.isFinite(interestFreeParsed) ? interestFreeParsed : undefined,
-              arrears_action_threshold_cents: Number.isFinite(thresholdParsed)
-                ? Math.round(thresholdParsed * 100)
-                : undefined,
             };
           }}
         />

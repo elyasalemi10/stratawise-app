@@ -443,8 +443,11 @@ function stripHtml(html: string): string {
 }
 
 // Walks a Gmail payload tree and collects every "real" attachment — a
-// part with a filename + non-body attachmentId. Skips inline images
-// without filenames and the body parts (text/plain, text/html).
+// part with a non-empty filename + an attachmentId. We deliberately
+// accept inline images too (they often carry filenames for in-body
+// rendering); the previous filter was too strict for forwarded emails
+// where the attachment lives nested two levels deep under
+// multipart/alternative.
 function extractAttachments(
   payload: {
     mimeType?: string | null;
@@ -460,20 +463,29 @@ function extractAttachments(
 ): FetchedGmailMessage["attachments"] {
   const out: FetchedGmailMessage["attachments"] = [];
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const walk = (parts: any[] | null | undefined) => {
-    for (const part of parts ?? []) {
-      if (part.filename && part.body?.attachmentId) {
-        out.push({
-          attachmentId: part.body.attachmentId,
-          filename: part.filename,
-          mimeType: part.mimeType ?? "application/octet-stream",
-          size: part.body.size ?? 0,
-        });
-      }
-      if (part.parts) walk(part.parts);
+  const walk = (node: any) => {
+    if (!node) return;
+    // A non-body part with a filename AND attachmentId is an attachment.
+    // Some messages put it at the root (single-attachment send) instead
+    // of nested under .parts.
+    if (
+      node.filename &&
+      node.body?.attachmentId &&
+      node.mimeType !== "text/plain" &&
+      node.mimeType !== "text/html"
+    ) {
+      out.push({
+        attachmentId: node.body.attachmentId,
+        filename: node.filename,
+        mimeType: node.mimeType ?? "application/octet-stream",
+        size: node.body.size ?? 0,
+      });
+    }
+    if (Array.isArray(node.parts)) {
+      for (const child of node.parts) walk(child);
     }
   };
-  walk(payload?.parts ?? []);
+  walk(payload);
   return out;
 }
 

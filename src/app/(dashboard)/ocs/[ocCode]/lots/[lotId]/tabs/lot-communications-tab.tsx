@@ -1016,6 +1016,7 @@ function LogCallDrawer({
   });
   const [durationMinutes, setDurationMinutes] = React.useState<string>("");
   const [notes, setNotes] = React.useState("");
+  const [confidential, setConfidential] = React.useState(false);
 
   return (
     <EditSheet
@@ -1050,6 +1051,7 @@ function LogCallDrawer({
           call_date: callDate || undefined,
           duration_seconds: durationSeconds,
           notes,
+          confidential,
         });
         if (res.ok) onSaved();
         return res.ok
@@ -1118,6 +1120,12 @@ function LogCallDrawer({
           className="max-h-60 resize-none overflow-y-auto"
         />
       </div>
+
+      <VisibilityToggle
+        confidential={confidential}
+        onChange={setConfidential}
+        channelNoun="call"
+      />
     </EditSheet>
   );
 }
@@ -1166,7 +1174,7 @@ function VisibilityToggle({
           className={cn(
             "px-3 py-1 text-xs font-medium rounded transition-colors cursor-pointer inline-flex items-center gap-1.5",
             confidential
-              ? "bg-[color:var(--brand-gold)]/15 text-[color:var(--brand-gold)] shadow-sm"
+              ? "bg-primary text-primary-foreground shadow-sm"
               : "text-muted-foreground hover:text-foreground",
           )}
         >

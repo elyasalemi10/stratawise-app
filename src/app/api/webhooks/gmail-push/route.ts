@@ -303,6 +303,9 @@ async function ingestInboundMessage(
   // predictable). Skip anything over 25MB to bound storage cost; the
   // user can still see it in Gmail via the deep link.
   const commLogId = (logRow as { id: string }).id;
+  console.log(
+    `gmail-push: msg ${msg.id} carries ${msg.attachments.length} attachment(s)`,
+  );
   for (const att of msg.attachments) {
     if (!att.attachmentId) continue;
     if (att.size > MAX_INBOUND_ATTACHMENT_BYTES) {
@@ -351,7 +354,15 @@ async function ingestInboundMessage(
       profile_id: managerProfileId,
       oc_id: outboundOcId,
       type: "email_reply",
-      title: msg.subject ? `Re: ${msg.subject}` : `Reply from ${msg.from}`,
+      // Use the raw subject as the notification title — only prepend "Re:"
+      // when this inbound was actually matched to one of OUR outbound rows
+      // via In-Reply-To. A first-time fresh email shouldn't show up as a
+      // reply.
+      title: msg.subject
+        ? outboundLogId && !/^re:\s/i.test(msg.subject)
+          ? `Re: ${msg.subject}`
+          : msg.subject
+        : `New message from ${msg.from}`,
       body: (msg.text || "").slice(0, 200),
       link: null,
       metadata: {

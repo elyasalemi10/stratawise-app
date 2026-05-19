@@ -39,7 +39,11 @@ export interface InboxEmailDetail {
   oc_id: string | null;
   lot_id: string | null;
   oc_name: string | null;
+  oc_short_code: string | null;
   lot_label: string | null;
+  // For the inbox link line — "OC Name · Lot N · Unit X" or
+  // "OC Name · PS123456" when no unit; the short_code goes in the URL.
+  lot_link_label: string | null;
   // Which transport delivered this inbound — "gmail" when the row came in
   // via the Pub/Sub gmail-push webhook (regardless of sender domain),
   // "outlook" when Microsoft Graph ships, else null.
@@ -138,14 +142,21 @@ export async function getInboxEmail(
   }
 
   let ocName: string | null = null;
+  let ocShortCode: string | null = null;
+  let ocPlanNumber: string | null = null;
   let lotLabel: string | null = null;
   if (row.oc_id) {
     const { data: oc } = await supabase
       .from("owners_corporations")
-      .select("name")
+      .select("name, short_code, plan_number")
       .eq("id", row.oc_id as string)
       .maybeSingle();
-    ocName = (oc as { name: string | null } | null)?.name ?? null;
+    ocName =
+      (oc as { name: string | null } | null)?.name ?? null;
+    ocShortCode =
+      (oc as { short_code: string | null } | null)?.short_code ?? null;
+    ocPlanNumber =
+      (oc as { plan_number: string | null } | null)?.plan_number ?? null;
   }
   if (row.lot_id) {
     const { data: lot } = await supabase
@@ -158,6 +169,16 @@ export async function getInboxEmail(
       lotLabel = `Lot ${(lot as { lot_number: number }).lot_number}${unit ? ` · Unit ${unit}` : ""}`;
     }
   }
+
+  // Compact label for the blue link line. Falls back to the OC plan
+  // number when the row has no specific lot (manager hasn't picked one
+  // yet); never includes the address (too long for an inline link).
+  const lotLinkLabel = (() => {
+    if (!ocName && !lotLabel) return null;
+    if (ocName && lotLabel) return `${ocName} · ${lotLabel}`;
+    if (ocName && ocPlanNumber) return `${ocName} · ${ocPlanNumber}`;
+    return ocName ?? lotLabel ?? null;
+  })();
 
   // Inbound attachments (R2-backed) for this comm-log row.
   const { data: attRows } = await supabase
@@ -192,7 +213,9 @@ export async function getInboxEmail(
       oc_id: (row.oc_id as string | null) ?? null,
       lot_id: (row.lot_id as string | null) ?? null,
       oc_name: ocName,
+      oc_short_code: ocShortCode,
       lot_label: lotLabel,
+      lot_link_label: lotLinkLabel,
       inbox_provider: inboxProvider,
       gmail_message_id: gmailMessageId,
       gmail_thread_id: gmailThreadId,
