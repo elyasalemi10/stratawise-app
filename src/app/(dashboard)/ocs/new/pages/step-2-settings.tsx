@@ -200,11 +200,11 @@ export function Step2Settings({
               per-OC Settings → Financial page after creation. Defaults
               (lot_liability / 0%) cover the vast majority of OCs at sign-up. */}
 
-          {/* Interest on overdue — inline-toggle row (no card), revealing the
-              two sub-fields beside it when Yes. Label sits on the left, toggle
-              pushed to the right edge of the row. */}
+          {/* Interest on overdue — inline-toggle row (no card). Label and
+              toggle sit beside each other on the left (matches the GST row
+              on Step 1) rather than being split across the full width. */}
           <div className="space-y-3">
-            <div className="flex items-center justify-between gap-3">
+            <div className="flex items-center gap-3">
               <Label>
                 Interest on overdue levies <span className="text-destructive">*</span>
               </Label>

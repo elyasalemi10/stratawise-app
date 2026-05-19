@@ -343,6 +343,14 @@ export async function sendLotEmail(
 
 // ─── List communications for a lot ─────────────────────────────────────────
 
+export interface LotCommunicationAttachment {
+  id: string;
+  filename: string;
+  mime_type: string;
+  size_bytes: number;
+  url: string;
+}
+
 export interface LotCommunicationRow {
   id: string;
   created_at: string;
@@ -361,6 +369,9 @@ export interface LotCommunicationRow {
   status: string;
   actor_name: string | null;
   confidential: boolean;
+  // Inbound email attachments stored on R2 via the gmail/outlook/resend
+  // push handlers. Empty for sent rows and non-email channels.
+  attachments: LotCommunicationAttachment[];
 }
 
 export async function listLotCommunications(lotId: string): Promise<LotCommunicationRow[]> {
@@ -392,6 +403,39 @@ export async function listLotCommunications(lotId: string): Promise<LotCommunica
     });
   }
 
+  // Pull inbound attachments for the email rows in one batched query and
+  // group by communication_log_id. Phone calls / SMS / outbound mail have
+  // no attachments today so they get an empty list.
+  const emailRowIds = rows
+    .filter((r) => r.channel === "email")
+    .map((r) => r.id as string);
+  const attachmentMap: Record<string, LotCommunicationAttachment[]> = {};
+  if (emailRowIds.length > 0) {
+    const { data: attRows } = await supabase
+      .from("inbound_email_attachments")
+      .select("id, communication_log_id, filename, mime_type, size_bytes, r2_url")
+      .in("communication_log_id", emailRowIds)
+      .order("created_at", { ascending: true });
+    for (const a of (attRows ?? []) as Array<{
+      id: string;
+      communication_log_id: string;
+      filename: string;
+      mime_type: string;
+      size_bytes: number;
+      r2_url: string;
+    }>) {
+      const key = a.communication_log_id;
+      if (!attachmentMap[key]) attachmentMap[key] = [];
+      attachmentMap[key].push({
+        id: a.id,
+        filename: a.filename,
+        mime_type: a.mime_type,
+        size_bytes: a.size_bytes,
+        url: a.r2_url,
+      });
+    }
+  }
+
   return rows.map((r) => ({
     id: r.id as string,
     created_at: r.created_at as string,
@@ -407,6 +451,7 @@ export async function listLotCommunications(lotId: string): Promise<LotCommunica
     status: r.status as string,
     actor_name: r.sender_profile_id ? actorMap[r.sender_profile_id as string] ?? null : null,
     confidential: !!(r as { confidential?: boolean }).confidential,
+    attachments: attachmentMap[r.id as string] ?? [],
   }));
 }
 

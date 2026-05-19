@@ -60,6 +60,17 @@ function WizardContent() {
     initialised.current = true;
 
     const draftId = searchParams.get("draft");
+    // Capture URL-supplied step/sub BEFORE the network round-trip resolves
+    // so we know whether the user landed via an explicit deep link
+    // (e.g. /ocs/new?draft=X&step=2&sub=0). The URL is the authoritative
+    // intent for a refresh — without this the page renders step 2 from
+    // the URL, then snaps back to draft.current_step (often 1) and the
+    // user sees a flicker between steps. Only fall back to the draft's
+    // persisted step when the URL omitted it.
+    const urlStep = parseInt(searchParams.get("step") ?? "", 10);
+    const urlSub = parseInt(searchParams.get("sub") ?? "", 10);
+    const urlHasStep = Number.isFinite(urlStep);
+    const urlHasSub = Number.isFinite(urlSub);
     (async () => {
       const r = draftId ? await getDraft(draftId) : await createDraftAndLoad();
       if (r.error || !r.draft) {
@@ -72,8 +83,8 @@ function WizardContent() {
         return;
       }
       setDraft(d);
-      setStep(clampStep(d.current_step));
-      setSubstep(clampSubstep(d.current_substep));
+      setStep(clampStep(urlHasStep ? urlStep : d.current_step));
+      setSubstep(clampSubstep(urlHasSub ? urlSub : d.current_substep));
 
       if (!draftId) {
         const next = new URLSearchParams(searchParams.toString());

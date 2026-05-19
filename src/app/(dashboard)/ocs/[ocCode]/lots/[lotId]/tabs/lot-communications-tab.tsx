@@ -333,6 +333,15 @@ function CommunicationRow({
           <p className="truncate text-sm font-medium text-foreground">
             {rowTitle(row)}
           </p>
+          {row.attachments.length > 0 && (
+            <span
+              className="inline-flex shrink-0 items-center gap-0.5 text-xs text-muted-foreground"
+              title={`${row.attachments.length} attachment${row.attachments.length === 1 ? "" : "s"}`}
+            >
+              <Paperclip className="h-3 w-3" />
+              {row.attachments.length}
+            </span>
+          )}
         </div>
         <span className="shrink-0 text-xs text-muted-foreground tabular-nums">
           {formatShortDate(row.created_at)}
@@ -448,10 +457,46 @@ function EmailDetailDialog({
               {row.body_preview || "(empty)"}
             </div>
           </div>
+          {row.attachments.length > 0 && (
+            <div>
+              <p className="text-xs uppercase tracking-wide text-muted-foreground mb-1">
+                Attachments ({row.attachments.length})
+              </p>
+              <ul className="space-y-1.5">
+                {row.attachments.map((a) => (
+                  <li key={a.id}>
+                    <a
+                      href={a.url}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="flex items-center justify-between gap-2 rounded-md border border-border bg-card px-3 py-2 text-sm hover:border-primary/40 hover:bg-muted/40"
+                    >
+                      <span className="inline-flex items-center gap-2 min-w-0">
+                        <Paperclip className="h-3.5 w-3.5 shrink-0 text-muted-foreground" />
+                        <span className="truncate font-medium text-foreground">
+                          {a.filename}
+                        </span>
+                      </span>
+                      <span className="shrink-0 text-xs text-muted-foreground tabular-nums">
+                        {formatFileSize(a.size_bytes)}
+                      </span>
+                    </a>
+                  </li>
+                ))}
+              </ul>
+            </div>
+          )}
         </div>
       </DialogContent>
     </Dialog>
   );
+}
+
+function formatFileSize(bytes: number): string {
+  if (!Number.isFinite(bytes) || bytes <= 0) return "";
+  if (bytes < 1024) return `${bytes} B`;
+  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(0)} KB`;
+  return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
 }
 
 function SmsDetailDialog({

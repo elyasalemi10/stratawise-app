@@ -450,7 +450,7 @@ export function VicAddressAutocomplete({ value, onChange, id, error }: Props) {
       <button
         type="button"
         onClick={() => setMode("manual")}
-        className="text-xs text-muted-foreground hover:text-foreground cursor-pointer"
+        className="text-xs font-medium text-[color:var(--brand-gold)] hover:underline cursor-pointer"
       >
         Enter manually
       </button>

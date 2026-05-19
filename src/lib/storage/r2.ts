@@ -148,18 +148,33 @@ export function keyFromPublicUrl(url: string | null | undefined): string | null 
 }
 
 /**
- * Build a time-limited presigned download URL. Not used by the current
- * code paths (PDFs + logos are publicly readable via the CDN domain), but
- * exported for future PII-sensitive flows.
+ * Build a time-limited presigned download URL.
+ *
+ * Default 15 minutes (matches the document-proxy redirect policy) so
+ * sensitive strata documents can be served via direct R2 URLs without
+ * the URL itself being long-lived. Callers serving non-sensitive assets
+ * (logos rendered into outbound email, for example) should keep using
+ * `publicUrlFor` so the asset stays inline-renderable.
+ *
+ * Optionally accepts the user-facing filename so the signed URL forces
+ * the right download name even when the R2 key is something like
+ * `documents/<ocId>/<uuid>.pdf`.
  */
 export async function getSignedDownloadUrl(
   key: string,
-  expiresInSeconds = 604800, // 7 days
+  expiresInSeconds = 900, // 15 minutes
+  options?: { filename?: string; inline?: boolean },
 ): Promise<string> {
   const client = getClient();
+  const disposition = options?.filename
+    ? `${options.inline ? "inline" : "attachment"}; filename="${encodeURIComponent(
+        options.filename,
+      )}"`
+    : undefined;
   const command = new GetObjectCommand({
     Bucket: getBucket(),
     Key: key,
+    ResponseContentDisposition: disposition,
   });
   return getSignedUrl(client, command, { expiresIn: expiresInSeconds });
 }

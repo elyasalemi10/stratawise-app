@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createServerClient } from "@/lib/supabase";
 import { getCurrentProfile, requireCompanyRole, requireOCAccess } from "@/lib/auth";
-import { fetchObject, deleteObject } from "@/lib/storage/r2";
+import { deleteObject, getSignedDownloadUrl } from "@/lib/storage/r2";
 
 const UUID_REGEX = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
@@ -16,8 +16,16 @@ async function loadDocument(id: string) {
   return data;
 }
 
-// GET — proxy file from R2 (avoids CORS issues with redirects)
-// ?view=true returns inline (for preview), otherwise attachment (for download)
+// GET — authorise + redirect to a short-lived (15 min) presigned R2 URL.
+//
+// Strata documents are sensitive (financial statements, insurance certs,
+// breach notices). Returning a presigned URL gives the browser a direct
+// download path that bypasses our server (fast + no Vercel egress cost)
+// while ensuring the URL itself expires quickly — copy-pasting it into a
+// chat won't yield a usable link 20 minutes later. The same access check
+// that gated the old byte-streaming path still runs here.
+//
+// ?view=true → inline disposition (PDF previews); otherwise attachment.
 export async function GET(
   request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
@@ -44,23 +52,34 @@ export async function GET(
     return NextResponse.json({ error: "Forbidden" }, { status: 403 });
   }
 
-  let body: Buffer;
+  const isView = request.nextUrl.searchParams.get("view") === "true";
+  const isJson = request.nextUrl.searchParams.get("json") === "true";
+
+  let signedUrl: string;
   try {
-    body = await fetchObject(doc.file_path);
-  } catch {
-    return NextResponse.json({ error: "File not found in storage" }, { status: 404 });
+    signedUrl = await getSignedDownloadUrl(doc.file_path, 900, {
+      filename: doc.file_name,
+      inline: isView,
+    });
+  } catch (err) {
+    console.error("documents: signed URL generation failed", err);
+    return NextResponse.json(
+      { error: "This document is temporarily unavailable. Please try again." },
+      { status: 500 },
+    );
   }
 
-  const isView = request.nextUrl.searchParams.get("view") === "true";
-  const disposition = isView ? "inline" : `attachment; filename="${encodeURIComponent(doc.file_name)}"`;
+  // The `?json=true` hint lets clients that need the URL string (e.g.
+  // copy-link UI, iframe previews) read it directly instead of being
+  // redirected. Default flow is a 302 redirect so plain <a href> works.
+  if (isJson) {
+    return NextResponse.json({
+      url: signedUrl,
+      expiresAt: new Date(Date.now() + 900_000).toISOString(),
+    });
+  }
 
-  return new NextResponse(new Uint8Array(body), {
-    headers: {
-      "Content-Type": doc.mime_type || "application/octet-stream",
-      "Content-Disposition": disposition,
-      "Cache-Control": "private, max-age=3600",
-    },
-  });
+  return NextResponse.redirect(signedUrl, { status: 302 });
 }
 
 // PATCH — rename document (DB only, R2 key unchanged)

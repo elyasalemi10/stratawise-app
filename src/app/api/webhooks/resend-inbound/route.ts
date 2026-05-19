@@ -2,6 +2,12 @@ import { NextRequest, NextResponse } from "next/server";
 import { Webhook } from "svix";
 import { Resend } from "resend";
 import { createServerClient } from "@/lib/supabase";
+import { uploadObject } from "@/lib/storage/r2";
+
+// Same cap as the gmail/outlook handlers — anything bigger gets skipped
+// (R2 single-object limit is 5 GB but we don't want a single inbound
+// owner upload to blow our storage budget).
+const MAX_INBOUND_ATTACHMENT_BYTES = 25 * 1024 * 1024;
 
 // Inbound email webhook for owner replies to manager-sent mail.
 //
@@ -214,24 +220,36 @@ export async function POST(request: NextRequest) {
   const d = payload.data ?? {};
   const subject = (d.subject ?? "").trim();
 
-  // Body fetch.
+  // Body + attachments fetch.
   //
   // Resend's `email.received` webhook only carries metadata (from / to /
-  // subject / message_id / attachment list); the body lives behind a
-  // separate `GET /emails/receiving/{id}` call. The older legacy payload
-  // shape included `text` / `html` inline — fall back to those when
-  // present so this handler stays backwards-compatible with either feed.
+  // subject / message_id / attachment list); the body and the attachment
+  // bytes live behind separate calls. We pull both here so the rest of
+  // the pipeline (communication_log insert + per-attachment R2 upload)
+  // looks identical to the gmail/outlook handlers downstream.
   let body = d.text ?? stripHtml(d.html ?? "");
   const inboundEmailId = d.email_id ?? null;
   let fetchedHtml: string | null = null;
-  if (!body && inboundEmailId && process.env.RESEND_API_KEY) {
+  let fetchedAttachments: Array<{
+    id: string;
+    filename: string;
+    contentType: string;
+    size: number;
+  }> = [];
+  const resend = process.env.RESEND_API_KEY ? new Resend(process.env.RESEND_API_KEY) : null;
+  if (inboundEmailId && resend) {
     try {
-      const resend = new Resend(process.env.RESEND_API_KEY);
       const fetched = await resend.emails.receiving.get(inboundEmailId);
       if (fetched.data) {
         const t = (fetched.data.text ?? "").trim();
-        body = t || stripHtml(fetched.data.html ?? "");
+        body = body || t || stripHtml(fetched.data.html ?? "");
         fetchedHtml = fetched.data.html ?? null;
+        fetchedAttachments = (fetched.data.attachments ?? []).map((a) => ({
+          id: a.id,
+          filename: a.filename ?? "attachment",
+          contentType: a.content_type,
+          size: a.size,
+        }));
       } else if (fetched.error) {
         console.warn(
           "resend-inbound: receiving.get failed for",
@@ -345,6 +363,62 @@ export async function POST(request: NextRequest) {
     console.error("resend-inbound: communication_log insert failed", logErr);
     return NextResponse.json({ error: "log_insert_failed" }, { status: 500 });
   }
+  const commLogId = logRow.id as string;
+
+  // Persist attachments. For each attachment metadata entry from the
+  // receiving API, fetch a short-lived download URL via the attachments
+  // endpoint, GET the bytes, push them to R2 under
+  // inbound-emails/{commLogId}/{filename}, then insert the row. Skipped
+  // (logged) on per-attachment failures so a single broken upload doesn't
+  // block the rest of the email landing in the inbox.
+  if (resend && inboundEmailId && fetchedAttachments.length > 0) {
+    for (const att of fetchedAttachments) {
+      if (att.size > MAX_INBOUND_ATTACHMENT_BYTES) {
+        console.warn(
+          `resend-inbound: skipping oversize attachment ${att.filename} (${att.size}b) on ${inboundEmailId}`,
+        );
+        continue;
+      }
+      try {
+        const attResp = await resend.emails.receiving.attachments.get({
+          emailId: inboundEmailId,
+          id: att.id,
+        });
+        const downloadUrl = attResp.data?.download_url;
+        if (!downloadUrl) {
+          console.warn(
+            `resend-inbound: no download_url for attachment ${att.id}`,
+            attResp.error,
+          );
+          continue;
+        }
+        const fileRes = await fetch(downloadUrl);
+        if (!fileRes.ok) {
+          console.warn(
+            `resend-inbound: attachment download ${att.id} returned ${fileRes.status}`,
+          );
+          continue;
+        }
+        const bytes = Buffer.from(await fileRes.arrayBuffer());
+        const safeName = att.filename.replace(/[/\\?%*:|"<>]/g, "_");
+        const r2Key = `inbound-emails/${commLogId}/${safeName}`;
+        const upload = await uploadObject(r2Key, bytes, att.contentType);
+        await supabase.from("inbound_email_attachments").insert({
+          communication_log_id: commLogId,
+          filename: att.filename,
+          mime_type: att.contentType,
+          size_bytes: att.size,
+          r2_key: r2Key,
+          r2_url: upload.publicUrl,
+        });
+      } catch (err) {
+        console.error(
+          `resend-inbound: attachment persistence failed for ${att.filename}:`,
+          err,
+        );
+      }
+    }
+  }
 
   // Drop the reply in the manager's in-app inbox. The link points at
   // /inbox?n=<notification_id> so clicking opens the full email view
@@ -384,7 +458,7 @@ export async function POST(request: NextRequest) {
       .eq("id", notif.id);
   }
 
-  return NextResponse.json({ status: "logged", id: logRow.id });
+  return NextResponse.json({ status: "logged", id: commLogId });
 }
 
 // Cheap HTML-strip for clients that send html-only inbound. Strips tags,
