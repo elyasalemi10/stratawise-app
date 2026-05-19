@@ -564,6 +564,66 @@ export async function searchPeopleForAssociate(
   return rows.slice(0, 50);
 }
 
+// Eager-load the full ownership list for the firm — used by the inbox to
+// preload the link-to-lot popover so search is instant (no server round
+// trip per keystroke). Cap is 2000 ownerships which comfortably covers
+// any single firm's portfolio for the MVP.
+export async function listAllPeopleOwnerships(): Promise<PersonOwnershipOption[]> {
+  const profile = await requireCompanyRole();
+  if (!profile.management_company_id) return [];
+  const supabase = createServerClient();
+
+  const { data: ocs } = await supabase
+    .from("owners_corporations")
+    .select("id, name, short_code")
+    .eq("management_company_id", profile.management_company_id);
+  const ocMap = new Map<string, { name: string; short_code: string }>();
+  for (const oc of (ocs ?? []) as Array<{ id: string; name: string; short_code: string }>) {
+    ocMap.set(oc.id, { name: oc.name, short_code: oc.short_code });
+  }
+  if (ocMap.size === 0) return [];
+
+  const ocIds = Array.from(ocMap.keys());
+  const { data: lots } = await supabase
+    .from("lots")
+    .select("id, oc_id, lot_number, unit_number")
+    .in("oc_id", ocIds)
+    .limit(5000);
+  const lotMap = new Map<string, { oc_id: string; label: string }>();
+  for (const l of (lots ?? []) as Array<{ id: string; oc_id: string; lot_number: number; unit_number: string | null }>) {
+    lotMap.set(l.id, {
+      oc_id: l.oc_id,
+      label: `Lot ${l.lot_number}${l.unit_number ? ` · Unit ${l.unit_number}` : ""}`,
+    });
+  }
+  if (lotMap.size === 0) return [];
+
+  const { data: owners } = await supabase
+    .from("lot_owners")
+    .select("lot_id, name, email")
+    .in("lot_id", Array.from(lotMap.keys()));
+
+  const rows: PersonOwnershipOption[] = [];
+  for (const o of (owners ?? []) as Array<{ lot_id: string; name: string | null; email: string | null }>) {
+    const lot = lotMap.get(o.lot_id);
+    if (!lot) continue;
+    const oc = ocMap.get(lot.oc_id);
+    if (!oc) continue;
+    rows.push({
+      key: `${lot.oc_id}:${o.lot_id}`,
+      oc_id: lot.oc_id,
+      lot_id: o.lot_id,
+      oc_name: oc.name,
+      oc_short_code: oc.short_code,
+      lot_label: lot.label,
+      owner_name: (o.name ?? "").trim() || "Unnamed owner",
+      owner_email: o.email,
+    });
+  }
+  rows.sort((a, b) => a.owner_name.localeCompare(b.owner_name));
+  return rows.slice(0, 2000);
+}
+
 // ─── OC / Lot lookups for the associate picker ─────────────────────────
 
 export interface OcPickerOption {

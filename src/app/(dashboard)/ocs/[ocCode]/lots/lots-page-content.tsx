@@ -6,22 +6,15 @@ import {
   ChevronDown,
   Download,
   FileSignature,
-  Filter,
   MailCheck,
   Search,
   Wrench,
   X,
+  ArrowUpDown,
+  Check,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { Checkbox } from "@/components/ui/checkbox";
-import {
-  Dialog,
-  DialogContent,
-  DialogFooter,
-  DialogHeader,
-  DialogTitle,
-} from "@/components/ui/dialog";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -32,6 +25,7 @@ import { LotsTab } from "../manage/lots-tab";
 import { getLotInvitationStatus } from "../manage/invitation-actions";
 import { SettlementDialog } from "./[lotId]/settlement-dialog";
 import { BulkInviteDialog } from "./bulk-invite-dialog";
+import { cn } from "@/lib/utils";
 import type { LotWithFinancials } from "@/lib/actions/oc";
 
 type OwnerStatusFilter =
@@ -39,10 +33,25 @@ type OwnerStatusFilter =
   | "pending_invitation"
   | "no_owner";
 
-const FILTER_OPTIONS: Array<{ value: OwnerStatusFilter; label: string }> = [
+const FILTER_CHIPS: Array<{ value: OwnerStatusFilter; label: string }> = [
   { value: "owner_on_file", label: "Owner on file" },
-  { value: "pending_invitation", label: "Pending invitation" },
-  { value: "no_owner", label: "No owner assigned" },
+  { value: "pending_invitation", label: "Pending invite" },
+  { value: "no_owner", label: "No owner" },
+];
+
+type SortKey =
+  | "lot_asc"
+  | "lot_desc"
+  | "balance_desc"
+  | "balance_asc"
+  | "owner_asc";
+
+const SORT_OPTIONS: Array<{ value: SortKey; label: string }> = [
+  { value: "lot_asc", label: "Lot number (low → high)" },
+  { value: "lot_desc", label: "Lot number (high → low)" },
+  { value: "balance_desc", label: "Highest balance first" },
+  { value: "balance_asc", label: "Lowest balance first" },
+  { value: "owner_asc", label: "Owner name (A → Z)" },
 ];
 
 // Client-side CSV export — pulls straight from the in-memory lots prop so
@@ -94,19 +103,13 @@ export function LotsPageContent({
   const [settlementOpen, setSettlementOpen] = useState(false);
   const [bulkInviteOpen, setBulkInviteOpen] = useState(false);
   const [searchText, setSearchText] = useState("");
-  // Multi-select filter over owner status. Lightweight client-side narrow
-  // over the in-memory lots array — /lots is intentionally not paginated,
-  // so an Array.filter() is plenty even for a few hundred lots. Empty set
-  // = no filter applied.
+  // Filter chips toggle owner-status visibility. Empty set = no filter
+  // (every lot shown). Multi-select: matching ANY active chip keeps the
+  // lot in the list.
   const [statusFilter, setStatusFilter] = useState<Set<OwnerStatusFilter>>(
     () => new Set(),
   );
-  const [filterDialogOpen, setFilterDialogOpen] = useState(false);
-  // Draft state while the dialog is open so users can tick around without
-  // immediately filtering the table. Committed to statusFilter on Save.
-  const [draftStatusFilter, setDraftStatusFilter] = useState<Set<OwnerStatusFilter>>(
-    () => new Set(),
-  );
+  const [sortKey, setSortKey] = useState<SortKey>("lot_asc");
   // Single source of truth for invite-status — fetched once here and
   // handed down to both LotsTab (for the per-row pill) and BulkInviteDialog
   // (for eligibility counts). Previously each component re-fetched the
@@ -143,7 +146,7 @@ export function LotsPageContent({
 
   const filteredLots = useMemo(() => {
     const needle = searchText.trim().toLowerCase();
-    return lots.filter((lot) => {
+    const filtered = lots.filter((lot) => {
       if (statusFilter.size > 0) {
         const matchesAny = Array.from(statusFilter).some((f) => {
           if (f === "owner_on_file") return lot.owner_status === "member";
@@ -164,24 +167,38 @@ export function LotsPageContent({
       ];
       return haystacks.some((s) => s.toLowerCase().includes(needle));
     });
-  }, [lots, searchText, statusFilter]);
+
+    // Sort step. Comparators are pure / pre-allocated; sort returns a
+    // new array via spread so the original lots state stays untouched
+    // (LotsTab cares about reference equality for memoised children).
+    const arr = [...filtered];
+    arr.sort((a, b) => {
+      switch (sortKey) {
+        case "lot_asc":
+          return (a.lot_number ?? 0) - (b.lot_number ?? 0);
+        case "lot_desc":
+          return (b.lot_number ?? 0) - (a.lot_number ?? 0);
+        case "balance_desc":
+          return (b.balance ?? 0) - (a.balance ?? 0);
+        case "balance_asc":
+          return (a.balance ?? 0) - (b.balance ?? 0);
+        case "owner_asc":
+          return (a.owner_display_name ?? "~").localeCompare(b.owner_display_name ?? "~");
+        default:
+          return 0;
+      }
+    });
+    return arr;
+  }, [lots, searchText, statusFilter, sortKey]);
 
   const activeFilters =
     statusFilter.size + (searchText.trim() ? 1 : 0);
 
-  function openFilterDialog() {
-    setDraftStatusFilter(new Set(statusFilter));
-    setFilterDialogOpen(true);
-  }
-  function saveFilterDialog() {
-    setStatusFilter(new Set(draftStatusFilter));
-    setFilterDialogOpen(false);
-  }
-  function toggleDraftFilter(value: OwnerStatusFilter, checked: boolean) {
-    setDraftStatusFilter((prev) => {
+  function toggleStatusFilter(value: OwnerStatusFilter) {
+    setStatusFilter((prev) => {
       const next = new Set(prev);
-      if (checked) next.add(value);
-      else next.delete(value);
+      if (next.has(value)) next.delete(value);
+      else next.add(value);
       return next;
     });
   }
@@ -198,70 +215,118 @@ export function LotsPageContent({
     URL.revokeObjectURL(url);
   }
 
+  const sortLabel =
+    SORT_OPTIONS.find((s) => s.value === sortKey)?.label ?? "Sort";
+
   return (
-    <div className="space-y-6">
+    <div className="space-y-4">
       {!isLotOwner && (
-        <div className="flex flex-wrap items-center gap-2">
-          <div className="relative flex-1 min-w-[12rem] max-w-md">
-            <Search className="pointer-events-none absolute left-2.5 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-muted-foreground" />
-            <Input
-              value={searchText}
-              onChange={(e) => setSearchText(e.target.value)}
-              placeholder="Search lots, owners, email or phone"
-              className="h-9 pl-8 pr-8"
-            />
-            {searchText && (
+        <>
+          <div className="flex flex-wrap items-center gap-2">
+            <div className="relative flex-1 min-w-[12rem] max-w-md">
+              <Search className="pointer-events-none absolute left-2.5 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-muted-foreground" />
+              <Input
+                value={searchText}
+                onChange={(e) => setSearchText(e.target.value)}
+                placeholder="Search lots, owners, email or phone"
+                className="h-9 pl-8 pr-8"
+              />
+              {searchText && (
+                <button
+                  type="button"
+                  onClick={() => setSearchText("")}
+                  className="absolute right-1.5 top-1/2 -translate-y-1/2 rounded-md p-1 text-muted-foreground hover:text-foreground"
+                  aria-label="Clear search"
+                >
+                  <X className="h-3.5 w-3.5" />
+                </button>
+              )}
+            </div>
+
+            <DropdownMenu>
+              <DropdownMenuTrigger
+                render={
+                  <Button variant="secondary" size="sm">
+                    <ArrowUpDown className="mr-2 h-3.5 w-3.5" />
+                    Sort: {sortLabel}
+                    <ChevronDown className="ml-1 h-3.5 w-3.5 opacity-60" />
+                  </Button>
+                }
+              />
+              <DropdownMenuContent align="end" sideOffset={6} className="min-w-[220px]">
+                {SORT_OPTIONS.map((opt) => (
+                  <DropdownMenuItem
+                    key={opt.value}
+                    onClick={() => setSortKey(opt.value)}
+                    className="justify-between"
+                  >
+                    {opt.label}
+                    {opt.value === sortKey && <Check className="ml-2 h-3.5 w-3.5" />}
+                  </DropdownMenuItem>
+                ))}
+              </DropdownMenuContent>
+            </DropdownMenu>
+
+            <DropdownMenu>
+              <DropdownMenuTrigger
+                render={
+                  <Button variant="secondary" size="sm">
+                    <Wrench className="mr-2 h-3.5 w-3.5" />
+                    Tools
+                    <ChevronDown className="ml-1 h-3.5 w-3.5" />
+                  </Button>
+                }
+              />
+              <DropdownMenuContent align="end" sideOffset={6} className="min-w-[220px]">
+                <DropdownMenuItem onClick={() => setSettlementOpen(true)}>
+                  <FileSignature className="mr-2 h-4 w-4" />
+                  Record settlement
+                </DropdownMenuItem>
+                <DropdownMenuItem onClick={exportCsv}>
+                  <Download className="mr-2 h-4 w-4" />
+                  Export lot register
+                </DropdownMenuItem>
+                <DropdownMenuItem onClick={() => setBulkInviteOpen(true)}>
+                  <MailCheck className="mr-2 h-4 w-4" />
+                  Bulk invite owners
+                </DropdownMenuItem>
+              </DropdownMenuContent>
+            </DropdownMenu>
+          </div>
+
+          {/* Filter chips — clicking a chip toggles its inclusion. Multi-
+              select OR semantics: matching ANY active chip keeps the lot. */}
+          <div className="flex flex-wrap items-center gap-1.5">
+            {FILTER_CHIPS.map((chip) => {
+              const active = statusFilter.has(chip.value);
+              return (
+                <button
+                  key={chip.value}
+                  type="button"
+                  onClick={() => toggleStatusFilter(chip.value)}
+                  className={cn(
+                    "inline-flex items-center gap-1 rounded-full border px-2.5 py-1 text-xs font-medium transition-colors cursor-pointer",
+                    active
+                      ? "border-[color:var(--brand-gold)] bg-[color:var(--brand-gold)]/10 text-foreground"
+                      : "border-border bg-card text-muted-foreground hover:text-foreground",
+                  )}
+                >
+                  {active && <Check className="size-3" />}
+                  {chip.label}
+                </button>
+              );
+            })}
+            {statusFilter.size > 0 && (
               <button
                 type="button"
-                onClick={() => setSearchText("")}
-                className="absolute right-1.5 top-1/2 -translate-y-1/2 rounded-md p-1 text-muted-foreground hover:text-foreground"
-                aria-label="Clear search"
+                onClick={() => setStatusFilter(new Set())}
+                className="text-xs text-muted-foreground hover:text-foreground underline-offset-4 hover:underline ml-1 cursor-pointer"
               >
-                <X className="h-3.5 w-3.5" />
+                Clear filters
               </button>
             )}
           </div>
-
-          <Button
-            variant="secondary"
-            size="sm"
-            onClick={openFilterDialog}
-          >
-            <Filter className="mr-2 h-3.5 w-3.5" />
-            Filter
-            {activeFilters > 0 && (
-              <span className="ml-1.5 inline-flex h-4 min-w-4 items-center justify-center rounded-full bg-[color:var(--brand-gold)] px-1 text-[10px] font-semibold text-white">
-                {activeFilters}
-              </span>
-            )}
-          </Button>
-
-          <DropdownMenu>
-            <DropdownMenuTrigger
-              render={
-                <Button variant="secondary" size="sm">
-                  <Wrench className="mr-2 h-3.5 w-3.5" />
-                  Tools
-                  <ChevronDown className="ml-1 h-3.5 w-3.5" />
-                </Button>
-              }
-            />
-            <DropdownMenuContent align="end" sideOffset={6} className="min-w-[220px]">
-              <DropdownMenuItem onClick={() => setSettlementOpen(true)}>
-                <FileSignature className="mr-2 h-4 w-4" />
-                Record settlement
-              </DropdownMenuItem>
-              <DropdownMenuItem onClick={exportCsv}>
-                <Download className="mr-2 h-4 w-4" />
-                Export lot register
-              </DropdownMenuItem>
-              <DropdownMenuItem onClick={() => setBulkInviteOpen(true)}>
-                <MailCheck className="mr-2 h-4 w-4" />
-                Bulk invite owners
-              </DropdownMenuItem>
-            </DropdownMenuContent>
-          </DropdownMenu>
-        </div>
+        </>
       )}
 
       {activeFilters > 0 && (
@@ -277,56 +342,6 @@ export function LotsPageContent({
         isLotOwner={isLotOwner}
         inviteStatusMap={inviteStatus}
       />
-
-      <Dialog open={filterDialogOpen} onOpenChange={setFilterDialogOpen}>
-        <DialogContent className="sm:max-w-sm">
-          <DialogHeader>
-            <DialogTitle>Filter lots</DialogTitle>
-          </DialogHeader>
-          <div className="space-y-3">
-            <p className="text-xs uppercase tracking-wide text-muted-foreground">
-              Owner status
-            </p>
-            <div className="space-y-2.5">
-              {FILTER_OPTIONS.map((opt) => {
-                const checked = draftStatusFilter.has(opt.value);
-                return (
-                  <div key={opt.value} className="flex items-start gap-2">
-                    {/* Per CLAUDE.md: <Label> isn't paired to the checkbox
-                        via htmlFor — only the checkbox itself toggles. */}
-                    <Checkbox
-                      checked={checked}
-                      onCheckedChange={(v) =>
-                        toggleDraftFilter(opt.value, v === true)
-                      }
-                      className="mt-0.5 bg-card"
-                    />
-                    <span className="text-sm text-foreground">{opt.label}</span>
-                  </div>
-                );
-              })}
-            </div>
-            <p className="text-xs text-muted-foreground">
-              Lots that match ANY of the ticked statuses will be shown.
-              Leave everything unticked to see all lots.
-            </p>
-          </div>
-          <DialogFooter>
-            <Button
-              variant="secondary"
-              size="sm"
-              onClick={() => {
-                setDraftStatusFilter(new Set());
-              }}
-            >
-              Clear
-            </Button>
-            <Button size="sm" onClick={saveFilterDialog}>
-              Save
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
 
       {!isLotOwner && (
         <>

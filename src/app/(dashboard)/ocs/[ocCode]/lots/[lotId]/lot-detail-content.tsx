@@ -74,6 +74,7 @@ interface LotDetailContentProps {
   portalActivity: PortalActivity;
   communications: LotCommunicationRow[];
   engagement: LotEngagement;
+  bankProvider: string | null;
 }
 
 const TABS = [
@@ -137,6 +138,7 @@ export function LotDetailContent({
   portalActivity,
   communications,
   engagement,
+  bankProvider,
 }: LotDetailContentProps) {
   const ocCode = useOCCode();
   const searchParams = useSearchParams();
@@ -230,11 +232,20 @@ export function LotDetailContent({
                 }
               />
               <DropdownMenuContent align="end" sideOffset={6}>
-                {!owner.owner_display_name && (
+                {!owner.owner_display_name ? (
                   <DropdownMenuItem onClick={() => setAddOwnerOpen(true)}>
                     <UserPlus className="mr-2 h-4 w-4" />
                     Add owner
                   </DropdownMenuItem>
+                ) : (
+                  // Owner exists but no portal account yet (or even if they
+                  // do — resending an invite is idempotent server-side).
+                  !portalActive && (
+                    <DropdownMenuItem onClick={() => setAddOwnerOpen(true)}>
+                      <UserPlus className="mr-2 h-4 w-4" />
+                      Invite owner
+                    </DropdownMenuItem>
+                  )
                 )}
                 <DropdownMenuItem onClick={() => setSettlementOpen(true)}>
                   <FileSignature className="mr-2 h-4 w-4" />
@@ -346,6 +357,7 @@ export function LotDetailContent({
           portalInviteAccepted={portalActive}
           consentCategories={lotOwnerExtra?.digital_consent_categories ?? []}
           drns={drns}
+          bankProvider={bankProvider}
           engagement={engagement}
           onTransfer={() => setSettlementOpen(true)}
         />

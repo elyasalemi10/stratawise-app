@@ -5,6 +5,7 @@ import { getNotifications } from "@/lib/actions/notifications";
 import {
   resolveInboxRowProviders,
   prefetchInboxEmails,
+  listAllPeopleOwnerships,
 } from "@/lib/actions/inbox-email";
 import { InboxContent } from "./inbox-content";
 
@@ -14,14 +15,17 @@ export default async function InboxPage() {
 
   const notifications = await getNotifications(50);
 
-  // Two server-side enrichments in parallel:
+  // Three server-side enrichments in parallel:
   //   1. provider hint for each row (Gmail / Outlook glyph)
   //   2. full email body for the top 5 unread email_reply rows so the
   //      detail pane renders instantly the first time the manager clicks
   //      one (instead of flashing "Loading email…")
-  const [rowProviders, prefetchedEmails] = await Promise.all([
+  //   3. full ownership list for the firm so the link-to-lot popover
+  //      filters client-side with zero network round trips per keystroke
+  const [rowProviders, prefetchedEmails, allOwnerships] = await Promise.all([
     resolveInboxRowProviders(notifications),
     prefetchInboxEmails(notifications, 5),
+    listAllPeopleOwnerships(),
   ]);
 
   // InboxContent reads `?n=<id>` via useSearchParams, which needs a
@@ -32,6 +36,7 @@ export default async function InboxPage() {
         notifications={notifications}
         rowProviders={rowProviders}
         prefetchedEmails={prefetchedEmails}
+        allOwnerships={allOwnerships}
       />
     </Suspense>
   );

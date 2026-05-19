@@ -44,7 +44,7 @@ export default async function LotDetailPage({
       .single(),
     supabase
       .from("owners_corporations")
-      .select("address")
+      .select("address, bank_provider")
       .eq("id", ocId)
       .single(),
   ]);
@@ -176,6 +176,7 @@ export default async function LotDetailPage({
       portalActivity={portalActivity}
       communications={communications}
       engagement={engagement}
+      bankProvider={(oc as { bank_provider?: string } | null)?.bank_provider ?? null}
     />
   );
 }

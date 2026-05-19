@@ -734,10 +734,10 @@ function SendEmailDrawer({
         />
       </div>
 
-      {/* Advanced settings — collapsed by default. Today this is just the
-          confidentiality toggle; the disclosure shape gives us a place to
-          add future per-send options (CC/BCC, send-on-behalf, scheduling)
-          without bloating the default view. */}
+      {/* Advanced settings — collapsed by default. The confidentiality
+          toggle is a pair of pill-style buttons that read more like a
+          deliberate choice than a tickbox does. The selected pill carries
+          the brand-gold accent; the other reads as muted/unselected. */}
       <details
         open={advancedOpen}
         onToggle={(e) => setAdvancedOpen((e.target as HTMLDetailsElement).open)}
@@ -747,20 +747,45 @@ function SendEmailDrawer({
           Advanced settings
         </summary>
         <div className="border-t border-border p-3 space-y-2">
-          <div className="flex items-start justify-between gap-3">
-            <div className="space-y-0.5 min-w-0">
-              <p className="text-sm font-medium text-foreground">
-                Mark as confidential
-              </p>
-              <p className="text-xs text-muted-foreground">
-                Future lot owners won&apos;t see this email. The current owner
-                and managers always can.
-              </p>
-            </div>
-            <Checkbox
-              checked={confidential}
-              onCheckedChange={(v) => setConfidential(v === true)}
-            />
+          <p className="text-sm font-medium text-foreground">Visibility</p>
+          <p className="text-xs text-muted-foreground">
+            Confidential emails are hidden from future lot owners. The
+            current owner and managers always see both.
+          </p>
+          <div
+            role="radiogroup"
+            aria-label="Visibility"
+            className="inline-flex rounded-md border border-border bg-cool-muted p-0.5"
+          >
+            <button
+              type="button"
+              role="radio"
+              aria-checked={!confidential}
+              onClick={() => setConfidential(false)}
+              className={cn(
+                "px-3 py-1 text-xs font-medium rounded transition-colors cursor-pointer",
+                !confidential
+                  ? "bg-card text-foreground shadow-sm"
+                  : "text-muted-foreground hover:text-foreground",
+              )}
+            >
+              Visible to future owners
+            </button>
+            <button
+              type="button"
+              role="radio"
+              aria-checked={confidential}
+              onClick={() => setConfidential(true)}
+              className={cn(
+                "px-3 py-1 text-xs font-medium rounded transition-colors cursor-pointer inline-flex items-center gap-1.5",
+                confidential
+                  ? "bg-[color:var(--brand-gold)]/15 text-[color:var(--brand-gold)] shadow-sm"
+                  : "text-muted-foreground hover:text-foreground",
+              )}
+            >
+              <Lock className="size-3" />
+              Confidential
+            </button>
           </div>
         </div>
       </details>

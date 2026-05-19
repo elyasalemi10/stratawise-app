@@ -1,7 +1,7 @@
 "use client";
 
 import Image from "next/image";
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import {
   Inbox,
@@ -16,6 +16,7 @@ import {
   Loader2,
   Link as LinkIcon,
   Trash2,
+  ChevronDown,
 } from "lucide-react";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -54,7 +55,6 @@ import {
   getInboxEmail,
   replyToInboxEmail,
   associateInboxEmailToLot,
-  searchPeopleForAssociate,
   removeInboxEmail,
   type InboxEmailDetail,
   type PersonOwnershipOption,
@@ -121,6 +121,7 @@ export function InboxContent({
   notifications: initial,
   rowProviders,
   prefetchedEmails,
+  allOwnerships,
 }: {
   notifications: Notification[];
   rowProviders: Record<string, "gmail" | "outlook">;
@@ -128,6 +129,9 @@ export function InboxContent({
   // any of them is instant (no "Loading email…" flash). Anything not in
   // this map falls back to getInboxEmail() on demand.
   prefetchedEmails: Record<string, InboxEmailDetail>;
+  // Eager-loaded ownership list for the firm — drives the link-to-lot
+  // popover with zero per-keystroke server traffic.
+  allOwnerships: PersonOwnershipOption[];
 }) {
   const router = useRouter();
   const searchParams = useSearchParams();
@@ -301,6 +305,7 @@ export function InboxContent({
               onBack={handleClose}
               onRemove={() => handleRemove(openNotification.id)}
               prefetched={prefetchedEmails[openNotification.id] ?? null}
+              allOwnerships={allOwnerships}
             />
           ) : (
             <GenericDetailPane
@@ -380,11 +385,13 @@ function EmailDetailPane({
   onBack,
   onRemove,
   prefetched,
+  allOwnerships,
 }: {
   notification: Notification;
   onBack: () => void;
   onRemove: () => Promise<void> | void;
   prefetched: InboxEmailDetail | null;
+  allOwnerships: PersonOwnershipOption[];
 }) {
   const communicationLogId = (notification.metadata?.communication_log_id ??
     null) as string | null;
@@ -487,7 +494,12 @@ function EmailDetailPane({
                 Reply
               </Button>
               <LinkToLotPopover
-                isLinked={!!detail.oc_id}
+                ownerships={allOwnerships}
+                linkedKey={
+                  detail.oc_id && detail.lot_id
+                    ? `${detail.oc_id}:${detail.lot_id}`
+                    : null
+                }
                 onPick={async (option) => {
                   const res = await associateInboxEmailToLot({
                     communicationLogId: detail.id,
@@ -707,71 +719,97 @@ function ReplyDrawer({
 // Communications tab; we don't store anything about the OWNER because
 // documents/comms are lot-keyed in this codebase.
 
-// LinkToLotPopover — inline combobox: click the button, a popover opens
-// directly below it with a search field + result list. No drawer, no
-// dialog. Selecting a row calls onPick and closes the popover. Rows are
-// rendered as "Owner Name — Lot N · Unit X — PSnnnnnnX" so multi-lot
-// owners are unambiguous at a glance.
-
+// LinkToLotPopover — inline combobox button. The popover sits anchored to
+// the trigger (no overlay / page grey-out: Base UI's Popover doesn't
+// render a backdrop by default, which is what we want). Vertical
+// rectangle layout — narrow + tall — with a chevron arrow on the button.
+//
+// All ownerships for the firm are eager-loaded server-side and passed in
+// via `ownerships`, so search filters client-side with no network hit.
+// We still show a tiny spinner during a typed search to acknowledge the
+// keystroke; the underlying filter is synchronous but the spinner gives
+// the input some life.
+//
+// When already linked, the button shows the linked lot's label
+// (e.g. "Joe Smith · Lot 12") instead of "Change lot" — so the manager
+// reads the current state without having to open the popover.
 function LinkToLotPopover({
-  isLinked,
+  ownerships,
+  linkedKey,
   onPick,
 }: {
-  isLinked: boolean;
+  ownerships: PersonOwnershipOption[];
+  linkedKey: string | null;
   onPick: (option: PersonOwnershipOption) => Promise<void> | void;
 }) {
   const [open, setOpen] = useState(false);
   const [query, setQuery] = useState("");
-  const [people, setPeople] = useState<PersonOwnershipOption[]>([]);
-  const [loading, setLoading] = useState(false);
-
+  // Synthetic spinner — pulses for ~200ms after each keystroke so the
+  // search feels alive even though filtering is local.
+  const [searching, setSearching] = useState(false);
   useEffect(() => {
-    if (!open) return;
-    let cancelled = false;
-    setLoading(true);
-    const t = window.setTimeout(() => {
-      searchPeopleForAssociate(query)
-        .then((rows) => {
-          if (cancelled) return;
-          setPeople(rows);
-        })
-        .finally(() => {
-          if (!cancelled) setLoading(false);
-        });
-    }, 180);
-    return () => {
-      cancelled = true;
-      window.clearTimeout(t);
-    };
-  }, [query, open]);
+    if (!query) {
+      setSearching(false);
+      return;
+    }
+    setSearching(true);
+    const t = window.setTimeout(() => setSearching(false), 200);
+    return () => window.clearTimeout(t);
+  }, [query]);
+
+  // Local case-insensitive substring filter across owner / lot / oc / PS.
+  const filtered = useMemo(() => {
+    const q = query.trim().toLowerCase();
+    if (!q) return ownerships;
+    return ownerships.filter((p) => {
+      const haystack = `${p.owner_name} ${p.lot_label} ${p.oc_name} ${p.oc_short_code} ${p.owner_email ?? ""}`.toLowerCase();
+      return haystack.includes(q);
+    });
+  }, [query, ownerships]);
+
+  const linked = linkedKey
+    ? ownerships.find((p) => p.key === linkedKey) ?? null
+    : null;
 
   return (
     <Popover open={open} onOpenChange={setOpen}>
       <PopoverTrigger
-        render={<Button variant="secondary" size="sm" />}
-      >
-        <LinkIcon className="mr-1.5 h-3.5 w-3.5" />
-        {isLinked ? "Change lot" : "Link to lot"}
-      </PopoverTrigger>
-      <PopoverContent align="end" className="w-96 p-0">
-        <Command shouldFilter={false}>
-          <CommandInput
-            value={query}
-            onValueChange={setQuery}
-            placeholder="Search owners, lots, or OC plan number…"
+        render={
+          <Button
+            variant="secondary"
+            size="sm"
+            className="max-w-64 justify-between gap-2"
           />
-          <CommandList className="max-h-80">
-            {loading && (
-              <div className="px-3 py-6 text-center text-xs text-muted-foreground">
-                Searching…
-              </div>
+        }
+      >
+        <span className="inline-flex items-center gap-1.5 truncate min-w-0">
+          <LinkIcon className="h-3.5 w-3.5 shrink-0" />
+          <span className="truncate">
+            {linked
+              ? `${linked.owner_name} · ${linked.lot_label}`
+              : "Link to lot"}
+          </span>
+        </span>
+        <ChevronDown className="h-3.5 w-3.5 shrink-0 opacity-60" />
+      </PopoverTrigger>
+      <PopoverContent align="end" className="w-72 p-0 flex flex-col max-h-[28rem]">
+        <Command shouldFilter={false} className="flex-1 min-h-0">
+          <div className="relative">
+            <CommandInput
+              value={query}
+              onValueChange={setQuery}
+              placeholder="Search owner, lot, PS…"
+            />
+            {searching && (
+              <Loader2 className="absolute right-2 top-1/2 size-3.5 -translate-y-1/2 animate-spin text-muted-foreground" />
             )}
-            {!loading && people.length === 0 && (
+          </div>
+          <CommandList className="max-h-[24rem]">
+            {filtered.length === 0 ? (
               <CommandEmpty>No matching owners.</CommandEmpty>
-            )}
-            {!loading && people.length > 0 && (
+            ) : (
               <CommandGroup>
-                {people.map((p) => (
+                {filtered.map((p) => (
                   <CommandItem
                     key={p.key}
                     value={p.key}
@@ -779,14 +817,17 @@ function LinkToLotPopover({
                       setOpen(false);
                       await onPick(p);
                     }}
-                    className="flex flex-col items-start gap-0.5"
+                    className={cn(
+                      "flex flex-col items-start gap-0.5 py-2",
+                      linkedKey === p.key && "bg-primary/10",
+                    )}
                   >
-                    <p className="text-sm font-medium text-foreground">
+                    <p className="text-sm font-medium text-foreground truncate w-full">
                       {p.owner_name}
                     </p>
-                    <p className="text-xs text-muted-foreground">
+                    <p className="text-xs text-muted-foreground truncate w-full">
                       {p.lot_label}
-                      <span className="font-mono ml-2 text-muted-foreground/70">
+                      <span className="font-mono ml-1.5 text-muted-foreground/70">
                         {p.oc_short_code}
                       </span>
                     </p>

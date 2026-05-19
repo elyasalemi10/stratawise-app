@@ -748,7 +748,10 @@ export function AppSidebar({
           <SidebarMenuItem>
             <SimpleDropdown
               side="right"
-              closeOnClick={false}
+              // Auto-dismiss on any click inside the panel. The search
+              // input and pin star already e.stopPropagation() so they
+              // stay interactive without dismissing.
+              closeOnClick={true}
               onClose={() => setSwitcherQuery("")}
               trigger={
                 <SidebarMenuButton
@@ -811,11 +814,14 @@ export function AppSidebar({
                           !isInOC ? "bg-muted/60 text-muted-foreground" : "text-foreground",
                         )}
                       >
-                        <div className="flex size-9 items-center justify-center rounded-md border border-border">
+                        <div className="flex size-9 items-center justify-center rounded-md border border-border shrink-0">
                           <LayoutDashboard className="size-4 shrink-0" />
                         </div>
                         <div className="flex-1 min-w-0 text-left">
                           <span className="block truncate font-medium">Main dashboard</span>
+                          <span className="block text-xs text-muted-foreground truncate">
+                            All OCs · overview
+                          </span>
                         </div>
                       </button>
                       <div className="relative mt-1">
