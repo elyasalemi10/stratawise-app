@@ -39,7 +39,10 @@ import {
   PhoneCall,
   Send,
   ChevronDown,
+  Lock,
+  Unlock,
 } from "lucide-react";
+import { cn } from "@/lib/utils";
 import { Checkbox } from "@/components/ui/checkbox";
 import { DatePicker } from "@/components/shared/date-picker";
 import { toast } from "sonner";
@@ -47,6 +50,7 @@ import {
   logPhoneCall,
   sendLotSms,
   sendLotEmail,
+  setCommunicationConfidential,
   type LotCommunicationRow,
 } from "@/lib/actions/lot-communications";
 import {
@@ -75,6 +79,33 @@ export function LotCommunicationsTab(props: Props) {
   const { ocId, lotId, ownerEmail, ownerPhone, ownerName, initialCommunications } = props;
   const [open, setOpen] = React.useState<DrawerName>(null);
   const [detail, setDetail] = React.useState<LotCommunicationRow | null>(null);
+  const [rows, setRows] = React.useState<LotCommunicationRow[]>(initialCommunications);
+  // Keep local state in sync if the server refreshes the page (e.g. after
+  // a successful send — router.refresh() re-runs the server component and
+  // re-mounts this tab with new initialCommunications).
+  React.useEffect(() => {
+    setRows(initialCommunications);
+  }, [initialCommunications]);
+
+  async function handleToggleConfidential(row: LotCommunicationRow) {
+    const next = !row.confidential;
+    // Optimistic update so the lock icon flips instantly. Roll back on error.
+    setRows((prev) =>
+      prev.map((r) => (r.id === row.id ? { ...r, confidential: next } : r)),
+    );
+    const res = await setCommunicationConfidential({
+      communication_log_id: row.id,
+      confidential: next,
+    });
+    if (!res.ok) {
+      setRows((prev) =>
+        prev.map((r) => (r.id === row.id ? { ...r, confidential: row.confidential } : r)),
+      );
+      toast.error(res.error);
+      return;
+    }
+    toast.success(next ? "Marked confidential" : "Marked unconfidential");
+  }
 
   return (
     <div className="space-y-6">
@@ -112,8 +143,9 @@ export function LotCommunicationsTab(props: Props) {
             </DropdownMenu>
           </div>
           <CommunicationHistoryList
-            rows={initialCommunications}
+            rows={rows}
             onRowClick={(row) => setDetail(row)}
+            onToggleConfidential={handleToggleConfidential}
           />
         </CardContent>
       </Card>
@@ -185,9 +217,11 @@ function rowTitle(row: LotCommunicationRow): string {
 function CommunicationHistoryList({
   rows,
   onRowClick,
+  onToggleConfidential,
 }: {
   rows: LotCommunicationRow[];
   onRowClick: (row: LotCommunicationRow) => void;
+  onToggleConfidential: (row: LotCommunicationRow) => void;
 }) {
   const [page, setPage] = React.useState(0);
   const totalPages = Math.max(1, Math.ceil(rows.length / HISTORY_PAGE_SIZE));
@@ -214,6 +248,7 @@ function CommunicationHistoryList({
             key={row.id}
             row={row}
             onClick={() => onRowClick(row)}
+            onToggleConfidential={onToggleConfidential}
           />
         ))}
       </ol>
@@ -253,9 +288,11 @@ function CommunicationHistoryList({
 function CommunicationRow({
   row,
   onClick,
+  onToggleConfidential,
 }: {
   row: LotCommunicationRow;
   onClick: () => void;
+  onToggleConfidential: (row: LotCommunicationRow) => void;
 }) {
   const Icon =
     row.channel === "email"
@@ -265,11 +302,11 @@ function CommunicationRow({
         : PhoneIcon;
 
   return (
-    <li>
+    <li className="flex w-full items-center gap-1 py-1.5">
       <button
         type="button"
         onClick={onClick}
-        className="flex w-full items-center justify-between gap-3 py-3 text-left transition-colors hover:bg-muted/50 cursor-pointer rounded-md px-2 -mx-2"
+        className="flex flex-1 items-center justify-between gap-3 py-1.5 text-left transition-colors hover:bg-muted/50 cursor-pointer rounded-md px-2 -mx-1"
       >
         <div className="flex min-w-0 items-center gap-3">
           <Icon className="h-4 w-4 shrink-0 text-[color:var(--brand-gold)]" />
@@ -280,6 +317,29 @@ function CommunicationRow({
         <span className="shrink-0 text-xs text-muted-foreground tabular-nums">
           {formatShortDate(row.created_at)}
         </span>
+      </button>
+      {/* Confidentiality quick-toggle. A click on the icon flips the flag
+          (and logs to audit); click on the row opens the detail dialog. */}
+      <button
+        type="button"
+        onClick={(e) => {
+          e.stopPropagation();
+          onToggleConfidential(row);
+        }}
+        title={
+          row.confidential
+            ? "Confidential — future owners can't see this. Click to mark unconfidential."
+            : "Unconfidential — future owners can see this. Click to mark confidential."
+        }
+        className={cn(
+          "inline-flex h-7 w-7 shrink-0 items-center justify-center rounded-md transition-colors cursor-pointer",
+          row.confidential
+            ? "text-[color:var(--brand-gold)] hover:bg-[color:var(--brand-gold)]/10"
+            : "text-muted-foreground/40 hover:bg-muted hover:text-muted-foreground",
+        )}
+        aria-label={row.confidential ? "Mark unconfidential" : "Mark confidential"}
+      >
+        {row.confidential ? <Lock className="size-3.5" /> : <Unlock className="size-3.5" />}
       </button>
     </li>
   );
@@ -541,6 +601,8 @@ function SendEmailDrawer({
   const [body, setBody] = React.useState("");
   const [attachments, setAttachments] = React.useState<AttachmentDraft[]>([]);
   const [senderAddress, setSenderAddress] = React.useState<string | null>(null);
+  const [advancedOpen, setAdvancedOpen] = React.useState(false);
+  const [confidential, setConfidential] = React.useState(false);
   const fileInputRef = React.useRef<HTMLInputElement>(null);
 
   React.useEffect(() => {
@@ -614,6 +676,7 @@ function SendEmailDrawer({
             contentType: a.file.type || "application/octet-stream",
             base64: a.base64,
           })),
+          confidential,
         });
         if (res.ok) onSaved();
         return res.ok
@@ -670,6 +733,37 @@ function SendEmailDrawer({
           className="max-h-72 resize-none overflow-y-auto"
         />
       </div>
+
+      {/* Advanced settings — collapsed by default. Today this is just the
+          confidentiality toggle; the disclosure shape gives us a place to
+          add future per-send options (CC/BCC, send-on-behalf, scheduling)
+          without bloating the default view. */}
+      <details
+        open={advancedOpen}
+        onToggle={(e) => setAdvancedOpen((e.target as HTMLDetailsElement).open)}
+        className="rounded-md border border-border bg-card"
+      >
+        <summary className="cursor-pointer px-3 py-2 text-xs font-medium uppercase tracking-wide text-muted-foreground select-none">
+          Advanced settings
+        </summary>
+        <div className="border-t border-border p-3 space-y-2">
+          <div className="flex items-start justify-between gap-3">
+            <div className="space-y-0.5 min-w-0">
+              <p className="text-sm font-medium text-foreground">
+                Mark as confidential
+              </p>
+              <p className="text-xs text-muted-foreground">
+                Future lot owners won&apos;t see this email. The current owner
+                and managers always can.
+              </p>
+            </div>
+            <Checkbox
+              checked={confidential}
+              onCheckedChange={(v) => setConfidential(v === true)}
+            />
+          </div>
+        </div>
+      </details>
 
       <div className="space-y-1.5">
         <div className="flex items-center justify-between">

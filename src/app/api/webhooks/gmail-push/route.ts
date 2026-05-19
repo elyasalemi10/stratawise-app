@@ -216,13 +216,19 @@ async function ingestInboundMessage(
   }
 
   // Auto-match the outbound thread by In-Reply-To → outbound.external_id.
+  // We also inherit (a) the lot owner snapshot and (b) the confidential
+  // flag so the reply stays consistent with the original send — a reply
+  // to a confidential email is still confidential, and pins to the same
+  // owner so future owners can't read either side of the thread.
   let outboundOcId: string | null = null;
   let outboundLogId: string | null = null;
   let outboundLotId: string | null = null;
+  let inheritedConfidential = false;
+  let inheritedLotOwnerId: string | null = null;
   if (msg.inReplyTo) {
     const { data: outbound } = await supabase
       .from("communication_log")
-      .select("id, oc_id, lot_id")
+      .select("id, oc_id, lot_id, confidential, lot_owner_id_at_creation")
       .eq("channel", "email")
       .eq("direction", "outbound")
       .eq("external_id", msg.inReplyTo)
@@ -231,6 +237,9 @@ async function ingestInboundMessage(
       outboundLogId = outbound.id as string;
       outboundOcId = (outbound.oc_id as string | null) ?? null;
       outboundLotId = (outbound.lot_id as string | null) ?? null;
+      inheritedConfidential = !!(outbound as { confidential?: boolean }).confidential;
+      inheritedLotOwnerId =
+        ((outbound as { lot_owner_id_at_creation?: string | null }).lot_owner_id_at_creation) ?? null;
     }
   }
 
@@ -265,6 +274,8 @@ async function ingestInboundMessage(
       related_entity_type: outboundLogId ? "communication_log" : null,
       related_entity_id: outboundLogId,
       external_id: msg.inReplyTo ?? msg.id,
+      confidential: inheritedConfidential,
+      lot_owner_id_at_creation: inheritedLotOwnerId,
     })
     .select("id")
     .single();

@@ -200,6 +200,11 @@ const sendEmailSchema = z.object({
   subject: z.string().trim().min(1).max(200),
   body: z.string().trim().min(1).max(20000),
   attachments: z.array(attachmentSchema).max(5).optional(),
+  // Confidentiality is off by default. When true, only the current owner
+  // (matching lot_owner_id_at_creation, set below) plus managers can see
+  // the row on owner-facing surfaces. The flag is also inherited by any
+  // inbound reply (in gmail-push) so the back-and-forth stays consistent.
+  confidential: z.boolean().optional().default(false),
 });
 
 export async function sendLotEmail(
@@ -242,6 +247,18 @@ export async function sendLotEmail(
     externalId = result.id;
   }
 
+  // Snapshot the current owner of the lot so future owners can't read
+  // any confidential thread that pre-dates their ownership.
+  const { data: currentOwnerRow } = await supabase
+    .from("lot_owners")
+    .select("id")
+    .eq("lot_id", parsed.data.lot_id)
+    .order("created_at", { ascending: false })
+    .limit(1)
+    .maybeSingle();
+  const currentLotOwnerId =
+    (currentOwnerRow as { id: string } | null)?.id ?? null;
+
   const { data: row, error } = await supabase
     .from("communication_log")
     .insert({
@@ -259,6 +276,8 @@ export async function sendLotEmail(
       external_id: externalId,
       error_message: errorMessage,
       sent_at: new Date().toISOString(),
+      confidential: parsed.data.confidential,
+      lot_owner_id_at_creation: currentLotOwnerId,
     })
     .select("id")
     .single();
@@ -308,6 +327,7 @@ export interface LotCommunicationRow {
   duration_seconds: number | null;
   status: string;
   actor_name: string | null;
+  confidential: boolean;
 }
 
 export async function listLotCommunications(lotId: string): Promise<LotCommunicationRow[]> {
@@ -317,7 +337,7 @@ export async function listLotCommunications(lotId: string): Promise<LotCommunica
   const { data } = await supabase
     .from("communication_log")
     .select(
-      "id, created_at, sent_at, channel, type, direction, subject, body_preview, recipient_email, recipient_phone, duration_seconds, status, sender_profile_id",
+      "id, created_at, sent_at, channel, type, direction, subject, body_preview, recipient_email, recipient_phone, duration_seconds, status, sender_profile_id, confidential",
     )
     .eq("lot_id", lotId)
     .order("created_at", { ascending: false })
@@ -353,5 +373,54 @@ export async function listLotCommunications(lotId: string): Promise<LotCommunica
     duration_seconds: (r.duration_seconds as number) ?? null,
     status: r.status as string,
     actor_name: r.sender_profile_id ? actorMap[r.sender_profile_id as string] ?? null : null,
+    confidential: !!(r as { confidential?: boolean }).confidential,
   }));
+}
+
+// ─── Quick toggle: flip confidentiality on an existing row ────────────────
+// Logs to audit so the change is traceable. Manager-only.
+
+const setConfidentialSchema = z.object({
+  communication_log_id: z.string().uuid(),
+  confidential: z.boolean(),
+});
+
+export async function setCommunicationConfidential(
+  input: z.input<typeof setConfidentialSchema>,
+): Promise<Result<{ id: string; confidential: boolean }>> {
+  const parsed = setConfidentialSchema.safeParse(input);
+  if (!parsed.success)
+    return { ok: false, error: parsed.error.issues[0]?.message ?? "Invalid input" };
+
+  const profile = await requireCompanyRole();
+  const supabase = createServerClient();
+
+  const { data: existing } = await supabase
+    .from("communication_log")
+    .select("id, oc_id, lot_id, confidential")
+    .eq("id", parsed.data.communication_log_id)
+    .maybeSingle();
+  if (!existing) return { ok: false, error: "Communication not found." };
+
+  const { error } = await supabase
+    .from("communication_log")
+    .update({ confidential: parsed.data.confidential })
+    .eq("id", parsed.data.communication_log_id);
+  if (error) return { ok: false, error: error.message };
+
+  await logAudit({
+    profileId: profile.id,
+    ocId: (existing.oc_id as string) ?? undefined,
+    action: "update",
+    entityType: "communication_log",
+    entityId: parsed.data.communication_log_id,
+    before: { confidential: !!(existing as { confidential?: boolean }).confidential },
+    after: { confidential: parsed.data.confidential },
+    metadata: existing.lot_id ? { lot_id: existing.lot_id } : undefined,
+  });
+
+  return {
+    ok: true,
+    data: { id: parsed.data.communication_log_id, confidential: parsed.data.confidential },
+  };
 }

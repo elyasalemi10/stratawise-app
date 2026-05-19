@@ -214,6 +214,19 @@ export async function replyToInboxEmail(
 
   const externalId = "id" in result ? result.id : null;
 
+  // Inherit confidentiality (+ owner pin) from the inbound row we're
+  // replying to so the thread stays consistent. The original send →
+  // inbound reply → our reply trio all carry the same flag.
+  const { data: inboundRow } = await supabase
+    .from("communication_log")
+    .select("confidential, lot_owner_id_at_creation")
+    .eq("id", data.id)
+    .maybeSingle();
+  const inheritedConfidential = !!(inboundRow as { confidential?: boolean } | null)?.confidential;
+  const inheritedLotOwnerId =
+    (inboundRow as { lot_owner_id_at_creation?: string | null } | null)
+      ?.lot_owner_id_at_creation ?? null;
+
   const { data: outbound, error: insertErr } = await supabase
     .from("communication_log")
     .insert({
@@ -232,6 +245,8 @@ export async function replyToInboxEmail(
       sent_at: new Date().toISOString(),
       related_entity_type: "communication_log",
       related_entity_id: data.id,
+      confidential: inheritedConfidential,
+      lot_owner_id_at_creation: inheritedLotOwnerId,
     })
     .select("id")
     .single();
