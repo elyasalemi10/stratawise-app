@@ -33,7 +33,10 @@ function DialogOverlay({
       className={cn(
         // White wash, no blur. Dims the underlying surface so the dialog
         // reads as the focused layer while page text behind stays legible.
-        "fixed inset-0 isolate z-50 bg-white/50 duration-100 data-open:animate-in data-open:fade-in-0 data-closed:animate-out data-closed:fade-out-0",
+        // Base UI: data-starting-style runs on mount, data-ending-style
+        // runs on close before unmount — both pinned to opacity:0 so the
+        // backdrop fades in and out smoothly via transition-opacity.
+        "fixed inset-0 isolate z-50 bg-white/50 transition-opacity duration-150 data-starting-style:opacity-0 data-ending-style:opacity-0",
         className
       )}
       {...props}

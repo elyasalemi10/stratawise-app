@@ -13,6 +13,7 @@ import {
   ArrowUpDown,
   Check,
 } from "lucide-react";
+
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import {
@@ -27,17 +28,6 @@ import { SettlementDialog } from "./[lotId]/settlement-dialog";
 import { BulkInviteDialog } from "./bulk-invite-dialog";
 import { cn } from "@/lib/utils";
 import type { LotWithFinancials } from "@/lib/actions/oc";
-
-type OwnerStatusFilter =
-  | "owner_on_file"
-  | "pending_invitation"
-  | "no_owner";
-
-const FILTER_CHIPS: Array<{ value: OwnerStatusFilter; label: string }> = [
-  { value: "owner_on_file", label: "Owner on file" },
-  { value: "pending_invitation", label: "Pending invite" },
-  { value: "no_owner", label: "No owner" },
-];
 
 type SortKey =
   | "lot_asc"
@@ -103,12 +93,6 @@ export function LotsPageContent({
   const [settlementOpen, setSettlementOpen] = useState(false);
   const [bulkInviteOpen, setBulkInviteOpen] = useState(false);
   const [searchText, setSearchText] = useState("");
-  // Filter chips toggle owner-status visibility. Empty set = no filter
-  // (every lot shown). Multi-select: matching ANY active chip keeps the
-  // lot in the list.
-  const [statusFilter, setStatusFilter] = useState<Set<OwnerStatusFilter>>(
-    () => new Set(),
-  );
   const [sortKey, setSortKey] = useState<SortKey>("lot_asc");
   // Single source of truth for invite-status — fetched once here and
   // handed down to both LotsTab (for the per-row pill) and BulkInviteDialog
@@ -147,16 +131,6 @@ export function LotsPageContent({
   const filteredLots = useMemo(() => {
     const needle = searchText.trim().toLowerCase();
     const filtered = lots.filter((lot) => {
-      if (statusFilter.size > 0) {
-        const matchesAny = Array.from(statusFilter).some((f) => {
-          if (f === "owner_on_file") return lot.owner_status === "member";
-          if (f === "no_owner") return !lot.owner_display_name;
-          if (f === "pending_invitation")
-            return lot.owner_status === "pending_invitation";
-          return false;
-        });
-        if (!matchesAny) return false;
-      }
       if (!needle) return true;
       const haystacks = [
         String(lot.lot_number),
@@ -189,19 +163,9 @@ export function LotsPageContent({
       }
     });
     return arr;
-  }, [lots, searchText, statusFilter, sortKey]);
+  }, [lots, searchText, sortKey]);
 
-  const activeFilters =
-    statusFilter.size + (searchText.trim() ? 1 : 0);
-
-  function toggleStatusFilter(value: OwnerStatusFilter) {
-    setStatusFilter((prev) => {
-      const next = new Set(prev);
-      if (next.has(value)) next.delete(value);
-      else next.add(value);
-      return next;
-    });
-  }
+  const activeFilters = searchText.trim() ? 1 : 0;
 
   function exportCsv() {
     const blob = new Blob([lotsToCsv(lots)], { type: "text/csv;charset=utf-8;" });
@@ -294,38 +258,6 @@ export function LotsPageContent({
             </DropdownMenu>
           </div>
 
-          {/* Filter chips — clicking a chip toggles its inclusion. Multi-
-              select OR semantics: matching ANY active chip keeps the lot. */}
-          <div className="flex flex-wrap items-center gap-1.5">
-            {FILTER_CHIPS.map((chip) => {
-              const active = statusFilter.has(chip.value);
-              return (
-                <button
-                  key={chip.value}
-                  type="button"
-                  onClick={() => toggleStatusFilter(chip.value)}
-                  className={cn(
-                    "inline-flex items-center gap-1 rounded-full border px-2.5 py-1 text-xs font-medium transition-colors cursor-pointer",
-                    active
-                      ? "border-[color:var(--brand-gold)] bg-[color:var(--brand-gold)]/10 text-foreground"
-                      : "border-border bg-card text-muted-foreground hover:text-foreground",
-                  )}
-                >
-                  {active && <Check className="size-3" />}
-                  {chip.label}
-                </button>
-              );
-            })}
-            {statusFilter.size > 0 && (
-              <button
-                type="button"
-                onClick={() => setStatusFilter(new Set())}
-                className="text-xs text-muted-foreground hover:text-foreground underline-offset-4 hover:underline ml-1 cursor-pointer"
-              >
-                Clear filters
-              </button>
-            )}
-          </div>
         </>
       )}
 

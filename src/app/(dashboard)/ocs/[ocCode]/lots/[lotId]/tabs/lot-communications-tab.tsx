@@ -44,6 +44,12 @@ import {
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { Checkbox } from "@/components/ui/checkbox";
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipProvider,
+  TooltipTrigger,
+} from "@/components/ui/tooltip";
 import { DatePicker } from "@/components/shared/date-picker";
 import { toast } from "sonner";
 import {
@@ -70,14 +76,26 @@ interface Props {
   ownerPhone: string | null;
   ownerName: string | null;
   initialCommunications: LotCommunicationRow[];
+  // When the lot page's More-actions menu picks Send email / Send SMS,
+  // the parent flips activeTab to communications AND sets this. We open
+  // the matching drawer and call onPendingActionHandled to clear it.
+  pendingAction?: "email" | "sms" | null;
+  onPendingActionHandled?: () => void;
 }
 
 type DrawerName = null | "email" | "sms" | "call";
 
 export function LotCommunicationsTab(props: Props) {
   const router = useRouter();
-  const { ocId, lotId, ownerEmail, ownerPhone, ownerName, initialCommunications } = props;
+  const { ocId, lotId, ownerEmail, ownerPhone, ownerName, initialCommunications, pendingAction, onPendingActionHandled } = props;
   const [open, setOpen] = React.useState<DrawerName>(null);
+
+  React.useEffect(() => {
+    if (pendingAction === "email" || pendingAction === "sms") {
+      setOpen(pendingAction);
+      onPendingActionHandled?.();
+    }
+  }, [pendingAction, onPendingActionHandled]);
   const [detail, setDetail] = React.useState<LotCommunicationRow | null>(null);
   const [rows, setRows] = React.useState<LotCommunicationRow[]>(initialCommunications);
   // Keep local state in sync if the server refreshes the page (e.g. after
@@ -108,6 +126,7 @@ export function LotCommunicationsTab(props: Props) {
   }
 
   return (
+    <TooltipProvider delay={120}>
     <div className="space-y-6">
       {/* Communication history — Actions dropdown lives in the header row of
           this single card. The standalone "Reach out" tile is gone. */}
@@ -188,6 +207,7 @@ export function LotCommunicationsTab(props: Props) {
         />
       )}
     </div>
+    </TooltipProvider>
   );
 }
 
@@ -320,27 +340,33 @@ function CommunicationRow({
       </button>
       {/* Confidentiality quick-toggle. A click on the icon flips the flag
           (and logs to audit); click on the row opens the detail dialog. */}
-      <button
-        type="button"
-        onClick={(e) => {
-          e.stopPropagation();
-          onToggleConfidential(row);
-        }}
-        title={
-          row.confidential
-            ? "Confidential — future owners can't see this. Click to mark unconfidential."
-            : "Unconfidential — future owners can see this. Click to mark confidential."
-        }
-        className={cn(
-          "inline-flex h-7 w-7 shrink-0 items-center justify-center rounded-md transition-colors cursor-pointer",
-          row.confidential
-            ? "text-[color:var(--brand-gold)] hover:bg-[color:var(--brand-gold)]/10"
-            : "text-muted-foreground/40 hover:bg-muted hover:text-muted-foreground",
-        )}
-        aria-label={row.confidential ? "Mark unconfidential" : "Mark confidential"}
-      >
-        {row.confidential ? <Lock className="size-3.5" /> : <Unlock className="size-3.5" />}
-      </button>
+      <Tooltip>
+        <TooltipTrigger
+          render={
+            <button
+              type="button"
+              onClick={(e) => {
+                e.stopPropagation();
+                onToggleConfidential(row);
+              }}
+              className={cn(
+                "inline-flex h-7 w-7 shrink-0 items-center justify-center rounded-md transition-colors cursor-pointer",
+                row.confidential
+                  ? "text-[color:var(--brand-gold)] hover:bg-[color:var(--brand-gold)]/10"
+                  : "text-muted-foreground/40 hover:bg-muted hover:text-muted-foreground",
+              )}
+              aria-label={row.confidential ? "Mark unconfidential" : "Mark confidential"}
+            />
+          }
+        >
+          {row.confidential ? <Lock className="size-3.5" /> : <Unlock className="size-3.5" />}
+        </TooltipTrigger>
+        <TooltipContent>
+          {row.confidential
+            ? "Confidential — hidden from future owners. Click to make visible."
+            : "Visible to future owners. Click to mark confidential."}
+        </TooltipContent>
+      </Tooltip>
     </li>
   );
 }
@@ -601,7 +627,6 @@ function SendEmailDrawer({
   const [body, setBody] = React.useState("");
   const [attachments, setAttachments] = React.useState<AttachmentDraft[]>([]);
   const [senderAddress, setSenderAddress] = React.useState<string | null>(null);
-  const [advancedOpen, setAdvancedOpen] = React.useState(false);
   const [confidential, setConfidential] = React.useState(false);
   const fileInputRef = React.useRef<HTMLInputElement>(null);
 
@@ -734,61 +759,11 @@ function SendEmailDrawer({
         />
       </div>
 
-      {/* Advanced settings — collapsed by default. The confidentiality
-          toggle is a pair of pill-style buttons that read more like a
-          deliberate choice than a tickbox does. The selected pill carries
-          the brand-gold accent; the other reads as muted/unselected. */}
-      <details
-        open={advancedOpen}
-        onToggle={(e) => setAdvancedOpen((e.target as HTMLDetailsElement).open)}
-        className="rounded-md border border-border bg-card"
-      >
-        <summary className="cursor-pointer px-3 py-2 text-xs font-medium uppercase tracking-wide text-muted-foreground select-none">
-          Advanced settings
-        </summary>
-        <div className="border-t border-border p-3 space-y-2">
-          <p className="text-sm font-medium text-foreground">Visibility</p>
-          <p className="text-xs text-muted-foreground">
-            Confidential emails are hidden from future lot owners. The
-            current owner and managers always see both.
-          </p>
-          <div
-            role="radiogroup"
-            aria-label="Visibility"
-            className="inline-flex rounded-md border border-border bg-cool-muted p-0.5"
-          >
-            <button
-              type="button"
-              role="radio"
-              aria-checked={!confidential}
-              onClick={() => setConfidential(false)}
-              className={cn(
-                "px-3 py-1 text-xs font-medium rounded transition-colors cursor-pointer",
-                !confidential
-                  ? "bg-card text-foreground shadow-sm"
-                  : "text-muted-foreground hover:text-foreground",
-              )}
-            >
-              Visible to future owners
-            </button>
-            <button
-              type="button"
-              role="radio"
-              aria-checked={confidential}
-              onClick={() => setConfidential(true)}
-              className={cn(
-                "px-3 py-1 text-xs font-medium rounded transition-colors cursor-pointer inline-flex items-center gap-1.5",
-                confidential
-                  ? "bg-[color:var(--brand-gold)]/15 text-[color:var(--brand-gold)] shadow-sm"
-                  : "text-muted-foreground hover:text-foreground",
-              )}
-            >
-              <Lock className="size-3" />
-              Confidential
-            </button>
-          </div>
-        </div>
-      </details>
+      <VisibilityToggle
+        confidential={confidential}
+        onChange={setConfidential}
+        channelNoun="email"
+      />
 
       <div className="space-y-1.5">
         <div className="flex items-center justify-between">
@@ -902,6 +877,7 @@ function SendSmsDrawer({
   const [phone, setPhone] = React.useState(ownerPhone ?? "");
   const [body, setBody] = React.useState("");
   const [billConsent, setBillConsent] = React.useState(false);
+  const [confidential, setConfidential] = React.useState(false);
   const ownerHasPhone = !!(ownerPhone && ownerPhone.trim());
 
   const counted = countSmsUnits(body);
@@ -942,6 +918,7 @@ function SendSmsDrawer({
           recipient_phone: phone,
           body,
           confirmed: true,
+          confidential,
         });
         if (res.ok) onSaved();
         return res.ok
@@ -989,6 +966,12 @@ function SendSmsDrawer({
           </p>
         )}
       </div>
+
+      <VisibilityToggle
+        confidential={confidential}
+        onChange={setConfidential}
+        channelNoun="SMS"
+      />
 
       <div className="flex items-start gap-2 text-sm">
         <Checkbox
@@ -1136,5 +1119,65 @@ function LogCallDrawer({
         />
       </div>
     </EditSheet>
+  );
+}
+
+// Inline visibility radio pair. Used in the email + SMS composers (and the
+// reply drawer later, if needed). The selected pill carries the brand-gold
+// accent; the other reads as muted/unselected. `channelNoun` makes the
+// helper copy specific to the channel ("email" / "SMS") without
+// duplicating the markup.
+function VisibilityToggle({
+  confidential,
+  onChange,
+  channelNoun,
+}: {
+  confidential: boolean;
+  onChange: (v: boolean) => void;
+  channelNoun: string;
+}) {
+  return (
+    <div className="space-y-1.5">
+      <Label>Visibility</Label>
+      <div
+        role="radiogroup"
+        aria-label="Visibility"
+        className="inline-flex rounded-md border border-border bg-cool-muted p-0.5"
+      >
+        <button
+          type="button"
+          role="radio"
+          aria-checked={!confidential}
+          onClick={() => onChange(false)}
+          className={cn(
+            "px-3 py-1 text-xs font-medium rounded transition-colors cursor-pointer",
+            !confidential
+              ? "bg-card text-foreground shadow-sm"
+              : "text-muted-foreground hover:text-foreground",
+          )}
+        >
+          Visible to future owners
+        </button>
+        <button
+          type="button"
+          role="radio"
+          aria-checked={confidential}
+          onClick={() => onChange(true)}
+          className={cn(
+            "px-3 py-1 text-xs font-medium rounded transition-colors cursor-pointer inline-flex items-center gap-1.5",
+            confidential
+              ? "bg-[color:var(--brand-gold)]/15 text-[color:var(--brand-gold)] shadow-sm"
+              : "text-muted-foreground hover:text-foreground",
+          )}
+        >
+          <Lock className="size-3" />
+          Confidential
+        </button>
+      </div>
+      <p className="text-xs text-muted-foreground">
+        Confidential {channelNoun}s are hidden from future lot owners. The
+        current owner and managers always see them.
+      </p>
+    </div>
   );
 }

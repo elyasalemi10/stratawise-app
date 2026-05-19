@@ -792,7 +792,11 @@ function LinkToLotPopover({
         </span>
         <ChevronDown className="h-3.5 w-3.5 shrink-0 opacity-60" />
       </PopoverTrigger>
-      <PopoverContent align="end" className="w-72 p-0 flex flex-col max-h-[28rem]">
+      <PopoverContent
+        align="end"
+        showBackdrop={false}
+        className="w-72 p-0 flex flex-col max-h-[28rem]"
+      >
         <Command shouldFilter={false} className="flex-1 min-h-0">
           <div className="relative">
             <CommandInput
@@ -818,19 +822,21 @@ function LinkToLotPopover({
                       await onPick(p);
                     }}
                     className={cn(
-                      "flex flex-col items-start gap-0.5 py-2",
+                      // Compact one-line row — owner / lot / PS on a single
+                      // line so the popover fits more without scrolling.
+                      "flex items-center gap-1.5 py-1 text-sm",
                       linkedKey === p.key && "bg-primary/10",
                     )}
                   >
-                    <p className="text-sm font-medium text-foreground truncate w-full">
+                    <span className="font-medium text-foreground truncate min-w-0 flex-1">
                       {p.owner_name}
-                    </p>
-                    <p className="text-xs text-muted-foreground truncate w-full">
+                    </span>
+                    <span className="text-xs text-muted-foreground shrink-0 truncate">
                       {p.lot_label}
-                      <span className="font-mono ml-1.5 text-muted-foreground/70">
-                        {p.oc_short_code}
-                      </span>
-                    </p>
+                    </span>
+                    <span className="text-[10px] font-mono text-muted-foreground/60 shrink-0">
+                      {p.oc_short_code}
+                    </span>
                   </CommandItem>
                 ))}
               </CommandGroup>

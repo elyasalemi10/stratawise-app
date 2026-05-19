@@ -101,6 +101,8 @@ const sendSmsSchema = z.object({
   recipient_phone: z.string().trim().min(1).max(40),
   body: z.string().trim().min(1).max(1000),
   confirmed: z.literal(true),
+  // Same confidentiality model as email — hide from future owners when true.
+  confidential: z.boolean().optional().default(false),
 });
 
 export async function sendLotSms(
@@ -126,6 +128,17 @@ export async function sendLotSms(
     body: parsed.data.body,
   });
 
+  // Snapshot current owner so future owners can't read confidential SMS.
+  const { data: currentOwnerRow } = await supabase
+    .from("lot_owners")
+    .select("id")
+    .eq("lot_id", parsed.data.lot_id)
+    .order("created_at", { ascending: false })
+    .limit(1)
+    .maybeSingle();
+  const currentLotOwnerId =
+    (currentOwnerRow as { id: string } | null)?.id ?? null;
+
   const { data: row, error } = await supabase
     .from("communication_log")
     .insert({
@@ -142,6 +155,8 @@ export async function sendLotSms(
       external_id: smsResult.id ?? null,
       error_message: smsResult.ok ? null : smsResult.error ?? null,
       sent_at: new Date().toISOString(),
+      confidential: parsed.data.confidential,
+      lot_owner_id_at_creation: currentLotOwnerId,
     })
     .select("id")
     .single();

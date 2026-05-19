@@ -5,6 +5,7 @@ import { useSearchParams, useRouter } from "next/navigation";
 import {
   FileSignature, UserPlus,
   MoreVertical, Hash,
+  Mail, MessageSquare,
 } from "lucide-react";
 import { useSetBreadcrumb } from "@/lib/breadcrumb-context";
 import { Card, CardContent } from "@/components/ui/card";
@@ -153,6 +154,16 @@ export function LotDetailContent({
   void setLot;
   const [settlementOpen, setSettlementOpen] = useState(false);
   const [addOwnerOpen, setAddOwnerOpen] = useState(false);
+  // When the manager picks "Send email" / "Send SMS" from More actions on
+  // any tab, we jump to Communications and tell that tab to auto-open
+  // the corresponding compose drawer. The tab clears this back to null
+  // via onPendingActionHandled once it's consumed.
+  const [pendingCommAction, setPendingCommAction] = useState<"email" | "sms" | null>(null);
+
+  function openCompose(channel: "email" | "sms") {
+    setPendingCommAction(channel);
+    if (activeTab !== "communications") onTabChange("communications");
+  }
 
   // Item 4 — replace the generic "Owner details" breadcrumb with entity-specific
   // "Lot N · Unit X" so the user can see at a glance which lot they're on.
@@ -232,6 +243,14 @@ export function LotDetailContent({
                 }
               />
               <DropdownMenuContent align="end" sideOffset={6}>
+                <DropdownMenuItem onClick={() => openCompose("email")}>
+                  <Mail className="mr-2 h-4 w-4" />
+                  Send email
+                </DropdownMenuItem>
+                <DropdownMenuItem onClick={() => openCompose("sms")}>
+                  <MessageSquare className="mr-2 h-4 w-4" />
+                  Send SMS
+                </DropdownMenuItem>
                 {!owner.owner_display_name ? (
                   <DropdownMenuItem onClick={() => setAddOwnerOpen(true)}>
                     <UserPlus className="mr-2 h-4 w-4" />
@@ -390,6 +409,8 @@ export function LotDetailContent({
           ownerPhone={owner.owner_contact_phone ?? null}
           ownerName={owner.owner_display_name ?? null}
           initialCommunications={communications}
+          pendingAction={pendingCommAction}
+          onPendingActionHandled={() => setPendingCommAction(null)}
         />
       </div>
 

@@ -229,6 +229,11 @@ function SimpleDropdown({
   onClose?: () => void;
 }) {
   const [open, setOpen] = useState(false);
+  // `mounted` keeps the panel in the DOM during the exit animation so it
+  // can fade out before being removed. `open` drives the animation
+  // direction (true → animate-in, false → animate-out). After the
+  // animation duration we drop `mounted` and unmount the portal.
+  const [mounted, setMounted] = useState(false);
   const wrapperRef = useRef<HTMLDivElement>(null);
   const panelRef = useRef<HTMLDivElement>(null);
   const [panelStyle, setPanelStyle] = useState<React.CSSProperties>({});
@@ -239,6 +244,18 @@ function SimpleDropdown({
     setOpen(false);
     onCloseRef.current?.();
   }
+
+  // Drive mount/unmount around `open` so the exit animation actually
+  // plays. Animation duration is 120ms (matches the in-animation).
+  useEffect(() => {
+    if (open) {
+      setMounted(true);
+      return;
+    }
+    if (!mounted) return;
+    const t = window.setTimeout(() => setMounted(false), 120);
+    return () => window.clearTimeout(t);
+  }, [open, mounted]);
 
   // Click-outside dismiss. Considers BOTH the trigger wrapper and the
   // portaled panel — without that, clicking inside the portaled panel would
@@ -289,14 +306,19 @@ function SimpleDropdown({
   return (
     <div ref={wrapperRef} className="relative">
       <div onClick={() => (open ? closePanel() : setOpen(true))} className="cursor-pointer">{trigger}</div>
-      {open && typeof window !== "undefined" && createPortal(
+      {mounted && typeof window !== "undefined" && createPortal(
         <div
           ref={panelRef}
           style={panelStyle}
           // z-[100] beats the sidebar (z-20) and any popover (z-50) so the
           // panel always sits on top regardless of which surface launched
-          // it. animate-in keeps the open feel snappy.
-          className={`z-[100] rounded-lg border border-border bg-popover shadow-md animate-in fade-in-0 zoom-in-95 duration-100 ${matchWidth ? "" : "min-w-56"}`}
+          // it. animate-in / animate-out gives both the open AND close
+          // transitions; `open` drives which direction plays.
+          className={`z-[100] rounded-lg border border-border bg-popover shadow-md duration-120 ${
+            open
+              ? "animate-in fade-in-0 zoom-in-95"
+              : "animate-out fade-out-0 zoom-out-95"
+          } ${matchWidth ? "" : "min-w-56"}`}
           onClick={closeOnClick ? () => closePanel() : undefined}
           onMouseDown={closeOnClick ? undefined : (e) => e.stopPropagation()}
         >
