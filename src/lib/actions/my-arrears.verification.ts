@@ -15,8 +15,8 @@ import { config } from "dotenv";
 config({ path: ".env.local" });
 process.env.EMAIL_DRY_RUN = "true";
 
-// next/cache stub — getCurrentProfile transitively goes through Clerk
-// helpers; some imports touch revalidate paths.
+// next/cache stub — getCurrentProfile transitively goes through Supabase
+// Auth helpers; some imports touch revalidate paths.
 import { createRequire } from "node:module";
 const scriptRequire = createRequire(import.meta.url);
 const nextCachePath = scriptRequire.resolve("next/cache");
@@ -52,8 +52,8 @@ if (!supabaseUrl || !serviceRoleKey) {
 const VERIFY_MARKER = "__VERIFY_MA__";
 const supabase = createClient(supabaseUrl, serviceRoleKey);
 
-let activeClerkId: string | null = null;
-__setUserIdResolverForVerification(async () => activeClerkId);
+let activeUserId: string | null = null;
+__setUserIdResolverForVerification(async () => activeUserId);
 
 type Result = { scenario: string; passed: boolean; detail: string };
 const results: Result[] = [];
@@ -68,7 +68,7 @@ interface FixtureContext {
   companyId: string;
   managerProfileId: string;
   ownerProfileId: string;
-  ownerClerkId: string;
+  ownerUserId: string;
   ocId: string;
   lotAId: string;
   lotBId: string;
@@ -99,11 +99,11 @@ async function createFixture(): Promise<FixtureContext> {
     .single();
   const managerProfileId = (manager as { id: string }).id;
 
-  const ownerClerkId = `${VERIFY_MARKER}_OWNER_${runId}`;
+  const ownerUserId = `${VERIFY_MARKER}_OWNER_${runId}`;
   const { data: owner } = await supabase
     .from("profiles")
     .insert({
-      auth_user_id: ownerClerkId,
+      auth_user_id: ownerUserId,
       email: `${VERIFY_MARKER.toLowerCase()}${runId}_owner@ma.test`,
       first_name: "MA",
       last_name: "TestOwner",
@@ -163,7 +163,7 @@ async function createFixture(): Promise<FixtureContext> {
     companyId,
     managerProfileId,
     ownerProfileId,
-    ownerClerkId,
+    ownerUserId,
     ocId,
     lotAId,
     lotBId,
@@ -213,7 +213,7 @@ async function ma1_emptyState(
   ma: typeof import("./my-arrears"),
 ) {
   // No levies yet — fresh fixture.
-  activeClerkId = ctx.ownerClerkId;
+  activeUserId = ctx.ownerUserId;
   const result = await ma.getMyArrears(ctx.ocId);
   const ok = result.rows.length === 0 && result.outstandingTotal === 0;
   record(
@@ -239,7 +239,7 @@ async function ma2_multiLotOwner(
     refSuffix: "ma2-B",
   });
 
-  activeClerkId = ctx.ownerClerkId;
+  activeUserId = ctx.ownerUserId;
   const result = await ma.getMyArrears(ctx.ocId);
 
   const lotsSeen = new Set(result.rows.map((r) => r.lot_id));
@@ -280,7 +280,7 @@ async function ma3_penaltyInterestLinkage(
     refSuffix: "ma3-pi-2",
   });
 
-  activeClerkId = ctx.ownerClerkId;
+  activeUserId = ctx.ownerUserId;
   const result = await ma.getMyArrears(ctx.ocId);
 
   const parentRow = result.rows.find((r) => r.id === parentId);
@@ -319,7 +319,7 @@ async function ma4_statusFilterExcludes(
     refSuffix: "ma4-wo",
   });
 
-  activeClerkId = ctx.ownerClerkId;
+  activeUserId = ctx.ownerUserId;
   const result = await ma.getMyArrears(ctx.ocId);
 
   // None of the just-created excluded-status rows should be in result.

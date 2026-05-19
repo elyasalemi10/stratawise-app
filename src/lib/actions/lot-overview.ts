@@ -149,9 +149,8 @@ export interface PortalActivity {
   last_active_at: string | null;
 }
 
-// Reads the most recent sign-in / activity timestamp for the lot's portal
-// account, if linked. Currently we use updated_at on profiles as a proxy —
-// Clerk doesn't expose last_active to us without an extra API call. The Overview
+// Reads the most recent activity timestamp for the lot's portal account, if
+// linked. Uses profile.updated_at as a proxy for last-active. The Overview
 // card renders "Never" when this returns null.
 export async function getPortalActivity(lotId: string): Promise<PortalActivity> {
   const supabase = createServerClient();

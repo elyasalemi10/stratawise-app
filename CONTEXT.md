@@ -23,7 +23,7 @@ extending to other states is a seed-data exercise, not a code rewrite.
 
 - **Framework**: Next.js 16 (App Router), TypeScript, Tailwind CSS
 - **UI**: shadcn/ui components, Tremor charts, Lucide React icons
-- **Auth**: Clerk (profiles synced via webhook → `profiles` table)
+- **Auth**: Supabase Auth (one row per user in `auth.users`, joined to `profiles` via `profiles.auth_user_id`)
 - **DB**: Supabase Postgres. **NO ORM.** Supabase JS client only. Multi-row
   atomic writes go through Postgres RPC functions called via `supabase.rpc()`.
 - **Forms**: Zod + react-hook-form + shadcn Form. Same Zod schemas validate
@@ -662,7 +662,7 @@ src/app/(dashboard)/               — all authenticated pages
     settings/                      — subdivision-scoped settings
   settings/                        — user + company settings
   levies/                          — company-wide levy dashboard
-src/app/api/                       — webhooks (Clerk, Basiq [upcoming]) + docs API
+src/app/api/                       — webhooks (Basiq [upcoming]) + docs API
 src/app/legal/                     — public terms + privacy
 src/lib/                           — shared utilities
   actions/                         — server actions (shared across pages)
@@ -673,7 +673,7 @@ src/lib/                           — shared utilities
     reports.ts                     — report data assembly
     notifications.ts               — in-app notifications
     insurance.ts, budget.ts, team.ts, bank-transactions.ts
-  auth.ts                          — Clerk session → profile, role guards
+  auth.ts                          — Supabase session → profile, role guards
   supabase.ts                      — server + browser client factories
   email.ts                         — Resend transport + templates
   validations/                     — Zod schemas (client + server)
@@ -873,8 +873,8 @@ with performer names + source chain).
 **Auth resolver seam.** `src/lib/auth-resolver.ts` carries two
 `__`-prefixed exports (`__setUserIdResolverForVerification`,
 `__getUserIdResolverForVerification`) used exclusively by `*.verification.ts`
-scripts to bypass Clerk in standalone `tsx` runs. Application code never
-imports them. See `PRE_LAUNCH_CLEANUP.md` for the grep command to verify.
+scripts to bypass Supabase Auth in standalone `tsx` runs. Application code
+never imports them. See `PRE_LAUNCH_CLEANUP.md` for the grep command to verify.
 
 **Verification harness.** `src/lib/actions/reconciliation.verification.ts`
 — 12 scenarios covering manual entry, auto-match, partial match,
@@ -1233,7 +1233,7 @@ line-by-line review).**
   `penalty_interest`-category levy notices with `linked_levy_id` back to
   the originating debit, and inserts the `interest_accrual_runs` row in
   the same transaction). System profile bootstrap: a permanent row in
-  `profiles` with `clerk_id='system_accrual_cron'` provides the
+  `profiles` with `auth_user_id='system_accrual_cron'` provides the
   `performed_by` FK target for cron-attributed ledger writes (NOT NULL
   audit_log.profile_id constraint preserved).
 - **PP6-C** — `bank_transactions.payment_received_email_sent_at TIMESTAMPTZ`
@@ -1245,8 +1245,7 @@ line-by-line review).**
 
 **Framework-agnostic accrual modules.** Same boundary rule as
 `src/lib/basiq/jobs.ts` — no `"use server"` directive, no imports from
-`next/cache` / `@clerk/*` / `@/lib/auth`. Callers pass an explicit
-`SupabaseClient`.
+`next/cache` / `@/lib/auth`. Callers pass an explicit `SupabaseClient`.
 - `src/lib/accrual/jobs.ts::accrueInterestForSubdivisionJob` — wraps the
   RPC, returns `{ run_date, lots_processed, total_interest_accrued }`.
   Idempotent at the RPC layer via the UNIQUE pair.
@@ -1265,9 +1264,9 @@ line-by-line review).**
 **Notification primitives (`src/lib/notifications.ts`).** Framework-
 agnostic, single source of truth.
 - `NOTIFICATION_TYPES` — canonical list of 13 types. Imported by the
-  Clerk webhook seed path and by `updateNotificationPreferences` action
-  validation; eliminates the prior drift (Clerk seeded `payment_overdue`
-  while PP6-C-1 introduced `overdue_reminder`).
+  profile-seed path and by `updateNotificationPreferences` action
+  validation; eliminates the prior drift (older seed wrote
+  `payment_overdue` while PP6-C-1 introduced `overdue_reminder`).
 - `MANDATORY_NOTIFICATION_TYPES` — `Set` of types that bypass per-user
   opt-out (currently `{ 'levy_final_notice' }`; PP6-C-3-gated).
 - `MANAGERIAL_NOTIFICATION_TYPES` — `Set` of operational manager types
@@ -1381,7 +1380,7 @@ top-level rows (e.g. `__VERIFY_OVERDUE__` on subdivisions),
 `createRequire`-based `next/cache` stub injection so `revalidatePath`
 can be safely called from a standalone `tsx` context, and the
 `__setUserIdResolverForVerification` seam in `src/lib/auth-resolver.ts`
-for actions that resolve performer via Clerk in production.
+for actions that resolve performer via Supabase Auth in production.
 
 **PP6-D-D smoke walk (record).** Real-send walk against
 `elyasalemi10@gmail.com` (single recipient gate; SMOKE_MARKER namespace

@@ -27,7 +27,7 @@ Ordering is dependency order. For each table, **Source** describes what survives
 - **Add:** `registered_name`, `signature_url` (from certificate-fields migration — used in settings + reports)
 
 ### 2. `profiles` — **base**
-- Columns: `id`, `clerk_id`, `email`, `first_name`, `last_name`, `phone`, `postal_address`, `avatar_url`, `role`, `company_role`, `management_company_id`, `status`, `deactivated_at`, `anonymised_at`, `created_at`, `updated_at`
+- Columns: `id`, `auth_user_id`, `email`, `first_name`, `last_name`, `phone`, `postal_address`, `avatar_url`, `role`, `company_role`, `management_company_id`, `status`, `deactivated_at`, `anonymised_at`, `created_at`, `updated_at`
 - No changes. Base schema already correct. `company_role` already exists — the `database-migration-company-roles.sql` file is redundant.
 
 ### 3. `user_consents` — **base**

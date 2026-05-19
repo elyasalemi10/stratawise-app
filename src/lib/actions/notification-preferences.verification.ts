@@ -49,8 +49,8 @@ if (!supabaseUrl || !serviceRoleKey) {
 const VERIFY_MARKER = "__VERIFY_NP__";
 const supabase = createClient(supabaseUrl, serviceRoleKey);
 
-let activeClerkId: string | null = null;
-__setUserIdResolverForVerification(async () => activeClerkId);
+let activeUserId: string | null = null;
+__setUserIdResolverForVerification(async () => activeUserId);
 
 type Result = { scenario: string; passed: boolean; detail: string };
 const results: Result[] = [];
@@ -63,9 +63,9 @@ function record(scenario: string, passed: boolean, detail: string) {
 
 interface FixtureContext {
   profileAId: string;
-  profileAClerkId: string;
+  profileAUserId: string;
   profileBId: string;
-  profileBClerkId: string;
+  profileBUserId: string;
 }
 
 async function createFixture(): Promise<FixtureContext> {
@@ -96,9 +96,9 @@ async function createFixture(): Promise<FixtureContext> {
 
   return {
     profileAId: (a as { id: string }).id,
-    profileAClerkId: `${VERIFY_MARKER}_A_${runId}`,
+    profileAUserId: `${VERIFY_MARKER}_A_${runId}`,
     profileBId: (b as { id: string }).id,
-    profileBClerkId: `${VERIFY_MARKER}_B_${runId}`,
+    profileBUserId: `${VERIFY_MARKER}_B_${runId}`,
   };
 }
 
@@ -108,7 +108,7 @@ async function np1_validEmailOptOutUpserts(
   ctx: FixtureContext,
   np: typeof import("./notification-preferences"),
 ) {
-  activeClerkId = ctx.profileAClerkId;
+  activeUserId = ctx.profileAUserId;
   const result = await np.updateNotificationPreferences({
     updates: [
       { type: "payment_received", channel: "email", enabled: false },
@@ -151,7 +151,7 @@ async function np2_mandatoryDisableRejected(
   ctx: FixtureContext,
   np: typeof import("./notification-preferences"),
 ) {
-  activeClerkId = ctx.profileAClerkId;
+  activeUserId = ctx.profileAUserId;
   const result = await np.updateNotificationPreferences({
     updates: [
       { type: "levy_final_notice", channel: "email", enabled: false },
@@ -186,7 +186,7 @@ async function np3_managerialInAppDisableRejected(
   ctx: FixtureContext,
   np: typeof import("./notification-preferences"),
 ) {
-  activeClerkId = ctx.profileAClerkId;
+  activeUserId = ctx.profileAUserId;
   const result = await np.updateNotificationPreferences({
     updates: [
       { type: "new_claim_submitted", channel: "in_app", enabled: false },
@@ -219,7 +219,7 @@ async function np4_crossProfileIsolation(
 ) {
   // Profile A opts out of overdue_reminder email; profile B should be
   // unaffected (no row written for B).
-  activeClerkId = ctx.profileAClerkId;
+  activeUserId = ctx.profileAUserId;
   await np.updateNotificationPreferences({
     updates: [{ type: "overdue_reminder", channel: "email", enabled: false }],
   });

@@ -61,8 +61,8 @@ const VERIFY_MARKER = "__VERIFY_OPC__";
 // One __set call total (per the auth-resolver.ts pre-launch grep convention).
 // Active user is mutable so scenarios can swap identity per assertion.
 
-let activeClerkId: string | null = null;
-__setUserIdResolverForVerification(async () => activeClerkId);
+let activeUserId: string | null = null;
+__setUserIdResolverForVerification(async () => activeUserId);
 if (__getUserIdResolverForVerification() === null) {
   console.error("Fatal: verification userId resolver is null after being set.");
   process.exit(1);
@@ -82,8 +82,8 @@ function assert(cond: unknown, msg = "assertion failed"): asserts cond {
   if (!cond) throw new Error(msg);
 }
 
-function asUser(clerkId: string) {
-  activeClerkId = clerkId;
+function asUser(userId: string) {
+  activeUserId = userId;
 }
 
 // ─── Fixture ──────────────────────────────────────────────────────────────
@@ -91,9 +91,9 @@ function asUser(clerkId: string) {
 interface CompanyFixture {
   companyId: string;
   managerProfileId: string;
-  managerClerkId: string;
+  managerUserId: string;
   ownerProfileId: string;
-  ownerClerkId: string;
+  ownerUserId: string;
   ocId: string;
   budgetId: string;
   bankAccountId: string;
@@ -115,8 +115,8 @@ async function createCompanyFixture(suffix: string): Promise<CompanyFixture> {
   const companyName = `${VERIFY_MARKER}${runId}`;
   const managerEmail = `${VERIFY_MARKER.toLowerCase()}${runId}_mgr@opc.test`;
   const ownerEmail = `${VERIFY_MARKER.toLowerCase()}${runId}_owner@opc.test`;
-  const managerClerkId = `${VERIFY_MARKER}_MGR_${runId}`;
-  const ownerClerkId = `${VERIFY_MARKER}_OWNER_${runId}`;
+  const managerUserId = `${VERIFY_MARKER}_MGR_${runId}`;
+  const ownerUserId = `${VERIFY_MARKER}_OWNER_${runId}`;
 
   const { data: company } = await supabase
     .from("management_companies")
@@ -128,7 +128,7 @@ async function createCompanyFixture(suffix: string): Promise<CompanyFixture> {
   const { data: manager } = await supabase
     .from("profiles")
     .insert({
-      auth_user_id: managerClerkId,
+      auth_user_id: managerUserId,
       email: managerEmail,
       first_name: "OPC",
       last_name: `Mgr${suffix}`,
@@ -143,7 +143,7 @@ async function createCompanyFixture(suffix: string): Promise<CompanyFixture> {
   const { data: owner } = await supabase
     .from("profiles")
     .insert({
-      auth_user_id: ownerClerkId,
+      auth_user_id: ownerUserId,
       email: ownerEmail,
       first_name: "OPC",
       last_name: `Owner${suffix}`,
@@ -270,9 +270,9 @@ async function createCompanyFixture(suffix: string): Promise<CompanyFixture> {
   return {
     companyId: company.id,
     managerProfileId: manager.id,
-    managerClerkId,
+    managerUserId,
     ownerProfileId: owner.id,
-    ownerClerkId,
+    ownerUserId,
     ocId: oc.id,
     budgetId: budget.id,
     bankAccountId: bankAccount.id,
@@ -296,7 +296,7 @@ async function opc1_submitSucceeds(
   fx: Fixture,
   opc: typeof import("./owner-payment-claims"),
 ) {
-  asUser(fx.companyA.ownerClerkId);
+  asUser(fx.companyA.ownerUserId);
   const result = await opc.submitOwnerPaymentClaim({
     oc_id: fx.companyA.ocId,
     lot_id: fx.companyA.lotOwnedId,
@@ -332,7 +332,7 @@ async function opc2_membershipRequired(
   opc: typeof import("./owner-payment-claims"),
 ) {
   // Owner B is a lot_owner but has no membership in oc A.
-  asUser(fx.companyB.ownerClerkId);
+  asUser(fx.companyB.ownerUserId);
   const result = await opc.submitOwnerPaymentClaim({
     oc_id: fx.companyA.ocId,
     lot_id: fx.companyA.lotOwnedId,
@@ -355,7 +355,7 @@ async function opc3_claimedByServerEnforced(
   // input. Action input has no claimed_by field at all (server takes it
   // from profile.id). This test re-confirms that point: the row's
   // claimed_by matches the active owner regardless.
-  asUser(fx.companyA.ownerClerkId);
+  asUser(fx.companyA.ownerUserId);
   const result = await opc.submitOwnerPaymentClaim({
     oc_id: fx.companyA.ocId,
     lot_id: fx.companyA.lotOwnedId,
@@ -382,7 +382,7 @@ async function opc4_lotNotOwned(
   opc: typeof import("./owner-payment-claims"),
 ) {
   // Owner A tries to claim against lotUnownedId (no membership for that lot).
-  asUser(fx.companyA.ownerClerkId);
+  asUser(fx.companyA.ownerUserId);
   const result = await opc.submitOwnerPaymentClaim({
     oc_id: fx.companyA.ocId,
     lot_id: fx.companyA.lotUnownedId,
@@ -401,7 +401,7 @@ async function opc5_listMyClaims(
   fx: Fixture,
   opc: typeof import("./owner-payment-claims"),
 ) {
-  asUser(fx.companyA.ownerClerkId);
+  asUser(fx.companyA.ownerUserId);
   const result = await opc.listMyPaymentClaims();
   // OPC-1 + OPC-3 both submitted as owner A → at least 2 claims expected.
   const allOwned = result.rows.every((r) => r.oc_id === fx.companyA.ocId);
@@ -416,7 +416,7 @@ async function opc6_crossOwnerIsolation(
   fx: Fixture,
   opc: typeof import("./owner-payment-claims"),
 ) {
-  asUser(fx.companyB.ownerClerkId);
+  asUser(fx.companyB.ownerUserId);
   const result = await opc.listMyPaymentClaims();
   record(
     "OPC-6: listMyPaymentClaims for owner B doesn't return owner A's claims",
@@ -429,7 +429,7 @@ async function opc7_listPendingClaims(
   fx: Fixture,
   opc: typeof import("./owner-payment-claims"),
 ) {
-  asUser(fx.companyA.managerClerkId);
+  asUser(fx.companyA.managerUserId);
   // PP5-D-C-A: action renamed to listManagerPaymentClaims with optional
   // { orphan?: boolean }. Default behaviour (no opts) returns pending —
   // OPC-7 covers that branch; PD-2 covers the orphan branch.
@@ -446,7 +446,7 @@ async function opc8_confirmViaExisting(
   opc: typeof import("./owner-payment-claims"),
 ) {
   // Owner submits a fresh claim for $200.
-  asUser(fx.companyA.ownerClerkId);
+  asUser(fx.companyA.ownerUserId);
   const submit = await opc.submitOwnerPaymentClaim({
     oc_id: fx.companyA.ocId,
     lot_id: fx.companyA.lotOwnedId,
@@ -457,7 +457,7 @@ async function opc8_confirmViaExisting(
   assert(submit.success, `OPC-8 setup submit: ${submit.error}`);
 
   // Manager creates a bank tx that the claim corresponds to.
-  asUser(fx.companyA.managerClerkId);
+  asUser(fx.companyA.managerUserId);
   const { data: bankTx } = await supabase
     .from("bank_transactions")
     .insert({
@@ -547,7 +547,7 @@ async function opc9_confirmViaNewBankTx(
     .single();
   assert(candidate, "OPC-9 setup: candidate bank tx insert failed");
 
-  asUser(fx.companyA.ownerClerkId);
+  asUser(fx.companyA.ownerUserId);
   const submit = await opc.submitOwnerPaymentClaim({
     oc_id: fx.companyA.ocId,
     lot_id: fx.companyA.lotOwnedId,
@@ -557,7 +557,7 @@ async function opc9_confirmViaNewBankTx(
   });
   assert(submit.success, `OPC-9 setup submit: ${submit.error}`);
 
-  asUser(fx.companyA.managerClerkId);
+  asUser(fx.companyA.managerUserId);
   const result = await opc.confirmAndMatchClaimViaNewBankTx({
     claim_id: submit.success!.claim_id,
     bank_account_id: fx.companyA.bankAccountId,
@@ -616,7 +616,7 @@ async function opc10_rejectClaim(
   fx: Fixture,
   opc: typeof import("./owner-payment-claims"),
 ) {
-  asUser(fx.companyA.ownerClerkId);
+  asUser(fx.companyA.ownerUserId);
   const submit = await opc.submitOwnerPaymentClaim({
     oc_id: fx.companyA.ocId,
     lot_id: fx.companyA.lotOwnedId,
@@ -626,7 +626,7 @@ async function opc10_rejectClaim(
   });
   assert(submit.success, `OPC-10 setup: ${submit.error}`);
 
-  asUser(fx.companyA.managerClerkId);
+  asUser(fx.companyA.managerUserId);
   const result = await opc.rejectPaymentClaim({
     claim_id: submit.success!.claim_id,
     rejection_reason: "Could not verify in bank feed within 30 days",
@@ -668,7 +668,7 @@ async function opc11_confirmAlreadyMatched(
     .single();
   assert(matched, "OPC-11 setup: no matched claim found");
 
-  asUser(fx.companyA.managerClerkId);
+  asUser(fx.companyA.managerUserId);
   // Try confirming via existing bank tx — should fail with NOT_PENDING.
   const { data: someBankTx } = await supabase
     .from("bank_transactions")
@@ -708,7 +708,7 @@ async function opc12_rejectAlreadyMatched(
     .single();
   assert(matched, "OPC-12 setup: no matched claim found");
 
-  asUser(fx.companyA.managerClerkId);
+  asUser(fx.companyA.managerUserId);
   const result = await opc.rejectPaymentClaim({
     claim_id: (matched as { id: string }).id,
     rejection_reason: "Should be blocked — already matched",
@@ -725,7 +725,7 @@ async function opc13_crossCompanyIsolation(
   opc: typeof import("./owner-payment-claims"),
 ) {
   // Submit a claim in company B, then try to review it as company A's manager.
-  asUser(fx.companyB.ownerClerkId);
+  asUser(fx.companyB.ownerUserId);
   const submit = await opc.submitOwnerPaymentClaim({
     oc_id: fx.companyB.ocId,
     lot_id: fx.companyB.lotOwnedId,
@@ -735,7 +735,7 @@ async function opc13_crossCompanyIsolation(
   });
   assert(submit.success, `OPC-13 setup: ${submit.error}`);
 
-  asUser(fx.companyA.managerClerkId);
+  asUser(fx.companyA.managerUserId);
   const result = await opc.rejectPaymentClaim({
     claim_id: submit.success!.claim_id,
     rejection_reason: "Cross-company spoof attempt for OPC-13",
@@ -751,7 +751,7 @@ async function opc14_rejectIsReadOnlyOnFinancials(
   fx: Fixture,
   opc: typeof import("./owner-payment-claims"),
 ) {
-  asUser(fx.companyA.ownerClerkId);
+  asUser(fx.companyA.ownerUserId);
   const submit = await opc.submitOwnerPaymentClaim({
     oc_id: fx.companyA.ocId,
     lot_id: fx.companyA.lotOwnedId,
@@ -771,7 +771,7 @@ async function opc14_rejectIsReadOnlyOnFinancials(
     .select("id", { count: "exact", head: true })
     .eq("lot_id", fx.companyA.lotOwnedId);
 
-  asUser(fx.companyA.managerClerkId);
+  asUser(fx.companyA.managerUserId);
   await opc.rejectPaymentClaim({
     claim_id: submit.success!.claim_id,
     rejection_reason: "Reject test — should not touch bank or ledger",
@@ -807,7 +807,7 @@ async function opc15_likelyDuplicateThenOverride(
     match_status: "unmatched",
   });
 
-  asUser(fx.companyA.ownerClerkId);
+  asUser(fx.companyA.ownerUserId);
   const submit = await opc.submitOwnerPaymentClaim({
     oc_id: fx.companyA.ocId,
     lot_id: fx.companyA.lotOwnedId,
@@ -817,7 +817,7 @@ async function opc15_likelyDuplicateThenOverride(
   });
   assert(submit.success, `OPC-15 setup submit: ${submit.error}`);
 
-  asUser(fx.companyA.managerClerkId);
+  asUser(fx.companyA.managerUserId);
   // First call without override → LIKELY_DUPLICATE.
   const blocked = await opc.confirmAndMatchClaimViaNewBankTx({
     claim_id: submit.success!.claim_id,
@@ -881,7 +881,7 @@ async function opc16_voidCascadeOrphan(
   // in PP5-D as a filter. Real fix: trigger to flip claim_status, or
   // queue filter, or DB view that flags orphans. Decision deferred to
   // PP5-D or post-launch (see PRE_LAUNCH_CLEANUP).
-  asUser(fx.companyA.ownerClerkId);
+  asUser(fx.companyA.ownerUserId);
   const submit = await opc.submitOwnerPaymentClaim({
     oc_id: fx.companyA.ocId,
     lot_id: fx.companyA.lotOwnedId,
@@ -891,7 +891,7 @@ async function opc16_voidCascadeOrphan(
   });
   assert(submit.success, `OPC-16 setup submit: ${submit.error}`);
 
-  asUser(fx.companyA.managerClerkId);
+  asUser(fx.companyA.managerUserId);
   const { data: bankTx } = await supabase
     .from("bank_transactions")
     .insert({
@@ -1040,7 +1040,7 @@ async function pd2_orphanFilter(
     // Helper: submit + confirm-via-existing for a $X claim. Returns the
     // claim_id and the matched bank_tx_id + ledger_entry_id.
     async function submitAndMatchExisting(amount: number, claimDate: string, txDate: string) {
-      asUser(fx.companyA.ownerClerkId);
+      asUser(fx.companyA.ownerUserId);
       const submit = await opc.submitOwnerPaymentClaim({
         oc_id: fx.companyA.ocId,
         lot_id: pd2LotId,
@@ -1049,7 +1049,7 @@ async function pd2_orphanFilter(
         payment_method: "eft",
       });
       assert(submit.success, `PD-2 submit failed: ${submit.error}`);
-      asUser(fx.companyA.managerClerkId);
+      asUser(fx.companyA.managerUserId);
       const { data: bankTx } = await supabase
         .from("bank_transactions")
         .insert({
@@ -1093,7 +1093,7 @@ async function pd2_orphanFilter(
     // (b) bt.is_voided=true — production void via voidBankTransaction.
     const b = await submitAndMatchExisting(22, "2026-05-02", "2026-05-02");
     const recon = await import("./reconciliation");
-    asUser(fx.companyA.managerClerkId);
+    asUser(fx.companyA.managerUserId);
     const voidRes = await recon.voidBankTransaction({
       oc_id: fx.companyA.ocId,
       bank_transaction_id: b.bank_tx_id,
@@ -1123,7 +1123,7 @@ async function pd2_orphanFilter(
 
     // Default branch (orphan=undefined): pending claims only. None of our
     // 5 setups are pending — so they should NOT appear in the result.
-    asUser(fx.companyA.managerClerkId);
+    asUser(fx.companyA.managerUserId);
     const pendingOnly = await opc.listManagerPaymentClaims(fx.companyA.ocId);
     const pendingIds = new Set(pendingOnly.rows.map((r) => r.id));
     const allFiveExcludedFromPending =
@@ -1162,13 +1162,13 @@ async function pd2_orphanFilter(
 // assert multi-manager fan-out + per-manager opt-out independence.
 async function addSecondManager(
   fx: Fixture,
-): Promise<{ profileId: string; clerkId: string }> {
+): Promise<{ profileId: string; userId: string }> {
   const tag = `${fx.runId}_2`;
-  const clerkId = `${VERIFY_MARKER}_MGR2_${tag}`;
+  const userId = `${VERIFY_MARKER}_MGR2_${tag}`;
   const { data: manager } = await supabase
     .from("profiles")
     .insert({
-      auth_user_id: clerkId,
+      auth_user_id: userId,
       email: `${VERIFY_MARKER.toLowerCase()}${tag}_mgr2@opc.test`,
       first_name: "OPC",
       last_name: "Mgr2",
@@ -1188,7 +1188,7 @@ async function addSecondManager(
     is_financial: false,
   });
 
-  return { profileId, clerkId };
+  return { profileId, userId };
 }
 
 async function m1_fanOutToAllManagers(
@@ -1196,7 +1196,7 @@ async function m1_fanOutToAllManagers(
   opc: typeof import("./owner-payment-claims"),
   secondMgrId: string,
 ) {
-  asUser(fx.companyA.ownerClerkId);
+  asUser(fx.companyA.ownerUserId);
   const submitted = await opc.submitOwnerPaymentClaim({
     oc_id: fx.companyA.ocId,
     lot_id: fx.companyA.lotOwnedId,
@@ -1241,7 +1241,7 @@ async function m2_inAppNotificationsRow(
   opc: typeof import("./owner-payment-claims"),
   secondMgrId: string,
 ) {
-  asUser(fx.companyA.ownerClerkId);
+  asUser(fx.companyA.ownerUserId);
   const submitted = await opc.submitOwnerPaymentClaim({
     oc_id: fx.companyA.ocId,
     lot_id: fx.companyA.lotOwnedId,
@@ -1291,7 +1291,7 @@ async function m3_perManagerOptOut(
     enabled: false,
   });
 
-  asUser(fx.companyA.ownerClerkId);
+  asUser(fx.companyA.ownerUserId);
   const submitted = await opc.submitOwnerPaymentClaim({
     oc_id: fx.companyA.ocId,
     lot_id: fx.companyA.lotOwnedId,
@@ -1356,7 +1356,7 @@ async function m4_dryRunBehavior(
   // here fans out via dry-run. Confirm: communication_log rows land in
   // 'queued' state (not 'sent'), audit log records the dry_run action,
   // and the in-app notifications row is unaffected.
-  asUser(fx.companyA.ownerClerkId);
+  asUser(fx.companyA.ownerUserId);
   const submitted = await opc.submitOwnerPaymentClaim({
     oc_id: fx.companyA.ocId,
     lot_id: fx.companyA.lotOwnedId,
@@ -1496,7 +1496,7 @@ async function cleanupCompany(companyId: string): Promise<void> {
     await supabase.from("owners_corporations").delete().in("id", subIds);
   }
   // PP6-C-2: notification_preferences rows for this company's profiles
-  // (auto-opt-out from M-3 + Clerk-seeded rows for new test profiles).
+  // (auto-opt-out from M-3 + default rows seeded for new test profiles).
   const { data: profileRows } = await supabase
     .from("profiles")
     .select("id")

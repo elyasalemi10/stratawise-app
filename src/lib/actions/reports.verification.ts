@@ -52,8 +52,8 @@ if (!supabaseUrl || !serviceRoleKey) {
 const VERIFY_MARKER = "__VERIFY_RP__";
 const supabase = createClient(supabaseUrl, serviceRoleKey);
 
-let activeClerkId: string | null = null;
-__setUserIdResolverForVerification(async () => activeClerkId);
+let activeUserId: string | null = null;
+__setUserIdResolverForVerification(async () => activeUserId);
 
 type Result = { scenario: string; passed: boolean; detail: string };
 const results: Result[] = [];
@@ -73,7 +73,7 @@ function daysBefore(iso: string, n: number): string {
 interface FixtureContext {
   companyId: string;
   managerProfileId: string;
-  managerClerkId: string;
+  managerUserId: string;
   ocId: string;
   lotAId: string;
   lotBId: string;
@@ -92,11 +92,11 @@ async function createFixture(): Promise<FixtureContext> {
     .single();
   const companyId = (company as { id: string }).id;
 
-  const managerClerkId = `${VERIFY_MARKER}_MGR_${runId}`;
+  const managerUserId = `${VERIFY_MARKER}_MGR_${runId}`;
   const { data: manager } = await supabase
     .from("profiles")
     .insert({
-      auth_user_id: managerClerkId,
+      auth_user_id: managerUserId,
       email: `${VERIFY_MARKER.toLowerCase()}${runId}_mgr@rp.test`,
       first_name: "Rep",
       last_name: "TestMgr",
@@ -193,7 +193,7 @@ async function createFixture(): Promise<FixtureContext> {
   return {
     companyId,
     managerProfileId,
-    managerClerkId,
+    managerUserId,
     ocId,
     lotAId: lotIds[0],
     lotBId: lotIds[1],
@@ -291,7 +291,7 @@ async function rp1_outstandingArrearsEmptyOC(
   ctx: FixtureContext,
   reports: typeof import("./reports"),
 ) {
-  activeClerkId = ctx.managerClerkId;
+  activeUserId = ctx.managerUserId;
   const data = await reports.getOutstandingArrearsReport(ctx.ocId);
   const ok = Array.isArray(data) && data.length === 0;
   record(
@@ -321,7 +321,7 @@ async function rp2_outstandingArrearsPrincipalPlusInterest(
     status: "issued",
   });
 
-  activeClerkId = ctx.managerClerkId;
+  activeUserId = ctx.managerUserId;
   const data = await reports.getOutstandingArrearsReport(ctx.ocId);
   const lotARow = data.find((r) => r.lot_id === ctx.lotAId);
   const ok =
@@ -349,7 +349,7 @@ async function rp3_outstandingArrearsAgeingBuckets(
     status: "overdue",
     dueDate: daysBefore(todayIso(), 65),
   });
-  activeClerkId = ctx.managerClerkId;
+  activeUserId = ctx.managerUserId;
   const data = await reports.getOutstandingArrearsReport(ctx.ocId);
   const lotBRow = data.find((r) => r.lot_id === ctx.lotBId);
   const ok = !!lotBRow && lotBRow.bucket === "61_plus" && lotBRow.days_overdue === 65;
@@ -373,7 +373,7 @@ async function rp4_ownerStatementOpeningAndClosing(
   await insertLedger(ctx, ctx.lotAId, "credit", "payment", 200, daysBefore(toDate, 20), "PAY-1");
   await insertLedger(ctx, ctx.lotAId, "debit", "adjustment_debit", 100, daysBefore(toDate, 10), "ADJ-1");
 
-  activeClerkId = ctx.managerClerkId;
+  activeUserId = ctx.managerUserId;
   const report = await reports.getOwnerStatement(ctx.ocId, ctx.lotAId, fromDate, toDate);
   const ok =
     Math.abs(report.opening_balance - -500) < 0.01 &&
@@ -393,7 +393,7 @@ async function rp5_ownerStatementOutOfWindowExcluded(
   const fromDate = daysBefore(todayIso(), 10);
   const toDate = todayIso();
   // Pre-window entries already inserted in RP-4 should be in opening, not entries.
-  activeClerkId = ctx.managerClerkId;
+  activeUserId = ctx.managerUserId;
   const report = await reports.getOwnerStatement(ctx.ocId, ctx.lotAId, fromDate, toDate);
   // Only the ADJ-1 entry (10 days ago) lands in the window for lot A.
   const inWindow = report.entries.every((e) => e.entry_date >= fromDate && e.entry_date <= toDate);
@@ -416,7 +416,7 @@ async function rp6_trustAccountSummaryInflowsOutflowsAndReconciled(
   await insertBankTx(ctx, 300, daysBefore(toDate, 5), "unmatched");
   await insertBankTx(ctx, -150, daysBefore(toDate, 3), "unmatched");
 
-  activeClerkId = ctx.managerClerkId;
+  activeUserId = ctx.managerUserId;
   const rows = await reports.getTrustAccountSummary(ctx.ocId, fromDate, toDate);
   const acc = rows.find((r) => r.bank_account_id === ctx.bankAccountId);
   // opening = 10000 (no pre-window txns), inflows=800, outflows=150,

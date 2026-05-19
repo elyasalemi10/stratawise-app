@@ -92,7 +92,7 @@ async function createFixture(): Promise<Fixture> {
   const runId = `${Date.now()}_${randomUUID().slice(0, 8)}`;
   const companyName = `${VERIFY_MARKER}${runId}`;
   const email = `${VERIFY_MARKER.toLowerCase()}${runId}@orch.test`;
-  const clerkId = `${VERIFY_MARKER}_CLERK_${runId}`;
+  const userId = `${VERIFY_MARKER}_USER_${runId}`;
 
   console.log(`\nCreating fixture (runId=${runId})`);
 
@@ -106,7 +106,7 @@ async function createFixture(): Promise<Fixture> {
   const { data: profile } = await supabase
     .from("profiles")
     .insert({
-      auth_user_id: clerkId,
+      auth_user_id: userId,
       email,
       first_name: "Orch",
       last_name: "Verify",

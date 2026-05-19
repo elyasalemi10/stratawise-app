@@ -33,7 +33,7 @@ Elyas — Melbourne-based property developer running an integrated Australian pr
 | **Language** | TypeScript | Type safety, Claude Code generates better TS |
 | **Styling** | Tailwind CSS | Utility-first, full control |
 | **UI Components** | shadcn/ui (forms, nav, dialogs) + Tremor (dashboards, charts, KPIs) | shadcn for interactive components, Tremor for data visualisation. Both built on Radix + Tailwind. Vercel acquired Tremor. |
-| **Auth** | Clerk (managed, 50K free tier) | Multi-org support, pre-built components, generous free tier. Decision was between Clerk and Better Auth (open-source, $0 forever). Chose Clerk for speed and managed convenience. Can migrate to Better Auth later if costs become an issue at 50K+ users. |
+| **Auth** | Supabase Auth | Native to our Postgres stack — no extra service, no webhooks, no per-user pricing. `auth.users` joins to `profiles` via `auth_user_id`. Email/password + magic link + OAuth via Supabase providers. |
 | **Database** | Supabase (PostgreSQL) | Managed Postgres, RLS, Storage, Realtime, $25/mo Pro plan |
 | **ORM** | None — Supabase JS client only | Elyas explicitly doesn't want an ORM. Using @supabase/supabase-js for all queries. Trade-off: no client-side transactions (use RPCs for transactional logic). |
 | **Form validation** | Zod + react-hook-form + @hookform/resolvers | Type-safe validation shared between client forms and server actions. Integrates with shadcn Form component. |
@@ -45,7 +45,7 @@ Elyas — Melbourne-based property developer running an integrated Australian pr
 | **PDF Generation** | @react-pdf/renderer | Lightweight, runs in serverless, $0 cost. Used for levy notices, meeting minutes, OC certificates, VCAT documents. |
 | **Email** | Resend (later phase) | React Email templates, generous free tier |
 | **Hosting** | Vercel (syd1 region) | Australian hosting, Next.js optimised |
-| **Payments** | Stripe (separate, NOT through Clerk) | Clerk's billing add-on takes 0.7% — too expensive for levy collection. Need BPAY integration via DEFT/Macquarie anyway. |
+| **Payments** | Stripe Connect (optional tier) | BPAY/EFT display is the default. Stripe Connect adds card payments as an upgrade. Need BPAY integration via DEFT/Macquarie regardless. |
 | **Background Jobs** | Supabase pg_cron (simple scheduled) + Trigger.dev (complex workflows, future) | pg_cron for nightly penalty interest. Trigger.dev for multi-step escalation workflows (email → wait → SMS → wait → voice call). |
 
 ### What we explicitly DON'T use:
@@ -61,12 +61,11 @@ Elyas — Melbourne-based property developer running an integrated Australian pr
 | | 10 users | 100 users | 1,000 users | 10,000 users | 100,000 users |
 |---|---|---|---|---|---|
 | Vercel Pro | $20 | $20 | $20 | $20-30 | $500-800 |
-| Supabase | $0 | $0 | $25 | $25-35 | $50-150 |
-| Clerk (Hobby→Pro) | $0 | $0 | $0 | $0 | $25 + $1,000 overage |
+| Supabase (DB + Auth) | $0 | $0 | $25 | $25-35 | $50-150 |
 | R2 Storage | $0 | $0 | $0.08 | $0.75 | $7.50 |
-| **Total** | **$20** | **$20** | **$45** | **$46-65** | **$1,583-1,983** |
+| **Total** | **$20** | **$20** | **$45** | **$46-65** | **$558-958** |
 
-**Key inflection:** At 50K+ users, Clerk's free tier runs out ($0.02/MRU overage). If costs become an issue, migrate to Better Auth (open-source, $0 forever, MIT license, 26K GitHub stars, YC-backed, has organization plugin with multi-tenant RBAC).
+**Key inflection:** Auth is bundled with the Supabase DB plan, so there's no separate per-MAU line item to watch. Supabase's free tier covers 50K MAUs; Pro ($25/mo) covers 100K. Beyond that, MAUs roll into the existing Supabase bill rather than a separate vendor.
 
 ---
 
@@ -205,7 +204,7 @@ Foreground:                 hsl(220, 26%, 14%) — #1a1f2e — primary text (nea
 - Fixed left, w-64, full height, dark blue-grey (#1a1f2e)
 - Nav items: h-9, NO rounded corners
 - Active: bg-sidebar-active-bg, primary blue text, border-l-2 primary blue
-- Bottom: user avatar + name + role, click → Clerk UserButton
+- Bottom: user avatar + name + role, click → /settings menu
 
 **Toasts (Sonner):**
 - Bottom-right position
@@ -232,8 +231,8 @@ Foreground:                 hsl(220, 26%, 14%) — #1a1f2e — primary text (nea
 
 ### Core tables:
 
-1. **profiles** — synced from Clerk via webhook
-   - id, clerk_id (unique), email, first_name, last_name, phone, postal_address, role (super_admin/strata_manager/lot_owner), management_company_id (FK, nullable — only for strata_managers), status (active/deactivated/anonymised), deactivated_at, anonymised_at, created_at, updated_at
+1. **profiles** — one row per Supabase Auth user (`auth.users.id` → `profiles.auth_user_id`), populated on first sign-in
+   - id, auth_user_id (unique, FK → auth.users.id), email, first_name, last_name, phone, postal_address, role (super_admin/strata_manager/lot_owner), management_company_id (FK, nullable — only for strata_managers), status (active/deactivated/anonymised), deactivated_at, anonymised_at, created_at, updated_at
 
 2. **user_consents** — versioned T&C and privacy policy acceptance
    - id, profile_id, consent_type (terms_of_service/privacy_policy/communication_email/communication_sms), version, accepted_at, ip_address, user_agent, revoked_at
@@ -359,7 +358,7 @@ Lot owners have FIXED, LIMITED access (see LOT OWNER VISIBILITY section for full
 
 ### Phase 1 — Roles & Database (Steps 1.1-1.3)
 - 1.1: Core database schema (36 tables + RLS + VIC compliance rules + escalation infrastructure)
-- 1.2: Clerk webhook + profile sync + default notification preferences + anonymisation on delete
+- 1.2: Profile bootstrap on first sign-in + default notification preferences + anonymisation on delete
 - 1.3: Seed super_admin, display role, auth utility functions
 
 ### Phase 2 — Subdivisions (Steps 2.1-2.5)
@@ -456,14 +455,13 @@ Lot owners have FIXED, LIMITED access (see LOT OWNER VISIBILITY section for full
 
 | Decision | Choice | Alternative considered | Why |
 |----------|--------|----------------------|-----|
-| Auth | Clerk | Better Auth (open-source) | Speed to market. Better Auth is the fallback if Clerk costs become an issue at 50K+ users. CRITICAL: keep Clerk integration thin — webhook sync to profiles only, no deep Clerk org usage in business logic. |
+| Auth | Supabase Auth | Managed auth providers, self-hosted alternatives | Native to our DB. No extra service, no webhooks, no per-MAU pricing. `auth.users` → `profiles.auth_user_id`. |
 | ORM | None (Supabase JS client) | Prisma, Drizzle | Elyas doesn't want an ORM. Supabase client sufficient for MVP. Trade-off: no client-side transactions (use RPCs). Can add Drizzle later if needed. |
 | Form validation | Zod + react-hook-form | Manual validation | Type-safe schemas shared between client and server actions. Integrates with shadcn Form. |
 | PDF generation | @react-pdf/renderer | Puppeteer/Playwright | Lightweight (~50-100ms per PDF), runs in serverless, $0. Puppeteer is too heavy for Vercel (100MB+ RAM, 50MB bundle limit). |
 | UI | shadcn + Tremor | MUI, Ant Design, Chakra | shadcn for forms/nav (lightweight, full control), Tremor for dashboards/charts (acquired by Vercel, same Radix+Tailwind foundation). |
 | Storage | Supabase → R2 migration path | R2 from day 1 | Start simple with Supabase Storage, migrate to R2 when document volume grows. R2 saves $450+/mo at 1TB scale. |
 | State scope | VIC only, multi-state ready | Multi-state from start | Ship faster with one ruleset. state_compliance_rules table makes expansion trivial. |
-| Stripe vs Clerk billing | Stripe directly | Clerk billing add-on | Clerk takes 0.7% of transactions. For levy collection that adds up. Need BPAY/DEFT anyway. |
 | Background jobs | pg_cron + Trigger.dev (future) | BullMQ, Inngest | pg_cron is free (included in Supabase). Trigger.dev for complex multi-step escalation workflows. |
 | Animations | Nearly zero | Framer Motion | Corporate software. No bounce, no spring, no parallax. Fade-in dialogs only. |
 | Dark mode | Skipped | Built from start | Focus on getting light mode perfect. Can add later. |
@@ -495,39 +493,12 @@ Lot owners have FIXED, LIMITED access (see LOT OWNER VISIBILITY section for full
 
 ---
 
-## REFERENCE: CLERK PRICING (as of Feb 2026)
-
-- **Hobby (free):** 50,000 MRUs, 100 orgs, 3 social connections, basic RBAC
-- **Pro ($25/mo):** 50K included, $0.02/MRU overage, MFA, passkeys, unlimited social
-- **Business ($300/mo):** SOC 2 access, HIPAA, 10 dashboard seats
-- **B2B add-on ($100/mo):** Unlimited org members, custom roles, verified domains
-- **Enterprise SSO:** $75/mo per connection after first free one
-- **MRU = Monthly Retained User:** anyone who visits ≥1 day after signup
-
----
-
 ## REFERENCE: SUPABASE PRICING
 
 - **Free:** 500MB DB, 1GB storage, 50K auth MAUs, 500K edge function invocations
 - **Pro ($25/mo):** 8GB DB, 100GB storage, 100K MAUs, 2M edge functions, 250MB bandwidth included
 - **Overage:** storage $0.021/GB, bandwidth $0.09/GB uncached
 - **Connection string:** postgresql://postgres.[REF]:[PASSWORD]@aws-0-[REGION].pooler.supabase.com:6543/postgres
-
----
-
-## REFERENCE: BETTER AUTH (if we migrate from Clerk)
-
-Better Auth (MIT license, 26K GitHub stars, YC-backed, $5M raised) is the top open-source Clerk alternative. Key facts:
-
-- **$0 cost at any scale** when self-hosted
-- Works WITHOUT an ORM — uses Kysely internally, accepts raw `pg.Pool`
-- Connects to Supabase via PostgreSQL connection string directly
-- **Organization plugin (free):** multi-org membership, invitations, RBAC, custom roles
-- Creates tables: user, session, account, verification + organization, member, invitation
-- Has shadcn-based UI components via `@daveyplate/better-auth-ui` (1,500 GitHub stars)
-- Auth.js (NextAuth) merged into Better Auth in Sept 2025
-- **Trade-off vs Clerk:** younger (1 CVE patched Oct 2025), no SOC 2, no managed service, must build own login UI
-- **Migration path:** Keep Clerk user data loosely coupled → swap auth layer without touching business logic
 
 ---
 
@@ -858,8 +829,8 @@ DEFAULT: If no picture, show initials on a primary-coloured circle (first letter
 SETTINGS: Upload/change in /settings?tab=profile. Drag-and-drop zone or click to select.
           "Remove photo" link returns to initials.
 
-Clerk UserButton already shows Clerk's avatar — sync is optional.
-For simplicity, store StrataWise avatar separately (not dependent on Clerk).
+Avatar lives on `profiles.avatar_url`, uploaded directly to R2. Independent
+of any auth-provider avatar.
 
 Add avatar_url column to profiles table.
 ```

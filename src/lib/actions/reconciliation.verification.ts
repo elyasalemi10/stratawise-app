@@ -67,7 +67,7 @@ if (!supabaseUrl || !serviceRoleKey) {
 }
 
 const VERIFY_MARKER = "__VERIFY_RECON__";
-const VERIFY_CLERK_ID = `${VERIFY_MARKER}_CLERK_${Date.now()}_${randomUUID().slice(0, 8)}`;
+const VERIFY_USER_ID = `${VERIFY_MARKER}_USER_${Date.now()}_${randomUUID().slice(0, 8)}`;
 
 // Install the userId resolver BEFORE dynamic-importing server actions. Server
 // actions call getCurrentProfile(), which reads `_verificationUserIdResolver`
@@ -75,7 +75,7 @@ const VERIFY_CLERK_ID = `${VERIFY_MARKER}_CLERK_${Date.now()}_${randomUUID().sli
 // invoke actions. If we imported actions first, their code would still be
 // fine (the resolver is read lazily at call time), but keeping the order
 // explicit makes the intent legible and lets us assert below.
-__setUserIdResolverForVerification(async () => VERIFY_CLERK_ID);
+__setUserIdResolverForVerification(async () => VERIFY_USER_ID);
 if (__getUserIdResolverForVerification() === null) {
   console.error("Fatal: verification userId resolver is null immediately after being set.");
   process.exit(1);
@@ -114,7 +114,7 @@ interface Fixture {
   ocId: string;
   budgetId: string;
   profileId: string;
-  clerkId: string;
+  userId: string;
   adminAccountId: string;
   capitalAccountId: string;
   lotIds: string[];
@@ -138,7 +138,7 @@ async function createFixture(): Promise<Fixture> {
   const { data: profile, error: profileErr } = await supabase
     .from("profiles")
     .insert({
-      auth_user_id: VERIFY_CLERK_ID,
+      auth_user_id: VERIFY_USER_ID,
       email: profileEmail,
       first_name: "Recon",
       last_name: "Verify",
@@ -287,7 +287,7 @@ async function createFixture(): Promise<Fixture> {
     ocId: oc.id,
     budgetId: budget.id,
     profileId: profile.id,
-    clerkId: VERIFY_CLERK_ID,
+    userId: VERIFY_USER_ID,
     adminAccountId: adminAcct.id,
     capitalAccountId: capitalAcct.id,
     lotIds,

@@ -149,8 +149,6 @@ Small fixes to batch before going live. Non-blocking for feature work.
 
 - Schema-authoring rule: CREATE INDEX ... WHERE ... predicates must only reference IMMUTABLE functions. NOW(), CURRENT_TIMESTAMP, and any user-defined non-IMMUTABLE function cannot appear in index predicates. Index all rows instead; filter at query time.
 
-- Clerk critical vulnerabilities (two criticals + one high, all pre-existing). Route-protection bypass in @clerk/nextjs + @clerk/shared; SSRF in @clerk/backend opt-in proxy. Upgrade all three to latest patched versions before launch. Verify auth guards behave unchanged post-upgrade via the existing verification harnesses (9+12+15 scenarios) before declaring clean.
-
 - Trigger.dev transitive high-severity deps (4 entries): @trigger.dev/core, @trigger.dev/sdk, @opentelemetry/host-metrics, systeminformation. Acceptable at integration time — worker-runtime transitives, none on application request paths. systeminformation flaw is Windows-only (we deploy Linux). Monitor Trigger.dev SDK updates; upgrade when patched releases land.
 
 - Add consecutive_sync_failures column to basiq_connections + update poll/force-sync to increment/reset it. Surface on bank-account feed panel when ≥2. Rule: 1 error shows only in Manage dialog; 2+ consecutive errors render an additional warning row on the feed panel itself ("⚠ Last {N} syncs failed — {translated error}"). Deferred from PP3-B to avoid a schema round-trip mid-UI work; the panel's translation helper already exists and can gain the counter branch without refactor.
@@ -620,10 +618,9 @@ Pre-launch action: confirm production state matches each file's
   reset affordance, audit log on changes.
 
 - **One-time UPDATE migration for legacy notification_preferences.**
-  The Clerk webhook seed path used `payment_overdue` before PP6-C-1
-  introduced `overdue_reminder`. Existing rows for Clerk-synced users
-  predating PP6-D-B's seed-import refactor still carry the legacy
-  type. Pre-launch SQL:
+  The profile-seed path used `payment_overdue` before PP6-C-1 introduced
+  `overdue_reminder`. Existing rows seeded for users predating PP6-D-B's
+  seed-import refactor still carry the legacy type. Pre-launch SQL:
   `UPDATE notification_preferences SET notification_type = 'overdue_reminder' WHERE notification_type = 'payment_overdue';`
   (single-statement, idempotent). Run from Supabase SQL Editor with
   the line-by-line review discipline.

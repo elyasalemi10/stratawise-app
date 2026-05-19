@@ -68,9 +68,9 @@ if (!supabaseUrl || !serviceRoleKey) {
 }
 
 const VERIFY_MARKER = "__VERIFY_DUPLICATE__";
-const VERIFY_CLERK_ID = `${VERIFY_MARKER}_CLERK_${Date.now()}_${randomUUID().slice(0, 8)}`;
+const VERIFY_USER_ID = `${VERIFY_MARKER}_USER_${Date.now()}_${randomUUID().slice(0, 8)}`;
 
-__setUserIdResolverForVerification(async () => VERIFY_CLERK_ID);
+__setUserIdResolverForVerification(async () => VERIFY_USER_ID);
 if (__getUserIdResolverForVerification() === null) {
   console.error("Fatal: verification userId resolver is null after being set.");
   process.exit(1);
@@ -116,7 +116,7 @@ async function createFixture(): Promise<Fixture> {
   const { data: profile } = await supabase
     .from("profiles")
     .insert({
-      auth_user_id: VERIFY_CLERK_ID,
+      auth_user_id: VERIFY_USER_ID,
       email,
       first_name: "Dup",
       last_name: "Verify",
