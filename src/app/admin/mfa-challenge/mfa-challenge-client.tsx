@@ -9,6 +9,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Card, CardContent } from "@/components/ui/card";
 import { getSupabaseClient } from "@/lib/supabase";
+import { logMfaEvent } from "../internal-actions/audit";
 
 // Re-verify TOTP after sign-in. The user already has a verified factor;
 // we pick the first TOTP factor, call challengeAndVerify with their code,
@@ -53,9 +54,11 @@ export function MfaChallengeClient() {
     });
     setVerifying(false);
     if (error) {
+      void logMfaEvent("mfa_verify_failed", { reason: error.message, factorId });
       toast.error(error.message || "That code didn't match — try again.");
       return;
     }
+    void logMfaEvent("mfa_verified", { factorId });
     router.replace("/admin");
   }
 

@@ -63,11 +63,32 @@ export async function markAsRead(notificationId: string) {
   if (!profile) return;
 
   const supabase = createServerClient();
+  const { data: existing } = await supabase
+    .from("notifications")
+    .select("read_at, type, oc_id")
+    .eq("id", notificationId)
+    .eq("profile_id", profile.id)
+    .maybeSingle();
+  if (!existing || existing.read_at) return;
+
   await supabase
     .from("notifications")
     .update({ read_at: new Date().toISOString() })
     .eq("id", notificationId)
     .eq("profile_id", profile.id);
+
+  // Audit the state change so a manager's read history is reconstructable
+  // for compliance / dispute resolution. Only logged on the first
+  // unread→read flip (the existing `if existing.read_at` guard above
+  // short-circuits repeats), so volume stays bounded.
+  await supabase.from("audit_log").insert({
+    profile_id: profile.id,
+    oc_id: existing.oc_id ?? null,
+    action: "mark_read",
+    entity_type: "notification",
+    entity_id: notificationId,
+    metadata: { type: existing.type ?? null },
+  });
 }
 
 export async function markAllAsRead() {
@@ -75,11 +96,29 @@ export async function markAllAsRead() {
   if (!profile) return;
 
   const supabase = createServerClient();
+  // Capture how many unread we're about to flip so the audit row carries
+  // an accurate count — the UPDATE doesn't return a row count directly.
+  const { count: unreadCount } = await supabase
+    .from("notifications")
+    .select("id", { count: "exact", head: true })
+    .eq("profile_id", profile.id)
+    .is("read_at", null);
+
   await supabase
     .from("notifications")
     .update({ read_at: new Date().toISOString() })
     .eq("profile_id", profile.id)
     .is("read_at", null);
+
+  if ((unreadCount ?? 0) > 0) {
+    await supabase.from("audit_log").insert({
+      profile_id: profile.id,
+      oc_id: null,
+      action: "mark_all_read",
+      entity_type: "notification",
+      metadata: { count: unreadCount },
+    });
+  }
 }
 
 // ─── Create notifications (called from other server actions) ──

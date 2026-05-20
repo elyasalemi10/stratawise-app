@@ -22,6 +22,7 @@ import { LotLeviesTab } from "./tabs/lot-levies-tab";
 import { DocumentManager } from "@/components/shared/document-manager";
 import { SettlementDialog } from "./settlement-dialog";
 import { InviteDialog } from "../../manage/invite-dialog";
+import { InviteConfirmDialog } from "./invite-confirm-dialog";
 import { LotOverviewTab } from "./tabs/lot-overview-tab";
 import { LotHistoryTab } from "./tabs/lot-history-tab";
 import { LotOwnerTab } from "./tabs/lot-owner-tab";
@@ -76,6 +77,8 @@ interface LotDetailContentProps {
   communications: LotCommunicationRow[];
   engagement: LotEngagement;
   bankProvider: string | null;
+  initialSenderEmailAddress?: string | null;
+  initialSmsSenderId?: string | null;
 }
 
 const TABS = [
@@ -140,6 +143,8 @@ export function LotDetailContent({
   communications,
   engagement,
   bankProvider,
+  initialSenderEmailAddress,
+  initialSmsSenderId,
 }: LotDetailContentProps) {
   const ocCode = useOCCode();
   const searchParams = useSearchParams();
@@ -160,6 +165,10 @@ export function LotDetailContent({
     searchParams.get("settlement") === "open",
   );
   const [addOwnerOpen, setAddOwnerOpen] = useState(false);
+  // Separate state for the "Invite owner" confirm — the owner already
+  // exists, we're just confirming the email and firing the invite.
+  // "Edit owner details" inside the confirm flips us to addOwnerOpen.
+  const [inviteConfirmOpen, setInviteConfirmOpen] = useState(false);
   // When the manager picks "Send email" / "Send SMS" from More actions on
   // any tab, we jump to Communications and tell that tab to auto-open
   // the corresponding compose drawer. The tab clears this back to null
@@ -266,7 +275,7 @@ export function LotDetailContent({
                   // Owner exists but no portal account yet (or even if they
                   // do — resending an invite is idempotent server-side).
                   !portalActive && (
-                    <DropdownMenuItem onClick={() => setAddOwnerOpen(true)}>
+                    <DropdownMenuItem onClick={() => setInviteConfirmOpen(true)}>
                       <UserPlus className="mr-2 h-4 w-4" />
                       Invite owner
                     </DropdownMenuItem>
@@ -291,13 +300,26 @@ export function LotDetailContent({
               <span className="text-muted-foreground">Current balance:</span>
               <span
                 className={`text-lg font-semibold tabular-nums ${
-                  balance > 0 ? "text-destructive" : "text-[hsl(160,100%,37%)]"
+                  balance > 0
+                    ? "text-destructive"
+                    : balance < 0
+                      ? "text-[hsl(160,100%,37%)]"
+                      : "text-foreground"
                 }`}
               >
-                {balance > 0 ? `-${formatCurrency(balance)}` : formatCurrency(balance)}
+                {balance > 0
+                  ? `-${formatCurrency(balance)}`
+                  : balance < 0
+                    ? `+${formatCurrency(balance)}`
+                    : formatCurrency(0)}
                 {balance > 0 && (
                   <span className="ml-1 text-sm font-normal text-muted-foreground">
                     (owes)
+                  </span>
+                )}
+                {balance < 0 && (
+                  <span className="ml-1 text-sm font-normal text-muted-foreground">
+                    (credit)
                   </span>
                 )}
               </span>
@@ -417,6 +439,8 @@ export function LotDetailContent({
           initialCommunications={communications}
           pendingAction={pendingCommAction}
           onPendingActionHandled={() => setPendingCommAction(null)}
+          initialSenderEmailAddress={initialSenderEmailAddress ?? null}
+          initialSmsSenderId={initialSmsSenderId ?? null}
         />
       </div>
 
@@ -447,6 +471,19 @@ export function LotDetailContent({
         prefillName={owner.owner_display_name ?? undefined}
         prefillEmail={owner.owner_contact_email ?? undefined}
         prefillPhone={owner.owner_contact_phone ?? undefined}
+      />
+
+      <InviteConfirmDialog
+        open={inviteConfirmOpen}
+        onClose={() => setInviteConfirmOpen(false)}
+        ocId={ocId}
+        lotId={lot.id}
+        lotNumber={Number(lot.lot_number)}
+        ownerName={owner.owner_display_name ?? null}
+        ownerEmail={owner.owner_contact_email ?? null}
+        ownerPhone={owner.owner_contact_phone ?? null}
+        onEditDetails={() => setAddOwnerOpen(true)}
+        onSent={() => router.refresh()}
       />
     </div>
   );

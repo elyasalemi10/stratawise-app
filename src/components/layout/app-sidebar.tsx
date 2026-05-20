@@ -169,6 +169,7 @@ function getOCNavGroups(ocCode: string, isLotOwner: boolean) {
     {
       label: "Banking",
       items: [
+        { href: `${base}/ledger`, label: "Ledger", icon: Wallet },
         { href: `${base}/reconciliation`, label: "Reconciliation", icon: GitMerge, badgeKey: "unmatched_count" as const },
         { href: `${base}/bank-account`, label: "Bank account", icon: Landmark },
         { href: `${base}/reconciliation/mappings`, label: "Payer mappings", icon: Users },

@@ -1,5 +1,6 @@
 "use client";
 
+import * as React from "react";
 import { useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import {
@@ -82,11 +83,13 @@ export function LotsPageContent({
   ocId,
   ocName,
   isLotOwner,
+  initialInviteStatus,
 }: {
   lots: LotWithFinancials[];
   ocId: string;
   ocName: string;
   isLotOwner?: boolean;
+  initialInviteStatus?: Record<string, string>;
 }) {
   const router = useRouter();
   const [lots, setLots] = useState(initialLots);
@@ -94,14 +97,27 @@ export function LotsPageContent({
   const [bulkInviteOpen, setBulkInviteOpen] = useState(false);
   const [searchText, setSearchText] = useState("");
   const [sortKey, setSortKey] = useState<SortKey>("lot_asc");
-  // Single source of truth for invite-status — fetched once here and
-  // handed down to both LotsTab (for the per-row pill) and BulkInviteDialog
-  // (for eligibility counts). Previously each component re-fetched the
-  // same data when it mounted; one round-trip is plenty.
-  const [inviteStatus, setInviteStatus] = useState<Map<string, string>>(new Map());
+  // Single source of truth for invite-status. Seeded from the
+  // server-rendered prop so the lots tab paints with the right pills on
+  // first frame — no spinner-then-pop. Re-fetched only after a
+  // client-side mutation (invite sent / revoked) when callers explicitly
+  // ask for a refresh.
+  const [inviteStatus, setInviteStatus] = useState<Map<string, string>>(() => {
+    const map = new Map<string, string>();
+    if (initialInviteStatus) {
+      for (const [k, v] of Object.entries(initialInviteStatus)) map.set(k, v);
+    }
+    return map;
+  });
 
+  // Re-pull invitation status when the lot list changes (a new lot was
+  // added / removed). Initial mount already has the server payload, so
+  // skip the round-trip on the very first effect run.
+  const initialIdsRef = React.useRef(lots.map((l) => l.id).sort().join(","));
   useEffect(() => {
     const lotIds = lots.map((l) => l.id);
+    const key = lotIds.slice().sort().join(",");
+    if (key === initialIdsRef.current && inviteStatus.size > 0) return;
     if (lotIds.length === 0) return;
     let cancelled = false;
     getLotInvitationStatus(ocId, lotIds).then((statusMap) => {
@@ -116,7 +132,7 @@ export function LotsPageContent({
       setInviteStatus(map);
     });
     return () => { cancelled = true; };
-  }, [lots, ocId]);
+  }, [lots, ocId, inviteStatus.size]);
 
   function onLotUpdated(lotId: string, field: string, value: string | number | null) {
     setLots((prev) =>

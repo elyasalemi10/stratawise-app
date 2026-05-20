@@ -1489,6 +1489,90 @@ export async function completeWizard(draftId: string) {
       return { error: `Failed to create lots: ${lotsError?.message ?? "unknown"}` };
     }
 
+    // Per-lot creation audit entries — so the lot history tab on each
+    // individual lot shows "Lot created" from day one, not just a single
+    // OC-level "create" entry. Best-effort: failures are logged but don't
+    // roll the OC creation back.
+    const draftLots = d.lots ?? [];
+    const lotCreatedAuditRows = insertedLots.map((l) => {
+      const draftLot = draftLots.find((dl) => dl.lot_number === l.lot_number);
+      return {
+        profile_id: profile.id,
+        oc_id: oc.id,
+        action: "create" as const,
+        entity_type: "lot" as const,
+        entity_id: l.id,
+        after_state: draftLot
+          ? {
+              lot_number: draftLot.lot_number,
+              unit_number: draftLot.unit_number ?? null,
+              unit_entitlement: draftLot.unit_entitlement ?? null,
+              lot_liability: draftLot.lot_liability ?? null,
+              opening_balance: draftLot.opening_balance ?? 0,
+            }
+          : { lot_number: l.lot_number },
+        metadata: { source: "oc_wizard_v2", lot_id: l.id },
+      };
+    });
+    // Seed lot_ledger_entries for any lot that arrived with a non-zero
+    // opening_balance — otherwise the per-lot ledger tab is empty even
+    // though the lot's overall balance reflects the arrears/credit. We
+    // put everything under fund_type=administrative because the wizard
+    // only collects one number per lot; managers can re-fund later via
+    // the ledger UI. Skipped when banking was deferred (no opening date
+    // means no anchor for an entry_date).
+    if (!bankingDeferred && d.opening_balance_date) {
+      const ledgerSeedRows: Array<{
+        oc_id: string;
+        lot_id: string;
+        fund_type: "administrative";
+        entry_type: "debit" | "credit";
+        category: "adjustment_debit" | "adjustment_credit";
+        amount: number;
+        entry_date: string;
+        description: string;
+        status: "active";
+        created_by: string;
+      }> = [];
+      for (const l of insertedLots) {
+        const draftLot = draftLots.find((dl) => dl.lot_number === l.lot_number);
+        const ob = draftLot?.opening_balance ?? 0;
+        if (!ob) continue;
+        const isDebit = ob > 0;
+        ledgerSeedRows.push({
+          oc_id: oc.id,
+          lot_id: l.id,
+          fund_type: "administrative",
+          entry_type: isDebit ? "debit" : "credit",
+          category: isDebit ? "adjustment_debit" : "adjustment_credit",
+          amount: Math.abs(ob),
+          entry_date: d.opening_balance_date,
+          description: isDebit
+            ? "Opening balance — owed at OC management start"
+            : "Opening balance — credit at OC management start",
+          status: "active",
+          created_by: profile.id,
+        });
+      }
+      if (ledgerSeedRows.length > 0) {
+        const { error: seedErr } = await supabase
+          .from("lot_ledger_entries")
+          .insert(ledgerSeedRows);
+        if (seedErr) {
+          console.error("completeWizard: opening-balance ledger seed failed (non-fatal)", seedErr);
+        }
+      }
+    }
+
+    if (lotCreatedAuditRows.length > 0) {
+      const { error: lotAuditErr } = await supabase
+        .from("audit_log")
+        .insert(lotCreatedAuditRows);
+      if (lotAuditErr) {
+        console.error("completeWizard: lot-create audit insert failed (non-fatal)", lotAuditErr);
+      }
+    }
+
     // Insert lot_owners for any lot that had at least a name or contact.
     const lotByNumber = new Map<number, string>();
     for (const l of insertedLots) lotByNumber.set(l.lot_number, l.id);
@@ -1576,6 +1660,35 @@ export async function completeWizard(draftId: string) {
           const { error: consentLogErr } = await supabase.from("lot_owner_consent_log").insert(consentLogRows);
           if (consentLogErr) {
             console.error("lot_owner_consent_log seed failed (non-fatal):", consentLogErr);
+          }
+        }
+
+        // Per-owner audit entries so the lot history shows "Owner added"
+        // for each lot that had an owner attached at OC creation.
+        const ownerAuditRows = insertedOwners.map((o) => {
+          const draftLot = (d.lots ?? []).find((dl) => lotByNumber.get(dl.lot_number) === o.lot_id);
+          return {
+            profile_id: profile.id,
+            oc_id: oc.id,
+            action: "create" as const,
+            entity_type: "lot_owner" as const,
+            entity_id: o.id,
+            after_state: draftLot
+              ? {
+                  name: draftLot.owner_name ?? null,
+                  email: draftLot.owner_email ?? null,
+                  occupancy_status: draftLot.occupancy_status ?? null,
+                }
+              : {},
+            metadata: { source: "oc_wizard_v2", lot_id: o.lot_id },
+          };
+        });
+        if (ownerAuditRows.length > 0) {
+          const { error: ownerAuditErr } = await supabase
+            .from("audit_log")
+            .insert(ownerAuditRows);
+          if (ownerAuditErr) {
+            console.error("completeWizard: owner-create audit insert failed (non-fatal)", ownerAuditErr);
           }
         }
       }
@@ -1994,22 +2107,49 @@ export async function completeWizard(draftId: string) {
         const sourceDocId = p.source_coc_storage_key
           ? cocDocByKey.get(p.source_coc_storage_key) ?? null
           : null;
-        const { error: insErr } = await supabase.from("insurance_policies").insert({
-          oc_id: oc.id,
-          policy_type: p.policy_type,
-          provider: p.provider,
-          policy_number: p.policy_number ?? null,
-          sum_insured: p.sum_insured ?? null,
-          premium: p.premium ?? null,
-          start_date: p.start_date,
-          end_date: p.end_date,
-          notes: p.notes && p.notes.trim().length > 0 ? p.notes.trim() : null,
-          status: "active",
-          source_document_id: sourceDocId,
-        });
+        const { data: insRow, error: insErr } = await supabase
+          .from("insurance_policies")
+          .insert({
+            oc_id: oc.id,
+            policy_type: p.policy_type,
+            provider: p.provider,
+            policy_number: p.policy_number ?? null,
+            sum_insured: p.sum_insured ?? null,
+            premium: p.premium ?? null,
+            start_date: p.start_date,
+            end_date: p.end_date,
+            notes: p.notes && p.notes.trim().length > 0 ? p.notes.trim() : null,
+            status: "active",
+            source_document_id: sourceDocId,
+          })
+          .select("id")
+          .single();
         if (insErr) {
           console.error("completeWizard: insurance_policies insert failed (non-fatal)", insErr);
+          continue;
         }
+        // Standalone insurance create/update goes through
+        // lib/actions/insurance.ts which writes its own audit entry. The
+        // wizard path used to swallow this silently — add the same audit
+        // entry here so the policy shows up in the history feed from day
+        // one of the OC.
+        await supabase.from("audit_log").insert({
+          profile_id: profile.id,
+          oc_id: oc.id,
+          action: "create",
+          entity_type: "insurance_policy",
+          entity_id: insRow?.id ?? null,
+          after_state: {
+            policy_type: p.policy_type,
+            provider: p.provider,
+            policy_number: p.policy_number,
+            sum_insured: p.sum_insured,
+            premium: p.premium,
+            start_date: p.start_date,
+            end_date: p.end_date,
+          },
+          metadata: { source: "oc_wizard_v2" },
+        });
       }
     }
 

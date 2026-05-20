@@ -10,6 +10,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Card, CardContent } from "@/components/ui/card";
 import { getSupabaseClient } from "@/lib/supabase";
+import { logMfaEvent } from "../internal-actions/audit";
 
 // First-time TOTP enrolment. We:
 //   1. POST /factors via supabase.auth.mfa.enroll → returns { id, totp.qr_code, secret }
@@ -77,9 +78,11 @@ export function MfaEnrollClient() {
     });
     setVerifying(false);
     if (error) {
+      void logMfaEvent("mfa_enroll_failed", { reason: error.message, factorId });
       toast.error(error.message || "That code didn't match — try again.");
       return;
     }
+    void logMfaEvent("mfa_enrolled", { factorId });
     toast.success("MFA enabled. You're set.");
     router.replace("/admin");
   }

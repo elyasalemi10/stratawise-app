@@ -4,6 +4,10 @@ import { createServerClient } from "@/lib/supabase";
 import { getLotOwner } from "@/lib/actions/lot-ownership";
 import { getLotOwnershipHistory } from "@/lib/actions/settlements";
 import {
+  getManagerSendAddress,
+  getSmsSenderId,
+} from "@/lib/actions/manager-username";
+import {
   getNextLevyDue,
   getLotActivity,
   getActiveDrnsForLot,
@@ -121,6 +125,8 @@ export default async function LotDetailPage({
     portalActivity,
     communications,
     engagement,
+    managerSendAddressResult,
+    smsSenderResult,
   ] = await Promise.all([
     getLotOwner(supabase, lotId),
     getLotOwnershipHistory(lotId),
@@ -131,7 +137,16 @@ export default async function LotDetailPage({
     getPortalActivity(lotId),
     listLotCommunications(lotId),
     getLotEngagement(lotId),
+    // Preload comms metadata so the Send-email + Send-SMS drawers paint
+    // with the right "From" address on first frame instead of running a
+    // client-side fetch every time they open.
+    getManagerSendAddress().catch(() => ({ address: null as string | null })),
+    getSmsSenderId().catch(() => ({ sender: null as string | null })),
   ]);
+  const senderEmailAddress =
+    (managerSendAddressResult as { address?: string | null })?.address ?? null;
+  const smsSenderId =
+    (smsSenderResult as { sender?: string | null })?.sender ?? null;
 
   return (
     <LotDetailContent
@@ -177,6 +192,8 @@ export default async function LotDetailPage({
       communications={communications}
       engagement={engagement}
       bankProvider={(oc as { bank_provider?: string } | null)?.bank_provider ?? null}
+      initialSenderEmailAddress={senderEmailAddress}
+      initialSmsSenderId={smsSenderId}
     />
   );
 }

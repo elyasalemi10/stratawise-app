@@ -264,7 +264,15 @@ function PolicyDetailDialog({
             </div>
             {policy.document_url && (
               <div className="border-t border-border pt-4 mt-2">
-                <a href={policy.document_url} target="_blank" rel="noopener noreferrer">
+                {/* Route via /api/insurance-docs/[id] for an authorised
+                    302 to a 15-min presigned R2 URL — the raw
+                    policy.document_url is a public R2 link we no longer
+                    expose directly. */}
+                <a
+                  href={`/api/insurance-docs/${policy.id}`}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                >
                   <Button variant="default" className="w-full cursor-pointer">
                     <Download className="mr-2 h-4 w-4" />
                     Download certificate of currency

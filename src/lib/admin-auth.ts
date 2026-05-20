@@ -1,5 +1,6 @@
 import "server-only";
 import { createSupabaseServerClient } from "@/lib/supabase-server";
+import { createServerClient } from "@/lib/supabase";
 import { getCurrentProfile } from "@/lib/auth";
 
 // ── Super admin + MFA gate (server-side) ────────────────────────────────

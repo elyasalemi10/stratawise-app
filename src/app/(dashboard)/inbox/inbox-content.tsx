@@ -685,7 +685,7 @@ function EmailDetailPane({
               {detail.attachments.map((att) => (
                 <li key={att.id}>
                   <a
-                    href={att.url}
+                    href={`/api/inbox-attachments/${att.id}`}
                     target="_blank"
                     rel="noopener noreferrer"
                     download={att.filename}

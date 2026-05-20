@@ -81,13 +81,29 @@ interface Props {
   // the matching drawer and call onPendingActionHandled to clear it.
   pendingAction?: "email" | "sms" | null;
   onPendingActionHandled?: () => void;
+  // Preloaded by the lot detail page so the Send-email / Send-SMS
+  // drawers can paint with the right "From" address on first frame
+  // instead of doing their own client-side fetch.
+  initialSenderEmailAddress?: string | null;
+  initialSmsSenderId?: string | null;
 }
 
 type DrawerName = null | "email" | "sms" | "call";
 
 export function LotCommunicationsTab(props: Props) {
   const router = useRouter();
-  const { ocId, lotId, ownerEmail, ownerPhone, ownerName, initialCommunications, pendingAction, onPendingActionHandled } = props;
+  const {
+    ocId,
+    lotId,
+    ownerEmail,
+    ownerPhone,
+    ownerName,
+    initialCommunications,
+    pendingAction,
+    onPendingActionHandled,
+    initialSenderEmailAddress,
+    initialSmsSenderId,
+  } = props;
   const [open, setOpen] = React.useState<DrawerName>(null);
 
   React.useEffect(() => {
@@ -177,6 +193,7 @@ export function LotCommunicationsTab(props: Props) {
           lotId={lotId}
           ownerEmail={ownerEmail}
           ownerName={ownerName}
+          initialSenderAddress={initialSenderEmailAddress ?? null}
           onClose={() => setOpen(null)}
           onSaved={() => router.refresh()}
         />
@@ -186,6 +203,7 @@ export function LotCommunicationsTab(props: Props) {
           ocId={ocId}
           lotId={lotId}
           ownerPhone={ownerPhone}
+          initialSenderId={initialSmsSenderId ?? null}
           onClose={() => setOpen(null)}
           onSaved={() => router.refresh()}
         />
@@ -204,6 +222,7 @@ export function LotCommunicationsTab(props: Props) {
         <CommunicationDetailDialog
           row={detail}
           onClose={() => setDetail(null)}
+          initialSmsSenderId={initialSmsSenderId ?? null}
         />
       )}
     </div>
@@ -406,15 +425,23 @@ function formatDateOnly(iso: string): string {
 function CommunicationDetailDialog({
   row,
   onClose,
+  initialSmsSenderId,
 }: {
   row: LotCommunicationRow;
   onClose: () => void;
+  initialSmsSenderId: string | null;
 }) {
   if (row.channel === "email") {
     return <EmailDetailDialog row={row} onClose={onClose} />;
   }
   if (row.channel === "sms") {
-    return <SmsDetailDialog row={row} onClose={onClose} />;
+    return (
+      <SmsDetailDialog
+        row={row}
+        onClose={onClose}
+        initialSenderId={initialSmsSenderId}
+      />
+    );
   }
   return <CallDetailDialog row={row} onClose={onClose} />;
 }
@@ -466,7 +493,7 @@ function EmailDetailDialog({
                 {row.attachments.map((a) => (
                   <li key={a.id}>
                     <a
-                      href={a.url}
+                      href={`/api/inbox-attachments/${a.id}`}
                       target="_blank"
                       rel="noopener noreferrer"
                       className="flex items-center justify-between gap-2 rounded-md border border-border bg-card px-3 py-2 text-sm hover:border-primary/40 hover:bg-muted/40"
@@ -502,15 +529,19 @@ function formatFileSize(bytes: number): string {
 function SmsDetailDialog({
   row,
   onClose,
+  initialSenderId,
 }: {
   row: LotCommunicationRow;
   onClose: () => void;
+  initialSenderId: string | null;
 }) {
   // Pull the platform-level SMS sender id so the "From" row matches what
   // landed on the recipient's handset — the manager's profile name only
-  // shows up in the audit log, not in the SMS itself.
-  const [senderId, setSenderId] = React.useState<string | null>(null);
+  // shows up in the audit log, not in the SMS itself. Preloaded
+  // server-side and threaded through the tab; only fetch as a fallback.
+  const [senderId, setSenderId] = React.useState<string | null>(initialSenderId);
   React.useEffect(() => {
+    if (senderId) return;
     let cancelled = false;
     getSmsSenderId().then((res) => {
       if (!cancelled) setSenderId(res.sender);
@@ -518,7 +549,7 @@ function SmsDetailDialog({
     return () => {
       cancelled = true;
     };
-  }, []);
+  }, [senderId]);
 
   return (
     <Dialog open onOpenChange={(o) => !o && onClose()}>
@@ -657,6 +688,7 @@ function SendEmailDrawer({
   lotId,
   ownerEmail,
   ownerName,
+  initialSenderAddress,
   onClose,
   onSaved,
 }: {
@@ -664,6 +696,7 @@ function SendEmailDrawer({
   lotId: string;
   ownerEmail: string | null;
   ownerName: string | null;
+  initialSenderAddress: string | null;
   onClose: () => void;
   onSaved: () => void;
 }) {
@@ -671,11 +704,17 @@ function SendEmailDrawer({
   const [subject, setSubject] = React.useState("");
   const [body, setBody] = React.useState("");
   const [attachments, setAttachments] = React.useState<AttachmentDraft[]>([]);
-  const [senderAddress, setSenderAddress] = React.useState<string | null>(null);
+  // Server-preloaded From address (see lot-detail-content → page.tsx).
+  // Fetch only as a fallback when the prop was null (e.g. preload failed
+  // server-side and we still want to display something).
+  const [senderAddress, setSenderAddress] = React.useState<string | null>(
+    initialSenderAddress,
+  );
   const [confidential, setConfidential] = React.useState(false);
   const fileInputRef = React.useRef<HTMLInputElement>(null);
 
   React.useEffect(() => {
+    if (senderAddress) return;
     let cancelled = false;
     getManagerSendAddress()
       .then((res) => {
@@ -685,7 +724,7 @@ function SendEmailDrawer({
     return () => {
       cancelled = true;
     };
-  }, []);
+  }, [senderAddress]);
 
   const ownerHasEmail = !!(ownerEmail && ownerEmail.trim());
 
@@ -910,15 +949,21 @@ function SendSmsDrawer({
   ocId,
   lotId,
   ownerPhone,
+  initialSenderId,
   onClose,
   onSaved,
 }: {
   ocId: string;
   lotId: string;
   ownerPhone: string | null;
+  initialSenderId: string | null;
   onClose: () => void;
   onSaved: () => void;
 }) {
+  // Preloaded server-side and threaded through lot-detail-content.tsx so
+  // the "From" line under the recipient field paints on first frame
+  // instead of needing a client-side fetch on every drawer open.
+  void initialSenderId;
   const [phone, setPhone] = React.useState(ownerPhone ?? "");
   const [body, setBody] = React.useState("");
   const [billConsent, setBillConsent] = React.useState(false);
