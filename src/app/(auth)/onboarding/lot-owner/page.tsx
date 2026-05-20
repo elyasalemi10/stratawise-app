@@ -51,24 +51,23 @@ export default function LotOwnerOnboardingPage() {
 
       <Card className="mt-6">
         <CardContent className="pt-5">
-          <div className="flex items-center gap-3">
+          <div className="flex items-start gap-3">
             <Checkbox
               id="legal-consent"
               checked={accepted}
               onCheckedChange={(v) => setAccepted(v === true)}
-              className="shrink-0"
+              className="shrink-0 mt-0.5"
             />
-            {/* Single flowing line — the previous markup let every link /
-                text fragment wrap independently, producing an ugly
-                column of one-word lines. Wrapping the whole sentence in
-                one <span> keeps it as a normal paragraph that wraps at
-                natural word boundaries. */}
-            <Label className="text-sm leading-relaxed text-foreground">
+            {/* Plain <p>, NOT the shadcn <Label> — Label is `display:flex`,
+                which turned every text/link fragment into its own flex item
+                that wrapped onto its own line. A paragraph lets the sentence
+                wrap at natural word boundaries with the links inline. */}
+            <p className="text-sm leading-relaxed text-foreground">
               I have read and agree to the{" "}
               <Link href="/legal/terms" target="_blank" rel="noopener noreferrer" className="text-[color:var(--brand-gold)] hover:underline">Terms of Service</Link>
               {" "}and{" "}
               <Link href="/legal/privacy" target="_blank" rel="noopener noreferrer" className="text-[color:var(--brand-gold)] hover:underline">Privacy Policy</Link>.
-            </Label>
+            </p>
           </div>
         </CardContent>
       </Card>

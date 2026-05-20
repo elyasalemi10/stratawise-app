@@ -35,11 +35,9 @@ const PER_SUBDIVISION_TIMEOUT_MS = 5_000;
 
 export const dailyAccrueInterest = schedules.task({
   id: "daily-accrue-interest",
-  // Runs at 00:05 AEST/AEDT — just after midnight so interest accrues on
-  // the calendar day it's due, not 2 hours late. The 5-minute offset
-  // avoids the exact-midnight thundering herd and lets any end-of-day
-  // payment imports settle first.
-  cron: { pattern: "5 0 * * *", timezone: "Australia/Melbourne" },
+  // Runs at exactly midnight AEST/AEDT so interest accrues on the calendar
+  // day it's due.
+  cron: { pattern: "0 0 * * *", timezone: "Australia/Melbourne" },
   run: async (payload) => {
     const supabase = createServerClient();
 

@@ -271,9 +271,13 @@ export function DocumentManager({ ocId, lotId, initialDocuments, readOnly }: Doc
           the "New uploads tagged as" row are gone; categories are still
           attached to each document automatically (see selectedCategory state
           which defaults to "other") and surface on the per-row chip. */}
-      <div className="flex items-center justify-end gap-2">
+      <div className="flex items-center justify-start gap-2">
         {!readOnly && (
           <>
+            <Button size="sm" onClick={() => fileInputRef.current?.click()}>
+              <Upload className="mr-2 h-3.5 w-3.5" />
+              Upload
+            </Button>
             <Button
               variant="outline"
               size="sm"
@@ -300,10 +304,6 @@ export function DocumentManager({ ocId, lotId, initialDocuments, readOnly }: Doc
             >
               <Download className="mr-2 h-3.5 w-3.5" />
               {exporting ? "Preparing…" : "Export ZIP"}
-            </Button>
-            <Button size="sm" onClick={() => fileInputRef.current?.click()}>
-              <Upload className="mr-2 h-3.5 w-3.5" />
-              Upload
             </Button>
             <input
               ref={fileInputRef}

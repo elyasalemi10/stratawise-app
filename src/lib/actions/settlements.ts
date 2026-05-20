@@ -836,7 +836,6 @@ async function getLotOwnershipHistoryInner(
         }
       }
     }
-    const publicBase = process.env.R2_PUBLIC_URL ?? null;
     return ownerships.map((o) => {
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       const owner = (o as any).owners;
@@ -852,12 +851,11 @@ async function getLotOwnershipHistoryInner(
         leftAt: o.end_date ? `${o.end_date}T00:00:00Z` : null,
         isPrimaryContact: o.is_primary_contact,
         isFinancial: o.is_financial,
+        // Document is served only through the authenticated /api/documents
+        // route (never a public R2 URL) so a copied link is useless to
+        // anyone without an authorised session.
         settlementDocument: docInfo
-          ? {
-              id: docInfo.docId,
-              fileName: docInfo.fileName,
-              publicUrl: publicBase ? `${publicBase}/${docInfo.filePath}` : null,
-            }
+          ? { id: docInfo.docId, fileName: docInfo.fileName }
           : null,
       };
     });
@@ -911,8 +909,6 @@ async function getLotOwnershipHistoryInner(
     }
   }
 
-  const publicBase = process.env.R2_PUBLIC_URL ?? null;
-
   return members.map((m) => {
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const p = (m as any).profiles;
@@ -928,11 +924,7 @@ async function getLotOwnershipHistoryInner(
       isPrimaryContact: m.is_primary_contact,
       isFinancial: m.is_financial,
       settlementDocument: doc
-        ? {
-            id: docId!,
-            fileName: doc.fileName,
-            publicUrl: publicBase ? `${publicBase}/${doc.filePath}` : null,
-          }
+        ? { id: docId!, fileName: doc.fileName }
         : null,
     };
   });

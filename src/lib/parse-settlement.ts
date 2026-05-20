@@ -66,7 +66,7 @@ const RESPONSE_SCHEMA = {
       properties: {
         name: { type: Type.STRING, nullable: true, description: "Full legal name of the incoming owner. Use the first transferee if multiple are listed; emit the rest in additional_transferees." },
         email: { type: Type.STRING, nullable: true, description: "Email address of the incoming owner, if shown anywhere on the form. Null if not present." },
-        phone: { type: Type.STRING, nullable: true, description: "Phone number of the incoming owner. Null if not present." },
+        phone: { type: Type.STRING, nullable: true, description: "Phone number of the incoming owner in +61 international format with no leading 0. Null if not present." },
         postal_address: { type: Type.STRING, nullable: true, description: "Postal / service address for the new owner (often different from the lot itself when the owner is non-resident). Null if not present." },
       },
       required: ["name", "email", "phone", "postal_address"],
@@ -131,6 +131,7 @@ Field-by-field rules:
 - sale_price_cents is INTEGER CENTS. $850,000 → 85000000. $1.2M → 120000000. Null if absent.
 - Dates: ISO yyyy-mm-dd. AU forms use DD/MM/YYYY; convert. If only a partial date is visible (e.g. month + year), return null rather than guess.
 - lot_number and plan_number come from the title reference ("Lot 7 on PS812345X" → lot_number 7, plan_number "PS812345X"). Plan-of-Subdivision format: PS + 6 digits + 1 letter, upper-case.
+- phone: return the incoming owner's Australian phone in international format starting with "+61" and NO leading 0 (e.g. "0412 345 678" → "+61412345678", "(03) 9876 5432" → "+61398765432"). Null if not present.
 - postal_address is the new owner's CORRESPONDENCE address (often outside the building when they're a non-resident landlord). It may differ from the lot's address.
 - conveyancer: the settlement agent acting for the BUYER. Name + email only. Null fields if you can't see them.
 

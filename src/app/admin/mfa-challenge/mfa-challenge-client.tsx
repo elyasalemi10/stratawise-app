@@ -1,7 +1,6 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { useRouter } from "next/navigation";
 import { toast } from "sonner";
 import { Loader2, ShieldCheck } from "lucide-react";
 import { Button } from "@/components/ui/button";
@@ -16,7 +15,6 @@ import { logMfaEvent } from "../internal-actions/audit";
 // and let Supabase promote the session to AAL2.
 
 export function MfaChallengeClient() {
-  const router = useRouter();
   const [factorId, setFactorId] = useState<string | null>(null);
   const [code, setCode] = useState("");
   const [loading, setLoading] = useState(true);
@@ -59,7 +57,10 @@ export function MfaChallengeClient() {
       return;
     }
     void logMfaEvent("mfa_verified", { factorId });
-    router.replace("/admin");
+    // Hard navigation (not router.replace) so /admin re-renders against the
+    // freshly-written aal2 cookie rather than a soft-nav cache. Keep the
+    // spinner on through the redirect — no flash.
+    window.location.href = "/admin";
   }
 
   return (

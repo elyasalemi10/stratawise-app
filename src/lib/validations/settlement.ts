@@ -75,6 +75,5 @@ export interface OwnershipHistoryEntry {
   settlementDocument: {
     id: string;
     fileName: string;
-    publicUrl: string | null;
   } | null;
 }

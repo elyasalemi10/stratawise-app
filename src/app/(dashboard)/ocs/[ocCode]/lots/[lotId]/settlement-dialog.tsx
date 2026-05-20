@@ -16,6 +16,7 @@ import {
   Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter,
 } from "@/components/ui/dialog";
 import { DatePicker } from "@/components/shared/date-picker";
+import { PhoneInput } from "@/components/shared/phone-input";
 import { PlacesAutocomplete } from "@/components/shared/places-autocomplete";
 import {
   parseSettlementForReview,
@@ -702,11 +703,11 @@ function ReviewForm(props: {
           </div>
           <div className="space-y-1.5">
             <Label htmlFor="settlement-email">Email</Label>
-            <Input id="settlement-email" type="email" value={props.email} onChange={(e) => props.setEmail(e.target.value)} placeholder="owner@example.com" />
+            <Input id="settlement-email" type="email" value={props.email} onChange={(e) => props.setEmail(e.target.value)} placeholder="Email address" />
           </div>
           <div className="space-y-1.5">
             <Label htmlFor="settlement-phone">Phone</Label>
-            <Input id="settlement-phone" value={props.phone} onChange={(e) => props.setPhone(e.target.value)} />
+            <PhoneInput id="settlement-phone" value={props.phone || "+61 "} onChange={props.setPhone} />
           </div>
           <div className="space-y-1.5 sm:col-span-2">
             <Label htmlFor="settlement-postal">Postal address</Label>
@@ -790,15 +791,15 @@ function ManualReviewForm(props: {
               type="email"
               value={props.email}
               onChange={(e) => props.setEmail(e.target.value)}
-              placeholder="owner@example.com"
+              placeholder="Email address"
             />
           </div>
           <div className="space-y-1.5">
             <Label htmlFor="manual-settlement-phone">Phone</Label>
-            <Input
+            <PhoneInput
               id="manual-settlement-phone"
-              value={props.phone}
-              onChange={(e) => props.setPhone(e.target.value)}
+              value={props.phone || "+61 "}
+              onChange={props.setPhone}
             />
           </div>
           <div className="space-y-1.5 sm:col-span-2">
@@ -811,12 +812,6 @@ function ManualReviewForm(props: {
               onChange={props.setPostalAddress}
               placeholder="Used as the absent-owner / service address for paper notices"
             />
-            {props.lotAddress && props.postalAddress === props.lotAddress && (
-              <p className="text-xs text-muted-foreground">
-                Pre-filled with the lot&apos;s own address — change it if the
-                owner is absentee.
-              </p>
-            )}
           </div>
           <div className="space-y-1.5 sm:col-span-2">
             <Label htmlFor="manual-settlement-date">

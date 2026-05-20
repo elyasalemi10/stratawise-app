@@ -623,7 +623,7 @@ export function InsuranceTimeline({
                       {policy.premium && <span className="text-sm tabular-nums text-muted-foreground">{formatCurrency(Number(policy.premium))}</span>}
                       {policy.document_url && (
                         <a
-                          href={policy.document_url}
+                          href={`/api/insurance-docs/${policy.id}`}
                           target="_blank"
                           rel="noopener noreferrer"
                           onClick={(e) => e.stopPropagation()}

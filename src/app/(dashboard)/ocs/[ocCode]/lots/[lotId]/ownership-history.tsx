@@ -56,9 +56,9 @@ export function OwnershipHistory({ history }: Props) {
                       {formatDate(entry.joinedAt)} → {entry.leftAt ? formatDate(entry.leftAt) : "Current"}
                     </p>
                   </div>
-                  {entry.settlementDocument?.publicUrl && (
+                  {entry.settlementDocument?.id && (
                     <a
-                      href={entry.settlementDocument.publicUrl}
+                      href={`/api/documents/${entry.settlementDocument.id}?view=true`}
                       target="_blank"
                       rel="noopener noreferrer"
                       className="inline-flex items-center gap-1 text-xs text-primary hover:underline shrink-0"

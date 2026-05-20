@@ -31,11 +31,10 @@ export function WelcomeConfetti() {
     if (fired.current) return;
     fired.current = true;
 
-    // Wait for the dashboard to settle first — confetti firing on the same
-    // frame as the page mount feels rushed and the user misses the visual
-    // payoff. 700ms gives the dashboard time to render + the user time to
-    // see "where am I" before the celebration triggers.
-    const startTimer = setTimeout(() => fireCelebration(), 700);
+    // Fire almost immediately — one frame after mount so the canvas is
+    // mounted, but no perceptible wait. The previous 700ms delay made the
+    // celebration feel disconnected from arriving on the dashboard.
+    const startTimer = setTimeout(() => fireCelebration(), 50);
 
     function fireCelebration() {
     // Less confetti, bigger pieces. ~1.6s total. Two side cannons + a

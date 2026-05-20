@@ -150,7 +150,7 @@ export function Step3DigitalConsent({
   }
 
   function summariseCategories(cats: string[] | undefined): string {
-    if (!cats || cats.length === 0) return "— none —";
+    if (!cats || cats.length === 0) return "None";
     if (cats.length === CATEGORIES.length) return "All categories";
     return `${cats.length} of ${CATEGORIES.length}`;
   }

@@ -37,7 +37,6 @@ export default async function DocumentsPage({
 
   return (
     <div className="space-y-6">
-      <h1 className="text-lg font-semibold text-foreground">Documents</h1>
       <DocumentManager ocId={ocId} initialDocuments={documents} readOnly={isLotOwner} />
     </div>
   );

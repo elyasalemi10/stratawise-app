@@ -10,8 +10,13 @@ import { MfaChallengeClient } from "./mfa-challenge-client";
 export default async function MfaChallengePage() {
   const r = await requireSuperAdminAal1OrAbove();
   if (r.kind === "redirect") redirect(r.to);
-  if (r.aal === "aal2") redirect("/admin");
   if (!r.hasVerifiedTotp) redirect("/admin/mfa-enroll");
 
+  // NOTE: we deliberately do NOT redirect aal2 sessions back to /admin here.
+  // Supabase's AAL read can disagree between consecutive server requests, and
+  // /admin redirects here whenever it sees aal1 — pairing that with an
+  // aal2→/admin redirect produced an infinite "too many redirects" loop. This
+  // page is now terminal: it only ever renders the form. After a successful
+  // verify the client navigates to /admin, which then renders normally.
   return <MfaChallengeClient />;
 }

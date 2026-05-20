@@ -10,7 +10,9 @@ import { MfaEnrollClient } from "./mfa-enroll-client";
 export default async function MfaEnrollPage() {
   const r = await requireSuperAdminAal1OrAbove();
   if (r.kind === "redirect") redirect(r.to);
-  if (r.aal === "aal2") redirect("/admin");
+  // Already has a factor → send to the challenge (terminal) page. We do NOT
+  // redirect aal2 sessions to /admin here — see the note in the challenge
+  // page; the aal2→/admin auto-redirect was half of the redirect loop.
   if (r.hasVerifiedTotp) redirect("/admin/mfa-challenge");
 
   return <MfaEnrollClient />;
