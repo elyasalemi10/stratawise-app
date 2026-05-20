@@ -60,10 +60,40 @@ function getClient(): S3Client {
   return _client;
 }
 
+// Public bucket — anonymously readable via R2_PUBLIC_URL. Holds assets that
+// MUST render in unauthenticated contexts (logos in outbound email, levy
+// notice PDFs delivered to owners, avatars).
 export function getBucket(): string {
-  // Default fallback matches the legacy uploadCompanyLogo path. The bucket is
-  // multi-purpose despite the legacy name.
-  return process.env.R2_BUCKET_NAME ?? "stratawise-company-logos";
+  return (
+    process.env.R2_BUCKET_PUBLIC ??
+    process.env.R2_BUCKET_NAME ??
+    "stratawise-public"
+  );
+}
+
+// Key prefixes that hold SENSITIVE objects — these live in the private
+// (confidential) bucket which has NO public URL and is only ever served
+// through authenticated app routes (/api/documents, /api/insurance-docs,
+// /api/inbox-attachments) via fetchObject. levies/ stays public because the
+// notice PDFs are emailed/linked to owners and rendered in unauthenticated
+// email clients.
+const CONFIDENTIAL_PREFIXES = [
+  "documents/",
+  "insurance/",
+  "plans/",
+  "rules/",
+  "inbound-emails/",
+];
+
+// Resolve the bucket for a key. Confidential prefixes route to the private
+// bucket when configured; otherwise everything falls back to the public
+// bucket (so a single-bucket setup still works during migration).
+function bucketForKey(key: string): string {
+  const confidential = process.env.R2_BUCKET_CONFIDENTIAL;
+  if (confidential && CONFIDENTIAL_PREFIXES.some((p) => key.startsWith(p))) {
+    return confidential;
+  }
+  return getBucket();
 }
 
 /**
@@ -77,7 +107,7 @@ export async function uploadObject(
   const client = getClient();
   await client.send(
     new PutObjectCommand({
-      Bucket: getBucket(),
+      Bucket: bucketForKey(key),
       Key: key,
       Body: body,
       ContentType: contentType,
@@ -95,7 +125,7 @@ export async function fetchObject(key: string): Promise<Buffer> {
   const client = getClient();
   const res = await client.send(
     new GetObjectCommand({
-      Bucket: getBucket(),
+      Bucket: bucketForKey(key),
       Key: key,
     }),
   );
@@ -118,7 +148,7 @@ export async function deleteObject(key: string): Promise<void> {
   const client = getClient();
   await client.send(
     new DeleteObjectCommand({
-      Bucket: getBucket(),
+      Bucket: bucketForKey(key),
       Key: key,
     }),
   );
@@ -172,7 +202,7 @@ export async function getSignedDownloadUrl(
       )}"`
     : undefined;
   const command = new GetObjectCommand({
-    Bucket: getBucket(),
+    Bucket: bucketForKey(key),
     Key: key,
     ResponseContentDisposition: disposition,
   });
