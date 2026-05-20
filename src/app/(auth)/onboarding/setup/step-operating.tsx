@@ -23,7 +23,6 @@ export function StepOperating({ onNext, onBack }: { onNext: () => void; onBack: 
   const [bsb, setBsb] = useState("");
   const [accountNumber, setAccountNumber] = useState("");
   const [bankId, setBankId] = useState("");
-  const [bankOther, setBankOther] = useState(false);
   const [otherBankName, setOtherBankName] = useState("");
 
   const [nameInvalid, setNameInvalid] = useState(false);
@@ -61,7 +60,7 @@ export function StepOperating({ onNext, onBack }: { onNext: () => void; onBack: 
       return;
     }
 
-    const bankName = bankOther
+    const bankName = bankId === "other"
       ? otherBankName.trim() || undefined
       : AUSTRALIAN_BANKS.find((b) => b.id === bankId)?.name;
 
@@ -136,34 +135,14 @@ export function StepOperating({ onNext, onBack }: { onNext: () => void; onBack: 
 
         <div className="space-y-1.5">
           <Label htmlFor="operating-bank">Bank</Label>
-          {bankOther ? (
-            <div className="space-y-1.5">
-              <Input
-                id="operating-bank"
-                placeholder="Bank name"
-                value={otherBankName}
-                onChange={(e) => setOtherBankName(e.target.value)}
-                autoFocus
-              />
-              <button
-                type="button"
-                onClick={() => { setBankOther(false); setOtherBankName(""); }}
-                className="text-xs font-medium text-primary hover:underline cursor-pointer"
-              >
-                Choose from the list instead
-              </button>
-            </div>
-          ) : (
-            <div className="space-y-1.5">
-              <BankSelect id="operating-bank" value={bankId} onChange={setBankId} />
-              <button
-                type="button"
-                onClick={() => { setBankOther(true); setBankId(""); }}
-                className="text-xs font-medium text-primary hover:underline cursor-pointer"
-              >
-                My bank isn&apos;t listed
-              </button>
-            </div>
+          <BankSelect id="operating-bank" value={bankId} onChange={setBankId} includeOther />
+          {bankId === "other" && (
+            <Input
+              placeholder="Bank name"
+              value={otherBankName}
+              onChange={(e) => setOtherBankName(e.target.value)}
+              autoFocus
+            />
           )}
         </div>
 

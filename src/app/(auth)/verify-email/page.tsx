@@ -3,7 +3,7 @@
 import { useEffect, useState, useRef, Suspense } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { toast } from "sonner";
-import { Loader2 } from "lucide-react";
+import { Loader2, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { OtpInput } from "@/components/shared/otp-input";
 import Image from "next/image";
@@ -106,6 +106,15 @@ function VerifyEmailContent() {
 
   return (
     <div className="w-full space-y-8">
+      {/* Cancel sign-up — X in the top-right (clears the half-created
+          session via /logout; the unverified account can be resumed later). */}
+      <a
+        href="/logout"
+        aria-label="Cancel and sign out"
+        className="fixed right-4 top-4 z-10 inline-flex h-9 w-9 items-center justify-center rounded-md text-muted-foreground hover:bg-muted hover:text-foreground"
+      >
+        <X className="h-5 w-5" />
+      </a>
       <div className="text-center">
         <h1 className="text-3xl font-semibold tracking-tight text-foreground">
           Verify your email
@@ -178,18 +187,6 @@ function VerifyEmailContent() {
       <p className="text-center text-xs text-muted-foreground">
         Code expires in 10 minutes. Check your spam folder.
       </p>
-
-      <div className="text-center">
-        {/* Cancel sign-up from the verify stage. Hard nav to /logout clears
-            the half-created session; the unverified account can be resumed
-            by signing in again later. */}
-        <a
-          href="/logout"
-          className="text-xs font-medium text-muted-foreground hover:text-foreground"
-        >
-          Cancel and sign out
-        </a>
-      </div>
     </div>
   );
 }

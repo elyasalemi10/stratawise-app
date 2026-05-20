@@ -18,7 +18,6 @@ import { getSupabaseClient } from "@/lib/supabase";
 function SignUpContent() {
   const router = useRouter();
   const searchParams = useSearchParams();
-  const nextPath = searchParams.get("next") ?? "/onboarding";
 
   const [accountType, setAccountType] = useState<"strata_manager" | "lot_owner">("strata_manager");
   const [firstName, setFirstName] = useState("");
@@ -78,10 +77,14 @@ function SignUpContent() {
       return;
     }
 
-    // Soft client navigation (not window.location) so the shared auth layout
-    // doesn't repaint — that full reload briefly showed just the StrataWise
-    // icon between pages. Spinner stays on through the transition.
-    router.push(`/verify-email?next=${encodeURIComponent(nextPath)}`);
+    // Go straight to the role-specific onboarding after verification — skip
+    // the /onboarding router page (it briefly flashed just the StrataWise
+    // icon). An explicit ?next from an invite link still wins. Soft nav so
+    // the shared auth layout doesn't repaint.
+    const dest =
+      searchParams.get("next") ??
+      (accountType === "lot_owner" ? "/onboarding/lot-owner" : "/onboarding/setup");
+    router.push(`/verify-email?next=${encodeURIComponent(dest)}`);
   }
 
   return (

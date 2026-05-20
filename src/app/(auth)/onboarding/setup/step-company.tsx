@@ -59,9 +59,11 @@ export function StepCompany({ onNext }: { onNext: () => void }) {
     resolver: zodResolver(companySchema) as any,
   });
 
-  async function onSubmit(data: CompanyFormValues) {
-    // Multi-error validation — collect EVERY problem so the user can fix
-    // all of them in one pass (per CLAUDE.md form-validation rule).
+  // Flags every non-RHF field (phone / ABN / address / consent) at once and
+  // returns the problem list. Runs whether or not react-hook-form's own
+  // (name/address) validation passed — so a first click with EVERYTHING
+  // blank turns all the fields red, not just the RHF-tracked ones.
+  function flagManualFields(): string[] {
     const problems: string[] = [];
 
     const phoneOk = !!phone && phone.replace(/\s/g, "").length >= 6;
@@ -82,12 +84,25 @@ export function StepCompany({ onNext }: { onNext: () => void }) {
     setAddressInvalid(!addressOk);
     setConsentError(!consentOk);
 
+    return problems;
+  }
+
+  // Fires when react-hook-form's resolver rejects (e.g. blank company name) —
+  // we still flag the manual fields so they all light up together.
+  function onInvalid() {
+    flagManualFields();
+    toast.error("Fix the highlighted fields.");
+  }
+
+  async function onSubmit(data: CompanyFormValues) {
+    const problems = flagManualFields();
     if (problems.length > 0) {
       toast.error(problems.length === 1 ? problems[0] : "Fix the highlighted fields.");
       return;
     }
 
     setPending(true);
+    const abnDigits = abn.replace(/\D/g, "");
     const result = await createCompany({
       name: data.name,
       trading_as: data.trading_as || undefined,
@@ -123,7 +138,7 @@ export function StepCompany({ onNext }: { onNext: () => void }) {
         </p>
       </div>
 
-      <form onSubmit={handleSubmit(onSubmit)} autoComplete="off" className="space-y-4">
+      <form onSubmit={handleSubmit(onSubmit, onInvalid)} autoComplete="off" className="space-y-4">
         <div className="space-y-1.5">
           <Label>Company logo</Label>
           <LogoUpload

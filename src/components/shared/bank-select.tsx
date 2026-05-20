@@ -11,20 +11,25 @@ import {
   CommandGroup,
 } from "@/components/ui/command";
 import { cn } from "@/lib/utils";
-import { AUSTRALIAN_BANKS } from "@/lib/data/australian-banks";
+import { AUSTRALIAN_BANKS, type BankOption } from "@/lib/data/australian-banks";
 
 interface BankSelectProps {
   value: string;
   onChange: (value: string) => void;
   error?: boolean;
   id?: string;
+  /** Append an "Other" choice to the list (id "other") for banks not listed. */
+  includeOther?: boolean;
 }
 
-export function BankSelect({ value, onChange, error, id }: BankSelectProps) {
+const OTHER_OPTION: BankOption = { id: "other", name: "Other", logo: null };
+
+export function BankSelect({ value, onChange, error, id, includeOther }: BankSelectProps) {
   const [open, setOpen] = useState(false);
   const ref = useRef<HTMLDivElement>(null);
 
-  const selectedBank = AUSTRALIAN_BANKS.find((b) => b.id === value);
+  const options = includeOther ? [...AUSTRALIAN_BANKS, OTHER_OPTION] : AUSTRALIAN_BANKS;
+  const selectedBank = options.find((b) => b.id === value);
 
   // Preload all bank images on mount
   useEffect(() => {
@@ -89,10 +94,10 @@ export function BankSelect({ value, onChange, error, id }: BankSelectProps) {
         <div className="absolute top-full left-0 z-50 mt-1 w-full rounded-lg border border-border bg-popover shadow-md">
           <Command>
             <CommandInput placeholder="Search bank..." />
-            <CommandList className="max-h-48">
+            <CommandList className="max-h-40">
               <CommandEmpty>No banks found</CommandEmpty>
               <CommandGroup>
-                {AUSTRALIAN_BANKS.map((bank) => (
+                {options.map((bank) => (
                   <CommandItem
                     key={bank.id}
                     value={bank.name}

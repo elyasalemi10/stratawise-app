@@ -39,15 +39,19 @@ export async function createMeeting(
   await requireOCAccess(parsed.data.oc_id);
   const supabase = createServerClient();
 
-  // Per-OC, human-readable reference scoped to the OC's short code rather
-  // than a global SW- sequence: "{SHORTCODE}-MTG-{n}" (e.g. "G2NC4ZL8-MTG-3").
-  // n is this OC's own meeting count + 1; globally unique because short_code is.
-  const [{ data: ocRow }, { count: existingCount }] = await Promise.all([
-    supabase.from("owners_corporations").select("short_code").eq("id", parsed.data.oc_id).single(),
-    supabase.from("meetings").select("id", { count: "exact", head: true }).eq("oc_id", parsed.data.oc_id),
-  ]);
-  const shortCode = (ocRow as { short_code?: string } | null)?.short_code ?? "OC";
-  const reference = `${shortCode}-MTG-${(existingCount ?? 0) + 1}`;
+  // Clean, human-readable per-OC reference: "{TYPE}-{YEAR}-{n}" where n is
+  // this OC's count of that meeting type in that year + 1 (e.g. "AGM-2026-1",
+  // "SGM-2026-2", "CM-2026-1"). Unique per OC (see idx_meetings_oc_reference).
+  const typeCode = { agm: "AGM", sgm: "SGM", committee: "CM" }[parsed.data.meeting_type];
+  const year = new Date(parsed.data.date_time).getFullYear();
+  const { count: existingCount } = await supabase
+    .from("meetings")
+    .select("id", { count: "exact", head: true })
+    .eq("oc_id", parsed.data.oc_id)
+    .eq("meeting_type", parsed.data.meeting_type)
+    .gte("date_time", `${year}-01-01`)
+    .lt("date_time", `${year + 1}-01-01`);
+  const reference = `${typeCode}-${year}-${(existingCount ?? 0) + 1}`;
 
   const { data, error } = await supabase
     .from("meetings")
