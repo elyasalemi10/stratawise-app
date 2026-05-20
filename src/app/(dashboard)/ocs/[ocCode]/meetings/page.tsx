@@ -1,18 +1,28 @@
-import { CalendarDays } from "lucide-react";
-import { Card, CardContent } from "@/components/ui/card";
+import { redirect } from "next/navigation";
+import { resolveOCFromCode } from "@/lib/oc-resolver";
+import { getCurrentProfile } from "@/lib/auth";
+import { listMeetings } from "@/lib/actions/meetings";
+import { MeetingsContent } from "./meetings-content";
 
-export default async function MeetingsPage() {
+export default async function MeetingsPage({
+  params,
+}: {
+  params: Promise<{ ocCode: string }>;
+}) {
+  const { ocCode } = await params;
+  const resolved = await resolveOCFromCode(ocCode);
+  if (!resolved) redirect("/dashboard");
+
+  const [profile, meetings] = await Promise.all([
+    getCurrentProfile(),
+    listMeetings(resolved.id),
+  ]);
+
   return (
-    <div className="space-y-6">
-      <Card>
-        <CardContent className="flex flex-col items-center justify-center py-16 text-center">
-          <CalendarDays className="h-12 w-12 text-muted-foreground/30" />
-          <p className="mt-4 text-base font-medium text-foreground">No meetings yet</p>
-          <p className="mt-1 text-sm text-muted-foreground max-w-sm">
-            Meeting creation, notices, agendas, and minutes will be available here soon.
-          </p>
-        </CardContent>
-      </Card>
-    </div>
+    <MeetingsContent
+      ocId={resolved.id}
+      meetings={meetings}
+      readOnly={profile?.role === "lot_owner"}
+    />
   );
 }
