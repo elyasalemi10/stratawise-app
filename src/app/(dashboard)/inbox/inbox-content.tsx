@@ -3,11 +3,12 @@
 import Image from "next/image";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import {
   Inbox,
   Check,
+  RefreshCw,
   FileText,
   Shield,
   CalendarDays,
@@ -168,6 +169,69 @@ export function InboxContent({
   const searchParams = useSearchParams();
   const [notifications, setNotifications] = useState(initial);
   const [openId, setOpenId] = useState<string | null>(null);
+  // Manual + auto refresh. `refreshing` drives the button's spinner;
+  // `lastRefreshAt` is updated after each successful refresh so the
+  // "Refreshed Xs ago" label stays honest. Auto-poll fires every 60s
+  // when the tab is visible (skipped when the user has tabbed away).
+  const [refreshing, setRefreshing] = useState(false);
+  const [lastRefreshAt, setLastRefreshAt] = useState<number>(() => Date.now());
+
+  const handleRefresh = useCallback(() => {
+    setRefreshing(true);
+    router.refresh();
+    setLastRefreshAt(Date.now());
+    // router.refresh() resolves synchronously; the server fetch happens
+    // out of band. Drop the spinner after a short delay so users see
+    // it long enough to register the click.
+    window.setTimeout(() => setRefreshing(false), 600);
+  }, [router]);
+
+  // Auto-refresh every 60s while the tab is visible. Pause when hidden
+  // so background tabs don't keep hitting the server. The visibility
+  // listener also fires an immediate refresh when the tab is re-shown
+  // (managers who come back after lunch get fresh state instantly).
+  useEffect(() => {
+    const POLL_MS = 60_000;
+    let intervalId: number | null = null;
+    function start() {
+      if (intervalId != null) return;
+      intervalId = window.setInterval(() => {
+        if (!document.hidden) {
+          router.refresh();
+          setLastRefreshAt(Date.now());
+        }
+      }, POLL_MS);
+    }
+    function stop() {
+      if (intervalId != null) {
+        window.clearInterval(intervalId);
+        intervalId = null;
+      }
+    }
+    function onVisibilityChange() {
+      if (document.hidden) {
+        stop();
+      } else {
+        // Re-show → fresh data + restart the poll.
+        router.refresh();
+        setLastRefreshAt(Date.now());
+        start();
+      }
+    }
+    start();
+    document.addEventListener("visibilitychange", onVisibilityChange);
+    return () => {
+      stop();
+      document.removeEventListener("visibilitychange", onVisibilityChange);
+    };
+  }, [router]);
+
+  // Sync local notifications with server-rendered prop after every
+  // router.refresh — without this the auto-refresh runs but the list
+  // stays stale because we never read the new prop.
+  useEffect(() => {
+    setNotifications(initial);
+  }, [initial]);
 
   // Sync the open notification with `?n=<id>`.
   const urlOpenId = searchParams.get("n");
@@ -244,22 +308,39 @@ export function InboxContent({
         )}
       >
         <CardContent className="p-0 flex flex-col min-h-0 flex-1">
-          {unreadCount > 0 && (
-            <div className="flex items-center justify-between gap-2 border-b border-border bg-muted/40 px-3 py-2 shrink-0">
-              <p className="text-xs text-muted-foreground">
-                {unreadCount} unread
-              </p>
+          <div className="flex items-center justify-between gap-2 border-b border-border bg-muted/40 px-3 py-2 shrink-0">
+            <p className="text-xs text-muted-foreground">
+              {unreadCount > 0 ? `${unreadCount} unread` : `${notifications.length} total`}
+            </p>
+            <div className="flex items-center gap-1">
+              {/* Manual refresh — checks for new inbound mail without
+                  changing read state. Auto-refresh fires every 60s in
+                  the background; this button is the manager's escape
+                  hatch when something arrives mid-call. */}
               <Button
                 variant="ghost"
                 size="sm"
-                onClick={handleMarkAllRead}
+                onClick={handleRefresh}
+                disabled={refreshing}
                 className="h-7 cursor-pointer text-xs"
+                title={`Last refreshed ${Math.max(0, Math.round((Date.now() - lastRefreshAt) / 1000))}s ago`}
               >
-                <Check className="mr-1 size-3" />
-                Mark all read
+                <RefreshCw className={`mr-1 size-3 ${refreshing ? "animate-spin" : ""}`} />
+                Refresh
               </Button>
+              {unreadCount > 0 && (
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  onClick={handleMarkAllRead}
+                  className="h-7 cursor-pointer text-xs"
+                >
+                  <Check className="mr-1 size-3" />
+                  Mark all read
+                </Button>
+              )}
             </div>
-          )}
+          </div>
           {/* Scroll-hidden list — content fills the panel and you scroll by
               wheel / touchpad / arrow keys. No visible bar (matches the
               global no-scrollbar treatment for body / dashboard <main>). */}

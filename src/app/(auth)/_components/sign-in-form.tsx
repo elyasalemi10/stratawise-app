@@ -115,14 +115,17 @@ function SignInContent() {
               type={showPassword ? "text" : "password"}
               required
               autoComplete="current-password"
-              placeholder="••••••••"
+              placeholder="Enter password"
               value={password}
               onChange={(e) => {
                 setPassword(e.target.value);
                 if (invalidCreds) setInvalidCreds(false);
               }}
               aria-invalid={invalidCreds || undefined}
-              className="h-11 pr-10"
+              // text-base bumps the typed-dot character to the same size
+              // as the bullet you'd see in macOS password fields. Default
+              // text-sm gave tiny dots that read as "unfocused" to users.
+              className="h-11 pr-10 text-base"
             />
             <button
               type="button"

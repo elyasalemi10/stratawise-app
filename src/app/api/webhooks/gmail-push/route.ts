@@ -6,6 +6,7 @@ import {
   listHistorySince,
 } from "@/lib/google/gmail-client";
 import { uploadObject } from "@/lib/storage/r2";
+import { applyAutoLinkToCommLog } from "@/lib/email/auto-link";
 
 // Gmail Push notification webhook.
 //
@@ -303,6 +304,23 @@ async function ingestInboundMessage(
   // predictable). Skip anything over 25MB to bound storage cost; the
   // user can still see it in Gmail via the deep link.
   const commLogId = (logRow as { id: string }).id;
+
+  // Auto-link by sender email when the thread-match cascade above
+  // returned no match. Single hit on the manager's portfolio → link
+  // silently; the inbox UI looks the same as a manager-linked row. The
+  // audit_log entry records it as auto_link_by_sender_email.
+  if (!outboundOcId && msg.from) {
+    try {
+      await applyAutoLinkToCommLog(supabase, {
+        communicationLogId: commLogId,
+        senderEmail: msg.from,
+        managerProfileId,
+        sourceChannel: "gmail",
+      });
+    } catch (err) {
+      console.warn("gmail-push: auto-link by sender failed (non-fatal)", err);
+    }
+  }
   console.log(
     `gmail-push: msg ${msg.id} carries ${msg.attachments.length} attachment(s)`,
   );

@@ -122,12 +122,15 @@ function VerifyEmailContent() {
             rel="noopener noreferrer"
             className="inline-flex h-9 items-center gap-2 rounded-md border border-border bg-card px-4 text-sm font-medium text-foreground transition-colors hover:bg-muted"
           >
+            {/* Forcing the gmail.webp into a 16×16 square stretched the
+                envelope shape. Keep the natural aspect ratio by setting
+                height only and letting width auto-size via Tailwind. */}
             <Image
               src="/logos/gmail.webp"
               alt=""
-              width={16}
+              width={22}
               height={16}
-              className="size-4"
+              className="h-4 w-auto"
             />
             Open in Gmail
           </a>

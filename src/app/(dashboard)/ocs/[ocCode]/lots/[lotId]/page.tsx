@@ -61,17 +61,24 @@ export default async function LotDetailPage({
     );
   }
 
-  // Get financial data + documents
-  const [leviesResult, paymentsResult, documentsResult] = await Promise.all([
+  // Pull balance from the materialised lot_ledger_state row. That row is
+  // the single source of truth — opening balances, levies, payments,
+  // interest accrual, voids, and adjustments all flow into it via the
+  // lot_ledger_entries trigger pipeline. The previous code summed
+  // levy_notices and payments directly, which missed opening balances
+  // (and double-counted nothing — payments still showed up but the seed
+  // entries didn't).
+  //
+  // Sign convention: lot_ledger_state stores `total_balance = credits −
+  // debits`. The UI convention is the inverse (positive = owes), so we
+  // flip the sign here once and the rest of the page consumes the
+  // familiar "+owes / −credit" semantic.
+  const [stateResult, documentsResult] = await Promise.all([
     supabase
-      .from("levy_notices")
-      .select("amount")
+      .from("lot_ledger_state")
+      .select("total_balance")
       .eq("lot_id", lotId)
-      .in("status", ["issued", "partially_paid", "overdue"]),
-    supabase
-      .from("payments")
-      .select("amount")
-      .eq("lot_id", lotId),
+      .maybeSingle(),
     supabase
       .from("documents")
       .select("*")
@@ -80,9 +87,13 @@ export default async function LotDetailPage({
       .order("created_at", { ascending: false }),
   ]);
 
-  const totalLevied = leviesResult.data?.reduce((sum, l) => sum + Number(l.amount), 0) ?? 0;
-  const totalPaid = paymentsResult.data?.reduce((sum, p) => sum + Number(p.amount), 0) ?? 0;
-  const balance = totalLevied - totalPaid;
+  // No state row yet (e.g. brand-new lot, never had a single entry) →
+  // treat as zero. The recompute trigger seeds the row on the first
+  // entry insertion.
+  const ledgerTotal = stateResult.data
+    ? Number((stateResult.data as { total_balance: number | string }).total_balance) || 0
+    : 0;
+  const balance = -ledgerTotal;
 
   const documents = (documentsResult.data as DocumentRecord[]) ?? [];
 

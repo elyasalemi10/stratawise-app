@@ -270,6 +270,11 @@ export async function getOnboardingRedirect(): Promise<string | null> {
   // role-specific onboarding. Once flipped, never redirected back here.
   if (!profile.email_verified) return "/verify-email";
 
+  // Super admins skip the management-company onboarding entirely — they
+  // belong to the StrataWise platform team, not a firm. The /admin
+  // layout owns the MFA-enrol / MFA-challenge flow from here.
+  if (profile.role === "super_admin") return "/admin";
+
   if (profile.role === "lot_owner") {
     const { count } = await admin
       .from("user_consents")

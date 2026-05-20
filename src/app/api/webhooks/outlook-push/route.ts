@@ -6,6 +6,7 @@ import {
   getOutlookAttachmentBytes,
 } from "@/lib/outlook/graph-client";
 import { uploadObject } from "@/lib/storage/r2";
+import { applyAutoLinkToCommLog } from "@/lib/email/auto-link";
 
 // Microsoft Graph change-notification webhook.
 //
@@ -191,6 +192,21 @@ export async function POST(request: NextRequest) {
       continue;
     }
     const commLogId = (logRow as { id: string }).id;
+
+    // Auto-link by sender email when thread-match returned no result.
+    // Same shape as gmail-push; see lib/email/auto-link.ts for the rules.
+    if (!outboundOcId && msg.from && sub.manager_profile_id) {
+      try {
+        await applyAutoLinkToCommLog(supabase, {
+          communicationLogId: commLogId,
+          senderEmail: msg.from,
+          managerProfileId: sub.manager_profile_id,
+          sourceChannel: "outlook",
+        });
+      } catch (err) {
+        console.warn("outlook-push: auto-link by sender failed (non-fatal)", err);
+      }
+    }
 
     // Attachments — Graph: list metadata, then download bytes per row.
     if (msg.hasAttachments) {

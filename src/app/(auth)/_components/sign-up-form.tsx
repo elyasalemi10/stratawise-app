@@ -148,14 +148,17 @@ function SignUpContent() {
               id="password"
               type={showPassword ? "text" : "password"}
               autoComplete="new-password"
-              placeholder="At least 8 characters"
+              placeholder="Enter password"
               value={password}
               onChange={(e) => {
                 setPassword(e.target.value);
                 if (invalid.password) setInvalid((p) => ({ ...p, password: false }));
               }}
               aria-invalid={invalid.password || undefined}
-              className="h-11 pr-10"
+              // text-base bumps the typed-dot character so it reads as a
+              // bullet rather than a tiny pinhead. Length hint moves to
+              // helper text below the input.
+              className="h-11 pr-10 text-base"
             />
             <button
               type="button"

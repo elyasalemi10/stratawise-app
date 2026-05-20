@@ -2,7 +2,7 @@
 
 import { useState, useRef, useCallback, useEffect } from "react";
 import {
-  FileText, Upload, Download, Pencil, Trash2, X,
+  FileText, Upload, Download, Pencil, Trash2, X, ExternalLink,
   FileSpreadsheet, FileImage, File, Loader2,
 } from "lucide-react";
 import { toast } from "sonner";
@@ -449,6 +449,15 @@ export function DocumentManager({ ocId, lotId, initialDocuments, readOnly }: Doc
 
                   {/* Actions */}
                   <div className="flex items-center gap-1 mt-2 opacity-0 group-hover:opacity-100 transition-opacity" onClick={(e) => e.stopPropagation()}>
+                    <a
+                      href={getDocViewUrl(doc)}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="flex h-7 w-7 items-center justify-center rounded-md text-muted-foreground hover:bg-muted hover:text-foreground"
+                      title="Open in new tab"
+                    >
+                      <ExternalLink className="h-3.5 w-3.5" />
+                    </a>
                     <button
                       type="button"
                       onClick={() => downloadDocument(doc)}
@@ -527,6 +536,17 @@ export function DocumentManager({ ocId, lotId, initialDocuments, readOnly }: Doc
           </div>
           <DialogFooter>
             <Button variant="ghost" onClick={() => setPreviewDoc(null)}>Close</Button>
+            {previewDoc && (
+              <Button
+                variant="secondary"
+                onClick={() =>
+                  window.open(getDocViewUrl(previewDoc), "_blank", "noopener,noreferrer")
+                }
+              >
+                <ExternalLink className="mr-2 h-3.5 w-3.5" />
+                Open in new tab
+              </Button>
+            )}
             <Button onClick={() => previewDoc && downloadDocument(previewDoc)}>
               <Download className="mr-2 h-3.5 w-3.5" />
               Download

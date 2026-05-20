@@ -226,6 +226,13 @@ export default async function DashboardPage() {
 
     return (
       <div className="space-y-6">
+        {/* Lot-owner welcome confetti — fires once after onboarding when
+            ?welcome=1 lands on this page. Same component the manager
+            dashboard uses; auto-strips the query param afterwards. */}
+        <Suspense fallback={null}>
+          <WelcomeConfetti />
+        </Suspense>
+
         {/* KPIs */}
         <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
           <KPICard

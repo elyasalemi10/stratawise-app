@@ -43,6 +43,12 @@ interface Props {
   lotId: string;
   lotNumber: number;
   status: Status;
+  // Owner contact prefill so the manager can invite from this popover
+  // even when no `invitations` row exists yet (the owner was created via
+  // the lot edit form, which writes lot_owners directly).
+  ownerName?: string | null;
+  ownerEmail?: string | null;
+  ownerPhone?: string | null;
 }
 
 interface Invitation {
@@ -110,29 +116,60 @@ function rowLabelFor(status: Invitation["status"]): string {
   }
 }
 
-export function InviteStatusPopover({ ocId, lotId, lotNumber, status }: Props) {
+export function InviteStatusPopover({
+  ocId,
+  lotId,
+  lotNumber,
+  status,
+  ownerName,
+  ownerEmail,
+  ownerPhone,
+}: Props) {
   const ocCode = useOCCode();
   const router = useRouter();
   const [open, setOpen] = useState(false);
   const [history, setHistory] = useState<Invitation[] | null>(null);
 
+  // Kick off the history fetch in the background as soon as the
+  // component mounts. The user might never open the popover, but if
+  // they do — by the time they click, the data is already cached. We
+  // intentionally don't reset on close so a re-open is instant.
   useEffect(() => {
-    if (!open) return;
     let cancelled = false;
-    getLotInvitationHistory(ocId, lotId).then((rows) => {
-      if (!cancelled) setHistory(rows);
-    });
+    getLotInvitationHistory(ocId, lotId)
+      .then((rows) => {
+        if (!cancelled) setHistory(rows);
+      })
+      .catch(() => {});
     return () => {
       cancelled = true;
-      setHistory(null);
     };
-  }, [open, ocId, lotId]);
+  }, [ocId, lotId]);
 
   const loading = open && history === null;
   const historyRows = history ?? [];
 
   const latest = historyRows[0] ?? null;
   const isAccepted = status === "accepted";
+
+  // The InviteForm needs at least name + email to send. Prefer the most
+  // recent invitation row (carries name/email/phone), then fall back to
+  // the owner contact passed from the lots table for the case where the
+  // owner exists in lot_owners but no invitation has been sent yet.
+  const inviteFormInitial =
+    latest?.email != null
+      ? {
+          name: latest.name ?? ownerName ?? "",
+          email: latest.email,
+          phone: latest.phone ?? ownerPhone ?? "",
+        }
+      : ownerEmail
+        ? {
+            name: ownerName ?? "",
+            email: ownerEmail,
+            phone: ownerPhone ?? "",
+          }
+        : null;
 
   return (
     <>
@@ -215,17 +252,15 @@ export function InviteStatusPopover({ ocId, lotId, lotNumber, status }: Props) {
               )}
             </div>
 
-            {/* Inline invite form — only when we have an email to invite. */}
-            {!isAccepted && latest?.email && (
+            {/* Inline invite form — falls back to lot_owner contact when
+                no invitation row exists yet (owner was created via the
+                lot edit form, not via the invite flow). */}
+            {!isAccepted && inviteFormInitial && (
               <InviteForm
                 ocId={ocId}
                 lotId={lotId}
                 lotNumber={lotNumber}
-                initial={{
-                  name: latest.name ?? "",
-                  email: latest.email,
-                  phone: latest.phone ?? "",
-                }}
+                initial={inviteFormInitial}
                 onSent={() => {
                   setOpen(false);
                   router.refresh();
@@ -233,14 +268,17 @@ export function InviteStatusPopover({ ocId, lotId, lotNumber, status }: Props) {
               />
             )}
 
-            {/* Add owner / jump to Owner tab. Always available so the
-                manager can hop into the full Owner UI from one click. */}
+            {/* Jump to Owner tab — when there's no email yet OR the
+                manager wants to edit the full owner record. Label
+                differentiates the two cases so it doesn't read as
+                "you can't invite from here" when an owner already
+                exists. */}
             <Link
               href={`/ocs/${ocCode}/lots/${lotId}?tab=owner`}
               className="inline-flex items-center text-sm font-medium text-blue-600 underline-offset-4 hover:underline"
               onClick={() => setOpen(false)}
             >
-              Add owner / open Owner tab
+              {inviteFormInitial ? "Edit owner details" : "Add owner"}
               <ExternalLink className="ml-1 h-3.5 w-3.5" />
             </Link>
           </div>

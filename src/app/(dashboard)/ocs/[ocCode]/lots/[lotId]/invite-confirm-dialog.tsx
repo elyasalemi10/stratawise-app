@@ -94,21 +94,26 @@ export function InviteConfirmDialog({
             <p className="text-xs uppercase tracking-wide text-cool-muted-foreground">
               Sending to
             </p>
-            <p className="mt-0.5 inline-flex items-center gap-2 font-medium text-foreground">
-              <Mail className="h-3.5 w-3.5 text-muted-foreground" />
-              {ownerEmail ? (
-                <span className="break-all">{ownerEmail}</span>
-              ) : (
-                <span className="italic text-muted-foreground">no email on file</span>
-              )}
-            </p>
-            <button
-              type="button"
-              onClick={() => { onClose(); onEditDetails(); }}
-              className="mt-1 text-xs font-medium text-[color:var(--brand-gold)] hover:underline"
-            >
-              Edit owner details
-            </button>
+            {/* Email + edit link sit on the same row — the link to the
+                right of the address rather than dropped underneath it.
+                On narrow widths they wrap rather than overflow. */}
+            <div className="mt-0.5 flex flex-wrap items-center gap-x-3 gap-y-1">
+              <p className="inline-flex items-center gap-2 font-medium text-foreground">
+                <Mail className="h-3.5 w-3.5 text-muted-foreground" />
+                {ownerEmail ? (
+                  <span className="break-all">{ownerEmail}</span>
+                ) : (
+                  <span className="italic text-muted-foreground">no email on file</span>
+                )}
+              </p>
+              <button
+                type="button"
+                onClick={() => { onClose(); onEditDetails(); }}
+                className="text-xs font-medium text-[color:var(--brand-gold)] hover:underline whitespace-nowrap"
+              >
+                Edit owner details
+              </button>
+            </div>
           </div>
         </div>
         <DialogFooter>

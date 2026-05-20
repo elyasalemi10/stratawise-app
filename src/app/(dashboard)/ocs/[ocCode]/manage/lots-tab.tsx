@@ -228,6 +228,9 @@ export function LotsTab({ lots, ocId, isEditing = false, onLotUpdated, isLotOwne
                         lotId={lot.id}
                         lotNumber={lot.lot_number}
                         status={getInviteStatusForLot(lot.id)}
+                        ownerName={lot.owner_display_name ?? null}
+                        ownerEmail={lot.owner_contact_email ?? null}
+                        ownerPhone={lot.owner_contact_phone ?? null}
                       />
                     </TableCell>
                   )}

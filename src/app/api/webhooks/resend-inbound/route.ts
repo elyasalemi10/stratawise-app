@@ -3,6 +3,7 @@ import { Webhook } from "svix";
 import { Resend } from "resend";
 import { createServerClient } from "@/lib/supabase";
 import { uploadObject } from "@/lib/storage/r2";
+import { applyAutoLinkToCommLog } from "@/lib/email/auto-link";
 
 // Same cap as the gmail/outlook handlers — anything bigger gets skipped
 // (R2 single-object limit is 5 GB but we don't want a single inbound
@@ -364,6 +365,22 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: "log_insert_failed" }, { status: 500 });
   }
   const commLogId = logRow.id as string;
+
+  // Auto-link by sender email when the thread-match cascade above
+  // returned nothing. Single hit on the manager's portfolio → link
+  // silently with an audit_log entry; same shape as gmail / outlook.
+  if (!outboundOcId && sender) {
+    try {
+      await applyAutoLinkToCommLog(supabase, {
+        communicationLogId: commLogId,
+        senderEmail: sender,
+        managerProfileId,
+        sourceChannel: "resend",
+      });
+    } catch (err) {
+      console.warn("resend-inbound: auto-link by sender failed (non-fatal)", err);
+    }
+  }
 
   // Persist attachments. For each attachment metadata entry from the
   // receiving API, fetch a short-lived download URL via the attachments

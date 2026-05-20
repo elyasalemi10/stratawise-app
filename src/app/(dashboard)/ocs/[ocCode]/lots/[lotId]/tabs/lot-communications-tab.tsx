@@ -793,15 +793,18 @@ function SendEmailDrawer({
           : { ok: false as const, error: res.error };
       }}
     >
-      <div className="rounded-md border border-border bg-cool-muted px-3 py-2 text-xs text-cool-muted-foreground">
-        <p>
-          Sending from{" "}
-          <span className="font-medium text-foreground">
-            {senderAddress ?? "your StrataWise email address"}
-          </span>
-          .
+      <div className="space-y-1.5">
+        <Label className="text-xs uppercase tracking-wide text-muted-foreground">
+          From
+        </Label>
+        {/* Single-identity render — the manager's outbound is routed
+            via their firm's configured provider (Gmail / Outlook /
+            StrataWise fallback). When we add a per-send provider
+            picker, swap this static line for a <Select> over the
+            available identities. */}
+        <p className="text-sm font-medium text-foreground break-all">
+          {senderAddress ?? "your StrataWise email address"}
         </p>
-        <p className="mt-1">Replies come back to your inbox.</p>
       </div>
 
       <div className="space-y-1.5">
