@@ -90,6 +90,7 @@ function SignInContent() {
             autoComplete="email"
             placeholder="Enter your email"
             value={email}
+            disabled={pending}
             onChange={(e) => {
               setEmail(e.target.value);
               if (invalidCreds) setInvalidCreds(false);
@@ -117,6 +118,7 @@ function SignInContent() {
               autoComplete="current-password"
               placeholder="Enter password"
               value={password}
+              disabled={pending}
               onChange={(e) => {
                 setPassword(e.target.value);
                 if (invalidCreds) setInvalidCreds(false);

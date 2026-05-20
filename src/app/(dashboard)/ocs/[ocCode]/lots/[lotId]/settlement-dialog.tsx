@@ -693,8 +693,10 @@ function UploadDropzone({
 // than rectangular skeletons (which suggest "structure is coming").
 
 function ParsingSkeleton({ message = "Reading the settlement document…" }: { message?: string }) {
+  // h-full so the spinner sits in the vertical centre of the drawer body
+  // (the parent content area is flex-1), not pinned near the top.
   return (
-    <div className="flex flex-col items-center justify-center gap-3 py-10 text-center">
+    <div className="flex h-full min-h-[50vh] flex-col items-center justify-center gap-3 text-center">
       <Loader2 className="h-8 w-8 animate-spin text-primary" />
       <p className="text-sm font-medium text-foreground">{message}</p>
       <p className="text-xs text-muted-foreground">

@@ -235,7 +235,7 @@ export function InviteStatusPopover({
                   className="inline-flex items-center text-sm font-medium text-blue-600 underline-offset-4 hover:underline"
                   onClick={() => setOpen(false)}
                 >
-                  Add owner
+                  Add email
                   <ExternalLink className="ml-1 h-3.5 w-3.5" />
                 </Link>
               </div>

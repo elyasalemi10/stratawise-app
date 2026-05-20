@@ -161,6 +161,7 @@ function SignUpContent() {
             autoComplete="email"
             placeholder="Enter your email"
             value={email}
+            disabled={pending}
             onChange={(e) => {
               setEmail(e.target.value);
               if (invalid.email) setInvalid((p) => ({ ...p, email: false }));
@@ -181,6 +182,7 @@ function SignUpContent() {
               autoComplete="new-password"
               placeholder="Enter password"
               value={password}
+              disabled={pending}
               onChange={(e) => {
                 setPassword(e.target.value);
                 if (invalid.password) setInvalid((p) => ({ ...p, password: false }));

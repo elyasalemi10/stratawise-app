@@ -39,16 +39,21 @@ export async function createMeeting(
   await requireOCAccess(parsed.data.oc_id);
   const supabase = createServerClient();
 
-  // Operational reference (SW-MTG-YYYY-NNNNNN); oc_id arg ignored for MTG.
-  const { data: refData } = await supabase.rpc("next_reference_number", {
-    p_prefix: "MTG",
-  });
+  // Per-OC, human-readable reference scoped to the OC's short code rather
+  // than a global SW- sequence: "{SHORTCODE}-MTG-{n}" (e.g. "G2NC4ZL8-MTG-3").
+  // n is this OC's own meeting count + 1; globally unique because short_code is.
+  const [{ data: ocRow }, { count: existingCount }] = await Promise.all([
+    supabase.from("owners_corporations").select("short_code").eq("id", parsed.data.oc_id).single(),
+    supabase.from("meetings").select("id", { count: "exact", head: true }).eq("oc_id", parsed.data.oc_id),
+  ]);
+  const shortCode = (ocRow as { short_code?: string } | null)?.short_code ?? "OC";
+  const reference = `${shortCode}-MTG-${(existingCount ?? 0) + 1}`;
 
   const { data, error } = await supabase
     .from("meetings")
     .insert({
       oc_id: parsed.data.oc_id,
-      reference_number: (refData as string | null) ?? null,
+      reference_number: reference,
       meeting_type: parsed.data.meeting_type,
       title: parsed.data.title,
       date_time: parsed.data.date_time,

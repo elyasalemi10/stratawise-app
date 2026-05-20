@@ -110,8 +110,9 @@ export function BulkInviteDialog({ open, onClose, ocId, lots, inviteStatusMap }:
 
         {eligible.length === 0 ? (
           <p className="rounded-md border border-border bg-card p-4 text-sm text-muted-foreground">
-            No owners with an email on file are waiting to be invited.
-            {alreadyAcceptedCount > 0 && ` (${alreadyAcceptedCount} already accepted.)`}
+            {alreadyAcceptedCount > 0
+              ? `Every owner with an email on file has already accepted. (${alreadyAcceptedCount} accepted.)`
+              : "None of these owners have an email on file yet — add an email to a lot's owner to invite them."}
           </p>
         ) : (
           <>
@@ -129,11 +130,13 @@ export function BulkInviteDialog({ open, onClose, ocId, lots, inviteStatusMap }:
                 {checkedCount} of {eligible.length} selected
               </span>
             </div>
-            <div className="max-h-72 space-y-1 overflow-y-auto">
+            {/* Fixed height of ~5.5 rows so the list visibly clips its last
+                row — a cue that it scrolls when there are more owners. */}
+            <div className="max-h-[308px] space-y-1 overflow-y-auto rounded-md border border-border bg-card p-1">
               {eligible.map((lot) => (
                 <div
                   key={lot.id}
-                  className="flex items-start gap-3 rounded-md px-1 py-2 hover:bg-muted/50"
+                  className="flex items-start gap-3 rounded-md px-2 py-2 hover:bg-muted/50"
                 >
                   <Checkbox
                     checked={checked.has(lot.id)}
