@@ -80,7 +80,7 @@ interface LotDetailContentProps {
   initialSenderEmailAddress?: string | null;
   initialSmsSenderId?: string | null;
   /** All lots in the OC — lets the settlement drawer re-target the lot. */
-  ocLots?: { id: string; lotNumber: number }[];
+  ocLots?: { id: string; lotNumber: number; unitNumber?: string | number | null }[];
 }
 
 const TABS = [

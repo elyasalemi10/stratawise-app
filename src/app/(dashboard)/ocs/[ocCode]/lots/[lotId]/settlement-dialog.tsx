@@ -13,9 +13,6 @@ import {
   Sheet, SheetContent, SheetHeader, SheetTitle,
 } from "@/components/ui/sheet";
 import {
-  Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter,
-} from "@/components/ui/dialog";
-import {
   Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
 } from "@/components/ui/select";
 import { DatePicker } from "@/components/shared/date-picker";
@@ -33,6 +30,7 @@ import {
 export interface SettlementLotOption {
   id: string;
   lotNumber: number;
+  unitNumber?: string | number | null;
 }
 
 interface PropsLotMode {
@@ -282,6 +280,8 @@ export function SettlementDialog(props: Props) {
     lotOptions.find((l) => l.id === targetLotId)?.lotNumber ??
     (targetLotId === knownLotId ? knownLotNumber : null) ??
     (targetLotId === review?.matchedLot?.id ? review?.matchedLot?.lotNumber ?? null : null);
+  const targetLotUnit =
+    lotOptions.find((l) => l.id === targetLotId)?.unitNumber ?? null;
 
   // Local validation that runs before either the mismatch popup OR the
   // direct submit fires. Returns true if the form is ready to send.
@@ -335,9 +335,9 @@ export function SettlementDialog(props: Props) {
       return;
     }
 
-    toast.success("Settlement recorded", {
-      description: `New owner ${name.trim()} is now pending acceptance${targetLotNumber != null ? ` for Lot ${targetLotNumber}` : ""}.`,
-    });
+    toast.success(
+      `Lot ${targetLotNumber}${targetLotUnit ? ` Unit ${targetLotUnit}` : ""} successfully settled`,
+    );
     reset();
     setMismatchStep(null);
     onClose();
@@ -456,29 +456,41 @@ export function SettlementDialog(props: Props) {
 
         {stage === "parsing" && <ParsingSkeleton />}
 
-        {/* Which lot is this settlement for? Shown on the review stage so the
-            manager always sees the target lot — and, when a lot list is
-            provided, can re-target it (essential from the OC-wide /lots entry
-            point where no specific lot is in context). */}
-        {stage === "review" && lotOptions.length > 0 && (
+        {/* Which lot is this settlement for? On the per-lot drawer (knownLotId)
+            the lot is fixed, so show an uneditable "Settling Lot X · Unit Y".
+            From the OC-wide /lots entry there's no lot in context, so show the
+            dropdown to choose one. */}
+        {stage === "review" && !mismatchStep && knownLotId && (
+          <div className="rounded-md border border-border bg-muted/30 p-3">
+            <p className="text-sm text-foreground">
+              Settling <span className="font-medium">Lot {targetLotNumber}</span>
+              {targetLotUnit ? <> · <span className="font-medium">Unit {targetLotUnit}</span></> : null}
+            </p>
+          </div>
+        )}
+        {stage === "review" && !mismatchStep && !knownLotId && lotOptions.length > 0 && (
           <div className="rounded-md border border-border bg-muted/30 p-3 space-y-1.5">
             <Label className="text-xs text-muted-foreground">Recording settlement for</Label>
             <Select value={targetLotId ?? ""} onValueChange={(v) => setSelectedLotId(v || null)}>
               <SelectTrigger className="w-full">
                 <SelectValue placeholder="Choose a lot">
-                  {targetLotNumber != null ? `Lot ${targetLotNumber}` : "Choose a lot"}
+                  {targetLotNumber != null
+                    ? `Lot ${targetLotNumber}${targetLotUnit ? ` · Unit ${targetLotUnit}` : ""}`
+                    : "Choose a lot"}
                 </SelectValue>
               </SelectTrigger>
               <SelectContent>
                 {lotOptions.map((l) => (
-                  <SelectItem key={l.id} value={l.id}>Lot {l.lotNumber}</SelectItem>
+                  <SelectItem key={l.id} value={l.id}>
+                    Lot {l.lotNumber}{l.unitNumber ? ` · Unit ${l.unitNumber}` : ""}
+                  </SelectItem>
                 ))}
               </SelectContent>
             </Select>
           </div>
         )}
 
-        {stage === "review" && entryMode === "pdf" && review && targetLotNumber != null && (
+        {stage === "review" && !mismatchStep && entryMode === "pdf" && review && targetLotNumber != null && (
           <ReviewForm
             review={review}
             lotNumber={targetLotNumber}
@@ -496,7 +508,7 @@ export function SettlementDialog(props: Props) {
           />
         )}
 
-        {stage === "review" && entryMode === "manual" && (
+        {stage === "review" && !mismatchStep && entryMode === "manual" && (
           <ManualReviewForm
             lotNumber={knownLotNumber}
             lotAddress={knownLotAddress}
@@ -513,12 +525,81 @@ export function SettlementDialog(props: Props) {
           />
         )}
 
+        {/* Discrepancy confirmation — INLINE in the drawer (not a popup).
+            Shown after parsing when the plan / lot don't match; the form
+            stays hidden until the manager resolves it. */}
+        {stage === "review" && mismatchStep === "plan" && review && (
+          <div className="space-y-4">
+            <div className="flex items-start gap-2.5 rounded-md border border-amber-200 bg-amber-50 p-4">
+              <AlertTriangle className="mt-0.5 h-5 w-5 shrink-0 text-amber-600" />
+              <div>
+                <p className="text-sm font-semibold text-foreground">This document is for a different plan</p>
+                <p className="mt-1 text-sm text-muted-foreground">
+                  The document references plan{" "}
+                  <span className="font-medium text-foreground">{review.parsed.planNumber ?? "—"}</span>,
+                  but this OC is plan{" "}
+                  <span className="font-medium text-foreground">{review.expected.planNumber ?? "—"}</span>.
+                  Are you sure this is the right document?
+                </p>
+              </div>
+            </div>
+            <div className="flex items-center justify-end gap-2">
+              <Button type="button" variant="secondary" size="sm" onClick={handleClose}>
+                Cancel — wrong document
+              </Button>
+              <Button
+                type="button"
+                size="sm"
+                onClick={() => {
+                  if (review.matches.lotNumber === false) {
+                    setMismatchStep("lot");
+                  } else {
+                    setMismatchStep(null);
+                    applyPrefill();
+                  }
+                }}
+              >
+                I&apos;m sure — continue
+              </Button>
+            </div>
+          </div>
+        )}
+
+        {stage === "review" && mismatchStep === "lot" && review && (
+          <div className="space-y-4">
+            <div className="flex items-start gap-2.5 rounded-md border border-amber-200 bg-amber-50 p-4">
+              <AlertTriangle className="mt-0.5 h-5 w-5 shrink-0 text-amber-600" />
+              <div>
+                <p className="text-sm font-semibold text-foreground">This document is for a different lot</p>
+                <p className="mt-1 text-sm text-muted-foreground">
+                  The document references{" "}
+                  <span className="font-medium text-foreground">Lot {review.parsed.lotNumber ?? "—"}</span>,
+                  but you&apos;re applying it to{" "}
+                  <span className="font-medium text-foreground">Lot {targetLotNumber ?? "—"}</span>.
+                  What would you like to do?
+                </p>
+              </div>
+            </div>
+            <div className="flex flex-col gap-2 sm:flex-row sm:justify-end">
+              <Button type="button" variant="secondary" size="sm" onClick={handleJumpToParsedLot} disabled={jumpingToLot}>
+                {jumpingToLot && <Loader2 className="size-3.5 animate-spin" />}
+                Go to Lot {review.parsed.lotNumber}
+              </Button>
+              <Button type="button" size="sm" onClick={() => { setMismatchStep(null); applyPrefill(); }}>
+                I&apos;m sure — apply to Lot {targetLotNumber}
+              </Button>
+            </div>
+          </div>
+        )}
+
         {stage === "submitting" && <ParsingSkeleton message="Applying settlement..." />}
 
         </div>
 
-        {/* Sticky footer with Confirm action when on the review stage. */}
-        {stage === "review" && (
+        {/* Sticky footer — only on the review stage and only once any
+            discrepancy has been resolved (the inline panel owns its own
+            actions while a mismatch is pending). */}
+        {stage === "review" && !mismatchStep && (
           <div className="border-t border-border bg-card px-5 py-3 flex items-center justify-end gap-2">
             <Button
               type="button"
@@ -534,93 +615,6 @@ export function SettlementDialog(props: Props) {
             </Button>
           </div>
         )}
-
-        <Dialog
-          open={mismatchStep !== null}
-          onOpenChange={(o) => { if (!o) setMismatchStep(null); }}
-        >
-          <DialogContent className="sm:max-w-md">
-            {mismatchStep === "plan" && review && (
-              <>
-                <DialogHeader>
-                  <DialogTitle>This document is for a different plan</DialogTitle>
-                  <DialogDescription>
-                    The document references plan{" "}
-                    <span className="font-medium text-foreground">
-                      {review.parsed.planNumber ?? "—"}
-                    </span>
-                    , but this OC is plan{" "}
-                    <span className="font-medium text-foreground">
-                      {review.expected.planNumber ?? "—"}
-                    </span>
-                    . Are you sure this is the right document?
-                  </DialogDescription>
-                </DialogHeader>
-                <DialogFooter>
-                  <Button
-                    type="button"
-                    variant="secondary"
-                    onClick={handleClose}
-                  >
-                    Cancel — wrong document
-                  </Button>
-                  <Button
-                    type="button"
-                    onClick={() => {
-                      // Chain to the lot mismatch step if that's ALSO
-                      // wrong; otherwise dismiss AND prefill the form now
-                      // that the manager has confirmed the document is right
-                      // (we do NOT submit — they still review + confirm).
-                      if (review.matches.lotNumber === false) {
-                        setMismatchStep("lot");
-                      } else {
-                        setMismatchStep(null);
-                        applyPrefill();
-                      }
-                    }}
-                  >
-                    I&apos;m sure — continue
-                  </Button>
-                </DialogFooter>
-              </>
-            )}
-            {mismatchStep === "lot" && review && (
-              <>
-                <DialogHeader>
-                  <DialogTitle>This document is for a different lot</DialogTitle>
-                  <DialogDescription>
-                    The document references{" "}
-                    <span className="font-medium text-foreground">
-                      Lot {review.parsed.lotNumber ?? "—"}
-                    </span>
-                    , but you&apos;re applying it to{" "}
-                    <span className="font-medium text-foreground">
-                      Lot {targetLotNumber ?? "—"}
-                    </span>
-                    . What would you like to do?
-                  </DialogDescription>
-                </DialogHeader>
-                <DialogFooter className="flex-col sm:flex-row sm:justify-end gap-2">
-                  <Button
-                    type="button"
-                    variant="secondary"
-                    onClick={handleJumpToParsedLot}
-                    disabled={jumpingToLot}
-                  >
-                    {jumpingToLot && <Loader2 className="size-3.5 animate-spin" />}
-                    Go to Lot {review.parsed.lotNumber}
-                  </Button>
-                  <Button
-                    type="button"
-                    onClick={() => { setMismatchStep(null); applyPrefill(); }}
-                  >
-                    I&apos;m sure — apply to Lot {targetLotNumber}
-                  </Button>
-                </DialogFooter>
-              </>
-            )}
-          </DialogContent>
-        </Dialog>
       </SheetContent>
     </Sheet>
   );

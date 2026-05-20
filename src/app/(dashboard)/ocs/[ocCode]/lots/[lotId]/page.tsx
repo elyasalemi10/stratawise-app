@@ -88,13 +88,13 @@ export default async function LotDetailPage({
     // Sibling lots for the settlement drawer's "which lot?" selector.
     supabase
       .from("lots")
-      .select("id, lot_number")
+      .select("id, lot_number, unit_number")
       .eq("oc_id", ocId)
       .order("lot_number", { ascending: true }),
   ]);
 
-  const ocLots = ((ocLotsResult.data as { id: string; lot_number: number }[] | null) ?? []).map(
-    (l) => ({ id: l.id, lotNumber: Number(l.lot_number) }),
+  const ocLots = ((ocLotsResult.data as { id: string; lot_number: number; unit_number: string | null }[] | null) ?? []).map(
+    (l) => ({ id: l.id, lotNumber: Number(l.lot_number), unitNumber: l.unit_number }),
   );
 
   // No state row yet (e.g. brand-new lot, never had a single entry) →
