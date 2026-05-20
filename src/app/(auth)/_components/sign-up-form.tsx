@@ -78,9 +78,10 @@ function SignUpContent() {
       return;
     }
 
-    // Keep pending true through the hard navigation so the button doesn't
-    // un-grey before /verify-email loads.
-    window.location.href = `/verify-email?next=${encodeURIComponent(nextPath)}`;
+    // Soft client navigation (not window.location) so the shared auth layout
+    // doesn't repaint — that full reload briefly showed just the StrataWise
+    // icon between pages. Spinner stays on through the transition.
+    router.push(`/verify-email?next=${encodeURIComponent(nextPath)}`);
   }
 
   return (
@@ -230,9 +231,6 @@ function SignUpContent() {
         <Link href="/legal/privacy" className="underline">Privacy Policy</Link>.
       </p>
 
-      {/* Keep router referenced to satisfy lint when we wire it later (e.g.
-          deep-link to /verify-email with a router.replace transition). */}
-      <input type="hidden" data-router-mounted={typeof router !== "undefined" ? "1" : "0"} />
     </div>
   );
 }

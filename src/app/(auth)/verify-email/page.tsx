@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState, useRef, Suspense } from "react";
-import { useSearchParams } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 import { toast } from "sonner";
 import { Loader2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
@@ -19,6 +19,7 @@ const SENDER_DOMAIN =
 const GMAIL_SEARCH_URL = `https://mail.google.com/mail/u/0/#search/from%3A%40${encodeURIComponent(SENDER_DOMAIN)}`;
 
 function VerifyEmailContent() {
+  const router = useRouter();
   const searchParams = useSearchParams();
   const next = searchParams.get("next") ?? "/onboarding";
   const [code, setCode] = useState("");
@@ -71,10 +72,11 @@ function VerifyEmailContent() {
       return;
     }
 
-    // Keep button greyed through navigation — page unmount clears state.
+    // Soft client navigation so the shared auth layout doesn't repaint
+    // (avoids the brief icon-only flash). Button stays greyed through it.
     sessionStorage.removeItem("verifyEmail.codeSent");
     sessionStorage.removeItem("verifyEmail.email");
-    window.location.href = next;
+    router.push(next);
   }
 
   async function handleSubmit(e: React.FormEvent) {

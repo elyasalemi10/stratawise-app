@@ -88,11 +88,12 @@ export function Step4OpeningBalances({
     if (bankingDeferred) {
       setPending(true);
       const result = await completeWizard(draftId);
-      setPending(false);
       if (result.error || !result.ocCode) {
+        setPending(false);
         toast.error(result.error ?? "Failed to create the OC");
         return;
       }
+      // Spinner stays ON through the navigation onComplete fires — no flash.
       onComplete({
         ocCode: result.ocCode,
         sourceDraftId: result.sourceDraftId,
@@ -149,11 +150,12 @@ export function Step4OpeningBalances({
       return;
     }
     const result = await completeWizard(draftId);
-    setPending(false);
     if (result.error || !result.ocCode) {
+      setPending(false);
       toast.error(result.error ?? "Failed to create the OC");
       return;
     }
+    // Spinner stays ON through the navigation onComplete fires — no flash.
     onComplete({
       ocCode: result.ocCode,
       sourceDraftId: result.sourceDraftId,

@@ -219,11 +219,13 @@ export function Step4Banking({
         return;
       }
       const result = await completeWizard(draftId);
-      setPending(false);
       if (result.error || !result.ocCode) {
+        setPending(false);
         toast.error(result.error ?? "Failed to create the OC");
         return;
       }
+      // Keep the spinner ON through the navigation onComplete triggers —
+      // clearing it here produced a visible spin → idle → redirect flash.
       onComplete({
         ocCode: result.ocCode,
         sourceDraftId: result.sourceDraftId,
