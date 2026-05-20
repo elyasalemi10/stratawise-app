@@ -17,6 +17,7 @@ import { LogoUpload } from "@/components/shared/logo-upload";
 import { BrandColourPicker } from "@/components/shared/brand-colour-picker";
 import { PlacesAutocomplete } from "@/components/shared/places-autocomplete";
 import { getSupabaseClient } from "@/lib/supabase";
+import { cn } from "@/lib/utils";
 
 // Format 11 raw digits as "XX XXX XXX XXX"
 function formatAbn(digits: string): string {
@@ -104,8 +105,11 @@ export function StepCompany({ onNext }: { onNext: () => void }) {
       return;
     }
 
-    // Keep pending true while we navigate — no flash of un-greyed button
+    // Advancing is now an in-page step toggle (this step is hidden, not
+    // unmounted), so clear pending — otherwise the button stays spinning if
+    // the manager comes Back to step 1.
     onNext();
+    setPending(false);
   }
 
   return (
@@ -237,7 +241,10 @@ export function StepCompany({ onNext }: { onNext: () => void }) {
           />
         </div>
 
-        {/* Single consent checkbox — covers both ToS and Privacy. */}
+        {/* Single consent checkbox — covers both ToS and Privacy. Plain <p>,
+            NOT shadcn <Label> (which is display:flex and made each word/link
+            wrap as its own item with gaps). Clicking the text must not toggle
+            the box, so no htmlFor either. */}
         <div className="border-t border-border pt-4 mt-6">
           <div className="flex items-start gap-3">
             <Checkbox
@@ -248,18 +255,19 @@ export function StepCompany({ onNext }: { onNext: () => void }) {
                 if (checked) setConsentError(false);
               }}
               aria-invalid={consentError || undefined}
+              className={cn("mt-0.5", consentError && "border-destructive")}
             />
-            <Label htmlFor="agree" className="text-sm text-foreground leading-snug cursor-pointer font-normal">
+            <p className="text-sm text-foreground leading-relaxed font-normal">
               I have read and agree to the{" "}
-              <Link href="/legal/terms" target="_blank" className="text-primary hover:underline">
+              <Link href="/legal/terms" target="_blank" className="text-[color:var(--brand-gold)] hover:underline">
                 Terms of Service
               </Link>{" "}
               and{" "}
-              <Link href="/legal/privacy" target="_blank" className="text-primary hover:underline">
+              <Link href="/legal/privacy" target="_blank" className="text-[color:var(--brand-gold)] hover:underline">
                 Privacy Policy
               </Link>
               .
-            </Label>
+            </p>
           </div>
           {consentError && (
             <p className="mt-2 text-xs text-destructive">

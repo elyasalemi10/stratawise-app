@@ -46,7 +46,33 @@ export async function createCompany(formData: {
     return { error: "Unable to connect to the database. Please check your connection and try again." };
   }
 
-  // Record T&Cs consent
+  const fields = {
+    name: parsed.data.name,
+    trading_as: parsed.data.trading_as || null,
+    abn: parsed.data.abn || null,
+    address: parsed.data.address || null,
+    phone: formData.phone,
+    email: formData.email,
+    logo_url: formData.logo_url || null,
+    brand_color: formData.brand_color || null,
+  };
+
+  // Idempotent: if this manager already created a company (e.g. they went
+  // BACK to step 1 and hit Continue again, or resumed onboarding), update it
+  // in place rather than inserting a duplicate.
+  if (profile.management_company_id) {
+    const { error: updateErr } = await supabase
+      .from("management_companies")
+      .update(fields)
+      .eq("id", profile.management_company_id);
+    if (updateErr) {
+      console.error("Failed to update company:", updateErr);
+      return { error: "Failed to save company. Please try again." };
+    }
+    return { companyId: profile.management_company_id };
+  }
+
+  // First time through — record consent + create the company.
   const headersList = await headers();
   const ipAddress =
     headersList.get("x-forwarded-for")?.split(",")[0]?.trim() ??
@@ -55,35 +81,13 @@ export async function createCompany(formData: {
   const now = new Date().toISOString();
 
   await supabase.from("user_consents").insert([
-    {
-      profile_id: profile.id,
-      consent_type: "terms_of_service",
-      version: "1.0",
-      accepted_at: now,
-      ip_address: ipAddress,
-    },
-    {
-      profile_id: profile.id,
-      consent_type: "privacy_policy",
-      version: "1.0",
-      accepted_at: now,
-      ip_address: ipAddress,
-    },
+    { profile_id: profile.id, consent_type: "terms_of_service", version: "1.0", accepted_at: now, ip_address: ipAddress },
+    { profile_id: profile.id, consent_type: "privacy_policy", version: "1.0", accepted_at: now, ip_address: ipAddress },
   ]);
 
-  // Create the management company
   const { data: company, error: companyError } = await supabase
     .from("management_companies")
-    .insert({
-      name: parsed.data.name,
-      trading_as: parsed.data.trading_as || null,
-      abn: parsed.data.abn || null,
-      address: parsed.data.address || null,
-      phone: formData.phone,
-      email: formData.email,
-      logo_url: formData.logo_url || null,
-      brand_color: formData.brand_color || null,
-    })
+    .insert(fields)
     .select("id")
     .single();
 
@@ -92,7 +96,6 @@ export async function createCompany(formData: {
     return { error: "Failed to create company. Please try again." };
   }
 
-  // Assign user to this company as strata_manager + save avatar.
   // First user onboarding their company becomes the admin.
   const { error: profileError } = await supabase
     .from("profiles")

@@ -2,10 +2,9 @@
 
 import { useRouter, useSearchParams } from "next/navigation";
 import { Suspense, useState } from "react";
-import { LogOut } from "lucide-react";
+import { X } from "lucide-react";
 import { StepCompany } from "./step-company";
 import { StepOperating } from "./step-operating";
-import { StepMailProvider } from "./step-mail-provider";
 import { Button } from "@/components/ui/button";
 import {
   Dialog,
@@ -17,16 +16,18 @@ import {
 } from "@/components/ui/dialog";
 import { cn } from "@/lib/utils";
 
-// Three-step onboarding:
-//  1. Company details
-//  2. Operating account (where management fees land)
-//  3. Mail provider — stratawise (default) / Gmail / Outlook
-// After step 3 → /dashboard?welcome=1 (confetti + welcome overlay).
+// Two-step onboarding:
+//   1. Company details (mandatory)
+//   2. Operating account (optional — also editable in Settings)
+// Email/mail-provider setup moved out of onboarding to Settings entirely.
+// After step 2 → /dashboard?welcome=1 (confetti + welcome overlay).
+//
+// Both steps stay MOUNTED (inactive one hidden) so going Back/forward keeps
+// every field the manager already typed — no re-fetch, no wiped form.
 
 const STEPS = [
   { number: 1, label: "Company" },
   { number: 2, label: "Operating account" },
-  { number: 3, label: "Email" },
 ];
 
 function SetupWizardContent() {
@@ -48,35 +49,28 @@ function SetupWizardContent() {
 
   return (
     <div className="w-full max-w-2xl mx-auto">
-      {/* Finish-later exit. We SAVE AS DRAFT — never delete the account.
-          The verified email + any saved company details persist; signing
-          back in resumes onboarding (or lands on the dashboard if the
-          company step was already completed). */}
-      <div className="mb-2 flex justify-end">
+      <StepIndicator current={step} />
+      <div className="relative rounded-lg bg-card p-6 shadow-none">
+        {/* Finish-later exit — X in the top-right of the white card. We SAVE
+            AS DRAFT (never delete the account); signing back in resumes. */}
         <button
           type="button"
           onClick={() => setQuitOpen(true)}
-          className="inline-flex items-center gap-1.5 text-xs font-medium text-muted-foreground hover:text-foreground cursor-pointer"
+          aria-label="Finish later"
+          className="absolute right-4 top-4 inline-flex h-8 w-8 items-center justify-center rounded-md text-muted-foreground hover:bg-muted hover:text-foreground cursor-pointer"
         >
-          <LogOut className="h-3.5 w-3.5" />
-          Finish later
+          <X className="h-4 w-4" />
         </button>
-      </div>
-      <StepIndicator current={step} />
-      <div className="rounded-lg border border-border bg-card p-6 shadow-none">
-        {step === 1 && <StepCompany onNext={() => goToStep(2)} />}
-        {step === 2 && (
+
+        <div className={cn(step !== 1 && "hidden")}>
+          <StepCompany onNext={() => goToStep(2)} />
+        </div>
+        <div className={cn(step !== 2 && "hidden")}>
           <StepOperating
-            onNext={() => goToStep(3)}
+            onNext={() => router.push("/dashboard?welcome=1")}
             onBack={() => goToStep(1)}
           />
-        )}
-        {step === 3 && (
-          <StepMailProvider
-            onNext={() => router.push("/dashboard?welcome=1")}
-            onBack={() => goToStep(2)}
-          />
-        )}
+        </div>
       </div>
 
       <Dialog open={quitOpen} onOpenChange={setQuitOpen}>
@@ -93,8 +87,6 @@ function SetupWizardContent() {
             <Button variant="secondary" onClick={() => setQuitOpen(false)}>
               Keep going
             </Button>
-            {/* Hard nav to /logout clears the session cookie and lands on
-                the homepage. Spinner stays implied by the nav (no flash). */}
             <Button onClick={() => { window.location.href = "/logout"; }}>
               Save &amp; sign out
             </Button>
