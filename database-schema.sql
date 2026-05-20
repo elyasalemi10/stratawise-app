@@ -810,6 +810,37 @@ ALTER TABLE payments ADD CONSTRAINT fk_payments_bank_transaction
   FOREIGN KEY (bank_transaction_id) REFERENCES bank_transactions(id);
 
 -- ============================================================================
+-- 18b. FUND TRANSFERS  (inter-fund movement between an OC's funds)
+-- Each transfer writes two excluded bank_transactions: a debit on the source
+-- fund's account and a credit on the destination's, so per-fund balances
+-- re-attribute. For a shared trust account the two legs net to zero on one
+-- physical account while still shifting fund attribution. Created atomically
+-- by rpc_create_fund_transfer (validates ownership, fund alignment, and that
+-- the source fund holds enough — a trust fund must not go negative). Errors
+-- are corrected by booking a reverse transfer, never by deleting a row.
+-- ============================================================================
+CREATE TABLE fund_transfers (
+  id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+  oc_id UUID NOT NULL REFERENCES owners_corporations(id) ON DELETE CASCADE,
+  from_bank_account_id UUID NOT NULL REFERENCES bank_accounts(id),
+  to_bank_account_id UUID NOT NULL REFERENCES bank_accounts(id),
+  from_fund fund_type NOT NULL,
+  to_fund fund_type NOT NULL,
+  amount DECIMAL(12,2) NOT NULL,
+  transfer_date DATE NOT NULL,
+  reason TEXT,
+  from_bank_transaction_id UUID REFERENCES bank_transactions(id),
+  to_bank_transaction_id UUID REFERENCES bank_transactions(id),
+  status TEXT NOT NULL DEFAULT 'completed',
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  created_by UUID NOT NULL REFERENCES profiles(id),
+  CONSTRAINT chk_ft_amount_positive CHECK (amount > 0),
+  CONSTRAINT chk_ft_distinct_funds CHECK (from_fund <> to_fund)
+);
+
+CREATE INDEX idx_fund_transfers_oc ON fund_transfers(oc_id);
+
+-- ============================================================================
 -- 19. MEETINGS
 -- ============================================================================
 CREATE TABLE meetings (

@@ -1,12 +1,13 @@
 "use client";
 
 import { useEffect, useState, useTransition } from "react";
+import { useRouter } from "next/navigation";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
 import Link from "next/link";
 import { toast } from "sonner";
-import { Pencil, Check, Upload, Landmark, Loader2 } from "lucide-react";
+import { Pencil, Check, Upload, Landmark, Loader2, ArrowLeftRight } from "lucide-react";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -38,6 +39,8 @@ import type { BankAccountSummary, BankTransactionRecord } from "@/lib/validation
 import type { UndepositedFundsEntry } from "@/lib/validations/reconciliation";
 import { ImportCsvDialog } from "./import-csv-dialog";
 import { ImportTxnDialog } from "./import-txn-dialog";
+import { TransferFundsDialog } from "./transfer-funds-dialog";
+import type { FundTransferRecord } from "@/lib/validations/fund-transfers";
 import { useOCCode } from "@/lib/oc-context";
 
 const formatCurrency = (n: number) =>
@@ -60,13 +63,17 @@ export function BankAccountContent({
   bankAccountNumber: initialAccountNumber,
   bankAccountName: initialAccountName,
   bankAccounts,
+  fundTransfers,
 }: {
   ocId: string;
   bankBsb: string;
   bankAccountNumber: string;
   bankAccountName: string;
   bankAccounts: BankAccountSummary[];
+  fundTransfers: FundTransferRecord[];
 }) {
+  const router = useRouter();
+  const [transferOpen, setTransferOpen] = useState(false);
   const [editing, setEditing] = useState(false);
   const [bsb, setBsb] = useState(initialBsb);
   const [accountNumber, setAccountNumber] = useState(initialAccountNumber);
@@ -156,9 +163,41 @@ export function BankAccountContent({
         </CardContent>
       </Card>
 
+      {fundTransfers.length > 0 && (
+        <Card>
+          <CardContent className="pt-5">
+            <h3 className="text-sm font-semibold text-foreground mb-3">Recent fund transfers</h3>
+            <div className="divide-y divide-border/50">
+              {fundTransfers.map((t) => (
+                <div key={t.id} className="flex items-center justify-between gap-4 py-2">
+                  <div className="flex items-center gap-2 text-sm">
+                    <span className="text-foreground">{FUND_LABEL[t.from_fund]}</span>
+                    <ArrowLeftRight className="h-3.5 w-3.5 text-muted-foreground" />
+                    <span className="text-foreground">{FUND_LABEL[t.to_fund]}</span>
+                    {t.reason && (
+                      <span className="text-xs text-muted-foreground truncate">· {t.reason}</span>
+                    )}
+                  </div>
+                  <div className="flex items-center gap-4 shrink-0">
+                    <span className="text-sm font-medium tabular-nums text-foreground">{formatCurrency(t.amount)}</span>
+                    <span className="text-xs text-muted-foreground tabular-nums">{formatDate(t.transfer_date)}</span>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </CardContent>
+        </Card>
+      )}
+
       <div>
         <div className="flex items-center justify-between mb-3">
           <h3 className="text-sm font-semibold text-foreground">Bank transactions</h3>
+          {bankAccounts.length >= 2 && (
+            <Button variant="secondary" size="sm" onClick={() => setTransferOpen(true)} className="cursor-pointer">
+              <ArrowLeftRight className="mr-2 h-3.5 w-3.5" />
+              Transfer between funds
+            </Button>
+          )}
         </div>
         {bankAccounts.length === 0 ? (
           <Card>
@@ -202,6 +241,14 @@ export function BankAccountContent({
           onImported={() => setRefreshNonce((n) => n + 1)}
         />
       )}
+
+      <TransferFundsDialog
+        open={transferOpen}
+        onClose={() => setTransferOpen(false)}
+        ocId={ocId}
+        bankAccounts={bankAccounts}
+        onTransferred={() => { setRefreshNonce((n) => n + 1); router.refresh(); }}
+      />
     </div>
   );
 }

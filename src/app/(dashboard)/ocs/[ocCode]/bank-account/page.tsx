@@ -1,6 +1,7 @@
 import { getOC } from "@/lib/actions/oc";
 import { getCurrentProfile } from "@/lib/auth";
 import { getBankAccountsForOC } from "@/lib/actions/bank-transactions";
+import { getFundTransfers } from "@/lib/actions/fund-transfers";
 import { redirect } from "next/navigation";
 import { BankAccountContent } from "./bank-account-content";
 
@@ -15,10 +16,11 @@ export default async function BankAccountPage({
   const resolved = await resolveOCFromCode(ocCode);
   if (!resolved) redirect("/dashboard");
   const ocId = resolved.id;
-  const [oc, profile, bankAccounts] = await Promise.all([
+  const [oc, profile, bankAccounts, fundTransfers] = await Promise.all([
     getOC(ocId),
     getCurrentProfile(),
     getBankAccountsForOC(ocId),
+    getFundTransfers(ocId),
   ]);
 
   if (!oc) redirect("/dashboard");
@@ -31,6 +33,7 @@ export default async function BankAccountPage({
       bankAccountNumber={oc.bank_account_number ?? ""}
       bankAccountName={oc.bank_account_name ?? ""}
       bankAccounts={bankAccounts}
+      fundTransfers={fundTransfers}
     />
   );
 }
