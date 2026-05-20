@@ -31,11 +31,12 @@ export async function getSidebarProfile(): Promise<SidebarProfile | null> {
   if (profile.management_company_id) {
     const { data: company } = await supabase
       .from("management_companies")
-      .select("name, logo_url")
+      .select("name, trading_as, logo_url")
       .eq("id", profile.management_company_id)
       .single();
 
-    companyName = company?.name ?? null;
+    // Prefer the trading name when set; fall back to the legal company name.
+    companyName = company?.trading_as?.trim() || company?.name || null;
     companyLogoUrl = company?.logo_url ?? null;
   }
 

@@ -40,10 +40,10 @@ export async function resolveManagerFromHeader(
     if (data.management_company_id) {
       const { data: company } = await supabase
         .from("management_companies")
-        .select("name")
+        .select("name, trading_as")
         .eq("id", data.management_company_id)
         .maybeSingle();
-      companyName = company?.name ?? null;
+      companyName = company?.trading_as?.trim() || company?.name || null;
     }
     return managerEmailFrom(data.email_username, personName, companyName);
   } catch (err) {

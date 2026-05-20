@@ -15,9 +15,19 @@ import { Checkbox } from "@/components/ui/checkbox";
 import { PhoneInput } from "@/components/shared/phone-input";
 import { LogoUpload } from "@/components/shared/logo-upload";
 import { BrandColourPicker } from "@/components/shared/brand-colour-picker";
-import { PlacesAutocomplete } from "@/components/shared/places-autocomplete";
+import { VicAddressAutocomplete, type ParsedAddress } from "@/components/shared/vic-address-autocomplete";
 import { getSupabaseClient } from "@/lib/supabase";
 import { cn } from "@/lib/utils";
+
+function addressToString(a: ParsedAddress): string {
+  return (
+    a.formatted?.trim() ||
+    [a.street_number, a.street_name, a.suburb, a.state, a.postcode]
+      .filter(Boolean)
+      .join(" ")
+      .trim()
+  );
+}
 
 // Format 11 raw digits as "XX XXX XXX XXX"
 function formatAbn(digits: string): string {
@@ -44,7 +54,9 @@ export function StepCompany({ onNext }: { onNext: () => void }) {
   const [phoneInvalid, setPhoneInvalid] = useState(false);
   const [abn, setAbn] = useState("");
   const [abnInvalid, setAbnInvalid] = useState(false);
-  const [address, setAddress] = useState("");
+  const [address, setAddress] = useState<ParsedAddress>({
+    street_number: "", street_name: "", suburb: "", state: "VIC", postcode: "", formatted: "",
+  });
   const [addressInvalid, setAddressInvalid] = useState(false);
   const [agreed, setAgreed] = useState(false);
   const [consentError, setConsentError] = useState(false);
@@ -73,7 +85,7 @@ export function StepCompany({ onNext }: { onNext: () => void }) {
     const abnOk = abnDigits.length === 0 || abnDigits.length === 11;
     if (!abnOk) problems.push("ABN must be 11 digits");
 
-    const addressOk = address.trim().length >= 3;
+    const addressOk = addressToString(address).length >= 3;
     if (!addressOk) problems.push("Address is required");
 
     const consentOk = agreed;
@@ -107,7 +119,7 @@ export function StepCompany({ onNext }: { onNext: () => void }) {
       name: data.name,
       trading_as: data.trading_as || undefined,
       abn: abnDigits || undefined,
-      address,
+      address: addressToString(address),
       phone: phone.trim(),
       email: userEmail,
       logo_url: logoUrl || undefined,
@@ -221,16 +233,15 @@ export function StepCompany({ onNext }: { onNext: () => void }) {
           <Label htmlFor="company-address">
             Company address <span className="text-destructive">*</span>
           </Label>
-          <PlacesAutocomplete
+          <VicAddressAutocomplete
             id="company-address"
             value={address}
             onChange={(v) => {
               setAddress(v);
-              setValue("address", v);
+              setValue("address", addressToString(v));
               if (addressInvalid) setAddressInvalid(false);
             }}
-            placeholder="Start typing your business address…"
-            invalid={addressInvalid || !!errors.address}
+            error={addressInvalid || !!errors.address}
           />
           {(addressInvalid || errors.address) && (
             <p className="text-xs text-destructive mt-1">
