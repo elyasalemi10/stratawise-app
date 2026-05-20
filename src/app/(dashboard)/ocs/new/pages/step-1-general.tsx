@@ -51,7 +51,7 @@ export function Step1General({
   draftId: string;
   initialDraft: DraftJson;
   onBack: () => void;
-  onNext: () => void;
+  onNext: (patch?: Partial<DraftJson>) => void;
 }) {
   const [planNumber, setPlanNumber] = useState(initialDraft.plan_number ?? "");
   const [planNumberInvalid, setPlanNumberInvalid] = useState(false);
@@ -165,9 +165,11 @@ export function Step1General({
     }
 
     // Background save — fire the saveStep without awaiting so the next
-    // step renders instantly. Errors still surface via toast; the
-    // auto-save heartbeat in WizardActions catches any dropped write.
-    void saveStep(draftId, {
+    // step renders instantly. The same patch is merged into the wizard's
+    // local draft via onNext(patch) so the next step's initialDraft is
+    // fresh without a re-fetch. Errors surface via toast; the auto-save
+    // heartbeat in WizardActions catches any dropped write.
+    const patch = {
       plan_number: planNumber.toUpperCase(),
       oc_number: ocNumberParsed,
       building_name: buildingName.trim() || undefined,
@@ -176,16 +178,17 @@ export function Step1General({
       street_number: address.street_number,
       street_name: address.street_name,
       suburb: address.suburb,
-      state: "VIC",
+      state: "VIC" as const,
       postcode: address.postcode,
       manager_appointment_date: managementStartDate,
       gst_registered: gstRegistered,
       abn: abnDigits || undefined,
       tfn: gstRegistered ? (tfn.replace(/\s+/g, "") || undefined) : undefined,
-    }, 1, 2).then((r) => {
+    };
+    void saveStep(draftId, patch, 1, 2).then((r) => {
       if (r.error) toast.error(r.error);
     });
-    onNext();
+    onNext(patch);
   }
 
   return (

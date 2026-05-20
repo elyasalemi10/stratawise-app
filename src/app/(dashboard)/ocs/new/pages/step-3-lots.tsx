@@ -67,7 +67,7 @@ export function Step3Lots({
   draftId: string;
   initialDraft: DraftJson;
   onBack: () => void;
-  onNext: () => void;
+  onNext: (patch?: Partial<DraftJson>) => void;
 }) {
   const seedLots: DraftLot[] = initialDraft.lots && initialDraft.lots.length > 0
     ? initialDraft.lots
@@ -239,20 +239,18 @@ export function Step3Lots({
       return;
     }
 
-    setPending(true);
-    const r = await saveStep(draftId, {
+    // Background save — advance instantly; heartbeat backstops the write.
+    const patch = {
       lots,
       total_lots: lots.length,
       services_only: servicesOnly,
       tier,
       tier_confirmed: true,
-    }, 3, 1); // Advance to Step 3 sub 1 (Service & contact).
-    if (r.error) {
-      setPending(false);
-      toast.error(r.error);
-      return;
-    }
-    await onNext();
+    };
+    void saveStep(draftId, patch, 3, 1).then((r) => {
+      if (r.error) toast.error(r.error);
+    });
+    onNext(patch);
   }
 
   return (

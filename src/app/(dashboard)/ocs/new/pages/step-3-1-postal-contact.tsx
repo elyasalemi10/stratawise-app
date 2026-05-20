@@ -134,7 +134,7 @@ export function Step3PostalContact({
   draftId: string;
   initialDraft: DraftJson;
   onBack: () => void;
-  onNext: () => void;
+  onNext: (patch?: Partial<DraftJson>) => void;
 }) {
   const ocSiteAddress = initialDraft.address ?? "";
 
@@ -244,14 +244,12 @@ export function Step3PostalContact({
       return;
     }
 
-    setPending(true);
-    const r = await saveStep(draftId, { lots }, 3, 2); // Advance to Step 3 sub 2 (Digital consent).
-    if (r.error) {
-      setPending(false);
-      toast.error(r.error);
-      return;
-    }
-    await onNext();
+    // Background save — advance instantly; heartbeat backstops the write.
+    const patch = { lots };
+    void saveStep(draftId, patch, 3, 2).then((r) => {
+      if (r.error) toast.error(r.error);
+    });
+    onNext(patch);
   }
 
   return (

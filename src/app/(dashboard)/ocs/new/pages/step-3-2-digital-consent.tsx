@@ -39,7 +39,7 @@ export function Step3DigitalConsent({
   draftId: string;
   initialDraft: DraftJson;
   onBack: () => void;
-  onNext: () => void;
+  onNext: (patch?: Partial<DraftJson>) => void;
 }) {
   const [lots, setLots] = useState<DraftLot[]>(initialDraft.lots ?? []);
   const [bulkChoice, setBulkChoice] = useState<BulkChoice>("");
@@ -140,15 +140,13 @@ export function Step3DigitalConsent({
     setEditLotIdx(null);
   }
 
-  async function onContinue() {
-    setPending(true);
-    const r = await saveStep(draftId, { lots }, 4, 0); // Advance to Step 4 (Banking). Comms default moved to Settings.
-    if (r.error) {
-      setPending(false);
-      toast.error(r.error);
-      return;
-    }
-    await onNext();
+  function onContinue() {
+    // Background save — advance instantly; heartbeat backstops the write.
+    const patch = { lots };
+    void saveStep(draftId, patch, 4, 0).then((r) => {
+      if (r.error) toast.error(r.error);
+    });
+    onNext(patch);
   }
 
   function summariseCategories(cats: string[] | undefined): string {

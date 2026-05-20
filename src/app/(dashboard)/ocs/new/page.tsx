@@ -118,6 +118,20 @@ function WizardContent() {
     if (r.draft) setDraft(r.draft as unknown as DraftRow);
   }
 
+  // Optimistic advance — merge the step's patch into the local draft and
+  // navigate IMMEDIATELY (no getDraft round-trip). The step already
+  // background-saved the same patch to the DB, so the local merge keeps
+  // the next step's initialDraft fresh without waiting ~500ms for a
+  // re-fetch. This is what makes Continue feel instant.
+  function advance(nextStep: number, nextSub: number, patch?: Partial<DraftJson>) {
+    if (patch) {
+      setDraft((d) =>
+        d ? { ...d, draft_json: { ...d.draft_json, ...patch } } : d,
+      );
+    }
+    goTo(nextStep, nextSub);
+  }
+
   // Shared completion handler — used by both the banking step (when the
   // manager picks "set up later" and creates the OC straight from there)
   // and the opening-balances step (the normal end of the wizard).
@@ -226,7 +240,7 @@ function WizardContent() {
             draftId={draft.id}
             initialDraft={draft.draft_json}
             onBack={back}
-            onNext={async () => { await refreshDraft(); goTo(2, 0); }}
+            onNext={(patch) => advance(2, 0, patch)}
           />
         )}
         {step === 2 && substep === 0 && (
@@ -234,7 +248,7 @@ function WizardContent() {
             draftId={draft.id}
             initialDraft={draft.draft_json}
             onBack={back}
-            onNext={async () => { await refreshDraft(); goTo(3, 0); }}
+            onNext={(patch) => advance(3, 0, patch)}
           />
         )}
         {step === 3 && substep === 0 && (
@@ -242,7 +256,7 @@ function WizardContent() {
             draftId={draft.id}
             initialDraft={draft.draft_json}
             onBack={back}
-            onNext={async () => { await refreshDraft(); goTo(3, 1); }}
+            onNext={(patch) => advance(3, 1, patch)}
           />
         )}
         {step === 3 && substep === 1 && (
@@ -250,7 +264,7 @@ function WizardContent() {
             draftId={draft.id}
             initialDraft={draft.draft_json}
             onBack={back}
-            onNext={async () => { await refreshDraft(); goTo(3, 2); }}
+            onNext={(patch) => advance(3, 2, patch)}
           />
         )}
         {step === 3 && substep === 2 && (
@@ -258,7 +272,7 @@ function WizardContent() {
             draftId={draft.id}
             initialDraft={draft.draft_json}
             onBack={back}
-            onNext={async () => { await refreshDraft(); goTo(4, 0); }}
+            onNext={(patch) => advance(4, 0, patch)}
           />
         )}
         {step === 4 && substep === 0 && (

@@ -74,7 +74,7 @@ export function Step2Settings({
   draftId: string;
   initialDraft: DraftJson;
   onBack: () => void;
-  onNext: () => void;
+  onNext: (patch?: Partial<DraftJson>) => void;
 }) {
   const [fyMonth, setFyMonth] = useState<number>(initialDraft.financial_year_start_month ?? 7);
   const [levyFreq, setLevyFreq] = useState<LevyFrequency>(
@@ -131,21 +131,20 @@ export function Step2Settings({
       return;
     }
 
-    setPending(true);
-    const r = await saveStep(draftId, {
+    // Background save — advance instantly, surface errors via toast.
+    // The WizardActions auto-save heartbeat backstops any dropped write.
+    const patch = {
       financial_year_start_month: fyMonth,
       financial_year_start_day: 1,
       billing_cycle: levyFreq,
       interest_on_overdue_enabled: interestEnabled,
       annual_interest_rate_percent: interestEnabled ? annualRateN : 0,
       interest_free_period_days: interestFreeN,
-    }, 3, 0); // Advance straight to Step 3 (Lots & Owners); Comms now lives on Step 3.3.
-    if (r.error) {
-      setPending(false);
-      toast.error(r.error);
-      return;
-    }
-    await onNext();
+    };
+    void saveStep(draftId, patch, 3, 0).then((r) => {
+      if (r.error) toast.error(r.error);
+    });
+    onNext(patch);
   }
 
   const interestFreeNum = parseInt(interestFreeDays, 10);
