@@ -1,23 +1,28 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createServerClient } from "@/lib/supabase";
 import { getCurrentProfile, requireOCAccess } from "@/lib/auth";
-import {
-  getSignedDownloadUrl,
-  keyFromPublicUrl,
-} from "@/lib/storage/r2";
+import { fetchObject, keyFromPublicUrl } from "@/lib/storage/r2";
 
-// Authorised redirect to a 15-min presigned R2 URL for inbound email
-// attachments. The same access check as a regular document applies:
-// the requester must belong to the OC linked on the parent
-// communication_log row. Public R2 URLs on `inbound_email_attachments`
-// would otherwise be guessable by anyone with the bucket pattern.
-//
-// ?json=true returns { url, expiresAt } instead of redirecting so
-// iframes / copy-link UI can read the URL directly.
+// Streams an inbound email attachment through this authenticated route
+// (NOT a presigned redirect — that would be shareable for its TTL). Every
+// fetch re-runs the OC-access / recipient check, so a copied URL is
+// useless to anyone without access.
 
 const UUID_REGEX = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 export const dynamic = "force-dynamic";
+
+function unauthorizedResponse(request: NextRequest): NextResponse {
+  const accept = request.headers.get("accept") ?? "";
+  if (accept.includes("text/html")) {
+    const url = request.nextUrl.clone();
+    const target = `${url.pathname}${url.search}`;
+    url.pathname = "/";
+    url.search = `?next=${encodeURIComponent(target)}`;
+    return NextResponse.redirect(url, { status: 302 });
+  }
+  return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+}
 
 export async function GET(
   request: NextRequest,
@@ -25,7 +30,7 @@ export async function GET(
 ) {
   const profile = await getCurrentProfile();
   if (!profile) {
-    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    return unauthorizedResponse(request);
   }
   const { id } = await params;
   if (!UUID_REGEX.test(id)) {
@@ -71,27 +76,23 @@ export async function GET(
   }
 
   const isView = request.nextUrl.searchParams.get("view") === "true";
-  const isJson = request.nextUrl.searchParams.get("json") === "true";
 
-  let signedUrl: string;
+  let body: Buffer;
   try {
-    signedUrl = await getSignedDownloadUrl(key, 900, {
-      filename: att.filename as string,
-      inline: isView,
-    });
-  } catch (err) {
-    console.error("inbox-attachments: signed URL generation failed", err);
-    return NextResponse.json(
-      { error: "This attachment is temporarily unavailable." },
-      { status: 500 },
-    );
+    body = await fetchObject(key);
+  } catch {
+    return NextResponse.json({ error: "Attachment not found in storage" }, { status: 404 });
   }
 
-  if (isJson) {
-    return NextResponse.json({
-      url: signedUrl,
-      expiresAt: new Date(Date.now() + 900_000).toISOString(),
-    });
-  }
-  return NextResponse.redirect(signedUrl, { status: 302 });
+  const filename = (att.filename as string) || "attachment";
+  const disposition = isView
+    ? "inline"
+    : `attachment; filename="${encodeURIComponent(filename)}"`;
+  return new NextResponse(new Uint8Array(body), {
+    headers: {
+      "Content-Type": (att.mime_type as string) || "application/octet-stream",
+      "Content-Disposition": disposition,
+      "Cache-Control": "private, max-age=0, no-store",
+    },
+  });
 }

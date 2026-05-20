@@ -1,23 +1,47 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createServerClient } from "@/lib/supabase";
 import { getCurrentProfile, requireOCAccess } from "@/lib/auth";
-import {
-  getSignedDownloadUrl,
-  keyFromPublicUrl,
-} from "@/lib/storage/r2";
+import { fetchObject, keyFromPublicUrl } from "@/lib/storage/r2";
 
-// Authorised redirect for insurance policy certificates of currency.
-// Same shape as /api/documents/[id]: ACL check (must have OC access),
-// 302 to a 15-minute presigned R2 URL. Replaces the previous practice
-// of rendering insurance_policies.document_url directly in <a href>.
-//
-// Where the policy row has a source_document_id pointing into the
-// `documents` table, prefer that — it's already covered by the same
-// path-prefix convention.
+// Streams an insurance certificate of currency through this authenticated
+// route (NOT a presigned redirect — that would be shareable for its TTL).
+// Prefers the canonical `documents` row when source_document_id is linked
+// (gives accurate file_name + mime_type); else derives the key from the
+// stored public URL on the policy row.
 
 const UUID_REGEX = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 export const dynamic = "force-dynamic";
+
+function unauthorizedResponse(request: NextRequest): NextResponse {
+  const accept = request.headers.get("accept") ?? "";
+  if (accept.includes("text/html")) {
+    const url = request.nextUrl.clone();
+    const target = `${url.pathname}${url.search}`;
+    url.pathname = "/";
+    url.search = `?next=${encodeURIComponent(target)}`;
+    return NextResponse.redirect(url, { status: 302 });
+  }
+  return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+}
+
+function streamResponse(
+  body: Buffer,
+  filename: string,
+  mimeType: string,
+  isView: boolean,
+): NextResponse {
+  const disposition = isView
+    ? "inline"
+    : `attachment; filename="${encodeURIComponent(filename)}"`;
+  return new NextResponse(new Uint8Array(body), {
+    headers: {
+      "Content-Type": mimeType || "application/octet-stream",
+      "Content-Disposition": disposition,
+      "Cache-Control": "private, max-age=0, no-store",
+    },
+  });
+}
 
 export async function GET(
   request: NextRequest,
@@ -25,7 +49,7 @@ export async function GET(
 ) {
   const profile = await getCurrentProfile();
   if (!profile) {
-    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    return unauthorizedResponse(request);
   }
   const { id } = await params;
   if (!UUID_REGEX.test(id)) {
@@ -47,27 +71,27 @@ export async function GET(
     return NextResponse.json({ error: "Forbidden" }, { status: 403 });
   }
 
-  // Prefer the canonical `documents` row when one is linked — gives us
-  // file_name + mime_type for accurate Content-Disposition headers.
+  const isView = request.nextUrl.searchParams.get("view") === "true";
+
+  // Prefer the canonical `documents` row when one is linked.
   if (policy.source_document_id) {
     const { data: doc } = await supabase
       .from("documents")
-      .select("file_path, file_name")
+      .select("file_path, file_name, mime_type")
       .eq("id", policy.source_document_id)
       .maybeSingle();
     if (doc?.file_path) {
-      const isView = request.nextUrl.searchParams.get("view") === "true";
-      const signedUrl = await getSignedDownloadUrl(doc.file_path as string, 900, {
-        filename: (doc.file_name as string) ?? "policy.pdf",
-        inline: isView,
-      });
-      if (request.nextUrl.searchParams.get("json") === "true") {
-        return NextResponse.json({
-          url: signedUrl,
-          expiresAt: new Date(Date.now() + 900_000).toISOString(),
-        });
+      try {
+        const body = await fetchObject(doc.file_path as string);
+        return streamResponse(
+          body,
+          (doc.file_name as string) ?? "policy.pdf",
+          (doc.mime_type as string) ?? "application/pdf",
+          isView,
+        );
+      } catch {
+        return NextResponse.json({ error: "Certificate not found in storage" }, { status: 404 });
       }
-      return NextResponse.redirect(signedUrl, { status: 302 });
     }
   }
 
@@ -77,25 +101,10 @@ export async function GET(
     return NextResponse.json({ error: "Certificate missing" }, { status: 404 });
   }
   const filename = `${policy.provider ?? "policy"}-${policy.policy_number ?? policy.id}.pdf`;
-  const isView = request.nextUrl.searchParams.get("view") === "true";
-  let signedUrl: string;
   try {
-    signedUrl = await getSignedDownloadUrl(key, 900, {
-      filename,
-      inline: isView,
-    });
-  } catch (err) {
-    console.error("insurance-docs: signed URL generation failed", err);
-    return NextResponse.json(
-      { error: "This certificate is temporarily unavailable." },
-      { status: 500 },
-    );
+    const body = await fetchObject(key);
+    return streamResponse(body, filename, "application/pdf", isView);
+  } catch {
+    return NextResponse.json({ error: "Certificate not found in storage" }, { status: 404 });
   }
-  if (request.nextUrl.searchParams.get("json") === "true") {
-    return NextResponse.json({
-      url: signedUrl,
-      expiresAt: new Date(Date.now() + 900_000).toISOString(),
-    });
-  }
-  return NextResponse.redirect(signedUrl, { status: 302 });
 }

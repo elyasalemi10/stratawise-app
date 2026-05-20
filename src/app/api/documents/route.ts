@@ -82,7 +82,23 @@ export async function POST(request: NextRequest) {
   const buffer = Buffer.from(await file.arrayBuffer());
   await uploadObject(key, buffer, file.type);
 
+  // Categories that get OCR'd INLINE by their own flow (settlement parse,
+  // insurance parse, plan-of-subdivision + OC-rules in the wizard) — the
+  // caller needs the structured values back immediately, so they run OCR
+  // synchronously and store the text themselves. We must NOT also queue
+  // the background ocr-document task for these, or we'd double-OCR (and
+  // race the inline write). Only plain documents-page uploads (category
+  // "other" / generic) flow through the Trigger.dev background job.
+  const SELF_OCR_CATEGORIES = new Set([
+    "settlement",
+    "insurance_policy",
+    "plan_of_subdivision",
+    "oc_rules",
+  ]);
+  const selfOcr = SELF_OCR_CATEGORIES.has(category);
+
   const willOcr = isOcrable(file.type);
+  const queueBackgroundOcr = willOcr && !selfOcr;
   const { data: doc, error } = await supabase
     .from("documents")
     .insert({
@@ -95,6 +111,9 @@ export async function POST(request: NextRequest) {
       mime_type: file.type,
       is_confidential: false,
       uploaded_by: profile.id,
+      // Self-OCR categories carry their own status lifecycle (the inline
+      // parse flips it to complete). Generic docs start pending → the
+      // background job moves them to complete.
       ocr_status: willOcr ? "pending" : "skipped",
     })
     .select()
@@ -121,7 +140,11 @@ export async function POST(request: NextRequest) {
   // budget. The task id matches trigger/ocr-documents.ts's `id`. A fallback
   // to the in-process pipeline runs only when TRIGGER_SECRET_KEY isn't
   // configured (local dev without Trigger.dev) — production always queues.
-  if (willOcr) {
+  //
+  // Self-OCR categories (settlement / insurance / plan / rules) are
+  // skipped here — their own flow already runs OCR inline and needs the
+  // values immediately.
+  if (queueBackgroundOcr) {
     if (process.env.TRIGGER_SECRET_KEY) {
       try {
         await tasks.trigger("ocr-document", { documentId: doc.id });

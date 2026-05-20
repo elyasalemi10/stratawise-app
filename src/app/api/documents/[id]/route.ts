@@ -1,7 +1,22 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createServerClient } from "@/lib/supabase";
 import { getCurrentProfile, requireCompanyRole, requireOCAccess } from "@/lib/auth";
-import { deleteObject, getSignedDownloadUrl } from "@/lib/storage/r2";
+import { deleteObject, fetchObject } from "@/lib/storage/r2";
+
+// Unauthenticated browser hit → bounce to login with a return path so a
+// shared link prompts sign-in rather than 401-ing. Fetch / XHR clients
+// (Accept: application/json) get a plain 401 so client code can handle it.
+function unauthorizedResponse(request: NextRequest): NextResponse {
+  const accept = request.headers.get("accept") ?? "";
+  if (accept.includes("text/html")) {
+    const url = request.nextUrl.clone();
+    const target = `${url.pathname}${url.search}`;
+    url.pathname = "/";
+    url.search = `?next=${encodeURIComponent(target)}`;
+    return NextResponse.redirect(url, { status: 302 });
+  }
+  return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+}
 
 const UUID_REGEX = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
@@ -19,11 +34,12 @@ async function loadDocument(id: string) {
 // GET — authorise + redirect to a short-lived (15 min) presigned R2 URL.
 //
 // Strata documents are sensitive (financial statements, insurance certs,
-// breach notices). Returning a presigned URL gives the browser a direct
-// download path that bypasses our server (fast + no Vercel egress cost)
-// while ensuring the URL itself expires quickly — copy-pasting it into a
-// chat won't yield a usable link 20 minutes later. The same access check
-// that gated the old byte-streaming path still runs here.
+// breach notices). We STREAM the bytes through this authenticated route
+// rather than redirecting to a presigned R2 URL — a presigned URL is
+// shareable by anyone for its TTL, which leaks the document. Streaming
+// means every single fetch re-runs the auth + OC-access + confidentiality
+// checks, so a copied URL is useless to anyone who isn't signed in with
+// access to that OC.
 //
 // ?view=true → inline disposition (PDF previews); otherwise attachment.
 export async function GET(
@@ -32,7 +48,7 @@ export async function GET(
 ) {
   const profile = await getCurrentProfile();
   if (!profile) {
-    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    return unauthorizedResponse(request);
   }
 
   const { id } = await params;
@@ -53,33 +69,27 @@ export async function GET(
   }
 
   const isView = request.nextUrl.searchParams.get("view") === "true";
-  const isJson = request.nextUrl.searchParams.get("json") === "true";
 
-  let signedUrl: string;
+  let body: Buffer;
   try {
-    signedUrl = await getSignedDownloadUrl(doc.file_path, 900, {
-      filename: doc.file_name,
-      inline: isView,
-    });
-  } catch (err) {
-    console.error("documents: signed URL generation failed", err);
-    return NextResponse.json(
-      { error: "This document is temporarily unavailable. Please try again." },
-      { status: 500 },
-    );
+    body = await fetchObject(doc.file_path);
+  } catch {
+    return NextResponse.json({ error: "File not found in storage" }, { status: 404 });
   }
 
-  // The `?json=true` hint lets clients that need the URL string (e.g.
-  // copy-link UI, iframe previews) read it directly instead of being
-  // redirected. Default flow is a 302 redirect so plain <a href> works.
-  if (isJson) {
-    return NextResponse.json({
-      url: signedUrl,
-      expiresAt: new Date(Date.now() + 900_000).toISOString(),
-    });
-  }
+  const disposition = isView
+    ? "inline"
+    : `attachment; filename="${encodeURIComponent(doc.file_name)}"`;
 
-  return NextResponse.redirect(signedUrl, { status: 302 });
+  return new NextResponse(new Uint8Array(body), {
+    headers: {
+      "Content-Type": doc.mime_type || "application/octet-stream",
+      "Content-Disposition": disposition,
+      // private = never cached by shared proxies/CDN; only the
+      // authenticated browser may cache it briefly.
+      "Cache-Control": "private, max-age=0, no-store",
+    },
+  });
 }
 
 // PATCH — rename document (DB only, R2 key unchanged)
