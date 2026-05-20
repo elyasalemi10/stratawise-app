@@ -160,6 +160,12 @@ export default async function DashboardPage() {
     if ((!memberships || memberships.length === 0) && pastMemberships.length === 0) {
       return (
         <div className="flex flex-col items-center justify-center py-20 text-center">
+          {/* Confetti still fires here — a freshly-onboarded owner whose
+              manager hasn't assigned a lot yet should still get the
+              welcome moment. */}
+          <Suspense fallback={null}>
+            <WelcomeConfetti />
+          </Suspense>
           <Building2 className="h-12 w-12 text-muted-foreground/30" />
           <p className="mt-4 text-base font-medium text-foreground">
             No ocs assigned
@@ -176,6 +182,9 @@ export default async function DashboardPage() {
     if (!memberships || memberships.length === 0) {
       return (
         <div className="space-y-6">
+          <Suspense fallback={null}>
+            <WelcomeConfetti />
+          </Suspense>
           <h2 className="text-base font-semibold text-foreground">Past lots</h2>
           <PastLotsGrid pastMemberships={pastMemberships} pastLots={pastLots} pastSubs={pastSubs} />
         </div>

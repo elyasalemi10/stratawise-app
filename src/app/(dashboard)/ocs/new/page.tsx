@@ -118,6 +118,24 @@ function WizardContent() {
     if (r.draft) setDraft(r.draft as unknown as DraftRow);
   }
 
+  // Shared completion handler — used by both the banking step (when the
+  // manager picks "set up later" and creates the OC straight from there)
+  // and the opening-balances step (the normal end of the wizard).
+  function handleComplete(r: { ocCode: string; sourceDraftId?: string; nextOcIndex?: number | null }) {
+    revalidateSidebarFromClient();
+    const detected = draft?.parsed_json?.detected_ocs ?? [];
+    if (r.sourceDraftId && typeof r.nextOcIndex === "number" && detected.length > 1) {
+      setNextOcPrompt({
+        ocCode: r.ocCode,
+        sourceDraftId: r.sourceDraftId,
+        nextOcIndex: r.nextOcIndex,
+        totalOcs: detected.length,
+      });
+      return;
+    }
+    window.location.assign(`/ocs/${r.ocCode}?created=1`);
+  }
+
   function back() {
     if (step === 1 && substep === 0) {
       // First screen of the wizard — no previous step to go to. The X corner
@@ -250,6 +268,7 @@ function WizardContent() {
             totalLots={totalLots}
             onBack={back}
             onNext={async () => { await refreshDraft(); goTo(4, 1); }}
+            onComplete={handleComplete}
           />
         )}
         {step === 4 && substep === 1 && (
@@ -257,20 +276,7 @@ function WizardContent() {
             draftId={draft.id}
             initialDraft={draft.draft_json}
             onBack={back}
-            onComplete={(r) => {
-              revalidateSidebarFromClient();
-              const detected = draft.parsed_json?.detected_ocs ?? [];
-              if (r.sourceDraftId && typeof r.nextOcIndex === "number" && detected.length > 1) {
-                setNextOcPrompt({
-                  ocCode: r.ocCode,
-                  sourceDraftId: r.sourceDraftId,
-                  nextOcIndex: r.nextOcIndex,
-                  totalOcs: detected.length,
-                });
-                return;
-              }
-              window.location.assign(`/ocs/${r.ocCode}?created=1`);
-            }}
+            onComplete={handleComplete}
           />
         )}
       </div>

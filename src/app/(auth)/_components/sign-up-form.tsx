@@ -128,7 +128,7 @@ function SignUpContent() {
             id="email"
             type="email"
             autoComplete="email"
-            placeholder="you@company.com.au"
+            placeholder="Enter your email"
             value={email}
             onChange={(e) => {
               setEmail(e.target.value);
@@ -155,10 +155,9 @@ function SignUpContent() {
                 if (invalid.password) setInvalid((p) => ({ ...p, password: false }));
               }}
               aria-invalid={invalid.password || undefined}
-              // text-base bumps the typed-dot character so it reads as a
-              // bullet rather than a tiny pinhead. Length hint moves to
-              // helper text below the input.
-              className="h-11 pr-10 text-base"
+              // Typed dots at text-base (readable bullets); placeholder
+              // stays text-sm to match the email field.
+              className="h-11 pr-10 text-base placeholder:text-sm"
             />
             <button
               type="button"

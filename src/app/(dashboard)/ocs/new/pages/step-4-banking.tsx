@@ -8,8 +8,9 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Switch } from "@/components/ui/switch";
+import { Landmark, Clock } from "lucide-react";
 import { BankSelect } from "@/components/shared/bank-select";
-import { saveStep, type DraftJson } from "../actions";
+import { saveStep, completeWizard, type DraftJson } from "../actions";
 import { WizardActions } from "./_components/wizard-actions";
 
 // Wizard Step 4 — Banking.
@@ -114,12 +115,14 @@ export function Step4Banking({
   totalLots,
   onBack,
   onNext,
+  onComplete,
 }: {
   draftId: string;
   initialDraft: DraftJson;
   totalLots: number;
   onBack: () => void;
   onNext: () => void;
+  onComplete: (result: { ocCode: string; sourceDraftId?: string; nextOcIndex?: number | null }) => void;
 }) {
   // Tier-1/2 mandates a maintenance plan fund (force on, disable the toggle).
   // Tier 3-5 default OFF; manager can opt in.
@@ -165,13 +168,23 @@ export function Step4Banking({
   const [maintenanceInvalid, setMaintenanceInvalid] = useState<InvalidFlags>(NO_INVALID);
   const [pending, setPending] = useState(false);
 
-  // Optional banking: many strata managers prefer to onboard the OC
-  // first and circle back to bank accounts once the trust account is
-  // open (often days later). Ticking "set up later" skips this step's
-  // validation entirely and saves nothing — they'll configure it from
-  // Settings → Banking after the OC is live.
-  const [skipBanking, setSkipBanking] = useState<boolean>(
-    initialDraft.banking_deferred ?? false,
+  // Banking choice — the step opens on a now/later fork. "now" reveals
+  // the fund-entry cards and advances to opening balances; "later" skips
+  // straight to creating the OC (no bank_accounts rows; configured later
+  // from Settings → Banking). Returning to a draft that already chose
+  // "later" reopens on that choice; one that has admin details reopens
+  // on "now".
+  const hasExistingBankDetails = !!(
+    initialDraft.admin_bank_id ||
+    initialDraft.admin_bsb ||
+    initialDraft.admin_account_number
+  );
+  const [choice, setChoice] = useState<"now" | "later" | null>(
+    initialDraft.banking_deferred
+      ? "later"
+      : hasExistingBankDetails
+        ? "now"
+        : null,
   );
 
   function validateFund(f: FundFields): InvalidFlags {
@@ -183,28 +196,45 @@ export function Step4Banking({
     };
   }
 
+  // "Set up later" → persist the deferred flag, then create the OC right
+  // here (no redundant opening-balances step). completeWizard skips the
+  // bank_accounts inserts when banking_deferred is set.
+  function createDeferred() {
+    setPending(true);
+    void (async () => {
+      const save = await saveStep(draftId, {
+        banking_deferred: true,
+        bank_provider: undefined,
+        has_maintenance_plan_fund: false,
+        admin_bank_id: undefined,
+        admin_account_name: undefined,
+        admin_bsb: undefined,
+        admin_account_number: undefined,
+        capital_same_as_admin: true,
+        maintenance_same_as_admin: true,
+      }, 4, 1);
+      if (save.error) {
+        setPending(false);
+        toast.error(save.error);
+        return;
+      }
+      const result = await completeWizard(draftId);
+      setPending(false);
+      if (result.error || !result.ocCode) {
+        toast.error(result.error ?? "Failed to create the OC");
+        return;
+      }
+      onComplete({
+        ocCode: result.ocCode,
+        sourceDraftId: result.sourceDraftId,
+        nextOcIndex: result.nextOcIndex,
+      });
+    })();
+  }
+
   function onContinue() {
-    if (skipBanking) {
-      setPending(true);
-      void (async () => {
-        const r = await saveStep(draftId, {
-          banking_deferred: true,
-          bank_provider: undefined,
-          has_maintenance_plan_fund: false,
-          admin_bank_id: undefined,
-          admin_account_name: undefined,
-          admin_bsb: undefined,
-          admin_account_number: undefined,
-          capital_same_as_admin: true,
-          maintenance_same_as_admin: true,
-        }, 4, 1);
-        if (r.error) {
-          setPending(false);
-          toast.error(r.error);
-          return;
-        }
-        await onNext();
-      })();
+    if (choice === "later") {
+      createDeferred();
       return;
     }
 
@@ -302,23 +332,45 @@ export function Step4Banking({
         </p>
       </div>
 
-      <div className="flex items-center gap-3 rounded-md border border-border bg-card p-3">
-        <Checkbox
-          id="banking-deferred"
-          checked={skipBanking}
-          onCheckedChange={(v) => setSkipBanking(v === true)}
-        />
-        <div className="text-sm">
-          <Label htmlFor="banking-deferred" className="font-medium text-foreground">
-            I&apos;ll set up the bank accounts later
-          </Label>
-          <p className="text-xs text-muted-foreground mt-0.5">
-            Skip this step and finish the OC. You can add accounts any time from Settings → Banking. Levy distribution stays paused until accounts exist.
-          </p>
-        </div>
+      {/* Now / later fork — two selectable cards. Picking "later" flips
+          the action button to "Create OC"; picking "now" reveals the
+          fund-entry cards below and keeps the button as "Continue". */}
+      <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+        <button
+          type="button"
+          onClick={() => setChoice("now")}
+          className={`flex items-start gap-3 rounded-md border-2 bg-card p-4 text-left transition-colors cursor-pointer ${
+            choice === "now" ? "border-primary bg-primary/5" : "border-border hover:border-primary/40"
+          }`}
+        >
+          <Landmark className="h-5 w-5 shrink-0 text-primary mt-0.5" />
+          <div>
+            <p className="text-sm font-semibold text-foreground">Set up bank accounts now</p>
+            <p className="text-xs text-muted-foreground mt-0.5">
+              Enter the trust account details and opening balances.
+            </p>
+          </div>
+        </button>
+        <button
+          type="button"
+          onClick={() => setChoice("later")}
+          className={`flex items-start gap-3 rounded-md border-2 bg-card p-4 text-left transition-colors cursor-pointer ${
+            choice === "later" ? "border-primary bg-primary/5" : "border-border hover:border-primary/40"
+          }`}
+        >
+          <Clock className="h-5 w-5 shrink-0 text-muted-foreground mt-0.5" />
+          <div>
+            <p className="text-sm font-semibold text-foreground">Set up later</p>
+            <p className="text-xs text-muted-foreground mt-0.5">
+              Create the OC now, add accounts from Settings → Banking. Levy distribution stays paused until accounts exist.
+            </p>
+          </div>
+        </button>
       </div>
 
-      <div className={`rounded-md border border-border bg-card p-4 space-y-3 ${skipBanking ? "opacity-50 pointer-events-none" : ""}`}>
+      {choice === "now" && (
+      <>
+      <div className="rounded-md border border-border bg-card p-4 space-y-3">
         <h3 className="text-sm font-semibold text-foreground">Administrative fund</h3>
         <FundFieldsBlock
           value={admin}
@@ -328,7 +380,7 @@ export function Step4Banking({
         />
       </div>
 
-      <div className={`rounded-md border border-border bg-card p-4 space-y-3 ${skipBanking ? "opacity-50 pointer-events-none" : ""}`}>
+      <div className="rounded-md border border-border bg-card p-4 space-y-3">
         <h3 className="text-sm font-semibold text-foreground">Capital works fund</h3>
         <div className="flex items-center gap-3">
           <Checkbox
@@ -350,7 +402,7 @@ export function Step4Banking({
         )}
       </div>
 
-      <div className={`rounded-md border border-border bg-card p-4 space-y-3 ${skipBanking ? "opacity-50 pointer-events-none" : ""}`}>
+      <div className="rounded-md border border-border bg-card p-4 space-y-3">
         <div className="flex items-center justify-between gap-3">
           <h3 className="text-sm font-semibold text-foreground">Maintenance plan fund</h3>
           <Switch
@@ -386,12 +438,16 @@ export function Step4Banking({
           </>
         )}
       </div>
+      </>
+      )}
 
       <WizardActions
         draftId={draftId}
         onBack={onBack}
         onContinue={onContinue}
+        continueLabel={choice === "later" ? "Create OC" : "Continue"}
         continuePending={pending}
+        disabled={choice === null}
         getCurrentPatch={() => ({
           bank_provider: admin.bankId === "macquarie" ? "macquarie_deft" : "other_csv",
           has_maintenance_plan_fund: hasMaintenance,

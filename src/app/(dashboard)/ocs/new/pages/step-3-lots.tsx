@@ -104,6 +104,9 @@ export function Step3Lots({
     if (n < 2) return; // OC Act minimum.
     setLots((prev) => {
       if (n === prev.length) return prev;
+      // Lot count changed → the computed tier may have changed, so the
+      // manager must re-confirm it before they can advance.
+      if (tierConfirmed) setTierConfirmed(false);
       if (n < prev.length) return prev.slice(0, n);
       // Grow: append default lots starting at the next lot number.
       const next = [...prev];
@@ -136,6 +139,8 @@ export function Step3Lots({
       setLotCountInput(String(next.length));
       return next;
     });
+    // Removing a lot changes the count → re-confirm the tier.
+    if (tierConfirmed) setTierConfirmed(false);
   }
 
   async function onContinue() {

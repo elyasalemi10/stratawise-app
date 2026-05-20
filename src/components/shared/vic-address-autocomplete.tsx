@@ -426,6 +426,10 @@ export function VicAddressAutocomplete({ value, onChange, id, error }: Props) {
           onFocus={() => suggestions.length > 0 && setOpen(true)}
           placeholder="Start typing a Victorian address…"
           autoComplete="off"
+          // Search mode is still a required field — when the parent
+          // flags the address invalid (no parts resolved), paint the
+          // single search box red too, not just the manual sub-inputs.
+          aria-invalid={error || undefined}
         />
         {open && suggestions.length > 0 && (
           <div className="absolute left-0 right-0 top-full z-50 mt-1 rounded-md border border-border bg-popover shadow-md">

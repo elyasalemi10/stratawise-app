@@ -88,7 +88,7 @@ function SignInContent() {
             type="email"
             required
             autoComplete="email"
-            placeholder="you@example.com"
+            placeholder="Enter your email"
             value={email}
             onChange={(e) => {
               setEmail(e.target.value);
@@ -122,10 +122,10 @@ function SignInContent() {
                 if (invalidCreds) setInvalidCreds(false);
               }}
               aria-invalid={invalidCreds || undefined}
-              // text-base bumps the typed-dot character to the same size
-              // as the bullet you'd see in macOS password fields. Default
-              // text-sm gave tiny dots that read as "unfocused" to users.
-              className="h-11 pr-10 text-base"
+              // Typed dots render at text-base (big, readable bullets);
+              // the placeholder stays text-sm so "Enter password" matches
+              // the email field's placeholder size.
+              className="h-11 pr-10 text-base placeholder:text-sm"
             />
             <button
               type="button"

@@ -24,15 +24,19 @@ export default function LotOwnerOnboardingPage() {
     if (!accepted) return;
     setPending(true);
     const result = await recordLotOwnerConsent();
-    setPending(false);
 
     if (result.error) {
+      // Only drop the loading state on FAILURE. On success we keep the
+      // button spinning through the navigation so the user never sees a
+      // "loaded → idle → redirect" flicker (the pattern the team hates).
+      setPending(false);
       toast.error(result.error);
       return;
     }
 
     // ?welcome=1 triggers the dashboard's WelcomeConfetti once, then it
-    // strips the param so a refresh doesn't replay.
+    // strips the param so a refresh doesn't replay. Spinner stays on
+    // until the new page paints.
     window.location.href = "/dashboard?welcome=1";
   }
 
@@ -47,33 +51,23 @@ export default function LotOwnerOnboardingPage() {
 
       <Card className="mt-6">
         <CardContent className="pt-5">
-          <div className="flex items-start gap-3">
+          <div className="flex items-center gap-3">
             <Checkbox
               id="legal-consent"
               checked={accepted}
               onCheckedChange={(v) => setAccepted(v === true)}
-              className="mt-0.5"
+              className="shrink-0"
             />
+            {/* Single flowing line — the previous markup let every link /
+                text fragment wrap independently, producing an ugly
+                column of one-word lines. Wrapping the whole sentence in
+                one <span> keeps it as a normal paragraph that wraps at
+                natural word boundaries. */}
             <Label className="text-sm leading-relaxed text-foreground">
               I have read and agree to the{" "}
-              <Link
-                href="/legal/terms"
-                target="_blank"
-                rel="noopener noreferrer"
-                className="text-[color:var(--brand-gold)] hover:underline"
-              >
-                Terms of Service
-              </Link>{" "}
-              and{" "}
-              <Link
-                href="/legal/privacy"
-                target="_blank"
-                rel="noopener noreferrer"
-                className="text-[color:var(--brand-gold)] hover:underline"
-              >
-                Privacy Policy
-              </Link>
-              .
+              <Link href="/legal/terms" target="_blank" rel="noopener noreferrer" className="text-[color:var(--brand-gold)] hover:underline">Terms of Service</Link>
+              {" "}and{" "}
+              <Link href="/legal/privacy" target="_blank" rel="noopener noreferrer" className="text-[color:var(--brand-gold)] hover:underline">Privacy Policy</Link>.
             </Label>
           </div>
         </CardContent>
