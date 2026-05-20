@@ -176,6 +176,18 @@ function VerifyEmailContent() {
       <p className="text-center text-xs text-muted-foreground">
         Code expires in 10 minutes. Check your spam folder.
       </p>
+
+      <div className="text-center">
+        {/* Cancel sign-up from the verify stage. Hard nav to /logout clears
+            the half-created session; the unverified account can be resumed
+            by signing in again later. */}
+        <a
+          href="/logout"
+          className="text-xs font-medium text-muted-foreground hover:text-foreground"
+        >
+          Cancel and sign out
+        </a>
+      </div>
     </div>
   );
 }

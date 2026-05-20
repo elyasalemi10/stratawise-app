@@ -20,6 +20,7 @@ function SignUpContent() {
   const searchParams = useSearchParams();
   const nextPath = searchParams.get("next") ?? "/onboarding";
 
+  const [accountType, setAccountType] = useState<"strata_manager" | "lot_owner">("strata_manager");
   const [firstName, setFirstName] = useState("");
   const [lastName, setLastName] = useState("");
   const [email, setEmail] = useState("");
@@ -63,6 +64,10 @@ function SignUpContent() {
         data: {
           first_name: firstName.trim(),
           last_name: lastName.trim() || null,
+          // ensureProfile reads intended_role to set the profile's role.
+          // getOnboardingRedirect then routes managers → company setup and
+          // lot owners → the lot-owner consent page automatically.
+          intended_role: accountType,
         },
       },
     });
@@ -91,6 +96,32 @@ function SignUpContent() {
       </div>
 
       <form onSubmit={handleSubmit} className="mx-auto w-full max-w-sm space-y-4">
+        {/* Account type — managers run an OC; lot owners join their OC's
+            portal. The choice sets the profile role so onboarding routes to
+            the right place. */}
+        <div className="grid grid-cols-2 gap-2">
+          {([
+            { value: "strata_manager" as const, label: "I'm a manager" },
+            { value: "lot_owner" as const, label: "I'm a lot owner" },
+          ]).map((opt) => {
+            const selected = accountType === opt.value;
+            return (
+              <button
+                key={opt.value}
+                type="button"
+                onClick={() => setAccountType(opt.value)}
+                className={`h-11 rounded-md border text-sm font-medium transition-colors cursor-pointer ${
+                  selected
+                    ? "border-primary bg-primary/5 text-foreground"
+                    : "border-border bg-card text-muted-foreground hover:border-primary/40"
+                }`}
+              >
+                {opt.label}
+              </button>
+            );
+          })}
+        </div>
+
         <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
           <div className="space-y-1.5">
             <Label htmlFor="first-name">

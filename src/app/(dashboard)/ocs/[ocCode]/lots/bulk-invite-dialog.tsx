@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { Loader2, MailCheck } from "lucide-react";
+import { Loader2 } from "lucide-react";
 import { toast } from "sonner";
 import {
   Dialog,
@@ -12,6 +12,7 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
+import { Checkbox } from "@/components/ui/checkbox";
 import { bulkInviteLotOwners } from "../manage/invitation-actions";
 import type { LotWithFinancials } from "@/lib/actions/oc";
 
@@ -38,38 +39,52 @@ interface Props {
 export function BulkInviteDialog({ open, onClose, ocId, lots, inviteStatusMap }: Props) {
   const [sending, setSending] = useState(false);
   const [eligible, setEligible] = useState<LotWithFinancials[]>([]);
-  const [noEmailCount, setNoEmailCount] = useState(0);
+  const [checked, setChecked] = useState<Set<string>>(new Set());
   const [alreadyAcceptedCount, setAlreadyAcceptedCount] = useState(0);
 
   // Recompute eligibility from the parent-supplied map every time the
-  // dialog opens. Synchronous — no fetch, no loading state.
+  // dialog opens. Synchronous — no fetch, no loading state. Owners with no
+  // email (or no name) can't be invited, so they're left out of the list
+  // entirely. All eligible owners start checked.
   useEffect(() => {
     if (!open) return;
     const accepted = new Set<string>();
     inviteStatusMap.forEach((v, k) => { if (v === "accepted") accepted.add(k); });
 
     const elig: LotWithFinancials[] = [];
-    let noEmail = 0;
     let already = 0;
     for (const lot of lots) {
       if (accepted.has(lot.id)) { already++; continue; }
-      if (!lot.owner_contact_email?.trim()) { noEmail++; continue; }
-      if (!lot.owner_display_name?.trim()) { noEmail++; continue; }
+      if (!lot.owner_contact_email?.trim()) continue;
+      if (!lot.owner_display_name?.trim()) continue;
       elig.push(lot);
     }
     setEligible(elig);
-    setNoEmailCount(noEmail);
+    setChecked(new Set(elig.map((l) => l.id)));
     setAlreadyAcceptedCount(already);
   }, [open, lots, inviteStatusMap]);
 
+  function toggle(lotId: string) {
+    setChecked((prev) => {
+      const next = new Set(prev);
+      if (next.has(lotId)) next.delete(lotId);
+      else next.add(lotId);
+      return next;
+    });
+  }
+
+  const allChecked = eligible.length > 0 && checked.size === eligible.length;
+
   async function send() {
     setSending(true);
-    const payload = eligible.map((l) => ({
-      lotId: l.id,
-      email: l.owner_contact_email!,
-      name: l.owner_display_name!,
-      phone: l.owner_contact_phone ?? undefined,
-    }));
+    const payload = eligible
+      .filter((l) => checked.has(l.id))
+      .map((l) => ({
+        lotId: l.id,
+        email: l.owner_contact_email!,
+        name: l.owner_display_name!,
+        phone: l.owner_contact_phone ?? undefined,
+      }));
     const r = await bulkInviteLotOwners(ocId, payload);
     setSending(false);
     if (r.failed > 0) {
@@ -80,46 +95,73 @@ export function BulkInviteDialog({ open, onClose, ocId, lots, inviteStatusMap }:
     onClose();
   }
 
-  const eligibleCount = eligible.length;
-  const totalLots = lots.length;
+  const checkedCount = checked.size;
 
   return (
     <Dialog open={open} onOpenChange={(o) => { if (!o && !sending) onClose(); }}>
       <DialogContent className="sm:max-w-md">
         <DialogHeader>
-          <DialogTitle>Bulk invite owners</DialogTitle>
+          <DialogTitle>Invite owners</DialogTitle>
           <DialogDescription>
-            Sends an invitation email to every eligible lot owner with an email on file.
-            Owners who&apos;ve already accepted are skipped. Pending invites get refreshed.
+            Pick the owners to email an invitation. Owners with no email on file
+            aren&apos;t shown. Owners who&apos;ve already accepted are skipped.
           </DialogDescription>
         </DialogHeader>
 
-        <div className="space-y-2 text-sm">
-          <div className="rounded-md border border-border bg-card p-3 flex items-center gap-3">
-            <MailCheck className="h-5 w-5 text-primary shrink-0" />
-            <div className="flex-1">
-              <p className="font-semibold text-foreground">
-                {eligibleCount} of {totalLots} lot{totalLots === 1 ? "" : "s"} will be invited
-              </p>
-              {(noEmailCount > 0 || alreadyAcceptedCount > 0) && (
-                <p className="text-xs text-muted-foreground mt-0.5">
-                  {noEmailCount > 0 && <>{noEmailCount} skipped (no email / name)</>}
-                  {noEmailCount > 0 && alreadyAcceptedCount > 0 && " · "}
-                  {alreadyAcceptedCount > 0 && <>{alreadyAcceptedCount} already accepted</>}
-                </p>
-              )}
+        {eligible.length === 0 ? (
+          <p className="rounded-md border border-border bg-card p-4 text-sm text-muted-foreground">
+            No owners with an email on file are waiting to be invited.
+            {alreadyAcceptedCount > 0 && ` (${alreadyAcceptedCount} already accepted.)`}
+          </p>
+        ) : (
+          <>
+            <div className="flex items-center justify-between border-b border-border pb-2">
+              <button
+                type="button"
+                onClick={() =>
+                  setChecked(allChecked ? new Set() : new Set(eligible.map((l) => l.id)))
+                }
+                className="text-xs font-medium text-primary hover:underline cursor-pointer"
+              >
+                {allChecked ? "Deselect all" : "Select all"}
+              </button>
+              <span className="text-xs text-muted-foreground">
+                {checkedCount} of {eligible.length} selected
+              </span>
             </div>
-          </div>
-        </div>
+            <div className="max-h-72 space-y-1 overflow-y-auto">
+              {eligible.map((lot) => (
+                <div
+                  key={lot.id}
+                  className="flex items-start gap-3 rounded-md px-1 py-2 hover:bg-muted/50"
+                >
+                  <Checkbox
+                    checked={checked.has(lot.id)}
+                    onCheckedChange={() => toggle(lot.id)}
+                    className="bg-card mt-0.5"
+                  />
+                  <div className="min-w-0 flex-1">
+                    <p className="truncate text-sm font-medium text-foreground">
+                      {lot.owner_display_name}
+                      <span className="ml-1.5 text-xs font-normal text-muted-foreground">
+                        Lot {lot.lot_number}
+                      </span>
+                    </p>
+                    <p className="truncate text-xs text-muted-foreground">
+                      {lot.owner_contact_email}
+                    </p>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </>
+        )}
 
         <DialogFooter>
           <Button variant="secondary" onClick={onClose} disabled={sending}>Cancel</Button>
-          <Button
-            onClick={send}
-            disabled={sending || eligibleCount === 0}
-          >
+          <Button onClick={send} disabled={sending || checkedCount === 0}>
             {sending && <Loader2 className="size-4 animate-spin" />}
-            {sending ? "Sending…" : `Send ${eligibleCount > 0 ? eligibleCount : ""} invitation${eligibleCount === 1 ? "" : "s"}`}
+            Send {checkedCount > 0 ? checkedCount : ""} invitation{checkedCount === 1 ? "" : "s"}
           </Button>
         </DialogFooter>
       </DialogContent>

@@ -134,6 +134,23 @@ export function LotsPageContent({
     return () => { cancelled = true; };
   }, [lots, ocId, inviteStatus.size]);
 
+  // Explicit re-fetch after an invite is sent/revoked — bypasses the
+  // first-mount guard above so the "not invited" pill flips immediately
+  // without a full page reload.
+  async function refreshInviteStatus() {
+    const lotIds = lots.map((l) => l.id);
+    if (lotIds.length === 0) return;
+    const statusMap = await getLotInvitationStatus(ocId, lotIds);
+    const map = new Map<string, string>();
+    if (statusMap instanceof Map) {
+      statusMap.forEach((v, k) => map.set(k, v));
+    } else {
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      Object.entries(statusMap as any).forEach(([k, v]) => map.set(k, v as string));
+    }
+    setInviteStatus(map);
+  }
+
   function onLotUpdated(lotId: string, field: string, value: string | number | null) {
     setLots((prev) =>
       prev.map((lot) =>
@@ -289,6 +306,7 @@ export function LotsPageContent({
         onLotUpdated={onLotUpdated}
         isLotOwner={isLotOwner}
         inviteStatusMap={inviteStatus}
+        onInviteChanged={refreshInviteStatus}
       />
 
       {!isLotOwner && (
@@ -301,7 +319,7 @@ export function LotsPageContent({
           />
           <BulkInviteDialog
             open={bulkInviteOpen}
-            onClose={() => { setBulkInviteOpen(false); router.refresh(); }}
+            onClose={() => { setBulkInviteOpen(false); void refreshInviteStatus(); }}
             ocId={ocId}
             lots={lots}
             inviteStatusMap={inviteStatus}

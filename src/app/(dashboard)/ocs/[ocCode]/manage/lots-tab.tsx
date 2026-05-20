@@ -35,6 +35,8 @@ interface LotsTabProps {
    *  don't refetch the same data here AND in the bulk-invite dialog. When
    *  omitted (legacy /manage path), the component fetches itself. */
   inviteStatusMap?: Map<string, string>;
+  /** Called after an invite is sent so the parent refreshes the pill map. */
+  onInviteChanged?: () => void;
 }
 
 function EditableCell({
@@ -102,7 +104,7 @@ function EditableCell({
   );
 }
 
-export function LotsTab({ lots, ocId, isEditing = false, onLotUpdated, isLotOwner, totalEntitlement, inviteStatusMap }: LotsTabProps) {
+export function LotsTab({ lots, ocId, isEditing = false, onLotUpdated, isLotOwner, totalEntitlement, inviteStatusMap, onInviteChanged }: LotsTabProps) {
   // Consume the prop so the unused-prop lint doesn't fire on /manage — the
   // value isn't rendered any more per the no-totals spec.
   void totalEntitlement;
@@ -231,6 +233,7 @@ export function LotsTab({ lots, ocId, isEditing = false, onLotUpdated, isLotOwne
                         ownerName={lot.owner_display_name ?? null}
                         ownerEmail={lot.owner_contact_email ?? null}
                         ownerPhone={lot.owner_contact_phone ?? null}
+                        onInviteChanged={onInviteChanged}
                       />
                     </TableCell>
                   )}

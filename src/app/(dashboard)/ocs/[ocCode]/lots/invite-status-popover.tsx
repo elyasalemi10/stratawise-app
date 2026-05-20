@@ -49,6 +49,9 @@ interface Props {
   ownerName?: string | null;
   ownerEmail?: string | null;
   ownerPhone?: string | null;
+  /** Called after a successful send so the parent can refresh the
+   *  invite-status pill without a full page reload. */
+  onInviteChanged?: () => void;
 }
 
 interface Invitation {
@@ -124,6 +127,7 @@ export function InviteStatusPopover({
   ownerName,
   ownerEmail,
   ownerPhone,
+  onInviteChanged,
 }: Props) {
   const ocCode = useOCCode();
   const router = useRouter();
@@ -210,7 +214,10 @@ export function InviteStatusPopover({
                 ownerPhone={inviteFormInitial.phone}
                 onSent={() => {
                   setOpen(false);
-                  router.refresh();
+                  // Refresh the parent's pill map if wired; fall back to a
+                  // server refresh for the legacy /manage path.
+                  if (onInviteChanged) onInviteChanged();
+                  else router.refresh();
                 }}
               />
             )}
