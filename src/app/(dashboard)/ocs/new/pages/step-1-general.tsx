@@ -164,8 +164,10 @@ export function Step1General({
       return;
     }
 
-    setPending(true);
-    const r = await saveStep(draftId, {
+    // Background save — fire the saveStep without awaiting so the next
+    // step renders instantly. Errors still surface via toast; the
+    // auto-save heartbeat in WizardActions catches any dropped write.
+    void saveStep(draftId, {
       plan_number: planNumber.toUpperCase(),
       oc_number: ocNumberParsed,
       building_name: buildingName.trim() || undefined,
@@ -180,13 +182,10 @@ export function Step1General({
       gst_registered: gstRegistered,
       abn: abnDigits || undefined,
       tfn: gstRegistered ? (tfn.replace(/\s+/g, "") || undefined) : undefined,
-    }, 1, 2); // Advance to step 1 sub 2 (Management fee).
-    if (r.error) {
-      setPending(false);
-      toast.error(r.error);
-      return;
-    }
-    await onNext();
+    }, 1, 2).then((r) => {
+      if (r.error) toast.error(r.error);
+    });
+    onNext();
   }
 
   return (

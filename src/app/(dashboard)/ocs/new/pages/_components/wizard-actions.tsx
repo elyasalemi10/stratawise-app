@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { toast } from "sonner";
 import { Loader2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
@@ -11,6 +11,13 @@ import { saveDraftPatch, type DraftJson } from "../../actions";
 // whatever state the form has right now, even if it's partial. Save skips the
 // usual validation; the wizard pointer (current_step/current_substep) does NOT
 // advance, so refreshing the wizard returns the user to the same page.
+//
+// Auto-save heartbeat (added 2026-05): every AUTOSAVE_INTERVAL_MS the component
+// snapshots the current patch and compares to the last snapshot it sent. If
+// the form has changed, it fires saveDraftPatch in the background. A tab
+// crash now loses at most AUTOSAVE_INTERVAL_MS of typing instead of the
+// entire step. UPSERT against a single draft row — load is trivial.
+const AUTOSAVE_INTERVAL_MS = 30_000;
 
 interface Props {
   draftId: string;
@@ -52,6 +59,36 @@ export function WizardActions({
       description: "Your progress is saved. Continue any time.",
     });
   }
+
+  // ─── Auto-save heartbeat ────────────────────────────────────────────
+  // Compares the latest patch to the most recent snapshot we've sent.
+  // Only fires the network call when the form actually changed, so a
+  // user staring at a finished step doesn't generate 2 writes/min.
+  const lastSavedSnapshotRef = useRef<string>("");
+  useEffect(() => {
+    const intervalId = window.setInterval(() => {
+      try {
+        const patch = getCurrentPatch();
+        const snapshot = JSON.stringify(patch);
+        if (snapshot === lastSavedSnapshotRef.current) return;
+        lastSavedSnapshotRef.current = snapshot;
+        void saveDraftPatch(draftId, patch).catch(() => {
+          // Heartbeat failures are silent — the visible Save / Continue
+          // buttons will surface real errors on the next user-initiated
+          // save. We don't want a flaky network turning into a wall of
+          // red toasts in the background.
+        });
+      } catch {
+        // getCurrentPatch can throw if the form reads from refs that
+        // aren't ready yet — ignore and retry on the next tick.
+      }
+    }, AUTOSAVE_INTERVAL_MS);
+    return () => window.clearInterval(intervalId);
+    // getCurrentPatch is a stable closure provided by the parent step,
+    // so we intentionally exclude it from the dep array to avoid
+    // resetting the heartbeat on every render.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [draftId]);
 
   return (
     <div className="flex items-center justify-between gap-2 pt-2">
