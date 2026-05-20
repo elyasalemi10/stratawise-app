@@ -90,14 +90,15 @@ export function InviteConfirmDialog({
           </DialogDescription>
         </DialogHeader>
         <div className="space-y-3">
-          <div className="rounded-md border border-border bg-cool-muted px-3 py-2.5 text-sm">
-            <p className="text-xs uppercase tracking-wide text-cool-muted-foreground">
-              Sending to
-            </p>
-            {/* Email + edit link sit on the same row — the link to the
-                right of the address rather than dropped underneath it.
-                On narrow widths they wrap rather than overflow. */}
-            <div className="mt-0.5 flex flex-wrap items-center gap-x-3 gap-y-1">
+          {/* Owner + lot context, then the email — all read-only. The
+              manager just confirms we're sending to the right address. */}
+          <div className="rounded-md border border-border bg-cool-muted px-3 py-2.5 text-sm space-y-1.5">
+            <div>
+              <p className="text-xs uppercase tracking-wide text-cool-muted-foreground">Owner</p>
+              <p className="font-medium text-foreground">{ownerName ?? "—"} · Lot {lotNumber}</p>
+            </div>
+            <div>
+              <p className="text-xs uppercase tracking-wide text-cool-muted-foreground">Email</p>
               <p className="inline-flex items-center gap-2 font-medium text-foreground">
                 <Mail className="h-3.5 w-3.5 text-muted-foreground" />
                 {ownerEmail ? (
@@ -106,13 +107,6 @@ export function InviteConfirmDialog({
                   <span className="italic text-muted-foreground">no email on file</span>
                 )}
               </p>
-              <button
-                type="button"
-                onClick={() => { onClose(); onEditDetails(); }}
-                className="text-xs font-medium text-[color:var(--brand-gold)] hover:underline whitespace-nowrap"
-              >
-                Edit owner details
-              </button>
             </div>
           </div>
         </div>

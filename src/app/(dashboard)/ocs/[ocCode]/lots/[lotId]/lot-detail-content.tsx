@@ -312,16 +312,6 @@ export function LotDetailContent({
                   : balance < 0
                     ? `+${formatCurrency(balance)}`
                     : formatCurrency(0)}
-                {balance > 0 && (
-                  <span className="ml-1 text-sm font-normal text-muted-foreground">
-                    (owes)
-                  </span>
-                )}
-                {balance < 0 && (
-                  <span className="ml-1 text-sm font-normal text-muted-foreground">
-                    (credit)
-                  </span>
-                )}
               </span>
             </div>
             <div className="inline-flex items-baseline gap-2">

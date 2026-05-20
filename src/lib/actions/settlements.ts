@@ -356,6 +356,11 @@ export async function parseSettlementAndMatchLot(
 export async function findLotByNumberInOc(
   ocId: string,
   lotNumber: number,
+  // When the manager jumps from a wrong-lot settlement to the correct
+  // lot, we re-point the already-uploaded document at the new lot so
+  // applySettlementToLot's "document attached to this lot" check passes
+  // and the PDF stays linked to the settlement it actually describes.
+  documentId?: string | null,
 ): Promise<{ ok: true; lotId: string; ocShortCode: string } | { ok: false; error: string }> {
   await requireCompanyRole();
   await requireOCAccess(ocId);
@@ -373,6 +378,18 @@ export async function findLotByNumberInOc(
     .eq("id", ocId)
     .maybeSingle();
   if (!oc?.short_code) return { ok: false, error: "OC missing short code." };
+
+  if (documentId) {
+    // Re-attach the document to the target lot (same OC, so access is
+    // already verified). The settlement at the new lot then links the
+    // PDF that describes it.
+    await supabase
+      .from("documents")
+      .update({ lot_id: lot.id })
+      .eq("id", documentId)
+      .eq("oc_id", ocId);
+  }
+
   return { ok: true, lotId: lot.id as string, ocShortCode: oc.short_code as string };
 }
 
@@ -507,24 +524,35 @@ export async function applySettlementToLot(input: ApplySettlementInput) {
       .in("id", existingPending.map((i) => i.id));
   }
 
-  // 3. Create the new pending invitation. NO email is sent.
-  const { data: invitation, error: invErr } = await supabase
-    .from("invitations")
-    .insert({
-      oc_id: resolvedOcId,
-      lot_id: lotId,
-      email: newOwner.email || null,
-      name: newOwner.name,
-      phone: newOwner.phone,
-      role: "lot_owner",
-      invited_by: profile.id,
-      code: generateInviteCode(),
-    })
-    .select("id, code, email, name")
-    .single();
+  // 3. Create the new pending invitation — ONLY when we have an email.
+  //    Email is optional for settling a new owner (the manager may not
+  //    have it yet). The invitations table requires a non-null email, so
+  //    with no email we skip the invitation entirely; the owner still
+  //    gets created via the lot_ownerships + lot_owners writes below and
+  //    shows as a captured contact. The manager can send an invite later
+  //    from the lot once they have the email.
+  let invitation: { id: string; code: string; email: string | null; name: string | null } | null = null;
+  const inviteEmail = (newOwner.email ?? "").trim();
+  if (inviteEmail) {
+    const { data: createdInvite, error: invErr } = await supabase
+      .from("invitations")
+      .insert({
+        oc_id: resolvedOcId,
+        lot_id: lotId,
+        email: inviteEmail,
+        name: newOwner.name,
+        phone: newOwner.phone,
+        role: "lot_owner",
+        invited_by: profile.id,
+        code: generateInviteCode(),
+      })
+      .select("id, code, email, name")
+      .single();
 
-  if (invErr || !invitation) {
-    return { error: invErr?.message ?? "Could not create invitation" };
+    if (invErr || !createdInvite) {
+      return { error: invErr?.message ?? "Could not create invitation" };
+    }
+    invitation = createdInvite;
   }
 
   // 3a. Owner + lot_ownership + settlement — the new entity-model writes.
@@ -691,24 +719,26 @@ export async function applySettlementToLot(input: ApplySettlementInput) {
     console.error("applySettlementToLot: lot_owners sync failed (non-fatal)", err);
   }
 
-  // 4. Audit-log the new invitation side of the transfer.
+  // 4. Audit-log the incoming side of the transfer. When there was no
+  //    email (no invitation created), still record the ownership change
+  //    against the new lot_ownership row so the history is complete.
   await supabase.from("audit_log").insert({
     profile_id: profile.id,
     oc_id: resolvedOcId,
     action: "ownership_transfer",
-    entity_type: "invitation",
-    entity_id: invitation.id,
+    entity_type: invitation ? "invitation" : "lot_owner",
+    entity_id: invitation?.id ?? newOwnerId,
     after_state: {
-      email: invitation.email,
-      name: invitation.name,
+      email: invitation?.email ?? newOwner.email ?? null,
+      name: invitation?.name ?? newOwner.name,
       lot_id: lotId,
+      invitation_created: !!invitation,
     },
     metadata: {
       settlement_document_id: documentId,
       side: "incoming",
       settlement_date: settlementDate,
       postal_address: newOwner.postalAddress,
-      date_of_birth: newOwner.dateOfBirth,
       replaced_pending_invitation_ids: existingPending?.map((i) => i.id) ?? [],
     },
   });
@@ -738,8 +768,8 @@ export async function applySettlementToLot(input: ApplySettlementInput) {
 
   return {
     success: true,
-    invitationId: invitation.id,
-    invitationCode: invitation.code,
+    invitationId: invitation?.id ?? null,
+    invitationCode: invitation?.code ?? null,
     endedMemberId: activeMember?.id ?? null,
     // Entity-model surface: tells the caller which new-shape rows were
     // created. Non-fatal — settlementId / newLotOwnershipId may be null

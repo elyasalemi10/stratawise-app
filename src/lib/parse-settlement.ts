@@ -124,7 +124,9 @@ const SYSTEM_PROMPT = `You extract structured fields from a Victorian / Australi
 
 Field-by-field rules:
 - transferee = INCOMING owner (the buyer). NOT the seller / transferor.
-- Multiple transferees on title: emit the first one as transferee.name; put the rest as objects in additional_transferees.
+- Names: STRIP any honorific / title prefix — "Mr", "Mrs", "Ms", "Miss", "Dr", "Prof", etc. We do NOT store gender or titles. "MR MARK JACKSON" → "Mark Jackson".
+- Names: return in natural Title Case, NOT the document's ALL-CAPS. "MARK JACKSON" → "Mark Jackson", "MARY-ANNE O'BRIEN" → "Mary-Anne O'Brien". Preserve internal capitals in names like "McDonald" / "O'Brien".
+- Multiple transferees on title: emit the first one as transferee.name; put the rest as objects in additional_transferees (same title-strip + Title-Case rules apply).
 - settlement_date = day legal title transferred. This is usually labelled "Settlement Date", "Date of Settlement" or stamped/dated near the signatures — NOT the contract date.
 - sale_price_cents is INTEGER CENTS. $850,000 → 85000000. $1.2M → 120000000. Null if absent.
 - Dates: ISO yyyy-mm-dd. AU forms use DD/MM/YYYY; convert. If only a partial date is visible (e.g. month + year), return null rather than guess.

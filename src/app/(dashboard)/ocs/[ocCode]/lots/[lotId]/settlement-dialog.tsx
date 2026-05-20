@@ -147,11 +147,12 @@ export function SettlementDialog(props: Props) {
         tenantEmail?: string;
         tenantPhone?: string;
       };
-      // No PDF re-parse — the existing document was already attached to
-      // the OTHER lot. Drop the manager into manual mode with the form
-      // pre-filled so they can finish without re-uploading.
+      // No PDF re-parse — the document was re-attached to THIS lot by
+      // findLotByNumberInOc before navigation. Use the manual review UI
+      // (no match pills, since we didn't re-parse against this lot) but
+      // keep the documentId so the settlement stays linked to the PDF.
       setEntryMode("manual");
-      setDocumentId(null);
+      setDocumentId(payload.documentId ?? null);
       if (payload.name) setName(payload.name);
       if (payload.email) setEmail(payload.email);
       if (payload.phone) setPhone(payload.phone);
@@ -214,6 +215,15 @@ export function SettlementDialog(props: Props) {
       setPostalAddress(data.parsed.transferee.postalAddress ?? "");
       setSettlementDate(data.parsed.settlementDate ?? "");
       setStage("review");
+      // Mismatch popup comes FIRST — before the manager reviews the
+      // prefilled form. The form is already filled behind it, but the
+      // modal blocks until they confirm "I'm sure" (or jump to the right
+      // lot). Plan mismatch is the higher-stakes check so it leads.
+      if (data.matches.planNumber === false) {
+        setMismatchStep("plan");
+      } else if (data.matches.lotNumber === false) {
+        setMismatchStep("lot");
+      }
     } catch (err) {
       toast.error(err instanceof Error ? err.message : "Could not process settlement", {
         duration: Infinity,
@@ -253,7 +263,10 @@ export function SettlementDialog(props: Props) {
     if (!targetLotId) return;
     setStage("submitting");
     const result = await applySettlementToLot({
-      documentId: entryMode === "manual" ? null : documentId,
+      // Pass whatever documentId we hold. Pure manual entry has none
+      // (null); PDF flow has it; the wrong-lot jump re-attaches the doc
+      // to this lot and carries the id so the PDF stays linked.
+      documentId: documentId,
       lotId: targetLotId,
       newOwner: {
         name: name.trim(),
@@ -286,23 +299,14 @@ export function SettlementDialog(props: Props) {
     onApplied?.();
   }, [entryMode, documentId, targetLotId, name, email, phone, postalAddress, settlementDate, occupancy, tenantName, tenantEmail, tenantPhone, review, targetLotNumber, reset, onClose, onApplied]);
 
-  // Entry point fired by the footer's "Confirm and assign" button.
-  // If the parsed PDF says a different plan or lot than the one the
-  // manager is applying to, open the 2-step mismatch popup first.
+  // Footer "Confirm and assign". The plan/lot mismatch popup already
+  // ran at upload time (before the form was reviewed), so by the time
+  // the manager reaches this button they've acknowledged any mismatch —
+  // just validate + submit.
   const handleConfirm = useCallback(() => {
     if (!validateForm()) return;
-    if (entryMode === "pdf" && review) {
-      if (review.matches.planNumber === false) {
-        setMismatchStep("plan");
-        return;
-      }
-      if (review.matches.lotNumber === false) {
-        setMismatchStep("lot");
-        return;
-      }
-    }
     void submitSettlement();
-  }, [validateForm, entryMode, review, submitSettlement]);
+  }, [validateForm, submitSettlement]);
 
   // "Go to lot X" branch: look up the lot the parser thinks the document
   // is for, stash the parsed data + form values in sessionStorage, then
@@ -311,7 +315,10 @@ export function SettlementDialog(props: Props) {
   const handleJumpToParsedLot = useCallback(async () => {
     if (!review?.parsed.lotNumber) return;
     setJumpingToLot(true);
-    const res = await findLotByNumberInOc(ocId, review.parsed.lotNumber);
+    // Pass documentId so the server re-attaches the PDF to the target
+    // lot — the destination drawer then submits in PDF mode with the
+    // doc linked, not as a manual entry.
+    const res = await findLotByNumberInOc(ocId, review.parsed.lotNumber, documentId);
     setJumpingToLot(false);
     if (!res.ok) {
       toast.error(res.error);
@@ -486,18 +493,21 @@ export function SettlementDialog(props: Props) {
                   <Button
                     type="button"
                     variant="secondary"
-                    onClick={() => setMismatchStep(null)}
+                    onClick={handleClose}
                   >
-                    Cancel
+                    Cancel — wrong document
                   </Button>
                   <Button
                     type="button"
                     onClick={() => {
+                      // Chain to the lot mismatch step if that's ALSO
+                      // wrong; otherwise dismiss to reveal the prefilled
+                      // review form (we do NOT submit here — the manager
+                      // still reviews + confirms).
                       if (review.matches.lotNumber === false) {
                         setMismatchStep("lot");
                       } else {
                         setMismatchStep(null);
-                        void submitSettlement();
                       }
                     }}
                   >
@@ -534,10 +544,7 @@ export function SettlementDialog(props: Props) {
                   </Button>
                   <Button
                     type="button"
-                    onClick={() => {
-                      setMismatchStep(null);
-                      void submitSettlement();
-                    }}
+                    onClick={() => setMismatchStep(null)}
                   >
                     I&apos;m sure — apply to Lot {targetLotNumber}
                   </Button>
@@ -686,17 +693,15 @@ function ReviewForm(props: {
         </div>
       )}
 
-      {/* New owner editable form (prefilled from PDF) */}
+      {/* Owner editable form (prefilled from PDF) */}
       <div className="space-y-3">
-        <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">New owner</p>
-
         <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
           <div className="space-y-1.5 sm:col-span-2">
             <Label htmlFor="settlement-name">Name <span className="text-destructive">*</span></Label>
             <Input id="settlement-name" value={props.name} onChange={(e) => props.setName(e.target.value)} placeholder="Full legal name" />
           </div>
           <div className="space-y-1.5">
-            <Label htmlFor="settlement-email">Email <span className="text-destructive">*</span></Label>
+            <Label htmlFor="settlement-email">Email</Label>
             <Input id="settlement-email" type="email" value={props.email} onChange={(e) => props.setEmail(e.target.value)} placeholder="owner@example.com" />
           </div>
           <div className="space-y-1.5">
@@ -766,10 +771,6 @@ function ManualReviewForm(props: {
   return (
     <div className="space-y-4 max-h-[78vh] overflow-y-auto pr-1">
       <div className="space-y-3">
-        <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
-          New owner
-        </p>
-
         <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
           <div className="space-y-1.5 sm:col-span-2">
             <Label htmlFor="manual-settlement-name">

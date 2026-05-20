@@ -191,33 +191,63 @@ export function InviteStatusPopover({
           onClick={(e) => e.stopPropagation()}
         >
           <DialogHeader>
-            <DialogTitle className="flex items-center justify-between gap-2 pr-6">
-              <span>
-                Lot {lotNumber}
-                {latest?.name ? ` — ${latest.name}` : ""}
-              </span>
-              {pillFor(status)}
+            <DialogTitle className="pr-6">
+              {isAccepted ? "Owner — " : "Invite owner — "}Lot {lotNumber}
             </DialogTitle>
           </DialogHeader>
 
           <div className="space-y-4">
-            {/* Invite history */}
-            <div>
-              <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground mb-2">
-                Invite history
-              </p>
-              {loading ? (
-                <div className="flex items-center justify-center py-4 text-xs text-muted-foreground">
-                  <Loader2 className="mr-2 h-3.5 w-3.5 animate-spin" />
-                  Loading…
-                </div>
-              ) : historyRows.length === 0 ? (
+            {/* Read-only owner + email confirm. No editable form, no
+                "not invited" pill — the manager just confirms we've got
+                the right address and hits Send. */}
+            {!isAccepted && inviteFormInitial && (
+              <ConfirmInviteBlock
+                ocId={ocId}
+                lotId={lotId}
+                lotNumber={lotNumber}
+                ownerName={inviteFormInitial.name}
+                ownerEmail={inviteFormInitial.email}
+                ownerPhone={inviteFormInitial.phone}
+                onSent={() => {
+                  setOpen(false);
+                  router.refresh();
+                }}
+              />
+            )}
+
+            {/* No email yet → the only thing they can do is open the
+                Owner tab to add one. */}
+            {!isAccepted && !inviteFormInitial && (
+              <div className="space-y-3">
                 <div className="flex items-center gap-2 rounded-md border border-border bg-cool-muted p-3 text-xs text-cool-muted-foreground">
                   <MailOpen className="h-3.5 w-3.5" />
-                  No invitation has been sent for this lot yet.
+                  No email on file for this lot — add one to send an invitation.
                 </div>
-              ) : (
-                <ol className="space-y-2 max-h-56 overflow-y-auto pr-1">
+                <Link
+                  href={`/ocs/${ocCode}/lots/${lotId}?tab=owner`}
+                  className="inline-flex items-center text-sm font-medium text-blue-600 underline-offset-4 hover:underline"
+                  onClick={() => setOpen(false)}
+                >
+                  Add owner
+                  <ExternalLink className="ml-1 h-3.5 w-3.5" />
+                </Link>
+              </div>
+            )}
+
+            {isAccepted && (
+              <div className="flex items-center gap-2 rounded-md border border-border bg-cool-muted p-3 text-xs text-cool-muted-foreground">
+                <Check className="h-3.5 w-3.5" />
+                This owner has accepted their invitation.
+              </div>
+            )}
+
+            {/* Invite history — informational, collapsed below the action. */}
+            {!loading && historyRows.length > 0 && (
+              <div>
+                <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground mb-2">
+                  Invite history
+                </p>
+                <ol className="space-y-2 max-h-44 overflow-y-auto pr-1">
                   {historyRows.map((inv) => (
                     <li
                       key={inv.id}
@@ -240,47 +270,12 @@ export function InviteStatusPopover({
                             {inv.email}
                           </p>
                         )}
-                        {inv.status === "pending" && inv.expires_at && (
-                          <p className="text-[11px] text-muted-foreground">
-                            Expires {formatDate(inv.expires_at)}
-                          </p>
-                        )}
                       </div>
                     </li>
                   ))}
                 </ol>
-              )}
-            </div>
-
-            {/* Inline invite form — falls back to lot_owner contact when
-                no invitation row exists yet (owner was created via the
-                lot edit form, not via the invite flow). */}
-            {!isAccepted && inviteFormInitial && (
-              <InviteForm
-                ocId={ocId}
-                lotId={lotId}
-                lotNumber={lotNumber}
-                initial={inviteFormInitial}
-                onSent={() => {
-                  setOpen(false);
-                  router.refresh();
-                }}
-              />
+              </div>
             )}
-
-            {/* Jump to Owner tab — when there's no email yet OR the
-                manager wants to edit the full owner record. Label
-                differentiates the two cases so it doesn't read as
-                "you can't invite from here" when an owner already
-                exists. */}
-            <Link
-              href={`/ocs/${ocCode}/lots/${lotId}?tab=owner`}
-              className="inline-flex items-center text-sm font-medium text-blue-600 underline-offset-4 hover:underline"
-              onClick={() => setOpen(false)}
-            >
-              {inviteFormInitial ? "Edit owner details" : "Add owner"}
-              <ExternalLink className="ml-1 h-3.5 w-3.5" />
-            </Link>
           </div>
         </DialogContent>
       </Dialog>
@@ -288,73 +283,59 @@ export function InviteStatusPopover({
   );
 }
 
-function InviteForm({
+// Read-only confirm + send. Owner name + lot + email are shown
+// uneditable; the manager just confirms the address and hits Send. To
+// change any detail they use the Owner tab (the lot detail page), not
+// this popover.
+function ConfirmInviteBlock({
   ocId,
   lotId,
   lotNumber,
-  initial,
+  ownerName,
+  ownerEmail,
+  ownerPhone,
   onSent,
 }: {
   ocId: string;
   lotId: string;
   lotNumber: number;
-  initial: { name: string; email: string; phone: string };
+  ownerName: string;
+  ownerEmail: string;
+  ownerPhone: string;
   onSent: () => void;
 }) {
-  const [name, setName] = useState(initial.name);
-  const [email, setEmail] = useState(initial.email);
-  const [phone, setPhone] = useState(initial.phone);
   const [sending, setSending] = useState(false);
 
   async function sendInvite() {
-    if (!name.trim()) {
-      toast.error("Name is required");
-      return;
-    }
-    if (!email.trim()) {
-      toast.error("Add an email address before sending an invitation");
-      return;
-    }
     setSending(true);
     const result = await inviteLotOwner(ocId, lotId, {
-      email: email.trim(),
-      name: name.trim(),
-      phone: phone.trim() || undefined,
+      email: ownerEmail.trim(),
+      name: ownerName.trim() || "Owner",
+      phone: ownerPhone.trim() || undefined,
     });
-    setSending(false);
     if (result.error) {
+      setSending(false);
       toast.error(result.error);
       return;
     }
-    toast.success("Invitation sent", { description: `Sent to ${email.trim()}.` });
+    toast.success("Invitation sent", { description: `Sent to ${ownerEmail.trim()}.` });
+    // Keep the spinner on through the parent's close + refresh.
     onSent();
   }
 
   return (
-    <div className="space-y-3 rounded-md border border-border bg-cool-muted p-3">
-      <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
-        Send invitation — Lot {lotNumber}
-      </p>
-      <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
-        <div className="space-y-1.5">
-          <Label className="text-xs">
-            Full name <span className="text-destructive">*</span>
-          </Label>
-          <Input value={name} onChange={(e) => setName(e.target.value)} />
+    <div className="space-y-3">
+      <div className="rounded-md border border-border bg-cool-muted px-3 py-2.5 text-sm space-y-1.5">
+        <div>
+          <p className="text-xs uppercase tracking-wide text-cool-muted-foreground">Owner</p>
+          <p className="font-medium text-foreground">{ownerName || "—"} · Lot {lotNumber}</p>
         </div>
-        <div className="space-y-1.5">
-          <Label className="text-xs">
-            Email <span className="text-destructive">*</span>
-          </Label>
-          <Input
-            type="email"
-            value={email}
-            onChange={(e) => setEmail(e.target.value)}
-          />
-        </div>
-        <div className="space-y-1.5 sm:col-span-2">
-          <Label className="text-xs">Phone</Label>
-          <Input value={phone} onChange={(e) => setPhone(e.target.value)} />
+        <div>
+          <p className="text-xs uppercase tracking-wide text-cool-muted-foreground">Email</p>
+          <p className="inline-flex items-center gap-2 font-medium text-foreground">
+            <Mail className="h-3.5 w-3.5 text-muted-foreground" />
+            <span className="break-all">{ownerEmail}</span>
+          </p>
         </div>
       </div>
       <div className="flex justify-end">

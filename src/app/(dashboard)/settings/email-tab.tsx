@@ -81,9 +81,11 @@ export function EmailTab({
   mailboxIntegrationError: string | null;
 }) {
   const [config, setConfig] = useState<MailProviderConfig>(initial);
-  const [mailboxPrefix, setMailboxPrefix] = useState(
-    initial.provider === "outlook" ? initialOutlookPrefix : initialMailboxPrefix,
-  );
+  // Start the prefix EMPTY when connecting a mailbox — don't prefill a
+  // guessed / previously-saved value. The manager types the exact local
+  // part of the mailbox they're authorising. The saved prefix still
+  // shows in the connected-view read-out (savedMailbox) below.
+  const [mailboxPrefix, setMailboxPrefix] = useState("");
   const [savedMailbox, setSavedMailbox] = useState<string | null>(() => {
     const prefix = initial.provider === "outlook" ? initialOutlookPrefix : initialMailboxPrefix;
     return prefix && initial.domain ? `${prefix}@${initial.domain}` : null;
