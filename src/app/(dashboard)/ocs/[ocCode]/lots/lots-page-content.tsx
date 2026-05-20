@@ -315,6 +315,7 @@ export function LotsPageContent({
             open={settlementOpen}
             onClose={() => setSettlementOpen(false)}
             ocId={ocId}
+            lots={lots.map((l) => ({ id: l.id, lotNumber: Number(l.lot_number) }))}
             onApplied={() => router.refresh()}
           />
           <BulkInviteDialog

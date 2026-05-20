@@ -79,6 +79,8 @@ interface LotDetailContentProps {
   bankProvider: string | null;
   initialSenderEmailAddress?: string | null;
   initialSmsSenderId?: string | null;
+  /** All lots in the OC — lets the settlement drawer re-target the lot. */
+  ocLots?: { id: string; lotNumber: number }[];
 }
 
 const TABS = [
@@ -145,6 +147,7 @@ export function LotDetailContent({
   bankProvider,
   initialSenderEmailAddress,
   initialSmsSenderId,
+  ocLots,
 }: LotDetailContentProps) {
   const ocCode = useOCCode();
   const searchParams = useSearchParams();
@@ -449,6 +452,7 @@ export function LotDetailContent({
         lotId={lot.id}
         lotNumber={Number(lot.lot_number)}
         lotAddress={lotAddress}
+        lots={ocLots}
         onApplied={() => router.refresh()}
       />
 

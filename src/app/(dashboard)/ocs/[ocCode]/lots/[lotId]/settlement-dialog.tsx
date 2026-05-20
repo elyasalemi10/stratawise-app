@@ -15,6 +15,9 @@ import {
 import {
   Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter,
 } from "@/components/ui/dialog";
+import {
+  Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
+} from "@/components/ui/select";
 import { DatePicker } from "@/components/shared/date-picker";
 import { PhoneInput } from "@/components/shared/phone-input";
 import { PlacesAutocomplete } from "@/components/shared/places-autocomplete";
@@ -26,6 +29,12 @@ import {
   type SettlementReview,
 } from "@/lib/actions/settlements";
 
+/** Lightweight lot option for the "which lot is this for?" selector. */
+export interface SettlementLotOption {
+  id: string;
+  lotNumber: number;
+}
+
 interface PropsLotMode {
   open: boolean;
   onClose: () => void;
@@ -36,6 +45,9 @@ interface PropsLotMode {
    *  service address — typically "Unit X / <oc address>" of the lot
    *  currently being transferred. */
   lotAddress?: string | null;
+  /** All lots in the OC, so the manager can re-target the settlement to a
+   *  different lot from inside the drawer. */
+  lots?: SettlementLotOption[];
   onApplied?: () => void;
 }
 
@@ -46,6 +58,9 @@ interface PropsOCMode {
   lotId?: undefined;
   lotNumber?: undefined;
   lotAddress?: undefined;
+  /** All lots in the OC. Required for the OC-wide entry point so the
+   *  manager can choose which lot the settlement applies to. */
+  lots?: SettlementLotOption[];
   onApplied?: () => void;
 }
 
@@ -64,6 +79,12 @@ export function SettlementDialog(props: Props) {
   const knownLotId = props.lotId ?? null;
   const knownLotNumber = props.lotNumber ?? null;
   const knownLotAddress = props.lotAddress ?? null;
+  const lotOptions = props.lots ?? [];
+
+  // Manager-chosen lot override. Defaults (null) fall back to the lot passed
+  // in (lot-page mode) or the parser-matched lot (OC mode); picking from the
+  // dropdown re-targets the settlement.
+  const [selectedLotId, setSelectedLotId] = useState<string | null>(null);
 
   // 2-step mismatch confirmation. Step "plan" runs first (highest stakes —
   // wrong plan-of-subdivision = wrong building entirely); "lot" runs only
@@ -98,6 +119,7 @@ export function SettlementDialog(props: Props) {
     setEntryMode("pdf");
     setDocumentId(null);
     setReview(null);
+    setSelectedLotId(null);
     setDragging(false);
     setName(""); setEmail(""); setPhone(""); setPostalAddress(""); setSettlementDate("");
     setOccupancy("owner_occupied"); setTenantName(""); setTenantNameInvalid(false); setTenantEmail(""); setTenantPhone("");
@@ -210,20 +232,26 @@ export function SettlementDialog(props: Props) {
 
       const data = reviewRes.data;
       setReview(data);
-      setName(data.parsed.transferee.name ?? "");
-      setEmail(data.parsed.transferee.email ?? "");
-      setPhone(data.parsed.transferee.phone ?? "");
-      setPostalAddress(data.parsed.transferee.postalAddress ?? "");
-      setSettlementDate(data.parsed.settlementDate ?? "");
       setStage("review");
-      // Mismatch popup comes FIRST — before the manager reviews the
-      // prefilled form. The form is already filled behind it, but the
-      // modal blocks until they confirm "I'm sure" (or jump to the right
-      // lot). Plan mismatch is the higher-stakes check so it leads.
+      // Mismatch popup comes FIRST and the form stays BLANK behind it until
+      // the manager resolves the mismatch — prefilling a wrong-document's
+      // details into the form is misleading. Only when there's no mismatch
+      // do we prefill straight away. Plan mismatch is the higher-stakes
+      // check so it leads; the acknowledge handlers call applyPrefill once
+      // the manager confirms "I'm sure".
+      const hasMismatch =
+        data.matches.planNumber === false || data.matches.lotNumber === false;
       if (data.matches.planNumber === false) {
         setMismatchStep("plan");
       } else if (data.matches.lotNumber === false) {
         setMismatchStep("lot");
+      }
+      if (!hasMismatch) {
+        setName(data.parsed.transferee.name ?? "");
+        setEmail(data.parsed.transferee.email ?? "");
+        setPhone(data.parsed.transferee.phone ?? "");
+        setPostalAddress(data.parsed.transferee.postalAddress ?? "");
+        setSettlementDate(data.parsed.settlementDate ?? "");
       }
     } catch (err) {
       toast.error(err instanceof Error ? err.message : "Could not process settlement", {
@@ -234,10 +262,26 @@ export function SettlementDialog(props: Props) {
     }
   }, [ocId, knownLotId, reset]);
 
-  // Resolve the lot we're applying to: either the one passed in (per-lot mode)
-  // or the one the parser matched (oc mode).
-  const targetLotId = knownLotId ?? review?.matchedLot?.id ?? null;
-  const targetLotNumber = knownLotNumber ?? review?.matchedLot?.lotNumber ?? null;
+  // Fill the review form from the parsed document. Called only once the
+  // manager has resolved any wrong-document popup (or immediately when there
+  // was no mismatch) so a wrong doc never silently populates the fields.
+  const applyPrefill = useCallback(() => {
+    if (!review) return;
+    setName(review.parsed.transferee.name ?? "");
+    setEmail(review.parsed.transferee.email ?? "");
+    setPhone(review.parsed.transferee.phone ?? "");
+    setPostalAddress(review.parsed.transferee.postalAddress ?? "");
+    setSettlementDate(review.parsed.settlementDate ?? "");
+  }, [review]);
+
+  // Resolve the lot we're applying to: the manager's explicit pick wins,
+  // then the lot passed in (per-lot mode), then the parser-matched lot (oc
+  // mode).
+  const targetLotId = selectedLotId ?? knownLotId ?? review?.matchedLot?.id ?? null;
+  const targetLotNumber =
+    lotOptions.find((l) => l.id === targetLotId)?.lotNumber ??
+    (targetLotId === knownLotId ? knownLotNumber : null) ??
+    (targetLotId === review?.matchedLot?.id ? review?.matchedLot?.lotNumber ?? null : null);
 
   // Local validation that runs before either the mismatch popup OR the
   // direct submit fires. Returns true if the form is ready to send.
@@ -412,6 +456,28 @@ export function SettlementDialog(props: Props) {
 
         {stage === "parsing" && <ParsingSkeleton />}
 
+        {/* Which lot is this settlement for? Shown on the review stage so the
+            manager always sees the target lot — and, when a lot list is
+            provided, can re-target it (essential from the OC-wide /lots entry
+            point where no specific lot is in context). */}
+        {stage === "review" && lotOptions.length > 0 && (
+          <div className="rounded-md border border-border bg-muted/30 p-3 space-y-1.5">
+            <Label className="text-xs text-muted-foreground">Recording settlement for</Label>
+            <Select value={targetLotId ?? ""} onValueChange={(v) => setSelectedLotId(v || null)}>
+              <SelectTrigger className="w-full">
+                <SelectValue placeholder="Choose a lot">
+                  {targetLotNumber != null ? `Lot ${targetLotNumber}` : "Choose a lot"}
+                </SelectValue>
+              </SelectTrigger>
+              <SelectContent>
+                {lotOptions.map((l) => (
+                  <SelectItem key={l.id} value={l.id}>Lot {l.lotNumber}</SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+        )}
+
         {stage === "review" && entryMode === "pdf" && review && targetLotNumber != null && (
           <ReviewForm
             review={review}
@@ -502,13 +568,14 @@ export function SettlementDialog(props: Props) {
                     type="button"
                     onClick={() => {
                       // Chain to the lot mismatch step if that's ALSO
-                      // wrong; otherwise dismiss to reveal the prefilled
-                      // review form (we do NOT submit here — the manager
-                      // still reviews + confirms).
+                      // wrong; otherwise dismiss AND prefill the form now
+                      // that the manager has confirmed the document is right
+                      // (we do NOT submit — they still review + confirm).
                       if (review.matches.lotNumber === false) {
                         setMismatchStep("lot");
                       } else {
                         setMismatchStep(null);
+                        applyPrefill();
                       }
                     }}
                   >
@@ -545,7 +612,7 @@ export function SettlementDialog(props: Props) {
                   </Button>
                   <Button
                     type="button"
-                    onClick={() => setMismatchStep(null)}
+                    onClick={() => { setMismatchStep(null); applyPrefill(); }}
                   >
                     I&apos;m sure — apply to Lot {targetLotNumber}
                   </Button>

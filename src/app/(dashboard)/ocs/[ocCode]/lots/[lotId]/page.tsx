@@ -73,7 +73,7 @@ export default async function LotDetailPage({
   // debits`. The UI convention is the inverse (positive = owes), so we
   // flip the sign here once and the rest of the page consumes the
   // familiar "+owes / −credit" semantic.
-  const [stateResult, documentsResult] = await Promise.all([
+  const [stateResult, documentsResult, ocLotsResult] = await Promise.all([
     supabase
       .from("lot_ledger_state")
       .select("total_balance")
@@ -85,7 +85,17 @@ export default async function LotDetailPage({
       .eq("oc_id", ocId)
       .eq("lot_id", lotId)
       .order("created_at", { ascending: false }),
+    // Sibling lots for the settlement drawer's "which lot?" selector.
+    supabase
+      .from("lots")
+      .select("id, lot_number")
+      .eq("oc_id", ocId)
+      .order("lot_number", { ascending: true }),
   ]);
+
+  const ocLots = ((ocLotsResult.data as { id: string; lot_number: number }[] | null) ?? []).map(
+    (l) => ({ id: l.id, lotNumber: Number(l.lot_number) }),
+  );
 
   // No state row yet (e.g. brand-new lot, never had a single entry) →
   // treat as zero. The recompute trigger seeds the row on the first
@@ -205,6 +215,7 @@ export default async function LotDetailPage({
       bankProvider={(oc as { bank_provider?: string } | null)?.bank_provider ?? null}
       initialSenderEmailAddress={senderEmailAddress}
       initialSmsSenderId={smsSenderId}
+      ocLots={ocLots}
     />
   );
 }

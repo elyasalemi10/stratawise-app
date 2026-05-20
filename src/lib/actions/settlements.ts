@@ -416,8 +416,14 @@ export async function applySettlementToLot(input: ApplySettlementInput) {
       .single();
 
     if (!doc) return { error: "Document not found" };
-    if (doc.lot_id !== lotId)
-      return { error: "Document is not attached to this lot" };
+    // The manager may have re-targeted the settlement to a different lot via
+    // the drawer's lot selector. The doc must follow the chosen lot, so
+    // re-point it here rather than rejecting — the wrong-lot mismatch popup
+    // already warned them at parse time. Same OC only (the selector only
+    // offers lots within this OC).
+    if (doc.lot_id !== lotId) {
+      await supabase.from("documents").update({ lot_id: lotId }).eq("id", documentId);
+    }
     resolvedOcId = doc.oc_id;
     docMeta = { id: doc.id, file_name: doc.file_name };
   } else {
