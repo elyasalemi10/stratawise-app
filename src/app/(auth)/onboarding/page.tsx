@@ -17,6 +17,11 @@ export default async function OnboardingPage() {
     .eq("auth_user_id", userId)
     .single();
 
+  // Super admins belong on the platform admin surface, not company setup.
+  if (profile?.role === "super_admin") {
+    redirect("/admin");
+  }
+
   // Lot owners should go to the lot owner onboarding, not the company setup
   if (profile?.role === "lot_owner") {
     const { count } = await supabase

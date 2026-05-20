@@ -1,5 +1,6 @@
 import { NextResponse, type NextRequest } from "next/server";
 import { createServerClient as ssrCreateServerClient } from "@supabase/ssr";
+import { createClient } from "@supabase/supabase-js";
 
 // Public routes — no auth required.
 const PUBLIC_PATHS = [
@@ -102,7 +103,17 @@ export async function middleware(request: NextRequest) {
   if (user) {
     const isAdminRoute = pathname === "/admin" || pathname.startsWith("/admin/");
     if (isAdminRoute) {
-      const { data: profileRow } = await supabase
+      // Read the role with the SERVICE-ROLE client, NOT the cookie-bound
+      // anon client above. profiles has RLS enabled with no SELECT policy,
+      // so the anon client reads NOTHING → role comes back null → every
+      // super_admin gets bounced /admin → /dashboard, while the dashboard
+      // (service role) bounces them back → infinite redirect loop. The
+      // service client bypasses RLS so middleware agrees with the page gate.
+      const admin = createClient(
+        process.env.NEXT_PUBLIC_SUPABASE_URL!,
+        process.env.SUPABASE_SERVICE_ROLE_KEY!,
+      );
+      const { data: profileRow } = await admin
         .from("profiles")
         .select("role")
         .eq("auth_user_id", user.id)
