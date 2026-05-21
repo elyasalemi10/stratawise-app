@@ -23,10 +23,14 @@ export async function getNotifications(limit = 20): Promise<Notification[]> {
   if (!profile) return [];
 
   const supabase = createServerClient();
+  // Inbound emails live as `email_reply` rows so the Inbox can render them,
+  // but they are NOT bell notifications — they'd drown the real alerts. The
+  // Inbox reads them via its own queries (see inbox-email.ts).
   const { data } = await supabase
     .from("notifications")
     .select("id, type, title, body, link, read_at, created_at, oc_id, metadata")
     .eq("profile_id", profile.id)
+    .neq("type", "email_reply")
     .order("created_at", { ascending: false })
     .limit(limit);
 
@@ -49,10 +53,12 @@ export async function getUnreadCount(): Promise<number> {
   if (!profile) return 0;
 
   const supabase = createServerClient();
+  // Exclude `email_reply` — those belong to the Inbox, not the bell badge.
   const { count } = await supabase
     .from("notifications")
     .select("id", { count: "exact", head: true })
     .eq("profile_id", profile.id)
+    .neq("type", "email_reply")
     .is("read_at", null);
 
   return count ?? 0;
@@ -98,16 +104,19 @@ export async function markAllAsRead() {
   const supabase = createServerClient();
   // Capture how many unread we're about to flip so the audit row carries
   // an accurate count — the UPDATE doesn't return a row count directly.
+  // Bell-only: don't flip Inbox emails (`email_reply`) to read here.
   const { count: unreadCount } = await supabase
     .from("notifications")
     .select("id", { count: "exact", head: true })
     .eq("profile_id", profile.id)
+    .neq("type", "email_reply")
     .is("read_at", null);
 
   await supabase
     .from("notifications")
     .update({ read_at: new Date().toISOString() })
     .eq("profile_id", profile.id)
+    .neq("type", "email_reply")
     .is("read_at", null);
 
   if ((unreadCount ?? 0) > 0) {

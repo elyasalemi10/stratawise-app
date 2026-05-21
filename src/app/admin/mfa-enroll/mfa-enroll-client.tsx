@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { toast } from "sonner";
+import { QRCodeSVG } from "qrcode.react";
 import { Loader2, ShieldCheck, Copy } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -12,42 +13,23 @@ import { getSupabaseClient } from "@/lib/supabase";
 import { logMfaEvent } from "../internal-actions/audit";
 
 // First-time TOTP enrolment. We:
-//   1. POST /factors via supabase.auth.mfa.enroll → returns { id, totp.qr_code, secret }
+//   1. POST /factors via supabase.auth.mfa.enroll → returns { id, totp.uri, secret }
 //   2. Show the QR + manual secret, ask the user to scan with an authenticator
 //   3. They enter the 6-digit code → supabase.auth.mfa.challenge + verify
 //   4. On verify success, Supabase auto-promotes the session to AAL2 →
 //      redirect to /admin
 //
-// We render the QR with <Image unoptimized> using the data-URL Supabase
-// returns. The "secret" string is shown beside it for users whose
-// authenticator can't scan (rare on desktop).
-
-// Supabase's `totp.qr_code` is sometimes a data URI rather than raw SVG. We
-// inject it as innerHTML, so reduce it to the bare "<svg…>" markup (and
-// percent-decode if needed) — otherwise the "data:…," prefix renders as text.
-function cleanQrSvg(qr: string | null): string | null {
-  if (!qr) return null;
-  let s = qr.trim();
-  if (s.startsWith("data:")) {
-    const comma = s.indexOf(",");
-    if (comma !== -1) s = s.slice(comma + 1);
-    if (/%3c/i.test(s)) {
-      try {
-        s = decodeURIComponent(s);
-      } catch {
-        /* leave as-is */
-      }
-    }
-  }
-  const idx = s.indexOf("<svg");
-  return idx > 0 ? s.slice(idx) : s;
-}
+// We render the QR ourselves with <QRCodeSVG> from the `otpauth://` URI
+// Supabase returns, NOT Supabase's own qr_code SVG string — that string was
+// arriving as a data URI whose prefix printed as visible text and whose
+// modules wouldn't reliably scan. Rendering the URI gives a crisp QR with a
+// proper quiet zone. The "secret" is shown below for manual entry.
 
 export function MfaEnrollClient() {
   const router = useRouter();
   const [factorId, setFactorId] = useState<string | null>(null);
-  // Raw SVG markup from Supabase, rendered inline (see note below).
-  const [qrSvg, setQrSvg] = useState<string | null>(null);
+  // The otpauth:// URI we encode into the QR.
+  const [otpUri, setOtpUri] = useState<string | null>(null);
   const [secret, setSecret] = useState<string | null>(null);
   const [code, setCode] = useState("");
   const [enrolling, setEnrolling] = useState(true);
@@ -80,13 +62,9 @@ export function MfaEnrollClient() {
         setEnrolling(false);
         return;
       }
-      // Supabase returns the QR as an SVG. Depending on version it's either
-      // raw "<svg…>" markup OR a data URI ("data:image/svg+xml;utf-8,<svg…>").
-      // We render it INLINE (dangerouslySetInnerHTML); injecting the data-URI
-      // form verbatim would print the "data:image/svg+xml;utf-8," prefix as
-      // visible text above the QR, so strip it down to the bare <svg> first.
+      // Encode the otpauth:// URI ourselves (see note at top of file).
       setFactorId(data.id);
-      setQrSvg(cleanQrSvg(data.totp?.qr_code ?? null));
+      setOtpUri(data.totp?.uri ?? null);
       setSecret(data.totp?.secret ?? null);
       setEnrolling(false);
     }
@@ -155,14 +133,12 @@ export function MfaEnrollClient() {
               {enrollError}
             </div>
           )}
-          {!enrolling && qrSvg && (
+          {!enrolling && otpUri && (
             <>
               <div className="flex justify-center">
-                <div
-                  className="rounded-md border border-border bg-white p-3 [&_svg]:block [&_svg]:h-48 [&_svg]:w-48 [&_svg]:max-w-full [&_img]:h-48 [&_img]:w-48"
-                  aria-label="MFA QR code"
-                  dangerouslySetInnerHTML={{ __html: qrSvg }}
-                />
+                <div className="rounded-md border border-border bg-white p-3" aria-label="MFA QR code">
+                  <QRCodeSVG value={otpUri} size={192} level="M" marginSize={2} />
+                </div>
               </div>
               {secret && (
                 <div className="space-y-1.5">
