@@ -126,14 +126,14 @@ export function BlogList({ posts }: { posts: BlogPostRow[] }) {
       )}
 
       <Dialog open={importOpen} onOpenChange={(o) => { if (!importing) setImportOpen(o); }}>
-        <DialogContent className="sm:max-w-2xl">
-          <DialogHeader>
+        <DialogContent className="flex max-h-[85vh] flex-col sm:max-w-2xl">
+          <DialogHeader className="shrink-0">
             <DialogTitle>Import AI post</DialogTitle>
             <DialogDescription>
               Copy the prompt below into any AI chat, describe your topic, then paste the JSON it returns here. Title, body, SEO, cover, audience and tags all come across as a draft for you to review.
             </DialogDescription>
           </DialogHeader>
-          <div className="space-y-3">
+          <div className="min-h-0 flex-1 space-y-3 overflow-y-auto">
             <Button type="button" variant="secondary" size="sm" onClick={copyPrompt}>
               {copied ? <Check className="mr-1.5 h-3.5 w-3.5" /> : <Copy className="mr-1.5 h-3.5 w-3.5" />}
               {copied ? "Copied" : "Copy AI prompt"}
@@ -145,7 +145,7 @@ export function BlogList({ posts }: { posts: BlogPostRow[] }) {
               className="min-h-48 font-mono text-xs"
             />
           </div>
-          <DialogFooter>
+          <DialogFooter className="shrink-0">
             <Button variant="secondary" onClick={() => setImportOpen(false)} disabled={importing}>Cancel</Button>
             <Button onClick={handleImport} disabled={importing || !importJson.trim()}>
               {importing && <Loader2 className="size-4 animate-spin" />}
