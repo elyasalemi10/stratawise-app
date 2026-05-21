@@ -1,50 +1,32 @@
-import Link from "next/link";
-import { ShieldCheck, LogOut } from "lucide-react";
+import { cookies } from "next/headers";
+import { SidebarProvider, SidebarInset, SidebarTrigger } from "@/components/ui/sidebar";
+import { AdminSidebar } from "@/components/layout/admin-sidebar";
 
-// Top-level chrome for the super admin surface. Each page owns its own
-// gate (evaluateSuperAdminGate for /admin, requireSuperAdminAal1OrAbove
-// for /admin/mfa-*) — having the layout enforce a gate would loop the
-// redirect when the destination of the gate is also inside this layout.
-
-export default function AdminLayout({
+// Admin chrome — same shadcn sidebar shell + styling as the manager
+// dashboard, with admin-specific navigation. Each /admin page owns its own
+// super_admin + MFA gate (evaluateSuperAdminGate / requireSuperAdminAal1OrAbove),
+// so the layout doesn't gate — having it redirect would loop when the gate's
+// destination lives inside this same layout.
+export default async function AdminLayout({
   children,
 }: {
   children: React.ReactNode;
 }) {
+  const cookieStore = await cookies();
+  const defaultOpen = cookieStore.get("sidebar_state")?.value !== "false";
+
   return (
-    <div className="min-h-screen bg-background">
-      <header className="sticky top-0 z-30 flex h-16 items-center justify-between border-b border-border bg-card px-6">
-        <div className="flex items-center gap-2.5">
-          <ShieldCheck className="h-5 w-5 text-[color:var(--brand-gold)]" />
-          <span className="text-sm font-semibold tracking-tight text-foreground">
-            StrataWise · Super Admin
-          </span>
-        </div>
-        <nav className="flex items-center gap-5 text-sm">
-          <Link
-            href="/admin"
-            className="text-muted-foreground hover:text-foreground"
-          >
-            Overview
-          </Link>
-          <Link
-            href="/dashboard"
-            className="text-muted-foreground hover:text-foreground"
-            title="Open the regular dashboard"
-          >
-            App view
-          </Link>
-          <form action="/logout" method="post">
-            <button
-              type="submit"
-              className="inline-flex items-center gap-1.5 text-muted-foreground hover:text-destructive cursor-pointer"
-            >
-              <LogOut className="h-3.5 w-3.5" /> Sign out
-            </button>
-          </form>
-        </nav>
-      </header>
-      <main className="mx-auto max-w-6xl px-6 py-8">{children}</main>
-    </div>
+    <SidebarProvider defaultOpen={defaultOpen}>
+      <AdminSidebar />
+      <SidebarInset>
+        <header className="sticky top-0 z-30 flex h-16 shrink-0 items-center gap-3 border-b border-border bg-card px-4 lg:px-6">
+          <SidebarTrigger className="-ml-1" />
+          <span className="text-sm font-medium text-foreground">Super Admin</span>
+        </header>
+        <main className="flex-1 min-h-0 min-w-0 overflow-y-auto overflow-x-hidden bg-background py-4 md:py-6 px-4 lg:px-6">
+          <div className="min-w-0">{children}</div>
+        </main>
+      </SidebarInset>
+    </SidebarProvider>
   );
 }
