@@ -15,5 +15,9 @@ export default async function MfaEnrollPage() {
   // page; the aal2→/admin auto-redirect was half of the redirect loop.
   if (r.hasVerifiedTotp) redirect("/admin/mfa-challenge");
 
-  return <MfaEnrollClient />;
+  return (
+    <div className="flex min-h-screen items-center justify-center bg-background px-4 py-10">
+      <MfaEnrollClient />
+    </div>
+  );
 }

@@ -22,6 +22,27 @@ import { logMfaEvent } from "../internal-actions/audit";
 // returns. The "secret" string is shown beside it for users whose
 // authenticator can't scan (rare on desktop).
 
+// Supabase's `totp.qr_code` is sometimes a data URI rather than raw SVG. We
+// inject it as innerHTML, so reduce it to the bare "<svg…>" markup (and
+// percent-decode if needed) — otherwise the "data:…," prefix renders as text.
+function cleanQrSvg(qr: string | null): string | null {
+  if (!qr) return null;
+  let s = qr.trim();
+  if (s.startsWith("data:")) {
+    const comma = s.indexOf(",");
+    if (comma !== -1) s = s.slice(comma + 1);
+    if (/%3c/i.test(s)) {
+      try {
+        s = decodeURIComponent(s);
+      } catch {
+        /* leave as-is */
+      }
+    }
+  }
+  const idx = s.indexOf("<svg");
+  return idx > 0 ? s.slice(idx) : s;
+}
+
 export function MfaEnrollClient() {
   const router = useRouter();
   const [factorId, setFactorId] = useState<string | null>(null);
@@ -37,20 +58,35 @@ export function MfaEnrollClient() {
     let cancelled = false;
     async function go() {
       const sb = getSupabaseClient();
-      const { data, error } = await sb.auth.mfa.enroll({ factorType: "totp" });
+
+      // A previous half-finished attempt can leave an UNVERIFIED totp factor
+      // behind. Re-enrolling on top of it fails with "A factor with the
+      // friendly name … already exists", so clear those stragglers first.
+      const { data: existing } = await sb.auth.mfa.listFactors();
+      const stale = (existing?.all ?? []).filter(
+        (f) => f.factor_type === "totp" && f.status !== "verified",
+      );
+      for (const f of stale) {
+        await sb.auth.mfa.unenroll({ factorId: f.id });
+      }
+
+      const { data, error } = await sb.auth.mfa.enroll({
+        factorType: "totp",
+        friendlyName: `authenticator-${Date.now()}`,
+      });
       if (cancelled) return;
       if (error || !data) {
         setEnrollError(error?.message ?? "Couldn't start MFA enrolment.");
         setEnrolling(false);
         return;
       }
-      // Supabase returns the QR as a raw SVG markup string. We render it
-      // INLINE (dangerouslySetInnerHTML) rather than via a data: URL — the
-      // previous `data:image/svg+xml;utf-8,...` URL was malformed (missing
-      // charset=) and next/image doesn't handle data URLs, so it showed a
-      // broken-image placeholder.
+      // Supabase returns the QR as an SVG. Depending on version it's either
+      // raw "<svg…>" markup OR a data URI ("data:image/svg+xml;utf-8,<svg…>").
+      // We render it INLINE (dangerouslySetInnerHTML); injecting the data-URI
+      // form verbatim would print the "data:image/svg+xml;utf-8," prefix as
+      // visible text above the QR, so strip it down to the bare <svg> first.
       setFactorId(data.id);
-      setQrSvg(data.totp?.qr_code ?? null);
+      setQrSvg(cleanQrSvg(data.totp?.qr_code ?? null));
       setSecret(data.totp?.secret ?? null);
       setEnrolling(false);
     }
@@ -123,7 +159,7 @@ export function MfaEnrollClient() {
             <>
               <div className="flex justify-center">
                 <div
-                  className="rounded-md border border-border bg-white p-2 [&_svg]:size-48 [&_img]:size-48"
+                  className="rounded-md border border-border bg-white p-3 [&_svg]:block [&_svg]:h-48 [&_svg]:w-48 [&_svg]:max-w-full [&_img]:h-48 [&_img]:w-48"
                   aria-label="MFA QR code"
                   dangerouslySetInnerHTML={{ __html: qrSvg }}
                 />

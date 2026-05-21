@@ -18,5 +18,9 @@ export default async function MfaChallengePage() {
   // aal2→/admin redirect produced an infinite "too many redirects" loop. This
   // page is now terminal: it only ever renders the form. After a successful
   // verify the client navigates to /admin, which then renders normally.
-  return <MfaChallengeClient />;
+  return (
+    <div className="flex min-h-screen items-center justify-center bg-background px-4 py-10">
+      <MfaChallengeClient />
+    </div>
+  );
 }
