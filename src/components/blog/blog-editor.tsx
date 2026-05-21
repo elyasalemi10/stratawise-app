@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useCallback, useMemo } from "react";
+import { useState, useCallback, useMemo, useRef } from "react";
 import { useRouter } from "next/navigation";
 import { toast } from "sonner";
 import { useEditor, EditorContent } from "@tiptap/react";
@@ -15,7 +15,7 @@ import TableCell from "@tiptap/extension-table-cell";
 import {
   Bold, Italic, Heading1, Heading2, Heading3, List, ListOrdered, Quote,
   Image as ImageIcon, Youtube as YoutubeIcon, Table as TableIcon, GitCommitHorizontal,
-  Loader2, ArrowLeft, Strikethrough, ChevronDown, Search,
+  Loader2, ArrowLeft, Strikethrough, UploadCloud,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -24,28 +24,49 @@ import { Label } from "@/components/ui/label";
 import { Badge } from "@/components/ui/badge";
 import { Checkbox } from "@/components/ui/checkbox";
 import { NumberInput } from "@/components/ui/number-input";
+import {
+  Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
+} from "@/components/ui/select";
 import { Timeline } from "./timeline-node";
 import { saveBlogPost, setBlogPostStatus, type BlogPostRow } from "@/lib/actions/blog";
 
+// Upload an image to R2 (blog/ prefix) and read its natural dimensions
+// client-side so we can store width/height (avoids layout shift / CLS on the
+// marketing site) without the author entering them.
+async function uploadBlogImage(file: File): Promise<{ url: string; width: number; height: number }> {
+  const dims = await new Promise<{ width: number; height: number }>((resolve) => {
+    const img = new window.Image();
+    const objUrl = URL.createObjectURL(file);
+    img.onload = () => { resolve({ width: img.naturalWidth, height: img.naturalHeight }); URL.revokeObjectURL(objUrl); };
+    img.onerror = () => { resolve({ width: 0, height: 0 }); URL.revokeObjectURL(objUrl); };
+    img.src = objUrl;
+  });
+  const fd = new FormData();
+  fd.append("file", file);
+  const res = await fetch("/api/blog-upload", { method: "POST", body: fd });
+  const json = await res.json();
+  if (!res.ok) throw new Error(json.error ?? "Upload failed");
+  return { url: json.url as string, width: dims.width, height: dims.height };
+}
+
 function ToolbarButton({ active, onClick, title, children }: { active?: boolean; onClick: () => void; title: string; children: React.ReactNode }) {
   return (
-    <button
-      type="button" title={title} onClick={onClick}
-      className={`inline-flex h-8 w-8 items-center justify-center rounded-md text-sm transition-colors cursor-pointer ${active ? "bg-primary text-primary-foreground" : "text-foreground hover:bg-muted"}`}
-    >{children}</button>
+    <button type="button" title={title} onClick={onClick}
+      className={`inline-flex h-8 w-8 items-center justify-center rounded-md text-sm transition-colors cursor-pointer ${active ? "bg-primary text-primary-foreground" : "text-foreground hover:bg-muted"}`}>{children}</button>
   );
 }
 
 export function BlogEditor({ post }: { post: BlogPostRow }) {
   const router = useRouter();
   const [title, setTitle] = useState(post.title === "Untitled post" ? "" : post.title);
-  const [slug, setSlug] = useState(post.slug);
+  const [slug, setSlug] = useState(post.slug.startsWith("untitled-post-") ? "" : post.slug);
   const [excerpt, setExcerpt] = useState(post.excerpt ?? "");
+  const [audience, setAudience] = useState<"" | "lot_owners" | "strata_managers">(post.audience ?? "");
   const [coverImage, setCoverImage] = useState(post.cover_image_url ?? "");
   const [coverAlt, setCoverAlt] = useState(post.cover_image_alt ?? "");
-  const [coverCaption, setCoverCaption] = useState(post.cover_image_caption ?? "");
-  const [coverW, setCoverW] = useState(post.cover_image_width != null ? String(post.cover_image_width) : "");
-  const [coverH, setCoverH] = useState(post.cover_image_height != null ? String(post.cover_image_height) : "");
+  const [coverW, setCoverW] = useState<number | null>(post.cover_image_width);
+  const [coverH, setCoverH] = useState<number | null>(post.cover_image_height);
+  const [coverUploading, setCoverUploading] = useState(false);
   const [tags, setTags] = useState((post.tags ?? []).map((t) => t.name).join(", "));
   // SEO
   const [seoTitle, setSeoTitle] = useState(post.seo_title ?? "");
@@ -55,18 +76,18 @@ export function BlogEditor({ post }: { post: BlogPostRow }) {
   const [robotsIndex, setRobotsIndex] = useState(post.robots_index);
   const [robotsFollow, setRobotsFollow] = useState(post.robots_follow);
   const [readingOverride, setReadingOverride] = useState(post.reading_time_minutes != null ? String(post.reading_time_minutes) : "");
-  const [seoOpen, setSeoOpen] = useState(false);
 
   const [saving, setSaving] = useState(false);
   const [statusPending, setStatusPending] = useState(false);
   const [status, setStatus] = useState(post.status);
 
+  const coverInputRef = useRef<HTMLInputElement>(null);
+  const contentImageInputRef = useRef<HTMLInputElement>(null);
+
   const editor = useEditor({
     immediatelyRender: false,
     extensions: [
       StarterKit,
-      // Lazy + async decode so the marketing site loads content images
-      // on demand (faster LCP / Core Web Vitals).
       Image.configure({ HTMLAttributes: { loading: "lazy", decoding: "async" } }),
       Youtube.configure({ width: 640, height: 360, nocookie: true }),
       Placeholder.configure({ placeholder: "Write your post… use the toolbar for headings, images, tables, YouTube and timelines." }),
@@ -82,7 +103,6 @@ export function BlogEditor({ post }: { post: BlogPostRow }) {
     },
   });
 
-  // Live reading-time estimate from the editor text (overridable).
   const autoReading = useMemo(() => {
     const txt = editor?.getText() ?? "";
     const words = txt.trim() ? txt.trim().split(/\s+/).length : 0;
@@ -90,12 +110,30 @@ export function BlogEditor({ post }: { post: BlogPostRow }) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [editor?.state]);
 
-  const addImage = useCallback(() => {
+  async function onCoverFile(file: File) {
+    setCoverUploading(true);
+    try {
+      const { url, width, height } = await uploadBlogImage(file);
+      setCoverImage(url); setCoverW(width || null); setCoverH(height || null);
+      toast.success("Cover uploaded");
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "Upload failed");
+    } finally {
+      setCoverUploading(false);
+    }
+  }
+
+  const onContentImageFile = useCallback(async (file: File) => {
     if (!editor) return;
-    const url = window.prompt("Image URL");
-    if (!url) return;
-    const alt = window.prompt("Describe the image (alt text — important for SEO & accessibility)") ?? "";
-    editor.chain().focus().setImage({ src: url, alt }).run();
+    const t = toast.loading("Uploading image…");
+    try {
+      const { url } = await uploadBlogImage(file);
+      const alt = window.prompt("Describe the image (alt text — important for SEO & accessibility)") ?? "";
+      editor.chain().focus().setImage({ src: url, alt }).run();
+      toast.success("Image added", { id: t });
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "Upload failed", { id: t });
+    }
   }, [editor]);
 
   const addYoutube = useCallback(() => {
@@ -115,9 +153,9 @@ export function BlogEditor({ post }: { post: BlogPostRow }) {
       body: editor.getHTML(),
       cover_image_url: coverImage || null,
       cover_image_alt: coverAlt || null,
-      cover_image_width: coverW ? parseInt(coverW, 10) : null,
-      cover_image_height: coverH ? parseInt(coverH, 10) : null,
-      cover_image_caption: coverCaption || null,
+      cover_image_width: coverW,
+      cover_image_height: coverH,
+      cover_image_caption: null,
       seo_title: seoTitle || null,
       seo_description: seoDescription || null,
       seo_keywords: seoKeywords.split(",").map((k) => k.trim()).filter(Boolean),
@@ -125,6 +163,7 @@ export function BlogEditor({ post }: { post: BlogPostRow }) {
       robots_index: robotsIndex,
       robots_follow: robotsFollow,
       reading_time_minutes: readingOverride ? parseInt(readingOverride, 10) : autoReading,
+      audience: audience || null,
       tags: tags.split(",").map((t) => t.trim()).filter(Boolean),
     });
     setSaving(false);
@@ -149,7 +188,6 @@ export function BlogEditor({ post }: { post: BlogPostRow }) {
   if (!editor) {
     return <div className="flex items-center justify-center py-20"><Loader2 className="size-5 animate-spin text-muted-foreground" /></div>;
   }
-
   const isPublished = status === "published";
 
   return (
@@ -169,26 +207,104 @@ export function BlogEditor({ post }: { post: BlogPostRow }) {
         </div>
       </div>
 
-      <div className="space-y-3">
-        <Input value={title} onChange={(e) => setTitle(e.target.value)} placeholder="Post title"
-          className="h-auto border-0 bg-transparent px-0 text-2xl font-semibold tracking-tight shadow-none focus-visible:ring-0" />
+      <Input value={title} onChange={(e) => setTitle(e.target.value)} placeholder="Post title"
+        className="h-auto border-0 bg-transparent px-0 text-2xl font-semibold tracking-tight shadow-none focus-visible:ring-0" />
+
+      {/* Post details + SEO — all visible at the top (no dropdown). */}
+      <div className="space-y-4 rounded-md border border-border bg-card p-4">
+        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+          <div className="space-y-1.5">
+            <Label className="text-xs text-muted-foreground">Audience (for records)</Label>
+            <Select value={audience} onValueChange={(v) => setAudience((v as typeof audience) ?? "")}>
+              <SelectTrigger className="w-full">
+                <SelectValue placeholder="Anyone">
+                  {audience === "lot_owners" ? "Lot owners" : audience === "strata_managers" ? "Strata managers" : "Anyone"}
+                </SelectValue>
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="lot_owners">Lot owners</SelectItem>
+                <SelectItem value="strata_managers">Strata managers</SelectItem>
+              </SelectContent>
+            </Select>
+          </div>
+          <div className="space-y-1.5">
+            <Label htmlFor="blog-slug" className="text-xs text-muted-foreground">URL slug</Label>
+            <Input id="blog-slug" value={slug} onChange={(e) => setSlug(e.target.value)} placeholder="post-url-slug" />
+          </div>
+        </div>
+
         <div className="space-y-1.5">
           <Label htmlFor="blog-excerpt" className="text-xs text-muted-foreground">Excerpt</Label>
-          <Textarea id="blog-excerpt" value={excerpt} onChange={(e) => setExcerpt(e.target.value)} rows={2} placeholder="Short summary shown in listings and used as the default meta description" />
+          <Textarea id="blog-excerpt" value={excerpt} onChange={(e) => setExcerpt(e.target.value)} rows={2} placeholder="Short summary shown in listings (also the default meta description)" />
         </div>
-        <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+
+        {/* Cover image — upload from computer; dimensions captured automatically. */}
+        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
           <div className="space-y-1.5">
-            <Label htmlFor="blog-cover" className="text-xs text-muted-foreground">Cover image URL</Label>
-            <Input id="blog-cover" value={coverImage} onChange={(e) => setCoverImage(e.target.value)} placeholder="Cover image URL" />
+            <Label className="text-xs text-muted-foreground">Cover image</Label>
+            {coverImage ? (
+              // eslint-disable-next-line @next/next/no-img-element
+              <div className="relative overflow-hidden rounded-md border border-border">
+                <img src={coverImage} alt={coverAlt} className="h-32 w-full object-cover" />
+                <button type="button" onClick={() => coverInputRef.current?.click()} className="absolute bottom-2 right-2 rounded-md bg-card/90 px-2 py-1 text-xs font-medium text-foreground hover:bg-card cursor-pointer">Replace</button>
+              </div>
+            ) : (
+              <button type="button" onClick={() => coverInputRef.current?.click()} disabled={coverUploading}
+                className="flex h-32 w-full flex-col items-center justify-center gap-1.5 rounded-md border border-dashed border-border text-sm text-muted-foreground hover:border-primary/40 cursor-pointer">
+                {coverUploading ? <Loader2 className="size-5 animate-spin" /> : <UploadCloud className="size-5" />}
+                {coverUploading ? "Uploading…" : "Upload cover image"}
+              </button>
+            )}
+            <input ref={coverInputRef} type="file" accept="image/*" className="hidden"
+              onChange={(e) => { const f = e.target.files?.[0]; if (f) onCoverFile(f); e.target.value = ""; }} />
           </div>
           <div className="space-y-1.5">
-            <Label htmlFor="blog-cover-alt" className="text-xs text-muted-foreground">Cover image alt text</Label>
-            <Input id="blog-cover-alt" value={coverAlt} onChange={(e) => setCoverAlt(e.target.value)} placeholder="Describe the cover image" />
+            <Label htmlFor="cover-alt" className="text-xs text-muted-foreground">Cover image alt text</Label>
+            <Input id="cover-alt" value={coverAlt} onChange={(e) => setCoverAlt(e.target.value)} placeholder="Describe the cover image" />
+            {coverW && coverH ? <p className="text-xs text-muted-foreground">{coverW}×{coverH}px (auto)</p> : null}
           </div>
         </div>
+
         <div className="space-y-1.5">
           <Label htmlFor="blog-tags" className="text-xs text-muted-foreground">Tags (comma separated)</Label>
           <Input id="blog-tags" value={tags} onChange={(e) => setTags(e.target.value)} placeholder="strata, levies, compliance" />
+        </div>
+
+        <div className="border-t border-border pt-4 space-y-4">
+          <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+            <div className="space-y-1.5">
+              <Label htmlFor="seo-title" className="text-xs text-muted-foreground">Meta title</Label>
+              <Input id="seo-title" value={seoTitle} onChange={(e) => setSeoTitle(e.target.value)} placeholder="Search-result title" />
+            </div>
+            <div className="space-y-1.5">
+              <Label htmlFor="reading-time" className="text-xs text-muted-foreground">Reading time (min)</Label>
+              <NumberInput id="reading-time" allowDecimal={false} value={readingOverride} onChange={setReadingOverride} placeholder={`Auto: ${autoReading}`} />
+            </div>
+          </div>
+          <div className="space-y-1.5">
+            <Label htmlFor="seo-desc" className="text-xs text-muted-foreground">Meta description</Label>
+            <Textarea id="seo-desc" value={seoDescription} onChange={(e) => setSeoDescription(e.target.value)} rows={2} placeholder="Search-result description" />
+          </div>
+          <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+            <div className="space-y-1.5">
+              <Label htmlFor="seo-keywords" className="text-xs text-muted-foreground">Keywords (comma separated)</Label>
+              <Input id="seo-keywords" value={seoKeywords} onChange={(e) => setSeoKeywords(e.target.value)} placeholder="owners corporation, strata levies" />
+            </div>
+            <div className="space-y-1.5">
+              <Label htmlFor="seo-canonical" className="text-xs text-muted-foreground">Canonical URL</Label>
+              <Input id="seo-canonical" value={canonical} onChange={(e) => setCanonical(e.target.value)} placeholder="Leave blank to use the post URL" />
+            </div>
+          </div>
+          <div className="flex items-center gap-6">
+            <label className="flex items-center gap-2 text-sm text-foreground">
+              <Checkbox checked={robotsIndex} onCheckedChange={(v) => setRobotsIndex(v === true)} className="bg-card" />
+              Allow search engines to index
+            </label>
+            <label className="flex items-center gap-2 text-sm text-foreground">
+              <Checkbox checked={robotsFollow} onCheckedChange={(v) => setRobotsFollow(v === true)} className="bg-card" />
+              Follow links
+            </label>
+          </div>
         </div>
       </div>
 
@@ -206,80 +322,16 @@ export function BlogEditor({ post }: { post: BlogPostRow }) {
         <ToolbarButton title="Numbered list" active={editor.isActive("orderedList")} onClick={() => editor.chain().focus().toggleOrderedList().run()}><ListOrdered className="h-4 w-4" /></ToolbarButton>
         <ToolbarButton title="Quote" active={editor.isActive("blockquote")} onClick={() => editor.chain().focus().toggleBlockquote().run()}><Quote className="h-4 w-4" /></ToolbarButton>
         <span className="mx-1 h-5 w-px bg-border" />
-        <ToolbarButton title="Image" onClick={addImage}><ImageIcon className="h-4 w-4" /></ToolbarButton>
+        <ToolbarButton title="Upload image" onClick={() => contentImageInputRef.current?.click()}><ImageIcon className="h-4 w-4" /></ToolbarButton>
         <ToolbarButton title="YouTube embed" onClick={addYoutube}><YoutubeIcon className="h-4 w-4" /></ToolbarButton>
         <ToolbarButton title="Table" onClick={() => editor.chain().focus().insertTable({ rows: 3, cols: 3, withHeaderRow: true }).run()}><TableIcon className="h-4 w-4" /></ToolbarButton>
         <ToolbarButton title="Timeline" onClick={() => editor.commands.insertTimeline()}><GitCommitHorizontal className="h-4 w-4" /></ToolbarButton>
+        <input ref={contentImageInputRef} type="file" accept="image/*" className="hidden"
+          onChange={(e) => { const f = e.target.files?.[0]; if (f) onContentImageFile(f); e.target.value = ""; }} />
       </div>
 
       <div className="rounded-md border border-border bg-card p-4">
         <EditorContent editor={editor} />
-      </div>
-
-      {/* SEO & metadata */}
-      <div className="rounded-md border border-border bg-card">
-        <button type="button" onClick={() => setSeoOpen((o) => !o)} className="flex w-full items-center justify-between px-4 py-3 text-sm font-medium text-foreground cursor-pointer">
-          <span className="inline-flex items-center gap-2"><Search className="h-4 w-4 text-muted-foreground" /> SEO &amp; metadata</span>
-          <ChevronDown className={`h-4 w-4 transition-transform ${seoOpen ? "rotate-180" : ""}`} />
-        </button>
-        {seoOpen && (
-          <div className="space-y-4 border-t border-border p-4">
-            <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-              <div className="space-y-1.5">
-                <Label htmlFor="seo-title" className="text-xs text-muted-foreground">Meta title</Label>
-                <Input id="seo-title" value={seoTitle} onChange={(e) => setSeoTitle(e.target.value)} placeholder={title || "Defaults to the post title"} />
-              </div>
-              <div className="space-y-1.5">
-                <Label htmlFor="seo-slug" className="text-xs text-muted-foreground">URL slug</Label>
-                <Input id="seo-slug" value={slug} onChange={(e) => setSlug(e.target.value)} placeholder="post-url-slug" />
-              </div>
-            </div>
-            <div className="space-y-1.5">
-              <Label htmlFor="seo-desc" className="text-xs text-muted-foreground">Meta description</Label>
-              <Textarea id="seo-desc" value={seoDescription} onChange={(e) => setSeoDescription(e.target.value)} rows={2} placeholder={excerpt || "Defaults to the excerpt"} />
-            </div>
-            <div className="space-y-1.5">
-              <Label htmlFor="seo-keywords" className="text-xs text-muted-foreground">Keywords (comma separated)</Label>
-              <Input id="seo-keywords" value={seoKeywords} onChange={(e) => setSeoKeywords(e.target.value)} placeholder="owners corporation, strata levies" />
-            </div>
-            <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-              <div className="space-y-1.5">
-                <Label htmlFor="seo-canonical" className="text-xs text-muted-foreground">Canonical URL</Label>
-                <Input id="seo-canonical" value={canonical} onChange={(e) => setCanonical(e.target.value)} placeholder="Leave blank to use the post URL" />
-              </div>
-              <div className="space-y-1.5">
-                <Label htmlFor="reading-time" className="text-xs text-muted-foreground">Reading time (min)</Label>
-                <NumberInput id="reading-time" allowDecimal={false} value={readingOverride} onChange={setReadingOverride} placeholder={`Auto: ${autoReading}`} />
-              </div>
-            </div>
-            <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-              <div className="space-y-1.5">
-                <Label htmlFor="cover-caption" className="text-xs text-muted-foreground">Cover caption</Label>
-                <Input id="cover-caption" value={coverCaption} onChange={(e) => setCoverCaption(e.target.value)} placeholder="Optional caption under the cover" />
-              </div>
-              <div className="grid grid-cols-2 gap-2">
-                <div className="space-y-1.5">
-                  <Label htmlFor="cover-w" className="text-xs text-muted-foreground">Cover width</Label>
-                  <NumberInput id="cover-w" allowDecimal={false} value={coverW} onChange={setCoverW} placeholder="1600" />
-                </div>
-                <div className="space-y-1.5">
-                  <Label htmlFor="cover-h" className="text-xs text-muted-foreground">Cover height</Label>
-                  <NumberInput id="cover-h" allowDecimal={false} value={coverH} onChange={setCoverH} placeholder="900" />
-                </div>
-              </div>
-            </div>
-            <div className="flex items-center gap-6">
-              <label className="flex items-center gap-2 text-sm text-foreground">
-                <Checkbox checked={robotsIndex} onCheckedChange={(v) => setRobotsIndex(v === true)} className="bg-card" />
-                Allow search engines to index
-              </label>
-              <label className="flex items-center gap-2 text-sm text-foreground">
-                <Checkbox checked={robotsFollow} onCheckedChange={(v) => setRobotsFollow(v === true)} className="bg-card" />
-                Follow links
-              </label>
-            </div>
-          </div>
-        )}
       </div>
     </div>
   );

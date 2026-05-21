@@ -1,6 +1,7 @@
 import { cookies } from "next/headers";
 import { SidebarProvider, SidebarInset, SidebarTrigger } from "@/components/ui/sidebar";
 import { AdminSidebar } from "@/components/layout/admin-sidebar";
+import { getSidebarProfile } from "@/lib/actions/profile";
 
 // Admin chrome — same shadcn sidebar shell + styling as the manager
 // dashboard, with admin-specific navigation. Each /admin page owns its own
@@ -12,12 +13,12 @@ export default async function AdminLayout({
 }: {
   children: React.ReactNode;
 }) {
-  const cookieStore = await cookies();
+  const [cookieStore, profile] = await Promise.all([cookies(), getSidebarProfile()]);
   const defaultOpen = cookieStore.get("sidebar_state")?.value !== "false";
 
   return (
     <SidebarProvider defaultOpen={defaultOpen}>
-      <AdminSidebar />
+      <AdminSidebar profile={profile} />
       <SidebarInset>
         <header className="sticky top-0 z-30 flex h-16 shrink-0 items-center gap-3 border-b border-border bg-card px-4 lg:px-6">
           <SidebarTrigger className="-ml-1" />

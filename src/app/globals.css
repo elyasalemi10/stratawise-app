@@ -397,3 +397,6 @@
 }
 .sw-timeline-title { margin-top: 0.5rem; font-weight: 600; font-size: 0.875rem; }
 .sw-timeline-desc { font-size: 0.75rem; color: var(--muted-foreground); }
+
+/* Timeline icons in published HTML are <img> SVG data-URIs. */
+.sw-timeline-emoji img { width: 20px; height: 20px; }

@@ -1,29 +1,45 @@
 "use client";
 
+import { useState } from "react";
 import { Node, mergeAttributes } from "@tiptap/core";
 import { ReactNodeViewRenderer, NodeViewWrapper } from "@tiptap/react";
 import type { NodeViewProps } from "@tiptap/react";
-import { Plus, Trash2 } from "lucide-react";
+import { Plus, Trash2, Pencil, Search } from "lucide-react";
+import {
+  Rocket, TrendingUp, CircleCheck, Wrench, Lightbulb, Building2, Calendar, Lock, Star,
+  Users, FileText, Award, Target, Zap, Flag, Clock, Heart, ShieldCheck, ChartColumn,
+  DollarSign, Mail, Phone, MapPin, House, Briefcase, Megaphone, Sparkles, ThumbsUp,
+  Handshake, Globe, Bell, BookOpen, Coins, CreditCard, Gauge, Gift, GraduationCap,
+  Key, Leaf, Package, PenTool, Scale, Search as SearchIcon, Settings, Smile, Trophy,
+  Truck, Wallet,
+} from "lucide-static";
+import {
+  Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle,
+} from "@/components/ui/dialog";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
 
-// A horizontal timeline block for blog posts. Each item is { emoji, title,
-// description }. The data lives in the node's `items` attribute; renderHTML
-// emits semantic markup (with sw-timeline-* classes) so the published HTML
-// drops straight into the marketing site, and a React node view handles
-// editing inside the admin editor.
+// Icon name → raw SVG string (from lucide-static, tree-shaken to this set).
+// Used both in the editor node view and in the published HTML.
+const ICON_SVG: Record<string, string> = {
+  Rocket, TrendingUp, CircleCheck, Wrench, Lightbulb, Building2, Calendar, Lock, Star,
+  Users, FileText, Award, Target, Zap, Flag, Clock, Heart, ShieldCheck, ChartColumn,
+  DollarSign, Mail, Phone, MapPin, House, Briefcase, Megaphone, Sparkles, ThumbsUp,
+  Handshake, Globe, Bell, BookOpen, Coins, CreditCard, Gauge, Gift, GraduationCap,
+  Key, Leaf, Package, PenTool, Scale, SearchIcon, Settings, Smile, Trophy, Truck, Wallet,
+};
+const ICON_NAMES = Object.keys(ICON_SVG);
 
-export interface TimelineItem {
-  emoji: string;
-  title: string;
-  description: string;
+function iconDataUri(name: string): string {
+  const svg = ICON_SVG[name] ?? ICON_SVG.Rocket;
+  return `data:image/svg+xml,${encodeURIComponent(svg)}`;
 }
 
-const QUICK_EMOJIS = ["🚀", "🎉", "📈", "🛠️", "✅", "💡", "🏢", "📅", "🔒", "⭐"];
+export interface TimelineItem { icon: string; title: string }
 
 declare module "@tiptap/core" {
   interface Commands<ReturnType> {
-    timeline: {
-      insertTimeline: () => ReturnType;
-    };
+    timeline: { insertTimeline: () => ReturnType };
   }
 }
 
@@ -37,14 +53,12 @@ export const Timeline = Node.create({
   addAttributes() {
     return {
       items: {
-        default: [{ emoji: "🚀", title: "Milestone", description: "Describe this step" }] as TimelineItem[],
+        default: [
+          { icon: "Rocket", title: "Started" },
+          { icon: "TrendingUp", title: "Grew" },
+        ] as TimelineItem[],
         parseHTML: (el) => {
-          const raw = el.getAttribute("data-items");
-          try {
-            return raw ? JSON.parse(raw) : [];
-          } catch {
-            return [];
-          }
+          try { return JSON.parse(el.getAttribute("data-items") ?? "[]"); } catch { return []; }
         },
         renderHTML: (attrs) => ({ "data-items": JSON.stringify(attrs.items ?? []) }),
       },
@@ -57,18 +71,19 @@ export const Timeline = Node.create({
 
   renderHTML({ HTMLAttributes, node }) {
     const items = (node.attrs.items ?? []) as TimelineItem[];
+    // Icons are emitted as <img> with an SVG data-URI — TipTap's DOM-spec
+    // renderHTML can't take a raw SVG string as a child, and an <img> renders
+    // fine in the marketing site's static HTML.
     return [
       "div",
       mergeAttributes(HTMLAttributes, { "data-type": "timeline", class: "sw-timeline" }),
       ...items.map((it) => [
-        "div",
-        { class: "sw-timeline-item" },
-        ["div", { class: "sw-timeline-emoji" }, it.emoji || "•"],
-        [
-          "div",
-          { class: "sw-timeline-body" },
+        "div", { class: "sw-timeline-item" },
+        ["div", { class: "sw-timeline-emoji" },
+          ["img", { src: iconDataUri(it.icon), alt: "", width: "20", height: "20" }],
+        ],
+        ["div", { class: "sw-timeline-body" },
           ["div", { class: "sw-timeline-title" }, it.title || ""],
-          ["div", { class: "sw-timeline-desc" }, it.description || ""],
         ],
       ]),
     ];
@@ -76,18 +91,11 @@ export const Timeline = Node.create({
 
   addCommands() {
     return {
-      insertTimeline:
-        () =>
-        ({ commands }) =>
-          commands.insertContent({
-            type: this.name,
-            attrs: {
-              items: [
-                { emoji: "🚀", title: "Started", description: "What happened first" },
-                { emoji: "📈", title: "Grew", description: "What happened next" },
-              ],
-            },
-          }),
+      insertTimeline: () => ({ commands }) =>
+        commands.insertContent({
+          type: this.name,
+          attrs: { items: [{ icon: "Rocket", title: "Started" }, { icon: "TrendingUp", title: "Grew" }] },
+        }),
     };
   },
 
@@ -98,96 +106,127 @@ export const Timeline = Node.create({
 
 function TimelineNodeView({ node, updateAttributes, editor }: NodeViewProps) {
   const items = (node.attrs.items ?? []) as TimelineItem[];
-  const editable = editor.isEditable;
-
-  function update(next: TimelineItem[]) {
-    updateAttributes({ items: next });
-  }
-  function patch(i: number, patch: Partial<TimelineItem>) {
-    update(items.map((it, idx) => (idx === i ? { ...it, ...patch } : it)));
-  }
-  function addItem() {
-    update([...items, { emoji: "⭐", title: "New step", description: "" }]);
-  }
-  function removeItem(i: number) {
-    update(items.filter((_, idx) => idx !== i));
-  }
+  const [open, setOpen] = useState(false);
 
   return (
     <NodeViewWrapper className="my-4 rounded-lg border border-border bg-card p-4">
       <div className="mb-3 flex items-center justify-between">
         <span className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Timeline</span>
-        {editable && (
-          <button
-            type="button"
-            onClick={addItem}
-            className="inline-flex items-center gap-1 rounded-md border border-border px-2 py-1 text-xs font-medium text-foreground hover:bg-muted cursor-pointer"
-          >
-            <Plus className="h-3 w-3" /> Add step
-          </button>
+        {editor.isEditable && (
+          <Button type="button" variant="secondary" size="sm" onClick={() => setOpen(true)}>
+            <Pencil className="mr-1.5 h-3.5 w-3.5" /> Edit timeline
+          </Button>
         )}
       </div>
 
       <div className="flex gap-4 overflow-x-auto pb-2">
         {items.map((it, i) => (
-          <div key={i} className="relative flex w-48 shrink-0 flex-col items-center text-center">
-            {/* connector line */}
-            {i < items.length - 1 && (
-              <span className="absolute left-1/2 top-5 h-0.5 w-full bg-border" aria-hidden />
-            )}
-            <div className="z-10 flex h-10 w-10 items-center justify-center rounded-full border border-border bg-card text-lg">
-              {it.emoji || "•"}
-            </div>
-            {editable ? (
-              <div className="mt-2 w-full space-y-1.5">
-                <div className="flex flex-wrap justify-center gap-1">
-                  {QUICK_EMOJIS.map((e) => (
-                    <button
-                      key={e}
-                      type="button"
-                      onClick={() => patch(i, { emoji: e })}
-                      className={`rounded px-1 text-sm hover:bg-muted ${it.emoji === e ? "bg-muted" : ""}`}
-                    >
-                      {e}
-                    </button>
-                  ))}
-                </div>
-                <input
-                  value={it.emoji}
-                  onChange={(e) => patch(i, { emoji: e.target.value.slice(0, 4) })}
-                  placeholder="Emoji"
-                  className="w-full rounded-md border border-border bg-card px-2 py-1 text-center text-sm"
-                />
-                <input
-                  value={it.title}
-                  onChange={(e) => patch(i, { title: e.target.value })}
-                  placeholder="Title"
-                  className="w-full rounded-md border border-border bg-card px-2 py-1 text-center text-sm font-medium"
-                />
-                <textarea
-                  value={it.description}
-                  onChange={(e) => patch(i, { description: e.target.value })}
-                  placeholder="Description"
-                  rows={2}
-                  className="w-full rounded-md border border-border bg-card px-2 py-1 text-center text-xs"
-                />
-                <button
-                  type="button"
-                  onClick={() => removeItem(i)}
-                  className="inline-flex items-center gap-1 text-xs text-muted-foreground hover:text-destructive"
-                >
-                  <Trash2 className="h-3 w-3" /> Remove
-                </button>
-              </div>
-            ) : (
-              <div className="mt-2">
-                <div className="text-sm font-medium text-foreground">{it.title}</div>
-                <div className="text-xs text-muted-foreground">{it.description}</div>
-              </div>
-            )}
+          <div key={i} className="relative flex w-44 shrink-0 flex-col items-center text-center">
+            {i < items.length - 1 && <span className="absolute left-1/2 top-5 h-0.5 w-full bg-border" aria-hidden />}
+            <div
+              className="z-10 flex h-10 w-10 items-center justify-center rounded-full border border-border bg-card text-foreground [&_svg]:h-5 [&_svg]:w-5"
+              dangerouslySetInnerHTML={{ __html: ICON_SVG[it.icon] ?? ICON_SVG.Rocket }}
+            />
+            <div className="mt-2 text-sm font-medium text-foreground">{it.title}</div>
           </div>
         ))}
       </div>
+
+      {open && (
+        <TimelineEditDialog
+          items={items}
+          onClose={() => setOpen(false)}
+          onSave={(next) => { updateAttributes({ items: next }); setOpen(false); }}
+        />
+      )}
     </NodeViewWrapper>
+  );
+}
+
+function TimelineEditDialog({
+  items, onClose, onSave,
+}: {
+  items: TimelineItem[];
+  onClose: () => void;
+  onSave: (items: TimelineItem[]) => void;
+}) {
+  const [steps, setSteps] = useState<TimelineItem[]>(items.length ? items : [{ icon: "Rocket", title: "" }]);
+  const [pickerFor, setPickerFor] = useState<number | null>(null);
+  const [search, setSearch] = useState("");
+
+  const filtered = ICON_NAMES.filter((n) => n.toLowerCase().includes(search.toLowerCase().replace(/\s/g, "")));
+
+  function patch(i: number, p: Partial<TimelineItem>) {
+    setSteps((prev) => prev.map((s, idx) => (idx === i ? { ...s, ...p } : s)));
+  }
+
+  return (
+    <Dialog open onOpenChange={(o) => { if (!o) onClose(); }}>
+      <DialogContent className="sm:max-w-lg">
+        <DialogHeader>
+          <DialogTitle>Edit timeline</DialogTitle>
+          <DialogDescription>Add steps; pick an icon and give each a title.</DialogDescription>
+        </DialogHeader>
+
+        {pickerFor === null ? (
+          <div className="space-y-2">
+            <div className="max-h-72 space-y-2 overflow-y-auto">
+              {steps.map((s, i) => (
+                <div key={i} className="flex items-center gap-2 rounded-md border border-border p-2">
+                  <button
+                    type="button"
+                    onClick={() => { setPickerFor(i); setSearch(""); }}
+                    title="Choose icon"
+                    className="flex h-9 w-9 shrink-0 items-center justify-center rounded-md border border-border bg-card text-foreground [&_svg]:h-5 [&_svg]:w-5 hover:bg-muted cursor-pointer"
+                    dangerouslySetInnerHTML={{ __html: ICON_SVG[s.icon] ?? ICON_SVG.Rocket }}
+                  />
+                  <Input value={s.title} onChange={(e) => patch(i, { title: e.target.value })} placeholder="Step title" className="flex-1" />
+                  <button
+                    type="button"
+                    onClick={() => setSteps((prev) => prev.filter((_, idx) => idx !== i))}
+                    className="text-muted-foreground hover:text-destructive cursor-pointer"
+                    aria-label="Remove step"
+                  >
+                    <Trash2 className="h-4 w-4" />
+                  </button>
+                </div>
+              ))}
+            </div>
+            <button
+              type="button"
+              onClick={() => setSteps((prev) => [...prev, { icon: "Star", title: "" }])}
+              className="inline-flex items-center gap-1.5 text-sm font-medium text-primary hover:underline cursor-pointer"
+            >
+              <Plus className="h-4 w-4" /> Add step
+            </button>
+          </div>
+        ) : (
+          <div className="space-y-3">
+            <button type="button" onClick={() => setPickerFor(null)} className="text-sm text-muted-foreground hover:text-foreground cursor-pointer">← Back to steps</button>
+            <div className="relative">
+              <Search className="absolute left-2.5 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+              <Input value={search} onChange={(e) => setSearch(e.target.value)} placeholder="Search icons" className="pl-8" autoFocus />
+            </div>
+            <div className="grid max-h-64 grid-cols-8 gap-1 overflow-y-auto">
+              {filtered.map((name) => (
+                <button
+                  key={name}
+                  type="button"
+                  title={name}
+                  onClick={() => { patch(pickerFor, { icon: name }); setPickerFor(null); }}
+                  className="flex h-9 w-9 items-center justify-center rounded-md text-foreground [&_svg]:h-5 [&_svg]:w-5 hover:bg-muted cursor-pointer"
+                  dangerouslySetInnerHTML={{ __html: ICON_SVG[name] }}
+                />
+              ))}
+            </div>
+          </div>
+        )}
+
+        <DialogFooter>
+          <Button variant="secondary" onClick={onClose}>Cancel</Button>
+          <Button onClick={() => onSave(steps.filter((s) => s.title.trim() || true))}>Done</Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
   );
 }

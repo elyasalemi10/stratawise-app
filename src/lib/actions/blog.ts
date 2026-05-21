@@ -32,6 +32,7 @@ export interface BlogPostRow {
   canonical_url: string | null;
   robots_index: boolean;
   robots_follow: boolean;
+  audience: "lot_owners" | "strata_managers" | null;
   updated_at: string;
   // joined
   tags?: BlogTag[];
@@ -145,6 +146,7 @@ export interface SaveBlogPostInput {
   robots_index: boolean;
   robots_follow: boolean;
   reading_time_minutes: number | null;
+  audience: "lot_owners" | "strata_managers" | null;
   tags: string[]; // tag names
 }
 
@@ -180,6 +182,7 @@ export async function saveBlogPost(input: SaveBlogPostInput): Promise<{ error?: 
       canonical_url: input.canonical_url?.trim() || null,
       robots_index: input.robots_index,
       robots_follow: input.robots_follow,
+      audience: input.audience,
       reading_time_minutes: input.reading_time_minutes ?? readingTime(input.body),
       updated_at: new Date().toISOString(),
     })
