@@ -15,7 +15,7 @@ import TableCell from "@tiptap/extension-table-cell";
 import {
   Bold, Italic, Heading1, Heading2, Heading3, List, ListOrdered, Quote,
   Image as ImageIcon, Youtube as YoutubeIcon, Table as TableIcon, GitCommitHorizontal,
-  Loader2, ArrowLeft, Strikethrough, UploadCloud,
+  Loader2, ArrowLeft, Strikethrough, UploadCloud, AudioLines,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -27,8 +27,15 @@ import { NumberInput } from "@/components/ui/number-input";
 import {
   Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
 } from "@/components/ui/select";
+import {
+  Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription,
+} from "@/components/ui/dialog";
 import { Timeline } from "./timeline-node";
+import { NarrationPlayer } from "./narration-player";
 import { saveBlogPost, setBlogPostStatus, type BlogPostRow } from "@/lib/actions/blog";
+import { generateNarration, type NarrationWordTiming } from "@/lib/actions/blog-audio";
+
+const REQ = <span className="text-destructive">*</span>;
 
 // Upload an image to R2 (blog/ prefix) and read its natural dimensions
 // client-side so we can store width/height (avoids layout shift / CLS on the
@@ -61,7 +68,7 @@ export function BlogEditor({ post }: { post: BlogPostRow }) {
   const [title, setTitle] = useState(post.title === "Untitled post" ? "" : post.title);
   const [slug, setSlug] = useState(post.slug.startsWith("untitled-post-") ? "" : post.slug);
   const [excerpt, setExcerpt] = useState(post.excerpt ?? "");
-  const [audience, setAudience] = useState<"" | "lot_owners" | "strata_managers">(post.audience ?? "");
+  const [audience, setAudience] = useState<"lot_owners" | "strata_managers">(post.audience ?? "strata_managers");
   const [coverImage, setCoverImage] = useState(post.cover_image_url ?? "");
   const [coverAlt, setCoverAlt] = useState(post.cover_image_alt ?? "");
   const [coverW, setCoverW] = useState<number | null>(post.cover_image_width);
@@ -80,6 +87,13 @@ export function BlogEditor({ post }: { post: BlogPostRow }) {
   const [saving, setSaving] = useState(false);
   const [statusPending, setStatusPending] = useState(false);
   const [status, setStatus] = useState(post.status);
+  // Narration
+  const [audioUrl, setAudioUrl] = useState<string | null>(post.audio_url);
+  const [audioWords, setAudioWords] = useState<NarrationWordTiming[]>(
+    Array.isArray(post.audio_words) ? (post.audio_words as NarrationWordTiming[]) : [],
+  );
+  const [narrating, setNarrating] = useState(false);
+  const [previewOpen, setPreviewOpen] = useState(false);
 
   const coverInputRef = useRef<HTMLInputElement>(null);
   const contentImageInputRef = useRef<HTMLInputElement>(null);
@@ -163,7 +177,7 @@ export function BlogEditor({ post }: { post: BlogPostRow }) {
       robots_index: robotsIndex,
       robots_follow: robotsFollow,
       reading_time_minutes: readingOverride ? parseInt(readingOverride, 10) : autoReading,
-      audience: audience || null,
+      audience,
       tags: tags.split(",").map((t) => t.trim()).filter(Boolean),
     });
     setSaving(false);
@@ -173,8 +187,35 @@ export function BlogEditor({ post }: { post: BlogPostRow }) {
     return true;
   }
 
+  async function handleGenerateNarration() {
+    setNarrating(true);
+    // Save first — the action narrates the post's saved content.
+    const saved = await handleSave();
+    if (!saved) { setNarrating(false); return; }
+    const r = await generateNarration(post.id);
+    setNarrating(false);
+    if (r.error || !r.audioUrl) { toast.error(r.error ?? "Narration failed"); return; }
+    setAudioUrl(r.audioUrl);
+    setAudioWords(r.words ?? []);
+    toast.success("Narration ready");
+    setPreviewOpen(true);
+  }
+
   async function handlePublishToggle() {
     const next = status === "published" ? "draft" : "published";
+    // Require the SEO essentials before going live.
+    if (next === "published") {
+      const missing: string[] = [];
+      if (!title.trim()) missing.push("title");
+      if (!slug.trim()) missing.push("URL slug");
+      if (!excerpt.trim()) missing.push("excerpt");
+      if (!coverImage) missing.push("cover image");
+      if (!coverAlt.trim()) missing.push("cover image alt text");
+      if (missing.length) {
+        toast.error(`Add the ${missing.join(", ")} before publishing.`);
+        return;
+      }
+    }
     setStatusPending(true);
     const saved = await handleSave();
     if (!saved) { setStatusPending(false); return; }
@@ -207,41 +248,42 @@ export function BlogEditor({ post }: { post: BlogPostRow }) {
         </div>
       </div>
 
-      <Input value={title} onChange={(e) => setTitle(e.target.value)} placeholder="Post title"
-        className="h-auto border-0 bg-transparent px-0 text-2xl font-semibold tracking-tight shadow-none focus-visible:ring-0" />
+      <div>
+        <Label className="text-xs text-muted-foreground">Title {REQ}</Label>
+        <Input value={title} onChange={(e) => setTitle(e.target.value)} placeholder="Post title"
+          className="h-auto border-0 bg-transparent px-0 text-2xl font-semibold tracking-tight shadow-none focus-visible:ring-0" />
+      </div>
 
       {/* Post details + SEO — all visible at the top (no dropdown). */}
       <div className="space-y-4 rounded-md border border-border bg-card p-4">
         <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
           <div className="space-y-1.5">
             <Label className="text-xs text-muted-foreground">Audience (for records)</Label>
-            <Select value={audience} onValueChange={(v) => setAudience((v as typeof audience) ?? "")}>
+            <Select value={audience} onValueChange={(v) => setAudience((v as "lot_owners" | "strata_managers") ?? "strata_managers")}>
               <SelectTrigger className="w-full">
-                <SelectValue placeholder="Anyone">
-                  {audience === "lot_owners" ? "Lot owners" : audience === "strata_managers" ? "Strata managers" : "Anyone"}
-                </SelectValue>
+                <SelectValue>{audience === "lot_owners" ? "Lot owners" : "Strata managers"}</SelectValue>
               </SelectTrigger>
               <SelectContent>
-                <SelectItem value="lot_owners">Lot owners</SelectItem>
                 <SelectItem value="strata_managers">Strata managers</SelectItem>
+                <SelectItem value="lot_owners">Lot owners</SelectItem>
               </SelectContent>
             </Select>
           </div>
           <div className="space-y-1.5">
-            <Label htmlFor="blog-slug" className="text-xs text-muted-foreground">URL slug</Label>
+            <Label htmlFor="blog-slug" className="text-xs text-muted-foreground">URL slug {REQ}</Label>
             <Input id="blog-slug" value={slug} onChange={(e) => setSlug(e.target.value)} placeholder="post-url-slug" />
           </div>
         </div>
 
         <div className="space-y-1.5">
-          <Label htmlFor="blog-excerpt" className="text-xs text-muted-foreground">Excerpt</Label>
+          <Label htmlFor="blog-excerpt" className="text-xs text-muted-foreground">Excerpt {REQ}</Label>
           <Textarea id="blog-excerpt" value={excerpt} onChange={(e) => setExcerpt(e.target.value)} rows={2} placeholder="Short summary shown in listings (also the default meta description)" />
         </div>
 
         {/* Cover image — upload from computer; dimensions captured automatically. */}
         <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
           <div className="space-y-1.5">
-            <Label className="text-xs text-muted-foreground">Cover image</Label>
+            <Label className="text-xs text-muted-foreground">Cover image {REQ}</Label>
             {coverImage ? (
               // eslint-disable-next-line @next/next/no-img-element
               <div className="relative overflow-hidden rounded-md border border-border">
@@ -259,7 +301,7 @@ export function BlogEditor({ post }: { post: BlogPostRow }) {
               onChange={(e) => { const f = e.target.files?.[0]; if (f) onCoverFile(f); e.target.value = ""; }} />
           </div>
           <div className="space-y-1.5">
-            <Label htmlFor="cover-alt" className="text-xs text-muted-foreground">Cover image alt text</Label>
+            <Label htmlFor="cover-alt" className="text-xs text-muted-foreground">Cover image alt text {REQ}</Label>
             <Input id="cover-alt" value={coverAlt} onChange={(e) => setCoverAlt(e.target.value)} placeholder="Describe the cover image" />
             {coverW && coverH ? <p className="text-xs text-muted-foreground">{coverW}×{coverH}px (auto)</p> : null}
           </div>
@@ -333,6 +375,40 @@ export function BlogEditor({ post }: { post: BlogPostRow }) {
       <div className="rounded-md border border-border bg-card p-4">
         <EditorContent editor={editor} />
       </div>
+
+      {/* Narration — ElevenLabs read-aloud with synced word highlighting. */}
+      <div className="flex flex-wrap items-center gap-3 rounded-md border border-border bg-card p-4">
+        <AudioLines className="h-5 w-5 text-muted-foreground" />
+        <div className="mr-auto">
+          <p className="text-sm font-medium text-foreground">Audio narration</p>
+          <p className="text-xs text-muted-foreground">
+            Reads headings, paragraphs and lists aloud (tables, images and embeds are skipped) and highlights each word as it&apos;s spoken.
+          </p>
+        </div>
+        {audioUrl && (
+          <Button variant="secondary" size="sm" onClick={() => setPreviewOpen(true)} disabled={narrating}>
+            Preview
+          </Button>
+        )}
+        <Button size="sm" onClick={handleGenerateNarration} disabled={narrating || saving}>
+          {narrating && <Loader2 className="size-4 animate-spin" />}
+          {audioUrl ? "Regenerate narration" : "Generate narration"}
+        </Button>
+      </div>
+
+      <Dialog open={previewOpen} onOpenChange={setPreviewOpen}>
+        <DialogContent className="sm:max-w-2xl">
+          <DialogHeader>
+            <DialogTitle>Narration preview</DialogTitle>
+            <DialogDescription>Press play — each word highlights as it&apos;s read. This is exactly what readers get.</DialogDescription>
+          </DialogHeader>
+          {audioUrl && (
+            <div className="max-h-[60vh] overflow-y-auto">
+              <NarrationPlayer html={editor.getHTML()} audioUrl={audioUrl} words={audioWords} />
+            </div>
+          )}
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

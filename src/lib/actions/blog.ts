@@ -33,6 +33,9 @@ export interface BlogPostRow {
   robots_index: boolean;
   robots_follow: boolean;
   audience: "lot_owners" | "strata_managers" | null;
+  audio_url: string | null;
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  audio_words: any;
   updated_at: string;
   // joined
   tags?: BlogTag[];
@@ -120,6 +123,7 @@ export async function createBlogPost(): Promise<{ id?: string; error?: string }>
       body_format: "html",
       author_id: authorId,
       status: "draft",
+      audience: "strata_managers",
     })
     .select("id")
     .single();
