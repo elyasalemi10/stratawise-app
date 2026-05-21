@@ -201,7 +201,7 @@ export async function getOCCertificateData(ocId: string, lotId: string, applican
     { data: levies },
     { data: insurance },
   ] = await Promise.all([
-    supabase.from("owners_corporations").select("*, management_companies!inner(name, address, logo_url, registered_name, signature_url)").eq("id", ocId).single(),
+    supabase.from("owners_corporations").select("*, management_companies!inner(name, trading_as, address, logo_url, registered_name, signature_url)").eq("id", ocId).single(),
     supabase.from("lots").select("*").eq("id", lotId).single(),
     supabase.from("levy_notices").select("*").eq("lot_id", lotId).in("status", ["issued", "partially_paid", "paid", "overdue"]).order("due_date", { ascending: true }),
     supabase.from("insurance_policies").select("*").eq("oc_id", ocId).eq("status", "active"),
@@ -298,7 +298,11 @@ export async function getOCCertificateData(ocId: string, lotId: string, applican
     managerAppointed: oc.manager_appointed ?? true,
     administratorAppointed: oc.administrator_appointed ?? false,
     lastAgmDate: "",
-    companyName: company?.name ?? "",
+    // Certificate shows the full legal form: "<legal name> trading as
+    // <trading name>" when a trading name is set, otherwise just the name.
+    companyName: company?.trading_as?.trim()
+      ? `${company.name} trading as ${company.trading_as.trim()}`
+      : (company?.name ?? ""),
     registeredName: company?.registered_name ?? company?.name ?? "",
     companyAddress: company?.address ?? "",
     logoUrl: company?.logo_url ?? null,

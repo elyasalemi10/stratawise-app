@@ -661,29 +661,11 @@ export async function applySettlementToLot(input: ApplySettlementInput) {
   // occupancy, tenant). Best-effort — failures are logged but don't
   // break the settlement.
   try {
-    const { verifyAddress } = await import("@/lib/postgrid/client");
-    let postalVerificationStatus: string | null = null;
-    let postalVerificationId: string | null = null;
-    let postalVerifiedAt: string | null = null;
-    if (newOwner.postalAddress && !parsed.data.newOwner.verifiedPostal) {
-      try {
-        const verifyResult = await verifyAddress({
-          line1: newOwner.postalAddress,
-          city: "",
-          provinceOrState: "VIC",
-          postalOrZip: "",
-          country: "AU",
-        });
-        postalVerificationStatus = verifyResult.status;
-        postalVerificationId = verifyResult.verificationId;
-        if (verifyResult.status === "verified") {
-          postalVerifiedAt = new Date().toISOString();
-        }
-      } catch (postgridErr) {
-        console.warn("applySettlementToLot: PostGrid verify failed (non-fatal)", postgridErr);
-        postalVerificationStatus = "unchecked";
-      }
-    }
+    // Addresses are stored as-is — PostGrid is no longer used to verify them
+    // (it's the print/mail product only now).
+    const postalVerificationStatus: string | null = null;
+    const postalVerificationId: string | null = null;
+    const postalVerifiedAt: string | null = null;
 
     // Occupancy normalisation. New owners default to owner-occupied unless
     // the manager flagged the lot as tenanted / vacant on the settlement

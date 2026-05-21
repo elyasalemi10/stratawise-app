@@ -4,7 +4,6 @@ import { z } from "zod";
 import { requireCompanyRole } from "@/lib/auth";
 import { createServerClient } from "@/lib/supabase";
 import { logAudit, diffFields } from "@/lib/audit";
-import { verifyAddress } from "@/lib/postgrid/client";
 
 // Server actions for the editable fields on the lot detail page (Items 9 + 13).
 // Every mutation: validates with Zod, fetches before-state, performs the update,
@@ -129,36 +128,10 @@ export async function updateLotOwnerContact(
   if (parsed.data.phone !== undefined) update.phone = parsed.data.phone;
   if (parsed.data.email !== undefined) update.email = parsed.data.email;
 
-  // Postal address — verify via PostGrid if a new address was provided. If
-  // verification fails we still save (the wizard's policy) but mark the row
-  // as unverified.
+  // Postal address — stored as-is. We no longer verify addresses with
+  // PostGrid (it's used for the print/mail product only now).
   if (parsed.data.postal_address !== undefined) {
     update.postal_address = parsed.data.postal_address;
-    if (parsed.data.postal_address && !parsed.data.verified_postal) {
-      try {
-        // Best-effort: split the address into rough line/city/state/postcode
-        // for the verify endpoint. The wizard captures structured pieces;
-        // here we hand the raw text through with conservative split rules.
-        const verifyResult = await verifyAddress({
-          line1: parsed.data.postal_address,
-          city: "",
-          provinceOrState: "VIC",
-          postalOrZip: "",
-          country: "AU",
-        });
-        update.postal_address_verification_status = verifyResult.status;
-        update.postal_address_verification_id = verifyResult.verificationId;
-        if (verifyResult.status === "verified") {
-          update.postal_address_verified_at = new Date().toISOString();
-        }
-      } catch (err) {
-        console.error("[lot-edit] postgrid verifyAddress threw:", err);
-        update.postal_address_verification_status = "unchecked";
-      }
-    } else if (parsed.data.verified_postal) {
-      update.postal_address_verification_status = parsed.data.verified_postal.status;
-      update.postal_address_verification_id = parsed.data.verified_postal.verification_id;
-    }
   }
 
   if (Object.keys(update).length === 0) {

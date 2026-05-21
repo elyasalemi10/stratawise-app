@@ -39,15 +39,16 @@ export async function createMeeting(
   await requireOCAccess(parsed.data.oc_id);
   const supabase = createServerClient();
 
-  // Clean, human-readable per-OC reference: "{TYPE}-{YEAR}-{n}" where n is
-  // this OC's count of that meeting type in that year + 1 (e.g. "AGM-2026-1",
-  // "SGM-2026-2", "CM-2026-1"). Unique per OC (see idx_meetings_oc_reference).
+  // Clean, human-readable reference numbered GLOBALLY per type+year:
+  // "{TYPE}-{YEAR}-{n}" where n is the platform-wide count of that meeting
+  // type in that year + 1 (e.g. "AGM-2026-7" = the 7th AGM across all OCs in
+  // 2026). Global numbering means an owner in two OCs never sees the same
+  // code twice. Uniqueness is enforced by idx_meetings_reference_global.
   const typeCode = { agm: "AGM", sgm: "SGM", committee: "CM" }[parsed.data.meeting_type];
   const year = new Date(parsed.data.date_time).getFullYear();
   const { count: existingCount } = await supabase
     .from("meetings")
     .select("id", { count: "exact", head: true })
-    .eq("oc_id", parsed.data.oc_id)
     .eq("meeting_type", parsed.data.meeting_type)
     .gte("date_time", `${year}-01-01`)
     .lt("date_time", `${year + 1}-01-01`);
