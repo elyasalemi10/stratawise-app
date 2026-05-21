@@ -1,85 +1,81 @@
-"use client";
+import { redirect } from "next/navigation";
+import { getAuthUserId, ensureProfile } from "@/lib/auth";
+import { createServerClient } from "@/lib/supabase";
+import { TcStep } from "./tc-step";
+import { OcConsentStep } from "./oc-consent-step";
 
-import { useState } from "react";
-import Link from "next/link";
-import { toast } from "sonner";
-import { Loader2 } from "lucide-react";
-import { Card, CardContent } from "@/components/ui/card";
-import { Button } from "@/components/ui/button";
-import { Checkbox } from "@/components/ui/checkbox";
-import { Label } from "@/components/ui/label";
-import { recordLotOwnerConsent } from "./actions";
+export const dynamic = "force-dynamic";
 
-// Single combined consent on lot-owner onboarding. The original page had
-// two checkboxes (terms + privacy) which felt like ceremony — managers
-// reported owners bouncing here. The links stay clickable and open in a
-// new tab; the checkbox itself isn't toggled by clicking the label copy
-// (per CLAUDE.md: htmlFor must NOT be paired to a checkbox id).
+// Lot-owner onboarding router. Runs, in order:
+//   1. Account-level Terms / Privacy acceptance (once per account).
+//   2. Per-OC digital-consent — one step for each OC the owner belongs to
+//      that they haven't consented for yet. Consent is per (owner, OC), so an
+//      owner who already has an account still completes this for each new OC.
+// Falls through to the dashboard once everything's done.
+export default async function LotOwnerOnboardingPage() {
+  const userId = await getAuthUserId();
+  if (!userId) redirect("/sign-in");
+  await ensureProfile();
 
-export default function LotOwnerOnboardingPage() {
-  const [accepted, setAccepted] = useState(false);
-  const [pending, setPending] = useState(false);
+  const supabase = createServerClient();
+  const { data: profile } = await supabase
+    .from("profiles")
+    .select("id, role")
+    .eq("auth_user_id", userId)
+    .single();
 
-  async function handleSubmit() {
-    if (!accepted) return;
-    setPending(true);
-    const result = await recordLotOwnerConsent();
+  if (!profile) redirect("/onboarding");
+  if (profile.role !== "lot_owner") redirect("/onboarding");
 
-    if (result.error) {
-      // Only drop the loading state on FAILURE. On success we keep the
-      // button spinning through the navigation so the user never sees a
-      // "loaded → idle → redirect" flicker (the pattern the team hates).
-      setPending(false);
-      toast.error(result.error);
-      return;
-    }
+  // Step 1 — account-level T&C.
+  const { count: tcCount } = await supabase
+    .from("user_consents")
+    .select("id", { count: "exact", head: true })
+    .eq("profile_id", profile.id);
+  if (!tcCount) return <TcStep />;
 
-    // ?welcome=1 triggers the dashboard's WelcomeConfetti once, then it
-    // strips the param so a refresh doesn't replay. Spinner stays on
-    // until the new page paints.
-    window.location.href = "/dashboard?welcome=1";
+  // Step 2 — per-OC consent. Find OC memberships missing a consent record.
+  const { data: memberships } = await supabase
+    .from("oc_members")
+    .select("oc_id, lot_id, owners_corporations(name)")
+    .eq("profile_id", profile.id)
+    .eq("role", "lot_owner")
+    .is("left_at", null);
+
+  const ocIds = [...new Set((memberships ?? []).map((m) => m.oc_id))];
+  if (ocIds.length === 0) redirect("/dashboard?welcome=1");
+
+  const { data: consents } = await supabase
+    .from("oc_member_consents")
+    .select("oc_id")
+    .eq("profile_id", profile.id)
+    .in("oc_id", ocIds);
+  const consented = new Set((consents ?? []).map((c) => c.oc_id));
+
+  const pending = (memberships ?? []).find((m) => !consented.has(m.oc_id));
+  if (!pending) redirect("/dashboard?welcome=1");
+
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const ocName = (pending as any).owners_corporations?.name ?? "your Owners Corporation";
+
+  // Prefill from what the manager recorded the owner wants asked at signup
+  // (falls back to all categories inside the step when empty).
+  let initialCategories: string[] = [];
+  if (pending.lot_id) {
+    const { data: lotOwner } = await supabase
+      .from("lot_owners")
+      .select("at_portal_signup_categories, digital_consent_categories")
+      .eq("lot_id", pending.lot_id)
+      .order("created_at", { ascending: false })
+      .limit(1)
+      .maybeSingle();
+    initialCategories =
+      (lotOwner?.at_portal_signup_categories as string[] | null) ??
+      (lotOwner?.digital_consent_categories as string[] | null) ??
+      [];
   }
 
   return (
-    <div className="max-w-lg mx-auto py-12 px-4">
-      <h1 className="text-2xl font-semibold tracking-tight text-foreground">
-        Welcome to StrataWise
-      </h1>
-      <p className="mt-2 text-sm text-muted-foreground">
-        Before you get started, please review and accept our terms.
-      </p>
-
-      <Card className="mt-6">
-        <CardContent className="pt-5">
-          <div className="flex items-start gap-3">
-            <Checkbox
-              id="legal-consent"
-              checked={accepted}
-              onCheckedChange={(v) => setAccepted(v === true)}
-              className="shrink-0 mt-0.5"
-            />
-            {/* Plain <p>, NOT the shadcn <Label> — Label is `display:flex`,
-                which turned every text/link fragment into its own flex item
-                that wrapped onto its own line. A paragraph lets the sentence
-                wrap at natural word boundaries with the links inline. */}
-            <p className="text-sm leading-relaxed text-foreground">
-              I have read and agree to the{" "}
-              <Link href="/legal/terms" target="_blank" rel="noopener noreferrer" className="text-[color:var(--brand-gold)] hover:underline">Terms of Service</Link>
-              {" "}and{" "}
-              <Link href="/legal/privacy" target="_blank" rel="noopener noreferrer" className="text-[color:var(--brand-gold)] hover:underline">Privacy Policy</Link>.
-            </p>
-          </div>
-        </CardContent>
-      </Card>
-
-      <Button
-        className="w-full mt-4"
-        disabled={!accepted || pending}
-        onClick={handleSubmit}
-      >
-        {pending && <Loader2 className="size-4 animate-spin" />}
-        Continue
-      </Button>
-    </div>
+    <OcConsentStep ocId={pending.oc_id} ocName={ocName} initialCategories={initialCategories} />
   );
 }

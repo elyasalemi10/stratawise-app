@@ -333,6 +333,23 @@ CREATE TABLE user_consents (
 
 CREATE INDEX idx_user_consents_profile ON user_consents(profile_id);
 
+-- Per-OC lot-owner digital-communication consent. Consent is per (owner, OC),
+-- NOT per account — an owner with an existing login who accepts an invite to a
+-- new OC still completes the consent step for that OC. Written by
+-- recordOcConsent; gated by getOnboardingRedirect.
+CREATE TABLE oc_member_consents (
+  id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+  profile_id UUID NOT NULL REFERENCES profiles(id) ON DELETE CASCADE,
+  oc_id UUID NOT NULL REFERENCES owners_corporations(id) ON DELETE CASCADE,
+  categories TEXT[] NOT NULL DEFAULT '{}',
+  accepted_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  ip_address TEXT,
+  user_agent TEXT,
+  CONSTRAINT oc_member_consents_unique UNIQUE (profile_id, oc_id)
+);
+
+CREATE INDEX idx_oc_member_consents_profile ON oc_member_consents(profile_id);
+
 -- ============================================================================
 -- 4. NOTIFICATION PREFERENCES
 -- ============================================================================
