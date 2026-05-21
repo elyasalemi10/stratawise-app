@@ -2,7 +2,6 @@
 
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
-import Image from "next/image";
 import { toast } from "sonner";
 import { Loader2, ShieldCheck, Copy } from "lucide-react";
 import { Button } from "@/components/ui/button";
@@ -26,7 +25,8 @@ import { logMfaEvent } from "../internal-actions/audit";
 export function MfaEnrollClient() {
   const router = useRouter();
   const [factorId, setFactorId] = useState<string | null>(null);
-  const [qrSrc, setQrSrc] = useState<string | null>(null);
+  // Raw SVG markup from Supabase, rendered inline (see note below).
+  const [qrSvg, setQrSvg] = useState<string | null>(null);
   const [secret, setSecret] = useState<string | null>(null);
   const [code, setCode] = useState("");
   const [enrolling, setEnrolling] = useState(true);
@@ -44,13 +44,13 @@ export function MfaEnrollClient() {
         setEnrolling(false);
         return;
       }
-      // Supabase returns the QR as a raw SVG markup string. Per their docs
-      // we prepend the data URI prefix to use it directly in an <img src>.
-      const qrSrcFull = data.totp?.qr_code
-        ? `data:image/svg+xml;utf-8,${encodeURIComponent(data.totp.qr_code)}`
-        : null;
+      // Supabase returns the QR as a raw SVG markup string. We render it
+      // INLINE (dangerouslySetInnerHTML) rather than via a data: URL — the
+      // previous `data:image/svg+xml;utf-8,...` URL was malformed (missing
+      // charset=) and next/image doesn't handle data URLs, so it showed a
+      // broken-image placeholder.
       setFactorId(data.id);
-      setQrSrc(qrSrcFull);
+      setQrSvg(data.totp?.qr_code ?? null);
       setSecret(data.totp?.secret ?? null);
       setEnrolling(false);
     }
@@ -119,19 +119,14 @@ export function MfaEnrollClient() {
               {enrollError}
             </div>
           )}
-          {!enrolling && qrSrc && (
+          {!enrolling && qrSvg && (
             <>
               <div className="flex justify-center">
-                <div className="rounded-md border border-border bg-card p-2">
-                  <Image
-                    src={qrSrc}
-                    alt="MFA QR code"
-                    width={192}
-                    height={192}
-                    unoptimized
-                    className="size-48"
-                  />
-                </div>
+                <div
+                  className="rounded-md border border-border bg-white p-2 [&_svg]:size-48 [&_img]:size-48"
+                  aria-label="MFA QR code"
+                  dangerouslySetInnerHTML={{ __html: qrSvg }}
+                />
               </div>
               {secret && (
                 <div className="space-y-1.5">
