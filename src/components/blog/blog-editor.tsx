@@ -109,7 +109,11 @@ export function BlogEditor({ post }: { post: BlogPostRow }) {
       TableRow, TableHeader, TableCell,
       Timeline,
     ],
-    content: post.body && post.body.trim().length > 0 ? post.body : "<p></p>",
+    // Prefer the TipTap JSON (faithful round-trip of timelines/tables); fall
+    // back to the stored HTML, then an empty doc.
+    content: post.content_json && Object.keys(post.content_json).length > 0
+      ? post.content_json
+      : (post.body && post.body.trim().length > 0 ? post.body : "<p></p>"),
     editorProps: {
       attributes: {
         class: "prose prose-sm max-w-none min-h-[360px] focus:outline-none [&_table]:border-collapse [&_td]:border [&_td]:border-border [&_td]:p-2 [&_th]:border [&_th]:border-border [&_th]:bg-muted [&_th]:p-2",
@@ -165,6 +169,7 @@ export function BlogEditor({ post }: { post: BlogPostRow }) {
       slug,
       excerpt: excerpt || null,
       body: editor.getHTML(),
+      content_json: editor.getJSON(),
       cover_image_url: coverImage || null,
       cover_image_alt: coverAlt || null,
       cover_image_width: coverW,

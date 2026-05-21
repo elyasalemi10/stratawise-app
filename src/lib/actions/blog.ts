@@ -3,6 +3,7 @@
 import { requireRole } from "@/lib/auth";
 import { createServerClient } from "@/lib/supabase";
 import { revalidatePath } from "next/cache";
+import { blocksToDoc, blocksToHtml, type AiPost } from "@/lib/blog/import-ai";
 
 // The admin blog authors into the shared `posts` schema that the marketing
 // site renders (full SEO: seo_*, og_*, twitter_*, canonical, robots,
@@ -36,6 +37,8 @@ export interface BlogPostRow {
   audio_url: string | null;
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   audio_words: any;
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  content_json: any;
   updated_at: string;
   // joined
   tags?: BlogTag[];
@@ -151,6 +154,8 @@ export interface SaveBlogPostInput {
   robots_follow: boolean;
   reading_time_minutes: number | null;
   audience: "lot_owners" | "strata_managers" | null;
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  content_json: any;
   tags: string[]; // tag names
 }
 
@@ -173,6 +178,7 @@ export async function saveBlogPost(input: SaveBlogPostInput): Promise<{ error?: 
       excerpt: input.excerpt?.trim() || null,
       body: input.body ?? "",
       body_format: "html",
+      content_json: input.content_json ?? null,
       cover_image_url: input.cover_image_url?.trim() || null,
       cover_image_alt: input.cover_image_alt?.trim() || null,
       cover_image_width: input.cover_image_width,
@@ -231,6 +237,85 @@ export async function setBlogPostStatus(
   if (error) return { error: error.message };
   revalidatePath("/admin/blog");
   return {};
+}
+
+// Import an AI-authored post from pasted JSON. Creates a draft populated with
+// body (HTML + TipTap doc), SEO, cover, audience and tags, and returns its id
+// so the caller opens it in the editor for review.
+export async function importAiPost(jsonString: string): Promise<{ id?: string; error?: string }> {
+  await requireRole(["super_admin"]);
+
+  let data: AiPost;
+  try {
+    data = JSON.parse(jsonString) as AiPost;
+  } catch {
+    return { error: "That isn't valid JSON. Paste the object the AI returned." };
+  }
+  if (!data || typeof data.title !== "string" || !data.title.trim()) {
+    return { error: "The JSON needs a non-empty \"title\"." };
+  }
+  if (!Array.isArray(data.body)) {
+    return { error: "The JSON needs a \"body\" array of blocks." };
+  }
+
+  const supabase = createServerClient();
+  let authorId: string;
+  try {
+    authorId = await ensureAuthorId();
+  } catch (e) {
+    return { error: e instanceof Error ? e.message : "Failed to resolve author" };
+  }
+
+  const doc = blocksToDoc(data.body);
+  const html = blocksToHtml(data.body);
+  const title = data.title.trim();
+  const baseSlug = slugify(data.slug || title);
+
+  // Ensure unique slug.
+  const { data: clash } = await supabase.from("posts").select("id").eq("slug", baseSlug).maybeSingle();
+  const slug = clash ? `${baseSlug}-${Math.random().toString(36).slice(2, 7)}` : baseSlug;
+
+  const { data: created, error } = await supabase
+    .from("posts")
+    .insert({
+      slug,
+      title,
+      excerpt: data.excerpt?.trim() || null,
+      body: html,
+      body_format: "html",
+      content_json: doc,
+      author_id: authorId,
+      status: "draft",
+      audience: data.audience === "lot_owners" ? "lot_owners" : "strata_managers",
+      cover_image_url: data.cover?.url?.trim() || null,
+      cover_image_alt: data.cover?.alt?.trim() || null,
+      seo_title: data.seo?.metaTitle?.trim() || null,
+      seo_description: data.seo?.metaDescription?.trim() || null,
+      seo_keywords: data.seo?.keywords?.length ? data.seo.keywords : null,
+      canonical_url: data.seo?.canonicalUrl?.trim() || null,
+      reading_time_minutes: readingTime(html),
+    })
+    .select("id")
+    .single();
+  if (error || !created) return { error: error?.message ?? "Failed to import post" };
+
+  // Tags: find-or-create, then link.
+  const tagIds: string[] = [];
+  for (const name of (data.tags ?? []).map((t) => String(t).trim()).filter(Boolean)) {
+    const tagSlug = slugify(name);
+    const { data: existing } = await supabase.from("tags").select("id").eq("slug", tagSlug).maybeSingle();
+    if (existing) tagIds.push(existing.id as string);
+    else {
+      const { data: t } = await supabase.from("tags").insert({ slug: tagSlug, name }).select("id").single();
+      if (t) tagIds.push(t.id as string);
+    }
+  }
+  if (tagIds.length) {
+    await supabase.from("post_tags").insert(tagIds.map((tag_id) => ({ post_id: created.id, tag_id })));
+  }
+
+  revalidatePath("/admin/blog");
+  return { id: created.id };
 }
 
 export async function deleteBlogPost(id: string): Promise<{ error?: string }> {

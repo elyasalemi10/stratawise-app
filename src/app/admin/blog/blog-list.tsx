@@ -3,15 +3,17 @@
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { toast } from "sonner";
-import { Plus, Loader2, Newspaper, Trash2, Pencil } from "lucide-react";
+import { Plus, Loader2, Newspaper, Trash2, Pencil, Sparkles, Copy, Check } from "lucide-react";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
+import { Textarea } from "@/components/ui/textarea";
 import { EmptyState } from "@/components/shared/empty-state";
 import {
   Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle,
 } from "@/components/ui/dialog";
-import { createBlogPost, deleteBlogPost, type BlogPostRow } from "@/lib/actions/blog";
+import { createBlogPost, deleteBlogPost, importAiPost, type BlogPostRow } from "@/lib/actions/blog";
+import { AI_POST_PROMPT } from "@/lib/blog/ai-prompt";
 
 const fmtDate = (iso: string) =>
   new Date(iso).toLocaleDateString("en-AU", { day: "numeric", month: "short", year: "numeric" });
@@ -21,6 +23,27 @@ export function BlogList({ posts }: { posts: BlogPostRow[] }) {
   const [creating, setCreating] = useState(false);
   const [deleteTarget, setDeleteTarget] = useState<BlogPostRow | null>(null);
   const [deleting, setDeleting] = useState(false);
+  const [importOpen, setImportOpen] = useState(false);
+  const [importJson, setImportJson] = useState("");
+  const [importing, setImporting] = useState(false);
+  const [copied, setCopied] = useState(false);
+
+  async function copyPrompt() {
+    await navigator.clipboard.writeText(AI_POST_PROMPT);
+    setCopied(true);
+    setTimeout(() => setCopied(false), 1500);
+  }
+
+  async function handleImport() {
+    setImporting(true);
+    const r = await importAiPost(importJson);
+    if (r.error || !r.id) {
+      setImporting(false);
+      toast.error(r.error ?? "Import failed");
+      return;
+    }
+    router.push(`/admin/blog/${r.id}`);
+  }
 
   async function handleNew() {
     setCreating(true);
@@ -51,10 +74,16 @@ export function BlogList({ posts }: { posts: BlogPostRow[] }) {
           <h1 className="text-2xl font-semibold tracking-tight text-foreground">Blog</h1>
           <p className="text-sm text-muted-foreground">Posts published here appear on the marketing site.</p>
         </div>
-        <Button size="sm" onClick={handleNew} disabled={creating}>
-          {creating ? <Loader2 className="size-4 animate-spin" /> : <Plus className="mr-1.5 h-3.5 w-3.5" />}
-          New post
-        </Button>
+        <div className="flex items-center gap-2">
+          <Button size="sm" variant="secondary" onClick={() => setImportOpen(true)}>
+            <Sparkles className="mr-1.5 h-3.5 w-3.5" />
+            Import AI post
+          </Button>
+          <Button size="sm" onClick={handleNew} disabled={creating}>
+            {creating ? <Loader2 className="size-4 animate-spin" /> : <Plus className="mr-1.5 h-3.5 w-3.5" />}
+            New post
+          </Button>
+        </div>
       </div>
 
       {posts.length === 0 ? (
@@ -95,6 +124,36 @@ export function BlogList({ posts }: { posts: BlogPostRow[] }) {
           ))}
         </div>
       )}
+
+      <Dialog open={importOpen} onOpenChange={(o) => { if (!importing) setImportOpen(o); }}>
+        <DialogContent className="sm:max-w-2xl">
+          <DialogHeader>
+            <DialogTitle>Import AI post</DialogTitle>
+            <DialogDescription>
+              Copy the prompt below into any AI chat, describe your topic, then paste the JSON it returns here. Title, body, SEO, cover, audience and tags all come across as a draft for you to review.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-3">
+            <Button type="button" variant="secondary" size="sm" onClick={copyPrompt}>
+              {copied ? <Check className="mr-1.5 h-3.5 w-3.5" /> : <Copy className="mr-1.5 h-3.5 w-3.5" />}
+              {copied ? "Copied" : "Copy AI prompt"}
+            </Button>
+            <Textarea
+              value={importJson}
+              onChange={(e) => setImportJson(e.target.value)}
+              placeholder="Paste the JSON the AI returned"
+              className="min-h-48 font-mono text-xs"
+            />
+          </div>
+          <DialogFooter>
+            <Button variant="secondary" onClick={() => setImportOpen(false)} disabled={importing}>Cancel</Button>
+            <Button onClick={handleImport} disabled={importing || !importJson.trim()}>
+              {importing && <Loader2 className="size-4 animate-spin" />}
+              Import
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
 
       <Dialog open={!!deleteTarget} onOpenChange={(o) => { if (!o && !deleting) setDeleteTarget(null); }}>
         <DialogContent className="sm:max-w-md">

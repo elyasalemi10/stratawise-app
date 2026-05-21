@@ -6,34 +6,11 @@ import { ReactNodeViewRenderer, NodeViewWrapper } from "@tiptap/react";
 import type { NodeViewProps } from "@tiptap/react";
 import { Plus, Trash2, Pencil, Search } from "lucide-react";
 import {
-  Rocket, TrendingUp, CircleCheck, Wrench, Lightbulb, Building2, Calendar, Lock, Star,
-  Users, FileText, Award, Target, Zap, Flag, Clock, Heart, ShieldCheck, ChartColumn,
-  DollarSign, Mail, Phone, MapPin, House, Briefcase, Megaphone, Sparkles, ThumbsUp,
-  Handshake, Globe, Bell, BookOpen, Coins, CreditCard, Gauge, Gift, GraduationCap,
-  Key, Leaf, Package, PenTool, Scale, Search as SearchIcon, Settings, Smile, Trophy,
-  Truck, Wallet,
-} from "lucide-static";
-import {
   Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle,
 } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-
-// Icon name → raw SVG string (from lucide-static, tree-shaken to this set).
-// Used both in the editor node view and in the published HTML.
-const ICON_SVG: Record<string, string> = {
-  Rocket, TrendingUp, CircleCheck, Wrench, Lightbulb, Building2, Calendar, Lock, Star,
-  Users, FileText, Award, Target, Zap, Flag, Clock, Heart, ShieldCheck, ChartColumn,
-  DollarSign, Mail, Phone, MapPin, House, Briefcase, Megaphone, Sparkles, ThumbsUp,
-  Handshake, Globe, Bell, BookOpen, Coins, CreditCard, Gauge, Gift, GraduationCap,
-  Key, Leaf, Package, PenTool, Scale, SearchIcon, Settings, Smile, Trophy, Truck, Wallet,
-};
-const ICON_NAMES = Object.keys(ICON_SVG);
-
-function iconDataUri(name: string): string {
-  const svg = ICON_SVG[name] ?? ICON_SVG.Rocket;
-  return `data:image/svg+xml,${encodeURIComponent(svg)}`;
-}
+import { ICON_SVG, ICON_NAMES, iconDataUri } from "@/lib/blog/timeline-icons";
 
 export interface TimelineItem { icon: string; title: string }
 
