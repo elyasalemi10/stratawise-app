@@ -369,6 +369,12 @@ export interface LotCommunicationRow {
   status: string;
   actor_name: string | null;
   confidential: boolean;
+  // The owner this communication is logged AGAINST — whoever owned the lot
+  // when the row was written (lot_owner_id_at_creation snapshot). Null when
+  // there was no owner at the time. Avatar is best-effort (only present if
+  // that owner has an accepted portal profile with a picture).
+  owner_name: string | null;
+  owner_avatar_url: string | null;
   // Inbound email attachments stored on R2 via the gmail/outlook/resend
   // push handlers. Empty for sent rows and non-email channels.
   attachments: LotCommunicationAttachment[];
@@ -381,13 +387,43 @@ export async function listLotCommunications(lotId: string): Promise<LotCommunica
   const { data } = await supabase
     .from("communication_log")
     .select(
-      "id, created_at, sent_at, channel, type, direction, subject, body_preview, recipient_email, recipient_phone, duration_seconds, status, sender_profile_id, confidential",
+      "id, created_at, sent_at, channel, type, direction, subject, body_preview, recipient_email, recipient_phone, duration_seconds, status, sender_profile_id, confidential, lot_owner_id_at_creation",
     )
     .eq("lot_id", lotId)
     .order("created_at", { ascending: false })
     .limit(200);
 
   const rows = data ?? [];
+
+  // Resolve the owner each row is logged against (lot_owner_id_at_creation).
+  // Name comes from lot_owners; the avatar is best-effort via the matching
+  // portal profile (by email) since lot_owners has no picture of its own.
+  const ownerIds = Array.from(
+    new Set(rows.map((r) => r.lot_owner_id_at_creation).filter((v): v is string => !!v)),
+  );
+  const ownerMap: Record<string, { name: string | null; email: string | null }> = {};
+  if (ownerIds.length > 0) {
+    const { data: owners } = await supabase
+      .from("lot_owners")
+      .select("id, name, email")
+      .in("id", ownerIds);
+    (owners ?? []).forEach((o) => {
+      ownerMap[o.id as string] = { name: (o.name as string) ?? null, email: (o.email as string) ?? null };
+    });
+  }
+  const ownerEmails = Array.from(
+    new Set(Object.values(ownerMap).map((o) => o.email?.toLowerCase()).filter((v): v is string => !!v)),
+  );
+  const avatarByEmail: Record<string, string> = {};
+  if (ownerEmails.length > 0) {
+    const { data: profs } = await supabase
+      .from("profiles")
+      .select("email, avatar_url")
+      .in("email", ownerEmails);
+    (profs ?? []).forEach((p) => {
+      if (p.email && p.avatar_url) avatarByEmail[(p.email as string).toLowerCase()] = p.avatar_url as string;
+    });
+  }
   const actorIds = Array.from(
     new Set(rows.map((r) => r.sender_profile_id).filter((v): v is string => !!v)),
   );
@@ -451,6 +487,11 @@ export async function listLotCommunications(lotId: string): Promise<LotCommunica
     status: r.status as string,
     actor_name: r.sender_profile_id ? actorMap[r.sender_profile_id as string] ?? null : null,
     confidential: !!(r as { confidential?: boolean }).confidential,
+    owner_name: r.lot_owner_id_at_creation ? ownerMap[r.lot_owner_id_at_creation as string]?.name ?? null : null,
+    owner_avatar_url: (() => {
+      const e = r.lot_owner_id_at_creation ? ownerMap[r.lot_owner_id_at_creation as string]?.email?.toLowerCase() : null;
+      return e ? avatarByEmail[e] ?? null : null;
+    })(),
     attachments: attachmentMap[r.id as string] ?? [],
   }));
 }

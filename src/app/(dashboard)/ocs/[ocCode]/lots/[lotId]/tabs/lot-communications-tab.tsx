@@ -366,6 +366,31 @@ function CommunicationRow({
           {formatShortDate(row.created_at)}
         </span>
       </button>
+      {/* Owner this communication is logged against (the owner at the time
+          the row was created). Avatar when they have a portal picture, else
+          initials; nothing when there was no owner then. */}
+      {row.owner_name && (
+        <Tooltip>
+          <TooltipTrigger
+            render={
+              <span className="inline-flex h-7 w-7 shrink-0 items-center justify-center overflow-hidden rounded-full border border-border bg-muted text-[10px] font-medium text-muted-foreground">
+                {row.owner_avatar_url ? (
+                  // eslint-disable-next-line @next/next/no-img-element
+                  <img src={row.owner_avatar_url} alt={row.owner_name} className="h-full w-full object-cover" />
+                ) : (
+                  row.owner_name
+                    .split(/\s+/)
+                    .map((p) => p[0])
+                    .slice(0, 2)
+                    .join("")
+                    .toUpperCase()
+                )}
+              </span>
+            }
+          />
+          <TooltipContent>Owner at the time: {row.owner_name}</TooltipContent>
+        </Tooltip>
+      )}
       {/* Confidentiality quick-toggle. A click on the icon flips the flag
           (and logs to audit); click on the row opens the detail dialog. */}
       <Tooltip>
