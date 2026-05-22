@@ -84,6 +84,7 @@ export interface OCCertificateProps {
 
   // Financials
   currentFees: string;
+  currentFeesTable?: { label: string; amount: number }[];
   billingCycle: string;
   feesPaidUpTo: string;
   unpaidFeesTotal: number;
@@ -116,7 +117,7 @@ export function OCCertificate(props: OCCertificateProps) {
   const {
     logoUrl, signatureUrl, planNumber, ocAddress, lotNumber, lotUnitNumber,
     applicantName, applicantEmail, applicationDate, certificateDate,
-    currentFees, billingCycle, feesPaidUpTo, unpaidFeesTotal, levies,
+    currentFees, currentFeesTable, billingCycle, feesPaidUpTo, unpaidFeesTotal, levies,
     repairsInfo, insuranceCover, totalFundsHeld, liabilities, currentContracts,
     serviceAgreements, noticesOrders, legalProceedings, managerAppointed,
     administratorAppointed, lastAgmDate, companyName, registeredName,
@@ -187,7 +188,23 @@ export function OCCertificate(props: OCCertificateProps) {
 
           <View style={s.item}>
             <Text style={s.itemNumber}>1. Current fees</Text>
-            <Text style={s.itemText}>The current fees for {lotLabel} are: {currentFees} payable {billingCycle}.</Text>
+            {currentFeesTable && currentFeesTable.length > 0 ? (
+              <View>
+                <Text style={s.itemText}>The current fees for {lotLabel}, payable {billingCycle}, are:</Text>
+                <View style={[s.tableHeader, { marginTop: 4 }]}>
+                  <Text style={[s.th, { width: "60%" }]}>Period</Text>
+                  <Text style={[s.th, { width: "40%", textAlign: "right" as const }]}>Amount</Text>
+                </View>
+                {currentFeesTable.map((f, i) => (
+                  <View key={i} style={s.trow}>
+                    <Text style={[s.td, { width: "60%" }]}>{f.label}</Text>
+                    <Text style={[s.tdRight, { width: "40%" }]}>{fmt(f.amount)}</Text>
+                  </View>
+                ))}
+              </View>
+            ) : (
+              <Text style={s.itemText}>The current fees for {lotLabel} are: {currentFees} payable {billingCycle}.</Text>
+            )}
             <Text style={[s.itemText, { marginTop: 2 }]}>A special levy 1 quarter prior to the expiry of the current insurance will be struck to cover insurance costs for the next year.</Text>
           </View>
 
