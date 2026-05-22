@@ -96,6 +96,7 @@ export interface OCCertificateProps {
   // Info fields (n/a if not applicable)
   repairsInfo: string;
   insuranceCover: string;
+  insuranceNote?: string;
   totalFundsHeld: string;
   liabilities: string;
   currentContracts: string;
@@ -119,7 +120,7 @@ export function OCCertificate(props: OCCertificateProps) {
     logoUrl, signatureUrl, planNumber, ocAddress, lotNumber, lotUnitNumber,
     applicantName, applicantEmail, applicationDate, certificateDate,
     currentFees, currentFeesTable, showSpecialLevyNote, billingCycle, feesPaidUpTo, unpaidFeesTotal, levies,
-    repairsInfo, insuranceCover, totalFundsHeld, liabilities, currentContracts,
+    repairsInfo, insuranceCover, insuranceNote, totalFundsHeld, liabilities, currentContracts,
     serviceAgreements, noticesOrders, legalProceedings, managerAppointed,
     administratorAppointed, lastAgmDate, companyName, registeredName,
     companyAddress, commonSealText, inspectionAddress,
@@ -236,7 +237,7 @@ export function OCCertificate(props: OCCertificateProps) {
                   <View key={i} style={s.trow}>
                     <Text style={[s.td, { width: "22%" }]}>{l.fund}</Text>
                     <Text style={[s.tdRight, { width: "16%" }]}>{fmt(l.amount)}</Text>
-                    <Text style={[s.td, { width: "38%", paddingLeft: 10 }]}>{fmtDate(l.period_start)} to {fmtDate(l.period_end)}</Text>
+                    <Text style={[s.td, { width: "38%", paddingLeft: 10 }]}>{l.period_start || l.period_end ? `${fmtDate(l.period_start)} to ${fmtDate(l.period_end)}` : ""}</Text>
                     <Text style={[s.td, { width: "24%" }]}>{fmtDate(l.due_date)}</Text>
                   </View>
                 ))}
@@ -254,6 +255,7 @@ export function OCCertificate(props: OCCertificateProps) {
           <View style={s.item}>
             <Text style={s.itemNumber}>6. Insurance cover</Text>
             <Text style={s.itemText}>{insuranceCover || "n/a"}</Text>
+            {insuranceNote ? <Text style={[s.itemMuted, { marginTop: 2 }]}>{insuranceNote}</Text> : null}
           </View>
 
           <View style={s.item}>
