@@ -119,7 +119,6 @@ function getOCNavGroups(ocCode: string, isLotOwner: boolean) {
         items: [
           { href: base, label: "Dashboard", icon: LayoutDashboard },
           { href: `${base}/my-levies`, label: "My levies", icon: Receipt },
-          { href: `${base}/my-payments`, label: "My payments", icon: Wallet },
           { href: `${base}/my-arrears`, label: "My arrears", icon: AlertTriangle },
         ],
       },
@@ -162,7 +161,6 @@ function getOCNavGroups(ocCode: string, isLotOwner: boolean) {
       items: [
         { href: `${base}/levies`, label: "Levies", icon: Receipt },
         { href: `${base}/generate`, label: "Generate levies", icon: Plus },
-        { href: `${base}/reconciliation/claims`, label: "Payment claims", icon: Receipt },
         { href: `${base}/budgets`, label: "Budgets", icon: PieChart },
       ],
     },

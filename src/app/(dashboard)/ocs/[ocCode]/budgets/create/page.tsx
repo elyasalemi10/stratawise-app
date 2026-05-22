@@ -23,13 +23,13 @@ export default async function CreateBudgetPage({
   if (!oc) redirect("/dashboard");
 
   // Financial year runs from the OC's configured start month. The "current"
-  // FY is the one we're inside today; we offer the previous FY through two
-  // years ahead so a committee can budget next year's at the AGM.
+  // FY is the one we're inside today; budgets can only be for the current FY
+  // or up to three years ahead — never the past.
   const now = new Date();
   const fyStartMonth = oc.financial_year_start_month ?? 7;
   const currentYear = now.getFullYear();
   const currentFyStart = now.getMonth() + 1 >= fyStartMonth ? currentYear : currentYear - 1;
-  const fyOptions = [-1, 0, 1, 2].map((offset) => {
+  const fyOptions = [0, 1, 2, 3].map((offset) => {
     const start = currentFyStart + offset;
     return `${start}-${start + 1}`;
   });
