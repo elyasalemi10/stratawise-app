@@ -7,6 +7,7 @@ import { formatDateLong } from "@/lib/utils";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
+import { EmptyState } from "@/components/shared/empty-state";
 
 import { resolveOCFromCode } from "@/lib/oc-resolver";
 
@@ -31,31 +32,31 @@ export default async function LeviesPage({
 
   return (
     <div className="space-y-6">
-      <div className="flex justify-end">
-        <Link href={`/ocs/${ocCode}/generate`}>
-          <Button size="sm">
-            <Plus className="mr-2 h-3.5 w-3.5" />
-            Generate levies
-          </Button>
-        </Link>
-      </div>
+      {batches.length > 0 && (
+        <div className="flex justify-end">
+          <Link href={`/ocs/${ocCode}/generate`}>
+            <Button size="sm">
+              <Plus className="mr-2 h-3.5 w-3.5" />
+              Generate levies
+            </Button>
+          </Link>
+        </div>
+      )}
 
       {batches.length === 0 ? (
-        <Card>
-          <CardContent className="flex flex-col items-center justify-center py-16 text-center">
-            <FileText className="h-12 w-12 text-muted-foreground/30" />
-            <p className="mt-4 text-base font-medium text-foreground">No levies generated yet</p>
-            <p className="mt-1 text-sm text-muted-foreground max-w-sm">
-              Generate levies from an approved budget to start issuing levy notices to lot owners.
-            </p>
+        <EmptyState
+          icon={FileText}
+          title="No levies generated yet"
+          description="Generate levies from an approved budget to start issuing levy notices to lot owners."
+          action={
             <Link href={`/ocs/${ocCode}/generate`}>
               <Button className="mt-4">
                 <Plus className="mr-2 h-4 w-4" />
                 Generate levies
               </Button>
             </Link>
-          </CardContent>
-        </Card>
+          }
+        />
       ) : (
         <div className="space-y-3">
           {batches.map((batch) => (

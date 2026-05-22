@@ -82,7 +82,7 @@ export function MeetingsContent({
         <p className="text-sm text-muted-foreground">
           {meetings.length} meeting{meetings.length === 1 ? "" : "s"}
         </p>
-        {!readOnly && (
+        {meetings.length > 0 && !readOnly && (
           <Button size="sm" onClick={() => setOpen(true)} className="cursor-pointer">
             <Plus className="mr-2 h-3.5 w-3.5" />
             Schedule meeting

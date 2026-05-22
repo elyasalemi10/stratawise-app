@@ -6,6 +6,7 @@ import { formatDateLong } from "@/lib/utils";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { EmptyState } from "@/components/shared/empty-state";
 import { LevyStatusBadge } from "@/components/shared/levy-status-badge";
 
 const formatCurrency = (n: number) =>
@@ -34,8 +35,6 @@ export function MyLeviesContent({ levies }: { levies: Levy[] }) {
 
   return (
     <div className="space-y-6">
-      <h1 className="text-lg font-semibold text-foreground">My levies</h1>
-
       {/* Summary cards */}
       <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
         <Card>
@@ -60,15 +59,11 @@ export function MyLeviesContent({ levies }: { levies: Levy[] }) {
 
       {/* Levies table */}
       {levies.length === 0 ? (
-        <Card>
-          <CardContent className="flex flex-col items-center justify-center py-16 text-center">
-            <FileText className="h-12 w-12 text-muted-foreground/30" />
-            <p className="mt-4 text-base font-medium text-foreground">No levies issued yet</p>
-            <p className="mt-1 text-sm text-muted-foreground">
-              Your levy notices will appear here once issued by your strata manager.
-            </p>
-          </CardContent>
-        </Card>
+        <EmptyState
+          icon={FileText}
+          title="No levies issued yet"
+          description="Your levy notices will appear here once issued by your strata manager."
+        />
       ) : (
         <Card>
           <CardContent className="pt-0 px-0">

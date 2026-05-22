@@ -1,13 +1,18 @@
 "use client";
 
 import { useState, useEffect } from "react";
-import { Plus, PieChart, CheckCircle2 } from "lucide-react";
+import { Plus, PieChart, CheckCircle2, Loader2 } from "lucide-react";
 import Link from "next/link";
 import { toast } from "sonner";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
+import { Label } from "@/components/ui/label";
+import { Textarea } from "@/components/ui/textarea";
+import {
+  Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle,
+} from "@/components/ui/dialog";
 import { EmptyState } from "@/components/shared/empty-state";
 import {
   getOCBudgets,
@@ -31,20 +36,28 @@ function BudgetCard({
   onApproved: () => void;
 }) {
   const [approving, setApproving] = useState(false);
+  const [approveOpen, setApproveOpen] = useState(false);
+  const [note, setNote] = useState("");
 
   async function handleApprove() {
     setApproving(true);
-    const result = await approveBudget(ocId, budget.id);
-    setApproving(false);
+    const result = await approveBudget(ocId, budget.id, note);
     if (result.error) {
+      setApproving(false);
       toast.error(result.error);
-    } else {
-      toast.success("Budget approved");
-      onApproved();
+      return;
     }
+    toast.success("Budget approved");
+    setApproveOpen(false);
+    onApproved();
   }
 
-  const fundLabel = budget.fund_type === "administrative" ? "Administrative Fund" : "Capital Works Fund";
+  const fundLabel =
+    budget.fund_type === "administrative"
+      ? "Administrative Fund"
+      : budget.fund_type === "capital_works"
+        ? "Capital Works Fund"
+        : "Maintenance Plan Fund";
 
   return (
     <Card>
@@ -53,15 +66,18 @@ function BudgetCard({
           <div>
             <h3 className="text-sm font-semibold text-foreground">{fundLabel}</h3>
             <p className="text-xs text-muted-foreground">{budget.financial_year}</p>
+            {budget.status === "approved" && budget.approval_note && (
+              <p className="mt-1 text-xs text-muted-foreground italic">{budget.approval_note}</p>
+            )}
           </div>
           <div className="flex items-center gap-2">
             <Badge variant={budget.status === "approved" ? "success" : "warning"}>
-              {budget.status}
+              {budget.status === "approved" ? "Approved" : "Draft"}
             </Badge>
             {budget.status === "draft" && (
-              <Button size="sm" variant="outline" onClick={handleApprove} disabled={approving}>
+              <Button size="sm" onClick={() => { setNote(""); setApproveOpen(true); }}>
                 <CheckCircle2 className="mr-1 h-3.5 w-3.5" />
-                {approving ? "Approving..." : "Approve"}
+                Approve
               </Button>
             )}
           </div>
@@ -98,6 +114,34 @@ function BudgetCard({
           </table>
         </div>
       </CardContent>
+
+      <Dialog open={approveOpen} onOpenChange={(o) => { if (!approving) setApproveOpen(o); }}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle>Approve {fundLabel.toLowerCase()} budget</DialogTitle>
+            <DialogDescription>
+              Approving locks this budget so levies can be generated from it. Add a note if you like — e.g. the meeting it was adopted at.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-1.5">
+            <Label htmlFor={`approve-note-${budget.id}`}>Note</Label>
+            <Textarea
+              id={`approve-note-${budget.id}`}
+              value={note}
+              onChange={(e) => setNote(e.target.value)}
+              placeholder="Adopted at the AGM held on…"
+              rows={3}
+            />
+          </div>
+          <DialogFooter>
+            <Button variant="secondary" onClick={() => setApproveOpen(false)} disabled={approving}>Cancel</Button>
+            <Button onClick={handleApprove} disabled={approving}>
+              {approving && <Loader2 className="size-4 animate-spin" />}
+              Approve budget
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </Card>
   );
 }

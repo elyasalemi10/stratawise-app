@@ -5,7 +5,6 @@ import { useRouter } from "next/navigation";
 import { Plus, ShieldAlert, ShieldX, Download, CalendarIcon, Loader2, X, Pencil, Trash2 } from "lucide-react";
 import { format } from "date-fns";
 import { toast } from "sonner";
-import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -13,6 +12,7 @@ import { Badge } from "@/components/ui/badge";
 import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Calendar } from "@/components/ui/calendar";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
+import { EmptyState } from "@/components/shared/empty-state";
 import { formatDateLong } from "@/lib/utils";
 import {
   createInsurancePolicy,
@@ -546,7 +546,7 @@ export function InsuranceTimeline({
 
   return (
     <div className="space-y-6">
-      {!readOnly && (
+      {!readOnly && policies.length > 0 && (
         <div className="flex justify-end">
           <Button size="sm" onClick={() => setShowAdd(true)}>
             <Plus className="mr-2 h-3.5 w-3.5" />
@@ -556,21 +556,19 @@ export function InsuranceTimeline({
       )}
 
       {policies.length === 0 ? (
-        <Card>
-          <CardContent className="flex flex-col items-center justify-center py-16 text-center">
-            <ShieldAlert className="h-12 w-12 text-muted-foreground/30" />
-            <p className="mt-4 text-base font-medium text-foreground">No insurance policies</p>
-            <p className="mt-1 text-sm text-muted-foreground max-w-sm">
-              {readOnly ? "No insurance policies have been added yet." : "Add your first insurance policy to track coverage and get expiry alerts."}
-            </p>
-            {!readOnly && (
+        <EmptyState
+          icon={ShieldAlert}
+          title="No insurance policies"
+          description={readOnly ? "No insurance policies have been added yet." : "Add your first insurance policy to track coverage and get expiry alerts."}
+          action={
+            !readOnly ? (
               <Button className="mt-4" onClick={() => setShowAdd(true)}>
                 <Plus className="mr-2 h-4 w-4" />
                 Add policy
               </Button>
-            )}
-          </CardContent>
-        </Card>
+            ) : undefined
+          }
+        />
       ) : (
         <div className="space-y-0">
           {displayTimeline.map((entry, i) => {

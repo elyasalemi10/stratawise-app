@@ -26,6 +26,7 @@ export interface BudgetWithItems {
   total_amount: number;
   status: "draft" | "approved";
   approved_at: string | null;
+  approval_note: string | null;
   items: {
     id: string;
     category_id: string;
@@ -216,14 +217,21 @@ export async function createBudget(
   return { success: true, budgetId: budget.id };
 }
 
-export async function approveBudget(ocId: string, budgetId: string) {
+export async function approveBudget(ocId: string, budgetId: string, note?: string) {
   const profile = await requireCompanyRole();
   await requireOCAccess(ocId);
   const supabase = createServerClient();
 
+  const approvalNote = note?.trim() || null;
+
   const { error } = await supabase
     .from("budgets")
-    .update({ status: "approved", approved_at: new Date().toISOString(), approved_by: profile.id })
+    .update({
+      status: "approved",
+      approved_at: new Date().toISOString(),
+      approved_by: profile.id,
+      approval_note: approvalNote,
+    })
     .eq("id", budgetId)
     .eq("oc_id", ocId);
 
@@ -235,6 +243,7 @@ export async function approveBudget(ocId: string, budgetId: string) {
     action: "approve",
     entity_type: "budget",
     entity_id: budgetId,
+    after_state: { approval_note: approvalNote },
   });
 
   revalidatePath("/ocs/[ocCode]/manage", "page");

@@ -1,8 +1,9 @@
 import { redirect } from "next/navigation";
-import { FileText, DollarSign, AlertTriangle, CheckCircle2 } from "lucide-react";
+import { FileText } from "lucide-react";
 import { getCurrentProfile } from "@/lib/auth";
 import { createServerClient } from "@/lib/supabase";
 import { Card, CardContent } from "@/components/ui/card";
+import { EmptyState } from "@/components/shared/empty-state";
 import { LevyStatusBadge } from "@/components/shared/levy-status-badge";
 
 const formatCurrency = (n: number) =>
@@ -27,17 +28,11 @@ export default async function LeviesPage() {
 
   if (lotIds.length === 0) {
     return (
-      <div className="space-y-6">
-        <Card>
-          <CardContent className="flex flex-col items-center justify-center py-16 text-center">
-            <FileText className="h-12 w-12 text-muted-foreground/30" />
-            <p className="mt-4 text-base font-medium text-foreground">No levies yet</p>
-            <p className="mt-1 text-sm text-muted-foreground max-w-sm">
-              You&apos;ll see your levy notices here once they&apos;ve been issued.
-            </p>
-          </CardContent>
-        </Card>
-      </div>
+      <EmptyState
+        icon={FileText}
+        title="No levies yet"
+        description="You'll see your levy notices here once they've been issued."
+      />
     );
   }
 
@@ -125,15 +120,11 @@ export default async function LeviesPage() {
 
       {/* Levies list */}
       {levies.length === 0 ? (
-        <Card>
-          <CardContent className="flex flex-col items-center justify-center py-16 text-center">
-            <FileText className="h-12 w-12 text-muted-foreground/30" />
-            <p className="mt-4 text-base font-medium text-foreground">No levies issued yet</p>
-            <p className="mt-1 text-sm text-muted-foreground">
-              Your levy notices will appear here once issued by your strata manager.
-            </p>
-          </CardContent>
-        </Card>
+        <EmptyState
+          icon={FileText}
+          title="No levies issued yet"
+          description="Your levy notices will appear here once issued by your strata manager."
+        />
       ) : (
         <Card>
           <CardContent className="pt-5">
