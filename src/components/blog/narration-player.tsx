@@ -12,6 +12,13 @@ import type { NarrationWordTiming } from "@/lib/actions/blog-audio";
 // lines up with what ElevenLabs read.
 const SKIP_SELECTOR = "table, pre, code, figure, img, .sw-timeline, [data-youtube-video], [data-type='timeline']";
 
+function fmtTime(s: number): string {
+  if (!Number.isFinite(s) || s < 0) s = 0;
+  const m = Math.floor(s / 60);
+  const sec = Math.floor(s % 60);
+  return `${m}:${sec.toString().padStart(2, "0")}`;
+}
+
 export function NarrationPlayer({
   html,
   audioUrl,
@@ -26,6 +33,12 @@ export function NarrationPlayer({
   const spansRef = useRef<HTMLElement[]>([]);
   const activeRef = useRef<number>(-1);
   const [playing, setPlaying] = useState(false);
+  const [currentTime, setCurrentTime] = useState(0);
+  const [duration, setDuration] = useState(0);
+
+  // Defend against a scheme-less stored URL ("cdn.…/x.mp3" would resolve
+  // relative to the page and 404). New uploads include https:// already.
+  const src = /^https?:\/\//i.test(audioUrl) ? audioUrl : `https://${audioUrl}`;
 
   // Wrap visible words in spans and tag those that matched a timing entry.
   useEffect(() => {
@@ -93,14 +106,24 @@ export function NarrationPlayer({
   useEffect(() => {
     const a = audioRef.current;
     if (!a) return;
-    const onTime = () => highlight(a.currentTime);
-    const onEnd = () => { setPlaying(false); highlight(-1); };
+    const onTime = () => { setCurrentTime(a.currentTime); highlight(a.currentTime); };
+    const onMeta = () => setDuration(Number.isFinite(a.duration) ? a.duration : 0);
+    const onPlay = () => setPlaying(true);
+    const onPause = () => setPlaying(false);
+    const onEnd = () => { setPlaying(false); setCurrentTime(0); highlight(-1); };
     a.addEventListener("timeupdate", onTime);
-    a.addEventListener("play", () => setPlaying(true));
-    a.addEventListener("pause", () => setPlaying(false));
+    a.addEventListener("loadedmetadata", onMeta);
+    a.addEventListener("durationchange", onMeta);
+    a.addEventListener("play", onPlay);
+    a.addEventListener("pause", onPause);
     a.addEventListener("ended", onEnd);
+    if (a.readyState >= 1) onMeta(); // metadata may already be loaded
     return () => {
       a.removeEventListener("timeupdate", onTime);
+      a.removeEventListener("loadedmetadata", onMeta);
+      a.removeEventListener("durationchange", onMeta);
+      a.removeEventListener("play", onPlay);
+      a.removeEventListener("pause", onPause);
       a.removeEventListener("ended", onEnd);
     };
   }, [highlight]);
@@ -108,8 +131,19 @@ export function NarrationPlayer({
   function toggle() {
     const a = audioRef.current;
     if (!a) return;
-    if (a.paused) void a.play();
-    else a.pause();
+    if (a.paused) {
+      a.play().catch((err) => console.error("Narration playback failed", err));
+    } else {
+      a.pause();
+    }
+  }
+
+  function onSeek(e: React.ChangeEvent<HTMLInputElement>) {
+    const a = audioRef.current;
+    if (!a) return;
+    const t = Number(e.target.value);
+    a.currentTime = t;
+    setCurrentTime(t);
   }
 
   return (
@@ -118,12 +152,25 @@ export function NarrationPlayer({
         <button
           type="button"
           onClick={toggle}
-          className="inline-flex h-10 w-10 items-center justify-center rounded-full bg-primary text-primary-foreground cursor-pointer"
+          className="inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-primary text-primary-foreground cursor-pointer"
           aria-label={playing ? "Pause" : "Play narration"}
         >
-          {playing ? <Pause className="h-5 w-5" /> : <Play className="h-5 w-5" />}
+          {playing ? <Pause className="h-5 w-5" /> : <Play className="h-5 w-5 translate-x-0.5" />}
         </button>
-        <audio ref={audioRef} src={audioUrl} controls className="h-9 flex-1" preload="metadata" />
+        <input
+          type="range"
+          min={0}
+          max={duration || 0}
+          step={0.1}
+          value={Math.min(currentTime, duration || 0)}
+          onChange={onSeek}
+          aria-label="Seek"
+          className="h-1.5 flex-1 cursor-pointer appearance-none rounded-full bg-muted accent-[color:var(--brand-gold)]"
+        />
+        <span className="shrink-0 text-xs tabular-nums text-muted-foreground">
+          {fmtTime(currentTime)} / {fmtTime(duration)}
+        </span>
+        <audio ref={audioRef} src={src} className="hidden" preload="metadata" />
       </div>
       <div
         ref={containerRef}

@@ -96,6 +96,16 @@ function bucketForKey(key: string): string {
   return getBucket();
 }
 
+// Public CDN base, always with a scheme. R2_PUBLIC_URL may be configured as a
+// bare custom domain ("cdn.stratawise.com.au") — without normalising, the
+// stored URLs come out scheme-less and the browser treats them as relative
+// paths (a scheme-less <audio>/<img> src 404s). Force https:// when missing.
+function publicBase(): string {
+  const raw = (process.env.R2_PUBLIC_URL ?? "").trim().replace(/\/$/, "");
+  if (!raw) return "";
+  return /^https?:\/\//i.test(raw) ? raw : `https://${raw}`;
+}
+
 /**
  * Upload an object to R2. Returns the full public CDN URL.
  */
@@ -113,7 +123,7 @@ export async function uploadObject(
       ContentType: contentType,
     }),
   );
-  const publicUrl = `${process.env.R2_PUBLIC_URL ?? ""}/${key}`;
+  const publicUrl = `${publicBase()}/${key}`;
   return { key, publicUrl };
 }
 
@@ -160,7 +170,7 @@ export async function deleteObject(key: string): Promise<void> {
  * reconstruct on demand).
  */
 export function publicUrlFor(key: string): string {
-  return `${process.env.R2_PUBLIC_URL ?? ""}/${key}`;
+  return `${publicBase()}/${key}`;
 }
 
 /**
@@ -170,11 +180,15 @@ export function publicUrlFor(key: string): string {
  */
 export function keyFromPublicUrl(url: string | null | undefined): string | null {
   if (!url) return null;
-  const prefix = process.env.R2_PUBLIC_URL;
-  if (!prefix) return null;
-  const trimmed = prefix.replace(/\/$/, "");
-  if (!url.startsWith(trimmed + "/")) return null;
-  return url.slice(trimmed.length + 1);
+  const base = publicBase();
+  if (!base) return null;
+  // Compare host+path with the scheme stripped from both sides, so a stored
+  // URL works whether it has https:// or is a legacy scheme-less value.
+  const strip = (s: string) => s.replace(/^https?:\/\//i, "");
+  const b = strip(base);
+  const u = strip(url);
+  if (!u.startsWith(b + "/")) return null;
+  return u.slice(b.length + 1);
 }
 
 /**

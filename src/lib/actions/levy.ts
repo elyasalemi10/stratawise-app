@@ -420,6 +420,46 @@ export async function generateLevyPreview(
 //
 // Not using a single monolithic RPC because PDF generation + R2 uploads
 // live in JS and would require base64-shuttling through SQL.
+// Receiving account for levy payments. Owners pay into the OC's ADMIN
+// (operating) trust account — the "main" account — regardless of which fund
+// a levy belongs to; the money is then disbursed across fund ledgers
+// internally. Prefer the administrative bank_accounts row; fall back to the
+// legacy OC-level columns when no admin account exists yet. Returns null when
+// neither is configured (PDF then shows blank EFT, as before).
+async function resolveReceivingEft(
+  supabase: ReturnType<typeof createServerClient>,
+  ocId: string,
+  oc: {
+    bank_bsb?: string | null;
+    bank_account_number?: string | null;
+    bank_account_name?: string | null;
+    name?: string | null;
+  } | null,
+): Promise<{ bsb: string; account_number: string; account_name: string } | null> {
+  const { data: admin } = await supabase
+    .from("bank_accounts")
+    .select("bsb, account_number, account_name")
+    .eq("oc_id", ocId)
+    .eq("fund_type", "administrative")
+    .limit(1)
+    .maybeSingle();
+  if (admin?.bsb && admin?.account_number) {
+    return {
+      bsb: admin.bsb,
+      account_number: admin.account_number,
+      account_name: admin.account_name ?? oc?.name ?? "",
+    };
+  }
+  if (oc?.bank_bsb && oc?.bank_account_number) {
+    return {
+      bsb: oc.bank_bsb,
+      account_number: oc.bank_account_number,
+      account_name: oc.bank_account_name ?? oc?.name ?? "",
+    };
+  }
+  return null;
+}
+
 export async function createLevyBatch(
   ocId: string,
   data: {
@@ -509,7 +549,7 @@ export async function createLevyBatch(
   const ownerMap = await getLotOwners(supabase, lotIds);
 
   // Build payment instructions (EFT from oc, no BPAY if not configured)
-  const hasEft = oc?.bank_bsb && oc?.bank_account_number;
+  const eftAccount = await resolveReceivingEft(supabase, ocId, oc);
 
   // Step 1: Create all levy notices in DB (sequential for reference numbers)
   const createdLevies: { id: string; lotId: string; refNum: string; items: typeof data.lots[0]["items"] }[] = [];
@@ -656,10 +696,8 @@ export async function createLevyBatch(
         dueDate: formatDateLong(data.due_date),
         paymentInstructions: {
           bpay: null,
-          eft: hasEft ? {
-            bsb: oc!.bank_bsb!,
-            account_number: oc!.bank_account_number!,
-            account_name: oc!.bank_account_name ?? oc!.name ?? "",
+          eft: eftAccount ? {
+            ...eftAccount,
             reference: levy.refNum,
           } : { bsb: "", account_number: "", account_name: "", reference: levy.refNum },
         },
@@ -954,7 +992,7 @@ export async function regenerateBatch(ocId: string, batchId: string, newDueDate:
     if (mc) managementCompany = mc;
   }
 
-  const hasEft = oc?.bank_bsb && oc?.bank_account_number;
+  const eftAccount = await resolveReceivingEft(supabase, ocId, oc);
 
   // Get levies with lot info and items
   const { data: levies } = await supabase
@@ -999,10 +1037,8 @@ export async function regenerateBatch(ocId: string, batchId: string, newDueDate:
         dueDate: formatDateLong(newDueDate),
         paymentInstructions: {
           bpay: null,
-          eft: hasEft ? {
-            bsb: oc!.bank_bsb!,
-            account_number: oc!.bank_account_number!,
-            account_name: oc!.bank_account_name ?? oc!.name ?? "",
+          eft: eftAccount ? {
+            ...eftAccount,
             reference: levy.reference_number,
           } : { bsb: "", account_number: "", account_name: "", reference: levy.reference_number },
         },
@@ -1204,7 +1240,7 @@ export async function sendBatchEmails(ocId: string, batchId: string) {
   const sendLotIds = levies.map((l) => l.lot_id).filter(Boolean) as string[];
   const sendOwners = await getLotOwners(supabase, sendLotIds);
 
-  const hasEft = oc?.bank_bsb && oc?.bank_account_number;
+  const eftAccount = await resolveReceivingEft(supabase, ocId, oc);
 
   let sentCount = 0;
   for (const levy of levies) {
@@ -1239,10 +1275,8 @@ export async function sendBatchEmails(ocId: string, batchId: string) {
         dueDate: formatDateLong(levy.due_date),
         paymentInstructions: {
           bpay: null,
-          eft: hasEft ? {
-            bsb: oc!.bank_bsb!,
-            account_number: oc!.bank_account_number!,
-            account_name: oc!.bank_account_name ?? oc!.name ?? "",
+          eft: eftAccount ? {
+            ...eftAccount,
             reference: levy.reference_number,
           } : {
             bsb: "",
@@ -1375,7 +1409,7 @@ export async function resendBatchEmails(ocId: string, batchId: string) {
   const resendLotIds = levies.map((l) => l.lot_id).filter(Boolean) as string[];
   const resendOwners = await getLotOwners(supabase, resendLotIds);
 
-  const hasEft = oc?.bank_bsb && oc?.bank_account_number;
+  const eftAccount = await resolveReceivingEft(supabase, ocId, oc);
   let sentCount = 0;
 
   for (const levy of levies) {
@@ -1408,10 +1442,8 @@ export async function resendBatchEmails(ocId: string, batchId: string) {
         dueDate: formatDateLong(levy.due_date),
         paymentInstructions: {
           bpay: null,
-          eft: hasEft ? {
-            bsb: oc!.bank_bsb!,
-            account_number: oc!.bank_account_number!,
-            account_name: oc!.bank_account_name ?? oc!.name ?? "",
+          eft: eftAccount ? {
+            ...eftAccount,
             reference: levy.reference_number,
           } : { bsb: "", account_number: "", account_name: "", reference: levy.reference_number },
         },
