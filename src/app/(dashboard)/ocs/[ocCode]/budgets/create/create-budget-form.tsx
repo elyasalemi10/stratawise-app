@@ -7,7 +7,11 @@ import { toast } from "sonner";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { NumberInput } from "@/components/ui/number-input";
 import { Label } from "@/components/ui/label";
+import {
+  Table, TableBody, TableCell, TableFooter, TableHead, TableHeader, TableRow,
+} from "@/components/ui/table";
 import { createBudget, createBudgetCategory, type BudgetCategory } from "@/lib/actions/budget";
 import { useOCCode } from "@/lib/oc-context";
 
@@ -144,52 +148,14 @@ function CategoryCombobox({
   );
 }
 
-// ─── Amount Input (no spinner, max 2 decimals) ─────────────
-
-function AmountInput({
-  value,
-  onChange,
-}: {
-  value: number;
-  onChange: (v: number) => void;
-}) {
-  const [display, setDisplay] = useState(value ? String(value) : "");
-
-  function handleChange(e: React.ChangeEvent<HTMLInputElement>) {
-    const raw = e.target.value;
-    // Allow empty, digits, and up to 2 decimal places
-    if (raw === "" || /^\d*\.?\d{0,2}$/.test(raw)) {
-      setDisplay(raw);
-      onChange(Number(raw) || 0);
-    }
-  }
-
-  function handleBlur() {
-    // Format to 2 decimals on blur if there's a value
-    if (display && Number(display) > 0) {
-      setDisplay(Number(display).toFixed(2));
-    }
-  }
-
-  return (
-    <input
-      type="text"
-      inputMode="decimal"
-      value={display}
-      onChange={handleChange}
-      onBlur={handleBlur}
-      placeholder="0.00"
-      className="h-8 w-full rounded-md border border-border bg-background px-3 text-sm text-right tabular-nums transition-colors outline-none placeholder:text-muted-foreground focus:border-primary focus:ring-2 focus:ring-primary/20"
-    />
-  );
-}
-
 // ─── Main Form ─────────────────────────────────────────────
 
 interface BudgetItem {
   category_id: string;
   description: string;
-  amount: number;
+  // Held as a string so the field can be cleared mid-edit ("" = nothing
+  // typed). Parsed to a number at submit. See NumberInput.
+  amount: string;
 }
 
 export function CreateBudgetForm({
@@ -216,14 +182,14 @@ export function CreateBudgetForm({
     setShowCombobox(false);
   }, [fundType]);
 
-  const total = items.reduce((sum, item) => sum + item.amount, 0);
+  const total = items.reduce((sum, item) => sum + (parseFloat(item.amount) || 0), 0);
   const usedCategoryIds = items.map((i) => i.category_id);
 
   const addItem = useCallback((cat: { id: string; name: string }) => {
     setItems((prev) => [...prev, {
       category_id: cat.id,
       description: cat.name,
-      amount: 0,
+      amount: "",
     }]);
     setShowCombobox(false);
   }, []);
@@ -235,7 +201,7 @@ export function CreateBudgetForm({
     setShowCombobox(false);
   }, []);
 
-  function updateAmount(index: number, value: number) {
+  function updateAmount(index: number, value: string) {
     setItems((prev) =>
       prev.map((item, i) =>
         i === index ? { ...item, amount: value } : item
@@ -248,7 +214,9 @@ export function CreateBudgetForm({
   }
 
   async function handleSubmit() {
-    const nonZeroItems = items.filter((i) => i.amount > 0);
+    const nonZeroItems = items
+      .map((i) => ({ ...i, amount: parseFloat(i.amount) || 0 }))
+      .filter((i) => i.amount > 0);
     if (nonZeroItems.length === 0) {
       toast.error("Add at least one budget item with an amount");
       return;
@@ -260,9 +228,9 @@ export function CreateBudgetForm({
       fund_type: fundType,
       items: nonZeroItems,
     });
-    setPending(false);
 
     if (result.error) {
+      setPending(false); // clear ONLY on error — success keeps the spinner through navigation
       toast.error(result.error);
       return;
     }
@@ -292,7 +260,7 @@ export function CreateBudgetForm({
           <div className="flex gap-2">
             <Button
               type="button"
-              variant={fundType === "administrative" ? "default" : "outline"}
+              variant={fundType === "administrative" ? "default" : "secondary"}
               size="sm"
               onClick={() => setFundType("administrative")}
             >
@@ -300,7 +268,7 @@ export function CreateBudgetForm({
             </Button>
             <Button
               type="button"
-              variant={fundType === "capital_works" ? "default" : "outline"}
+              variant={fundType === "capital_works" ? "default" : "secondary"}
               size="sm"
               onClick={() => setFundType("capital_works")}
             >
@@ -319,77 +287,71 @@ export function CreateBudgetForm({
       <Card>
         <CardContent className="pt-5">
           <Label className="mb-3 block">Budget items</Label>
-          <div className="rounded-lg border border-border">
-            <table className="w-full text-sm table-fixed">
-              <thead>
-                <tr className="bg-muted/50 text-xs font-medium uppercase tracking-wider text-muted-foreground">
-                  <th className="px-4 py-2.5 text-left w-auto">Category</th>
-                  <th className="px-4 py-2.5 text-right w-[180px]">Annual amount</th>
-                  <th className="px-4 py-2.5 w-[40px]"></th>
-                </tr>
-              </thead>
-              <tbody>
-                {items.map((item, i) => (
-                  <tr key={i} className="border-t border-border/50">
-                    <td className="px-4 py-2.5">
-                      <span className="text-sm text-foreground">{item.description}</span>
-                    </td>
-                    <td className="px-4 py-2.5">
-                      <AmountInput
-                        value={item.amount}
-                        onChange={(v) => updateAmount(i, v)}
-                      />
-                    </td>
-                    <td className="px-4 py-2.5">
-                      <button
-                        type="button"
-                        onClick={() => removeItem(i)}
-                        className="text-muted-foreground hover:text-destructive"
-                      >
-                        <X className="h-3.5 w-3.5" />
-                      </button>
-                    </td>
-                  </tr>
-                ))}
+          {items.length > 0 && (
+            <div className="rounded-lg border border-border overflow-hidden">
+              <Table variant="bordered" className="text-sm">
+                <TableHeader>
+                  <TableRow>
+                    <TableHead>Category</TableHead>
+                    <TableHead className="w-[200px]">Annual amount</TableHead>
+                    <TableHead className="w-[48px]" />
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {items.map((item, i) => (
+                    <TableRow key={i}>
+                      <TableCell className="text-sm text-foreground">{item.description}</TableCell>
+                      <TableCell>
+                        <NumberInput
+                          value={item.amount}
+                          onChange={(v) => updateAmount(i, v)}
+                          thousandsSeparator
+                          prefix="$"
+                          placeholder="Annual amount"
+                        />
+                      </TableCell>
+                      <TableCell>
+                        <button
+                          type="button"
+                          onClick={() => removeItem(i)}
+                          className="text-muted-foreground hover:text-destructive cursor-pointer"
+                          aria-label="Remove item"
+                        >
+                          <X className="h-3.5 w-3.5" />
+                        </button>
+                      </TableCell>
+                    </TableRow>
+                  ))}
+                </TableBody>
+                <TableFooter>
+                  <TableRow>
+                    <TableCell className="text-sm font-semibold text-foreground">Total annual</TableCell>
+                    <TableCell className="text-sm font-bold text-foreground tabular-nums">{formatCurrency(total)}</TableCell>
+                    <TableCell />
+                  </TableRow>
+                </TableFooter>
+              </Table>
+            </div>
+          )}
 
-                {/* Add item row */}
-                {showCombobox ? (
-                  <tr className="border-t border-border/50">
-                    <td className="px-4 py-2.5" colSpan={3}>
-                      <CategoryCombobox
-                        categories={fundCategories}
-                        usedCategoryIds={usedCategoryIds}
-                        fundType={fundType}
-                        onSelect={addItem}
-                        onCancel={() => setShowCombobox(false)}
-                        onUpdateCategoryId={updateCategoryId}
-                      />
-                    </td>
-                  </tr>
-                ) : (
-                  <tr
-                    className="border-t border-border/50 cursor-pointer hover:bg-muted/30 transition-colors"
-                    onClick={() => setShowCombobox(true)}
-                  >
-                    <td className="px-4 py-2.5" colSpan={3}>
-                      <span className="flex items-center gap-1.5 text-sm text-muted-foreground">
-                        <Plus className="h-3.5 w-3.5" />
-                        Add item
-                      </span>
-                    </td>
-                  </tr>
-                )}
-              </tbody>
-              {items.length > 0 && (
-                <tfoot>
-                  <tr className="border-t-2 border-foreground/20">
-                    <td className="px-4 py-3 text-sm font-semibold text-foreground">Total annual</td>
-                    <td className="px-4 py-3 text-sm font-bold text-foreground text-right tabular-nums">{formatCurrency(total)}</td>
-                    <td></td>
-                  </tr>
-                </tfoot>
-              )}
-            </table>
+          {/* Add item — kept OUTSIDE the table so the category dropdown isn't
+              clipped by the table's overflow container. */}
+          <div className="mt-3">
+            {showCombobox ? (
+              <CategoryCombobox
+                categories={fundCategories}
+                usedCategoryIds={usedCategoryIds}
+                fundType={fundType}
+                onSelect={addItem}
+                onCancel={() => setShowCombobox(false)}
+                onUpdateCategoryId={updateCategoryId}
+              />
+            ) : (
+              <Button type="button" variant="secondary" size="sm" onClick={() => setShowCombobox(true)}>
+                <Plus className="mr-1.5 h-3.5 w-3.5" />
+                Add item
+              </Button>
+            )}
           </div>
         </CardContent>
       </Card>

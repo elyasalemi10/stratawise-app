@@ -11,6 +11,9 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Calendar } from "@/components/ui/calendar";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
+import {
+  Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
+} from "@/components/ui/select";
 import { Label } from "@/components/ui/label";
 import {
   generateLevyPreview,
@@ -359,18 +362,18 @@ export function GenerateLeviesForm({
                 No approved budgets. Create and approve a budget first.
               </p>
             ) : (
-              <select
-                value={selectedBudgetId}
-                onChange={(e) => handleBudgetSelect(e.target.value)}
-                className="h-9 w-full rounded-md border border-border bg-background px-3 text-sm outline-none focus:border-primary focus:ring-2 focus:ring-primary/20"
-              >
-                <option value="">Select a budget...</option>
-                {budgets.map((b) => (
-                  <option key={b.id} value={b.id}>
-                    {b.fund_type === "administrative" ? "Administrative Fund" : "Capital Works Fund"} — {b.financial_year} ({formatCurrency(b.total_amount)})
-                  </option>
-                ))}
-              </select>
+              <Select value={selectedBudgetId} onValueChange={(v) => handleBudgetSelect(v ?? "")}>
+                <SelectTrigger className="w-full">
+                  <SelectValue placeholder="Select a budget" />
+                </SelectTrigger>
+                <SelectContent>
+                  {budgets.map((b) => (
+                    <SelectItem key={b.id} value={b.id}>
+                      {b.fund_type === "administrative" ? "Administrative Fund" : "Capital Works Fund"} — {b.financial_year} ({formatCurrency(b.total_amount)})
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
             )}
           </div>
 
@@ -381,18 +384,18 @@ export function GenerateLeviesForm({
               {ungenPeriods.length === 0 ? (
                 <p className="text-sm text-muted-foreground">All periods have been generated for this budget.</p>
               ) : (
-                <select
-                  value={selectedPeriodIndex}
-                  onChange={(e) => handlePeriodSelect(e.target.value)}
-                  className="h-9 w-full rounded-md border border-border bg-background px-3 text-sm outline-none focus:border-primary focus:ring-2 focus:ring-primary/20"
-                >
-                  <option value="">Select a period...</option>
-                  {ungenPeriods.map((p) => (
-                    <option key={p.periodIndex} value={String(p.periodIndex)}>
-                      {p.label} ({formatDateLong(p.start)} — {formatDateLong(p.end)})
-                    </option>
-                  ))}
-                </select>
+                <Select value={selectedPeriodIndex} onValueChange={(v) => handlePeriodSelect(v ?? "")}>
+                  <SelectTrigger className="w-full">
+                    <SelectValue placeholder="Select a period" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {ungenPeriods.map((p) => (
+                      <SelectItem key={p.periodIndex} value={String(p.periodIndex)}>
+                        {p.label} ({formatDateLong(p.start)} — {formatDateLong(p.end)})
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
               )}
             </div>
           )}

@@ -480,7 +480,7 @@ Lot owners have FIXED, LIMITED access (see LOT OWNER VISIBILITY section for full
 | Chart of accounts | Simplified categories with hidden COA codes | Full double-entry accounting | Users see "Gardening", auditors see [200400]. Export button generates COA-coded report. |
 | Smart blocking | Locked feature cards with CTAs when prerequisites missing | Show empty/broken data | Progressive disclosure: don't show Financials until entitlements set, don't show Levies until budget approved. |
 | Onboarding | 4-step wizard for first user, invited users skip it | Dump on empty dashboard | First person (usually chair) guided through setup. Everyone else joins via invitation link. |
-| Platform fee in budgets | Mandatory, auto-inserted, non-removable by committee | Optional line item | Guarantees StrataWise fee is always included in levies. Committee sees it but can't delete it. |
+| Platform fee in budgets | Optional line item the manager can add | Mandatory, auto-inserted, non-removable | Decision 2026-05-21: NO mandatory/auto-injected platform fee. A manager may add a platform/management fee as an ordinary budget line if they want one; nothing is locked or forced. |
 | StrataWise billing | Stripe Subscription on OC's connected account | Invoice/manual | Automatic monthly billing. Failed payment → suspension. Clean revenue collection. |
 | Bank accounts | OC brings their own. StrataWise doesn't create bank accounts. | StrataWise creates accounts | OC already has a bank account. Treasurer enters details. Stripe Connect links to it for payouts. |
 | Payment portal 2FA | Email verification code before showing levy details | No verification | Prevents random reference guessing. 6-digit code to owner's email. Skip if no email on file. |

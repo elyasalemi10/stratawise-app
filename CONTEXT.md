@@ -629,9 +629,10 @@ orphan triggers + a healthy negative control.
   sensitive queries from the browser without going through a server
   action.
 - **Dual-fund accounting**: every budget, levy, payment, and reserve
-  entry carries `fund_type` (`administrative` | `capital_works`). The
-  platform fee is mandatory in every admin fund budget and cannot be
-  removed by users.
+  entry carries `fund_type` (`administrative` | `capital_works`). There is
+  NO mandatory platform fee (decision 2026-05-21) — a manager may add a
+  platform/management fee as an ordinary budget line if they want one, but
+  nothing is auto-inserted or locked.
 - **Interest cap**: VIC legal max is 2.5%/month. Enforced on the
   `subdivisions.interest_rate_monthly` column (application layer).
 - **Notice-period blocking**: meeting dates grey out within 14 days,
