@@ -1,13 +1,14 @@
 "use client";
 
 import { useState, useEffect } from "react";
-import { Plus, DollarSign, CheckCircle2 } from "lucide-react";
+import { Plus, PieChart, CheckCircle2 } from "lucide-react";
 import Link from "next/link";
 import { toast } from "sonner";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
+import { EmptyState } from "@/components/shared/empty-state";
 import {
   getOCBudgets,
   approveBudget,
@@ -130,8 +131,7 @@ export function BudgetTab({ ocId, financialYearStartMonth }: { ocId: string; fin
   if (loading) {
     return (
       <div className="space-y-4">
-        <div className="flex items-center justify-between">
-          <h1 className="text-lg font-semibold text-foreground">Budgets</h1>
+        <div className="flex items-center justify-end">
           <Skeleton className="h-8 w-28 rounded-md" />
         </div>
         <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
@@ -170,41 +170,37 @@ export function BudgetTab({ ocId, financialYearStartMonth }: { ocId: string; fin
   }
 
   const currentBudgets = budgets.filter((b) => b.financial_year === financialYear);
-  const hasAdmin = currentBudgets.some((b) => b.fund_type === "administrative");
-  const hasCapital = currentBudgets.some((b) => b.fund_type === "capital_works");
 
   return (
     <div className="space-y-4">
-      {/* Header */}
-      <div className="flex items-center justify-between">
-        <h1 className="text-lg font-semibold text-foreground">Budgets</h1>
-        {(!hasAdmin || !hasCapital) && (
+      {/* Header — create button top-right only when budgets already exist;
+          the empty state owns the only button otherwise. */}
+      {currentBudgets.length > 0 && (
+        <div className="flex items-center justify-end">
           <Link href={`/ocs/${ocCode}/budgets/create`}>
             <Button size="sm">
               <Plus className="mr-2 h-3.5 w-3.5" />
               Create budget
             </Button>
           </Link>
-        )}
-      </div>
+        </div>
+      )}
 
       {/* Budget cards */}
       {currentBudgets.length === 0 ? (
-        <Card>
-          <CardContent className="flex flex-col items-center justify-center py-16 text-center">
-            <DollarSign className="h-12 w-12 text-muted-foreground/30" />
-            <p className="mt-4 text-base font-medium text-foreground">No budgets yet</p>
-            <p className="mt-1 text-sm text-muted-foreground max-w-sm">
-              Create an annual budget to start generating levy notices.
-            </p>
+        <EmptyState
+          icon={PieChart}
+          title="No budgets yet"
+          description="Create an annual budget to start generating levy notices."
+          action={
             <Link href={`/ocs/${ocCode}/budgets/create`}>
               <Button className="mt-4">
                 <Plus className="mr-2 h-4 w-4" />
                 Create budget
               </Button>
             </Link>
-          </CardContent>
-        </Card>
+          }
+        />
       ) : (
         <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
           {currentBudgets.map((budget) => (

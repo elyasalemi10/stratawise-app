@@ -13,6 +13,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Badge } from "@/components/ui/badge";
+import { EmptyState } from "@/components/shared/empty-state";
 import { Textarea } from "@/components/ui/textarea";
 import {
   Dialog,
@@ -102,6 +103,19 @@ export function BankAccountContent({
       toast.success("Bank details updated");
       setEditing(false);
     }
+  }
+
+  // No accounts yet → a single empty state, not the EFT card / transfers /
+  // transactions scaffolding. Accounts are added in OC setup or Settings →
+  // Banking.
+  if (bankAccounts.length === 0) {
+    return (
+      <EmptyState
+        icon={Landmark}
+        title="No bank account yet"
+        description="Set up this OC's trust account to record balances, import transactions and show EFT details on levy notices."
+      />
+    );
   }
 
   return (

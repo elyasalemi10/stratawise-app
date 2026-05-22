@@ -36,6 +36,26 @@ export interface BudgetWithItems {
   }[];
 }
 
+const FUND_LABEL: Record<"administrative" | "capital_works" | "maintenance_plan", string> = {
+  administrative: "Administrative Fund",
+  capital_works: "Capital Works Fund",
+  maintenance_plan: "Maintenance Plan Fund",
+};
+
+// True when the OC has a maintenance-plan fund (a bank_accounts row with
+// fund_type='maintenance_plan'). Drives whether the budget form offers a
+// maintenance budget at all.
+export async function ocHasMaintenanceFund(ocId: string): Promise<boolean> {
+  await requireOCAccess(ocId);
+  const supabase = createServerClient();
+  const { count } = await supabase
+    .from("bank_accounts")
+    .select("id", { count: "exact", head: true })
+    .eq("oc_id", ocId)
+    .eq("fund_type", "maintenance_plan");
+  return (count ?? 0) > 0;
+}
+
 export async function getBudgetCategories(): Promise<BudgetCategory[]> {
   const supabase = createServerClient();
   const { data } = await supabase
@@ -145,7 +165,7 @@ export async function createBudget(
     .single();
 
   if (existing) {
-    return { error: `A ${data.fund_type === "administrative" ? "Administrative Fund" : "Capital Works Fund"} budget already exists for ${data.financial_year}` };
+    return { error: `A ${FUND_LABEL[data.fund_type]} budget already exists for ${data.financial_year}` };
   }
 
   const totalAmount = data.items.reduce((sum, item) => sum + item.amount, 0);

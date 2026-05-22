@@ -2,13 +2,16 @@
 
 import { useState, useRef, useEffect, useCallback } from "react";
 import { useRouter } from "next/navigation";
-import { Plus, X, ArrowLeft, Loader2 } from "lucide-react";
+import { Plus, X, Loader2 } from "lucide-react";
 import { toast } from "sonner";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { NumberInput } from "@/components/ui/number-input";
 import { Label } from "@/components/ui/label";
+import {
+  Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
+} from "@/components/ui/select";
 import {
   Table, TableBody, TableCell, TableFooter, TableHead, TableHeader, TableRow,
 } from "@/components/ui/table";
@@ -17,6 +20,14 @@ import { useOCCode } from "@/lib/oc-context";
 
 const formatCurrency = (n: number) =>
   new Intl.NumberFormat("en-AU", { style: "currency", currency: "AUD" }).format(n);
+
+type FundType = "administrative" | "capital_works" | "maintenance_plan";
+
+const FUND_OPTIONS: { value: FundType; label: string }[] = [
+  { value: "administrative", label: "Administrative Fund" },
+  { value: "capital_works", label: "Capital Works Fund" },
+  { value: "maintenance_plan", label: "Maintenance Plan Fund" },
+];
 
 // ─── Category Combobox ─────────────────────────────────────
 
@@ -161,25 +172,38 @@ interface BudgetItem {
 export function CreateBudgetForm({
   ocId,
   categories,
-  financialYear,
+  fyOptions,
+  defaultFinancialYear,
+  hasMaintenanceFund,
 }: {
   ocId: string;
   categories: BudgetCategory[];
-  financialYear: string;
+  fyOptions: string[];
+  defaultFinancialYear: string;
+  hasMaintenanceFund: boolean;
 }) {
   const ocCode = useOCCode();
   const router = useRouter();
-  const [fundType, setFundType] = useState<"administrative" | "capital_works" | "maintenance_plan">("administrative");
+  const [financialYear, setFinancialYear] = useState(defaultFinancialYear);
+  const [fundType, setFundType] = useState<FundType>("administrative");
   const [items, setItems] = useState<BudgetItem[]>([]);
-  const [showCombobox, setShowCombobox] = useState(false);
+  // Open the category picker on mount so there's one row ready to fill.
+  const [showCombobox, setShowCombobox] = useState(true);
   const [pending, setPending] = useState(false);
+
+  // A maintenance budget only makes sense if the OC actually runs a
+  // maintenance-plan fund.
+  const fundOptions = FUND_OPTIONS.filter(
+    (o) => o.value !== "maintenance_plan" || hasMaintenanceFund,
+  );
+  const fundLabel = FUND_OPTIONS.find((o) => o.value === fundType)?.label ?? "Fund";
 
   const fundCategories = categories.filter((c) => c.fund_type === fundType);
 
-  // Reset items when fund type changes
+  // Reset items when fund type changes (re-open the picker for the new fund).
   useEffect(() => {
     setItems([]);
-    setShowCombobox(false);
+    setShowCombobox(true);
   }, [fundType]);
 
   const total = items.reduce((sum, item) => sum + (parseFloat(item.amount) || 0), 0);
@@ -235,51 +259,43 @@ export function CreateBudgetForm({
       return;
     }
 
-    toast.success(`${fundType === "administrative" ? "Administrative Fund" : "Capital Works Fund"} budget created`);
+    toast.success(`${fundLabel} budget created`);
     router.push(`/ocs/${ocCode}/budgets`);
   }
 
   return (
     <div className="space-y-6">
-      <div className="flex items-center justify-between">
-        <Button
-          variant="ghost"
-          size="icon"
-          className="h-8 w-8"
-          onClick={() => router.push(`/ocs/${ocCode}/budgets`)}
-        >
-          <ArrowLeft className="h-4 w-4" />
-        </Button>
-        <p className="text-sm text-muted-foreground">Financial year {financialYear}</p>
-      </div>
-
-      {/* Fund type selector */}
+      {/* Financial year + fund type */}
       <Card>
-        <CardContent className="pt-5 space-y-3">
-          <Label>Fund type</Label>
-          <div className="flex gap-2">
-            <Button
-              type="button"
-              variant={fundType === "administrative" ? "default" : "secondary"}
-              size="sm"
-              onClick={() => setFundType("administrative")}
-            >
-              Administrative Fund
-            </Button>
-            <Button
-              type="button"
-              variant={fundType === "capital_works" ? "default" : "secondary"}
-              size="sm"
-              onClick={() => setFundType("capital_works")}
-            >
-              Capital Works Fund
-            </Button>
+        <CardContent className="pt-5">
+          <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+            <div className="space-y-1.5">
+              <Label>Financial year</Label>
+              <Select value={financialYear} onValueChange={(v) => setFinancialYear(v ?? defaultFinancialYear)}>
+                <SelectTrigger className="w-full">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  {fyOptions.map((fy) => (
+                    <SelectItem key={fy} value={fy}>{fy}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="space-y-1.5">
+              <Label>Fund type</Label>
+              <Select value={fundType} onValueChange={(v) => setFundType((v as FundType) ?? "administrative")}>
+                <SelectTrigger className="w-full">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  {fundOptions.map((o) => (
+                    <SelectItem key={o.value} value={o.value}>{o.label}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
           </div>
-          <p className="text-xs text-muted-foreground">
-            {fundType === "administrative"
-              ? "Day-to-day operating expenses: insurance, management, cleaning, maintenance."
-              : "Long-term capital expenditure: painting, roofing, major repairs, equipment replacement."}
-          </p>
         </CardContent>
       </Card>
 

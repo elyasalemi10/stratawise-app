@@ -62,6 +62,7 @@ function FundFieldsBlock({ value, onChange, invalid, idPrefix }: FundFieldsProps
           value={value.bankId}
           onChange={(v) => onChange({ ...value, bankId: v })}
           error={invalid.bank}
+          includeOther
         />
       </div>
       <div className="space-y-1.5">
