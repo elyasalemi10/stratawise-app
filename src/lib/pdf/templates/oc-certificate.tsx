@@ -85,6 +85,7 @@ export interface OCCertificateProps {
   // Financials
   currentFees: string;
   currentFeesTable?: { label: string; amount: number }[];
+  showSpecialLevyNote?: boolean;
   billingCycle: string;
   feesPaidUpTo: string;
   unpaidFeesTotal: number;
@@ -117,7 +118,7 @@ export function OCCertificate(props: OCCertificateProps) {
   const {
     logoUrl, signatureUrl, planNumber, ocAddress, lotNumber, lotUnitNumber,
     applicantName, applicantEmail, applicationDate, certificateDate,
-    currentFees, currentFeesTable, billingCycle, feesPaidUpTo, unpaidFeesTotal, levies,
+    currentFees, currentFeesTable, showSpecialLevyNote, billingCycle, feesPaidUpTo, unpaidFeesTotal, levies,
     repairsInfo, insuranceCover, totalFundsHeld, liabilities, currentContracts,
     serviceAgreements, noticesOrders, legalProceedings, managerAppointed,
     administratorAppointed, lastAgmDate, companyName, registeredName,
@@ -153,7 +154,7 @@ export function OCCertificate(props: OCCertificateProps) {
           </View>
           <View style={s.infoRow}>
             <Text style={s.infoLabel}>Certificate for</Text>
-            <Text style={s.infoValue}>{lotLabel} on plan of oc {planNumber}</Text>
+            <Text style={s.infoValue}>{lotLabel} on plan of subdivision {planNumber}</Text>
           </View>
           <View style={s.infoRow}>
             <Text style={s.infoLabel}>Applicant</Text>
@@ -205,7 +206,9 @@ export function OCCertificate(props: OCCertificateProps) {
             ) : (
               <Text style={s.itemText}>The current fees for {lotLabel} are: {currentFees} payable {billingCycle}.</Text>
             )}
-            <Text style={[s.itemText, { marginTop: 2 }]}>A special levy 1 quarter prior to the expiry of the current insurance will be struck to cover insurance costs for the next year.</Text>
+            {showSpecialLevyNote !== false ? (
+              <Text style={[s.itemText, { marginTop: 2 }]}>A special levy 1 quarter prior to the expiry of the current insurance will be struck to cover insurance costs for the next year.</Text>
+            ) : null}
           </View>
 
           <View style={s.item}>
