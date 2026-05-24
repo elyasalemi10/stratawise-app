@@ -111,6 +111,16 @@ export async function createCompany(formData: {
     return { error: "Failed to assign company. Please try again." };
   }
 
+  // Seed the default 4-digit chart of accounts so the firm has a usable GL on
+  // day one. Idempotent — safe even if a future code path also calls this.
+  const { error: seedErr } = await supabase.rpc("seed_default_chart_of_accounts", {
+    p_company: company.id,
+  });
+  if (seedErr) {
+    console.error("Failed to seed chart of accounts:", seedErr);
+    // Non-fatal: the firm can still operate; CoA can be re-seeded later.
+  }
+
   return { companyId: company.id };
 }
 

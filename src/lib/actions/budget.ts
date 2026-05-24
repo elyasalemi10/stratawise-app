@@ -13,7 +13,10 @@ export interface BudgetCategory {
 }
 
 export interface BudgetItemData {
-  category_id: string;
+  // Either references a legacy budget_categories row (back-compat) or — for
+  // new budgets — references a chart_of_accounts row via coa_account_id.
+  category_id?: string | null;
+  coa_account_id?: string | null;
   description: string;
   amount: number;
 }
@@ -29,7 +32,10 @@ export interface BudgetWithItems {
   approval_note: string | null;
   items: {
     id: string;
-    category_id: string;
+    // Either legacy (category_id → budget_categories) or modern
+    // (coa_account_id → chart_of_accounts). category_name resolves whichever
+    // is present so the UI doesn't need to branch.
+    category_id: string | null;
     category_name: string;
     description: string | null;
     amount: number;
@@ -122,21 +128,40 @@ export async function getOCBudgets(ocId: string): Promise<BudgetWithItems[]> {
   if (!budgets || budgets.length === 0) return [];
 
   const budgetIds = budgets.map((b) => b.id);
-  const { data: items } = await supabase
+  // LEFT JOIN both old (budget_categories) and new (chart_of_accounts) FKs so
+  // legacy items render alongside CoA-backed ones during the transition.
+  // The generated Supabase types occasionally collapse multi-FK selects to a
+  // generic error tuple; cast through `unknown` so the runtime shape we expect
+  // wins (the runtime IS correct — only the inferred type is off).
+  type RawItem = {
+    id: string;
+    budget_id: string;
+    category_id: string | null;
+    coa_account_id: string | null;
+    description: string | null;
+    amount: number;
+    sort_order: number;
+    budget_categories: { name: string } | null;
+    chart_of_accounts: { name: string; code: string } | null;
+  };
+  const { data: rawItems } = await supabase
     .from("budget_items")
-    .select("id, budget_id, category_id, description, amount, sort_order, budget_categories!inner(name)")
+    .select(
+      "id, budget_id, category_id, coa_account_id, description, amount, sort_order, " +
+      "budget_categories(name), chart_of_accounts(name, code)"
+    )
     .in("budget_id", budgetIds)
     .order("sort_order");
+  const items = (rawItems ?? []) as unknown as RawItem[];
 
   return budgets.map((b) => ({
     ...b,
-    items: (items ?? [])
+    items: items
       .filter((i) => i.budget_id === b.id)
       .map((i) => ({
         id: i.id,
         category_id: i.category_id,
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        category_name: (i as any).budget_categories?.name ?? "",
+        category_name: i.chart_of_accounts?.name ?? i.budget_categories?.name ?? "",
         description: i.description,
         amount: Number(i.amount),
         sort_order: i.sort_order,
@@ -186,12 +211,15 @@ export async function createBudget(
 
   if (error) return { error: error.message };
 
-  // Create budget items
+  // Create budget items. Prefer the new coa_account_id link; fall back to the
+  // legacy category_id only when no CoA account is provided (back-compat for
+  // any caller still using budget_categories).
   const itemInserts = data.items
     .filter((item) => item.amount > 0)
     .map((item, i) => ({
       budget_id: budget.id,
-      category_id: item.category_id,
+      category_id: item.coa_account_id ? null : (item.category_id ?? null),
+      coa_account_id: item.coa_account_id ?? null,
       description: item.description || null,
       amount: item.amount,
       sort_order: i,

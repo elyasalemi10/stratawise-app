@@ -41,10 +41,14 @@ export function NarrationPlayer({
   const src = /^https?:\/\//i.test(audioUrl) ? audioUrl : `https://${audioUrl}`;
 
   // Wrap visible words in spans and tag those that matched a timing entry.
+  // Forward-scan tolerates small misalignments (a token the narrator dropped
+  // or an inline mark buildNarration glued to its neighbour) — without it a
+  // single mismatch strands the pointer and nothing else highlights.
+  const FORWARD_SCAN = 20;
   useEffect(() => {
     const root = containerRef.current;
-    if (!root) return;
-    spansRef.current = [];
+    if (!root || !words.length) return;
+    spansRef.current = new Array(words.length);
     let ptr = 0;
 
     const walker = document.createTreeWalker(root, NodeFilter.SHOW_TEXT, {
@@ -71,11 +75,18 @@ export function NarrationPlayer({
         const norm = normalizeForNarration(part);
         const span = document.createElement("span");
         span.textContent = part;
-        if (norm && ptr < words.length && words[ptr].w === norm) {
-          span.dataset.i = String(ptr);
-          span.className = "sw-word";
-          spansRef.current[ptr] = span;
-          ptr++;
+        if (norm) {
+          const limit = Math.min(words.length, ptr + FORWARD_SCAN);
+          let match = -1;
+          for (let i = ptr; i < limit; i++) {
+            if (words[i].w === norm) { match = i; break; }
+          }
+          if (match !== -1) {
+            span.dataset.i = String(match);
+            span.className = "sw-word";
+            spansRef.current[match] = span;
+            ptr = match + 1;
+          }
         }
         frag.appendChild(span);
       }
@@ -92,6 +103,9 @@ export function NarrationPlayer({
       else if (t >= words[mid].end) lo = mid + 1;
       else { found = mid; break; }
     }
+    // Between words (small gap in the alignment) keep the most-recent active
+    // word lit rather than dropping to nothing — calmer to read.
+    if (found === -1 && t > 0 && lo > 0) found = lo - 1;
     if (found === activeRef.current) return;
     const prev = spansRef.current[activeRef.current];
     if (prev) prev.classList.remove("sw-word-active");

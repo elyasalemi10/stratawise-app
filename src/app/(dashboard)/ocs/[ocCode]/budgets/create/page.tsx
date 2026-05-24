@@ -1,7 +1,8 @@
 import { getOC } from "@/lib/actions/oc";
 import { redirect } from "next/navigation";
 import { CreateBudgetForm } from "./create-budget-form";
-import { getBudgetCategories, ocHasMaintenanceFund } from "@/lib/actions/budget";
+import { ocHasMaintenanceFund } from "@/lib/actions/budget";
+import { listChartOfAccounts } from "@/lib/actions/chart-of-accounts";
 
 import { resolveOCFromCode } from "@/lib/oc-resolver";
 
@@ -14,9 +15,9 @@ export default async function CreateBudgetPage({
   const resolved = await resolveOCFromCode(ocCode);
   if (!resolved) redirect("/dashboard");
   const ocId = resolved.id;
-  const [oc, categories, hasMaintenanceFund] = await Promise.all([
+  const [oc, accounts, hasMaintenanceFund] = await Promise.all([
     getOC(ocId),
-    getBudgetCategories(),
+    listChartOfAccounts(),
     ocHasMaintenanceFund(ocId),
   ]);
 
@@ -35,10 +36,17 @@ export default async function CreateBudgetPage({
   });
   const defaultFinancialYear = `${currentFyStart}-${currentFyStart + 1}`;
 
+  // Budgets are forecasts of expense and income — only expose those types
+  // from the firm's chart of accounts to keep the picker focused. Assets /
+  // liabilities / equity don't belong on a budget line.
+  const budgetableAccounts = accounts.filter(
+    (a) => !a.archived_at && (a.account_type === "expense" || a.account_type === "income"),
+  );
+
   return (
     <CreateBudgetForm
       ocId={ocId}
-      categories={categories}
+      accounts={budgetableAccounts}
       fyOptions={fyOptions}
       defaultFinancialYear={defaultFinancialYear}
       hasMaintenanceFund={hasMaintenanceFund}

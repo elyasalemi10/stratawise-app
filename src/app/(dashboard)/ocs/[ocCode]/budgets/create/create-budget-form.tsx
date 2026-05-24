@@ -15,7 +15,9 @@ import {
 import {
   Table, TableBody, TableCell, TableFooter, TableHead, TableHeader, TableRow,
 } from "@/components/ui/table";
-import { createBudget, createBudgetCategory, type BudgetCategory } from "@/lib/actions/budget";
+import { createBudget } from "@/lib/actions/budget";
+import type { CoaAccount } from "@/lib/actions/chart-of-accounts";
+import { CreateAccountDrawer } from "@/components/chart-of-accounts/create-account-drawer";
 import { useOCCode } from "@/lib/oc-context";
 
 const formatCurrency = (n: number) =>
@@ -29,26 +31,26 @@ const FUND_OPTIONS: { value: FundType; label: string }[] = [
   { value: "maintenance_plan", label: "Maintenance Plan Fund" },
 ];
 
-// ─── Category Combobox ─────────────────────────────────────
+// ─── Account Combobox ──────────────────────────────────────
+// Search + pick from the firm-wide chart of accounts. "Add new account…"
+// opens the right-side drawer (shared with the Chart of accounts page) so a
+// new account is created against the firm rather than this single budget.
 
-function CategoryCombobox({
-  categories,
-  usedCategoryIds,
-  fundType,
+function AccountCombobox({
+  accounts,
+  usedAccountIds,
   onSelect,
   onCancel,
-  onUpdateCategoryId,
+  onRequestCreate,
 }: {
-  categories: BudgetCategory[];
-  usedCategoryIds: string[];
-  fundType: "administrative" | "capital_works" | "maintenance_plan";
-  onSelect: (category: { id: string; name: string }) => void;
+  accounts: CoaAccount[];
+  usedAccountIds: string[];
+  onSelect: (account: CoaAccount) => void;
   onCancel: () => void;
-  onUpdateCategoryId?: (tempId: string, realId: string) => void;
+  onRequestCreate: (seedName: string) => void;
 }) {
   const [query, setQuery] = useState("");
   const [open, setOpen] = useState(true);
-  const [creating, setCreating] = useState(false);
   const inputRef = useRef<HTMLInputElement>(null);
   const containerRef = useRef<HTMLDivElement>(null);
 
@@ -59,59 +61,27 @@ function CategoryCombobox({
   useEffect(() => {
     function handleClickOutside(e: MouseEvent) {
       if (containerRef.current && !containerRef.current.contains(e.target as Node)) {
-        if (query.trim() && !creating) {
-          handleCreateCustom();
-        } else {
-          onCancel();
-        }
+        onCancel();
       }
     }
     document.addEventListener("mousedown", handleClickOutside);
     return () => document.removeEventListener("mousedown", handleClickOutside);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [query, creating]);
+  }, [onCancel]);
 
-  const filtered = categories.filter(
-    (c) =>
-      !usedCategoryIds.includes(c.id) &&
-      c.name.toLowerCase().includes(query.toLowerCase())
+  const q = query.toLowerCase();
+  const filtered = accounts.filter(
+    (a) => !usedAccountIds.includes(a.id) && (a.code.includes(q) || a.name.toLowerCase().includes(q)),
   );
-
-  const exactMatch = categories.some(
-    (c) => c.name.toLowerCase() === query.toLowerCase()
-  );
-
-  function handleCreateCustom() {
-    if (!query.trim() || creating) return;
-    const name = query.trim();
-    const tempId = `temp-${Date.now()}`;
-
-    // Add immediately with temp ID
-    onSelect({ id: tempId, name });
-    setQuery("");
-
-    // Persist in background, replace temp ID with real one
-    createBudgetCategory(name, fundType).then((result) => {
-      if (result.error) {
-        toast.error(`Failed to save "${name}"`);
-      } else if (result.id && result.id !== tempId) {
-        onUpdateCategoryId?.(tempId, result.id);
-      }
-    });
-  }
 
   function handleKeyDown(e: React.KeyboardEvent) {
-    if (e.key === "Escape") {
-      onCancel();
-      return;
-    }
+    if (e.key === "Escape") { onCancel(); return; }
     if (e.key === "Enter") {
       e.preventDefault();
       if (filtered.length === 1) {
-        onSelect({ id: filtered[0].id, name: filtered[0].name });
+        onSelect(filtered[0]);
         setQuery("");
-      } else if (query.trim() && !exactMatch) {
-        handleCreateCustom();
+      } else if (query.trim()) {
+        onRequestCreate(query.trim());
       }
     }
   }
@@ -124,34 +94,32 @@ function CategoryCombobox({
         onChange={(e) => { setQuery(e.target.value); setOpen(true); }}
         onFocus={() => setOpen(true)}
         onKeyDown={handleKeyDown}
-        placeholder="Search or type a category..."
+        placeholder="Search code or account name…"
         className="h-8 text-sm"
       />
-      {open && (query || filtered.length > 0) && (
-        <div className="absolute top-full left-0 right-0 mt-1 z-50 max-h-48 overflow-y-auto rounded-lg border border-border bg-popover shadow-md">
-          {filtered.map((cat) => (
+      {open && (
+        <div className="absolute top-full left-0 right-0 mt-1 z-50 max-h-56 overflow-y-auto rounded-lg border border-border bg-popover shadow-md">
+          {filtered.map((a) => (
             <button
-              key={cat.id}
+              key={a.id}
               type="button"
-              onClick={() => { onSelect({ id: cat.id, name: cat.name }); setQuery(""); }}
-              className="flex w-full items-center px-3 py-2 text-sm text-foreground hover:bg-accent hover:text-accent-foreground cursor-pointer"
+              onClick={() => { onSelect(a); setQuery(""); }}
+              className="flex w-full items-center justify-between px-3 py-2 text-sm text-foreground hover:bg-accent hover:text-accent-foreground cursor-pointer"
             >
-              {cat.name}
+              <span>{a.name}</span>
+              <span className="ml-3 font-mono text-xs text-muted-foreground">{a.code}</span>
             </button>
           ))}
-          {query.trim() && !exactMatch && (
-            <button
-              type="button"
-              onClick={handleCreateCustom}
-              disabled={creating}
-              className="flex w-full items-center px-3 py-2 text-sm text-primary hover:bg-accent cursor-pointer border-t border-border"
-            >
-              <Plus className="mr-2 h-3.5 w-3.5" />
-              Create &ldquo;{query.trim()}&rdquo;
-            </button>
-          )}
+          <button
+            type="button"
+            onClick={() => onRequestCreate(query.trim())}
+            className="flex w-full items-center px-3 py-2 text-sm text-primary hover:bg-accent cursor-pointer border-t border-border"
+          >
+            <Plus className="mr-2 h-3.5 w-3.5" />
+            Add new account{query.trim() ? ` — "${query.trim()}"` : ""}
+          </button>
           {filtered.length === 0 && !query.trim() && (
-            <div className="px-3 py-2 text-xs text-muted-foreground">All categories added</div>
+            <div className="border-t border-border px-3 py-2 text-xs text-muted-foreground">No accounts left to add</div>
           )}
         </div>
       )}
@@ -162,7 +130,7 @@ function CategoryCombobox({
 // ─── Main Form ─────────────────────────────────────────────
 
 interface BudgetItem {
-  category_id: string;
+  coa_account_id: string;
   description: string;
   // Held as a string so the field can be cleared mid-edit ("" = nothing
   // typed). Parsed to a number at submit. See NumberInput.
@@ -171,25 +139,28 @@ interface BudgetItem {
 
 export function CreateBudgetForm({
   ocId,
-  categories,
+  accounts,
   fyOptions,
   defaultFinancialYear,
   hasMaintenanceFund,
 }: {
   ocId: string;
-  categories: BudgetCategory[];
+  accounts: CoaAccount[];
   fyOptions: string[];
   defaultFinancialYear: string;
   hasMaintenanceFund: boolean;
 }) {
   const ocCode = useOCCode();
   const router = useRouter();
+  const [allAccounts, setAllAccounts] = useState<CoaAccount[]>(accounts);
   const [financialYear, setFinancialYear] = useState(defaultFinancialYear);
   const [fundType, setFundType] = useState<FundType>("administrative");
   const [items, setItems] = useState<BudgetItem[]>([]);
-  // Open the category picker on mount so there's one row ready to fill.
+  // Open the picker on mount so there's one row ready to fill.
   const [showCombobox, setShowCombobox] = useState(true);
   const [pending, setPending] = useState(false);
+  // Drawer state for "Add new account…"
+  const [drawerOpen, setDrawerOpen] = useState(false);
 
   // A maintenance budget only makes sense if the OC actually runs a
   // maintenance-plan fund.
@@ -198,8 +169,6 @@ export function CreateBudgetForm({
   );
   const fundLabel = FUND_OPTIONS.find((o) => o.value === fundType)?.label ?? "Fund";
 
-  const fundCategories = categories.filter((c) => c.fund_type === fundType);
-
   // Reset items when fund type changes (re-open the picker for the new fund).
   useEffect(() => {
     setItems([]);
@@ -207,30 +176,20 @@ export function CreateBudgetForm({
   }, [fundType]);
 
   const total = items.reduce((sum, item) => sum + (parseFloat(item.amount) || 0), 0);
-  const usedCategoryIds = items.map((i) => i.category_id);
+  const usedAccountIds = items.map((i) => i.coa_account_id);
+  const accountById = new Map(allAccounts.map((a) => [a.id, a]));
 
-  const addItem = useCallback((cat: { id: string; name: string }) => {
+  const addItem = useCallback((account: CoaAccount) => {
     setItems((prev) => [...prev, {
-      category_id: cat.id,
-      description: cat.name,
+      coa_account_id: account.id,
+      description: account.name,
       amount: "",
     }]);
     setShowCombobox(false);
   }, []);
 
-  const updateCategoryId = useCallback((tempId: string, realId: string) => {
-    setItems((prev) =>
-      prev.map((item) => item.category_id === tempId ? { ...item, category_id: realId } : item)
-    );
-    setShowCombobox(false);
-  }, []);
-
   function updateAmount(index: number, value: string) {
-    setItems((prev) =>
-      prev.map((item, i) =>
-        i === index ? { ...item, amount: value } : item
-      )
-    );
+    setItems((prev) => prev.map((item, i) => (i === index ? { ...item, amount: value } : item)));
   }
 
   function removeItem(index: number) {
@@ -250,7 +209,11 @@ export function CreateBudgetForm({
     const result = await createBudget(ocId, {
       financial_year: financialYear,
       fund_type: fundType,
-      items: nonZeroItems,
+      items: nonZeroItems.map((i) => ({
+        coa_account_id: i.coa_account_id,
+        description: i.description,
+        amount: i.amount,
+      })),
     });
 
     if (result.error) {
@@ -308,39 +271,45 @@ export function CreateBudgetForm({
               <Table variant="bordered" className="text-sm">
                 <TableHeader>
                   <TableRow>
-                    <TableHead>Category</TableHead>
+                    <TableHead className="w-24">Code</TableHead>
+                    <TableHead>Account</TableHead>
                     <TableHead className="w-[200px]">Annual amount</TableHead>
                     <TableHead className="w-[48px]" />
                   </TableRow>
                 </TableHeader>
                 <TableBody>
-                  {items.map((item, i) => (
-                    <TableRow key={i}>
-                      <TableCell className="text-sm text-foreground">{item.description}</TableCell>
-                      <TableCell>
-                        <NumberInput
-                          value={item.amount}
-                          onChange={(v) => updateAmount(i, v)}
-                          thousandsSeparator
-                          prefix="$"
-                          placeholder="Annual amount"
-                        />
-                      </TableCell>
-                      <TableCell>
-                        <button
-                          type="button"
-                          onClick={() => removeItem(i)}
-                          className="text-muted-foreground hover:text-destructive cursor-pointer"
-                          aria-label="Remove item"
-                        >
-                          <X className="h-3.5 w-3.5" />
-                        </button>
-                      </TableCell>
-                    </TableRow>
-                  ))}
+                  {items.map((item, i) => {
+                    const account = accountById.get(item.coa_account_id);
+                    return (
+                      <TableRow key={i}>
+                        <TableCell className="font-mono text-xs">{account?.code ?? ""}</TableCell>
+                        <TableCell className="text-sm text-foreground">{item.description}</TableCell>
+                        <TableCell>
+                          <NumberInput
+                            value={item.amount}
+                            onChange={(v) => updateAmount(i, v)}
+                            thousandsSeparator
+                            prefix="$"
+                            placeholder="Annual amount"
+                          />
+                        </TableCell>
+                        <TableCell>
+                          <button
+                            type="button"
+                            onClick={() => removeItem(i)}
+                            className="text-muted-foreground hover:text-destructive cursor-pointer"
+                            aria-label="Remove item"
+                          >
+                            <X className="h-3.5 w-3.5" />
+                          </button>
+                        </TableCell>
+                      </TableRow>
+                    );
+                  })}
                 </TableBody>
                 <TableFooter>
                   <TableRow>
+                    <TableCell />
                     <TableCell className="text-sm font-semibold text-foreground">Total annual</TableCell>
                     <TableCell className="text-sm font-bold text-foreground tabular-nums">{formatCurrency(total)}</TableCell>
                     <TableCell />
@@ -350,17 +319,16 @@ export function CreateBudgetForm({
             </div>
           )}
 
-          {/* Add item — kept OUTSIDE the table so the category dropdown isn't
-              clipped by the table's overflow container. */}
+          {/* Add item — kept OUTSIDE the table so the dropdown isn't clipped
+              by the table's overflow container. */}
           <div className="mt-3">
             {showCombobox ? (
-              <CategoryCombobox
-                categories={fundCategories}
-                usedCategoryIds={usedCategoryIds}
-                fundType={fundType}
+              <AccountCombobox
+                accounts={allAccounts}
+                usedAccountIds={usedAccountIds}
                 onSelect={addItem}
                 onCancel={() => setShowCombobox(false)}
-                onUpdateCategoryId={updateCategoryId}
+                onRequestCreate={() => setDrawerOpen(true)}
               />
             ) : (
               <Button type="button" variant="secondary" size="sm" onClick={() => setShowCombobox(true)}>
@@ -379,6 +347,16 @@ export function CreateBudgetForm({
           Create budget
         </Button>
       </div>
+
+      <CreateAccountDrawer
+        open={drawerOpen}
+        onOpenChange={setDrawerOpen}
+        lockedType="expense"
+        onCreated={(account) => {
+          setAllAccounts((prev) => [...prev, account]);
+          addItem(account);
+        }}
+      />
     </div>
   );
 }

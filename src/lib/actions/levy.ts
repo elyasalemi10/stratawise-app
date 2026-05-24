@@ -293,11 +293,29 @@ export async function generateLevyPreview(
 
   if (!budget) return { error: "Budget not found or not approved" };
 
-  const { data: budgetItems } = await supabase
+  // LEFT JOIN both legacy budget_categories and new chart_of_accounts so the
+  // line-item label resolves regardless of which FK the budget was created
+  // against. The display name fallback chain is description → CoA name →
+  // legacy category name → "Budget item". Cast via `unknown` because the
+  // generated Supabase types collapse multi-FK joins to a generic error tuple.
+  type RawBudgetItem = {
+    id: string;
+    description: string | null;
+    amount: number;
+    category_id: string | null;
+    coa_account_id: string | null;
+    budget_categories: { name: string } | null;
+    chart_of_accounts: { name: string } | null;
+  };
+  const { data: rawBudgetItems } = await supabase
     .from("budget_items")
-    .select("id, description, amount, category_id, budget_categories!inner(name)")
+    .select(
+      "id, description, amount, category_id, coa_account_id, " +
+      "budget_categories(name), chart_of_accounts(name)"
+    )
     .eq("budget_id", budgetId)
     .order("sort_order");
+  const budgetItems = (rawBudgetItems ?? []) as unknown as RawBudgetItem[];
 
   // Get oc settings
   const { data: oc } = await supabase
@@ -356,14 +374,17 @@ export async function generateLevyPreview(
     const lotPeriodTotal = Math.round(periodAmount * proportion * 100) / 100;
 
     // Split into line items proportional to budget items
-    const items = (budgetItems ?? [])
+    const items = budgetItems
       .filter((bi) => Number(bi.amount) > 0)
       .map((bi) => {
         const itemPeriodAmount = Number(bi.amount) / periodsPerYear;
         const lotItemAmount = Math.round(itemPeriodAmount * proportion * 100) / 100;
         return {
-          // eslint-disable-next-line @typescript-eslint/no-explicit-any
-          description: bi.description || (bi as any).budget_categories?.name || "Budget item",
+          description:
+            bi.description ||
+            bi.chart_of_accounts?.name ||
+            bi.budget_categories?.name ||
+            "Budget item",
           amount: lotItemAmount,
           budget_item_id: bi.id,
         };
