@@ -44,7 +44,7 @@ export async function GET(request: NextRequest) {
     return redirect(`${base}${SETTINGS_URL}&outlook_error=missing_tenant_or_consent`);
   }
 
-  // CSRF — state cookie was set when the admin clicked "Connect Microsoft
+  // CSRF , state cookie was set when the admin clicked "Connect Microsoft
   // 365" in Settings. If it's missing or doesn't match, refuse.
   const expectedState = request.cookies.get("outlook_consent_state")?.value;
   if (!expectedState || expectedState !== state) {
@@ -73,7 +73,7 @@ export async function GET(request: NextRequest) {
   }
 
   // Merge tenant_id onto whatever's already in mail_provider_config (eg.
-  // a previously-saved firm domain). We don't flip mail_provider here —
+  // a previously-saved firm domain). We don't flip mail_provider here ,
   // that happens when the admin completes the connect flow (saves their
   // mailbox + tests the connection).
   const { data: company } = await supabase

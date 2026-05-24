@@ -7,7 +7,7 @@ import { Button } from "@/components/ui/button";
 import { saveDraftPatch, type DraftJson } from "../../actions";
 
 // Shared Back / Save / Continue button row used by every wizard step (Item 11).
-// `getCurrentPatch` is invoked when the user clicks Save — it should return
+// `getCurrentPatch` is invoked when the user clicks Save , it should return
 // whatever state the form has right now, even if it's partial. Save skips the
 // usual validation; the wizard pointer (current_step/current_substep) does NOT
 // advance, so refreshing the wizard returns the user to the same page.
@@ -16,7 +16,7 @@ import { saveDraftPatch, type DraftJson } from "../../actions";
 // snapshots the current patch and compares to the last snapshot it sent. If
 // the form has changed, it fires saveDraftPatch in the background. A tab
 // crash now loses at most AUTOSAVE_INTERVAL_MS of typing instead of the
-// entire step. UPSERT against a single draft row — load is trivial.
+// entire step. UPSERT against a single draft row , load is trivial.
 const AUTOSAVE_INTERVAL_MS = 30_000;
 
 interface Props {
@@ -29,7 +29,7 @@ interface Props {
   disabled?: boolean;
   /** Optional override for the Back button label (e.g. "Cancel"). */
   backLabel?: string;
-  /** Hide the Back button — used on the upload step where there's nowhere to go back to. */
+  /** Hide the Back button , used on the upload step where there's nowhere to go back to. */
   hideBack?: boolean;
 }
 
@@ -52,7 +52,7 @@ export function WizardActions({
     const result = await saveDraftPatch(draftId, patch);
     setSaving(false);
     if (result.error) {
-      toast.error("Could not save — please try again.");
+      toast.error("Could not save , please try again.");
       return;
     }
     toast.success("Saved", {
@@ -73,14 +73,14 @@ export function WizardActions({
         if (snapshot === lastSavedSnapshotRef.current) return;
         lastSavedSnapshotRef.current = snapshot;
         void saveDraftPatch(draftId, patch).catch(() => {
-          // Heartbeat failures are silent — the visible Save / Continue
+          // Heartbeat failures are silent , the visible Save / Continue
           // buttons will surface real errors on the next user-initiated
           // save. We don't want a flaky network turning into a wall of
           // red toasts in the background.
         });
       } catch {
         // getCurrentPatch can throw if the form reads from refs that
-        // aren't ready yet — ignore and retry on the next tick.
+        // aren't ready yet , ignore and retry on the next tick.
       }
     }, AUTOSAVE_INTERVAL_MS);
     return () => window.clearInterval(intervalId);

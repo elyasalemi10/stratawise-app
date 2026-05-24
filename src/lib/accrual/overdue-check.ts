@@ -1,5 +1,5 @@
 // ============================================================================
-// Overdue-levy check job — framework-agnostic
+// Overdue-levy check job , framework-agnostic
 // ----------------------------------------------------------------------------
 // Same rules as src/lib/accrual/jobs.ts:
 //   - NO "use server" directive
@@ -7,7 +7,7 @@
 //
 // Eligibility (PP6-C-1 step 1): a levy_notice qualifies for the friendly
 // reminder when, on the cron's runDate:
-//   - due_date + 14 days === runDate (exact match — single-day window)
+//   - due_date + 14 days === runDate (exact match , single-day window)
 //   - status IN ('issued','partially_paid','overdue')
 //   - levy_type <> 'penalty_interest'
 //   - amount - amount_paid > 0
@@ -52,7 +52,7 @@ export interface OverdueCheckResult {
 }
 
 export interface OverdueCheckInput {
-  runDate: string;            // 'YYYY-MM-DD' — usually AEST/AEDT-derived
+  runDate: string;            // 'YYYY-MM-DD' , usually AEST/AEDT-derived
   systemProfileId: string;
   supabase: SupabaseClient;
 }
@@ -288,7 +288,7 @@ async function processOverdueLevy(
       recipient_email: ownerEmail,
       channel: "email",
       type: NOTIFICATION_TYPE,
-      subject: `Your levy is overdue — ${ocName}`,
+      subject: `Your levy is overdue , ${ocName}`,
       body_preview: subjectPreview.slice(0, 300),
       status: "queued",
       related_entity_type: "levy_notice",
@@ -317,7 +317,7 @@ async function processOverdueLevy(
       entity_id: levy.id,
       metadata: { communication_log_id: communicationLogId },
     });
-    // Dry-run: leave log row 'queued', don't create escalation_instances —
+    // Dry-run: leave log row 'queued', don't create escalation_instances ,
     // re-runs in real-send mode will see no instance and proceed.
     return "skipped_dry_run";
   }
@@ -337,7 +337,7 @@ async function processOverdueLevy(
   const sentAt = new Date().toISOString();
   const nextActionAt = computeNextActionAt(levy.due_date, 28);
 
-  // Reference number is operational — uses next_reference_number('ESC').
+  // Reference number is operational , uses next_reference_number('ESC').
   const { data: refData, error: refErr } = await supabase.rpc(
     "next_reference_number",
     { p_prefix: "ESC", p_oc_id: null },
@@ -377,7 +377,7 @@ async function processOverdueLevy(
       `processOverdueLevy: escalation_instances insert failed for levy ${levy.id}:`,
       instErr,
     );
-    // Same handling as ref failure — email is out, row missing.
+    // Same handling as ref failure , email is out, row missing.
     await supabase
       .from("communication_log")
       .update({

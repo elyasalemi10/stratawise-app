@@ -10,10 +10,10 @@ import { runDocumentAiOcr } from "@/lib/google/document-ai";
 // Document AI OCR, sanitises, and stores `ocr_text` on the document row.
 // Status transitions are linear:
 //   pending → complete  (happy path)
-//   pending → failed    (any error along the way — message goes to ocr_error)
+//   pending → failed    (any error along the way , message goes to ocr_error)
 //   pending → skipped   (mime type isn't OCR-able)
 //
-// The function never throws — failures land on the row as `failed`. The
+// The function never throws , failures land on the row as `failed`. The
 // upload still succeeds even if OCR breaks.
 
 const OCR_MIME_TYPES = new Set<string>([
@@ -81,7 +81,7 @@ export async function ingestDocumentOcr(documentId: string): Promise<void> {
         .from("documents")
         .update({
           ocr_status: "failed",
-          ocr_error: `Document is ${pageCount} pages — auto-OCR is capped at ${MAX_OCR_PAGES}. Indexed by filename only.`,
+          ocr_error: `Document is ${pageCount} pages , auto-OCR is capped at ${MAX_OCR_PAGES}. Indexed by filename only.`,
           ocr_page_count: pageCount,
           ocr_provider: "document_ai",
           ocr_completed_at: new Date().toISOString(),
@@ -110,7 +110,7 @@ export async function ingestDocumentOcr(documentId: string): Promise<void> {
         ocr_status: "failed",
         ocr_error: message.includes("INVALID_ARGUMENT")
           ? "Document AI rejected this file (too large or unsupported)."
-          : "OCR failed — the file is indexed by filename only.",
+          : "OCR failed , the file is indexed by filename only.",
         ocr_completed_at: new Date().toISOString(),
       })
       .eq("id", documentId);

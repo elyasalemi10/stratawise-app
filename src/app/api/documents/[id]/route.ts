@@ -31,11 +31,11 @@ async function loadDocument(id: string) {
   return data;
 }
 
-// GET — authorise + redirect to a short-lived (15 min) presigned R2 URL.
+// GET , authorise + redirect to a short-lived (15 min) presigned R2 URL.
 //
 // Strata documents are sensitive (financial statements, insurance certs,
 // breach notices). We STREAM the bytes through this authenticated route
-// rather than redirecting to a presigned R2 URL — a presigned URL is
+// rather than redirecting to a presigned R2 URL , a presigned URL is
 // shareable by anyone for its TTL, which leaks the document. Streaming
 // means every single fetch re-runs the auth + OC-access + confidentiality
 // checks, so a copied URL is useless to anyone who isn't signed in with
@@ -92,7 +92,7 @@ export async function GET(
   });
 }
 
-// PATCH — rename document (DB only, R2 key unchanged)
+// PATCH , rename document (DB only, R2 key unchanged)
 export async function PATCH(
   request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
@@ -149,7 +149,7 @@ export async function PATCH(
   return NextResponse.json(updated);
 }
 
-// DELETE — remove from R2 and DB
+// DELETE , remove from R2 and DB
 export async function DELETE(
   _request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
@@ -176,7 +176,7 @@ export async function DELETE(
   try {
     await deleteObject(doc.file_path);
   } catch {
-    // Continue even if R2 delete fails — DB is source of truth
+    // Continue even if R2 delete fails , DB is source of truth
   }
 
   const supabase = createServerClient();

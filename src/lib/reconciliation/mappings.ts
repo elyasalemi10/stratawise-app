@@ -1,13 +1,13 @@
 // ============================================================================
-// bank_payer_mappings — CRUD + collision detection + sweep + detectRepeated
+// bank_payer_mappings , CRUD + collision detection + sweep + detectRepeated
 // ----------------------------------------------------------------------------
 // Pure helpers (no "use server"). Server actions in
 // src/lib/actions/reconciliation.ts wrap these for the manual-match path.
 //
 // Status lifecycle (PP4-A schema):
-//   active     — used by Strategy 3 (known_payer) for auto-match
-//   ambiguous  — collision detected; manager must resolve before auto-match
-//   disabled   — soft-deleted; never auto-matches; doesn't occupy the
+//   active     , used by Strategy 3 (known_payer) for auto-match
+//   ambiguous  , collision detected; manager must resolve before auto-match
+//   disabled   , soft-deleted; never auto-matches; doesn't occupy the
 //                "active per canonical_name" slot (partial UNIQUE index)
 //
 // Collision design (resolved Gap 1, Gap E):
@@ -187,7 +187,7 @@ export async function createBankPayerMapping(
 ): Promise<CreateMappingResult> {
   const supabase = createServerClient();
 
-  // 1. Collision check — other lots, same canonical name, active or ambiguous.
+  // 1. Collision check , other lots, same canonical name, active or ambiguous.
   const colliding = await fetchCollidingMappings(
     input.oc_id,
     input.canonical_sender_name,
@@ -245,7 +245,7 @@ export async function createBankPayerMapping(
     };
   }
 
-  // 2. No collision — check for same-tuple existing.
+  // 2. No collision , check for same-tuple existing.
   const { data: existing } = await supabase
     .from("bank_payer_mappings")
     .select("id, status")
@@ -256,7 +256,7 @@ export async function createBankPayerMapping(
 
   if (existing) {
     if (existing.status === "active") {
-      // Idempotent — append the raw example, return the existing id.
+      // Idempotent , append the raw example, return the existing id.
       if (input.raw_example) await appendRawExample(existing.id, input.raw_example);
       return { ok: true, mapping_id: existing.id, was_reactivated: false };
     }
@@ -319,12 +319,12 @@ export async function createBankPayerMapping(
  * snapshot returned by createBankPayerMapping.
  *
  * Resolutions:
- *   update         — disable each colliding mapping; create the proposed
+ *   update         , disable each colliding mapping; create the proposed
  *                    mapping as active.
- *   keep_existing  — restore each colliding mapping to its previous_status
+ *   keep_existing  , restore each colliding mapping to its previous_status
  *                    (rolls back the active→ambiguous flip from collision
  *                    detection); do not create the proposed mapping.
- *   remove         — disable each colliding mapping; do not create the
+ *   remove         , disable each colliding mapping; do not create the
  *                    proposed mapping.
  */
 export async function resolveCollision(
@@ -389,7 +389,7 @@ export async function resolveCollision(
         created_by: input.performed_by,
       });
       if (!created.ok) {
-        // Should not happen — we just disabled all colliders.
+        // Should not happen , we just disabled all colliders.
         throw new Error(
           "resolveCollision[update]: createBankPayerMapping returned collision after collision clear",
         );
@@ -610,7 +610,7 @@ export async function detectRepeatedManualMatch(
 
 /**
  * List bank_payer_mappings for a oc. Optional status filter; when
- * omitted, returns active + ambiguous (the management page's default view —
+ * omitted, returns active + ambiguous (the management page's default view ,
  * disabled rows hidden unless explicitly requested).
  */
 // ─── Mapping lifecycle: disable / reactivate / delete (PP4-D) ─────────────

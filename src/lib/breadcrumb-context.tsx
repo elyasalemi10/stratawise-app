@@ -27,7 +27,7 @@ export function BreadcrumbProvider({ children }: { children: React.ReactNode }) 
 
 export function useSetBreadcrumb(crumbs: BreadcrumbCrumb[] | null) {
   const ctx = useContext(BreadcrumbContext);
-  // Stable string key for the effect dep — avoids re-running on identical arrays.
+  // Stable string key for the effect dep , avoids re-running on identical arrays.
   const key = useMemo(() => (crumbs ? JSON.stringify(crumbs) : ""), [crumbs]);
   const ref = useRef(crumbs);
   ref.current = crumbs;

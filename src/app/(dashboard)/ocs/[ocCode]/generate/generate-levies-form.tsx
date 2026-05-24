@@ -369,7 +369,7 @@ export function GenerateLeviesForm({
                 <SelectContent>
                   {budgets.map((b) => (
                     <SelectItem key={b.id} value={b.id}>
-                      {b.fund_type === "administrative" ? "Administrative Fund" : "Capital Works Fund"} — {b.financial_year} ({formatCurrency(b.total_amount)})
+                      {b.fund_type === "administrative" ? "Administrative Fund" : "Capital Works Fund"} , {b.financial_year} ({formatCurrency(b.total_amount)})
                     </SelectItem>
                   ))}
                 </SelectContent>
@@ -391,7 +391,7 @@ export function GenerateLeviesForm({
                   <SelectContent>
                     {ungenPeriods.map((p) => (
                       <SelectItem key={p.periodIndex} value={String(p.periodIndex)}>
-                        {p.label} ({formatDateLong(p.start)} — {formatDateLong(p.end)})
+                        {p.label} ({formatDateLong(p.start)} , {formatDateLong(p.end)})
                       </SelectItem>
                     ))}
                   </SelectContent>
@@ -409,7 +409,7 @@ export function GenerateLeviesForm({
               <div className="grid grid-cols-2 gap-4 pt-2 border-t border-border">
                 <div>
                   <Label className="text-xs text-muted-foreground">Date range</Label>
-                  <p className="text-sm text-foreground mt-0.5">{formatDateLong(preview.period_start)} — {formatDateLong(preview.period_end)}</p>
+                  <p className="text-sm text-foreground mt-0.5">{formatDateLong(preview.period_start)} , {formatDateLong(preview.period_end)}</p>
                 </div>
                 <div>
                   <Label className="text-xs text-muted-foreground">Due date</Label>

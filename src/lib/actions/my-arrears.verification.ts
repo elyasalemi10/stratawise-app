@@ -15,7 +15,7 @@ import { config } from "dotenv";
 config({ path: ".env.local" });
 process.env.EMAIL_DRY_RUN = "true";
 
-// next/cache stub — getCurrentProfile transitively goes through Supabase
+// next/cache stub , getCurrentProfile transitively goes through Supabase
 // Auth helpers; some imports touch revalidate paths.
 import { createRequire } from "node:module";
 const scriptRequire = createRequire(import.meta.url);
@@ -59,7 +59,7 @@ type Result = { scenario: string; passed: boolean; detail: string };
 const results: Result[] = [];
 function record(scenario: string, passed: boolean, detail: string) {
   results.push({ scenario, passed, detail });
-  console.log(`  ${passed ? "PASS" : "FAIL"}  ${scenario}${detail ? " — " + detail : ""}`);
+  console.log(`  ${passed ? "PASS" : "FAIL"}  ${scenario}${detail ? " , " + detail : ""}`);
 }
 
 // ─── Fixture ───────────────────────────────────────────────────────
@@ -212,12 +212,12 @@ async function ma1_emptyState(
   ctx: FixtureContext,
   ma: typeof import("./my-arrears"),
 ) {
-  // No levies yet — fresh fixture.
+  // No levies yet , fresh fixture.
   activeUserId = ctx.ownerUserId;
   const result = await ma.getMyArrears(ctx.ocId);
   const ok = result.rows.length === 0 && result.outstandingTotal === 0;
   record(
-    "MA-1: empty state — owner with no overdue levies returns empty result",
+    "MA-1: empty state , owner with no overdue levies returns empty result",
     ok,
     `rows=${result.rows.length} total=${result.outstandingTotal}`,
   );
@@ -396,7 +396,7 @@ async function main() {
     process.exit(0);
   }
 
-  console.log("My-arrears verification — PP6-D-B scenarios MA-1..MA-4\n");
+  console.log("My-arrears verification , PP6-D-B scenarios MA-1..MA-4\n");
   console.log("[1/3] Cleaning up stale verification data");
   await cleanupMarker();
 

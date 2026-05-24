@@ -45,7 +45,7 @@ const SORT_OPTIONS: Array<{ value: SortKey; label: string }> = [
   { value: "owner_asc", label: "Owner name (A → Z)" },
 ];
 
-// Client-side CSV export — pulls straight from the in-memory lots prop so
+// Client-side CSV export , pulls straight from the in-memory lots prop so
 // there's no extra round-trip. Sort by lot_number for stable ordering. The
 // column set matches what managers expect to paste into a spreadsheet:
 // identifiers, owner, financials.
@@ -99,7 +99,7 @@ export function LotsPageContent({
   const [sortKey, setSortKey] = useState<SortKey>("lot_asc");
   // Single source of truth for invite-status. Seeded from the
   // server-rendered prop so the lots tab paints with the right pills on
-  // first frame — no spinner-then-pop. Re-fetched only after a
+  // first frame , no spinner-then-pop. Re-fetched only after a
   // client-side mutation (invite sent / revoked) when callers explicitly
   // ask for a refresh.
   const [inviteStatus, setInviteStatus] = useState<Map<string, string>>(() => {
@@ -134,7 +134,7 @@ export function LotsPageContent({
     return () => { cancelled = true; };
   }, [lots, ocId, inviteStatus.size]);
 
-  // Explicit re-fetch after an invite is sent/revoked — bypasses the
+  // Explicit re-fetch after an invite is sent/revoked , bypasses the
   // first-mount guard above so the "not invited" pill flips immediately
   // without a full page reload.
   async function refreshInviteStatus() {

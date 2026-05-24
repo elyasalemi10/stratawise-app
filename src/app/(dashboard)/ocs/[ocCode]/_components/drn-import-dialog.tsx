@@ -235,8 +235,8 @@ export function DrnImportDialog({ open, onClose, ocId, ocCode, lots }: Props) {
                       <tr key={m.drnRow.rowNumber} className="border-t border-border">
                         <td className="px-3 py-1.5 tabular-nums text-xs">{m.drnRow.rowNumber}</td>
                         <td className="px-3 py-1.5 tabular-nums">{m.drnRow.drn}</td>
-                        <td className="px-3 py-1.5">{m.drnRow.primaryId ?? "—"}</td>
-                        <td className="px-3 py-1.5">{m.drnRow.secondaryId ?? "—"}</td>
+                        <td className="px-3 py-1.5">{m.drnRow.primaryId ?? ","}</td>
+                        <td className="px-3 py-1.5">{m.drnRow.secondaryId ?? ","}</td>
                         <td className="px-3 py-1.5">
                           <Select
                             value={currentLot || undefined}
@@ -250,7 +250,7 @@ export function DrnImportDialog({ open, onClose, ocId, ocCode, lots }: Props) {
                                 "border-destructive/50"
                               }
                             >
-                              <SelectValue placeholder="— pick a lot —" />
+                              <SelectValue placeholder=", pick a lot ," />
                             </SelectTrigger>
                             <SelectContent>
                               {lots.map((l) => (

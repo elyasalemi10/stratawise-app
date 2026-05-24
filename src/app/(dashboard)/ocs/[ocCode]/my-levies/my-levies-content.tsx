@@ -90,7 +90,7 @@ export function MyLeviesContent({ levies }: { levies: Levy[] }) {
                         className="border-t border-border/50 cursor-pointer hover:bg-muted/30 transition-colors"
                       >
                         <td className="px-4 py-3 text-foreground">
-                          {formatDateLong(levy.period_start)} — {formatDateLong(levy.period_end)}
+                          {formatDateLong(levy.period_start)} , {formatDateLong(levy.period_end)}
                         </td>
                         <td className="px-4 py-3 text-foreground font-medium">{levy.reference_number}</td>
                         <td className="px-4 py-3 text-foreground">{formatDateLong(levy.due_date)}</td>
@@ -174,7 +174,7 @@ export function MyLeviesContent({ levies }: { levies: Levy[] }) {
                   </div>
                   <div className="flex justify-between">
                     <span className="text-sm text-muted-foreground">Period</span>
-                    <span className="text-sm text-foreground">{formatDateLong(selectedLevy.period_start)} — {formatDateLong(selectedLevy.period_end)}</span>
+                    <span className="text-sm text-foreground">{formatDateLong(selectedLevy.period_start)} , {formatDateLong(selectedLevy.period_end)}</span>
                   </div>
                   <div className="flex justify-between">
                     <span className="text-sm text-muted-foreground">Due date</span>

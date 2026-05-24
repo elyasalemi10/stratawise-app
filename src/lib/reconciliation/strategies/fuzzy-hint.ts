@@ -1,5 +1,5 @@
 // ============================================================================
-// Strategy 6 — fuzzy sender hint
+// Strategy 6 , fuzzy sender hint
 // ----------------------------------------------------------------------------
 // NEVER auto-matches. Computes Jaro-Winkler similarity between the
 // canonicalised sender name and every active bank_payer_mapping in the
@@ -43,7 +43,7 @@ export async function tryFuzzySenderMatch(
   let bestSim = 0;
   let bestMapping: (typeof mappings)[number] | null = null;
   for (const m of mappings) {
-    // Skip exact-equality mappings — those would have been caught by
+    // Skip exact-equality mappings , those would have been caught by
     // Strategy 3 already (or are now). A Strategy 6 hint suggesting an
     // exact-match mapping is no value-add.
     if (m.canonical_sender_name === canonical) continue;

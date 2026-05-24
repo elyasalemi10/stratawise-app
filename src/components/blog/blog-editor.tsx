@@ -146,7 +146,7 @@ export function BlogEditor({ post }: { post: BlogPostRow }) {
     const t = toast.loading("Uploading image…");
     try {
       const { url } = await uploadBlogImage(file);
-      const alt = window.prompt("Describe the image (alt text — important for SEO & accessibility)") ?? "";
+      const alt = window.prompt("Describe the image (alt text , important for SEO & accessibility)") ?? "";
       editor.chain().focus().setImage({ src: url, alt }).run();
       toast.success("Image added", { id: t });
     } catch (e) {
@@ -194,7 +194,7 @@ export function BlogEditor({ post }: { post: BlogPostRow }) {
 
   async function handleGenerateNarration() {
     setNarrating(true);
-    // Save first — the action narrates the post's saved content.
+    // Save first , the action narrates the post's saved content.
     const saved = await handleSave();
     if (!saved) { setNarrating(false); return; }
     const r = await generateNarration(post.id);
@@ -228,7 +228,7 @@ export function BlogEditor({ post }: { post: BlogPostRow }) {
     setStatusPending(false);
     if (r.error) { toast.error(r.error); return; }
     setStatus(next);
-    toast.success(next === "published" ? "Published — live on the marketing site" : "Moved to draft");
+    toast.success(next === "published" ? "Published , live on the marketing site" : "Moved to draft");
   }
 
   if (!editor) {
@@ -259,7 +259,7 @@ export function BlogEditor({ post }: { post: BlogPostRow }) {
           className="h-auto border-0 bg-transparent px-0 text-2xl font-semibold tracking-tight shadow-none focus-visible:ring-0" />
       </div>
 
-      {/* Post details + SEO — all visible at the top (no dropdown). */}
+      {/* Post details + SEO , all visible at the top (no dropdown). */}
       <div className="space-y-4 rounded-md border border-border bg-card p-4">
         <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
           <div className="space-y-1.5">
@@ -285,7 +285,7 @@ export function BlogEditor({ post }: { post: BlogPostRow }) {
           <Textarea id="blog-excerpt" value={excerpt} onChange={(e) => setExcerpt(e.target.value)} rows={2} placeholder="Short summary shown in listings (also the default meta description)" />
         </div>
 
-        {/* Cover image — upload from computer; dimensions captured automatically. */}
+        {/* Cover image , upload from computer; dimensions captured automatically. */}
         <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
           <div className="space-y-1.5">
             <Label className="text-xs text-muted-foreground">Cover image {REQ}</Label>
@@ -381,7 +381,7 @@ export function BlogEditor({ post }: { post: BlogPostRow }) {
         <EditorContent editor={editor} />
       </div>
 
-      {/* Narration — ElevenLabs read-aloud with synced word highlighting. */}
+      {/* Narration , ElevenLabs read-aloud with synced word highlighting. */}
       <div className="flex flex-wrap items-center gap-3 rounded-md border border-border bg-card p-4">
         <AudioLines className="h-5 w-5 text-muted-foreground" />
         <div className="mr-auto">
@@ -405,7 +405,7 @@ export function BlogEditor({ post }: { post: BlogPostRow }) {
         <DialogContent className="sm:max-w-2xl">
           <DialogHeader>
             <DialogTitle>Narration preview</DialogTitle>
-            <DialogDescription>Press play — each word highlights as it&apos;s read. This is exactly what readers get.</DialogDescription>
+            <DialogDescription>Press play , each word highlights as it&apos;s read. This is exactly what readers get.</DialogDescription>
           </DialogHeader>
           {audioUrl && (
             <div className="max-h-[60vh] overflow-y-auto">

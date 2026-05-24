@@ -1,7 +1,7 @@
 "use client";
 
 // ============================================================================
-// LedgerDuplicateReviewDialog — PP5-D-B
+// LedgerDuplicateReviewDialog , PP5-D-B
 // ----------------------------------------------------------------------------
 // Manager-facing dialog for ledger-side duplicate review. Calls
 // voidAsLedgerDuplicate / keepAsOverpayment from PP5-B. State machine
@@ -175,7 +175,7 @@ function classifyErrorCode(code: string | null): {
       return {
         recoverable: false,
         defaultMessage:
-          "This ledger entry is linked to multiple bank transactions. This is an unusual state — please contact support before proceeding.",
+          "This ledger entry is linked to multiple bank transactions. This is an unusual state , please contact support before proceeding.",
       };
     case "ALREADY_VOIDED":
       return {

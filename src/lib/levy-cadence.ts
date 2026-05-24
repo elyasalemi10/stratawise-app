@@ -66,7 +66,7 @@ export function nextLevyDue(
   let candidate = new Date(year, fyStartMonth - 1, 1);
   // Walk forward in period-sized steps until we land on or after MSD.
   // Safety bound: at most 24 iterations (covers a year of monthly cadence twice
-  // over) — should never need that many.
+  // over) , should never need that many.
   for (let i = 0; i < 24; i++) {
     if (candidate.getTime() >= msd.getTime()) return candidate;
     candidate = new Date(candidate.getFullYear(), candidate.getMonth() + step, 1);
@@ -74,9 +74,9 @@ export function nextLevyDue(
   return candidate;
 }
 
-/** Display the next-levy-due date in AU long format, or "—" if unset. */
+/** Display the next-levy-due date in AU long format, or "," if unset. */
 export function formatLevyDueDisplay(d: Date | null): string {
-  if (!d) return "—";
+  if (!d) return ",";
   return d.toLocaleDateString("en-AU", {
     day: "numeric",
     month: "long",

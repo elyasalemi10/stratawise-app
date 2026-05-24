@@ -5,7 +5,7 @@ import { createServerClient } from "@/lib/supabase";
 import { uploadObject } from "@/lib/storage/r2";
 import { applyAutoLinkToCommLog } from "@/lib/email/auto-link";
 
-// Same cap as the gmail/outlook handlers — anything bigger gets skipped
+// Same cap as the gmail/outlook handlers , anything bigger gets skipped
 // (R2 single-object limit is 5 GB but we don't want a single inbound
 // owner upload to blow our storage budget).
 const MAX_INBOUND_ATTACHMENT_BYTES = 25 * 1024 * 1024;
@@ -13,14 +13,14 @@ const MAX_INBOUND_ATTACHMENT_BYTES = 25 * 1024 * 1024;
 // Inbound email webhook for owner replies to manager-sent mail.
 //
 // External setup required to make this fire:
-//   1. DNS — point MX records for the brand domain (RESEND_SUFFIX, e.g.
+//   1. DNS , point MX records for the brand domain (RESEND_SUFFIX, e.g.
 //      stratawise.com.au) at Resend's inbound service. See
 //      https://resend.com/docs/inbound for the current MX values.
-//   2. Resend dashboard — under "Webhooks", create a webhook with the
+//   2. Resend dashboard , under "Webhooks", create a webhook with the
 //      endpoint URL `{APP_URL}/api/webhooks/resend-inbound`, subscribed to
 //      the "email.received" event. Copy the webhook signing secret
 //      (starts with `whsec_`).
-//   3. App env — set `RESEND_INBOUND_WEBHOOK_SECRET` to the `whsec_` value
+//   3. App env , set `RESEND_INBOUND_WEBHOOK_SECRET` to the `whsec_` value
 //      from the dashboard. Resend signs every inbound webhook with the
 //      Standard Webhooks format (Svix); we verify the signature using
 //      that secret, NOT a bearer token.
@@ -43,7 +43,7 @@ interface InboundPayload {
   data?: {
     // Resend's `email.received` webhook v2 sends `email_id` (the inbound
     // email's id) and `message_id` (RFC822 Message-ID header). Body is
-    // NOT included — we fetch it via the receiving API below.
+    // NOT included , we fetch it via the receiving API below.
     email_id?: string;
     message_id?: string;
     from?: { email?: string; name?: string } | string;
@@ -125,7 +125,7 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: "missing_signature" }, { status: 401 });
   }
 
-  // svix.Webhook.verify requires the RAW body — calling request.json()
+  // svix.Webhook.verify requires the RAW body , calling request.json()
   // first would consume the stream and break HMAC.
   const rawBody = await request.text();
 
@@ -150,7 +150,7 @@ export async function POST(request: NextRequest) {
 
   // Resend may push the same email to several `to[]` entries (cc/bcc folding
   // depending on the inbound rule). We try every recipient address until one
-  // resolves to a known manager — the first match wins.
+  // resolves to a known manager , the first match wins.
   const recipients = pickAllRecipientEmails(payload);
   const sender = pickSenderEmail(payload);
   if (recipients.length === 0 || !sender) {
@@ -271,7 +271,7 @@ export async function POST(request: NextRequest) {
   // ─── Auto-match the outbound thread ─────────────────────────────────
   // Try in order:
   //   1. In-Reply-To header → outbound.external_id (Resend's email id).
-  //      This is the authoritative signal — when present, it's an exact
+  //      This is the authoritative signal , when present, it's an exact
   //      thread match regardless of subject changes.
   //   2. Recipient + normalised subject within 30 days (best-effort
   //      fallback for clients that drop In-Reply-To, or replies that
@@ -288,7 +288,7 @@ export async function POST(request: NextRequest) {
     const m = trimmed.match(/<([^>]+)>/);
     const inner = (m ? m[1] : trimmed).trim();
     if (!inner) return null;
-    // The "<uuid>@resend.dev" form — pull the uuid portion. If the host
+    // The "<uuid>@resend.dev" form , pull the uuid portion. If the host
     // isn't resend.dev, we still try the raw value below.
     const at = inner.indexOf("@");
     return at > 0 ? inner.slice(0, at) : inner;
@@ -439,8 +439,8 @@ export async function POST(request: NextRequest) {
 
   // Drop the reply in the manager's in-app inbox. The link points at
   // /inbox?n=<notification_id> so clicking opens the full email view
-  // (subject, body, attachments, Reply button) — NOT the per-lot
-  // communications tab — so unmatched replies still have a home and
+  // (subject, body, attachments, Reply button) , NOT the per-lot
+  // communications tab , so unmatched replies still have a home and
   // matched ones get associated from the same surface.
   const { data: notif } = await supabase
     .from("notifications")

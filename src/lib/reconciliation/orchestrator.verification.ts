@@ -3,7 +3,7 @@
  *
  * Exercises the 10 scenarios required by PP4-A end-to-end against the live
  * Supabase dev database. Calls tryAutoMatch() directly (the orchestrator is
- * a pure helper, not a server action — no auth-resolver shim needed).
+ * a pure helper, not a server action , no auth-resolver shim needed).
  *
  * Usage:
  *   npx tsx src/lib/reconciliation/orchestrator.verification.ts
@@ -52,7 +52,7 @@ const results: Result[] = [];
 function record(scenario: string, passed: boolean, detail: string) {
   results.push({ scenario, passed, detail });
   console.log(
-    `  ${passed ? "PASS" : "FAIL"}  ${scenario}${detail ? " — " + detail : ""}`,
+    `  ${passed ? "PASS" : "FAIL"}  ${scenario}${detail ? " , " + detail : ""}`,
   );
 }
 
@@ -148,7 +148,7 @@ async function createFixture(): Promise<Fixture> {
     .single();
   assert(budget, "fixture: budget insert failed");
 
-  // 5 lots — enough for FIFO + stale + scenario 9/10 isolation.
+  // 5 lots , enough for FIFO + stale + scenario 9/10 isolation.
   const { data: lots } = await supabase
     .from("lots")
     .insert(
@@ -467,7 +467,7 @@ async function scenario1_LevExactMatch(fx: Fixture) {
 async function scenario2_LevyVariant(fx: Fixture) {
   const header = "O2: 'Levy NNN' variant → resolves to LEV-NNN";
   try {
-    // Fresh notice — LEV-7 from the fixture was already absorbed by O1.
+    // Fresh notice , LEV-7 from the fixture was already absorbed by O1.
     // The test exercises the "Levy NNN" syntax variant of the regex.
     const reference = "LEV-50";
     const bpayCrn = generateCrn(50);
@@ -611,7 +611,7 @@ async function scenario6_BpayCrnMatch(fx: Fixture) {
   try {
     // Use a notice that wasn't already absorbed by O1/O2/O3 (LEV-7 was; LEV-3 was;
     // LEV-5 was partially in O4). LEV-77 is still partially outstanding ($500 - 0 covered).
-    // Wait — O3 already matched LEV-77. Use a fresh notice. Add one inline.
+    // Wait , O3 already matched LEV-77. Use a fresh notice. Add one inline.
     const reference = "LEV-100";
     const bpayCrn = generateCrn(100);
     const { data: notice } = await supabase
@@ -734,7 +734,7 @@ async function scenario8_InvalidCheckDigit(fx: Fixture) {
 }
 
 async function scenario9_StopAtFirstMatchReference(fx: Fixture) {
-  const header = "O9: orchestrator stops at Strategy 1 — BPAY not tried when reference matches";
+  const header = "O9: orchestrator stops at Strategy 1 , BPAY not tried when reference matches";
   try {
     // Insert a fresh outstanding notice so prior scenarios haven't touched it.
     const reference = "LEV-200";
@@ -773,7 +773,7 @@ async function scenario9_StopAtFirstMatchReference(fx: Fixture) {
     });
 
     // Description carries BOTH the LEV reference AND a (random valid) CRN. The
-    // orchestrator must stop at Strategy 1 — Strategy 2 should NOT appear in
+    // orchestrator must stop at Strategy 1 , Strategy 2 should NOT appear in
     // strategies_tried.
     const { bankTransactionId, outcome } = await runOrchestrator(
       fx,
@@ -1023,7 +1023,7 @@ async function insertMappingDirect(
   return data.id;
 }
 
-// ─── Strategy 3 — known_payer (O11–O12) ────────────────────────────────────
+// ─── Strategy 3 , known_payer (O11–O12) ────────────────────────────────────
 
 async function scenario11_KnownPayerUnambiguous(fx: Fixture) {
   const header = "O11: Strategy 3 unambiguous canonical match → name_match";
@@ -1034,7 +1034,7 @@ async function scenario11_KnownPayerUnambiguous(fx: Fixture) {
 
     const { bankTransactionId, outcome } = await runOrchestrator(
       fx,
-      fx.adminNoBpayAccountId, // BPAY disabled — no Strategy 2 confound
+      fx.adminNoBpayAccountId, // BPAY disabled , no Strategy 2 confound
       "Transfer from Jane Brown",
       500,
     );
@@ -1065,7 +1065,7 @@ async function scenario12_KnownPayerAmbiguousFiltered(fx: Fixture) {
     // .eq("status", "active") filter excludes ambiguous mappings, returning
     // 'no_mapping'.
     const lotId = await mkFreshLot(fx);
-    // SG-1 mitigation: NO outstanding notice on this lot — Strategy 5 has
+    // SG-1 mitigation: NO outstanding notice on this lot , Strategy 5 has
     // nothing to match at the unusual amount. Strategy 3 only needs the
     // mapping (in ambiguous status) to verify the active-status filter
     // excludes it.
@@ -1098,7 +1098,7 @@ async function scenario12_KnownPayerAmbiguousFiltered(fx: Fixture) {
   }
 }
 
-// ─── Strategy 4 — keyword + amount (O13–O14) ──────────────────────────────
+// ─── Strategy 4 , keyword + amount (O13–O14) ──────────────────────────────
 
 async function scenario13_KeywordAmountMatch(fx: Fixture) {
   const header = "O13: Strategy 4 keyword + exact amount → review_required=true";
@@ -1172,7 +1172,7 @@ async function scenario14_KeywordAmountMismatch(fx: Fixture) {
   }
 }
 
-// ─── Strategy 5 — amount window (O15–O17) ──────────────────────────────────
+// ─── Strategy 5 , amount window (O15–O17) ──────────────────────────────────
 
 async function scenario15_AmountWindowSingleCandidate(fx: Fixture) {
   const header = "O15: Strategy 5 single amount candidate in window → match (review_required=true)";
@@ -1287,7 +1287,7 @@ async function scenario17_AmountWindowOrdinaryAndSpecialNoTiebreak(fx: Fixture) 
   }
 }
 
-// ─── Strategy 6 — fuzzy hint (O18–O20) ────────────────────────────────────
+// ─── Strategy 6 , fuzzy hint (O18–O20) ────────────────────────────────────
 
 // SCENARIO-AUTHORING GUIDANCE for Strategy 6 fuzzy-hint tests:
 //
@@ -1318,7 +1318,7 @@ async function scenario18_FuzzyHintAboveThreshold(fx: Fixture) {
   try {
     const lotId = await mkFreshLot(fx);
     await insertMappingDirect(fx, "MARTHA", lotId, "active");
-    // No notice on this lot — Strategies 1-5 must all miss so Strategy 6
+    // No notice on this lot , Strategies 1-5 must all miss so Strategy 6
     // gets the chance to fire.
 
     // Description "Marc" → canonical "MARC". jw("MARC", "MARTHA") = 0.825.
@@ -1367,9 +1367,9 @@ async function scenario18_FuzzyHintAboveThreshold(fx: Fixture) {
 async function scenario19_FuzzyHintBelowThreshold(fx: Fixture) {
   const header = "O19: Strategy 6 similarity < 0.75 → no hint";
   try {
-    // No mapping insert needed — Strategy 6 compares against ALL active
+    // No mapping insert needed , Strategy 6 compares against ALL active
     // mappings in the oc (accumulated from prior scenarios).
-    // Description "Qqq Xxx Yyy" — letters not present in any mapping →
+    // Description "Qqq Xxx Yyy" , letters not present in any mapping →
     // jw ≈ 0 against all mappings.
 
     const { bankTransactionId, outcome } = await runOrchestrator(
@@ -1398,10 +1398,10 @@ async function scenario19_FuzzyHintBelowThreshold(fx: Fixture) {
 
 async function scenario20_FuzzyHintHighSimilarityNeverAutoMatches(fx: Fixture) {
   const header =
-    "O20: Strategy 6 high similarity (~0.96) still hint-only — auto requires exact canonical equality";
+    "O20: Strategy 6 high similarity (~0.96) still hint-only , auto requires exact canonical equality";
   try {
     // MARTHA mapping inserted in O18 still active. Description canonicalises
-    // to MARHTA. jw(MARHTA, MARTHA) = 0.9611 — well above threshold, but
+    // to MARHTA. jw(MARHTA, MARTHA) = 0.9611 , well above threshold, but
     // Strategy 3 misses because canonical strings aren't equal. Strategy 6
     // surfaces hint without auto-matching.
     const { bankTransactionId, outcome } = await runOrchestrator(
@@ -1429,7 +1429,7 @@ async function scenario20_FuzzyHintHighSimilarityNeverAutoMatches(fx: Fixture) {
     record(
       header,
       true,
-      `MARHTA ~ MARTHA: similarity=${sim} (very high) but still hint-only — no auto-match`,
+      `MARHTA ~ MARTHA: similarity=${sim} (very high) but still hint-only , no auto-match`,
     );
   } catch (e) {
     record(header, false, (e as Error).message);
@@ -1514,7 +1514,7 @@ async function scenarioC3_OwnershipChangeFlipsToAmbiguous(fx: Fixture) {
     const lotB = await mkFreshLot(fx);
     const mA = await insertMappingDirect(fx, "C3 SHARED NAME", lotA, "active");
 
-    // New owner name on lotB canonicalises to "C3 SHARED NAME" — sweep
+    // New owner name on lotB canonicalises to "C3 SHARED NAME" , sweep
     // should flip lotA's mapping to ambiguous (Addition 2: never auto-promotes).
     const result = await sweepMappingsForOwnerChange(
       fx.ocId,
@@ -1847,7 +1847,7 @@ async function scenarioC9_RaceMappingDeleted(fx: Fixture) {
 
 async function scenario21_AllSignalsReferenceWins(fx: Fixture) {
   const header =
-    "O21: 'BPAY <CRN> LEV-X from JANE BROWN' — Strategy 1 wins; Strategies 2-3 not tried";
+    "O21: 'BPAY <CRN> LEV-X from JANE BROWN' , Strategy 1 wins; Strategies 2-3 not tried";
   try {
     const lotId = await mkFreshLot(fx);
     // Notice with a BPAY CRN AND a known-payer mapping for the same lot.
@@ -1898,7 +1898,7 @@ async function scenario21_AllSignalsReferenceWins(fx: Fixture) {
     // NOTE: order matters here. The Strategy 1 regex
     //   /\b(?:lev(?:y)?\s*[-]?\s*(\d+)|(\d+)\s*[-]?\s*lev(?:y)?)\b/gi
     // has a second alternative `(\d+)\s*[-]?\s*lev` that greedily consumes a
-    // numeric run immediately followed by "LEV" — so if the CRN lands right
+    // numeric run immediately followed by "LEV" , so if the CRN lands right
     // before the LEV reference, the regex captures the CRN's digits as the
     // levy number. Putting `${reference}` first sidesteps the ambiguity for
     // this scenario; the wider regex tightening is logged as a PRE_LAUNCH
@@ -1929,7 +1929,7 @@ async function scenario21_AllSignalsReferenceWins(fx: Fixture) {
 
 async function scenario22_KnownPayerBeatsAmountWindow(fx: Fixture) {
   const header =
-    "O22: known-payer mapping AND amount-window candidate — Strategy 3 fires before Strategy 5";
+    "O22: known-payer mapping AND amount-window candidate , Strategy 3 fires before Strategy 5";
   try {
     const lotMapped = await mkFreshLot(fx);
     const lotOther = await mkFreshLot(fx);
@@ -1939,7 +1939,7 @@ async function scenario22_KnownPayerBeatsAmountWindow(fx: Fixture) {
       amount: 789,
       dueDate: "2026-04-28",
     });
-    // Different lot has a notice with the SAME amount in the same date window —
+    // Different lot has a notice with the SAME amount in the same date window ,
     // would be Strategy 5's single candidate if Strategy 3 didn't fire first.
     await mkOutstandingNotice(fx, lotOther, {
       amount: 789,
@@ -1980,7 +1980,7 @@ async function scenario23_EmptyDescriptionAllSixTried(fx: Fixture) {
   const header =
     "O23: empty description, no amount match, no mapping → all 6 strategies tried, no match";
   try {
-    // No setup — no notices, no mappings created. Use a deliberately rare
+    // No setup , no notices, no mappings created. Use a deliberately rare
     // amount so Strategy 5 has nothing to match.
     const description = "";
     const amount = 88_888.88;
@@ -2043,7 +2043,7 @@ async function scenario24_OnlyStaleReferencesFallthrough(fx: Fixture) {
     assert(tried.length === 6, `O24 expected 6 strategies tried, got ${tried.length}`);
 
     // Strategy 1 outcome should be all_references_stale (or no_outstanding_notices,
-    // depending on fixture state — both indicate stale-ref fallthrough).
+    // depending on fixture state , both indicate stale-ref fallthrough).
     const ref = tried.find((t) => t.strategy === "reference");
     assert(ref, "O24 missing reference entry");
     assert(
@@ -2059,7 +2059,7 @@ async function scenario24_OnlyStaleReferencesFallthrough(fx: Fixture) {
 
 async function scenario25_MixedRefsPartialAllocation(fx: Fixture) {
   const header =
-    "O25: multiple references, some stale — Strategy 1 partial-allocates non-stale, audits stale ones";
+    "O25: multiple references, some stale , Strategy 1 partial-allocates non-stale, audits stale ones";
   try {
     const lotA = await mkFreshLot(fx);
     const lotB = await mkFreshLot(fx);
@@ -2181,7 +2181,7 @@ async function cleanupOneCompany(companyId: string) {
       await supabase.from("levy_notices").delete().in("oc_id", subIds);
     }
     await supabase.from("levy_batches").delete().in("oc_id", subIds);
-    // PP4-B: bank_payer_mappings — cascades on oc delete via FK,
+    // PP4-B: bank_payer_mappings , cascades on oc delete via FK,
     // but cleaning explicitly guarantees no stale rows linger if cascade
     // is disabled at the DB level for any reason.
     await supabase.from("bank_payer_mappings").delete().in("oc_id", subIds);
@@ -2204,7 +2204,7 @@ async function main() {
     process.exit(0);
   }
 
-  console.log("Orchestrator verification — PP4-A scenarios");
+  console.log("Orchestrator verification , PP4-A scenarios");
 
   await bpayPreflight();
   await cleanupMarker();

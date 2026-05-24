@@ -58,7 +58,7 @@ export default function ForgotPasswordPage() {
     const codeOk = /^\d{6}$/.test(code);
     if (!codeOk) problems.push("Enter the 6-digit code from your email.");
     const pwOk = PASSWORD_RULE.test(password);
-    if (!pwOk) problems.push(`New password too weak — ${PASSWORD_HINT}`);
+    if (!pwOk) problems.push(`New password too weak , ${PASSWORD_HINT}`);
     const confirmOk = password === confirm;
     if (!confirmOk) problems.push("Passwords don't match.");
     setCodeInvalid(!codeOk);

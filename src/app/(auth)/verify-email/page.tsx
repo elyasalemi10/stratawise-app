@@ -106,7 +106,7 @@ function VerifyEmailContent() {
 
   return (
     <div className="w-full space-y-8">
-      {/* Cancel sign-up — X in the top-right (clears the half-created
+      {/* Cancel sign-up , X in the top-right (clears the half-created
           session via /logout; the unverified account can be resumed later). */}
       <a
         href="/logout"

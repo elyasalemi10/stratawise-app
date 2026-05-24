@@ -48,7 +48,7 @@ const LEVY_BASIS = [
 type LevyBasis = typeof LEVY_BASIS[number]["value"];
 
 function InlineYesNoToggle({ value, onChange }: { value: boolean; onChange: (v: boolean) => void }) {
-  // Toggle circle on the LEFT, Yes/No text on the right — matches Step 1.
+  // Toggle circle on the LEFT, Yes/No text on the right , matches Step 1.
   return (
     <button
       type="button"
@@ -131,7 +131,7 @@ export function Step2Settings({
       return;
     }
 
-    // Background save — advance instantly, surface errors via toast.
+    // Background save , advance instantly, surface errors via toast.
     // The WizardActions auto-save heartbeat backstops any dropped write.
     const patch = {
       financial_year_start_month: fyMonth,
@@ -191,15 +191,15 @@ export function Step2Settings({
             </div>
           </div>
 
-          {/* (First levy due helper removed per item 7 — derivable from
+          {/* (First levy due helper removed per item 7 , derivable from
               the FY + cadence later and was creating noise at setup time.) */}
 
           {/* Levy calculation basis + early payment incentive moved out of
-              OC creation per item 8 — both are now configurable from the
+              OC creation per item 8 , both are now configurable from the
               per-OC Settings → Financial page after creation. Defaults
               (lot_liability / 0%) cover the vast majority of OCs at sign-up. */}
 
-          {/* Interest on overdue — inline-toggle row (no card). Label and
+          {/* Interest on overdue , inline-toggle row (no card). Label and
               toggle sit beside each other on the left (matches the GST row
               on Step 1) rather than being split across the full width. */}
           <div className="space-y-3">

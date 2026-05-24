@@ -11,7 +11,7 @@
 //
 // Narrated blocks: heading, paragraph, list (bullet/ordered), blockquote.
 // Skipped (no audio, no highlight): tables, images, YouTube embeds, code,
-// timelines, horizontal rules — tables especially read terribly aloud.
+// timelines, horizontal rules , tables especially read terribly aloud.
 
 export interface NarrationWord {
   w: string;
@@ -26,14 +26,14 @@ export interface NarrationBuild {
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 type JNode = { type?: string; text?: string; content?: JNode[] };
 
-/** Shared word normaliser — MUST match the player's tokeniser so word
+/** Shared word normaliser , MUST match the player's tokeniser so word
  *  sequences line up. Keeps tokens whitespace-delimited (no splitting inside
  *  words on dashes) so the player and transformer agree. */
 export function normalizeForNarration(input: string): string {
   return input
     .replace(/[‘’‚‛]/g, "'")
     .replace(/[“”„]/g, '"')
-    .replace(/[–—]/g, ",")
+    .replace(/[–,]/g, ",")
     .replace(/[​-‍﻿]/g, "")
     .replace(/\p{Extended_Pictographic}/gu, "")
     .replace(/\s+/g, " ")

@@ -60,7 +60,7 @@ export async function recordLotOwnerConsent() {
 }
 
 // Records a lot owner's per-OC digital-communication consent. Consent is
-// per (owner, OC) — stored in oc_member_consents and mirrored onto the
+// per (owner, OC) , stored in oc_member_consents and mirrored onto the
 // owner's lot_owners row (digital_consent_categories) for the OC, with a
 // before/after entry in lot_owner_consent_log for audit.
 export async function recordOcConsent(ocId: string, categories: string[]) {

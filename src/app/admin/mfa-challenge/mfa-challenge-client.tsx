@@ -53,13 +53,13 @@ export function MfaChallengeClient() {
     setVerifying(false);
     if (error) {
       void logMfaEvent("mfa_verify_failed", { reason: error.message, factorId });
-      toast.error(error.message || "That code didn't match — try again.");
+      toast.error(error.message || "That code didn't match , try again.");
       return;
     }
     void logMfaEvent("mfa_verified", { factorId });
     // Hard navigation (not router.replace) so /admin re-renders against the
     // freshly-written aal2 cookie rather than a soft-nav cache. Keep the
-    // spinner on through the redirect — no flash.
+    // spinner on through the redirect , no flash.
     window.location.href = "/admin";
   }
 

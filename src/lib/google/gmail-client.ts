@@ -13,10 +13,10 @@ import { GMAIL_SCOPES } from "./gmail-scopes";
 //
 // Quota: Gmail enforces 250 quota units / user / second (each
 // users.messages.send burns ~100). We don't pay for Gmail API usage at all
-// — quota overruns just fail with 429; the caller retries once after 1s.
+// , quota overruns just fail with 429; the caller retries once after 1s.
 // Project-wide daily quota (1.2B units) is effectively infinite.
 //
-// IMPORTANT: never construct a JWT outside `getGmail()` — every send /
+// IMPORTANT: never construct a JWT outside `getGmail()` , every send /
 // read MUST pass through this helper so the scope constant + subject
 // impersonation are consistently applied.
 
@@ -204,7 +204,7 @@ export async function sendViaGmail(
       // Gmail returns the internal id; the RFC822 Message-ID it stamped on
       // the outgoing email comes back via a follow-up metadata fetch. We
       // pull it once so the caller can store it on communication_log.
-      // external_id — matches the In-Reply-To header on future replies.
+      // external_id , matches the In-Reply-To header on future replies.
       let rfc822 = "";
       try {
         const meta = await gmail.users.messages.get({
@@ -317,10 +317,10 @@ export async function watchMailbox(
   }
 }
 
-// Counter-part to watchMailbox — calls users.stop() so Gmail stops
+// Counter-part to watchMailbox , calls users.stop() so Gmail stops
 // publishing history events to our Pub/Sub topic. MUST be called when a
 // manager disconnects, otherwise inbound keeps landing in /inbox until the
-// 7-day watch window naturally expires. Failures are non-fatal — we still
+// 7-day watch window naturally expires. Failures are non-fatal , we still
 // delete the subscription row so the gmail-push webhook ignores any
 // in-flight events.
 export async function stopMailboxWatch(
@@ -462,7 +462,7 @@ function stripHtml(html: string): string {
     .trim();
 }
 
-// Walks a Gmail payload tree and collects every "real" attachment — a
+// Walks a Gmail payload tree and collects every "real" attachment , a
 // part with a non-empty filename + an attachmentId. We deliberately
 // accept inline images too (they often carry filenames for in-body
 // rendering); the previous filter was too strict for forwarded emails
@@ -509,7 +509,7 @@ function extractAttachments(
   return out;
 }
 
-// Pulls the bytes for a single attachment. Gmail returns base64url —
+// Pulls the bytes for a single attachment. Gmail returns base64url ,
 // we decode to a Buffer for direct upload to R2.
 export async function getMessageAttachment(
   managerEmail: string,

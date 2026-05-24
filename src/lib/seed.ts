@@ -1,5 +1,5 @@
 /**
- * Seed script — promotes the first user to strata_manager.
+ * Seed script , promotes the first user to strata_manager.
  *
  * Usage:
  *   npx tsx src/lib/seed.ts
@@ -44,7 +44,7 @@ async function seed() {
   // Show all profiles
   console.log("Profiles found:");
   profiles.forEach((p, i) => {
-    console.log(`  ${i + 1}. ${p.email} (${p.first_name ?? ""} ${p.last_name ?? ""}) — role: ${p.role}`);
+    console.log(`  ${i + 1}. ${p.email} (${p.first_name ?? ""} ${p.last_name ?? ""}) , role: ${p.role}`);
   });
 
   // Promote specific user to strata_manager

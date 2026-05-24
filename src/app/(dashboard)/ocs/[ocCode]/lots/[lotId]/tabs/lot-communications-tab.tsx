@@ -115,7 +115,7 @@ export function LotCommunicationsTab(props: Props) {
   const [detail, setDetail] = React.useState<LotCommunicationRow | null>(null);
   const [rows, setRows] = React.useState<LotCommunicationRow[]>(initialCommunications);
   // Keep local state in sync if the server refreshes the page (e.g. after
-  // a successful send — router.refresh() re-runs the server component and
+  // a successful send , router.refresh() re-runs the server component and
   // re-mounts this tab with new initialCommunications).
   React.useEffect(() => {
     setRows(initialCommunications);
@@ -144,7 +144,7 @@ export function LotCommunicationsTab(props: Props) {
   return (
     <TooltipProvider delay={120}>
     <div className="space-y-6">
-      {/* Communication history — Actions dropdown lives in the header row of
+      {/* Communication history , Actions dropdown lives in the header row of
           this single card. The standalone "Reach out" tile is gone. */}
       <Card>
         <CardContent className="pt-5 space-y-4">
@@ -185,7 +185,7 @@ export function LotCommunicationsTab(props: Props) {
         </CardContent>
       </Card>
 
-      {/* Drawers — only the open one mounts. Mount/unmount on `open` so each
+      {/* Drawers , only the open one mounts. Mount/unmount on `open` so each
           drawer's local state resets between uses. */}
       {open === "email" && (
         <SendEmailDrawer
@@ -416,7 +416,7 @@ function CommunicationRow({
         </TooltipTrigger>
         <TooltipContent>
           {row.confidential
-            ? "Confidential — hidden from future owners. Click to make visible."
+            ? "Confidential , hidden from future owners. Click to make visible."
             : "Visible to future owners. Click to mark confidential."}
         </TooltipContent>
       </Tooltip>
@@ -434,7 +434,7 @@ function formatShortDate(iso: string): string {
   });
 }
 
-// Date-only formatter for call_date (when the call happened) — the manager
+// Date-only formatter for call_date (when the call happened) , the manager
 // only ever picks a date in the form, never a time of day, so showing
 // "13:00" in the detail dialog is misleading.
 function formatDateOnly(iso: string): string {
@@ -471,9 +471,9 @@ function CommunicationDetailDialog({
   return <CallDetailDialog row={row} onClose={onClose} />;
 }
 
-// Email preview — wider dialog with a visible grey outer border. Each row
+// Email preview , wider dialog with a visible grey outer border. Each row
 // is its own bordered strip so long values don't push out past the dialog
-// edge — From / To wrap, Subject scrolls horizontally, Body scrolls
+// edge , From / To wrap, Subject scrolls horizontally, Body scrolls
 // vertically.
 function EmailDetailDialog({
   row,
@@ -493,8 +493,8 @@ function EmailDetailDialog({
         </DialogHeader>
 
         <div className="space-y-3 text-sm overflow-hidden">
-          <HeaderField label="From" value={row.actor_name ?? "—"} />
-          <HeaderField label="To" value={row.recipient_email ?? "—"} />
+          <HeaderField label="From" value={row.actor_name ?? ","} />
+          <HeaderField label="To" value={row.recipient_email ?? ","} />
           <HeaderField
             label="Subject"
             value={row.subject ?? "(no subject)"}
@@ -561,7 +561,7 @@ function SmsDetailDialog({
   initialSenderId: string | null;
 }) {
   // Pull the platform-level SMS sender id so the "From" row matches what
-  // landed on the recipient's handset — the manager's profile name only
+  // landed on the recipient's handset , the manager's profile name only
   // shows up in the audit log, not in the SMS itself. Preloaded
   // server-side and threaded through the tab; only fetch as a fallback.
   const [senderId, setSenderId] = React.useState<string | null>(initialSenderId);
@@ -587,8 +587,8 @@ function SmsDetailDialog({
         </DialogHeader>
 
         <div className="space-y-3 text-sm overflow-hidden">
-          <HeaderField label="From" value={senderId ?? "—"} />
-          <HeaderField label="To" value={row.recipient_phone ?? "—"} />
+          <HeaderField label="From" value={senderId ?? ","} />
+          <HeaderField label="To" value={row.recipient_phone ?? ","} />
           <HeaderField label="Sent" value={formatShortDate(row.created_at)} />
           {row.actor_name && (
             <HeaderField label="Logged by" value={row.actor_name} />
@@ -627,8 +627,8 @@ function CallDetailDialog({
         </DialogHeader>
 
         <div className="space-y-3 text-sm overflow-hidden">
-          <HeaderField label="Logged by" value={row.actor_name ?? "—"} />
-          <HeaderField label="Number" value={row.recipient_phone ?? "—"} />
+          <HeaderField label="Logged by" value={row.actor_name ?? ","} />
+          <HeaderField label="Number" value={row.recipient_phone ?? ","} />
           <HeaderField
             label="Call date"
             value={formatDateOnly(row.sent_at ?? row.created_at)}
@@ -699,7 +699,7 @@ async function readFileAsBase64(file: File): Promise<string> {
     const reader = new FileReader();
     reader.onerror = () => reject(reader.error);
     reader.onload = () => {
-      // result: "data:<mime>;base64,<payload>" — strip the prefix.
+      // result: "data:<mime>;base64,<payload>" , strip the prefix.
       const result = reader.result as string;
       const idx = result.indexOf(",");
       resolve(idx === -1 ? result : result.slice(idx + 1));
@@ -822,7 +822,7 @@ function SendEmailDrawer({
         <Label className="text-xs uppercase tracking-wide text-muted-foreground">
           From
         </Label>
-        {/* Single-identity render — the manager's outbound is routed
+        {/* Single-identity render , the manager's outbound is routed
             via their firm's configured provider (Gmail / Outlook /
             StrataWise fallback). When we add a per-send provider
             picker, swap this static line for a <Select> over the
@@ -843,7 +843,7 @@ function SendEmailDrawer({
         />
         {!ownerHasEmail && (
           <p className="text-xs text-destructive">
-            This owner doesn&apos;t have an email on file — type one above to
+            This owner doesn&apos;t have an email on file , type one above to
             send anyway. It won&apos;t be saved to the owner&apos;s details.
           </p>
         )}
@@ -1050,7 +1050,7 @@ function SendSmsDrawer({
         <PhoneInput value={phone} onChange={setPhone} />
         {!ownerHasPhone && (
           <p className="text-xs text-destructive">
-            This owner doesn&apos;t have a mobile on file — enter one above to
+            This owner doesn&apos;t have a mobile on file , enter one above to
             send. It won&apos;t be saved to the owner&apos;s details.
           </p>
         )}
@@ -1162,7 +1162,7 @@ function LogCallDrawer({
           lot_id: lotId,
           recipient_phone: phone,
           direction,
-          // The day the call actually happened — recorded on sent_at on the
+          // The day the call actually happened , recorded on sent_at on the
           // server. The row's created_at (always "now") is the audit-trail
           // "logged on" date, kept separate.
           call_date: callDate || undefined,
@@ -1187,7 +1187,7 @@ function LogCallDrawer({
           {/* Wider trigger so the trailing hint ("(I called them)" / "(they
               called me)") never truncates. base-ui's <SelectValue> defaults
               to the raw value string when SelectItem children are not
-              registered with a label — we override via a child render so the
+              registered with a label , we override via a child render so the
               trigger reads as "Outbound", not "outbound". */}
           <SelectTrigger className="w-full">
             <SelectValue placeholder="Choose direction">

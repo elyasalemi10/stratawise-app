@@ -103,7 +103,7 @@ export async function getMyArrears(
   };
 
   const parentLeviesRaw = (parentLeviesResult.data ?? []) as ParentLevyRow[];
-  // Filter out fully-paid parents (amount === amount_paid) — they're
+  // Filter out fully-paid parents (amount === amount_paid) , they're
   // technically status='paid' too, but defensive predicate catches state
   // drift between status enum and amount fields.
   const parentLevies = parentLeviesRaw.filter(

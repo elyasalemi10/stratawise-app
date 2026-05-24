@@ -77,7 +77,7 @@ const results: Result[] = [];
 
 function record(scenario: string, passed: boolean, detail: string) {
   results.push({ scenario, passed, detail });
-  console.log(`  ${passed ? "PASS" : "FAIL"}  ${scenario}${detail ? " — " + detail : ""}`);
+  console.log(`  ${passed ? "PASS" : "FAIL"}  ${scenario}${detail ? " , " + detail : ""}`);
 }
 
 function assert(cond: unknown, msg = "assertion failed"): asserts cond {
@@ -441,7 +441,7 @@ async function ld3_amountMustEqual(fx: Fixture) {
 }
 
 async function ld4_categoryNotPayment(fx: Fixture) {
-  // Two adjustment_credits, same lot/notice/amount/date — predicate excludes
+  // Two adjustment_credits, same lot/notice/amount/date , predicate excludes
   // category != 'payment'.
   await insertCredit({ fx, lotId: fx.lotAId, amount: 60, entry_date: "2026-05-20", category: "adjustment_credit" });
   const newerId = await insertCredit({ fx, lotId: fx.lotAId, amount: 60, entry_date: "2026-05-20", category: "adjustment_credit" });
@@ -554,7 +554,7 @@ async function ld7_chainPrevention(fx: Fixture) {
     supabase,
   );
   record(
-    "LD-7: chain prevention — third anchors on first, not on second",
+    "LD-7: chain prevention , third anchors on first, not on second",
     det3.flagged && det3.duplicate_of === firstId,
     `flagged=${det3.flagged}, anchor=${det3.flagged ? det3.duplicate_of : "n/a"}`,
   );
@@ -745,7 +745,7 @@ async function ld12_voidAlreadyVoided(
   // Insert a credit, void it directly (not as duplicate), then mark it as
   // suspected duplicate. voidAsLedgerDuplicate should refuse with
   // ALREADY_VOIDED. Note the suspected-mark needs to be on a still-active
-  // row in real life — but DB will let us hand-craft the state.
+  // row in real life , but DB will let us hand-craft the state.
   const olderId = await insertCredit({ fx, lotId: fx.lotAId, amount: 70, entry_date: "2026-07-01" });
   const newerId = await insertCredit({ fx, lotId: fx.lotAId, amount: 70, entry_date: "2026-07-01" });
   const det = await detectLedgerDuplicate(
@@ -995,7 +995,7 @@ async function ld16_recordCashReceiptBoundary(
   // happens at rpc_deposit_undeposited_funds time). The eligibility
   // predicate excludes untargeted credits, so receipt credits never
   // get duplicate_status set. recordCashReceipt deliberately has NO
-  // ledger-detector integration — this test verifies the boundary.
+  // ledger-detector integration , this test verifies the boundary.
   //
   // Setup creates a notice-linked credit at the same lot/amount/date so
   // a hypothetical (untargeted) receipt would normally hash-match if the
@@ -1022,7 +1022,7 @@ async function ld16_recordCashReceiptBoundary(
   const state = await fetchEntryState(receiptRes.success!.ledgerEntryId);
   // Confirm: receipt credit has duplicate_status=NULL AND levy_notice_id is
   // NULL (RPC contract). Any non-null duplicate_status here would mean the
-  // detector ran on an untargeted credit — predicate violation.
+  // detector ran on an untargeted credit , predicate violation.
   const { data: row } = await supabase
     .from("lot_ledger_entries")
     .select("levy_notice_id, duplicate_status")
@@ -1033,7 +1033,7 @@ async function ld16_recordCashReceiptBoundary(
     state?.duplicate_status === null &&
     r?.levy_notice_id === null;
   record(
-    "LD-16: recordCashReceipt scope boundary — receipt credit is untargeted; detector intentionally not invoked",
+    "LD-16: recordCashReceipt scope boundary , receipt credit is untargeted; detector intentionally not invoked",
     ok,
     `dup_status=${state?.duplicate_status}, levy_notice_id=${r?.levy_notice_id}`,
   );
@@ -1045,7 +1045,7 @@ async function ld17_orchestratorIntegration(
 ) {
   // LD-17 needs an orchestrator-matchable notice. The shared fixture
   // notices (A/B/C) get heavily credited by sibling tests, so by this
-  // point their outstanding balances are negative — the orchestrator
+  // point their outstanding balances are negative , the orchestrator
   // would fall through with stale_reference_detected. Create a fresh
   // dedicated notice + debit inline so this scenario is independent.
   const { data: ld17Notice } = await supabase
@@ -1081,7 +1081,7 @@ async function ld17_orchestratorIntegration(
     created_by: fx.profileId,
   });
 
-  // Pre-existing payment credit for $250 on the fresh notice — anchor for
+  // Pre-existing payment credit for $250 on the fresh notice , anchor for
   // the duplicate detection. $500 outstanding minus this $250 leaves $250
   // for the orchestrator to allocate.
   const olderId = await insertCredit({
@@ -1254,7 +1254,7 @@ async function ld19_voidLinkedCreditEndState(
     post.match_status === "unmatched" &&
     (result.success?.unmatched_bank_tx_ids ?? []).includes(bankTx.id);
   record(
-    "LD-19: voidAsLedgerDuplicate end-state for linked credit — full cascade",
+    "LD-19: voidAsLedgerDuplicate end-state for linked credit , full cascade",
     ok,
     `dup_status=${ledgerState?.duplicate_status}, ledger_status=${ledgerState?.status}, matches_after=${(matchesAfter ?? []).length}, bank_matched_total=${post.matched_total}, bank_match_status=${post.match_status}`,
   );
@@ -1283,7 +1283,7 @@ async function ld20_voidUnlinkedCredit(
     entry_date: "2026-09-10",
     levy_notice_id: fx.noticeCId,
   });
-  // No reconciliation_matches insert — credit is unlinked.
+  // No reconciliation_matches insert , credit is unlinked.
 
   await supabase
     .from("lot_ledger_entries")
@@ -1324,14 +1324,14 @@ async function ld20_voidUnlinkedCredit(
     (result.success?.unmatched_bank_tx_ids ?? []).length === 0 &&
     result.success?.void_offset_id === offsetRow.id;
   record(
-    "LD-20: voidAsLedgerDuplicate end-state for UNLINKED credit — rpc_ledger_void direct path, no bank tx unmatch",
+    "LD-20: voidAsLedgerDuplicate end-state for UNLINKED credit , rpc_ledger_void direct path, no bank tx unmatch",
     ok,
     `dup_status=${ledgerState?.duplicate_status}, ledger_status=${ledgerState?.status}, unmatched_bank_tx_ids=${JSON.stringify(result.success?.unmatched_bank_tx_ids ?? [])}, void_offset_id_returned=${result.success?.void_offset_id}`,
   );
 }
 
 // ─── LD-21: voidAsLedgerDuplicate fails with MULTI_LINKED ──────────────
-// Hand-crafts an "impossible" state — one credit linked to two distinct
+// Hand-crafts an "impossible" state , one credit linked to two distinct
 // bank txs via separate reconciliation_matches rows. The UNIQUE
 // constraint on (bank_transaction_id, ledger_entry_id) blocks same-pair
 // duplicates but allows distinct-pair multi-linkage; no current StrataWise flow
@@ -1556,7 +1556,7 @@ async function main() {
     process.exit(0);
   }
 
-  console.log("Ledger-side duplicate-detection verification — PP5-B scenarios\n");
+  console.log("Ledger-side duplicate-detection verification , PP5-B scenarios\n");
   console.log("[1/3] Cleaning up stale verification data");
   await cleanupMarker();
 

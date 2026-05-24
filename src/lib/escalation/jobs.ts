@@ -1,5 +1,5 @@
 // ============================================================================
-// Escalation step engine — framework-agnostic (PP6.5)
+// Escalation step engine , framework-agnostic (PP6.5)
 // ----------------------------------------------------------------------------
 // Same boundary rules as src/lib/accrual/overdue-check.ts:
 //   - NO "use server" directive
@@ -16,7 +16,7 @@
 //   - current_step < 3   (final-step instances are terminal once status flips)
 //
 // Per qualifying instance:
-//   1. Re-resolve linked levy_notice. Skip if paid (amount_paid >= amount) —
+//   1. Re-resolve linked levy_notice. Skip if paid (amount_paid >= amount) ,
 //      manager may have paid in interim; engine should not nag a paid debt.
 //   2. Resolve owner via oc_members (primary contact). Skip
 //      if no owner.
@@ -28,7 +28,7 @@
 //      sendFinalNoticeEmail). Respects EMAIL_DRY_RUN.
 //   6. On real-send success: increment current_step, advance next_action_at,
 //      flip status to 'escalated_manual' when next_step=3 (terminal ladder
-//      state — engine has done all it can; further escalation is manual /
+//      state , engine has done all it can; further escalation is manual /
 //      off-platform).
 //   7. communication_log row inserted (queued → sent / failed).
 //   8. audit_log row written.
@@ -73,7 +73,7 @@ export interface EscalationStepResult {
 }
 
 export interface EscalationStepInput {
-  runDate: string;            // 'YYYY-MM-DD' — usually AEST/AEDT-derived
+  runDate: string;            // 'YYYY-MM-DD' , usually AEST/AEDT-derived
   systemProfileId: string;
   supabase: SupabaseClient;
 }
@@ -93,7 +93,7 @@ export async function runEscalationStepCheck(
   // Build the runDate timestamp boundary. next_action_at is TIMESTAMPTZ;
   // we treat the runDate as end-of-day AEST/AEDT for inclusion in the sweep.
   // Slight overshoot (compared to strict <= 'YYYY-MM-DD 23:59:59') is
-  // acceptable — the next_action_at fields are set to a UTC instant when
+  // acceptable , the next_action_at fields are set to a UTC instant when
   // each step lands, so a runDate of 2026-05-11 picks up everything due
   // through end of that calendar day in any reasonable tz.
   const runDateEnd = `${runDate}T23:59:59.999Z`;
@@ -201,7 +201,7 @@ async function processEscalationInstance(
   };
 
   // Paid-in-interim: amount_paid covers amount. Engine does not advance.
-  // Note: we do NOT auto-resolve the escalation_instance here — a manager
+  // Note: we do NOT auto-resolve the escalation_instance here , a manager
   // workflow may want to keep the instance row for audit / re-open logic.
   // Just skip the send; instance stays 'active' but the eligibility query
   // will return it again until status changes. Cheap re-eval is fine.
@@ -361,8 +361,8 @@ async function processEscalationInstance(
       : `FINAL NOTICE ${levy.reference_number} (${lotLabel})`;
   const subject =
     nextStep === 2
-      ? `Second reminder — levy overdue ${daysOverdue}+ days — ${ocName}`
-      : `FINAL NOTICE — outstanding levy — ${ocName}`;
+      ? `Second reminder , levy overdue ${daysOverdue}+ days , ${ocName}`
+      : `FINAL NOTICE , outstanding levy , ${ocName}`;
   const { data: logRow, error: logErr } = await supabase
     .from("communication_log")
     .insert({
@@ -514,7 +514,7 @@ async function dispatchStep(args: DispatchStepArgs) {
   if (args.nextStep === 2) {
     return sendSecondReminderEmail(args.params);
   }
-  // Step 3 — final notice. Same param shape as second reminder.
+  // Step 3 , final notice. Same param shape as second reminder.
   const finalParams: SendFinalNoticeEmailParams = args.params;
   return sendFinalNoticeEmail(finalParams);
 }

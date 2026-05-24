@@ -21,10 +21,10 @@ import type {
 } from "@/lib/actions/lot-overview";
 
 // Overview tab (Item 12). Replaces the old "General" tab. Renders three cards:
-//   1. Next levy due — formatted "17th March 2026" with reference + amount
-//   2. Recent activity — last 5 audit-log entries scoped to this lot, with a
+//   1. Next levy due , formatted "17th March 2026" with reference + amount
+//   2. Recent activity , last 5 audit-log entries scoped to this lot, with a
 //      "View all activity" link that switches to the History tab
-//   3. Snapshot — owner type, ownership-since (or "Not set"), portal last
+//   3. Snapshot , owner type, ownership-since (or "Not set"), portal last
 //      active, consent count (clickable → Owner tab)
 
 const TOTAL_CONSENT_CATEGORIES = 5;
@@ -292,7 +292,7 @@ function DetailField({
           mono ? "font-mono" : ""
         }`}
       >
-        {value || "—"}
+        {value || ","}
       </dd>
     </div>
   );

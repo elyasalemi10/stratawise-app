@@ -4,7 +4,7 @@
  * Exercises the pure `validateLogoFile` helper from
  * src/lib/actions/company-branding.ts. The server-action wrapper
  * (updateCompanyLogo) is exercised end-to-end via the deploy-time UI
- * smoke walk — this suite is for the validation gate (size, type,
+ * smoke walk , this suite is for the validation gate (size, type,
  * dimension) which is the only path with non-trivial logic worth a
  * standalone harness.
  *
@@ -32,7 +32,7 @@ const results: Result[] = [];
 
 function record(scenario: string, passed: boolean, detail: string) {
   results.push({ scenario, passed, detail });
-  console.log(`  ${passed ? "PASS" : "FAIL"}  ${scenario}${detail ? " — " + detail : ""}`);
+  console.log(`  ${passed ? "PASS" : "FAIL"}  ${scenario}${detail ? " , " + detail : ""}`);
 }
 
 // ─── Test PNG fixtures ─────────────────────────────────────────────────
@@ -80,7 +80,7 @@ async function cb1_happyPath() {
 
 async function cb2_fileTooLargeRejected() {
   // Build a buffer > MAX_LOGO_BYTES (1MB). Content doesn't have to be a
-  // real image — the size check fires before image-size is called.
+  // real image , the size check fires before image-size is called.
   const bigBuffer = Buffer.alloc(MAX_LOGO_BYTES + 1, 0);
   const result = await validateLogoFile(bigBuffer, "image/png", bigBuffer.length);
   const ok = result.ok === false && result.errorCode === "FILE_TOO_LARGE";
@@ -115,7 +115,7 @@ async function cb4_dimensionsTooLargeRejected() {
 }
 
 async function main() {
-  console.log("Company branding logo validator — PP7-A scenarios CB-1..CB-4\n");
+  console.log("Company branding logo validator , PP7-A scenarios CB-1..CB-4\n");
   await cb1_happyPath();
   await cb2_fileTooLargeRejected();
   await cb3_invalidTypeRejected();

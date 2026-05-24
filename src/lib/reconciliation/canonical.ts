@@ -1,5 +1,5 @@
 // ============================================================================
-// Sender-name canonicalisation — narrow noise-strip pipeline (PP4-B)
+// Sender-name canonicalisation , narrow noise-strip pipeline (PP4-B)
 // ----------------------------------------------------------------------------
 // Reduces a free-text bank-transaction description to a canonical uppercase
 // string suitable for:
@@ -20,12 +20,12 @@
 //   4. strip BPAY blocks (BPAY + non-uppercase chars + digit runs)
 //   5. strip directional noise (TRANSFER FROM, FROM, OSKO FROM, etc.)
 //   6. strip BSB strings (DDD-DDD)
-//   7. strip long digit runs (6-10 contiguous digits — basiq IDs, account #)
+//   7. strip long digit runs (6-10 contiguous digits , basiq IDs, account #)
 //   8. strip dates (DD/MM/YYYY, DD-MM-YYYY)
 //   9. collapse whitespace + trim
 //  10. return null if remaining length < 2
 //
-// Replacements use " " (space), not "" — preserves word boundaries when
+// Replacements use " " (space), not "" , preserves word boundaries when
 // stripped tokens are adjacent to letters. Final whitespace collapse
 // normalises everything.
 // ============================================================================
@@ -53,7 +53,7 @@ export function canonicaliseSender(
   let s = raw.toUpperCase();
   s = s.replace(LEVY_REF_REGEX, " ");
   s = s.replace(BPAY_BLOCK_REGEX, " ");
-  // Dates BEFORE BSBs and LONG_DIGIT — date pattern overlaps with BSBs
+  // Dates BEFORE BSBs and LONG_DIGIT , date pattern overlaps with BSBs
   // (e.g. "12-345-678" partially) and we want the full date stripped first.
   s = s.replace(DATE_REGEX, " ");
   s = s.replace(BSB_REGEX, " ");

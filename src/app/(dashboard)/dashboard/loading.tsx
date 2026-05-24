@@ -26,7 +26,7 @@ function KPICardSkeleton({ label, icon }: { label: string; icon: React.ReactNode
 export default function DashboardLoading() {
   return (
     <div className="space-y-6">
-      {/* KPI cards — labels + icons visible, values shimmer */}
+      {/* KPI cards , labels + icons visible, values shimmer */}
       <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
         <KPICardSkeleton label="OCs" icon={<Building2 className="h-5 w-5" />} />
         <KPICardSkeleton label="Total lots" icon={<Users className="h-5 w-5" />} />

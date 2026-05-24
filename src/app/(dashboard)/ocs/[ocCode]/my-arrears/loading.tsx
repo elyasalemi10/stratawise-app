@@ -19,7 +19,7 @@ export default function MyArrearsLoading() {
         </CardContent>
       </Card>
 
-      {/* Levy list skeleton — 3 rows mirroring the parent + nested
+      {/* Levy list skeleton , 3 rows mirroring the parent + nested
           penalty layout. Static structure (icons, labels) preserved
           per CLAUDE.md design rule; only dynamic values shimmer. */}
       <Card>

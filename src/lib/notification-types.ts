@@ -28,14 +28,14 @@ export const NOTIFICATION_TYPES = [
 export type NotificationType = (typeof NOTIFICATION_TYPES)[number];
 
 // Statutory non-opt-outable notification types. Currently only the levy
-// final notice — owner-facing PP6-C-1 types (overdue, payment_received,
+// final notice , owner-facing PP6-C-1 types (overdue, payment_received,
 // claim_matched, claim_rejected) are all opt-outable.
 export const MANDATORY_NOTIFICATION_TYPES: ReadonlySet<string> = new Set([
   "levy_final_notice",
 ]);
 
 // PP6-D-B: managerial-event types. In-app channel is non-toggleable for
-// these — operational signals must always reach the manager's inbox even
+// these , operational signals must always reach the manager's inbox even
 // if email is opted out. Email channel remains opt-outable.
 export const MANAGERIAL_NOTIFICATION_TYPES: ReadonlySet<string> = new Set([
   "new_claim_submitted",

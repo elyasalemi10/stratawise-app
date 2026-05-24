@@ -10,7 +10,7 @@ import {
 } from "@/components/shared/tutorial-lightbox";
 
 // Four-step DWD walk-through embedded inside the Settings → Email wizard.
-// Step 1 (enter domain) and the prefix step live in the parent — this
+// Step 1 (enter domain) and the prefix step live in the parent , this
 // component is the bit between them.
 
 const DWD_URL = "https://admin.google.com/ac/owl/domainwidedelegation";

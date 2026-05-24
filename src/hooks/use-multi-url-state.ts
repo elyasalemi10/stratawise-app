@@ -1,7 +1,7 @@
 "use client";
 
 // ============================================================================
-// useMultiUrlState — multi-value URL search-param state, comma-delimited
+// useMultiUrlState , multi-value URL search-param state, comma-delimited
 // ----------------------------------------------------------------------------
 // Reads `searchParams.get(key)`, splits on `,`, and returns a Set<T>. Setter
 // writes back the comma-joined string (or removes the key entirely if empty).
@@ -18,7 +18,7 @@ import { usePathname, useRouter, useSearchParams } from "next/navigation";
 
 type Options<T extends string> = {
   /** If provided, only these values survive parsing. Unknown values are
-   *  dropped silently — useful when the URL is user-edited and the consumer
+   *  dropped silently , useful when the URL is user-edited and the consumer
    *  only knows a closed set of valid values. */
   allowed?: ReadonlySet<T>;
 };

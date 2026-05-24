@@ -93,7 +93,7 @@ export default function ComponentShowcase() {
                 <PageHeader
                   backLink={{ href: "/ocs", label: "Back to OCs" }}
                   title="Harbour View Towers"
-                  subtitle="PS 123456 — 42 lots — Melbourne VIC 3000"
+                  subtitle="PS 123456 , 42 lots , Melbourne VIC 3000"
                   badge={<Badge variant="success">Active</Badge>}
                   actions={
                     <>
@@ -557,7 +557,7 @@ export default function ComponentShowcase() {
         {/* Footer */}
         <div className="mt-10 border-t border-border pt-6 pb-10">
           <p className="text-xs text-muted-foreground">
-            StrataWise Design System v1.0 — Development reference only. Not visible in production.
+            StrataWise Design System v1.0 , Development reference only. Not visible in production.
           </p>
         </div>
       </div>

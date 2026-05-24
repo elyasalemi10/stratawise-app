@@ -4,14 +4,14 @@ const ISO_DATE = /^\d{4}-\d{2}-\d{2}$/;
 const isoDate = z.string().regex(ISO_DATE, "Invalid date");
 
 export const applySettlementSchema = z.object({
-  // Optional — when null, the settlement is being entered manually without a
+  // Optional , when null, the settlement is being entered manually without a
   // Notice of Acquisition PDF. The action then skips the document checks and
   // records the settlement against the lot directly.
   documentId: z.string().uuid().nullable().optional(),
   lotId: z.string().uuid(),
   newOwner: z.object({
     name: z.string().trim().min(1, "Name is required").max(200),
-    // Email is optional — wizard contract per CLAUDE.md treats postal address
+    // Email is optional , wizard contract per CLAUDE.md treats postal address
     // as the mandatory contact channel. When supplied it must still parse as
     // an email so noisy "n/a"-style input is rejected up-front.
     email: z
@@ -32,7 +32,7 @@ export const applySettlementSchema = z.object({
       .max(500),
     dateOfBirth: isoDate.nullable().optional().transform((v) => v || null),
     // Set to true when the manager already ran PostGrid verification on
-    // the postal address through the AddressInput component — the server
+    // the postal address through the AddressInput component , the server
     // skips re-verification in that case, matching the lot-edit pattern.
     verifiedPostal: z.boolean().optional().default(false),
   }),

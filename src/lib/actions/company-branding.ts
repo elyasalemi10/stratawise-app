@@ -1,7 +1,7 @@
 "use server";
 
 // ============================================================================
-// Company branding — hardened logo upload action (PP7-A).
+// Company branding , hardened logo upload action (PP7-A).
 // ----------------------------------------------------------------------------
 // Hardens the legacy uploadCompanyLogo path (settings/actions.ts) with:
 //   - 1MB size cap (was 2MB; tightened per pre-launch ops spec)
@@ -39,7 +39,7 @@ export type LogoValidationResult =
     };
 
 /**
- * Pure validator — directly exercisable from verification suites.
+ * Pure validator , directly exercisable from verification suites.
  *
  * Returns { ok: true } on accept, { ok: false, errorCode, error } on reject.
  * Skips dimension probing for SVG (vector; dimensions don't bound display
@@ -113,7 +113,7 @@ export type UpdateCompanyLogoResult =
     };
 
 /**
- * Server action — auth + validation + R2 upload + DB update + audit log.
+ * Server action , auth + validation + R2 upload + DB update + audit log.
  */
 export async function updateCompanyLogo(
   formData: FormData,

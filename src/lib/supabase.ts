@@ -2,7 +2,7 @@ import { createClient, type SupabaseClient } from "@supabase/supabase-js";
 import { createBrowserClient as ssrCreateBrowserClient } from "@supabase/ssr";
 
 /**
- * Browser client — RLS-aware, reads auth from browser cookies via @supabase/ssr.
+ * Browser client , RLS-aware, reads auth from browser cookies via @supabase/ssr.
  * Use in client components for queries that should respect the signed-in user.
  * Lazily initialized; safe to call repeatedly.
  */
@@ -19,7 +19,7 @@ export function getSupabaseClient() {
 }
 
 /**
- * Admin client — uses the service-role key, BYPASSES RLS.
+ * Admin client , uses the service-role key, BYPASSES RLS.
  * Use ONLY in trusted server contexts: system operations, webhook handlers,
  * trigger jobs, and back-office actions where the app already validated
  * authorization at a higher level (via requireRole / requireOCAccess).

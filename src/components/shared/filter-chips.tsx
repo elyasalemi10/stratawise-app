@@ -1,10 +1,10 @@
 "use client";
 
 // ============================================================================
-// FilterChips — multi-select filter chip primitive
+// FilterChips , multi-select filter chip primitive
 // ----------------------------------------------------------------------------
 // Renders a horizontal row of toggle chips. Each chip flips its own value
-// in the supplied Set. The component is fully controlled — pair it with
+// in the supplied Set. The component is fully controlled , pair it with
 // `useMultiUrlState` (or any other Set-shaped state) for URL-state
 // persistence.
 //

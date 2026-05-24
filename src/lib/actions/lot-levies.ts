@@ -6,7 +6,7 @@ import { createServerClient } from "@/lib/supabase";
 // Levy notices issued against a lot. Returned ordered most-recent first by
 // due_date so the Levies tab matches the order managers naturally scan
 // (newest at the top). Paid/unpaid is read from row.status; amount_paid is
-// the running total assigned to this notice — see project context for the
+// the running total assigned to this notice , see project context for the
 // per-notice payment assignment design (vs. a balance-only model).
 
 export interface LotLevyRow {
@@ -42,7 +42,7 @@ export async function listLotLevies(lotId: string): Promise<LotLevyRow[]> {
       "id, reference_number, fund_type, levy_type, period_start, period_end, due_date, amount, amount_paid, status, pdf_url, issued_at, paid_at",
     )
     .eq("lot_id", lotId)
-    // Hide drafts — the owner never sees a notice that hasn't gone out,
+    // Hide drafts , the owner never sees a notice that hasn't gone out,
     // and listing them on the lot detail confuses managers reviewing what
     // an owner owes.
     .neq("status", "draft")

@@ -14,7 +14,7 @@ import { GoogleGenAI, Type } from "@google/genai";
 export type ParsedSettlement = {
   /** Did Gemini decide this PDF is actually a settlement / Notice of
    *  Acquisition document? Set false for misfiles (insurance certs, OC
-   *  rules, blank pages, contracts that are not for this lot, etc.) — the
+   *  rules, blank pages, contracts that are not for this lot, etc.) , the
    *  caller surfaces a "couldn't read this" toast and the manager
    *  falls back to manual entry. */
   is_settlement_document: boolean;
@@ -27,7 +27,7 @@ export type ParsedSettlement = {
     phone: string | null;
     postal_address: string | null;
     // Date of birth was removed (2026-05). We intentionally do NOT
-    // extract or store it — it's not required for strata correspondence
+    // extract or store it , it's not required for strata correspondence
     // and minimises the PII footprint. Kept here as `null` for
     // downstream consumers that haven't migrated yet.
     date_of_birth: null;
@@ -74,7 +74,7 @@ const RESPONSE_SCHEMA = {
     settlement_date: {
       type: Type.STRING,
       nullable: true,
-      description: "ISO yyyy-mm-dd. The day legal title transferred (settlement date), not the contract date. Australian forms use DD/MM/YYYY — convert carefully.",
+      description: "ISO yyyy-mm-dd. The day legal title transferred (settlement date), not the contract date. Australian forms use DD/MM/YYYY , convert carefully.",
     },
     sale_price_cents: {
       type: Type.NUMBER,
@@ -124,10 +124,10 @@ const SYSTEM_PROMPT = `You extract structured fields from a Victorian / Australi
 
 Field-by-field rules:
 - transferee = INCOMING owner (the buyer). NOT the seller / transferor.
-- Names: STRIP any honorific / title prefix — "Mr", "Mrs", "Ms", "Miss", "Dr", "Prof", etc. We do NOT store gender or titles. "MR MARK JACKSON" → "Mark Jackson".
+- Names: STRIP any honorific / title prefix , "Mr", "Mrs", "Ms", "Miss", "Dr", "Prof", etc. We do NOT store gender or titles. "MR MARK JACKSON" → "Mark Jackson".
 - Names: return in natural Title Case, NOT the document's ALL-CAPS. "MARK JACKSON" → "Mark Jackson", "MARY-ANNE O'BRIEN" → "Mary-Anne O'Brien". Preserve internal capitals in names like "McDonald" / "O'Brien".
 - Multiple transferees on title: emit the first one as transferee.name; put the rest as objects in additional_transferees (same title-strip + Title-Case rules apply).
-- settlement_date = day legal title transferred. This is usually labelled "Settlement Date", "Date of Settlement" or stamped/dated near the signatures — NOT the contract date.
+- settlement_date = day legal title transferred. This is usually labelled "Settlement Date", "Date of Settlement" or stamped/dated near the signatures , NOT the contract date.
 - sale_price_cents is INTEGER CENTS. $850,000 → 85000000. $1.2M → 120000000. Null if absent.
 - Dates: ISO yyyy-mm-dd. AU forms use DD/MM/YYYY; convert. If only a partial date is visible (e.g. month + year), return null rather than guess.
 - lot_number and plan_number come from the title reference ("Lot 7 on PS812345X" → lot_number 7, plan_number "PS812345X"). Plan-of-Subdivision format: PS + 6 digits + 1 letter, upper-case.
@@ -140,7 +140,7 @@ Document-type gate:
 - Insurance certs, levy notices, plans of subdivision, OC rules, photos, blank pages → is_settlement_document=false, document_type_guess to a one-line description, every other field null / empty.
 - When in doubt return false; the manager can fall back to manual entry.
 
-Never invent data. If a field isn't visible, return null (or "" for fields the schema requires as required-strings — but our schema makes the human-fact fields nullable, so always prefer null over a guess).`;
+Never invent data. If a field isn't visible, return null (or "" for fields the schema requires as required-strings , but our schema makes the human-fact fields nullable, so always prefer null over a guess).`;
 
 type ServiceAccount = { project_id?: string; client_email?: string; private_key?: string };
 
@@ -200,7 +200,7 @@ export async function parseSettlementPdf(pdfBytes: Buffer): Promise<ParsedSettle
       date_of_birth?: null;
     };
   };
-  // Pin date_of_birth to null regardless of what comes back — the schema
+  // Pin date_of_birth to null regardless of what comes back , the schema
   // no longer asks for it, but defending against schema drift keeps
   // downstream consumers from seeing `undefined`.
   return {

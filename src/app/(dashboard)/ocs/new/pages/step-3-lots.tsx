@@ -19,7 +19,7 @@ import {
 import { saveStep, type DraftJson, type DraftLot } from "../actions";
 import { WizardActions } from "./_components/wizard-actions";
 
-// Wizard Step 3 sub-step 0 — Lots & Owners (main).
+// Wizard Step 3 sub-step 0 , Lots & Owners (main).
 
 function InlineYesNoToggle({ value, onChange }: { value: boolean; onChange: (v: boolean) => void }) {
   return (
@@ -198,7 +198,7 @@ export function Step3Lots({
         problems.push(`Lot ${l.lot_number || i + 1}: lot liability is required (0 is allowed).`);
         nextLotErrors[i].liability = true;
       }
-      // Item 18 — tenant required ONLY when occupancy is "tenanted". Vacant
+      // Item 18 , tenant required ONLY when occupancy is "tenanted". Vacant
       // lots may legitimately have no tenant info yet.
       const occ =
         l.occupancy_status ??
@@ -239,7 +239,7 @@ export function Step3Lots({
       return;
     }
 
-    // Background save — advance instantly; heartbeat backstops the write.
+    // Background save , advance instantly; heartbeat backstops the write.
     const patch = {
       lots,
       total_lots: lots.length,
@@ -276,7 +276,7 @@ export function Step3Lots({
             placeholder="Count"
           />
         </div>
-        {/* Services-only — matches the GST-Registered row on Step 1: label
+        {/* Services-only , matches the GST-Registered row on Step 1: label
             on the left, inline Yes/No toggle on the right, no card.
             Toggling services-only changes the computed tier, so the
             tier-confirm checkbox below must be re-ticked to advance. */}
@@ -336,7 +336,7 @@ export function Step3Lots({
           <tbody className="[&_tr:nth-child(odd)]:bg-card [&_tr:nth-child(even)]:bg-muted/20">
             {lots.map((lot, idx) => {
               const errs = lotErrors[idx] ?? {};
-              // Item 18 — resolve canonical occupancy. Either the explicit
+              // Item 18 , resolve canonical occupancy. Either the explicit
               // enum field or derive from the legacy boolean + tenant data.
               const occupancyStatus: "owner_occupied" | "tenanted" | "vacant" =
                 lot.occupancy_status ??
@@ -407,7 +407,7 @@ export function Step3Lots({
                       />
                     </td>
                     <td className="px-2 py-1.5">
-                      {/* Item 18 — 3-way occupancy selector; choosing "Vacant"
+                      {/* Item 18 , 3-way occupancy selector; choosing "Vacant"
                           skips the tenant inputs and is the default when the
                           manager doesn't yet know the tenant. */}
                       <Select
@@ -492,7 +492,7 @@ export function Step3Lots({
         </table>
       </div>
 
-      {/* Tier badge — just "Tier N" + a short description. No "Computed
+      {/* Tier badge , just "Tier N" + a short description. No "Computed
           tier:" prefix anymore. */}
       <div className="rounded-md border border-border bg-card p-4 space-y-3">
         <div className="flex items-center gap-3">

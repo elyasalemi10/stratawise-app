@@ -62,12 +62,12 @@ function buildBreadcrumbs(pathname: string): Crumb[] {
     const subPages = segments.slice(2);
     const base = `/ocs/${ocCode}`;
 
-    // OC root IS the dashboard — show just "Dashboard"
+    // OC root IS the dashboard , show just "Dashboard"
     if (subPages.length === 0) {
       return [{ label: "Dashboard", href: null, isLast: true }];
     }
 
-    // /lots/[lotId] — show "Lots & Owners > Owner details"
+    // /lots/[lotId] , show "Lots & Owners > Owner details"
     if (subPages.length === 2 && subPages[0] === "lots" && isUUID(subPages[1])) {
       return [
         { label: "Lots & Owners", href: `${base}/lots`, isLast: false },
@@ -125,7 +125,7 @@ export function Header({ initialOCs }: HeaderProps) {
   const pathname = usePathname();
   const override = useBreadcrumbOverride();
   // Page-set override takes precedence over the URL-derived breadcrumb so detail
-  // pages can render entity-specific labels (e.g. "Lot 12 · Unit 3A" — Item 4).
+  // pages can render entity-specific labels (e.g. "Lot 12 · Unit 3A" , Item 4).
   const breadcrumbs: Crumb[] = override
     ? override.map((c, i, arr) => ({
         label: c.label,
@@ -151,7 +151,7 @@ export function Header({ initialOCs }: HeaderProps) {
 
   return (
     <div className="grid grid-cols-3 items-center flex-1 gap-4">
-      {/* Breadcrumbs — left */}
+      {/* Breadcrumbs , left */}
       <nav className="flex items-center text-sm min-w-0">
         {breadcrumbs.map((crumb, i) => (
           <span key={i} className="flex items-center">
@@ -178,13 +178,13 @@ export function Header({ initialOCs }: HeaderProps) {
         ))}
       </nav>
 
-      {/* Global document search — middle. Falls back to the page title when no
+      {/* Global document search , middle. Falls back to the page title when no
           query is active. */}
       <div className="flex justify-center min-w-0">
         <DocumentSearch />
       </div>
 
-      {/* Notification bell — right. Center title was removed: the sidebar's
+      {/* Notification bell , right. Center title was removed: the sidebar's
           larger switcher already shows the current dashboard. */}
       <div className="flex items-center justify-end">
         <NotificationBell />

@@ -132,7 +132,7 @@ function EditableField({
 
   if (!isEditing) {
     // Display mode
-    let displayValue = value || "—";
+    let displayValue = value || ",";
     if (options) {
       displayValue = options.find((o) => o.value === value)?.label ?? displayValue;
     }
@@ -415,10 +415,10 @@ export function ManageContent({ oc: initialSub, stats, lots: initialLots, docume
 
       {/* KPI cards */}
       <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
-        <KPICard label="OC Tier" value={oc.oc_tier ? `Tier ${oc.oc_tier}` : "—"} icon={<Award className="h-5 w-5" />} />
+        <KPICard label="OC Tier" value={oc.oc_tier ? `Tier ${oc.oc_tier}` : ","} icon={<Award className="h-5 w-5" />} />
         <KPICard label="Total lots" value={String(stats.totalLots)} icon={<Building2 className="h-5 w-5" />} />
         <KPICard label="Owners assigned" value={`${stats.ownersAssigned} of ${stats.totalLots}`} icon={<Users className="h-5 w-5" />} />
-        <KPICard label="Total entitlement" value={totalEntitlement > 0 ? String(totalEntitlement) : "—"} icon={<Activity className="h-5 w-5" />} />
+        <KPICard label="Total entitlement" value={totalEntitlement > 0 ? String(totalEntitlement) : ","} icon={<Activity className="h-5 w-5" />} />
       </div>
 
       {/* Tabs */}

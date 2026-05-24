@@ -20,7 +20,7 @@ interface PlacesAutocompleteProps {
   placeholder?: string;
   id?: string;
   invalid?: boolean;
-  /** When false, the component renders a plain Input — useful for tests. */
+  /** When false, the component renders a plain Input , useful for tests. */
   enabled?: boolean;
 }
 

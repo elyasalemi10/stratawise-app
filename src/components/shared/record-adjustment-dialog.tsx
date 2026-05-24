@@ -90,7 +90,7 @@ export function RecordAdjustmentDialog({
   const selectedLotId = form.watch("lot_id");
   const selectedLot = lots.find((l) => l.id === selectedLotId);
   const lotLabel = selectedLot
-    ? `Lot ${selectedLot.lot_number}${selectedLot.unit_number ? ` — Unit ${selectedLot.unit_number}` : ""}`
+    ? `Lot ${selectedLot.lot_number}${selectedLot.unit_number ? ` , Unit ${selectedLot.unit_number}` : ""}`
     : "Select a lot";
 
   const entryType = form.watch("entry_type");
@@ -185,7 +185,7 @@ export function RecordAdjustmentDialog({
                                   )}
                                 />
                                 Lot {lot.lot_number}
-                                {lot.unit_number && ` — Unit ${lot.unit_number}`}
+                                {lot.unit_number && ` , Unit ${lot.unit_number}`}
                               </CommandItem>
                             ))}
                           </CommandGroup>

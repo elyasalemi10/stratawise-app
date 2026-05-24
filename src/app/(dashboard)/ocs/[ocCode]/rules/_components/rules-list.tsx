@@ -55,9 +55,9 @@ function RuleTypeBadge({ type }: { type: OCRule["rule_type"] }) {
 // Pick the next sequential rule number under the chosen depth + parent.
 //
 // Depth conventions:
-//   1 — top-level chapter: "1", "2", "3" (auto-increment from existing top-level numbers)
-//   2 — sub-rule under a chapter: "<parent>.1", "<parent>.2"
-//   3 — sub-sub-rule: "<parent>.1.1", "<parent>.1.2"
+//   1 , top-level chapter: "1", "2", "3" (auto-increment from existing top-level numbers)
+//   2 , sub-rule under a chapter: "<parent>.1", "<parent>.2"
+//   3 , sub-sub-rule: "<parent>.1.1", "<parent>.1.2"
 //
 // Used as the default rule_number when the manager hits "Add rule"; they can
 // still edit the number before saving (some custom rule schemes use letters
@@ -142,7 +142,7 @@ export function RulesList({ ocId, ocCode, rules, sourceDocumentName }: Props) {
   // surface a toast instead of silently no-op'ing.
   async function openViewerForRule(rule: OCRule) {
     if (!rule.source_document_id) {
-      toast("This rule isn't linked to a PDF — it was added by hand.");
+      toast("This rule isn't linked to a PDF , it was added by hand.");
       return;
     }
     setActiveRuleId(rule.id);
@@ -151,7 +151,7 @@ export function RulesList({ ocId, ocCode, rules, sourceDocumentName }: Props) {
       const r = await getRulesSourceUrl(ocId);
       setViewerLoading(false);
       if (!r.url) {
-        toast.error("Couldn't load the rules PDF — try again in a moment.");
+        toast.error("Couldn't load the rules PDF , try again in a moment.");
         setActiveRuleId(null);
         return;
       }
@@ -328,7 +328,7 @@ export function RulesList({ ocId, ocCode, rules, sourceDocumentName }: Props) {
       </div>
 
       {/* Layout: rule cards on the left, PDF viewer pinned on the right when
-          a rule with a source document is selected. The split is fluid — the
+          a rule with a source document is selected. The split is fluid , the
           viewer claims half the width only when open, so the list reads at
           full width by default. */}
       <div className={`flex flex-col gap-4 ${viewerOpen ? "lg:flex-row" : ""}`}>
@@ -421,7 +421,7 @@ export function RulesList({ ocId, ocCode, rules, sourceDocumentName }: Props) {
               <div className="flex items-center gap-2 border-b border-border bg-muted/40 px-3 py-2">
                 <FileText className="h-3.5 w-3.5 text-muted-foreground" />
                 <span className="text-xs text-foreground truncate">{sourceDocumentName ?? "Rules source"}</span>
-                <span className="text-xs text-muted-foreground">— page {viewerPage}</span>
+                <span className="text-xs text-muted-foreground">, page {viewerPage}</span>
                 <div className="ml-auto flex items-center gap-2">
                   {viewerUrl && (
                     <a
@@ -457,7 +457,7 @@ export function RulesList({ ocId, ocCode, rules, sourceDocumentName }: Props) {
       </div>
 
       {/* Create rule dialog. Heading is optional; the "level" picker is the
-          UX layer over rule_number's dotted notation — 1 = top-level,
+          UX layer over rule_number's dotted notation , 1 = top-level,
           2 = sub-rule, 3 = sub-sub-rule. The rule_number field stays
           editable so non-numeric schemes (e.g. "S-2026-01") still work. */}
       <Dialog open={createOpen} onOpenChange={setCreateOpen}>
@@ -509,7 +509,7 @@ export function RulesList({ ocId, ocCode, rules, sourceDocumentName }: Props) {
                       ) : (
                         parentOptions.map((p) => (
                           <SelectItem key={p.id} value={p.rule_number}>
-                            {p.rule_number}{p.heading ? ` — ${p.heading}` : ""}
+                            {p.rule_number}{p.heading ? ` , ${p.heading}` : ""}
                           </SelectItem>
                         ))
                       )}
@@ -648,7 +648,7 @@ export function RulesList({ ocId, ocCode, rules, sourceDocumentName }: Props) {
             <DialogTitle>Remove this rule?</DialogTitle>
             <DialogDescription>
               {deleteRule && (
-                <>Rule <strong className="text-foreground">{deleteRule.rule_number}</strong>{deleteRule.heading ? ` — ${deleteRule.heading}` : ""} will be deleted. The source document, if any, stays in the documents tab.</>
+                <>Rule <strong className="text-foreground">{deleteRule.rule_number}</strong>{deleteRule.heading ? ` , ${deleteRule.heading}` : ""} will be deleted. The source document, if any, stays in the documents tab.</>
               )}
             </DialogDescription>
           </DialogHeader>

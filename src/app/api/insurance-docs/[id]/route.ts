@@ -4,7 +4,7 @@ import { getCurrentProfile, requireOCAccess } from "@/lib/auth";
 import { fetchObject, keyFromPublicUrl } from "@/lib/storage/r2";
 
 // Streams an insurance certificate of currency through this authenticated
-// route (NOT a presigned redirect — that would be shareable for its TTL).
+// route (NOT a presigned redirect , that would be shareable for its TTL).
 // Prefers the canonical `documents` row when source_document_id is linked
 // (gives accurate file_name + mime_type); else derives the key from the
 // stored public URL on the policy row.

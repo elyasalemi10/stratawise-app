@@ -64,7 +64,7 @@ export async function joinWaitlist(input: unknown): Promise<WaitlistResult> {
 
   if (lookupError) {
     console.error("[waitlist] lookup failed:", lookupError);
-    return { success: false, error: "Something went wrong — please try again." };
+    return { success: false, error: "Something went wrong , please try again." };
   }
 
   if (existing) {
@@ -83,7 +83,7 @@ export async function joinWaitlist(input: unknown): Promise<WaitlistResult> {
 
   if (insertError) {
     console.error("[waitlist] insert failed:", insertError);
-    return { success: false, error: "Something went wrong — please try again." };
+    return { success: false, error: "Something went wrong , please try again." };
   }
 
   await Promise.all([
@@ -96,7 +96,7 @@ export async function joinWaitlist(input: unknown): Promise<WaitlistResult> {
 
 // Adds the waitlist contact to a Resend audience (mailing list) so the
 // operator can later send broadcasts via the Resend dashboard / API.
-// Gated on RESEND_AUDIENCE_ID — when unset we skip silently so dev
+// Gated on RESEND_AUDIENCE_ID , when unset we skip silently so dev
 // environments without an audience don't error. Failures here never
 // block the user-facing signup.
 async function addToResendAudience(args: { email: string; name: string | null }) {
@@ -140,7 +140,7 @@ async function sendOperatorNotification(args: {
 }) {
   const sendTo = process.env.SEND_TO?.trim();
   if (!sendTo) {
-    console.warn("[waitlist] SEND_TO not configured — skipping operator notification");
+    console.warn("[waitlist] SEND_TO not configured , skipping operator notification");
     return;
   }
 
@@ -170,7 +170,7 @@ async function sendOperatorNotification(args: {
             ([label, value]) => `
               <tr>
                 <td style="padding:4px 12px 4px 0;color:#4A5868;vertical-align:top;">${escapeHtml(label)}</td>
-                <td style="padding:4px 0;">${value ? escapeHtml(value) : '<span style="color:#9ca3af;">—</span>'}</td>
+                <td style="padding:4px 0;">${value ? escapeHtml(value) : '<span style="color:#9ca3af;">,</span>'}</td>
               </tr>
             `,
           )
@@ -184,7 +184,7 @@ async function sendOperatorNotification(args: {
     const { error } = await resend.emails.send({
       from: FROM_SYSTEM,
       to: sendTo,
-      subject: `New waitlist signup — ${args.email}`,
+      subject: `New waitlist signup , ${args.email}`,
       html,
       replyTo: args.email,
     });

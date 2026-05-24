@@ -57,7 +57,7 @@ export interface SidebarOC {
   lots?: SidebarLot[];
   /**
    * Count of bank transactions in this oc awaiting manager
-   * reconciliation. Computed on sidebar load — becomes stale after in-session
+   * reconciliation. Computed on sidebar load , becomes stale after in-session
    * match/exclude/void actions until the next sidebar remount. Acceptable
    * for MVP; tighter staleness handling is a Prompt 7 polish item.
    * Lot-owner role: always 0 (not shown).
@@ -85,7 +85,7 @@ export async function getSidebarOCs(): Promise<SidebarOC[]> {
     // Deliberate trade-off on query count:
     // - +2 supabase queries on sidebar mount (bank_accounts fan-out + unmatched
     //   bank_transactions scan), aggregated in JS (Supabase JS has no GROUP BY).
-    // - Zero extra queries per navigation — the whole result is wrapped in
+    // - Zero extra queries per navigation , the whole result is wrapped in
     //   unstable_cache + served from localStorage on the client for up to 5
     //   minutes (see sidebar-cache.ts).
     // Do NOT "optimise" this without understanding the cache pattern. Trying
@@ -195,7 +195,7 @@ export async function getSidebarOCs(): Promise<SidebarOC[]> {
     return fetchForCompany(companyId);
   }
 
-  // lot_owner — ocs they're a member of, with their lot info
+  // lot_owner , ocs they're a member of, with their lot info
   const { data: memberships } = await supabase
     .from("oc_members")
     .select("oc_id, lot_id")
@@ -461,9 +461,9 @@ export async function getCompanyOCSummary() {
 /** Delete an OC creation draft. Only the manager who created the draft
  *  (or anyone in their management company) can delete it. Cleans up
  *  R2-stored plan / rules / insurance PDFs as a best-effort side
- *  effect — orphaned objects in R2 are harmless but pile up over time.
+ *  effect , orphaned objects in R2 are harmless but pile up over time.
  *  Drafts that have already been promoted to a real OC (promoted_oc_id
- *  is set) cannot be deleted from here — that's a separate
+ *  is set) cannot be deleted from here , that's a separate
  *  delete-the-OC flow we haven't built yet. */
 export async function deleteDraft(draftId: string): Promise<{ success?: true; error?: string }> {
   try {
@@ -480,7 +480,7 @@ export async function deleteDraft(draftId: string): Promise<{ success?: true; er
     if (draft.promoted_oc_id) {
       return { error: "This draft has already become a real OC and can't be deleted from here." };
     }
-    // Best-effort R2 cleanup. Failures here are non-fatal — we still
+    // Best-effort R2 cleanup. Failures here are non-fatal , we still
     // want to drop the DB row even if a stray object hangs around.
     const { deleteObject } = await import("@/lib/storage/r2");
     const keys = [
@@ -493,7 +493,7 @@ export async function deleteDraft(draftId: string): Promise<{ success?: true; er
     const { error: delErr } = await sb.from("oc_drafts").delete().eq("id", draftId);
     if (delErr) {
       console.error("deleteDraft: delete failed", delErr);
-      return { error: "Couldn't delete the draft — please try again." };
+      return { error: "Couldn't delete the draft , please try again." };
     }
     await logAudit({
       profileId: profile.id,

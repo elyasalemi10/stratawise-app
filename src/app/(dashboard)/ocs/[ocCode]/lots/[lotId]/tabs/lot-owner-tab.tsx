@@ -41,7 +41,7 @@ import { useRouter } from "next/navigation";
 
 // Owner tab (Items 9 + 13). Per the design rule, each card has a SINGLE Edit
 // button that opens a right-side EditSheet (navbar-width drawer) containing
-// every field of that card — no per-row pencil popovers.
+// every field of that card , no per-row pencil popovers.
 
 const CONSENT_CATEGORIES = [
   { key: "meetings", label: "Meetings" },
@@ -98,7 +98,7 @@ interface Props {
   portalInviteAccepted: boolean;
   consentCategories: string[];
   drns: LotDrn[];
-  // owners_corporations.bank_provider — drives whether we render the
+  // owners_corporations.bank_provider , drives whether we render the
   // Macquarie DRN row at all. Non-Macquarie OCs hide it entirely
   // (regardless of whether a DRN happens to be linked) so the lot owner
   // panel doesn't carry Macquarie-only chrome for, say, CBA accounts.
@@ -176,7 +176,7 @@ export function LotOwnerTab(props: Props) {
     <div className="space-y-6">
       <Card>
         <CardContent className="pt-5 space-y-4">
-          {/* Header — avatar + name + single Edit button. */}
+          {/* Header , avatar + name + single Edit button. */}
           <div className="flex items-start justify-between gap-4">
             <div className="flex items-start gap-3 min-w-0">
               <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-primary text-primary-foreground text-sm font-semibold">
@@ -209,7 +209,7 @@ export function LotOwnerTab(props: Props) {
             />
           </div>
 
-          {/* Read-only field list — no inline edit triggers. */}
+          {/* Read-only field list , no inline edit triggers. */}
           <dl className="divide-y divide-border">
             <KvRow label="Owner type" value={view.owner_type === "company" ? "Company" : "Individual"} />
             <KvRow label="Email" value={view.email} />
@@ -358,7 +358,7 @@ function OwnerContactEditSheet({
   onRollback: () => void;
   onSaved: () => void;
 }) {
-  // Local form state — initialised from view each time the sheet opens.
+  // Local form state , initialised from view each time the sheet opens.
   const [name, setName] = React.useState(initial.name);
   const [email, setEmail] = React.useState(initial.email);
   const [phone, setPhone] = React.useState(initial.phone);
@@ -447,7 +447,7 @@ function OwnerContactEditSheet({
           <>
             <Input value={email} disabled />
             <p className="text-xs text-muted-foreground">
-              Owner has joined the portal — they can change their email themselves.
+              Owner has joined the portal , they can change their email themselves.
             </p>
           </>
         ) : (
@@ -515,7 +515,7 @@ function ConsentEditSheet({
     >
       <p className="text-xs text-muted-foreground">
         Tick the categories the owner has consented to. Owners can also update this themselves from
-        the portal — only change it here if they&apos;ve asked you to.
+        the portal , only change it here if they&apos;ve asked you to.
       </p>
       <div className="space-y-1.5">
         {CONSENT_CATEGORIES.map((c) => {
@@ -576,7 +576,7 @@ function KvRow({
           mono ? "font-mono text-xs" : ""
         } ${multiline ? "whitespace-pre-line" : "truncate"}`}
       >
-        {display ?? <span className="text-muted-foreground italic">{hint ?? "—"}</span>}
+        {display ?? <span className="text-muted-foreground italic">{hint ?? ","}</span>}
       </dd>
     </div>
   );

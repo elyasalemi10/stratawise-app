@@ -103,7 +103,7 @@ const SYSTEM_PROMPT = `You extract structured data from Victorian Plan-of-Subdiv
 
 A Plan of Subdivision (PS) is a registered survey document under the Subdivision Act 1988 (Vic). It can create one or more Owners Corporations (OCs); each OC has its own lot schedule with per-lot Unit Entitlement and Lot Liability (typically integers summing to 100 or 1000, sometimes equal per lot).
 
-CRITICAL — document-type gate:
+CRITICAL , document-type gate:
 - BEFORE extracting anything, decide whether this PDF really IS a Victorian Plan-of-Subdivision.
 - A real Plan-of-Subdivision has: a PS identifier (e.g. "PS812345X"), registered-survey diagrams, and an Owners-Corporation lot-entitlement/lot-liability schedule.
 - If the document is anything else (a bank statement, insurance policy, contract, photo, blank page, random text, image of a building, conveyancer Section 32, OCR-garbled file, etc.), set is_plan_of_subdivision=false, document_type_guess to your best one-line description, leave plan_of_subdivision_number=null, plan_of_subdivision_confidence=0, and return detected_ocs=[]. DO NOT invent fields.
@@ -127,7 +127,7 @@ type ServiceAccount = {
 
 // Initialise the client. GEMINI_API_KEY holds EITHER a Google AI Studio
 // API key string (starts with "AIza...") OR a full service-account JSON
-// (starts with "{" — Vertex AI mode). Service-account is the production
+// (starts with "{" , Vertex AI mode). Service-account is the production
 // path: paid tier, regional pinning, no training on inputs.
 function buildClient(): GoogleGenAI {
   const raw = process.env.GEMINI_API_KEY;
@@ -149,11 +149,11 @@ function buildClient(): GoogleGenAI {
       console.error("parsePlanPdf: service-account JSON missing project_id");
       throw new Error("Automatic plan parsing is temporarily unavailable.");
     }
-    // Vertex AI default location for Gemini is `global` — it routes the
+    // Vertex AI default location for Gemini is `global` , it routes the
     // request to the closest region that hosts the model. gemini-2.5-flash
     // is NOT yet in australia-southeast1, so a Sydney pin returns 404. The
     // `global` endpoint still respects GCP's data-residency commitments for
-    // Australian customers — your data isn't trained on, regardless of
+    // Australian customers , your data isn't trained on, regardless of
     // routing. Override with GEMINI_LOCATION (e.g. us-central1) if a real
     // data-residency contract forces regional pinning.
     const location = process.env.GEMINI_LOCATION?.trim() || "global";

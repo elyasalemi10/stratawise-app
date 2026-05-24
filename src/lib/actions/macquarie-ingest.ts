@@ -9,7 +9,7 @@ import { tryAutoMatch } from "@/lib/reconciliation/orchestrator";
 
 // ─── Ingest a TXN file into bank_transactions ───────────────────
 //
-// Per-row dedup: (bank_account_id, transaction_date, amount, description) —
+// Per-row dedup: (bank_account_id, transaction_date, amount, description) ,
 // same key used by the CSV path so re-uploads are idempotent across formats.
 // Match status starts as 'unmatched'; the existing reconciliation orchestrator
 // picks it up via the bank-account page or the daily auto-match job.
@@ -40,7 +40,7 @@ export async function uploadMacquarieTxn(
     if (!(file instanceof File)) return { error: "No file uploaded" };
     if (file.size > 10 * 1024 * 1024) return { error: "TXN file exceeds 10MB" };
     if (looksLikePayFile(file.name)) {
-      return { error: "PAY-file ingest isn't supported yet — upload the TXN file instead." };
+      return { error: "PAY-file ingest isn't supported yet , upload the TXN file instead." };
     }
 
     const supabase = createServerClient();
@@ -130,7 +130,7 @@ export async function uploadMacquarieTxn(
           if (matchOutcome.matched) summary.autoMatched += 1;
         } catch (err) {
           console.error(`uploadMacquarieTxn: auto-match failed for line ${t.lineNumber}`, err);
-          // Don't fail the import — the row stays unmatched in the queue.
+          // Don't fail the import , the row stays unmatched in the queue.
         }
       }
     }
@@ -138,7 +138,7 @@ export async function uploadMacquarieTxn(
     return { summary };
   } catch (err) {
     console.error("uploadMacquarieTxn: unexpected error", err);
-    return { error: "Something went wrong — please try again." };
+    return { error: "Something went wrong , please try again." };
   }
 }
 
@@ -195,7 +195,7 @@ export async function previewDrnCsv(
     return { preview: { matches: enriched, totals } };
   } catch (err) {
     console.error("previewDrnCsv: unexpected error", err);
-    return { error: "Something went wrong — please try again." };
+    return { error: "Something went wrong , please try again." };
   }
 }
 
@@ -254,11 +254,11 @@ export async function commitDrnMappings(
     const { error: insertErr } = await supabase.from("lot_drns").insert(rows);
     if (insertErr) {
       console.error("commitDrnMappings: insert failed", insertErr);
-      return { error: "Couldn't save DRN mappings — please try again." };
+      return { error: "Couldn't save DRN mappings , please try again." };
     }
     return { inserted: rows.length, supersededOld };
   } catch (err) {
     console.error("commitDrnMappings: unexpected error", err);
-    return { error: "Something went wrong — please try again." };
+    return { error: "Something went wrong , please try again." };
   }
 }

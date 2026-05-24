@@ -1,7 +1,7 @@
 "use client";
 
 // ============================================================================
-// MappingsContent — bank_payer_mappings management table
+// MappingsContent , bank_payer_mappings management table
 // ----------------------------------------------------------------------------
 // First-class nav surface (added to the sidebar in D-5-D). Renders one
 // card with FilterChips for status (with multi-select via useMultiUrlState

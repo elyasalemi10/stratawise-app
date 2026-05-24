@@ -1,5 +1,5 @@
 // ============================================================================
-// Strategy 3 — known payer (canonical sender → lot mapping)
+// Strategy 3 , known payer (canonical sender → lot mapping)
 // ----------------------------------------------------------------------------
 // Canonicalises the bank-transaction description; looks up the active
 // mapping in bank_payer_mappings; allocates against the mapped lot's
@@ -104,7 +104,7 @@ export async function tryKnownPayerMatch(
   }
 
   // Fetch debit allocation_priority per notice (lowest priority found wins
-  // — matches walker semantics).
+  // , matches walker semantics).
   const { data: debits } = await supabase
     .from("lot_ledger_entries")
     .select("levy_notice_id, allocation_priority")

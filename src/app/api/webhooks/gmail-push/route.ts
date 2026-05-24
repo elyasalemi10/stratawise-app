@@ -12,12 +12,12 @@ import { applyAutoLinkToCommLog } from "@/lib/email/auto-link";
 //
 // Triggered by Google Cloud Pub/Sub. The push subscription is configured
 // to POST here whenever the Pub/Sub topic (GMAIL_PUBSUB_TOPIC) gets a new
-// message — which Gmail publishes every time a watched mailbox changes.
+// message , which Gmail publishes every time a watched mailbox changes.
 //
 // Pub/Sub auth: we accept either
 //   (a) `?token=<GMAIL_PUBSUB_VERIFY_TOKEN>` in the query string
-//       (the simplest setup — configure the verification token on the
-//       push subscription) — OR
+//       (the simplest setup , configure the verification token on the
+//       push subscription) , OR
 //   (b) any of the standard Google-signed JWT headers if you opt to
 //       configure OIDC auth on the subscription instead.
 //
@@ -62,7 +62,7 @@ function unauthorized(reason: string) {
 }
 
 export async function POST(request: NextRequest) {
-  // Auth — shared-token mode. We compare the configured verify token to
+  // Auth , shared-token mode. We compare the configured verify token to
   // the `?token=` query string. Empty / missing token means we treat
   // every push as unauthorised; configure the env var on the same row
   // you create the Pub/Sub push subscription with.
@@ -156,7 +156,7 @@ export async function POST(request: NextRequest) {
         messageId,
         "for",
         mailbox,
-        "—",
+        ",",
         fetched.error,
       );
       continue;
@@ -231,7 +231,7 @@ async function ingestInboundMessage(
 
   // Auto-match the outbound thread by In-Reply-To → outbound.external_id.
   // We also inherit (a) the lot owner snapshot and (b) the confidential
-  // flag so the reply stays consistent with the original send — a reply
+  // flag so the reply stays consistent with the original send , a reply
   // to a confidential email is still confidential, and pins to the same
   // owner so future owners can't read either side of the thread.
   let outboundOcId: string | null = null;
@@ -344,7 +344,7 @@ async function ingestInboundMessage(
       );
       continue;
     }
-    // Sanitise filename for the R2 key — strip path separators, keep
+    // Sanitise filename for the R2 key , strip path separators, keep
     // visible chars only. The original filename stays on the DB row.
     const safeName = att.filename.replace(/[/\\?%*:|"<>]/g, "_");
     const r2Key = `inbound-emails/${commLogId}/${safeName}`;
@@ -372,7 +372,7 @@ async function ingestInboundMessage(
       profile_id: managerProfileId,
       oc_id: outboundOcId,
       type: "email_reply",
-      // Use the raw subject as the notification title — only prepend "Re:"
+      // Use the raw subject as the notification title , only prepend "Re:"
       // when this inbound was actually matched to one of OUR outbound rows
       // via In-Reply-To. A first-time fresh email shouldn't show up as a
       // reply.

@@ -21,7 +21,7 @@ function noreplyFrom(): string {
 }
 
 // Resolves the personalised FROM header for a given manager profile. Returns
-// null if the manager hasn't been assigned a username yet — callers fall back
+// null if the manager hasn't been assigned a username yet , callers fall back
 // to resolveOcSenderFromHeader (OC's primary manager) or the noreply identity.
 export async function resolveManagerFromHeader(
   managerProfileId: string,
@@ -54,7 +54,7 @@ export async function resolveManagerFromHeader(
 
 // Resolves the FROM header for an OC-scoped send (levies, overdue notices,
 // payment receipts, claim emails) when there's no specific manager initiating
-// the action — e.g. a Trigger.dev cron or a reconciliation auto-match. Picks
+// the action , e.g. a Trigger.dev cron or a reconciliation auto-match. Picks
 // the longest-tenured active strata_manager for the OC. Falls back to the
 // noreply identity when no manager is assigned yet.
 export async function resolveOcSenderFromHeader(
@@ -95,8 +95,8 @@ function isDryRun(): boolean {
 //
 // Every manager-facing send (invitations, levies, overdue reminders,
 // payment receipts, claim emails, manager messages) routes through here.
-// True system-only sends — verification codes, password reset, Basiq
-// system notifications — keep using getResend() directly because they
+// True system-only sends , verification codes, password reset, Basiq
+// system notifications , keep using getResend() directly because they
 // represent the platform speaking on its own behalf, not on behalf of a
 // management firm.
 //
@@ -117,7 +117,7 @@ function isDryRun(): boolean {
 interface TransportSendOptions {
   /** Specific manager profile to impersonate (preferred). */
   managerProfileId?: string | null;
-  /** OC scope — used to find the firm's primary manager when no
+  /** OC scope , used to find the firm's primary manager when no
    *  managerProfileId is given. */
   ocId?: string | null;
   to: string;
@@ -176,7 +176,7 @@ async function transportSend(
         console.warn(
           "[email] mail_provider=gmail but couldn't resolve a sender mailbox under domain",
           dispatch.domain,
-          "— falling back to Resend.",
+          ", falling back to Resend.",
         );
       }
     }
@@ -205,7 +205,7 @@ async function transportSend(
             attachments,
           });
           if (result.ok) {
-            // Graph's sendMail returns 202 with no body — no RFC822
+            // Graph's sendMail returns 202 with no body , no RFC822
             // id we can capture synchronously. Inbound matching for
             // Outlook will fall back to subject + sender heuristics.
             return { data: { id: "" }, error: null };
@@ -251,7 +251,7 @@ async function resolveOcPrimaryManagerProfileId(
 
 // Uniform result type for the 4 new owner-facing senders introduced in
 // PP6-C-1. Existing 5 senders (invitation/levy/basiq×3) keep their original
-// `{ success } | { error }` shape — retrofit is limited to the DRY_RUN gate.
+// `{ success } | { error }` shape , retrofit is limited to the DRY_RUN gate.
 export type EmailSendResult =
   | { success: true; id: string | null }
   | { dryRun: true }
@@ -275,7 +275,7 @@ interface SendInvitationEmailParams {
 }
 
 // ─── Email verification (6-digit OTP) ──────────────────────────────────────
-// Sent on sign-up and on resend requests. Our own gate — separate from
+// Sent on sign-up and on resend requests. Our own gate , separate from
 // Supabase Auth's built-in confirmation link (which is disabled). The code
 // is plain 6-digit numeric, 10-minute expiry stored in email_verification_codes.
 
@@ -311,7 +311,7 @@ export async function sendPasswordResetCodeEmail({
           <p style="margin:0;font-size:40px;font-weight:700;letter-spacing:14px;color:#0E314C;font-family:'Geist',-apple-system,BlinkMacSystemFont,'Segoe UI',Helvetica,Arial,sans-serif;font-variant-numeric:tabular-nums;">${code}</p>
         </div>
         <p style="margin:24px 0 0;color:#4A5868;font-size:12px;line-height:1.5;">
-          If you didn't request a password reset, you can safely ignore this email — your password won't change.
+          If you didn't request a password reset, you can safely ignore this email , your password won't change.
         </p>
       </div>
     `,
@@ -461,7 +461,7 @@ export async function sendLevyEmail({
   const logoHtml = logoImg(companyLogoUrl);
 
   if (isDryRun()) {
-    console.log(`[email-dry-run] type=levy_notice to=${to} ref=${referenceNumber} subject="Levy Notice — ${ocName} — ${periodLabel}"`);
+    console.log(`[email-dry-run] type=levy_notice to=${to} ref=${referenceNumber} subject="Levy Notice , ${ocName} , ${periodLabel}"`);
     return { success: true };
   }
 
@@ -470,7 +470,7 @@ export async function sendLevyEmail({
   const { error } = await transportSend({
     ocId: ocId ?? null,
     to,
-    subject: `Levy Notice — ${ocName} — ${periodLabel}`,
+    subject: `Levy Notice , ${ocName} , ${periodLabel}`,
     html: `
       <div style="font-family:'Inter',system-ui,sans-serif;max-width:520px;margin:0 auto;padding:32px 0;">
         ${logoHtml}
@@ -524,7 +524,7 @@ async function sendSystemEmail(
   subject: string,
   bodyHtml: string,
 ): Promise<BasiqEmailResult> {
-  // Dry-run gate (PP6-C-1) — also covers the original "no API key in dev"
+  // Dry-run gate (PP6-C-1) , also covers the original "no API key in dev"
   // case for backward compatibility (an unset key is still treated as
   // dry-run, so existing dev workflows without a key keep working).
   if (isDryRun() || !process.env.RESEND_API_KEY) {
@@ -552,7 +552,7 @@ export async function sendBasiqReauthReminderEmail(params: {
   companyLogoUrl?: string | null;
 }): Promise<BasiqEmailResult> {
   const { to, ocName, daysRemaining, reauthUrl, companyLogoUrl } = params;
-  const subject = `Bank feed reauthorisation required in ${daysRemaining} day${daysRemaining === 1 ? "" : "s"} — ${ocName}`;
+  const subject = `Bank feed reauthorisation required in ${daysRemaining} day${daysRemaining === 1 ? "" : "s"} , ${ocName}`;
   const html = `
     <div style="font-family:'Inter',system-ui,sans-serif;max-width:520px;margin:0 auto;padding:24px 0;">
       ${logoImg(companyLogoUrl)}
@@ -577,7 +577,7 @@ export async function sendBasiqConsentExpiredEmail(params: {
   companyLogoUrl?: string | null;
 }): Promise<BasiqEmailResult> {
   const { to, ocName, reauthUrl, companyLogoUrl } = params;
-  const subject = `Bank feed disconnected — ${ocName}`;
+  const subject = `Bank feed disconnected , ${ocName}`;
   const html = `
     <div style="font-family:'Inter',system-ui,sans-serif;max-width:520px;margin:0 auto;padding:24px 0;">
       ${logoImg(companyLogoUrl)}
@@ -614,7 +614,7 @@ export async function sendBasiqGapReconciliationEmail(params: {
     reportUrl,
     companyLogoUrl,
   } = params;
-  const subject = `Bank feed reconnected — reconciliation gap report for ${ocName}`;
+  const subject = `Bank feed reconnected , reconciliation gap report for ${ocName}`;
   const html = `
     <div style="font-family:'Inter',system-ui,sans-serif;max-width:520px;margin:0 auto;padding:24px 0;">
       ${logoImg(companyLogoUrl)}
@@ -646,7 +646,7 @@ export async function sendBasiqCommitteeGapNotificationEmail(params: {
 }): Promise<BasiqEmailResult> {
   const { to, ocName, gapHours, companyLogoUrl } = params;
   const days = Math.round(gapHours / 24);
-  const subject = `Extended bank-feed outage — ${ocName}`;
+  const subject = `Extended bank-feed outage , ${ocName}`;
   const html = `
     <div style="font-family:'Inter',system-ui,sans-serif;max-width:520px;margin:0 auto;padding:24px 0;">
       ${logoImg(companyLogoUrl)}
@@ -679,7 +679,7 @@ interface SharedSenderHeader {
   // logo_url=NULL until the manager UI for upload ships in 6.5).
   companyLogoUrl?: string | null;
   // OC id used by resolveOcSenderFromHeader to pick the active manager whose
-  // identity becomes the FROM header. Optional — falls back to the brand
+  // identity becomes the FROM header. Optional , falls back to the brand
   // noreply identity when missing.
   ocId?: string | null;
 }
@@ -689,7 +689,7 @@ function greeting(ownerName: string | null): string {
 }
 
 // PP6-D-D-fix-logo: shared <img> renderer for the company logo. Returns
-// empty string when no logo is configured — callers can inline this at
+// empty string when no logo is configured , callers can inline this at
 // the top of any email body without conditionals.
 function logoImg(url: string | null | undefined): string {
   return url
@@ -721,7 +721,7 @@ export async function sendPaymentReceivedEmail(
   params: SendPaymentReceivedEmailParams,
 ): Promise<EmailSendResult> {
   const { to, ownerName, ocName, ocAddress, amount, paymentDate, description, lotLabel, reference, ocShortCode, companyLogoUrl, ocId } = params;
-  const subject = `Payment received — ${ocName}`;
+  const subject = `Payment received , ${ocName}`;
 
   if (isDryRun()) {
     console.log(`[email-dry-run] type=payment_received to=${to} amount=${amount.toFixed(2)} subject="${subject}"`);
@@ -793,7 +793,7 @@ export async function sendOverdueReminderEmail(
   params: SendOverdueReminderEmailParams,
 ): Promise<EmailSendResult> {
   const { to, ownerName, ocName, ocAddress, referenceNumber, amountOutstanding, daysOverdue, dueDate, penaltyInterestAccrued, ocShortCode, companyLogoUrl, pdfBuffer, pdfFilename, ocId } = params;
-  const subject = `Your levy is overdue — ${ocName}`;
+  const subject = `Your levy is overdue , ${ocName}`;
 
   if (isDryRun()) {
     console.log(`[email-dry-run] type=overdue_reminder to=${to} ref=${referenceNumber} days=${daysOverdue} interest=${penaltyInterestAccrued.toFixed(2)} pdf=${pdfBuffer ? "yes" : "no"} subject="${subject}"`);
@@ -820,9 +820,9 @@ export async function sendOverdueReminderEmail(
       </p>`;
 
   const html = brandShell(`
-    <h2 style="margin:0 0 16px;font-size:20px;font-weight:600;color:#0E314C;">Levy overdue — friendly reminder</h2>
+    <h2 style="margin:0 0 16px;font-size:20px;font-weight:600;color:#0E314C;">Levy overdue , friendly reminder</h2>
     <p style="margin:0 0 20px;color:#0E314C;font-size:14px;line-height:1.6;">
-      ${greeting(ownerName)} our records show a levy at <strong>${escapeHtml(ocAddress)}</strong> is now <strong>${daysOverdue} days</strong> past its due date. If you've already paid, you can disregard this notice — it may take a day or two to reflect on our system.
+      ${greeting(ownerName)} our records show a levy at <strong>${escapeHtml(ocAddress)}</strong> is now <strong>${daysOverdue} days</strong> past its due date. If you've already paid, you can disregard this notice , it may take a day or two to reflect on our system.
     </p>
     <div style="background:#fef9f3;border:1px solid #fde7d0;border-radius:6px;padding:16px;margin:0 0 24px;">
       <p style="margin:0 0 4px;font-size:13px;color:#4A5868;">Reference</p>
@@ -878,7 +878,7 @@ export async function sendClaimMatchedEmail(
   params: SendClaimMatchedEmailParams,
 ): Promise<EmailSendResult> {
   const { to, ownerName, ocName, ocAddress, amount, claimDate, paymentMethod, lotLabel, ocShortCode, companyLogoUrl, ocId } = params;
-  const subject = `Your payment has been confirmed — ${ocName}`;
+  const subject = `Your payment has been confirmed , ${ocName}`;
 
   if (isDryRun()) {
     console.log(`[email-dry-run] type=claim_matched to=${to} amount=${amount.toFixed(2)} subject="${subject}"`);
@@ -940,7 +940,7 @@ export async function sendClaimRejectedEmail(
   params: SendClaimRejectedEmailParams,
 ): Promise<EmailSendResult> {
   const { to, ownerName, ocName, ocAddress, amount, claimDate, rejectionReason, lotLabel, ocShortCode, companyLogoUrl, ocId } = params;
-  const subject = `Update on your payment claim — ${ocName}`;
+  const subject = `Update on your payment claim , ${ocName}`;
 
   if (isDryRun()) {
     console.log(`[email-dry-run] type=claim_rejected to=${to} amount=${amount.toFixed(2)} subject="${subject}"`);
@@ -1004,7 +1004,7 @@ export interface SendNewClaimSubmittedEmailParams {
   notes: string | null;
   ocShortCode: string;
   companyLogoUrl?: string | null;
-  // Optional OC id — when provided, the send routes through the firm's
+  // Optional OC id , when provided, the send routes through the firm's
   // configured mail provider (Gmail send-as) so manager-to-manager
   // notifications land in the firm's domain instead of the brand noreply.
   ocId?: string | null;
@@ -1014,7 +1014,7 @@ export async function sendNewClaimSubmittedEmail(
   params: SendNewClaimSubmittedEmailParams,
 ): Promise<EmailSendResult> {
   const { to, managerName, ocName, lotLabel, ownerName, amount, claimDate, paymentMethod, notes, ocShortCode, companyLogoUrl, ocId } = params;
-  const subject = `New owner payment claim — ${ocName} ${lotLabel}`;
+  const subject = `New owner payment claim , ${ocName} ${lotLabel}`;
 
   if (isDryRun()) {
     console.log(`[email-dry-run] type=new_claim_submitted to=${to} amount=${amount.toFixed(2)} subject="${subject}"`);
@@ -1057,7 +1057,7 @@ export async function sendNewClaimSubmittedEmail(
   `, companyLogoUrl);
 
   // Goes to managers within the same firm. Falls back to the brand noreply
-  // identity when no OC scope is supplied — but with ocId we route via the
+  // identity when no OC scope is supplied , but with ocId we route via the
   // firm's primary manager mailbox so the notification reads as coming from
   // their own firm (and routes through Gmail when configured).
   const resendFrom = ocId
@@ -1135,7 +1135,7 @@ export async function sendSecondReminderEmail(
     penaltyInterestAccrued, ocShortCode, companyLogoUrl,
     pdfBuffer, pdfFilename, ocId,
   } = params;
-  const subject = `Second reminder — levy overdue ${daysOverdue}+ days — ${ocName}`;
+  const subject = `Second reminder , levy overdue ${daysOverdue}+ days , ${ocName}`;
 
   if (isDryRun()) {
     console.log(`[email-dry-run] type=second_reminder to=${to} ref=${referenceNumber} days=${daysOverdue} pdf=${pdfBuffer ? "yes" : "no"} subject="${subject}"`);
@@ -1154,7 +1154,7 @@ export async function sendSecondReminderEmail(
   );
 
   const html = brandShell(`
-    <h2 style="margin:0 0 16px;font-size:20px;font-weight:600;color:#b45309;">Second reminder — levy ${daysOverdue}+ days overdue</h2>
+    <h2 style="margin:0 0 16px;font-size:20px;font-weight:600;color:#b45309;">Second reminder , levy ${daysOverdue}+ days overdue</h2>
     <p style="margin:0 0 20px;color:#0E314C;font-size:14px;line-height:1.6;">
       ${greeting(ownerName)} our records still show an unpaid levy at <strong>${escapeHtml(ocAddress)}</strong>. It is now more than <strong>${daysOverdue} days</strong> overdue and penalty interest is accruing.
     </p>
@@ -1221,7 +1221,7 @@ export async function sendFinalNoticeEmail(
     penaltyInterestAccrued, ocShortCode, companyLogoUrl,
     pdfBuffer, pdfFilename, ocId,
   } = params;
-  const subject = `FINAL NOTICE — outstanding levy — ${ocName}`;
+  const subject = `FINAL NOTICE , outstanding levy , ${ocName}`;
 
   if (isDryRun()) {
     console.log(`[email-dry-run] type=levy_final_notice to=${to} ref=${referenceNumber} days=${daysOverdue} pdf=${pdfBuffer ? "yes" : "no"} subject="${subject}"`);
@@ -1240,7 +1240,7 @@ export async function sendFinalNoticeEmail(
   );
 
   const html = brandShell(`
-    <h2 style="margin:0 0 16px;font-size:20px;font-weight:700;color:#b91c1c;">FINAL NOTICE — levy outstanding</h2>
+    <h2 style="margin:0 0 16px;font-size:20px;font-weight:700;color:#b91c1c;">FINAL NOTICE , levy outstanding</h2>
     <p style="margin:0 0 20px;color:#0E314C;font-size:14px;line-height:1.6;">
       ${greeting(ownerName)} this is a <strong>final notice</strong> for the unpaid levy at <strong>${escapeHtml(ocAddress)}</strong>. The levy is now more than <strong>${daysOverdue} days</strong> overdue.
     </p>
@@ -1255,7 +1255,7 @@ export async function sendFinalNoticeEmail(
     </div>
     ${ctaBlock}
     <p style="margin:0 0 8px;color:#0E314C;font-size:14px;line-height:1.5;">
-      If full payment is not received promptly, the owners' corporation may commence recovery action — including, where appropriate, an application to VCAT or referral to a debt-recovery agent. Costs of recovery may be added to the debt under section 32 of the Owners Corporations Act 2006 (Vic).
+      If full payment is not received promptly, the owners' corporation may commence recovery action , including, where appropriate, an application to VCAT or referral to a debt-recovery agent. Costs of recovery may be added to the debt under section 32 of the Owners Corporations Act 2006 (Vic).
     </p>
     <p style="margin:0;color:#4A5868;font-size:12px;line-height:1.5;">
       This notice is sent as a statutory communication and cannot be opted out of.
@@ -1312,7 +1312,7 @@ export async function sendManagerMessageEmail(params: {
   // Dispatch based on the manager's company mail_provider:
   //   stratawise → Resend transport, FROM <username>@stratawise.com.au
   //   gmail      → Gmail API via DWD impersonation (real transport below)
-  //   outlook    → Microsoft Graph (transport pending — falls through to
+  //   outlook    → Microsoft Graph (transport pending , falls through to
   //                Resend for now with a console.warn)
   const dispatch = await resolveDispatchProvider(managerProfileId);
 
@@ -1327,7 +1327,7 @@ export async function sendManagerMessageEmail(params: {
   // Gmail send-as. Requires the platform's service account JSON + the
   // customer Workspace admin to have authorised our Client ID against
   // GMAIL_SCOPES. Falls back to Resend on retryable failures (rate limit
-  // after one retry) — fatal failures (unauthorized_client, forbidden)
+  // after one retry) , fatal failures (unauthorized_client, forbidden)
   // surface to the caller so the manager sees a real error and can fix
   // their DWD grant from /settings → Email.
   if (dispatch.provider === "gmail" && isGmailConfigured()) {
@@ -1370,14 +1370,14 @@ export async function sendManagerMessageEmail(params: {
       console.warn(
         "[email] mail_provider=gmail but couldn't resolve a sender mailbox under domain",
         dispatch.domain,
-        "— falling back to Resend.",
+        ", falling back to Resend.",
       );
     }
   }
 
   if (dispatch.provider === "outlook") {
     console.warn(
-      `[email] outlook send-as configured for company ${dispatch.companyId} but Microsoft Graph transport hasn't shipped yet — falling back to Resend.`,
+      `[email] outlook send-as configured for company ${dispatch.companyId} but Microsoft Graph transport hasn't shipped yet , falling back to Resend.`,
     );
   }
 
@@ -1428,7 +1428,7 @@ interface MailDispatch {
 //      (the mailbox THIS manager confirmed during test-connection).
 //   2. Any subscription for the same management_company (a manager whose
 //      personal profile email isn't on the firm domain but whose firm
-//      has at least one verified mailbox — we send from that).
+//      has at least one verified mailbox , we send from that).
 //   3. profile.email if its domain matches firm-domain.
 //   4. null → caller falls back to Resend.
 async function resolveManagerSenderEmail(

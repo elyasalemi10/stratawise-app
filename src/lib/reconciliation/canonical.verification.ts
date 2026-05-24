@@ -1,7 +1,7 @@
 /**
  * Canonicaliser verification (Prompt 4 PP4-B).
  *
- * Pure-function tests — no DB required. Exercises the noise-strip pipeline
+ * Pure-function tests , no DB required. Exercises the noise-strip pipeline
  * against synthetic descriptions covering each noise pattern + edge cases
  * (null, empty, short result, legitimate names with punctuation).
  *
@@ -19,7 +19,7 @@ const results: Result[] = [];
 function record(scenario: string, passed: boolean, detail: string) {
   results.push({ scenario, passed, detail });
   console.log(
-    `  ${passed ? "PASS" : "FAIL"}  ${scenario}${detail ? " — " + detail : ""}`,
+    `  ${passed ? "PASS" : "FAIL"}  ${scenario}${detail ? " , " + detail : ""}`,
   );
 }
 
@@ -36,7 +36,7 @@ function check(
   record(scenario, passed, detail);
 }
 
-console.log("Canonical verification — PP4-B scenarios\n");
+console.log("Canonical verification , PP4-B scenarios\n");
 
 // CAN-1: null → null
 check("CAN-1: null input returns null", null, null);
@@ -73,7 +73,7 @@ check(
 );
 
 // CAN-7: BSB string stripped (paired with DIRECT CREDIT, which IS in
-// the directional noise list — "TRANSFER" alone is not stripped)
+// the directional noise list , "TRANSFER" alone is not stripped)
 check(
   "CAN-7: BSB string '062-001' stripped",
   "DIRECT CREDIT 062-001 JANE BROWN",

@@ -2,7 +2,7 @@
  * Overdue-levy check verification (PP6-C-1).
  *
  * Exercises checkOverdueLeviesJob (src/lib/accrual/overdue-check.ts) with
- * deterministic runDate fixtures. EMAIL_DRY_RUN forced on for the suite —
+ * deterministic runDate fixtures. EMAIL_DRY_RUN forced on for the suite ,
  * no real emails fire. Assertions read communication_log + escalation_instances
  * + audit_log directly.
  *
@@ -39,7 +39,7 @@ const results: Result[] = [];
 
 function record(scenario: string, passed: boolean, detail: string) {
   results.push({ scenario, passed, detail });
-  console.log(`  ${passed ? "PASS" : "FAIL"}  ${scenario}${detail ? " — " + detail : ""}`);
+  console.log(`  ${passed ? "PASS" : "FAIL"}  ${scenario}${detail ? " , " + detail : ""}`);
 }
 
 function daysBefore(iso: string, n: number): string {
@@ -555,7 +555,7 @@ async function main() {
     process.exit(0);
   }
 
-  console.log("Overdue-levy check verification — PP6-C-1 scenarios IO-1..IO-7\n");
+  console.log("Overdue-levy check verification , PP6-C-1 scenarios IO-1..IO-7\n");
   console.log("[1/3] Cleaning up stale verification data");
   await cleanupMarker();
 

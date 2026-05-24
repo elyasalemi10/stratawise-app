@@ -7,7 +7,7 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 // header or by recent-outbound-thread, this helper looks up whether the
 // sender email is the registered email of exactly one lot owner across
 // the manager's portfolio. If so, we link the communication_log row to
-// that owner's lot — same effect as the manager clicking the "Link to
+// that owner's lot , same effect as the manager clicking the "Link to
 // lot" dropdown manually.
 //
 // Rules (deliberately conservative to avoid false positives):
@@ -18,7 +18,7 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 //     lots, e.g. spouse owns both) stay unlinked and surface in the
 //     unrouted queue with the candidates for the manager to pick.
 //
-// UI never says "auto-linked" — the resulting row looks identical to a
+// UI never says "auto-linked" , the resulting row looks identical to a
 // manager-link. The audit_log entry records `action: "auto_link_by_sender_email"`
 // for traceability.
 

@@ -38,7 +38,7 @@ export function DraftCard({ draft }: { draft: DraftCardData }) {
 
   function openConfirm(e: React.MouseEvent) {
     // Stop the click from bubbling to the Link wrapper around the card
-    // — clicking trash should never accidentally navigate into the
+    // , clicking trash should never accidentally navigate into the
     // wizard.
     e.preventDefault();
     e.stopPropagation();
@@ -73,7 +73,7 @@ export function DraftCard({ draft }: { draft: DraftCardData }) {
                   <p className="text-sm font-semibold text-foreground truncate">
                     {draft.label}{" "}
                     <span className="text-muted-foreground font-normal">
-                      — Step {draft.step}/8
+                      , Step {draft.step}/8
                     </span>
                   </p>
                   {draft.address ? (

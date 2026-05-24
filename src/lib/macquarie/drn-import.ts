@@ -3,7 +3,7 @@
 // When a strata manager sets up DEFT for a trust account, Macquarie issues
 // one DEFT Reference Number per payer (≈ one per lot). The full list is
 // exported from Macquarie Business Online as a CSV with these columns
-// (header names vary slightly between vintages — we normalise):
+// (header names vary slightly between vintages , we normalise):
 //
 //   DEFT Reference Number   - the actual DRN (digits)
 //   Account Number          - which Macquarie trust account it's linked to
@@ -30,7 +30,7 @@ export type DrnCsvParseResult = {
   errors: { rowNumber: number; message: string }[];
 };
 
-// Header aliases — same logical column under different export-tool vintages.
+// Header aliases , same logical column under different export-tool vintages.
 const HEADER_ALIASES: Record<string, keyof Omit<DrnCsvRow, "rowNumber">> = {
   "deft reference number": "drn",
   "deft reference": "drn",
@@ -178,19 +178,19 @@ export function matchDrnsToLots(
   }
 
   return drnRows.map((drnRow) => {
-    // 1) Secondary ID — exact lot number match.
+    // 1) Secondary ID , exact lot number match.
     if (drnRow.secondaryId) {
       const asInt = parseInt(drnRow.secondaryId.replace(/\D/g, ""), 10);
       if (Number.isFinite(asInt)) {
         const lot = lotByNumber.get(asInt);
         if (lot) return { drnRow, lotId: lot.id, matchedBy: "secondary_id_lot_number", confidence: "exact" };
       }
-      // 2) Secondary ID — unit number match (case-insensitive).
+      // 2) Secondary ID , unit number match (case-insensitive).
       const unitKey = drnRow.secondaryId.trim().toLowerCase();
       const byUnit = lotByUnit.get(unitKey);
       if (byUnit) return { drnRow, lotId: byUnit.id, matchedBy: "secondary_id_unit_number", confidence: "exact" };
     }
-    // 3) Primary ID — fuzzy match against owners. Threshold 0.6 = at least
+    // 3) Primary ID , fuzzy match against owners. Threshold 0.6 = at least
     // 60% of name tokens overlap. Higher threshold for short names.
     if (drnRow.primaryId) {
       let best: { lotId: string; score: number } | null = null;

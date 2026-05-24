@@ -27,7 +27,7 @@ export default async function RulesPage({
         title={oc.rules_source === "custom" ? "Rules upload pending" : "Using Victoria's Model Rules"}
         description={
           oc.rules_source === "custom"
-            ? "The custom rules PDF didn't parse — visit the OC's documents tab to view the source."
+            ? "The custom rules PDF didn't parse , visit the OC's documents tab to view the source."
             : "This OC adopted the default Model Rules under the Owners Corporations Regulations. To use custom rules, upload a registered rules PDF from the documents tab."
         }
       />

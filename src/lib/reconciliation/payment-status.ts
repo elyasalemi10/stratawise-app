@@ -1,15 +1,15 @@
 // ============================================================================
-// computeLevyPaymentStatus — thin RPC caller wrapping _walk_per_notice_status
+// computeLevyPaymentStatus , thin RPC caller wrapping _walk_per_notice_status
 // ----------------------------------------------------------------------------
 // Returns the snapshot-aware per-notice payment status for a lot at a given
 // asOfDate (defaults to today). Wraps the SQL function so TS callers don't
-// re-implement the walker — see database-schema.sql §_walk_per_notice_status
+// re-implement the walker , see database-schema.sql §_walk_per_notice_status
 // for the canonical algorithm + snapshot semantics.
 //
 // Prompt 7 certificate rendering MUST call this rather than reading
 // levy_notices.status directly. PRE_LAUNCH_CLEANUP records the rule.
 //
-// No `"use server"` directive — pure helper. Auth is the caller's job
+// No `"use server"` directive , pure helper. Auth is the caller's job
 // (server actions invoking this should already have called
 // requireOCAccess on the lot's oc).
 // ============================================================================

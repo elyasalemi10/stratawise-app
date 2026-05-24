@@ -5,11 +5,11 @@
 // module-scoped client with typed put/get/delete/presign helpers.
 //
 // R2 is S3-compatible. Configuration via env:
-//   R2_ENDPOINT            — https://{account}.r2.cloudflarestorage.com
-//   R2_ACCESS_KEY_ID       — auth
-//   R2_SECRET_ACCESS_KEY   — auth
-//   R2_BUCKET_NAME         — single multi-purpose bucket
-//   R2_PUBLIC_URL          — public CDN custom domain (used for logo/levy URLs
+//   R2_ENDPOINT            , https://{account}.r2.cloudflarestorage.com
+//   R2_ACCESS_KEY_ID       , auth
+//   R2_SECRET_ACCESS_KEY   , auth
+//   R2_BUCKET_NAME         , single multi-purpose bucket
+//   R2_PUBLIC_URL          , public CDN custom domain (used for logo/levy URLs
 //                            stored in management_companies.logo_url +
 //                            levy_notices.pdf_url)
 //
@@ -20,13 +20,13 @@
 //   levies/{ocId}/{referenceNumber}.pdf
 //
 // Bucket public access: the bucket is fronted by a public CDN custom domain
-// (R2_PUBLIC_URL). Objects can be fetched anonymously via that domain —
+// (R2_PUBLIC_URL). Objects can be fetched anonymously via that domain ,
 // logos rendered in unauthenticated SMTP-delivered email <img> tags rely on
 // this. PDF retrieval inside the dashboard also uses the public URL today;
 // PP7-A keeps that semantic. getSignedDownloadUrl is exported for future use
 // when PII concerns push us to time-limited access.
 //
-// Module-scoped client is intentional — S3Client is heavy to construct and
+// Module-scoped client is intentional , S3Client is heavy to construct and
 // safely shared across requests. R2 has no per-connection limit issue on
 // Vercel's lambda-per-request model.
 // ============================================================================
@@ -60,7 +60,7 @@ function getClient(): S3Client {
   return _client;
 }
 
-// Public bucket — anonymously readable via R2_PUBLIC_URL. Holds assets that
+// Public bucket , anonymously readable via R2_PUBLIC_URL. Holds assets that
 // MUST render in unauthenticated contexts (logos in outbound email, levy
 // notice PDFs delivered to owners, avatars).
 export function getBucket(): string {
@@ -71,7 +71,7 @@ export function getBucket(): string {
   );
 }
 
-// Key prefixes that hold SENSITIVE objects — these live in the private
+// Key prefixes that hold SENSITIVE objects , these live in the private
 // (confidential) bucket which has NO public URL and is only ever served
 // through authenticated app routes (/api/documents, /api/insurance-docs,
 // /api/inbox-attachments) via fetchObject. levies/ stays public because the
@@ -97,7 +97,7 @@ function bucketForKey(key: string): string {
 }
 
 // Public CDN base, always with a scheme. R2_PUBLIC_URL may be configured as a
-// bare custom domain ("cdn.stratawise.com.au") — without normalising, the
+// bare custom domain ("cdn.stratawise.com.au") , without normalising, the
 // stored URLs come out scheme-less and the browser treats them as relative
 // paths (a scheme-less <audio>/<img> src 404s). Force https:// when missing.
 function publicBase(): string {

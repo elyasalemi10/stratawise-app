@@ -313,7 +313,7 @@ export function LedgerTab({
 
   function openLedgerDup(entry: LotLedgerEntry) {
     if (!entry.duplicate_metadata || !entry.duplicate_status) return;
-    // The detector's metadata shape (from PP5-B). Defensive cast — Zod
+    // The detector's metadata shape (from PP5-B). Defensive cast , Zod
     // schema source-of-truth lives in validations/reconciliation.ts.
     const meta = entry.duplicate_metadata as {
       matched_against?: string;
@@ -439,13 +439,13 @@ export function LedgerTab({
         <div className="grid grid-cols-2 gap-4 sm:grid-cols-4">
           <KpiCard
             label="Administrative fund balance"
-            value={balance ? formatCurrency(balance.admin_balance) : "—"}
+            value={balance ? formatCurrency(balance.admin_balance) : ","}
             negative={balance ? balance.admin_balance < 0 : false}
             sub={balance?.admin_balance === 0 ? "Current" : balance && balance.admin_balance < 0 ? "In arrears" : balance && balance.admin_balance > 0 ? "Credit balance" : undefined}
           />
           <KpiCard
             label="Capital works balance"
-            value={balance ? formatCurrency(balance.capital_balance) : "—"}
+            value={balance ? formatCurrency(balance.capital_balance) : ","}
             negative={balance ? balance.capital_balance < 0 : false}
             sub={balance?.capital_balance === 0 ? "Current" : balance && balance.capital_balance < 0 ? "In arrears" : balance && balance.capital_balance > 0 ? "Credit balance" : undefined}
           />
@@ -464,7 +464,7 @@ export function LedgerTab({
         {/* PP6-D-A: lifetime interest accrued summary. Uses
             lot_ledger_entries.category='interest' SUM (already-indexed) per
             PP6-D-0 SG-D6. Renders only when at least one ACTIVE INTEREST
-            DEBIT exists — predicate matches the reduce filter exactly so a
+            DEBIT exists , predicate matches the reduce filter exactly so a
             lot with only credits / voided debits doesn't render an empty
             $0.00 card. */}
         {(() => {

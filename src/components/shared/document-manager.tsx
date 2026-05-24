@@ -48,7 +48,7 @@ function getFileIcon(mimeType: string | null, size: "sm" | "lg" = "sm") {
 }
 
 function formatFileSize(bytes: number | null): string {
-  if (!bytes) return "—";
+  if (!bytes) return ",";
   if (bytes < 1024) return `${bytes} B`;
   if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
   return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
@@ -128,7 +128,7 @@ export function DocumentManager({ ocId, lotId, initialDocuments, readOnly }: Doc
       setUploads((prev) =>
         prev.map((u) => (u.id === uploadId ? { ...u, error: "Network error" } : u))
       );
-      toast.error("Upload failed — network error");
+      toast.error("Upload failed , network error");
     });
 
     xhr.open("POST", "/api/documents");
@@ -148,7 +148,7 @@ export function DocumentManager({ ocId, lotId, initialDocuments, readOnly }: Doc
     }
   }
 
-  // Window-level drag listeners — show a floating overlay only when the user
+  // Window-level drag listeners , show a floating overlay only when the user
   // drags an actual file (not a text selection or anchor link). The counter
   // pattern handles browsers firing dragleave on every child element.
   const dragDepthRef = useRef(0);
@@ -267,7 +267,7 @@ export function DocumentManager({ ocId, lotId, initialDocuments, readOnly }: Doc
 
   return (
     <div className="space-y-4">
-      {/* Top toolbar — just Export + Upload now. Category filter pills and
+      {/* Top toolbar , just Export + Upload now. Category filter pills and
           the "New uploads tagged as" row are gone; categories are still
           attached to each document automatically (see selectedCategory state
           which defaults to "other") and surface on the per-row chip. */}
@@ -320,7 +320,7 @@ export function DocumentManager({ ocId, lotId, initialDocuments, readOnly }: Doc
         )}
       </div>
 
-      {/* Floating drag overlay — appears when the user drags files anywhere on
+      {/* Floating drag overlay , appears when the user drags files anywhere on
           the page. Click-through disabled so the underlying page handles the
           drop (handled by the window listener in the effect above). */}
       {!readOnly && dragging && (
@@ -340,7 +340,7 @@ export function DocumentManager({ ocId, lotId, initialDocuments, readOnly }: Doc
         </div>
       )}
 
-      {/* Document grid — in-flight uploads render as ghost cards at the
+      {/* Document grid , in-flight uploads render as ghost cards at the
           front of the grid with a spinning wheel where the preview / icon
           would normally sit, so the user sees one consistent surface
           instead of a separate progress strip above the grid. */}
@@ -555,7 +555,7 @@ export function DocumentManager({ ocId, lotId, initialDocuments, readOnly }: Doc
         </DialogContent>
       </Dialog>
 
-      {/* Rename dialog — extension is locked as a non-editable suffix
+      {/* Rename dialog , extension is locked as a non-editable suffix
           (same pattern as the +61 prefix on PhoneInput). The textbox only
           carries the filename stem; the extension comes from the original
           upload and rides along on save. */}

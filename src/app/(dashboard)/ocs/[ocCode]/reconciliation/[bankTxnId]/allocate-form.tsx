@@ -200,7 +200,7 @@ export function AllocateForm({
     } else {
       parts.push("Unowned");
     }
-    return parts.join(" — ");
+    return parts.join(" , ");
   };
 
   return (

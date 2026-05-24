@@ -3,11 +3,11 @@ import { SidebarProvider, SidebarInset, SidebarTrigger } from "@/components/ui/s
 import { AdminSidebar } from "@/components/layout/admin-sidebar";
 import { getSidebarProfile } from "@/lib/actions/profile";
 
-// Admin console chrome — same shadcn sidebar shell + styling as the manager
+// Admin console chrome , same shadcn sidebar shell + styling as the manager
 // dashboard, with admin-specific navigation. Each console page owns its own
 // super_admin + MFA gate (evaluateSuperAdminGate), so this layout doesn't
 // gate. The MFA enrol / challenge pages live OUTSIDE this group so they
-// render with no sidebar — a user who hasn't finished MFA has nothing to
+// render with no sidebar , a user who hasn't finished MFA has nothing to
 // click and can't reach the console.
 export default async function AdminConsoleLayout({
   children,

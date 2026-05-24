@@ -194,7 +194,7 @@ export default function LevyTestPage() {
 
       <div className="max-w-[1800px] mx-auto p-6">
         <div className="grid grid-cols-1 lg:grid-cols-[400px_1fr] gap-6">
-          {/* Left panel — editable fields */}
+          {/* Left panel , editable fields */}
           <div className="space-y-6 overflow-y-auto max-h-[calc(100vh-120px)]">
             {/* Logo upload */}
             <Card>
@@ -383,7 +383,7 @@ export default function LevyTestPage() {
             {/* Payment instructions */}
             <Card>
               <CardContent className="pt-5 space-y-3">
-                <Section title="Payment — BPAY">
+                <Section title="Payment , BPAY">
                   <div className="flex items-center justify-between">
                     <Label className="text-xs">Include BPAY</Label>
                     <Switch
@@ -419,7 +419,7 @@ export default function LevyTestPage() {
                   )}
                 </Section>
                 <Separator />
-                <Section title="Payment — EFT">
+                <Section title="Payment , EFT">
                   <Field label="BSB" value={data.paymentInstructions.eft.bsb} onChange={(v) => update("paymentInstructions.eft.bsb", v)} />
                   <Field label="Account number" value={data.paymentInstructions.eft.account_number} onChange={(v) => update("paymentInstructions.eft.account_number", v)} />
                   <Field label="Account name" value={data.paymentInstructions.eft.account_name} onChange={(v) => update("paymentInstructions.eft.account_name", v)} />
@@ -430,7 +430,7 @@ export default function LevyTestPage() {
 
           </div>
 
-          {/* Right panel — live PDF preview */}
+          {/* Right panel , live PDF preview */}
           <div className="sticky top-6">
             <Card className="overflow-hidden">
               <CardContent className="p-0">

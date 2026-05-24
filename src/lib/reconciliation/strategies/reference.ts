@@ -1,5 +1,5 @@
 // ============================================================================
-// Strategy 1 — StrataWise levy reference (LEV-{n})
+// Strategy 1 , StrataWise levy reference (LEV-{n})
 // ----------------------------------------------------------------------------
 // Extracts levy references from the bank-transaction description, looks
 // them up against outstanding levy_notices in the bank account's fund,
@@ -123,7 +123,7 @@ export async function tryReferenceMatch(
     remaining = round2(remaining - allocAmount);
   }
 
-  // Diagnostic audits for stale references — one per stale ref.
+  // Diagnostic audits for stale references , one per stale ref.
   if (staleRefs.length > 0) {
     const rows = staleRefs.map((ref) => ({
       profile_id: ctx.performedBy,

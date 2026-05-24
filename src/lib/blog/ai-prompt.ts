@@ -7,7 +7,7 @@ export const AI_POST_PROMPT = `You are writing a blog post for StrataWise, a Vic
 Return ONLY a single valid JSON object (no markdown, no code fences, no commentary) matching this exact shape:
 
 {
-  "title": "string — the post title",
+  "title": "string , the post title",
   "slug": "kebab-case-url-slug",
   "excerpt": "1–2 sentence summary shown in listings (also the default meta description)",
   "audience": "strata_managers" | "lot_owners",
@@ -16,11 +16,11 @@ Return ONLY a single valid JSON object (no markdown, no code fences, no commenta
     "metaTitle": "≤60 chars, search-result title (can differ from title)",
     "metaDescription": "≤155 chars, compelling search snippet",
     "keywords": ["primary keyword", "secondary keyword"],
-    "canonicalUrl": "optional — omit unless this is a republished canonical"
+    "canonicalUrl": "optional , omit unless this is a republished canonical"
   },
   "cover": {
     "url": "https://… (optional cover image URL; omit if none)",
-    "alt": "REQUIRED if url is set — describe the image for SEO & screen readers"
+    "alt": "REQUIRED if url is set , describe the image for SEO & screen readers"
   },
   "body": [ ...blocks... ]
 }
@@ -35,7 +35,7 @@ The "body" is an ORDERED array of blocks. Allowed block types:
 5. Quote:          { "type": "blockquote", "text": "..." }
 6. Table:          { "type": "table", "headers": ["Col A", "Col B"], "rows": [["a1","b1"], ["a2","b2"]] }
    Every row MUST have the same number of cells as headers. Keep tables small and scannable.
-7. Image:          { "type": "image", "url": "https://…", "alt": "REQUIRED — describe the image" }
+7. Image:          { "type": "image", "url": "https://…", "alt": "REQUIRED , describe the image" }
    Always include meaningful alt text. Use real, accessible image URLs only.
 8. Video (YouTube):{ "type": "youtube", "url": "https://www.youtube.com/watch?v=VIDEOID" }
    Standard watch, youtu.be, shorts or embed URLs all work.

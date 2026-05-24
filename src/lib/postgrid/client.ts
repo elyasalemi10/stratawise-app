@@ -3,14 +3,14 @@ import "server-only";
 // PostGrid client wrapper.
 //
 // PostGrid runs TWO separate products on TWO separate API keys:
-//   • Print & Mail API — sends physical letters. Endpoints live at
+//   • Print & Mail API , sends physical letters. Endpoints live at
 //     api.postgrid.com/print-mail/v1/... ($-billable; charge applies
 //     per letter once the test mode is flipped off.)
-//   • Address Verification API — checks deliverability. Endpoints at
+//   • Address Verification API , checks deliverability. Endpoints at
 //     api.postgrid.com/v1/addver/... (US/CA) and
 //     api.postgrid.com/v1/intl_addver/... (everything else inc. AU).
 //
-// Auth: x-api-key header. Each product has its OWN key — supplying a
+// Auth: x-api-key header. Each product has its OWN key , supplying a
 // Print Mail key to the Address Verification endpoint returns
 // HTTP 401 "OperationalError: Invalid API key." (Verified locally by
 // scripts/test-postgrid-addver.ts.)
@@ -19,17 +19,17 @@ import "server-only";
 //   POSTGRID_PRINT_TEST_API_KEY    POSTGRID_PRINT_API_KEY
 //   POSTGRID_ADDVER_TEST_API_KEY   POSTGRID_ADDVER_API_KEY
 //
-// Mode is hard-coded to "live" — POSTGRID_MODE is no longer read.
+// Mode is hard-coded to "live" , POSTGRID_MODE is no longer read.
 //
 // IMPORTANT: PostGrid keys come in two flavours, distinguished by prefix:
-//   • test_pk_… / live_pk_…  — PUBLIC key. Browser-only. PostGrid checks
+//   • test_pk_… / live_pk_…  , PUBLIC key. Browser-only. PostGrid checks
 //                              the request Origin against an allowlist
 //                              configured in the dashboard. Server-side
 //                              calls from Node have no Origin header and
 //                              get rejected with HTTP 403 "Invalid origin
-//                              for this api key." (verified locally — see
+//                              for this api key." (verified locally , see
 //                              scripts/test-postgrid-addver.ts).
-//   • test_sk_… / live_sk_…  — SECRET key. Server-side only. No origin
+//   • test_sk_… / live_sk_…  , SECRET key. Server-side only. No origin
 //                              restriction; the key itself authenticates.
 //                              This is what every endpoint in this wrapper
 //                              expects. Generate one from PostGrid
@@ -38,14 +38,14 @@ import "server-only";
 // Backwards-compat: POSTGRID_TEST_API_KEY (no product prefix) is treated
 // as the Print Mail test key, since that's what the dashboard hands you
 // first. Address verification stays "unchecked" until the addver key is
-// added — `verifyAddress` short-circuits with a synthetic "unchecked"
+// added , `verifyAddress` short-circuits with a synthetic "unchecked"
 // status rather than throwing, so the wizard works end-to-end while we
 // wait on the verification subscription.
 
 export type PostGridMode = "test" | "live";
 export type PostGridProduct = "print" | "addver";
 
-// PostGrid mode is hard-coded — the env override was removed because every
+// PostGrid mode is hard-coded , the env override was removed because every
 // environment that talks to PostGrid (dev, staging, prod) is on live keys.
 function resolveMode(): PostGridMode {
   return "live";
@@ -79,7 +79,7 @@ export type PostGridAddress = {
   country?: string;         // defaults to "AU"
 };
 
-// "unchecked" lands when no Address Verification key is configured —
+// "unchecked" lands when no Address Verification key is configured ,
 // the wizard records the address as-is and lets levy / notice flows
 // proceed with a flagged delivery_log row. Lets us ship the UX before
 // the verify-product subscription is bought.
@@ -93,19 +93,19 @@ export type VerificationResult = {
   mode: PostGridMode;
 };
 
-// PostGrid Addver response shape — verified locally against intl_addver
+// PostGrid Addver response shape , verified locally against intl_addver
 // with a real test key. Top-level `status` is the HTTP-level
 // success/error flag; the verification-specific status lives at
 // `data.summary.verificationStatus` and the verified-form address fields
 // sit directly under `data` (NOT nested under verifiedAddress).
 //
 // data.summary.verificationStatus values seen in practice:
-//   "verified"            — exact match (matchScore 100)
-//   "partially_verified"  — match with some corrections (treat as "corrected")
-//   "ambiguous"           — multiple candidates; surface as "corrected" with
+//   "verified"            , exact match (matchScore 100)
+//   "partially_verified"  , match with some corrections (treat as "corrected")
+//   "ambiguous"           , multiple candidates; surface as "corrected" with
 //                           the top-ranked match
-//   "not_verified"        — couldn't match → "failed"
-//   "reverted"            — fallback, treat as "failed"
+//   "not_verified"        , couldn't match → "failed"
+//   "reverted"            , fallback, treat as "failed"
 type PostGridVerifyResponse = {
   status?: string;
   message?: string;
@@ -129,14 +129,14 @@ type PostGridVerifyResponse = {
 const AU_COUNTRIES = new Set(["AU", "AUS", "AUSTRALIA"]);
 
 /** Verify a single postal address. Returns "unchecked" with a logged
- *  warning when the addver key isn't configured — never throws on missing
+ *  warning when the addver key isn't configured , never throws on missing
  *  config, only on real network/server errors. AU addresses route to
  *  the intl_addver endpoint; everything else to addver (US/CA). */
 export async function verifyAddress(addr: PostGridAddress): Promise<VerificationResult> {
   const mode = resolveMode();
   const key = resolveKey("addver", mode);
   if (!key) {
-    // No addver key — the wizard still needs to save the address so we
+    // No addver key , the wizard still needs to save the address so we
     // return a synthetic "unchecked" result. The delivery_log will mark
     // every send to this address as unverified.
     return { status: "unchecked", correctedAddress: null, errorMessage: null, verificationId: null, mode };
@@ -188,7 +188,7 @@ export async function verifyAddress(addr: PostGridAddress): Promise<Verification
   if (!resp.ok) {
     const txt = await resp.text().catch(() => "");
     console.error("postgrid addver: HTTP", resp.status, txt);
-    // 401 means key works but isn't a verify-product key — soft-fail to
+    // 401 means key works but isn't a verify-product key , soft-fail to
     // unchecked so the manager isn't blocked by a config issue.
     if (resp.status === 401) {
       return { status: "unchecked", correctedAddress: null, errorMessage: "Address verification key not configured.", verificationId: null, mode };
@@ -198,7 +198,7 @@ export async function verifyAddress(addr: PostGridAddress): Promise<Verification
     // server-side call doesn't carry an Origin and won't ever pass that
     // check. Surface a clear hint instead of a mystery error.
     if (resp.status === 403 && txt.toLowerCase().includes("invalid origin")) {
-      console.error("postgrid addver: configured key is a public (pk_) key — needs a secret (sk_) key for server-side calls. See lib/postgrid/client.ts comment.");
+      console.error("postgrid addver: configured key is a public (pk_) key , needs a secret (sk_) key for server-side calls. See lib/postgrid/client.ts comment.");
       return { status: "unchecked", correctedAddress: null, errorMessage: "Address verification key must be a server-side secret key.", verificationId: null, mode };
     }
     throw new Error("Address verification is temporarily unavailable.");
@@ -236,7 +236,7 @@ export async function verifyAddress(addr: PostGridAddress): Promise<Verification
   else status = "failed";
 
   // Build the PostGrid-corrected address from the response fields. If
-  // status is "verified" we skip building it — the address is already
+  // status is "verified" we skip building it , the address is already
   // good as-is, no need to surface a "use suggestion" dialog.
   const correctedAddress: PostGridAddress | null = status === "verified" || !data.line1
     ? null
@@ -257,7 +257,7 @@ export async function verifyAddress(addr: PostGridAddress): Promise<Verification
     correctedAddress,
     errorMessage: status === "failed" ? (data.summary?.verificationStatus ?? "Address could not be verified.") : null,
     // PostGrid's intl_addver doesn't return a verification id we can
-    // persist for audit — the summary itself is the trace. If we
+    // persist for audit , the summary itself is the trace. If we
     // upgrade to addver (US/CA) later we can pull id from data.id.
     verificationId: null,
     mode,

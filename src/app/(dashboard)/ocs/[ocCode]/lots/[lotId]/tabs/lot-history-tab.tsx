@@ -18,7 +18,7 @@ import {
 } from "lucide-react";
 import type { LotActivityEntry } from "@/lib/actions/lot-overview";
 
-// History tab — read-only audit trail for this lot. One-line rows, no
+// History tab , read-only audit trail for this lot. One-line rows, no
 // per-row detail dialog (the row IS the disclosure). Paginated client-side.
 
 const HISTORY_PAGE_SIZE = 20;

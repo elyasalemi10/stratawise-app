@@ -1,6 +1,6 @@
 import { randomBytes } from "crypto";
 
-// Crockford base-32 alphabet (no 0/O/1/I/L) — typeable & speakable.
+// Crockford base-32 alphabet (no 0/O/1/I/L) , typeable & speakable.
 // 32^10 ≈ 1.13×10^15 combinations.
 const ALPHABET = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789"; // 32 chars
 const LENGTH = 10;

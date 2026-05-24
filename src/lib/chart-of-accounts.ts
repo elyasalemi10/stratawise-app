@@ -1,15 +1,26 @@
 // Pure helpers + types for the firm chart of accounts.
 // Lives outside the "use server" file because client components import the
-// labels + the range-mismatch helper — Next forbids non-async exports from
+// labels + the range-mismatch helper. Next forbids non-async exports from
 // server-action modules.
 
 export type CoaAccountType = "asset" | "liability" | "equity" | "income" | "expense";
+
+export type CoaGstTreatment =
+  | "gst_on_income"
+  | "gst_on_expenses"
+  | "gst_free"
+  | "bas_excluded";
 
 export interface CoaAccount {
   id: string;
   code: string;
   name: string;
   account_type: CoaAccountType;
+  gst_treatment: CoaGstTreatment;
+  /** Non-null when the row is a built-in account the app references by name
+   *  (trust bank, admin levy income, GST collected, etc.). Protected from
+   *  rename/deactivate so the rest of the app can keep finding it. */
+  system_role: string | null;
   is_system: boolean;
   archived_at: string | null;
 }
@@ -21,6 +32,28 @@ export const ACCOUNT_TYPE_LABEL: Record<CoaAccountType, string> = {
   income: "Income",
   expense: "Expense",
 };
+
+export const GST_TREATMENT_LABEL: Record<CoaGstTreatment, string> = {
+  gst_on_income: "GST on income",
+  gst_on_expenses: "GST on expenses",
+  gst_free: "GST-free",
+  bas_excluded: "BAS excluded",
+};
+
+export const ACCOUNT_TYPE_OPTIONS: { value: CoaAccountType; label: string }[] = [
+  { value: "asset", label: ACCOUNT_TYPE_LABEL.asset },
+  { value: "liability", label: ACCOUNT_TYPE_LABEL.liability },
+  { value: "equity", label: ACCOUNT_TYPE_LABEL.equity },
+  { value: "income", label: ACCOUNT_TYPE_LABEL.income },
+  { value: "expense", label: ACCOUNT_TYPE_LABEL.expense },
+];
+
+export const GST_TREATMENT_OPTIONS: { value: CoaGstTreatment; label: string }[] = [
+  { value: "gst_on_income", label: GST_TREATMENT_LABEL.gst_on_income },
+  { value: "gst_on_expenses", label: GST_TREATMENT_LABEL.gst_on_expenses },
+  { value: "gst_free", label: GST_TREATMENT_LABEL.gst_free },
+  { value: "bas_excluded", label: GST_TREATMENT_LABEL.bas_excluded },
+];
 
 // Maps the leading digit of a code to its conventional account type so we can
 // flag (not block) when a manager picks a type that doesn't match the range.
@@ -50,5 +83,10 @@ const RANGE_LABELS: Record<CoaAccountType, string> = {
 export function mismatchMessage(type: CoaAccountType, code: string): string | null {
   const expected = expectedTypeForCode(code);
   if (!expected || expected === type) return null;
-  return `${ACCOUNT_TYPE_LABEL[type]} accounts usually sit in the ${RANGE_LABELS[type]} — using ${code} may put it in the wrong section of your reports.`;
+  return `${ACCOUNT_TYPE_LABEL[type]} accounts usually sit in the ${RANGE_LABELS[type]} – using ${code} may put it in the wrong section of your reports.`;
+}
+
+/** True when the account is locked by the app (rename/deactivate blocked). */
+export function isProtectedSystemAccount(a: { is_system: boolean; system_role: string | null }): boolean {
+  return a.is_system && !!a.system_role;
 }

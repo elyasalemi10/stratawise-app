@@ -1,7 +1,7 @@
 "use client";
 
 // ============================================================================
-// useDismissalFlag — localStorage TTL'd dismissal flags
+// useDismissalFlag , localStorage TTL'd dismissal flags
 // ----------------------------------------------------------------------------
 // Backs the "Not now" affordance on prompts that should reappear after a
 // cooldown (e.g. the repeat-manual proposal toast: dismissed for 30 days per
@@ -10,7 +10,7 @@
 // All flags share a single localStorage entry "stratawise:dismissals" mapping
 // arbitrary string keys → epoch-ms of dismissal. Garbage-collected on read:
 // any entry older than `ttlMs` is dropped. Quota errors are silently
-// swallowed — dismissal is a UX nice-to-have, never a correctness signal.
+// swallowed , dismissal is a UX nice-to-have, never a correctness signal.
 //
 // SSR-safe via useSyncExternalStore. The server snapshot returns `false`,
 // matching the initial client snapshot before any hydration mismatch can
@@ -63,7 +63,7 @@ function writeMap(map: DismissalMap): void {
   try {
     window.localStorage.setItem(STORAGE_KEY, JSON.stringify(map));
   } catch {
-    // Quota exceeded or storage disabled — ignore.
+    // Quota exceeded or storage disabled , ignore.
   }
 }
 

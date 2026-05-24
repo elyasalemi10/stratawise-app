@@ -17,12 +17,12 @@ import {
 import { saveStep, type DraftJson, type DraftLot } from "../actions";
 import { WizardActions } from "./_components/wizard-actions";
 
-// Wizard Step 3 sub-step 2 — Lot owner digital consent.
+// Wizard Step 3 sub-step 2 , Lot owner digital consent.
 
 export const CATEGORIES: Array<{ value: string; label: string; hint: string }> = [
   { value: "meetings", label: "Meeting notices and minutes", hint: "AGMs, special meetings, committee meetings." },
   { value: "levies", label: "Levy notices", hint: "Quarterly/annual levies and arrears reminders." },
-  { value: "breach", label: "Breach notices", hint: "Notices about rule breaches — legally significant." },
+  { value: "breach", label: "Breach notices", hint: "Notices about rule breaches , legally significant." },
   { value: "financial_reports", label: "Financial reports", hint: "Annual financial statements and budgets." },
   { value: "general_correspondence", label: "General correspondence", hint: "Routine updates and notifications." },
 ];
@@ -51,7 +51,7 @@ export function Step3DigitalConsent({
   const [editColumn, setEditColumn] = useState<"current" | "signup">("current");
   const [editDraft, setEditDraft] = useState<string[]>([]);
 
-  // Helper: at-portal-signup is the REMAINDER — categories the owner
+  // Helper: at-portal-signup is the REMAINDER , categories the owner
   // hasn't consented to yet, so the portal can ask them about those at
   // first sign-in. (Asking them about something they've already consented
   // to is pointless.)
@@ -141,7 +141,7 @@ export function Step3DigitalConsent({
   }
 
   function onContinue() {
-    // Background save — advance instantly; heartbeat backstops the write.
+    // Background save , advance instantly; heartbeat backstops the write.
     const patch = { lots };
     void saveStep(draftId, patch, 4, 0).then((r) => {
       if (r.error) toast.error(r.error);
@@ -164,7 +164,7 @@ export function Step3DigitalConsent({
         </p>
       </div>
 
-      {/* Bulk-set. Radio-style choices that auto-apply on click — no Apply
+      {/* Bulk-set. Radio-style choices that auto-apply on click , no Apply
           button. "Specific" reveals a dedicated "Pick consented items"
           button BELOW the radio group instead of squeezing the link inside
           the radio row, so it's discoverable when the option is selected. */}
@@ -174,7 +174,7 @@ export function Step3DigitalConsent({
           {([
             { value: "all" as const, label: "All have consented to all categories" },
             { value: "specific" as const, label: `All have consented to specific categories (${bulkSpecific.length} of ${CATEGORIES.length})` },
-            { value: "none" as const, label: "None have consented — ask all at signup" },
+            { value: "none" as const, label: "None have consented , ask all at signup" },
           ]).map((opt) => {
             const selected = bulkChoice === opt.value;
             return (
@@ -236,7 +236,7 @@ export function Step3DigitalConsent({
                     {lot.unit_number ? <span className="text-muted-foreground"> / {lot.unit_number}</span> : null}
                   </td>
                   <td className="px-3 py-2 text-muted-foreground truncate" title={lot.owner_name || ""}>
-                    {lot.owner_name || "—"}
+                    {lot.owner_name || ","}
                   </td>
                   <td className="px-3 py-2">
                     <div className="flex items-center gap-2">
@@ -287,7 +287,7 @@ export function Step3DigitalConsent({
             <DialogTitle>
               {editColumn === "current" ? "Digital consent" : "At portal signup"}
               {editLotIdx != null && lots[editLotIdx] && (
-                <> — {lots[editLotIdx]?.owner_name || "Owner"} (Lot {lots[editLotIdx]?.lot_number})</>
+                <> , {lots[editLotIdx]?.owner_name || "Owner"} (Lot {lots[editLotIdx]?.lot_number})</>
               )}
             </DialogTitle>
             <DialogDescription>
@@ -299,7 +299,7 @@ export function Step3DigitalConsent({
           <div className="space-y-2">
             {(() => {
               // When editing the signup column, lock out any category
-              // that's already in the lot's current consent — the owner
+              // that's already in the lot's current consent , the owner
               // can't be asked to opt-in to something they've already
               // consented to. The master toggle then ticks/clears only
               // the unlocked subset.
@@ -326,7 +326,7 @@ export function Step3DigitalConsent({
                       className="bg-card"
                     />
                     <Label className="text-sm font-medium text-foreground">
-                      Master toggle — all categories
+                      Master toggle , all categories
                     </Label>
                   </div>
                   {CATEGORIES.map((c) => {

@@ -49,7 +49,7 @@ function PastLotsGrid({
   const formatDate = (iso: string | null) =>
     iso
       ? new Date(iso).toLocaleDateString("en-AU", { day: "numeric", month: "short", year: "numeric" })
-      : "—";
+      : ",";
 
   return (
     <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
@@ -120,7 +120,7 @@ export default async function DashboardPage() {
   const profile = await getCurrentProfile();
   if (!profile) redirect("/sign-in");
 
-  // Lot owner main dashboard — unified view across all ocs
+  // Lot owner main dashboard , unified view across all ocs
   if (profile.role === "lot_owner") {
     const supabase = createServerClient();
     const [activeMembershipsResult, pastMembershipsResult] = await Promise.all([
@@ -160,7 +160,7 @@ export default async function DashboardPage() {
     if ((!memberships || memberships.length === 0) && pastMemberships.length === 0) {
       return (
         <div className="flex flex-col items-center justify-center py-20 text-center">
-          {/* Confetti still fires here — a freshly-onboarded owner whose
+          {/* Confetti still fires here , a freshly-onboarded owner whose
               manager hasn't assigned a lot yet should still get the
               welcome moment. */}
           <Suspense fallback={null}>
@@ -235,7 +235,7 @@ export default async function DashboardPage() {
 
     return (
       <div className="space-y-6">
-        {/* Lot-owner welcome confetti — fires once after onboarding when
+        {/* Lot-owner welcome confetti , fires once after onboarding when
             ?welcome=1 lands on this page. Same component the manager
             dashboard uses; auto-strips the query param afterwards. */}
         <Suspense fallback={null}>
@@ -375,7 +375,7 @@ export default async function DashboardPage() {
       </div>
 
       {/* OCs section. Top-right Create OC is hidden when there are no OCs
-          — the empty state below carries the single CTA in that case so we
+          , the empty state below carries the single CTA in that case so we
           aren't double-stamping the same action on one screen. */}
       <div className="flex items-center justify-between">
         <h2 className="text-base font-semibold text-foreground">OCs</h2>

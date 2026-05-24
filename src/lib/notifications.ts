@@ -1,17 +1,17 @@
 // ============================================================================
-// Notification helpers — framework-agnostic
+// Notification helpers , framework-agnostic
 // ----------------------------------------------------------------------------
 // Same rules as src/lib/basiq/jobs.ts and src/lib/accrual/jobs.ts:
 //   - NO "use server" directive
 //   - NO imports from next/cache or @/lib/auth
-//   - Takes an explicit SupabaseClient — caller passes either a service-role
+//   - Takes an explicit SupabaseClient , caller passes either a service-role
 //     client (server actions, cron) or a request-context client.
 //
 // Exports:
-//   - MANDATORY_NOTIFICATION_TYPES  — Set of notification_type values that
+//   - MANDATORY_NOTIFICATION_TYPES  , Set of notification_type values that
 //     bypass the per-user opt-out (statutory carve-outs).
-//   - isNotificationOptedOut        — opt-out lookup with default opt-in.
-//   - emitPaymentReceivedEmail      — shared payment-received helper called
+//   - isNotificationOptedOut        , opt-out lookup with default opt-in.
+//   - emitPaymentReceivedEmail      , shared payment-received helper called
 //     from 3 reconciliation call sites + the orchestrator auto-match path.
 // ============================================================================
 
@@ -74,7 +74,7 @@ export async function resolveCompanyLogo(
       .maybeSingle();
     return (data as { logo_url: string | null } | null)?.logo_url ?? null;
   }
-  // ocId path — single JOIN-shaped fetch.
+  // ocId path , single JOIN-shaped fetch.
   const { data } = await supabase
     .from("owners_corporations")
     .select("management_companies(logo_url)")
@@ -84,7 +84,7 @@ export async function resolveCompanyLogo(
   // PostgREST returns the embedded relation as either an object or an
   // array depending on whether the join is many-to-one or one-to-many.
   // management_companies is the parent side here, so it should be a
-  // single object — but defensively narrow either shape.
+  // single object , but defensively narrow either shape.
   const rel = (data as { management_companies: { logo_url: string | null } | { logo_url: string | null }[] | null }).management_companies;
   if (!rel) return null;
   if (Array.isArray(rel)) return rel[0]?.logo_url ?? null;
@@ -120,7 +120,7 @@ export async function isNotificationOptedOut(
 // Per PP6-C-0 spec gap 1 ratification: shared helper called from all
 // payment-received emission sites (reconcileTransaction manual,
 // orchestrator auto-match, depositUndepositedFunds; recordCashReceipt
-// deferred per code-review surfacing — see DRAFTING NOTE below).
+// deferred per code-review surfacing , see DRAFTING NOTE below).
 //
 // Idempotency: bank_transactions.payment_received_email_sent_at sentinel.
 // First call to this helper for a given bank tx stamps the column.
@@ -130,7 +130,7 @@ export async function isNotificationOptedOut(
 // Multi-allocation undercount: when a single bank tx has allocations to
 // multiple lots with different owners, only the first owner gets the
 // email. The per-bank-tx sentinel doesn't track per-owner. Acceptable
-// trade-off for PP6-C-1 — multi-lot bank txs are rare in practice;
+// trade-off for PP6-C-1 , multi-lot bank txs are rare in practice;
 // PRE_LAUNCH_CLEANUP can add per-(bank_tx, profile) tracking if needed.
 //
 // recordCashReceipt: NOT a call site. No bank_transaction_id exists at
@@ -299,7 +299,7 @@ export async function emitPaymentReceivedEmail(
       recipient_email: ownerEmail,
       channel: "email",
       type: "payment_received",
-      subject: `Payment received — ${ocName}`,
+      subject: `Payment received , ${ocName}`,
       body_preview: buildBodyPreview(params),
       status: "queued",
       related_entity_type: "bank_transaction",
@@ -347,11 +347,11 @@ export async function emitPaymentReceivedEmail(
     return { failed: true, error: sendResult.error };
   }
 
-  // Step 8: success — stamp sentinel FIRST, then transition log to 'sent'.
+  // Step 8: success , stamp sentinel FIRST, then transition log to 'sent'.
   // Serialized (not Promise.all) so an error on the sentinel stamp is caught
   // and surfaced before the log row claims 'sent'. Failure modes:
   //   - Sentinel UPDATE fails: log stays 'queued', loud warn for forensics.
-  //     Next attempt will re-resolve, see no sentinel, and may re-send —
+  //     Next attempt will re-resolve, see no sentinel, and may re-send ,
   //     narrow window worth tracking but not blocking.
   //   - Sentinel UPDATE succeeds, log UPDATE fails: email is out + sentinel
   //     stamped, so the next call short-circuits correctly. The 'queued'
@@ -363,7 +363,7 @@ export async function emitPaymentReceivedEmail(
     .eq("id", tx.id);
   if (stampErr) {
     console.warn(
-      "emitPaymentReceivedEmail: sentinel stamp failed after Resend success — communication_log will stay 'queued' for forensics; risk of double-send on next attempt",
+      "emitPaymentReceivedEmail: sentinel stamp failed after Resend success , communication_log will stay 'queued' for forensics; risk of double-send on next attempt",
       stampErr,
     );
   }
@@ -398,7 +398,7 @@ export async function emitPaymentReceivedEmail(
 // Called from confirmAndMatchClaimViaExistingBankTx and
 // confirmAndMatchClaimViaNewBankTx after the match commits. Looks up the
 // claim, owner, oc, lot; sends sendClaimMatchedEmail. Writes
-// communication_log + audit_log. No idempotency sentinel — the claim
+// communication_log + audit_log. No idempotency sentinel , the claim
 // terminal state ('matched') is the de-facto idempotency guard (the
 // confirmAndMatch* actions hard-error if claim_status !== 'pending').
 
@@ -449,7 +449,7 @@ export async function emitClaimMatchedEmail(
       recipient_email: ownerEmail,
       channel: "email",
       type: "claim_matched",
-      subject: `Your payment has been confirmed — ${ocName}`,
+      subject: `Your payment has been confirmed , ${ocName}`,
       body_preview: `Your payment claim of $${Number(claim.amount).toFixed(2)} for ${lotLabel} has been confirmed.`.slice(0, 300),
       status: "queued",
       related_entity_type: "owner_payment_claim",
@@ -530,7 +530,7 @@ export async function emitClaimRejectedEmail(
       recipient_email: ownerEmail,
       channel: "email",
       type: "claim_rejected",
-      subject: `Update on your payment claim — ${ocName}`,
+      subject: `Update on your payment claim , ${ocName}`,
       body_preview: `Your payment claim of $${Number(claim.amount).toFixed(2)} for ${lotLabel} was not matched.`.slice(0, 300),
       status: "queued",
       related_entity_type: "owner_payment_claim",
@@ -564,7 +564,7 @@ export async function emitClaimRejectedEmail(
 //
 // Fan-out to all active strata managers of the claim's oc. Per
 // manager: sends sendNewClaimSubmittedEmail (opt-out-respecting) AND
-// writes a notifications row (always — managerial events are not
+// writes a notifications row (always , managerial events are not
 // in-app-opt-outable per PP6-C-0 SG-2 ratification).
 //
 // Email path uses the existing sender → communication_log → audit chain.
@@ -607,7 +607,7 @@ export async function emitNewClaimSubmitted(
   );
   if (managerProfileIds.length === 0) return;
 
-  // Resolve company logo once for the fanout — same oc → same logo
+  // Resolve company logo once for the fanout , same oc → same logo
   // for every manager.
   const companyLogoUrl = await resolveCompanyLogo(supabase, {
     ocId: claim.oc_id,
@@ -632,12 +632,12 @@ export async function emitNewClaimSubmitted(
     // notification_preferences. Inlined INSERT (not via the
     // src/lib/actions/notifications.ts createNotification helper) because
     // this module is framework-agnostic and must not import "use server"
-    // actions — same boundary rule as PP6-C-1.
+    // actions , same boundary rule as PP6-C-1.
     await supabase.from("notifications").insert({
       profile_id: m.id,
       oc_id: claim.oc_id,
       type: "new_claim_submitted",
-      title: `New payment claim — ${lotLabel}`,
+      title: `New payment claim , ${lotLabel}`,
       body: `${ownerName ?? "An owner"} submitted a payment claim of $${Number(claim.amount).toFixed(2)} for ${lotLabel}.`,
       link: reviewPath,
     });
@@ -677,7 +677,7 @@ export async function emitNewClaimSubmitted(
         recipient_email: m.email,
         channel: "email",
         type: "new_claim_submitted",
-        subject: `New owner payment claim — ${ocName} ${lotLabel}`,
+        subject: `New owner payment claim , ${ocName} ${lotLabel}`,
         body_preview: `${ownerName ?? "An owner"} submitted a $${Number(claim.amount).toFixed(2)} claim for ${lotLabel}.`.slice(0, 300),
         status: "queued",
         related_entity_type: "owner_payment_claim",

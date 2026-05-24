@@ -20,7 +20,7 @@ import { logMfaEvent } from "../internal-actions/audit";
 //      redirect to /admin
 //
 // We render the QR ourselves with <QRCodeSVG> from the `otpauth://` URI
-// Supabase returns, NOT Supabase's own qr_code SVG string — that string was
+// Supabase returns, NOT Supabase's own qr_code SVG string , that string was
 // arriving as a data URI whose prefix printed as visible text and whose
 // modules wouldn't reliably scan. Rendering the URI gives a crisp QR with a
 // proper quiet zone. The "secret" is shown below for manual entry.
@@ -84,7 +84,7 @@ export function MfaEnrollClient() {
     }
     setVerifying(true);
     const sb = getSupabaseClient();
-    // challengeAndVerify is the combined helper — creates a challenge and
+    // challengeAndVerify is the combined helper , creates a challenge and
     // immediately verifies it with the user's code.
     const { error } = await sb.auth.mfa.challengeAndVerify({
       factorId,
@@ -93,7 +93,7 @@ export function MfaEnrollClient() {
     setVerifying(false);
     if (error) {
       void logMfaEvent("mfa_enroll_failed", { reason: error.message, factorId });
-      toast.error(error.message || "That code didn't match — try again.");
+      toast.error(error.message || "That code didn't match , try again.");
       return;
     }
     void logMfaEvent("mfa_enrolled", { factorId });

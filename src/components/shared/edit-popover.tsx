@@ -9,7 +9,7 @@ import { toast } from "sonner";
 
 // Standardised inline-edit primitive (Item 8). Right-side popover that opens
 // from an edit trigger, renders arbitrary form children, and runs an async
-// `onSave` mutation. The caller is responsible for the form state — keep it as
+// `onSave` mutation. The caller is responsible for the form state , keep it as
 // uncontrolled inputs or wire it up with react-hook-form locally. Optimistic
 // patching is delegated to the parent via the `optimistic` callback: when the
 // user saves, we (a) immediately invoke `optimistic(newValue)` so the page
@@ -34,13 +34,13 @@ interface EditPopoverProps<TValue> {
   triggerClassName?: string;
   contentClassName?: string;
   renderTrigger?: (open: boolean) => React.ReactNode;
-  // Form children receive a `submit` handler from us via context — easiest is to
+  // Form children receive a `submit` handler from us via context , easiest is to
   // accept a render-prop with `(submitOnClick)` so the caller wires Save → submit.
   children: React.ReactNode;
   // Save handler returns ok/error. On ok, the popover closes and an optional
   // success toast fires. On error, the popover stays open and shows the error.
   onSave: () => Promise<{ ok: true } | { ok: false; error: string }>;
-  // Optional optimistic patcher — called BEFORE onSave with the optimistic
+  // Optional optimistic patcher , called BEFORE onSave with the optimistic
   // value, and again with the rollback value on failure. Pass null to skip.
   optimistic?: {
     apply: () => void;

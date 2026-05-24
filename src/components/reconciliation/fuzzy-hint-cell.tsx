@@ -1,7 +1,7 @@
 "use client";
 
 // ============================================================================
-// FuzzyHintCell — inline hint rendering inside the queue's Description column
+// FuzzyHintCell , inline hint rendering inside the queue's Description column
 // ----------------------------------------------------------------------------
 // Renders the original description on the first line and, if a Strategy 6
 // fuzzy hint was persisted on the bank_transaction, a clickable "↳ Possibly:

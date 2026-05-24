@@ -36,16 +36,16 @@ import {
 // Settings → Email tab.
 //
 // Two visual modes:
-//   (A) "Connected" — provider logo, mailbox, sync state, Disconnect +
+//   (A) "Connected" , provider logo, mailbox, sync state, Disconnect +
 //       Change-mailbox buttons. Shown whenever mail_provider !== stratawise
 //       AND a mailbox was saved (or in the case of gmail, even without one
 //       since the domain alone proves intent).
-//   (B) "Wizard" — provider picker → domain → tutorial → prefix → Save.
+//   (B) "Wizard" , provider picker → domain → tutorial → prefix → Save.
 //       Shown when on stratawise (fallback) OR when the user clicks
 //       "Change mailbox" from the connected card.
 //
 // Disconnect simply flips provider back to stratawise. The manager's
-// <username>@stratawise.com.au alias is always available as the fallback —
+// <username>@stratawise.com.au alias is always available as the fallback ,
 // nothing else is required to make it work.
 
 export interface MailProviderConfig {
@@ -81,7 +81,7 @@ export function EmailTab({
   mailboxIntegrationError: string | null;
 }) {
   const [config, setConfig] = useState<MailProviderConfig>(initial);
-  // Start the prefix EMPTY when connecting a mailbox — don't prefill a
+  // Start the prefix EMPTY when connecting a mailbox , don't prefill a
   // guessed / previously-saved value. The manager types the exact local
   // part of the mailbox they're authorising. The saved prefix still
   // shows in the connected-view read-out (savedMailbox) below.
@@ -104,7 +104,7 @@ export function EmailTab({
     const consent = searchParams.get("outlook_consent");
     const err = searchParams.get("outlook_error");
     if (consent === "granted") {
-      toast.success("Microsoft 365 consent granted — enter your mailbox prefix to finish.");
+      toast.success("Microsoft 365 consent granted , enter your mailbox prefix to finish.");
       setEditing(true);
       const next = new URLSearchParams(searchParams.toString());
       next.delete("outlook_consent");
@@ -319,7 +319,7 @@ function StratawiseDefaultView({
           Want owners to see your firm&apos;s own domain instead? Connect a
           Gmail or Outlook mailbox under your firm. We only{" "}
           <span className="font-medium text-foreground">read</span> and{" "}
-          <span className="font-medium text-foreground">send</span> — we never
+          <span className="font-medium text-foreground">send</span> , we never
           delete anything.
         </div>
 
@@ -399,7 +399,7 @@ function Wizard({
       return;
     }
     if ("consentUrl" in res && res.consentUrl) {
-      // The server action already set an httpOnly CSRF cookie — just kick
+      // The server action already set an httpOnly CSRF cookie , just kick
       // the browser to Microsoft's admin-consent screen.
       window.location.href = res.consentUrl;
     }
@@ -571,7 +571,7 @@ function Wizard({
                 <p className="font-medium">{errorResult.message}</p>
                 <p className="opacity-80">
                   Google sometimes takes a few minutes (up to 24h in rare cases) to
-                  propagate the grant — wait and try Save again.
+                  propagate the grant , wait and try Save again.
                 </p>
               </div>
             </div>
@@ -583,7 +583,7 @@ function Wizard({
                 Cancel
               </Button>
             )}
-            {/* Outlook hides Save until admin consent is granted — the
+            {/* Outlook hides Save until admin consent is granted , the
                 inline OutlookConnect block owns that leg of the flow. */}
             {!(provider === "outlook" && !outlookConsentGranted) && (
               <Button size="sm" onClick={handleSave} disabled={pending}>
@@ -663,7 +663,7 @@ function OutlookConnect({
       <div className="space-y-3 rounded-md border border-border bg-cool-muted p-4 text-sm">
         <div className="space-y-1">
           <p className="font-medium text-foreground">
-            Step 1 — Authorise StrataWise in Microsoft 365
+            Step 1 , Authorise StrataWise in Microsoft 365
           </p>
           <p className="text-xs text-muted-foreground leading-relaxed">
             We&apos;ll redirect you to your Microsoft 365 admin consent screen.
@@ -700,7 +700,7 @@ function OutlookConnect({
             Microsoft 365 admin consent granted
           </p>
           <p className="mt-0.5 text-muted-foreground">
-            StrataWise can now send and read mail in your tenant. Last step —
+            StrataWise can now send and read mail in your tenant. Last step ,
             tell us which mailbox to use.
           </p>
         </div>
@@ -708,7 +708,7 @@ function OutlookConnect({
 
       <div className="space-y-1.5">
         <Label htmlFor="outlook-mailbox-prefix">
-          Step 2 — Your mailbox prefix <span className="text-destructive">*</span>
+          Step 2 , Your mailbox prefix <span className="text-destructive">*</span>
         </Label>
         <div className="flex items-center gap-1">
           <Input
@@ -735,7 +735,7 @@ function OutlookConnect({
 }
 
 // Surfaces when gmail_mailbox_subscriptions.last_error is an auth-shape
-// failure — i.e. the Workspace admin removed our DWD entry, the firm's
+// failure , i.e. the Workspace admin removed our DWD entry, the firm's
 // IT changed the OAuth scopes, or Google revoked the grant for some
 // other reason. Without this banner outbound mail silently falls back
 // to the @stratawise.com.au alias and inbound just goes dark, which
@@ -784,7 +784,7 @@ function ReadWriteDisclosure({ stratawiseFallbackEmail }: { stratawiseFallbackEm
           <span className="font-medium text-foreground">reads</span> and{" "}
           <span className="font-medium text-foreground">sends</span> email. We
           don&apos;t move messages, change labels you set, or empty folders.
-          You can revoke access from your admin console at any time —
+          You can revoke access from your admin console at any time ,
           disconnecting here also flips you back to{" "}
           <span className="font-mono">{stratawiseFallbackEmail}</span>.
         </p>

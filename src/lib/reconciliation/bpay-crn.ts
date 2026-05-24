@@ -1,5 +1,5 @@
 // ============================================================================
-// BPAY CRN — MOD10V01 generator + validator
+// BPAY CRN , MOD10V01 generator + validator
 // ----------------------------------------------------------------------------
 // StrataWise-issued CRN format: 8 digits = 7-digit zero-padded levy number + 1
 // MOD10V01 check digit. Generated at notice creation time (createLevyBatch)
@@ -18,7 +18,7 @@
 // PRE_LAUNCH_CLEANUP.md flags ground-truthing this implementation against
 // real BPAY-issued CRNs once an OC registers a biller code.
 //
-// No `"use server"` directive — pure helpers, callable from anywhere.
+// No `"use server"` directive , pure helpers, callable from anywhere.
 // ============================================================================
 
 const MAX_LEVY_NUMBER = 9_999_999; // 7 digits

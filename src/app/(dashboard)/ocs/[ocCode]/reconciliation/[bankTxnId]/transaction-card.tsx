@@ -75,11 +75,11 @@ export function TransactionCard({ transaction, showAllocateForm = true }: Props)
             Description
           </div>
           <div className="mt-1 text-sm text-foreground break-words">
-            {transaction.description || "—"}
+            {transaction.description || ","}
           </div>
         </div>
 
-        {/* Detected reference — only show when allocate form will be visible */}
+        {/* Detected reference , only show when allocate form will be visible */}
         {transaction.detected_reference && showAllocateForm && (
           <div className="mt-3 p-3 bg-blue-50 rounded-md border border-blue-200">
             <div className="text-xs font-medium text-blue-900 mb-2">

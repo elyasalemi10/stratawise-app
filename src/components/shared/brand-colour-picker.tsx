@@ -26,11 +26,11 @@ const PRESETS = [
 ];
 
 /**
- * Just a swatch — no text input on the form. Click the swatch → popover
+ * Just a swatch , no text input on the form. Click the swatch → popover
  * opens with hex input + native colour wheel + a row of presets. The
  * picker writes back through onChange whenever a valid hex is entered.
  *
- * Pre-fill (when onChange is fired externally — e.g. by logo extraction)
+ * Pre-fill (when onChange is fired externally , e.g. by logo extraction)
  * just updates the swatch colour through value.
  */
 export function BrandColourPicker({ value, onChange, id }: BrandColourPickerProps) {

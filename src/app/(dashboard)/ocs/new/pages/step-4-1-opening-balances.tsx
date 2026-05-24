@@ -11,10 +11,10 @@ import { Switch } from "@/components/ui/switch";
 import { saveStep, completeWizard, type DraftJson, type DraftLot } from "../actions";
 import { WizardActions } from "./_components/wizard-actions";
 
-// Wizard Step 4 sub-step 1 — Opening balances.
+// Wizard Step 4 sub-step 1 , Opening balances.
 //
 // Anchored to the management start date (Step 1). Per-lot arrears live in a
-// single full table — every lot is listed and the manager fills in the rows
+// single full table , every lot is listed and the manager fills in the rows
 // that actually have a balance to record. Type switch toggles between Debit
 // (lot owes the OC) and Credit (OC owes the lot).
 
@@ -93,7 +93,7 @@ export function Step4OpeningBalances({
         toast.error(result.error ?? "Failed to create the OC");
         return;
       }
-      // Spinner stays ON through the navigation onComplete fires — no flash.
+      // Spinner stays ON through the navigation onComplete fires , no flash.
       onComplete({
         ocCode: result.ocCode,
         sourceDraftId: result.sourceDraftId,
@@ -155,7 +155,7 @@ export function Step4OpeningBalances({
       toast.error(result.error ?? "Failed to create the OC");
       return;
     }
-    // Spinner stays ON through the navigation onComplete fires — no flash.
+    // Spinner stays ON through the navigation onComplete fires , no flash.
     onComplete({
       ocCode: result.ocCode,
       sourceDraftId: result.sourceDraftId,
@@ -170,7 +170,7 @@ export function Step4OpeningBalances({
           <h2 className="text-lg font-semibold text-foreground">Ready to create</h2>
           <p className="mt-1 text-sm text-muted-foreground">
             You opted to set up bank accounts later. The OC is ready to be
-            created — opening balances will be captured when you configure
+            created , opening balances will be captured when you configure
             banking from Settings → Banking.
           </p>
         </div>
@@ -252,7 +252,7 @@ export function Step4OpeningBalances({
           )}
         </div>
 
-        {/* Per-lot opening arrears — every lot listed; manager fills in the
+        {/* Per-lot opening arrears , every lot listed; manager fills in the
             rows that actually have a balance. Switch toggles between Debit
             (default OFF) and Credit. */}
         <div className="space-y-2">
@@ -289,7 +289,7 @@ export function Step4OpeningBalances({
                     <tr key={lot.lot_number}>
                       <td className="px-3 py-1.5 tabular-nums">{lot.lot_number}</td>
                       <td className="px-3 py-1.5 text-muted-foreground truncate" title={lot.owner_name || ""}>
-                        {lot.owner_name || "—"}
+                        {lot.owner_name || ","}
                       </td>
                       <td className="px-3 py-1.5">
                         <div className="inline-flex items-center gap-2">

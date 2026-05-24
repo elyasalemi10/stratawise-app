@@ -14,20 +14,13 @@ import {
   Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle,
 } from "@/components/ui/sheet";
 import {
-  ACCOUNT_TYPE_LABEL, mismatchMessage,
-  type CoaAccount, type CoaAccountType,
+  ACCOUNT_TYPE_LABEL, ACCOUNT_TYPE_OPTIONS, GST_TREATMENT_LABEL,
+  GST_TREATMENT_OPTIONS, mismatchMessage,
+  type CoaAccount, type CoaAccountType, type CoaGstTreatment,
 } from "@/lib/chart-of-accounts";
 import { createCoaAccount } from "@/lib/actions/chart-of-accounts";
 
 const REQ = <span className="text-destructive">*</span>;
-
-const TYPE_OPTIONS: { value: CoaAccountType; label: string }[] = [
-  { value: "asset", label: ACCOUNT_TYPE_LABEL.asset },
-  { value: "liability", label: ACCOUNT_TYPE_LABEL.liability },
-  { value: "equity", label: ACCOUNT_TYPE_LABEL.equity },
-  { value: "income", label: ACCOUNT_TYPE_LABEL.income },
-  { value: "expense", label: ACCOUNT_TYPE_LABEL.expense },
-];
 
 interface Props {
   open: boolean;
@@ -35,40 +28,47 @@ interface Props {
   /** Lock the account type when launched from a context that only makes sense
    *  for one type (e.g. budget items pick expense accounts). */
   lockedType?: CoaAccountType;
-  /** Called after the account is created — receives the new account so the
-   *  caller can immediately add it as a line item. */
+  /** Pre-fill the account name (e.g. user typed "Insurance" into the budget
+   *  combobox and clicked "Add new account"). */
+  initialName?: string;
+  /** Called after the account is created. */
   onCreated?: (account: CoaAccount) => void;
 }
 
 // Right-side drawer used both from the Chart of Accounts page and the budget
-// create form. Exact field set the user specified: code, name, type. Inline
-// warning (not a block) when the chosen type doesn't sit in the conventional
-// range for that code.
-export function CreateAccountDrawer({ open, onOpenChange, lockedType, onCreated }: Props) {
+// create form. Fields: code, name, type, GST treatment. Inline warning (not a
+// block) when the chosen type doesn't sit in the conventional code range.
+export function CreateAccountDrawer({ open, onOpenChange, lockedType, initialName, onCreated }: Props) {
   const [code, setCode] = useState("");
   const [name, setName] = useState("");
-  const [accountType, setAccountType] = useState<CoaAccountType>(lockedType ?? "expense");
+  // No default account type: the manager must explicitly pick one so the
+  // banding warning fires honestly.
+  const [accountType, setAccountType] = useState<CoaAccountType | "">("");
+  const [gst, setGst] = useState<CoaGstTreatment | "">("");
   const [pending, setPending] = useState(false);
   const [codeInvalid, setCodeInvalid] = useState(false);
   const [nameInvalid, setNameInvalid] = useState(false);
+  const [typeInvalid, setTypeInvalid] = useState(false);
+  const [gstInvalid, setGstInvalid] = useState(false);
 
-  // Reset to a clean slate each time the drawer opens so the previous attempt
-  // doesn't leak in. lockedType wins if the caller passed one.
+  // Reset to a clean slate each time the drawer opens. lockedType wins if the
+  // caller passed one; initialName seeds the name field.
   useEffect(() => {
     if (open) {
       setCode("");
-      setName("");
-      setAccountType(lockedType ?? "expense");
+      setName(initialName ?? "");
+      setAccountType(lockedType ?? "");
+      setGst("");
       setPending(false);
       setCodeInvalid(false);
       setNameInvalid(false);
+      setTypeInvalid(false);
+      setGstInvalid(false);
     }
-  }, [open, lockedType]);
+  }, [open, lockedType, initialName]);
 
-  // Live-derived, non-red hint. Only paints once the user has typed a valid
-  // 4-digit code — partial codes wouldn't be a useful warning.
   const rangeWarning = useMemo(() => {
-    if (!/^[0-9]{4}$/.test(code)) return null;
+    if (!/^[0-9]{4}$/.test(code) || !accountType) return null;
     return mismatchMessage(accountType, code);
   }, [code, accountType]);
 
@@ -83,20 +83,33 @@ export function CreateAccountDrawer({ open, onOpenChange, lockedType, onCreated 
       setNameInvalid(true);
       problems.push("Enter an account name.");
     }
+    if (!accountType) {
+      setTypeInvalid(true);
+      problems.push("Pick an account type.");
+    }
+    if (!gst) {
+      setGstInvalid(true);
+      problems.push("Pick a GST treatment.");
+    }
     if (problems.length) {
       toast.error(problems.length === 1 ? problems[0] : "Fix the highlighted fields.");
       return;
     }
 
     setPending(true);
-    const res = await createCoaAccount({ code, name: trimmedName, account_type: accountType });
+    const res = await createCoaAccount({
+      code,
+      name: trimmedName,
+      account_type: accountType as CoaAccountType,
+      gst_treatment: gst as CoaGstTreatment,
+    });
     if (res.error) {
       setPending(false);
       toast.error(res.error);
       return;
     }
     setPending(false);
-    toast.success(`Added ${res.account!.code} — ${res.account!.name}`);
+    toast.success(`Added ${res.account!.code}, ${res.account!.name}`);
     onCreated?.(res.account!);
     onOpenChange(false);
   }
@@ -124,7 +137,7 @@ export function CreateAccountDrawer({ open, onOpenChange, lockedType, onCreated 
               maxLength={4}
             />
             <p className="text-xs text-muted-foreground">
-              Convention: 1000s assets · 2000s liabilities · 3000s equity · 4000s income · 5000s/6000s expenses.
+              Convention: 1000s assets, 2000s liabilities, 3000s equity, 4000s income, 5000s/6000s expenses.
             </p>
           </div>
 
@@ -144,14 +157,19 @@ export function CreateAccountDrawer({ open, onOpenChange, lockedType, onCreated 
             <Label htmlFor="coa-type">Type {REQ}</Label>
             <Select
               value={accountType}
-              onValueChange={(v) => setAccountType((v as CoaAccountType) ?? "expense")}
+              onValueChange={(v) => {
+                setAccountType((v as CoaAccountType) ?? "");
+                setTypeInvalid(false);
+              }}
               disabled={!!lockedType}
             >
-              <SelectTrigger id="coa-type" className="w-full">
-                <SelectValue />
+              <SelectTrigger id="coa-type" className="w-full" aria-invalid={typeInvalid || undefined}>
+                <SelectValue placeholder="Pick a type">
+                  {accountType ? ACCOUNT_TYPE_LABEL[accountType] : null}
+                </SelectValue>
               </SelectTrigger>
               <SelectContent>
-                {TYPE_OPTIONS.map((opt) => (
+                {ACCOUNT_TYPE_OPTIONS.map((opt) => (
                   <SelectItem key={opt.value} value={opt.value}>{opt.label}</SelectItem>
                 ))}
               </SelectContent>
@@ -161,6 +179,28 @@ export function CreateAccountDrawer({ open, onOpenChange, lockedType, onCreated 
                 Locked to {ACCOUNT_TYPE_LABEL[lockedType]} for this flow.
               </p>
             )}
+          </div>
+
+          <div className="space-y-1.5">
+            <Label htmlFor="coa-gst">GST treatment {REQ}</Label>
+            <Select
+              value={gst}
+              onValueChange={(v) => {
+                setGst((v as CoaGstTreatment) ?? "");
+                setGstInvalid(false);
+              }}
+            >
+              <SelectTrigger id="coa-gst" className="w-full" aria-invalid={gstInvalid || undefined}>
+                <SelectValue placeholder="Pick a treatment">
+                  {gst ? GST_TREATMENT_LABEL[gst] : null}
+                </SelectValue>
+              </SelectTrigger>
+              <SelectContent>
+                {GST_TREATMENT_OPTIONS.map((opt) => (
+                  <SelectItem key={opt.value} value={opt.value}>{opt.label}</SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
           </div>
 
           {rangeWarning && (

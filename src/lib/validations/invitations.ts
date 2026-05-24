@@ -3,7 +3,7 @@ import { z } from "zod";
 // Owner-details form. Used for both saving owner contact info on a lot
 // (no email send) and sending an invitation. The "Save & invite" path
 // re-validates with `inviteSendSchema` so email is required only at
-// send time — saving partial details (e.g. just a name) is allowed.
+// send time , saving partial details (e.g. just a name) is allowed.
 export const lotOwnerDetailsSchema = z.object({
   name: z.string().min(1, "Name is required"),
   email: z.string().email("Invalid email").optional().or(z.literal("")),

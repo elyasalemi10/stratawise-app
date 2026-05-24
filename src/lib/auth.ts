@@ -58,13 +58,13 @@ export async function getAuthUserId(): Promise<string | null> {
 /**
  * Fetches the current user's full profile from Supabase.
  * Returns null if not authenticated or profile doesn't exist.
- * Wrapped with React cache() — deduplicated within a single request.
+ * Wrapped with React cache() , deduplicated within a single request.
  */
 export const getCurrentProfile = cache(async (): Promise<Profile | null> => {
   const authUserId = await getAuthUserId();
   if (!authUserId) return null;
 
-  // Admin client — we already validated the user is signed in via
+  // Admin client , we already validated the user is signed in via
   // Supabase Auth. RLS isn't needed here since we're scoping by
   // auth_user_id explicitly.
   const supabase = createServerClient();
@@ -142,7 +142,7 @@ export async function ensureProfile(): Promise<string | null> {
     return existing.id;
   }
 
-  // Trigger missed — create profile manually from auth.users metadata.
+  // Trigger missed , create profile manually from auth.users metadata.
   const intendedRole =
     (user.user_metadata?.intended_role as string | undefined) ?? null;
   const role: "strata_manager" | "lot_owner" =
@@ -266,11 +266,11 @@ export async function getOnboardingRedirect(): Promise<string | null> {
 
   if (!profile) return "/onboarding";
 
-  // Email-verification gate — our own 6-digit OTP flow runs before any
+  // Email-verification gate , our own 6-digit OTP flow runs before any
   // role-specific onboarding. Once flipped, never redirected back here.
   if (!profile.email_verified) return "/verify-email";
 
-  // Super admins skip the management-company onboarding entirely — they
+  // Super admins skip the management-company onboarding entirely , they
   // belong to the StrataWise platform team, not a firm. The /admin
   // layout owns the MFA-enrol / MFA-challenge flow from here.
   if (profile.role === "super_admin") return "/admin";
@@ -283,7 +283,7 @@ export async function getOnboardingRedirect(): Promise<string | null> {
       .eq("profile_id", profile.id);
     if (!count || count === 0) return "/onboarding/lot-owner";
 
-    // Per-OC digital consent — consent is per (owner, OC), so any OC
+    // Per-OC digital consent , consent is per (owner, OC), so any OC
     // membership without a consent record sends them back through onboarding
     // (covers an existing-account owner accepting an invite to a new OC).
     const { data: memberships } = await admin

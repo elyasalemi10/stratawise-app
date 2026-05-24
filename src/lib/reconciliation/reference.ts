@@ -1,5 +1,5 @@
 // ============================================================================
-// Levy-reference detection — shared primitives
+// Levy-reference detection , shared primitives
 // ----------------------------------------------------------------------------
 // Single source of truth for the flexible /g-flagged levy regex AND the
 // "exactly one unique reference, normalised to LEV-{n}" predicate. Used by:
@@ -10,7 +10,7 @@
 // PP4-A strategies should reuse these primitives rather than re-rolling
 // the parsing logic.
 //
-// No `"use server"` directive — this is a pure helper, callable from any
+// No `"use server"` directive , this is a pure helper, callable from any
 // server-side context (server actions, cron tasks, webhook handlers,
 // CLI verification scripts).
 // ============================================================================
@@ -22,7 +22,7 @@
 export const LEV_REF_REGEX_GLOBAL = /\b(?:lev(?:y)?\s*[-]?\s*(\d+)|(\d+)\s*[-]?\s*lev(?:y)?)\b/gi;
 
 // Returns the normalised "LEV-{n}" form when the description contains
-// exactly one unique levy reference (across spelling variants — "LEV-7",
+// exactly one unique levy reference (across spelling variants , "LEV-7",
 // "Levy 7", and "7 lev" all collapse to "LEV-7"). Returns null if zero or
 // multiple distinct references are present, so callers default to "no
 // auto-match" rather than guessing between ambiguous candidates.

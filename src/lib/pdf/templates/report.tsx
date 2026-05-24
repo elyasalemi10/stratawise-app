@@ -170,7 +170,7 @@ export function LevyHistoryReport({ data, title, subtitle, address, logoUrl, lot
             <View key={i} style={i % 2 === 0 ? s.rowStriped : s.row} wrap={false}>
               <Text style={[s.td, { width: "6%" }]}>{l.lot_number}</Text>
               <Text style={[s.td, { width: "15%" }]}>{l.reference_number}</Text>
-              <Text style={[s.tdMuted, { width: "22%" }]}>{fmtDate(l.period_start)} — {fmtDate(l.period_end)}</Text>
+              <Text style={[s.tdMuted, { width: "22%" }]}>{fmtDate(l.period_start)} , {fmtDate(l.period_end)}</Text>
               <Text style={[s.td, { width: "12%" }]}>{fmtDate(l.due_date)}</Text>
               <View style={{ width: "13%", flexDirection: "row" }}><StatusBadge status={l.status === "partially_paid" ? "partially paid" : l.status} /></View>
               <Text style={[s.tdRight, { width: "16%" }]}>{fmt(l.amount)}</Text>
@@ -236,9 +236,9 @@ export function InsuranceStatusReport({ data, title, subtitle, address, logoUrl 
           <View key={i} style={i % 2 === 0 ? s.rowStriped : s.row} wrap={false}>
             <Text style={[s.td, { width: "15%" }]}>{POLICY_NAMES[p.policy_type] ?? p.policy_type}</Text>
             <Text style={[s.td, { width: "15%" }]}>{p.provider}</Text>
-            <Text style={[s.tdMuted, { width: "24%" }]}>{fmtDate(p.start_date)} — {fmtDate(p.end_date)}</Text>
-            <Text style={[s.tdRight, { width: "16%" }]}>{p.sum_insured ? fmt(p.sum_insured) : "—"}</Text>
-            <Text style={[s.tdRight, { width: "14%" }]}>{p.premium ? fmt(p.premium) : "—"}</Text>
+            <Text style={[s.tdMuted, { width: "24%" }]}>{fmtDate(p.start_date)} , {fmtDate(p.end_date)}</Text>
+            <Text style={[s.tdRight, { width: "16%" }]}>{p.sum_insured ? fmt(p.sum_insured) : ","}</Text>
+            <Text style={[s.tdRight, { width: "14%" }]}>{p.premium ? fmt(p.premium) : ","}</Text>
             <View style={{ width: "16%", flexDirection: "row", justifyContent: "flex-end" as const }}>
               <StatusBadge status={p.is_expired ? "expired" : p.is_expiring_soon ? "expiring soon" : "active"} />
             </View>
@@ -307,10 +307,10 @@ export function LotRegisterReport({ data, title, subtitle, address, logoUrl, sho
             <View key={i} style={i % 2 === 0 ? s.rowStriped : s.row} wrap={false}>
               <Text style={[s.td, { width: showContact ? "8%" : "15%" }]}>Lot {lot.lot_number}{lot.unit_number ? ` (${lot.unit_number})` : ""}</Text>
               <Text style={[s.td, { width: showContact ? "18%" : "40%" }]}>{ownerLabel}</Text>
-              {showContact && <Text style={[s.tdMuted, { width: "22%" }]}>{lot.owner_contact_email ?? "—"}</Text>}
-              {showContact && <Text style={[s.td, { width: "14%" }]}>{lot.owner_contact_phone ?? "—"}</Text>}
-              <Text style={[s.tdRight, { width: showContact ? "11%" : "22%" }]}>{lot.lot_entitlement || "—"}</Text>
-              <Text style={[s.tdRight, { width: showContact ? "11%" : "23%" }]}>{lot.lot_liability || "—"}</Text>
+              {showContact && <Text style={[s.tdMuted, { width: "22%" }]}>{lot.owner_contact_email ?? ","}</Text>}
+              {showContact && <Text style={[s.td, { width: "14%" }]}>{lot.owner_contact_phone ?? ","}</Text>}
+              <Text style={[s.tdRight, { width: showContact ? "11%" : "22%" }]}>{lot.lot_entitlement || ","}</Text>
+              <Text style={[s.tdRight, { width: showContact ? "11%" : "23%" }]}>{lot.lot_liability || ","}</Text>
               {showContact && <Text style={[s.td, { width: "16%" }]}>{statusLabel}</Text>}
             </View>
           );
@@ -408,7 +408,7 @@ export function AuditTrailReport({ data, title, subtitle, address, logoUrl }: { 
             <Text style={[s.td, { width: "18%" }]}>{entry.user_name}</Text>
             <Text style={[s.td, { width: "12%" }]}>{capitalize(entry.action)}</Text>
             <Text style={[s.td, { width: "14%" }]}>{capitalize(entry.entity_type)}</Text>
-            <Text style={[s.tdMuted, { width: "42%" }]}>{entry.after_state ? JSON.stringify(entry.after_state).slice(0, 100) : "—"}</Text>
+            <Text style={[s.tdMuted, { width: "42%" }]}>{entry.after_state ? JSON.stringify(entry.after_state).slice(0, 100) : ","}</Text>
           </View>
         ))}
         <ReportFooter label="Audit Trail" />
@@ -473,8 +473,8 @@ export function OutstandingArrearsReport({
         {data.map((r, i) => (
           <View key={i} style={i % 2 === 0 ? s.rowStriped : s.row} wrap={false}>
             <Text style={[s.td, { width: "8%" }]}>{r.lot_number}{r.unit_number ? ` / ${r.unit_number}` : ""}</Text>
-            <Text style={[s.td, { width: "22%" }]}>{r.owner_display_name ?? "—"}</Text>
-            <Text style={[s.tdMuted, { width: "14%" }]}>{r.oldest_due_date ? fmtDate(r.oldest_due_date) : "—"}</Text>
+            <Text style={[s.td, { width: "22%" }]}>{r.owner_display_name ?? ","}</Text>
+            <Text style={[s.tdMuted, { width: "14%" }]}>{r.oldest_due_date ? fmtDate(r.oldest_due_date) : ","}</Text>
             <Text style={[s.tdRight, { width: "10%" }]}>{r.days_overdue}</Text>
             <Text style={[s.tdRight, { width: "14%" }]}>{fmt(r.principal_outstanding)}</Text>
             <Text style={[s.tdRight, { width: "14%" }]}>{fmt(r.interest_outstanding)}</Text>
@@ -574,8 +574,8 @@ export function OwnerStatementReportPdf({
             <View key={i} style={i % 2 === 0 ? s.rowStriped : s.row} wrap={false}>
               <Text style={[s.tdMuted, { width: "12%" }]}>{fmtDate(e.entry_date)}</Text>
               <Text style={[s.td, { width: "16%" }]}>{capitalize(e.category)}</Text>
-              <Text style={[s.td, { width: "30%" }]}>{e.description ?? "—"}</Text>
-              <Text style={[s.tdMuted, { width: "12%" }]}>{e.reference ?? "—"}</Text>
+              <Text style={[s.td, { width: "30%" }]}>{e.description ?? ","}</Text>
+              <Text style={[s.tdMuted, { width: "12%" }]}>{e.reference ?? ","}</Text>
               <Text style={[s.tdRight, { width: "10%" }]}>{e.debit > 0 ? fmt(e.debit) : ""}</Text>
               <Text style={[s.tdGreen, { width: "10%" }]}>{e.credit > 0 ? fmt(e.credit) : ""}</Text>
               <Text style={[s.tdRight, { width: "10%", fontWeight: 600 }]}>{fmt(e.balance_after)}</Text>

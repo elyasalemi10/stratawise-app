@@ -19,12 +19,12 @@ import { cn } from "@/lib/utils";
 import { saveMailProvider } from "./actions";
 
 // Step 3 of onboarding. The manager picks where outbound mail comes from:
-//   - stratawise: <username>@stratawise.com.au (default — no setup needed)
+//   - stratawise: <username>@stratawise.com.au (default , no setup needed)
 //   - gmail: their firm's Google Workspace mailbox via Domain-Wide Delegation
 //   - outlook: their firm's Microsoft 365 mailbox via app-only consent
 //
 // Reading + sending only. We make that explicit in the copy. Customers can
-// change or disconnect from /settings later — disconnecting falls back to
+// change or disconnect from /settings later , disconnecting falls back to
 // stratawise so outbound never breaks silently.
 //
 // Today: stratawise is wired end-to-end. gmail/outlook capture the choice
@@ -143,7 +143,7 @@ export function StepMailProvider({
             </p>
             <p className="mt-1 text-xs text-muted-foreground">
               Email sends from your real address. We only{" "}
-              <strong className="text-foreground">read and send</strong> —
+              <strong className="text-foreground">read and send</strong> ,
               we never delete or move anything in your mailbox.
             </p>
           </div>
@@ -296,11 +296,11 @@ function OutlookSetupCallout() {
       <p className="leading-relaxed">
         We&apos;ll send you to your Microsoft 365 admin&apos;s consent
         screen after onboarding. Your tenant admin approves StrataWise to
-        send and read mail on behalf of managers — no extra steps required
+        send and read mail on behalf of managers , no extra steps required
         beyond that single click.
       </p>
       <p className="text-muted-foreground">
-        Outlook connection ships behind a feature flag — we&apos;ll enable
+        Outlook connection ships behind a feature flag , we&apos;ll enable
         it for your firm once your tenant admin completes consent.
       </p>
     </div>
@@ -319,7 +319,7 @@ function ReadWriteDisclosure() {
           <span className="font-medium text-foreground">sends</span> email.
           We don&apos;t move messages, change labels you set, or empty
           folders. You can revoke access from your admin console at any
-          time — disconnecting falls back to{" "}
+          time , disconnecting falls back to{" "}
           <span className="font-mono">yourname@stratawise.com.au</span>.
         </p>
       </div>

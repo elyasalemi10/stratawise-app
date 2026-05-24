@@ -23,7 +23,7 @@ interface LotsTabProps {
   ocId: string;
   onLotUpdated: (lotId: string, field: string, value: string | number | null) => void;
   /** Optional: legacy /manage page can pass this to make cells editable. The
-   *  user-facing /lots page passes nothing — edits happen on the lot detail
+   *  user-facing /lots page passes nothing , edits happen on the lot detail
    *  page now. */
   isEditing?: boolean;
   isLotOwner?: boolean;
@@ -77,7 +77,7 @@ function EditableCell({
 
   if (!isEditing) {
     // Empty cells stay empty (CLAUDE.md). The visual silence is the
-    // indicator — no em-dash, no "Not set", no "N/A".
+    // indicator , no em-dash, no "Not set", no "N/A".
     if (type === "number" && value !== null && value !== undefined && Number(value) > 0) {
       return <span className="tabular-nums">{value}</span>;
     }
@@ -105,14 +105,14 @@ function EditableCell({
 }
 
 export function LotsTab({ lots, ocId, isEditing = false, onLotUpdated, isLotOwner, totalEntitlement, inviteStatusMap, onInviteChanged }: LotsTabProps) {
-  // Consume the prop so the unused-prop lint doesn't fire on /manage — the
+  // Consume the prop so the unused-prop lint doesn't fire on /manage , the
   // value isn't rendered any more per the no-totals spec.
   void totalEntitlement;
   const ocCode = useOCCode();
   const router = useRouter();
   const [inviteStatus, setInviteStatus] = useState<Map<string, string>>(() => inviteStatusMap ?? new Map());
 
-  // Fetch invitation status for all lots — only when the parent didn't
+  // Fetch invitation status for all lots , only when the parent didn't
   // pre-load it. /lots passes inviteStatusMap so this fetch is skipped;
   // /manage still drives it itself.
   useEffect(() => {
@@ -135,7 +135,7 @@ export function LotsTab({ lots, ocId, isEditing = false, onLotUpdated, isLotOwne
   }, [lots, ocId, inviteStatusMap]);
 
   // Sorted ascending by lot_number for now. Per-column filters / sorts will
-  // come in a follow-up — the header is plain text without an arrow.
+  // come in a follow-up , the header is plain text without an arrow.
   const sortedLots = [...lots].sort((a, b) => a.lot_number - b.lot_number);
 
   const formatCurrency = (n: number) =>
@@ -151,7 +151,7 @@ export function LotsTab({ lots, ocId, isEditing = false, onLotUpdated, isLotOwne
 
   return (
     <div className="space-y-3">
-      {/* Uses the design-system <Table variant="striped"> primitive — odd
+      {/* Uses the design-system <Table variant="striped"> primitive , odd
           rows white, even rows --muted, hover --secondary-hover. The
           stripe colour is now a proper token instead of an arbitrary
           hsl(). Column widths held with table-fixed + a <colgroup> so

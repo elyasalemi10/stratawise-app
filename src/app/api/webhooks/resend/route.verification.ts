@@ -39,7 +39,7 @@ const results: Result[] = [];
 
 function record(scenario: string, passed: boolean, detail: string) {
   results.push({ scenario, passed, detail });
-  console.log(`  ${passed ? "PASS" : "FAIL"}  ${scenario}${detail ? " — " + detail : ""}`);
+  console.log(`  ${passed ? "PASS" : "FAIL"}  ${scenario}${detail ? " , " + detail : ""}`);
 }
 
 // ─── svix request fabrication ──────────────────────────────────────────
@@ -382,7 +382,7 @@ async function w7_idempotentRetry(ctx: FixtureContext) {
 }
 
 async function w8_backwardsTransitionGuard(ctx: FixtureContext) {
-  // Row is already 'opened'. A late 'email.delivered' arrives — must not
+  // Row is already 'opened'. A late 'email.delivered' arrives , must not
   // regress.
   const fx = await createQueuedLog(ctx, "opened");
   const req = buildSignedRequest({
@@ -396,7 +396,7 @@ async function w8_backwardsTransitionGuard(ctx: FixtureContext) {
     .eq("id", fx.logId)
     .single();
   record(
-    "W-8: backwards-transition guard — late delivered after opened doesn't regress",
+    "W-8: backwards-transition guard , late delivered after opened doesn't regress",
     res.status === 200 && (row as { status: string }).status === "opened",
     `http=${res.status} status=${(row as { status: string }).status}`,
   );
@@ -457,7 +457,7 @@ async function cleanupCompany(companyId: string) {
     await supabase.from("owners_corporations").delete().in("id", subIds);
   }
 
-  // Webhook signature-rejection audit rows have oc_id=NULL — clean
+  // Webhook signature-rejection audit rows have oc_id=NULL , clean
   // by entity_type/action.
   await supabase
     .from("audit_log")
@@ -494,7 +494,7 @@ async function main() {
     process.exit(0);
   }
 
-  console.log("Resend webhook verification — PP6-C-2 scenarios W-1..W-9\n");
+  console.log("Resend webhook verification , PP6-C-2 scenarios W-1..W-9\n");
   console.log("[1/3] Cleaning up stale verification data");
   await cleanupMarker();
 

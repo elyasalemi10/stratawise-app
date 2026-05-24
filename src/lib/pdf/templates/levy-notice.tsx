@@ -132,7 +132,7 @@ export function LevyNotice({
       paddingRight: 32,
     },
     tableHeaderCell: { fontSize: 11, fontFamily: FONT_BOLD, fontWeight: 700, color: c.white },
-    // Rows — description flex:3, amount flex:1.5 for more gap (#5)
+    // Rows , description flex:3, amount flex:1.5 for more gap (#5)
     tableRow: {
       flexDirection: "row",
       paddingVertical: 10,
@@ -190,7 +190,7 @@ export function LevyNotice({
     bankRow: { flexDirection: "row", marginBottom: 5 },
     bankLabel: { fontSize: 13, fontFamily: FONT_BOLD, fontWeight: 600, color: c.foreground, width: 110 },
     bankValue: { fontSize: 13, color: c.foreground, flex: 1 },
-    // BPAY — fixed-width logo, text wraps in its own column (#6)
+    // BPAY , fixed-width logo, text wraps in its own column (#6)
     bpaySection: { marginTop: 14, flexDirection: "row", alignItems: "flex-start" as const, gap: 14 },
     bpayLogo: { width: 90, height: 36, objectFit: "contain" as const },
     bpayDetails: { flex: 1 },
@@ -216,7 +216,7 @@ export function LevyNotice({
           <View style={s.titleBlock}>
             <Text style={s.levyTitle}>{documentTitle || "Levy Notice"}</Text>
             <Text style={s.levySubtitle}>{referenceNumber}</Text>
-            <Text style={s.levySubtitle}>{levyPeriod.start} — {levyPeriod.end}</Text>
+            <Text style={s.levySubtitle}>{levyPeriod.start} , {levyPeriod.end}</Text>
           </View>
         </View>
 
@@ -261,7 +261,7 @@ export function LevyNotice({
           </View>
         ) : null}
 
-        {/* ── Line items — #5: flex 3/1.5 for wider amount column ── */}
+        {/* ── Line items , #5: flex 3/1.5 for wider amount column ── */}
         <View style={{ marginBottom: 4 }}>
           <View style={s.tableHeader}>
             <Text style={[s.tableHeaderCell, { flex: 3 }]}>Description</Text>

@@ -12,7 +12,7 @@ import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/comp
 import { saveStep, type DraftJson, type DraftLot } from "../actions";
 import { WizardActions } from "./_components/wizard-actions";
 
-// Wizard Step 3 sub-step 1 — Service address & contact.
+// Wizard Step 3 sub-step 1 , Service address & contact.
 //
 // "Service address" is the postal address where notices are delivered when
 // the owner hasn't consented to digital comms. Renamed from "Postal" so the
@@ -91,11 +91,11 @@ function csvToLots(csv: string, defaults: DraftLot[]): { lots: DraftLot[]; error
       continue;
     }
     if (!defaultsByLot.has(lot_number)) {
-      errors.push({ row: i + 1, reason: `Lot ${lot_number} isn't in the plan — ignored` });
+      errors.push({ row: i + 1, reason: `Lot ${lot_number} isn't in the plan , ignored` });
       continue;
     }
     if (consumed.has(lot_number)) {
-      errors.push({ row: i + 1, reason: `Lot ${lot_number} appears twice — keeping first` });
+      errors.push({ row: i + 1, reason: `Lot ${lot_number} appears twice , keeping first` });
       continue;
     }
     consumed.add(lot_number);
@@ -244,7 +244,7 @@ export function Step3PostalContact({
       return;
     }
 
-    // Background save — advance instantly; heartbeat backstops the write.
+    // Background save , advance instantly; heartbeat backstops the write.
     const patch = { lots };
     void saveStep(draftId, patch, 3, 2).then((r) => {
       if (r.error) toast.error(r.error);
@@ -298,7 +298,7 @@ export function Step3PostalContact({
             <tbody>
               {lots.map((lot, idx) => {
                 const errs = rowErrors[idx] ?? {};
-                // Rows alternate via inline class — keeping contact + service
+                // Rows alternate via inline class , keeping contact + service
                 // sub-rows visually grouped is more important than strict
                 // odd/even striping, so we colour them with the same band.
                 const band = idx % 2 === 0 ? "bg-card" : "bg-muted/20";
@@ -310,7 +310,7 @@ export function Step3PostalContact({
                         {lot.unit_number ? <span className="text-muted-foreground"> / {lot.unit_number}</span> : null}
                       </td>
                       <td className="px-3 py-1.5 text-muted-foreground truncate" title={lot.owner_name || ""}>
-                        {lot.owner_name || "—"}
+                        {lot.owner_name || ","}
                         {lot.occupancy_status === "vacant" && (
                           <span className="ml-2 inline-flex items-center rounded-full bg-cool-muted text-cool-muted-foreground text-[10px] px-1.5 py-0.5 font-medium">
                             Vacant

@@ -1,5 +1,5 @@
 // ============================================================================
-// Strategy 0 — DEFT Reference Number (Macquarie TXN)
+// Strategy 0 , DEFT Reference Number (Macquarie TXN)
 // ----------------------------------------------------------------------------
 // When Macquarie's TXN-file ingest sets `bank_transactions.deft_reference_number`,
 // this strategy is the highest-confidence path: the DRN points to exactly one
@@ -10,9 +10,9 @@
 //      non-Macquarie OCs or for transactions without a DRN reference).
 //   2. Find the lot_drns row where `drn = ctx.deftReferenceNumber` AND the
 //      transaction date falls inside [active_from, active_to ?? +inf).
-//      Multiple historical rows can carry the same DRN — historical
+//      Multiple historical rows can carry the same DRN , historical
 //      transactions stay linked to the DRN that was active when received.
-//   3. Verify the resolved lot belongs to ctx.ocId (defence-in-depth — a
+//   3. Verify the resolved lot belongs to ctx.ocId (defence-in-depth , a
 //      stale DRN from a previous management should NOT match a different
 //      OC's lot).
 //   4. Find the outstanding levy notice on that lot matching the fund. If
@@ -38,7 +38,7 @@ export async function tryDeftDrnMatch(
 
   const supabase = createServerClient();
 
-  // Date-aware lookup. Active_to is exclusive — a DRN reassigned today should
+  // Date-aware lookup. Active_to is exclusive , a DRN reassigned today should
   // not match a transaction landing the same date if active_from > txn date.
   // We use `or` with `is.null` so the live row (active_to IS NULL) wins when
   // it's the active period.
@@ -49,7 +49,7 @@ export async function tryDeftDrnMatch(
     .lte("active_from", ctx.transactionDate);
 
   // Pick the row whose active window contains ctx.transactionDate. Manual
-  // filter — Supabase REST can't express the (active_to IS NULL OR active_to
+  // filter , Supabase REST can't express the (active_to IS NULL OR active_to
   // >= date) clause cleanly without an RPC.
   const matched = (drnRows ?? []).find((r) =>
     r.active_to == null || r.active_to >= ctx.transactionDate,
@@ -86,7 +86,7 @@ export async function tryDeftDrnMatch(
 
   if (!notices || notices.length === 0) {
     // DRN matched but there's nothing outstanding to apply against. Treat
-    // as a credit/over-payment — the orchestrator will surface it for
+    // as a credit/over-payment , the orchestrator will surface it for
     // manual disposition.
     return {
       matched: false,

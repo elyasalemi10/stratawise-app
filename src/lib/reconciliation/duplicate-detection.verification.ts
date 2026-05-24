@@ -83,7 +83,7 @@ const results: Result[] = [];
 
 function record(scenario: string, passed: boolean, detail: string) {
   results.push({ scenario, passed, detail });
-  console.log(`  ${passed ? "PASS" : "FAIL"}  ${scenario}${detail ? " — " + detail : ""}`);
+  console.log(`  ${passed ? "PASS" : "FAIL"}  ${scenario}${detail ? " , " + detail : ""}`);
 }
 
 function assert(cond: unknown, msg = "assertion failed"): asserts cond {
@@ -420,7 +420,7 @@ async function dd5_outsideWindow(fx: Fixture) {
   );
 }
 
-// DD-5b — month-boundary in/out: Jan 31 + 2 days = Feb 2 (in), + 3 = Feb 3 (out).
+// DD-5b , month-boundary in/out: Jan 31 + 2 days = Feb 2 (in), + 3 = Feb 3 (out).
 // Defends against off-by-one date arithmetic regressions.
 async function dd5b_monthBoundary(fx: Fixture) {
   // In-window across month boundary.
@@ -539,7 +539,7 @@ async function dd6_chainPrevention(fx: Fixture) {
     supabase,
   );
   record(
-    "DD-6: chain prevention — third anchors on first, not on second",
+    "DD-6: chain prevention , third anchors on first, not on second",
     detection3.flagged && detection3.duplicate_of === firstId,
     `flagged=${detection3.flagged}, anchor=${detection3.flagged ? detection3.duplicate_of : "n/a"}`,
   );
@@ -934,7 +934,7 @@ async function dd14_csvImportIntegration(
 }
 
 // ─── DD-15: Basiq insert path ─────────────────────────────────────────────
-// Direct test of the integration shape — inserts a row tagged source='basiq'
+// Direct test of the integration shape , inserts a row tagged source='basiq'
 // then runs detector + marker against it. Validates the same code path the
 // pollConnectionAsSystem function executes per-tx without depending on the
 // external Basiq API client.
@@ -1078,7 +1078,7 @@ async function main() {
     process.exit(0);
   }
 
-  console.log("Duplicate-detection verification — PP5-A scenarios\n");
+  console.log("Duplicate-detection verification , PP5-A scenarios\n");
   console.log("[1/3] Cleaning up stale verification data");
   await cleanupMarker();
 
@@ -1087,7 +1087,7 @@ async function main() {
 
   console.log("[3/3] Running scenarios\n");
 
-  // Pure normaliser tests first — no fixture dependency.
+  // Pure normaliser tests first , no fixture dependency.
   runNormaliserTests();
 
   // Detector scenarios.
@@ -1102,7 +1102,7 @@ async function main() {
   await dd8_excludedExcludedFromCandidates(fx);
   await dd9_emptyAfterNormaliseStillFlags(fx);
 
-  // Server-action and integration scenarios — dynamic-import after the
+  // Server-action and integration scenarios , dynamic-import after the
   // auth-resolver shim is set, parallel to the reconciliation.verification.ts
   // pattern.
   const recon = await import("@/lib/actions/reconciliation");

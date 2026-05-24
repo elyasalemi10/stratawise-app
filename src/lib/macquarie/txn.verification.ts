@@ -23,7 +23,7 @@ const results: Result[] = [];
 function record(scenario: string, passed: boolean, detail: string) {
   results.push({ scenario, passed, detail });
   // eslint-disable-next-line no-console
-  console.log(`  ${passed ? "PASS" : "FAIL"}  ${scenario}${detail ? " — " + detail : ""}`);
+  console.log(`  ${passed ? "PASS" : "FAIL"}  ${scenario}${detail ? " , " + detail : ""}`);
 }
 
 // Field-padding helpers.
@@ -57,11 +57,11 @@ function buildHeader(): string {
 
 // Transaction per spec:
 //   byte 0:    recordType '2'
-//   1-8:       bsb        (7) — XXX-XXX
+//   1-8:       bsb        (7) , XXX-XXX
 //   8-17:      accountNo  (9)
 //   17-52:     accountName(35)
 //   52-60:     date       (8) YYYYMMDD
-//   60-76:     amount     (16) — accepts integer cents OR ASCII decimal
+//   60-76:     amount     (16) , accepts integer cents OR ASCII decimal
 //   76-78:     indicator  (2) DR/CR
 //   78-80:     code       (2) 13=DR, 50=CR
 //   80-120:    description(40)
@@ -116,7 +116,7 @@ function buildTxn(opts: {
 //   80-86  ReferenceNumber (6)
 //   86-92  TotalDebitTransactions (6)
 //   92-98  TotalCreditTransactions (6)
-//   98-114 TotalDebitAmount   (16) — integer cents
+//   98-114 TotalDebitAmount   (16) , integer cents
 //   114-130 TotalCreditAmount (16)
 //   130-170 padding (40)
 // Trailer layout (per parser): bytes 0-80 follow the txn layout; from byte 80
@@ -207,7 +207,7 @@ function buildTrailer(opts: {
 })();
 
 (function asciiDecimal() {
-  // ASCII decimal format "        99.99" — leading spaces.
+  // ASCII decimal format "        99.99" , leading spaces.
   const content = [
     buildHeader(),
     buildTxn({ amountField: padL("99.99", 16, " "), description: "TEST ASCII" }),

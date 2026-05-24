@@ -71,7 +71,7 @@ const VERIFY_USER_ID = `${VERIFY_MARKER}_USER_${Date.now()}_${randomUUID().slice
 
 // Install the userId resolver BEFORE dynamic-importing server actions. Server
 // actions call getCurrentProfile(), which reads `_verificationUserIdResolver`
-// each call — so the ordering contract is: set resolver → import actions →
+// each call , so the ordering contract is: set resolver → import actions →
 // invoke actions. If we imported actions first, their code would still be
 // fine (the resolver is read lazily at call time), but keeping the order
 // explicit makes the intent legible and lets us assert below.
@@ -95,7 +95,7 @@ const results: Result[] = [];
 
 function record(scenario: string, passed: boolean, detail: string) {
   results.push({ scenario, passed, detail });
-  console.log(`  ${passed ? "PASS" : "FAIL"}  ${scenario}${detail ? " — " + detail : ""}`);
+  console.log(`  ${passed ? "PASS" : "FAIL"}  ${scenario}${detail ? " , " + detail : ""}`);
 }
 
 function assert(cond: unknown, msg: string = "assertion failed"): asserts cond {
@@ -516,7 +516,7 @@ async function scenarioR5_UnmatchRestoresState(
   fx: Fixture,
   s4: { bankTxnId: string; allocA: number; allocB: number; lotA: string; lotB: string; lotABefore: number; lotBBefore: number },
 ) {
-  const header = "R5: unmatch restores state — void_offsets created, balances back to pre-match";
+  const header = "R5: unmatch restores state , void_offsets created, balances back to pre-match";
   try {
     const sinceIso = new Date().toISOString();
     const res = await recon.unmatchTransaction({
@@ -552,7 +552,7 @@ async function scenarioR5_UnmatchRestoresState(
 }
 
 async function scenarioR6_CashReceiptDeposit(fx: Fixture) {
-  const header = "R6: cash receipt → deposit flow — single credit, no double-count on deposit";
+  const header = "R6: cash receipt → deposit flow , single credit, no double-count on deposit";
   const AMOUNT = 200;
   try {
     const lotId = fx.lotIds[0];
@@ -707,12 +707,12 @@ async function scenarioR8_ExcludeUnexclude(fx: Fixture) {
     const exRes = await recon.excludeTransaction({
       oc_id: fx.ocId,
       bank_transaction_id: bankTxnId,
-      reason: "Bank fee — not a lot payment",
+      reason: "Bank fee , not a lot payment",
     });
     assert(exRes.success, `exclude: ${exRes.error}`);
     const btEx = await fetchBt(bankTxnId);
     assert(btEx!.match_status === "excluded", `expected excluded, got ${btEx!.match_status}`);
-    assert(btEx!.excluded_reason === "Bank fee — not a lot payment", `excluded_reason mismatch: ${btEx!.excluded_reason}`);
+    assert(btEx!.excluded_reason === "Bank fee , not a lot payment", `excluded_reason mismatch: ${btEx!.excluded_reason}`);
 
     const unexRes = await recon.unexcludeTransaction({
       oc_id: fx.ocId,
@@ -782,7 +782,7 @@ async function scenarioR9_VoidBankCascadesUnmatch(fx: Fixture) {
 }
 
 async function scenarioR10_VoidPendingReceipt(fx: Fixture) {
-  const header = "R10: void pending cash receipt — credit voided, receipt status=voided";
+  const header = "R10: void pending cash receipt , credit voided, receipt status=voided";
   try {
     const lotId = fx.lotIds[0];
     const AMOUNT = 75;
@@ -825,7 +825,7 @@ async function scenarioR10_VoidPendingReceipt(fx: Fixture) {
 }
 
 async function scenarioR11_VoidDepositedReceiptBlocked(fx: Fixture) {
-  const header = "R11: void deposited receipt blocked — must void bank transaction first";
+  const header = "R11: void deposited receipt blocked , must void bank transaction first";
   try {
     const lotId = fx.lotIds[1];
     const AMOUNT = 60;
@@ -1028,7 +1028,7 @@ async function scenarioR13_RememberPayerCollisionRoundTrip(fx: Fixture) {
     "R13: rememberPayer + collision returns three-way payload; resolvePayerMappingCollision('update') applies cleanly";
   try {
     // Setup:
-    //   - lotA has an active mapping for "ACME PROPERTY" (no notice — Strategy 3
+    //   - lotA has an active mapping for "ACME PROPERTY" (no notice , Strategy 3
     //     known_payer falls through cleanly)
     //   - lotB will get an outstanding notice AFTER we add the bank transaction,
     //     so addManualBankTransaction's auto-match doesn't pick it up via
@@ -1043,7 +1043,7 @@ async function scenarioR13_RememberPayerCollisionRoundTrip(fx: Fixture) {
     const lotB = await pp_mkFreshLot(fx);
     const R13_AMOUNT = 87654.32;
 
-    // Direct insert mapping for lotA — bypasses the public createBankPayerMapping
+    // Direct insert mapping for lotA , bypasses the public createBankPayerMapping
     // collision check (we WANT collision detection to fire on the second mapping).
     const { data: mappingA, error: mErr } = await supabase
       .from("bank_payer_mappings")
@@ -1179,7 +1179,7 @@ async function scenarioR13_RememberPayerCollisionRoundTrip(fx: Fixture) {
 
 async function scenarioCSV1_OrchestratorE2E(fx: Fixture) {
   const header =
-    "CSV-1: 5-row CSV import — Strategies 1, 2, 3 + unmatched + duplicate (orchestrator integration)";
+    "CSV-1: 5-row CSV import , Strategies 1, 2, 3 + unmatched + duplicate (orchestrator integration)";
   try {
     // Set up a BPAY-enabled bank account on this oc for Strategy 2.
     const { data: bpayAccount } = await supabase
@@ -1344,7 +1344,7 @@ async function scenarioCSV1_OrchestratorE2E(fx: Fixture) {
 // "Possible duplicate" chip. Default queue must HIDE 'confirmed' and
 // SHOW 'suspected' + 'rejected' + null. ?dup=1 narrows to ONLY 'suspected'.
 async function scenarioPD1_QueueDupSuspectedFilter(fx: Fixture) {
-  const header = "PD-1: queue dupSuspected filter — default hides confirmed; dupSuspected=true narrows to suspected only";
+  const header = "PD-1: queue dupSuspected filter , default hides confirmed; dupSuspected=true narrows to suspected only";
   try {
     // Insert a fresh bank account for PD-1 (dedicated, no contamination from
     // earlier scenarios that may have produced their own duplicate rows).
@@ -1469,7 +1469,7 @@ async function scenarioPD1_QueueDupSuspectedFilter(fx: Fixture) {
 
     // ─── PD-1b: SQL composition with concurrent filters ─────────────────
     // Locks in that the .or() group for duplicate_status correctly ANDs
-    // with .eq("match_status", ...) — Supabase's .or() must wrap in parens
+    // with .eq("match_status", ...) , Supabase's .or() must wrap in parens
     // so the OR doesn't widen the result set.
     const compHeader =
       "PD-1b: queue dupSuspected AND match_status compose correctly (parenthesised OR group)";
@@ -1569,7 +1569,7 @@ async function cleanupOneCompany(companyId: string) {
 
   // audit_log holds RESTRICT-style FKs to profiles.profile_id and
   // ocs.oc_id. Must be deleted before any parent row.
-  // Keeping these deletes at the top is crucial — without them, downstream
+  // Keeping these deletes at the top is crucial , without them, downstream
   // delete calls silently no-op on FK violation (PostgREST returns the error
   // in the response; .delete() without .error-check surfaces nothing).
   if (subIds.length > 0) {
@@ -1655,7 +1655,7 @@ async function main() {
     process.exit(0);
   }
 
-  console.log("Reconciliation verification — Prompt 2 scenarios\n");
+  console.log("Reconciliation verification , Prompt 2 scenarios\n");
 
   // ─── Pre-flight 1: assert next/cache stub intercepts ──────────────────
   // Discriminator: real revalidatePath throws synchronously with
@@ -1683,14 +1683,14 @@ async function main() {
 
   // ─── Pre-flight 2: fixture sanity ─────────────────────────────────────
   // Refuse to start on top of dirty state. Count marker-tagged rows, run
-  // cleanup, count again. Any residue means cleanup is incomplete — bail
+  // cleanup, count again. Any residue means cleanup is incomplete , bail
   // loudly rather than run on dirty state.
   const { count: dirtyBefore } = await supabase
     .from("management_companies")
     .select("id", { count: "exact", head: true })
     .like("name", `${VERIFY_MARKER}%`);
   if ((dirtyBefore ?? 0) > 0) {
-    console.log(`  Pre-flight: ${dirtyBefore} stale verification run(s) detected — cleaning up first`);
+    console.log(`  Pre-flight: ${dirtyBefore} stale verification run(s) detected , cleaning up first`);
   }
   await cleanupMarker();
   const { count: dirtyAfter } = await supabase
@@ -1713,7 +1713,7 @@ async function main() {
 
   assert(
     __getUserIdResolverForVerification() !== null,
-    "Resolver unexpectedly null after importing action modules — ordering bug.",
+    "Resolver unexpectedly null after importing action modules , ordering bug.",
   );
 
   const fx = await createFixture();

@@ -19,7 +19,7 @@ export default async function OCsPage() {
   return (
     <div className="space-y-8">
       {/* Actions bar. Shown whenever the page has ANY content (OCs OR
-          drafts) — previously this only fired on `ocs.length > 0` and
+          drafts) , previously this only fired on `ocs.length > 0` and
           a manager with drafts-only saw no Create OC button anywhere,
           because the empty state (which carries its own CTA) only
           renders when BOTH lists are empty. */}
@@ -52,7 +52,7 @@ export default async function OCsPage() {
       {/* OC grid. Empty state carries the only Create OC CTA in that
           case (no top-right one since the actions bar is hidden). When
           there are OCs the top-right Create OC appears and the empty
-          state is gone — so the two never duplicate. */}
+          state is gone , so the two never duplicate. */}
       {ocs.length === 0 && drafts.length === 0 ? (
         <div className="flex flex-col items-center justify-center py-20 text-center">
           <Building2 className="h-12 w-12 text-muted-foreground/30" />

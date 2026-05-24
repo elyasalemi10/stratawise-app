@@ -83,7 +83,7 @@ export function AddManualTransactionDialog({
       }
       if (result.success?.duplicateSuspected) {
         toast.warning(
-          "Transaction added — flagged as a possible duplicate of an existing transaction. Review in the reconciliation queue.",
+          "Transaction added , flagged as a possible duplicate of an existing transaction. Review in the reconciliation queue.",
         );
       } else {
         toast.success("Transaction added successfully");

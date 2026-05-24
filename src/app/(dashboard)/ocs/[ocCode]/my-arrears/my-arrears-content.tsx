@@ -51,7 +51,7 @@ export function MyArrearsContent({
 
   return (
     <div className="space-y-6">
-      {/* KPI: outstanding total — destructive when > 0, neutral when 0. */}
+      {/* KPI: outstanding total , destructive when > 0, neutral when 0. */}
       <Card>
         <CardContent className="pt-5">
           <div className="flex items-center gap-3">

@@ -1,7 +1,7 @@
 /**
  * Jaro-Winkler verification (Prompt 4 PP4-B).
  *
- * Pure-function tests — no DB required. Three canonical vectors with
+ * Pure-function tests , no DB required. Three canonical vectors with
  * tolerance < 0.001 plus edge cases. Per R2 resolution: if test vectors
  * don't pass at this tolerance, halt and surface immediately. Do not
  * paper over with a higher tolerance threshold.
@@ -18,7 +18,7 @@ const results: Result[] = [];
 function record(scenario: string, passed: boolean, detail: string) {
   results.push({ scenario, passed, detail });
   console.log(
-    `  ${passed ? "PASS" : "FAIL"}  ${scenario}${detail ? " — " + detail : ""}`,
+    `  ${passed ? "PASS" : "FAIL"}  ${scenario}${detail ? " , " + detail : ""}`,
   );
 }
 
@@ -48,7 +48,7 @@ function checkExact(
   record(scenario, passed, detail);
 }
 
-console.log("Jaro-Winkler verification — PP4-B canonical vectors + edges\n");
+console.log("Jaro-Winkler verification , PP4-B canonical vectors + edges\n");
 
 // SIM-1, SIM-2, SIM-3: canonical vectors at tolerance < 0.001.
 checkClose("SIM-1: MARTHA / MARHTA",   "MARTHA", "MARHTA",   0.9611);

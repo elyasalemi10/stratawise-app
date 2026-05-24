@@ -53,7 +53,7 @@ export default function NominatedRepresentativeSetupPage() {
             account.
           </li>
           <li>
-            Confirm via SMS or email — banks almost always send a
+            Confirm via SMS or email , banks almost always send a
             verification.
           </li>
           <li>
@@ -102,7 +102,7 @@ export default function NominatedRepresentativeSetupPage() {
         <h2 className="text-lg font-semibold">Consent duration</h2>
         <p className="mt-2 leading-relaxed">
           Once granted, consent lasts 12 months. StrataWise will
-          remind you 30, 14, 7, 3, and 1 day before expiry — click the
+          remind you 30, 14, 7, 3, and 1 day before expiry , click the
           &ldquo;Reauthorise&rdquo; button to extend.
         </p>
       </section>

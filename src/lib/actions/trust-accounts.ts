@@ -6,7 +6,7 @@ import { createServerClient } from "@/lib/supabase";
 import { logAudit } from "@/lib/audit";
 import { DEFAULT_TRUST_COA } from "@/lib/trust-accounting/coa-seed";
 
-// Phase 1 trust accounting actions — list firm trust accounts, create a
+// Phase 1 trust accounting actions , list firm trust accounts, create a
 // new one (and seed the chart-of-accounts the first time the firm picks
 // up a trust account), archive / restore. Statement upload + match queue
 // land in phase 2.
@@ -22,7 +22,7 @@ export interface TrustAccountRow {
   is_default: boolean;
   created_at: string;
   // Phase-2 fields surfaced now so the UI can show counts even though
-  // ingest hasn't shipped — both default to 0 / null.
+  // ingest hasn't shipped , both default to 0 / null.
   needs_review_count: number;
   last_statement_at: string | null;
 }
@@ -51,7 +51,7 @@ export async function listTrustAccounts(): Promise<TrustAccountRow[]> {
   if (rows.length === 0) return [];
 
   // Per-account counts of unreconciled transactions + latest statement
-  // date. Empty for phase 1 since no transactions exist yet — phase 2's
+  // date. Empty for phase 1 since no transactions exist yet , phase 2's
   // upload pipeline writes them.
   const ids = rows.map((r) => r.id);
   const { data: counts } = await supabase

@@ -70,7 +70,7 @@ export function MatchDetailContent({
   const { dismissed: proposalDismissed, dismiss: dismissProposal } =
     useDismissalFlag(proposalDismissalKey, THIRTY_DAYS_MS);
 
-  // Repeat-manual proposal toast — fires once per (oc, canonical, lot)
+  // Repeat-manual proposal toast , fires once per (oc, canonical, lot)
   // tuple per 30-day window. Backed by useDismissalFlag (localStorage).
   useEffect(() => {
     if (!pendingProposal || proposalDismissed) return;
@@ -93,7 +93,7 @@ export function MatchDetailContent({
                 return;
               }
               if (result.success?.mappingCollision) {
-                // A competitor exists — route to the collision dialog.
+                // A competitor exists , route to the collision dialog.
                 setCollisionPayload(result.success.mappingCollision);
                 return;
               }

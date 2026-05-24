@@ -10,7 +10,7 @@ import { toast } from "sonner";
 // Standardised right-side edit drawer. Slides in from the right, full height,
 // roughly navbar width. Used for any "edit this whole record" flow where the
 // alternative would be individual pencil icons per field (which the user
-// explicitly does NOT want — one section, one Edit button, one drawer with
+// explicitly does NOT want , one section, one Edit button, one drawer with
 // all editable fields, one Save).
 //
 // Behaviour mirrors EditPopover: optimistic update via `optimistic.apply`,
@@ -133,7 +133,7 @@ export function EditSheet({
         showCloseButton={false}
         className="w-full sm:max-w-sm p-0 gap-0 bg-card"
       >
-        {/* Header strip — drawer kicker (defaults to "Edit") sits above the
+        {/* Header strip , drawer kicker (defaults to "Edit") sits above the
             label; pass headerKicker={null} to drop the eyebrow entirely for
             non-edit drawers like Send / Log. */}
         <div className="border-b border-border bg-card px-5 pt-5 pb-4">
@@ -148,7 +148,7 @@ export function EditSheet({
           )}
         </div>
 
-        {/* Body — scrollable so a tall list of fields doesn't push the footer
+        {/* Body , scrollable so a tall list of fields doesn't push the footer
             off-screen. */}
         <div className="flex-1 overflow-y-auto px-5 py-4 space-y-4">
           {children}
@@ -164,7 +164,7 @@ export function EditSheet({
           )}
         </div>
 
-        {/* Footer — Cancel + Save sticky at the bottom. */}
+        {/* Footer , Cancel + Save sticky at the bottom. */}
         <div className="border-t border-border bg-card px-5 py-3 flex items-center justify-end gap-2">
           <Button
             type="button"

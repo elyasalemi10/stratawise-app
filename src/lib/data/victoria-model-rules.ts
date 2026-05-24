@@ -1,11 +1,11 @@
-// Victoria's Owners Corporation Model Rules — Schedule 2 of the Owners
+// Victoria's Owners Corporation Model Rules , Schedule 2 of the Owners
 // Corporations Regulations 2018. These apply to every OC that has NOT
 // registered its own custom rules. The wizard's page 6 displays this list so
 // the manager sees exactly what they're agreeing to.
 //
 // Source: legislation.vic.gov.au/in-force/statutory-rules/owners-corporations-regulations-2018
 // The schedule has 7 top-level headings. Body text below is a paraphrased
-// summary of each heading's operative clauses for at-a-glance display — the
+// summary of each heading's operative clauses for at-a-glance display , the
 // full statutory wording lives in the source above and is what governs.
 
 export interface ModelRule {
@@ -43,7 +43,7 @@ export const VICTORIA_MODEL_RULES: ModelRule[] = [
     rule_number: "5",
     heading: "Behaviour of persons",
     body:
-      "Owners, occupiers and their guests must not behave in a way that unreasonably interferes with another occupier — including excessive noise, harassment, intoxicated behaviour in common areas, and abusive conduct toward the manager or committee.",
+      "Owners, occupiers and their guests must not behave in a way that unreasonably interferes with another occupier , including excessive noise, harassment, intoxicated behaviour in common areas, and abusive conduct toward the manager or committee.",
   },
   {
     rule_number: "6",

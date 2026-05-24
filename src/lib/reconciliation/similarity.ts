@@ -1,5 +1,5 @@
 // ============================================================================
-// Jaro-Winkler similarity — hand-rolled (PP4-B)
+// Jaro-Winkler similarity , hand-rolled (PP4-B)
 // ----------------------------------------------------------------------------
 // Used by Strategy 6 (fuzzy_hint) to surface "did you mean X?" hints on
 // otherwise-unmatched bank transactions when the canonicalised sender
@@ -25,7 +25,7 @@
 //   DIXON  / DICKSONX → 0.8133  (m=4, t=0, prefix=2 → 0.76667 + 0.04667)
 //
 // The verification preflight tests these with tolerance < 0.001. If the
-// preflight diverges, halt — do not paper over with a higher tolerance.
+// preflight diverges, halt , do not paper over with a higher tolerance.
 // ============================================================================
 
 const PREFIX_SCALING_FACTOR = 0.1;

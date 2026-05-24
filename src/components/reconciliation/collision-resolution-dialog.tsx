@@ -1,7 +1,7 @@
 "use client";
 
 // ============================================================================
-// CollisionResolutionDialog — three-way resolution + race-aware reducer
+// CollisionResolutionDialog , three-way resolution + race-aware reducer
 // ----------------------------------------------------------------------------
 // Single dialog component for both "remember-payer" collision flows:
 //   - flow="reconcile_remember_payer" → submits via resolvePayerMappingCollision
@@ -379,7 +379,7 @@ export function CollisionResolutionDialog({
 
   if (!payload && state.phase === "idle") return null;
 
-  // The visible payload is whichever phase we're in — fall back to the
+  // The visible payload is whichever phase we're in , fall back to the
   // initial payload prop while we wait for OPEN.
   const visiblePayload =
     "payload" in state ? state.payload : payload ?? null;

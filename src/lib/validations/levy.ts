@@ -51,7 +51,7 @@ export const keywordSchema = z
   )
   .refine((kw) => !KEYWORD_BLOCKLIST.has(kw), {
     message:
-      "Keyword too generic — common words like 'payment', 'transfer', 'levy' are blocked",
+      "Keyword too generic , common words like 'payment', 'transfer', 'levy' are blocked",
   });
 
 export const MAX_KEYWORDS = MAX_KEYWORDS_PER_BATCH;

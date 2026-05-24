@@ -41,10 +41,10 @@ export interface InboxEmailDetail {
   oc_name: string | null;
   oc_short_code: string | null;
   lot_label: string | null;
-  // For the inbox link line — "OC Name · Lot N · Unit X" or
+  // For the inbox link line , "OC Name · Lot N · Unit X" or
   // "OC Name · PS123456" when no unit; the short_code goes in the URL.
   lot_link_label: string | null;
-  // Which transport delivered this inbound — "gmail" when the row came in
+  // Which transport delivered this inbound , "gmail" when the row came in
   // via the Pub/Sub gmail-push webhook (regardless of sender domain),
   // "outlook" when Microsoft Graph ships, else null.
   inbox_provider: "gmail" | "outlook" | null;
@@ -97,7 +97,7 @@ export async function getInboxEmail(
   // sender field. Looking at the insert code: subject is the inbound
   // subject, recipient_email is the manager's address. The owner's sender
   // address goes on the audit row but we didn't store it on the comm_log.
-  // For now we pull it from notifications.metadata.sender_email — joined below.
+  // For now we pull it from notifications.metadata.sender_email , joined below.
   const { data: notif } = await supabase
     .from("notifications")
     .select("metadata")
@@ -112,7 +112,7 @@ export async function getInboxEmail(
   const gmailThreadId = (notifMeta.gmail_thread_id as string | undefined) ?? null;
 
   // Fallback provider resolution for rows ingested before we started
-  // tagging notification metadata with provider/gmail_message_id —
+  // tagging notification metadata with provider/gmail_message_id ,
   // checks the inbound row's recipient against gmail_mailbox_subscriptions.
   let inboxProvider: "gmail" | "outlook" | null = metaProvider ?? null;
   if (!inboxProvider && row.recipient_email) {
@@ -393,7 +393,7 @@ export async function associateInboxEmailToLot(
 // clicks one. The client treats the returned map as a cache, falling back
 // to getInboxEmail() for any id not present.
 //
-// Capped at `limit` (default 5) — enough to make the "click → instant
+// Capped at `limit` (default 5) , enough to make the "click → instant
 // open" experience real for the unread set without blowing the
 // server-component data budget on rare cases.
 
@@ -433,7 +433,7 @@ export async function prefetchInboxEmails(
 // underlying communication_log.recipient_email matches a row in
 // gmail_mailbox_subscriptions for the firm (backfill for older rows
 // ingested before we tagged metadata). Anything we can't confidently
-// attribute is omitted — the client falls back to a generic Mail glyph.
+// attribute is omitted , the client falls back to a generic Mail glyph.
 
 export async function resolveInboxRowProviders(
   notifications: Array<{
@@ -529,8 +529,8 @@ export async function removeInboxEmail(
 // Returns a flat list of OWNERSHIPS the manager can choose from, sorted by
 // owner name. Multi-lot owners surface as multiple rows so the manager can
 // pick which lot the email relates to. The underlying email link still
-// stores (oc_id, lot_id) — owners aren't a first-class entity for
-// documents/comms — but the picker UX is "search people."
+// stores (oc_id, lot_id) , owners aren't a first-class entity for
+// documents/comms , but the picker UX is "search people."
 //
 // q is a substring against owner name / OC name / lot label, case-
 // insensitive. Capped at 50 results so the dropdown stays usable.
@@ -557,7 +557,7 @@ export async function searchPeopleForAssociate(
   const supabase = createServerClient();
 
   // Step 1: candidate OCs for this firm. Bounded by the firm's portfolio
-  // (typically 10s-100s) — cheaper to fetch upfront than to join 4-way.
+  // (typically 10s-100s) , cheaper to fetch upfront than to join 4-way.
   const { data: ocs } = await supabase
     .from("owners_corporations")
     .select("id, name, short_code")
@@ -617,7 +617,7 @@ export async function searchPeopleForAssociate(
   return rows.slice(0, 50);
 }
 
-// Eager-load the full ownership list for the firm — used by the inbox to
+// Eager-load the full ownership list for the firm , used by the inbox to
 // preload the link-to-lot popover so search is instant (no server round
 // trip per keystroke). Cap is 2000 ownerships which comfortably covers
 // any single firm's portfolio for the MVP.

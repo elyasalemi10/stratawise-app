@@ -90,7 +90,7 @@ export function BlogList({ posts }: { posts: BlogPostRow[] }) {
         <EmptyState
           icon={Newspaper}
           title="No posts yet"
-          description="Write your first post — headings, images, tables, YouTube embeds and timelines are all supported."
+          description="Write your first post , headings, images, tables, YouTube embeds and timelines are all supported."
           action={<Button size="sm" onClick={handleNew} disabled={creating}><Plus className="mr-1.5 h-3.5 w-3.5" />New post</Button>}
         />
       ) : (

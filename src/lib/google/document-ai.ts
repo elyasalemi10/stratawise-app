@@ -1,18 +1,18 @@
 import "server-only";
 import { DocumentProcessorServiceClient } from "@google-cloud/documentai";
 
-// Google Document AI — OCR processor wrapper.
+// Google Document AI , OCR processor wrapper.
 //
 // Reuses the same service-account JSON we use for Gemini (GEMINI_API_KEY).
 // Configure the processor ID + location separately:
-//   GOOGLE_DOCUMENT_AI_PROCESSOR_ID — the OCR processor ID (the cheap general
+//   GOOGLE_DOCUMENT_AI_PROCESSOR_ID , the OCR processor ID (the cheap general
 //                                     "Document OCR" at ~$1.50 / 1000 pages)
-//   GOOGLE_DOCUMENT_AI_LOCATION     — region the processor lives in
+//   GOOGLE_DOCUMENT_AI_LOCATION     , region the processor lives in
 //                                     ("us" or "eu" are the supported
 //                                      multi-region values; pick to match
 //                                      the processor you created).
 //
-// We never fall back to a default processor — billing is bound to a specific
+// We never fall back to a default processor , billing is bound to a specific
 // processor ID, so callers fail loudly when it's missing rather than silently
 // pointing at the wrong one.
 
@@ -74,16 +74,16 @@ const CR_CODE = 0x0d;
 
 /**
  * Strip characters that break Postgres TEXT or to_tsvector:
- *   - NUL bytes — Postgres rejects them outright.
- *   - C0 control chars except tab / LF / CR — replaced with a space so word
+ *   - NUL bytes , Postgres rejects them outright.
+ *   - C0 control chars except tab / LF / CR , replaced with a space so word
  *     boundaries survive.
- *   - DEL (0x7f) — same treatment.
+ *   - DEL (0x7f) , same treatment.
  * Then NFC-normalise so combining-character variants index consistently and
  * tidy trailing whitespace + runs of blank lines.
  *
  * Character-by-character filter avoids regex literals that build pipelines
  * occasionally mangle when the source contains control chars. Net cost is
- * one O(n) pass — fine for OCR output up to several MB.
+ * one O(n) pass , fine for OCR output up to several MB.
  */
 export function sanitiseOcrText(raw: string): string {
   let out = "";
@@ -117,7 +117,7 @@ export type OcrResult = {
  *
  * Document AI's sync `processDocument` accepts up to ~30 pages; for bigger
  * docs you'd switch to `batchProcessDocuments` (async). The caller (the
- * Trigger.dev job) is responsible for the page-cap policy — see
+ * Trigger.dev job) is responsible for the page-cap policy , see
  * docs/document-ai-ocr-plan.md.
  */
 export async function runDocumentAiOcr(bytes: Buffer, mimeType: string): Promise<OcrResult> {

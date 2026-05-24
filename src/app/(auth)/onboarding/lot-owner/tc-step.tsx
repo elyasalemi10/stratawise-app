@@ -9,7 +9,7 @@ import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
 import { recordLotOwnerConsent } from "./actions";
 
-// Account-level Terms / Privacy acceptance — the first step of lot-owner
+// Account-level Terms / Privacy acceptance , the first step of lot-owner
 // onboarding. After this, per-OC digital-consent steps run (one per OC the
 // owner belongs to that they haven't consented for yet).
 export function TcStep() {

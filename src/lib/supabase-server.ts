@@ -3,11 +3,11 @@ import { createServerClient as ssrCreateServerClient } from "@supabase/ssr";
 import { cookies } from "next/headers";
 
 /**
- * Server client (SSR) — RLS-aware, reads auth from cookies.
+ * Server client (SSR) , RLS-aware, reads auth from cookies.
  * Use in Server Components, Route Handlers, and Server Actions when you
  * need the current user (e.g. `supabase.auth.getUser()`) or RLS-scoped
  * queries. Cookie write-failures inside Server Components are silently
- * swallowed — the middleware refreshes the session cookie on every request.
+ * swallowed , the middleware refreshes the session cookie on every request.
  *
  * Lives in a separate file from supabase.ts so client components can still
  * import the browser/admin clients without pulling in next/headers (which

@@ -5,7 +5,7 @@ import { DrnImportDialog } from "./drn-import-dialog";
 
 // Auto-opens the DEFT DRN import dialog the first time a manager lands on
 // the OC dashboard after creation (?created=1 or ?drn=1). Closing the dialog
-// without saving is allowed — we don't pester the user again automatically;
+// without saving is allowed , we don't pester the user again automatically;
 // they can re-open from the bank-account page if needed.
 
 interface Props {

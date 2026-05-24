@@ -73,7 +73,7 @@ export function StepCompany({ onNext }: { onNext: () => void }) {
 
   // Flags every non-RHF field (phone / ABN / address / consent) at once and
   // returns the problem list. Runs whether or not react-hook-form's own
-  // (name/address) validation passed — so a first click with EVERYTHING
+  // (name/address) validation passed , so a first click with EVERYTHING
   // blank turns all the fields red, not just the RHF-tracked ones.
   function flagManualFields(): string[] {
     const problems: string[] = [];
@@ -99,7 +99,7 @@ export function StepCompany({ onNext }: { onNext: () => void }) {
     return problems;
   }
 
-  // Fires when react-hook-form's resolver rejects (e.g. blank company name) —
+  // Fires when react-hook-form's resolver rejects (e.g. blank company name) ,
   // we still flag the manual fields so they all light up together.
   function onInvalid() {
     flagManualFields();
@@ -133,7 +133,7 @@ export function StepCompany({ onNext }: { onNext: () => void }) {
     }
 
     // Advancing is now an in-page step toggle (this step is hidden, not
-    // unmounted), so clear pending — otherwise the button stays spinning if
+    // unmounted), so clear pending , otherwise the button stays spinning if
     // the manager comes Back to step 1.
     onNext();
     setPending(false);
@@ -174,7 +174,7 @@ export function StepCompany({ onNext }: { onNext: () => void }) {
             onChange={setBrandColour}
           />
           <p className="text-xs text-muted-foreground">
-            Used on levy notices and other documents — not on the app UI.
+            Used on levy notices and other documents , not on the app UI.
             We&apos;ll try to pull it from your logo automatically.
           </p>
         </div>
@@ -199,7 +199,7 @@ export function StepCompany({ onNext }: { onNext: () => void }) {
           <Label htmlFor="trading-as">Trading as</Label>
           <Input
             id="trading-as"
-            placeholder={'Optional — e.g. "ABC Strata"'}
+            placeholder={'Optional , e.g. "ABC Strata"'}
             autoComplete="off"
             {...register("trading_as")}
           />
@@ -223,7 +223,7 @@ export function StepCompany({ onNext }: { onNext: () => void }) {
               setAbn(formatAbn(pasted));
               if (abnInvalid) setAbnInvalid(false);
             }}
-            // 14 = 11 digits + 3 separating spaces — physically caps typing length
+            // 14 = 11 digits + 3 separating spaces , physically caps typing length
             maxLength={14}
             aria-invalid={abnInvalid || undefined}
           />
@@ -267,7 +267,7 @@ export function StepCompany({ onNext }: { onNext: () => void }) {
           />
         </div>
 
-        {/* Single consent checkbox — covers both ToS and Privacy. Plain <p>,
+        {/* Single consent checkbox , covers both ToS and Privacy. Plain <p>,
             NOT shadcn <Label> (which is display:flex and made each word/link
             wrap as its own item with gaps). Clicking the text must not toggle
             the box, so no htmlFor either. */}

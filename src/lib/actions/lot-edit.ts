@@ -65,7 +65,7 @@ export async function updateLotDetails(
 
 // ─── updateLotOwnerContact ──────────────────────────────────────────────────
 // Edits the lot_owners contact record. The email column on lot_owners is the
-// OC-facing contact email — it's intentionally separate from the platform
+// OC-facing contact email , it's intentionally separate from the platform
 // login email on profiles (Item 19). When the lot owner has already accepted
 // their portal invite, we lock the email field (the popover must hide it)
 // because changing it without their consent would be a personal-data issue.
@@ -106,7 +106,7 @@ export async function updateLotOwnerContact(
     .single();
   if (fetchErr || !before) return { ok: false, error: "Owner not found" };
 
-  // Block email edits when the owner has accepted the invite — they own their
+  // Block email edits when the owner has accepted the invite , they own their
   // login email at that point and changes need to go through the portal.
   if (parsed.data.email !== undefined && before.invitation_id) {
     const { data: inv } = await supabase
@@ -117,7 +117,7 @@ export async function updateLotOwnerContact(
     if (inv?.status === "accepted") {
       return {
         ok: false,
-        error: "This owner is already on the portal — they need to change their email themselves.",
+        error: "This owner is already on the portal , they need to change their email themselves.",
       };
     }
   }
@@ -128,7 +128,7 @@ export async function updateLotOwnerContact(
   if (parsed.data.phone !== undefined) update.phone = parsed.data.phone;
   if (parsed.data.email !== undefined) update.email = parsed.data.email;
 
-  // Postal address — stored as-is. We no longer verify addresses with
+  // Postal address , stored as-is. We no longer verify addresses with
   // PostGrid (it's used for the print/mail product only now).
   if (parsed.data.postal_address !== undefined) {
     update.postal_address = parsed.data.postal_address;

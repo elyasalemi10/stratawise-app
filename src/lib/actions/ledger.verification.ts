@@ -2,7 +2,7 @@
  * Ledger verification script (Prompt 1).
  *
  * Exercises the 9 scenarios required by Prompt 1 §6 end-to-end against the
- * live Supabase dev database using the service role key. Idempotent —
+ * live Supabase dev database using the service role key. Idempotent ,
  * generates fresh test data on every run and deletes it after (unless
  * --no-cleanup is passed).
  *
@@ -43,7 +43,7 @@ const results: Result[] = [];
 
 function record(scenario: string, passed: boolean, detail: string) {
   results.push({ scenario, passed, detail });
-  console.log(`  ${passed ? "PASS" : "FAIL"}  ${scenario}${detail ? " — " + detail : ""}`);
+  console.log(`  ${passed ? "PASS" : "FAIL"}  ${scenario}${detail ? " , " + detail : ""}`);
 }
 
 function assert(cond: unknown, msg: string): asserts cond {
@@ -259,7 +259,7 @@ async function scenario1_BatchDebits(fx: Fixture): Promise<S1Out> {
 }
 
 async function scenario2_FullPayment(fx: Fixture, s1: S1Out) {
-  const header = "S2: full payment on lot[0] — balance delta equals payment amount";
+  const header = "S2: full payment on lot[0] , balance delta equals payment amount";
   try {
     const lotId = fx.lotIds[0];
     const paymentAmount = s1.amount;
@@ -298,7 +298,7 @@ async function scenario2_FullPayment(fx: Fixture, s1: S1Out) {
 }
 
 async function scenario3_PartialPayment(fx: Fixture, s1: S1Out) {
-  const header = "S3: partial payment on lot[1] — balance moves by +payment, oldest_unpaid unchanged";
+  const header = "S3: partial payment on lot[1] , balance moves by +payment, oldest_unpaid unchanged";
   const PAYMENT_AMOUNT = 200;
   try {
     const lotId = fx.lotIds[1];
@@ -342,7 +342,7 @@ async function scenario3_PartialPayment(fx: Fixture, s1: S1Out) {
 }
 
 async function scenario4_OldestUnpaidAdvances(fx: Fixture, s1: S1Out) {
-  const header = "S4: Q2 levy + payment that covers S1 on lot[2] — oldest_unpaid advances to Q2 start";
+  const header = "S4: Q2 levy + payment that covers S1 on lot[2] , oldest_unpaid advances to Q2 start";
   const Q2 = {
     periodStart: "2026-10-01",
     periodEnd: "2026-12-31",
@@ -396,7 +396,7 @@ async function scenario4_OldestUnpaidAdvances(fx: Fixture, s1: S1Out) {
 }
 
 async function scenario5_VoidLevyDebit(fx: Fixture, s1: S1Out) {
-  const header = "S5: void S1 debit on lot[1] — balance delta equals voided amount; original→voided, offset created, notice→written_off";
+  const header = "S5: void S1 debit on lot[1] , balance delta equals voided amount; original→voided, offset created, notice→written_off";
   try {
     const lotId = fx.lotIds[1];
     const s1NoticeIdForLot = s1.noticeIds[1];
@@ -543,7 +543,7 @@ async function scenario7_DuplicateLevyDebit(fx: Fixture, s1: S1Out) {
 }
 
 async function scenario8_ExplicitReferencePayment(fx: Fixture) {
-  const header = "S8: targeted payment on OLDER levy — walker skips it, oldest_unpaid = newer levy";
+  const header = "S8: targeted payment on OLDER levy , walker skips it, oldest_unpaid = newer levy";
   const LEVY_AMOUNT = 300;
   const OLDER = { start: "2026-01-01", end: "2026-03-31", due: "2026-01-28" } as const;
   const NEWER = { start: "2026-04-01", end: "2026-06-30", due: "2026-04-28" } as const;
@@ -642,7 +642,7 @@ async function scenario8_ExplicitReferencePayment(fx: Fixture) {
 }
 
 async function scenario9_WriteoffAdjustment(fx: Fixture) {
-  const header = "S9: writeoff credit via rpc_ledger_adjustment — balance delta equals amount, audit logged";
+  const header = "S9: writeoff credit via rpc_ledger_adjustment , balance delta equals amount, audit logged";
   const WRITEOFF_AMOUNT = 100;
   try {
     const lotId = fx.lotIds[0];
@@ -742,11 +742,11 @@ async function makeNotice(
 
 async function scenario10_PriorityAwareWalker(fx: Fixture) {
   const header =
-    "S10: priority-aware walker — special_levy outstanding behind newer regular levy";
+    "S10: priority-aware walker , special_levy outstanding behind newer regular levy";
   try {
     // Test setup distinguishes priority-aware from date-only:
-    //   - Special levy ($300, 2026-01-01) — older but lower priority (3)
-    //   - Regular levy ($500, 2026-12-01) — newer, higher priority (2)
+    //   - Special levy ($300, 2026-01-01) , older but lower priority (3)
+    //   - Regular levy ($500, 2026-12-01) , newer, higher priority (2)
     //   - Untargeted credit ($500)
     // Date-only walk:    visits Jan first → covers special → 200 left → can't cover Dec → oldest=Dec
     // Priority-aware:    visits Dec first (pri 2) → covers regular → 0 left → can't cover Jan → oldest=Jan
@@ -772,7 +772,7 @@ async function scenario10_PriorityAwareWalker(fx: Fixture) {
     // Direct INSERT into lot_ledger_entries with explicit allocation_priority.
     // The PP4-A schema delta added the column + backfilled existing rows but
     // did NOT add a BEFORE-INSERT trigger to derive priority from category on
-    // new rows — see PRE_LAUNCH_CLEANUP for the trigger / per-RPC fix.
+    // new rows , see PRE_LAUNCH_CLEANUP for the trigger / per-RPC fix.
     await supabase.from("lot_ledger_entries").insert([
       {
         oc_id: fx.ocId,
@@ -849,7 +849,7 @@ async function scenario10_PriorityAwareWalker(fx: Fixture) {
 }
 
 async function scenario11_PaymentStatusPaid(fx: Fixture) {
-  const header = "S11: computeLevyPaymentStatus — fully paid notice → 'paid'";
+  const header = "S11: computeLevyPaymentStatus , fully paid notice → 'paid'";
   try {
     const lotId = await makeFreshLot(fx, 210);
     const notice = await makeNotice(fx, lotId, {
@@ -921,7 +921,7 @@ async function scenario11_PaymentStatusPaid(fx: Fixture) {
 
 async function scenario12_PaymentStatusPartial(fx: Fixture) {
   const header =
-    "S12: computeLevyPaymentStatus — partial credit → 'partially_paid'";
+    "S12: computeLevyPaymentStatus , partial credit → 'partially_paid'";
   try {
     const lotId = await makeFreshLot(fx, 220);
     const notice = await makeNotice(fx, lotId, {
@@ -993,7 +993,7 @@ async function scenario12_PaymentStatusPartial(fx: Fixture) {
 
 async function scenario13_PaymentStatusOutstanding(fx: Fixture) {
   const header =
-    "S13: computeLevyPaymentStatus — no credits → 'outstanding'";
+    "S13: computeLevyPaymentStatus , no credits → 'outstanding'";
   try {
     const lotId = await makeFreshLot(fx, 230);
     const notice = await makeNotice(fx, lotId, {
@@ -1214,7 +1214,7 @@ async function scenario15_KeywordAmountPriorityWalker(fx: Fixture) {
       .single();
     assert(bt, "S15 bank_transaction insert failed");
 
-    // Run the orchestrator (dynamic import — orchestrator pulls in supabase
+    // Run the orchestrator (dynamic import , orchestrator pulls in supabase
     // client which uses env vars already in scope).
     const { tryAutoMatch } = await import(
       "../reconciliation/orchestrator"
@@ -1280,7 +1280,7 @@ async function scenario15_KeywordAmountPriorityWalker(fx: Fixture) {
 
 async function scenario14_PaymentStatusVoidAfterAsOfDate(fx: Fixture) {
   const header =
-    "S14: computeLevyPaymentStatus — credit voided AFTER asOfDate appears active in snapshot";
+    "S14: computeLevyPaymentStatus , credit voided AFTER asOfDate appears active in snapshot";
   try {
     const lotId = await makeFreshLot(fx, 240);
     const notice = await makeNotice(fx, lotId, {
@@ -1357,7 +1357,7 @@ async function scenario14_PaymentStatusVoidAfterAsOfDate(fx: Fixture) {
       `S14 expected outstanding=0 in snapshot, got ${r.outstanding_amount}`,
     );
 
-    // Sanity: at asOfDate AFTER void (today), the credit is excluded — notice
+    // Sanity: at asOfDate AFTER void (today), the credit is excluded , notice
     // should be back to outstanding.
     const today = new Date().toISOString().slice(0, 10);
     const todayRows = await computeLevyPaymentStatus(lotId, today);
@@ -1459,7 +1459,7 @@ async function cleanupOneCompany(companyId: string) {
     }
     await supabase.from("levy_batches").delete().in("oc_id", subIds);
 
-    // 7. OC delete — cascades lots, budgets, bank_accounts, etc.
+    // 7. OC delete , cascades lots, budgets, bank_accounts, etc.
     await supabase.from("owners_corporations").delete().in("id", subIds);
   }
 
@@ -1481,7 +1481,7 @@ async function main() {
     process.exit(0);
   }
 
-  console.log("Ledger verification — Prompt 1 + PP4-A scenarios\n");
+  console.log("Ledger verification , Prompt 1 + PP4-A scenarios\n");
 
   // Pre-clean any stale runs
   await cleanupMarker();

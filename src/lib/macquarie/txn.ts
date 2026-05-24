@@ -3,15 +3,15 @@
 // TXN files are weekly fixed-width statements Macquarie publishes for trust
 // accounts on their DEFT system. Every line is 170 chars (excluding line
 // terminator); the first byte is a record-type marker:
-//   '0' = file header        — customer + remitter + dates + description
-//   '2' = transaction record — BSB/account, date, amount, indicator (DR/CR),
+//   '0' = file header        , customer + remitter + dates + description
+//   '2' = transaction record , BSB/account, date, amount, indicator (DR/CR),
 //                              description, ReferenceNumber (= DRN if DEFT),
 //                              SecondaryReferenceNumber, ChequeNumber.
-//   '2' (last) = batch trailer — totals (debits, credits, counts).
+//   '2' (last) = batch trailer , totals (debits, credits, counts).
 //
 // Field layout cross-checked against 17twenty/txn (Go reference impl) and
-// PropertyIQ's receipting docs. The DEFT Reference Number (DRN) — what we
-// match against `lot_drns` to attribute payments to a lot — sits in the
+// PropertyIQ's receipting docs. The DEFT Reference Number (DRN) , what we
+// match against `lot_drns` to attribute payments to a lot , sits in the
 // ReferenceNumber field at bytes 120-130.
 //
 // Line terminator is LF or CRLF. We trim both.
@@ -36,7 +36,7 @@ export type TxnRecord = {
   accountNumber: string;
   accountName: string;
   transactionDate: string;    // ISO yyyy-mm-dd
-  /** Positive number — sign is determined by `indicator`. */
+  /** Positive number , sign is determined by `indicator`. */
   amountCents: number;
   /** Signed amount; negative for DR. */
   signedAmountCents: number;
@@ -95,7 +95,7 @@ function parseAmountCents(raw: string, lineNumber: number, errors: TxnParseError
     return 0;
   }
   if (trimmed.includes(".")) {
-    // ASCII decimal — e.g. "1234.56"
+    // ASCII decimal , e.g. "1234.56"
     const n = parseFloat(trimmed);
     if (!Number.isFinite(n)) {
       errors.push({ lineNumber, message: `amount is not a valid decimal: "${raw}"` });
@@ -103,7 +103,7 @@ function parseAmountCents(raw: string, lineNumber: number, errors: TxnParseError
     }
     return Math.round(n * 100);
   }
-  // Integer cents — e.g. "0000000000012345" = $123.45
+  // Integer cents , e.g. "0000000000012345" = $123.45
   if (!/^-?\d+$/.test(trimmed)) {
     errors.push({ lineNumber, message: `amount is not a valid integer: "${raw}"` });
     return 0;
@@ -149,7 +149,7 @@ function parseTransaction(line: string, lineNumber: number, errors: TxnParseErro
 function parseTrailer(line: string, lineNumber: number, errors: TxnParseError[]): TxnTrailer {
   // The trailer reuses the first 80 bytes of the transaction layout
   // (recordType / BSB / accountNumber / accountName / date / amount / indicator
-  // — the indicator is typically blank or "BT"). From byte 80 it diverges:
+  // , the indicator is typically blank or "BT"). From byte 80 it diverges:
   //   80-86   ReferenceNumber (6 chars, integer)
   //   86-92   TotalDebitTransactions (6)
   //   92-98   TotalCreditTransactions (6)
@@ -221,7 +221,7 @@ export function parseTxnFile(input: string | Buffer): ParsedTxnFile {
     }
   }
 
-  // Cross-check trailer totals against transactions (warn-only — bookkeepers
+  // Cross-check trailer totals against transactions (warn-only , bookkeepers
   // sometimes hand-edit TXN files; we don't refuse to import).
   if (trailer) {
     let actualDr = 0, actualCr = 0, drCount = 0, crCount = 0;

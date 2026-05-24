@@ -73,7 +73,7 @@ export async function updateLotField(
   await requireCompanyRole();
   await requireOCAccess(ocId);
 
-  // Owner fields are NOT editable here — ownership lives on
+  // Owner fields are NOT editable here , ownership lives on
   // oc_members + profiles and changes via the invitation flow.
   const allowedFields = [
     "lot_entitlement", "lot_liability", "unit_number", "lot_number",

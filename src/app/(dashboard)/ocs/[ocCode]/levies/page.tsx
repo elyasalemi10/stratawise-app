@@ -79,7 +79,7 @@ export default async function LeviesPage({
                         </Badge>
                       </div>
                       <p className="mt-1 text-xs text-muted-foreground">
-                        {formatDateLong(batch.period_start)} — {formatDateLong(batch.period_end)} · Due {formatDateLong(batch.due_date)}
+                        {formatDateLong(batch.period_start)} , {formatDateLong(batch.period_end)} · Due {formatDateLong(batch.due_date)}
                       </p>
                     </div>
                     <div className="text-right">

@@ -6,7 +6,7 @@
 // via `pgp_sym_encrypt(plain, key)` and decrypted with `pgp_sym_decrypt`.
 //
 // The encryption key lives in the `TFN_ENCRYPTION_KEY` env var (32-byte
-// base64). It MUST be set on Vercel before this code path runs in prod —
+// base64). It MUST be set on Vercel before this code path runs in prod ,
 // otherwise `setOcTfn` returns an error and the caller surfaces a generic
 // "this feature is temporarily unavailable" message (per CLAUDE.md error
 // rules; we log the real reason server-side).
@@ -58,7 +58,7 @@ export async function setOcTfn(ocId: string, plain: string | null): Promise<{ er
 }
 
 /** Fetch + decrypt the TFN for the given OC id. Returns null when no TFN is
- *  stored. Never include the error string in user-facing copy — log it and
+ *  stored. Never include the error string in user-facing copy , log it and
  *  show a generic message instead (CLAUDE.md). */
 export async function getOcTfn(ocId: string): Promise<{ tfn?: string | null; error?: string }> {
   const key = readKey();

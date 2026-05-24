@@ -5,12 +5,14 @@ import { Play, Pause } from "lucide-react";
 import { normalizeForNarration } from "@/lib/blog/narrate";
 import type { NarrationWordTiming } from "@/lib/actions/blog-audio";
 
-// Renders post body HTML and highlights each word as the narration audio
-// plays. Words are matched to the timing list by sequence + normalized text
-// (robust to minor tokenisation differences); blocks that aren't narrated
-// (tables, images, embeds, timelines, code) are skipped so the word sequence
-// lines up with what ElevenLabs read.
-const SKIP_SELECTOR = "table, pre, code, figure, img, .sw-timeline, [data-youtube-video], [data-type='timeline']";
+// Admin preview of the post narration. Mirrors the marketing-site
+// NarrationPlayer (position-map matching, rAF polling, inline-style
+// highlight) so the preview looks and behaves exactly like what readers get.
+const SKIP_SELECTOR =
+  "table, pre, code, figure, img, .sw-timeline, [data-youtube-video], [data-type='timeline']";
+
+const HIGHLIGHT_STYLE =
+  "background:rgba(207,167,83,0.35) !important;border-radius:3px;padding:0 1px;";
 
 function fmtTime(s: number): string {
   if (!Number.isFinite(s) || s < 0) s = 0;
@@ -32,24 +34,27 @@ export function NarrationPlayer({
   const audioRef = useRef<HTMLAudioElement>(null);
   const spansRef = useRef<HTMLElement[]>([]);
   const activeRef = useRef<number>(-1);
+  const rafRef = useRef<number | null>(null);
   const [playing, setPlaying] = useState(false);
   const [currentTime, setCurrentTime] = useState(0);
   const [duration, setDuration] = useState(0);
 
-  // Defend against a scheme-less stored URL ("cdn.…/x.mp3" would resolve
-  // relative to the page and 404). New uploads include https:// already.
   const src = /^https?:\/\//i.test(audioUrl) ? audioUrl : `https://${audioUrl}`;
 
-  // Wrap visible words in spans and tag those that matched a timing entry.
-  // Forward-scan tolerates small misalignments (a token the narrator dropped
-  // or an inline mark buildNarration glued to its neighbour) — without it a
-  // single mismatch strands the pointer and nothing else highlights.
-  const FORWARD_SCAN = 20;
   useEffect(() => {
     const root = containerRef.current;
     if (!root || !words.length) return;
     spansRef.current = new Array(words.length);
-    let ptr = 0;
+
+    const posByWord = new Map<string, number[]>();
+    for (let i = 0; i < words.length; i++) {
+      const w = words[i].w;
+      const arr = posByWord.get(w);
+      if (arr) arr.push(i);
+      else posByWord.set(w, [i]);
+    }
+    const cursorByWord = new Map<string, number>();
+    posByWord.forEach((_, k) => cursorByWord.set(k, 0));
 
     const walker = document.createTreeWalker(root, NodeFilter.SHOW_TEXT, {
       acceptNode(node) {
@@ -58,11 +63,11 @@ export function NarrationPlayer({
         return NodeFilter.FILTER_ACCEPT;
       },
     });
-
     const textNodes: Text[] = [];
     let n: Node | null;
     while ((n = walker.nextNode())) textNodes.push(n as Text);
 
+    let highWater = -1;
     for (const tn of textNodes) {
       const parts = (tn.nodeValue ?? "").split(/(\s+)/);
       const frag = document.createDocumentFragment();
@@ -76,26 +81,37 @@ export function NarrationPlayer({
         const span = document.createElement("span");
         span.textContent = part;
         if (norm) {
-          const limit = Math.min(words.length, ptr + FORWARD_SCAN);
-          let match = -1;
-          for (let i = ptr; i < limit; i++) {
-            if (words[i].w === norm) { match = i; break; }
-          }
-          if (match !== -1) {
-            span.dataset.i = String(match);
-            span.className = "sw-word";
-            spansRef.current[match] = span;
-            ptr = match + 1;
+          const positions = posByWord.get(norm);
+          if (positions) {
+            const cursor = cursorByWord.get(norm) ?? 0;
+            let pick = -1;
+            for (let k = cursor; k < positions.length; k++) {
+              if (positions[k] > highWater) { pick = k; break; }
+            }
+            if (pick !== -1) {
+              const idx = positions[pick];
+              span.dataset.i = String(idx);
+              span.className = "sw-word";
+              spansRef.current[idx] = span;
+              cursorByWord.set(norm, pick + 1);
+              highWater = idx;
+            }
           }
         }
         frag.appendChild(span);
       }
       tn.parentNode?.replaceChild(frag, tn);
     }
+
+    if (process.env.NODE_ENV !== "production") {
+      const matched = spansRef.current.filter(Boolean).length;
+      // eslint-disable-next-line no-console
+      console.info(`[NarrationPlayer admin preview] matched ${matched} / ${words.length} words`);
+    }
   }, [html, words]);
 
   const highlight = useCallback((t: number) => {
-    // Binary search for the word whose [start,end) contains t.
+    if (!words.length) return;
     let lo = 0, hi = words.length - 1, found = -1;
     while (lo <= hi) {
       const mid = (lo + hi) >> 1;
@@ -103,15 +119,13 @@ export function NarrationPlayer({
       else if (t >= words[mid].end) lo = mid + 1;
       else { found = mid; break; }
     }
-    // Between words (small gap in the alignment) keep the most-recent active
-    // word lit rather than dropping to nothing — calmer to read.
     if (found === -1 && t > 0 && lo > 0) found = lo - 1;
     if (found === activeRef.current) return;
     const prev = spansRef.current[activeRef.current];
-    if (prev) prev.classList.remove("sw-word-active");
+    if (prev) prev.removeAttribute("style");
     const next = spansRef.current[found];
     if (next) {
-      next.classList.add("sw-word-active");
+      next.setAttribute("style", HIGHLIGHT_STYLE);
       next.scrollIntoView({ block: "nearest", behavior: "smooth" });
     }
     activeRef.current = found;
@@ -120,25 +134,49 @@ export function NarrationPlayer({
   useEffect(() => {
     const a = audioRef.current;
     if (!a) return;
-    const onTime = () => { setCurrentTime(a.currentTime); highlight(a.currentTime); };
+    function pump() {
+      if (!a) return;
+      const t = a.currentTime;
+      setCurrentTime(t);
+      highlight(t);
+      if (!a.paused && !a.ended) {
+        rafRef.current = requestAnimationFrame(pump);
+      }
+    }
+    const onPlay = () => {
+      setPlaying(true);
+      if (rafRef.current == null) rafRef.current = requestAnimationFrame(pump);
+    };
+    const onPause = () => {
+      setPlaying(false);
+      if (rafRef.current != null) { cancelAnimationFrame(rafRef.current); rafRef.current = null; }
+    };
+    const onEnd = () => {
+      setPlaying(false);
+      setCurrentTime(0);
+      const prev = spansRef.current[activeRef.current];
+      if (prev) prev.removeAttribute("style");
+      activeRef.current = -1;
+      if (rafRef.current != null) { cancelAnimationFrame(rafRef.current); rafRef.current = null; }
+    };
     const onMeta = () => setDuration(Number.isFinite(a.duration) ? a.duration : 0);
-    const onPlay = () => setPlaying(true);
-    const onPause = () => setPlaying(false);
-    const onEnd = () => { setPlaying(false); setCurrentTime(0); highlight(-1); };
-    a.addEventListener("timeupdate", onTime);
+    const onSeek = () => highlight(a.currentTime);
+
     a.addEventListener("loadedmetadata", onMeta);
     a.addEventListener("durationchange", onMeta);
     a.addEventListener("play", onPlay);
     a.addEventListener("pause", onPause);
     a.addEventListener("ended", onEnd);
-    if (a.readyState >= 1) onMeta(); // metadata may already be loaded
+    a.addEventListener("seeked", onSeek);
+    if (a.readyState >= 1) onMeta();
     return () => {
-      a.removeEventListener("timeupdate", onTime);
       a.removeEventListener("loadedmetadata", onMeta);
       a.removeEventListener("durationchange", onMeta);
       a.removeEventListener("play", onPlay);
       a.removeEventListener("pause", onPause);
       a.removeEventListener("ended", onEnd);
+      a.removeEventListener("seeked", onSeek);
+      if (rafRef.current != null) { cancelAnimationFrame(rafRef.current); rafRef.current = null; }
     };
   }, [highlight]);
 
@@ -152,12 +190,13 @@ export function NarrationPlayer({
     }
   }
 
-  function onSeek(e: React.ChangeEvent<HTMLInputElement>) {
+  function onSeekInput(e: React.ChangeEvent<HTMLInputElement>) {
     const a = audioRef.current;
     if (!a) return;
     const t = Number(e.target.value);
     a.currentTime = t;
     setCurrentTime(t);
+    highlight(t);
   }
 
   return (
@@ -177,7 +216,7 @@ export function NarrationPlayer({
           max={duration || 0}
           step={0.1}
           value={Math.min(currentTime, duration || 0)}
-          onChange={onSeek}
+          onChange={onSeekInput}
           aria-label="Seek"
           className="h-1.5 flex-1 cursor-pointer appearance-none rounded-full bg-muted accent-[color:var(--brand-gold)]"
         />
@@ -188,7 +227,7 @@ export function NarrationPlayer({
       </div>
       <div
         ref={containerRef}
-        className="prose prose-sm max-w-none [&_.sw-word-active]:rounded [&_.sw-word-active]:bg-[color:var(--brand-gold)]/30 [&_.sw-word-active]:text-foreground"
+        className="prose prose-sm max-w-none"
         // eslint-disable-next-line react/no-danger
         dangerouslySetInnerHTML={{ __html: html }}
       />

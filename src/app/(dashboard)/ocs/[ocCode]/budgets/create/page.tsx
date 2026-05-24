@@ -25,7 +25,7 @@ export default async function CreateBudgetPage({
 
   // Financial year runs from the OC's configured start month. The "current"
   // FY is the one we're inside today; budgets can only be for the current FY
-  // or up to three years ahead — never the past.
+  // or up to three years ahead , never the past.
   const now = new Date();
   const fyStartMonth = oc.financial_year_start_month ?? 7;
   const currentYear = now.getFullYear();
@@ -36,7 +36,7 @@ export default async function CreateBudgetPage({
   });
   const defaultFinancialYear = `${currentFyStart}-${currentFyStart + 1}`;
 
-  // Budgets are forecasts of expense and income — only expose those types
+  // Budgets are forecasts of expense and income , only expose those types
   // from the firm's chart of accounts to keep the picker focused. Assets /
   // liabilities / equity don't belong on a budget line.
   const budgetableAccounts = accounts.filter(

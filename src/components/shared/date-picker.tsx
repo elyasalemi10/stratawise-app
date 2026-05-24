@@ -36,7 +36,7 @@ export function DatePicker({
 
   const date = value ? new Date(value + "T00:00:00") : undefined;
 
-  // SSR-safe "are we in the browser" check via useSyncExternalStore — no
+  // SSR-safe "are we in the browser" check via useSyncExternalStore , no
   // setState in an effect, avoids the react-hooks/set-state-in-effect rule.
   const mounted = useSyncExternalStore(
     () => () => {},
@@ -135,7 +135,7 @@ export function DatePicker({
               zIndex: 70,
             }}
           >
-            {/* Plain Calendar inside a `rounded-lg border` container — same
+            {/* Plain Calendar inside a `rounded-lg border` container , same
                 shape as the shadcn demo. Calendar paints its own bg-card so
                 the surrounding border is the only chrome. */}
             <Calendar

@@ -78,7 +78,7 @@ function pageMatches(needle: string, p: { title: string; aliases: string[] }): b
 // URL) scopes everything to one OC when present; absent means "anything in
 // the caller's management company."
 //
-// All queries cap at 5 hits each — anything more dilutes the dropdown. Order
+// All queries cap at 5 hits each , anything more dilutes the dropdown. Order
 // returned: pages → OCs → lot owners → documents → levies → meetings →
 // maintenance → complaints → insurance → notifications. The UI groups by
 // `type` and renders in this priority order.
@@ -153,7 +153,7 @@ export async function globalSearch(
     insuranceRows,
     notificationRows,
   ] = await Promise.all([
-    // OCs — only meaningful at company-wide scope.
+    // OCs , only meaningful at company-wide scope.
     ocShortCode
       ? Promise.resolve({ data: null })
       : supabase
@@ -163,7 +163,7 @@ export async function globalSearch(
           .or(`name.ilike.${like},plan_number.ilike.${like},address.ilike.${like},trading_name.ilike.${like},short_code.ilike.${like}`)
           .limit(PER_TYPE_LIMIT),
 
-    // Lot owners — join via lots(oc_id). We can't do a nested filter cleanly
+    // Lot owners , join via lots(oc_id). We can't do a nested filter cleanly
     // in PostgREST, so query lot_owners with embed.
     supabase
       .from("lot_owners")
@@ -172,14 +172,14 @@ export async function globalSearch(
       .in("lot.oc_id", scopedOcIds)
       .limit(PER_TYPE_LIMIT),
 
-    // Documents — uses the FTS RPC built earlier. The RPC filters by
+    // Documents , uses the FTS RPC built earlier. The RPC filters by
     // management_company_id; we filter by oc_id client-side if scoped.
     supabase.rpc("search_documents", {
       p_management_company_id: companyId,
       p_query: trimmed,
     }),
 
-    // Levies — match reference_number + bpay_crn.
+    // Levies , match reference_number + bpay_crn.
     supabase
       .from("levy_notices")
       .select("id, oc_id, reference_number, bpay_crn, amount, due_date, status")
@@ -187,7 +187,7 @@ export async function globalSearch(
       .or(`reference_number.ilike.${like},bpay_crn.ilike.${like}`)
       .limit(PER_TYPE_LIMIT),
 
-    // Meetings — title + reference_number.
+    // Meetings , title + reference_number.
     supabase
       .from("meetings")
       .select("id, oc_id, title, reference_number, meeting_type, date_time")
@@ -195,7 +195,7 @@ export async function globalSearch(
       .or(`title.ilike.${like},reference_number.ilike.${like}`)
       .limit(PER_TYPE_LIMIT),
 
-    // Maintenance requests — title + description + reference_number.
+    // Maintenance requests , title + description + reference_number.
     supabase
       .from("maintenance_requests")
       .select("id, oc_id, title, reference_number, status, priority")
@@ -203,7 +203,7 @@ export async function globalSearch(
       .or(`title.ilike.${like},description.ilike.${like},reference_number.ilike.${like}`)
       .limit(PER_TYPE_LIMIT),
 
-    // Complaints — description + reference_number.
+    // Complaints , description + reference_number.
     supabase
       .from("complaints")
       .select("id, oc_id, reference_number, category, status, description")
@@ -211,7 +211,7 @@ export async function globalSearch(
       .or(`reference_number.ilike.${like},description.ilike.${like},category.ilike.${like}`)
       .limit(PER_TYPE_LIMIT),
 
-    // Insurance — provider + policy_number + reference_number.
+    // Insurance , provider + policy_number + reference_number.
     supabase
       .from("insurance_policies")
       .select("id, oc_id, reference_number, provider, policy_type, policy_number")
@@ -219,7 +219,7 @@ export async function globalSearch(
       .or(`reference_number.ilike.${like},provider.ilike.${like},policy_number.ilike.${like},policy_type.ilike.${like}`)
       .limit(PER_TYPE_LIMIT),
 
-    // Notifications — caller's own only, title + body.
+    // Notifications , caller's own only, title + body.
     supabase
       .from("notifications")
       .select("id, title, body, link, oc_id, created_at")
@@ -230,7 +230,7 @@ export async function globalSearch(
 
   const hits: SearchHit[] = [];
 
-  // Pages — always first when they match (cheap navigation shortcuts).
+  // Pages , always first when they match (cheap navigation shortcuts).
   const pageCandidates = currentOcShort
     ? ocScopedPages(currentOcShort)
     : GLOBAL_PAGES;

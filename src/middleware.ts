@@ -2,7 +2,7 @@ import { NextResponse, type NextRequest } from "next/server";
 import { createServerClient as ssrCreateServerClient } from "@supabase/ssr";
 import { createClient } from "@supabase/supabase-js";
 
-// Public routes — no auth required.
+// Public routes , no auth required.
 const PUBLIC_PATHS = [
   "/",
   "/sign-in",
@@ -19,7 +19,7 @@ const PUBLIC_PATHS = [
   "/test",
 ];
 
-// Auth-flow pages that signed-in users should bounce *out* of — e.g. an
+// Auth-flow pages that signed-in users should bounce *out* of , e.g. an
 // authenticated user landing on /sign-in is sent to /dashboard so they
 // don't see the form they don't need. /reset-password and /verify-email
 // are NOT in this list because they require an active session.
@@ -89,11 +89,11 @@ export async function middleware(request: NextRequest) {
     return NextResponse.redirect(url);
   }
 
-  // Super admin route gating — ROLE ONLY.
+  // Super admin route gating , ROLE ONLY.
   //
   // We deliberately do NOT check MFA / AAL here. The Supabase MFA APIs
   // (getAuthenticatorAssuranceLevel / listFactors) are unreliable in the
-  // edge middleware runtime — they tend to read aal1 even for a verified
+  // edge middleware runtime , they tend to read aal1 even for a verified
   // aal2 session. That caused an infinite redirect loop: middleware
   // (edge, sees aal1) bounced /admin → /admin/mfa-challenge, while the
   // page server component (node, correctly sees aal2) bounced it back to

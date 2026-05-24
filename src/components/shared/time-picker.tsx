@@ -6,7 +6,7 @@ import { cn } from "@/lib/utils";
 // 30-minute granularity covers the formats CoCs and meeting notices actually
 // use ("4:00pm to 4:00pm", "9:30am AGM start"). Storing the canonical 24h
 // "HH:MM" string keeps Postgres TIME columns happy while the UI label stays
-// human ("4:00 PM"). Granularity is intentionally coarse — managers should
+// human ("4:00 PM"). Granularity is intentionally coarse , managers should
 // not be typing 4:17 PM.
 const SLOTS = (() => {
   const out: Array<{ value: string; label: string }> = [];
@@ -28,7 +28,7 @@ function labelFor(value: string | null | undefined): string {
   if (!value) return "";
   const found = SLOTS.find((s) => s.value === value);
   if (found) return found.label;
-  // Off-grid value (e.g. parsed from a cert) — render in 12-hour without
+  // Off-grid value (e.g. parsed from a cert) , render in 12-hour without
   // forcing it onto a half-hour slot.
   const [hStr, mStr] = value.split(":");
   const h = parseInt(hStr, 10);

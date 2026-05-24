@@ -13,7 +13,7 @@ import { BankSelect } from "@/components/shared/bank-select";
 import { saveStep, completeWizard, type DraftJson } from "../actions";
 import { WizardActions } from "./_components/wizard-actions";
 
-// Wizard Step 4 — Banking.
+// Wizard Step 4 , Banking.
 //
 // Per-fund trust account details. Admin fund is always present. Capital
 // works + (optional) Maintenance plan can either share the admin fund's
@@ -169,7 +169,7 @@ export function Step4Banking({
   const [maintenanceInvalid, setMaintenanceInvalid] = useState<InvalidFlags>(NO_INVALID);
   const [pending, setPending] = useState(false);
 
-  // Banking choice — the step opens on a now/later fork. "now" reveals
+  // Banking choice , the step opens on a now/later fork. "now" reveals
   // the fund-entry cards and advances to opening balances; "later" skips
   // straight to creating the OC (no bank_accounts rows; configured later
   // from Settings → Banking). Returning to a draft that already chose
@@ -225,7 +225,7 @@ export function Step4Banking({
         toast.error(result.error ?? "Failed to create the OC");
         return;
       }
-      // Keep the spinner ON through the navigation onComplete triggers —
+      // Keep the spinner ON through the navigation onComplete triggers ,
       // clearing it here produced a visible spin → idle → redirect flash.
       onComplete({
         ocCode: result.ocCode,
@@ -331,11 +331,11 @@ export function Step4Banking({
       <div className="text-center">
         <h2 className="text-lg font-semibold text-foreground">Bank accounts</h2>
         <p className="mt-1 text-sm text-muted-foreground">
-          The OC&apos;s funds — separate from your management company&apos;s operating account.
+          The OC&apos;s funds , separate from your management company&apos;s operating account.
         </p>
       </div>
 
-      {/* Now / later fork — two selectable cards. Picking "later" flips
+      {/* Now / later fork , two selectable cards. Picking "later" flips
           the action button to "Create OC"; picking "now" reveals the
           fund-entry cards below and keeps the button as "Continue". */}
       <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">

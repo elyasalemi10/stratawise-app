@@ -24,7 +24,7 @@ const logPhoneCallSchema = z.object({
   lot_id: z.string().uuid(),
   recipient_phone: z.string().trim().min(1).max(40),
   direction: z.enum(["outbound", "inbound"]),
-  // ISO yyyy-MM-dd — when the call actually happened (mapped to sent_at).
+  // ISO yyyy-MM-dd , when the call actually happened (mapped to sent_at).
   // Optional; if missing we default to the row's created_at via the DB.
   call_date: z
     .string()
@@ -32,7 +32,7 @@ const logPhoneCallSchema = z.object({
     .optional(),
   duration_seconds: z.number().int().min(0).max(60 * 60 * 12).nullable().optional(),
   notes: z.string().trim().min(1).max(2000),
-  // Same confidentiality model as email / SMS — hide from future owners
+  // Same confidentiality model as email / SMS , hide from future owners
   // when true. Useful for sensitive owner conversations the manager
   // doesn't want surfacing on the next owner's history.
   confidential: z.boolean().optional().default(false),
@@ -110,7 +110,7 @@ export async function logPhoneCall(
 
 // ─── Send SMS ──────────────────────────────────────────────────────────────
 // Manager confirmation is enforced by the popover UI (this action ASSUMES the
-// confirmation step happened). SMS cost is the reason — every send is billable
+// confirmation step happened). SMS cost is the reason , every send is billable
 // so we never auto-fire from a background job.
 
 const sendSmsSchema = z.object({
@@ -119,7 +119,7 @@ const sendSmsSchema = z.object({
   recipient_phone: z.string().trim().min(1).max(40),
   body: z.string().trim().min(1).max(1000),
   confirmed: z.literal(true),
-  // Same confidentiality model as email — hide from future owners when true.
+  // Same confidentiality model as email , hide from future owners when true.
   confidential: z.boolean().optional().default(false),
 });
 
@@ -199,7 +199,7 @@ export async function sendLotSms(
   });
 
   // Record a billable charge against the manager's company. Each ~160-char
-  // segment counts as one SMS — Mobile Message bills per segment.
+  // segment counts as one SMS , Mobile Message bills per segment.
   if (smsResult.ok && !smsResult.dryRun && profile.management_company_id) {
     const segments = Math.max(1, Math.ceil(parsed.data.body.length / 160));
     await recordCommunicationCharge(supabase, {
@@ -250,7 +250,7 @@ export async function sendLotEmail(
   const supabase = createServerClient();
 
   // Best-effort username creation. If it fails we still send from the legacy
-  // noreply address — the user can see the resulting log row and fix later.
+  // noreply address , the user can see the resulting log row and fix later.
   await ensureManagerUsername();
 
   const attachments = (parsed.data.attachments ?? []).map((a) => ({
@@ -369,7 +369,7 @@ export interface LotCommunicationRow {
   status: string;
   actor_name: string | null;
   confidential: boolean;
-  // The owner this communication is logged AGAINST — whoever owned the lot
+  // The owner this communication is logged AGAINST , whoever owned the lot
   // when the row was written (lot_owner_id_at_creation snapshot). Null when
   // there was no owner at the time. Avatar is best-effort (only present if
   // that owner has an accepted portal profile with a picture).

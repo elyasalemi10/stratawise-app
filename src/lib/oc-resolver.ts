@@ -1,5 +1,5 @@
 // ============================================================================
-// oc-resolver — short_code → oc row
+// oc-resolver , short_code → oc row
 // ----------------------------------------------------------------------------
 // Pages under /ocs/[ocCode]/... receive the short_code as
 // a route param. Server-side queries still operate on the UUID `id` for
@@ -8,7 +8,7 @@
 // downstream server actions.
 //
 // Why not accept either UUID-shape or code-shape: per the C-1 plan-of-record,
-// dual-acceptance creates a maintenance trap. This resolver is strict —
+// dual-acceptance creates a maintenance trap. This resolver is strict ,
 // short_code only.
 // ============================================================================
 
@@ -23,7 +23,7 @@ export interface ResolvedOC {
 
 /**
  * Resolve a oc short code to its row. Returns null when no row
- * matches — callers typically `redirect("/dashboard")` in that case
+ * matches , callers typically `redirect("/dashboard")` in that case
  * (mirrors the prior pattern when getOC returned null on bad UUID).
  */
 export async function resolveOCFromCode(
@@ -63,7 +63,7 @@ export async function getOCShortCode(
 /**
  * Build a code-shaped oc URL from a UUID. Returns
  * "/ocs/<short_code><subPath>". Returns null if the UUID doesn't
- * resolve (caller's responsibility to handle — most paths can throw or fall
+ * resolve (caller's responsibility to handle , most paths can throw or fall
  * back to "/dashboard").
  */
 export async function buildOCUrl(

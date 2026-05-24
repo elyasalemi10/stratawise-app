@@ -21,7 +21,7 @@ export type DocumentSearchHit = {
 /**
  * Full-text search over documents the caller's management company can see.
  * Joins `owners_corporations` for the OC name/short_code so the search row
- * can deep-link to the doc's OC. Limit 25 — anything more would dilute the
+ * can deep-link to the doc's OC. Limit 25 , anything more would dilute the
  * "top-of-search" hit list; we paginate if it ever matters.
  */
 export async function searchDocuments(query: string): Promise<{ hits: DocumentSearchHit[]; error?: string }> {

@@ -17,7 +17,7 @@ import {
 import { saveStep, type DraftJson } from "../actions";
 import { WizardActions } from "./_components/wizard-actions";
 
-// Wizard Step 1 sub-step 2 — Management fee.
+// Wizard Step 1 sub-step 2 , Management fee.
 
 type FeeStructure = "fixed_monthly" | "per_lot_monthly" | "hybrid" | "quarterly_retainer";
 type BillingMethod = "invoice_direct" | "include_in_levies";
@@ -179,7 +179,7 @@ export function Step1ManagementFee({
     const perLotCents = perLotNum != null ? Math.round(perLotNum * 100) : undefined;
 
     // For custom terms, we don't know exactly how to map days/months/years to
-    // a single contract_end_date here without the start date in hand — that's
+    // a single contract_end_date here without the start date in hand , that's
     // computed at save-time downstream. Persist the raw choice for now; the
     // detailed end-date materialisation is part of the deferred management-fee
     // engine.
@@ -277,7 +277,7 @@ export function Step1ManagementFee({
           </div>
         )}
 
-        {/* GST applicable on fee — inline-toggle row matching the General step
+        {/* GST applicable on fee , inline-toggle row matching the General step
             pattern (not a card). */}
         <div className="flex items-center justify-between gap-3">
           <Label>GST applicable on fee</Label>

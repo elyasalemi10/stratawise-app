@@ -27,7 +27,7 @@ function setCache<T>(key: string, data: T): void {
     const cached: CachedData<T> = { data, timestamp: Date.now() };
     localStorage.setItem(key, JSON.stringify(cached));
   } catch {
-    // localStorage full or unavailable — ignore
+    // localStorage full or unavailable , ignore
   }
 }
 
@@ -69,7 +69,7 @@ export const SIDEBAR_REFRESH_EVENT = "stratawise-sidebar:refresh";
  *   2. Fires a custom event the mounted sidebar listens for, triggering an
  *      immediate server-action re-fetch without a page reload.
  * The corresponding server-side revalidateTag is the responsibility of each
- * mutation server action — see revalidateSidebarForOC.
+ * mutation server action , see revalidateSidebarForOC.
  */
 export function revalidateSidebarFromClient(): void {
   clearSidebarCache();

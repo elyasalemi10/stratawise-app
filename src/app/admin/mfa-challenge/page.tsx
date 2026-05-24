@@ -14,7 +14,7 @@ export default async function MfaChallengePage() {
 
   // NOTE: we deliberately do NOT redirect aal2 sessions back to /admin here.
   // Supabase's AAL read can disagree between consecutive server requests, and
-  // /admin redirects here whenever it sees aal1 — pairing that with an
+  // /admin redirects here whenever it sees aal1 , pairing that with an
   // aal2→/admin redirect produced an infinite "too many redirects" loop. This
   // page is now terminal: it only ever renders the form. After a successful
   // verify the client navigates to /admin, which then renders normally.

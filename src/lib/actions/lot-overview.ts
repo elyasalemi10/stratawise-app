@@ -56,14 +56,14 @@ export interface LotActivityEntry {
 }
 
 // Returns recent audit-log entries scoped to a lot. Scope rules:
-//   1. entity_id = lot_id (direct lot edits — entitlement, unit number, etc.)
-//   2. entity_id IN (lot_owner row ids for this lot) — owner / tenant / consent
+//   1. entity_id = lot_id (direct lot edits , entitlement, unit number, etc.)
+//   2. entity_id IN (lot_owner row ids for this lot) , owner / tenant / consent
 //      changes attached to the lot_owners record
-//   3. metadata->>lot_id = lot_id — events that store lot_id in metadata
+//   3. metadata->>lot_id = lot_id , events that store lot_id in metadata
 //      (levy notices, payments, communications)
 //
 // We pass the lot_owner ids in as a string list because audit_log has no
-// FK pointing back to lots — without the explicit list, we'd need a subquery
+// FK pointing back to lots , without the explicit list, we'd need a subquery
 // per request which is more expensive.
 export async function getLotActivity(
   lotId: string,

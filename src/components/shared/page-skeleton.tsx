@@ -6,7 +6,7 @@ import { Card, CardContent } from "@/components/ui/card";
 // "the page is loading" instantly instead of staring at a blank viewport
 // while server data fetches. CLAUDE.md "Snappy navigation" rule: every
 // page.tsx that does any server-side data fetching MUST have a sibling
-// loading.tsx — use this component when you don't have a more specific one.
+// loading.tsx , use this component when you don't have a more specific one.
 
 export function PageSkeleton({
   rows = 3,

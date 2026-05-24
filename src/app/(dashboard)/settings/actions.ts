@@ -62,7 +62,7 @@ export async function changePassword(currentPassword: string, newPassword: strin
   if (!user?.email) throw new Error("Not authenticated");
 
   // Verify current password by attempting re-auth. Supabase doesn't expose a
-  // "verifyPassword" — signInWithPassword on the existing email is the
+  // "verifyPassword" , signInWithPassword on the existing email is the
   // documented pattern. It returns an error on wrong password without
   // disturbing the existing session.
   const { error: verifyError } = await supabase.auth.signInWithPassword({
@@ -202,7 +202,7 @@ export async function saveGmailSetup(input: SaveGmailSetupInput) {
 
   const supabase = createServerClient();
 
-  // Provider + domain go on the company row regardless of test outcome —
+  // Provider + domain go on the company row regardless of test outcome ,
   // disconnecting is one click away, and the admin may want to switch back
   // to stratawise without re-running the prefix test.
   const { error: companyErr } = await supabase
@@ -237,7 +237,7 @@ export async function saveGmailSetup(input: SaveGmailSetupInput) {
 
   // Successful test → kick off users.watch() so inbound sync goes live
   // immediately, then upsert the subscription with the resulting history
-  // cursor. Watch failures are logged but do NOT fail the save — sends
+  // cursor. Watch failures are logged but do NOT fail the save , sends
   // still work, the admin just sees an inbound-sync warning on the row.
   let watchInfo: { historyId: string; expiresAt: string } | null = null;
   let watchError: string | null = null;
@@ -290,7 +290,7 @@ export async function saveGmailSetup(input: SaveGmailSetupInput) {
 // ─── Outlook (Microsoft Graph) setup ─────────────────────────────────
 // Multi-step:
 //   1. /settings → Email tab → admin pastes firm domain + clicks
-//      "Connect Microsoft 365" — startOutlookConsent() generates the
+//      "Connect Microsoft 365" , startOutlookConsent() generates the
 //      admin-consent URL with a CSRF state cookie.
 //   2. Admin opens URL in browser → grants consent → Microsoft redirects
 //      to /api/outlook/consent-callback which stores the tenant_id on
@@ -341,7 +341,7 @@ export async function startOutlookConsent(input: StartOutlookConsentInput) {
     })
     .eq("id", profile.management_company_id);
 
-  // CSRF state cookie — verified on the callback. Random 32-byte hex.
+  // CSRF state cookie , verified on the callback. Random 32-byte hex.
   // Set httpOnly here in the server action so the cookie can't be read by
   // the browser; the callback only needs to compare it against the state
   // querystring Microsoft echoes back.
@@ -393,8 +393,8 @@ export async function saveOutlookMailbox(input: SaveOutlookMailboxInput) {
   if (!cfg.domain || !cfg.tenant_id) {
     return {
       error: cfg.tenant_id
-        ? "Firm domain missing — paste it first and try again."
-        : "Microsoft admin consent missing — click Connect Microsoft 365 first.",
+        ? "Firm domain missing , paste it first and try again."
+        : "Microsoft admin consent missing , click Connect Microsoft 365 first.",
     };
   }
   const mailbox = `${prefix}@${cfg.domain}`;
@@ -409,7 +409,7 @@ export async function saveOutlookMailbox(input: SaveOutlookMailboxInput) {
     return { error: humaniseGraphError(test.error, test.reason, mailbox), reason: test.reason };
   }
 
-  // Try to create a change-notification subscription. Best-effort — if
+  // Try to create a change-notification subscription. Best-effort , if
   // it fails we still save the mailbox so outbound works.
   const appUrl = process.env.NEXT_PUBLIC_APP_URL?.replace(/\/$/, "") ?? "";
   const notificationUrl = appUrl
@@ -470,7 +470,7 @@ function humaniseGraphError(rawMessage: string, reason: string | null, mailbox: 
     return `We couldn't find ${mailbox} in your Microsoft 365 tenant. Check the prefix matches a real mailbox.`;
   }
   if (blob.includes("unauthorized") || blob.includes("invalid_client")) {
-    return `Microsoft admin consent looks incomplete — try clicking Connect Microsoft 365 again.`;
+    return `Microsoft admin consent looks incomplete , try clicking Connect Microsoft 365 again.`;
   }
   if (blob.includes("forbidden") || blob.includes("authorization")) {
     return `StrataWise is consented but is missing Mail.Send / Mail.ReadWrite permissions. Re-grant consent.`;
@@ -489,7 +489,7 @@ export async function disconnectMailProvider() {
   const supabase = createServerClient();
 
   // 1. Tear down every mailbox subscription for this firm BEFORE flipping
-  // mail_provider — otherwise the gmail-push webhook can still find a
+  // mail_provider , otherwise the gmail-push webhook can still find a
   // subscription row and ingest in-flight notifications. For each mailbox:
   //   - call users.stop() so Gmail halts Pub/Sub publishing (best-effort;
   //     failures don't block the disconnect because we delete the row
@@ -523,7 +523,7 @@ export async function disconnectMailProvider() {
       .eq("management_company_id", profile.management_company_id);
   }
 
-  // Same teardown for Outlook subscriptions — DELETE the Graph
+  // Same teardown for Outlook subscriptions , DELETE the Graph
   // subscription so notifications stop, then drop the row.
   const { data: outlookSubs } = await supabase
     .from("outlook_mailbox_subscriptions")

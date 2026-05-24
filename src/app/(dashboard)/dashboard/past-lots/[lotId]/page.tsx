@@ -75,7 +75,7 @@ export default async function PastLotPage({
   const formatDate = (iso: string | null) =>
     iso
       ? new Date(iso).toLocaleDateString("en-AU", { day: "numeric", month: "short", year: "numeric" })
-      : "—";
+      : ",";
 
   return (
     <div className="space-y-6">
@@ -158,7 +158,7 @@ export default async function PastLotPage({
               {payments.map((p) => (
                 <div key={p.id} className="flex items-center justify-between py-3 text-sm">
                   <div>
-                    <p className="font-medium text-foreground">{p.reference_number ?? "—"} · {labelForFund(p.fund_type)}</p>
+                    <p className="font-medium text-foreground">{p.reference_number ?? ","} · {labelForFund(p.fund_type)}</p>
                     <p className="text-xs text-muted-foreground">{formatDate(p.payment_date)} · {p.payment_method}</p>
                   </div>
                   <p className="font-medium text-foreground tabular-nums">{formatCurrency(Number(p.amount))}</p>

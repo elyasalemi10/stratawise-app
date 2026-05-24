@@ -241,7 +241,7 @@ function PolicyDetailDialog({
               )}
               <div className="flex justify-between">
                 <span className="text-sm text-muted-foreground">Coverage</span>
-                <span className="text-sm text-foreground">{formatDateLong(policy.start_date)} — {formatDateLong(policy.end_date)}</span>
+                <span className="text-sm text-foreground">{formatDateLong(policy.start_date)} , {formatDateLong(policy.end_date)}</span>
               </div>
               <div className="flex justify-between">
                 <span className="text-sm text-muted-foreground">Status</span>
@@ -265,7 +265,7 @@ function PolicyDetailDialog({
             {policy.document_url && (
               <div className="border-t border-border pt-4 mt-2">
                 {/* Route via /api/insurance-docs/[id] for an authorised
-                    302 to a 15-min presigned R2 URL — the raw
+                    302 to a 15-min presigned R2 URL , the raw
                     policy.document_url is a public R2 link we no longer
                     expose directly. */}
                 <a

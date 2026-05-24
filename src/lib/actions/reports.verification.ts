@@ -59,7 +59,7 @@ type Result = { scenario: string; passed: boolean; detail: string };
 const results: Result[] = [];
 function record(scenario: string, passed: boolean, detail: string) {
   results.push({ scenario, passed, detail });
-  console.log(`  ${passed ? "PASS" : "FAIL"}  ${scenario}${detail ? " — " + detail : ""}`);
+  console.log(`  ${passed ? "PASS" : "FAIL"}  ${scenario}${detail ? " , " + detail : ""}`);
 }
 
 function daysBefore(iso: string, n: number): string {
@@ -380,7 +380,7 @@ async function rp4_ownerStatementOpeningAndClosing(
     Math.abs(report.closing_balance - -400) < 0.01 &&
     report.entries.length === 2;
   record(
-    "RP-4: owner statement — opening (-500) + 2 in-window entries → closing (-400)",
+    "RP-4: owner statement , opening (-500) + 2 in-window entries → closing (-400)",
     ok,
     `opening=${report.opening_balance} closing=${report.closing_balance} entries=${report.entries.length}`,
   );
@@ -399,7 +399,7 @@ async function rp5_ownerStatementOutOfWindowExcluded(
   const inWindow = report.entries.every((e) => e.entry_date >= fromDate && e.entry_date <= toDate);
   const ok = inWindow && report.entries.length === 1 && report.entries[0].reference === "ADJ-1";
   record(
-    "RP-5: owner statement — entries strictly inside [fromDate, toDate]; pre-window entries roll into opening",
+    "RP-5: owner statement , entries strictly inside [fromDate, toDate]; pre-window entries roll into opening",
     ok,
     `entries=${report.entries.length} inWindow=${inWindow}`,
   );
@@ -431,7 +431,7 @@ async function rp6_trustAccountSummaryInflowsOutflowsAndReconciled(
     acc.reconciled_count === 1 &&
     acc.unreconciled_count === 2;
   record(
-    "RP-6: trust account summary — inflows/outflows/closing/reconciled counts all correct",
+    "RP-6: trust account summary , inflows/outflows/closing/reconciled counts all correct",
     ok,
     `opening=${acc?.opening_balance} in=${acc?.inflows} out=${acc?.outflows} closing=${acc?.closing_balance} reconciled=${acc?.reconciled_count}/${acc?.unreconciled_count}`,
   );
@@ -505,7 +505,7 @@ async function main() {
     process.exit(0);
   }
 
-  console.log("PP7-B reports verification — scenarios RP-1..RP-6\n");
+  console.log("PP7-B reports verification , scenarios RP-1..RP-6\n");
   console.log("[1/3] Cleaning up stale verification data");
   await cleanupMarker();
 

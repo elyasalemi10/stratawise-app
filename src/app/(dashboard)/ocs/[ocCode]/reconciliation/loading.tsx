@@ -4,7 +4,7 @@ import { Card, CardContent } from "@/components/ui/card";
 export default function ReconciliationLoading() {
   return (
     <div className="px-6 py-6 space-y-6">
-      {/* Action row — structure preserved, only button widths shimmer */}
+      {/* Action row , structure preserved, only button widths shimmer */}
       <div className="flex items-center justify-between gap-2">
         <Skeleton className="h-4 w-48" />
         <div className="flex items-center gap-2">
@@ -14,7 +14,7 @@ export default function ReconciliationLoading() {
         </div>
       </div>
 
-      {/* KPI row — labels preserved, only values shimmer */}
+      {/* KPI row , labels preserved, only values shimmer */}
       <div className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-4">
         {[
           { label: "Unmatched", sub: "transactions" },
@@ -34,7 +34,7 @@ export default function ReconciliationLoading() {
         ))}
       </div>
 
-      {/* Filters row — labels preserved, selects shimmer */}
+      {/* Filters row , labels preserved, selects shimmer */}
       <Card className="shadow-none">
         <CardContent className="p-4">
           <div className="flex flex-wrap items-end gap-3">
@@ -54,7 +54,7 @@ export default function ReconciliationLoading() {
         </CardContent>
       </Card>
 
-      {/* Table — header preserved, rows shimmer */}
+      {/* Table , header preserved, rows shimmer */}
       <Card className="shadow-none">
         <CardContent className="p-0">
           <div className="overflow-x-auto">

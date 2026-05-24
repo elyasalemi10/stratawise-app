@@ -63,7 +63,7 @@ function WizardContent() {
     // Capture URL-supplied step/sub BEFORE the network round-trip resolves
     // so we know whether the user landed via an explicit deep link
     // (e.g. /ocs/new?draft=X&step=2&sub=0). The URL is the authoritative
-    // intent for a refresh — without this the page renders step 2 from
+    // intent for a refresh , without this the page renders step 2 from
     // the URL, then snaps back to draft.current_step (often 1) and the
     // user sees a flicker between steps. Only fall back to the draft's
     // persisted step when the URL omitted it.
@@ -103,7 +103,7 @@ function WizardContent() {
     next.set("sub", String(nextSub));
     window.history.replaceState(null, "", `/ocs/new?${next.toString()}`);
     if (typeof window !== "undefined") {
-      // Instant jump rather than smooth — smooth scroll happens AFTER
+      // Instant jump rather than smooth , smooth scroll happens AFTER
       // the new step renders, so the manager briefly sees the bottom of
       // the previous step still while the page slides up.
       const main = document.querySelector("main");
@@ -118,7 +118,7 @@ function WizardContent() {
     if (r.draft) setDraft(r.draft as unknown as DraftRow);
   }
 
-  // Optimistic advance — merge the step's patch into the local draft and
+  // Optimistic advance , merge the step's patch into the local draft and
   // navigate IMMEDIATELY (no getDraft round-trip). The step already
   // background-saved the same patch to the DB, so the local merge keeps
   // the next step's initialDraft fresh without waiting ~500ms for a
@@ -132,7 +132,7 @@ function WizardContent() {
     goTo(nextStep, nextSub);
   }
 
-  // Shared completion handler — used by both the banking step (when the
+  // Shared completion handler , used by both the banking step (when the
   // manager picks "set up later" and creates the OC straight from there)
   // and the opening-balances step (the normal end of the wizard).
   function handleComplete(r: { ocCode: string; sourceDraftId?: string; nextOcIndex?: number | null }) {
@@ -152,7 +152,7 @@ function WizardContent() {
 
   function back() {
     if (step === 1 && substep === 0) {
-      // First screen of the wizard — no previous step to go to. The X corner
+      // First screen of the wizard , no previous step to go to. The X corner
       // button is the way out.
       setCancelOpen(true);
       return;
@@ -210,7 +210,7 @@ function WizardContent() {
   return (
     <div className="mx-auto w-full max-w-5xl">
       <div className="relative">
-        {/* X corner button — far left, vertically centered with the progress
+        {/* X corner button , far left, vertically centered with the progress
             circles. Click opens the cancel-confirm dialog. */}
         <button
           type="button"
@@ -233,7 +233,7 @@ function WizardContent() {
           />
         )}
         {step === 1 && substep === 1 && (
-          // Step 1.2 (Management fee) removed per item 4 — managers
+          // Step 1.2 (Management fee) removed per item 4 , managers
           // bill the OC externally, the platform doesn't model the fee
           // any more. Jump straight from General to Settings.
           <Step1General
@@ -301,7 +301,7 @@ function WizardContent() {
             <DialogTitle>Leave the OC creation wizard?</DialogTitle>
             <DialogDescription>
               Your progress is already saved as a draft. You can resume from the OC switcher in
-              the sidebar at any time — leaving now won&apos;t lose anything.
+              the sidebar at any time , leaving now won&apos;t lose anything.
             </DialogDescription>
           </DialogHeader>
           <DialogFooter>

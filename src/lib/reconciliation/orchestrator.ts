@@ -1,5 +1,5 @@
 // ============================================================================
-// Auto-match orchestrator — multi-strategy pipeline
+// Auto-match orchestrator , multi-strategy pipeline
 // ----------------------------------------------------------------------------
 // Single entry point for the reconciliation auto-match pipeline. Replaces
 // the single-path tryAutoMatchByReference (kept as a thin @deprecated
@@ -9,12 +9,12 @@
 // audit_log entry per invocation.
 //
 // Strategy order (PP4 spec §Architecture overview):
-//   1. reference        — StrataWise levy reference (LEV-{n}) — full PP4-A
-//   2. bpay_crn         — StrataWise BPAY CRN check-digit       — full PP4-A
-//   3. known_payer      — canonical sender → lot mapping — stub PP4-A → full PP4-B
-//   4. keyword_amount   — batch keyword + amount agree   — stub PP4-A → full PP4-B
-//   5. amount_window    — single candidate by amount + date window — stub → PP4-B
-//   6. fuzzy_hint       — Jaro-Winkler hint surface only — stub PP4-A → full PP4-C
+//   1. reference        , StrataWise levy reference (LEV-{n}) , full PP4-A
+//   2. bpay_crn         , StrataWise BPAY CRN check-digit       , full PP4-A
+//   3. known_payer      , canonical sender → lot mapping , stub PP4-A → full PP4-B
+//   4. keyword_amount   , batch keyword + amount agree   , stub PP4-A → full PP4-B
+//   5. amount_window    , single candidate by amount + date window , stub → PP4-B
+//   6. fuzzy_hint       , Jaro-Winkler hint surface only , stub PP4-A → full PP4-C
 //
 // Audit volume (resolved earlier):
 //   - One audit_log row per orchestrator invocation summarising every
@@ -23,10 +23,10 @@
 //     (e.g. reconciliation.stale_reference_detected). The orchestrator
 //     summary is independent of those.
 //   - rpc_reconcile_bank_transaction writes its own reconciliation.matched
-//     audit when the orchestrator commits a match — that is part of the
+//     audit when the orchestrator commits a match , that is part of the
 //     RPC contract, not the orchestrator's responsibility.
 //
-// No `"use server"` directive — pure helper. Callers (server actions,
+// No `"use server"` directive , pure helper. Callers (server actions,
 // cron tasks, webhook handlers) already resolve performedBy from auth
 // guards. Strategies receive a pre-augmented AutoMatchContext (with
 // bankAccountFundType + bpayBillerCode pulled in here) so they don't
@@ -75,7 +75,7 @@ export type MatchMethod =
   | "auto_amount"
   | "system";
 
-/** Minimal input from callers — orchestrator augments to AutoMatchContext. */
+/** Minimal input from callers , orchestrator augments to AutoMatchContext. */
 export interface AutoMatchInput {
   bankTransactionId: string;
   ocId: string;
@@ -162,7 +162,7 @@ export async function tryAutoMatch(
 ): Promise<AutoMatchOutcome> {
   const supabase = createServerClient();
 
-  // PP5-A: combined fetch — bank_account derivatives + this row's
+  // PP5-A: combined fetch , bank_account derivatives + this row's
   // duplicate_status. Same query count as before (one round-trip);
   // we just select more columns. The Supabase JS client returns the
   // joined bank_accounts as a nested object on a single (!inner) join.
@@ -188,7 +188,7 @@ export async function tryAutoMatch(
   // confirmed duplicate. No strategies attempted; no orchestrator-summary
   // audit written (the detector's bank_transaction.duplicate_detected
   // audit is the audit-of-record). The 'rejected' state proceeds normally
-  // — manager confirmed-not-duplicate and explicitly wants matching to run.
+  // , manager confirmed-not-duplicate and explicitly wants matching to run.
   if (
     row.duplicate_status === "suspected" ||
     row.duplicate_status === "confirmed"
@@ -212,7 +212,7 @@ export async function tryAutoMatch(
   };
 
   // Run strategies in order; stop at first match. fuzzy_hint never matches
-  // but may surface a hint — handled via the metadata flag.
+  // but may surface a hint , handled via the metadata flag.
   const strategiesTried: StrategyAttempt[] = [];
   let matchedOutcome:
     | (StrategyOutcome & { matched: true; strategy: StrategyName })
@@ -339,7 +339,7 @@ export async function tryAutoMatch(
 
     if (partial) {
       const remaining = round2(ctx.amount - allocSum);
-      warning = `Auto-matched $${allocSum.toFixed(2)} via ${matchedOutcome.strategy}; $${remaining.toFixed(2)} remaining — review manually.`;
+      warning = `Auto-matched $${allocSum.toFixed(2)} via ${matchedOutcome.strategy}; $${remaining.toFixed(2)} remaining , review manually.`;
       // TODO(pre-launch): If notes is non-null, append rather than overwrite.
       // Currently safe because notes is system-written-only in PP4-A.
       await supabase

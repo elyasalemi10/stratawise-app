@@ -83,7 +83,7 @@ export async function POST(request: NextRequest) {
   await uploadObject(key, buffer, file.type);
 
   // Categories that get OCR'd INLINE by their own flow (settlement parse,
-  // insurance parse, plan-of-subdivision + OC-rules in the wizard) — the
+  // insurance parse, plan-of-subdivision + OC-rules in the wizard) , the
   // caller needs the structured values back immediately, so they run OCR
   // synchronously and store the text themselves. We must NOT also queue
   // the background ocr-document task for these, or we'd double-OCR (and
@@ -130,7 +130,7 @@ export async function POST(request: NextRequest) {
     entity_type: "document",
     entity_id: doc.id,
     after_state: { file_name: safeName, category, lot_id: lotId || null },
-    // metadata.lot_id is what lot-overview's activity feed filters on — without
+    // metadata.lot_id is what lot-overview's activity feed filters on , without
     // it the lot's History tab never surfaces document uploads.
     metadata: lotId ? { lot_id: lotId } : null,
   });
@@ -139,10 +139,10 @@ export async function POST(request: NextRequest) {
   // the OCR doesn't have to share the serverless function's RAM / time
   // budget. The task id matches trigger/ocr-documents.ts's `id`. A fallback
   // to the in-process pipeline runs only when TRIGGER_SECRET_KEY isn't
-  // configured (local dev without Trigger.dev) — production always queues.
+  // configured (local dev without Trigger.dev) , production always queues.
   //
   // Self-OCR categories (settlement / insurance / plan / rules) are
-  // skipped here — their own flow already runs OCR inline and needs the
+  // skipped here , their own flow already runs OCR inline and needs the
   // values immediately.
   if (queueBackgroundOcr) {
     if (process.env.TRIGGER_SECRET_KEY) {

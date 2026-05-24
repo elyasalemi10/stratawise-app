@@ -18,7 +18,7 @@ import { generateInviteCode } from "@/lib/invite-code";
 //
 // First-cut: we run Document AI OCR on every uploaded settlement PDF and
 // store the sanitised raw text on `documents.ocr_text` (parallel run
-// pattern shared with the wizard's plan-of-subdivision flow — see
+// pattern shared with the wizard's plan-of-subdivision flow , see
 // CLAUDE.md "Document OCR" rule). The raw text powers full-text search +
 // future Gemini structured extraction.
 //
@@ -94,7 +94,7 @@ function normalizePlanNumber(s: string | null | undefined): string | null {
 
 // Map Gemini's snake_case ParsedSettlement onto SettlementReview's
 // camelCase parsed shape. Keeps the storage / API layer (Gemini) and the
-// UI layer (review form) free to evolve independently — change one
+// UI layer (review form) free to evolve independently , change one
 // without touching the other.
 function geminiToReviewParsed(p: ParsedSettlement): SettlementReview["parsed"] {
   return {
@@ -165,7 +165,7 @@ async function parseAndOcrSettlement(
   const buffer = Buffer.from(bytes);
   const mimeType = doc.mime_type ?? "application/pdf";
 
-  // Skip OCR if already done — keeps the parse path idempotent.
+  // Skip OCR if already done , keeps the parse path idempotent.
   const shouldOcr = doc.ocr_status !== "complete";
 
   const [parseResult, ocrResult] = await Promise.allSettled([
@@ -175,7 +175,7 @@ async function parseAndOcrSettlement(
       : Promise.resolve(null),
   ]);
 
-  // Persist OCR raw text — fire and forget the update; failures log
+  // Persist OCR raw text , fire and forget the update; failures log
   // server-side but don't block the review form.
   if (ocrResult.status === "fulfilled" && ocrResult.value) {
     await supabase
@@ -195,7 +195,7 @@ async function parseAndOcrSettlement(
     return null;
   }
   const parsed = parseResult.value;
-  // Document-type gate — Gemini decided this isn't a settlement doc.
+  // Document-type gate , Gemini decided this isn't a settlement doc.
   if (!parsed.is_settlement_document) {
     console.warn(
       "parseAndOcrSettlement: model rejected document",
@@ -242,7 +242,7 @@ export async function parseSettlementForReview(
   };
 
   // Gemini parse blocks the response so the review form opens already
-  // pre-filled — same UX as the wizard's plan-of-subdivision step. OCR
+  // pre-filled , same UX as the wizard's plan-of-subdivision step. OCR
   // raw-text persistence happens in parallel inside parseAndOcrSettlement.
   const parsed = await parseAndOcrSettlement(documentId);
 
@@ -302,7 +302,7 @@ export async function parseSettlementAndMatchLot(
   const parsedFields = parsed ? geminiToReviewParsed(parsed) : emptyReviewParsed();
 
   // Try to match the lot by parsed lot_number within the OC. plan_number
-  // matching is a secondary check — the OC scope is the primary filter.
+  // matching is a secondary check , the OC scope is the primary filter.
   let matchedLot: SettlementReview["matchedLot"] = null;
   if (parsedFields.lotNumber != null) {
     const { data: lotMatch } = await supabase
@@ -418,7 +418,7 @@ export async function applySettlementToLot(input: ApplySettlementInput) {
     if (!doc) return { error: "Document not found" };
     // The manager may have re-targeted the settlement to a different lot via
     // the drawer's lot selector. The doc must follow the chosen lot, so
-    // re-point it here rather than rejecting — the wrong-lot mismatch popup
+    // re-point it here rather than rejecting , the wrong-lot mismatch popup
     // already warned them at parse time. Same OC only (the selector only
     // offers lots within this OC).
     if (doc.lot_id !== lotId) {
@@ -530,7 +530,7 @@ export async function applySettlementToLot(input: ApplySettlementInput) {
       .in("id", existingPending.map((i) => i.id));
   }
 
-  // 3. Create the new pending invitation — ONLY when we have an email.
+  // 3. Create the new pending invitation , ONLY when we have an email.
   //    Email is optional for settling a new owner (the manager may not
   //    have it yet). The invitations table requires a non-null email, so
   //    with no email we skip the invitation entirely; the owner still
@@ -561,7 +561,7 @@ export async function applySettlementToLot(input: ApplySettlementInput) {
     invitation = createdInvite;
   }
 
-  // 3a. Owner + lot_ownership + settlement — the new entity-model writes.
+  // 3a. Owner + lot_ownership + settlement , the new entity-model writes.
   //     Owner is matched by case-insensitive email within the OC's
   //     management company; if no match, a new owner row is inserted.
   //     A fresh lot_ownership row starts the new tenure (end_date null).
@@ -648,7 +648,7 @@ export async function applySettlementToLot(input: ApplySettlementInput) {
       }
     }
   } catch (err) {
-    // The new-table writes are non-fatal in this first cut — the legacy
+    // The new-table writes are non-fatal in this first cut , the legacy
     // invitation + oc_members flow below remains the source of truth for
     // the existing UI. If owner / lot_ownership / settlement fails we
     // log and carry on; a follow-up migration can repair from the
@@ -658,10 +658,10 @@ export async function applySettlementToLot(input: ApplySettlementInput) {
 
   // 3b. Sync the legacy lot_owners row that the lot detail page still
   // reads from (owner identity, postal address + verification status,
-  // occupancy, tenant). Best-effort — failures are logged but don't
+  // occupancy, tenant). Best-effort , failures are logged but don't
   // break the settlement.
   try {
-    // Addresses are stored as-is — PostGrid is no longer used to verify them
+    // Addresses are stored as-is , PostGrid is no longer used to verify them
     // (it's the print/mail product only now).
     const postalVerificationStatus: string | null = null;
     const postalVerificationId: string | null = null;
@@ -760,7 +760,7 @@ export async function applySettlementToLot(input: ApplySettlementInput) {
     invitationCode: invitation?.code ?? null,
     endedMemberId: activeMember?.id ?? null,
     // Entity-model surface: tells the caller which new-shape rows were
-    // created. Non-fatal — settlementId / newLotOwnershipId may be null
+    // created. Non-fatal , settlementId / newLotOwnershipId may be null
     // if the entity-model write failed (legacy flow still succeeded).
     settlementId: settlementRowId,
     newOwnerId,

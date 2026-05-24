@@ -3,7 +3,7 @@
  *
  * Exercises runEscalationStepCheck (src/lib/escalation/jobs.ts) with
  * deterministic runDate fixtures. EMAIL_DRY_RUN forced on for the suite
- * per PP6-D-D-fix-email-leak protocol — no real emails fire. Assertions
+ * per PP6-D-D-fix-email-leak protocol , no real emails fire. Assertions
  * read communication_log + audit_log + escalation_instances directly.
  *
  * Under DRY_RUN the engine returns 'skipped_dry_run' and does NOT mutate
@@ -44,7 +44,7 @@ const results: Result[] = [];
 
 function record(scenario: string, passed: boolean, detail: string) {
   results.push({ scenario, passed, detail });
-  console.log(`  ${passed ? "PASS" : "FAIL"}  ${scenario}${detail ? " — " + detail : ""}`);
+  console.log(`  ${passed ? "PASS" : "FAIL"}  ${scenario}${detail ? " , " + detail : ""}`);
 }
 
 function daysBefore(iso: string, n: number): string {
@@ -674,7 +674,7 @@ async function main() {
     process.exit(0);
   }
 
-  console.log("Escalation step engine verification — PP6.5 scenarios ES-1..ES-8\n");
+  console.log("Escalation step engine verification , PP6.5 scenarios ES-1..ES-8\n");
   console.log("[1/3] Cleaning up stale verification data");
   await cleanupMarker();
 

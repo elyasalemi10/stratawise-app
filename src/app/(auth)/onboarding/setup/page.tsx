@@ -18,12 +18,12 @@ import { cn } from "@/lib/utils";
 
 // Two-step onboarding:
 //   1. Company details (mandatory)
-//   2. Operating account (optional — also editable in Settings)
+//   2. Operating account (optional , also editable in Settings)
 // Email/mail-provider setup moved out of onboarding to Settings entirely.
 // After step 2 → /dashboard?welcome=1 (confetti + welcome overlay).
 //
 // Both steps stay MOUNTED (inactive one hidden) so going Back/forward keeps
-// every field the manager already typed — no re-fetch, no wiped form.
+// every field the manager already typed , no re-fetch, no wiped form.
 
 const STEPS = [
   { number: 1, label: "Company" },
@@ -51,7 +51,7 @@ function SetupWizardContent() {
     <div className="w-full max-w-2xl mx-auto">
       <StepIndicator current={step} />
       <div className="relative rounded-lg bg-card p-6 shadow-none">
-        {/* Finish-later exit — X in the top-right of the white card. We SAVE
+        {/* Finish-later exit , X in the top-right of the white card. We SAVE
             AS DRAFT (never delete the account); signing back in resumes. */}
         <button
           type="button"
@@ -78,7 +78,7 @@ function SetupWizardContent() {
           <DialogHeader>
             <DialogTitle>Finish setup later?</DialogTitle>
             <DialogDescription>
-              Your progress is saved and your account stays active — we
+              Your progress is saved and your account stays active , we
               won&apos;t delete anything. Sign back in any time to pick up
               where you left off.
             </DialogDescription>

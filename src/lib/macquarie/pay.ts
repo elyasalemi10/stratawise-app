@@ -1,4 +1,4 @@
-// Macquarie PAY file parser — STUB.
+// Macquarie PAY file parser , STUB.
 //
 // PAY files carry consolidated settlement records back to the customer
 // (Macquarie's confirmation of an outgoing batch payment run we submitted).
@@ -24,7 +24,7 @@ export function parsePayFile(_input: string | Buffer): ParsedPayFile {
   return {
     recognised: false,
     reason:
-      "PAY file ingest isn't supported yet. Upload your TXN file instead — " +
+      "PAY file ingest isn't supported yet. Upload your TXN file instead , " +
       "PAY parsing arrives in a follow-up release.",
   };
 }

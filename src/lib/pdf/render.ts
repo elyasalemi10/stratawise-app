@@ -42,7 +42,7 @@ export async function renderLevyNoticePdf(
   const existingPdfUrl = (levyRow as { pdf_url: string | null } | null)?.pdf_url ?? null;
 
   if (!opts.force && existingPdfUrl) {
-    // Cached path — fetch from R2 to satisfy the buffer contract.
+    // Cached path , fetch from R2 to satisfy the buffer contract.
     const key = keyFromPublicUrl(existingPdfUrl);
     if (key) {
       try {
@@ -72,7 +72,7 @@ export async function renderLevyNoticePdf(
     })
     .eq("id", levyId);
 
-  // Re-render once more to return a buffer — alternative would be to
+  // Re-render once more to return a buffer , alternative would be to
   // capture the buffer from generateAndUploadLevyPDF (which discards it).
   // Cheaper to render twice here than to rev the lib signature for this
   // single PP7-A consumer; revisit if cron throughput demands.

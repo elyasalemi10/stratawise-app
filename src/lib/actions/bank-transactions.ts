@@ -169,7 +169,7 @@ export async function importBankTransactions(
   //      tryAutoMatch. Increments summary.cross_source_duplicates_flagged.
   //   4. Otherwise run the orchestrator on credits.
   //
-  // PP4-C: bulk import does not propose payer mappings — passing
+  // PP4-C: bulk import does not propose payer mappings , passing
   // remember_payer=true would create dozens of mappings per import without
   // manager review. tryAutoMatch is called without remember_payer (defaults
   // to false via Zod). Manual entry is the only path that surfaces the
@@ -210,7 +210,7 @@ export async function importBankTransactions(
     summary.imported += 1;
 
     // PP5-A: cross-source detection. Runs on every successfully-inserted
-    // row (both credits and debits — debits never reach tryAutoMatch
+    // row (both credits and debits , debits never reach tryAutoMatch
     // anyway, but a flagged debit duplicate still gets the badge).
     const detection = await detectDuplicate(
       {
@@ -267,7 +267,7 @@ export async function importBankTransactions(
       performedBy: profile.id,
     });
 
-    // summary.matched counts rows where the orchestrator allocated something —
+    // summary.matched counts rows where the orchestrator allocated something ,
     // covers full and partial matches. Strategies that surface a fuzzy hint
     // (Strategy 6, never matches) are not counted here; the hint is persisted
     // on the bank_transaction's fuzzy_hint_metadata for the queue UI.
@@ -303,7 +303,7 @@ export async function importBankTransactions(
 //
 // Generic mutable-field updater for bank_accounts. Currently exposes
 // bpay_biller_code + bpay_crn_prefix. Extending to additional fields is a
-// schema-only change (add field to bankAccountUpdateSchema) — no action
+// schema-only change (add field to bankAccountUpdateSchema) , no action
 // signature changes required.
 //
 // Auth: requireCompanyRole gates on (super_admin | manager-with-role); we

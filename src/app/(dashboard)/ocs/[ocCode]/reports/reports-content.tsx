@@ -358,7 +358,7 @@ export function ReportsContent({
                   <option value="">All lots</option>
                   {lots.map((lot) => (
                     <option key={lot.id} value={lot.id}>
-                      Lot {lot.lot_number}{lot.owner_display_name ? ` — ${lot.owner_display_name}` : ""}
+                      Lot {lot.lot_number}{lot.owner_display_name ? ` , ${lot.owner_display_name}` : ""}
                     </option>
                   ))}
                 </select>
@@ -386,7 +386,7 @@ export function ReportsContent({
                     <option value="">Select lot...</option>
                     {lots.map((lot) => (
                       <option key={lot.id} value={lot.id}>
-                        Lot {lot.lot_number}{lot.owner_display_name ? ` — ${lot.owner_display_name}` : ""}
+                        Lot {lot.lot_number}{lot.owner_display_name ? ` , ${lot.owner_display_name}` : ""}
                       </option>
                     ))}
                   </select>
@@ -429,7 +429,7 @@ export function ReportsContent({
                     <option value="">Select lot...</option>
                     {lots.map((lot) => (
                       <option key={lot.id} value={lot.id}>
-                        Lot {lot.lot_number}{lot.owner_display_name ? ` — ${lot.owner_display_name}` : ""}
+                        Lot {lot.lot_number}{lot.owner_display_name ? ` , ${lot.owner_display_name}` : ""}
                       </option>
                     ))}
                   </select>

@@ -6,7 +6,7 @@
  * asOfDate), and a 100-notice performance benchmark.
  *
  * Per the PP4-C performance gate: the benchmark runs FIRST. If it exceeds
- * 500ms the script halts and surfaces — rewrite _walk_per_notice_status
+ * 500ms the script halts and surfaces , rewrite _walk_per_notice_status
  * (single-CTE query OR denormalised paid_amount on levy_notices) before
  * continuing. Don't paper over with a higher tolerance threshold.
  *
@@ -46,7 +46,7 @@ const results: Result[] = [];
 function record(scenario: string, passed: boolean, detail: string) {
   results.push({ scenario, passed, detail });
   console.log(
-    `  ${passed ? "PASS" : "FAIL"}  ${scenario}${detail ? " — " + detail : ""}`,
+    `  ${passed ? "PASS" : "FAIL"}  ${scenario}${detail ? " , " + detail : ""}`,
   );
 }
 
@@ -283,7 +283,7 @@ async function makeCredit(
 // ─── Performance benchmark (runs FIRST) ───────────────────────────────────
 
 async function perfBenchmark100Notices(fx: Fixture) {
-  const header = "PERF: 100-notice lot — computeLevyPaymentStatus latency";
+  const header = "PERF: 100-notice lot , computeLevyPaymentStatus latency";
   try {
     const lotId = await makeLot(fx);
 
@@ -301,7 +301,7 @@ async function perfBenchmark100Notices(fx: Fixture) {
         entryDate: `2026-${month}-01`,
       });
     }
-    // 60 fully paid — 3 credits each ($33.33 + $33.33 + $33.34, on three
+    // 60 fully paid , 3 credits each ($33.33 + $33.33 + $33.34, on three
     // different dates) so the per-notice settling walk traverses multiple
     // credits, mirroring real-world part-payment behaviour. Total: 180 credits.
     // Dates are <= today (2026-04-28) so the snapshot's date filter doesn't
@@ -323,7 +323,7 @@ async function perfBenchmark100Notices(fx: Fixture) {
         noticeId: notices[i].id,
       });
     }
-    // 20 partial — 2 credits each ($25 + $25 = $50). Total: 40 credits.
+    // 20 partial , 2 credits each ($25 + $25 = $50). Total: 40 credits.
     for (let i = 60; i < 80; i++) {
       await makeCredit(fx, lotId, 25, {
         entryDate: "2026-02-05",
@@ -361,17 +361,17 @@ async function perfBenchmark100Notices(fx: Fixture) {
 
     let bandLabel: string;
     if (coldMs < PERF_FLAG_MS) {
-      bandLabel = `< ${PERF_FLAG_MS}ms — ship as-is`;
+      bandLabel = `< ${PERF_FLAG_MS}ms , ship as-is`;
     } else if (coldMs < PERF_HALT_MS) {
-      bandLabel = `${PERF_FLAG_MS}–${PERF_HALT_MS}ms — ship + PRE_LAUNCH_CLEANUP item`;
+      bandLabel = `${PERF_FLAG_MS}–${PERF_HALT_MS}ms , ship + PRE_LAUNCH_CLEANUP item`;
     } else {
-      bandLabel = `≥ ${PERF_HALT_MS}ms — HALT, rewrite required`;
+      bandLabel = `≥ ${PERF_HALT_MS}ms , HALT, rewrite required`;
     }
 
     record(
       header,
       coldMs < PERF_HALT_MS,
-      `cold=${coldMs}ms warm=${warmMs}ms (paid=${paid}, partial=${partial}, outstanding=${outstanding}) — ${bandLabel}`,
+      `cold=${coldMs}ms warm=${warmMs}ms (paid=${paid}, partial=${partial}, outstanding=${outstanding}) , ${bandLabel}`,
     );
 
     if (coldMs >= PERF_HALT_MS) {
@@ -395,7 +395,7 @@ async function perfBenchmark100Notices(fx: Fixture) {
 
 async function scenarioPS1_FiveNoticeMixed(fx: Fixture) {
   const header =
-    "PS-1: 5-notice lot — 3 paid + 1 partial + 1 outstanding → 5 rows with correct status each";
+    "PS-1: 5-notice lot , 3 paid + 1 partial + 1 outstanding → 5 rows with correct status each";
   try {
     const lotId = await makeLot(fx);
     const ns = await Promise.all([
@@ -456,7 +456,7 @@ async function scenarioPS1_FiveNoticeMixed(fx: Fixture) {
 
 async function scenarioPS2_VoidAfterAsOfDate(fx: Fixture) {
   const header =
-    "PS-2: snapshot — credit voided AFTER asOfDate appears active in snapshot";
+    "PS-2: snapshot , credit voided AFTER asOfDate appears active in snapshot";
   try {
     const lotId = await makeLot(fx);
     const n = await makeNotice(fx, lotId, {
@@ -507,7 +507,7 @@ async function scenarioPS2_VoidAfterAsOfDate(fx: Fixture) {
 
 async function scenarioPS3_EntryAfterAsOfDateExcluded(fx: Fixture) {
   const header =
-    "PS-3: snapshot — entry created AFTER asOfDate excluded from snapshot";
+    "PS-3: snapshot , entry created AFTER asOfDate excluded from snapshot";
   try {
     const lotId = await makeLot(fx);
     const n = await makeNotice(fx, lotId, {
@@ -516,7 +516,7 @@ async function scenarioPS3_EntryAfterAsOfDateExcluded(fx: Fixture) {
       dueDate: "2025-01-28",
     });
     await makeDebit(fx, lotId, n.id, n.reference, 300, { entryDate: "2025-01-01" });
-    // Credit dated 2025-06-01 — visible at asOfDate ≥ 2025-06-01, excluded earlier.
+    // Credit dated 2025-06-01 , visible at asOfDate ≥ 2025-06-01, excluded earlier.
     await makeCredit(fx, lotId, 300, {
       entryDate: "2025-06-01",
       reference: n.reference,
@@ -591,7 +591,7 @@ async function scenarioPS4_TargetedVsUntargetedCredits(fx: Fixture) {
 
 async function scenarioPS5_MultiFundLot(fx: Fixture) {
   const header =
-    "PS-5: multi-fund lot — admin paid + capital outstanding → 2 rows with correct fund_type";
+    "PS-5: multi-fund lot , admin paid + capital outstanding → 2 rows with correct fund_type";
   try {
     const lotId = await makeLot(fx);
     const adminN = await makeNotice(fx, lotId, {
@@ -710,7 +710,7 @@ async function main() {
     process.exit(0);
   }
 
-  console.log("Payment-status verification — PP4-C scenarios");
+  console.log("Payment-status verification , PP4-C scenarios");
 
   await cleanupMarker();
   const fx = await createFixture();

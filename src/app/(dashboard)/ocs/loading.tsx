@@ -10,7 +10,7 @@ export default function OCsLoading() {
         <Skeleton className="h-9 w-44 rounded-md" />
       </div>
 
-      {/* OC cards — same structure as loaded page */}
+      {/* OC cards , same structure as loaded page */}
       <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
         {Array.from({ length: 3 }).map((_, i) => (
           <Card key={i}>

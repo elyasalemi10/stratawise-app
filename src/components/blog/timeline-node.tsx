@@ -48,7 +48,7 @@ export const Timeline = Node.create({
 
   renderHTML({ HTMLAttributes, node }) {
     const items = (node.attrs.items ?? []) as TimelineItem[];
-    // Icons are emitted as <img> with an SVG data-URI — TipTap's DOM-spec
+    // Icons are emitted as <img> with an SVG data-URI , TipTap's DOM-spec
     // renderHTML can't take a raw SVG string as a child, and an <img> renders
     // fine in the marketing site's static HTML.
     return [

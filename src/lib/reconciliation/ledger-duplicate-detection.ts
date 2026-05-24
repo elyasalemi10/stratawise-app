@@ -2,15 +2,15 @@
 // Ledger-side duplicate detection (PP5-B)
 // ----------------------------------------------------------------------------
 // Pure helpers (no "use server"). Two integration sites:
-//   - orchestrator (tryAutoMatch) — after rpc_reconcile_bank_transaction
-//   - reconcileTransaction (manual match) — after rpc_reconcile_bank_transaction
+//   - orchestrator (tryAutoMatch) , after rpc_reconcile_bank_transaction
+//   - reconcileTransaction (manual match) , after rpc_reconcile_bank_transaction
 // Both invoke `detectAndMarkLedgerDuplicates` synchronously after a
 // payment-category credit is committed. The helper iterates over the
 // credit ids returned by the RPC, runs the detector per credit, and
 // marks flagged rows via UPDATE + audit_log.
 //
 // Cash receipts are NOT integrated. rpc_record_cash_receipt creates
-// credits with levy_notice_id=NULL (untargeted) — the linkage to a
+// credits with levy_notice_id=NULL (untargeted) , the linkage to a
 // specific notice happens later via rpc_deposit_undeposited_funds. Since
 // the eligibility predicate excludes untargeted credits, calling the
 // helper from recordCashReceipt would be dead code. PRE_LAUNCH_CLEANUP
@@ -22,7 +22,7 @@
 //   ±7 days. Voided rows and already-suspected rows are excluded from
 //   the candidate pool (chain prevention).
 //
-// Window rationale — ±7 days vs bank-side ±2 days:
+// Window rationale , ±7 days vs bank-side ±2 days:
 //   - Bank-side ±2d reflects bank-settlement tightness (OSKO same-day,
 //     T+1 typical, T+2 rare).
 //   - Ledger-side ±7d reflects payment-cycle reality (an owner can pay
@@ -38,18 +38,18 @@
 //   ─── DETECTS ────────────────────────────────────────────────────────
 //   - payment            (the only category in scope; the spec key)
 //   ─── DOES NOT DETECT ────────────────────────────────────────────────
-//   - levy / special_levy / interest    (debits — not payments)
+//   - levy / special_levy / interest    (debits , not payments)
 //   - writeoff                           (credit, but not a real-money payment)
 //   - adjustment_credit / adjustment_debit (manual adjustments, not duplicates)
 //   - refund                             (debit; reverses a payment)
-//   - void_offset                        (the void mechanism itself —
+//   - void_offset                        (the void mechanism itself ,
 //                                         same lot/notice/amount as the
 //                                         entry it voids; would generate
 //                                         spurious flags without this
 //                                         exclusion)
 //
 // Untargeted credits (levy_notice_id IS NULL) are out of scope by the
-// detection key — see CONTEXT.md PP5 §Duplicates.
+// detection key , see CONTEXT.md PP5 §Duplicates.
 // ============================================================================
 
 import type { SupabaseClient } from "@supabase/supabase-js";
@@ -198,7 +198,7 @@ export async function markLedgerDuplicate(args: {
  * runs detect + mark per credit. Aggregates results.
  *
  * Marker failures don't roll back the credit (it's already committed by
- * the RPC) — the row stays unmarked + unflagged, and the failure is
+ * the RPC) , the row stays unmarked + unflagged, and the failure is
  * logged via console.error with full forensics context for Sentry.
  */
 export async function detectAndMarkLedgerDuplicates(args: {
@@ -256,7 +256,7 @@ export async function detectAndMarkLedgerDuplicates(args: {
       markFailures += 1;
       // PP5-B ratification: row stays unflagged on mark failure; log full
       // forensics context for Sentry. The credit itself is committed and
-      // active — we don't roll it back.
+      // active , we don't roll it back.
       console.error(`[ledger-duplicate-detection] markLedgerDuplicate failed`, {
         ledger_entry_id: row.id,
         oc_id: ocId,

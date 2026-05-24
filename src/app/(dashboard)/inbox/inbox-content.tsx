@@ -85,7 +85,7 @@ const TYPE_COLORS: Record<string, string> = {
 };
 
 // Provider hint comes from the SERVER (inbox metadata + gmail_mailbox_subscriptions
-// lookup) — NOT from the sender's email domain. A reply from any address still
+// lookup) , NOT from the sender's email domain. A reply from any address still
 // arrived via the Gmail webhook, so the Gmail glyph is what reflects "how it
 // got here." Sender-domain inference was misleading (a gmail-pushed reply
 // from joe@randomfirm.com was rendering as a generic mail icon).
@@ -111,7 +111,7 @@ function ProviderIcon({
 
 // Compact one-line preview text: strip the obvious markdown / HTML
 // noise so notification rows don't read like `**Message not delivered**`.
-// Used for list-row + bell-dropdown previews — the full body still
+// Used for list-row + bell-dropdown previews , the full body still
 // gets the proper ReactMarkdown render in the detail pane.
 function stripMarkdownForPreview(s: string | null | undefined): string {
   if (!s) return "";
@@ -161,7 +161,7 @@ export function InboxContent({
   // any of them is instant (no "Loading email…" flash). Anything not in
   // this map falls back to getInboxEmail() on demand.
   prefetchedEmails: Record<string, InboxEmailDetail>;
-  // Eager-loaded ownership list for the firm — drives the link-to-lot
+  // Eager-loaded ownership list for the firm , drives the link-to-lot
   // popover with zero per-keystroke server traffic.
   allOwnerships: PersonOwnershipOption[];
 }) {
@@ -227,7 +227,7 @@ export function InboxContent({
   }, [router]);
 
   // Sync local notifications with server-rendered prop after every
-  // router.refresh — without this the auto-refresh runs but the list
+  // router.refresh , without this the auto-refresh runs but the list
   // stays stale because we never read the new prop.
   useEffect(() => {
     setNotifications(initial);
@@ -313,7 +313,7 @@ export function InboxContent({
               {unreadCount > 0 ? `${unreadCount} unread` : `${notifications.length} total`}
             </p>
             <div className="flex items-center gap-1">
-              {/* Manual refresh — checks for new inbound mail without
+              {/* Manual refresh , checks for new inbound mail without
                   changing read state. Auto-refresh fires every 60s in
                   the background; this button is the manager's escape
                   hatch when something arrives mid-call. */}
@@ -341,7 +341,7 @@ export function InboxContent({
               )}
             </div>
           </div>
-          {/* Scroll-hidden list — content fills the panel and you scroll by
+          {/* Scroll-hidden list , content fills the panel and you scroll by
               wheel / touchpad / arrow keys. No visible bar (matches the
               global no-scrollbar treatment for body / dashboard <main>). */}
           <div className="divide-y divide-border flex-1 min-h-0 overflow-y-auto [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
@@ -569,7 +569,7 @@ function EmailDetailPane({
   }
 
   const provider = detail.inbox_provider;
-  // Prefer the Gmail-internal messageId stashed on the notification — that
+  // Prefer the Gmail-internal messageId stashed on the notification , that
   // deep-links straight to the conversation. Falls back to a sender-keyed
   // search when older ingests didn't capture the id.
   const openInProviderUrl =
@@ -620,7 +620,7 @@ function EmailDetailPane({
                   });
                   if (res.ok) {
                     // The detail panel renders the "Lot:" line from
-                    // `oc_short_code`, `lot_label`, and `lot_link_label` —
+                    // `oc_short_code`, `lot_label`, and `lot_link_label` ,
                     // not just `oc_id` / `lot_id`. Update all of them
                     // locally so the panel reflects the new link without a
                     // server round-trip; otherwise the line keeps reading
@@ -685,19 +685,19 @@ function EmailDetailPane({
                   <span className="sr-only">Remove from inbox</span>
                 </TooltipTrigger>
                 <TooltipContent>
-                  Removes from your StrataWise inbox only — the original stays in
+                  Removes from your StrataWise inbox only , the original stays in
                   {provider === "gmail" ? " Gmail" : provider === "outlook" ? " Outlook" : " your mailbox"}.
                 </TooltipContent>
               </Tooltip>
             </div>
           </div>
 
-          {/* Address fields — inline label-prefixed style */}
+          {/* Address fields , inline label-prefixed style */}
           <div className="space-y-1.5 text-sm">
             <p className="text-foreground">
               <span className="text-muted-foreground">From: </span>
               <span className="font-medium break-all">
-                {detail.sender_email || "—"}
+                {detail.sender_email || ","}
               </span>
             </p>
             <p className="text-foreground">
@@ -720,7 +720,7 @@ function EmailDetailPane({
             </p>
           </div>
 
-        {/* Body — markdown-rendered. Emails from Gmail/Outlook composers
+        {/* Body , markdown-rendered. Emails from Gmail/Outlook composers
             usually arrive as plain text but commonly contain markdown
             (auto-quoted links, bullet lists, *bold*) that managers expect
             to read formatted. remark-gfm picks up tables, autolinks, and
@@ -739,7 +739,7 @@ function EmailDetailPane({
         {detail.outbound && (
           <details className="rounded-md border border-border bg-card">
             <summary className="cursor-pointer px-3 py-2 text-xs font-medium uppercase tracking-wide text-muted-foreground">
-              In reply to —{" "}
+              In reply to ,{" "}
               {detail.outbound.subject ?? "(no subject)"}
               {detail.outbound.sent_at && (
                 <> · {formatDateLong(detail.outbound.sent_at)}</>
@@ -884,16 +884,16 @@ function ReplyDrawer({
 
 // ─── Associate drawer (people search) ───────────────────────────────────
 //
-// Combobox of OWNERSHIPS — searchable by owner name, OC name, lot label,
+// Combobox of OWNERSHIPS , searchable by owner name, OC name, lot label,
 // or email. Multi-lot owners surface as multiple rows. Selection writes
 // (oc_id, lot_id) onto the inbound row so it appears on the lot's
 // Communications tab; we don't store anything about the OWNER because
 // documents/comms are lot-keyed in this codebase.
 
-// LinkToLotPopover — inline combobox button. The popover sits anchored to
+// LinkToLotPopover , inline combobox button. The popover sits anchored to
 // the trigger (no overlay / page grey-out: Base UI's Popover doesn't
 // render a backdrop by default, which is what we want). Vertical
-// rectangle layout — narrow + tall — with a chevron arrow on the button.
+// rectangle layout , narrow + tall , with a chevron arrow on the button.
 //
 // All ownerships for the firm are eager-loaded server-side and passed in
 // via `ownerships`, so search filters client-side with no network hit.
@@ -902,7 +902,7 @@ function ReplyDrawer({
 // the input some life.
 //
 // When already linked, the button shows the linked lot's label
-// (e.g. "Joe Smith · Lot 12") instead of "Change lot" — so the manager
+// (e.g. "Joe Smith · Lot 12") instead of "Change lot" , so the manager
 // reads the current state without having to open the popover.
 function LinkToLotPopover({
   ownerships,
@@ -915,7 +915,7 @@ function LinkToLotPopover({
 }) {
   const [open, setOpen] = useState(false);
   const [query, setQuery] = useState("");
-  // Synthetic spinner — pulses for ~200ms after each keystroke so the
+  // Synthetic spinner , pulses for ~200ms after each keystroke so the
   // search feels alive even though filtering is local.
   const [searching, setSearching] = useState(false);
   useEffect(() => {
@@ -993,7 +993,7 @@ function LinkToLotPopover({
                       await onPick(p);
                     }}
                     className={cn(
-                      // Compact one-line row — owner / lot / PS on a single
+                      // Compact one-line row , owner / lot / PS on a single
                       // line so the popover fits more without scrolling.
                       "flex items-center gap-1.5 py-1 text-sm",
                       linkedKey === p.key && "bg-primary/10",

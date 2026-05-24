@@ -6,7 +6,7 @@
  * dev DB. 15 scenarios IA-1..IA-15 covering eligibility, idempotency, field
  * shape, and the FK-violation defensive path.
  *
- * Trigger.dev is NOT exercised — tests call the framework-agnostic job
+ * Trigger.dev is NOT exercised , tests call the framework-agnostic job
  * function directly with explicit runDate fixtures (TZ-deterministic;
  * bypasses Intl.DateTimeFormat in trigger/accrue-interest.ts).
  *
@@ -49,7 +49,7 @@ const results: Result[] = [];
 function record(scenario: string, passed: boolean, detail: string) {
   results.push({ scenario, passed, detail });
   console.log(
-    `  ${passed ? "PASS" : "FAIL"}  ${scenario}${detail ? " — " + detail : ""}`,
+    `  ${passed ? "PASS" : "FAIL"}  ${scenario}${detail ? " , " + detail : ""}`,
   );
 }
 
@@ -368,7 +368,7 @@ async function ia4_withinGraceSkipped(ctx: ScenarioContext) {
 }
 
 async function ia5_recentlyAccruedSkipped(ctx: ScenarioContext) {
-  // last_accrual_date 15 days ago — within the 1-month per-levy idempotency.
+  // last_accrual_date 15 days ago , within the 1-month per-levy idempotency.
   const sub = await createOCFixture(ctx);
   const lot = await createLotFixture(sub, 1);
   await createLevyNoticeFixture(
@@ -446,7 +446,7 @@ async function ia7_failedRowSatisfiesCheckConstraint(ctx: ScenarioContext) {
   // indirectly by IA-15's end-to-end FK violation flow, which produces a
   // real non-empty error message. The branch where writeFailedRunRow
   // receives an empty/whitespace message and substitutes the sentinel is
-  // 'should never happen' insurance — not directly tested. Acceptable
+  // 'should never happen' insurance , not directly tested. Acceptable
   // trade-off; the defensive fallback is the cheap belt-and-braces.
   //
   // Two direct INSERTs: (a) whitespace-only message must trip the CHECK;
@@ -471,7 +471,7 @@ async function ia7_failedRowSatisfiesCheckConstraint(ctx: ScenarioContext) {
       oc_id: sub.ocId,
       run_date: daysBefore(RUN_DATE, 1),
       status: "failed",
-      error_message: "(unknown failure — empty error message)",
+      error_message: "(unknown failure , empty error message)",
       completed_at: new Date().toISOString(),
     });
 
@@ -933,7 +933,7 @@ async function cleanupCompany(companyId: string) {
   }
 
   // audit_log.profile_id has no ON DELETE clause (defaults to NO ACTION /
-  // RESTRICT) — cross-oc audit rows authored by this fixture's
+  // RESTRICT) , cross-oc audit rows authored by this fixture's
   // profiles would block the profiles DELETE. The oc-keyed delete
   // above already handles in-oc audit; this catches anything else
   // (e.g. future fixture writes that audit at the company level with
@@ -968,7 +968,7 @@ async function main() {
     process.exit(0);
   }
 
-  console.log("Interest accrual verification — PP6-B-B scenarios IA-1..IA-15\n");
+  console.log("Interest accrual verification , PP6-B-B scenarios IA-1..IA-15\n");
   console.log("[1/3] Cleaning up stale verification data");
   await cleanupMarker();
 

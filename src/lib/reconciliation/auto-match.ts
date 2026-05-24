@@ -1,5 +1,5 @@
 // ============================================================================
-// Legacy delegate — tryAutoMatchByReference
+// Legacy delegate , tryAutoMatchByReference
 // ----------------------------------------------------------------------------
 // PP4-A migrated all production callers (addManualBankTransaction,
 // pollConnectionAsSystem) to call tryAutoMatch directly. This function
@@ -10,7 +10,7 @@
 // Flagged for removal in PRE_LAUNCH_CLEANUP once a grep confirms no
 // remaining callers.
 //
-// No `"use server"` directive — pure helper.
+// No `"use server"` directive , pure helper.
 // ============================================================================
 
 import { createServerClient } from "@/lib/supabase";

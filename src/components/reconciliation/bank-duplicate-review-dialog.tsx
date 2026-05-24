@@ -1,17 +1,17 @@
 "use client";
 
 // ============================================================================
-// BankDuplicateReviewDialog — PP5-D-A
+// BankDuplicateReviewDialog , PP5-D-A
 // ----------------------------------------------------------------------------
 // Manager-facing dialog for bank-side duplicate review. Calls
 // confirmDuplicate / rejectDuplicate from PP5-A. State machine modelled
 // on PP4-D's CollisionResolutionDialog reducer pattern.
 //
 // State machine:
-//   choosing  — picker rendered with two action buttons + notes textarea
-//   submitting — action dispatched; buttons disabled
-//   done      — success state; toast + parent onResolved() → close
-//   error     — inline error shown; recoverable=true offers retry button;
+//   choosing  , picker rendered with two action buttons + notes textarea
+//   submitting , action dispatched; buttons disabled
+//   done      , success state; toast + parent onResolved() → close
+//   error     , inline error shown; recoverable=true offers retry button;
 //               MATCH_ACTIVE (recoverable=false) offers detail-page CTA
 //
 // Q5.5 ratification: parent passes fresh metadata on open. The dialog
@@ -62,7 +62,7 @@ export interface BankDuplicateReviewPayload {
     description: string | null;
     source: string;
   };
-  /** Detection metadata from the detector — older row id + sources +
+  /** Detection metadata from the detector , older row id + sources +
    *  day_delta + normalised description + hash. Required because the
    *  dialog renders a "why was this flagged?" explanation. */
   duplicate_metadata: DuplicateMetadata;
@@ -74,10 +74,10 @@ export interface BankDuplicateReviewPayload {
     description: string | null;
     source: string;
   } | null;
-  /** Cached current duplicate_status — confirms the row is still
+  /** Cached current duplicate_status , confirms the row is still
    *  suspected at parent-render time. The action re-checks on submit. */
   duplicate_status: DuplicateStatus | null;
-  /** Cached match state — if match_status is auto/manually_matched OR
+  /** Cached match state , if match_status is auto/manually_matched OR
    *  matched_total > 0, the parent already knows MATCH_ACTIVE will fire.
    *  The dialog can display a pre-warning, but the action is the source
    *  of truth on submit. */

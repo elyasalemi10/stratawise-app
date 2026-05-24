@@ -19,7 +19,7 @@ export default async function DashboardLayout({
   }
 
   // Fetch shared sidebar/header data once at the layout level so it's
-  // already in the initial HTML — no client-side useEffect waterfall on
+  // already in the initial HTML , no client-side useEffect waterfall on
   // each navigation. Both getters are cached server-side (unstable_cache
   // on ocs; profile is per-request) and revalidated by mutations.
   const [cookieStore, sidebarProfile, sidebarOCs] = await Promise.all([

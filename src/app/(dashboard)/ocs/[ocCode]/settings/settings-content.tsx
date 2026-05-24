@@ -96,7 +96,7 @@ function EditableField({
     return (
       <div className="flex justify-between items-start py-2.5 border-b border-border/50 last:border-b-0">
         <span className="text-sm text-muted-foreground">{label}</span>
-        <span className="text-sm text-foreground text-right max-w-[60%]">{displayValue || "—"}</span>
+        <span className="text-sm text-foreground text-right max-w-[60%]">{displayValue || ","}</span>
       </div>
     );
   }

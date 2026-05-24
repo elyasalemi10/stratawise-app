@@ -79,7 +79,7 @@ interface LotDetailContentProps {
   bankProvider: string | null;
   initialSenderEmailAddress?: string | null;
   initialSmsSenderId?: string | null;
-  /** All lots in the OC — lets the settlement drawer re-target the lot. */
+  /** All lots in the OC , lets the settlement drawer re-target the lot. */
   ocLots?: { id: string; lotNumber: number; unitNumber?: string | number | null }[];
 }
 
@@ -161,14 +161,14 @@ export function LotDetailContent({
   const [lot, setLot] = useState(initialLot);
   void setLot;
   // Auto-open the settlement drawer when the URL says so. Used by the
-  // wrong-lot-number jump in the settlement dialog — the source page
+  // wrong-lot-number jump in the settlement dialog , the source page
   // pops `?settlement=open` here and the prefill payload is read by
   // SettlementDialog itself from sessionStorage on mount.
   const [settlementOpen, setSettlementOpen] = useState(
     searchParams.get("settlement") === "open",
   );
   const [addOwnerOpen, setAddOwnerOpen] = useState(false);
-  // Separate state for the "Invite owner" confirm — the owner already
+  // Separate state for the "Invite owner" confirm , the owner already
   // exists, we're just confirming the email and firing the invite.
   // "Edit owner details" inside the confirm flips us to addOwnerOpen.
   const [inviteConfirmOpen, setInviteConfirmOpen] = useState(false);
@@ -183,7 +183,7 @@ export function LotDetailContent({
     if (activeTab !== "communications") onTabChange("communications");
   }
 
-  // Item 4 — replace the generic "Owner details" breadcrumb with entity-specific
+  // Item 4 , replace the generic "Owner details" breadcrumb with entity-specific
   // "Lot N · Unit X" so the user can see at a glance which lot they're on.
   useSetBreadcrumb([
     { label: "Lots & Owners", href: `/ocs/${ocCode}/lots` },
@@ -227,7 +227,7 @@ export function LotDetailContent({
 
   const lastPaymentRelative = formatRelative(lastPaymentAt);
 
-  // Top header line: "Lot 2 · Unit 2 - Owner name" (or no unit, no owner —
+  // Top header line: "Lot 2 · Unit 2 - Owner name" (or no unit, no owner ,
   // pieces drop off gracefully). The lot details (entitlement / liability /
   // edit) now live in a card inside the Overview tab, so this header is just
   // identity + the cross-tab Actions menu + the financial line.
@@ -276,7 +276,7 @@ export function LotDetailContent({
                   </DropdownMenuItem>
                 ) : (
                   // Owner exists but no portal account yet (or even if they
-                  // do — resending an invite is idempotent server-side).
+                  // do , resending an invite is idempotent server-side).
                   !portalActive && (
                     <DropdownMenuItem onClick={() => setInviteConfirmOpen(true)}>
                       <UserPlus className="mr-2 h-4 w-4" />
@@ -335,7 +335,7 @@ export function LotDetailContent({
         </CardContent>
       </Card>
 
-      {/* Tab strip — bare shadcn line tabs. No container card, no border-b:
+      {/* Tab strip , bare shadcn line tabs. No container card, no border-b:
           the active gold underline is the only visible separator. Tabs
           wrap onto a second row on narrow viewports. */}
       <Tabs value={activeTab} onValueChange={onTabChange}>
@@ -483,17 +483,17 @@ export function LotDetailContent({
   );
 }
 
-// LotDetailsEditPopover relocated into LotOverviewTab — it now lives next
+// LotDetailsEditPopover relocated into LotOverviewTab , it now lives next
 // to the new "Lot details" card on the Overview tab. See lot-overview-tab.tsx.
 
-// Old GeneralTab / OwnerTab / TenancyTab removed — replaced by LotOverviewTab,
+// Old GeneralTab / OwnerTab / TenancyTab removed , replaced by LotOverviewTab,
 // LotOwnerTab, and LotTenancyTab in ./tabs/. The legacy KvRow / PastOwnerRow
 // helpers moved into LotOwnerTab; durationLabel / formatMonthYear / initials
 // live there too.
 
 // ─── History tab ───────────────────────────────────────────────
 
-// Old ownership-timeline HistoryTab removed — History tab now renders the
+// Old ownership-timeline HistoryTab removed , History tab now renders the
 // LotHistoryTab (audit log). Ownership timeline lives in the Owner tab via
 // the PastOwnerRow list (Item 17).
 
@@ -503,7 +503,7 @@ function ComingSoonTab({ name }: { name: string }) {
   return (
     <EmptyState
       icon={Hash}
-      title={`${name} — coming soon`}
+      title={`${name} , coming soon`}
       description="We're still building this tab."
     />
   );

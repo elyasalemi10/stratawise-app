@@ -2,7 +2,7 @@ import "server-only";
 import { createServerClient } from "@/lib/supabase";
 
 // Central audit-log writer. Replaces inlined `supabase.from('audit_log').insert(...)`
-// calls scattered through src/lib/actions/*. Always best-effort — a failed audit row
+// calls scattered through src/lib/actions/*. Always best-effort , a failed audit row
 // must NEVER bubble back to the caller and reverse a successful mutation.
 
 export type AuditEntityType =
@@ -37,7 +37,7 @@ export type AuditEntityType =
   | "settlement"
   | "drn_mapping"
   | "consent_change"
-  | (string & {}); // escape hatch for ad-hoc types — prefer adding to the union
+  | (string & {}); // escape hatch for ad-hoc types , prefer adding to the union
 
 export interface LogAuditArgs {
   profileId: string;
@@ -80,7 +80,7 @@ export async function logAudit(args: LogAuditArgs): Promise<void> {
 // Computes a {before, after} pair limited to keys whose values actually changed.
 // Use to keep before/after JSON compact in the audit log (don't dump full rows).
 // Compares with Object.is so undefined/null/NaN behave intuitively. Arrays/objects
-// compare via JSON.stringify — sufficient for the simple shapes we audit.
+// compare via JSON.stringify , sufficient for the simple shapes we audit.
 export function diffFields<T extends Record<string, unknown>>(
   before: T,
   after: Partial<T>,

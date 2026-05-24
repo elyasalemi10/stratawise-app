@@ -26,7 +26,7 @@ function AttendanceSection({
         <Text key={i} style={baseStyles.paragraph}>
           {a.name}
           {a.lot_number ? ` (Lot ${a.lot_number})` : ""}
-          {a.proxy_for ? ` — proxy for ${a.proxy_for}` : ""}
+          {a.proxy_for ? ` , proxy for ${a.proxy_for}` : ""}
         </Text>
       ))}
     </View>
@@ -53,7 +53,7 @@ export function MeetingMinutes({
   const proxies = attendees.filter((a) => a.type === "proxy");
   const apologies = attendees.filter((a) => a.type === "apology");
 
-  const fullTitle = `Minutes — ${meetingTypeLabels[meetingType]}`;
+  const fullTitle = `Minutes , ${meetingTypeLabels[meetingType]}`;
 
   return (
     <Document>
@@ -244,7 +244,7 @@ export function MeetingMinutes({
                       {action.assigned_to}
                     </Text>
                     <Text style={[baseStyles.tableCell, { flex: 1 }]}>
-                      {action.due_date ?? "—"}
+                      {action.due_date ?? ","}
                     </Text>
                   </View>
                 ))}

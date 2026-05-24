@@ -32,7 +32,7 @@ export function WelcomeConfetti() {
     fired.current = true;
 
     // Fire on the next frame so the canvas is mounted, with no perceptible
-    // wait — the celebration should feel instant on arriving at the dashboard.
+    // wait , the celebration should feel instant on arriving at the dashboard.
     const startTimer = setTimeout(() => fireCelebration(), 0);
 
     function fireCelebration() {

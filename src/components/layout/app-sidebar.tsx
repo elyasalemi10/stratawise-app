@@ -64,7 +64,7 @@ import {
 
 // Icons used for multi-item group headers in the OC sidebar. Single-item
 // groups (Overview / Insurance / Settings on the manager view) render as
-// flat items and use their own item icon — these only apply to accordion
+// flat items and use their own item icon , these only apply to accordion
 // groups (Management / Levies / Banking / lot-owner Overview + OC).
 const GROUP_ICONS: Record<string, LucideIcon> = {
   Overview: LayoutDashboard,
@@ -153,7 +153,7 @@ function getOCNavGroups(ocCode: string, isLotOwner: boolean) {
         { href: `${base}/reports`, label: "Reports", icon: ClipboardList },
       ],
     },
-    // Finance split into three focused groups — Levies (what the lot owners
+    // Finance split into three focused groups , Levies (what the lot owners
     // see / get billed), Banking (cash flow + reconciliation), Insurance
     // (separate because it's a different vendor lifecycle). Order matches
     // how managers move through a typical month: bill, reconcile, manage
@@ -255,7 +255,7 @@ function SimpleDropdown({
   }, [open, mounted]);
 
   // Click-outside dismiss. Considers BOTH the trigger wrapper and the
-  // portaled panel — without that, clicking inside the portaled panel would
+  // portaled panel , without that, clicking inside the portaled panel would
   // count as "outside" because it's not a descendant of wrapperRef.
   useEffect(() => {
     function onDocClick(e: MouseEvent) {
@@ -358,7 +358,7 @@ function DropdownSeparator() {
 }
 
 // One row in the OC switcher panel. Splits the click target into two regions
-// — the wide left/middle (switches to that OC) and a right-edge pin star
+// , the wide left/middle (switches to that OC) and a right-edge pin star
 // (toggles the pin without dismissing the panel). Pin click stops propagation
 // so it doesn't also fire the row's onSwitch.
 function OCSwitcherRow({
@@ -380,7 +380,7 @@ function OCSwitcherRow({
     <div
       className={cn(
         // min-w-0 + width:100% so the row collapses inside the switcher's
-        // overflow-x-hidden container — without it, a long OC name forces
+        // overflow-x-hidden container , without it, a long OC name forces
         // the row wider than 288px and you'd get a horizontal scrollbar.
         "group flex w-full min-w-0 items-center gap-1 rounded-md hover:bg-accent",
         // The current row is greyed (no Check icon) so the user feels "this
@@ -428,7 +428,7 @@ function OCSwitcherRow({
         }}
         // Pin icon is hidden until row hover, regardless of pinned state.
         // Pinned rows show a filled brand-gold pin; unpinned show outline.
-        // The hover-only reveal keeps the panel visually quiet — the user
+        // The hover-only reveal keeps the panel visually quiet , the user
         // only sees a pin affordance when hovering a row they might act on.
         className={cn(
           "mr-1.5 inline-flex size-8 cursor-pointer items-center justify-center rounded-md opacity-0 group-hover:opacity-100",
@@ -469,7 +469,7 @@ function usePinnedOCs(scope: string | null | undefined): {
         if (Array.isArray(parsed)) setPins(parsed.filter((s) => typeof s === "string"));
       }
     } catch {
-      /* corrupted storage — silently reset */
+      /* corrupted storage , silently reset */
     }
   }, [scope]);
   function persist(next: string[]) {
@@ -478,7 +478,7 @@ function usePinnedOCs(scope: string | null | undefined): {
       try {
         window.localStorage.setItem(ocPinsKey(scope), JSON.stringify(next));
       } catch {
-        /* quota / private mode — just hold the pins in memory */
+        /* quota / private mode , just hold the pins in memory */
       }
     }
   }
@@ -552,7 +552,7 @@ function NavUser({
         aria-expanded={open}
         className={cn(
           "flex h-14 w-full items-center gap-2 overflow-hidden rounded-lg border p-2 text-left text-sm text-sidebar-foreground transition-colors outline-none",
-          // Thin grey outline — visible on the midnight sidebar bg.
+          // Thin grey outline , visible on the midnight sidebar bg.
           "border-sidebar-foreground/20 hover:bg-sidebar-accent hover:text-sidebar-accent-foreground",
           "focus-visible:ring-2 focus-visible:ring-sidebar-ring",
           open && "bg-sidebar-accent text-sidebar-accent-foreground",
@@ -593,13 +593,13 @@ function NavUser({
         <div
           className={cn(
             "absolute z-50 w-56 rounded-lg border border-border bg-popover p-1 shadow-md animate-in fade-in-0 zoom-in-95 duration-100",
-            // Pops right on desktop, up on mobile — matches v0 template behaviour.
+            // Pops right on desktop, up on mobile , matches v0 template behaviour.
             isMobile
               ? "bottom-full left-0 right-0 mb-2"
               : "left-full bottom-0 ml-2",
           )}
         >
-          {/* Header — avatar + company name + email, mirrors template */}
+          {/* Header , avatar + company name + email, mirrors template */}
           <div className="flex items-center gap-2 px-1 py-1.5 text-left text-sm">
             <Avatar className="h-8 w-8 rounded-lg shrink-0">
               {profile?.userAvatarUrl ? (
@@ -677,12 +677,12 @@ export function AppSidebar({
   const [switcherQuery, setSwitcherQuery] = useState("");
 
   // Accordion: only ONE group open at a time. null = all collapsed. Picking a
-  // new group auto-closes the previous one. NOT persisted — each page load
+  // new group auto-closes the previous one. NOT persisted , each page load
   // starts collapsed; the active route auto-opens its containing group on
   // navigation (handled in the render section).
   const [openGroup, setOpenGroup] = useState<string | null>(null);
 
-  // Refresh listener — fires after mutations (revalidateSidebarFromClient).
+  // Refresh listener , fires after mutations (revalidateSidebarFromClient).
   // We don't fetch on mount any more (server hands us fresh data), but we
   // do refetch on this event so badge counts update in-session without a
   // full nav.
@@ -744,13 +744,13 @@ export function AppSidebar({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [pathname, searchParams, isInOC]);
 
-  // Smart oc switching — preserve current sub-page
+  // Smart oc switching , preserve current sub-page
   function switchOC(newCode: string | null) {
     if (newCode === null) {
       router.push("/dashboard");
       return;
     }
-    // The oc index page IS the dashboard now — no /dashboard segment.
+    // The oc index page IS the dashboard now , no /dashboard segment.
     if (currentOCCode) {
       const subPage = pathname.replace(`/ocs/${currentOCCode}`, "");
       router.push(`/ocs/${newCode}${subPage}`);
@@ -761,7 +761,7 @@ export function AppSidebar({
 
   return (
     <Sidebar collapsible="offcanvas" {...props}>
-      {/* Dashboard switcher — styled like shadcn TeamSwitcher */}
+      {/* Dashboard switcher , styled like shadcn TeamSwitcher */}
       <SidebarHeader className="p-2">
         <SidebarMenu>
           <SidebarMenuItem>
@@ -804,7 +804,7 @@ export function AppSidebar({
                 </SidebarMenuButton>
               }
             >
-              {/* Switcher panel — opens to the RIGHT of the sidebar trigger
+              {/* Switcher panel , opens to the RIGHT of the sidebar trigger
                   so it shows up in the main content area rather than below
                   the trigger row (which on a 256px sidebar gets squashed).
                   Structure: sticky top (Main dashboard + search) → scrolling
@@ -828,7 +828,7 @@ export function AppSidebar({
                         onClick={() => switchOC(null)}
                         className={cn(
                           "flex w-full cursor-pointer items-center gap-3 rounded-md px-3 py-3 text-sm hover:bg-accent",
-                          // Matches the OC row treatment — greyed when this
+                          // Matches the OC row treatment , greyed when this
                           // is the user's current location, no check icon.
                           !isInOC ? "bg-muted/60 text-muted-foreground" : "text-foreground",
                         )}
@@ -855,7 +855,7 @@ export function AppSidebar({
                       </div>
                     </div>
                     {/* Scrollable middle. max-h is sized to ~6.75 rows so a
-                        partial 7th row peeks at the bottom — that fractional
+                        partial 7th row peeks at the bottom , that fractional
                         cut is intentional, it signals "scroll for more"
                         better than a clean edge. Row height ≈ 60px
                         (py-3 + size-9 image + two text lines).
@@ -924,7 +924,7 @@ export function AppSidebar({
         </SidebarMenu>
       </SidebarHeader>
 
-      {/* Navigation — show skeleton until role is known */}
+      {/* Navigation , show skeleton until role is known */}
       <SidebarContent>
         {!loaded ? (
           <SidebarGroup>
@@ -1012,7 +1012,7 @@ export function AppSidebar({
             );
           };
 
-          // Thin divider before every group except the first — separates
+          // Thin divider before every group except the first , separates
           // sections (and the dropdowns within them) so they don't run
           // together visually.
           const divider = groupIdx > 0 ? (
@@ -1042,7 +1042,7 @@ export function AppSidebar({
             );
           }
 
-          // Accordion group — big nav-style header that toggles a panel of
+          // Accordion group , big nav-style header that toggles a panel of
           // sub-items. Picking another group closes this one (single-open).
           // Items stay in the DOM and animate via the grid-rows trick
           // (`grid-rows-[0fr] → 1fr`) so close transitions actually run
@@ -1101,7 +1101,7 @@ export function AppSidebar({
         })()}
       </SidebarContent>
 
-      {/* Footer — User profile */}
+      {/* Footer , User profile */}
       <SidebarFooter className="p-2">
         <SidebarMenu>
           <SidebarMenuItem>

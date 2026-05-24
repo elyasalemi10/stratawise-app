@@ -126,7 +126,7 @@ export function RecordCashReceiptDialog({
 
   const selectedLotId = form.watch("lot_id");
   const selectedLot = lots.find((l) => l.id === selectedLotId);
-  const lotLabel = selectedLot ? `Lot ${selectedLot.lot_number}${selectedLot.unit_number ? ` — Unit ${selectedLot.unit_number}` : ""}` : "Select a lot";
+  const lotLabel = selectedLot ? `Lot ${selectedLot.lot_number}${selectedLot.unit_number ? ` , Unit ${selectedLot.unit_number}` : ""}` : "Select a lot";
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
@@ -184,7 +184,7 @@ export function RecordCashReceiptDialog({
                                   )}
                                 />
                                 Lot {lot.lot_number}
-                                {lot.unit_number && ` — Unit ${lot.unit_number}`}
+                                {lot.unit_number && ` , Unit ${lot.unit_number}`}
                               </CommandItem>
                             ))}
                           </CommandGroup>

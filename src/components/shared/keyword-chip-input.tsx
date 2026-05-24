@@ -1,12 +1,12 @@
 "use client";
 
 // ============================================================================
-// KeywordChipInput — chip-style multi-value text input
+// KeywordChipInput , chip-style multi-value text input
 // ----------------------------------------------------------------------------
 // Validation runs TWICE by design:
-//   1. INLINE on every chip commit (this component, via the `validate` prop) —
+//   1. INLINE on every chip commit (this component, via the `validate` prop) ,
 //      prevents bad chips from being added; surfaces errors immediately.
-//   2. ON SUBMIT (the consuming form's responsibility) — guardrail in case
+//   2. ON SUBMIT (the consuming form's responsibility) , guardrail in case
 //      the `validate` prop is mis-supplied or the array-level Zod schema
 //      has constraints the per-item validator doesn't (e.g. max-count).
 //

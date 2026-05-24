@@ -136,7 +136,7 @@ export function InviteStatusPopover({
 
   // Kick off the history fetch in the background as soon as the
   // component mounts. The user might never open the popover, but if
-  // they do — by the time they click, the data is already cached. We
+  // they do , by the time they click, the data is already cached. We
   // intentionally don't reset on close so a re-open is instant.
   useEffect(() => {
     let cancelled = false;
@@ -196,13 +196,13 @@ export function InviteStatusPopover({
         >
           <DialogHeader>
             <DialogTitle className="pr-6">
-              {isAccepted ? "Owner — " : "Invite owner — "}Lot {lotNumber}
+              {isAccepted ? "Owner , " : "Invite owner , "}Lot {lotNumber}
             </DialogTitle>
           </DialogHeader>
 
           <div className="space-y-4">
             {/* Read-only owner + email confirm. No editable form, no
-                "not invited" pill — the manager just confirms we've got
+                "not invited" pill , the manager just confirms we've got
                 the right address and hits Send. */}
             {!isAccepted && inviteFormInitial && (
               <ConfirmInviteBlock
@@ -228,7 +228,7 @@ export function InviteStatusPopover({
               <div className="space-y-3">
                 <div className="flex items-center gap-2 rounded-md border border-border bg-cool-muted p-3 text-xs text-cool-muted-foreground">
                   <MailOpen className="h-3.5 w-3.5" />
-                  No email on file for this lot — add one to send an invitation.
+                  No email on file for this lot , add one to send an invitation.
                 </div>
                 <Link
                   href={`/ocs/${ocCode}/lots/${lotId}?tab=owner`}
@@ -248,7 +248,7 @@ export function InviteStatusPopover({
               </div>
             )}
 
-            {/* Invite history — informational, collapsed below the action. */}
+            {/* Invite history , informational, collapsed below the action. */}
             {!loading && historyRows.length > 0 && (
               <div>
                 <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground mb-2">
@@ -335,7 +335,7 @@ function ConfirmInviteBlock({
       <div className="rounded-md border border-border bg-cool-muted px-3 py-2.5 text-sm space-y-1.5">
         <div>
           <p className="text-xs uppercase tracking-wide text-cool-muted-foreground">Owner</p>
-          <p className="font-medium text-foreground">{ownerName || "—"} · Lot {lotNumber}</p>
+          <p className="font-medium text-foreground">{ownerName || ","} · Lot {lotNumber}</p>
         </div>
         <div>
           <p className="text-xs uppercase tracking-wide text-cool-muted-foreground">Email</p>

@@ -120,7 +120,7 @@ function BudgetCard({
           <DialogHeader>
             <DialogTitle>Approve {fundLabel.toLowerCase()} budget</DialogTitle>
             <DialogDescription>
-              Approving locks this budget so levies can be generated from it. Add a note if you like — e.g. the meeting it was adopted at.
+              Approving locks this budget so levies can be generated from it. Add a note if you like , e.g. the meeting it was adopted at.
             </DialogDescription>
           </DialogHeader>
           <div className="space-y-1.5">
@@ -217,7 +217,7 @@ export function BudgetTab({ ocId, financialYearStartMonth }: { ocId: string; fin
 
   return (
     <div className="space-y-4">
-      {/* Header — create button top-right only when budgets already exist;
+      {/* Header , create button top-right only when budgets already exist;
           the empty state owns the only button otherwise. */}
       {currentBudgets.length > 0 && (
         <div className="flex items-center justify-end">

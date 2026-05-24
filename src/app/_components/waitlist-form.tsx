@@ -41,7 +41,7 @@ export function WaitlistForm() {
 
       setSubmitted(true);
       if (result.alreadyOnList) {
-        toast.success("You're already on the list — we'll be in touch soon.");
+        toast.success("You're already on the list , we'll be in touch soon.");
       } else {
         toast.success("You're on the list. We'll be in touch.");
       }

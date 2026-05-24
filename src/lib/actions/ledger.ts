@@ -43,7 +43,7 @@ export async function getLotBalance(lotId: string): Promise<LotLedgerState> {
 
   if (data) return mapLedgerState(data);
 
-  // Backfill: lot exists but no state row — recompute to seed it.
+  // Backfill: lot exists but no state row , recompute to seed it.
   await supabase.rpc("recompute_lot_ledger_state", { p_lot_id: lotId });
   const { data: seeded } = await supabase
     .from("lot_ledger_state")
@@ -425,7 +425,7 @@ export async function getLedgerEntryDetail(
 ): Promise<LedgerEntryDetail> {
   const supabase = createServerClient();
 
-  // PP5-D-B: pre-fetch parent.status via self-join — surfaces in the
+  // PP5-D-B: pre-fetch parent.status via self-join , surfaces in the
   // drawer's duplicate review banner without an extra round-trip.
   const { data: entry, error: entryErr } = await supabase
     .from("lot_ledger_entries")
@@ -437,7 +437,7 @@ export async function getLedgerEntryDetail(
 
   const mappedEntry = mapLedgerEntry(entry);
 
-  // Audit trail, source chain, and related entry — all in parallel
+  // Audit trail, source chain, and related entry , all in parallel
   const relatedEntryId =
     mappedEntry.category === "void_offset"
       ? mappedEntry.voids_entry_id

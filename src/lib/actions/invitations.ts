@@ -33,7 +33,7 @@ export async function inviteStrataManager(data: { email: string; name: string })
     return { error: "A pending invitation already exists for this email" };
   }
 
-  // Need a oc_id for the FK — use any active oc from the company
+  // Need a oc_id for the FK , use any active oc from the company
   const { data: anySub } = await supabase
     .from("owners_corporations")
     .select("id")
@@ -93,7 +93,7 @@ export async function inviteStrataManager(data: { email: string; name: string })
  * Look up an invitation by its 10-char code. Rate-limited by client IP to
  * defuse brute-force enumeration: max 10 lookups per IP per 10 minutes.
  *
- * Returns null when the code is unknown OR the IP is rate-limited — we
+ * Returns null when the code is unknown OR the IP is rate-limited , we
  * deliberately don't distinguish the two so an attacker can't tell whether
  * a code shape is valid by watching response codes.
  */
@@ -133,14 +133,14 @@ export async function getInvitationByCode(rawCode: string) {
 }
 
 export async function acceptInvitation(rawCode: string) {
-  // Item 19 — email decoupling. Invitation lookup is by `code` ONLY; we do
+  // Item 19 , email decoupling. Invitation lookup is by `code` ONLY; we do
   // NOT require profile.email to match invitation.email. The same person can
   // legitimately be on multiple OCs under different contact emails, but want
   // to manage them all from a single platform login. The `lot_owners.email`
   // column (OC-facing contact) stays untouched by this flow; only the
   // entity-model `owners.profile_id` gets linked. Updates to lot_owners.email
   // are blocked once status='accepted' (see updateLotOwnerContact in
-  // src/lib/actions/lot-edit.ts) — the owner then changes their contact
+  // src/lib/actions/lot-edit.ts) , the owner then changes their contact
   // email from the portal themselves.
   const code = normaliseInviteCode(rawCode);
   if (!code) return { error: "Invalid invite code" };
@@ -205,7 +205,7 @@ export async function acceptInvitation(rawCode: string) {
         .eq("id", profile.id);
     }
   } else {
-    // Lot owner — create oc member
+    // Lot owner , create oc member
     await supabase
       .from("profiles")
       .update({ role: "lot_owner" })
@@ -252,7 +252,7 @@ export async function acceptInvitation(rawCode: string) {
             .update({ profile_id: profile.id })
             .eq("id", activeOwnership.owner_id);
         } else if (managementCompanyId) {
-          // Legacy OC — no owner / lot_ownership yet. Create both.
+          // Legacy OC , no owner / lot_ownership yet. Create both.
           const acceptDate = new Date().toISOString().slice(0, 10);
           const { data: createdOwner } = await supabase
             .from("owners")
@@ -278,7 +278,7 @@ export async function acceptInvitation(rawCode: string) {
           }
         }
       } catch (err) {
-        // Entity-model writes are non-fatal — the legacy oc_member row
+        // Entity-model writes are non-fatal , the legacy oc_member row
         // above is enough for the existing read paths.
         console.error("acceptInvitation: entity-model link failed (non-fatal)", err);
       }

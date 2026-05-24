@@ -31,7 +31,7 @@ function Calendar({
     <DayPicker
       showOutsideDays={showOutsideDays}
       className={cn(
-        // Plain card-coloured calendar. No more navy strip up top — the
+        // Plain card-coloured calendar. No more navy strip up top , the
         // simple shadcn layout reads better when embedded in dialogs /
         // drawers and against the page grey.
         "group/calendar bg-card [--cell-radius:var(--radius-md)] [--cell-size:--spacing(7)] in-data-[slot=card-content]:bg-transparent in-data-[slot=popover-content]:bg-transparent",
@@ -54,7 +54,7 @@ function Calendar({
         ),
         month: cn("flex w-full flex-col gap-3", defaultClassNames.month),
         nav: cn(
-          // Plain transparent strip with foreground chevrons — no more navy
+          // Plain transparent strip with foreground chevrons , no more navy
           // navigation bar. Sits above the month_caption via absolute
           // positioning courtesy of react-day-picker.
           "absolute inset-x-0 top-0 flex w-full items-center justify-between gap-1 bg-transparent px-1 py-1 z-10",
@@ -71,7 +71,7 @@ function Calendar({
           defaultClassNames.button_next
         ),
         month_caption: cn(
-          // Plain month / year label on transparent — same height as the
+          // Plain month / year label on transparent , same height as the
           // nav row above so the chevrons sit either side of the label.
           "relative flex h-(--cell-size) w-full items-center justify-center px-(--cell-size)",
           defaultClassNames.month_caption

@@ -1,10 +1,10 @@
 "use client";
 
-import { useMemo, useState } from "react";
-import { Plus, BookOpen } from "lucide-react";
+import { useMemo, useState, useTransition } from "react";
+import { Plus, BookOpen, Download, MoreHorizontal, Lock } from "lucide-react";
+import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { Badge } from "@/components/ui/badge";
 import { EmptyState } from "@/components/shared/empty-state";
 import {
   Table, TableBody, TableCell, TableHead, TableHeader, TableRow,
@@ -12,7 +12,14 @@ import {
 import {
   Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
 } from "@/components/ui/select";
-import { ACCOUNT_TYPE_LABEL, type CoaAccount, type CoaAccountType } from "@/lib/chart-of-accounts";
+import {
+  DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
+import {
+  ACCOUNT_TYPE_LABEL, ACCOUNT_TYPE_OPTIONS, GST_TREATMENT_LABEL,
+  isProtectedSystemAccount, type CoaAccount, type CoaAccountType,
+} from "@/lib/chart-of-accounts";
+import { setCoaAccountActive } from "@/lib/actions/chart-of-accounts";
 import { CreateAccountDrawer } from "@/components/chart-of-accounts/create-account-drawer";
 
 const TYPE_BADGE: Record<CoaAccountType, string> = {
@@ -23,124 +30,206 @@ const TYPE_BADGE: Record<CoaAccountType, string> = {
   expense: "bg-amber-50 text-amber-700 border-amber-200",
 };
 
-// Section dividers shown between code bands so the long list reads as five
-// logical groups instead of a wall of numbers.
-const BANDS: { range: string; label: string; starts: string }[] = [
-  { range: "1000s", label: "Assets", starts: "1" },
-  { range: "2000s", label: "Liabilities", starts: "2" },
-  { range: "3000s", label: "Member funds / Equity", starts: "3" },
-  { range: "4000s", label: "Income", starts: "4" },
-  { range: "5000s", label: "Expenses (insurance, compliance, professional)", starts: "5" },
-  { range: "6000s", label: "Expenses (operating, maintenance)", starts: "6" },
-];
+function downloadCsv(rows: CoaAccount[]) {
+  const header = ["Code", "Name", "Type", "GST treatment", "Status"];
+  const lines = [header.join(",")];
+  for (const a of rows) {
+    const cells = [
+      a.code,
+      a.name,
+      ACCOUNT_TYPE_LABEL[a.account_type],
+      GST_TREATMENT_LABEL[a.gst_treatment],
+      a.archived_at ? "Inactive" : "Active",
+    ].map((v) => {
+      const s = String(v ?? "");
+      return /[",\n]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s;
+    });
+    lines.push(cells.join(","));
+  }
+  const blob = new Blob([lines.join("\r\n")], { type: "text/csv;charset=utf-8;" });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url;
+  const stamp = new Date().toISOString().slice(0, 10);
+  a.download = `chart-of-accounts-${stamp}.csv`;
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+  URL.revokeObjectURL(url);
+}
 
 export function ChartOfAccountsContent({ initialAccounts }: { initialAccounts: CoaAccount[] }) {
   const [accounts, setAccounts] = useState<CoaAccount[]>(initialAccounts);
   const [query, setQuery] = useState("");
   const [typeFilter, setTypeFilter] = useState<CoaAccountType | "all">("all");
+  const [statusFilter, setStatusFilter] = useState<"all" | "active" | "inactive">("active");
   const [drawerOpen, setDrawerOpen] = useState(false);
+  const [pendingId, setPendingId] = useState<string | null>(null);
+  const [, startTransition] = useTransition();
 
   const filtered = useMemo(() => {
     const q = query.trim().toLowerCase();
     return accounts
-      .filter((a) => !a.archived_at)
+      .filter((a) => {
+        if (statusFilter === "active") return !a.archived_at;
+        if (statusFilter === "inactive") return !!a.archived_at;
+        return true;
+      })
       .filter((a) => typeFilter === "all" || a.account_type === typeFilter)
       .filter((a) => {
         if (!q) return true;
         return a.code.includes(q) || a.name.toLowerCase().includes(q);
       });
-  }, [accounts, query, typeFilter]);
+  }, [accounts, query, typeFilter, statusFilter]);
 
-  // Group filtered accounts by leading digit so we can render banded section
-  // headers between them.
-  const grouped = useMemo(() => {
-    const map = new Map<string, CoaAccount[]>();
-    for (const a of filtered) {
-      const key = a.code[0] ?? "?";
-      if (!map.has(key)) map.set(key, []);
-      map.get(key)!.push(a);
-    }
-    return BANDS.map((band) => ({ ...band, items: map.get(band.starts) ?? [] }))
-      .filter((band) => band.items.length > 0);
-  }, [filtered]);
+  function toggleActive(account: CoaAccount) {
+    const nextActive = !!account.archived_at; // currently inactive then activate
+    setPendingId(account.id);
+    startTransition(async () => {
+      const res = await setCoaAccountActive(account.id, nextActive);
+      setPendingId(null);
+      if (res.error) {
+        toast.error(res.error);
+        return;
+      }
+      setAccounts((prev) =>
+        prev.map((a) =>
+          a.id === account.id
+            ? { ...a, archived_at: nextActive ? null : new Date().toISOString() }
+            : a,
+        ),
+      );
+      toast.success(nextActive ? "Account activated" : "Account deactivated");
+    });
+  }
 
   return (
     <div className="space-y-6">
-      <div className="flex flex-wrap items-center justify-between gap-3">
-        <p className="text-sm text-muted-foreground">
-          Firm-wide accounts that every OC&apos;s budgets, levies and reports draw from.
+      {/* Top explainer (replaces the old multi-table layout) */}
+      <div className="rounded-md border border-border bg-card p-4 text-sm text-muted-foreground">
+        <p>
+          Your firm&apos;s general-ledger accounts. The number band tells you where
+          each account sits on your reports: <strong>1000s</strong> are assets,
+          <strong> 2000s</strong> liabilities, <strong>3000s</strong> member funds
+          / equity, <strong>4000s</strong> income, <strong>5000s &amp; 6000s</strong>{" "}
+          expenses. Built-in accounts (locked icon) are required by the platform
+          and can&apos;t be deactivated.
         </p>
-        <div className="flex items-center gap-2">
-          <Input
-            value={query}
-            onChange={(e) => setQuery(e.target.value)}
-            placeholder="Search code or name"
-            className="w-48"
-          />
-          <Select value={typeFilter} onValueChange={(v) => setTypeFilter((v as CoaAccountType | "all") ?? "all")}>
-            <SelectTrigger className="w-40">
-              <SelectValue />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="all">All types</SelectItem>
-              <SelectItem value="asset">{ACCOUNT_TYPE_LABEL.asset}</SelectItem>
-              <SelectItem value="liability">{ACCOUNT_TYPE_LABEL.liability}</SelectItem>
-              <SelectItem value="equity">{ACCOUNT_TYPE_LABEL.equity}</SelectItem>
-              <SelectItem value="income">{ACCOUNT_TYPE_LABEL.income}</SelectItem>
-              <SelectItem value="expense">{ACCOUNT_TYPE_LABEL.expense}</SelectItem>
-            </SelectContent>
-          </Select>
-          <Button onClick={() => setDrawerOpen(true)}>
-            <Plus className="size-4" />
-            Add account
-          </Button>
-        </div>
+      </div>
+
+      <div className="flex flex-wrap items-center justify-end gap-2">
+        <Input
+          value={query}
+          onChange={(e) => setQuery(e.target.value)}
+          placeholder="Search code or name"
+          className="w-48"
+        />
+        <Select value={typeFilter} onValueChange={(v) => setTypeFilter((v as CoaAccountType | "all") ?? "all")}>
+          <SelectTrigger className="w-40">
+            <SelectValue>{typeFilter === "all" ? "All types" : ACCOUNT_TYPE_LABEL[typeFilter]}</SelectValue>
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value="all">All types</SelectItem>
+            {ACCOUNT_TYPE_OPTIONS.map((opt) => (
+              <SelectItem key={opt.value} value={opt.value}>{opt.label}</SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
+        <Select value={statusFilter} onValueChange={(v) => setStatusFilter((v as "all" | "active" | "inactive") ?? "active")}>
+          <SelectTrigger className="w-36">
+            <SelectValue>
+              {statusFilter === "all" ? "All status" : statusFilter === "active" ? "Active" : "Inactive"}
+            </SelectValue>
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value="active">Active</SelectItem>
+            <SelectItem value="inactive">Inactive</SelectItem>
+            <SelectItem value="all">All status</SelectItem>
+          </SelectContent>
+        </Select>
+        <Button variant="secondary" onClick={() => downloadCsv(filtered)} disabled={filtered.length === 0}>
+          <Download className="size-4" />
+          Export CSV
+        </Button>
+        <Button onClick={() => setDrawerOpen(true)}>
+          <Plus className="size-4" />
+          Add account
+        </Button>
       </div>
 
       {filtered.length === 0 ? (
         <EmptyState
           icon={BookOpen}
           title="No accounts match"
-          description={query || typeFilter !== "all" ? "Try clearing the filters." : "Add your first account to get started."}
+          description={query || typeFilter !== "all" || statusFilter !== "active" ? "Try clearing the filters." : "Add your first account to get started."}
         />
       ) : (
-        <div className="space-y-6">
-          {grouped.map((band) => (
-            <div key={band.range}>
-              <div className="mb-2 flex items-baseline gap-3">
-                <h2 className="text-sm font-semibold text-foreground">{band.label}</h2>
-                <span className="text-xs text-muted-foreground">{band.range}</span>
-              </div>
-              <div className="overflow-hidden rounded-lg border border-border">
-                <Table variant="striped">
-                  <TableHeader>
-                    <TableRow>
-                      <TableHead className="w-24">Code</TableHead>
-                      <TableHead>Name</TableHead>
-                      <TableHead className="w-28">Type</TableHead>
-                      <TableHead className="w-20" />
-                    </TableRow>
-                  </TableHeader>
-                  <TableBody>
-                    {band.items.map((a) => (
-                      <TableRow key={a.id}>
-                        <TableCell className="font-mono text-xs">{a.code}</TableCell>
-                        <TableCell className="text-sm text-foreground">{a.name}</TableCell>
-                        <TableCell>
-                          <span className={`inline-flex rounded-full border px-2 py-0.5 text-xs font-medium ${TYPE_BADGE[a.account_type]}`}>
-                            {ACCOUNT_TYPE_LABEL[a.account_type]}
-                          </span>
-                        </TableCell>
-                        <TableCell>
-                          {a.is_system && <Badge variant="neutral" className="rounded-full">Built-in</Badge>}
-                        </TableCell>
-                      </TableRow>
-                    ))}
-                  </TableBody>
-                </Table>
-              </div>
-            </div>
-          ))}
+        <div className="overflow-hidden rounded-lg border border-border">
+          <Table variant="striped">
+            <TableHeader>
+              <TableRow>
+                <TableHead className="w-24">Code</TableHead>
+                <TableHead>Name</TableHead>
+                <TableHead className="w-28">Type</TableHead>
+                <TableHead className="w-40">GST treatment</TableHead>
+                <TableHead className="w-24">Status</TableHead>
+                <TableHead className="w-12" />
+              </TableRow>
+            </TableHeader>
+            <TableBody>
+              {filtered.map((a) => {
+                const locked = isProtectedSystemAccount(a);
+                const active = !a.archived_at;
+                return (
+                  <TableRow key={a.id} className={active ? undefined : "opacity-60"}>
+                    <TableCell className="font-mono text-xs">{a.code}</TableCell>
+                    <TableCell className="text-sm text-foreground">
+                      <div className="flex items-center gap-1.5">
+                        {locked && <Lock className="size-3 text-muted-foreground" aria-label="Built-in account" />}
+                        <span>{a.name}</span>
+                      </div>
+                    </TableCell>
+                    <TableCell>
+                      <span className={`inline-flex rounded-full border px-2 py-0.5 text-xs font-medium ${TYPE_BADGE[a.account_type]}`}>
+                        {ACCOUNT_TYPE_LABEL[a.account_type]}
+                      </span>
+                    </TableCell>
+                    <TableCell className="text-sm text-muted-foreground">
+                      {GST_TREATMENT_LABEL[a.gst_treatment]}
+                    </TableCell>
+                    <TableCell className="text-xs">
+                      {active ? (
+                        <span className="text-emerald-700">Active</span>
+                      ) : (
+                        <span className="text-muted-foreground">Inactive</span>
+                      )}
+                    </TableCell>
+                    <TableCell>
+                      <DropdownMenu>
+                        <DropdownMenuTrigger
+                          render={
+                            <button
+                              type="button"
+                              className="inline-flex h-7 w-7 items-center justify-center rounded-md text-muted-foreground hover:bg-muted cursor-pointer disabled:opacity-50"
+                              disabled={pendingId === a.id || locked}
+                              aria-label="Account actions"
+                            />
+                          }
+                        >
+                          <MoreHorizontal className="size-4" />
+                        </DropdownMenuTrigger>
+                        <DropdownMenuContent align="end">
+                          <DropdownMenuItem onClick={() => toggleActive(a)}>
+                            {active ? "Deactivate" : "Activate"}
+                          </DropdownMenuItem>
+                        </DropdownMenuContent>
+                      </DropdownMenu>
+                    </TableCell>
+                  </TableRow>
+                );
+              })}
+            </TableBody>
+          </Table>
         </div>
       )}
 

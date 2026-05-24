@@ -84,18 +84,18 @@ export function InviteConfirmDialog({
     <Dialog open={open} onOpenChange={(o) => { if (!o) onClose(); }}>
       <DialogContent className="sm:max-w-md">
         <DialogHeader>
-          <DialogTitle>Invite owner — Lot {lotNumber}</DialogTitle>
+          <DialogTitle>Invite owner , Lot {lotNumber}</DialogTitle>
           <DialogDescription>
             We&apos;ll email the owner an invitation link to set up their portal account.
           </DialogDescription>
         </DialogHeader>
         <div className="space-y-3">
-          {/* Owner + lot context, then the email — all read-only. The
+          {/* Owner + lot context, then the email , all read-only. The
               manager just confirms we're sending to the right address. */}
           <div className="rounded-md border border-border bg-cool-muted px-3 py-2.5 text-sm space-y-1.5">
             <div>
               <p className="text-xs uppercase tracking-wide text-cool-muted-foreground">Owner</p>
-              <p className="font-medium text-foreground">{ownerName ?? "—"} · Lot {lotNumber}</p>
+              <p className="font-medium text-foreground">{ownerName ?? ","} · Lot {lotNumber}</p>
             </div>
             <div>
               <p className="text-xs uppercase tracking-wide text-cool-muted-foreground">Email</p>

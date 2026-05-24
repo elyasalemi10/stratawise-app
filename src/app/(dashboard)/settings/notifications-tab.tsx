@@ -131,7 +131,7 @@ export function NotificationsTab({
               const isMandatory = MANDATORY_NOTIFICATION_TYPES.has(type);
               const isManagerial = MANAGERIAL_NOTIFICATION_TYPES.has(type);
               const emailAutoOptOut = autoOptOutMap.get(`${type}:email`);
-              // No in-app auto-opt-out pathway today — only Resend's
+              // No in-app auto-opt-out pathway today , only Resend's
               // email.complained webhook fires the auto-opt-out write,
               // and that's email-channel-only. Banner is channel-
               // specific to avoid mis-labelling future in-app pathways.
@@ -175,7 +175,7 @@ export function NotificationsTab({
                       <div className="flex flex-col items-center gap-1">
                         <Switch checked={true} disabled />
                         <span className="text-xs text-muted-foreground">
-                          Operational signal — always sent
+                          Operational signal , always sent
                         </span>
                       </div>
                     ) : (

@@ -16,7 +16,7 @@ import { EmptyState } from "@/components/shared/empty-state";
 import { Wallet } from "lucide-react";
 
 // OC-level ledger page (first cut). For now we show only the entries
-// that exist today — opening balances seeded during OC creation. Live
+// that exist today , opening balances seeded during OC creation. Live
 // movement (levy issuance, payment receipts, interest accrual,
 // reconciliation matches) lands here in future iterations; the table
 // shape and indexes are already in place to accept them.
@@ -185,7 +185,7 @@ export default async function OCLedgerPage({
                           {lab.label}
                         </Link>
                       ) : (
-                        <span className="text-muted-foreground">—</span>
+                        <span className="text-muted-foreground">,</span>
                       )}
                     </TableCell>
                     <TableCell className="text-sm text-muted-foreground">

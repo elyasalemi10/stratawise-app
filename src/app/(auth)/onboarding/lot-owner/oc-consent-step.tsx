@@ -10,12 +10,12 @@ import { Label } from "@/components/ui/label";
 import { recordOcConsent } from "./actions";
 
 // The 5 digital-communication categories (mirrors the manager-side wizard
-// list). Consent is recorded PER OC — the owner confirms which of these they
+// list). Consent is recorded PER OC , the owner confirms which of these they
 // agree to receive electronically for this specific Owners Corporation.
 const CATEGORIES: Array<{ value: string; label: string; hint: string }> = [
   { value: "meetings", label: "Meeting notices and minutes", hint: "AGMs, special and committee meetings." },
   { value: "levies", label: "Levy notices", hint: "Quarterly/annual levies and arrears reminders." },
-  { value: "breach", label: "Breach notices", hint: "Notices about rule breaches — legally significant." },
+  { value: "breach", label: "Breach notices", hint: "Notices about rule breaches , legally significant." },
   { value: "financial_reports", label: "Financial reports", hint: "Annual financial statements and budgets." },
   { value: "general_correspondence", label: "General correspondence", hint: "Routine updates and notifications." },
 ];

@@ -56,7 +56,7 @@ export function SectionCards() {
       />
       <KPICard
         label="Compliance"
-        value="—"
+        value=","
         description="No data yet"
         icon={<CheckCircle2 className="h-5 w-5" />}
       />

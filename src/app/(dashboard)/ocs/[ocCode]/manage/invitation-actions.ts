@@ -239,7 +239,7 @@ export async function inviteLotOwner(
  * without an email; treats lots with an accepted invite as already-done.
  *
  * Returns a tally so the toast can summarise: "Sent N, skipped M, K
- * failed". Errors are collected but don't abort the rest of the batch —
+ * failed". Errors are collected but don't abort the rest of the batch ,
  * one bad lot shouldn't poison the whole sweep.
  */
 export async function bulkInviteLotOwners(

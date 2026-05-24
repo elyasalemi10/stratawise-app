@@ -8,7 +8,7 @@ export const dynamic = "force-dynamic";
 
 // Lot-owner onboarding router. Runs, in order:
 //   1. Account-level Terms / Privacy acceptance (once per account).
-//   2. Per-OC digital-consent — one step for each OC the owner belongs to
+//   2. Per-OC digital-consent , one step for each OC the owner belongs to
 //      that they haven't consented for yet. Consent is per (owner, OC), so an
 //      owner who already has an account still completes this for each new OC.
 // Falls through to the dashboard once everything's done.
@@ -27,14 +27,14 @@ export default async function LotOwnerOnboardingPage() {
   if (!profile) redirect("/onboarding");
   if (profile.role !== "lot_owner") redirect("/onboarding");
 
-  // Step 1 — account-level T&C.
+  // Step 1 , account-level T&C.
   const { count: tcCount } = await supabase
     .from("user_consents")
     .select("id", { count: "exact", head: true })
     .eq("profile_id", profile.id);
   if (!tcCount) return <TcStep />;
 
-  // Step 2 — per-OC consent. Find OC memberships missing a consent record.
+  // Step 2 , per-OC consent. Find OC memberships missing a consent record.
   const { data: memberships } = await supabase
     .from("oc_members")
     .select("oc_id, lot_id, owners_corporations(name)")

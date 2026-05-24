@@ -1,11 +1,11 @@
 "use client";
 
 // ============================================================================
-// MatchMetadataDrawer — read-only side drawer showing strategies_tried
+// MatchMetadataDrawer , read-only side drawer showing strategies_tried
 // ----------------------------------------------------------------------------
 // Sourced from the orchestrator's audit_log entry written by
 // `writeOrchestratorAudit` in src/lib/reconciliation/orchestrator.ts. The
-// drawer itself is presentational — the parent passes the loaded payload
+// drawer itself is presentational , the parent passes the loaded payload
 // (or undefined while loading) via the `audit` prop.
 //
 // `audit` semantics:

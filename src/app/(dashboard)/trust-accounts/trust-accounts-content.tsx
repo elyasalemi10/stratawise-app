@@ -116,9 +116,9 @@ function TrustAccountCard({
 
         {(account.bsb || account.account_number) && (
           <p className="font-mono text-xs text-muted-foreground">
-            {account.bsb ? account.bsb.replace(/(\d{3})(\d{3})/, "$1-$2") : "BSB —"}{" "}
+            {account.bsb ? account.bsb.replace(/(\d{3})(\d{3})/, "$1-$2") : "BSB ,"}{" "}
             ·{" "}
-            {account.account_number ?? "—"}
+            {account.account_number ?? ","}
           </p>
         )}
 
@@ -138,7 +138,7 @@ function TrustAccountCard({
                     month: "short",
                     year: "numeric",
                   })
-                : "—"}
+                : ","}
             </p>
           </div>
         </div>

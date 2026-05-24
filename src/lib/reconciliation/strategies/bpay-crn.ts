@@ -1,5 +1,5 @@
 // ============================================================================
-// Strategy 2 — BPAY CRN
+// Strategy 2 , BPAY CRN
 // ----------------------------------------------------------------------------
 // Extracts the BPAY Customer Reference Number from the description, validates
 // the MOD10V01 check digit, and looks up the matching levy_notice on this
@@ -9,7 +9,7 @@
 // Behaviour (resolved spec):
 //   - Skip if bank_account.bpay_biller_code IS NULL (BPAY not enabled).
 //   - Regex tolerates "BPAY 12345678", "BPAY: 12345678", "BPAY-12345678",
-//     etc. — up to 10 non-digit characters between "BPAY" and the digits.
+//     etc. , up to 10 non-digit characters between "BPAY" and the digits.
 //   - Validate the captured CRN with bpay-crn.ts. Invalid check digit →
 //     fall through with reason 'invalid_check_digit'.
 //   - Fund scope: notice.fund_type must equal bank account's fund.
@@ -19,7 +19,7 @@
 //
 // Allocation is single-row: BPAY CRNs map 1:1 to a levy notice. If the
 // transaction amount exceeds outstanding, allocate min(amount, outstanding)
-// — the orchestrator handles the partial-match notes update.
+// , the orchestrator handles the partial-match notes update.
 // ============================================================================
 
 import { createServerClient } from "@/lib/supabase";

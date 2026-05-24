@@ -1,7 +1,7 @@
 "use client";
 
 // ============================================================================
-// MappingDetailDrawer — read-only Sheet showing raw_examples + audit history
+// MappingDetailDrawer , read-only Sheet showing raw_examples + audit history
 // ----------------------------------------------------------------------------
 // Loads on demand via getMappingDetail when the parent sets `mappingId`.
 // The drawer renders skeletons while the detail is loading, then displays
@@ -151,7 +151,7 @@ export function MappingDetailDrawer({
                 </div>
                 {detail.raw_examples.length === 0 ? (
                   <p className="text-sm text-muted-foreground italic">
-                    No raw examples — this mapping was created manually.
+                    No raw examples , this mapping was created manually.
                   </p>
                 ) : (
                   <ul className="space-y-1">

@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { Webhook } from "svix";
 import { createServerClient } from "@/lib/supabase";
 
-// HMAC verification needs Node's crypto + raw body access — force Node runtime.
+// HMAC verification needs Node's crypto + raw body access , force Node runtime.
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
@@ -17,7 +17,7 @@ export const dynamic = "force-dynamic";
 //      via WHERE external_id = event.data.email_id.
 //   3. Status-priority guard prevents out-of-order events from regressing
 //      state. Priority: queued(0) < sent(1) < delivered(2) < opened(3).
-//      bounced/failed are TERMINAL — no transitions out.
+//      bounced/failed are TERMINAL , no transitions out.
 //   4. email.complained → status='bounced' + auto opt-out write to
 //      notification_preferences (channel='email', enabled=false).
 //   5. Unknown / clicked / orphan-external_id events → 200 OK no-op.
@@ -132,7 +132,7 @@ export async function POST(request: NextRequest): Promise<Response> {
 
   switch (event.type) {
     case "email.sent":
-      // No-op — emit-time already wrote status='sent'.
+      // No-op , emit-time already wrote status='sent'.
       return NextResponse.json({ ok: true, applied: "no_op" });
 
     case "email.delivered":
@@ -217,7 +217,7 @@ export async function POST(request: NextRequest): Promise<Response> {
       return NextResponse.json({ ok: true, applied: "no_op_clicked" });
 
     default:
-      // Unknown event types are 200-OK'd without action — Resend may add
+      // Unknown event types are 200-OK'd without action , Resend may add
       // events later and we don't want to trigger retries for them.
       return NextResponse.json({ ok: true, applied: "no_op_unknown" });
   }

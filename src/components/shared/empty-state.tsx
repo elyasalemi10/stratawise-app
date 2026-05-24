@@ -2,15 +2,15 @@ import * as React from "react";
 import { Card, CardContent } from "@/components/ui/card";
 
 // Standardised empty-state block. Used wherever a card/section/tab has
-// nothing to show — guarantees a consistent visual (faded icon → bold
+// nothing to show , guarantees a consistent visual (faded icon → bold
 // title → muted description → optional action) instead of every page
 // inventing its own.
 //
 // Visual contract (locked in CLAUDE.md):
-//   - icon  — h-12 w-12, text-muted-foreground/40 (faded grey)
-//   - title — text-base font-semibold text-foreground
-//   - body  — text-sm text-muted-foreground
-//   - action — optional <Button> rendered below the body
+//   - icon  , h-12 w-12, text-muted-foreground/40 (faded grey)
+//   - title , text-base font-semibold text-foreground
+//   - body  , text-sm text-muted-foreground
+//   - action , optional <Button> rendered below the body
 //
 // Use as a drop-in <Card>: `<EmptyState ... />`. Pass `card={false}` to
 // render bare (for empty states inside an existing card or table cell).

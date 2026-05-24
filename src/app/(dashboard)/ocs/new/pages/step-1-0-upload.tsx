@@ -7,7 +7,7 @@ import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
 import { uploadPlan, parseDraftWithGemini, selectDetectedOc, skipParsing } from "../actions";
 
-// Wizard Step 1 sub-step 0 — Upload chooser.
+// Wizard Step 1 sub-step 0 , Upload chooser.
 //
 // Renders inline inside the General progress-bar slot (not as a popup). The
 // manager either uploads a plan PDF (button, not dropzone) or clicks
@@ -130,7 +130,7 @@ export function Step1Upload({
       />
 
       {phase === "idle" && !filename && (
-        // Whole dropzone is one click target — click anywhere inside opens
+        // Whole dropzone is one click target , click anywhere inside opens
         // the file picker. Drag + drop also wired so a PDF dropped onto the
         // panel triggers the upload directly.
         <div
@@ -181,7 +181,7 @@ export function Step1Upload({
             )}
             {phase === "complete" && (
               <p className="text-xs text-foreground">
-                Plan read successfully{detectedOcs.length > 1 ? ` — found ${detectedOcs.length} OCs on this plan` : ""}.
+                Plan read successfully{detectedOcs.length > 1 ? ` , found ${detectedOcs.length} OCs on this plan` : ""}.
               </p>
             )}
             {phase === "failed" && parseError && (
@@ -198,7 +198,7 @@ export function Step1Upload({
       {phase === "complete" && detectedOcs.length > 1 && (
         <div className="rounded-md border border-border bg-card p-4 space-y-3">
           <Label className="text-sm font-semibold text-foreground">
-            This plan defines {detectedOcs.length} owners corporations — pick the first to set up:
+            This plan defines {detectedOcs.length} owners corporations , pick the first to set up:
           </Label>
           <div className="space-y-1.5">
             {detectedOcs.map((o, i) => {
@@ -213,7 +213,7 @@ export function Step1Upload({
                   }`}
                 >
                   <span className="font-medium">
-                    OC{o.oc_number}{o.oc_name ? ` — ${o.oc_name}` : ""}
+                    OC{o.oc_number}{o.oc_name ? ` , ${o.oc_name}` : ""}
                   </span>
                   <span className="text-xs text-muted-foreground">{o.lot_count} lots</span>
                 </button>

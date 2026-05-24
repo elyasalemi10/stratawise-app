@@ -87,7 +87,7 @@ export function StepOperating({ onNext, onBack }: { onNext: () => void; onBack: 
         <h2 className="text-lg font-semibold text-foreground">Your operating account</h2>
         <p className="mt-1 text-sm text-muted-foreground">
           Where management fee transfers from each OC&apos;s trust account land.
-          Optional — you can add it later in Settings.
+          Optional , you can add it later in Settings.
         </p>
       </div>
 

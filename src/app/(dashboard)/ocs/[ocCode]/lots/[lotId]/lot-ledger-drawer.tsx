@@ -161,7 +161,7 @@ export function LedgerEntryDrawer({
     <Sheet open={open} onOpenChange={onOpenChange}>
       <SheetContent
         side="right"
-        // Override translate animations — fade-in only per CLAUDE.md
+        // Override translate animations , fade-in only per CLAUDE.md
         className="sm:max-w-lg overflow-y-auto [&[data-starting-style]]:!translate-x-0 [&[data-ending-style]]:!translate-x-0"
       >
         <SheetHeader className="border-b border-border pb-3">
@@ -424,7 +424,7 @@ export function LedgerEntryDrawer({
 
     {/* PP5-D-B: ledger-side duplicate review dialog. Mounted as a sibling
         to the Sheet (not nested) so the Dialog primitive's portal is
-        independent. onResolved closes the Sheet too — the entry's state
+        independent. onResolved closes the Sheet too , the entry's state
         has changed and stale drawer data shouldn't persist (Gap J). */}
     {entry && entry.duplicate_metadata && entry.duplicate_status && (() => {
       const meta = entry.duplicate_metadata as {
@@ -475,7 +475,7 @@ export function LedgerEntryDrawer({
           onOpenChange={setLedgerDupOpen}
           payload={dialogPayload}
           onResolved={() => {
-            // Auto-close the drawer Sheet after a successful action — the
+            // Auto-close the drawer Sheet after a successful action , the
             // entry's state has changed and the drawer's stale data
             // shouldn't persist (PP5-D-B Gap J ratification).
             onOpenChange(false);

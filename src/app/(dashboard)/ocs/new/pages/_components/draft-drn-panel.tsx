@@ -47,7 +47,7 @@ type Stage = "idle" | "uploading" | "preview" | "saved" | "failed";
 // Macquarie DRN CSV import surface for the wizard. Lives on Page 5 (Bank
 // accounts) once the manager picks Macquarie as the admin-fund bank. Mirrors
 // the post-creation flow but stages the rows on draft_json.lot_drns rather
-// than the lot_drns table — lots don't have IDs yet. completeWizard does the
+// than the lot_drns table , lots don't have IDs yet. completeWizard does the
 // final lot_id resolution + insert.
 //
 // "Skip for now" is permitted: a Macquarie OC can still be created without
@@ -265,8 +265,8 @@ export function DraftDrnPanel({ draftId, initialMappings, lots }: Props) {
                         <tr key={m.rowNumber}>
                           <td className="px-3 py-1.5 tabular-nums text-xs">{m.rowNumber}</td>
                           <td className="px-3 py-1.5 tabular-nums">{m.drn}</td>
-                          <td className="px-3 py-1.5">{m.primaryId ?? "—"}</td>
-                          <td className="px-3 py-1.5">{m.secondaryId ?? "—"}</td>
+                          <td className="px-3 py-1.5">{m.primaryId ?? ","}</td>
+                          <td className="px-3 py-1.5">{m.secondaryId ?? ","}</td>
                           <td className="px-3 py-1.5">
                             <Select
                               value={current != null ? String(current) : undefined}
@@ -283,14 +283,14 @@ export function DraftDrnPanel({ draftId, initialMappings, lots }: Props) {
                                   "border-destructive/50"
                                 }
                               >
-                                <SelectValue placeholder="— pick a lot —" />
+                                <SelectValue placeholder=", pick a lot ," />
                               </SelectTrigger>
                               <SelectContent>
                                 {lots.map((l) => (
                                   <SelectItem key={l.lot_number} value={String(l.lot_number)}>
                                     Lot {l.lot_number}
                                     {l.unit_number ? ` (${l.unit_number})` : ""}
-                                    {l.owner_name ? ` — ${l.owner_name}` : ""}
+                                    {l.owner_name ? ` , ${l.owner_name}` : ""}
                                   </SelectItem>
                                 ))}
                               </SelectContent>

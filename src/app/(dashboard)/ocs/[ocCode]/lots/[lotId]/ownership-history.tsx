@@ -9,7 +9,7 @@ interface Props {
 }
 
 function formatDate(iso: string | null): string {
-  if (!iso) return "—";
+  if (!iso) return ",";
   return new Date(iso).toLocaleDateString("en-AU", {
     day: "numeric", month: "short", year: "numeric",
   });
@@ -51,7 +51,7 @@ export function OwnershipHistory({ history }: Props) {
                       )}
                       {entry.isPrimaryContact && <Badge variant="info">Primary</Badge>}
                     </div>
-                    <p className="mt-0.5 text-xs text-muted-foreground truncate">{entry.email ?? "—"}</p>
+                    <p className="mt-0.5 text-xs text-muted-foreground truncate">{entry.email ?? ","}</p>
                     <p className="mt-1 text-xs text-muted-foreground">
                       {formatDate(entry.joinedAt)} → {entry.leftAt ? formatDate(entry.leftAt) : "Current"}
                     </p>

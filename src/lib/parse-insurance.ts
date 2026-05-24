@@ -18,7 +18,7 @@ export type ParsedInsurancePolicy = {
   start_date: string | null;      // ISO yyyy-mm-dd
   end_date: string | null;        // ISO yyyy-mm-dd
 };
-// Note: Gemini does NOT extract "notes" — the field is manager-entered only.
+// Note: Gemini does NOT extract "notes" , the field is manager-entered only.
 // The model kept hallucinating boilerplate like "Policy covers Strata
 // Building with Legal Liability of $20,000,000. Financial Interest:
 // National Australia Bank LIMITED. This certificate is for information
@@ -71,7 +71,7 @@ const RESPONSE_SCHEMA = {
             enum: ["building", "public_liability", "combined", "fidelity", "voluntary_workers", "other"],
             description: "Best-fit category. Use 'combined' when one policy clearly covers building + public liability.",
           },
-          sum_insured: { type: Type.NUMBER, nullable: true, description: "Sum insured in AUD. Strip currency symbols + commas. Null if not applicable (public liability has 'limit of liability' — use that)." },
+          sum_insured: { type: Type.NUMBER, nullable: true, description: "Sum insured in AUD. Strip currency symbols + commas. Null if not applicable (public liability has 'limit of liability' , use that)." },
           premium: { type: Type.NUMBER, nullable: true, description: "Annual premium in AUD inclusive of GST + stamp duty. Null if not shown." },
           start_date: { type: Type.STRING, nullable: true, description: "ISO yyyy-mm-dd. Period of insurance FROM date." },
           end_date: { type: Type.STRING, nullable: true, description: "ISO yyyy-mm-dd. Period of insurance TO date." },
@@ -85,19 +85,19 @@ const RESPONSE_SCHEMA = {
 
 const SYSTEM_PROMPT = `You extract every policy section from a strata / owners-corporation Certificate of Currency or insurance policy schedule PDF.
 
-CRITICAL — how to count policies:
+CRITICAL , how to count policies:
 - A "policy" is anything the cert assigns its OWN policy number to. ONE policy number = ONE policy, even if the cert lists multiple coverage limits under it (e.g. "Sum Insured" for the building AND "Legal Liability" / "Public Liability" / "Workers Compensation" as separate limits within the same policy).
-- Australian strata policies are typically BUNDLED — a single "Strata Building" or "Residential Strata" policy carries Building, Public/Legal Liability, sometimes Voluntary Workers and Fidelity, all under one policy number. Output ONE entry with policy_type="combined" when you see that.
-- DO NOT emit a separate policy entry for each coverage limit. If you see policy number HSA154109901 with Sum Insured $3,045,000 AND Legal Liability $20 million, that's ONE policy with sum_insured=3045000 and policy_type="combined" — NOT two policies.
+- Australian strata policies are typically BUNDLED , a single "Strata Building" or "Residential Strata" policy carries Building, Public/Legal Liability, sometimes Voluntary Workers and Fidelity, all under one policy number. Output ONE entry with policy_type="combined" when you see that.
+- DO NOT emit a separate policy entry for each coverage limit. If you see policy number HSA154109901 with Sum Insured $3,045,000 AND Legal Liability $20 million, that's ONE policy with sum_insured=3045000 and policy_type="combined" , NOT two policies.
 - Emit a separate policy entry only when there's a DIFFERENT policy_number (e.g. a separate "fidelity guarantee" policy from a different insurer or with a distinct policy number).
 
 Other rules:
 - Return policies in source order.
 - Money fields are AUD numbers, no currency symbols. Strip commas: "$12,500,000" → 12500000.
 - "Legal Liability $20 million" → 20000000 (parse abbreviations like 'million' / 'm' / 'mn').
-- Dates: ISO yyyy-mm-dd. Australian DD/MM/YYYY is the dominant source format — convert carefully. Do NOT extract times — the form has dropped time fields.
+- Dates: ISO yyyy-mm-dd. Australian DD/MM/YYYY is the dominant source format , convert carefully. Do NOT extract times , the form has dropped time fields.
 - Do NOT produce a "notes" field. That field is reserved for the manager's own annotations (mid-year broker changes, claim history, etc.) and should not be populated from boilerplate cert language. If you find policy-level info that doesn't fit the structured fields, leave it out rather than inventing a notes field.
-- plan_number: scan the cert for the Plan-of-Subdivision identifier ("PS812345X" or similar — "PS" + 6 digits + 1 letter). Typically near the address or under "Insured" / "Property Description". Case-insensitive — emit upper-case. Null if not present.
+- plan_number: scan the cert for the Plan-of-Subdivision identifier ("PS812345X" or similar , "PS" + 6 digits + 1 letter). Typically near the address or under "Insured" / "Property Description". Case-insensitive , emit upper-case. Null if not present.
 - insured_name: the named insured / owners corporation name from the cert header. Null if not present.
 
 Document-type gate:
@@ -149,7 +149,7 @@ export async function parseInsurancePdf(pdfBytes: Buffer): Promise<ParsedInsuran
       systemInstruction: SYSTEM_PROMPT,
       temperature: 0.1,
       // Insurance schedules are short (1-5 policies typically) so the
-      // default would usually be fine — but a 65535 cap costs nothing
+      // default would usually be fine , but a 65535 cap costs nothing
       // when the model emits a smaller response and saves us from one
       // class of silent truncation.
       maxOutputTokens: 65535,

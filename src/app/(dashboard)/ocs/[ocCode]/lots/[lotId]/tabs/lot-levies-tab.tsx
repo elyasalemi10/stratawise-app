@@ -7,9 +7,9 @@ import { Wallet, FileText, ArrowDownToLine, Loader2 } from "lucide-react";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { listLotLevies, type LotLevyRow } from "@/lib/actions/lot-levies";
 
-// Levies tab — every levy notice ever issued to this lot, paid or unpaid.
+// Levies tab , every levy notice ever issued to this lot, paid or unpaid.
 // One row per notice. Paid/unpaid is read directly from the row's status +
-// amount_paid (no balance arithmetic — see the per-levy assignment design
+// amount_paid (no balance arithmetic , see the per-levy assignment design
 // note in the project context). Clicking a row opens the underlying PDF in
 // a new tab when one's available.
 

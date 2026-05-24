@@ -60,7 +60,7 @@ export function LotTenancyTab(props: Props) {
         <EmptyState
           icon={Home}
           title="This lot is owner-occupied"
-          description="The owner lives in the lot themselves — no tenant on file."
+          description="The owner lives in the lot themselves , no tenant on file."
           action={
             <TenancyEditSheet
               lotOwnerId={lotOwnerId}
@@ -203,7 +203,7 @@ function KvRow({ label, value }: { label: string; value: string }) {
     <div className="flex items-baseline justify-between gap-2 py-2.5">
       <dt className="text-sm text-muted-foreground">{label}</dt>
       <dd className="text-sm font-medium text-foreground text-right max-w-[60%] truncate">
-        {value || <span className="text-muted-foreground italic">—</span>}
+        {value || <span className="text-muted-foreground italic">,</span>}
       </dd>
     </div>
   );
@@ -212,7 +212,7 @@ function KvRow({ label, value }: { label: string; value: string }) {
 // ─── Edit sheet ─────────────────────────────────────────────────────────────
 // Bundles occupancy + tenant fields into a single right-side drawer. The same
 // component handles "Add tenant" (occupancy=owner_occupied/vacant) and "Edit
-// tenant" (occupancy=tenanted) — the occupancy selector lets the manager flip
+// tenant" (occupancy=tenanted) , the occupancy selector lets the manager flip
 // state inline (e.g. mark vacant) without leaving the drawer.
 
 interface TenantView {
@@ -269,7 +269,7 @@ function TenancyEditSheet({
           return { ok: false as const, error: "Tenant name is required when the lot is tenanted." };
         }
 
-        // Step 1 — flip occupancy if it changed (vacant / owner_occupied resets
+        // Step 1 , flip occupancy if it changed (vacant / owner_occupied resets
         // the tenant fields server-side via updateOccupancyStatus).
         if (occupancy !== initial.occupancy) {
           const occRes = await updateOccupancyStatus({
@@ -283,7 +283,7 @@ function TenancyEditSheet({
           }
         }
 
-        // Step 2 — write tenant details only when the lot ends up tenanted.
+        // Step 2 , write tenant details only when the lot ends up tenanted.
         if (occupancy === "tenanted") {
           const tenantRes = await updateTenant({
             lot_owner_id: lotOwnerId,

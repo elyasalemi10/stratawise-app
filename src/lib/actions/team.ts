@@ -92,7 +92,7 @@ export async function removeMember(memberId: string) {
     return { error: "Member not found" };
   }
 
-  // Remove from company (don't delete profile — just unlink)
+  // Remove from company (don't delete profile , just unlink)
   const { error } = await supabase
     .from("profiles")
     .update({ management_company_id: null, company_role: null, role: "lot_owner" })

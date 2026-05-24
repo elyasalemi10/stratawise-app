@@ -12,7 +12,7 @@ import { VicAddressAutocomplete, type ParsedAddress } from "@/components/shared/
 import { saveStep, type DraftJson } from "../actions";
 import { WizardActions } from "./_components/wizard-actions";
 
-// Wizard Step 1 sub-step 1 — General.
+// Wizard Step 1 sub-step 1 , General.
 
 const PS_MAX = 20; // Spec: allow PS Number up to 20 chars (was 9).
 
@@ -164,7 +164,7 @@ export function Step1General({
       return;
     }
 
-    // Background save — fire the saveStep without awaiting so the next
+    // Background save , fire the saveStep without awaiting so the next
     // step renders instantly. The same patch is merged into the wizard's
     // local draft via onNext(patch) so the next step's initialDraft is
     // fresh without a re-fetch. Errors surface via toast; the auto-save

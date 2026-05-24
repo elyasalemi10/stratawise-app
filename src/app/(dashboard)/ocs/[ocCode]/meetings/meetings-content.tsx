@@ -41,7 +41,7 @@ const STATUS_VARIANT: Record<MeetingStatus, "neutral" | "info" | "warning" | "su
   cancelled: "destructive",
 };
 
-// 30-minute time slots, 7:00am – 9:00pm — covers the realistic window for
+// 30-minute time slots, 7:00am – 9:00pm , covers the realistic window for
 // strata meetings without a native time input (banned).
 const TIME_SLOTS = (() => {
   const out: { value: string; label: string }[] = [];
@@ -181,12 +181,12 @@ function ScheduleMeetingDialog({
   const [dateInvalid, setDateInvalid] = useState(false);
 
   // 14-day notice is required for AGM/SGM (Owners Corporations Act). Surface
-  // it as a soft warning rather than a hard block — managers occasionally
+  // it as a soft warning rather than a hard block , managers occasionally
   // record a meeting already agreed with owners at shorter notice.
   const noticeWarning = (() => {
     if (!date || meetingType === "committee") return null;
     const days = Math.ceil((new Date(`${date}T${time}:00`).getTime() - Date.now()) / 86_400_000);
-    return days < 14 ? `AGM/SGM usually need 14 days' notice — this is ${days} day${days === 1 ? "" : "s"} away.` : null;
+    return days < 14 ? `AGM/SGM usually need 14 days' notice , this is ${days} day${days === 1 ? "" : "s"} away.` : null;
   })();
 
   function reset() {

@@ -59,7 +59,7 @@ function SignInContent() {
       }
     } catch {
       // If profile lookup fails for any reason, fall through to the
-      // standard /dashboard landing — that page will redirect onwards
+      // standard /dashboard landing , that page will redirect onwards
       // appropriately based on onboarding state.
     }
 

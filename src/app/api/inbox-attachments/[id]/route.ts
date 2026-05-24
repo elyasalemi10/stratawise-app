@@ -4,7 +4,7 @@ import { getCurrentProfile, requireOCAccess } from "@/lib/auth";
 import { fetchObject, keyFromPublicUrl } from "@/lib/storage/r2";
 
 // Streams an inbound email attachment through this authenticated route
-// (NOT a presigned redirect — that would be shareable for its TTL). Every
+// (NOT a presigned redirect , that would be shareable for its TTL). Every
 // fetch re-runs the OC-access / recipient check, so a copied URL is
 // useless to anyone without access.
 
@@ -68,7 +68,7 @@ export async function GET(
 
   // Derive the R2 key from the stored url if the dedicated column is
   // missing (older rows pre-migration). Fall back to the public URL
-  // when the key can't be recovered — better than 500 for the user.
+  // when the key can't be recovered , better than 500 for the user.
   const key =
     (att.r2_key as string | null) ?? keyFromPublicUrl(att.r2_url as string | null);
   if (!key) {

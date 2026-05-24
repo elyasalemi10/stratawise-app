@@ -118,7 +118,7 @@ export function ImportCsvDialog({ open, onClose, ocId, bankAccountId, fundLabel 
     <Dialog open={open} onOpenChange={(v) => { if (!v) handleClose(); }}>
       <DialogContent className="max-w-3xl">
         <DialogHeader>
-          <DialogTitle>Import bank transactions — {fundLabel}</DialogTitle>
+          <DialogTitle>Import bank transactions , {fundLabel}</DialogTitle>
         </DialogHeader>
 
         {stage === "upload" && (
@@ -259,7 +259,7 @@ function PreviewStage({
           <MappingField label="Credit (if split)" value={mapping.credit} headers={headers} onChange={(v) => updateMapping("credit", v)} />
         </div>
         <p className="text-xs text-muted-foreground mt-2">
-          Use either the single <span className="font-medium">Amount</span> column, or <span className="font-medium">Debit</span> + <span className="font-medium">Credit</span> columns — not both.
+          Use either the single <span className="font-medium">Amount</span> column, or <span className="font-medium">Debit</span> + <span className="font-medium">Credit</span> columns , not both.
         </p>
       </div>
 
@@ -300,7 +300,7 @@ function PreviewStage({
                 {previewRows.map((r, i) => (
                   <tr key={i} className="border-t border-border">
                     <td className="px-3 py-2 tabular-nums">{r.transaction_date}</td>
-                    <td className="px-3 py-2 max-w-xs truncate" title={r.description}>{r.description || <span className="text-muted-foreground italic">—</span>}</td>
+                    <td className="px-3 py-2 max-w-xs truncate" title={r.description}>{r.description || <span className="text-muted-foreground italic">,</span>}</td>
                     <td className={cn("px-3 py-2 text-right tabular-nums font-medium", r.amount < 0 ? "text-destructive" : "text-secondary")}>
                       {formatCurrency(r.amount)}
                     </td>
@@ -344,7 +344,7 @@ function MappingField({
         onChange={(e) => onChange(Number(e.target.value))}
         className="h-9 w-full rounded-md border border-border bg-background px-3 text-sm outline-none focus:border-primary focus:ring-2 focus:ring-primary/20"
       >
-        <option value={-1}>— Not mapped —</option>
+        <option value={-1}>, Not mapped ,</option>
         {headers.map((h, i) => (
           <option key={i} value={i}>{h || `(column ${i + 1})`}</option>
         ))}

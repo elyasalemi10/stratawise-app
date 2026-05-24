@@ -72,7 +72,7 @@ export async function createCompany(formData: {
     return { companyId: profile.management_company_id };
   }
 
-  // First time through — record consent + create the company.
+  // First time through , record consent + create the company.
   const headersList = await headers();
   const ipAddress =
     headersList.get("x-forwarded-for")?.split(",")[0]?.trim() ??
@@ -112,7 +112,7 @@ export async function createCompany(formData: {
   }
 
   // Seed the default 4-digit chart of accounts so the firm has a usable GL on
-  // day one. Idempotent — safe even if a future code path also calls this.
+  // day one. Idempotent , safe even if a future code path also calls this.
   const { error: seedErr } = await supabase.rpc("seed_default_chart_of_accounts", {
     p_company: company.id,
   });
@@ -251,7 +251,7 @@ export async function sendInvitations(invites: { email: string; name: string }[]
 // Sets the company's mail_provider. For gmail/outlook we ALSO stash a
 // domain into mail_provider_config so the dispatcher knows which mailbox
 // to impersonate when sending. Customers can change or disconnect from
-// /settings later — disconnecting falls back to 'stratawise' with
+// /settings later , disconnecting falls back to 'stratawise' with
 // `<email_username>@stratawise.com.au`.
 
 interface SaveMailProviderInput {
@@ -371,7 +371,7 @@ export async function getSetupSummary() {
   };
 }
 
-// Step 2 of onboarding — save the operating account on the manager's
+// Step 2 of onboarding , save the operating account on the manager's
 // management_companies row. Validation already happened client-side.
 export async function saveOperatingAccount(formData: {
   account_name: string;

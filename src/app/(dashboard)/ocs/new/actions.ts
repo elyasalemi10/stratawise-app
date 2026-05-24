@@ -35,8 +35,8 @@ export type DraftInsurancePolicy = {
 
 export type DraftLot = {
   lot_number: number;
-  unit_number?: string;            // e.g. "3B" — apartment / unit label distinct from lot_number
-  // Nullable to support the wizard's "empty until Continue" UX — both
+  unit_number?: string;            // e.g. "3B" , apartment / unit label distinct from lot_number
+  // Nullable to support the wizard's "empty until Continue" UX , both
   // fields can be undefined while the manager is typing, and validation
   // only fires on submit. Liability is allowed to be 0 (services lots);
   // entitlement must be > 0 under VIC OC Act.
@@ -57,11 +57,11 @@ export type DraftLot = {
   tenant_phone?: string;
   /** Opening arrears as at setup date. Positive = arrears, negative = credit.
    *  Captured per-lot directly on page 4 (Lots) rather than on a separate
-   *  final step — same lots, same owners, no need for the manager to scroll
+   *  final step , same lots, same owners, no need for the manager to scroll
    *  back and forth between two tables. */
   opening_balance?: number;
   /** Communications-consent state recorded by the manager during the OC
-   *  setup wizard. The manager attests on the owner's behalf — VCAT cares
+   *  setup wizard. The manager attests on the owner's behalf , VCAT cares
    *  more about the eventual signup-flow consent (which writes IP + UA), but
    *  this gives a starting position so day-one digital notices aren't
    *  blocked. Empty array = no consent yet, owner gets paper. */
@@ -71,7 +71,7 @@ export type DraftLot = {
    *  array = no signup ask (manager already captured everything via
    *  digital_consent_categories above). */
   at_portal_signup_categories?: string[];
-  /** Individual or Company — wizard Step 3 captures this in the lot schedule
+  /** Individual or Company , wizard Step 3 captures this in the lot schedule
    *  alongside the owner's name. Defaults to 'individual'. */
   owner_type?: "individual" | "company";
 };
@@ -84,7 +84,7 @@ export type DraftCommitteeMember = {
   name: string;
   email?: string;
   phone?: string;
-  /** Optional lot_number — when set, completeWizard joins to the
+  /** Optional lot_number , when set, completeWizard joins to the
    *  inserted lot_owners row by lot_number → owner. */
   lot_number?: number;
 };
@@ -102,7 +102,7 @@ export type DraftJson = {
   postcode?: string;
   total_lots?: number;
   lots?: DraftLot[];
-  // Page 2 (review) — captured here because ABN + GST tend to be on
+  // Page 2 (review) , captured here because ABN + GST tend to be on
   // the same plan/registration documents the manager has open.
   abn?: string;
   gst_registered?: boolean;
@@ -112,10 +112,10 @@ export type DraftJson = {
   services_only?: boolean;
   financial_year_start_month?: number;       // 1–12
   financial_year_start_day?: number;         // 1–31
-  /** monthly | quarterly | half_yearly | annually — drives the levy cron. */
+  /** monthly | quarterly | half_yearly | annually , drives the levy cron. */
   billing_cycle?: "monthly" | "quarterly" | "half_yearly" | "annually";
   /** Date the current management contract started. Different from
-   *  opening_balance_date (financial anchor) — this drives contract
+   *  opening_balance_date (financial anchor) , this drives contract
    *  anniversary + renewal reminders + fee billing. */
   manager_appointment_date?: string; // ISO yyyy-mm-dd
   /** 1–5 VIC OC compliance tier. Auto-derived from lot count + services-
@@ -123,13 +123,13 @@ export type DraftJson = {
    *  services-only edge case = Tier 5). */
   tier?: number;
 
-  // New step 6 — Committee snapshot. has_active_committee=false skips
+  // New step 6 , Committee snapshot. has_active_committee=false skips
   // the role-assignment UI; small OCs without an elected committee are
   // valid. last_agm_date drives "AGM due within 15 months" reminders.
   has_active_committee?: boolean;
   committee_members?: DraftCommitteeMember[];
   last_agm_date?: string; // ISO yyyy-mm-dd
-  // Page 5 (trust accounts) — per-fund bank arrangement.
+  // Page 5 (trust accounts) , per-fund bank arrangement.
   bank_provider?: "macquarie_deft" | "other_csv";
   // Macquarie DRN mappings the manager uploaded during the wizard. We stage
   // by lot_number rather than by lot_id because lots don't exist yet (they're
@@ -148,30 +148,30 @@ export type DraftJson = {
   // wizard. completeWizard will skip the bank_accounts insert and the
   // post-creation Settings → Banking page will prompt to finish setup.
   banking_deferred?: boolean;
-  // Admin fund — always present.
+  // Admin fund , always present.
   admin_bank_id?: string;        // e.g. "macquarie"
   admin_account_name?: string;
   admin_bsb?: string;
   admin_account_number?: string;
-  // Capital works fund — either inherits admin's account or its own bank details.
+  // Capital works fund , either inherits admin's account or its own bank details.
   capital_same_as_admin?: boolean;
   capital_bank_id?: string;
   capital_account_name?: string;
   capital_bsb?: string;
   capital_account_number?: string;
-  // Maintenance plan fund — only relevant when has_maintenance_plan_fund.
+  // Maintenance plan fund , only relevant when has_maintenance_plan_fund.
   maintenance_same_as_admin?: boolean;
   maintenance_bank_id?: string;
   maintenance_account_name?: string;
   maintenance_bsb?: string;
   maintenance_account_number?: string;
 
-  // Notice address — collected on page 4 (lots) since it informs per-lot
+  // Notice address , collected on page 4 (lots) since it informs per-lot
   // postal address defaults. Always present; defaults to the OC address
   // (set by the wizard if the user doesn't change it).
   notice_address?: string;
 
-  // Page 5 (communications & consent) — OC-level policy. Per-lot consent
+  // Page 5 (communications & consent) , OC-level policy. Per-lot consent
   // lives on each DraftLot. Designed to plumb through to the lot-owner
   // portal's signup flow without further schema work: when the owner ticks
   // the checkbox, we write digital_consent_given_at + ip + user_agent +
@@ -194,7 +194,7 @@ export type DraftJson = {
   rules_filename?: string;
   rules_rule_count?: number;
 
-  // Page 7 (insurance) — captures one or more policies on cover at setup.
+  // Page 7 (insurance) , captures one or more policies on cover at setup.
   has_insurance?: boolean;
   insurance_policies?: DraftInsurancePolicy[];
   // Certificates of Currency uploaded by the manager. Each entry archives the
@@ -208,7 +208,7 @@ export type DraftJson = {
     insured_name: string | null;
     ps_match: boolean;
   }>;
-  // The single-policy fields below are legacy — kept so older drafts still
+  // The single-policy fields below are legacy , kept so older drafts still
   // round-trip cleanly. New drafts write into insurance_policies[].
   insurance_provider?: string;
   insurance_policy_number?: string;
@@ -227,7 +227,7 @@ export type DraftJson = {
 
   // ─── New wizard (May 2026 redesign) ─────────────────────────────
   //
-  // Step 1 — General. Several fields here overlap legacy ones above; the
+  // Step 1 , General. Several fields here overlap legacy ones above; the
   // new wizard writes ONLY into these new names. completeWizard prefers
   // the new value when both are present.
   /** Friendly building/development name. Replaces trading_name. */
@@ -239,7 +239,7 @@ export type DraftJson = {
   /** Manager attested in Step 3 that the auto-computed tier is correct. */
   tier_confirmed?: boolean;
 
-  // Step 1.1 — Management fee captured during the wizard.
+  // Step 1.1 , Management fee captured during the wizard.
   management_fee?: {
     structure: "fixed_monthly" | "per_lot_monthly" | "hybrid" | "quarterly_retainer";
     fixed_amount_cents?: number;
@@ -251,9 +251,9 @@ export type DraftJson = {
     contract_end_date?: string;
   };
 
-  // Step 2 — Financial settings.
+  // Step 2 , Financial settings.
   /** lot_liability (default) | equal_per_lot | custom_apportionment. The
-   *  per-lot table editor + per-fund split dialog land in a follow-up PR —
+   *  per-lot table editor + per-fund split dialog land in a follow-up PR ,
    *  for now picking Custom just stores the choice. */
   levy_calculation_basis?: "lot_liability" | "equal_per_lot" | "custom_apportionment";
   early_payment_incentive_percent?: number;
@@ -262,7 +262,7 @@ export type DraftJson = {
   interest_free_period_days?: number;
   arrears_action_threshold_cents?: number;
 
-  // Step 3 — Management start date (was manager_appointment_date) is captured
+  // Step 3 , Management start date (was manager_appointment_date) is captured
   // on Step 1; we just re-use the existing manager_appointment_date field.
 };
 
@@ -270,13 +270,13 @@ export type DraftJson = {
 //
 // Plans of subdivision capitalise every line (street names, suburbs) in
 // ALL CAPS or weird mixed-case. We Title-Case them for display in our UI so
-// "10 PINCHAM ROAD" becomes "10 Pincham Road" — same string, just readable.
+// "10 PINCHAM ROAD" becomes "10 Pincham Road" , same string, just readable.
 // Postcode is digits-only and street number can include letters (e.g. "10A")
 // so those pass through unchanged.
 
 function titleCase(s: string | null | undefined): string | undefined {
   if (!s) return s ?? undefined;
-  // Don't transform mostly-mixed-case strings — Gemini sometimes returns
+  // Don't transform mostly-mixed-case strings , Gemini sometimes returns
   // correctly cased data on the second try. We only act when 70%+ of the
   // alphabetic characters are upper-case (i.e. it's all-caps junk).
   const alpha = s.replace(/[^A-Za-z]/g, "");
@@ -303,9 +303,9 @@ function titleCaseAddress<T extends { street_name?: string | null; suburb?: stri
 // ─── Document naming ────────────────────────────────────────────
 //
 // Documents uploaded via the wizard get a system-generated display name
-// (e.g. "Plan of Subdivision — PS812345X.pdf") that's stored on
+// (e.g. "Plan of Subdivision , PS812345X.pdf") that's stored on
 // `documents.file_name`. The user's original filename is preserved on
-// `documents.original_filename` so it's never thrown away — it shows up on
+// `documents.original_filename` so it's never thrown away , it shows up on
 // the document detail view and is used as the suggested download filename
 // when the user pulls the file back down.
 
@@ -318,14 +318,14 @@ function friendlyDocName(
   const stamp = new Date().toISOString().slice(0, 10);
   switch (category) {
     case "plan_of_subdivision":
-      return plan ? `Plan of Subdivision — ${plan}.pdf` : `Plan of Subdivision — ${stamp}.pdf`;
+      return plan ? `Plan of Subdivision , ${plan}.pdf` : `Plan of Subdivision , ${stamp}.pdf`;
     case "oc_rules":
-      return plan ? `Owners Corporation Rules — ${plan}.pdf` : `Owners Corporation Rules — ${stamp}.pdf`;
+      return plan ? `Owners Corporation Rules , ${plan}.pdf` : `Owners Corporation Rules , ${stamp}.pdf`;
     case "insurance_policy": {
       const n = ctx.index != null ? ` ${ctx.index}` : "";
       return plan
-        ? `Certificate of Currency${n} — ${plan}.pdf`
-        : `Certificate of Currency${n} — ${stamp}.pdf`;
+        ? `Certificate of Currency${n} , ${plan}.pdf`
+        : `Certificate of Currency${n} , ${stamp}.pdf`;
     }
   }
 }
@@ -474,7 +474,7 @@ export async function uploadPlan(draftId: string, formData: FormData) {
       await uploadObject(key, buf, "application/pdf");
     } catch (err) {
       console.error("uploadPlan: R2 upload failed", err);
-      return { error: "Couldn't save your file — please try again." };
+      return { error: "Couldn't save your file , please try again." };
     }
 
     const supabase = createServerClient();
@@ -491,12 +491,12 @@ export async function uploadPlan(draftId: string, formData: FormData) {
       .eq("id", draft.id);
     if (dbErr) {
       console.error("uploadPlan: DB update failed", dbErr);
-      return { error: "Couldn't save your file — please try again." };
+      return { error: "Couldn't save your file , please try again." };
     }
     return { success: true };
   } catch (err) {
     console.error("uploadPlan: unexpected error", err);
-    return { error: "Something went wrong — please try again." };
+    return { error: "Something went wrong , please try again." };
   }
 }
 
@@ -532,7 +532,7 @@ export async function uploadOcPhoto(draftId: string, formData: FormData) {
       await uploadObject(key, buf, file.type);
     } catch (err) {
       console.error("uploadOcPhoto: R2 upload failed", err);
-      return { error: "Couldn't save your photo — please try again." };
+      return { error: "Couldn't save your photo , please try again." };
     }
 
     // Best-effort thumbnail upload. If the client didn't generate one (very
@@ -566,7 +566,7 @@ export async function uploadOcPhoto(draftId: string, formData: FormData) {
       .eq("id", draft.id);
     if (dbErr) {
       console.error("uploadOcPhoto: DB update failed", dbErr);
-      return { error: "Couldn't save your photo — please try again." };
+      return { error: "Couldn't save your photo , please try again." };
     }
     return {
       success: true,
@@ -576,7 +576,7 @@ export async function uploadOcPhoto(draftId: string, formData: FormData) {
     };
   } catch (err) {
     console.error("uploadOcPhoto: unexpected error", err);
-    return { error: "Something went wrong — please try again." };
+    return { error: "Something went wrong , please try again." };
   }
 }
 
@@ -732,7 +732,7 @@ export async function parseDraftWithGemini(draftId: string) {
 //   3. On completeWizard, materialise one oc_rules row per parsed rule and
 //      register the PDF in `documents`.
 //
-// "Use Victoria's Model Rules" path is just a flag — no upload, no parse.
+// "Use Victoria's Model Rules" path is just a flag , no upload, no parse.
 
 export async function uploadRules(draftId: string, formData: FormData) {
   try {
@@ -750,7 +750,7 @@ export async function uploadRules(draftId: string, formData: FormData) {
       await uploadObject(key, buf, "application/pdf");
     } catch (err) {
       console.error("uploadRules: R2 upload failed", err);
-      return { error: "Couldn't save your file — please try again." };
+      return { error: "Couldn't save your file , please try again." };
     }
 
     const supabase = createServerClient();
@@ -765,12 +765,12 @@ export async function uploadRules(draftId: string, formData: FormData) {
       .eq("id", draft.id);
     if (dbErr) {
       console.error("uploadRules: DB update failed", dbErr);
-      return { error: "Couldn't save your file — please try again." };
+      return { error: "Couldn't save your file , please try again." };
     }
     return { success: true };
   } catch (err) {
     console.error("uploadRules: unexpected error", err);
-    return { error: "Something went wrong — please try again." };
+    return { error: "Something went wrong , please try again." };
   }
 }
 
@@ -791,7 +791,7 @@ export async function parseDraftRules(draftId: string) {
     // bytes independently, so doing them in parallel saves the slower of the
     // two (OCR) instead of paying for both serially. OCR result is stashed
     // on the draft so completeWizard can write it straight to documents.ocr_*
-    // — the document is searchable the moment the OC is created, no second
+    // , the document is searchable the moment the OC is created, no second
     // background pass needed.
     const [parsedResult, ocrResult] = await Promise.allSettled([
       parseRulesPdf(buf),
@@ -800,7 +800,7 @@ export async function parseDraftRules(draftId: string) {
 
     if (parsedResult.status === "rejected") {
       console.error("parseDraftRules: Gemini parse failed", parsedResult.reason);
-      return { error: "We couldn't read this rules PDF automatically. Continue and we'll keep the original — searchable but not indexed." };
+      return { error: "We couldn't read this rules PDF automatically. Continue and we'll keep the original , searchable but not indexed." };
     }
     const parsed = parsedResult.value;
     if (!parsed.is_oc_rules) {
@@ -809,7 +809,7 @@ export async function parseDraftRules(draftId: string) {
       };
     }
 
-    // OCR failure is non-fatal — Gemini's structured output is the
+    // OCR failure is non-fatal , Gemini's structured output is the
     // primary thing managers see. We just lose the searchable plain-text
     // index until the background job retries.
     const ocrText = ocrResult.status === "fulfilled" ? ocrResult.value.text : null;
@@ -845,7 +845,7 @@ export async function parseDraftRules(draftId: string) {
     };
   } catch (err) {
     console.error("parseDraftRules: unexpected error", err);
-    return { error: "Something went wrong — please try again." };
+    return { error: "Something went wrong , please try again." };
   }
 }
 
@@ -865,7 +865,7 @@ export async function setRulesSource(draftId: string, source: "model" | "custom"
   }
 }
 
-// ─── uploadAndParseCoC — upload + Gemini extraction in one round-trip ───
+// ─── uploadAndParseCoC , upload + Gemini extraction in one round-trip ───
 //
 // Page 7 uploads a Certificate of Currency. We push it to R2, record the
 // metadata on the draft, run the Gemini parser, and return both the storage
@@ -873,7 +873,7 @@ export async function setRulesSource(draftId: string, source: "model" | "custom"
 // running list of uploaded CoCs.
 //
 // Caller can pass `expectedPlanNumber` so we can compare against the PS
-// number Gemini finds on the cert — the UI then warns the manager if the
+// number Gemini finds on the cert , the UI then warns the manager if the
 // cert is for a different plan.
 
 export async function uploadAndParseCoC(
@@ -907,7 +907,7 @@ export async function uploadAndParseCoC(
       await uploadObject(key, buf, "application/pdf");
     } catch (err) {
       console.error("uploadAndParseCoC: R2 upload failed", err);
-      return { error: "Couldn't save your file — please try again." };
+      return { error: "Couldn't save your file , please try again." };
     }
 
     // Parallel Gemini + Document AI. OCR result is keyed by the storage key
@@ -966,11 +966,11 @@ export async function uploadAndParseCoC(
     };
   } catch (err) {
     console.error("uploadAndParseCoC: unexpected error", err);
-    return { error: "Something went wrong — please try again." };
+    return { error: "Something went wrong , please try again." };
   }
 }
 
-// ─── deleteCoC — remove a CoC document from R2 + draft ───
+// ─── deleteCoC , remove a CoC document from R2 + draft ───
 //
 // Called when the manager removes a CoC from page 7. Best-effort R2 delete
 // so we don't leave orphaned objects when a cert is rejected or replaced.
@@ -983,11 +983,11 @@ export async function deleteCoC(draftId: string, storageKey: string): Promise<{ 
     return { success: true };
   } catch (err) {
     console.error("deleteCoC: unexpected error", err);
-    return { error: "Something went wrong — please try again." };
+    return { error: "Something went wrong , please try again." };
   }
 }
 
-// ─── uploadInsuranceDoc — stores the policy schedule PDF on the draft ────
+// ─── uploadInsuranceDoc , stores the policy schedule PDF on the draft ────
 
 export async function uploadInsuranceDoc(draftId: string, formData: FormData) {
   try {
@@ -1005,7 +1005,7 @@ export async function uploadInsuranceDoc(draftId: string, formData: FormData) {
       await uploadObject(key, buf, "application/pdf");
     } catch (err) {
       console.error("uploadInsuranceDoc: R2 upload failed", err);
-      return { error: "Couldn't save your file — please try again." };
+      return { error: "Couldn't save your file , please try again." };
     }
 
     const supabase = createServerClient();
@@ -1019,12 +1019,12 @@ export async function uploadInsuranceDoc(draftId: string, formData: FormData) {
       .eq("id", draft.id);
     if (dbErr) {
       console.error("uploadInsuranceDoc: DB update failed", dbErr);
-      return { error: "Couldn't save your file — please try again." };
+      return { error: "Couldn't save your file , please try again." };
     }
     return { success: true };
   } catch (err) {
     console.error("uploadInsuranceDoc: unexpected error", err);
-    return { error: "Something went wrong — please try again." };
+    return { error: "Something went wrong , please try again." };
   }
 }
 
@@ -1033,7 +1033,7 @@ export async function uploadInsuranceDoc(draftId: string, formData: FormData) {
 // Page 6 lets the manager add / edit / delete rules during the wizard so
 // the rule list saved at completeWizard time matches what they actually
 // want. We piggy-back on the existing `rules_parsed_json` blob to persist
-// these edits — the live page 6 reads from that on hydrate.
+// these edits , the live page 6 reads from that on hydrate.
 
 export async function saveDraftRules(
   draftId: string,
@@ -1169,7 +1169,7 @@ export async function previewDraftDrnCsv(
     };
   } catch (err) {
     console.error("previewDraftDrnCsv: unexpected error", err);
-    return { error: "Couldn't read the DRN file — please try again." };
+    return { error: "Couldn't read the DRN file , please try again." };
   }
 }
 
@@ -1215,7 +1215,7 @@ export async function skipParsing(draftId: string) {
   try {
     await loadDraft(draftId);
     const supabase = createServerClient();
-    // Land on page 2 (Review) — the manager wants to type the plan number,
+    // Land on page 2 (Review) , the manager wants to type the plan number,
     // address, and lot schedule by hand. Page 2 already supports an empty
     // initial state.
     const { error } = await supabase
@@ -1253,7 +1253,7 @@ export async function saveStep(
 }
 
 // Save without advancing the wizard pointer (Item 11). Same shape as saveStep
-// but skips validation and never moves current_step/current_substep — the
+// but skips validation and never moves current_step/current_substep , the
 // manager can leave the wizard, come back later, and resume on the exact same
 // page with whatever they had typed.
 export async function saveDraftPatch(draftId: string, patch: Partial<DraftJson>) {
@@ -1281,12 +1281,12 @@ export async function completeWizard(draftId: string) {
     if (!profile.management_company_id) return { error: "No management company assigned" };
 
     // Idempotency guard. If this draft already promoted to an OC we MUST NOT
-    // create another one — the bug was that the Create button could fire
+    // create another one , the bug was that the Create button could fire
     // twice (double click, back-button-then-resubmit, stale tab) and each
     // call would mint a fresh OC, leaving the manager staring at a
     // ballooning OC count. Now a re-run on a promoted draft returns the
     // existing OC's short_code so the caller still navigates to /ocs/<code>
-    // — same UX as the first successful run, just without the duplicate
+    // , same UX as the first successful run, just without the duplicate
     // side effects.
     if (draft.promoted_oc_id) {
       const supabase = createServerClient();
@@ -1305,7 +1305,7 @@ export async function completeWizard(draftId: string) {
         };
       }
       // Draft has promoted_oc_id but the OC row vanished (manual cleanup?).
-      // Block rather than silently re-create — managers can start a fresh
+      // Block rather than silently re-create , managers can start a fresh
       // wizard if they really want to.
       return { error: "This wizard has already finished and the resulting OC was removed. Start a new draft to create another OC." };
     }
@@ -1318,7 +1318,7 @@ export async function completeWizard(draftId: string) {
     const resolvedName = resolvedBuildingName || d.address.trim() || `Owners Corporation ${d.plan_number}`;
     if (!d.lots || d.lots.length < 2) return { error: "At least 2 lots are required" };
 
-    // Banking can be deferred — see step-4-banking.tsx. When the manager
+    // Banking can be deferred , see step-4-banking.tsx. When the manager
     // ticked "set up later", skip every bank-account / opening-balance
     // gate and complete the OC without any bank_accounts rows.
     const bankingDeferred = !!d.banking_deferred;
@@ -1378,7 +1378,7 @@ export async function completeWizard(draftId: string) {
       financial_year_start_day: d.financial_year_start_day ?? 1,
       services_only: !!d.services_only,
       billing_cycle: d.billing_cycle ?? "quarterly",
-      // Notice address always set — wizard defaults to OC address; user can override.
+      // Notice address always set , wizard defaults to OC address; user can override.
       notice_address_same_as_oc: !d.notice_address || d.notice_address.trim() === d.address.trim(),
       notice_address: d.notice_address || d.address,
       bank_provider: d.bank_provider ?? "other_csv",
@@ -1398,21 +1398,21 @@ export async function completeWizard(draftId: string) {
       // CoC arrives (typically weeks after handover).
       rules_source: "model",
       rules_uploaded_at: null,
-      // Communications & consent policy — see migration
+      // Communications & consent policy , see migration
       // oc_and_lot_owner_digital_consent. Postal-default + signup-consent-on
       // matches Victorian regulatory practice.
       default_delivery_method: d.default_delivery_method ?? "mixed",
       collect_consent_on_signup: d.collect_consent_on_signup ?? true,
       consent_categories_offered: d.consent_categories_offered ?? ["levies", "agms", "minutes", "breach_notices", "financials"],
-      // Buffer config moved to OC settings — save defaults silently
+      // Buffer config moved to OC settings , save defaults silently
       // here so the wizard doesn't make every manager click through
       // future-proofing.
       meetings_postal_buffer_days: d.meetings_postal_buffer_days ?? 14,
       levies_postal_buffer_days: d.levies_postal_buffer_days ?? 14,
       financial_postal_buffer_days: d.financial_postal_buffer_days ?? 14,
-      // ABN + GST + management start + tier + committee — captured during
+      // ABN + GST + management start + tier + committee , captured during
       // the wizard. `oc_tier` is the live column (`tier` is unused legacy).
-      // Committee snapshot is no longer captured by the new wizard — for
+      // Committee snapshot is no longer captured by the new wizard , for
       // back-compat with older drafts we still write what was on the JSONB,
       // but new drafts produce undefined here.
       abn: d.abn ?? null,
@@ -1451,7 +1451,7 @@ export async function completeWizard(draftId: string) {
       is_primary_contact: true,
     });
 
-    // TFN — encrypt and persist via the pgp_sym_encrypt RPC. Done after the
+    // TFN , encrypt and persist via the pgp_sym_encrypt RPC. Done after the
     // OC row exists (we need oc.id). Non-fatal: if TFN_ENCRYPTION_KEY isn't
     // configured we log + carry on rather than aborting OC creation.
     if (d.tfn && d.tfn.trim()) {
@@ -1467,7 +1467,7 @@ export async function completeWizard(draftId: string) {
     // creation. The legacy draft.management_fee field is intentionally
     // ignored here even if an in-progress draft still has it.
 
-    // Insert lots — opening_balance carries per-lot arrears/credit at setup date.
+    // Insert lots , opening_balance carries per-lot arrears/credit at setup date.
     // Entitlement / liability are coerced to a number here; the submit
     // validator on Page 2 guarantees they're set + entitlement > 0 + liability
     // >= 0 before we reach completeWizard, so falling back to 0 is just a
@@ -1488,7 +1488,7 @@ export async function completeWizard(draftId: string) {
       return { error: `Failed to create lots: ${lotsError?.message ?? "unknown"}` };
     }
 
-    // Per-lot creation audit entries — so the lot history tab on each
+    // Per-lot creation audit entries , so the lot history tab on each
     // individual lot shows "Lot created" from day one, not just a single
     // OC-level "create" entry. Best-effort: failures are logged but don't
     // roll the OC creation back.
@@ -1514,7 +1514,7 @@ export async function completeWizard(draftId: string) {
       };
     });
     // Seed lot_ledger_entries for any lot that arrived with a non-zero
-    // opening_balance — otherwise the per-lot ledger tab is empty even
+    // opening_balance , otherwise the per-lot ledger tab is empty even
     // though the lot's overall balance reflects the arrears/credit. We
     // put everything under fund_type=administrative because the wizard
     // only collects one number per lot; managers can re-fund later via
@@ -1547,8 +1547,8 @@ export async function completeWizard(draftId: string) {
           amount: Math.abs(ob),
           entry_date: d.opening_balance_date,
           description: isDebit
-            ? "Opening balance — owed at OC management start"
-            : "Opening balance — credit at OC management start",
+            ? "Opening balance , owed at OC management start"
+            : "Opening balance , credit at OC management start",
           status: "active",
           created_by: profile.id,
         });
@@ -1593,7 +1593,7 @@ export async function completeWizard(draftId: string) {
         if (!lotId) return null;
         // Initial digital-comms consent recorded by the manager on Step 3.2
         // of the wizard. source='manager_initial' (no IP / user-agent)
-        // because the manager is attesting on the owner's behalf — when the
+        // because the manager is attesting on the owner's behalf , when the
         // owner later signs up via the portal, that flow overwrites these
         // with source='signup_flow' + their real IP + UA.
         const consentCats = l.digital_consent_categories ?? [];
@@ -1695,7 +1695,7 @@ export async function completeWizard(draftId: string) {
 
     // Entity-model writes: every captured lot owner also gets an owner
     // row + an active lot_ownership row. profile_id stays NULL until the
-    // owner accepts a portal invite — at which point a future migration
+    // owner accepts a portal invite , at which point a future migration
     // step (the accept flow) flips profile_id on the owner row. Both
     // writes are non-fatal so a failure here can't break OC creation.
     try {
@@ -1811,7 +1811,7 @@ export async function completeWizard(draftId: string) {
     // Trust accounts → bank_accounts rows per fund. Each fund references its
     // own (resolved) BSB+account_number; shared-account funds end up with
     // matching values, which the uq_bank_accounts_oc_fund_account index
-    // accepts (one row per fund_type). Errors are logged + surfaced — the
+    // accepts (one row per fund_type). Errors are logged + surfaced , the
     // wizard used to swallow them silently, so a constraint trip (e.g. on
     // the now-removed global unique) produced an OC with zero bank rows
     // and a baffled manager on the bank-account page.
@@ -1869,7 +1869,7 @@ export async function completeWizard(draftId: string) {
     // DRN mappings (Macquarie only). The wizard staged rows in
     // draft_json.lot_drns keyed by lot_number; now that lots exist we resolve
     // each row to a real lot_id and write the lot_drns table. Rows that
-    // didn't resolve to a lot are silently skipped — the manager can fix
+    // didn't resolve to a lot are silently skipped , the manager can fix
     // them from the OC's DRN page later.
     if (d.lot_drns && d.lot_drns.length > 0) {
       const drnRows = d.lot_drns
@@ -1923,7 +1923,7 @@ export async function completeWizard(draftId: string) {
         is_confidential: false,
         uploaded_by: profile.id,
         // OCR was already done during the wizard (Document AI ran in
-        // parallel with Gemini) — write the text now so the document is
+        // parallel with Gemini) , write the text now so the document is
         // search-ready immediately. Falls back to "pending" if the OCR
         // call failed at parse time.
         ocr_text: cachedPlanOcr ?? null,
@@ -1953,7 +1953,7 @@ export async function completeWizard(draftId: string) {
       rulesDocumentId = rulesDoc?.id ?? null;
 
       // Materialise parsed rules. Best-effort: if the parse failed earlier
-      // we still keep the PDF — the search index works via OCR text.
+      // we still keep the PDF , the search index works via OCR text.
       //
       // Multi-OC documents (one PDF that registers rules for two or more OCs)
       // are filtered down to the rules whose `oc_scope` matches THIS OC,
@@ -2007,7 +2007,7 @@ export async function completeWizard(draftId: string) {
           oc_id: oc.id,
           rule_number: r.rule_number,
           heading: r.heading ?? null,
-          // Hierarchical columns — let the rules page group + filter
+          // Hierarchical columns , let the rules page group + filter
           // without parsing rule_number at read time. Falls back to null
           // when the document didn't have an explicit chapter / section
           // tier above the numbered rule.
@@ -2027,7 +2027,7 @@ export async function completeWizard(draftId: string) {
       }
     }
 
-    // Insurance — support multiple policies. Backward compat: when the older
+    // Insurance , support multiple policies. Backward compat: when the older
     // single-policy fields are set but `insurance_policies` is empty, treat
     // the legacy fields as one policy.
     if (d.has_insurance) {
@@ -2083,7 +2083,7 @@ export async function completeWizard(draftId: string) {
           .single();
         if (docRow?.id) cocDocByKey.set(coc.storage_key, docRow.id);
       }
-      // Legacy single-doc path — only register it if no multi-CoC list is
+      // Legacy single-doc path , only register it if no multi-CoC list is
       // present, to avoid duplicating older drafts that wrote the same key
       // through `insurance_doc_storage_key`.
       if (cocs.length === 0 && draft.insurance_doc_storage_key && draft.insurance_doc_filename) {
@@ -2129,7 +2129,7 @@ export async function completeWizard(draftId: string) {
         }
         // Standalone insurance create/update goes through
         // lib/actions/insurance.ts which writes its own audit entry. The
-        // wizard path used to swallow this silently — add the same audit
+        // wizard path used to swallow this silently , add the same audit
         // entry here so the policy shows up in the history feed from day
         // one of the OC.
         await supabase.from("audit_log").insert({
@@ -2163,7 +2163,7 @@ export async function completeWizard(draftId: string) {
       metadata: { source: "oc_wizard_v2", draft_id: draft.id },
     });
 
-    // Sidebar OC list uses unstable_cache tagged with the company id — without
+    // Sidebar OC list uses unstable_cache tagged with the company id , without
     // this updateTag, the sidebar serves the previous (empty) list until the
     // 5-min localStorage TTL expires. revalidatePath isn't enough on its own:
     // the cache key is unrelated to the path.
@@ -2204,7 +2204,7 @@ export async function completeWizard(draftId: string) {
   }
 }
 
-// ─── selectDetectedOc — pick which OC to set up first from a multi-OC plan ──
+// ─── selectDetectedOc , pick which OC to set up first from a multi-OC plan ──
 //
 // Called after a plan PDF is parsed and Gemini reports more than one OC on
 // the same plan. We rewrite this draft's `draft_json` to reflect the chosen
@@ -2263,7 +2263,7 @@ export async function selectDetectedOc(
   }
 }
 
-// ─── createDraftFromDetectedOc — fork a new draft from a multi-OC plan ──
+// ─── createDraftFromDetectedOc , fork a new draft from a multi-OC plan ──
 //
 // Used by the "Create the next OC from this plan?" prompt after a wizard
 // completes. We copy the plan + parse from the source draft and seed page 2
@@ -2341,13 +2341,13 @@ export async function createDraftFromDetectedOc(sourceDraftId: string, ocIndex: 
         parse_status: "complete",
         parsed_json: source.parsed_json,
         draft_json: draftJson as unknown as Record<string, unknown>,
-        current_step: 2,    // Skip the upload step — the parse is already done.
+        current_step: 2,    // Skip the upload step , the parse is already done.
       })
       .select("id")
       .single();
     if (error || !created) {
       console.error("createDraftFromDetectedOc: insert failed", error);
-      return { error: "Couldn't start the next OC — please try again." };
+      return { error: "Couldn't start the next OC , please try again." };
     }
     return { draftId: created.id };
   } catch (err) {

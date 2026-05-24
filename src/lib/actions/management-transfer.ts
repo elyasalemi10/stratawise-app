@@ -4,7 +4,7 @@ import { revalidatePath } from "next/cache";
 import { requireCompanyRole, requireOCAccess } from "@/lib/auth";
 import { createServerClient } from "@/lib/supabase";
 
-// Manager transfer — closes the active management_agreement and opens a
+// Manager transfer , closes the active management_agreement and opens a
 // new one for the chosen agency. Levies, audit_log, and historical
 // records stay attributed to the outgoing manager because the
 // management_agreements table is time-bound (end_date != null on the
@@ -19,7 +19,7 @@ export interface ManagementCompanyOption {
 /**
  * List every management_company in the system. Used by the transfer
  * dialog's picker. We deliberately surface name + trading_as (not the
- * operating-account details) — a transfer needs the agency identity
+ * operating-account details) , a transfer needs the agency identity
  * only. Excludes the current manager since transferring to self is a
  * no-op.
  */
@@ -88,7 +88,7 @@ export async function transferOCManagement(input: TransferOCInput): Promise<
     .maybeSingle();
 
   // 1. Close the active agreement (if any). New row's start_date must
-  //    be on/after the old row's start_date — enforced in the schema.
+  //    be on/after the old row's start_date , enforced in the schema.
   let oldAgreementId: string | null = null;
   if (activeAgreement) {
     if (activeAgreement.start_date && input.transferDate < activeAgreement.start_date) {
@@ -135,7 +135,7 @@ export async function transferOCManagement(input: TransferOCInput): Promise<
     .eq("id", input.ocId);
   if (ptrErr) {
     console.error("transferOCManagement: legacy pointer update failed", ptrErr);
-    // Non-fatal — the agreements table is the source of truth going
+    // Non-fatal , the agreements table is the source of truth going
     // forward, and the next sidebar / RLS refresh will pick this up.
   }
 

@@ -107,15 +107,15 @@ export default async function SettingsPage() {
   const initialOutlookPrefix = outlookMailbox?.split("@")[0] ?? "";
 
   // Auth-shaped errors persisted by the gmail-push webhook (or watch-refresh
-  // cron) indicate the Workspace admin revoked our DWD entry — surface a
+  // cron) indicate the Workspace admin revoked our DWD entry , surface a
   // banner so the manager knows to re-add it instead of silently going dark.
   const gmailRevoked = !!subRow?.last_error && /unauthorized|invalid_grant|forbidden|401|403/i.test(subRow.last_error);
   const outlookRevoked = !!outlookSubRow?.last_error && /unauthorized|invalid_client|forbidden|401|403/i.test(outlookSubRow.last_error);
   const dwdRevoked = gmailRevoked || outlookRevoked;
   const mailboxIntegrationError = subRow?.last_error ?? outlookSubRow?.last_error ?? null;
 
-  // The always-on StrataWise alias every onboarded manager has —
-  // <email_username>@stratawise.com.au — used as the fallback when they
+  // The always-on StrataWise alias every onboarded manager has ,
+  // <email_username>@stratawise.com.au , used as the fallback when they
   // disconnect their own mailbox.
   const managerUsername =
     (managerUsernameResult.data as { email_username: string | null } | null)
@@ -127,7 +127,7 @@ export default async function SettingsPage() {
   // Surface the GCP service-account Client ID (the 21-digit number
   // customers paste into their Google Workspace admin) so the Email tab
   // can render it inline + with a copy button. Null when Gmail integration
-  // isn't configured yet — the tab swaps to a "coming soon" callout.
+  // isn't configured yet , the tab swaps to a "coming soon" callout.
   const gmailOauthClientId = process.env.GMAIL_OAUTH_CLIENT_ID ?? null;
 
   const currentPreferences = (prefsResult.data ?? []) as NotificationPrefRow[];

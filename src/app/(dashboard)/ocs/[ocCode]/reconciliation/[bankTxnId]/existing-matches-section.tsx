@@ -33,7 +33,7 @@ export function ExistingMatchesSection({ matches, onUnlink }: Props) {
                 <div>
                   <div className="text-sm font-medium">
                     Lot {match.lot_number}
-                    {match.unit_number && ` — Unit ${match.unit_number}`}
+                    {match.unit_number && ` , Unit ${match.unit_number}`}
                   </div>
                   <div className="text-xs text-muted-foreground mt-0.5">
                     {match.fund_type === "administrative" ? "Admin fund" : "Capital works fund"}

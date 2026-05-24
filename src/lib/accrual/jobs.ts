@@ -1,10 +1,10 @@
 // ============================================================================
-// Cron-callable accrual jobs — framework-agnostic
+// Cron-callable accrual jobs , framework-agnostic
 // ----------------------------------------------------------------------------
 // Same rules as src/lib/basiq/jobs.ts:
-//   - NO `"use server"` directive — exports must not become server actions
-//   - NO imports from `next/cache` — no revalidate calls
-//   - NO imports from `@/lib/auth` — auth is resolved by the caller; this
+//   - NO `"use server"` directive , exports must not become server actions
+//   - NO imports from `next/cache` , no revalidate calls
+//   - NO imports from `@/lib/auth` , auth is resolved by the caller; this
 //     module takes an explicit systemProfileId arg.
 //   - Caller supplies a real profile UUID; the only "system sentinel" is
 //     the bootstrap row keyed by auth_user_id='system_accrual_cron' (PP6-A).
@@ -19,13 +19,13 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 
 // Bootstrap system profile email. `profiles.auth_user_id` is a UUID column,
 // so the original "system_accrual_cron" string literal couldn't be looked
-// up there — switched to the dedicated email row created by the
+// up there , switched to the dedicated email row created by the
 // 20260520_bootstrap_system_cron_profile migration.
 const SYSTEM_ACCRUAL_EMAIL = "system-cron@stratawise.internal";
 
 export interface AccrualJobInput {
   ocId: string;
-  runDate: string;            // 'YYYY-MM-DD' — date interpreted in AEST/AEDT
+  runDate: string;            // 'YYYY-MM-DD' , date interpreted in AEST/AEDT
   systemProfileId: string;
   supabase: SupabaseClient;
 }
@@ -45,7 +45,7 @@ export type AccrualJobResult =
 // ─── resolveSystemProfileId ────────────────────────────────────────
 // Look up the bootstrap profile id at cron startup. Trigger.dev tasks
 // are stateless per-run, so "cache" means "lookup once at top of run,
-// reuse within the run". Hard-fails if the profile is missing —
+// reuse within the run". Hard-fails if the profile is missing ,
 // surfaces deploy-ordering bugs (cron deployed before PP6-A schema
 // delta applied) immediately rather than burying them in per-row FK
 // violations.
@@ -66,7 +66,7 @@ export async function resolveSystemProfileId(
   }
   if (!data) {
     throw new Error(
-      `system profile '${SYSTEM_ACCRUAL_EMAIL}' not found — apply migration 20260520_bootstrap_system_cron_profile`,
+      `system profile '${SYSTEM_ACCRUAL_EMAIL}' not found , apply migration 20260520_bootstrap_system_cron_profile`,
     );
   }
   return (data as { id: string }).id;
@@ -208,7 +208,7 @@ async function writeFailedRunRow(
   // and silently leave no record of the failure. Fallback sentinel
   // guarantees the failed row lands every time.
   const safeErrorMessage =
-    errorMessage?.trim() || "(unknown failure — empty error message)";
+    errorMessage?.trim() || "(unknown failure , empty error message)";
 
   const { error } = await supabase.from("interest_accrual_runs").insert({
     oc_id: ocId,
@@ -218,7 +218,7 @@ async function writeFailedRunRow(
     completed_at: new Date().toISOString(),
   });
   if (error) {
-    // If even the failed-row write fails, log loudly and proceed —
+    // If even the failed-row write fails, log loudly and proceed ,
     // surfacing a real failure shouldn't be blocked by telemetry plumbing.
     console.error(
       "accrueInterestForOCJob: failed to write failed run row",

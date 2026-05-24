@@ -187,7 +187,7 @@ export function ReconciliationQueueContent({
         source: row.source,
       },
       duplicate_metadata: row.duplicate_metadata,
-      // No candidate snapshot — the matched_against id surfaces in metadata.
+      // No candidate snapshot , the matched_against id surfaces in metadata.
       // Future PP5-D-A++: pre-fetch candidate snapshot server-side.
       candidate: null,
       duplicate_status: row.duplicate_status,
@@ -283,7 +283,7 @@ export function ReconciliationQueueContent({
         />
         <Kpi
           label="Oldest unmatched"
-          value={oldestUnmatchedDays !== null ? `${oldestUnmatchedDays}` : "—"}
+          value={oldestUnmatchedDays !== null ? `${oldestUnmatchedDays}` : ","}
           sub={oldestUnmatchedDays !== null ? (oldestUnmatchedDays === 1 ? "day" : "days") : "none pending"}
         />
         <Kpi
@@ -603,7 +603,7 @@ function QueueRow({
 
   // PP5-D-A priority rule (per PP5-D-0 ratification):
   // when a row has BOTH duplicate_status='suspected' AND a fuzzy hint,
-  // suppress the FuzzyHintCell — duplicate review takes precedence.
+  // suppress the FuzzyHintCell , duplicate review takes precedence.
   // Both surface UI affordances; rendering both creates conflicting CTAs.
   const showFuzzyHint = row.duplicate_status !== "suspected" && !!row.fuzzy_hint;
   const showDuplicateBadge = row.duplicate_status === "suspected" && !!row.duplicate_metadata;
@@ -635,10 +635,10 @@ function QueueRow({
         {formatCurrency(row.amount)}
       </td>
       <td className="px-4 py-3 text-right tabular-nums text-muted-foreground">
-        {row.matched_total > 0 ? formatCurrency(row.matched_total) : "—"}
+        {row.matched_total > 0 ? formatCurrency(row.matched_total) : ","}
       </td>
       <td className="px-4 py-3 text-right tabular-nums">
-        {row.remaining > 0 ? formatCurrency(row.remaining) : "—"}
+        {row.remaining > 0 ? formatCurrency(row.remaining) : ","}
       </td>
       <td className="px-4 py-3">
         <div className="flex items-center gap-2">

@@ -5,7 +5,7 @@
 // notice PDF when the escalation engine fires step 3 (sendFinalNoticeEmail).
 // Merged via pdf-lib in src/lib/pdf/merge.ts.
 //
-// Tone: severe but legally measured — references VCAT (s32 OC Act 2006 Vic)
+// Tone: severe but legally measured , references VCAT (s32 OC Act 2006 Vic)
 // without making threats outside statutory bounds. Manager signature
 // (signature_url) inlined as <Image> when present; falls back to printed
 // manager name + "Authorised by" line otherwise.
@@ -156,7 +156,7 @@ export function FinalNoticeCover(props: FinalNoticeCoverProps) {
 
         <View style={styles.banner}>
           <Text style={styles.bannerTitle}>FINAL NOTICE</Text>
-          <Text style={styles.bannerSub}>VCAT referral pending — immediate action required</Text>
+          <Text style={styles.bannerSub}>VCAT referral pending , immediate action required</Text>
         </View>
 
         <View style={styles.toBlock}>
@@ -208,7 +208,7 @@ export function FinalNoticeCover(props: FinalNoticeCoverProps) {
         <Text style={styles.consequencesTitle}>How to pay</Text>
         <Text style={styles.consequencesText}>
           Please refer to the attached levy notice for payment instructions. If you have already
-          paid, you may disregard this notice — please allow a day or two for reconciliation. If
+          paid, you may disregard this notice , please allow a day or two for reconciliation. If
           you dispute the amount or wish to discuss a payment arrangement, contact your strata
           manager immediately.
         </Text>

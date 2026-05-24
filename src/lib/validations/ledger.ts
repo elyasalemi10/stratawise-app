@@ -127,7 +127,7 @@ export interface LotLedgerEntry {
    *  UI consumers cast to LedgerDuplicateMetadata at use site. */
   duplicate_metadata: Record<string, unknown> | null;
   /** PP5-D-B parent-status pre-fetch (per planning Gap I). When this row
-   *  has duplicate_of set, this is the parent entry's `status` —
+   *  has duplicate_of set, this is the parent entry's `status` ,
    *  surfaces as a "voided parent" warning banner in the review dialog
    *  (parent already voided post-detection, per PP5-B planning rat. (d)). */
   parent_status: LedgerEntryStatus | null;

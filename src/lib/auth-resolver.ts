@@ -7,7 +7,7 @@
 // server action. Production code MUST NOT import or call these functions.
 //
 // Pre-launch grep: `grep -rn "__setUserIdResolverForVerification" src/` must
-// return exactly two hits — the definition here and the call site in a
+// return exactly two hits , the definition here and the call site in a
 // *.verification.ts script. Any other hit is a bug.
 
 export type UserIdResolver = () => Promise<string | null>;

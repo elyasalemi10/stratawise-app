@@ -1,7 +1,7 @@
 import "server-only";
 import type { SupabaseClient } from "@supabase/supabase-js";
 
-// Communication credits ledger — append-only record of billable outbound
+// Communication credits ledger , append-only record of billable outbound
 // comms (SMS, postal mail). Email rides on the platform fee for now, so we
 // expose a writer but only call it for the chargeable channels.
 //
@@ -33,7 +33,7 @@ interface RecordChargeInput {
   metadata?: Record<string, unknown> | null;
 }
 
-// Records a usage charge. Best-effort — failures log but don't propagate so a
+// Records a usage charge. Best-effort , failures log but don't propagate so a
 // dropped billing row doesn't block the outbound communication itself.
 export async function recordCommunicationCharge(
   supabase: SupabaseClient,

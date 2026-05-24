@@ -1,5 +1,5 @@
 // Curated Lucide icons for the blog timeline, as raw SVG strings (from
-// lucide-static — plain strings, safe to import on both server and client).
+// lucide-static , plain strings, safe to import on both server and client).
 // Shared by the editor's timeline node view and the AI-import HTML builder.
 import {
   Rocket, TrendingUp, CircleCheck, Wrench, Lightbulb, Building2, Calendar, Lock, Star,

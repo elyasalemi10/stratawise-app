@@ -14,7 +14,7 @@ import { config } from "dotenv";
 config({ path: ".env.local" });
 process.env.EMAIL_DRY_RUN = "true";
 
-// next/cache stub — updateNotificationPreferences calls revalidatePath.
+// next/cache stub , updateNotificationPreferences calls revalidatePath.
 import { createRequire } from "node:module";
 const scriptRequire = createRequire(import.meta.url);
 const nextCachePath = scriptRequire.resolve("next/cache");
@@ -56,7 +56,7 @@ type Result = { scenario: string; passed: boolean; detail: string };
 const results: Result[] = [];
 function record(scenario: string, passed: boolean, detail: string) {
   results.push({ scenario, passed, detail });
-  console.log(`  ${passed ? "PASS" : "FAIL"}  ${scenario}${detail ? " — " + detail : ""}`);
+  console.log(`  ${passed ? "PASS" : "FAIL"}  ${scenario}${detail ? " , " + detail : ""}`);
 }
 
 // ─── Fixture ───────────────────────────────────────────────────────
@@ -240,7 +240,7 @@ async function np4_crossProfileIsolation(
 
   const aEnabled = (aRow as { enabled: boolean } | null)?.enabled;
   record(
-    "NP-4: cross-profile isolation — profile A's update doesn't affect profile B",
+    "NP-4: cross-profile isolation , profile A's update doesn't affect profile B",
     aEnabled === false && (bCount ?? 0) === 0,
     `A.enabled=${aEnabled} B.rows=${bCount}`,
   );
@@ -272,7 +272,7 @@ async function main() {
     process.exit(0);
   }
 
-  console.log("Notification preferences verification — PP6-D-B scenarios NP-1..NP-4\n");
+  console.log("Notification preferences verification , PP6-D-B scenarios NP-1..NP-4\n");
   console.log("[1/3] Cleaning up stale verification data");
   await cleanupMarker();
 

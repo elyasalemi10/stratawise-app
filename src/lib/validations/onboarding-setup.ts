@@ -2,7 +2,7 @@ import { z } from "zod";
 
 export const companySchema = z.object({
   name: z.string().min(2, "Company name is required"),
-  // "Trading as" — optional alternate brand name (common for AU businesses).
+  // "Trading as" , optional alternate brand name (common for AU businesses).
   trading_as: z.string().optional(),
   // ABN is optional but if provided must be 11 digits (after stripping
   // whitespace). The UI strips for us, so we accept either form here.
@@ -16,7 +16,7 @@ export const companySchema = z.object({
   address: z.string().min(3, "Company address is required"),
 });
 
-// Operating account (step 2 of onboarding) — where the management
+// Operating account (step 2 of onboarding) , where the management
 // company receives its fees from each OC's trust account.
 export const operatingAccountSchema = z.object({
   operating_account_name: z.string().min(2, "Account name is required"),

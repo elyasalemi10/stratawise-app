@@ -326,7 +326,7 @@ export async function generateLevyPreview(
 
   if (!oc) return { error: "OC not found" };
 
-  // Get period — either specific index or auto-detect next
+  // Get period , either specific index or auto-detect next
   let nextPeriod;
   if (periodIndex !== undefined) {
     const periodsPerYear = getPeriodsForCycle(oc.billing_cycle);
@@ -424,14 +424,14 @@ export async function generateLevyPreview(
 
 // ─── Create levy batch (generate levies) ───────────────────
 //
-// Atomicity approach (Prompt 1 — Option B orchestration):
+// Atomicity approach (Prompt 1 , Option B orchestration):
 //   1. Insert levy_batches row (status='draft').
 //   2. Per lot: allocate reference number, insert levy_notices, insert
 //      levy_notice_items.
-//   3. Defensive parity check — if the loop produced fewer notices than lots
+//   3. Defensive parity check , if the loop produced fewer notices than lots
 //      we were given, bail out with a CRITICAL audit entry. The batch row
 //      is left in place (notices too) so an operator can inspect.
-//   4. Call rpc_levy_batch_debit — FOR UPDATE lock on the batch row is
+//   4. Call rpc_levy_batch_debit , FOR UPDATE lock on the batch row is
 //      non-negotiable; writes one ledger debit per notice atomically;
 //      flips batch status draft → ledger_written.
 //      On failure, rollbackBatchInsert undoes the JS writes. If the
@@ -442,7 +442,7 @@ export async function generateLevyPreview(
 // Not using a single monolithic RPC because PDF generation + R2 uploads
 // live in JS and would require base64-shuttling through SQL.
 // Receiving account for levy payments. Owners pay into the OC's ADMIN
-// (operating) trust account — the "main" account — regardless of which fund
+// (operating) trust account , the "main" account , regardless of which fund
 // a levy belongs to; the money is then disbursed across fund ledgers
 // internally. Prefer the administrative bank_accounts row; fall back to the
 // legacy OC-level columns when no admin account exists yet. Returns null when
@@ -584,7 +584,7 @@ export async function createLevyBatch(
 
     // BPAY CRN: 7-digit zero-padded levy number + MOD10V01 check digit.
     // Always populated regardless of whether the OC has registered a
-    // biller code — opt-in BPAY later requires no backfill (Gap 3).
+    // biller code , opt-in BPAY later requires no backfill (Gap 3).
     const levyNumber = Number.parseInt(String(refNum).slice(4), 10);
     const bpayCrn = Number.isFinite(levyNumber) ? generateCrn(levyNumber) : null;
 
@@ -629,7 +629,7 @@ export async function createLevyBatch(
   }
 
   // Defensive: every input lot must have produced a notice. If not, some
-  // step silently failed — surface loudly before we write ledger debits.
+  // step silently failed , surface loudly before we write ledger debits.
   if (createdLevies.length !== data.lots.length) {
     await supabase.from("audit_log").insert({
       profile_id: profile.id,
@@ -1087,7 +1087,7 @@ export async function regenerateBatch(ocId: string, batchId: string, newDueDate:
   return { success: true };
 }
 
-// ─── Recall batch (unsend — revert to draft) ──────────────
+// ─── Recall batch (unsend , revert to draft) ──────────────
 
 export async function recallBatch(ocId: string, batchId: string) {
   const profile = await requireCompanyRole();
@@ -1102,7 +1102,7 @@ export async function recallBatch(ocId: string, batchId: string) {
     .eq("status", "paid");
 
   if (paidLevies && paidLevies.length > 0) {
-    return { error: "Cannot recall — some levies have already been paid" };
+    return { error: "Cannot recall , some levies have already been paid" };
   }
 
   // Revert all levies to draft

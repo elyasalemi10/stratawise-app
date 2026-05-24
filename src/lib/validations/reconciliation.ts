@@ -37,7 +37,7 @@ export const TRANSACTION_SOURCES = ["manual", "csv_import", "macquarie_txn", "ma
 export type TransactionSource = (typeof TRANSACTION_SOURCES)[number];
 
 // PP5-A: bank_transactions.duplicate_status enum values. Status is orthogonal
-// to match_status (CONTEXT.md PP5 §Duplicates) — confirm/reject does NOT
+// to match_status (CONTEXT.md PP5 §Duplicates) , confirm/reject does NOT
 // touch match_status. Detection writes 'suspected'; manager review moves it
 // to 'confirmed' or 'rejected'.
 export const DUPLICATE_STATUSES = ["suspected", "confirmed", "rejected"] as const;
@@ -63,7 +63,7 @@ const ISO_DATE = /^\d{4}-\d{2}-\d{2}$/;
 const LEVY_REFERENCE_REGEX = /^LEV-\d+$/i;
 const RECEIPT_REFERENCE_REGEX = /^RCP-\d+$/i;
 
-// Min reason length for exclude/void/unmatch — CLAUDE.md-adjacent rule from Prompt 2 spec.
+// Min reason length for exclude/void/unmatch , CLAUDE.md-adjacent rule from Prompt 2 spec.
 const MIN_REASON_LEN = 10;
 const MAX_REASON_LEN = 1000;
 
@@ -165,7 +165,7 @@ export type DisableMappingActionInput = z.infer<typeof disableMappingSchema>;
 
 // PP4-D: collision resolution from the mappings page (re-activate flow).
 // Different concern from `resolvePayerMappingCollisionSchema` (reconcile
-// flow): no bank_transaction_id, no canonical-name lookup — the UI passes
+// flow): no bank_transaction_id, no canonical-name lookup , the UI passes
 // canonical_sender_name + proposed_lot_id directly.
 export const resolveMappingCollisionSchema = z.object({
   oc_id: z.string().uuid(),
@@ -191,10 +191,10 @@ export type ReconcileTransactionInput = z.input<
 //
 // duplicate_metadata JSONB shape. Detector writes this on the *newer*
 // (suspected) row when it finds a hash-equal candidate within +/-2 days.
-// UI consumers parse via the same schema — shape-drift insurance.
+// UI consumers parse via the same schema , shape-drift insurance.
 //
 // description_hash is SHA-256 truncated to 16 hex chars (64-bit; collision
-// risk ~10^-19 in a single bank_account candidate pool — see
+// risk ~10^-19 in a single bank_account candidate pool , see
 // CONTEXT.md PP5 §Duplicates). Stored for forensics; not the primary
 // detection key (the detector recomputes hashes in-memory).
 
@@ -225,11 +225,11 @@ export type DuplicateReviewInput = z.infer<typeof duplicateReviewSchema>;
 // for lot_ledger_entries. Detector writes this on the *newer* (suspected)
 // credit when it finds a matching candidate within ±7 days on entry_date.
 //
-// No description hash — ledger entries don't have free-form description
+// No description hash , ledger entries don't have free-form description
 // noise like bank txs. Detection key is structural: same lot_id +
 // levy_notice_id + amount, both category='payment' credits.
 //
-// day_delta capped at 7 (the PP5-B window — see CONTEXT.md PP5
+// day_delta capped at 7 (the PP5-B window , see CONTEXT.md PP5
 // §Duplicates rationale).
 
 export const ledgerDuplicateMetadataSchema = z.object({
@@ -380,11 +380,11 @@ export interface ReconciliationQueueRow {
   /** PP5-D-A: bank-side duplicate review state. NULL = no flag.
    *  'suspected' = badge surfaced; click → BankDuplicateReviewDialog.
    *  'rejected' = manager said not-a-duplicate; row renders normally.
-   *  'confirmed' rows are excluded from default queue queries — see
+   *  'confirmed' rows are excluded from default queue queries , see
    *  CONTEXT.md PP5 §4.7 default-queue-behaviour. */
   duplicate_status: DuplicateStatus | null;
   /** PP5-D-A: detection metadata (older row id, source pair, day delta,
-   *  normalised description, hash) — opens in the review dialog. */
+   *  normalised description, hash) , opens in the review dialog. */
   duplicate_metadata: DuplicateMetadata | null;
 }
 
@@ -405,7 +405,7 @@ export interface ReconciliationQueueResult {
   matchedThisMonthValue: number;
   /**
    * Distinct transaction_source values present in this oc's data.
-   * Drives the dynamic source-filter dropdown — the UI prepends "All" to
+   * Drives the dynamic source-filter dropdown , the UI prepends "All" to
    * this list. Filter-agnostic: doesn't depend on the currently-applied
    * status/source/bank filters. New sources (basiq, future integrations)
    * appear automatically once a transaction of that source is recorded.
@@ -488,7 +488,7 @@ export interface UndepositedFundsEntry {
   created_at: string;
 }
 
-// Preview shapes — returned by previewVoid* actions, consumed by the
+// Preview shapes , returned by previewVoid* actions, consumed by the
 // destructive-confirm dialog.
 export interface VoidCascadePreview {
   kind: "bank_transaction" | "ledger_entry" | "undeposited_receipt";

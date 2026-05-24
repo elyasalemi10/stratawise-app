@@ -21,7 +21,7 @@ import { GoogleGenAI, Type } from "@google/genai";
 // the rule in viewer.
 
 export type ParsedRule = {
-  /** Identifier of the OC this rule belongs to within the document — e.g.
+  /** Identifier of the OC this rule belongs to within the document , e.g.
    *  "OC1", "Commercial OC", "Owners Corporation 2", or the literal label the
    *  document uses ("Owners Corporation No. 2 Plan of Subdivision PS812345X").
    *  When the document only registers rules for a single OC, every entry
@@ -33,13 +33,13 @@ export type ParsedRule = {
    *  Lots"). Null when the rule itself IS a top-level heading. Kept for
    *  backwards compatibility; prefer `chapter_*` + `section_*` for new code. */
   parent_heading: string | null;
-  /** Chapter number — the top-level container, typically a single integer
+  /** Chapter number , the top-level container, typically a single integer
    *  ("1", "2", …). Null only when the rule is itself a chapter heading. */
   chapter_number: string | null;
   /** Chapter heading text without the number (e.g. "Health Safety and
    *  Security" for chapter "1"). */
   chapter_heading: string | null;
-  /** Section number — the middle tier inside a chapter, two-level dotted
+  /** Section number , the middle tier inside a chapter, two-level dotted
    *  ("1.1", "1.2"). Null when no explicit section exists in the source. */
   section_number: string | null;
   /** Section heading text without the number (e.g. "General" for "1.1"). */
@@ -91,19 +91,19 @@ const RESPONSE_SCHEMA = {
           oc_scope: {
             type: Type.STRING,
             description:
-              "Which OC this rule belongs to. MUST be one of the labels in `oc_scopes` above. Critical for documents that register rules for multiple OCs in one file — without this, two OCs' rule '1.1.1' get merged with different content.",
+              "Which OC this rule belongs to. MUST be one of the labels in `oc_scopes` above. Critical for documents that register rules for multiple OCs in one file , without this, two OCs' rule '1.1.1' get merged with different content.",
           },
           parent_heading: {
             type: Type.STRING,
             nullable: true,
             description:
-              "DEPRECATED — prefer chapter_heading + section_heading. Kept for back-compat. The combined chapter+section heading this rule sits under (e.g. '8. Commercial Lots' for rule 8.2.1, '9. Special Rules for the Developer' for rule 9.1.10).",
+              "DEPRECATED , prefer chapter_heading + section_heading. Kept for back-compat. The combined chapter+section heading this rule sits under (e.g. '8. Commercial Lots' for rule 8.2.1, '9. Special Rules for the Developer' for rule 9.1.10).",
           },
           chapter_number: {
             type: Type.STRING,
             nullable: true,
             description:
-              "Chapter number — the top-level numbered container (e.g. '1' for rule '1.1.1', '8' for rule '8.2.1'). Null only when the rule itself IS a chapter heading. Use the literal numeral verbatim from the document, no trailing period.",
+              "Chapter number , the top-level numbered container (e.g. '1' for rule '1.1.1', '8' for rule '8.2.1'). Null only when the rule itself IS a chapter heading. Use the literal numeral verbatim from the document, no trailing period.",
           },
           chapter_heading: {
             type: Type.STRING,
@@ -115,7 +115,7 @@ const RESPONSE_SCHEMA = {
             type: Type.STRING,
             nullable: true,
             description:
-              "Section number — middle tier inside a chapter, two-level dotted (e.g. '1.1' for rule '1.1.1', '8.2' for rule '8.2.1'). Null when the document doesn't have an explicit section header between chapter and rule.",
+              "Section number , middle tier inside a chapter, two-level dotted (e.g. '1.1' for rule '1.1.1', '8.2' for rule '8.2.1'). Null when the document doesn't have an explicit section header between chapter and rule.",
           },
           section_heading: {
             type: Type.STRING,
@@ -126,7 +126,7 @@ const RESPONSE_SCHEMA = {
           rule_number: {
             type: Type.STRING,
             description:
-              "Rule identifier verbatim from the document — e.g. '1', '2.3', 'A.5'. Preserve sub-numbering exactly.",
+              "Rule identifier verbatim from the document , e.g. '1', '2.3', 'A.5'. Preserve sub-numbering exactly.",
           },
           heading: {
             type: Type.STRING,
@@ -152,7 +152,7 @@ const RESPONSE_SCHEMA = {
 // NOTE: bbox + confidence were dropped from the rules schema in May 2026
 // after benchmarking showed long rules PDFs (10+ pages, 100+ rules) blew
 // past Flash's output-token ceiling and got truncated mid-JSON. The fields
-// were rarely useful in practice — bbox was almost always null and
+// were rarely useful in practice , bbox was almost always null and
 // confidence didn't change downstream behaviour. Slimmer schema ≈ 15-20%
 // smaller JSON, which makes the difference between a parsed and a
 // truncated response.
@@ -162,7 +162,7 @@ const SYSTEM_PROMPT = `You extract every numbered rule from a registered Victori
 Multi-OC documents:
 - A single PDF can register rules for more than one OC (typical for mixed-use plans of subdivision where the residential and commercial OCs share a document). Detect EVERY distinct OC the document covers and list them in oc_scopes.
 - Every rule MUST carry an oc_scope matching one of the labels in oc_scopes. If the document only defines rules for one OC, all rules share the same scope. Do NOT merge two OCs into a single rule list.
-- A typical signal of an OC boundary is a heading like "Owners Corporation 1 — Rules", "Owners Corporation No. 2", a page break followed by a section reset back to "1.1.1", or an explicit "Special Rules for OC2" header.
+- A typical signal of an OC boundary is a heading like "Owners Corporation 1 , Rules", "Owners Corporation No. 2", a page break followed by a section reset back to "1.1.1", or an explicit "Special Rules for OC2" header.
 
 Hierarchy (chapter → section → rule):
 - Australian OC rules documents are typically three-tiered: a CHAPTER number with a heading (bold, e.g. "1. Health Safety and Security"), inside it a SECTION number with a heading (italic / indented, e.g. "1.1. General"), and inside that the actual numbered RULES (e.g. "1.1.1. An owner or occupier...").
@@ -171,7 +171,7 @@ Hierarchy (chapter → section → rule):
     chapter_heading  = the chapter's heading text without the number ("Health Safety and Security", "Commercial Lots").
     section_number   = the two-level dotted prefix ("1.1" for "1.1.1", "8.2" for "8.2.1"). Null only if the document jumps straight from chapter to rule with no middle tier.
     section_heading  = the section heading text without the number ("General", "Advertising Signage"). Null if section_number is null.
-- Also set parent_heading to a combined string ("1. Health Safety and Security — 1.1 General") for backwards compatibility with older consumers.
+- Also set parent_heading to a combined string ("1. Health Safety and Security , 1.1 General") for backwards compatibility with older consumers.
 - When a numbered entry IS itself a chapter heading (e.g. the line is just "8. Commercial Lots" with no body text), emit it with section_number=null and rule_number = chapter_number, body = chapter_heading.
 
 Rule mechanics:
@@ -232,7 +232,7 @@ export async function parseRulesPdf(pdfBytes: Buffer): Promise<ParsedRulesDocume
       // through the 8K-token default and Gemini truncates the JSON mid-rule.
       // 65535 is the Flash ceiling and gives enough headroom for the longest
       // rules PDFs we've benchmarked. Cost-wise this only affects bills when
-      // the model actually emits that many tokens — the limit is a cap, not
+      // the model actually emits that many tokens , the limit is a cap, not
       // a target.
       maxOutputTokens: 65535,
       responseMimeType: "application/json",

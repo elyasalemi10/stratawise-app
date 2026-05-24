@@ -27,7 +27,7 @@ export const dynamic = "force-dynamic";
 const MAX_INBOUND_ATTACHMENT_BYTES = 25 * 1024 * 1024;
 
 export async function POST(request: NextRequest) {
-  // Validation handshake — Graph hits POST too with ?validationToken= for
+  // Validation handshake , Graph hits POST too with ?validationToken= for
   // the initial verification. (Some docs say GET, the real behaviour is
   // POST with a query param + empty body.)
   const validationToken = request.nextUrl.searchParams.get("validationToken");
@@ -82,9 +82,9 @@ export async function POST(request: NextRequest) {
       continue;
     }
 
-    // CSRF / auth check — the clientState we issued at subscription
+    // CSRF / auth check , the clientState we issued at subscription
     // create time should match. The token doesn't grant the row access
-    // (RLS doesn't bind here — service-role client) but it stops random
+    // (RLS doesn't bind here , service-role client) but it stops random
     // POSTs to this URL from being ingested.
     const expectedState = process.env.OUTLOOK_PUSH_CLIENT_STATE ?? "stratawise-outlook";
     if (notif.clientState !== expectedState) {
@@ -208,7 +208,7 @@ export async function POST(request: NextRequest) {
       }
     }
 
-    // Attachments — Graph: list metadata, then download bytes per row.
+    // Attachments , Graph: list metadata, then download bytes per row.
     if (msg.hasAttachments) {
       const listRes = await listOutlookAttachments(
         sub.tenant_id,
@@ -253,7 +253,7 @@ export async function POST(request: NextRequest) {
       .update({ last_error: null, updated_at: new Date().toISOString() })
       .eq("id", sub.id);
 
-    // Drop an in-app notification — same shape as Gmail's.
+    // Drop an in-app notification , same shape as Gmail's.
     const { data: notifRow } = await supabase
       .from("notifications")
       .insert({

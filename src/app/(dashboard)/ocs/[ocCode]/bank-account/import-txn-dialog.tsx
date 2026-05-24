@@ -12,7 +12,7 @@ import { uploadMacquarieTxn } from "@/lib/actions/macquarie-ingest";
 // (deft_drn strategy = strategy #0 since each TXN row carries its DRN).
 //
 // One file per upload. After the result panel renders, the manager clicks
-// Done to close — or Upload another to re-open the dropzone.
+// Done to close , or Upload another to re-open the dropzone.
 
 interface Props {
   open: boolean;
@@ -53,7 +53,7 @@ export function ImportTxnDialog({ open, onClose, ocId, bankAccountId, fundLabel,
       // that looks plausible and let the parser decide.
     }
     if (file.size > 10 * 1024 * 1024) {
-      toast.error("TXN files are usually < 1MB. This one's over 10MB — not a Macquarie TXN.");
+      toast.error("TXN files are usually < 1MB. This one's over 10MB , not a Macquarie TXN.");
       return;
     }
 
@@ -98,7 +98,7 @@ export function ImportTxnDialog({ open, onClose, ocId, bankAccountId, fundLabel,
     <Dialog open={open} onOpenChange={(o) => { if (!o) closeAndReset(); }}>
       <DialogContent className="max-w-lg">
         <DialogHeader>
-          <DialogTitle>Import Macquarie TXN file — {fundLabel}</DialogTitle>
+          <DialogTitle>Import Macquarie TXN file , {fundLabel}</DialogTitle>
         </DialogHeader>
 
         {showDropzone && (

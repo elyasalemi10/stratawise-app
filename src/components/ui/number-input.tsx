@@ -12,15 +12,15 @@ import { cn } from "@/lib/utils";
 // content, and stays as `inputMode="decimal"` so mobile shows a number keypad.
 // No HTML up/down spinner.
 //
-// Stores values as STRING, not number — empty string is the "nothing typed"
+// Stores values as STRING, not number , empty string is the "nothing typed"
 // sentinel (so `0` and "not yet filled" are distinguishable). Callers parse on
 // submit via parseFloat / parseInt as appropriate.
 //
 // Dollar fields opt-in to `thousandsSeparator` to display "12,345,678" while
 // they type. The stored value (the string passed back via onChange) NEVER
-// contains commas — callers continue to call parseFloat on it directly.
+// contains commas , callers continue to call parseFloat on it directly.
 //
-// `prefix` and `suffix` are render slots — typically a small chip (e.g. "$",
+// `prefix` and `suffix` are render slots , typically a small chip (e.g. "$",
 // "%", "days", "per year"). Same `+61` affix pattern as `<PhoneInput>`. Caller
 // passes ReactNode; the component handles the padding adjustment.
 
@@ -30,7 +30,7 @@ export interface NumberInputProps
   onChange: (next: string) => void;
   /** Allow decimal point (default true). Set false for integer-only fields. */
   allowDecimal?: boolean;
-  /** Allow leading minus sign for negative numbers (default false — most app
+  /** Allow leading minus sign for negative numbers (default false , most app
    *  fields are amounts ≥ 0). */
   allowNegative?: boolean;
   /** Max digits AFTER the decimal point. Default 2 (currency). */

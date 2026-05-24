@@ -1,6 +1,6 @@
 import "server-only";
 
-// Mobile Message API integration (Item 15 — Communications tab "Send SMS").
+// Mobile Message API integration (Item 15 , Communications tab "Send SMS").
 // Docs: https://mobilemessage.com.au/api-documentation
 // Authentication: HTTP Basic with USERNAME + PASSWORD env vars.
 // Endpoint: POST https://api.mobilemessage.com.au/v1/messages
@@ -98,7 +98,7 @@ export async function sendSms(params: {
     }
     // Mobile Message returns HTTP 200 even when a per-message send fails
     // (e.g. unregistered sender id). The per-message status carries the
-    // real outcome — treat anything that's not "success" as a failure so
+    // real outcome , treat anything that's not "success" as a failure so
     // the user sees the actual reason instead of a false "sent" toast.
     type MobileMessageResult = {
       status?: string;
@@ -113,11 +113,11 @@ export async function sendSms(params: {
     if (first && first.status && first.status !== "success") {
       const reason = first.error || `provider rejected (${first.status})`;
       console.error("[sms] per-message failure:", reason, first);
-      return { ok: false, error: `Could not send SMS — ${reason}` };
+      return { ok: false, error: `Could not send SMS , ${reason}` };
     }
     return { ok: true, id: first?.message_id };
   } catch (err) {
     console.error("[sms] send threw:", err);
-    return { ok: false, error: "Could not send SMS — please try again." };
+    return { ok: false, error: "Could not send SMS , please try again." };
   }
 }

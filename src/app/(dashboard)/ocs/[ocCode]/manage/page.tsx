@@ -2,7 +2,7 @@ import { redirect } from "next/navigation";
 
 import { resolveOCFromCode } from "@/lib/oc-resolver";
 
-// The manage page is no longer used — redirect to lots
+// The manage page is no longer used , redirect to lots
 export default async function ManageOCPage({
   params,
 }: {

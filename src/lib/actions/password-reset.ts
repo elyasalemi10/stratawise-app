@@ -7,7 +7,7 @@ import { sendPasswordResetCodeEmail } from "@/lib/email";
 import { rateLimitCheck, getClientIp } from "@/lib/rate-limit";
 import { logAudit } from "@/lib/audit";
 
-// Our own password-reset flow — same 6-digit OTP machinery as signup
+// Our own password-reset flow , same 6-digit OTP machinery as signup
 // verification, but the user is NOT signed in, we look up by email, and
 // the final step calls auth.admin.updateUserById to actually change the
 // password. Reuses email_verification_codes with purpose='password_reset'.
@@ -24,7 +24,7 @@ const PASSWORD_RULE = /^(?=.*[A-Za-z])(?=.*[^A-Za-z0-9]).{8,}$/;
 
 /**
  * Send a 6-digit code to the email's owner if they have an account. Always
- * returns { ok: true } regardless of whether the email exists — don't leak
+ * returns { ok: true } regardless of whether the email exists , don't leak
  * which addresses are registered. IP-rate-limited (5 / 10 min) so a script
  * can't enumerate.
  */
@@ -135,7 +135,7 @@ export async function resetPasswordWithCode(
     .eq("email", email)
     .maybeSingle();
 
-  // Generic error — never leak "email not found"
+  // Generic error , never leak "email not found"
   if (!profile || !profile.auth_user_id) {
     return { error: "Code is invalid or expired. Request a new one." };
   }
@@ -189,7 +189,7 @@ export async function resetPasswordWithCode(
     .update({ used_at: nowIso })
     .eq("id", row.id);
 
-  // Item 10 — security-sensitive action; log to audit trail. Don't include the
+  // Item 10 , security-sensitive action; log to audit trail. Don't include the
   // new password or the code in the audit row.
   await logAudit({
     profileId: profile.id,

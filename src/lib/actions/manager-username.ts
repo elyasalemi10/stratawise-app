@@ -38,7 +38,7 @@ export async function getSmsSenderId(): Promise<{ sender: string | null }> {
   return { sender };
 }
 
-// Ensures the signed-in manager has an email_username. Idempotent — no-op when one
+// Ensures the signed-in manager has an email_username. Idempotent , no-op when one
 // already exists. Run lazily from places that need the address (e.g. before sending
 // an outbound email from this manager).
 export async function ensureManagerUsername(): Promise<Result<{ username: string }>> {
@@ -57,7 +57,7 @@ export async function ensureManagerUsername(): Promise<Result<{ username: string
   if (!candidate) {
     return {
       ok: false,
-      error: "Could not derive a username from your name — please set one in settings.",
+      error: "Could not derive a username from your name , please set one in settings.",
     };
   }
 

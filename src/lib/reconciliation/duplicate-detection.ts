@@ -1,8 +1,8 @@
 // ============================================================================
 // Bank-side duplicate detection (PP5-A)
 // ----------------------------------------------------------------------------
-// Pure helpers (no "use server"). Callers — CSV import, manual entry, Basiq
-// poller — invoke `detectDuplicate` synchronously after inserting a new
+// Pure helpers (no "use server"). Callers , CSV import, manual entry, Basiq
+// poller , invoke `detectDuplicate` synchronously after inserting a new
 // bank_transactions row. If flagged, callers invoke `markDuplicate` to
 // write the duplicate_of / duplicate_status / duplicate_metadata fields and
 // then SKIP the orchestrator. The orchestrator self-defends (reads
@@ -14,12 +14,12 @@
 // rows are ineligible parents (see candidate-pool predicates below).
 //
 // Scope: per bank_account_id. Cross-account (admin x capital_works) and
-// cross-oc matches are intentionally out of scope — see
+// cross-oc matches are intentionally out of scope , see
 // CONTEXT.md PP5 §Duplicates.
 //
 // Empty-after-normalise descriptions: two amount-equal rows on the same day
 // with descriptions that normalise to "" will both hash to the same value
-// and flag. Documented behaviour — recovery path is fast (manager rejects).
+// and flag. Documented behaviour , recovery path is fast (manager rejects).
 // ============================================================================
 
 import { createHash } from "crypto";
@@ -60,7 +60,7 @@ export function normaliseDescription(raw: string): string {
 /**
  * SHA-256 of the input, truncated to the first 16 hex chars (64 bits).
  * Detection-by-equality across the small candidate pool of one bank_account
- * over a +/-2-day window — collision risk negligible. See PP5 §Duplicates
+ * over a +/-2-day window , collision risk negligible. See PP5 §Duplicates
  * in CONTEXT.md for the ratification.
  */
 export function hashDescription(normalised: string): string {

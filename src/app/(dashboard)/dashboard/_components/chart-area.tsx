@@ -15,7 +15,7 @@ const chartConfig = {
   },
 } satisfies ChartConfig;
 
-// Empty placeholder data — will be replaced with real data from Supabase
+// Empty placeholder data , will be replaced with real data from Supabase
 const chartData: { month: string; levies: number; payments: number }[] = [];
 
 export function ChartArea() {

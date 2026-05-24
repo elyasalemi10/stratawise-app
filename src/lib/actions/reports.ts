@@ -228,7 +228,7 @@ export async function getOCCertificateData(ocId: string, lotId: string, applican
       }).join(", ")
     : "n/a";
 
-  // Current fees — prefer most recent issued levy, fall back to approved admin budget
+  // Current fees , prefer most recent issued levy, fall back to approved admin budget
   let currentFees = "n/a";
   const latestLevy = (levies ?? [])[0];
   if (latestLevy) {
@@ -262,7 +262,7 @@ export async function getOCCertificateData(ocId: string, lotId: string, applican
     }
   }
 
-  // Fees paid up to — find latest fully paid levy period
+  // Fees paid up to , find latest fully paid levy period
   const sortedByPeriod = [...(levies ?? [])].sort((a, b) => new Date(b.period_end).getTime() - new Date(a.period_end).getTime());
   const latestPaid = sortedByPeriod.find((l) => l.status === "paid" || Number(l.amount_paid) >= Number(l.amount));
   const feesPaidUpTo = latestPaid?.period_end ?? "n/a";
@@ -463,7 +463,7 @@ export async function getOutstandingArrearsReport(
     };
   });
 
-  // Sort by total outstanding desc — managers want the biggest arrears first.
+  // Sort by total outstanding desc , managers want the biggest arrears first.
   rows.sort((a, b) => b.total_outstanding - a.total_outstanding);
   return rows;
 }

@@ -91,7 +91,7 @@ export function PDFDocumentTitle({
 
 /**
  * Reusable PDF footer block.
- * Uses `fixed` positioning — rendered on every page.
+ * Uses `fixed` positioning , rendered on every page.
  */
 export function PDFFooter({
   managementCompany,

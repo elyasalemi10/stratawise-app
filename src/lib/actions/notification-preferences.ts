@@ -17,8 +17,8 @@ import {
 // notification_preferences rows for the calling profile.
 //
 // Two layers of validation:
-//   1. Zod shape — type IN seedList, channel IN ['email', 'in_app'], boolean
-//   2. Application-layer guards —
+//   1. Zod shape , type IN seedList, channel IN ['email', 'in_app'], boolean
+//   2. Application-layer guards ,
 //        - Reject any update that would disable a MANDATORY type
 //          (statutory carve-out, e.g. levy_final_notice).
 //        - Reject any update that would disable in-app for a MANAGERIAL
@@ -65,12 +65,12 @@ export async function updateNotificationPreferences(
     };
   }
 
-  // Application-layer guards — Zod can't enforce cross-field rules cleanly.
+  // Application-layer guards , Zod can't enforce cross-field rules cleanly.
   for (const u of parsed.data.updates) {
-    // MANDATORY_DISABLE guard — defence-in-depth for the future case where
+    // MANDATORY_DISABLE guard , defence-in-depth for the future case where
     // a NOTIFICATION_TYPES entry is also in MANDATORY_NOTIFICATION_TYPES.
     // Currently no such overlap (levy_final_notice is mandatory but not in
-    // seed list — bypass in isNotificationOptedOut handles its non-opt-out
+    // seed list , bypass in isNotificationOptedOut handles its non-opt-out
     // at send time). Guard activates automatically when PP6-C-3 ships
     // final notice as a seeded type.
     if (
@@ -79,7 +79,7 @@ export async function updateNotificationPreferences(
       !u.enabled
     ) {
       return {
-        error: `${u.type} cannot be disabled — required by law`,
+        error: `${u.type} cannot be disabled , required by law`,
         errorCode: "MANDATORY_DISABLE",
       };
     }
@@ -89,7 +89,7 @@ export async function updateNotificationPreferences(
       !u.enabled
     ) {
       return {
-        error: `${u.type} in-app cannot be disabled — operational signal`,
+        error: `${u.type} in-app cannot be disabled , operational signal`,
         errorCode: "MANAGERIAL_INAPP_DISABLE",
       };
     }
@@ -112,7 +112,7 @@ export async function updateNotificationPreferences(
     return { error: error.message, errorCode: "DB_ERROR" };
   }
 
-  // Audit: counts + types only (not full update array — keeps audit log
+  // Audit: counts + types only (not full update array , keeps audit log
   // size bounded; specific values are recoverable from the row state).
   const typesUpdated = Array.from(
     new Set(parsed.data.updates.map((u) => u.type)),

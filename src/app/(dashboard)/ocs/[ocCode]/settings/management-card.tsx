@@ -56,7 +56,7 @@ export function ManagementCard({
   const [notes, setNotes] = useState<string>("");
   const [submitting, setSubmitting] = useState(false);
 
-  // Lazy-load the picker list when the dialog opens — keeps the Settings
+  // Lazy-load the picker list when the dialog opens , keeps the Settings
   // page snappy when the user isn't actually transferring.
   useEffect(() => {
     if (!open || options.length > 0) return;

@@ -4,15 +4,15 @@ import * as React from "react";
 
 import { cn } from "@/lib/utils";
 
-// Two named variants — picked by the consumer once on the Table root, not
+// Two named variants , picked by the consumer once on the Table root, not
 // row-by-row. Stripe is the default because data-dense ops surfaces (Lots,
 // Levies, Reconciliation, Banking) need horizontal tracking. Configuration
 // / sparse / mostly-empty tables (Settings rows, OC overviews) want
 // bordered, which reads as "key:value list" rather than "data grid".
 //
-//   striped  — odd rows bg-card, even rows bg-muted, hover bg-secondary-hover,
+//   striped  , odd rows bg-card, even rows bg-muted, hover bg-secondary-hover,
 //              no per-row border, header underline only.
-//   bordered — every row bg-card, border-b border-border per row, hover
+//   bordered , every row bg-card, border-b border-border per row, hover
 //              bg-muted (lighter than striped's hover since there's no
 //              alternating context to compete with).
 //
@@ -63,12 +63,12 @@ function TableBody({ className, ...props }: React.ComponentProps<"tbody">) {
     <tbody
       data-slot="table-body"
       className={cn(
-        // Striped — alternating rows. Hover lifts to secondary-hover which
+        // Striped , alternating rows. Hover lifts to secondary-hover which
         // is darker than muted (the stripe), so the cursor row is distinct
         // regardless of whether it landed on white or muted.
         variant === "striped" &&
           "[&_tr:nth-child(odd)]:bg-card [&_tr:nth-child(even)]:bg-muted/40 [&_tr:hover]:!bg-secondary-hover",
-        // Bordered — flat white rows + per-row underline; hover bumps to
+        // Bordered , flat white rows + per-row underline; hover bumps to
         // muted (works because there's no stripe to compete with).
         variant === "bordered" &&
           "[&_tr]:bg-card [&_tr]:border-b [&_tr]:border-border [&_tr:last-child]:border-0 [&_tr:hover]:bg-muted",

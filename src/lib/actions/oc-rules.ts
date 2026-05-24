@@ -181,7 +181,7 @@ export async function updateOCRule(input: {
 }
 
 /**
- * Hard-delete a single rule. The source document, if any, is left in place —
+ * Hard-delete a single rule. The source document, if any, is left in place ,
  * users routinely keep only some of a parsed document's rules and a deleted
  * rule doesn't invalidate the rest.
  */

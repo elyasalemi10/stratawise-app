@@ -352,7 +352,7 @@ function BankAccountCard({
               </Badge>
             </div>
             <div className="text-xs text-muted-foreground mt-1">
-              BSB {account.bsb || "—"} · Account {account.account_number || "—"}
+              BSB {account.bsb || ","} · Account {account.account_number || ","}
             </div>
           </div>
           <div className="flex items-center gap-2 shrink-0">
@@ -373,7 +373,7 @@ function BankAccountCard({
           </div>
         </div>
 
-        {/* BPAY settings — per-account, surfaced on bank-account page so the
+        {/* BPAY settings , per-account, surfaced on bank-account page so the
             manager configures them alongside the EFT details. Biller code is
             consumed by Strategy 2 (BPAY CRN auto-match); CRN prefix is
             documentation-only at present. */}
@@ -552,7 +552,7 @@ function UndepositedFundsPanel({
               <tr key={entry.id} className="border-t border-border hover:bg-muted/30">
                 <td className="px-3 py-2 tabular-nums text-foreground">{formatDate(entry.received_date)}</td>
                 <td className="px-3 py-2 text-foreground">
-                  Lot {entry.lot_number}{entry.unit_number ? ` — Unit ${entry.unit_number}` : ""}
+                  Lot {entry.lot_number}{entry.unit_number ? ` , Unit ${entry.unit_number}` : ""}
                 </td>
                 <td className="px-3 py-2 font-mono text-xs text-foreground">{entry.receipt_number}</td>
                 <td className="px-3 py-2 text-foreground">{entry.payment_method === "cheque" ? "Cheque" : "Cash"}</td>
@@ -735,11 +735,11 @@ function TransactionsTable({
                 <td className="px-3 py-2 tabular-nums text-foreground">{formatDate(t.transaction_date)}</td>
                 <td className="px-3 py-2 text-foreground max-w-md" title={t.description ?? ""}>
                   <div className="truncate">
-                    {t.description || <span className="text-muted-foreground italic">—</span>}
+                    {t.description || <span className="text-muted-foreground italic">,</span>}
                   </div>
                   {matchingReceipt && (
                     <div className="text-xs text-primary mt-0.5">
-                      May match pending receipt {matchingReceipt.receipt_number} —{" "}
+                      May match pending receipt {matchingReceipt.receipt_number} ,{" "}
                       <Link
                         href={`/ocs/${ocCode}/reconciliation/${t.id}`}
                         className="underline hover:no-underline"

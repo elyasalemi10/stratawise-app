@@ -3,7 +3,10 @@
 import { requireCompanyRole } from "@/lib/auth";
 import { createServerClient } from "@/lib/supabase";
 import { revalidatePath } from "next/cache";
-import type { CoaAccount, CoaAccountType } from "@/lib/chart-of-accounts";
+import type { CoaAccount, CoaAccountType, CoaGstTreatment } from "@/lib/chart-of-accounts";
+
+const ACCOUNT_TYPES = ["asset", "liability", "equity", "income", "expense"] as const;
+const GST_TREATMENTS = ["gst_on_income", "gst_on_expenses", "gst_free", "bas_excluded"] as const;
 
 async function companyIdFromContext(): Promise<string> {
   const profile = await requireCompanyRole();
@@ -18,7 +21,7 @@ export async function listChartOfAccounts(): Promise<CoaAccount[]> {
   const supabase = createServerClient();
   const { data, error } = await supabase
     .from("chart_of_accounts")
-    .select("id, code, name, account_type, is_system, archived_at")
+    .select("id, code, name, account_type, gst_treatment, system_role, is_system, archived_at")
     .eq("management_company_id", companyId)
     .order("code", { ascending: true });
   if (error) throw new Error(`Failed to load chart of accounts: ${error.message}`);
@@ -29,6 +32,7 @@ export async function createCoaAccount(input: {
   code: string;
   name: string;
   account_type: CoaAccountType;
+  gst_treatment: CoaGstTreatment;
 }): Promise<{ account?: CoaAccount; error?: string }> {
   const companyId = await companyIdFromContext();
 
@@ -40,8 +44,11 @@ export async function createCoaAccount(input: {
   if (!name || name.length > 120) {
     return { error: "Name is required and must be under 120 characters." };
   }
-  if (!(["asset", "liability", "equity", "income", "expense"] as const).includes(input.account_type)) {
+  if (!ACCOUNT_TYPES.includes(input.account_type)) {
     return { error: "Pick an account type." };
+  }
+  if (!GST_TREATMENTS.includes(input.gst_treatment)) {
+    return { error: "Pick a GST treatment." };
   }
 
   const supabase = createServerClient();
@@ -52,9 +59,10 @@ export async function createCoaAccount(input: {
       code,
       name,
       account_type: input.account_type,
+      gst_treatment: input.gst_treatment,
       is_system: false,
     })
-    .select("id, code, name, account_type, is_system, archived_at")
+    .select("id, code, name, account_type, gst_treatment, system_role, is_system, archived_at")
     .single();
 
   if (error) {
@@ -75,22 +83,30 @@ export async function createCoaAccount(input: {
   return { account: data as CoaAccount };
 }
 
-export async function archiveCoaAccount(id: string): Promise<{ error?: string }> {
+export async function setCoaAccountActive(
+  id: string,
+  active: boolean,
+): Promise<{ error?: string }> {
   const companyId = await companyIdFromContext();
   const supabase = createServerClient();
 
   const { data: existing, error: fetchErr } = await supabase
     .from("chart_of_accounts")
-    .select("id, is_system, archived_at")
+    .select("id, is_system, system_role")
     .eq("id", id)
     .eq("management_company_id", companyId)
     .maybeSingle();
   if (fetchErr || !existing) return { error: "Account not found." };
-  if (existing.is_system) return { error: "Built-in accounts can't be archived." };
+
+  // Protected accounts (built-ins the app references by role) can't be
+  // deactivated. Renames are blocked elsewhere; here we just guard the toggle.
+  if (!active && existing.is_system && existing.system_role) {
+    return { error: "This built-in account is required by the platform and can't be deactivated." };
+  }
 
   const { error } = await supabase
     .from("chart_of_accounts")
-    .update({ archived_at: existing.archived_at ? null : new Date().toISOString(), updated_at: new Date().toISOString() })
+    .update({ archived_at: active ? null : new Date().toISOString(), updated_at: new Date().toISOString() })
     .eq("id", id);
   if (error) return { error: "Failed to update account." };
 

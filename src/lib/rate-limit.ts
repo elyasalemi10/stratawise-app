@@ -62,7 +62,7 @@ export async function rateLimitCheck({
   } else {
     windowStartMs = new Date(existing.window_start).getTime();
     if (now - windowStartMs > windowMs) {
-      // Window expired — reset
+      // Window expired , reset
       windowStartMs = now;
       count = 1;
       await admin

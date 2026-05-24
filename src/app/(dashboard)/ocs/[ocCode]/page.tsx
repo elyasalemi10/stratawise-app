@@ -141,7 +141,7 @@ async function LotOwnerDashboard({ ocId, ocCode, profileId }: { ocId: string; oc
                       <tr key={levy.id} className="border-t border-border/50">
                         <td colSpan={3} className="p-0">
                           <Link href={`/ocs/${ocCode}/my-levies`} className="flex w-full hover:bg-muted/30 transition-colors">
-                            <span className="px-4 py-2.5 text-foreground flex-1">{formatDateLong(levy.period_start)} — {formatDateLong(levy.period_end)}</span>
+                            <span className="px-4 py-2.5 text-foreground flex-1">{formatDateLong(levy.period_start)} , {formatDateLong(levy.period_end)}</span>
                             <span className="px-4 py-2.5 text-foreground">{formatDateLong(levy.due_date)}</span>
                             <span className="px-4 py-2.5 text-right font-semibold tabular-nums">{formatCurrency(levy.amount ?? 0)}</span>
                           </Link>
@@ -259,7 +259,7 @@ export default async function OCDashboardPage({
   }
 
   // When the wizard finishes and the OC uses Macquarie DEFT, prompt for the
-  // DRN export CSV — but ONLY if no DRN mappings have been recorded yet.
+  // DRN export CSV , but ONLY if no DRN mappings have been recorded yet.
   // The wizard now collects DRNs inline on Page 5, so most Macquarie OCs
   // arrive at the dashboard with lot_drns rows already written; firing the
   // dialog again would be a duplicate ask. Manager can dismiss with

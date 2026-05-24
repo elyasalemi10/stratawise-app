@@ -1,7 +1,7 @@
 "use client";
 
 // ============================================================================
-// MappingRowActions — per-row dropdown for the mappings management table
+// MappingRowActions , per-row dropdown for the mappings management table
 // ----------------------------------------------------------------------------
 // View details / Disable / Re-activate / Delete (admin-only). Re-activate
 // re-runs the partial-active UNIQUE-index collision check server-side and
@@ -169,7 +169,7 @@ export function MappingRowActions({
               This permanently removes the mapping for{" "}
               <strong>{mapping.canonical_sender_name}</strong> on{" "}
               <strong>{mapping.lot_label}</strong>. The audit trail is
-              preserved. The mapping cannot be restored after deletion —
+              preserved. The mapping cannot be restored after deletion ,
               you would have to re-create it from a future manual match.
             </AlertDialogDescription>
           </AlertDialogHeader>

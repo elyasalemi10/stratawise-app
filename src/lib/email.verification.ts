@@ -7,7 +7,7 @@
  *   - emitClaimMatchedEmail (dry-run, opt-out)
  *   - emitClaimRejectedEmail (dry-run, opt-out, rejection_reason in body_preview)
  *
- * EMAIL_DRY_RUN is forced on for the duration of the suite — no real
+ * EMAIL_DRY_RUN is forced on for the duration of the suite , no real
  * emails fire. Assertions read communication_log, audit_log, and the
  * payment_received_email_sent_at sentinel column directly.
  *
@@ -50,7 +50,7 @@ const results: Result[] = [];
 
 function record(scenario: string, passed: boolean, detail: string) {
   results.push({ scenario, passed, detail });
-  console.log(`  ${passed ? "PASS" : "FAIL"}  ${scenario}${detail ? " — " + detail : ""}`);
+  console.log(`  ${passed ? "PASS" : "FAIL"}  ${scenario}${detail ? " , " + detail : ""}`);
 }
 
 // ─── Fixture builders ──────────────────────────────────────────────────
@@ -705,7 +705,7 @@ async function cleanupCompany(companyId: string) {
     .eq("management_company_id", companyId);
   const profileIds = (profileRows ?? []).map((p) => (p as { id: string }).id);
 
-  // Owner profile (lot_owner role) is not management_company-scoped — find by auth_user_id pattern.
+  // Owner profile (lot_owner role) is not management_company-scoped , find by auth_user_id pattern.
   const { data: orphanOwners } = await supabase
     .from("profiles")
     .select("id")
@@ -737,7 +737,7 @@ async function main() {
     process.exit(0);
   }
 
-  console.log("Email + notification helpers verification — PP6-C-1 scenarios E-1..E-12\n");
+  console.log("Email + notification helpers verification , PP6-C-1 scenarios E-1..E-12\n");
   console.log("[1/3] Cleaning up stale verification data");
   await cleanupMarker();
 

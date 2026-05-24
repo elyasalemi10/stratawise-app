@@ -2,7 +2,7 @@
 // Lives outside the "use server" sibling so client components can import them
 // without triggering Next.js' "Server Actions must be async" build error.
 
-// Accepted formats — we let users upload essentially anything modern browsers
+// Accepted formats , we let users upload essentially anything modern browsers
 // can encode + display. HEIC is from iPhone photos; the browser/OS usually
 // re-encodes to JPEG on selection but we accept the raw type just in case.
 export const ALLOWED_LOGO_MIME_TYPES = [

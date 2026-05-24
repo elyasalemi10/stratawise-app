@@ -77,7 +77,7 @@ function SignUpContent() {
       return;
     }
 
-    // Go straight to the role-specific onboarding after verification — skip
+    // Go straight to the role-specific onboarding after verification , skip
     // the /onboarding router page (it briefly flashed just the StrataWise
     // icon). An explicit ?next from an invite link still wins. Soft nav so
     // the shared auth layout doesn't repaint.
@@ -100,7 +100,7 @@ function SignUpContent() {
       </div>
 
       <form onSubmit={handleSubmit} className="mx-auto w-full max-w-sm space-y-4">
-        {/* Account type — managers run an OC; lot owners join their OC's
+        {/* Account type , managers run an OC; lot owners join their OC's
             portal. The choice sets the profile role so onboarding routes to
             the right place. */}
         <div className="grid grid-cols-2 gap-2">

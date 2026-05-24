@@ -13,8 +13,8 @@ export interface BudgetCategory {
 }
 
 export interface BudgetItemData {
-  // Either references a legacy budget_categories row (back-compat) or — for
-  // new budgets — references a chart_of_accounts row via coa_account_id.
+  // Either references a legacy budget_categories row (back-compat) or , for
+  // new budgets , references a chart_of_accounts row via coa_account_id.
   category_id?: string | null;
   coa_account_id?: string | null;
   description: string;
@@ -132,7 +132,7 @@ export async function getOCBudgets(ocId: string): Promise<BudgetWithItems[]> {
   // legacy items render alongside CoA-backed ones during the transition.
   // The generated Supabase types occasionally collapse multi-FK selects to a
   // generic error tuple; cast through `unknown` so the runtime shape we expect
-  // wins (the runtime IS correct — only the inferred type is off).
+  // wins (the runtime IS correct , only the inferred type is off).
   type RawItem = {
     id: string;
     budget_id: string;

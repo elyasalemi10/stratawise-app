@@ -19,12 +19,12 @@ import type { LotWithFinancials } from "@/lib/actions/oc";
 // Bulk-invite confirmation dialog. Fired from the /lots Tools dropdown.
 //
 // Receives the invite-status map from the parent (LotsPageContent), which
-// is the same map the LotsTab already loaded — no second fetch. We compute
+// is the same map the LotsTab already loaded , no second fetch. We compute
 // eligibility locally:
 //   - Has email + name on file (no email = no invitation possible)
 //   - Doesn't have an existing accepted invite
 // Owners with a pending or noted invite still get a fresh send (counts as
-// a resend, which is fine — the underlying action reuses the open invite).
+// a resend, which is fine , the underlying action reuses the open invite).
 
 interface Props {
   open: boolean;
@@ -32,7 +32,7 @@ interface Props {
   ocId: string;
   lots: LotWithFinancials[];
   /** Pre-loaded invite-status map, keyed by lot id. Same map LotsTab uses
-   *  — passed in so we don't refetch when the dialog opens. */
+   *  , passed in so we don't refetch when the dialog opens. */
   inviteStatusMap: Map<string, string>;
 }
 
@@ -43,7 +43,7 @@ export function BulkInviteDialog({ open, onClose, ocId, lots, inviteStatusMap }:
   const [alreadyAcceptedCount, setAlreadyAcceptedCount] = useState(0);
 
   // Recompute eligibility from the parent-supplied map every time the
-  // dialog opens. Synchronous — no fetch, no loading state. Owners with no
+  // dialog opens. Synchronous , no fetch, no loading state. Owners with no
   // email (or no name) can't be invited, so they're left out of the list
   // entirely. All eligible owners start checked.
   useEffect(() => {
@@ -112,7 +112,7 @@ export function BulkInviteDialog({ open, onClose, ocId, lots, inviteStatusMap }:
           <p className="rounded-md border border-border bg-card p-4 text-sm text-muted-foreground">
             {alreadyAcceptedCount > 0
               ? `Every owner with an email on file has already accepted. (${alreadyAcceptedCount} accepted.)`
-              : "None of these owners have an email on file yet — add an email to a lot's owner to invite them."}
+              : "None of these owners have an email on file yet , add an email to a lot's owner to invite them."}
           </p>
         ) : (
           <>
@@ -131,7 +131,7 @@ export function BulkInviteDialog({ open, onClose, ocId, lots, inviteStatusMap }:
               </span>
             </div>
             {/* Fixed height of ~5.5 rows so the list visibly clips its last
-                row — a cue that it scrolls when there are more owners. */}
+                row , a cue that it scrolls when there are more owners. */}
             <div className="max-h-[308px] space-y-1 overflow-y-auto rounded-md border border-border bg-card p-1">
               {eligible.map((lot) => (
                 <div

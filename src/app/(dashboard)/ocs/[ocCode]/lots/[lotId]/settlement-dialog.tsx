@@ -40,7 +40,7 @@ interface PropsLotMode {
   lotId: string;
   lotNumber: number;
   /** Optional default postal address used to pre-fill the new owner's
-   *  service address — typically "Unit X / <oc address>" of the lot
+   *  service address , typically "Unit X / <oc address>" of the lot
    *  currently being transferred. */
   lotAddress?: string | null;
   /** All lots in the OC, so the manager can re-target the settlement to a
@@ -84,7 +84,7 @@ export function SettlementDialog(props: Props) {
   // dropdown re-targets the settlement.
   const [selectedLotId, setSelectedLotId] = useState<string | null>(null);
 
-  // 2-step mismatch confirmation. Step "plan" runs first (highest stakes —
+  // 2-step mismatch confirmation. Step "plan" runs first (highest stakes ,
   // wrong plan-of-subdivision = wrong building entirely); "lot" runs only
   // after plan is acknowledged (or matched), so the manager can either
   // confirm in place or jump to the lot the document actually mentions.
@@ -99,7 +99,7 @@ export function SettlementDialog(props: Props) {
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   // Editable form state, prefilled from parsed PDF.
-  // Date of birth was removed in 2026-05 — it isn't load-bearing for
+  // Date of birth was removed in 2026-05 , it isn't load-bearing for
   // strata correspondence and we don't want to be the one storing it.
   const [name, setName] = useState("");
   const [email, setEmail] = useState("");
@@ -123,7 +123,7 @@ export function SettlementDialog(props: Props) {
     setOccupancy("owner_occupied"); setTenantName(""); setTenantNameInvalid(false); setTenantEmail(""); setTenantPhone("");
   }, []);
 
-  // Manual entry — skip the PDF stage and jump straight to the review form
+  // Manual entry , skip the PDF stage and jump straight to the review form
   // with empty values. Pre-fill the postal address with the current lot's
   // own address (e.g. "Unit 2 / 14 Smith St, Hawthorn VIC 3122") so the
   // common case "owner lives at the lot" is one click away.
@@ -138,7 +138,7 @@ export function SettlementDialog(props: Props) {
   }, [knownLotAddress]);
 
   // Re-seed the postal address whenever the drawer (re)opens onto the
-  // manual path — covers the case where the manager swaps lots without
+  // manual path , covers the case where the manager swaps lots without
   // unmounting the SettlementDialog instance.
   useEffect(() => {
     if (open && entryMode === "manual" && knownLotAddress && !postalAddress) {
@@ -149,7 +149,7 @@ export function SettlementDialog(props: Props) {
 
   // Hydrate from the "Go to lot X" sessionStorage hand-off so the new
   // lot's drawer opens with the same parsed data the user was reviewing
-  // on the wrong lot. One-shot — clear after read.
+  // on the wrong lot. One-shot , clear after read.
   useEffect(() => {
     if (!open || !knownLotId || typeof window === "undefined") return;
     const key = `sw:settlement-prefill:${knownLotId}`;
@@ -168,7 +168,7 @@ export function SettlementDialog(props: Props) {
         tenantEmail?: string;
         tenantPhone?: string;
       };
-      // No PDF re-parse — the document was re-attached to THIS lot by
+      // No PDF re-parse , the document was re-attached to THIS lot by
       // findLotByNumberInOc before navigation. Use the manual review UI
       // (no match pills, since we didn't re-parse against this lot) but
       // keep the documentId so the settlement stays linked to the PDF.
@@ -232,7 +232,7 @@ export function SettlementDialog(props: Props) {
       setReview(data);
       setStage("review");
       // Mismatch popup comes FIRST and the form stays BLANK behind it until
-      // the manager resolves the mismatch — prefilling a wrong-document's
+      // the manager resolves the mismatch , prefilling a wrong-document's
       // details into the form is misleading. Only when there's no mismatch
       // do we prefill straight away. Plan mismatch is the higher-stakes
       // check so it leads; the acknowledge handlers call applyPrefill once
@@ -346,7 +346,7 @@ export function SettlementDialog(props: Props) {
 
   // Footer "Confirm and assign". The plan/lot mismatch popup already
   // ran at upload time (before the form was reviewed), so by the time
-  // the manager reaches this button they've acknowledged any mismatch —
+  // the manager reaches this button they've acknowledged any mismatch ,
   // just validate + submit.
   const handleConfirm = useCallback(() => {
     if (!validateForm()) return;
@@ -361,7 +361,7 @@ export function SettlementDialog(props: Props) {
     if (!review?.parsed.lotNumber) return;
     setJumpingToLot(true);
     // Pass documentId so the server re-attaches the PDF to the target
-    // lot — the destination drawer then submits in PDF mode with the
+    // lot , the destination drawer then submits in PDF mode with the
     // doc linked, not as a manual entry.
     const res = await findLotByNumberInOc(ocId, review.parsed.lotNumber, documentId);
     setJumpingToLot(false);
@@ -525,7 +525,7 @@ export function SettlementDialog(props: Props) {
           />
         )}
 
-        {/* Discrepancy confirmation — INLINE in the drawer (not a popup).
+        {/* Discrepancy confirmation , INLINE in the drawer (not a popup).
             Shown after parsing when the plan / lot don't match; the form
             stays hidden until the manager resolves it. */}
         {stage === "review" && mismatchStep === "plan" && review && (
@@ -536,16 +536,16 @@ export function SettlementDialog(props: Props) {
                 <p className="text-sm font-semibold text-foreground">This document is for a different plan</p>
                 <p className="mt-1 text-sm text-muted-foreground">
                   The document references plan{" "}
-                  <span className="font-medium text-foreground">{review.parsed.planNumber ?? "—"}</span>,
+                  <span className="font-medium text-foreground">{review.parsed.planNumber ?? ","}</span>,
                   but this OC is plan{" "}
-                  <span className="font-medium text-foreground">{review.expected.planNumber ?? "—"}</span>.
+                  <span className="font-medium text-foreground">{review.expected.planNumber ?? ","}</span>.
                   Are you sure this is the right document?
                 </p>
               </div>
             </div>
             <div className="flex items-center justify-end gap-2">
               <Button type="button" variant="secondary" size="sm" onClick={handleClose}>
-                Cancel — wrong document
+                Cancel , wrong document
               </Button>
               <Button
                 type="button"
@@ -559,7 +559,7 @@ export function SettlementDialog(props: Props) {
                   }
                 }}
               >
-                I&apos;m sure — continue
+                I&apos;m sure , continue
               </Button>
             </div>
           </div>
@@ -573,9 +573,9 @@ export function SettlementDialog(props: Props) {
                 <p className="text-sm font-semibold text-foreground">This document is for a different lot</p>
                 <p className="mt-1 text-sm text-muted-foreground">
                   The document references{" "}
-                  <span className="font-medium text-foreground">Lot {review.parsed.lotNumber ?? "—"}</span>,
+                  <span className="font-medium text-foreground">Lot {review.parsed.lotNumber ?? ","}</span>,
                   but you&apos;re applying it to{" "}
-                  <span className="font-medium text-foreground">Lot {targetLotNumber ?? "—"}</span>.
+                  <span className="font-medium text-foreground">Lot {targetLotNumber ?? ","}</span>.
                   What would you like to do?
                 </p>
               </div>
@@ -586,7 +586,7 @@ export function SettlementDialog(props: Props) {
                 Go to Lot {review.parsed.lotNumber}
               </Button>
               <Button type="button" size="sm" onClick={() => { setMismatchStep(null); applyPrefill(); }}>
-                I&apos;m sure — apply to Lot {targetLotNumber}
+                I&apos;m sure , apply to Lot {targetLotNumber}
               </Button>
             </div>
           </div>
@@ -596,7 +596,7 @@ export function SettlementDialog(props: Props) {
 
         </div>
 
-        {/* Sticky footer — only on the review stage and only once any
+        {/* Sticky footer , only on the review stage and only once any
             discrepancy has been resolved (the inline panel owns its own
             actions while a mismatch is pending). */}
         {stage === "review" && !mismatchStep && (
@@ -631,7 +631,7 @@ function UploadDropzone({
   onFile: (file: File) => void;
 }) {
   // The whole dropzone is now a single click target. Click anywhere inside
-  // opens the file picker — no separate "Choose file" button to aim at.
+  // opens the file picker , no separate "Choose file" button to aim at.
   // Keyboard accessibility: Enter / Space also open the picker.
   return (
     <div
@@ -682,7 +682,7 @@ function UploadDropzone({
 
 // ─── Parsing spinner ──────────────────────────────────────────────
 //
-// Mirrors the wizard's plan-of-subdivision upload step — a centred spinner
+// Mirrors the wizard's plan-of-subdivision upload step , a centred spinner
 // + filename + status copy reads as "we're working on it" more clearly
 // than rectangular skeletons (which suggest "structure is coming").
 
@@ -738,8 +738,8 @@ function ReviewForm(props: {
       {review.currentOwner && (
         <div className="rounded-md border border-border p-3 text-sm">
           <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">Outgoing owner</p>
-          <p className="mt-1 text-foreground font-medium">{review.currentOwner.name ?? "—"}</p>
-          <p className="text-xs text-muted-foreground">{review.currentOwner.email ?? "—"}</p>
+          <p className="mt-1 text-foreground font-medium">{review.currentOwner.name ?? ","}</p>
+          <p className="text-xs text-muted-foreground">{review.currentOwner.email ?? ","}</p>
           <p className="mt-2 text-xs text-muted-foreground">
             Their access ends on the settlement date. Their payment history and communications stay
             available to them under <span className="font-medium">Past lots</span>.
@@ -778,7 +778,7 @@ function ReviewForm(props: {
               id="settlement-postal"
               value={props.postalAddress}
               onChange={props.setPostalAddress}
-              placeholder="For correspondence — used as absent-owner address if different from the lot"
+              placeholder="For correspondence , used as absent-owner address if different from the lot"
             />
           </div>
           <div className="space-y-1.5 sm:col-span-2">
@@ -804,7 +804,7 @@ function ReviewForm(props: {
 
         <p className="text-xs text-muted-foreground">
           The new owner will appear as <span className="font-medium">Pending invitation</span> on this lot.
-          No email is sent — share the invitation link manually when you&apos;re ready.
+          No email is sent , share the invitation link manually when you&apos;re ready.
         </p>
       </div>
     </div>
@@ -900,7 +900,7 @@ function ManualReviewForm(props: {
         <p className="text-xs text-muted-foreground">
           The new owner will appear as{" "}
           <span className="font-medium">Pending invitation</span> on this lot.
-          No email is sent — share the invitation link manually when you&apos;re
+          No email is sent , share the invitation link manually when you&apos;re
           ready.
         </p>
       </div>

@@ -96,7 +96,7 @@ interface QueueOptions {
   /** Multi-value. EXISTS-style: a transaction matches if ANY of its
    *  reconciliation_matches.match_method values is in the list. In practice
    *  the orchestrator writes one method per transaction (all allocations
-   *  share it), so this aggregation is rarely meaningful — see
+   *  share it), so this aggregation is rarely meaningful , see
    *  PRE_LAUNCH_CLEANUP. */
   matchMethod?: string[];
   /** Single boolean: only show matches flagged for review. */
@@ -200,7 +200,7 @@ export async function getReconciliationQueue(
       ),
     );
     if (txIdAllowlist.length === 0) {
-      // No transactions match the filter — return empty result set without
+      // No transactions match the filter , return empty result set without
       // any further query.
       return {
         rows: [],
@@ -1085,7 +1085,7 @@ export async function addManualBankTransaction(
 //
 // confirmDuplicate's MATCH_ACTIVE guard returns a structured `errorCode` so
 // the UI can dispatch on it (avoids fragile string matching on `error`).
-// match_status × duplicate_status remain orthogonal — confirm does NOT
+// match_status × duplicate_status remain orthogonal , confirm does NOT
 // touch match_status (CONTEXT.md PP5 §Duplicates).
 // ============================================================================
 
@@ -1254,7 +1254,7 @@ export async function rejectDuplicate(
   });
 
   // PP5-A Q3: re-run tryAutoMatch retroactively. Skips internally for
-  // debits (amount <= 0) — caller surfaces matchOutcome=null in that case.
+  // debits (amount <= 0) , caller surfaces matchOutcome=null in that case.
   const amount = Number(r.amount);
   type MatchOutcomeShape = NonNullable<RejectDuplicateResult["success"]>["matchOutcome"];
   let matchOutcome: MatchOutcomeShape = null;
@@ -1292,7 +1292,7 @@ export async function rejectDuplicate(
 //   - keepAsOverpayment:     status -> 'rejected'; entry stays active;
 //                            balance reflects overpayment.
 //
-// duplicate_status x lot_ledger_entries.status remain orthogonal — the void
+// duplicate_status x lot_ledger_entries.status remain orthogonal , the void
 // path goes through rpc_ledger_void (existing PP1 contract), not via direct
 // status mutation. The status='active' guard here is a pre-flight check;
 // rpc_ledger_void itself raises if the entry is already voided through some
@@ -1393,7 +1393,7 @@ export async function voidAsLedgerDuplicate(
   const unmatchedBankTxIds: string[] = [];
 
   if (matchRows.length === 0) {
-    // Unlinked credit — direct rpc_ledger_void.
+    // Unlinked credit , direct rpc_ledger_void.
     const { data: voidData, error: voidErr } = await supabase.rpc("rpc_ledger_void", {
       p_entry_id: parsed.data.lot_ledger_entry_id,
       p_reason: voidReason,
@@ -1412,12 +1412,12 @@ export async function voidAsLedgerDuplicate(
     const distinctBankTxIds = new Set(matchRows.map((m) => m.bank_transaction_id));
     if (distinctBankTxIds.size > 1) {
       return {
-        error: "Credit linked to multiple bank transactions — manual investigation required",
+        error: "Credit linked to multiple bank transactions , manual investigation required",
         errorCode: "MULTI_LINKED",
       };
     }
 
-    // Single bank tx — UNIQUE constraint guarantees one match between this
+    // Single bank tx , UNIQUE constraint guarantees one match between this
     // (bank_tx, credit) pair, so matchIds will have length 1 in practice;
     // we pass the array anyway since rpc_unmatch_bank_transaction's contract
     // is array-typed.
@@ -1444,7 +1444,7 @@ export async function voidAsLedgerDuplicate(
       .limit(1);
     const offsetRow = (offsetRows ?? [])[0] as { id: string } | undefined;
     if (!offsetRow) {
-      return { error: "void_offset row not found after cascade — unexpected state" };
+      return { error: "void_offset row not found after cascade , unexpected state" };
     }
     voidOffsetId = offsetRow.id;
   }
@@ -1540,7 +1540,7 @@ export async function keepAsOverpayment(
 
 /** Payload for the three-way `CollisionResolutionDialog`. Both
  *  reconcileTransaction (PP4-B/C) and reactivateMappingAction (PP4-D) emit
- *  this shape — the dialog is flow-agnostic. Lot labels are resolved
+ *  this shape , the dialog is flow-agnostic. Lot labels are resolved
  *  server-side in a single round-trip per call. */
 export interface MappingCollisionPayload {
   canonical_sender_name: string;
@@ -1568,7 +1568,7 @@ export interface ProposalFlagPayload {
   lot_id: string;
   /** Human-readable lot label resolved server-side ("Lot 7" or
    *  "Lot 7 (Unit 12)"). The toast on match-detail-content.tsx renders this
-   *  directly — the lot_id UUID is meaningless to the manager. */
+   *  directly , the lot_id UUID is meaningless to the manager. */
   lot_label: string;
   manual_match_count: number;
 }
@@ -1581,7 +1581,7 @@ export type ReconcileTransactionResult = {
     flags: string[];
     /** PP4-B: collision detected during the "remember this payer" flow.
      * UI must surface the three-way dialog and call resolvePayerMappingCollision
-     * (a separate server action — PP4-C split). */
+     * (a separate server action , PP4-C split). */
     mappingCollision?: MappingCollisionPayload;
     /** PP4-B: detectRepeatedManualMatch returned proposal_flag=true.
      * UI surfaces an inline "Create mapping?" toast (per Gap 11 resolution). */
@@ -1654,10 +1654,10 @@ export async function reconcileTransaction(
   }
 
   // PP6-C-1: payment-received owner email. Per-bank-tx sentinel on
-  // bank_transactions.payment_received_email_sent_at — first call stamps;
+  // bank_transactions.payment_received_email_sent_at , first call stamps;
   // subsequent calls (multi-allocation, unmatch+rematch) short-circuit.
   // Multi-allocation undercount: only the first allocation's owner is
-  // emailed — see notifications.ts header for trade-off.
+  // emailed , see notifications.ts header for trade-off.
   // Suppressed by claim flows that stamp the column before invoking
   // reconcileTransaction (PP6-C-0 spec gap 2 ratification).
   for (const creditId of payload.created_credit_ids ?? []) {
@@ -1734,7 +1734,7 @@ export async function reconcileTransaction(
           });
         }
       } else {
-        // Collision detected — surface the three-way dialog payload, with
+        // Collision detected , surface the three-way dialog payload, with
         // lot labels resolved server-side so the dialog can render
         // "Lot N (Unit X)" without per-row lookups.
         mappingCollision = await buildCollisionPayload(
@@ -1800,7 +1800,7 @@ export async function reconcileTransaction(
 }
 
 // ============================================================================
-// PP4-C: resolvePayerMappingCollision — split out from reconcileTransaction.
+// PP4-C: resolvePayerMappingCollision , split out from reconcileTransaction.
 // PP4-B's design tried to bundle collision-resolution into the same action
 // as the match commit, but the second call (resolution-only) re-invoked
 // rpc_reconcile_bank_transaction on an already-matched transaction, causing
@@ -1842,7 +1842,7 @@ export async function resolvePayerMappingCollision(
   if (!canonical) {
     return {
       error:
-        "Bank transaction description has no canonical sender name — cannot resolve a mapping collision",
+        "Bank transaction description has no canonical sender name , cannot resolve a mapping collision",
     };
   }
 
@@ -2288,7 +2288,7 @@ export async function createMappingDirectAction(input: {
   if (result.ok) {
     return { success: { mapping_id: result.mapping_id } };
   }
-  // Fresh collision — re-route to the dialog with the new payload.
+  // Fresh collision , re-route to the dialog with the new payload.
   const payload = await buildCollisionPayload(
     input.oc_id,
     result.proposed.lot_id,
@@ -2364,7 +2364,7 @@ export async function recordCashReceipt(
 
   // PP5-B: ledger-side duplicate detection is intentionally NOT invoked on
   // cash receipts. rpc_record_cash_receipt creates the credit with
-  // levy_notice_id = NULL (untargeted) — receipts don't carry notice
+  // levy_notice_id = NULL (untargeted) , receipts don't carry notice
   // linkage at receipt time; that gets attached later when
   // rpc_deposit_undeposited_funds matches the receipt to a bank tx.
   // The detector's eligibility predicate (levy_notice_id IS NOT NULL) would
@@ -2408,7 +2408,7 @@ export async function depositUndepositedFunds(
   // RPC returns match_ids; resolve each to its ledger_entry_id and call
   // the shared helper. Per-bank-tx sentinel ensures only one email per
   // bank tx (matches the receipt-deposit semantics: cash receipts get
-  // their owner-facing email at deposit time, not record-cash time —
+  // their owner-facing email at deposit time, not record-cash time ,
   // recordCashReceipt is intentionally NOT a payment-received site
   // because no bank_transaction_id exists at receipt time. See
   // PP6-C-1 code review pause for the deferral rationale).
@@ -2762,7 +2762,7 @@ export async function previewVoidBankTransaction(
 
   return {
     kind: "bank_transaction",
-    target_summary: `Bank transaction ${bt.transaction_date} · ${Number(bt.amount).toFixed(2)} — ${bt.description ?? ""}`.trim(),
+    target_summary: `Bank transaction ${bt.transaction_date} · ${Number(bt.amount).toFixed(2)} , ${bt.description ?? ""}`.trim(),
     matches_to_unlink: matchesToUnlink,
     credits_to_void: creditsToVoid,
     undeposited_receipts_to_reopen: undepositedReceiptsToReopen,
@@ -2823,7 +2823,7 @@ export async function previewVoidLedgerEntry(
 
   return {
     kind: "ledger_entry",
-    target_summary: `${lotLabel} · ${entry.entry_type} ${Number(entry.amount).toFixed(2)} (${entry.category}) — ${entry.description ?? ""}`.trim(),
+    target_summary: `${lotLabel} · ${entry.entry_type} ${Number(entry.amount).toFixed(2)} (${entry.category}) , ${entry.description ?? ""}`.trim(),
     matches_to_unlink: [],
     credits_to_void: [],
     undeposited_receipts_to_reopen: [],
@@ -2863,7 +2863,7 @@ export async function previewVoidUndepositedReceipt(
 
   return {
     kind: "undeposited_receipt",
-    target_summary: `Receipt ${uf.receipt_number} — ${uf.payment_method}${uf.cheque_number ? ` #${uf.cheque_number}` : ""} — ${Number(uf.amount).toFixed(2)}`,
+    target_summary: `Receipt ${uf.receipt_number} , ${uf.payment_method}${uf.cheque_number ? ` #${uf.cheque_number}` : ""} , ${Number(uf.amount).toFixed(2)}`,
     matches_to_unlink: [],
     credits_to_void: [
       {

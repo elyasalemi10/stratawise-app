@@ -1,7 +1,7 @@
 /**
  * StrataWise Design System Constants
  * Reusable tokens for components that need programmatic access to design values.
- * CSS variables in globals.css are the source of truth — these mirror them for JS usage.
+ * CSS variables in globals.css are the source of truth , these mirror them for JS usage.
  *
  * Brand palette:
  *   Midnight (text)   #0E314C
@@ -18,7 +18,7 @@
 
 export const colors = {
   primary: {
-    DEFAULT: "hsl(208, 70%, 18%)",       // midnight — buttons + focus rings
+    DEFAULT: "hsl(208, 70%, 18%)",       // midnight , buttons + focus rings
     hover: "hsl(208, 70%, 26%)",
     foreground: "hsl(0, 0%, 100%)",
     hex: "#0E314C",

@@ -156,7 +156,7 @@ export function BatchDetailContent({
     if (result.error) {
       toast.error(result.error);
     } else {
-      toast.success("Batch recalled — levies reverted to draft");
+      toast.success("Batch recalled , levies reverted to draft");
       setBatch((prev) => ({
         ...prev,
         status: "draft",
@@ -245,7 +245,7 @@ export function BatchDetailContent({
               </Badge>
             </div>
             <p className="text-xs text-muted-foreground mt-0.5">
-              {formatDateLong(batch.period_start)} — {formatDateLong(batch.period_end)} · Due {formatDateLong(batch.due_date)}
+              {formatDateLong(batch.period_start)} , {formatDateLong(batch.period_end)} · Due {formatDateLong(batch.due_date)}
             </p>
           </div>
         </div>

@@ -1,14 +1,14 @@
 // ============================================================================
-// Strategy 4 — keyword + amount
+// Strategy 4 , keyword + amount
 // ----------------------------------------------------------------------------
 // Looks up batches in this oc with non-empty match_keywords; tests
 // each keyword against the description (case-insensitive prefix-within-word
-// match \bkeyword\w*\b — so "garden" matches "gardening" and "gardens" but
+// match \bkeyword\w*\b , so "garden" matches "gardening" and "gardens" but
 // not "regarden"); narrows to outstanding notices in those batches whose
 // amount EXACTLY equals tx.amount and fund matches the bank account.
 //
 // Per Gap A: per-notice exact-amount match only. No multi-notice
-// subset-sum combinations (deferred indefinitely — exponential cost).
+// subset-sum combinations (deferred indefinitely , exponential cost).
 //
 // If exactly one outstanding candidate remains: match. Multiple → no_match.
 // Confidence: amount_match. Method: auto_amount. review_required: TRUE

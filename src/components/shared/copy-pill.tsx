@@ -6,7 +6,7 @@ import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 
 // Pill-shaped read-only field with a brand-gold copy button. Used in the
-// Gmail setup tutorial for the GCP Client ID + OAuth scopes — they're long
+// Gmail setup tutorial for the GCP Client ID + OAuth scopes , they're long
 // strings managers paste into Google Workspace admin, so the copy affordance
 // has to be obvious.
 //

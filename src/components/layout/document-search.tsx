@@ -39,7 +39,7 @@ const TYPE_META: Record<SearchHitType, { label: string; icon: React.ComponentTyp
   notification:{ label: "Notifications",   icon: Bell },
 };
 
-// Visual priority — same order pages were appended in the server action.
+// Visual priority , same order pages were appended in the server action.
 const TYPE_ORDER: SearchHitType[] = [
   "page",
   "oc",
@@ -63,7 +63,7 @@ export function DocumentSearch() {
   const wrapperRef = useRef<HTMLDivElement>(null);
 
   // Detect "we're inside an OC" so the server can scope results. Excludes
-  // the wizard route (/ocs/new) — it's not a real OC context.
+  // the wizard route (/ocs/new) , it's not a real OC context.
   const ocShortCode = useMemo(() => {
     const m = pathname?.match(/^\/ocs\/([^/]+)/);
     if (!m) return null;

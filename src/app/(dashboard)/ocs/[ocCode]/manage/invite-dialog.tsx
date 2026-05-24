@@ -11,7 +11,7 @@ import { lotOwnerDetailsSchema, type LotOwnerDetailsValues } from "@/lib/validat
 import { updateLotOwnerDetails } from "./invitation-actions";
 
 // Add-owner / edit-owner drawer for lot detail pages. Save-only (navy
-// primary) + Cancel — no separate "Save & invite" any more; portal
+// primary) + Cancel , no separate "Save & invite" any more; portal
 // invitations are sent from the Owner tab / lot invite-status surface.
 
 interface InviteDialogProps {
@@ -83,7 +83,7 @@ export function InviteDialog({
 
   return (
     <EditSheet
-      label={`Owner — Lot ${lotNumber}`}
+      label={`Owner , Lot ${lotNumber}`}
       description="Name is required. Email + phone are optional."
       headerKicker={null}
       open={open}

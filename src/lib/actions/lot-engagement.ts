@@ -3,7 +3,7 @@
 import { requireCompanyRole } from "@/lib/auth";
 import { createServerClient } from "@/lib/supabase";
 
-// Per-lot engagement read model — meeting participation, votes cast, proxies
+// Per-lot engagement read model , meeting participation, votes cast, proxies
 // given. Attendance is inferred from the votes table: if a vote row exists
 // for one of this OC's meetings with this lot's id on it, the lot took part
 // in that meeting. We don't have a separate meeting_attendees table today.

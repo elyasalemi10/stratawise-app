@@ -24,7 +24,7 @@ export async function getNotifications(limit = 20): Promise<Notification[]> {
 
   const supabase = createServerClient();
   // Inbound emails live as `email_reply` rows so the Inbox can render them,
-  // but they are NOT bell notifications — they'd drown the real alerts. The
+  // but they are NOT bell notifications , they'd drown the real alerts. The
   // Inbox reads them via its own queries (see inbox-email.ts).
   const { data } = await supabase
     .from("notifications")
@@ -53,7 +53,7 @@ export async function getUnreadCount(): Promise<number> {
   if (!profile) return 0;
 
   const supabase = createServerClient();
-  // Exclude `email_reply` — those belong to the Inbox, not the bell badge.
+  // Exclude `email_reply` , those belong to the Inbox, not the bell badge.
   const { count } = await supabase
     .from("notifications")
     .select("id", { count: "exact", head: true })
@@ -103,7 +103,7 @@ export async function markAllAsRead() {
 
   const supabase = createServerClient();
   // Capture how many unread we're about to flip so the audit row carries
-  // an accurate count — the UPDATE doesn't return a row count directly.
+  // an accurate count , the UPDATE doesn't return a row count directly.
   // Bell-only: don't flip Inbox emails (`email_reply`) to read here.
   const { count: unreadCount } = await supabase
     .from("notifications")

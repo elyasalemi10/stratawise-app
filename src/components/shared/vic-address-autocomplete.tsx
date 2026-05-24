@@ -9,12 +9,12 @@ import { Label } from "@/components/ui/label";
 // VIC-only address autocomplete using Google's Places API (New).
 //
 // Uses AutocompleteSuggestion.fetchAutocompleteSuggestions / Place.fetchFields
-// rather than the legacy AutocompleteService — Google deprecated the legacy
+// rather than the legacy AutocompleteService , Google deprecated the legacy
 // API and new GCP projects often don't have it enabled even with a billed
 // key. The new API ships with both "Maps JavaScript API" and "Places API
 // (New)" enabled in GCP.
 //
-// Strictly rejects non-VIC selections — predictions ARE biased to VIC via
+// Strictly rejects non-VIC selections , predictions ARE biased to VIC via
 // locationBias, but Google sometimes returns NSW/SA border addresses, so we
 // double-check administrative_area_level_1 === "VIC" on select.
 
@@ -32,7 +32,7 @@ interface Props {
   onChange: (next: ParsedAddress) => void;
   id?: string;
   /** Submit-time invalidity flag. When true the input shows a red border
-   *  via aria-invalid. Reset by the parent's onChange handler — never
+   *  via aria-invalid. Reset by the parent's onChange handler , never
    *  derived live from value. */
   error?: boolean;
 }
@@ -70,7 +70,7 @@ interface NewAutocompleteSuggestionCtor {
     includedPrimaryTypes?: string[];
     // JS Places API (New) accepts LatLngBoundsLiteral for locationBias and
     // LatLngBoundsLiteral too for locationRestriction. Restriction is the
-    // stronger filter — predictions OUTSIDE the box are dropped entirely.
+    // stronger filter , predictions OUTSIDE the box are dropped entirely.
     locationBias?: {
       south: number;
       west: number;
@@ -105,12 +105,12 @@ function loadPlaces(): Promise<google.maps.PlacesLibrary> | null {
 }
 
 function joinFormatted(p: ParsedAddress): string {
-  // No state suffix — the Maps search is locationRestriction-bounded to
+  // No state suffix , the Maps search is locationRestriction-bounded to
   // Victoria so every address we accept is already VIC. Showing ", VIC"
   // in every field is just noise.
   //
   // Build the string from non-empty parts so a fully-empty address renders
-  // as "" not "," — the latter was bleeding into the search input as a
+  // as "" not "," , the latter was bleeding into the search input as a
   // pre-filled "," when the user landed on Page 2 after skip-and-enter-
   // manually with no parsed address.
   const street = `${p.street_number} ${p.street_name}`.replace(/\s+/g, " ").trim();
@@ -186,14 +186,14 @@ export function VicAddressAutocomplete({ value, onChange, id, error }: Props) {
   useEffect(() => {
     const p = loadPlaces();
     if (!p) {
-      // Diagnostic — most common cause is a NEXT_PUBLIC_* env var set after
+      // Diagnostic , most common cause is a NEXT_PUBLIC_* env var set after
       // `next dev` was started (those bake at build time and require a
       // server restart). Mirror to console.warn so the operator can see it.
       if (typeof window !== "undefined") {
         // eslint-disable-next-line react-hooks/set-state-in-effect
         console.warn(
           "VicAddressAutocomplete: NEXT_PUBLIC_GOOGLE_MAPS_API_KEY is missing at runtime. "
-          + "If it's set in .env.local you need to RESTART `next dev` after editing — "
+          + "If it's set in .env.local you need to RESTART `next dev` after editing , "
           + "NEXT_PUBLIC_* vars are baked at build time."
         );
       }
@@ -206,7 +206,7 @@ export function VicAddressAutocomplete({ value, onChange, id, error }: Props) {
       const lib = places as any;
       if (!lib.AutocompleteSuggestion) {
         // The Maps JS bundle loaded but doesn't include AutocompleteSuggestion
-        // — usually means "Places API (New)" isn't enabled in GCP for this
+        // , usually means "Places API (New)" isn't enabled in GCP for this
         // key, OR the key lacks "Maps JavaScript API" entirely.
         console.error(
           "[VicAddressAutocomplete] Places API (New) not available.\n"
@@ -266,10 +266,10 @@ export function VicAddressAutocomplete({ value, onChange, id, error }: Props) {
         // equivalents that return AU street addresses are "street_address"
         // and "premise"; pass both so we cover unit/apartment buildings as
         // well as residential premises. Omitting this entirely also works
-        // but pulls in cafes, businesses, etc. — bad for an OC address.
+        // but pulls in cafes, businesses, etc. , bad for an OC address.
         includedPrimaryTypes: ["street_address", "premise"],
         // Victoria bounding box used as a HARD RESTRICTION rather than a
-        // bias — we never want NSW/SA border addresses leaking in. Filter
+        // bias , we never want NSW/SA border addresses leaking in. Filter
         // happens server-side, so the ", Vic" suffix on every prediction
         // (which we used to append client-side as a soft hint) becomes
         // unnecessary.
@@ -310,14 +310,14 @@ export function VicAddressAutocomplete({ value, onChange, id, error }: Props) {
   async function selectSuggestion(s: Suggestion) {
     const prediction = predictionByIdRef.current.get(s.placeId);
     if (!prediction || !sdkRef.current) {
-      setSearchError("Couldn't load address details — try entering manually.");
+      setSearchError("Couldn't load address details , try entering manually.");
       return;
     }
     try {
       const place = prediction.toPlace();
       await place.fetchFields({ fields: ["formattedAddress", "addressComponents"] });
       if (!place.addressComponents) {
-        setSearchError("Couldn't load address details — try entering manually.");
+        setSearchError("Couldn't load address details , try entering manually.");
         return;
       }
       const cleanFormatted = stripStateAndCountry(place.formattedAddress ?? s.description);
@@ -336,7 +336,7 @@ export function VicAddressAutocomplete({ value, onChange, id, error }: Props) {
       setMode("manual");
     } catch (err) {
       console.error("VicAddressAutocomplete: fetchFields failed", err);
-      setSearchError("Couldn't load address details — try entering manually.");
+      setSearchError("Couldn't load address details , try entering manually.");
     }
   }
 
@@ -356,7 +356,7 @@ export function VicAddressAutocomplete({ value, onChange, id, error }: Props) {
 
   if (mode === "manual") {
     // When error is true, paint any missing-part input red. Filled parts
-    // stay neutral — the user can see at a glance which specific field is
+    // stay neutral , the user can see at a glance which specific field is
     // blocking them rather than getting an undifferentiated red banner.
     const missing = {
       street_number: !value.street_number?.trim(),
@@ -426,7 +426,7 @@ export function VicAddressAutocomplete({ value, onChange, id, error }: Props) {
           onFocus={() => suggestions.length > 0 && setOpen(true)}
           placeholder="Start typing a Victorian address…"
           autoComplete="off"
-          // Search mode is still a required field — when the parent
+          // Search mode is still a required field , when the parent
           // flags the address invalid (no parts resolved), paint the
           // single search box red too, not just the manual sub-inputs.
           aria-invalid={error || undefined}

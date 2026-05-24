@@ -62,11 +62,11 @@ export default async function LotDetailPage({
   }
 
   // Pull balance from the materialised lot_ledger_state row. That row is
-  // the single source of truth — opening balances, levies, payments,
+  // the single source of truth , opening balances, levies, payments,
   // interest accrual, voids, and adjustments all flow into it via the
   // lot_ledger_entries trigger pipeline. The previous code summed
   // levy_notices and payments directly, which missed opening balances
-  // (and double-counted nothing — payments still showed up but the seed
+  // (and double-counted nothing , payments still showed up but the seed
   // entries didn't).
   //
   // Sign convention: lot_ledger_state stores `total_balance = credits −
@@ -109,7 +109,7 @@ export default async function LotDetailPage({
 
   // Pull the current lot_owners row for the header chip (payment_reference,
   // owner_type, occupancy) and Tenancy tab (tenant_*, digital consent).
-  // We don't migrate this read to the new owners table yet — the entity
+  // We don't migrate this read to the new owners table yet , the entity
   // model only carries the universal fields (name/email/phone), not the
   // per-lot bits (postal occupancy + tenant + consent), which still live
   // on lot_owners.
@@ -126,7 +126,7 @@ export default async function LotDetailPage({
   const lotOwnerExtra = lotOwnerResult.data;
 
   // Most recent payment timestamp for the "Last payment" header line.
-  // payments uses payment_date (not paid_at) — the latter is a levy_notices
+  // payments uses payment_date (not paid_at) , the latter is a levy_notices
   // column. Picking the wrong one made the page server-render fail.
   const { data: lastPaymentRow } = await supabase
     .from("payments")

@@ -1,11 +1,11 @@
 // ============================================================================
-// Strategy 5 — amount window
+// Strategy 5 , amount window
 // ----------------------------------------------------------------------------
 // Looks up outstanding notices in this oc/fund whose amount equals
 // tx.amount (within $0.01 tolerance) AND whose due_date sits within ±30
 // days of the transaction date. If EXACTLY ONE candidate remains: match.
 // Multiple candidates → no_match (Addition 1: NO priority preference at the
-// strategy level — priority is a walker concern only).
+// strategy level , priority is a walker concern only).
 //
 // Confidence: amount_match. Method: auto_amount. review_required: TRUE
 // (queue renders amber "review suggested" badge).
@@ -76,7 +76,7 @@ export async function tryAmountWindowMatch(
   }
   if (outstanding.length > 1) {
     // Addition 1: multiple candidates → skip strategy entirely. NO priority
-    // preference here — priority is a walker concern, not a strategy concern.
+    // preference here , priority is a walker concern, not a strategy concern.
     return {
       matched: false,
       reason: "multiple_candidates",

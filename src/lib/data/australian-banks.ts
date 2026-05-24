@@ -2,7 +2,7 @@ export interface BankOption {
   id: string;
   name: string;
   logo: string | null;
-  /** Macquarie has DEFT auto-reconciliation — surface a recommendation badge. */
+  /** Macquarie has DEFT auto-reconciliation , surface a recommendation badge. */
   recommended?: boolean;
 }
 

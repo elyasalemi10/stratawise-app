@@ -25,7 +25,7 @@ export default async function OCSettingsPage({
   if (profile?.role === "lot_owner") redirect(`/ocs/${ocCode}`);
 
   // The active agreement row is the source of truth for "who manages this
-  // OC?" — owners_corporations.management_company_id is still maintained
+  // OC?" , owners_corporations.management_company_id is still maintained
   // as a legacy pointer but the agreement record carries the audit trail.
   const ocMgmtCompanyId = (oc as unknown as { management_company_id: string }).management_company_id;
   const agreement = await getActiveManagementAgreement(ocId);

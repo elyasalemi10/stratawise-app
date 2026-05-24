@@ -72,7 +72,7 @@ export async function GET(request: NextRequest) {
   const zippable: Zippable = {};
   const failed: string[] = [];
 
-  // Fetch in parallel but bounded — Vercel function memory and R2 quotas don't
+  // Fetch in parallel but bounded , Vercel function memory and R2 quotas don't
   // love 200 concurrent GETs. Promise.all over the doc list with no batching
   // is fine for the usual OC size (<100 docs).
   const fetched = await Promise.all(

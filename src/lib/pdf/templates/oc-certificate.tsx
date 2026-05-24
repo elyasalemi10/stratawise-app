@@ -364,7 +364,7 @@ export function OCCertificate(props: OCCertificateProps) {
 
         {/* Footer */}
         <View style={s.footer} fixed>
-          <Text style={s.footerText}>Owners Corporation Certificate — {planNumber}</Text>
+          <Text style={s.footerText}>Owners Corporation Certificate , {planNumber}</Text>
           <Text style={s.footerText}>Confidential</Text>
           <Text style={s.footerText} render={({ pageNumber, totalPages }) => `Page ${pageNumber} of ${totalPages}`} />
         </View>

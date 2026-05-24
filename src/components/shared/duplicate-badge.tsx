@@ -1,7 +1,7 @@
 "use client";
 
 // ============================================================================
-// DuplicateBadge — bank-side "Possible duplicate" inline badge (PP5-D-A)
+// DuplicateBadge , bank-side "Possible duplicate" inline badge (PP5-D-A)
 // ----------------------------------------------------------------------------
 // Renders the existing Badge primitive with `variant="warning"` (amber).
 // Mirrors the ReviewSuggestedBadge shape from PP4-D, with a distinct label
@@ -14,7 +14,7 @@
 //
 // Priority on queue rows: when a row has BOTH duplicate_status='suspected'
 // AND a fuzzy hint, render DuplicateBadge only (suppress FuzzyHintCell).
-// See PP5-D-0 ratification — the duplicate review takes precedence over
+// See PP5-D-0 ratification , the duplicate review takes precedence over
 // the fuzzy-hint suggestion. Priority logic lives in the queue row
 // renderer, not in this component.
 // ============================================================================

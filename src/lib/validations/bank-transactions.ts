@@ -90,7 +90,7 @@ export interface ImportSummary {
    *  (the row was already in the DB from an earlier import). Detection key
    *  is exact `(transaction_date|amount|description-trimmed)`; matching rows
    *  are silently dropped before insert. Distinct from the cross-source
-   *  flow below — see CONTEXT.md PP5 §Duplicates. */
+   *  flow below , see CONTEXT.md PP5 §Duplicates. */
   exact_duplicates_dropped: number;
   /** PP5-A new field. Set when a row was successfully inserted but the
    *  bank-side detector subsequently flagged it as a suspected cross-source

@@ -53,7 +53,7 @@ function NotifIcon({
 // Strip obvious markdown noise (** __ [text](url) > # `) from preview
 // strings so a Gmail-bounce snippet doesn't render as `**Message not
 // delivered**`. Detail panes still render the full body via
-// ReactMarkdown — this is for tiny inline previews only.
+// ReactMarkdown , this is for tiny inline previews only.
 function stripMarkdownForPreview(s: string | null | undefined): string {
   if (!s) return "";
   return s
