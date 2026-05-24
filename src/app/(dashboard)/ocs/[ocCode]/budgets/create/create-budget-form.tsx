@@ -16,7 +16,7 @@ import {
   Table, TableBody, TableCell, TableFooter, TableHead, TableHeader, TableRow,
 } from "@/components/ui/table";
 import { createBudget } from "@/lib/actions/budget";
-import type { CoaAccount } from "@/lib/actions/chart-of-accounts";
+import type { CoaAccount } from "@/lib/chart-of-accounts";
 import { CreateAccountDrawer } from "@/components/chart-of-accounts/create-account-drawer";
 import { useOCCode } from "@/lib/oc-context";
 

@@ -12,7 +12,7 @@ import {
 import {
   Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
 } from "@/components/ui/select";
-import { ACCOUNT_TYPE_LABEL, type CoaAccount, type CoaAccountType } from "@/lib/actions/chart-of-accounts";
+import { ACCOUNT_TYPE_LABEL, type CoaAccount, type CoaAccountType } from "@/lib/chart-of-accounts";
 import { CreateAccountDrawer } from "@/components/chart-of-accounts/create-account-drawer";
 
 const TYPE_BADGE: Record<CoaAccountType, string> = {

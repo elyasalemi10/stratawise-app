@@ -14,9 +14,10 @@ import {
   Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle,
 } from "@/components/ui/sheet";
 import {
-  ACCOUNT_TYPE_LABEL, type CoaAccount, type CoaAccountType,
-  createCoaAccount, mismatchMessage,
-} from "@/lib/actions/chart-of-accounts";
+  ACCOUNT_TYPE_LABEL, mismatchMessage,
+  type CoaAccount, type CoaAccountType,
+} from "@/lib/chart-of-accounts";
+import { createCoaAccount } from "@/lib/actions/chart-of-accounts";
 
 const REQ = <span className="text-destructive">*</span>;
 
