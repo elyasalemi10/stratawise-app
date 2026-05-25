@@ -80,16 +80,13 @@ export function ChartOfAccountsContent({ initialAccounts }: { initialAccounts: C
 
   return (
     <div className="space-y-6">
-      {/* Top explainer (replaces the old multi-table layout) */}
-      <div className="rounded-md border border-border bg-card p-4 text-sm text-muted-foreground">
-        <p>
-          Your firm&apos;s general-ledger accounts. The number band tells you where
-          each account sits on your reports: <strong>1000s</strong> are assets,
-          <strong> 2000s</strong> liabilities, <strong>3000s</strong> member funds
-          / equity, <strong>4000s</strong> income, <strong>5000s &amp; 6000s</strong>{" "}
-          expenses. Built-in accounts are required by the platform and can&apos;t
-          be deactivated. Click a row to view or edit an account.
-        </p>
+      {/* Minimal banded legend , the number sells the meaning by itself. */}
+      <div className="flex flex-wrap gap-x-6 gap-y-1 text-sm text-muted-foreground">
+        <span><strong className="text-foreground">1000s</strong> Assets</span>
+        <span><strong className="text-foreground">2000s</strong> Liabilities</span>
+        <span><strong className="text-foreground">3000s</strong> Equity</span>
+        <span><strong className="text-foreground">4000s</strong> Income</span>
+        <span><strong className="text-foreground">5000s &amp; 6000s</strong> Expenses</span>
       </div>
 
       <div className="flex flex-wrap items-center justify-end gap-2">

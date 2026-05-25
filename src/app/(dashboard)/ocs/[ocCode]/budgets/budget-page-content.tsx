@@ -46,13 +46,28 @@ function BudgetCard({ budget }: { budget: BudgetWithItems & { updated_at?: strin
         className={`transition-colors hover:border-primary/30 cursor-pointer ${isDraft ? "border-dashed" : ""}`}
       >
         <CardContent className="pt-5">
-          <div className="flex items-center gap-3">
-            {isDraft ? (
-              <CircleDashed className="h-4 w-4 text-muted-foreground shrink-0" />
-            ) : (
-              <CheckCircle2 className="h-4 w-4 text-emerald-600 shrink-0" />
-            )}
-            <div className="flex-1 min-w-0">
+          <div className="flex items-center gap-4">
+            {/* Number column , the total sits on the left like a key
+                financial metric, status icon underneath. */}
+            <div className="flex w-32 shrink-0 flex-col items-start">
+              <p className="text-lg font-bold tabular-nums text-foreground">
+                {formatCurrency(Number(budget.total_amount))}
+              </p>
+              <div className="mt-1 flex items-center gap-1.5 text-xs">
+                {isDraft ? (
+                  <>
+                    <CircleDashed className="h-3 w-3 text-muted-foreground" />
+                    <span className="text-muted-foreground">Draft</span>
+                  </>
+                ) : (
+                  <>
+                    <CheckCircle2 className="h-3 w-3 text-emerald-600" />
+                    <span className="text-emerald-700">Approved</span>
+                  </>
+                )}
+              </div>
+            </div>
+            <div className="min-w-0 flex-1">
               <p className="text-sm font-semibold text-foreground truncate">
                 {fundLabel}{" "}
                 <span className="text-muted-foreground font-normal">, {budget.financial_year}</span>
@@ -62,12 +77,6 @@ function BudgetCard({ budget }: { budget: BudgetWithItems & { updated_at?: strin
                   Last edited {lastEdited}
                 </p>
               )}
-            </div>
-            <div className="text-right">
-              <p className="text-base font-bold tabular-nums text-foreground">
-                {formatCurrency(Number(budget.total_amount))}
-              </p>
-              <p className="text-xs text-muted-foreground">total annual</p>
             </div>
           </div>
         </CardContent>

@@ -326,11 +326,6 @@ export function CreateBudgetForm({
                 );
               })}
             </div>
-            {!hasMaintenanceFund && (
-              <p className="text-xs text-muted-foreground">
-                Maintenance Plan Fund is hidden because this OC doesn&apos;t run a maintenance fund. Add a maintenance trust account to enable it here.
-              </p>
-            )}
           </div>
         </CardContent>
       </Card>

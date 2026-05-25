@@ -18,10 +18,15 @@ export interface CoaAccount {
   account_type: CoaAccountType;
   gst_treatment: CoaGstTreatment;
   /** Non-null when the row is a built-in account the app references by name
-   *  (trust bank, admin levy income, GST collected, etc.). Protected from
-   *  rename/deactivate so the rest of the app can keep finding it. */
+   *  (trust bank, admin levy income, GST collected, etc.). Seed-only signal,
+   *  not a protection signal , see is_fundamental for that. */
   system_role: string | null;
   is_system: boolean;
+  /** True only for the small set of accounts the platform code path truly
+   *  requires by role (trust bank, levy debtors, GST in/out, fund balances,
+   *  levy income lines). Locked from rename + deactivate. Everything else,
+   *  including most seeded defaults, can be freely edited. */
+  is_fundamental: boolean;
   archived_at: string | null;
 }
 
@@ -87,6 +92,6 @@ export function mismatchMessage(type: CoaAccountType, code: string): string | nu
 }
 
 /** True when the account is locked by the app (rename/deactivate blocked). */
-export function isProtectedSystemAccount(a: { is_system: boolean; system_role: string | null }): boolean {
-  return a.is_system && !!a.system_role;
+export function isProtectedSystemAccount(a: { is_fundamental: boolean }): boolean {
+  return a.is_fundamental;
 }

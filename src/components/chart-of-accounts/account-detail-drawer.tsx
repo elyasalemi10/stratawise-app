@@ -117,38 +117,23 @@ export function AccountDetailDrawer({ account, onOpenChange, onAccountUpdated, o
       <SheetContent side="right" showCloseButton={false} className="flex w-full flex-col gap-0 sm:max-w-md">
         <SheetHeader className="border-b border-border pb-4">
           <div className="flex items-start gap-3">
-            <div className="flex-1">
-              <SheetTitle>Account {account.code}</SheetTitle>
-              <SheetDescription>
-                Edit the account&apos;s name, code, type and GST treatment.
-              </SheetDescription>
-            </div>
-            <div className="flex items-center gap-2 pt-1">
-              {/* Single edit pencil. Hidden for system accounts. */}
-              {!editing && !locked && (
-                <button
-                  type="button"
-                  onClick={() => setEditing(true)}
-                  aria-label="Edit account"
-                  className="inline-flex h-7 w-7 items-center justify-center rounded-md text-muted-foreground hover:bg-muted cursor-pointer"
-                >
-                  <Pencil className="h-4 w-4" />
-                </button>
-              )}
-              <span className="text-xs text-muted-foreground">{active ? "Active" : "Inactive"}</span>
-              <Switch
-                checked={active}
-                onCheckedChange={handleToggleActive}
-                disabled={(locked && active) || togglePending}
-                aria-label="Account active"
-              />
-            </div>
+            <SheetTitle className="flex-1">Account {account.code}</SheetTitle>
+            {/* Visually-hidden description , the SheetDescription element is
+                required for accessibility; the visible copy is removed. */}
+            <SheetDescription className="sr-only">
+              {account.name}
+            </SheetDescription>
+            {!editing && !locked && (
+              <button
+                type="button"
+                onClick={() => setEditing(true)}
+                aria-label="Edit account"
+                className="inline-flex h-7 w-7 items-center justify-center rounded-md text-muted-foreground hover:bg-muted cursor-pointer"
+              >
+                <Pencil className="h-4 w-4" />
+              </button>
+            )}
           </div>
-          {locked && active && (
-            <p className="mt-1 text-xs text-muted-foreground">
-              This is a built-in account: the platform uses it directly so it can&apos;t be edited or deactivated.
-            </p>
-          )}
         </SheetHeader>
 
         <div className="flex-1 space-y-5 overflow-y-auto px-4 py-4">
@@ -210,6 +195,21 @@ export function AccountDetailDrawer({ account, onOpenChange, onAccountUpdated, o
             ) : (
               <p className="text-sm text-foreground">{GST_TREATMENT_LABEL[account.gst_treatment]}</p>
             )}
+          </div>
+
+          <div className="flex items-center justify-between gap-3 border-t border-border pt-4">
+            <div>
+              <Label>Active</Label>
+              <p className="text-xs text-muted-foreground">
+                Inactive accounts are hidden from budget + reconciliation pickers.
+              </p>
+            </div>
+            <Switch
+              checked={active}
+              onCheckedChange={handleToggleActive}
+              disabled={(locked && active) || togglePending}
+              aria-label="Account active"
+            />
           </div>
 
           {rangeWarning && editing && (

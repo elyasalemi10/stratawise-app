@@ -6,16 +6,18 @@ import { normalizeForNarration } from "@/lib/blog/narrate";
 import type { NarrationWordTiming } from "@/lib/actions/blog-audio";
 
 // Admin preview of the post narration. Mirrors the marketing-site
-// NarrationPlayer , persistent karaoke-style highlight, memoised body,
-// incremental classList mutation. See that file for full design notes.
+// NarrationPlayer: continuous highlight bar via paired word + whitespace
+// spans, per-word fill duration tied to spoken time, memoised body. See
+// the marketing-site file for full design notes.
 
 const SKIP_SELECTOR =
   "table, pre, code, figure, img, .sw-timeline, [data-youtube-video], [data-type='timeline']";
 
 const HIGHLIGHT_STYLES = `
-  .sw-word { transition: background-color 200ms ease, box-shadow 200ms ease; padding: 0 1px; border-radius: 3px; }
-  .sw-word-passed { background-color: rgba(207,167,83,0.22); }
-  .sw-word-current { background-color: rgba(207,167,83,0.55); box-shadow: 0 0 0 2px rgba(207,167,83,0.55); }
+  .sw-word, .sw-space { transition: background-color var(--sw-fill-duration, 120ms) linear; }
+  .sw-word { padding: 0.05em 0; border-radius: 2px; }
+  .sw-word-passed { background-color: rgba(207,167,83,0.30); }
+  .sw-word-current { background-color: rgba(207,167,83,0.55); }
 `;
 
 function fmtTime(s: number): string {
@@ -61,17 +63,30 @@ const NarrationBody = memo(
       let matched = 0;
       for (const tn of textNodes) {
         if (!tn.parentNode) continue;
-        const parts = (tn.nodeValue ?? "").split(/(\s+)/);
+        const matches = Array.from(
+          (tn.nodeValue ?? "").matchAll(/(\s*)(\S+)(\s*)/g),
+        );
+        if (matches.length === 0) continue;
+
         const frag = document.createDocumentFragment();
-        for (const part of parts) {
-          if (!part) continue;
-          if (/^\s+$/.test(part)) {
-            frag.appendChild(document.createTextNode(part));
-            continue;
+        let lastIdx: number | null = null;
+        for (const m of matches) {
+          const leading = m[1] ?? "";
+          const word = m[2];
+          const trailing = m[3] ?? "";
+
+          if (leading) {
+            const leadSpan = document.createElement("span");
+            leadSpan.textContent = leading;
+            leadSpan.className = "sw-space";
+            if (lastIdx !== null) leadSpan.setAttribute("data-narration-i", String(lastIdx));
+            frag.appendChild(leadSpan);
           }
-          const norm = normalizeForNarration(part);
+
+          const norm = normalizeForNarration(word);
           const span = document.createElement("span");
-          span.textContent = part;
+          span.textContent = word;
+          span.className = "sw-word";
           if (norm) {
             const positions = posByWord.get(norm);
             if (positions) {
@@ -83,18 +98,26 @@ const NarrationBody = memo(
               if (pick !== -1) {
                 const idx = positions[pick];
                 span.setAttribute("data-narration-i", String(idx));
-                span.className = "sw-word";
                 cursorByWord.set(norm, pick + 1);
                 highWater = idx;
                 matched++;
+                lastIdx = idx;
               }
             }
           }
           frag.appendChild(span);
+
+          if (trailing) {
+            const trailSpan = document.createElement("span");
+            trailSpan.textContent = trailing;
+            trailSpan.className = "sw-space";
+            if (lastIdx !== null) trailSpan.setAttribute("data-narration-i", String(lastIdx));
+            frag.appendChild(trailSpan);
+          }
         }
         try {
           tn.parentNode.replaceChild(frag, tn);
-        } catch { /* ignored */ }
+        } catch { /* defensive */ }
       }
       root.setAttribute("data-narration-ready", "true");
       if (process.env.NODE_ENV !== "production") {
@@ -134,7 +157,6 @@ export function NarrationPlayer({
   const [duration, setDuration] = useState(0);
 
   const src = /^https?:\/\//i.test(audioUrl) ? audioUrl : `https://${audioUrl}`;
-
   const containerEl = () => document.getElementById(containerIdRef.current);
 
   const applyHighlight = useCallback((idx: number) => {
@@ -143,30 +165,49 @@ export function NarrationPlayer({
     const root = containerEl();
     if (!root) { activeRef.current = idx; return; }
 
+    let fillMs = 120;
+    if (idx >= 0 && idx < words.length) {
+      const w = words[idx];
+      const dur = Math.max(0.05, w.end - w.start);
+      fillMs = Math.round(dur * 1000);
+    }
+
     if (idx > prev) {
-      for (let i = prev + 1; i <= idx; i++) {
-        const el = root.querySelector<HTMLElement>(`[data-narration-i="${i}"]`);
-        if (!el) continue;
-        if (i < idx) {
+      for (let i = prev + 1; i < idx; i++) {
+        const els = root.querySelectorAll<HTMLElement>(`[data-narration-i="${i}"]`);
+        els.forEach((el) => {
           el.classList.add("sw-word-passed");
           el.classList.remove("sw-word-current");
-        } else {
-          el.classList.add("sw-word-current", "sw-word-passed");
-        }
+          el.style.removeProperty("--sw-fill-duration");
+        });
       }
       if (prev >= 0) {
-        const old = root.querySelector<HTMLElement>(`[data-narration-i="${prev}"]`);
-        old?.classList.remove("sw-word-current");
-        old?.classList.add("sw-word-passed");
+        const olds = root.querySelectorAll<HTMLElement>(`[data-narration-i="${prev}"]`);
+        olds.forEach((el) => {
+          el.classList.add("sw-word-passed");
+          el.classList.remove("sw-word-current");
+          el.style.removeProperty("--sw-fill-duration");
+        });
       }
+      const news = root.querySelectorAll<HTMLElement>(`[data-narration-i="${idx}"]`);
+      news.forEach((el) => {
+        el.style.setProperty("--sw-fill-duration", `${fillMs}ms`);
+        el.classList.add("sw-word-current");
+      });
     } else if (idx < prev) {
       for (let i = idx + 1; i <= prev; i++) {
-        const el = root.querySelector<HTMLElement>(`[data-narration-i="${i}"]`);
-        el?.classList.remove("sw-word-passed", "sw-word-current");
+        const els = root.querySelectorAll<HTMLElement>(`[data-narration-i="${i}"]`);
+        els.forEach((el) => {
+          el.classList.remove("sw-word-passed", "sw-word-current");
+          el.style.removeProperty("--sw-fill-duration");
+        });
       }
       if (idx >= 0) {
-        const newCur = root.querySelector<HTMLElement>(`[data-narration-i="${idx}"]`);
-        newCur?.classList.add("sw-word-current", "sw-word-passed");
+        const news = root.querySelectorAll<HTMLElement>(`[data-narration-i="${idx}"]`);
+        news.forEach((el) => {
+          el.style.setProperty("--sw-fill-duration", `${fillMs}ms`);
+          el.classList.add("sw-word-current");
+        });
       }
     }
 
@@ -174,19 +215,22 @@ export function NarrationPlayer({
 
     if (idx >= 0) {
       try {
-        const target = root.querySelector<HTMLElement>(`[data-narration-i="${idx}"]`);
+        const target = root.querySelector<HTMLElement>(`.sw-word[data-narration-i="${idx}"]`);
         if (target && target.isConnected) {
           target.scrollIntoView({ block: "nearest", behavior: "smooth" });
         }
       } catch { /* ignored */ }
     }
-  }, []);
+  }, [words]);
 
   const clearAllHighlights = useCallback(() => {
     const root = containerEl();
     if (!root) return;
     root.querySelectorAll<HTMLElement>(".sw-word-passed, .sw-word-current")
-      .forEach((el) => el.classList.remove("sw-word-passed", "sw-word-current"));
+      .forEach((el) => {
+        el.classList.remove("sw-word-passed", "sw-word-current");
+        el.style.removeProperty("--sw-fill-duration");
+      });
     activeRef.current = -1;
   }, []);
 

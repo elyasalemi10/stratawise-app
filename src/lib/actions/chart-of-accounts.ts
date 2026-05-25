@@ -21,7 +21,7 @@ export async function listChartOfAccounts(): Promise<CoaAccount[]> {
   const supabase = createServerClient();
   const { data, error } = await supabase
     .from("chart_of_accounts")
-    .select("id, code, name, account_type, gst_treatment, system_role, is_system, archived_at")
+    .select("id, code, name, account_type, gst_treatment, system_role, is_system, is_fundamental, archived_at")
     .eq("management_company_id", companyId)
     .order("code", { ascending: true });
   if (error) throw new Error(`Failed to load chart of accounts: ${error.message}`);
@@ -62,7 +62,7 @@ export async function createCoaAccount(input: {
       gst_treatment: input.gst_treatment,
       is_system: false,
     })
-    .select("id, code, name, account_type, gst_treatment, system_role, is_system, archived_at")
+    .select("id, code, name, account_type, gst_treatment, system_role, is_system, is_fundamental, archived_at")
     .single();
 
   if (error) {
@@ -99,19 +99,20 @@ export async function updateCoaAccount(input: {
 
   const supabase = createServerClient();
 
-  // Built-in accounts can be edited (rename / re-type / re-GST) BUT keep
-  // their system_role and code intact so the app's references keep resolving.
+  // Only TRULY FUNDAMENTAL accounts (small set wired into platform code paths
+  // by role , trust bank, levy debtors, GST in/out, fund balances, levy
+  // income lines) are locked from edits. Everything else, including most
+  // seeded suggestions, can be freely renamed / re-typed / re-GST'd.
   const { data: existing, error: fetchErr } = await supabase
     .from("chart_of_accounts")
-    .select("id, is_system, system_role, code")
+    .select("id, is_fundamental, code")
     .eq("id", input.id)
     .eq("management_company_id", companyId)
     .maybeSingle();
   if (fetchErr || !existing) return { error: "Account not found." };
 
-  const codeIsLocked = existing.is_system && existing.system_role;
-  if (codeIsLocked && code !== existing.code) {
-    return { error: "Built-in accounts can't have their code changed." };
+  if (existing.is_fundamental) {
+    return { error: "This account is required by the platform and can't be edited." };
   }
 
   const { data, error } = await supabase
@@ -125,7 +126,7 @@ export async function updateCoaAccount(input: {
     })
     .eq("id", input.id)
     .eq("management_company_id", companyId)
-    .select("id, code, name, account_type, gst_treatment, system_role, is_system, archived_at")
+    .select("id, code, name, account_type, gst_treatment, system_role, is_system, is_fundamental, archived_at")
     .single();
 
   if (error) {
@@ -148,16 +149,14 @@ export async function setCoaAccountActive(
 
   const { data: existing, error: fetchErr } = await supabase
     .from("chart_of_accounts")
-    .select("id, is_system, system_role")
+    .select("id, is_fundamental")
     .eq("id", id)
     .eq("management_company_id", companyId)
     .maybeSingle();
   if (fetchErr || !existing) return { error: "Account not found." };
 
-  // Protected accounts (built-ins the app references by role) can't be
-  // deactivated. Renames are blocked elsewhere; here we just guard the toggle.
-  if (!active && existing.is_system && existing.system_role) {
-    return { error: "This built-in account is required by the platform and can't be deactivated." };
+  if (!active && existing.is_fundamental) {
+    return { error: "This account is required by the platform and can't be deactivated." };
   }
 
   const { error } = await supabase
