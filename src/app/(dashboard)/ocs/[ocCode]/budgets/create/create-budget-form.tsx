@@ -396,13 +396,13 @@ export function CreateBudgetForm({
                           </TableBody>
                           <TableFooter>
                             <TableRow>
-                              {/* Total label sits in the Account column so the
-                                  dollar number on the right reads as a clean
-                                  financial total; right-aligned so it pulls
-                                  away from the account names below it. */}
-                              <TableCell />
-                              <TableCell className="text-sm font-semibold text-foreground text-right pr-6">Total annual</TableCell>
-                              <TableCell className="text-sm font-bold text-foreground tabular-nums">{formatCurrency(total)}</TableCell>
+                              {/* Total label spans the left columns so it sits
+                                  flush-left under the Code column; the dollar
+                                  value gets a little extra indent so it
+                                  visually separates from the line-item amounts
+                                  above. */}
+                              <TableCell colSpan={2} className="text-sm font-semibold text-foreground">Total annual</TableCell>
+                              <TableCell className="text-sm font-bold text-foreground tabular-nums pl-6">{formatCurrency(total)}</TableCell>
                               <TableCell />
                             </TableRow>
                           </TableFooter>

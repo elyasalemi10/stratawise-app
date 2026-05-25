@@ -394,7 +394,7 @@ export function BudgetDetailContent({
               <TableFooter>
                 <TableRow>
                   <TableCell colSpan={2} className="text-sm font-semibold text-foreground">Total annual</TableCell>
-                  <TableCell className="text-sm font-bold tabular-nums text-foreground">{formatCurrency(total)}</TableCell>
+                  <TableCell className="text-sm font-bold tabular-nums text-foreground pl-6">{formatCurrency(total)}</TableCell>
                   {editing && <TableCell />}
                 </TableRow>
               </TableFooter>

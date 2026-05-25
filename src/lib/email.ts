@@ -440,6 +440,10 @@ interface SendLevyEmailParams {
   periodLabel: string;
   pdfBuffer: Buffer;
   pdfFilename: string;
+  /** Optional extra files attached after the levy PDF. Caller is
+   *  responsible for keeping the total payload under provider limits
+   *  (Resend 40 MB / Gmail 25 MB). */
+  extraAttachments?: Array<{ filename: string; content: Buffer; contentType: string }>;
   ocId?: string | null;
 }
 
@@ -455,6 +459,7 @@ export async function sendLevyEmail({
   periodLabel,
   pdfBuffer,
   pdfFilename,
+  extraAttachments,
   ocId,
 }: SendLevyEmailParams) {
   const greeting = ownerName ? `Hi ${ownerName},` : "Hi,";
@@ -499,6 +504,7 @@ export async function sendLevyEmail({
         content: pdfBuffer,
         contentType: "application/pdf",
       },
+      ...(extraAttachments ?? []),
     ],
     resendFrom: from,
   });

@@ -90,7 +90,7 @@ export async function getCompanyData() {
   const supabase = createServerClient();
   const { data } = await supabase
     .from("management_companies")
-    .select("id, name, abn, address, phone, email, logo_url, registered_name, signature_url, brand_color")
+    .select("id, name, abn, address, phone, email, logo_url, registered_name, signature_url, brand_color, brand_color_secondary")
     .eq("id", profile.management_company_id)
     .single();
 
@@ -103,13 +103,12 @@ export async function updateCompanyField(companyId: string, field: string, value
     return { error: "Unauthorized" };
   }
 
-  const allowedFields = ["name", "abn", "address", "phone", "email", "registered_name", "brand_color"];
+  const allowedFields = ["name", "abn", "address", "phone", "email", "registered_name", "brand_color", "brand_color_secondary"];
   if (!allowedFields.includes(field)) {
     return { error: "Invalid field" };
   }
-  // Validate brand_color shape since it's the only field that needs a
-  // specific format (hex like #RRGGBB or #RGB). Other fields are free text.
-  if (field === "brand_color" && value && !/^#[0-9a-fA-F]{3}(?:[0-9a-fA-F]{3})?$/.test(value)) {
+  // Validate brand_color* shape (hex like #RRGGBB or #RGB).
+  if ((field === "brand_color" || field === "brand_color_secondary") && value && !/^#[0-9a-fA-F]{3}(?:[0-9a-fA-F]{3})?$/.test(value)) {
     return { error: "Brand colour must be a hex code like #0E314C." };
   }
 

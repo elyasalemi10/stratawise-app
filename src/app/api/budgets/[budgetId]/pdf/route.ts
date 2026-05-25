@@ -3,8 +3,11 @@ import { renderToBuffer } from "@react-pdf/renderer";
 import { createElement } from "react";
 import { BudgetReport } from "@/lib/pdf/templates/budget-report";
 import type { BudgetReportProps, BudgetReportItem } from "@/lib/pdf/types";
-import { requireOCAccess } from "@/lib/auth";
+import { getCurrentProfile, requireOCAccess } from "@/lib/auth";
 import { createServerClient } from "@/lib/supabase";
+
+export const runtime = "nodejs";
+export const dynamic = "force-dynamic";
 
 const FUND_LABEL: Record<string, string> = {
   administrative: "Administrative Fund",
@@ -19,6 +22,11 @@ export async function GET(
   _req: NextRequest,
   context: { params: Promise<{ budgetId: string }> },
 ) {
+  const profile = await getCurrentProfile();
+  if (!profile) {
+    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  }
+
   const { budgetId } = await context.params;
   const supabase = createServerClient();
 
@@ -64,7 +72,7 @@ export async function GET(
 
   const { data: company } = await supabase
     .from("management_companies")
-    .select("name, logo_url, brand_color")
+    .select("name, logo_url, brand_color, brand_color_secondary")
     .eq("id", oc.management_company_id)
     .maybeSingle();
 
@@ -75,13 +83,12 @@ export async function GET(
     amount: Number(i.amount),
   }));
 
-  // Brand colour comes from management_companies.brand_color (set in
-  // onboarding). Gold accent stays SW-default unless we add a second column
-  // later. Falling back to SW midnight keeps the template consistent for
-  // firms that haven't picked a brand.
-  const brandPrimary = (company?.brand_color && /^#[0-9a-f]{3,8}$/i.test(company.brand_color))
-    ? company.brand_color
-    : "#0E314C";
+  // Brand colours come from management_companies. Primary drives the
+  // brand-rule + headers; secondary drives the section-icon + side accent.
+  const isHex = (v: string | null | undefined): v is string =>
+    !!v && /^#[0-9a-f]{3,8}$/i.test(v);
+  const brandPrimary = isHex(company?.brand_color) ? company!.brand_color! : "#0E314C";
+  const brandSecondary = isHex(company?.brand_color_secondary) ? company!.brand_color_secondary! : "#CFA753";
 
   const props: BudgetReportProps = {
     managementCompany: {
@@ -108,7 +115,7 @@ export async function GET(
     approvalNote: budget.approval_note,
     items: pdfItems,
     totalAmount: Number(budget.total_amount),
-    brandColors: { primary: brandPrimary, secondary: "#CFA753" },
+    brandColors: { primary: brandPrimary, secondary: brandSecondary },
   };
 
   // eslint-disable-next-line @typescript-eslint/no-explicit-any

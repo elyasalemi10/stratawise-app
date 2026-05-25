@@ -4,6 +4,7 @@ import { requireCompanyRole, requireOCAccess } from "@/lib/auth";
 import { createServerClient } from "@/lib/supabase";
 import { revalidatePath } from "next/cache";
 import { generateAndUploadLevyPDF, generateLevyPDFBuffer } from "@/lib/levy-pdf";
+import { getLevyNoticePdfBuffer } from "@/lib/pdf/render";
 import { sendLevyEmail } from "@/lib/email";
 import { formatDateLong } from "@/lib/utils";
 import { notifyOCLotOwners } from "@/lib/actions/notifications";
@@ -64,7 +65,12 @@ export interface LevyBatchDetail extends LevyBatchSummary {
     unit_number: string | null;
     owner_display_name: string | null;
     owner_contact_email: string | null;
+    /** Internal LEV-NNNN reference. Kept for back-compat / audit. */
     reference_number: string;
+    /** Macquarie DEFT Reference Number (DRN) active for the lot. This is
+     *  what the owner uses to pay , show it in preference to the LEV
+     *  reference on dashboards and the levy notice. */
+    drn: string | null;
     amount: number;
     status: string;
     pdf_url: string | null;
@@ -546,14 +552,17 @@ export async function createLevyBatch(
   if (oc?.management_company_id) {
     const { data: mc } = await supabase
       .from("management_companies")
-      .select("name, logo_url, brand_color")
+      .select("name, logo_url, brand_color, brand_color_secondary")
       .eq("id", oc.management_company_id)
       .single();
     if (mc) {
       managementCompany = { name: mc.name, logo_url: mc.logo_url };
-      if (mc.brand_color && /^#[0-9a-f]{3,8}$/i.test(mc.brand_color)) {
-        brandColors = { primary: mc.brand_color, secondary: "#CFA753" };
-      }
+      const isHex = (v: string | null | undefined): v is string =>
+        !!v && /^#[0-9a-f]{3,8}$/i.test(v);
+      brandColors = {
+        primary: isHex(mc.brand_color) ? mc.brand_color : "#0E314C",
+        secondary: isHex(mc.brand_color_secondary) ? mc.brand_color_secondary : "#CFA753",
+      };
     }
   }
 
@@ -805,12 +814,29 @@ export async function getLevyBatchDetail(ocId: string, batchId: string): Promise
 
   const levyIds = (levies ?? []).map((l) => l.id);
   const lotIds = (levies ?? []).map((l) => l.lot_id).filter(Boolean) as string[];
-  const [{ data: allItems }, owners] = await Promise.all([
+  // Resolve the lot's CURRENT active DRN. The mapping is time-bounded so we
+  // pick the row whose window covers today. Historical batches keep their
+  // stored reference; this lookup is only for what we DISPLAY to the
+  // manager today.
+  const today = new Date().toISOString().slice(0, 10);
+  const [{ data: allItems }, owners, { data: drns }] = await Promise.all([
     levyIds.length > 0
       ? supabase.from("levy_notice_items").select("*").in("levy_notice_id", levyIds).order("sort_order")
       : Promise.resolve({ data: [] }),
     getLotOwners(supabase, lotIds),
+    lotIds.length > 0
+      ? supabase
+          .from("lot_drns")
+          .select("lot_id, drn, active_from, active_to")
+          .in("lot_id", lotIds)
+          .lte("active_from", today)
+      : Promise.resolve({ data: [] }),
   ]);
+  const drnByLot = new Map<string, string>();
+  for (const d of (drns ?? []) as Array<{ lot_id: string; drn: string; active_to: string | null }>) {
+    if (d.active_to && d.active_to < today) continue;
+    if (!drnByLot.has(d.lot_id)) drnByLot.set(d.lot_id, d.drn);
+  }
 
   return {
     id: batch.id,
@@ -836,6 +862,7 @@ export async function getLevyBatchDetail(ocId: string, batchId: string): Promise
         owner_display_name: owner?.owner_display_name ?? null,
         owner_contact_email: owner?.owner_contact_email ?? null,
         reference_number: l.reference_number,
+        drn: drnByLot.get(l.lot_id) ?? null,
         amount: Number(l.amount),
         status: l.status,
         pdf_url: l.pdf_url,
@@ -1011,14 +1038,17 @@ export async function regenerateBatch(ocId: string, batchId: string, newDueDate:
   if (oc?.management_company_id) {
     const { data: mc } = await supabase
       .from("management_companies")
-      .select("name, logo_url, brand_color")
+      .select("name, logo_url, brand_color, brand_color_secondary")
       .eq("id", oc.management_company_id)
       .single();
     if (mc) {
       managementCompany = { name: mc.name, logo_url: mc.logo_url };
-      if (mc.brand_color && /^#[0-9a-f]{3,8}$/i.test(mc.brand_color)) {
-        brandColors = { primary: mc.brand_color, secondary: "#CFA753" };
-      }
+      const isHex = (v: string | null | undefined): v is string =>
+        !!v && /^#[0-9a-f]{3,8}$/i.test(v);
+      brandColors = {
+        primary: isHex(mc.brand_color) ? mc.brand_color : "#0E314C",
+        secondary: isHex(mc.brand_color_secondary) ? mc.brand_color_secondary : "#CFA753",
+      };
     }
   }
 
@@ -1229,6 +1259,135 @@ export async function markBatchPaid(ocId: string, batchId: string) {
 
 // ─── Send batch emails ─────────────────────────────────────
 
+// Send batch emails with per-levy recipient overrides + extra attachments
+// applied to every send. Wraps sendBatchEmails' logic but accepts the
+// extras instead of using defaults. Called from the "Send by email" popup
+// on the batch detail page (so a manager can correct a wrong email or
+// attach a meeting agenda / cover letter on this one batch).
+export async function sendBatchEmailsCustom(
+  ocId: string,
+  batchId: string,
+  options: {
+    /** Optional: { levyId: emailOverride }. Falls back to owner email. */
+    emailOverrides?: Record<string, string>;
+    /** Optional: extra files (base64-encoded) attached to every email. */
+    extraAttachments?: Array<{ filename: string; contentBase64: string; contentType: string }>;
+  } = {},
+): Promise<{ sentCount?: number; error?: string }> {
+  const profile = await requireCompanyRole();
+  await requireOCAccess(ocId);
+  const supabase = createServerClient();
+
+  const { data: batch } = await supabase
+    .from("levy_batches")
+    .select("period_label")
+    .eq("id", batchId)
+    .single();
+
+  const { data: oc } = await supabase
+    .from("owners_corporations")
+    .select("name, plan_number, address, abn, management_company_id")
+    .eq("id", ocId)
+    .single();
+
+  let managementCompanyLogoUrl: string | null = null;
+  if (oc?.management_company_id) {
+    const { data: mc } = await supabase
+      .from("management_companies")
+      .select("logo_url")
+      .eq("id", oc.management_company_id)
+      .single();
+    managementCompanyLogoUrl = mc?.logo_url ?? null;
+  }
+
+  const { data: levies } = await supabase
+    .from("levy_notices")
+    .select("id, reference_number, amount, due_date, lot_id")
+    .eq("batch_id", batchId)
+    .eq("status", "draft");
+  if (!levies?.length) return { error: "No draft levies to send" };
+
+  const lotIds = levies.map((l) => l.lot_id).filter(Boolean) as string[];
+  const owners = await getLotOwners(supabase, lotIds);
+
+  // Materialise extra attachments once , they're the same on every email.
+  const extras = (options.extraAttachments ?? []).map((a) => ({
+    filename: a.filename,
+    content: Buffer.from(a.contentBase64, "base64"),
+    contentType: a.contentType,
+  }));
+
+  let sentCount = 0;
+  for (const levy of levies) {
+    const owner = owners.get(levy.lot_id);
+    const overrideEmail = options.emailOverrides?.[levy.id]?.trim() || null;
+    const email = overrideEmail || owner?.owner_contact_email || null;
+    if (!email) continue;
+
+    try {
+      const pdfBuffer = await getLevyNoticePdfBuffer(levy.id, supabase);
+      if (!pdfBuffer) {
+        console.error("No PDF available for levy", levy.reference_number);
+        continue;
+      }
+
+      const formatCurrency = (n: number) =>
+        new Intl.NumberFormat("en-AU", { style: "currency", currency: "AUD" }).format(n);
+
+      await sendLevyEmail({
+        to: email,
+        ownerName: owner?.owner_display_name ?? null,
+        ocName: oc?.name ?? "",
+        ocAddress: oc?.address ?? "",
+        companyLogoUrl: managementCompanyLogoUrl,
+        referenceNumber: levy.reference_number,
+        dueDate: formatDateLong(levy.due_date),
+        totalAmount: formatCurrency(Number(levy.amount)),
+        periodLabel: batch?.period_label ?? "",
+        pdfBuffer,
+        pdfFilename: `${levy.reference_number}.pdf`,
+        extraAttachments: extras,
+        ocId,
+      });
+
+      await supabase
+        .from("levy_notices")
+        .update({ status: "issued", issued_at: new Date().toISOString() })
+        .eq("id", levy.id);
+      sentCount++;
+    } catch (err) {
+      console.error("Failed to send levy email for", levy.reference_number, err);
+    }
+  }
+
+  const { data: remaining } = await supabase
+    .from("levy_notices")
+    .select("id")
+    .eq("batch_id", batchId)
+    .eq("status", "draft");
+  const newStatus = (!remaining || remaining.length === 0) ? "sent" : "partially_sent";
+  await supabase
+    .from("levy_batches")
+    .update({ status: newStatus, ...(newStatus === "sent" ? { sent_at: new Date().toISOString() } : {}) })
+    .eq("id", batchId);
+
+  await supabase.from("audit_log").insert({
+    profile_id: profile.id,
+    oc_id: ocId,
+    action: "send_emails_custom",
+    entity_type: "levy_batch",
+    entity_id: batchId,
+    after_state: {
+      sent_count: sentCount,
+      override_count: Object.keys(options.emailOverrides ?? {}).length,
+      attachment_count: extras.length,
+    },
+  });
+
+  revalidatePath("/ocs/[ocCode]/levies", "page");
+  return { sentCount };
+}
+
 export async function sendBatchEmails(ocId: string, batchId: string) {
   const profile = await requireCompanyRole();
   await requireOCAccess(ocId);
@@ -1253,14 +1412,17 @@ export async function sendBatchEmails(ocId: string, batchId: string) {
   if (oc?.management_company_id) {
     const { data: mc } = await supabase
       .from("management_companies")
-      .select("name, logo_url, brand_color")
+      .select("name, logo_url, brand_color, brand_color_secondary")
       .eq("id", oc.management_company_id)
       .single();
     if (mc) {
       managementCompany = { name: mc.name, logo_url: mc.logo_url };
-      if (mc.brand_color && /^#[0-9a-f]{3,8}$/i.test(mc.brand_color)) {
-        brandColors = { primary: mc.brand_color, secondary: "#CFA753" };
-      }
+      const isHex = (v: string | null | undefined): v is string =>
+        !!v && /^#[0-9a-f]{3,8}$/i.test(v);
+      brandColors = {
+        primary: isHex(mc.brand_color) ? mc.brand_color : "#0E314C",
+        secondary: isHex(mc.brand_color_secondary) ? mc.brand_color_secondary : "#CFA753",
+      };
     }
   }
 
@@ -1288,54 +1450,16 @@ export async function sendBatchEmails(ocId: string, batchId: string) {
     if (!email) continue;
 
     try {
-      // Generate PDF buffer for email attachment
-      const pdfProps: LevyNoticeProps = {
-        managementCompany,
-        oc: {
-          name: oc?.name ?? "",
-          address: oc?.address ?? "",
-          abn: oc?.abn ?? null,
-          plan_number: oc?.plan_number ?? "",
-        },
-        documentTitle: "Levy Notice",
-        referenceNumber: levy.reference_number,
-        date: new Date(),
-        lotOwner: {
-          name: owner?.owner_display_name ?? "Lot Owner",
-          lot_number: `${lot?.lot_number ?? ""}${lot?.unit_number ? ` Unit ${lot.unit_number}` : ""}`,
-          address: oc?.address ?? "",
-        },
-        levyPeriod: { start: formatDateLong(levy.period_start), end: formatDateLong(levy.period_end) },
-        lineItems: [], // We'll fetch items
-        totalDue: Number(levy.amount),
-        dueDate: formatDateLong(levy.due_date),
-        paymentInstructions: {
-          bpay: null,
-          eft: eftAccount ? {
-            ...eftAccount,
-            reference: levy.reference_number,
-          } : {
-            bsb: "",
-            account_number: "",
-            account_name: "",
-            reference: levy.reference_number,
-          },
-        },
-      };
-
-      // Fetch line items for this levy
-      const { data: items } = await supabase
-        .from("levy_notice_items")
-        .select("description, amount")
-        .eq("levy_notice_id", levy.id)
-        .order("sort_order");
-
-      pdfProps.lineItems = (items ?? []).map((i) => ({
-        description: i.description,
-        amount: Number(i.amount),
-      }));
-
-      const pdfBuffer = await generateLevyPDFBuffer(pdfProps);
+      // Re-use the PDF that was generated + stored when the batch was
+      // created. We do NOT re-render here , the dashboard download, the
+      // email attachment, and the owner-portal download must all be the
+      // SAME file. getLevyNoticePdfBuffer reads pdf_url from R2 and only
+      // re-renders if the row never had a PDF (defensive fallback).
+      const pdfBuffer = await getLevyNoticePdfBuffer(levy.id, supabase);
+      if (!pdfBuffer) {
+        console.error("No PDF available for levy", levy.reference_number, ", skipping email");
+        continue;
+      }
 
       const formatCurrency = (n: number) =>
         new Intl.NumberFormat("en-AU", { style: "currency", currency: "AUD" }).format(n);
@@ -1429,14 +1553,17 @@ export async function resendBatchEmails(ocId: string, batchId: string) {
   if (oc?.management_company_id) {
     const { data: mc } = await supabase
       .from("management_companies")
-      .select("name, logo_url, brand_color")
+      .select("name, logo_url, brand_color, brand_color_secondary")
       .eq("id", oc.management_company_id)
       .single();
     if (mc) {
       managementCompany = { name: mc.name, logo_url: mc.logo_url };
-      if (mc.brand_color && /^#[0-9a-f]{3,8}$/i.test(mc.brand_color)) {
-        brandColors = { primary: mc.brand_color, secondary: "#CFA753" };
-      }
+      const isHex = (v: string | null | undefined): v is string =>
+        !!v && /^#[0-9a-f]{3,8}$/i.test(v);
+      brandColors = {
+        primary: isHex(mc.brand_color) ? mc.brand_color : "#0E314C",
+        secondary: isHex(mc.brand_color_secondary) ? mc.brand_color_secondary : "#CFA753",
+      };
     }
   }
 
@@ -1462,44 +1589,14 @@ export async function resendBatchEmails(ocId: string, batchId: string) {
     if (!email) continue;
 
     try {
-      const pdfProps: LevyNoticeProps = {
-        managementCompany,
-        oc: {
-          name: oc?.name ?? "",
-          address: oc?.address ?? "",
-          abn: oc?.abn ?? null,
-          plan_number: oc?.plan_number ?? "",
-        },
-        documentTitle: "Levy Notice",
-        referenceNumber: levy.reference_number,
-        date: new Date(),
-        lotOwner: {
-          name: owner?.owner_display_name ?? "Lot Owner",
-          lot_number: `${lot?.lot_number ?? ""}${lot?.unit_number ? ` Unit ${lot.unit_number}` : ""}`,
-          address: oc?.address ?? "",
-        },
-        levyPeriod: { start: formatDateLong(levy.period_start), end: formatDateLong(levy.period_end) },
-        lineItems: [],
-        totalDue: Number(levy.amount),
-        dueDate: formatDateLong(levy.due_date),
-        paymentInstructions: {
-          bpay: null,
-          eft: eftAccount ? {
-            ...eftAccount,
-            reference: levy.reference_number,
-          } : { bsb: "", account_number: "", account_name: "", reference: levy.reference_number },
-        },
-      };
-
-      const { data: items } = await supabase
-        .from("levy_notice_items")
-        .select("description, amount")
-        .eq("levy_notice_id", levy.id)
-        .order("sort_order");
-
-      pdfProps.lineItems = (items ?? []).map((i) => ({ description: i.description, amount: Number(i.amount) }));
-
-      const pdfBuffer = await generateLevyPDFBuffer(pdfProps);
+      // Re-use the stored PDF , no re-render. (See sendBatchEmails for the
+      // full reasoning; the dashboard download, email attachment, and owner
+      // portal must all serve the same file.)
+      const pdfBuffer = await getLevyNoticePdfBuffer(levy.id, supabase);
+      if (!pdfBuffer) {
+        console.error("No PDF available for levy", levy.reference_number, ", skipping email");
+        continue;
+      }
 
       const formatCurrency = (n: number) =>
         new Intl.NumberFormat("en-AU", { style: "currency", currency: "AUD" }).format(n);

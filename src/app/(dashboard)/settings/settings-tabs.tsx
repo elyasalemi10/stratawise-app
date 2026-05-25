@@ -24,6 +24,7 @@ interface CompanyData {
   registered_name: string | null;
   signature_url: string | null;
   brand_color: string | null;
+  brand_color_secondary: string | null;
 }
 
 function TabsInner({

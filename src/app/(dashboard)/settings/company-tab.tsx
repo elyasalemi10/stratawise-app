@@ -2,11 +2,14 @@
 
 import { useState, useRef } from "react";
 import { toast } from "sonner";
-import { Upload, Building2 } from "lucide-react";
+import { Upload, Building2, Pencil, Loader2 } from "lucide-react";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import {
+  Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle,
+} from "@/components/ui/sheet";
 import { updateCompanyField, uploadCompanySignature } from "./actions";
 import { updateCompanyLogo } from "@/lib/actions/company-branding";
 import { MAX_LOGO_BYTES, MAX_LOGO_WIDTH, MAX_LOGO_HEIGHT } from "@/lib/actions/company-branding-constants";
@@ -23,48 +26,123 @@ interface CompanyData {
   registered_name: string | null;
   signature_url: string | null;
   brand_color: string | null;
+  brand_color_secondary: string | null;
 }
 
-function EditableRow({
-  label,
-  value,
-  field,
-  companyId,
+function ReadOnlyRow({ label, value }: { label: string; value: string | null }) {
+  return (
+    <div className="flex items-center justify-between py-3 border-b border-border/50 last:border-b-0">
+      <Label className="text-sm text-muted-foreground w-40 shrink-0">{label}</Label>
+      <span className="text-sm text-foreground text-right truncate max-w-sm">
+        {value || <span className="text-muted-foreground/60">Not set</span>}
+      </span>
+    </div>
+  );
+}
+
+interface CompanyDetailsForEdit {
+  id: string;
+  name: string;
+  registered_name: string | null;
+  abn: string | null;
+  address: string | null;
+  phone: string | null;
+  email: string | null;
+}
+
+function EditCompanyDrawer({
+  open, onOpenChange, company, onSaved,
 }: {
-  label: string;
-  value: string | null;
-  field: string;
-  companyId: string;
+  open: boolean;
+  onOpenChange: (open: boolean) => void;
+  company: CompanyDetailsForEdit;
+  onSaved: (updates: Partial<CompanyDetailsForEdit>) => void;
 }) {
-  const [editValue, setEditValue] = useState(value ?? "");
+  const [draft, setDraft] = useState({
+    name: company.name,
+    registered_name: company.registered_name ?? "",
+    abn: company.abn ?? "",
+    address: company.address ?? "",
+    phone: company.phone ?? "",
+    email: company.email ?? "",
+  });
   const [saving, setSaving] = useState(false);
 
-  async function save() {
-    if (editValue === (value ?? "")) return;
+  async function handleSave() {
     setSaving(true);
-    const result = await updateCompanyField(companyId, field, editValue || null);
-    setSaving(false);
-    if (result.error) {
-      toast.error(result.error);
-      setEditValue(value ?? "");
-    } else {
-      toast.success(`${label} updated`);
+    // Only push fields the user actually changed , no point burning a row
+    // version on identical values.
+    const dirty: Record<string, string | null> = {};
+    if (draft.name !== company.name) dirty.name = draft.name;
+    if (draft.registered_name !== (company.registered_name ?? "")) dirty.registered_name = draft.registered_name || null;
+    if (draft.abn !== (company.abn ?? "")) dirty.abn = draft.abn || null;
+    if (draft.address !== (company.address ?? "")) dirty.address = draft.address || null;
+    if (draft.phone !== (company.phone ?? "")) dirty.phone = draft.phone || null;
+    if (draft.email !== (company.email ?? "")) dirty.email = draft.email || null;
+
+    for (const [field, value] of Object.entries(dirty)) {
+      const result = await updateCompanyField(company.id, field, value);
+      if (result.error) {
+        setSaving(false);
+        toast.error(result.error);
+        return;
+      }
     }
+    setSaving(false);
+    if (Object.keys(dirty).length === 0) {
+      toast.success("No changes");
+    } else {
+      toast.success("Company details updated");
+      // Mirror the changes back to the parent (strip nulls back to undefined-or-string).
+      onSaved(Object.fromEntries(
+        Object.entries(dirty).map(([k, v]) => [k, v]),
+      ) as Partial<CompanyDetailsForEdit>);
+    }
+    onOpenChange(false);
   }
 
   return (
-    <div className="flex items-center justify-between py-3 border-b border-border/50 last:border-b-0">
-      <Label className="text-sm text-muted-foreground w-32 shrink-0">{label}</Label>
-      <Input
-        value={editValue}
-        onChange={(e) => setEditValue(e.target.value)}
-        onBlur={save}
-        onKeyDown={(e) => { if (e.key === "Enter") { save(); (e.target as HTMLInputElement).blur(); } }}
-        disabled={saving}
-        className="h-8 text-sm max-w-sm text-right"
-        placeholder={`Enter ${label.toLowerCase()}`}
-      />
-    </div>
+    <Sheet open={open} onOpenChange={onOpenChange}>
+      <SheetContent side="right" className="flex w-full flex-col gap-0 sm:max-w-md">
+        <SheetHeader>
+          <SheetTitle>Edit company details</SheetTitle>
+          <SheetDescription className="sr-only">Update company name, ABN, contact details and address.</SheetDescription>
+        </SheetHeader>
+        <div className="flex-1 space-y-4 overflow-y-auto px-4 py-4">
+          <div className="space-y-1.5">
+            <Label htmlFor="ed-name">Company name</Label>
+            <Input id="ed-name" value={draft.name} onChange={(e) => setDraft((p) => ({ ...p, name: e.target.value }))} />
+          </div>
+          <div className="space-y-1.5">
+            <Label htmlFor="ed-reg">Registered name</Label>
+            <Input id="ed-reg" value={draft.registered_name} onChange={(e) => setDraft((p) => ({ ...p, registered_name: e.target.value }))} />
+          </div>
+          <div className="space-y-1.5">
+            <Label htmlFor="ed-abn">ABN</Label>
+            <Input id="ed-abn" value={draft.abn} onChange={(e) => setDraft((p) => ({ ...p, abn: e.target.value }))} />
+          </div>
+          <div className="space-y-1.5">
+            <Label htmlFor="ed-addr">Address</Label>
+            <Input id="ed-addr" value={draft.address} onChange={(e) => setDraft((p) => ({ ...p, address: e.target.value }))} />
+          </div>
+          <div className="space-y-1.5">
+            <Label htmlFor="ed-phone">Phone</Label>
+            <Input id="ed-phone" value={draft.phone} onChange={(e) => setDraft((p) => ({ ...p, phone: e.target.value }))} />
+          </div>
+          <div className="space-y-1.5">
+            <Label htmlFor="ed-email">Email</Label>
+            <Input id="ed-email" type="email" value={draft.email} onChange={(e) => setDraft((p) => ({ ...p, email: e.target.value }))} />
+          </div>
+        </div>
+        <div className="flex justify-end gap-2 border-t border-border p-4">
+          <Button variant="secondary" onClick={() => onOpenChange(false)} disabled={saving}>Cancel</Button>
+          <Button onClick={handleSave} disabled={saving}>
+            {saving && <Loader2 className="size-4 animate-spin" />}
+            Save changes
+          </Button>
+        </div>
+      </SheetContent>
+    </Sheet>
   );
 }
 
@@ -72,8 +150,13 @@ export function CompanyTab({ company }: { company: CompanyData | null }) {
   const [logoUrl, setLogoUrl] = useState(company?.logo_url ?? null);
   const [signatureUrl, setSignatureUrl] = useState(company?.signature_url ?? null);
   const [brandColor, setBrandColor] = useState(company?.brand_color ?? "");
+  const [brandColorSecondary, setBrandColorSecondary] = useState(company?.brand_color_secondary ?? "");
   const [uploading, setUploading] = useState(false);
   const [uploadingSig, setUploadingSig] = useState(false);
+  // Locally tracked overlay of the company fields so the read-only rows
+  // re-render immediately after the edit drawer saves.
+  const [localCompany, setLocalCompany] = useState(company);
+  const [editOpen, setEditOpen] = useState(false);
 
   async function saveBrandColor(hex: string) {
     if (!company) return;
@@ -84,6 +167,18 @@ export function CompanyTab({ company }: { company: CompanyData | null }) {
       setBrandColor(company.brand_color ?? "");
     } else {
       toast.success("Brand colour updated");
+    }
+  }
+
+  async function saveBrandColorSecondary(hex: string) {
+    if (!company) return;
+    setBrandColorSecondary(hex);
+    const result = await updateCompanyField(company.id, "brand_color_secondary", hex || null);
+    if (result.error) {
+      toast.error(result.error);
+      setBrandColorSecondary(company.brand_color_secondary ?? "");
+    } else {
+      toast.success("Secondary colour updated");
     }
   }
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -191,16 +286,21 @@ export function CompanyTab({ company }: { company: CompanyData | null }) {
         </CardContent>
       </Card>
 
-      {/* Brand colour , drives levy + budget PDF accents (header strip,
-          page-bottom rule). */}
+      {/* Brand colours , primary drives the header strip + section
+          accents; secondary drives the due-date callout + footer rule on
+          levy notices. */}
       <Card>
         <CardContent className="pt-5">
-          <h3 className="text-sm font-semibold text-foreground mb-4">Brand colour</h3>
-          <div className="flex items-center gap-4">
-            <BrandColourPicker value={brandColor} onChange={saveBrandColor} />
-            <p className="text-xs text-muted-foreground">
-              Click the swatch to pick a hex. Used on levy notices, budget reports, and other branded documents you generate.
-            </p>
+          <h3 className="text-sm font-semibold text-foreground mb-4">Brand colours</h3>
+          <div className="flex flex-wrap items-center gap-6">
+            <div className="flex flex-col gap-1.5">
+              <Label className="text-xs text-muted-foreground">Primary</Label>
+              <BrandColourPicker value={brandColor} onChange={saveBrandColor} />
+            </div>
+            <div className="flex flex-col gap-1.5">
+              <Label className="text-xs text-muted-foreground">Secondary</Label>
+              <BrandColourPicker value={brandColorSecondary} onChange={saveBrandColorSecondary} />
+            </div>
           </div>
         </CardContent>
       </Card>
@@ -257,18 +357,49 @@ export function CompanyTab({ company }: { company: CompanyData | null }) {
         </CardContent>
       </Card>
 
-      {/* Company details */}
+      {/* Company details , read-only by default; Edit opens a drawer. */}
       <Card>
         <CardContent className="pt-5">
-          <h3 className="text-sm font-semibold text-foreground mb-3">Company details</h3>
-          <EditableRow label="Company name" value={company.name} field="name" companyId={company.id} />
-          <EditableRow label="Registered name" value={company.registered_name} field="registered_name" companyId={company.id} />
-          <EditableRow label="ABN" value={company.abn} field="abn" companyId={company.id} />
-          <EditableRow label="Address" value={company.address} field="address" companyId={company.id} />
-          <EditableRow label="Phone" value={company.phone} field="phone" companyId={company.id} />
-          <EditableRow label="Email" value={company.email} field="email" companyId={company.id} />
+          <div className="mb-3 flex items-center justify-between">
+            <h3 className="text-sm font-semibold text-foreground">Company details</h3>
+            <Button variant="secondary" size="sm" onClick={() => setEditOpen(true)}>
+              <Pencil className="size-3.5" />
+              Edit
+            </Button>
+          </div>
+          <ReadOnlyRow label="Company name" value={localCompany!.name} />
+          <ReadOnlyRow label="Registered name" value={localCompany!.registered_name} />
+          <ReadOnlyRow label="ABN" value={localCompany!.abn} />
+          <ReadOnlyRow label="Address" value={localCompany!.address} />
+          <ReadOnlyRow label="Phone" value={localCompany!.phone} />
+          <ReadOnlyRow label="Email" value={localCompany!.email} />
         </CardContent>
       </Card>
+
+      <EditCompanyDrawer
+        open={editOpen}
+        onOpenChange={setEditOpen}
+        company={{
+          id: localCompany!.id,
+          name: localCompany!.name,
+          registered_name: localCompany!.registered_name,
+          abn: localCompany!.abn,
+          address: localCompany!.address,
+          phone: localCompany!.phone,
+          email: localCompany!.email,
+        }}
+        onSaved={(updates) => {
+          setLocalCompany((prev) => prev ? ({
+            ...prev,
+            name: typeof updates.name === "string" ? updates.name : prev.name,
+            registered_name: "registered_name" in updates ? (updates.registered_name as string | null) : prev.registered_name,
+            abn: "abn" in updates ? (updates.abn as string | null) : prev.abn,
+            address: "address" in updates ? (updates.address as string | null) : prev.address,
+            phone: "phone" in updates ? (updates.phone as string | null) : prev.phone,
+            email: "email" in updates ? (updates.email as string | null) : prev.email,
+          }) : prev);
+        }}
+      />
     </div>
   );
 }
