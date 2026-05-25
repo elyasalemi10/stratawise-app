@@ -21,6 +21,9 @@ export interface AiPost {
   slug?: string;
   excerpt?: string;
   audience?: "lot_owners" | "strata_managers";
+  /** Author byline shown at the top of the post. New field; older imports
+   *  may omit it and fall back to the signed-in admin. */
+  writtenBy?: string;
   tags?: string[];
   seo?: { metaTitle?: string; metaDescription?: string; keywords?: string[]; canonicalUrl?: string };
   cover?: { url?: string; alt?: string };

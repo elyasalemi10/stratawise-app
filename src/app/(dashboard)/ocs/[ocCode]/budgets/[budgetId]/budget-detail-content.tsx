@@ -22,6 +22,7 @@ import {
 import { approveBudget, deleteBudget, updateBudgetItems, type BudgetWithItems } from "@/lib/actions/budget";
 import type { CoaAccount } from "@/lib/chart-of-accounts";
 import { CreateAccountDrawer } from "@/components/chart-of-accounts/create-account-drawer";
+import { useSetBreadcrumb } from "@/lib/breadcrumb-context";
 
 const FUND_LABEL: Record<string, string> = {
   administrative: "Administrative Fund",
@@ -126,8 +127,20 @@ export function BudgetDetailContent({
 }) {
   const router = useRouter();
   const isDraft = budget.status === "draft";
-  const fundLabel = FUND_LABEL[budget.fund_type] ?? budget.fund_type;
+  // Multi-fund budgets list every fund they span ("Administrative + Capital
+  // Works"); single-fund budgets keep showing the single label.
+  const funds = budget.fund_types?.length
+    ? budget.fund_types
+    : (budget.fund_type ? [budget.fund_type] : []);
+  const fundLabel = funds.length === 0
+    ? "Budget"
+    : funds.map((f) => FUND_LABEL[f] ?? f).join(" + ");
   void ocId;
+
+  useSetBreadcrumb([
+    { label: "Budgets", href: `/ocs/${ocCode}/budgets` },
+    { label: `${fundLabel}, ${budget.financial_year}`, href: null },
+  ]);
 
   const [editing, setEditing] = useState(false);
   // Saved snapshot we restore to when the user hits Cancel. Built once from
@@ -250,7 +263,7 @@ export function BudgetDetailContent({
           return;
         }
         const blob = await res.blob();
-        const filename = `budget-${budget.fund_type}-${budget.financial_year}.pdf`;
+        const filename = `budget-${budget.financial_year}.pdf`;
         const url = URL.createObjectURL(blob);
         const a = document.createElement("a");
         a.href = url;
@@ -380,8 +393,7 @@ export function BudgetDetailContent({
               </TableBody>
               <TableFooter>
                 <TableRow>
-                  <TableCell />
-                  <TableCell className="text-sm font-semibold text-foreground">Total annual</TableCell>
+                  <TableCell colSpan={2} className="text-sm font-semibold text-foreground">Total annual</TableCell>
                   <TableCell className="text-sm font-bold tabular-nums text-foreground">{formatCurrency(total)}</TableCell>
                   {editing && <TableCell />}
                 </TableRow>

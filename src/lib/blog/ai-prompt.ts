@@ -9,8 +9,9 @@ Return ONLY a single valid JSON object (no markdown, no code fences, no commenta
 {
   "title": "string , the post title",
   "slug": "kebab-case-url-slug",
-  "excerpt": "1–2 sentence summary shown in listings (also the default meta description)",
+  "excerpt": "1, 2 sentence summary shown in listings (also the default meta description)",
   "audience": "strata_managers" | "lot_owners",
+  "writtenBy": "REQUIRED. The byline name shown at the top of the post (e.g. 'Sarah Chen', 'Jordan Patel'). Pick a plausible real-sounding Australian human name; do NOT use 'StrataWise', 'The Editor', or any organisation name.",
   "tags": ["lowercase", "topic", "tags"],
   "seo": {
     "metaTitle": "≤60 chars, search-result title (can differ from title)",

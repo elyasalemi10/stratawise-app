@@ -254,36 +254,37 @@ export function CreateBudgetForm({
     }
 
     setPending(true);
-    // Submit one budget per selected fund. If any single one fails we surface
-    // the error and stop , partial-success is confusing to recover from.
+    // ONE budget per OC + financial year, regardless of how many funds the
+    // manager ticked. Each item carries its own fund_type so the per-fund
+    // levy generation path can still filter when needed.
+    const allItems: { coa_account_id: string | null; description: string; amount: number; fund_type: FundType }[] = [];
     for (const fund of selectedFunds) {
-      const nonZeroItems = itemsByFund[fund]
+      const items = itemsByFund[fund]
         .map((i) => ({ ...i, amount: parseFloat(i.amount) || 0 }))
         .filter((i) => i.amount > 0);
-
-      const result = await createBudget(ocId, {
-        financial_year: financialYear,
-        fund_type: fund,
-        items: nonZeroItems.map((i) => ({
-          coa_account_id: i.coa_account_id,
-          description: i.description,
-          amount: i.amount,
-        })),
-      });
-
-      if (result.error) {
-        setPending(false); // clear ONLY on error
-        const fundLabel = FUND_OPTIONS.find((o) => o.value === fund)?.label ?? "Fund";
-        toast.error(`${fundLabel}: ${result.error}`);
-        return;
+      for (const it of items) {
+        allItems.push({
+          coa_account_id: it.coa_account_id,
+          description: it.description,
+          amount: it.amount,
+          fund_type: fund,
+        });
       }
     }
 
-    toast.success(
-      selectedFunds.length === 1
-        ? `${FUND_OPTIONS.find((o) => o.value === selectedFunds[0])?.label} budget created`
-        : `${selectedFunds.length} budgets created`,
-    );
+    const result = await createBudget(ocId, {
+      financial_year: financialYear,
+      fund_types: selectedFunds,
+      items: allItems,
+    });
+
+    if (result.error) {
+      setPending(false);
+      toast.error(result.error);
+      return;
+    }
+
+    toast.success("Budget created");
     router.push(`/ocs/${ocCode}/budgets`);
   }
 
@@ -395,8 +396,11 @@ export function CreateBudgetForm({
                           </TableBody>
                           <TableFooter>
                             <TableRow>
-                              <TableCell />
-                              <TableCell className="text-sm font-semibold text-foreground">Total annual</TableCell>
+                              {/* Total label lives in the Code column so the
+                                  number column on the right reads as a clean
+                                  financial total, not a footnote in the
+                                  Account column. */}
+                              <TableCell colSpan={2} className="text-sm font-semibold text-foreground">Total annual</TableCell>
                               <TableCell className="text-sm font-bold text-foreground tabular-nums">{formatCurrency(total)}</TableCell>
                               <TableCell />
                             </TableRow>

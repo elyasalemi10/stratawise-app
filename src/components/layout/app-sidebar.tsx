@@ -88,7 +88,7 @@ const managerMainNavGroups = [
     label: "Management",
     items: [
       { href: "/ocs", label: "OCs", icon: Building2 },
-      { href: "/chart-of-accounts", label: "Chart of accounts", icon: BookOpen },
+      { href: "/chart-of-accounts", label: "Chart of Accounts", icon: BookOpen },
     ],
   },
 ];

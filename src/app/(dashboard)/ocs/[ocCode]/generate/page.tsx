@@ -22,11 +22,13 @@ export default async function GenerateLeviesPage({
 
   if (!oc) redirect("/dashboard");
 
-  // Only show approved budgets , drafts can't have levies generated against
-  // them. Pre-fetch every approved budget's period set in parallel so the
-  // period dropdown lights up instantly when the manager picks a budget,
-  // no second round trip.
-  const approvedBudgets = budgets.filter((b) => b.status === "approved");
+  // Only show approved + single-fund budgets , drafts can't have levies
+  // generated, and multi-fund budgets need a per-fund picker that's not
+  // shipped yet. Pre-fetch every eligible budget's period set in parallel
+  // so the period dropdown lights up instantly when the manager picks one.
+  const approvedBudgets = budgets.filter(
+    (b) => b.status === "approved" && b.fund_type !== null,
+  );
   const periodEntries = await Promise.all(
     approvedBudgets.map(async (b) => {
       const periods = await getAvailablePeriods(ocId, b.id);

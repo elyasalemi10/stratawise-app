@@ -198,12 +198,7 @@ export function AccountDetailDrawer({ account, onOpenChange, onAccountUpdated, o
           </div>
 
           <div className="flex items-center justify-between gap-3 border-t border-border pt-4">
-            <div>
-              <Label>Active</Label>
-              <p className="text-xs text-muted-foreground">
-                Inactive accounts are hidden from budget + reconciliation pickers.
-              </p>
-            </div>
+            <Label>Active</Label>
             <Switch
               checked={active}
               onCheckedChange={handleToggleActive}

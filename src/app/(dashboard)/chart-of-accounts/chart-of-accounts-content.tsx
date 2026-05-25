@@ -58,7 +58,7 @@ export function ChartOfAccountsContent({ initialAccounts }: { initialAccounts: C
   const [accounts, setAccounts] = useState<CoaAccount[]>(initialAccounts);
   const [query, setQuery] = useState("");
   const [typeFilter, setTypeFilter] = useState<CoaAccountType | "all">("all");
-  const [statusFilter, setStatusFilter] = useState<"all" | "active" | "inactive">("active");
+  const [statusFilter, setStatusFilter] = useState<"all" | "active" | "inactive">("all");
   const [createDrawerOpen, setCreateDrawerOpen] = useState(false);
   // Account currently shown in the detail drawer (null = closed).
   const [openAccount, setOpenAccount] = useState<CoaAccount | null>(null);
@@ -154,7 +154,7 @@ export function ChartOfAccountsContent({ initialAccounts }: { initialAccounts: C
                   <TableRow
                     key={a.id}
                     onClick={() => setOpenAccount(a)}
-                    className={`cursor-pointer ${active ? "" : "opacity-60"}`}
+                    className="cursor-pointer"
                   >
                     <TableCell className="font-mono text-xs">{a.code}</TableCell>
                     <TableCell className="text-sm text-foreground">{a.name}</TableCell>

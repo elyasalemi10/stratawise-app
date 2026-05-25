@@ -90,6 +90,7 @@ export interface BudgetReportProps extends BaseDocumentProps {
   approvalNote: string | null;
   items: BudgetReportItem[];
   totalAmount: number;
+  brandColors?: BrandColors;
 }
 
 // --- Meeting Minutes ---

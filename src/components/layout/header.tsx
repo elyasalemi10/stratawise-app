@@ -36,6 +36,9 @@ const routeLabels: Record<string, string> = {
   inbox: "Inbox",
   maintenance: "Maintenance",
   "my-levies": "My levies",
+  "chart-of-accounts": "Chart of Accounts",
+  "trust-accounts": "Trust accounts",
+  "help": "Help",
 };
 
 function isUUID(s: string): boolean {

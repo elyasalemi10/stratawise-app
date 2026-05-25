@@ -37,7 +37,10 @@ const FUND_LABEL: Record<string, string> = {
 };
 
 function budgetDisplayLabel(b: BudgetWithItems): string {
-  return `${FUND_LABEL[b.fund_type] ?? b.fund_type}, ${b.financial_year} (${formatCurrency(b.total_amount)})`;
+  // Generate-levies only shows single-fund budgets (multi-fund needs a
+  // per-fund picker which isn't wired yet) so fund_type is guaranteed.
+  const ft = b.fund_type ?? (b.fund_types?.[0] ?? "");
+  return `${FUND_LABEL[ft] ?? ft}, ${b.financial_year} (${formatCurrency(b.total_amount)})`;
 }
 
 function periodChipLabel(p: AvailablePeriod): string {
@@ -418,17 +421,32 @@ export function GenerateLeviesForm({
 
       {preview && lots.length > 0 && !loading && (
         <>
-          <Card>
-            <CardContent className="pt-5">
-              <div className="flex items-center justify-between mb-3">
-                <Label className="block">Levy breakdown by lot</Label>
-                <div className="text-right">
-                  <p className="text-xs text-muted-foreground">Total</p>
-                  <p className="text-lg font-bold tabular-nums text-foreground">{formatCurrency(grandTotal)}</p>
+          {/* Branded summary strip: navy panel with the period total in
+              gold so the manager has a single anchor for the batch. */}
+          <div className="overflow-hidden rounded-lg border border-[color:var(--primary)]/30">
+            <div className="bg-[color:var(--primary)] px-5 py-4 text-primary-foreground">
+              <div className="flex items-center justify-between">
+                <div>
+                  <p className="text-xs uppercase tracking-wide text-primary-foreground/70">Levy batch total</p>
+                  <p className="mt-1 text-2xl font-bold tabular-nums text-[color:var(--brand-gold)]">
+                    {formatCurrency(grandTotal)}
+                  </p>
+                </div>
+                <div className="text-right text-xs text-primary-foreground/80">
+                  <p>{lots.length} lot{lots.length === 1 ? "" : "s"}</p>
+                  <p className="mt-1">{selectedPeriod ? periodChipLabel(selectedPeriod) : ""}</p>
                 </div>
               </div>
+            </div>
+          </div>
 
-              <div className={`rounded-lg border border-border ${generating ? "pointer-events-none opacity-75" : ""}`}>
+          <Card>
+            <CardContent className="pt-5">
+              <div className="mb-3">
+                <Label className="block">Levy breakdown by lot</Label>
+              </div>
+
+              <div className={`overflow-hidden rounded-lg border border-border ${generating ? "pointer-events-none opacity-75" : ""}`}>
                 {lots.map((lot) => (
                   <LotRow
                     key={lot.lot_id}

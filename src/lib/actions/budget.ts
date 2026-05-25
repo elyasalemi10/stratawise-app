@@ -12,6 +12,8 @@ export interface BudgetCategory {
   sort_order: number;
 }
 
+export type BudgetFundType = "administrative" | "capital_works" | "maintenance_plan";
+
 export interface BudgetItemData {
   // Either references a legacy budget_categories row (back-compat) or , for
   // new budgets , references a chart_of_accounts row via coa_account_id.
@@ -19,28 +21,37 @@ export interface BudgetItemData {
   coa_account_id?: string | null;
   description: string;
   amount: number;
+  /** Which fund this line item is for. Required for new multi-fund budgets;
+   *  back-compat path leaves it null and inherits from the parent budget's
+   *  legacy fund_type column. */
+  fund_type?: BudgetFundType;
 }
 
 export interface BudgetWithItems {
   id: string;
   oc_id: string;
   financial_year: string;
-  fund_type: "administrative" | "capital_works" | "maintenance_plan";
+  /** Legacy single-fund column. Null on new multi-fund budgets. */
+  fund_type: BudgetFundType | null;
+  /** Every fund this budget touches. For single-fund budgets this is a
+   *  one-element array; for multi-fund budgets it lists every fund the items
+   *  cover. Source of truth going forward. */
+  fund_types: BudgetFundType[];
   total_amount: number;
   status: "draft" | "approved";
   approved_at: string | null;
   approval_note: string | null;
   items: {
     id: string;
-    // Either legacy (category_id → budget_categories) or modern
-    // (coa_account_id → chart_of_accounts). category_name resolves whichever
-    // is present so the UI doesn't need to branch.
     category_id: string | null;
     coa_account_id: string | null;
     category_name: string;
     description: string | null;
     amount: number;
     sort_order: number;
+    /** Per-item fund tag. New writes always set this; old rows are
+     *  backfilled from the parent budget's fund_type. */
+    fund_type: BudgetFundType | null;
   }[];
 }
 
@@ -142,13 +153,14 @@ export async function getOCBudgets(ocId: string): Promise<BudgetWithItems[]> {
     description: string | null;
     amount: number;
     sort_order: number;
+    fund_type: BudgetFundType | null;
     budget_categories: { name: string } | null;
     chart_of_accounts: { name: string; code: string } | null;
   };
   const { data: rawItems } = await supabase
     .from("budget_items")
     .select(
-      "id, budget_id, category_id, coa_account_id, description, amount, sort_order, " +
+      "id, budget_id, category_id, coa_account_id, description, amount, sort_order, fund_type, " +
       "budget_categories(name), chart_of_accounts(name, code)"
     )
     .in("budget_id", budgetIds)
@@ -157,6 +169,7 @@ export async function getOCBudgets(ocId: string): Promise<BudgetWithItems[]> {
 
   return budgets.map((b) => ({
     ...b,
+    fund_types: (b.fund_types ?? (b.fund_type ? [b.fund_type] : [])) as BudgetFundType[],
     items: items
       .filter((i) => i.budget_id === b.id)
       .map((i) => ({
@@ -167,15 +180,17 @@ export async function getOCBudgets(ocId: string): Promise<BudgetWithItems[]> {
         description: i.description,
         amount: Number(i.amount),
         sort_order: i.sort_order,
+        fund_type: i.fund_type ?? (b.fund_type as BudgetFundType | null),
       })),
-  }));
+  })) as BudgetWithItems[];
 }
 
 export async function createBudget(
   ocId: string,
   data: {
     financial_year: string;
-    fund_type: "administrative" | "capital_works" | "maintenance_plan";
+    /** Every fund the budget touches. Required, must contain at least one. */
+    fund_types: BudgetFundType[];
     items: BudgetItemData[];
   }
 ) {
@@ -183,28 +198,36 @@ export async function createBudget(
   await requireOCAccess(ocId);
   const supabase = createServerClient();
 
-  // Check if budget already exists for this year + fund type
+  if (!data.fund_types?.length) {
+    return { error: "Pick at least one fund." };
+  }
+  // De-dupe + canonical order.
+  const fundTypes = Array.from(new Set(data.fund_types));
+
+  // One budget per OC per financial year now , funds are stored on items.
   const { data: existing } = await supabase
     .from("budgets")
     .select("id")
     .eq("oc_id", ocId)
     .eq("financial_year", data.financial_year)
-    .eq("fund_type", data.fund_type)
-    .single();
-
+    .maybeSingle();
   if (existing) {
-    return { error: `A ${FUND_LABEL[data.fund_type]} budget already exists for ${data.financial_year}` };
+    return { error: `A budget for ${data.financial_year} already exists. Edit it instead.` };
   }
 
   const totalAmount = data.items.reduce((sum, item) => sum + item.amount, 0);
 
-  // Create budget
+  // Legacy fund_type column is set to the SINGLE fund when there's only one
+  // (back-compat with the per-fund levy generation path); null otherwise.
+  const legacyFundType = fundTypes.length === 1 ? fundTypes[0] : null;
+
   const { data: budget, error } = await supabase
     .from("budgets")
     .insert({
       oc_id: ocId,
       financial_year: data.financial_year,
-      fund_type: data.fund_type,
+      fund_type: legacyFundType,
+      fund_types: fundTypes,
       total_amount: totalAmount,
       status: "draft",
     })
@@ -213,9 +236,6 @@ export async function createBudget(
 
   if (error) return { error: error.message };
 
-  // Create budget items. Prefer the new coa_account_id link; fall back to the
-  // legacy category_id only when no CoA account is provided (back-compat for
-  // any caller still using budget_categories).
   const itemInserts = data.items
     .filter((item) => item.amount > 0)
     .map((item, i) => ({
@@ -224,6 +244,10 @@ export async function createBudget(
       coa_account_id: item.coa_account_id ?? null,
       description: item.description || null,
       amount: item.amount,
+      // For multi-fund budgets every item MUST carry its own fund_type. When
+      // the caller omits it (back-compat single-fund path) fall back to the
+      // budget's only fund.
+      fund_type: item.fund_type ?? legacyFundType ?? null,
       sort_order: i,
     }));
 
@@ -232,17 +256,17 @@ export async function createBudget(
     if (itemError) return { error: itemError.message };
   }
 
-  // Audit log
   await supabase.from("audit_log").insert({
     profile_id: profile.id,
     oc_id: ocId,
     action: "create",
     entity_type: "budget",
     entity_id: budget.id,
-    after_state: { financial_year: data.financial_year, fund_type: data.fund_type, total_amount: totalAmount },
+    after_state: { financial_year: data.financial_year, fund_types: fundTypes, total_amount: totalAmount },
   });
 
   revalidatePath("/ocs/[ocCode]/manage", "page");
+  revalidatePath("/ocs/[ocCode]/budgets", "page");
 
   return { success: true, budgetId: budget.id };
 }
@@ -264,13 +288,14 @@ export async function getBudgetById(budgetId: string): Promise<BudgetWithItems |
     description: string | null;
     amount: number;
     sort_order: number;
+    fund_type: BudgetFundType | null;
     budget_categories: { name: string } | null;
     chart_of_accounts: { name: string; code: string } | null;
   };
   const { data: rawItems } = await supabase
     .from("budget_items")
     .select(
-      "id, category_id, coa_account_id, description, amount, sort_order, " +
+      "id, category_id, coa_account_id, description, amount, sort_order, fund_type, " +
       "budget_categories(name), chart_of_accounts(name, code)"
     )
     .eq("budget_id", budgetId)
@@ -279,6 +304,7 @@ export async function getBudgetById(budgetId: string): Promise<BudgetWithItems |
 
   return {
     ...budget,
+    fund_types: (budget.fund_types ?? (budget.fund_type ? [budget.fund_type] : [])) as BudgetFundType[],
     items: items.map((i) => ({
       id: i.id,
       category_id: i.category_id,
@@ -287,6 +313,7 @@ export async function getBudgetById(budgetId: string): Promise<BudgetWithItems |
       description: i.description,
       amount: Number(i.amount),
       sort_order: i.sort_order,
+      fund_type: i.fund_type ?? (budget.fund_type as BudgetFundType | null),
     })),
   } as BudgetWithItems;
 }
@@ -355,15 +382,26 @@ export async function updateBudgetItems(
       coa_account_id: item.coa_account_id ?? null,
       description: item.description || null,
       amount: item.amount,
+      fund_type: item.fund_type ?? null,
       sort_order: i,
     }));
     const { error: insErr } = await supabase.from("budget_items").insert(inserts);
     if (insErr) return { error: insErr.message };
   }
 
+  // Refresh fund_types from the items list so the budget header stays in
+  // sync after add/remove. Legacy fund_type stays as the single-fund value
+  // (when applicable) for the per-fund levy generation path.
+  const fundTypesFresh = Array.from(
+    new Set(nonZero.map((i) => i.fund_type).filter((f): f is BudgetFundType => !!f)),
+  );
   const { error: updErr } = await supabase
     .from("budgets")
-    .update({ total_amount: totalAmount })
+    .update({
+      total_amount: totalAmount,
+      fund_types: fundTypesFresh,
+      fund_type: fundTypesFresh.length === 1 ? fundTypesFresh[0] : null,
+    })
     .eq("id", budgetId);
   if (updErr) return { error: updErr.message };
 

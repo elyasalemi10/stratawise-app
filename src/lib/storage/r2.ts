@@ -74,15 +74,26 @@ export function getBucket(): string {
 // Key prefixes that hold SENSITIVE objects , these live in the private
 // (confidential) bucket which has NO public URL and is only ever served
 // through authenticated app routes (/api/documents, /api/insurance-docs,
-// /api/inbox-attachments) via fetchObject. levies/ stays public because the
-// notice PDFs are emailed/linked to owners and rendered in unauthenticated
-// email clients.
+// /api/inbox-attachments) via fetchObject.
+//
+// What stays in the PUBLIC bucket: logos (rendered in unauthenticated email
+// img tags), blog/ images (marketing site content). Everything else lives
+// in confidential.
+//
+// Levies migrated to confidential 2026-06: notice PDFs carry the owner's
+// name + address + BPAY CRN + amount. The email path already attaches via
+// fetchObject (which works for confidential prefixes); direct links (when
+// we add them in dashboards / owner portals) should use
+// getSignedDownloadUrl. Existing levies stored under R2 PUBLIC stay where
+// they are , the stored pdf_url still resolves , but every NEW levy goes
+// to confidential.
 const CONFIDENTIAL_PREFIXES = [
   "documents/",
   "insurance/",
   "plans/",
   "rules/",
   "inbound-emails/",
+  "levies/",
 ];
 
 // Resolve the bucket for a key. Confidential prefixes route to the private

@@ -80,6 +80,32 @@ async function ensureAuthorId(): Promise<string> {
   return data.id as string;
 }
 
+// Find-or-create an author row by display name. Used by importAiPost when the
+// AI-supplied "writtenBy" is set, so the byline credits the persona the AI
+// picked rather than the signed-in admin.
+async function findOrCreateAuthorByName(displayName: string): Promise<string | null> {
+  const name = displayName.trim();
+  if (!name) return null;
+  const supabase = createServerClient();
+  const { data: existing } = await supabase
+    .from("authors")
+    .select("id")
+    .eq("name", name)
+    .maybeSingle();
+  if (existing) return existing.id as string;
+  const baseSlug = slugify(name);
+  const { data, error } = await supabase
+    .from("authors")
+    .insert({ slug: `${baseSlug}-${Date.now().toString(36)}`, name, email: null })
+    .select("id")
+    .single();
+  if (error || !data) {
+    console.error("Failed to create author for byline", name, error);
+    return null;
+  }
+  return data.id as string;
+}
+
 export async function listBlogPosts(): Promise<BlogPostRow[]> {
   await requireRole(["super_admin"]);
   const supabase = createServerClient();
@@ -261,7 +287,14 @@ export async function importAiPost(jsonString: string): Promise<{ id?: string; e
   const supabase = createServerClient();
   let authorId: string;
   try {
-    authorId = await ensureAuthorId();
+    // If the AI supplied a `writtenBy` name use that for the byline; fall
+    // back to the signed-in admin so the post always has an author.
+    if (data.writtenBy && data.writtenBy.trim()) {
+      const byName = await findOrCreateAuthorByName(data.writtenBy);
+      authorId = byName ?? (await ensureAuthorId());
+    } else {
+      authorId = await ensureAuthorId();
+    }
   } catch (e) {
     return { error: e instanceof Error ? e.message : "Failed to resolve author" };
   }

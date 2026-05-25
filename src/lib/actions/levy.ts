@@ -542,13 +542,19 @@ export async function createLevyBatch(
     .single();
 
   let managementCompany = { name: "", logo_url: null as string | null };
+  let brandColors = { primary: "#0E314C", secondary: "#CFA753" };
   if (oc?.management_company_id) {
     const { data: mc } = await supabase
       .from("management_companies")
-      .select("name, logo_url")
+      .select("name, logo_url, brand_color")
       .eq("id", oc.management_company_id)
       .single();
-    if (mc) managementCompany = mc;
+    if (mc) {
+      managementCompany = { name: mc.name, logo_url: mc.logo_url };
+      if (mc.brand_color && /^#[0-9a-f]{3,8}$/i.test(mc.brand_color)) {
+        brandColors = { primary: mc.brand_color, secondary: "#CFA753" };
+      }
+    }
   }
 
   // Fetch lot details for PDF
@@ -713,9 +719,15 @@ export async function createLevyBatch(
             reference: levy.refNum,
           } : { bsb: "", account_number: "", account_name: "", reference: levy.refNum },
         },
+        brandColors,
       };
 
-      const pdfUrl = await generateAndUploadLevyPDF(pdfProps, ocId, levy.refNum);
+      // Upload to R2 (confidential bucket per CONFIDENTIAL_PREFIXES). The
+      // public URL it returns won't resolve from outside the app , that's
+      // intentional. We persist the authenticated app URL instead so the
+      // dashboard <a href={pdf_url}> still works.
+      await generateAndUploadLevyPDF(pdfProps, ocId, levy.refNum);
+      const pdfUrl = `/api/levies/${levy.id}/pdf`;
       await supabase.from("levy_notices").update({ pdf_url: pdfUrl }).eq("id", levy.id);
     } catch (err) {
       console.error("PDF generation failed for", levy.refNum, err);
@@ -995,13 +1007,19 @@ export async function regenerateBatch(ocId: string, batchId: string, newDueDate:
     .single();
 
   let managementCompany = { name: "", logo_url: null as string | null };
+  let brandColors = { primary: "#0E314C", secondary: "#CFA753" };
   if (oc?.management_company_id) {
     const { data: mc } = await supabase
       .from("management_companies")
-      .select("name, logo_url")
+      .select("name, logo_url, brand_color")
       .eq("id", oc.management_company_id)
       .single();
-    if (mc) managementCompany = mc;
+    if (mc) {
+      managementCompany = { name: mc.name, logo_url: mc.logo_url };
+      if (mc.brand_color && /^#[0-9a-f]{3,8}$/i.test(mc.brand_color)) {
+        brandColors = { primary: mc.brand_color, secondary: "#CFA753" };
+      }
+    }
   }
 
   const eftAccount = await resolveReceivingEft(supabase, ocId, oc);
@@ -1231,13 +1249,19 @@ export async function sendBatchEmails(ocId: string, batchId: string) {
     .single();
 
   let managementCompany = { name: "", logo_url: null as string | null };
+  let brandColors = { primary: "#0E314C", secondary: "#CFA753" };
   if (oc?.management_company_id) {
     const { data: mc } = await supabase
       .from("management_companies")
-      .select("name, logo_url")
+      .select("name, logo_url, brand_color")
       .eq("id", oc.management_company_id)
       .single();
-    if (mc) managementCompany = mc;
+    if (mc) {
+      managementCompany = { name: mc.name, logo_url: mc.logo_url };
+      if (mc.brand_color && /^#[0-9a-f]{3,8}$/i.test(mc.brand_color)) {
+        brandColors = { primary: mc.brand_color, secondary: "#CFA753" };
+      }
+    }
   }
 
   // Get draft levies with lot info (owner resolved separately)
@@ -1401,13 +1425,19 @@ export async function resendBatchEmails(ocId: string, batchId: string) {
     .single();
 
   let managementCompany = { name: "", logo_url: null as string | null };
+  let brandColors = { primary: "#0E314C", secondary: "#CFA753" };
   if (oc?.management_company_id) {
     const { data: mc } = await supabase
       .from("management_companies")
-      .select("name, logo_url")
+      .select("name, logo_url, brand_color")
       .eq("id", oc.management_company_id)
       .single();
-    if (mc) managementCompany = mc;
+    if (mc) {
+      managementCompany = { name: mc.name, logo_url: mc.logo_url };
+      if (mc.brand_color && /^#[0-9a-f]{3,8}$/i.test(mc.brand_color)) {
+        brandColors = { primary: mc.brand_color, secondary: "#CFA753" };
+      }
+    }
   }
 
   // Get ALL levies (not just drafts)

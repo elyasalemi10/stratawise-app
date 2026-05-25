@@ -25,7 +25,7 @@ export async function GET(
   // 1. Load the budget + scope it to an OC we have access to.
   const { data: budget, error: budgetErr } = await supabase
     .from("budgets")
-    .select("id, oc_id, financial_year, fund_type, total_amount, status, approved_at, approval_note")
+    .select("id, oc_id, financial_year, fund_type, fund_types, total_amount, status, approved_at, approval_note")
     .eq("id", budgetId)
     .maybeSingle();
   if (budgetErr || !budget) {
@@ -64,7 +64,7 @@ export async function GET(
 
   const { data: company } = await supabase
     .from("management_companies")
-    .select("name, logo_url")
+    .select("name, logo_url, brand_color")
     .eq("id", oc.management_company_id)
     .maybeSingle();
 
@@ -74,6 +74,14 @@ export async function GET(
     description: i.description,
     amount: Number(i.amount),
   }));
+
+  // Brand colour comes from management_companies.brand_color (set in
+  // onboarding). Gold accent stays SW-default unless we add a second column
+  // later. Falling back to SW midnight keeps the template consistent for
+  // firms that haven't picked a brand.
+  const brandPrimary = (company?.brand_color && /^#[0-9a-f]{3,8}$/i.test(company.brand_color))
+    ? company.brand_color
+    : "#0E314C";
 
   const props: BudgetReportProps = {
     managementCompany: {
@@ -90,12 +98,17 @@ export async function GET(
     referenceNumber: `BUD-${budgetId.slice(0, 8).toUpperCase()}`,
     date: new Date(),
     financialYear: budget.financial_year,
-    fundLabel: FUND_LABEL[budget.fund_type] ?? budget.fund_type,
+    fundLabel: (() => {
+      const funds = (budget.fund_types ?? (budget.fund_type ? [budget.fund_type] : [])) as string[];
+      if (funds.length === 0) return "Budget";
+      return funds.map((f) => FUND_LABEL[f] ?? f).join(" + ");
+    })(),
     status: budget.status as "draft" | "approved",
     approvedAt: budget.approved_at,
     approvalNote: budget.approval_note,
     items: pdfItems,
     totalAmount: Number(budget.total_amount),
+    brandColors: { primary: brandPrimary, secondary: "#CFA753" },
   };
 
   // eslint-disable-next-line @typescript-eslint/no-explicit-any

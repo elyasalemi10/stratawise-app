@@ -31,7 +31,12 @@ const dateFmt = new Intl.DateTimeFormat("en-AU", {
 function BudgetCard({ budget }: { budget: BudgetWithItems & { updated_at?: string } }) {
   const ocCode = useOCCode();
   const isDraft = budget.status === "draft";
-  const fundLabel = FUND_LABEL[budget.fund_type] ?? budget.fund_type;
+  const funds = budget.fund_types?.length
+    ? budget.fund_types
+    : (budget.fund_type ? [budget.fund_type] : []);
+  const fundLabel = funds.length === 0
+    ? "Budget"
+    : funds.map((f) => FUND_LABEL[f] ?? f).join(" + ");
   // updated_at lives on the row but isn't always on BudgetWithItems , fall
   // back to approved_at then ""
   const lastEditedSrc =

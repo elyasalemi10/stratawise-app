@@ -5,19 +5,36 @@ import { Play, Pause } from "lucide-react";
 import { normalizeForNarration } from "@/lib/blog/narrate";
 import type { NarrationWordTiming } from "@/lib/actions/blog-audio";
 
-// Admin preview of the post narration. Mirrors the marketing-site
-// NarrationPlayer: continuous highlight bar via paired word + whitespace
-// spans, per-word fill duration tied to spoken time, memoised body. See
-// the marketing-site file for full design notes.
+// Admin preview of the post narration. Mirrors the marketing-site player:
+// background-size sweep highlight that fills each current word at its
+// spoken rate, then latches as "passed". See the marketing-site file for
+// full design notes.
 
 const SKIP_SELECTOR =
   "table, pre, code, figure, img, .sw-timeline, [data-youtube-video], [data-type='timeline']";
 
+const FILL_COLOR = "rgba(207,167,83,0.42)";
+
 const HIGHLIGHT_STYLES = `
-  .sw-word, .sw-space { transition: background-color var(--sw-fill-duration, 120ms) linear; }
-  .sw-word { padding: 0.05em 0; border-radius: 2px; }
-  .sw-word-passed { background-color: rgba(207,167,83,0.30); }
-  .sw-word-current { background-color: rgba(207,167,83,0.55); }
+  .sw-word {
+    background-image: linear-gradient(to right, ${FILL_COLOR} 0%, ${FILL_COLOR} 100%);
+    background-repeat: no-repeat;
+    background-size: 0% 100%;
+    background-position: left center;
+    border-radius: 1px;
+    -webkit-box-decoration-break: clone;
+    box-decoration-break: clone;
+  }
+  .sw-space {
+    background-color: transparent;
+    transition: background-color 80ms linear;
+  }
+  .sw-word-current {
+    background-size: 100% 100%;
+    transition: background-size var(--sw-fill-duration, 400ms) linear;
+  }
+  .sw-word-passed { background-size: 100% 100%; }
+  .sw-space.sw-word-passed { background-color: ${FILL_COLOR}; }
 `;
 
 function fmtTime(s: number): string {
@@ -165,35 +182,33 @@ export function NarrationPlayer({
     const root = containerEl();
     if (!root) { activeRef.current = idx; return; }
 
-    let fillMs = 120;
-    if (idx >= 0 && idx < words.length) {
-      const w = words[idx];
-      const dur = Math.max(0.05, w.end - w.start);
-      fillMs = Math.round(dur * 1000);
-    }
-
     if (idx > prev) {
       for (let i = prev + 1; i < idx; i++) {
         const els = root.querySelectorAll<HTMLElement>(`[data-narration-i="${i}"]`);
         els.forEach((el) => {
-          el.classList.add("sw-word-passed");
           el.classList.remove("sw-word-current");
+          el.classList.add("sw-word-passed");
           el.style.removeProperty("--sw-fill-duration");
         });
       }
       if (prev >= 0) {
         const olds = root.querySelectorAll<HTMLElement>(`[data-narration-i="${prev}"]`);
         olds.forEach((el) => {
-          el.classList.add("sw-word-passed");
           el.classList.remove("sw-word-current");
+          el.classList.add("sw-word-passed");
           el.style.removeProperty("--sw-fill-duration");
         });
       }
-      const news = root.querySelectorAll<HTMLElement>(`[data-narration-i="${idx}"]`);
-      news.forEach((el) => {
-        el.style.setProperty("--sw-fill-duration", `${fillMs}ms`);
-        el.classList.add("sw-word-current");
-      });
+      if (idx >= 0 && idx < words.length) {
+        const w = words[idx];
+        const dur = Math.max(0.05, w.end - w.start);
+        const news = root.querySelectorAll<HTMLElement>(`[data-narration-i="${idx}"]`);
+        news.forEach((el) => {
+          el.style.setProperty("--sw-fill-duration", `${Math.round(dur * 1000)}ms`);
+          void el.offsetWidth;
+          el.classList.add("sw-word-current");
+        });
+      }
     } else if (idx < prev) {
       for (let i = idx + 1; i <= prev; i++) {
         const els = root.querySelectorAll<HTMLElement>(`[data-narration-i="${i}"]`);
@@ -202,10 +217,13 @@ export function NarrationPlayer({
           el.style.removeProperty("--sw-fill-duration");
         });
       }
-      if (idx >= 0) {
+      if (idx >= 0 && idx < words.length) {
+        const w = words[idx];
+        const dur = Math.max(0.05, w.end - w.start);
         const news = root.querySelectorAll<HTMLElement>(`[data-narration-i="${idx}"]`);
         news.forEach((el) => {
-          el.style.setProperty("--sw-fill-duration", `${fillMs}ms`);
+          el.style.setProperty("--sw-fill-duration", `${Math.round(dur * 1000)}ms`);
+          void el.offsetWidth;
           el.classList.add("sw-word-current");
         });
       }
