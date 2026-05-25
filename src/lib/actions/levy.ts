@@ -1388,6 +1388,106 @@ export async function sendBatchEmailsCustom(
   return { sentCount };
 }
 
+// Resend variant: same dialog UX but targets the entire batch (not just
+// drafts) and never flips statuses. Used by the "Resend all" button on the
+// batch page once everything's already been sent once.
+export async function resendBatchEmailsCustom(
+  ocId: string,
+  batchId: string,
+  options: {
+    emailOverrides?: Record<string, string>;
+    extraAttachments?: Array<{ filename: string; contentBase64: string; contentType: string }>;
+  } = {},
+): Promise<{ sentCount?: number; error?: string }> {
+  const profile = await requireCompanyRole();
+  await requireOCAccess(ocId);
+  const supabase = createServerClient();
+
+  const { data: batch } = await supabase
+    .from("levy_batches")
+    .select("period_label")
+    .eq("id", batchId)
+    .single();
+  const { data: oc } = await supabase
+    .from("owners_corporations")
+    .select("name, plan_number, address, abn, management_company_id")
+    .eq("id", ocId)
+    .single();
+
+  let logoUrl: string | null = null;
+  if (oc?.management_company_id) {
+    const { data: mc } = await supabase
+      .from("management_companies")
+      .select("logo_url")
+      .eq("id", oc.management_company_id)
+      .single();
+    logoUrl = mc?.logo_url ?? null;
+  }
+
+  const { data: levies } = await supabase
+    .from("levy_notices")
+    .select("id, reference_number, amount, due_date, lot_id")
+    .eq("batch_id", batchId);
+  if (!levies?.length) return { error: "No levies to resend" };
+
+  const lotIds = levies.map((l) => l.lot_id).filter(Boolean) as string[];
+  const owners = await getLotOwners(supabase, lotIds);
+
+  const extras = (options.extraAttachments ?? []).map((a) => ({
+    filename: a.filename,
+    content: Buffer.from(a.contentBase64, "base64"),
+    contentType: a.contentType,
+  }));
+
+  let sentCount = 0;
+  for (const levy of levies) {
+    const owner = owners.get(levy.lot_id);
+    const overrideEmail = options.emailOverrides?.[levy.id]?.trim() || null;
+    const email = overrideEmail || owner?.owner_contact_email || null;
+    if (!email) continue;
+    try {
+      const pdfBuffer = await getLevyNoticePdfBuffer(levy.id, supabase);
+      if (!pdfBuffer) continue;
+      const fmt = (n: number) =>
+        new Intl.NumberFormat("en-AU", { style: "currency", currency: "AUD" }).format(n);
+      await sendLevyEmail({
+        to: email,
+        ownerName: owner?.owner_display_name ?? null,
+        ocName: oc?.name ?? "",
+        ocAddress: oc?.address ?? "",
+        companyLogoUrl: logoUrl,
+        referenceNumber: levy.reference_number,
+        dueDate: formatDateLong(levy.due_date),
+        totalAmount: fmt(Number(levy.amount)),
+        periodLabel: batch?.period_label ?? "",
+        pdfBuffer,
+        pdfFilename: `${levy.reference_number}.pdf`,
+        extraAttachments: extras,
+        ocId,
+      });
+      sentCount++;
+    } catch (err) {
+      console.error("Failed to resend levy email for", levy.reference_number, err);
+    }
+  }
+
+  await supabase.from("audit_log").insert({
+    profile_id: profile.id,
+    oc_id: ocId,
+    action: "resend_emails_custom",
+    entity_type: "levy_batch",
+    entity_id: batchId,
+    after_state: {
+      sent_count: sentCount,
+      override_count: Object.keys(options.emailOverrides ?? {}).length,
+      attachment_count: extras.length,
+    },
+  });
+
+  revalidatePath("/ocs/[ocCode]/levies", "page");
+  return { sentCount };
+}
+
 export async function sendBatchEmails(ocId: string, batchId: string) {
   const profile = await requireCompanyRole();
   await requireOCAccess(ocId);

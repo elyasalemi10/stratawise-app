@@ -135,6 +135,7 @@ async function assembleLevyNoticeProps(
     { data: lotRow },
     { data: itemsRow },
     { data: memberRow },
+    { data: drnRow },
   ] = await Promise.all([
     supabase
       .from("owners_corporations")
@@ -161,7 +162,22 @@ async function assembleLevyNoticeProps(
       .eq("role", "lot_owner")
       .eq("is_primary_contact", true)
       .maybeSingle(),
+    // DRN active on the levy's PERIOD_START , Macquarie issues one DRN per
+    // lot but they can be reassigned on owner change; using the period_start
+    // as the cutoff keeps the historical notice tied to the DRN that was
+    // current when the levy was raised. Null when the OC isn't on Macquarie
+    // DEFT yet , callers fall back to the LEV-NNNN reference.
+    supabase
+      .from("lot_drns")
+      .select("drn")
+      .eq("lot_id", levy.lot_id)
+      .lte("active_from", levy.period_start)
+      .or(`active_to.is.null,active_to.gte.${levy.period_start}`)
+      .order("active_from", { ascending: false })
+      .limit(1)
+      .maybeSingle(),
   ]);
+  const activeDrn = (drnRow as { drn: string } | null)?.drn ?? null;
 
   const sub = subRow as {
     id: string;
@@ -222,7 +238,11 @@ async function assembleLevyNoticeProps(
       plan_number: sub.plan_number,
     },
     documentTitle: "Levy Notice",
-    referenceNumber: levy.reference_number,
+    // Prefer the active DRN as the user-facing reference , owners pay via
+    // BPAY/EFT using their DRN, so the PDF should print the same number
+    // Macquarie reconciles against. Falls back to the LEV-NNNN sequence
+    // when the OC isn't on DEFT yet.
+    referenceNumber: activeDrn ?? levy.reference_number,
     date: new Date(),
     lotOwner: {
       name: ownerName,
@@ -246,13 +266,15 @@ async function assembleLevyNoticeProps(
             bsb: sub.bank_bsb!,
             account_number: sub.bank_account_number!,
             account_name: sub.bank_account_name ?? sub.name,
-            reference: levy.reference_number,
+            // EFT reference must match Macquarie's reconciliation key (the
+            // DRN) when one exists, otherwise the LEV-NNNN sequence.
+            reference: activeDrn ?? levy.reference_number,
           }
         : {
             bsb: "",
             account_number: "",
             account_name: "",
-            reference: levy.reference_number,
+            reference: activeDrn ?? levy.reference_number,
           },
     },
   };

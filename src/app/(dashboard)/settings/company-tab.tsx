@@ -18,6 +18,7 @@ import { BrandColourPicker } from "@/components/shared/brand-colour-picker";
 interface CompanyData {
   id: string;
   name: string;
+  trading_as: string | null;
   abn: string | null;
   address: string | null;
   phone: string | null;
@@ -43,6 +44,7 @@ function ReadOnlyRow({ label, value }: { label: string; value: string | null }) 
 interface CompanyDetailsForEdit {
   id: string;
   name: string;
+  trading_as: string | null;
   registered_name: string | null;
   abn: string | null;
   address: string | null;
@@ -60,6 +62,7 @@ function EditCompanyDrawer({
 }) {
   const [draft, setDraft] = useState({
     name: company.name,
+    trading_as: company.trading_as ?? "",
     registered_name: company.registered_name ?? "",
     abn: company.abn ?? "",
     address: company.address ?? "",
@@ -74,6 +77,7 @@ function EditCompanyDrawer({
     // version on identical values.
     const dirty: Record<string, string | null> = {};
     if (draft.name !== company.name) dirty.name = draft.name;
+    if (draft.trading_as !== (company.trading_as ?? "")) dirty.trading_as = draft.trading_as || null;
     if (draft.registered_name !== (company.registered_name ?? "")) dirty.registered_name = draft.registered_name || null;
     if (draft.abn !== (company.abn ?? "")) dirty.abn = draft.abn || null;
     if (draft.address !== (company.address ?? "")) dirty.address = draft.address || null;
@@ -112,6 +116,10 @@ function EditCompanyDrawer({
           <div className="space-y-1.5">
             <Label htmlFor="ed-name">Company name</Label>
             <Input id="ed-name" value={draft.name} onChange={(e) => setDraft((p) => ({ ...p, name: e.target.value }))} />
+          </div>
+          <div className="space-y-1.5">
+            <Label htmlFor="ed-trad">Trading name</Label>
+            <Input id="ed-trad" value={draft.trading_as} onChange={(e) => setDraft((p) => ({ ...p, trading_as: e.target.value }))} />
           </div>
           <div className="space-y-1.5">
             <Label htmlFor="ed-reg">Registered name</Label>
@@ -368,6 +376,7 @@ export function CompanyTab({ company }: { company: CompanyData | null }) {
             </Button>
           </div>
           <ReadOnlyRow label="Company name" value={localCompany!.name} />
+          <ReadOnlyRow label="Trading name" value={localCompany!.trading_as} />
           <ReadOnlyRow label="Registered name" value={localCompany!.registered_name} />
           <ReadOnlyRow label="ABN" value={localCompany!.abn} />
           <ReadOnlyRow label="Address" value={localCompany!.address} />
@@ -382,6 +391,7 @@ export function CompanyTab({ company }: { company: CompanyData | null }) {
         company={{
           id: localCompany!.id,
           name: localCompany!.name,
+          trading_as: localCompany!.trading_as,
           registered_name: localCompany!.registered_name,
           abn: localCompany!.abn,
           address: localCompany!.address,
@@ -392,6 +402,7 @@ export function CompanyTab({ company }: { company: CompanyData | null }) {
           setLocalCompany((prev) => prev ? ({
             ...prev,
             name: typeof updates.name === "string" ? updates.name : prev.name,
+            trading_as: "trading_as" in updates ? (updates.trading_as as string | null) : prev.trading_as,
             registered_name: "registered_name" in updates ? (updates.registered_name as string | null) : prev.registered_name,
             abn: "abn" in updates ? (updates.abn as string | null) : prev.abn,
             address: "address" in updates ? (updates.address as string | null) : prev.address,

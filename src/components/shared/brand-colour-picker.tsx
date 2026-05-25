@@ -1,7 +1,8 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { Pipette } from "lucide-react";
+import { toast } from "sonner";
 import { cn } from "@/lib/utils";
 import { Popover, PopoverTrigger, PopoverContent } from "@/components/ui/popover";
 
@@ -69,41 +70,82 @@ function hslToHex(h: number, s: number, l: number): string {
   return `#${toHex(r)}${toHex(g)}${toHex(b)}`.toUpperCase();
 }
 
+// Browser-side: EyeDropper API (Chrome/Edge 95+, Opera, soon Safari).
+// Falls back to a toast when the API isn't available.
+type EyeDropperResult = { sRGBHex: string };
+type EyeDropperConstructor = new () => { open: () => Promise<EyeDropperResult> };
+declare global {
+  interface Window {
+    EyeDropper?: EyeDropperConstructor;
+  }
+}
+
 /**
  * Self-contained brand colour picker. Click the swatch → popover opens with:
  *   - HSL hue + saturation + lightness sliders (full coverage, no canvas)
- *   - Hex text input (validates + commits live)
+ *   - Hex text input
  *   - 8 brand-friendly preset chips
- *   - Native OS colour wheel for users who prefer it
+ *   - Eyedropper button for screen-colour picking (where browser supports it)
  *
- * No backdrop grey-out (showBackdrop=false on PopoverContent) so the
- * surroundings stay legible while picking.
+ * The picker holds the draft internally while open and only commits the
+ * final colour via onChange when the popover closes. This avoids hammering
+ * the server with one save per slider tick.
  */
 export function BrandColourPicker({ value, onChange, id }: BrandColourPickerProps) {
+  const [open, setOpen] = useState(false);
   const [draft, setDraft] = useState(value || "#0E314C");
+  // Track what we last persisted so close-without-change doesn't fire a save.
+  const lastCommittedRef = useRef<string>(value || "");
+
   useEffect(() => {
-    if (HEX_RE.test(value)) setDraft(value);
+    if (HEX_RE.test(value)) {
+      setDraft(value);
+      lastCommittedRef.current = value;
+    } else if (!value) {
+      lastCommittedRef.current = "";
+    }
   }, [value]);
 
   const validHex = HEX_RE.test(draft);
   const hsl = useMemo(() => (validHex ? hexToHsl(draft) : { h: 0, s: 0, l: 0 }), [draft, validHex]);
   const swatchColour = HEX_RE.test(value) ? value : "transparent";
 
-  function commit(hex: string) {
-    const up = hex.toUpperCase();
-    setDraft(up);
-    if (HEX_RE.test(up)) onChange(up);
-  }
-
-  function updateHsl(next: { h?: number; s?: number; l?: number }) {
+  function setHsl(next: { h?: number; s?: number; l?: number }) {
     const h = next.h ?? hsl.h;
     const s = next.s ?? hsl.s;
     const l = next.l ?? hsl.l;
-    commit(hslToHex(h, s, l));
+    setDraft(hslToHex(h, s, l));
+  }
+
+  async function pickFromScreen() {
+    if (typeof window === "undefined" || !window.EyeDropper) {
+      toast.error("Your browser doesn't support screen colour picking.");
+      return;
+    }
+    try {
+      const dropper = new window.EyeDropper();
+      const result = await dropper.open();
+      const hex = result.sRGBHex.toUpperCase();
+      if (HEX_RE.test(hex)) setDraft(hex);
+    } catch {
+      // User cancelled , no-op.
+    }
+  }
+
+  function handleOpenChange(next: boolean) {
+    setOpen(next);
+    if (!next) {
+      // Commit-on-close: only push the change if it's a valid hex AND it
+      // differs from what we last sent.
+      if (validHex && draft.toUpperCase() !== lastCommittedRef.current.toUpperCase()) {
+        lastCommittedRef.current = draft.toUpperCase();
+        onChange(draft.toUpperCase());
+      }
+    }
   }
 
   return (
-    <Popover>
+    <Popover open={open} onOpenChange={handleOpenChange}>
       <PopoverTrigger
         id={id}
         className={cn(
@@ -120,20 +162,21 @@ export function BrandColourPicker({ value, onChange, id }: BrandColourPickerProp
 
       {/* showBackdrop={false} , no grey-out wash behind the popover. */}
       <PopoverContent className="w-72 p-4 space-y-4" align="start" showBackdrop={false}>
-        {/* Preview + hex row */}
+        {/* Preview + eyedropper + hex */}
         <div className="flex items-center gap-3">
-          <label
-            className="relative h-12 w-12 shrink-0 cursor-pointer overflow-hidden rounded-md border border-border"
+          <div
+            className="h-12 w-12 shrink-0 overflow-hidden rounded-md border border-border"
             style={{ backgroundColor: validHex ? draft : "#FFFFFF" }}
-            aria-label="OS colour wheel"
+          />
+          <button
+            type="button"
+            onClick={pickFromScreen}
+            className="flex h-12 w-12 shrink-0 items-center justify-center rounded-md border border-border bg-card text-muted-foreground hover:bg-muted hover:text-foreground"
+            aria-label="Pick a colour from the screen"
+            title="Pick a colour from the screen"
           >
-            <input
-              type="color"
-              value={validHex ? draft : "#000000"}
-              onChange={(e) => commit(e.target.value)}
-              className="absolute inset-0 h-full w-full cursor-pointer opacity-0"
-            />
-          </label>
+            <Pipette className="size-4" />
+          </button>
           <div className="flex-1">
             <div className="text-xs font-medium text-muted-foreground mb-1">Hex</div>
             <input
@@ -146,7 +189,6 @@ export function BrandColourPicker({ value, onChange, id }: BrandColourPickerProp
                 let v = e.target.value.toUpperCase();
                 if (v && !v.startsWith("#")) v = "#" + v;
                 setDraft(v);
-                if (HEX_RE.test(v)) onChange(v);
               }}
               className={cn(
                 "h-8 w-full rounded-md border bg-background px-2 font-mono text-xs uppercase tracking-wider outline-none focus:ring-2",
@@ -171,7 +213,7 @@ export function BrandColourPicker({ value, onChange, id }: BrandColourPickerProp
               min={0}
               max={360}
               value={hsl.h}
-              onChange={(e) => updateHsl({ h: Number(e.target.value) })}
+              onChange={(e) => setHsl({ h: Number(e.target.value) })}
               className="h-2 w-full cursor-pointer appearance-none rounded-full"
               style={{
                 background: "linear-gradient(to right, hsl(0,100%,50%), hsl(60,100%,50%), hsl(120,100%,50%), hsl(180,100%,50%), hsl(240,100%,50%), hsl(300,100%,50%), hsl(360,100%,50%))",
@@ -189,7 +231,7 @@ export function BrandColourPicker({ value, onChange, id }: BrandColourPickerProp
               min={0}
               max={100}
               value={hsl.s}
-              onChange={(e) => updateHsl({ s: Number(e.target.value) })}
+              onChange={(e) => setHsl({ s: Number(e.target.value) })}
               className="h-2 w-full cursor-pointer appearance-none rounded-full"
               style={{
                 background: `linear-gradient(to right, hsl(${hsl.h},0%,${hsl.l}%), hsl(${hsl.h},100%,${hsl.l}%))`,
@@ -207,7 +249,7 @@ export function BrandColourPicker({ value, onChange, id }: BrandColourPickerProp
               min={0}
               max={100}
               value={hsl.l}
-              onChange={(e) => updateHsl({ l: Number(e.target.value) })}
+              onChange={(e) => setHsl({ l: Number(e.target.value) })}
               className="h-2 w-full cursor-pointer appearance-none rounded-full"
               style={{
                 background: `linear-gradient(to right, hsl(${hsl.h},${hsl.s}%,0%), hsl(${hsl.h},${hsl.s}%,50%), hsl(${hsl.h},${hsl.s}%,100%))`,
@@ -225,10 +267,10 @@ export function BrandColourPicker({ value, onChange, id }: BrandColourPickerProp
               <button
                 key={p}
                 type="button"
-                onClick={() => commit(p)}
+                onClick={() => setDraft(p)}
                 className={cn(
                   "h-6 w-6 rounded-md border transition-transform hover:scale-110",
-                  value === p ? "border-foreground ring-2 ring-primary/40" : "border-border",
+                  draft.toUpperCase() === p ? "border-foreground ring-2 ring-primary/40" : "border-border",
                 )}
                 style={{ backgroundColor: p }}
                 aria-label={`Use ${p}`}

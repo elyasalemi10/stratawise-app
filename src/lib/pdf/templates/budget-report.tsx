@@ -56,6 +56,12 @@ function SectionIcon({ color }: { color: string }) {
   );
 }
 
+const FUND_SECTION_LABEL: Record<string, string> = {
+  administrative: "Administrative Fund",
+  capital_works: "Capital Works Fund",
+  maintenance_plan: "Maintenance Plan Fund",
+};
+
 export function BudgetReport({
   managementCompany,
   oc,
@@ -68,6 +74,28 @@ export function BudgetReport({
 }: BudgetReportProps) {
   const brand = brandColors?.primary ?? "#1e7ec0"; // azure default
   const accent = brandColors?.secondary ?? "#E89A1A"; // gold for the section icon
+
+  // Group items by fund_type so multi-fund budgets render one section per
+  // fund (Administrative, Capital Works, …) with a separator rule between.
+  // Single-fund budgets fall through to a single "Expenditure" section.
+  const fundOrder = ["administrative", "capital_works", "maintenance_plan"] as const;
+  const grouped = new Map<string, { items: typeof items; total: number }>();
+  for (const it of items) {
+    const key = it.fund_type ?? "_single";
+    const bucket = grouped.get(key) ?? { items: [], total: 0 };
+    bucket.items.push(it);
+    bucket.total += Number(it.amount);
+    grouped.set(key, bucket);
+  }
+  const sortedFunds = Array.from(grouped.keys()).sort((a, b) => {
+    const ai = fundOrder.indexOf(a as typeof fundOrder[number]);
+    const bi = fundOrder.indexOf(b as typeof fundOrder[number]);
+    if (ai === -1 && bi === -1) return 0;
+    if (ai === -1) return 1;
+    if (bi === -1) return -1;
+    return ai - bi;
+  });
+  const isMultiFund = sortedFunds.length > 1;
 
   const s = StyleSheet.create({
     page: {
@@ -139,6 +167,24 @@ export function BudgetReport({
     totalLabel: { flex: 1, fontSize: 10, fontFamily: FONT, fontWeight: 700, color: c.foreground },
     totalValue: { width: 110, fontSize: 10, fontFamily: FONT, fontWeight: 700, color: c.foreground, textAlign: "right" as const },
 
+    // ── Fund separator (multi-fund only) ──
+    fundSeparator: {
+      height: 1,
+      backgroundColor: c.border,
+      marginTop: 28,
+      marginHorizontal: 40,
+    },
+
+    // ── Grand total (multi-fund) ──
+    grandTotalRule: { height: 2, backgroundColor: brand, marginTop: 28, marginLeft: 40 },
+    grandTotalRow: {
+      flexDirection: "row",
+      paddingTop: 10,
+      paddingLeft: 40,
+    },
+    grandTotalLabel: { flex: 1, fontSize: 12, fontFamily: FONT, fontWeight: 700, color: brand },
+    grandTotalValue: { width: 110, fontSize: 12, fontFamily: FONT, fontWeight: 700, color: brand, textAlign: "right" as const },
+
     // ── Approval note ──
     noteSection: {
       marginTop: 24,
@@ -197,32 +243,59 @@ export function BudgetReport({
           <Text style={s.period}>{periodCopy}</Text>
         </View>
 
-        {/* ── Expenditure section ── */}
-        <View style={s.sectionRow}>
-          <View style={s.sectionIcon}>
-            <SectionIcon color={accent} />
-          </View>
-          <View style={s.sectionHeader}>
-            <Text style={s.sectionTitle}>Expenditure</Text>
-            <Text style={s.columnHead}>Amount</Text>
-          </View>
-        </View>
-        <View style={[s.sectionUnderline, { marginLeft: 40 }]} />
+        {/* ── Expenditure sections , one per fund when multi-fund. ── */}
+        {sortedFunds.map((fundKey, idx) => {
+          const bucket = grouped.get(fundKey)!;
+          const sectionTitle = isMultiFund
+            ? (FUND_SECTION_LABEL[fundKey] ?? "Expenditure")
+            : "Expenditure";
+          const totalCopy = isMultiFund
+            ? `Total ${FUND_SECTION_LABEL[fundKey] ?? "Fund"} Expenditure`
+            : `Total ${fundLabel} Expenditure`;
+          return (
+            <View key={fundKey} wrap={false}>
+              {idx > 0 && <View style={s.fundSeparator} />}
+              <View style={s.sectionRow}>
+                <View style={s.sectionIcon}>
+                  <SectionIcon color={accent} />
+                </View>
+                <View style={s.sectionHeader}>
+                  <Text style={s.sectionTitle}>{sectionTitle}</Text>
+                  <Text style={s.columnHead}>Amount</Text>
+                </View>
+              </View>
+              <View style={[s.sectionUnderline, { marginLeft: 40 }]} />
 
-        {items.map((it, i) => (
-          <View key={i} style={s.item}>
-            <Text style={s.itemName}>
-              {it.code ? `${it.code}  ·  ` : ""}{it.description || it.name}
-            </Text>
-            <Text style={s.itemAmount}>{fmt(it.amount)}</Text>
-          </View>
-        ))}
+              {bucket.items.map((it, i) => (
+                <View key={i} style={s.item}>
+                  <Text style={s.itemName}>
+                    {it.code ? `${it.code}  ·  ` : ""}{it.description || it.name}
+                  </Text>
+                  <Text style={s.itemAmount}>{fmt(it.amount)}</Text>
+                </View>
+              ))}
 
-        <View style={s.totalRule} />
-        <View style={s.totalRow}>
-          <Text style={s.totalLabel}>Total {fundLabel} Expenditure</Text>
-          <Text style={s.totalValue}>{fmt(totalAmount)}</Text>
-        </View>
+              <View style={s.totalRule} />
+              <View style={s.totalRow}>
+                <Text style={s.totalLabel}>{totalCopy}</Text>
+                <Text style={s.totalValue}>{fmt(bucket.total)}</Text>
+              </View>
+            </View>
+          );
+        })}
+
+        {/* Grand total only when there's more than one fund , single-fund
+            already shows its own total above and a second "Grand total"
+            would just duplicate it. */}
+        {isMultiFund && (
+          <>
+            <View style={s.grandTotalRule} />
+            <View style={s.grandTotalRow}>
+              <Text style={s.grandTotalLabel}>Total Budget</Text>
+              <Text style={s.grandTotalValue}>{fmt(totalAmount)}</Text>
+            </View>
+          </>
+        )}
 
         {approvalNote ? (
           <View style={s.noteSection}>

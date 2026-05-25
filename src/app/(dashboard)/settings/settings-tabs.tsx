@@ -16,6 +16,7 @@ import type { NotificationPrefRow, AutoOptOutEntry } from "./page";
 interface CompanyData {
   id: string;
   name: string;
+  trading_as: string | null;
   abn: string | null;
   address: string | null;
   phone: string | null;

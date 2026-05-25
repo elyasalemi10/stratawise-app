@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useRef, useState, useTransition } from "react";
+import { useEffect, useMemo, useRef, useState, useTransition } from "react";
 import { Loader2, Paperclip, X, Mail } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
@@ -12,7 +12,7 @@ import {
 import {
   Table, TableBody, TableCell, TableHead, TableHeader, TableRow,
 } from "@/components/ui/table";
-import { sendBatchEmailsCustom } from "@/lib/actions/levy";
+import { sendBatchEmailsCustom, resendBatchEmailsCustom } from "@/lib/actions/levy";
 
 interface LevyRow {
   id: string;
@@ -26,32 +26,42 @@ interface LevyRow {
 interface Props {
   ocId: string;
   batchId: string;
-  draftLevies: LevyRow[];
-  /** Which mail provider this OC's emails go through. Surfaced to the
-   *  manager so they can change it in OC settings BEFORE sending if
-   *  needed , per-send override is intentionally not supported (too
-   *  easy to misuse, and the per-OC mail config is the durable signal). */
+  /** Send mode dictates which action runs + the dialog copy. */
+  mode: "send" | "resend";
+  levies: LevyRow[];
+  /** Provider label shown in the "Sending from" line. */
   mailProviderLabel: string;
   open: boolean;
   onOpenChange: (open: boolean) => void;
   onSent: (sentCount: number) => void;
 }
 
-const ATTACHMENT_LIMIT_BYTES = 20 * 1024 * 1024; // 20 MB safety cap (under Gmail's 25 MB)
+const ATTACHMENT_LIMIT_BYTES = 20 * 1024 * 1024;
+// Recipient table shows 4.5 rows worth of vertical room before scrolling so
+// users can scan the recipients and feel there's more if they scroll. Each
+// row is roughly 44px tall (Input height + padding).
+const RECIPIENT_TABLE_MAX_HEIGHT = 4.5 * 44 + 36; // + header
 
 export function SendEmailsDialog({
-  ocId, batchId, draftLevies, mailProviderLabel, open, onOpenChange, onSent,
+  ocId, batchId, mode, levies, mailProviderLabel, open, onOpenChange, onSent,
 }: Props) {
-  const [overrides, setOverrides] = useState<Record<string, string>>({});
+  // Pre-fill overrides with the owner's stored email so the manager can
+  // edit in place instead of typing into an empty input.
+  const initialOverrides = useMemo(() => {
+    const seed: Record<string, string> = {};
+    for (const l of levies) seed[l.id] = l.owner_contact_email ?? "";
+    return seed;
+  }, [levies]);
+  const [overrides, setOverrides] = useState<Record<string, string>>(initialOverrides);
+  // Reset whenever the dialog reopens (levies set may have changed).
+  useEffect(() => {
+    if (open) setOverrides(initialOverrides);
+  }, [open, initialOverrides]);
+
   const [attachments, setAttachments] = useState<File[]>([]);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [pending, startTransition] = useTransition();
   const [sending, setSending] = useState(false);
-
-  const totalAttachBytes = useMemo(
-    () => attachments.reduce((s, f) => s + f.size, 0),
-    [attachments],
-  );
 
   function addFiles(files: FileList | null) {
     if (!files?.length) return;
@@ -75,8 +85,6 @@ export function SendEmailsDialog({
   async function handleSend() {
     setSending(true);
     startTransition(async () => {
-      // Convert files to base64 so they survive the server-action JSON hop.
-      // Big-O is fine , total is capped at 20 MB.
       const extras = await Promise.all(
         attachments.map(async (f) => ({
           filename: f.name,
@@ -84,13 +92,12 @@ export function SendEmailsDialog({
           contentBase64: Buffer.from(await f.arrayBuffer()).toString("base64"),
         })),
       );
-
-      // Strip empty overrides , we only want explicit ones in the payload.
       const cleanOverrides = Object.fromEntries(
         Object.entries(overrides).filter(([, v]) => v.trim().length > 0),
       );
 
-      const result = await sendBatchEmailsCustom(ocId, batchId, {
+      const action = mode === "resend" ? resendBatchEmailsCustom : sendBatchEmailsCustom;
+      const result = await action(ocId, batchId, {
         emailOverrides: cleanOverrides,
         extraAttachments: extras,
       });
@@ -99,7 +106,7 @@ export function SendEmailsDialog({
         toast.error(result.error);
         return;
       }
-      toast.success(`${result.sentCount} levy emails sent`);
+      toast.success(`${result.sentCount} levy ${result.sentCount === 1 ? "email" : "emails"} ${mode === "resend" ? "resent" : "sent"}`);
       onSent(result.sentCount ?? 0);
       onOpenChange(false);
     });
@@ -111,28 +118,30 @@ export function SendEmailsDialog({
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2">
             <Mail className="h-4 w-4" />
-            Send levies by email
+            {mode === "resend" ? "Resend levies by email" : "Send levies by email"}
           </DialogTitle>
+          {/* Sending from , short, factual. No marketing copy. */}
           <DialogDescription>
-            {draftLevies.length} {draftLevies.length === 1 ? "levy" : "levies"} ready to send via{" "}
-            <strong className="text-foreground">{mailProviderLabel}</strong>.
-            Override any owner&apos;s email below for this send only, and attach extra files
-            (cover letter, agenda, etc.) that go out alongside every levy notice.
+            Sending from <strong className="text-foreground">{mailProviderLabel}</strong>.
           </DialogDescription>
         </DialogHeader>
 
-        {/* Recipient list */}
-        <div className="max-h-72 overflow-y-auto rounded-md border border-border">
+        {/* Recipient table , scrolls past 4.5 rows so the dialog stays a
+            consistent height regardless of batch size. */}
+        <div
+          className="overflow-y-auto rounded-md border border-border"
+          style={{ maxHeight: `${RECIPIENT_TABLE_MAX_HEIGHT}px` }}
+        >
           <Table variant="bordered" className="text-sm">
             <TableHeader>
               <TableRow>
                 <TableHead className="w-20">Lot</TableHead>
                 <TableHead>Owner</TableHead>
-                <TableHead>Email (override for this send)</TableHead>
+                <TableHead>Email</TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
-              {draftLevies.map((l) => (
+              {levies.map((l) => (
                 <TableRow key={l.id}>
                   <TableCell className="font-mono text-xs">
                     {l.lot_number}{l.unit_number ? `/${l.unit_number}` : ""}
@@ -146,7 +155,6 @@ export function SendEmailsDialog({
                       onChange={(e) =>
                         setOverrides((prev) => ({ ...prev, [l.id]: e.target.value }))
                       }
-                      placeholder={l.owner_contact_email ?? "no email on file"}
                       className="h-8 text-sm"
                     />
                   </TableCell>
@@ -156,7 +164,7 @@ export function SendEmailsDialog({
           </Table>
         </div>
 
-        {/* Attachments */}
+        {/* Attachments , no total counter, just the file list. */}
         <div className="space-y-2">
           <div className="flex items-center justify-between">
             <Label>Attachments</Label>
@@ -197,9 +205,6 @@ export function SendEmailsDialog({
                   </button>
                 </li>
               ))}
-              <li className="border-t border-border pt-1 text-xs text-muted-foreground">
-                Total {(totalAttachBytes / 1024 / 1024).toFixed(2)} MB / 20 MB
-              </li>
             </ul>
           ) : null}
         </div>
@@ -210,7 +215,7 @@ export function SendEmailsDialog({
           </Button>
           <Button onClick={handleSend} disabled={sending || pending}>
             {sending && <Loader2 className="size-4 animate-spin" />}
-            Send {draftLevies.length} {draftLevies.length === 1 ? "email" : "emails"}
+            {mode === "resend" ? "Resend" : "Send"} {levies.length} {levies.length === 1 ? "email" : "emails"}
           </Button>
         </DialogFooter>
       </DialogContent>

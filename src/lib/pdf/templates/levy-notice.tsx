@@ -63,6 +63,19 @@ export function LevyNotice({
       paddingBottom: 20,
       paddingHorizontal: 24,
     },
+    // Centered period band , runs across the top of the page so the
+    // levy's coverage window is the first thing the eye lands on.
+    periodBand: {
+      alignItems: "center" as const,
+      marginBottom: 16,
+    },
+    periodBandText: {
+      fontSize: 11,
+      fontFamily: FONT_BOLD,
+      fontWeight: 600,
+      color: c.foreground,
+      letterSpacing: 0.5,
+    },
     // Top section
     topRow: {
       flexDirection: "row",
@@ -205,6 +218,13 @@ export function LevyNotice({
   return (
     <Document>
       <Page size="A4" style={s.page}>
+        {/* ── Centred period band at the very top ── */}
+        <View style={s.periodBand}>
+          <Text style={s.periodBandText}>
+            {levyPeriod.start} , {levyPeriod.end}
+          </Text>
+        </View>
+
         {/* ── Top: Logo + Title ── */}
         <View style={s.topRow}>
           <View style={{ maxWidth: 150 }}>
@@ -216,7 +236,6 @@ export function LevyNotice({
           <View style={s.titleBlock}>
             <Text style={s.levyTitle}>{documentTitle || "Levy Notice"}</Text>
             <Text style={s.levySubtitle}>{referenceNumber}</Text>
-            <Text style={s.levySubtitle}>{levyPeriod.start} , {levyPeriod.end}</Text>
           </View>
         </View>
 

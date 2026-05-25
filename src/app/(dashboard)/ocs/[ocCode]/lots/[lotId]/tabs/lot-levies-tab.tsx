@@ -143,17 +143,13 @@ export function LotLeviesTab({ lotId }: Props) {
             </TableHeader>
             <TableBody>
               {visible.map((row) => {
-                const outstanding = Math.max(
-                  0,
-                  Number(row.amount) - Number(row.amount_paid),
-                );
                 return (
                   <TableRow key={row.id}>
                     <TableCell className="font-mono text-xs">
                       {row.reference_number}
                     </TableCell>
                     <TableCell className="text-xs text-muted-foreground">
-                      {fmtDate(row.period_start)} – {fmtDate(row.period_end)}
+                      {fmtDate(row.period_start)} , {fmtDate(row.period_end)}
                     </TableCell>
                     <TableCell className="text-xs tabular-nums">
                       {fmtDate(row.due_date)}
@@ -163,11 +159,6 @@ export function LotLeviesTab({ lotId }: Props) {
                     </TableCell>
                     <TableCell className="text-right tabular-nums">
                       {fmtCurrency(Number(row.amount_paid))}
-                      {outstanding > 0 && (
-                        <span className="ml-1 text-xs text-muted-foreground">
-                          ({fmtCurrency(outstanding)} left)
-                        </span>
-                      )}
                     </TableCell>
                     <TableCell>{paidBadge(row)}</TableCell>
                     <TableCell>

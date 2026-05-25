@@ -96,37 +96,37 @@ function LotRow({
 
       {isOpen && (
         <div className="px-4 pb-4 pl-11">
-          <div className="overflow-hidden rounded-lg border border-border">
-            <Table variant="bordered" className="text-sm">
+          {/* Compact table , smaller text + tighter padding so the
+              levy-breakdown UI stays scan-able. */}
+          <div className="overflow-hidden rounded-md border border-border">
+            <Table variant="bordered" className="text-xs">
               <TableHeader>
                 <TableRow>
-                  <TableHead>Description</TableHead>
-                  <TableHead className="w-[160px] text-right">Amount</TableHead>
-                  <TableHead className="w-[44px]" />
+                  <TableHead className="py-1.5">Description</TableHead>
+                  <TableHead className="py-1.5 w-[120px] text-right">Amount</TableHead>
+                  <TableHead className="py-1.5 w-[36px]" />
                 </TableRow>
               </TableHeader>
               <TableBody>
-                {/* Computed items , locked, no controls. */}
                 {lot.items.map((item, i) => (
                   <TableRow key={`base-${i}`}>
-                    <TableCell className="text-foreground">{item.description}</TableCell>
-                    <TableCell className="text-right tabular-nums text-foreground">{formatCurrency(item.amount)}</TableCell>
-                    <TableCell />
+                    <TableCell className="py-1.5 text-foreground">{item.description}</TableCell>
+                    <TableCell className="py-1.5 text-right tabular-nums text-foreground">{formatCurrency(item.amount)}</TableCell>
+                    <TableCell className="py-1.5" />
                   </TableRow>
                 ))}
-                {/* Adjustments , editable name + amount, removable. */}
                 {(lot.adjustments ?? []).map((adj, i) => (
                   <TableRow key={`adj-${i}`}>
-                    <TableCell>
+                    <TableCell className="py-1">
                       <Input
                         value={adj.description}
                         onChange={(e) => onUpdateAdjustment(i, "description", e.target.value)}
                         placeholder="Description"
                         disabled={locked}
-                        className="h-8 text-sm"
+                        className="h-7 text-xs"
                       />
                     </TableCell>
-                    <TableCell>
+                    <TableCell className="py-1">
                       <NumberInput
                         value={adj.amount ? String(adj.amount) : ""}
                         onChange={(v) => onUpdateAdjustment(i, "amount", parseFloat(v) || 0)}
@@ -137,7 +137,7 @@ function LotRow({
                         disabled={locked}
                       />
                     </TableCell>
-                    <TableCell>
+                    <TableCell className="py-1">
                       {!locked && (
                         <button
                           type="button"
@@ -154,9 +154,9 @@ function LotRow({
               </TableBody>
               <TableFooter>
                 <TableRow>
-                  <TableCell className="font-semibold text-foreground">Total</TableCell>
-                  <TableCell className="text-right font-bold tabular-nums text-foreground">{formatCurrency(totalAmount)}</TableCell>
-                  <TableCell />
+                  <TableCell className="py-1.5 font-semibold text-foreground">Total</TableCell>
+                  <TableCell className="py-1.5 text-right font-bold tabular-nums text-foreground">{formatCurrency(totalAmount)}</TableCell>
+                  <TableCell className="py-1.5" />
                 </TableRow>
               </TableFooter>
             </Table>
@@ -421,25 +421,6 @@ export function GenerateLeviesForm({
 
       {preview && lots.length > 0 && !loading && (
         <>
-          {/* Branded summary strip: navy panel with the period total in
-              gold so the manager has a single anchor for the batch. */}
-          <div className="overflow-hidden rounded-lg border border-[color:var(--primary)]/30">
-            <div className="bg-[color:var(--primary)] px-5 py-4 text-primary-foreground">
-              <div className="flex items-center justify-between">
-                <div>
-                  <p className="text-xs uppercase tracking-wide text-primary-foreground/70">Levy batch total</p>
-                  <p className="mt-1 text-2xl font-bold tabular-nums text-[color:var(--brand-gold)]">
-                    {formatCurrency(grandTotal)}
-                  </p>
-                </div>
-                <div className="text-right text-xs text-primary-foreground/80">
-                  <p>{lots.length} lot{lots.length === 1 ? "" : "s"}</p>
-                  <p className="mt-1">{selectedPeriod ? periodChipLabel(selectedPeriod) : ""}</p>
-                </div>
-              </div>
-            </div>
-          </div>
-
           <Card>
             <CardContent className="pt-5">
               <div className="mb-3">
@@ -459,6 +440,12 @@ export function GenerateLeviesForm({
                     locked={generating}
                   />
                 ))}
+                {/* Total row , sits at the bottom of the lot list under
+                    the $ column, so the breakdown reads like a column sum. */}
+                <div className="flex items-center justify-between border-t-2 border-foreground/20 px-4 py-3 text-sm">
+                  <span className="font-semibold text-foreground">Total</span>
+                  <span className="font-bold tabular-nums text-foreground">{formatCurrency(grandTotal)}</span>
+                </div>
               </div>
             </CardContent>
           </Card>

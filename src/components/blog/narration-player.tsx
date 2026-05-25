@@ -261,11 +261,11 @@ export function NarrationPlayer({
     activeRef.current = -1;
   }, []);
 
-  // 100ms forward lookahead so the highlight tracks slightly AHEAD of the
+  // 200ms forward lookahead so the highlight tracks slightly AHEAD of the
   // voice instead of dragging behind it (audio latency + paint frame +
   // ElevenLabs anchoring at the phoneme start, see marketing-site player
   // for the full reasoning).
-  const LOOKAHEAD_MS = 100;
+  const LOOKAHEAD_MS = 200;
   const findIndexAtTime = useCallback((t: number) => {
     if (!words.length) return -1;
     const adj = t + LOOKAHEAD_MS / 1000;

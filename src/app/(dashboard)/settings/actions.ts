@@ -90,7 +90,7 @@ export async function getCompanyData() {
   const supabase = createServerClient();
   const { data } = await supabase
     .from("management_companies")
-    .select("id, name, abn, address, phone, email, logo_url, registered_name, signature_url, brand_color, brand_color_secondary")
+    .select("id, name, trading_as, abn, address, phone, email, logo_url, registered_name, signature_url, brand_color, brand_color_secondary")
     .eq("id", profile.management_company_id)
     .single();
 
@@ -103,7 +103,7 @@ export async function updateCompanyField(companyId: string, field: string, value
     return { error: "Unauthorized" };
   }
 
-  const allowedFields = ["name", "abn", "address", "phone", "email", "registered_name", "brand_color", "brand_color_secondary"];
+  const allowedFields = ["name", "trading_as", "abn", "address", "phone", "email", "registered_name", "brand_color", "brand_color_secondary"];
   if (!allowedFields.includes(field)) {
     return { error: "Invalid field" };
   }

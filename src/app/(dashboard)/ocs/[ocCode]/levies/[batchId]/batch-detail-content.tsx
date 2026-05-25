@@ -4,7 +4,7 @@ import { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import {
   ArrowLeft, CheckCircle2, ChevronDown, Download, Mail, Trash2, FolderDown,
-  DollarSign, Undo2, RefreshCw, AlertTriangle, Loader2, MoreHorizontal,
+  DollarSign, Undo2, RefreshCw, AlertTriangle, Loader2,
 } from "lucide-react";
 import { format } from "date-fns";
 import { formatDateLong } from "@/lib/utils";
@@ -22,10 +22,7 @@ import {
   AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent,
   AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
-import {
-  DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuLabel,
-  DropdownMenuSeparator, DropdownMenuTrigger,
-} from "@/components/ui/dropdown-menu";
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import {
   Table, TableBody, TableCell, TableHead, TableHeader, TableRow,
 } from "@/components/ui/table";
@@ -34,7 +31,6 @@ import {
   markLevySent,
   cancelBatch,
   recallBatch,
-  resendBatchEmails,
   markBatchPaid,
   regenerateBatch,
   type LevyBatchDetail,
@@ -65,7 +61,7 @@ export function BatchDetailContent({
   // Batch-level pending flags , each action keeps a spinner on its own button.
   const [sendingAll, setSendingAll] = useState(false);
   const [emailDialogOpen, setEmailDialogOpen] = useState(false);
-  const [resending, setResending] = useState(false);
+  const [resendDialogOpen, setResendDialogOpen] = useState(false);
   const [downloadingZip, startDownload] = useTransition();
   const [cancelling, setCancelling] = useState(false);
   const [recalling, setRecalling] = useState(false);
@@ -165,17 +161,6 @@ export function BatchDetailContent({
     }
   }
 
-  async function handleResendAll() {
-    setResending(true);
-    const result = await resendBatchEmails(ocId, batch.id);
-    setResending(false);
-    if (result.error) {
-      toast.error(result.error);
-    } else {
-      toast.success(`${result.sentCount} levy emails resent`);
-    }
-  }
-
   async function handleCancel() {
     setCancelling(true);
     const result = await cancelBatch(ocId, batch.id);
@@ -215,16 +200,16 @@ export function BatchDetailContent({
   }
 
   const draftCount = batch.levies.filter((l) => l.status === "draft").length;
-  const draftLeviesForDialog = batch.levies
-    .filter((l) => l.status === "draft")
-    .map((l) => ({
-      id: l.id,
-      lot_number: l.lot_number,
-      unit_number: l.unit_number,
-      owner_display_name: l.owner_display_name,
-      owner_contact_email: l.owner_contact_email,
-      reference_number: l.reference_number,
-    }));
+  const toLevyRow = (l: typeof batch.levies[number]) => ({
+    id: l.id,
+    lot_number: l.lot_number,
+    unit_number: l.unit_number,
+    owner_display_name: l.owner_display_name,
+    owner_contact_email: l.owner_contact_email,
+    reference_number: l.reference_number,
+  });
+  const draftLeviesForDialog = batch.levies.filter((l) => l.status === "draft").map(toLevyRow);
+  const allLeviesForDialog = batch.levies.map(toLevyRow);
   const fundLabel = batch.fund_type === "administrative" ? "Administrative Fund" : "Capital Works Fund";
   const hasPaidLevies = batch.levies.some((l) => l.status === "paid");
 
@@ -268,14 +253,14 @@ export function BatchDetailContent({
             </>
           )}
           {draftCount === 0 && batch.levies.length > 0 && (
-            <Button onClick={handleResendAll} disabled={resending} size="sm" variant="outline">
-              {resending ? <Loader2 className="size-3.5 animate-spin" /> : <Mail className="size-3.5" />}
+            <Button onClick={() => setResendDialogOpen(true)} size="sm" variant="outline">
+              <Mail className="size-3.5" />
               Resend all by email
             </Button>
           )}
           <Button onClick={handleDownloadAllZip} disabled={downloadingZip} size="sm" variant="outline">
             {downloadingZip ? <Loader2 className="size-3.5 animate-spin" /> : <FolderDown className="size-3.5" />}
-            Download all (zip)
+            Download all
           </Button>
           {batch.status === "draft" && (
             <Button
@@ -289,48 +274,56 @@ export function BatchDetailContent({
             </Button>
           )}
 
-          {/* Advanced actions , dropdown trigger uses default Base UI
-              element with our styling, NOT the `render` slot. The render
-              slot was causing Base UI error #31 in production. */}
-          <DropdownMenu>
-            <DropdownMenuTrigger className="inline-flex h-8 items-center justify-center gap-1.5 rounded-md border border-border bg-card px-3 text-sm font-medium text-foreground hover:bg-muted cursor-pointer">
-              <MoreHorizontal className="size-3.5" />
+          {/* Advanced actions , Popover-backed menu. The Base UI Menu
+              primitive's Trigger.render slot was throwing error #31 in
+              production (ref forwarding issue with our Button); a Popover
+              + plain buttons sidesteps the whole render-slot machinery. */}
+          <Popover>
+            <PopoverTrigger className="inline-flex h-8 items-center justify-center gap-1.5 rounded-md border border-border bg-card px-3 text-sm font-medium text-foreground hover:bg-muted cursor-pointer">
               Advanced
-            </DropdownMenuTrigger>
-            <DropdownMenuContent align="end" className="w-64">
-              <DropdownMenuLabel className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
-                Advanced actions
-              </DropdownMenuLabel>
-              <DropdownMenuSeparator />
-              <DropdownMenuItem
-                onSelect={() => { setRegenDate(""); setShowRegenerate(true); }}
+              <ChevronDown className="size-3.5" />
+            </PopoverTrigger>
+            <PopoverContent className="w-56 p-1" align="end" showBackdrop={false}>
+              <button
+                type="button"
+                onClick={() => { setRegenDate(""); setShowRegenerate(true); }}
+                className="flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-sm text-foreground hover:bg-muted cursor-pointer"
               >
                 <RefreshCw className="size-3.5" />
                 Regenerate
-              </DropdownMenuItem>
+              </button>
               {(batch.status === "sent" || batch.status === "partially_sent") && !hasPaidLevies && (
-                <DropdownMenuItem onSelect={() => setShowRecallConfirm(true)}>
+                <button
+                  type="button"
+                  onClick={() => setShowRecallConfirm(true)}
+                  className="flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-sm text-foreground hover:bg-muted cursor-pointer"
+                >
                   <Undo2 className="size-3.5" />
                   Recall batch
-                </DropdownMenuItem>
+                </button>
               )}
-              <DropdownMenuSeparator />
+              <div className="my-1 h-px bg-border" />
               {batch.levies.some((l) => l.status !== "paid") ? (
-                <DropdownMenuItem
-                  className="text-destructive focus:text-destructive focus:bg-destructive/5"
-                  onSelect={() => setShowMarkPaidConfirm(true)}
+                <button
+                  type="button"
+                  onClick={() => setShowMarkPaidConfirm(true)}
+                  className="flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-sm text-destructive hover:bg-destructive/5 cursor-pointer"
                 >
                   <DollarSign className="size-3.5" />
                   Mark batch paid (legacy)
-                </DropdownMenuItem>
+                </button>
               ) : (
-                <DropdownMenuItem disabled className="text-muted-foreground">
+                <button
+                  type="button"
+                  disabled
+                  className="flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-sm text-muted-foreground cursor-not-allowed"
+                >
                   <DollarSign className="size-3.5" />
                   Mark batch paid (legacy)
-                </DropdownMenuItem>
+                </button>
               )}
-            </DropdownMenuContent>
-          </DropdownMenu>
+            </PopoverContent>
+          </Popover>
         </div>
       </div>
 
@@ -382,41 +375,26 @@ export function BatchDetailContent({
                 </button>
 
                 {openLevyId === levy.id && (
-                  <div className="px-4 pb-3 pl-11 space-y-3">
-                    {/* Period + due date , per-row context */}
-                    <div className="flex flex-wrap gap-x-6 gap-y-1 text-xs text-muted-foreground">
-                      <span>
-                        Period: <span className="text-foreground">{formatDateLong(batch.period_start)} - {formatDateLong(batch.period_end)}</span>
-                      </span>
-                      <span>
-                        Due: <span className="text-foreground">{formatDateLong(batch.due_date)}</span>
-                      </span>
-                      {levy.owner_contact_email && (
-                        <span>
-                          Email: <span className="text-foreground">{levy.owner_contact_email}</span>
-                        </span>
-                      )}
-                    </div>
-
-                    {/* Line items table , shared Table primitive */}
+                  <div className="px-4 pb-3 pl-11 space-y-2">
+                    {/* Line items , compact shared Table. */}
                     <div className="overflow-hidden rounded-md border border-border">
-                      <Table variant="bordered" className="text-sm">
+                      <Table variant="bordered" className="text-xs">
                         <TableHeader>
                           <TableRow>
-                            <TableHead>Description</TableHead>
-                            <TableHead className="w-32 text-right">Amount</TableHead>
+                            <TableHead className="py-1.5">Description</TableHead>
+                            <TableHead className="py-1.5 w-28 text-right">Amount</TableHead>
                           </TableRow>
                         </TableHeader>
                         <TableBody>
                           {levy.items.map((item, i) => (
                             <TableRow key={i}>
-                              <TableCell className="text-foreground">
+                              <TableCell className="py-1.5 text-foreground">
                                 {item.description}
                                 {item.is_adjustment && (
-                                  <span className="ml-1 text-xs text-primary">(adjustment)</span>
+                                  <span className="ml-1 text-[10px] text-primary">(adj)</span>
                                 )}
                               </TableCell>
-                              <TableCell className="text-right tabular-nums text-foreground">
+                              <TableCell className="py-1.5 text-right tabular-nums text-foreground">
                                 {formatCurrency(item.amount)}
                               </TableCell>
                             </TableRow>
@@ -426,7 +404,7 @@ export function BatchDetailContent({
                     </div>
 
                     {/* Per-row actions */}
-                    <div className="flex items-center gap-2">
+                    <div className="flex items-center gap-2 pt-1">
                       {levy.status === "draft" && (
                         <Button
                           variant="outline"
@@ -453,40 +431,36 @@ export function BatchDetailContent({
                 )}
               </div>
             ))}
+            {/* Total row , sits at the bottom of the levy list so the
+                dollar number column reads as a column-total, no separate
+                summary card needed. */}
+            <div className="flex items-center justify-between border-t-2 border-foreground/20 px-4 py-3 text-sm">
+              <div className="flex items-center gap-3">
+                <span className="font-semibold text-foreground">Total</span>
+                <span className="text-xs text-muted-foreground">
+                  {batch.levy_count} {batch.levy_count === 1 ? "levy" : "levies"}
+                  {draftCount > 0 ? ` · ${draftCount} pending` : " · all sent"}
+                </span>
+              </div>
+              <span className="font-bold tabular-nums text-foreground">
+                {formatCurrency(batch.total_amount)}
+              </span>
+            </div>
           </div>
         </CardContent>
       </Card>
 
-      {/* Bottom summary strip , replaces the old three KPI cards. */}
-      <div className="rounded-lg border border-border bg-card p-5">
-        <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
-          <div>
-            <p className="text-xs uppercase tracking-wide text-muted-foreground">Total batch amount</p>
-            <p className="mt-1 text-xl font-bold tabular-nums">{formatCurrency(batch.total_amount)}</p>
-          </div>
-          <div>
-            <p className="text-xs uppercase tracking-wide text-muted-foreground">Levies</p>
-            <p className="mt-1 text-xl font-bold tabular-nums">{batch.levy_count}</p>
-          </div>
-          <div>
-            <p className="text-xs uppercase tracking-wide text-muted-foreground">Outstanding</p>
-            <p className="mt-1 text-xl font-bold">
-              {draftCount === 0 ? "All sent" : `${draftCount} pending`}
-            </p>
-          </div>
-        </div>
-      </div>
 
-      {/* Send-by-email dialog */}
+      {/* Send-by-email dialog (drafts only) */}
       <SendEmailsDialog
         ocId={ocId}
         batchId={batch.id}
-        draftLevies={draftLeviesForDialog}
+        mode="send"
+        levies={draftLeviesForDialog}
         mailProviderLabel={mailProviderLabel}
         open={emailDialogOpen}
         onOpenChange={setEmailDialogOpen}
         onSent={(sent) => {
-          // Optimistically mark first N drafts as issued for instant feedback.
           setBatch((prev) => {
             let remaining = sent;
             return {
@@ -502,6 +476,18 @@ export function BatchDetailContent({
             };
           });
         }}
+      />
+
+      {/* Resend-all dialog (every levy in the batch) */}
+      <SendEmailsDialog
+        ocId={ocId}
+        batchId={batch.id}
+        mode="resend"
+        levies={allLeviesForDialog}
+        mailProviderLabel={mailProviderLabel}
+        open={resendDialogOpen}
+        onOpenChange={setResendDialogOpen}
+        onSent={() => { /* Resend doesn't change status , nothing to mirror. */ }}
       />
 
       {/* Regenerate dialog */}

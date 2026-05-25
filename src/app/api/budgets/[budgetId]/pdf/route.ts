@@ -51,12 +51,13 @@ export async function GET(
     description: string | null;
     amount: number;
     sort_order: number;
+    fund_type: "administrative" | "capital_works" | "maintenance_plan" | null;
     budget_categories: { name: string } | null;
     chart_of_accounts: { name: string; code: string } | null;
   };
   const { data: rawItems } = await supabase
     .from("budget_items")
-    .select("description, amount, sort_order, budget_categories(name), chart_of_accounts(name, code)")
+    .select("description, amount, sort_order, fund_type, budget_categories(name), chart_of_accounts(name, code)")
     .eq("budget_id", budgetId)
     .order("sort_order");
   const items = (rawItems ?? []) as unknown as RawItem[];
@@ -81,6 +82,10 @@ export async function GET(
     name: i.chart_of_accounts?.name ?? i.budget_categories?.name ?? "Budget item",
     description: i.description,
     amount: Number(i.amount),
+    // Fall back to the budget's legacy single fund_type when a row didn't
+    // get tagged (older budgets pre-multi-fund). Lets the PDF group items
+    // even when only the parent row carries fund context.
+    fund_type: i.fund_type ?? (budget.fund_type as "administrative" | "capital_works" | "maintenance_plan" | null) ?? null,
   }));
 
   // Brand colours come from management_companies. Primary drives the
