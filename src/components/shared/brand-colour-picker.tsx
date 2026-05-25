@@ -108,7 +108,12 @@ export function BrandColourPicker({ value, onChange, id }: BrandColourPickerProp
 
   const validHex = HEX_RE.test(draft);
   const hsl = useMemo(() => (validHex ? hexToHsl(draft) : { h: 0, s: 0, l: 0 }), [draft, validHex]);
-  const swatchColour = HEX_RE.test(value) ? value : "transparent";
+  // While the picker is open, mirror the draft on the trigger swatch so
+  // the user can see their typing reflected in the UI immediately. Save
+  // still waits until popover closes (handleOpenChange below).
+  const swatchSource = open && validHex ? draft : value;
+  const swatchColour = HEX_RE.test(swatchSource) ? swatchSource : "transparent";
+  const swatchHasColour = open ? validHex : Boolean(value);
 
   function setHsl(next: { h?: number; s?: number; l?: number }) {
     const h = next.h ?? hsl.h;
@@ -150,12 +155,12 @@ export function BrandColourPicker({ value, onChange, id }: BrandColourPickerProp
         id={id}
         className={cn(
           "group flex h-10 w-16 items-center justify-center rounded-md border border-border transition-colors hover:border-foreground/30",
-          !value && "bg-[repeating-conic-gradient(#E5E0D3_0%_25%,#FAF7F0_25%_50%)] bg-[length:12px_12px]",
+          !swatchHasColour && "bg-[repeating-conic-gradient(#E5E0D3_0%_25%,#FAF7F0_25%_50%)] bg-[length:12px_12px]",
         )}
-        style={value ? { backgroundColor: swatchColour } : undefined}
+        style={swatchHasColour ? { backgroundColor: swatchColour } : undefined}
         aria-label="Open colour picker"
       >
-        {!value && (
+        {!swatchHasColour && (
           <Pipette className="size-4 text-muted-foreground/70 group-hover:text-foreground" />
         )}
       </PopoverTrigger>

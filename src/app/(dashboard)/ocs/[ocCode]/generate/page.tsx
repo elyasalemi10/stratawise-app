@@ -1,6 +1,7 @@
 import { getOC } from "@/lib/actions/oc";
 import { getOCBudgets } from "@/lib/actions/budget";
 import { getAvailablePeriods, type AvailablePeriod } from "@/lib/actions/levy";
+import { listChartOfAccounts } from "@/lib/actions/chart-of-accounts";
 import { redirect } from "next/navigation";
 import { GenerateLeviesForm } from "./generate-levies-form";
 
@@ -15,9 +16,10 @@ export default async function GenerateLeviesPage({
   const resolved = await resolveOCFromCode(ocCode);
   if (!resolved) redirect("/dashboard");
   const ocId = resolved.id;
-  const [oc, budgets] = await Promise.all([
+  const [oc, budgets, coaAccounts] = await Promise.all([
     getOC(ocId),
     getOCBudgets(ocId),
+    listChartOfAccounts(),
   ]);
 
   if (!oc) redirect("/dashboard");
@@ -37,11 +39,20 @@ export default async function GenerateLeviesPage({
   );
   const periodsByBudgetId: Record<string, AvailablePeriod[]> = Object.fromEntries(periodEntries);
 
+  // CoA accounts (expense / income, active only) drive the adjustment
+  // picker. Keep the set tight , managers can't add free-text lines, so
+  // every option here must be a real account the ledger can post to.
+  const adjustmentCoaOptions = coaAccounts
+    .filter((a) => !a.archived_at)
+    .filter((a) => a.account_type === "expense" || a.account_type === "income")
+    .map((a) => ({ id: a.id, code: a.code, name: a.name }));
+
   return (
     <GenerateLeviesForm
       ocId={ocId}
       budgets={approvedBudgets}
       periodsByBudgetId={periodsByBudgetId}
+      coaOptions={adjustmentCoaOptions}
     />
   );
 }

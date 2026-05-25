@@ -1,13 +1,11 @@
-import { Page, View, Text, Image, Document, StyleSheet, Svg, Path, Circle } from "@react-pdf/renderer";
+import { Page, View, Text, Image, Document, StyleSheet } from "@react-pdf/renderer";
 import type { BudgetReportProps } from "../types";
 import "../fonts";
 
-// Proposed Annual Budget report, single-fund layout. Visual reference is the
-// classic "Proposed Annual Budget" sheet used across the Australian strata
-// industry: title on the left + fund label on the right, brand-blue rule,
-// OC + period subtitle, address line, gold circle-arrow icon next to each
-// section header, right-aligned amount column, bold total row with a black
-// rule above. Builds in the firm's brand colour when set.
+// Budget Breakdown report. Visual structure: management-company letterhead
+// at the top (logo + company name + contact lines on the left, fund label
+// on the right), brand-coloured rule, OC subtitle, then one expenditure
+// section per fund with a totals row and an optional grand total.
 
 const c = {
   foreground: "#1a1f2e",
@@ -38,24 +36,6 @@ function fmtPeriodLong(financialYear: string): string {
   return `1 July ${s} to 30 June ${e}`;
 }
 
-// Gold circle-with-arrow that flags each section header. Matches the
-// reference doc's visual rhythm of "icon → section heading → table".
-function SectionIcon({ color }: { color: string }) {
-  return (
-    <Svg width={26} height={26} viewBox="0 0 24 24">
-      <Circle cx={12} cy={12} r={11} stroke={color} strokeWidth={1.8} fill="none" />
-      <Path
-        d="M7 12 H15 M11 8 L15 12 L11 16"
-        stroke={color}
-        strokeWidth={1.8}
-        fill="none"
-        strokeLinecap="round"
-        strokeLinejoin="round"
-      />
-    </Svg>
-  );
-}
-
 const FUND_SECTION_LABEL: Record<string, string> = {
   administrative: "Administrative Fund",
   capital_works: "Capital Works Fund",
@@ -73,7 +53,6 @@ export function BudgetReport({
   brandColors,
 }: BudgetReportProps) {
   const brand = brandColors?.primary ?? "#1e7ec0"; // azure default
-  const accent = brandColors?.secondary ?? "#E89A1A"; // gold for the section icon
 
   // Group items by fund_type so multi-fund budgets render one section per
   // fund (Administrative, Capital Works, …) with a separator rule between.
@@ -108,15 +87,20 @@ export function BudgetReport({
     },
 
     // ── Letterhead ──
-    titleRow: {
+    letterhead: {
       flexDirection: "row",
       justifyContent: "space-between",
       alignItems: "flex-start",
+      gap: 24,
     },
-    titleLeft: { flex: 1 },
-    titleRight: { alignItems: "flex-end" as const, maxWidth: 280 },
+    letterheadLeft: { flex: 1 },
+    headerLogo: { maxHeight: 48, maxWidth: 180, objectFit: "contain" as const, marginBottom: 8 },
+    companyName: { fontSize: 13, fontFamily: FONT, fontWeight: 700, color: c.foreground },
+    companyMeta: { fontSize: 8, color: c.muted, marginTop: 2, lineHeight: 1.4 },
+    letterheadRight: { alignItems: "flex-end" as const, maxWidth: 220 },
+    fundLabel: { fontSize: 12, fontFamily: FONT, fontWeight: 700, color: c.foreground },
+    titleBlock: { marginTop: 20 },
     docTitle: { fontSize: 22, fontFamily: FONT, fontWeight: 600, color: c.foreground },
-    fundLabel: { fontSize: 13, fontFamily: FONT, fontWeight: 700, color: c.foreground },
     rule: { height: 1, backgroundColor: brand, marginTop: 6 },
 
     subtitleRow: {
@@ -129,14 +113,14 @@ export function BudgetReport({
     ocAddress: { fontSize: 9, color: c.foreground, marginTop: 4, letterSpacing: 0.3 },
     period: { fontSize: 11, fontFamily: FONT, fontWeight: 700, color: brand },
 
-    // ── Section header ──
+    // ── Section header (no icon , the brand rule above is the only
+    //    decoration; section title sits flush-left so the table stays
+    //    aligned with the page edge). ──
     sectionRow: {
       flexDirection: "row",
       alignItems: "flex-end",
-      marginTop: 40,
-      gap: 14,
+      marginTop: 32,
     },
-    sectionIcon: { width: 26, height: 26 },
     sectionHeader: { flexDirection: "row", flex: 1, alignItems: "flex-end" },
     sectionTitle: { fontSize: 14, fontFamily: FONT, fontWeight: 700, color: c.foreground, flex: 1 },
     columnHead: {
@@ -153,16 +137,14 @@ export function BudgetReport({
     item: {
       flexDirection: "row",
       paddingVertical: 4,
-      paddingLeft: 40, // matches the icon's right edge so item names line up
     },
     itemName: { flex: 1, fontSize: 9, color: c.foreground },
     itemAmount: { width: 110, fontSize: 9, color: c.foreground, textAlign: "right" as const },
 
-    totalRule: { height: 1, backgroundColor: c.hairline, marginTop: 8, marginLeft: 40 },
+    totalRule: { height: 1, backgroundColor: c.hairline, marginTop: 8 },
     totalRow: {
       flexDirection: "row",
       paddingTop: 8,
-      paddingLeft: 40,
     },
     totalLabel: { flex: 1, fontSize: 10, fontFamily: FONT, fontWeight: 700, color: c.foreground },
     totalValue: { width: 110, fontSize: 10, fontFamily: FONT, fontWeight: 700, color: c.foreground, textAlign: "right" as const },
@@ -172,15 +154,13 @@ export function BudgetReport({
       height: 1,
       backgroundColor: c.border,
       marginTop: 28,
-      marginHorizontal: 40,
     },
 
     // ── Grand total (multi-fund) ──
-    grandTotalRule: { height: 2, backgroundColor: brand, marginTop: 28, marginLeft: 40 },
+    grandTotalRule: { height: 2, backgroundColor: brand, marginTop: 28 },
     grandTotalRow: {
       flexDirection: "row",
       paddingTop: 10,
-      paddingLeft: 40,
     },
     grandTotalLabel: { flex: 1, fontSize: 12, fontFamily: FONT, fontWeight: 700, color: brand },
     grandTotalValue: { width: 110, fontSize: 12, fontFamily: FONT, fontWeight: 700, color: brand, textAlign: "right" as const },
@@ -188,7 +168,6 @@ export function BudgetReport({
     // ── Approval note ──
     noteSection: {
       marginTop: 24,
-      marginLeft: 40,
       paddingVertical: 8,
       paddingHorizontal: 10,
       backgroundColor: c.stripe,
@@ -220,27 +199,46 @@ export function BudgetReport({
   return (
     <Document>
       <Page size="A4" style={s.page}>
-        {/* ── Title + fund label ── */}
-        <View style={s.titleRow}>
-          <View style={s.titleLeft}>
-            <Text style={s.docTitle}>Proposed Annual Budget</Text>
+        {/* ── Management-company letterhead , logo + company name +
+            contact lines on the left, fund label on the right. ── */}
+        <View style={s.letterhead}>
+          <View style={s.letterheadLeft}>
+            {managementCompany.logo_url ? (
+              <Image src={managementCompany.logo_url} style={s.headerLogo} />
+            ) : null}
+            <Text style={s.companyName}>{managementCompany.name}</Text>
+            {managementCompany.address ? (
+              <Text style={s.companyMeta}>{managementCompany.address}</Text>
+            ) : null}
+            {(managementCompany.phone || managementCompany.email) ? (
+              <Text style={s.companyMeta}>
+                {[managementCompany.phone, managementCompany.email].filter(Boolean).join("  ·  ")}
+              </Text>
+            ) : null}
+            {managementCompany.abn ? (
+              <Text style={s.companyMeta}>ABN {managementCompany.abn}</Text>
+            ) : null}
           </View>
-          <View style={s.titleRight}>
+          <View style={s.letterheadRight}>
             <Text style={s.fundLabel}>{fundLabel}</Text>
+            <Text style={[s.companyMeta, { marginTop: 4 }]}>{periodCopy}</Text>
           </View>
+        </View>
+
+        {/* ── Document title ── */}
+        <View style={s.titleBlock}>
+          <Text style={s.docTitle}>Budget Breakdown</Text>
         </View>
         <View style={s.rule} />
 
         {/* ── OC subtitle ── */}
-        <View style={s.subtitleRow}>
-          <View style={{ flex: 1 }}>
-            <Text style={s.ocName}>
-              {oc.name}
-              {oc.plan_number ? ` , ${oc.plan_number}` : ""}
-            </Text>
-            <Text style={s.ocAddress}>{oc.address}</Text>
-          </View>
-          <Text style={s.period}>{periodCopy}</Text>
+        <View style={{ marginTop: 12 }}>
+          <Text style={{ fontSize: 12, fontFamily: FONT, fontWeight: 700, color: brand }}>
+            {oc.name}{oc.plan_number ? ` , ${oc.plan_number}` : ""}
+          </Text>
+          <Text style={{ fontSize: 9, color: c.foreground, marginTop: 4, letterSpacing: 0.3 }}>
+            {oc.address}
+          </Text>
         </View>
 
         {/* ── Expenditure sections , one per fund when multi-fund. ── */}
@@ -256,15 +254,12 @@ export function BudgetReport({
             <View key={fundKey} wrap={false}>
               {idx > 0 && <View style={s.fundSeparator} />}
               <View style={s.sectionRow}>
-                <View style={s.sectionIcon}>
-                  <SectionIcon color={accent} />
-                </View>
                 <View style={s.sectionHeader}>
                   <Text style={s.sectionTitle}>{sectionTitle}</Text>
                   <Text style={s.columnHead}>Amount</Text>
                 </View>
               </View>
-              <View style={[s.sectionUnderline, { marginLeft: 40 }]} />
+              <View style={s.sectionUnderline} />
 
               {bucket.items.map((it, i) => (
                 <View key={i} style={s.item}>

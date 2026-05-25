@@ -5,6 +5,11 @@
 export interface ManagementCompany {
   name: string;
   logo_url?: string | null;
+  /** Optional contact lines printed under the logo on report PDFs. */
+  address?: string | null;
+  phone?: string | null;
+  email?: string | null;
+  abn?: string | null;
 }
 
 export interface OC {

@@ -5,9 +5,9 @@ import { useRouter } from "next/navigation";
 import { ChevronDown, Plus, X, Loader2 } from "lucide-react";
 import { formatDayMonthShort } from "@/lib/utils";
 import { toast } from "sonner";
+import { cn } from "@/lib/utils";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
 import { NumberInput } from "@/components/ui/number-input";
 import { DatePicker } from "@/components/shared/date-picker";
 import {
@@ -26,6 +26,14 @@ import {
 } from "@/lib/actions/levy";
 import type { BudgetWithItems } from "@/lib/actions/budget";
 import { useOCCode } from "@/lib/oc-context";
+
+interface CoaOption {
+  id: string;
+  code: string;
+  name: string;
+}
+
+type LevyKind = "regular" | "special";
 
 const formatCurrency = (n: number) =>
   new Intl.NumberFormat("en-AU", { style: "currency", currency: "AUD" }).format(n);
@@ -58,14 +66,16 @@ function LotRow({
   onUpdateAdjustment,
   onAddAdjustment,
   onRemoveAdjustment,
+  coaOptions,
   locked,
 }: {
-  lot: LevyPreviewLot & { adjustments?: { description: string; amount: number }[] };
+  lot: LevyPreviewLot & { adjustments?: { description: string; amount: number; coa_account_id: string | null }[] };
   isOpen: boolean;
   onToggle: () => void;
-  onUpdateAdjustment: (adjIndex: number, field: "description" | "amount", value: string | number) => void;
+  onUpdateAdjustment: (adjIndex: number, field: "description" | "amount" | "coa_account_id", value: string | number) => void;
   onAddAdjustment: () => void;
   onRemoveAdjustment: (adjIndex: number) => void;
+  coaOptions: CoaOption[];
   locked: boolean;
 }) {
   const baseTotal = lot.items.reduce((s, i) => s + i.amount, 0);
@@ -96,37 +106,52 @@ function LotRow({
 
       {isOpen && (
         <div className="px-4 pb-4 pl-11">
-          {/* Compact table , smaller text + tighter padding so the
-              levy-breakdown UI stays scan-able. */}
+          {/* Compact table , extra-small text + minimal padding because
+              this whole table sits inside a per-lot dropdown. */}
           <div className="overflow-hidden rounded-md border border-border">
-            <Table variant="bordered" className="text-xs">
+            <Table variant="bordered" className="text-[11px]">
               <TableHeader>
                 <TableRow>
-                  <TableHead className="py-1.5">Description</TableHead>
-                  <TableHead className="py-1.5 w-[120px] text-right">Amount</TableHead>
-                  <TableHead className="py-1.5 w-[36px]" />
+                  <TableHead className="py-1 text-[11px]">Description</TableHead>
+                  <TableHead className="py-1 w-[110px] text-right text-[11px]">Amount</TableHead>
+                  <TableHead className="py-1 w-[32px]" />
                 </TableRow>
               </TableHeader>
               <TableBody>
                 {lot.items.map((item, i) => (
                   <TableRow key={`base-${i}`}>
-                    <TableCell className="py-1.5 text-foreground">{item.description}</TableCell>
-                    <TableCell className="py-1.5 text-right tabular-nums text-foreground">{formatCurrency(item.amount)}</TableCell>
-                    <TableCell className="py-1.5" />
+                    <TableCell className="py-1 text-foreground">{item.description}</TableCell>
+                    <TableCell className="py-1 text-right tabular-nums text-foreground">{formatCurrency(item.amount)}</TableCell>
+                    <TableCell className="py-1" />
                   </TableRow>
                 ))}
                 {(lot.adjustments ?? []).map((adj, i) => (
                   <TableRow key={`adj-${i}`}>
-                    <TableCell className="py-1">
-                      <Input
-                        value={adj.description}
-                        onChange={(e) => onUpdateAdjustment(i, "description", e.target.value)}
-                        placeholder="Description"
+                    <TableCell className="py-0.5">
+                      <Select
+                        value={adj.coa_account_id ?? ""}
+                        onValueChange={(v) => onUpdateAdjustment(i, "coa_account_id", v ?? "")}
                         disabled={locked}
-                        className="h-7 text-xs"
-                      />
+                      >
+                        <SelectTrigger className="h-7 text-[11px]">
+                          <SelectValue placeholder="Pick a CoA account">
+                            {adj.description || null}
+                          </SelectValue>
+                        </SelectTrigger>
+                        <SelectContent>
+                          {coaOptions.length === 0 ? (
+                            <div className="px-2 py-1.5 text-xs text-muted-foreground">No CoA accounts available</div>
+                          ) : (
+                            coaOptions.map((c) => (
+                              <SelectItem key={c.id} value={c.id}>
+                                {c.code} , {c.name}
+                              </SelectItem>
+                            ))
+                          )}
+                        </SelectContent>
+                      </Select>
                     </TableCell>
-                    <TableCell className="py-1">
+                    <TableCell className="py-0.5">
                       <NumberInput
                         value={adj.amount ? String(adj.amount) : ""}
                         onChange={(v) => onUpdateAdjustment(i, "amount", parseFloat(v) || 0)}
@@ -137,7 +162,7 @@ function LotRow({
                         disabled={locked}
                       />
                     </TableCell>
-                    <TableCell className="py-1">
+                    <TableCell className="py-0.5">
                       {!locked && (
                         <button
                           type="button"
@@ -154,9 +179,9 @@ function LotRow({
               </TableBody>
               <TableFooter>
                 <TableRow>
-                  <TableCell className="py-1.5 font-semibold text-foreground">Total</TableCell>
-                  <TableCell className="py-1.5 text-right font-bold tabular-nums text-foreground">{formatCurrency(totalAmount)}</TableCell>
-                  <TableCell className="py-1.5" />
+                  <TableCell className="py-1 font-semibold text-foreground">Total</TableCell>
+                  <TableCell className="py-1 text-right font-bold tabular-nums text-foreground">{formatCurrency(totalAmount)}</TableCell>
+                  <TableCell className="py-1" />
                 </TableRow>
               </TableFooter>
             </Table>
@@ -182,22 +207,28 @@ function LotRow({
 // ─── Main Form ─────────────────────────────────────────────
 
 interface AdjustedLot extends LevyPreviewLot {
-  adjustments: { description: string; amount: number }[];
+  adjustments: { description: string; amount: number; coa_account_id: string | null }[];
 }
 
 export function GenerateLeviesForm({
   ocId,
   budgets,
   periodsByBudgetId,
+  coaOptions,
 }: {
   ocId: string;
   budgets: BudgetWithItems[];
   // Pre-loaded on the server so the period dropdown is instant; the form
   // does NOT make a fetch on budget selection.
   periodsByBudgetId: Record<string, AvailablePeriod[]>;
+  coaOptions: CoaOption[];
 }) {
   const ocCode = useOCCode();
   const router = useRouter();
+  // Step 1: pick the levy kind. Regular = budget-driven quarterly/annual
+  // levies; Special = one-off levy for a specific purpose (paint job,
+  // legal action, etc) that the budget doesn't cover.
+  const [levyKind, setLevyKind] = useState<LevyKind | null>(null);
   const [selectedBudgetId, setSelectedBudgetId] = useState<string>("");
   const [selectedPeriodIndex, setSelectedPeriodIndex] = useState<string>("");
   const [preview, setPreview] = useState<LevyPreviewData | null>(null);
@@ -252,12 +283,22 @@ export function GenerateLeviesForm({
     }
   }
 
-  const updateAdjustment = useCallback((lotId: string, adjIndex: number, field: "description" | "amount", value: string | number) => {
+  const updateAdjustment = useCallback((lotId: string, adjIndex: number, field: "description" | "amount" | "coa_account_id", value: string | number) => {
     setLots((prev) =>
       prev.map((lot) => {
         if (lot.lot_id !== lotId) return lot;
         const newAdj = [...lot.adjustments];
-        if (field === "description") {
+        if (field === "coa_account_id") {
+          // CoA pick drives BOTH the stored id AND the user-facing
+          // description ("4310 , Window cleaning") so the ledger entry
+          // and the levy notice describe the same line. No free text.
+          const coa = coaOptions.find((c) => c.id === String(value));
+          newAdj[adjIndex] = {
+            ...newAdj[adjIndex],
+            coa_account_id: coa?.id ?? null,
+            description: coa ? `${coa.code} , ${coa.name}` : "",
+          };
+        } else if (field === "description") {
           newAdj[adjIndex] = { ...newAdj[adjIndex], description: String(value) };
         } else {
           newAdj[adjIndex] = { ...newAdj[adjIndex], amount: Number(value) || 0 };
@@ -265,13 +306,13 @@ export function GenerateLeviesForm({
         return { ...lot, adjustments: newAdj };
       })
     );
-  }, []);
+  }, [coaOptions]);
 
   const addAdjustment = useCallback((lotId: string) => {
     setLots((prev) =>
       prev.map((lot) =>
         lot.lot_id === lotId
-          ? { ...lot, adjustments: [...lot.adjustments, { description: "", amount: 0 }] }
+          ? { ...lot, adjustments: [...lot.adjustments, { description: "", amount: 0, coa_account_id: null }] }
           : lot
       )
     );
@@ -303,8 +344,16 @@ export function GenerateLeviesForm({
         const allItems = [
           ...lot.items.map((item) => ({ ...item, is_adjustment: false })),
           ...lot.adjustments
-            .filter((a) => a.description && a.amount !== 0)
-            .map((a) => ({ ...a, budget_item_id: null, is_adjustment: true })),
+            // Adjustments require both a CoA pick AND a non-zero amount,
+            // so the ledger can post the entry against a real account.
+            .filter((a) => a.coa_account_id && a.amount !== 0)
+            .map((a) => ({
+              description: a.description,
+              amount: a.amount,
+              coa_account_id: a.coa_account_id,
+              budget_item_id: null,
+              is_adjustment: true,
+            })),
         ];
         const totalAmount = allItems.reduce((sum, item) => sum + item.amount, 0);
         return {
@@ -331,10 +380,82 @@ export function GenerateLeviesForm({
     return sum + lotTotal;
   }, 0);
 
+  // Step 0: the manager picks the kind of levy first. Until they do,
+  // nothing else renders , keeps the page from looking busy with
+  // controls they haven't committed to using yet.
+  if (!levyKind) {
+    return (
+      <div className="space-y-6">
+        <Card>
+          <CardContent className="pt-5 space-y-3">
+            <Label>What kind of levy?</Label>
+            <div className="grid gap-3 sm:grid-cols-2">
+              <button
+                type="button"
+                onClick={() => setLevyKind("regular")}
+                className={cn(
+                  "rounded-md border border-border bg-card p-4 text-left transition-colors hover:border-foreground/30 cursor-pointer",
+                )}
+              >
+                <div className="text-sm font-semibold text-foreground">Regular levy</div>
+                <p className="mt-1 text-xs text-muted-foreground">
+                  Budget-driven contribution. Quarterly / annual issuance from an approved budget.
+                </p>
+              </button>
+              <button
+                type="button"
+                onClick={() => setLevyKind("special")}
+                className={cn(
+                  "rounded-md border border-border bg-card p-4 text-left transition-colors hover:border-foreground/30 cursor-pointer",
+                )}
+              >
+                <div className="text-sm font-semibold text-foreground">Special levy</div>
+                <p className="mt-1 text-xs text-muted-foreground">
+                  One-off raise outside the budget (paint job, legal action, insurance shortfall, etc).
+                </p>
+              </button>
+            </div>
+          </CardContent>
+        </Card>
+      </div>
+    );
+  }
+
+  if (levyKind === "special") {
+    // Special-levy flow lives in a sibling component once it's built.
+    // Until then, surface a placeholder so this page doesn't look broken
+    // when the manager picks it , they can hit Back and choose Regular.
+    return (
+      <div className="space-y-6">
+        <Card>
+          <CardContent className="pt-5 space-y-3">
+            <Label>Special levy</Label>
+            <p className="text-sm text-muted-foreground">
+              The dedicated special-levy wizard is coming soon. For now, raise a regular levy and attach the special-purpose line as an adjustment.
+            </p>
+            <div>
+              <Button variant="secondary" size="sm" onClick={() => setLevyKind(null)}>
+                Back
+              </Button>
+            </div>
+          </CardContent>
+        </Card>
+      </div>
+    );
+  }
+
   return (
     <div className="space-y-6">
       <Card>
         <CardContent className="pt-5 space-y-4">
+          <div className="flex items-center justify-between">
+            <span className="text-xs uppercase tracking-wide text-muted-foreground">
+              Regular levy
+            </span>
+            <Button variant="secondary" size="sm" onClick={() => setLevyKind(null)} disabled={generating}>
+              Change levy kind
+            </Button>
+          </div>
           <div className="space-y-1.5">
             <Label>Budget</Label>
             {budgets.length === 0 ? (
@@ -437,6 +558,7 @@ export function GenerateLeviesForm({
                     onUpdateAdjustment={(i, f, v) => updateAdjustment(lot.lot_id, i, f, v)}
                     onAddAdjustment={() => addAdjustment(lot.lot_id)}
                     onRemoveAdjustment={(i) => removeAdjustment(lot.lot_id, i)}
+                    coaOptions={coaOptions}
                     locked={generating}
                   />
                 ))}

@@ -73,7 +73,7 @@ export async function GET(
 
   const { data: company } = await supabase
     .from("management_companies")
-    .select("name, logo_url, brand_color, brand_color_secondary")
+    .select("name, logo_url, brand_color, brand_color_secondary, address, phone, email, abn")
     .eq("id", oc.management_company_id)
     .maybeSingle();
 
@@ -99,6 +99,10 @@ export async function GET(
     managementCompany: {
       name: company?.name ?? "StrataWise",
       logo_url: company?.logo_url ?? null,
+      address: company?.address ?? null,
+      phone: company?.phone ?? null,
+      email: company?.email ?? null,
+      abn: company?.abn ?? null,
     },
     oc: {
       name: oc.name,

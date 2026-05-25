@@ -4,7 +4,7 @@ import { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import {
   ArrowLeft, CheckCircle2, ChevronDown, Download, Mail, Trash2, FolderDown,
-  DollarSign, Undo2, RefreshCw, AlertTriangle, Loader2,
+  Undo2, RefreshCw, AlertTriangle, Loader2, Send,
 } from "lucide-react";
 import { format } from "date-fns";
 import { formatDateLong } from "@/lib/utils";
@@ -31,8 +31,8 @@ import {
   markLevySent,
   cancelBatch,
   recallBatch,
-  markBatchPaid,
   regenerateBatch,
+  sendBatchByPost,
   type LevyBatchDetail,
 } from "@/lib/actions/levy";
 import { useOCCode } from "@/lib/oc-context";
@@ -65,13 +65,12 @@ export function BatchDetailContent({
   const [downloadingZip, startDownload] = useTransition();
   const [cancelling, setCancelling] = useState(false);
   const [recalling, setRecalling] = useState(false);
-  const [markingPaid, setMarkingPaid] = useState(false);
+  const [posting, setPosting] = useState(false);
 
   // Per-row pending state
   const [sendingIds, setSendingIds] = useState<Set<string>>(new Set());
 
   // Confirmation dialogs
-  const [showMarkPaidConfirm, setShowMarkPaidConfirm] = useState(false);
   const [showRegenerate, setShowRegenerate] = useState(false);
   const [showRegenConfirm, setShowRegenConfirm] = useState(false);
   const [showRecallConfirm, setShowRecallConfirm] = useState(false);
@@ -147,18 +146,18 @@ export function BatchDetailContent({
     }
   }
 
-  async function handleMarkPaid() {
-    setMarkingPaid(true);
-    const result = await markBatchPaid(ocId, batch.id);
-    setMarkingPaid(false);
-    setShowMarkPaidConfirm(false);
-    if (result.success) {
-      toast.success("All levies marked as paid");
-      setBatch((prev) => ({
-        ...prev,
-        levies: prev.levies.map((l) => ({ ...l, status: "paid" })),
-      }));
+  async function handleSendByPost() {
+    setPosting(true);
+    const result = await sendBatchByPost(ocId, batch.id);
+    setPosting(false);
+    if (result.error) {
+      toast.error(result.error);
+      return;
     }
+    const banner = `${result.sentCount ?? 0} letter${result.sentCount === 1 ? "" : "s"} ${result.testMode ? "queued (test mode , no real mail)" : "posted"}${result.skippedCount ? ` · ${result.skippedCount} skipped (missing postal address)` : ""}`;
+    if (result.testMode) toast.success(banner);
+    else toast.success(banner);
+    router.refresh();
   }
 
   async function handleCancel() {
@@ -212,6 +211,7 @@ export function BatchDetailContent({
   const allLeviesForDialog = batch.levies.map(toLevyRow);
   const fundLabel = batch.fund_type === "administrative" ? "Administrative Fund" : "Capital Works Fund";
   const hasPaidLevies = batch.levies.some((l) => l.status === "paid");
+  const canRecall = (batch.status === "sent" || batch.status === "partially_sent") && !hasPaidLevies;
 
   return (
     <div className="space-y-6">
@@ -240,50 +240,60 @@ export function BatchDetailContent({
         </div>
 
         <div className="flex flex-wrap items-center gap-2">
-          {draftCount > 0 && (
-            <>
-              <Button onClick={() => setEmailDialogOpen(true)} size="sm">
-                <Mail className="size-3.5" />
-                Send by email ({draftCount})
-              </Button>
-              <Button onClick={handleSendAll} disabled={sendingAll} size="sm" variant="outline">
-                {sendingAll ? <Loader2 className="size-3.5 animate-spin" /> : <CheckCircle2 className="size-3.5" />}
-                Mark all as sent
-              </Button>
-            </>
-          )}
-          {draftCount === 0 && batch.levies.length > 0 && (
-            <Button onClick={() => setResendDialogOpen(true)} size="sm" variant="outline">
+          {draftCount > 0 ? (
+            <Button onClick={() => setEmailDialogOpen(true)} size="sm">
+              <Mail className="size-3.5" />
+              Send by email ({draftCount})
+            </Button>
+          ) : batch.levies.length > 0 ? (
+            <Button onClick={() => setResendDialogOpen(true)} size="sm">
               <Mail className="size-3.5" />
               Resend all by email
             </Button>
-          )}
-          <Button onClick={handleDownloadAllZip} disabled={downloadingZip} size="sm" variant="outline">
-            {downloadingZip ? <Loader2 className="size-3.5 animate-spin" /> : <FolderDown className="size-3.5" />}
-            Download all
-          </Button>
-          {batch.status === "draft" && (
-            <Button
-              onClick={() => setShowCancelConfirm(true)}
-              size="sm"
-              variant="ghost"
-              className="text-destructive hover:text-destructive"
-            >
-              <Trash2 className="size-3.5" />
-              Cancel batch
-            </Button>
-          )}
+          ) : null}
 
-          {/* Advanced actions , Popover-backed menu. The Base UI Menu
-              primitive's Trigger.render slot was throwing error #31 in
-              production (ref forwarding issue with our Button); a Popover
-              + plain buttons sidesteps the whole render-slot machinery. */}
+          {/* Single Actions menu bundles every batch-level operation:
+              mark sent, download zip, regenerate, recall, cancel. Popover
+              over Base UI Menu primitive (the Menu Trigger render slot
+              kept throwing error #31 with our Button). */}
           <Popover>
             <PopoverTrigger className="inline-flex h-8 items-center justify-center gap-1.5 rounded-md border border-border bg-card px-3 text-sm font-medium text-foreground hover:bg-muted cursor-pointer">
-              Advanced
+              Actions
               <ChevronDown className="size-3.5" />
             </PopoverTrigger>
             <PopoverContent className="w-56 p-1" align="end" showBackdrop={false}>
+              {draftCount > 0 && (
+                <button
+                  type="button"
+                  onClick={handleSendAll}
+                  disabled={sendingAll}
+                  className="flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-sm text-foreground hover:bg-muted cursor-pointer disabled:opacity-50"
+                >
+                  {sendingAll ? <Loader2 className="size-3.5 animate-spin" /> : <CheckCircle2 className="size-3.5" />}
+                  Mark all as sent
+                </button>
+              )}
+              <button
+                type="button"
+                onClick={handleDownloadAllZip}
+                disabled={downloadingZip}
+                className="flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-sm text-foreground hover:bg-muted cursor-pointer disabled:opacity-50"
+              >
+                {downloadingZip ? <Loader2 className="size-3.5 animate-spin" /> : <FolderDown className="size-3.5" />}
+                Download all
+              </button>
+              {/* PostGrid is wired but defaults to test mode , no real
+                  letters get printed until POSTGRID_LIVE=true. The toast
+                  will say "test mode" so managers know. */}
+              <button
+                type="button"
+                onClick={handleSendByPost}
+                disabled={posting}
+                className="flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-sm text-foreground hover:bg-muted cursor-pointer disabled:opacity-50"
+              >
+                {posting ? <Loader2 className="size-3.5 animate-spin" /> : <Send className="size-3.5" />}
+                Send by post (test)
+              </button>
               <button
                 type="button"
                 onClick={() => { setRegenDate(""); setShowRegenerate(true); }}
@@ -292,7 +302,7 @@ export function BatchDetailContent({
                 <RefreshCw className="size-3.5" />
                 Regenerate
               </button>
-              {(batch.status === "sent" || batch.status === "partially_sent") && !hasPaidLevies && (
+              {canRecall && (
                 <button
                   type="button"
                   onClick={() => setShowRecallConfirm(true)}
@@ -302,25 +312,18 @@ export function BatchDetailContent({
                   Recall batch
                 </button>
               )}
-              <div className="my-1 h-px bg-border" />
-              {batch.levies.some((l) => l.status !== "paid") ? (
-                <button
-                  type="button"
-                  onClick={() => setShowMarkPaidConfirm(true)}
-                  className="flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-sm text-destructive hover:bg-destructive/5 cursor-pointer"
-                >
-                  <DollarSign className="size-3.5" />
-                  Mark batch paid (legacy)
-                </button>
-              ) : (
-                <button
-                  type="button"
-                  disabled
-                  className="flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-sm text-muted-foreground cursor-not-allowed"
-                >
-                  <DollarSign className="size-3.5" />
-                  Mark batch paid (legacy)
-                </button>
+              {batch.status === "draft" && (
+                <>
+                  <div className="my-1 h-px bg-border" />
+                  <button
+                    type="button"
+                    onClick={() => setShowCancelConfirm(true)}
+                    className="flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-sm text-destructive hover:bg-destructive/5 cursor-pointer"
+                  >
+                    <Trash2 className="size-3.5" />
+                    Cancel batch
+                  </button>
+                </>
               )}
             </PopoverContent>
           </Popover>
@@ -435,13 +438,7 @@ export function BatchDetailContent({
                 dollar number column reads as a column-total, no separate
                 summary card needed. */}
             <div className="flex items-center justify-between border-t-2 border-foreground/20 px-4 py-3 text-sm">
-              <div className="flex items-center gap-3">
-                <span className="font-semibold text-foreground">Total</span>
-                <span className="text-xs text-muted-foreground">
-                  {batch.levy_count} {batch.levy_count === 1 ? "levy" : "levies"}
-                  {draftCount > 0 ? ` · ${draftCount} pending` : " · all sent"}
-                </span>
-              </div>
+              <span className="font-semibold text-foreground">Total</span>
               <span className="font-bold tabular-nums text-foreground">
                 {formatCurrency(batch.total_amount)}
               </span>
@@ -588,31 +585,6 @@ export function BatchDetailContent({
         </AlertDialogContent>
       </AlertDialog>
 
-      {/* Mark batch paid confirmation */}
-      <AlertDialog open={showMarkPaidConfirm} onOpenChange={setShowMarkPaidConfirm}>
-        <AlertDialogContent>
-          <AlertDialogHeader>
-            <AlertDialogTitle className="flex items-center gap-2">
-              <AlertTriangle className="h-4 w-4 text-destructive" />
-              Mark this batch as paid?
-            </AlertDialogTitle>
-            <AlertDialogDescription>
-              Legacy action. Prefer the reconciliation queue for new payments. Any ledger credits already covering these notices will trigger a coverage warning in the audit log.
-            </AlertDialogDescription>
-          </AlertDialogHeader>
-          <AlertDialogFooter>
-            <AlertDialogCancel>Cancel</AlertDialogCancel>
-            <AlertDialogAction
-              className="bg-destructive text-white hover:bg-destructive/90"
-              onClick={handleMarkPaid}
-              disabled={markingPaid}
-            >
-              {markingPaid && <Loader2 className="size-4 animate-spin" />}
-              Mark paid anyway
-            </AlertDialogAction>
-          </AlertDialogFooter>
-        </AlertDialogContent>
-      </AlertDialog>
     </div>
   );
 }

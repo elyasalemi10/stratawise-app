@@ -3,7 +3,7 @@
 import { useEffect, useRef, useState, useCallback, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import {
-  CheckCircle2, CircleDashed, Download, Loader2, Pencil, Plus, Trash2, X,
+  CheckCircle2, ChevronDown, CircleDashed, Download, Loader2, Pencil, Plus, Trash2, X,
 } from "lucide-react";
 import { toast } from "sonner";
 import { Card, CardContent } from "@/components/ui/card";
@@ -16,6 +16,8 @@ import { NumberInput } from "@/components/ui/number-input";
 import {
   Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle,
 } from "@/components/ui/dialog";
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
+import { cn } from "@/lib/utils";
 import {
   Table, TableBody, TableCell, TableFooter, TableHead, TableHeader, TableRow,
 } from "@/components/ui/table";
@@ -115,6 +117,8 @@ interface DraftItem {
   category_id: string | null;
   description: string;
   amount: string;
+  /** Which fund this line belongs to. Null on legacy single-fund rows. */
+  fund_type: "administrative" | "capital_works" | "maintenance_plan" | null;
 }
 
 export function BudgetDetailContent({
@@ -142,6 +146,13 @@ export function BudgetDetailContent({
     { label: `${fundLabel}, ${budget.financial_year}`, href: null },
   ]);
 
+  // Tab state for multi-fund budgets , picks which fund to render in the
+  // items table. Defaults to the first fund the budget covers; "all"
+  // shows every fund together (useful for editing across funds at once).
+  const [activeFund, setActiveFund] = useState<"all" | string>(
+    funds.length > 1 ? (funds[0] ?? "all") : "all",
+  );
+
   const [editing, setEditing] = useState(false);
   // Saved snapshot we restore to when the user hits Cancel. Built once from
   // the server-supplied budget and refreshed after every successful save.
@@ -152,6 +163,7 @@ export function BudgetDetailContent({
       category_id: it.category_id,
       description: it.description || it.category_name,
       amount: String(it.amount),
+      fund_type: it.fund_type,
     })),
   []);
   const savedItemsRef = useRef<DraftItem[]>(buildSnapshot(budget));
@@ -171,15 +183,29 @@ export function BudgetDetailContent({
 
   const accountById = new Map(allAccounts.map((a) => [a.id, a]));
 
-  const total = items.reduce((s, it) => s + (parseFloat(it.amount) || 0), 0);
+  // Filter items by the active fund tab. "all" = every fund. The total in
+  // the footer always reflects the visible slice so the manager sees the
+  // sub-total for the fund they're looking at.
+  const visibleItems = activeFund === "all"
+    ? items.map((it, idx) => ({ it, idx }))
+    : items.map((it, idx) => ({ it, idx })).filter(({ it }) => (it.fund_type ?? funds[0] ?? null) === activeFund);
+  const total = visibleItems.reduce((s, { it }) => s + (parseFloat(it.amount) || 0), 0);
 
   const addItem = useCallback((account: CoaAccount) => {
     setItems((prev) => [
       ...prev,
-      { coa_account_id: account.id, category_id: null, description: account.name, amount: "" },
+      {
+        coa_account_id: account.id,
+        category_id: null,
+        description: account.name,
+        amount: "",
+        // New rows added under a specific fund tab inherit that fund; the
+        // "all" tab leaves it null and the user can re-tab to set it.
+        fund_type: activeFund === "all" ? null : (activeFund as DraftItem["fund_type"]),
+      },
     ]);
     setComboOpen(false);
-  }, []);
+  }, [activeFund]);
 
   function removeRow(i: number) {
     setItems((prev) => prev.filter((_, idx) => idx !== i));
@@ -196,6 +222,7 @@ export function BudgetDetailContent({
         category_id: it.category_id,
         description: it.description,
         amount: parseFloat(it.amount) || 0,
+        fund_type: it.fund_type ?? undefined,
       }))
       .filter((it) => it.amount > 0 && (it.coa_account_id || it.category_id));
     if (payload.length === 0) {
@@ -300,32 +327,56 @@ export function BudgetDetailContent({
           </div>
         </div>
         <div className="flex items-center gap-2">
-          <Button variant="secondary" onClick={downloadPdf} disabled={pdfPending}>
-            {pdfPending ? <Loader2 className="size-4 animate-spin" /> : <Download className="size-4" />}
-            Download PDF
-          </Button>
+          {/* Approve stays a top-level primary CTA because it's the
+              workflow's main action , everything else (download, edit,
+              delete) hides inside the Actions menu so the header doesn't
+              sprout five buttons. */}
           {isDraft && !editing && (
-            <Button variant="secondary" onClick={() => setEditing(true)}>
-              <Pencil className="size-4" />
-              Edit items
-            </Button>
-          )}
-          {isDraft && !editing && (
-            <Button onClick={() => { setApproveNote(""); setApproveOpen(true); }}>
-              <CheckCircle2 className="size-4" />
+            <Button onClick={() => { setApproveNote(""); setApproveOpen(true); }} size="sm">
+              <CheckCircle2 className="size-3.5" />
               Approve
             </Button>
           )}
-          {isDraft && !editing && (
-            <Button
-              variant="secondary"
-              onClick={() => setDeleteOpen(true)}
-              className="text-destructive hover:text-destructive"
-            >
-              <Trash2 className="size-4" />
-              Delete
-            </Button>
-          )}
+          <Popover>
+            <PopoverTrigger className="inline-flex h-8 items-center justify-center gap-1.5 rounded-md border border-border bg-card px-3 text-sm font-medium text-foreground hover:bg-muted cursor-pointer">
+              Actions
+              <ChevronDown className="size-3.5" />
+            </PopoverTrigger>
+            <PopoverContent className="w-48 p-1" align="end" showBackdrop={false}>
+              <button
+                type="button"
+                onClick={downloadPdf}
+                disabled={pdfPending}
+                className="flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-sm text-foreground hover:bg-muted cursor-pointer disabled:opacity-50"
+              >
+                {pdfPending ? <Loader2 className="size-3.5 animate-spin" /> : <Download className="size-3.5" />}
+                Download PDF
+              </button>
+              {isDraft && !editing && (
+                <button
+                  type="button"
+                  onClick={() => setEditing(true)}
+                  className="flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-sm text-foreground hover:bg-muted cursor-pointer"
+                >
+                  <Pencil className="size-3.5" />
+                  Edit items
+                </button>
+              )}
+              {isDraft && !editing && (
+                <>
+                  <div className="my-1 h-px bg-border" />
+                  <button
+                    type="button"
+                    onClick={() => setDeleteOpen(true)}
+                    className="flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-sm text-destructive hover:bg-destructive/5 cursor-pointer"
+                  >
+                    <Trash2 className="size-3.5" />
+                    Delete budget
+                  </button>
+                </>
+              )}
+            </PopoverContent>
+          </Popover>
         </div>
       </div>
 
@@ -338,6 +389,41 @@ export function BudgetDetailContent({
         </Card>
       )}
 
+      {/* Multi-fund line tabs , only render when the budget actually
+          spans more than one fund. Single-fund budgets keep the same
+          layout as before. */}
+      {funds.length > 1 && (
+        <div className="flex items-center gap-1 border-b border-border">
+          {funds.map((f) => (
+            <button
+              key={f}
+              type="button"
+              onClick={() => setActiveFund(f)}
+              className={cn(
+                "h-9 border-b-2 px-3 text-sm font-medium transition-colors cursor-pointer",
+                activeFund === f
+                  ? "border-primary text-foreground"
+                  : "border-transparent text-muted-foreground hover:text-foreground",
+              )}
+            >
+              {FUND_LABEL[f] ?? f}
+            </button>
+          ))}
+          <button
+            type="button"
+            onClick={() => setActiveFund("all")}
+            className={cn(
+              "h-9 border-b-2 px-3 text-sm font-medium transition-colors cursor-pointer",
+              activeFund === "all"
+                ? "border-primary text-foreground"
+                : "border-transparent text-muted-foreground hover:text-foreground",
+            )}
+          >
+            All funds
+          </button>
+        </div>
+      )}
+
       {/* Items */}
       <Card>
         <CardContent className="pt-5">
@@ -347,12 +433,15 @@ export function BudgetDetailContent({
                 <TableRow>
                   <TableHead className="w-28">Account code</TableHead>
                   <TableHead>Name</TableHead>
+                  {activeFund === "all" && funds.length > 1 && (
+                    <TableHead className="w-40">Fund</TableHead>
+                  )}
                   <TableHead className="w-[220px]">Annual amount</TableHead>
                   {editing && <TableHead className="w-12" />}
                 </TableRow>
               </TableHeader>
               <TableBody>
-                {items.map((item, i) => {
+                {visibleItems.map(({ it: item, idx: i }) => {
                   const account = item.coa_account_id ? accountById.get(item.coa_account_id) : null;
                   return (
                     <TableRow key={i}>
@@ -362,6 +451,11 @@ export function BudgetDetailContent({
                       <TableCell className="text-sm text-foreground">
                         {item.description}
                       </TableCell>
+                      {activeFund === "all" && funds.length > 1 && (
+                        <TableCell className="text-xs text-muted-foreground">
+                          {item.fund_type ? (FUND_LABEL[item.fund_type] ?? item.fund_type) : ""}
+                        </TableCell>
+                      )}
                       <TableCell>
                         {editing ? (
                           <NumberInput
@@ -393,7 +487,9 @@ export function BudgetDetailContent({
               </TableBody>
               <TableFooter>
                 <TableRow>
-                  <TableCell colSpan={2} className="text-sm font-semibold text-foreground">Total annual</TableCell>
+                  <TableCell colSpan={activeFund === "all" && funds.length > 1 ? 3 : 2} className="text-sm font-semibold text-foreground">
+                    {activeFund === "all" ? "Total annual" : `Total , ${FUND_LABEL[activeFund] ?? activeFund}`}
+                  </TableCell>
                   <TableCell className="text-sm font-bold tabular-nums text-foreground pl-6">{formatCurrency(total)}</TableCell>
                   {editing && <TableCell />}
                 </TableRow>

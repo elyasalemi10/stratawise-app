@@ -14,6 +14,7 @@ import { updateCompanyField, uploadCompanySignature } from "./actions";
 import { updateCompanyLogo } from "@/lib/actions/company-branding";
 import { MAX_LOGO_BYTES, MAX_LOGO_WIDTH, MAX_LOGO_HEIGHT } from "@/lib/actions/company-branding-constants";
 import { BrandColourPicker } from "@/components/shared/brand-colour-picker";
+import { PhoneInput } from "@/components/shared/phone-input";
 
 interface CompanyData {
   id: string;
@@ -135,7 +136,11 @@ function EditCompanyDrawer({
           </div>
           <div className="space-y-1.5">
             <Label htmlFor="ed-phone">Phone</Label>
-            <Input id="ed-phone" value={draft.phone} onChange={(e) => setDraft((p) => ({ ...p, phone: e.target.value }))} />
+            <PhoneInput
+              id="ed-phone"
+              value={draft.phone}
+              onChange={(v) => setDraft((p) => ({ ...p, phone: v }))}
+            />
           </div>
           <div className="space-y-1.5">
             <Label htmlFor="ed-email">Email</Label>
