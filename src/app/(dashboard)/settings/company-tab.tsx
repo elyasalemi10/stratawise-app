@@ -10,6 +10,7 @@ import { Label } from "@/components/ui/label";
 import { updateCompanyField, uploadCompanySignature } from "./actions";
 import { updateCompanyLogo } from "@/lib/actions/company-branding";
 import { MAX_LOGO_BYTES, MAX_LOGO_WIDTH, MAX_LOGO_HEIGHT } from "@/lib/actions/company-branding-constants";
+import { BrandColourPicker } from "@/components/shared/brand-colour-picker";
 
 interface CompanyData {
   id: string;
@@ -21,6 +22,7 @@ interface CompanyData {
   logo_url: string | null;
   registered_name: string | null;
   signature_url: string | null;
+  brand_color: string | null;
 }
 
 function EditableRow({
@@ -69,8 +71,21 @@ function EditableRow({
 export function CompanyTab({ company }: { company: CompanyData | null }) {
   const [logoUrl, setLogoUrl] = useState(company?.logo_url ?? null);
   const [signatureUrl, setSignatureUrl] = useState(company?.signature_url ?? null);
+  const [brandColor, setBrandColor] = useState(company?.brand_color ?? "");
   const [uploading, setUploading] = useState(false);
   const [uploadingSig, setUploadingSig] = useState(false);
+
+  async function saveBrandColor(hex: string) {
+    if (!company) return;
+    setBrandColor(hex);
+    const result = await updateCompanyField(company.id, "brand_color", hex || null);
+    if (result.error) {
+      toast.error(result.error);
+      setBrandColor(company.brand_color ?? "");
+    } else {
+      toast.success("Brand colour updated");
+    }
+  }
   const fileInputRef = useRef<HTMLInputElement>(null);
   const sigInputRef = useRef<HTMLInputElement>(null);
 
@@ -172,6 +187,20 @@ export function CompanyTab({ company }: { company: CompanyData | null }) {
                 className="hidden"
               />
             </div>
+          </div>
+        </CardContent>
+      </Card>
+
+      {/* Brand colour , drives levy + budget PDF accents (header strip,
+          page-bottom rule). */}
+      <Card>
+        <CardContent className="pt-5">
+          <h3 className="text-sm font-semibold text-foreground mb-4">Brand colour</h3>
+          <div className="flex items-center gap-4">
+            <BrandColourPicker value={brandColor} onChange={saveBrandColor} />
+            <p className="text-xs text-muted-foreground">
+              Click the swatch to pick a hex. Used on levy notices, budget reports, and other branded documents you generate.
+            </p>
           </div>
         </CardContent>
       </Card>

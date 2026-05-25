@@ -2,7 +2,6 @@
 // AND body HTML. Block shapes mirror the editor's capabilities. content_json
 // is the source of truth (loaded by the editor); body HTML is what the
 // marketing site renders.
-import { iconDataUri } from "./timeline-icons";
 
 export type AiBlock =
   | { type: "heading"; level?: 1 | 2 | 3; text: string }
@@ -13,7 +12,6 @@ export type AiBlock =
   | { type: "table"; headers: string[]; rows: string[][] }
   | { type: "image"; url: string; alt: string }
   | { type: "youtube"; url: string }
-  | { type: "timeline"; steps: { icon: string; title: string }[] }
   | { type: "divider" };
 
 export interface AiPost {
@@ -123,9 +121,6 @@ export function blocksToDoc(blocks: AiBlock[]): TNode {
         if (id) content.push({ type: "youtube", attrs: { src: `https://www.youtube.com/watch?v=${id}` } });
         break;
       }
-      case "timeline":
-        content.push({ type: "timeline", attrs: { items: (b.steps ?? []).map((s) => ({ icon: s.icon || "Rocket", title: s.title || "" })) } });
-        break;
       case "divider":
         content.push({ type: "horizontalRule" });
         break;
@@ -166,14 +161,6 @@ export function blocksToHtml(blocks: AiBlock[]): string {
       case "youtube": {
         const id = youtubeId(b.url);
         if (id) out.push(`<div data-youtube-video><iframe src="https://www.youtube-nocookie.com/embed/${id}" frameborder="0" allowfullscreen></iframe></div>`);
-        break;
-      }
-      case "timeline": {
-        const items = (b.steps ?? []).map((s) => ({ icon: s.icon || "Rocket", title: s.title || "" }));
-        const inner = items
-          .map((it) => `<div class="sw-timeline-item"><div class="sw-timeline-emoji"><img src="${iconDataUri(it.icon)}" alt="" width="20" height="20"></div><div class="sw-timeline-body"><div class="sw-timeline-title">${escapeHtml(it.title)}</div></div></div>`)
-          .join("");
-        out.push(`<div data-type="timeline" class="sw-timeline" data-items='${escapeHtml(JSON.stringify(items))}'>${inner}</div>`);
         break;
       }
       case "divider":

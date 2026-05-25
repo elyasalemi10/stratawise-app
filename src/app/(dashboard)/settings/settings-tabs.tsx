@@ -23,6 +23,7 @@ interface CompanyData {
   logo_url: string | null;
   registered_name: string | null;
   signature_url: string | null;
+  brand_color: string | null;
 }
 
 function TabsInner({

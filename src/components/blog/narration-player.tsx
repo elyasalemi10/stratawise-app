@@ -182,6 +182,17 @@ export function NarrationPlayer({
     const root = containerEl();
     if (!root) { activeRef.current = idx; return; }
 
+    // Continuous fill: each word's animation spans up to the NEXT word's
+    // start. The pen never pauses , it speeds up or slows down depending on
+    // how soon the next word lands.
+    function durationMs(i: number): number {
+      const w = words[i];
+      if (!w) return 400;
+      const next = words[i + 1];
+      const seconds = next ? Math.max(0.08, next.start - w.start) : Math.max(0.08, w.end - w.start);
+      return Math.round(seconds * 1000);
+    }
+
     if (idx > prev) {
       for (let i = prev + 1; i < idx; i++) {
         const els = root.querySelectorAll<HTMLElement>(`[data-narration-i="${i}"]`);
@@ -200,11 +211,10 @@ export function NarrationPlayer({
         });
       }
       if (idx >= 0 && idx < words.length) {
-        const w = words[idx];
-        const dur = Math.max(0.05, w.end - w.start);
+        const ms = durationMs(idx);
         const news = root.querySelectorAll<HTMLElement>(`[data-narration-i="${idx}"]`);
         news.forEach((el) => {
-          el.style.setProperty("--sw-fill-duration", `${Math.round(dur * 1000)}ms`);
+          el.style.setProperty("--sw-fill-duration", `${ms}ms`);
           void el.offsetWidth;
           el.classList.add("sw-word-current");
         });
@@ -218,11 +228,10 @@ export function NarrationPlayer({
         });
       }
       if (idx >= 0 && idx < words.length) {
-        const w = words[idx];
-        const dur = Math.max(0.05, w.end - w.start);
+        const ms = durationMs(idx);
         const news = root.querySelectorAll<HTMLElement>(`[data-narration-i="${idx}"]`);
         news.forEach((el) => {
-          el.style.setProperty("--sw-fill-duration", `${Math.round(dur * 1000)}ms`);
+          el.style.setProperty("--sw-fill-duration", `${ms}ms`);
           void el.offsetWidth;
           el.classList.add("sw-word-current");
         });

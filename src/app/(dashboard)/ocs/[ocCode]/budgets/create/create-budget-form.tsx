@@ -249,7 +249,7 @@ export function CreateBudgetForm({
     );
     if (empty.length > 0) {
       const labels = empty.map((f) => FUND_OPTIONS.find((o) => o.value === f)?.label).join(", ");
-      toast.error(`Add at least one budget item with an amount to: ${labels}.`);
+      toast.error(`Item amounts can't be 0. Set an amount on every line in: ${labels}.`);
       return;
     }
 
@@ -396,11 +396,12 @@ export function CreateBudgetForm({
                           </TableBody>
                           <TableFooter>
                             <TableRow>
-                              {/* Total label lives in the Code column so the
-                                  number column on the right reads as a clean
-                                  financial total, not a footnote in the
-                                  Account column. */}
-                              <TableCell colSpan={2} className="text-sm font-semibold text-foreground">Total annual</TableCell>
+                              {/* Total label sits in the Account column so the
+                                  dollar number on the right reads as a clean
+                                  financial total; right-aligned so it pulls
+                                  away from the account names below it. */}
+                              <TableCell />
+                              <TableCell className="text-sm font-semibold text-foreground text-right pr-6">Total annual</TableCell>
                               <TableCell className="text-sm font-bold text-foreground tabular-nums">{formatCurrency(total)}</TableCell>
                               <TableCell />
                             </TableRow>
@@ -464,7 +465,7 @@ export function CreateBudgetForm({
           disabled={pending || selectedFunds.length === 0 || selectedFunds.every((f) => fundTotal(f) === 0)}
         >
           {pending && <Loader2 className="size-4 animate-spin" />}
-          {selectedFunds.length > 1 ? `Create ${selectedFunds.length} budgets` : "Create budget"}
+          Create budget
         </Button>
       </div>
 

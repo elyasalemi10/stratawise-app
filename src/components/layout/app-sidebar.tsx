@@ -568,9 +568,14 @@ function NavUser({
           </>
         ) : (
           <>
-            <Avatar className="h-8 w-8 rounded-lg grayscale shrink-0">
+            {/* Profile card avatar. Prefers the user's own avatar; falls back
+                to the company logo (firm-level identity) and finally to the
+                initial. No greyscale filter , brand colours should show. */}
+            <Avatar className="h-8 w-8 rounded-lg shrink-0">
               {profile?.userAvatarUrl ? (
                 <AvatarImage src={profile.userAvatarUrl} alt="Avatar" />
+              ) : profile?.companyLogoUrl ? (
+                <AvatarImage src={profile.companyLogoUrl} alt="Company logo" />
               ) : null}
               <AvatarFallback className="rounded-lg">
                 {profile?.userInitials ?? "?"}
@@ -604,6 +609,8 @@ function NavUser({
             <Avatar className="h-8 w-8 rounded-lg shrink-0">
               {profile?.userAvatarUrl ? (
                 <AvatarImage src={profile.userAvatarUrl} alt="Avatar" />
+              ) : profile?.companyLogoUrl ? (
+                <AvatarImage src={profile.companyLogoUrl} alt="Company logo" />
               ) : null}
               <AvatarFallback className="rounded-lg">
                 {profile?.userInitials ?? "?"}
@@ -704,11 +711,28 @@ export function AppSidebar({
     return () => window.removeEventListener(SIDEBAR_REFRESH_EVENT, onRefresh);
   }, [initialProfile, initialOCs]);
 
-  // Detect oc context from URL. The URL segment is the 8-char
-  // short_code (post-rename); the variable suffix "Code" makes the shape
-  // obvious to future readers.
+  // Detect oc context from URL. When on an OC route we capture the code and
+  // stash it in sessionStorage so non-OC routes (/settings, /inbox, /chart-
+  // of-accounts) can keep showing the same OC nav. Settings is the obvious
+  // case: a manager fixing an OC's setting shouldn't lose the OC's context
+  // just because /settings is a top-level route.
   const ocMatch = pathname.match(/^\/ocs\/([^/]+)/);
-  const currentOCCode = ocMatch?.[1] ?? null;
+  const urlOCCode = ocMatch?.[1] ?? null;
+  const [stickyOCCode, setStickyOCCode] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    if (urlOCCode && urlOCCode !== "new") {
+      window.sessionStorage.setItem("sw_last_oc", urlOCCode);
+      setStickyOCCode(urlOCCode);
+    } else {
+      // Non-OC route , show the last OC's nav if we have one in session.
+      const cached = window.sessionStorage.getItem("sw_last_oc");
+      setStickyOCCode(cached ?? null);
+    }
+  }, [urlOCCode]);
+
+  const currentOCCode = urlOCCode ?? stickyOCCode;
   const isInOC = currentOCCode !== null && currentOCCode !== "new";
 
   // Find current oc via its code
@@ -838,9 +862,6 @@ export function AppSidebar({
                         </div>
                         <div className="flex-1 min-w-0 text-left">
                           <span className="block truncate font-medium">Main dashboard</span>
-                          <span className="block text-xs text-muted-foreground truncate">
-                            All OCs · overview
-                          </span>
                         </div>
                       </button>
                       <div className="relative mt-1">

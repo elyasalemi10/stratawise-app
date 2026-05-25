@@ -1,296 +1,227 @@
-import { Page, View, Text, Image, Document, StyleSheet } from "@react-pdf/renderer";
+import { Page, View, Text, Image, Document, StyleSheet, Svg, Path, Circle } from "@react-pdf/renderer";
 import type { BudgetReportProps } from "../types";
 import "../fonts";
 
-// Branded report-style budget. Three-section layout:
-//   1. Letterhead , firm logo on the left, document title + reference on
-//      the right, brand-color hairline underneath.
-//   2. Executive summary , the four numbers a strata manager actually
-//      cares about (total, item count, status, period) shown as a clean
-//      key-value strip, no chrome.
-//   3. Detail table , navy header strip (or brand color), striped rows,
-//      total row in bold.
-// Footer page numbers + a thin gold accent rule at the bottom.
-//
-// brand_color from management_companies feeds into brand1; if unset the
-// template falls back to SW midnight so firms without a brand still get a
-// polished doc.
+// Proposed Annual Budget report, single-fund layout. Visual reference is the
+// classic "Proposed Annual Budget" sheet used across the Australian strata
+// industry: title on the left + fund label on the right, brand-blue rule,
+// OC + period subtitle, address line, gold circle-arrow icon next to each
+// section header, right-aligned amount column, bold total row with a black
+// rule above. Builds in the firm's brand colour when set.
 
 const c = {
   foreground: "#1a1f2e",
   muted: "#6b7280",
   border: "#e2e5ea",
-  lightBg: "#f8f9fb",
-  stripe: "#f5f7fa",
+  hairline: "#0f0f0f",
   white: "#ffffff",
+  stripe: "#f5f7fa",
 };
 
 const FONT = "NunitoSans";
 
 function fmt(amount: number): string {
+  if (amount === 0) return "-";
   const abs = Math.abs(amount);
   const formatted = abs.toLocaleString("en-AU", {
     minimumFractionDigits: 2,
     maximumFractionDigits: 2,
   });
-  return amount < 0 ? `-$${formatted}` : `$${formatted}`;
+  return amount < 0 ? `(${formatted})` : formatted;
 }
 
-function fmtDate(date: Date | string): string {
-  const d = typeof date === "string" ? new Date(date) : date;
-  return d.toLocaleDateString("en-AU", { day: "numeric", month: "short", year: "numeric" });
+function fmtPeriodLong(financialYear: string): string {
+  // "2025-2026" → "1 July 2025 to 30 June 2026" (default VIC FY); falls back
+  // to a generic "1 July 2025 to 30 June 2026" pattern.
+  const [s, e] = financialYear.split("-").map((p) => parseInt(p, 10));
+  if (!s || !e) return financialYear;
+  return `1 July ${s} to 30 June ${e}`;
+}
+
+// Gold circle-with-arrow that flags each section header. Matches the
+// reference doc's visual rhythm of "icon → section heading → table".
+function SectionIcon({ color }: { color: string }) {
+  return (
+    <Svg width={26} height={26} viewBox="0 0 24 24">
+      <Circle cx={12} cy={12} r={11} stroke={color} strokeWidth={1.8} fill="none" />
+      <Path
+        d="M7 12 H15 M11 8 L15 12 L11 16"
+        stroke={color}
+        strokeWidth={1.8}
+        fill="none"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+    </Svg>
+  );
 }
 
 export function BudgetReport({
   managementCompany,
   oc,
-  referenceNumber,
-  date,
   financialYear,
   fundLabel,
-  status,
-  approvedAt,
   approvalNote,
   items,
   totalAmount,
   brandColors,
 }: BudgetReportProps) {
-  const brand1 = brandColors?.primary ?? "#0E314C";
-  const brand2 = brandColors?.secondary ?? "#CFA753";
+  const brand = brandColors?.primary ?? "#1e7ec0"; // azure default
+  const accent = brandColors?.secondary ?? "#E89A1A"; // gold for the section icon
 
   const s = StyleSheet.create({
     page: {
       fontFamily: FONT,
-      fontSize: 10,
+      fontSize: 9,
       color: c.foreground,
-      paddingTop: 28,
+      paddingTop: 50,
       paddingBottom: 40,
-      paddingHorizontal: 28,
+      paddingHorizontal: 56,
     },
 
     // ── Letterhead ──
-    letterhead: { flexDirection: "row", justifyContent: "space-between", alignItems: "flex-start" },
-    letterheadLeft: { maxWidth: 200 },
-    logo: { maxHeight: 56, maxWidth: 200, objectFit: "contain" as const },
-    firmName: { fontSize: 14, fontFamily: FONT, fontWeight: 700, color: c.foreground },
-    letterheadRight: { alignItems: "flex-end" as const, maxWidth: 280 },
-    docType: {
-      fontSize: 9,
-      letterSpacing: 1,
-      color: brand1,
-      fontFamily: FONT,
-      fontWeight: 700,
-      textTransform: "uppercase" as const,
+    titleRow: {
+      flexDirection: "row",
+      justifyContent: "space-between",
+      alignItems: "flex-start",
     },
-    title: {
-      fontSize: 22,
+    titleLeft: { flex: 1 },
+    titleRight: { alignItems: "flex-end" as const, maxWidth: 280 },
+    docTitle: { fontSize: 22, fontFamily: FONT, fontWeight: 600, color: c.foreground },
+    fundLabel: { fontSize: 13, fontFamily: FONT, fontWeight: 700, color: c.foreground },
+    rule: { height: 1, backgroundColor: brand, marginTop: 6 },
+
+    subtitleRow: {
+      flexDirection: "row",
+      justifyContent: "space-between",
+      alignItems: "flex-start",
+      marginTop: 12,
+    },
+    ocName: { fontSize: 12, fontFamily: FONT, fontWeight: 700, color: brand },
+    ocAddress: { fontSize: 9, color: c.foreground, marginTop: 4, letterSpacing: 0.3 },
+    period: { fontSize: 11, fontFamily: FONT, fontWeight: 700, color: brand },
+
+    // ── Section header ──
+    sectionRow: {
+      flexDirection: "row",
+      alignItems: "flex-end",
+      marginTop: 40,
+      gap: 14,
+    },
+    sectionIcon: { width: 26, height: 26 },
+    sectionHeader: { flexDirection: "row", flex: 1, alignItems: "flex-end" },
+    sectionTitle: { fontSize: 14, fontFamily: FONT, fontWeight: 700, color: c.foreground, flex: 1 },
+    columnHead: {
+      fontSize: 9,
       fontFamily: FONT,
       fontWeight: 700,
       color: c.foreground,
       textAlign: "right" as const,
-      marginTop: 2,
+      width: 110,
     },
-    subtitle: { fontSize: 10, color: c.muted, marginTop: 2, textAlign: "right" as const },
-    reference: { fontSize: 9, color: c.muted, marginTop: 4, textAlign: "right" as const },
-    brandRule: { height: 3, backgroundColor: brand1, marginTop: 16, marginHorizontal: -28 },
+    sectionUnderline: { height: 1, backgroundColor: c.hairline, marginTop: 6 },
 
-    // ── Executive summary strip ──
-    summaryRow: {
+    // ── Item rows ──
+    item: {
       flexDirection: "row",
-      marginTop: 18,
-      marginBottom: 16,
-      borderWidth: 1,
-      borderColor: c.border,
-      borderRadius: 4,
-      backgroundColor: c.lightBg,
+      paddingVertical: 4,
+      paddingLeft: 40, // matches the icon's right edge so item names line up
     },
-    summaryCell: {
-      flex: 1,
-      paddingVertical: 10,
-      paddingHorizontal: 12,
-      borderRightWidth: 1,
-      borderRightColor: c.border,
-    },
-    summaryCellLast: { flex: 1, paddingVertical: 10, paddingHorizontal: 12 },
-    summaryLabel: {
-      fontSize: 8,
-      letterSpacing: 0.5,
-      textTransform: "uppercase" as const,
-      color: c.muted,
-      fontFamily: FONT,
-      fontWeight: 600,
-    },
-    summaryValue: {
-      fontSize: 13,
-      fontFamily: FONT,
-      fontWeight: 700,
-      color: c.foreground,
-      marginTop: 4,
-    },
-    summaryValueAccent: {
-      fontSize: 13,
-      fontFamily: FONT,
-      fontWeight: 700,
-      color: brand1,
-      marginTop: 4,
-    },
+    itemName: { flex: 1, fontSize: 9, color: c.foreground },
+    itemAmount: { width: 110, fontSize: 9, color: c.foreground, textAlign: "right" as const },
 
-    // ── OC context ──
-    contextSection: { marginBottom: 14 },
-    contextHeading: {
-      fontSize: 8,
-      letterSpacing: 0.5,
-      textTransform: "uppercase" as const,
-      color: c.muted,
-      fontFamily: FONT,
-      fontWeight: 600,
-      marginBottom: 4,
+    totalRule: { height: 1, backgroundColor: c.hairline, marginTop: 8, marginLeft: 40 },
+    totalRow: {
+      flexDirection: "row",
+      paddingTop: 8,
+      paddingLeft: 40,
     },
-    contextLine: { fontSize: 10, color: c.foreground, fontFamily: FONT, fontWeight: 600 },
-    contextLineMuted: { fontSize: 9, color: c.muted, marginTop: 2 },
+    totalLabel: { flex: 1, fontSize: 10, fontFamily: FONT, fontWeight: 700, color: c.foreground },
+    totalValue: { width: 110, fontSize: 10, fontFamily: FONT, fontWeight: 700, color: c.foreground, textAlign: "right" as const },
 
     // ── Approval note ──
     noteSection: {
-      marginBottom: 14,
+      marginTop: 24,
+      marginLeft: 40,
       paddingVertical: 8,
       paddingHorizontal: 10,
-      backgroundColor: c.lightBg,
+      backgroundColor: c.stripe,
       borderLeftWidth: 3,
-      borderLeftColor: brand2,
+      borderLeftColor: brand,
       borderRadius: 2,
     },
-    noteLabel: { fontSize: 9, color: c.muted, marginBottom: 2 },
-    noteText: { fontSize: 10, color: c.foreground, lineHeight: 1.5 },
-
-    // ── Detail table ──
-    tableHeading: {
-      fontSize: 8,
-      letterSpacing: 0.5,
-      textTransform: "uppercase" as const,
-      color: c.muted,
-      fontFamily: FONT,
-      fontWeight: 600,
-      marginBottom: 6,
-    },
-    tableHeaderRow: {
-      flexDirection: "row",
-      backgroundColor: brand1,
-      paddingVertical: 10,
-      marginHorizontal: -28,
-      paddingLeft: 36,
-      paddingRight: 36,
-    },
-    th: { color: c.white, fontFamily: FONT, fontWeight: 700, fontSize: 10 },
-    thCode: { width: 60 },
-    thName: { flex: 1 },
-    thAmount: { width: 110, textAlign: "right" as const },
-
-    tableRow: {
-      flexDirection: "row",
-      paddingVertical: 7,
-      marginHorizontal: -28,
-      paddingLeft: 36,
-      paddingRight: 36,
-    },
-    tableRowStriped: {
-      flexDirection: "row",
-      paddingVertical: 7,
-      marginHorizontal: -28,
-      paddingLeft: 36,
-      paddingRight: 36,
-      backgroundColor: c.stripe,
-    },
-    cellCode: { width: 60, fontSize: 9, color: c.muted, fontFamily: FONT },
-    cellName: { flex: 1, fontSize: 10, color: c.foreground, fontFamily: FONT },
-    cellAmount: { width: 110, fontSize: 10, color: c.foreground, fontFamily: FONT, textAlign: "right" as const },
-
-    totalRow: {
-      flexDirection: "row",
-      marginHorizontal: -28,
-      paddingLeft: 36,
-      paddingRight: 36,
-      paddingVertical: 10,
-      borderTopWidth: 2,
-      borderTopColor: c.foreground,
-    },
-    totalLabel: { flex: 1, fontSize: 11, fontFamily: FONT, fontWeight: 700, color: c.foreground },
-    totalValue: { width: 110, fontSize: 12, fontFamily: FONT, fontWeight: 700, color: c.foreground, textAlign: "right" as const },
+    noteLabel: { fontSize: 8, color: c.muted, fontFamily: FONT, fontWeight: 600 },
+    noteText: { fontSize: 9, color: c.foreground, lineHeight: 1.5, marginTop: 2 },
 
     // ── Footer ──
     footer: {
       position: "absolute" as const,
-      bottom: 20,
-      left: 28,
-      right: 28,
+      bottom: 22,
+      left: 56,
+      right: 56,
       flexDirection: "row" as const,
       justifyContent: "space-between" as const,
-      paddingTop: 8,
+      paddingTop: 6,
       borderTopWidth: 1,
       borderTopColor: c.border,
     },
     footerText: { fontSize: 8, color: c.muted },
-    accentBar: {
-      position: "absolute" as const,
-      left: 0,
-      right: 0,
-      bottom: 0,
-      height: 3,
-      backgroundColor: brand2,
-    },
+    logoSlot: { maxHeight: 32, maxWidth: 120, objectFit: "contain" as const },
   });
 
-  const periodLabel = `${fundLabel}  ,  ${financialYear}`;
+  const periodCopy = fmtPeriodLong(financialYear);
 
   return (
     <Document>
       <Page size="A4" style={s.page}>
-        {/* ── Letterhead ── */}
-        <View style={s.letterhead}>
-          <View style={s.letterheadLeft}>
-            {managementCompany.logo_url ? (
-              <Image src={managementCompany.logo_url} style={s.logo} />
-            ) : (
-              <Text style={s.firmName}>{managementCompany.name}</Text>
-            )}
+        {/* ── Title + fund label ── */}
+        <View style={s.titleRow}>
+          <View style={s.titleLeft}>
+            <Text style={s.docTitle}>Proposed Annual Budget</Text>
           </View>
-          <View style={s.letterheadRight}>
-            <Text style={s.docType}>Annual Budget Report</Text>
-            <Text style={s.title}>{financialYear}</Text>
-            <Text style={s.subtitle}>{fundLabel}</Text>
-            <Text style={s.reference}>{referenceNumber}</Text>
+          <View style={s.titleRight}>
+            <Text style={s.fundLabel}>{fundLabel}</Text>
           </View>
         </View>
-        <View style={s.brandRule} />
+        <View style={s.rule} />
 
-        {/* ── Executive summary ── */}
-        <View style={s.summaryRow}>
-          <View style={s.summaryCell}>
-            <Text style={s.summaryLabel}>Total annual</Text>
-            <Text style={s.summaryValueAccent}>{fmt(totalAmount)}</Text>
+        {/* ── OC subtitle ── */}
+        <View style={s.subtitleRow}>
+          <View style={{ flex: 1 }}>
+            <Text style={s.ocName}>
+              {oc.name}
+              {oc.plan_number ? ` , ${oc.plan_number}` : ""}
+            </Text>
+            <Text style={s.ocAddress}>{oc.address}</Text>
           </View>
-          <View style={s.summaryCell}>
-            <Text style={s.summaryLabel}>Line items</Text>
-            <Text style={s.summaryValue}>{items.length}</Text>
-          </View>
-          <View style={s.summaryCell}>
-            <Text style={s.summaryLabel}>Status</Text>
-            <Text style={s.summaryValue}>{status === "approved" ? "Approved" : "Draft"}</Text>
-          </View>
-          <View style={s.summaryCellLast}>
-            <Text style={s.summaryLabel}>Period</Text>
-            <Text style={s.summaryValue}>{periodLabel}</Text>
-          </View>
+          <Text style={s.period}>{periodCopy}</Text>
         </View>
 
-        {/* ── OC context ── */}
-        <View style={s.contextSection}>
-          <Text style={s.contextHeading}>Owners Corporation</Text>
-          <Text style={s.contextLine}>{oc.name} {oc.plan_number}</Text>
-          <Text style={s.contextLineMuted}>{oc.address}</Text>
-          <Text style={s.contextLineMuted}>
-            Issued {fmtDate(date)}
-            {approvedAt ? `  ,  Approved ${fmtDate(approvedAt)}` : ""}
-          </Text>
+        {/* ── Expenditure section ── */}
+        <View style={s.sectionRow}>
+          <View style={s.sectionIcon}>
+            <SectionIcon color={accent} />
+          </View>
+          <View style={s.sectionHeader}>
+            <Text style={s.sectionTitle}>Expenditure</Text>
+            <Text style={s.columnHead}>Amount</Text>
+          </View>
+        </View>
+        <View style={[s.sectionUnderline, { marginLeft: 40 }]} />
+
+        {items.map((it, i) => (
+          <View key={i} style={s.item}>
+            <Text style={s.itemName}>
+              {it.code ? `${it.code}  ·  ` : ""}{it.description || it.name}
+            </Text>
+            <Text style={s.itemAmount}>{fmt(it.amount)}</Text>
+          </View>
+        ))}
+
+        <View style={s.totalRule} />
+        <View style={s.totalRow}>
+          <Text style={s.totalLabel}>Total {fundLabel} Expenditure</Text>
+          <Text style={s.totalValue}>{fmt(totalAmount)}</Text>
         </View>
 
         {approvalNote ? (
@@ -300,34 +231,20 @@ export function BudgetReport({
           </View>
         ) : null}
 
-        {/* ── Detail table ── */}
-        <Text style={s.tableHeading}>Budget detail</Text>
-        <View style={s.tableHeaderRow}>
-          <Text style={[s.th, s.thCode]}>Code</Text>
-          <Text style={[s.th, s.thName]}>Account</Text>
-          <Text style={[s.th, s.thAmount]}>Annual amount</Text>
-        </View>
-        {items.map((it, i) => (
-          <View key={i} style={i % 2 === 0 ? s.tableRow : s.tableRowStriped}>
-            <Text style={s.cellCode}>{it.code ?? ""}</Text>
-            <Text style={s.cellName}>{it.description || it.name}</Text>
-            <Text style={s.cellAmount}>{fmt(it.amount)}</Text>
-          </View>
-        ))}
-        <View style={s.totalRow}>
-          <Text style={s.totalLabel}>Total annual</Text>
-          <Text style={s.totalValue}>{fmt(totalAmount)}</Text>
-        </View>
-
         {/* ── Footer ── */}
         <View style={s.footer} fixed>
-          <Text style={s.footerText}>{managementCompany.name}  ,  {referenceNumber}</Text>
+          <View style={{ flexDirection: "row", alignItems: "center", gap: 8 }}>
+            {managementCompany.logo_url ? (
+              <Image src={managementCompany.logo_url} style={s.logoSlot} />
+            ) : (
+              <Text style={s.footerText}>{managementCompany.name}</Text>
+            )}
+          </View>
           <Text
             style={s.footerText}
             render={({ pageNumber, totalPages }) => `Page ${pageNumber} of ${totalPages}`}
           />
         </View>
-        <View style={s.accentBar} fixed />
       </Page>
     </Document>
   );

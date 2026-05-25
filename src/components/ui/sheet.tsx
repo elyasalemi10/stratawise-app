@@ -28,9 +28,10 @@ function SheetOverlay({ className, ...props }: SheetPrimitive.Backdrop.Props) {
     <SheetPrimitive.Backdrop
       data-slot="sheet-overlay"
       className={cn(
-        // White wash, no blur. Dims the underlying surface so the drawer reads
-        // as the focused layer while page text behind stays legible.
-        "fixed inset-0 z-50 bg-white/50 transition-opacity duration-150 data-ending-style:opacity-0 data-starting-style:opacity-0",
+        // White wash, no blur. 220ms fade with smooth ease-out , slow enough
+        // that the eye reads it as an animation, not an instant flash, but
+        // still snappy. Matches the drawer panel's own slide-in curve.
+        "fixed inset-0 z-50 bg-white/50 transition-opacity duration-[220ms] ease-[cubic-bezier(0.22,1,0.36,1)] data-ending-style:opacity-0 data-starting-style:opacity-0",
         className
       )}
       {...props}

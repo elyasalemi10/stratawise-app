@@ -14,7 +14,7 @@ import TableHeader from "@tiptap/extension-table-header";
 import TableCell from "@tiptap/extension-table-cell";
 import {
   Bold, Italic, Heading1, Heading2, Heading3, List, ListOrdered, Quote,
-  Image as ImageIcon, Youtube as YoutubeIcon, Table as TableIcon, GitCommitHorizontal,
+  Image as ImageIcon, Youtube as YoutubeIcon, Table as TableIcon,
   Loader2, ArrowLeft, Strikethrough, UploadCloud, AudioLines,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
@@ -30,7 +30,6 @@ import {
 import {
   Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription,
 } from "@/components/ui/dialog";
-import { Timeline } from "./timeline-node";
 import { NarrationPlayer } from "./narration-player";
 import { saveBlogPost, setBlogPostStatus, type BlogPostRow } from "@/lib/actions/blog";
 import { generateNarration, type NarrationWordTiming } from "@/lib/actions/blog-audio";
@@ -104,10 +103,9 @@ export function BlogEditor({ post }: { post: BlogPostRow }) {
       StarterKit,
       Image.configure({ HTMLAttributes: { loading: "lazy", decoding: "async" } }),
       Youtube.configure({ width: 640, height: 360, nocookie: true }),
-      Placeholder.configure({ placeholder: "Write your post… use the toolbar for headings, images, tables, YouTube and timelines." }),
+      Placeholder.configure({ placeholder: "Write your post… use the toolbar for headings, images, tables, and YouTube." }),
       Table.configure({ resizable: true }),
       TableRow, TableHeader, TableCell,
-      Timeline,
     ],
     // Prefer the TipTap JSON (faithful round-trip of timelines/tables); fall
     // back to the stored HTML, then an empty doc.
@@ -372,7 +370,6 @@ export function BlogEditor({ post }: { post: BlogPostRow }) {
         <ToolbarButton title="Upload image" onClick={() => contentImageInputRef.current?.click()}><ImageIcon className="h-4 w-4" /></ToolbarButton>
         <ToolbarButton title="YouTube embed" onClick={addYoutube}><YoutubeIcon className="h-4 w-4" /></ToolbarButton>
         <ToolbarButton title="Table" onClick={() => editor.chain().focus().insertTable({ rows: 3, cols: 3, withHeaderRow: true }).run()}><TableIcon className="h-4 w-4" /></ToolbarButton>
-        <ToolbarButton title="Timeline" onClick={() => editor.commands.insertTimeline()}><GitCommitHorizontal className="h-4 w-4" /></ToolbarButton>
         <input ref={contentImageInputRef} type="file" accept="image/*" className="hidden"
           onChange={(e) => { const f = e.target.files?.[0]; if (f) onContentImageFile(f); e.target.value = ""; }} />
       </div>

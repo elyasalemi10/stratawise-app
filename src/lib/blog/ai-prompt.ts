@@ -1,5 +1,3 @@
-import { ICON_NAMES } from "./timeline-icons";
-
 // The prompt a manager pastes into any LLM to author a StrataWise blog post.
 // It returns a single JSON object matching importAiPost's AiPost shape.
 export const AI_POST_PROMPT = `You are writing a blog post for StrataWise, a Victorian (Australia) Owners Corporation management platform. Write in clear, helpful Australian English for the audience specified.
@@ -40,9 +38,7 @@ The "body" is an ORDERED array of blocks. Allowed block types:
    Always include meaningful alt text. Use real, accessible image URLs only.
 8. Video (YouTube):{ "type": "youtube", "url": "https://www.youtube.com/watch?v=VIDEOID" }
    Standard watch, youtu.be, shorts or embed URLs all work.
-9. Timeline:       { "type": "timeline", "steps": [ { "icon": "Rocket", "title": "Step title" } ] }
-   "icon" MUST be one of these exact names: ${ICON_NAMES.join(", ")}.
-10. Divider:       { "type": "divider" }
+9. Divider:        { "type": "divider" }
 
 Inline formatting inside any "text"/"items"/cell value (use sparingly):
   **bold**, *italic*, \`code\`, [link text](https://url)
