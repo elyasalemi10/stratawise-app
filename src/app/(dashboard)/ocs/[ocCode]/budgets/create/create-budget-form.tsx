@@ -308,9 +308,6 @@ export function CreateBudgetForm({
 
           <div className="space-y-2">
             <Label>Funds</Label>
-            <p className="text-xs text-muted-foreground">
-              Tick every fund you&apos;re budgeting for this year. Each one gets its own tab below.
-            </p>
             <div className="flex flex-wrap gap-3">
               {fundOptions.map((opt) => {
                 const checked = selectedFunds.includes(opt.value);
@@ -329,6 +326,11 @@ export function CreateBudgetForm({
                 );
               })}
             </div>
+            {!hasMaintenanceFund && (
+              <p className="text-xs text-muted-foreground">
+                Maintenance Plan Fund is hidden because this OC doesn&apos;t run a maintenance fund. Add a maintenance trust account to enable it here.
+              </p>
+            )}
           </div>
         </CardContent>
       </Card>
@@ -422,15 +424,30 @@ export function CreateBudgetForm({
                           }}
                         />
                       ) : (
-                        <Button
-                          type="button"
-                          variant="secondary"
-                          size="sm"
-                          onClick={() => setComboOpen((prev) => ({ ...prev, [fund]: true }))}
-                        >
-                          <Plus className="mr-1.5 h-3.5 w-3.5" />
-                          Add item
-                        </Button>
+                        <div className="flex items-center gap-3">
+                          <Button
+                            type="button"
+                            variant="secondary"
+                            size="sm"
+                            onClick={() => setComboOpen((prev) => ({ ...prev, [fund]: true }))}
+                          >
+                            <Plus className="mr-1.5 h-3.5 w-3.5" />
+                            Add item
+                          </Button>
+                          {/* Gold inline link: bypass the combobox and go straight
+                              to "create a brand-new account" in the firm CoA. */}
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setDrawerSeedName("");
+                              setDrawerFund(fund);
+                              setDrawerOpen(true);
+                            }}
+                            className="text-sm font-medium text-[color:var(--brand-gold)] hover:underline cursor-pointer"
+                          >
+                            Add account
+                          </button>
+                        </div>
                       )}
                     </div>
                   </TabsContent>

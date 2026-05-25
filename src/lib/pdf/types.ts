@@ -73,6 +73,25 @@ export interface LevyNoticeProps extends BaseDocumentProps {
   brandColors?: BrandColors;
 }
 
+// --- Budget Report ---
+
+export interface BudgetReportItem {
+  code: string | null;
+  name: string;
+  description: string | null;
+  amount: number;
+}
+
+export interface BudgetReportProps extends BaseDocumentProps {
+  financialYear: string;
+  fundLabel: string;
+  status: "draft" | "approved";
+  approvedAt: string | null;
+  approvalNote: string | null;
+  items: BudgetReportItem[];
+  totalAmount: number;
+}
+
 // --- Meeting Minutes ---
 
 export interface Attendee {

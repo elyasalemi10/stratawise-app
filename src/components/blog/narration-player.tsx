@@ -1,18 +1,18 @@
 "use client";
 
-import { useEffect, useRef, useState, useCallback } from "react";
+import { memo, useCallback, useEffect, useRef, useState } from "react";
 import { Play, Pause } from "lucide-react";
 import { normalizeForNarration } from "@/lib/blog/narrate";
 import type { NarrationWordTiming } from "@/lib/actions/blog-audio";
 
-// Admin preview of the post narration. Mirrors the marketing-site
-// NarrationPlayer (position-map matching, rAF polling, inline-style
-// highlight) so the preview looks and behaves exactly like what readers get.
+// Admin preview of the post narration. Same architecture as the marketing
+// site's NarrationPlayer , see that file for the full design notes.
+// Summary: body div is memoised, words get wrapped ONCE with
+// data-narration-i, highlight is a single mutable <style> element selecting
+// by attribute. No DOM mutation per frame, no detached-node errors.
+
 const SKIP_SELECTOR =
   "table, pre, code, figure, img, .sw-timeline, [data-youtube-video], [data-type='timeline']";
-
-const HIGHLIGHT_STYLE =
-  "background:rgba(207,167,83,0.35) !important;border-radius:3px;padding:0 1px;";
 
 function fmtTime(s: number): string {
   if (!Number.isFinite(s) || s < 0) s = 0;
@@ -20,6 +20,100 @@ function fmtTime(s: number): string {
   const sec = Math.floor(s % 60);
   return `${m}:${sec.toString().padStart(2, "0")}`;
 }
+
+const NarrationBody = memo(
+  function NarrationBody({
+    html, words, containerId,
+  }: { html: string; words: NarrationWordTiming[]; containerId: string }) {
+    const ref = useRef<HTMLDivElement>(null);
+
+    useEffect(() => {
+      const root = ref.current;
+      if (!root || !words.length) return;
+      if (root.getAttribute("data-narration-ready") === "true") return;
+
+      const posByWord = new Map<string, number[]>();
+      for (let i = 0; i < words.length; i++) {
+        const w = words[i].w;
+        const arr = posByWord.get(w);
+        if (arr) arr.push(i);
+        else posByWord.set(w, [i]);
+      }
+      const cursorByWord = new Map<string, number>();
+      posByWord.forEach((_, k) => cursorByWord.set(k, 0));
+
+      const walker = document.createTreeWalker(root, NodeFilter.SHOW_TEXT, {
+        acceptNode(node) {
+          if (!node.nodeValue || !node.nodeValue.trim()) return NodeFilter.FILTER_REJECT;
+          if ((node.parentElement as HTMLElement | null)?.closest(SKIP_SELECTOR)) return NodeFilter.FILTER_REJECT;
+          return NodeFilter.FILTER_ACCEPT;
+        },
+      });
+      const textNodes: Text[] = [];
+      let n: Node | null;
+      while ((n = walker.nextNode())) textNodes.push(n as Text);
+
+      let highWater = -1;
+      let matched = 0;
+      for (const tn of textNodes) {
+        if (!tn.parentNode) continue;
+        const parts = (tn.nodeValue ?? "").split(/(\s+)/);
+        const frag = document.createDocumentFragment();
+        for (const part of parts) {
+          if (!part) continue;
+          if (/^\s+$/.test(part)) {
+            frag.appendChild(document.createTextNode(part));
+            continue;
+          }
+          const norm = normalizeForNarration(part);
+          const span = document.createElement("span");
+          span.textContent = part;
+          if (norm) {
+            const positions = posByWord.get(norm);
+            if (positions) {
+              const cursor = cursorByWord.get(norm) ?? 0;
+              let pick = -1;
+              for (let k = cursor; k < positions.length; k++) {
+                if (positions[k] > highWater) { pick = k; break; }
+              }
+              if (pick !== -1) {
+                const idx = positions[pick];
+                span.setAttribute("data-narration-i", String(idx));
+                cursorByWord.set(norm, pick + 1);
+                highWater = idx;
+                matched++;
+              }
+            }
+          }
+          frag.appendChild(span);
+        }
+        try {
+          tn.parentNode.replaceChild(frag, tn);
+        } catch {
+          /* ignored , defensive against StrictMode double-invocations */
+        }
+      }
+
+      root.setAttribute("data-narration-ready", "true");
+
+      if (process.env.NODE_ENV !== "production") {
+        // eslint-disable-next-line no-console
+        console.info(`[NarrationPlayer admin preview] wrapped ${matched} / ${words.length} narration words`);
+      }
+    }, [html, words]);
+
+    return (
+      <div
+        ref={ref}
+        id={containerId}
+        className="prose prose-sm max-w-none"
+        // eslint-disable-next-line react/no-danger
+        dangerouslySetInnerHTML={{ __html: html }}
+      />
+    );
+  },
+  (prev, next) => prev.html === next.html && prev.words === next.words && prev.containerId === next.containerId,
+);
 
 export function NarrationPlayer({
   html,
@@ -30,88 +124,37 @@ export function NarrationPlayer({
   audioUrl: string;
   words: NarrationWordTiming[];
 }) {
-  const containerRef = useRef<HTMLDivElement>(null);
   const audioRef = useRef<HTMLAudioElement>(null);
-  const spansRef = useRef<HTMLElement[]>([]);
-  const activeRef = useRef<number>(-1);
+  const styleRef = useRef<HTMLStyleElement>(null);
   const rafRef = useRef<number | null>(null);
+  const activeRef = useRef<number>(-1);
+  const containerIdRef = useRef<string>(`narration-${Math.random().toString(36).slice(2, 8)}`);
   const [playing, setPlaying] = useState(false);
   const [currentTime, setCurrentTime] = useState(0);
   const [duration, setDuration] = useState(0);
 
   const src = /^https?:\/\//i.test(audioUrl) ? audioUrl : `https://${audioUrl}`;
 
-  useEffect(() => {
-    const root = containerRef.current;
-    if (!root || !words.length) return;
-    spansRef.current = new Array(words.length);
-
-    const posByWord = new Map<string, number[]>();
-    for (let i = 0; i < words.length; i++) {
-      const w = words[i].w;
-      const arr = posByWord.get(w);
-      if (arr) arr.push(i);
-      else posByWord.set(w, [i]);
-    }
-    const cursorByWord = new Map<string, number>();
-    posByWord.forEach((_, k) => cursorByWord.set(k, 0));
-
-    const walker = document.createTreeWalker(root, NodeFilter.SHOW_TEXT, {
-      acceptNode(node) {
-        if (!node.nodeValue || !node.nodeValue.trim()) return NodeFilter.FILTER_REJECT;
-        if ((node.parentElement as HTMLElement | null)?.closest(SKIP_SELECTOR)) return NodeFilter.FILTER_REJECT;
-        return NodeFilter.FILTER_ACCEPT;
-      },
-    });
-    const textNodes: Text[] = [];
-    let n: Node | null;
-    while ((n = walker.nextNode())) textNodes.push(n as Text);
-
-    let highWater = -1;
-    for (const tn of textNodes) {
-      const parts = (tn.nodeValue ?? "").split(/(\s+)/);
-      const frag = document.createDocumentFragment();
-      for (const part of parts) {
-        if (!part) continue;
-        if (/^\s+$/.test(part)) {
-          frag.appendChild(document.createTextNode(part));
-          continue;
-        }
-        const norm = normalizeForNarration(part);
-        const span = document.createElement("span");
-        span.textContent = part;
-        if (norm) {
-          const positions = posByWord.get(norm);
-          if (positions) {
-            const cursor = cursorByWord.get(norm) ?? 0;
-            let pick = -1;
-            for (let k = cursor; k < positions.length; k++) {
-              if (positions[k] > highWater) { pick = k; break; }
-            }
-            if (pick !== -1) {
-              const idx = positions[pick];
-              span.dataset.i = String(idx);
-              span.className = "sw-word";
-              spansRef.current[idx] = span;
-              cursorByWord.set(norm, pick + 1);
-              highWater = idx;
-            }
-          }
-        }
-        frag.appendChild(span);
+  const applyHighlight = useCallback((idx: number) => {
+    if (idx === activeRef.current) return;
+    activeRef.current = idx;
+    const el = styleRef.current;
+    if (!el) return;
+    if (idx < 0) { el.textContent = ""; return; }
+    el.textContent =
+      `#${containerIdRef.current} [data-narration-i="${idx}"]` +
+      `{background:rgba(207,167,83,0.35) !important;border-radius:3px;padding:0 1px;}`;
+    try {
+      const container = document.getElementById(containerIdRef.current);
+      const target = container?.querySelector<HTMLElement>(`[data-narration-i="${idx}"]`);
+      if (target && target.isConnected) {
+        target.scrollIntoView({ block: "nearest", behavior: "smooth" });
       }
-      tn.parentNode?.replaceChild(frag, tn);
-    }
+    } catch { /* ignored */ }
+  }, []);
 
-    if (process.env.NODE_ENV !== "production") {
-      const matched = spansRef.current.filter(Boolean).length;
-      // eslint-disable-next-line no-console
-      console.info(`[NarrationPlayer admin preview] matched ${matched} / ${words.length} words`);
-    }
-  }, [html, words]);
-
-  const highlight = useCallback((t: number) => {
-    if (!words.length) return;
+  const findIndexAtTime = useCallback((t: number) => {
+    if (!words.length) return -1;
     let lo = 0, hi = words.length - 1, found = -1;
     while (lo <= hi) {
       const mid = (lo + hi) >> 1;
@@ -120,15 +163,7 @@ export function NarrationPlayer({
       else { found = mid; break; }
     }
     if (found === -1 && t > 0 && lo > 0) found = lo - 1;
-    if (found === activeRef.current) return;
-    const prev = spansRef.current[activeRef.current];
-    if (prev) prev.removeAttribute("style");
-    const next = spansRef.current[found];
-    if (next) {
-      next.setAttribute("style", HIGHLIGHT_STYLE);
-      next.scrollIntoView({ block: "nearest", behavior: "smooth" });
-    }
-    activeRef.current = found;
+    return found;
   }, [words]);
 
   useEffect(() => {
@@ -138,7 +173,7 @@ export function NarrationPlayer({
       if (!a) return;
       const t = a.currentTime;
       setCurrentTime(t);
-      highlight(t);
+      applyHighlight(findIndexAtTime(t));
       if (!a.paused && !a.ended) {
         rafRef.current = requestAnimationFrame(pump);
       }
@@ -154,13 +189,11 @@ export function NarrationPlayer({
     const onEnd = () => {
       setPlaying(false);
       setCurrentTime(0);
-      const prev = spansRef.current[activeRef.current];
-      if (prev) prev.removeAttribute("style");
-      activeRef.current = -1;
+      applyHighlight(-1);
       if (rafRef.current != null) { cancelAnimationFrame(rafRef.current); rafRef.current = null; }
     };
     const onMeta = () => setDuration(Number.isFinite(a.duration) ? a.duration : 0);
-    const onSeek = () => highlight(a.currentTime);
+    const onSeek = () => applyHighlight(findIndexAtTime(a.currentTime));
 
     a.addEventListener("loadedmetadata", onMeta);
     a.addEventListener("durationchange", onMeta);
@@ -178,7 +211,7 @@ export function NarrationPlayer({
       a.removeEventListener("seeked", onSeek);
       if (rafRef.current != null) { cancelAnimationFrame(rafRef.current); rafRef.current = null; }
     };
-  }, [highlight]);
+  }, [applyHighlight, findIndexAtTime]);
 
   function toggle() {
     const a = audioRef.current;
@@ -196,11 +229,12 @@ export function NarrationPlayer({
     const t = Number(e.target.value);
     a.currentTime = t;
     setCurrentTime(t);
-    highlight(t);
+    applyHighlight(findIndexAtTime(t));
   }
 
   return (
     <div className="space-y-4">
+      <style ref={styleRef} />
       <div className="flex items-center gap-3 rounded-md border border-border bg-card p-3">
         <button
           type="button"
@@ -225,12 +259,7 @@ export function NarrationPlayer({
         </span>
         <audio ref={audioRef} src={src} className="hidden" preload="metadata" />
       </div>
-      <div
-        ref={containerRef}
-        className="prose prose-sm max-w-none"
-        // eslint-disable-next-line react/no-danger
-        dangerouslySetInnerHTML={{ __html: html }}
-      />
+      <NarrationBody html={html} words={words} containerId={containerIdRef.current} />
     </div>
   );
 }

@@ -36,6 +36,7 @@ export interface BudgetWithItems {
     // (coa_account_id → chart_of_accounts). category_name resolves whichever
     // is present so the UI doesn't need to branch.
     category_id: string | null;
+    coa_account_id: string | null;
     category_name: string;
     description: string | null;
     amount: number;
@@ -161,6 +162,7 @@ export async function getOCBudgets(ocId: string): Promise<BudgetWithItems[]> {
       .map((i) => ({
         id: i.id,
         category_id: i.category_id,
+        coa_account_id: i.coa_account_id,
         category_name: i.chart_of_accounts?.name ?? i.budget_categories?.name ?? "",
         description: i.description,
         amount: Number(i.amount),
@@ -243,6 +245,139 @@ export async function createBudget(
   revalidatePath("/ocs/[ocCode]/manage", "page");
 
   return { success: true, budgetId: budget.id };
+}
+
+export async function getBudgetById(budgetId: string): Promise<BudgetWithItems | null> {
+  const supabase = createServerClient();
+  const { data: budget } = await supabase
+    .from("budgets")
+    .select("*")
+    .eq("id", budgetId)
+    .maybeSingle();
+  if (!budget) return null;
+  await requireOCAccess(budget.oc_id);
+
+  type RawItem = {
+    id: string;
+    category_id: string | null;
+    coa_account_id: string | null;
+    description: string | null;
+    amount: number;
+    sort_order: number;
+    budget_categories: { name: string } | null;
+    chart_of_accounts: { name: string; code: string } | null;
+  };
+  const { data: rawItems } = await supabase
+    .from("budget_items")
+    .select(
+      "id, category_id, coa_account_id, description, amount, sort_order, " +
+      "budget_categories(name), chart_of_accounts(name, code)"
+    )
+    .eq("budget_id", budgetId)
+    .order("sort_order");
+  const items = (rawItems ?? []) as unknown as RawItem[];
+
+  return {
+    ...budget,
+    items: items.map((i) => ({
+      id: i.id,
+      category_id: i.category_id,
+      coa_account_id: i.coa_account_id,
+      category_name: i.chart_of_accounts?.name ?? i.budget_categories?.name ?? "",
+      description: i.description,
+      amount: Number(i.amount),
+      sort_order: i.sort_order,
+    })),
+  } as BudgetWithItems;
+}
+
+export async function deleteBudget(budgetId: string): Promise<{ error?: string }> {
+  const profile = await requireCompanyRole();
+  const supabase = createServerClient();
+  const { data: budget } = await supabase
+    .from("budgets")
+    .select("id, oc_id, status")
+    .eq("id", budgetId)
+    .maybeSingle();
+  if (!budget) return { error: "Budget not found." };
+  await requireOCAccess(budget.oc_id);
+
+  if (budget.status === "approved") {
+    return { error: "Approved budgets can't be deleted. Create a new budget instead." };
+  }
+
+  await supabase.from("budget_items").delete().eq("budget_id", budgetId);
+  const { error } = await supabase.from("budgets").delete().eq("id", budgetId);
+  if (error) return { error: error.message };
+
+  await supabase.from("audit_log").insert({
+    profile_id: profile.id,
+    oc_id: budget.oc_id,
+    action: "delete",
+    entity_type: "budget",
+    entity_id: budgetId,
+  });
+
+  revalidatePath("/ocs/[ocCode]/budgets", "page");
+  revalidatePath("/ocs/[ocCode]/manage", "page");
+  return {};
+}
+
+export async function updateBudgetItems(
+  budgetId: string,
+  items: BudgetItemData[],
+): Promise<{ error?: string }> {
+  const profile = await requireCompanyRole();
+  const supabase = createServerClient();
+
+  const { data: budget } = await supabase
+    .from("budgets")
+    .select("id, oc_id, status")
+    .eq("id", budgetId)
+    .maybeSingle();
+  if (!budget) return { error: "Budget not found." };
+  await requireOCAccess(budget.oc_id);
+  if (budget.status === "approved") {
+    return { error: "Approved budgets can't be edited. Delete and recreate if you need changes." };
+  }
+
+  const nonZero = items.filter((i) => i.amount > 0);
+  const totalAmount = nonZero.reduce((s, i) => s + i.amount, 0);
+
+  // Wipe + reinsert , simplest and safe since the budget is still draft.
+  const { error: delErr } = await supabase.from("budget_items").delete().eq("budget_id", budgetId);
+  if (delErr) return { error: delErr.message };
+
+  if (nonZero.length > 0) {
+    const inserts = nonZero.map((item, i) => ({
+      budget_id: budgetId,
+      category_id: item.coa_account_id ? null : (item.category_id ?? null),
+      coa_account_id: item.coa_account_id ?? null,
+      description: item.description || null,
+      amount: item.amount,
+      sort_order: i,
+    }));
+    const { error: insErr } = await supabase.from("budget_items").insert(inserts);
+    if (insErr) return { error: insErr.message };
+  }
+
+  const { error: updErr } = await supabase
+    .from("budgets")
+    .update({ total_amount: totalAmount })
+    .eq("id", budgetId);
+  if (updErr) return { error: updErr.message };
+
+  await supabase.from("audit_log").insert({
+    profile_id: profile.id,
+    oc_id: budget.oc_id,
+    action: "update",
+    entity_type: "budget",
+    entity_id: budgetId,
+    after_state: { total_amount: totalAmount, items: nonZero.length },
+  });
+
+  revalidatePath("/ocs/[ocCode]/budgets", "page");
+  return {};
 }
 
 export async function approveBudget(ocId: string, budgetId: string, note?: string) {

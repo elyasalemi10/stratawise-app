@@ -67,18 +67,74 @@ export async function createCoaAccount(input: {
 
   if (error) {
     if (error.code === "23505") {
+      // Only `code` is unique now. Names can repeat across accounts.
       if (error.message.includes("chart_of_accounts_code_unique")) {
         return { error: `Code ${code} is already used by another account.` };
       }
-      if (error.message.includes("chart_of_accounts_name_unique")) {
-        return { error: `An account named "${name}" already exists.` };
-      }
-      return { error: "An account with that code or name already exists." };
+      return { error: "An account with that code already exists." };
     }
     console.error("Failed to create CoA account", error);
     return { error: "Failed to create account. Please try again." };
   }
 
+  revalidatePath("/chart-of-accounts");
+  return { account: data as CoaAccount };
+}
+
+export async function updateCoaAccount(input: {
+  id: string;
+  code: string;
+  name: string;
+  account_type: CoaAccountType;
+  gst_treatment: CoaGstTreatment;
+}): Promise<{ account?: CoaAccount; error?: string }> {
+  const companyId = await companyIdFromContext();
+
+  const code = input.code.trim();
+  const name = input.name.trim();
+  if (!/^[0-9]{4}$/.test(code)) return { error: "Code must be exactly 4 digits." };
+  if (!name || name.length > 120) return { error: "Name is required and must be under 120 characters." };
+  if (!ACCOUNT_TYPES.includes(input.account_type)) return { error: "Pick an account type." };
+  if (!GST_TREATMENTS.includes(input.gst_treatment)) return { error: "Pick a GST treatment." };
+
+  const supabase = createServerClient();
+
+  // Built-in accounts can be edited (rename / re-type / re-GST) BUT keep
+  // their system_role and code intact so the app's references keep resolving.
+  const { data: existing, error: fetchErr } = await supabase
+    .from("chart_of_accounts")
+    .select("id, is_system, system_role, code")
+    .eq("id", input.id)
+    .eq("management_company_id", companyId)
+    .maybeSingle();
+  if (fetchErr || !existing) return { error: "Account not found." };
+
+  const codeIsLocked = existing.is_system && existing.system_role;
+  if (codeIsLocked && code !== existing.code) {
+    return { error: "Built-in accounts can't have their code changed." };
+  }
+
+  const { data, error } = await supabase
+    .from("chart_of_accounts")
+    .update({
+      code,
+      name,
+      account_type: input.account_type,
+      gst_treatment: input.gst_treatment,
+      updated_at: new Date().toISOString(),
+    })
+    .eq("id", input.id)
+    .eq("management_company_id", companyId)
+    .select("id, code, name, account_type, gst_treatment, system_role, is_system, archived_at")
+    .single();
+
+  if (error) {
+    if (error.code === "23505") {
+      return { error: `Code ${code} is already used by another account.` };
+    }
+    console.error("Failed to update CoA account", error);
+    return { error: "Failed to update account. Please try again." };
+  }
   revalidatePath("/chart-of-accounts");
   return { account: data as CoaAccount };
 }

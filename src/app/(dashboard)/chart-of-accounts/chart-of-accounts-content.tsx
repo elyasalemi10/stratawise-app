@@ -1,8 +1,7 @@
 "use client";
 
-import { useMemo, useState, useTransition } from "react";
-import { Plus, BookOpen, Download, MoreHorizontal, Lock } from "lucide-react";
-import { toast } from "sonner";
+import { useMemo, useState } from "react";
+import { Plus, BookOpen, Download, Lock } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { EmptyState } from "@/components/shared/empty-state";
@@ -13,14 +12,11 @@ import {
   Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
 } from "@/components/ui/select";
 import {
-  DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger,
-} from "@/components/ui/dropdown-menu";
-import {
   ACCOUNT_TYPE_LABEL, ACCOUNT_TYPE_OPTIONS, GST_TREATMENT_LABEL,
-  isProtectedSystemAccount, type CoaAccount, type CoaAccountType,
+  type CoaAccount, type CoaAccountType,
 } from "@/lib/chart-of-accounts";
-import { setCoaAccountActive } from "@/lib/actions/chart-of-accounts";
 import { CreateAccountDrawer } from "@/components/chart-of-accounts/create-account-drawer";
+import { AccountDetailDrawer } from "@/components/chart-of-accounts/account-detail-drawer";
 
 const TYPE_BADGE: Record<CoaAccountType, string> = {
   asset: "bg-blue-50 text-blue-700 border-blue-200",
@@ -63,9 +59,9 @@ export function ChartOfAccountsContent({ initialAccounts }: { initialAccounts: C
   const [query, setQuery] = useState("");
   const [typeFilter, setTypeFilter] = useState<CoaAccountType | "all">("all");
   const [statusFilter, setStatusFilter] = useState<"all" | "active" | "inactive">("active");
-  const [drawerOpen, setDrawerOpen] = useState(false);
-  const [pendingId, setPendingId] = useState<string | null>(null);
-  const [, startTransition] = useTransition();
+  const [createDrawerOpen, setCreateDrawerOpen] = useState(false);
+  // Account currently shown in the detail drawer (null = closed).
+  const [openAccount, setOpenAccount] = useState<CoaAccount | null>(null);
 
   const filtered = useMemo(() => {
     const q = query.trim().toLowerCase();
@@ -82,27 +78,6 @@ export function ChartOfAccountsContent({ initialAccounts }: { initialAccounts: C
       });
   }, [accounts, query, typeFilter, statusFilter]);
 
-  function toggleActive(account: CoaAccount) {
-    const nextActive = !!account.archived_at; // currently inactive then activate
-    setPendingId(account.id);
-    startTransition(async () => {
-      const res = await setCoaAccountActive(account.id, nextActive);
-      setPendingId(null);
-      if (res.error) {
-        toast.error(res.error);
-        return;
-      }
-      setAccounts((prev) =>
-        prev.map((a) =>
-          a.id === account.id
-            ? { ...a, archived_at: nextActive ? null : new Date().toISOString() }
-            : a,
-        ),
-      );
-      toast.success(nextActive ? "Account activated" : "Account deactivated");
-    });
-  }
-
   return (
     <div className="space-y-6">
       {/* Top explainer (replaces the old multi-table layout) */}
@@ -112,8 +87,8 @@ export function ChartOfAccountsContent({ initialAccounts }: { initialAccounts: C
           each account sits on your reports: <strong>1000s</strong> are assets,
           <strong> 2000s</strong> liabilities, <strong>3000s</strong> member funds
           / equity, <strong>4000s</strong> income, <strong>5000s &amp; 6000s</strong>{" "}
-          expenses. Built-in accounts (locked icon) are required by the platform
-          and can&apos;t be deactivated.
+          expenses. Built-in accounts (lock icon) are required by the platform
+          and can&apos;t be deactivated. Click a row to view or edit an account.
         </p>
       </div>
 
@@ -151,7 +126,7 @@ export function ChartOfAccountsContent({ initialAccounts }: { initialAccounts: C
           <Download className="size-4" />
           Export CSV
         </Button>
-        <Button onClick={() => setDrawerOpen(true)}>
+        <Button onClick={() => setCreateDrawerOpen(true)}>
           <Plus className="size-4" />
           Add account
         </Button>
@@ -173,15 +148,18 @@ export function ChartOfAccountsContent({ initialAccounts }: { initialAccounts: C
                 <TableHead className="w-28">Type</TableHead>
                 <TableHead className="w-40">GST treatment</TableHead>
                 <TableHead className="w-24">Status</TableHead>
-                <TableHead className="w-12" />
               </TableRow>
             </TableHeader>
             <TableBody>
               {filtered.map((a) => {
-                const locked = isProtectedSystemAccount(a);
+                const locked = a.is_system && !!a.system_role;
                 const active = !a.archived_at;
                 return (
-                  <TableRow key={a.id} className={active ? undefined : "opacity-60"}>
+                  <TableRow
+                    key={a.id}
+                    onClick={() => setOpenAccount(a)}
+                    className={`cursor-pointer ${active ? "" : "opacity-60"}`}
+                  >
                     <TableCell className="font-mono text-xs">{a.code}</TableCell>
                     <TableCell className="text-sm text-foreground">
                       <div className="flex items-center gap-1.5">
@@ -204,27 +182,6 @@ export function ChartOfAccountsContent({ initialAccounts }: { initialAccounts: C
                         <span className="text-muted-foreground">Inactive</span>
                       )}
                     </TableCell>
-                    <TableCell>
-                      <DropdownMenu>
-                        <DropdownMenuTrigger
-                          render={
-                            <button
-                              type="button"
-                              className="inline-flex h-7 w-7 items-center justify-center rounded-md text-muted-foreground hover:bg-muted cursor-pointer disabled:opacity-50"
-                              disabled={pendingId === a.id || locked}
-                              aria-label="Account actions"
-                            />
-                          }
-                        >
-                          <MoreHorizontal className="size-4" />
-                        </DropdownMenuTrigger>
-                        <DropdownMenuContent align="end">
-                          <DropdownMenuItem onClick={() => toggleActive(a)}>
-                            {active ? "Deactivate" : "Activate"}
-                          </DropdownMenuItem>
-                        </DropdownMenuContent>
-                      </DropdownMenu>
-                    </TableCell>
                   </TableRow>
                 );
               })}
@@ -234,9 +191,28 @@ export function ChartOfAccountsContent({ initialAccounts }: { initialAccounts: C
       )}
 
       <CreateAccountDrawer
-        open={drawerOpen}
-        onOpenChange={setDrawerOpen}
+        open={createDrawerOpen}
+        onOpenChange={setCreateDrawerOpen}
         onCreated={(account) => setAccounts((prev) => [...prev, account].sort((a, b) => a.code.localeCompare(b.code)))}
+      />
+
+      <AccountDetailDrawer
+        account={openAccount}
+        onOpenChange={(open) => { if (!open) setOpenAccount(null); }}
+        onAccountUpdated={(updated) => {
+          setAccounts((prev) =>
+            prev.map((a) => (a.id === updated.id ? updated : a))
+              .sort((a, b) => a.code.localeCompare(b.code)),
+          );
+        }}
+        onAccountActiveChanged={(id, archivedAt) => {
+          setAccounts((prev) =>
+            prev.map((a) => (a.id === id ? { ...a, archived_at: archivedAt } : a)),
+          );
+          // If the open account got toggled, mirror the change in the drawer
+          // so the Switch stays correct without re-fetching.
+          setOpenAccount((prev) => (prev && prev.id === id ? { ...prev, archived_at: archivedAt } : prev));
+        }}
       />
     </div>
   );
