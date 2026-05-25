@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState, useTransition } from "react";
-import { AlertTriangle, Lock, Pencil, Loader2 } from "lucide-react";
+import { AlertTriangle, Pencil, Loader2 } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -29,24 +29,16 @@ interface Props {
   onAccountActiveChanged: (id: string, archivedAt: string | null) => void;
 }
 
-// Detail drawer that opens when a manager clicks a chart-of-accounts row.
-// Default state is read-only. Pencil icon next to a field flips that field
-// (and only that field) into edit mode. Save button at the bottom commits
-// every changed field in one round trip.
-//
-// The active/inactive Switch is right in the header so the manager doesn't
-// have to enter edit mode just to deactivate something.
+// Detail drawer for a chart-of-accounts row. Default state is read-only with
+// a single pencil that flips the WHOLE drawer into edit mode (Save appears on
+// the right; Cancel restores the original values). Built-in accounts (rows
+// with a system_role) don't render the pencil at all. The X-close button is
+// suppressed via the sheet's `showCloseButton={false}` prop, so dismissal is
+// only via the Close button / overlay click.
 export function AccountDetailDrawer({ account, onOpenChange, onAccountUpdated, onAccountActiveChanged }: Props) {
   const open = account !== null;
 
-  // Each field has its own "edit mode" flag so the manager can flip ONE
-  // field without disturbing the others. Built-in accounts keep their code
-  // locked even in edit mode.
-  const [editingCode, setEditingCode] = useState(false);
-  const [editingName, setEditingName] = useState(false);
-  const [editingType, setEditingType] = useState(false);
-  const [editingGst, setEditingGst] = useState(false);
-
+  const [editing, setEditing] = useState(false);
   const [code, setCode] = useState("");
   const [name, setName] = useState("");
   const [accountType, setAccountType] = useState<CoaAccountType>("expense");
@@ -56,17 +48,15 @@ export function AccountDetailDrawer({ account, onOpenChange, onAccountUpdated, o
   const [, startToggle] = useTransition();
   const [togglePending, setTogglePending] = useState(false);
 
-  // Reset when a new account is opened.
+  // Reset when a new account opens. Loaded snapshot becomes the "saved state"
+  // we fall back to on Cancel.
   useEffect(() => {
     if (account) {
       setCode(account.code);
       setName(account.name);
       setAccountType(account.account_type);
       setGst(account.gst_treatment);
-      setEditingCode(false);
-      setEditingName(false);
-      setEditingType(false);
-      setEditingGst(false);
+      setEditing(false);
     }
   }, [account]);
 
@@ -74,13 +64,7 @@ export function AccountDetailDrawer({ account, onOpenChange, onAccountUpdated, o
 
   const locked = isProtectedSystemAccount(account);
   const active = !account.archived_at;
-  const dirty =
-    code !== account.code ||
-    name !== account.name ||
-    accountType !== account.account_type ||
-    gst !== account.gst_treatment;
   const rangeWarning = mismatchMessage(accountType, code);
-  const codeEditable = !locked; // built-in code stays put
 
   async function handleSave() {
     if (!account) return;
@@ -99,7 +83,18 @@ export function AccountDetailDrawer({ account, onOpenChange, onAccountUpdated, o
     }
     toast.success("Account updated");
     onAccountUpdated(res.account!);
-    onOpenChange(false);
+    setEditing(false);
+  }
+
+  function handleCancel() {
+    // Snap back to the saved snapshot.
+    if (account) {
+      setCode(account.code);
+      setName(account.name);
+      setAccountType(account.account_type);
+      setGst(account.gst_treatment);
+    }
+    setEditing(false);
   }
 
   function handleToggleActive(next: boolean) {
@@ -117,35 +112,29 @@ export function AccountDetailDrawer({ account, onOpenChange, onAccountUpdated, o
     });
   }
 
-  function PencilButton({ onClick, disabled }: { onClick: () => void; disabled?: boolean }) {
-    return (
-      <button
-        type="button"
-        onClick={onClick}
-        disabled={disabled}
-        aria-label="Edit"
-        className="inline-flex h-6 w-6 items-center justify-center rounded-md text-muted-foreground hover:bg-muted disabled:opacity-40 cursor-pointer"
-      >
-        <Pencil className="h-3.5 w-3.5" />
-      </button>
-    );
-  }
-
   return (
     <Sheet open={open} onOpenChange={(v) => { if (!v) onOpenChange(false); }}>
-      <SheetContent side="right" className="flex w-full flex-col gap-0 sm:max-w-md">
+      <SheetContent side="right" showCloseButton={false} className="flex w-full flex-col gap-0 sm:max-w-md">
         <SheetHeader className="border-b border-border pb-4">
           <div className="flex items-start gap-3">
             <div className="flex-1">
-              <SheetTitle className="flex items-center gap-2">
-                {locked && <Lock className="size-3.5 text-muted-foreground" aria-label="Built-in account" />}
-                <span>{account.name}</span>
-              </SheetTitle>
+              <SheetTitle>Account {account.code}</SheetTitle>
               <SheetDescription>
-                Code <span className="font-mono">{account.code}</span> , {ACCOUNT_TYPE_LABEL[account.account_type]}
+                Edit the account&apos;s name, code, type and GST treatment.
               </SheetDescription>
             </div>
             <div className="flex items-center gap-2 pt-1">
+              {/* Single edit pencil. Hidden for system accounts. */}
+              {!editing && !locked && (
+                <button
+                  type="button"
+                  onClick={() => setEditing(true)}
+                  aria-label="Edit account"
+                  className="inline-flex h-7 w-7 items-center justify-center rounded-md text-muted-foreground hover:bg-muted cursor-pointer"
+                >
+                  <Pencil className="h-4 w-4" />
+                </button>
+              )}
               <span className="text-xs text-muted-foreground">{active ? "Active" : "Inactive"}</span>
               <Switch
                 checked={active}
@@ -157,19 +146,15 @@ export function AccountDetailDrawer({ account, onOpenChange, onAccountUpdated, o
           </div>
           {locked && active && (
             <p className="mt-1 text-xs text-muted-foreground">
-              This is a built-in account, the platform uses it directly so it can&apos;t be deactivated.
+              This is a built-in account: the platform uses it directly so it can&apos;t be edited or deactivated.
             </p>
           )}
         </SheetHeader>
 
         <div className="flex-1 space-y-5 overflow-y-auto px-4 py-4">
-          {/* Code */}
           <div className="space-y-1.5">
-            <div className="flex items-center justify-between">
-              <Label>Code</Label>
-              {!editingCode && <PencilButton onClick={() => setEditingCode(true)} disabled={!codeEditable} />}
-            </div>
-            {editingCode ? (
+            <Label>Code</Label>
+            {editing ? (
               <NumberInput
                 value={code}
                 onChange={setCode}
@@ -182,26 +167,18 @@ export function AccountDetailDrawer({ account, onOpenChange, onAccountUpdated, o
             )}
           </div>
 
-          {/* Name */}
           <div className="space-y-1.5">
-            <div className="flex items-center justify-between">
-              <Label>Name</Label>
-              {!editingName && <PencilButton onClick={() => setEditingName(true)} />}
-            </div>
-            {editingName ? (
+            <Label>Name</Label>
+            {editing ? (
               <Input value={name} onChange={(e) => setName(e.target.value)} placeholder="Account name" maxLength={120} />
             ) : (
               <p className="text-sm text-foreground">{account.name}</p>
             )}
           </div>
 
-          {/* Type */}
           <div className="space-y-1.5">
-            <div className="flex items-center justify-between">
-              <Label>Type</Label>
-              {!editingType && <PencilButton onClick={() => setEditingType(true)} />}
-            </div>
-            {editingType ? (
+            <Label>Type</Label>
+            {editing ? (
               <Select value={accountType} onValueChange={(v) => setAccountType((v as CoaAccountType) ?? "expense")}>
                 <SelectTrigger className="w-full">
                   <SelectValue>{ACCOUNT_TYPE_LABEL[accountType]}</SelectValue>
@@ -217,13 +194,9 @@ export function AccountDetailDrawer({ account, onOpenChange, onAccountUpdated, o
             )}
           </div>
 
-          {/* GST */}
           <div className="space-y-1.5">
-            <div className="flex items-center justify-between">
-              <Label>GST treatment</Label>
-              {!editingGst && <PencilButton onClick={() => setEditingGst(true)} />}
-            </div>
-            {editingGst ? (
+            <Label>GST treatment</Label>
+            {editing ? (
               <Select value={gst} onValueChange={(v) => setGst((v as CoaGstTreatment) ?? "bas_excluded")}>
                 <SelectTrigger className="w-full">
                   <SelectValue>{GST_TREATMENT_LABEL[gst]}</SelectValue>
@@ -239,18 +212,7 @@ export function AccountDetailDrawer({ account, onOpenChange, onAccountUpdated, o
             )}
           </div>
 
-          {/* System role (read-only , surfaced for transparency) */}
-          {account.system_role && (
-            <div className="space-y-1.5">
-              <Label>System role</Label>
-              <p className="font-mono text-xs text-muted-foreground">{account.system_role}</p>
-              <p className="text-xs text-muted-foreground">
-                The platform references this account by role to wire up trust ledgers, levy income, GST.
-              </p>
-            </div>
-          )}
-
-          {rangeWarning && (editingCode || editingType) && (
+          {rangeWarning && editing && (
             <div className="flex items-start gap-2 rounded-md border border-amber-200 bg-amber-50 p-3 text-sm text-amber-900">
               <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0" />
               <span>{rangeWarning}</span>
@@ -259,13 +221,21 @@ export function AccountDetailDrawer({ account, onOpenChange, onAccountUpdated, o
         </div>
 
         <div className="flex justify-end gap-2 border-t border-border p-4">
-          <Button variant="secondary" onClick={() => onOpenChange(false)} disabled={savePending}>
-            Close
-          </Button>
-          <Button onClick={handleSave} disabled={!dirty || savePending}>
-            {savePending && <Loader2 className="size-4 animate-spin" />}
-            Save changes
-          </Button>
+          {editing ? (
+            <>
+              <Button variant="secondary" onClick={handleCancel} disabled={savePending}>
+                Cancel
+              </Button>
+              <Button onClick={handleSave} disabled={savePending}>
+                {savePending && <Loader2 className="size-4 animate-spin" />}
+                Save changes
+              </Button>
+            </>
+          ) : (
+            <Button variant="secondary" onClick={() => onOpenChange(false)}>
+              Close
+            </Button>
+          )}
         </div>
       </SheetContent>
     </Sheet>

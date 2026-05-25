@@ -1,7 +1,7 @@
 "use client";
 
 import { useMemo, useState } from "react";
-import { Plus, BookOpen, Download, Lock } from "lucide-react";
+import { Plus, BookOpen, Download } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { EmptyState } from "@/components/shared/empty-state";
@@ -87,8 +87,8 @@ export function ChartOfAccountsContent({ initialAccounts }: { initialAccounts: C
           each account sits on your reports: <strong>1000s</strong> are assets,
           <strong> 2000s</strong> liabilities, <strong>3000s</strong> member funds
           / equity, <strong>4000s</strong> income, <strong>5000s &amp; 6000s</strong>{" "}
-          expenses. Built-in accounts (lock icon) are required by the platform
-          and can&apos;t be deactivated. Click a row to view or edit an account.
+          expenses. Built-in accounts are required by the platform and can&apos;t
+          be deactivated. Click a row to view or edit an account.
         </p>
       </div>
 
@@ -152,7 +152,6 @@ export function ChartOfAccountsContent({ initialAccounts }: { initialAccounts: C
             </TableHeader>
             <TableBody>
               {filtered.map((a) => {
-                const locked = a.is_system && !!a.system_role;
                 const active = !a.archived_at;
                 return (
                   <TableRow
@@ -161,12 +160,7 @@ export function ChartOfAccountsContent({ initialAccounts }: { initialAccounts: C
                     className={`cursor-pointer ${active ? "" : "opacity-60"}`}
                   >
                     <TableCell className="font-mono text-xs">{a.code}</TableCell>
-                    <TableCell className="text-sm text-foreground">
-                      <div className="flex items-center gap-1.5">
-                        {locked && <Lock className="size-3 text-muted-foreground" aria-label="Built-in account" />}
-                        <span>{a.name}</span>
-                      </div>
-                    </TableCell>
+                    <TableCell className="text-sm text-foreground">{a.name}</TableCell>
                     <TableCell>
                       <span className={`inline-flex rounded-full border px-2 py-0.5 text-xs font-medium ${TYPE_BADGE[a.account_type]}`}>
                         {ACCOUNT_TYPE_LABEL[a.account_type]}

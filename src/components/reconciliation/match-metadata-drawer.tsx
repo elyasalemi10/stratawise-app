@@ -49,7 +49,6 @@ const STRATEGY_LABELS: Record<StrategyName, string> = {
   reference: "Levy reference",
   bpay_crn: "BPAY CRN",
   known_payer: "Known payer",
-  keyword_amount: "Keyword + amount",
   amount_window: "Amount window",
   fuzzy_hint: "Fuzzy hint",
 };

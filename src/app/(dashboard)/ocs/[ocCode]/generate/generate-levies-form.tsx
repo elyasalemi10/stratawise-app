@@ -2,15 +2,13 @@
 
 import { useState, useCallback } from "react";
 import { useRouter } from "next/navigation";
-import { ChevronDown, Plus, X, Loader2, CalendarIcon } from "lucide-react";
-import { format } from "date-fns";
-import { formatDateLong } from "@/lib/utils";
+import { ChevronDown, Plus, X, Loader2 } from "lucide-react";
+import { formatDayMonthShort } from "@/lib/utils";
 import { toast } from "sonner";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { Calendar } from "@/components/ui/calendar";
-import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
+import { DatePicker } from "@/components/shared/date-picker";
 import {
   Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
 } from "@/components/ui/select";
@@ -24,16 +22,27 @@ import {
   type AvailablePeriod,
 } from "@/lib/actions/levy";
 import type { BudgetWithItems } from "@/lib/actions/budget";
-import { KeywordChipInput } from "@/components/shared/keyword-chip-input";
-import {
-  keywordSchema,
-  matchKeywordsSchema,
-  MAX_KEYWORDS,
-} from "@/lib/validations/levy";
 import { useOCCode } from "@/lib/oc-context";
 
 const formatCurrency = (n: number) =>
   new Intl.NumberFormat("en-AU", { style: "currency", currency: "AUD" }).format(n);
+
+const FUND_LABEL: Record<string, string> = {
+  administrative: "Administrative Fund",
+  capital_works: "Capital Works Fund",
+  maintenance_plan: "Maintenance Plan Fund",
+};
+
+function budgetDisplayLabel(b: BudgetWithItems): string {
+  return `${FUND_LABEL[b.fund_type] ?? b.fund_type}, ${b.financial_year} (${formatCurrency(b.total_amount)})`;
+}
+
+// Period chip: "Q1 1 Jul - 30 Jun" , quarter/half/annual label plus the
+// day+month range, no year noise. The selected value renders the same way so
+// the trigger never falls back to the raw enum index.
+function periodChipLabel(p: AvailablePeriod): string {
+  return `${p.label} ${formatDayMonthShort(p.start)} - ${formatDayMonthShort(p.end)}`;
+}
 
 // ─── Lot Accordion Row ─────────────────────────────────────
 
@@ -44,6 +53,7 @@ function LotRow({
   onUpdateItem,
   onAddItem,
   onRemoveItem,
+  locked,
 }: {
   lot: LevyPreviewLot & { adjustments?: { description: string; amount: number }[] };
   isOpen: boolean;
@@ -51,6 +61,9 @@ function LotRow({
   onUpdateItem: (itemIndex: number, field: "description" | "amount", value: string | number) => void;
   onAddItem: () => void;
   onRemoveItem: (itemIndex: number) => void;
+  /** When true (the batch is being created) the row is read-only , no
+   *  adjustments, no amount edits, no add/remove. */
+  locked: boolean;
 }) {
   const allItems = [
     ...lot.items.map((item) => ({ ...item, is_adjustment: false })),
@@ -77,12 +90,7 @@ function LotRow({
             </span>
           </div>
         </div>
-        <div className="flex items-center gap-4">
-          <span className="text-xs text-muted-foreground">
-            {lot.lot_entitlement} UE · {(lot.proportion * 100).toFixed(1)}%
-          </span>
-          <span className="font-semibold tabular-nums text-foreground">{formatCurrency(totalAmount)}</span>
-        </div>
+        <span className="font-semibold tabular-nums text-foreground">{formatCurrency(totalAmount)}</span>
       </button>
 
       {isOpen && (
@@ -106,6 +114,7 @@ function LotRow({
                           onChange={(e) => onUpdateItem(i, "description", e.target.value)}
                           className="h-7 text-sm"
                           placeholder="Description"
+                          disabled={locked}
                         />
                       ) : (
                         <span className="text-foreground">{item.description}</span>
@@ -122,11 +131,12 @@ function LotRow({
                             onUpdateItem(i, "amount", Number(raw) || 0);
                           }
                         }}
-                        className="h-7 w-full rounded-md border border-border bg-background px-2 text-sm text-right tabular-nums outline-none focus:border-primary focus:ring-2 focus:ring-primary/20"
+                        disabled={locked}
+                        className="h-7 w-full rounded-md border border-border bg-background px-2 text-sm text-right tabular-nums outline-none focus:border-primary focus:ring-2 focus:ring-primary/20 disabled:opacity-60 disabled:cursor-not-allowed"
                       />
                     </td>
                     <td className="px-3 py-1.5">
-                      {item.is_adjustment && (
+                      {item.is_adjustment && !locked && (
                         <button
                           type="button"
                           onClick={() => onRemoveItem(i)}
@@ -148,14 +158,16 @@ function LotRow({
               </tfoot>
             </table>
           </div>
-          <button
-            type="button"
-            onClick={onAddItem}
-            className="flex items-center gap-1 mt-2 text-xs text-muted-foreground hover:text-foreground cursor-pointer"
-          >
-            <Plus className="h-3 w-3" />
-            Add adjustment
-          </button>
+          {!locked && (
+            <button
+              type="button"
+              onClick={onAddItem}
+              className="flex items-center gap-1 mt-2 text-xs text-muted-foreground hover:text-foreground cursor-pointer"
+            >
+              <Plus className="h-3 w-3" />
+              Add adjustment
+            </button>
+          )}
         </div>
       )}
     </div>
@@ -182,37 +194,31 @@ export function GenerateLeviesForm({
   const [selectedPeriodIndex, setSelectedPeriodIndex] = useState<string>("");
   const [preview, setPreview] = useState<LevyPreviewData | null>(null);
   const [lots, setLots] = useState<AdjustedLot[]>([]);
-  const [dueDate, setDueDate] = useState<Date | undefined>(undefined);
-  const [matchKeywords, setMatchKeywords] = useState<string[]>([]);
+  // YYYY-MM-DD strings , matches the DatePicker's signature and skips a
+  // Date↔string round-trip when we POST the batch.
+  const [dueDate, setDueDate] = useState<string>("");
+  const [periodStart, setPeriodStart] = useState<string>("");
+  const [periodEnd, setPeriodEnd] = useState<string>("");
   const [loadingPeriods, setLoadingPeriods] = useState(false);
   const [loading, setLoading] = useState(false);
   const [generating, setGenerating] = useState(false);
   const [openLotId, setOpenLotId] = useState<string | null>(null);
 
-  // Per-chip validation wired to the exported per-item schema. Pairs with the
-  // server-side guardrail in createLevyBatch (Flag 1: dual validation).
-  const validateKeyword = useCallback((raw: string) => {
-    const parsed = keywordSchema.safeParse(raw);
-    if (!parsed.success) {
-      return {
-        ok: false as const,
-        error: parsed.error.issues[0]?.message ?? "Invalid keyword",
-      };
-    }
-    return { ok: true as const, cleaned: parsed.data };
-  }, []);
-
   const selectedBudget = budgets.find((b) => b.id === selectedBudgetId);
   const ungenPeriods = availablePeriods.filter((p) => !p.already_generated);
+  const selectedPeriod = ungenPeriods.find((p) => String(p.periodIndex) === selectedPeriodIndex);
 
   async function handleBudgetSelect(budgetId: string) {
+    if (generating) return;
     setSelectedBudgetId(budgetId);
     setSelectedPeriodIndex("");
     setAvailablePeriods([]);
     setPreview(null);
     setLots([]);
     setOpenLotId(null);
-    setMatchKeywords([]);
+    setPeriodStart("");
+    setPeriodEnd("");
+    setDueDate("");
 
     if (!budgetId) return;
 
@@ -223,6 +229,7 @@ export function GenerateLeviesForm({
   }
 
   async function handlePeriodSelect(periodIdx: string) {
+    if (generating) return;
     setSelectedPeriodIndex(periodIdx);
     setPreview(null);
     setLots([]);
@@ -240,7 +247,9 @@ export function GenerateLeviesForm({
 
     if (result.data) {
       setPreview(result.data);
-      setDueDate(new Date(result.data.due_date + "T00:00:00"));
+      setPeriodStart(result.data.period_start);
+      setPeriodEnd(result.data.period_end);
+      setDueDate(result.data.due_date);
       setLots(result.data.lots.map((lot) => ({ ...lot, adjustments: [] })));
     }
   }
@@ -251,14 +260,12 @@ export function GenerateLeviesForm({
         if (lot.lot_id !== lotId) return lot;
         const baseCount = lot.items.length;
         if (itemIndex < baseCount) {
-          // Editing a base item
           const newItems = [...lot.items];
           if (field === "amount") {
             newItems[itemIndex] = { ...newItems[itemIndex], amount: Number(value) || 0 };
           }
           return { ...lot, items: newItems };
         } else {
-          // Editing an adjustment
           const adjIndex = itemIndex - baseCount;
           const newAdj = [...lot.adjustments];
           if (field === "description") {
@@ -295,19 +302,6 @@ export function GenerateLeviesForm({
 
   async function handleGenerate() {
     if (!preview) return;
-
-    // Final array-level validation guard before hitting the server. The chip
-    // input validates each commit, but re-running the full schema here catches
-    // any drift (e.g., extra chip past the cap, or a chip that bypassed the
-    // input via an unrelated state path).
-    const keywordsParsed = matchKeywordsSchema.safeParse(matchKeywords);
-    if (!keywordsParsed.success) {
-      toast.error(
-        keywordsParsed.error.issues[0]?.message ?? "Invalid match keywords",
-      );
-      return;
-    }
-
     setGenerating(true);
 
     const result = await createLevyBatch(ocId, {
@@ -315,10 +309,9 @@ export function GenerateLeviesForm({
       financial_year: preview.financial_year,
       fund_type: preview.fund_type,
       period_label: preview.period_label,
-      period_start: preview.period_start,
-      period_end: preview.period_end,
-      due_date: dueDate ? format(dueDate, "yyyy-MM-dd") : preview.due_date,
-      match_keywords: keywordsParsed.data,
+      period_start: periodStart || preview.period_start,
+      period_end: periodEnd || preview.period_end,
+      due_date: dueDate || preview.due_date,
       lots: lots.map((lot) => {
         const allItems = [
           ...lot.items.map((item) => ({ ...item, is_adjustment: false })),
@@ -333,9 +326,8 @@ export function GenerateLeviesForm({
       }),
     });
 
-    setGenerating(false);
-
     if (result.error) {
+      setGenerating(false); // clear ONLY on error
       toast.error(result.error);
       return;
     }
@@ -362,14 +354,22 @@ export function GenerateLeviesForm({
                 No approved budgets. Create and approve a budget first.
               </p>
             ) : (
-              <Select value={selectedBudgetId} onValueChange={(v) => handleBudgetSelect(v ?? "")}>
+              <Select
+                value={selectedBudgetId}
+                onValueChange={(v) => handleBudgetSelect(v ?? "")}
+                disabled={generating}
+              >
                 <SelectTrigger className="w-full">
-                  <SelectValue placeholder="Select a budget" />
+                  {/* Render the human label when a budget is selected so the
+                      trigger doesn't fall back to the uuid value. */}
+                  <SelectValue placeholder="Select a budget">
+                    {selectedBudget ? budgetDisplayLabel(selectedBudget) : null}
+                  </SelectValue>
                 </SelectTrigger>
                 <SelectContent>
                   {budgets.map((b) => (
                     <SelectItem key={b.id} value={b.id}>
-                      {b.fund_type === "administrative" ? "Administrative Fund" : "Capital Works Fund"} , {b.financial_year} ({formatCurrency(b.total_amount)})
+                      {budgetDisplayLabel(b)}
                     </SelectItem>
                   ))}
                 </SelectContent>
@@ -377,21 +377,28 @@ export function GenerateLeviesForm({
             )}
           </div>
 
-          {/* Period selector */}
+          {/* Period selector , the trigger renders the chip itself so the
+              selected period isn't shown as the bare numeric index. */}
           {selectedBudgetId && availablePeriods.length > 0 && (
             <div className="space-y-1.5">
               <Label>Period</Label>
               {ungenPeriods.length === 0 ? (
                 <p className="text-sm text-muted-foreground">All periods have been generated for this budget.</p>
               ) : (
-                <Select value={selectedPeriodIndex} onValueChange={(v) => handlePeriodSelect(v ?? "")}>
+                <Select
+                  value={selectedPeriodIndex}
+                  onValueChange={(v) => handlePeriodSelect(v ?? "")}
+                  disabled={generating}
+                >
                   <SelectTrigger className="w-full">
-                    <SelectValue placeholder="Select a period" />
+                    <SelectValue placeholder="Select a period">
+                      {selectedPeriod ? periodChipLabel(selectedPeriod) : null}
+                    </SelectValue>
                   </SelectTrigger>
                   <SelectContent>
                     {ungenPeriods.map((p) => (
                       <SelectItem key={p.periodIndex} value={String(p.periodIndex)}>
-                        {p.label} ({formatDateLong(p.start)} , {formatDateLong(p.end)})
+                        {periodChipLabel(p)}
                       </SelectItem>
                     ))}
                   </SelectContent>
@@ -403,46 +410,22 @@ export function GenerateLeviesForm({
             <p className="text-sm text-muted-foreground">Loading periods...</p>
           )}
 
-          {/* Period details */}
+          {/* Period details , all three dates are editable. */}
           {preview && (
-            <>
-              <div className="grid grid-cols-2 gap-4 pt-2 border-t border-border">
-                <div>
-                  <Label className="text-xs text-muted-foreground">Date range</Label>
-                  <p className="text-sm text-foreground mt-0.5">{formatDateLong(preview.period_start)} , {formatDateLong(preview.period_end)}</p>
-                </div>
-                <div>
-                  <Label className="text-xs text-muted-foreground">Due date</Label>
-                  <Popover>
-                    <PopoverTrigger
-                      className="mt-0.5 flex h-8 w-full items-center justify-start gap-2 rounded-md border border-border bg-background px-3 text-sm font-medium text-foreground hover:bg-accent cursor-pointer"
-                    >
-                      <CalendarIcon className="h-3.5 w-3.5 text-muted-foreground" />
-                      {dueDate ? format(dueDate, "d MMMM yyyy") : "Select date"}
-                    </PopoverTrigger>
-                    <PopoverContent className="w-auto p-2" align="start">
-                      <Calendar
-                        mode="single"
-                        selected={dueDate}
-                        onSelect={setDueDate}
-                      />
-                    </PopoverContent>
-                  </Popover>
-                </div>
+            <div className="grid grid-cols-1 gap-4 pt-2 border-t border-border sm:grid-cols-3">
+              <div className="space-y-1.5">
+                <Label className="text-xs text-muted-foreground">Period start</Label>
+                <DatePicker value={periodStart} onChange={setPeriodStart} disabled={generating} />
               </div>
-
-              <div className="pt-2 border-t border-border">
-                <KeywordChipInput
-                  label="Match keywords (optional)"
-                  description={`Words the auto-matcher will look for in incoming bank descriptions to route payments to this batch. Lowercased on commit; up to ${MAX_KEYWORDS} keywords.`}
-                  value={matchKeywords}
-                  onChange={setMatchKeywords}
-                  validate={validateKeyword}
-                  maxItems={MAX_KEYWORDS}
-                  placeholder="e.g. gardening, painting"
-                />
+              <div className="space-y-1.5">
+                <Label className="text-xs text-muted-foreground">Period end</Label>
+                <DatePicker value={periodEnd} onChange={setPeriodEnd} disabled={generating} />
               </div>
-            </>
+              <div className="space-y-1.5">
+                <Label className="text-xs text-muted-foreground">Due date</Label>
+                <DatePicker value={dueDate} onChange={setDueDate} disabled={generating} />
+              </div>
+            </div>
           )}
         </CardContent>
       </Card>
@@ -475,7 +458,7 @@ export function GenerateLeviesForm({
                 </div>
               </div>
 
-              <div className="rounded-lg border border-border">
+              <div className={`rounded-lg border border-border ${generating ? "pointer-events-none opacity-75" : ""}`}>
                 {lots.map((lot) => (
                   <LotRow
                     key={lot.lot_id}
@@ -485,13 +468,15 @@ export function GenerateLeviesForm({
                     onUpdateItem={(i, f, v) => updateItem(lot.lot_id, i, f, v)}
                     onAddItem={() => addAdjustment(lot.lot_id)}
                     onRemoveItem={(i) => removeItem(lot.lot_id, i)}
+                    locked={generating}
                   />
                 ))}
               </div>
             </CardContent>
           </Card>
 
-          {/* Generate button */}
+          {/* Generate button. Keep the spinner ON through the navigation so
+              the page doesn't flicker between generating and the destination. */}
           <div className="flex justify-end">
             <Button onClick={handleGenerate} disabled={generating || grandTotal === 0} size="lg">
               {generating ? (

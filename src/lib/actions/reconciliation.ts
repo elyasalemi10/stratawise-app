@@ -440,7 +440,6 @@ const STRATEGY_NAMES = new Set([
   "reference",
   "bpay_crn",
   "known_payer",
-  "keyword_amount",
   "amount_window",
   "fuzzy_hint",
 ] as const);
@@ -451,7 +450,6 @@ export interface OrchestratorAuditPayload {
       | "reference"
       | "bpay_crn"
       | "known_payer"
-      | "keyword_amount"
       | "amount_window"
       | "fuzzy_hint";
     outcome: string;
@@ -461,7 +459,6 @@ export interface OrchestratorAuditPayload {
     | "reference"
     | "bpay_crn"
     | "known_payer"
-    | "keyword_amount"
     | "amount_window"
     | "fuzzy_hint"
     | null;

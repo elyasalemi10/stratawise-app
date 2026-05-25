@@ -10,7 +10,7 @@ import { notifyOCLotOwners } from "@/lib/actions/notifications";
 import { getLotOwners } from "@/lib/actions/lot-ownership";
 import { generateCrn } from "@/lib/reconciliation/bpay-crn";
 import { buildOCUrl } from "@/lib/oc-resolver";
-import { matchKeywordsSchema } from "@/lib/validations/levy";
+import { getLegislationRules } from "@/lib/legislation";
 import type { LevyNoticeProps } from "@/lib/pdf/types";
 
 // ─── Types ─────────────────────────────────────────────────
@@ -119,10 +119,12 @@ function getPeriodDates(
   return { start: formatDate(start), end: formatDate(end), label };
 }
 
-function calculateDueDate(periodStart: string): string {
-  // Due 28 days after period start
+// Suggested default due date = period_start + state's legislated notice
+// window. Result is only a DEFAULT pre-fill , the form allows the manager
+// to set any date (no minimum enforcement, per requirement 16).
+function calculateDueDate(periodStart: string, noticeDays = 28): string {
   const d = new Date(periodStart);
-  d.setDate(d.getDate() + 28);
+  d.setDate(d.getDate() + noticeDays);
   return d.toISOString().split("T")[0];
 }
 
@@ -187,7 +189,7 @@ export async function getNextPeriod(ocId: string, budgetId: string) {
   // Get budget + oc info
   const [{ data: budget }, { data: oc }] = await Promise.all([
     supabase.from("budgets").select("*").eq("id", budgetId).single(),
-    supabase.from("owners_corporations").select("financial_year_start_month, billing_cycle").eq("id", ocId).single(),
+    supabase.from("owners_corporations").select("financial_year_start_month, billing_cycle, state").eq("id", ocId).single(),
   ]);
 
   if (!budget || !oc) return null;
@@ -196,6 +198,7 @@ export async function getNextPeriod(ocId: string, budgetId: string) {
   const fyParts = budget.financial_year.split("-");
   const fyStartYear = parseInt(fyParts[0]);
   const fyStartMonth = oc.financial_year_start_month ?? 7;
+  const rules = await getLegislationRules(oc.state);
 
   // Check which periods already have batches
   const { data: existingBatches } = await supabase
@@ -212,8 +215,8 @@ export async function getNextPeriod(ocId: string, budgetId: string) {
       return {
         periodIndex: i,
         ...period,
-        label: `${period.label} ${budget.financial_year}`,
-        due_date: calculateDueDate(period.start),
+        label: period.label,
+        due_date: calculateDueDate(period.start, rules.levy_due_default_days),
         billing_cycle: oc.billing_cycle,
         periods_per_year: periodsPerYear,
       };
@@ -240,7 +243,7 @@ export async function getAvailablePeriods(ocId: string, budgetId: string): Promi
 
   const [{ data: budget }, { data: oc }] = await Promise.all([
     supabase.from("budgets").select("*").eq("id", budgetId).single(),
-    supabase.from("owners_corporations").select("financial_year_start_month, billing_cycle").eq("id", ocId).single(),
+    supabase.from("owners_corporations").select("financial_year_start_month, billing_cycle, state").eq("id", ocId).single(),
   ]);
 
   if (!budget || !oc) return [];
@@ -249,6 +252,7 @@ export async function getAvailablePeriods(ocId: string, budgetId: string): Promi
   const fyParts = budget.financial_year.split("-");
   const fyStartYear = parseInt(fyParts[0]);
   const fyStartMonth = oc.financial_year_start_month ?? 7;
+  const rules = await getLegislationRules(oc.state);
 
   const { data: existingBatches } = await supabase
     .from("levy_batches")
@@ -257,15 +261,17 @@ export async function getAvailablePeriods(ocId: string, budgetId: string): Promi
 
   const existingPeriodStarts = new Set((existingBatches ?? []).map((b) => b.period_start));
 
+  // Period label is the bare quarter / half / month chip ("Q1") , no year
+  // suffix. The form composes a richer "Q1 1 Jul - 30 Jun" via formatDayMonthShort.
   const periods: AvailablePeriod[] = [];
   for (let i = 0; i < periodsPerYear; i++) {
     const period = getPeriodDates(fyStartMonth, fyStartYear, i, periodsPerYear);
     periods.push({
       periodIndex: i,
-      label: `${period.label} ${budget.financial_year}`,
+      label: period.label,
       start: period.start,
       end: period.end,
-      due_date: calculateDueDate(period.start),
+      due_date: calculateDueDate(period.start, rules.levy_due_default_days),
       already_generated: existingPeriodStarts.has(period.start),
     });
   }
@@ -320,11 +326,13 @@ export async function generateLevyPreview(
   // Get oc settings
   const { data: oc } = await supabase
     .from("owners_corporations")
-    .select("financial_year_start_month, billing_cycle")
+    .select("financial_year_start_month, billing_cycle, state")
     .eq("id", ocId)
     .single();
 
   if (!oc) return { error: "OC not found" };
+
+  const rules = await getLegislationRules(oc.state);
 
   // Get period , either specific index or auto-detect next
   let nextPeriod;
@@ -337,8 +345,8 @@ export async function generateLevyPreview(
     nextPeriod = {
       periodIndex,
       ...period,
-      label: `${period.label} ${budget.financial_year}`,
-      due_date: calculateDueDate(period.start),
+      label: period.label,
+      due_date: calculateDueDate(period.start, rules.levy_due_default_days),
       billing_cycle: oc.billing_cycle,
       periods_per_year: periodsPerYear,
     };
@@ -491,7 +499,6 @@ export async function createLevyBatch(
     period_start: string;
     period_end: string;
     due_date: string;
-    match_keywords?: string[];
     lots: {
       lot_id: string;
       amount: number;
@@ -504,21 +511,6 @@ export async function createLevyBatch(
   const supabase = createServerClient();
 
   const totalAmount = data.lots.reduce((sum, lot) => sum + lot.amount, 0);
-
-  // Server-side guardrail: re-validate match_keywords against the array-level
-  // schema. The form's KeywordChipInput validates each chip on commit, but we
-  // re-check the whole array here so a misconfigured client (or a future
-  // direct caller of this action) cannot land bad data.
-  let matchKeywords: string[] = [];
-  if (data.match_keywords && data.match_keywords.length > 0) {
-    const parsed = matchKeywordsSchema.safeParse(data.match_keywords);
-    if (!parsed.success) {
-      return {
-        error: `Invalid match_keywords: ${parsed.error.issues[0]?.message ?? "validation failed"}`,
-      };
-    }
-    matchKeywords = parsed.data;
-  }
 
   // Create batch
   const { data: batch, error: batchError } = await supabase
@@ -535,7 +527,6 @@ export async function createLevyBatch(
       total_amount: totalAmount,
       levy_count: data.lots.length,
       status: "draft",
-      match_keywords: matchKeywords,
       generated_by: profile.id,
     })
     .select("id")

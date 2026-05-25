@@ -13,6 +13,7 @@ interface DatePickerProps {
   error?: boolean;
   id?: string;
   placeholder?: string;
+  disabled?: boolean;
 }
 
 export function DatePicker({
@@ -21,6 +22,7 @@ export function DatePicker({
   error,
   id,
   placeholder = "Pick a date",
+  disabled,
 }: DatePickerProps) {
   const [open, setOpen] = useState(false);
   const containerRef = useRef<HTMLDivElement>(null);
@@ -112,12 +114,14 @@ export function DatePicker({
         ref={triggerRef}
         type="button"
         id={id}
-        onClick={() => setOpen((o) => !o)}
+        onClick={() => { if (!disabled) setOpen((o) => !o); }}
+        disabled={disabled}
         className={cn(
           "flex h-9 w-full items-center justify-start rounded-md border bg-card px-3 text-sm font-normal",
           error ? "border-destructive" : "border-border",
           !value && "text-muted-foreground",
-          "hover:border-primary/50",
+          !disabled && "hover:border-primary/50",
+          disabled && "cursor-not-allowed opacity-60",
         )}
       >
         <CalendarIcon className="mr-2 h-4 w-4 text-muted-foreground" />

@@ -5,14 +5,18 @@ import { Play, Pause } from "lucide-react";
 import { normalizeForNarration } from "@/lib/blog/narrate";
 import type { NarrationWordTiming } from "@/lib/actions/blog-audio";
 
-// Admin preview of the post narration. Same architecture as the marketing
-// site's NarrationPlayer , see that file for the full design notes.
-// Summary: body div is memoised, words get wrapped ONCE with
-// data-narration-i, highlight is a single mutable <style> element selecting
-// by attribute. No DOM mutation per frame, no detached-node errors.
+// Admin preview of the post narration. Mirrors the marketing-site
+// NarrationPlayer , persistent karaoke-style highlight, memoised body,
+// incremental classList mutation. See that file for full design notes.
 
 const SKIP_SELECTOR =
   "table, pre, code, figure, img, .sw-timeline, [data-youtube-video], [data-type='timeline']";
+
+const HIGHLIGHT_STYLES = `
+  .sw-word { transition: background-color 200ms ease, box-shadow 200ms ease; padding: 0 1px; border-radius: 3px; }
+  .sw-word-passed { background-color: rgba(207,167,83,0.22); }
+  .sw-word-current { background-color: rgba(207,167,83,0.55); box-shadow: 0 0 0 2px rgba(207,167,83,0.55); }
+`;
 
 function fmtTime(s: number): string {
   if (!Number.isFinite(s) || s < 0) s = 0;
@@ -79,6 +83,7 @@ const NarrationBody = memo(
               if (pick !== -1) {
                 const idx = positions[pick];
                 span.setAttribute("data-narration-i", String(idx));
+                span.className = "sw-word";
                 cursorByWord.set(norm, pick + 1);
                 highWater = idx;
                 matched++;
@@ -89,13 +94,9 @@ const NarrationBody = memo(
         }
         try {
           tn.parentNode.replaceChild(frag, tn);
-        } catch {
-          /* ignored , defensive against StrictMode double-invocations */
-        }
+        } catch { /* ignored */ }
       }
-
       root.setAttribute("data-narration-ready", "true");
-
       if (process.env.NODE_ENV !== "production") {
         // eslint-disable-next-line no-console
         console.info(`[NarrationPlayer admin preview] wrapped ${matched} / ${words.length} narration words`);
@@ -125,7 +126,6 @@ export function NarrationPlayer({
   words: NarrationWordTiming[];
 }) {
   const audioRef = useRef<HTMLAudioElement>(null);
-  const styleRef = useRef<HTMLStyleElement>(null);
   const rafRef = useRef<number | null>(null);
   const activeRef = useRef<number>(-1);
   const containerIdRef = useRef<string>(`narration-${Math.random().toString(36).slice(2, 8)}`);
@@ -135,22 +135,59 @@ export function NarrationPlayer({
 
   const src = /^https?:\/\//i.test(audioUrl) ? audioUrl : `https://${audioUrl}`;
 
+  const containerEl = () => document.getElementById(containerIdRef.current);
+
   const applyHighlight = useCallback((idx: number) => {
-    if (idx === activeRef.current) return;
-    activeRef.current = idx;
-    const el = styleRef.current;
-    if (!el) return;
-    if (idx < 0) { el.textContent = ""; return; }
-    el.textContent =
-      `#${containerIdRef.current} [data-narration-i="${idx}"]` +
-      `{background:rgba(207,167,83,0.35) !important;border-radius:3px;padding:0 1px;}`;
-    try {
-      const container = document.getElementById(containerIdRef.current);
-      const target = container?.querySelector<HTMLElement>(`[data-narration-i="${idx}"]`);
-      if (target && target.isConnected) {
-        target.scrollIntoView({ block: "nearest", behavior: "smooth" });
+    const prev = activeRef.current;
+    if (idx === prev) return;
+    const root = containerEl();
+    if (!root) { activeRef.current = idx; return; }
+
+    if (idx > prev) {
+      for (let i = prev + 1; i <= idx; i++) {
+        const el = root.querySelector<HTMLElement>(`[data-narration-i="${i}"]`);
+        if (!el) continue;
+        if (i < idx) {
+          el.classList.add("sw-word-passed");
+          el.classList.remove("sw-word-current");
+        } else {
+          el.classList.add("sw-word-current", "sw-word-passed");
+        }
       }
-    } catch { /* ignored */ }
+      if (prev >= 0) {
+        const old = root.querySelector<HTMLElement>(`[data-narration-i="${prev}"]`);
+        old?.classList.remove("sw-word-current");
+        old?.classList.add("sw-word-passed");
+      }
+    } else if (idx < prev) {
+      for (let i = idx + 1; i <= prev; i++) {
+        const el = root.querySelector<HTMLElement>(`[data-narration-i="${i}"]`);
+        el?.classList.remove("sw-word-passed", "sw-word-current");
+      }
+      if (idx >= 0) {
+        const newCur = root.querySelector<HTMLElement>(`[data-narration-i="${idx}"]`);
+        newCur?.classList.add("sw-word-current", "sw-word-passed");
+      }
+    }
+
+    activeRef.current = idx;
+
+    if (idx >= 0) {
+      try {
+        const target = root.querySelector<HTMLElement>(`[data-narration-i="${idx}"]`);
+        if (target && target.isConnected) {
+          target.scrollIntoView({ block: "nearest", behavior: "smooth" });
+        }
+      } catch { /* ignored */ }
+    }
+  }, []);
+
+  const clearAllHighlights = useCallback(() => {
+    const root = containerEl();
+    if (!root) return;
+    root.querySelectorAll<HTMLElement>(".sw-word-passed, .sw-word-current")
+      .forEach((el) => el.classList.remove("sw-word-passed", "sw-word-current"));
+    activeRef.current = -1;
   }, []);
 
   const findIndexAtTime = useCallback((t: number) => {
@@ -189,7 +226,7 @@ export function NarrationPlayer({
     const onEnd = () => {
       setPlaying(false);
       setCurrentTime(0);
-      applyHighlight(-1);
+      clearAllHighlights();
       if (rafRef.current != null) { cancelAnimationFrame(rafRef.current); rafRef.current = null; }
     };
     const onMeta = () => setDuration(Number.isFinite(a.duration) ? a.duration : 0);
@@ -211,7 +248,7 @@ export function NarrationPlayer({
       a.removeEventListener("seeked", onSeek);
       if (rafRef.current != null) { cancelAnimationFrame(rafRef.current); rafRef.current = null; }
     };
-  }, [applyHighlight, findIndexAtTime]);
+  }, [applyHighlight, clearAllHighlights, findIndexAtTime]);
 
   function toggle() {
     const a = audioRef.current;
@@ -234,7 +271,7 @@ export function NarrationPlayer({
 
   return (
     <div className="space-y-4">
-      <style ref={styleRef} />
+      <style>{HIGHLIGHT_STYLES}</style>
       <div className="flex items-center gap-3 rounded-md border border-border bg-card p-3">
         <button
           type="button"

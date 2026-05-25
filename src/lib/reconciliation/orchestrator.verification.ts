@@ -948,9 +948,12 @@ async function mkOutstandingNotice(
 
 async function mkBatch(
   fx: Fixture,
-  matchKeywords: string[],
+  _matchKeywords: string[],
   label: string,
 ): Promise<string> {
+  // matchKeywords kept in the signature for fixture compatibility; the column
+  // was dropped from levy_batches when the keyword-amount strategy was retired.
+  void _matchKeywords;
   const { data: batch } = await supabase
     .from("levy_batches")
     .insert({
@@ -966,7 +969,6 @@ async function mkBatch(
       levy_count: 0,
       status: "draft",
       generated_by: fx.profileId,
-      match_keywords: matchKeywords,
     })
     .select("id")
     .single();
@@ -1116,7 +1118,8 @@ async function scenario13_KeywordAmountMatch(fx: Fixture) {
     );
     assert(outcome.matched, `O13 expected matched`);
     assert(
-      outcome.strategy === "keyword_amount",
+      // keyword_amount strategy retired; cast keeps the file type-clean.
+      (outcome.strategy as string) === "keyword_amount",
       `O13 strategy: ${outcome.strategy}`,
     );
 

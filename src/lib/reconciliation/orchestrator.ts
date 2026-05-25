@@ -38,7 +38,6 @@ import { tryDeftDrnMatch } from "./strategies/deft-drn";
 import { tryReferenceMatch } from "./strategies/reference";
 import { tryBpayCrnMatch } from "./strategies/bpay-crn";
 import { tryKnownPayerMatch } from "./strategies/known-payer";
-import { tryKeywordAmountMatch } from "./strategies/keyword-amount";
 import { tryAmountWindowMatch } from "./strategies/amount-window";
 import { tryFuzzySenderMatch } from "./strategies/fuzzy-hint";
 import { detectAndMarkLedgerDuplicates } from "./ledger-duplicate-detection";
@@ -53,7 +52,6 @@ export type StrategyName =
   | "reference"
   | "bpay_crn"
   | "known_payer"
-  | "keyword_amount"
   | "amount_window"
   | "fuzzy_hint";
 
@@ -150,7 +148,6 @@ const STRATEGY_ORDER: ReadonlyArray<
   ["reference", tryReferenceMatch],
   ["bpay_crn", tryBpayCrnMatch],
   ["known_payer", tryKnownPayerMatch],
-  ["keyword_amount", tryKeywordAmountMatch],
   ["amount_window", tryAmountWindowMatch],
   ["fuzzy_hint", tryFuzzySenderMatch],
 ] as const;

@@ -17,3 +17,16 @@ export function formatDateLong(date: string | Date): string {
   }
   return date.toLocaleDateString("en-AU", { day: "numeric", month: "long", year: "numeric" });
 }
+
+/** "1 July" / "30 June" , no year. Used inside period chips ("Q1 1 Jul - 30 Jun"). */
+export function formatDayMonthShort(date: string | Date): string {
+  const d = typeof date === "string"
+    ? new Date(date.includes("T") ? date : date + "T00:00:00")
+    : date;
+  return d.toLocaleDateString("en-AU", { day: "numeric", month: "short" });
+}
+
+/** Joins two dates with a clean hyphen, no commas: "1 April - 30 June". */
+export function formatDateRangeLong(startISO: string, endISO: string): string {
+  return `${formatDateLong(startISO)} - ${formatDateLong(endISO)}`;
+}

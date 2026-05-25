@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef, useState, useCallback } from "react";
+import { useEffect, useRef, useState, useCallback, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import {
   CheckCircle2, CircleDashed, Download, Loader2, Pencil, Plus, Trash2, X,
@@ -130,15 +130,19 @@ export function BudgetDetailContent({
   void ocId;
 
   const [editing, setEditing] = useState(false);
-  const [items, setItems] = useState<DraftItem[]>(() =>
-    budget.items.map((it) => ({
+  // Saved snapshot we restore to when the user hits Cancel. Built once from
+  // the server-supplied budget and refreshed after every successful save.
+  const buildSnapshot = useCallback((source: BudgetWithItems): DraftItem[] =>
+    source.items.map((it) => ({
       id: it.id,
       coa_account_id: it.coa_account_id,
       category_id: it.category_id,
       description: it.description || it.category_name,
       amount: String(it.amount),
     })),
-  );
+  []);
+  const savedItemsRef = useRef<DraftItem[]>(buildSnapshot(budget));
+  const [items, setItems] = useState<DraftItem[]>(savedItemsRef.current);
   const [comboOpen, setComboOpen] = useState(false);
   const [drawerOpen, setDrawerOpen] = useState(false);
   const [drawerSeedName, setDrawerSeedName] = useState("");
@@ -193,8 +197,20 @@ export function BudgetDetailContent({
       return;
     }
     toast.success("Budget updated");
+    // Promote the just-saved state to the snapshot so a subsequent Cancel
+    // restores back to here (not back to the original server load).
+    savedItemsRef.current = items.map((it) => ({ ...it }));
     setEditing(false);
     router.refresh();
+  }
+
+  function handleCancelEdit() {
+    // Restore the last-saved snapshot so the user's in-progress edits don't
+    // linger on the page. Deep-clone so the user can edit again without
+    // mutating the snapshot.
+    setItems(savedItemsRef.current.map((it) => ({ ...it })));
+    setComboOpen(false);
+    setEditing(false);
   }
 
   async function handleApprove() {
@@ -222,8 +238,32 @@ export function BudgetDetailContent({
     router.push(`/ocs/${ocCode}/budgets`);
   }
 
+  // Fetch the PDF as a blob so the browser drops it straight into Downloads
+  // instead of navigating to the API URL. Same UX as the CSV export.
+  const [pdfPending, startPdf] = useTransition();
   function downloadPdf() {
-    window.open(`/api/budgets/${budget.id}/pdf`, "_blank");
+    startPdf(async () => {
+      try {
+        const res = await fetch(`/api/budgets/${budget.id}/pdf`);
+        if (!res.ok) {
+          toast.error("Couldn't download the PDF , please try again.");
+          return;
+        }
+        const blob = await res.blob();
+        const filename = `budget-${budget.fund_type}-${budget.financial_year}.pdf`;
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement("a");
+        a.href = url;
+        a.download = filename;
+        document.body.appendChild(a);
+        a.click();
+        document.body.removeChild(a);
+        URL.revokeObjectURL(url);
+      } catch (err) {
+        console.error("Budget PDF download failed", err);
+        toast.error("Couldn't download the PDF , please try again.");
+      }
+    });
   }
 
   return (
@@ -247,8 +287,8 @@ export function BudgetDetailContent({
           </div>
         </div>
         <div className="flex items-center gap-2">
-          <Button variant="secondary" onClick={downloadPdf}>
-            <Download className="size-4" />
+          <Button variant="secondary" onClick={downloadPdf} disabled={pdfPending}>
+            {pdfPending ? <Loader2 className="size-4 animate-spin" /> : <Download className="size-4" />}
             Download PDF
           </Button>
           {isDraft && !editing && (
@@ -292,7 +332,8 @@ export function BudgetDetailContent({
             <Table variant="bordered" className="text-sm">
               <TableHeader>
                 <TableRow>
-                  <TableHead>Account</TableHead>
+                  <TableHead className="w-28">Account code</TableHead>
+                  <TableHead>Name</TableHead>
                   <TableHead className="w-[220px]">Annual amount</TableHead>
                   {editing && <TableHead className="w-12" />}
                 </TableRow>
@@ -302,11 +343,11 @@ export function BudgetDetailContent({
                   const account = item.coa_account_id ? accountById.get(item.coa_account_id) : null;
                   return (
                     <TableRow key={i}>
+                      <TableCell className="font-mono text-xs text-muted-foreground">
+                        {account?.code ?? ""}
+                      </TableCell>
                       <TableCell className="text-sm text-foreground">
-                        <div className="flex items-center gap-2">
-                          {account?.code && <span className="font-mono text-xs text-muted-foreground">{account.code}</span>}
-                          <span>{item.description}</span>
-                        </div>
+                        {item.description}
                       </TableCell>
                       <TableCell>
                         {editing ? (
@@ -339,6 +380,7 @@ export function BudgetDetailContent({
               </TableBody>
               <TableFooter>
                 <TableRow>
+                  <TableCell />
                   <TableCell className="text-sm font-semibold text-foreground">Total annual</TableCell>
                   <TableCell className="text-sm font-bold tabular-nums text-foreground">{formatCurrency(total)}</TableCell>
                   {editing && <TableCell />}
@@ -374,7 +416,7 @@ export function BudgetDetailContent({
               )}
 
               <div className="flex items-center justify-end gap-2 border-t border-border pt-3">
-                <Button variant="secondary" onClick={() => setEditing(false)} disabled={savePending}>
+                <Button variant="secondary" onClick={handleCancelEdit} disabled={savePending}>
                   Cancel
                 </Button>
                 <Button onClick={handleSave} disabled={savePending}>
