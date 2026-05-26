@@ -12,6 +12,7 @@ import { NumberInput } from "@/components/ui/number-input";
 import {
   Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
 } from "@/components/ui/select";
+import { Switch } from "@/components/ui/switch";
 import { cn } from "@/lib/utils";
 import { updateOCField } from "../manage/actions";
 import {
@@ -474,19 +475,17 @@ function AutoSendCard({
     <Card>
       <CardContent className="pt-5 space-y-4">
         <div className="flex items-center justify-between">
-          <h3 className="text-sm font-semibold text-foreground">Auto-send levies</h3>
-          <Select
-            value={draft.enabled ? "on" : "off"}
-            onValueChange={(v) => setDraft((p) => ({ ...p, enabled: v === "on" }))}
-          >
-            <SelectTrigger className="h-8 w-28 text-sm">
-              <SelectValue />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="off">Off</SelectItem>
-              <SelectItem value="on">On</SelectItem>
-            </SelectContent>
-          </Select>
+          <div>
+            <h3 className="text-sm font-semibold text-foreground">Auto-send levies</h3>
+            <p className="text-xs text-muted-foreground mt-0.5">
+              {draft.enabled ? "Enabled , the cron will send on the configured cadence." : "Off"}
+            </p>
+          </div>
+          <Switch
+            checked={draft.enabled}
+            onCheckedChange={(checked) => setDraft((p) => ({ ...p, enabled: checked }))}
+            aria-label="Toggle auto-send"
+          />
         </div>
 
         <div className="grid gap-4 sm:grid-cols-2">

@@ -24,9 +24,6 @@ import {
 } from "@/components/ui/alert-dialog";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import {
-  Table, TableBody, TableCell, TableHead, TableHeader, TableRow,
-} from "@/components/ui/table";
-import {
   markBatchSent,
   markLevySent,
   cancelBatch,
@@ -386,34 +383,39 @@ export function BatchDetailContent({
 
                 {openLevyId === levy.id && (
                   <div className="px-4 pb-2 pl-11 space-y-1.5">
-                    {/* Line items , ultra-compact: text-[10px], py-0,
-                        h-6 rows. This sub-grid lives inside a dropdown
-                        so it MUST read as detail-on-tap, not as a
-                        primary data table. */}
-                    <div className="overflow-hidden rounded-md border border-border">
-                      <Table variant="bordered" className="text-[10px]">
-                        <TableHeader>
-                          <TableRow>
-                            <TableHead className="py-0 h-5 text-[10px]">Description</TableHead>
-                            <TableHead className="py-0 h-5 w-20 text-right text-[10px]">Amount</TableHead>
-                          </TableRow>
-                        </TableHeader>
-                        <TableBody>
-                          {levy.items.map((item, i) => (
-                            <TableRow key={i}>
-                              <TableCell className="py-0 h-6 text-foreground">
-                                {item.description}
-                                {item.is_adjustment && (
-                                  <span className="ml-1 text-[9px] text-primary">(adj)</span>
-                                )}
-                              </TableCell>
-                              <TableCell className="py-0 h-6 text-right tabular-nums text-foreground">
-                                {formatCurrency(item.amount)}
-                              </TableCell>
-                            </TableRow>
-                          ))}
-                        </TableBody>
-                      </Table>
+                    {/* Line items , plain div grid (NOT the Table
+                        primitive). The shared Table component bakes in
+                        h-14 rows + text-base cells; overriding both
+                        cleanly is fiddly and the previous attempt left
+                        body rows invisible. A div grid lets us pick the
+                        exact density (text-[11px], py-1 rows) directly. */}
+                    <div className="overflow-hidden rounded-md border border-border bg-card">
+                      <div className="grid grid-cols-[1fr_auto] gap-x-4 px-3 py-1.5 bg-primary text-[11px] font-medium text-primary-foreground">
+                        <div>Description</div>
+                        <div className="w-24 text-right">Amount</div>
+                      </div>
+                      {levy.items.length === 0 ? (
+                        <div className="px-3 py-2 text-[11px] text-muted-foreground">
+                          No line items on this levy.
+                        </div>
+                      ) : (
+                        levy.items.map((item, i) => (
+                          <div
+                            key={i}
+                            className="grid grid-cols-[1fr_auto] gap-x-4 px-3 py-1 text-[11px] border-t border-border first:border-t-0 hover:bg-muted/40"
+                          >
+                            <div className="text-foreground">
+                              {item.description}
+                              {item.is_adjustment && (
+                                <span className="ml-1 text-[10px] text-primary">(adj)</span>
+                              )}
+                            </div>
+                            <div className="w-24 text-right tabular-nums text-foreground">
+                              {formatCurrency(item.amount)}
+                            </div>
+                          </div>
+                        ))
+                      )}
                     </div>
 
                     {/* Per-row actions */}
