@@ -92,6 +92,12 @@ export interface BudgetReportItem {
   fund_type?: "administrative" | "capital_works" | "maintenance_plan" | null;
 }
 
+export interface BudgetReportLot {
+  lot_number: number;
+  unit_number?: string | null;
+  liability: number;
+}
+
 export interface BudgetReportProps extends BaseDocumentProps {
   financialYear: string;
   fundLabel: string;
@@ -101,6 +107,14 @@ export interface BudgetReportProps extends BaseDocumentProps {
   items: BudgetReportItem[];
   totalAmount: number;
   brandColors?: BrandColors;
+  /** Per-lot allocation inputs. When provided, the PDF renders a "Lot contributions"
+   *  section that splits each fund's total in proportion to lot liability. Lot rows
+   *  use lot numbers only (no owner names), so the document stays accurate as
+   *  ownership changes. */
+  lots?: BudgetReportLot[];
+  /** OC billing cycle (monthly / quarterly / half_yearly / annually) , drives the
+   *  per-period column in the lot contributions table. */
+  billingCycle?: "monthly" | "quarterly" | "half_yearly" | "annually" | string;
 }
 
 // --- Meeting Minutes ---

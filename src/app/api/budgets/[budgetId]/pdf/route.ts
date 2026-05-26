@@ -64,7 +64,7 @@ export async function GET(
 
   const { data: oc } = await supabase
     .from("owners_corporations")
-    .select("id, name, plan_number, address, abn, management_company_id")
+    .select("id, name, plan_number, address, abn, management_company_id, billing_cycle")
     .eq("id", budget.oc_id)
     .maybeSingle();
   if (!oc) {
@@ -76,6 +76,25 @@ export async function GET(
     .select("name, logo_url, brand_color, brand_color_secondary, address, phone, email, abn")
     .eq("id", oc.management_company_id)
     .maybeSingle();
+
+  // Lot allocation table , fetched here so the PDF can show each lot's share
+  // of the annual budget. Uses lot_liability (with lot_entitlement as a
+  // fallback, matching the levy generator at src/lib/actions/levy.ts).
+  const { data: rawLots } = await supabase
+    .from("lots")
+    .select("lot_number, unit_number, lot_entitlement, lot_liability")
+    .eq("oc_id", oc.id)
+    .order("lot_number");
+  const lots = (rawLots ?? []).map((l) => ({
+    lot_number: l.lot_number,
+    unit_number: l.unit_number,
+    liability:
+      l.lot_liability > 0
+        ? l.lot_liability
+        : l.lot_entitlement > 0
+        ? l.lot_entitlement
+        : 1,
+  }));
 
   const pdfItems: BudgetReportItem[] = items.map((i) => ({
     code: i.chart_of_accounts?.code ?? null,
@@ -125,6 +144,8 @@ export async function GET(
     items: pdfItems,
     totalAmount: Number(budget.total_amount),
     brandColors: { primary: brandPrimary, secondary: brandSecondary },
+    lots,
+    billingCycle: oc.billing_cycle ?? undefined,
   };
 
   // eslint-disable-next-line @typescript-eslint/no-explicit-any

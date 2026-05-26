@@ -86,6 +86,7 @@ export interface OCCertificateProps {
   currentFees: string;
   currentFeesTable?: { label: string; amount: number }[];
   showSpecialLevyNote?: boolean;
+  currentFeesNote?: string;
   billingCycle: string;
   feesPaidUpTo: string;
   unpaidFeesTotal: number;
@@ -107,6 +108,8 @@ export interface OCCertificateProps {
   administratorAppointed: boolean;
   lastAgmDate: string;
 
+  additionalAttachments?: string[];
+
   // Company / seal
   companyName: string;
   registeredName: string;
@@ -119,10 +122,10 @@ export function OCCertificate(props: OCCertificateProps) {
   const {
     logoUrl, signatureUrl, planNumber, ocAddress, lotNumber, lotUnitNumber,
     applicantName, applicantEmail, applicationDate, certificateDate,
-    currentFees, currentFeesTable, showSpecialLevyNote, billingCycle, feesPaidUpTo, unpaidFeesTotal, levies,
+    currentFees, currentFeesTable, showSpecialLevyNote, currentFeesNote, billingCycle, feesPaidUpTo, unpaidFeesTotal, levies,
     repairsInfo, insuranceCover, insuranceNote, totalFundsHeld, liabilities, currentContracts,
     serviceAgreements, noticesOrders, legalProceedings, managerAppointed,
-    administratorAppointed, lastAgmDate, companyName, registeredName,
+    administratorAppointed, lastAgmDate, additionalAttachments, companyName, registeredName,
     companyAddress, commonSealText, inspectionAddress,
   } = props;
 
@@ -209,6 +212,9 @@ export function OCCertificate(props: OCCertificateProps) {
             )}
             {showSpecialLevyNote !== false ? (
               <Text style={[s.itemText, { marginTop: 2 }]}>A special levy 1 quarter prior to the expiry of the current insurance will be struck to cover insurance costs for the next year.</Text>
+            ) : null}
+            {currentFeesNote ? (
+              <Text style={[s.itemText, { marginTop: 4 }]}>{currentFeesNote}</Text>
             ) : null}
           </View>
 
@@ -311,6 +317,9 @@ export function OCCertificate(props: OCCertificateProps) {
           <View style={s.item}>
             <Text style={s.itemNumber}>17. Documents attached</Text>
             <Text style={s.itemText}>• A copy of Schedule 3 of the Owners Corporations Regulations 2018 entitled &quot;Statement of advice and information for prospective purchasers and lot owners&quot;</Text>
+            {additionalAttachments?.map((doc, i) => (
+              <Text key={i} style={s.itemText}>• {doc}</Text>
+            ))}
           </View>
 
           <View style={s.item}>

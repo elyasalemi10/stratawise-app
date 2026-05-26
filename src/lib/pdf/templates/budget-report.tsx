@@ -42,6 +42,24 @@ const FUND_SECTION_LABEL: Record<string, string> = {
   maintenance_plan: "Maintenance Plan Fund",
 };
 
+const BILLING_PERIODS_PER_YEAR: Record<string, number> = {
+  monthly: 12,
+  quarterly: 4,
+  half_yearly: 2,
+  annually: 1,
+};
+
+const PERIOD_LABEL: Record<string, string> = {
+  monthly: "Per month",
+  quarterly: "Per quarter",
+  half_yearly: "Per half-year",
+  annually: "Per year",
+};
+
+function fmtLot(lotNumber: number, unitNumber?: string | null): string {
+  return unitNumber ? `Lot ${lotNumber} (Unit ${unitNumber})` : `Lot ${lotNumber}`;
+}
+
 export function BudgetReport({
   managementCompany,
   oc,
@@ -51,6 +69,8 @@ export function BudgetReport({
   items,
   totalAmount,
   brandColors,
+  lots,
+  billingCycle,
 }: BudgetReportProps) {
   const brand = brandColors?.primary ?? "#1e7ec0"; // azure default
 
@@ -94,7 +114,7 @@ export function BudgetReport({
       gap: 24,
     },
     letterheadLeft: { flex: 1 },
-    headerLogo: { maxHeight: 48, maxWidth: 180, objectFit: "contain" as const, marginBottom: 8 },
+    headerLogo: { maxHeight: 48, maxWidth: 180, objectFit: "contain" as const, marginLeft: -16, marginBottom: 20 },
     companyName: { fontSize: 13, fontFamily: FONT, fontWeight: 700, color: c.foreground },
     companyMeta: { fontSize: 8, color: c.muted, marginTop: 2, lineHeight: 1.4 },
     letterheadRight: { alignItems: "flex-end" as const, maxWidth: 220 },
@@ -164,6 +184,49 @@ export function BudgetReport({
     },
     grandTotalLabel: { flex: 1, fontSize: 12, fontFamily: FONT, fontWeight: 700, color: brand },
     grandTotalValue: { width: 110, fontSize: 12, fontFamily: FONT, fontWeight: 700, color: brand, textAlign: "right" as const },
+
+    // ── Lot contributions table ──
+    lotsSectionRow: {
+      flexDirection: "row",
+      alignItems: "flex-end",
+      marginTop: 32,
+    },
+    lotsSectionTitle: { fontSize: 14, fontFamily: FONT, fontWeight: 700, color: c.foreground },
+    lotsSubtitle: { fontSize: 9, color: c.muted, marginTop: 4 },
+    lotsTableHead: {
+      flexDirection: "row",
+      borderBottomWidth: 1,
+      borderBottomColor: c.hairline,
+      paddingBottom: 6,
+      marginTop: 10,
+    },
+    lotsTh: { fontSize: 9, fontFamily: FONT, fontWeight: 700, color: c.foreground },
+    lotsThRight: { fontSize: 9, fontFamily: FONT, fontWeight: 700, color: c.foreground, textAlign: "right" as const },
+    lotsRow: {
+      flexDirection: "row",
+      paddingVertical: 5,
+      borderBottomWidth: 0.5,
+      borderBottomColor: c.border,
+    },
+    lotsRowStriped: {
+      flexDirection: "row",
+      paddingVertical: 5,
+      borderBottomWidth: 0.5,
+      borderBottomColor: c.border,
+      backgroundColor: c.stripe,
+    },
+    lotsCell: { fontSize: 9, color: c.foreground },
+    lotsCellRight: { fontSize: 9, color: c.foreground, textAlign: "right" as const },
+    lotsTotalRow: {
+      flexDirection: "row",
+      paddingTop: 8,
+      paddingBottom: 4,
+      borderTopWidth: 1,
+      borderTopColor: c.hairline,
+      marginTop: 2,
+    },
+    lotsTotalLabel: { fontSize: 10, fontFamily: FONT, fontWeight: 700, color: c.foreground },
+    lotsTotalValue: { fontSize: 10, fontFamily: FONT, fontWeight: 700, color: c.foreground, textAlign: "right" as const },
 
     // ── Approval note ──
     noteSection: {
@@ -291,6 +354,80 @@ export function BudgetReport({
             </View>
           </>
         )}
+
+        {/* ── Lot contributions , per-lot share of the annual budget,
+            calculated in proportion to each lot's liability. Lot rows use
+            lot numbers only so the document stays accurate as ownership
+            changes. ── */}
+        {lots && lots.length > 0 ? (() => {
+          const liabSafe = (l: { liability: number }) => l.liability > 0 ? l.liability : 1;
+          const totalLiability = lots.reduce((s, l) => s + liabSafe(l), 0);
+          const periods = BILLING_PERIODS_PER_YEAR[billingCycle ?? ""] ?? 1;
+          const periodLabel = PERIOD_LABEL[billingCycle ?? ""] ?? "Per period";
+          const showPerPeriod = periods > 1;
+
+          const rows = lots.map((lot) => {
+            const liab = liabSafe(lot);
+            const proportion = liab / totalLiability;
+            const annual = Math.round(totalAmount * proportion * 100) / 100;
+            const perPeriod = Math.round((annual / periods) * 100) / 100;
+            return { lot, annual, perPeriod };
+          });
+
+          const lotColW = showPerPeriod ? "40%" : "55%";
+          const liabColW = showPerPeriod ? "15%" : "20%";
+          const numColW = showPerPeriod ? "22.5%" : "25%";
+
+          return (
+            <View style={{ marginTop: 8 }}>
+              <View style={s.lotsSectionRow}>
+                <View style={{ flex: 1 }}>
+                  <Text style={s.lotsSectionTitle}>Lot contributions</Text>
+                  <Text style={s.lotsSubtitle}>
+                    Each lot&apos;s share of the annual budget, calculated in proportion to its liability.
+                  </Text>
+                </View>
+              </View>
+
+              <View style={s.lotsTableHead}>
+                <Text style={[s.lotsTh, { width: lotColW }]}>Lot</Text>
+                <Text style={[s.lotsThRight, { width: liabColW }]}>Liability</Text>
+                <Text style={[s.lotsThRight, { width: numColW }]}>Annual share</Text>
+                {showPerPeriod ? (
+                  <Text style={[s.lotsThRight, { width: numColW }]}>{periodLabel}</Text>
+                ) : null}
+              </View>
+
+              {rows.map((r, i) => (
+                <View key={i} style={i % 2 === 0 ? s.lotsRowStriped : s.lotsRow}>
+                  <Text style={[s.lotsCell, { width: lotColW }]}>
+                    {fmtLot(r.lot.lot_number, r.lot.unit_number)}
+                  </Text>
+                  <Text style={[s.lotsCellRight, { width: liabColW }]}>
+                    {liabSafe(r.lot)}
+                  </Text>
+                  <Text style={[s.lotsCellRight, { width: numColW }]}>{fmt(r.annual)}</Text>
+                  {showPerPeriod ? (
+                    <Text style={[s.lotsCellRight, { width: numColW }]}>{fmt(r.perPeriod)}</Text>
+                  ) : null}
+                </View>
+              ))}
+
+              <View style={s.lotsTotalRow}>
+                <Text style={[s.lotsTotalLabel, { width: lotColW }]}>Total</Text>
+                <Text style={[s.lotsTotalValue, { width: liabColW }]}>{totalLiability}</Text>
+                <Text style={[s.lotsTotalValue, { width: numColW }]}>
+                  {fmt(rows.reduce((s, r) => s + r.annual, 0))}
+                </Text>
+                {showPerPeriod ? (
+                  <Text style={[s.lotsTotalValue, { width: numColW }]}>
+                    {fmt(rows.reduce((s, r) => s + r.perPeriod, 0))}
+                  </Text>
+                ) : null}
+              </View>
+            </View>
+          );
+        })() : null}
 
         {approvalNote ? (
           <View style={s.noteSection}>
