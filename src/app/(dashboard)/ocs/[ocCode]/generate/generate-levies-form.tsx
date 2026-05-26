@@ -26,6 +26,7 @@ import {
 } from "@/lib/actions/levy";
 import type { BudgetWithItems } from "@/lib/actions/budget";
 import { useOCCode } from "@/lib/oc-context";
+import { SpecialLevyForm } from "./special-levy-form";
 
 interface CoaOption {
   id: string;
@@ -109,20 +110,20 @@ function LotRow({
           {/* Compact table , extra-small text + minimal padding because
               this whole table sits inside a per-lot dropdown. */}
           <div className="overflow-hidden rounded-md border border-border">
-            <Table variant="bordered" className="text-[11px]">
+            <Table variant="bordered" className="text-[10px]">
               <TableHeader>
                 <TableRow>
-                  <TableHead className="py-1 text-[11px]">Description</TableHead>
-                  <TableHead className="py-1 w-[110px] text-right text-[11px]">Amount</TableHead>
-                  <TableHead className="py-1 w-[32px]" />
+                  <TableHead className="py-0.5 text-[10px]">Description</TableHead>
+                  <TableHead className="py-0.5 w-[96px] text-right text-[10px]">Amount</TableHead>
+                  <TableHead className="py-0.5 w-[28px]" />
                 </TableRow>
               </TableHeader>
               <TableBody>
                 {lot.items.map((item, i) => (
                   <TableRow key={`base-${i}`}>
-                    <TableCell className="py-1 text-foreground">{item.description}</TableCell>
-                    <TableCell className="py-1 text-right tabular-nums text-foreground">{formatCurrency(item.amount)}</TableCell>
-                    <TableCell className="py-1" />
+                    <TableCell className="py-0.5 text-foreground">{item.description}</TableCell>
+                    <TableCell className="py-0.5 text-right tabular-nums text-foreground">{formatCurrency(item.amount)}</TableCell>
+                    <TableCell className="py-0.5" />
                   </TableRow>
                 ))}
                 {(lot.adjustments ?? []).map((adj, i) => (
@@ -179,9 +180,9 @@ function LotRow({
               </TableBody>
               <TableFooter>
                 <TableRow>
-                  <TableCell className="py-1 font-semibold text-foreground">Total</TableCell>
-                  <TableCell className="py-1 text-right font-bold tabular-nums text-foreground">{formatCurrency(totalAmount)}</TableCell>
-                  <TableCell className="py-1" />
+                  <TableCell className="py-0.5 font-semibold text-foreground text-[10px]">Total</TableCell>
+                  <TableCell className="py-0.5 text-right font-bold tabular-nums text-foreground text-[10px]">{formatCurrency(totalAmount)}</TableCell>
+                  <TableCell className="py-0.5" />
                 </TableRow>
               </TableFooter>
             </Table>
@@ -422,25 +423,12 @@ export function GenerateLeviesForm({
   }
 
   if (levyKind === "special") {
-    // Special-levy flow lives in a sibling component once it's built.
-    // Until then, surface a placeholder so this page doesn't look broken
-    // when the manager picks it , they can hit Back and choose Regular.
     return (
-      <div className="space-y-6">
-        <Card>
-          <CardContent className="pt-5 space-y-3">
-            <Label>Special levy</Label>
-            <p className="text-sm text-muted-foreground">
-              The dedicated special-levy wizard is coming soon. For now, raise a regular levy and attach the special-purpose line as an adjustment.
-            </p>
-            <div>
-              <Button variant="secondary" size="sm" onClick={() => setLevyKind(null)}>
-                Back
-              </Button>
-            </div>
-          </CardContent>
-        </Card>
-      </div>
+      <SpecialLevyForm
+        ocId={ocId}
+        coaOptions={coaOptions}
+        onBack={() => setLevyKind(null)}
+      />
     );
   }
 

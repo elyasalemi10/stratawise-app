@@ -35,25 +35,69 @@ export default async function BatchDetailPage({
     .filter((e) => (e as { current_step: number }).current_step >= 1)
     .map((e) => (e as { levy_notice_id: string }).levy_notice_id);
 
-  // Which mail provider will the email send actually go through? Surfaced
-  // in the "Send by email" popup so the manager isn't surprised.
-  const { data: mcRow } = await supabase
-    .from("management_companies")
-    .select("mail_provider")
-    .eq("id", oc.management_company_id)
-    .maybeSingle();
-  const provider = (mcRow?.mail_provider as string | null) ?? "stratawise";
-  const mailProviderLabel =
-    provider === "gmail" ? "your firm's Gmail account"
-    : provider === "outlook" ? "your firm's Outlook account"
-    : "StrataWise (Resend)";
+  // Resolve the actual mailbox options the manager can send from. We
+  // expose real email addresses (never the provider name "Resend"
+  // etc.) so the manager sees exactly the address the recipient will
+  // see. Two sources:
+  //   1. The firm's connected mailbox (Gmail or Outlook send-as) , the
+  //      primary manager's email under the firm's domain.
+  //   2. The manager's permanent StrataWise alias
+  //      (<email_username>@stratawise.com.au) , always available as a
+  //      fallback when the firm's mailbox isn't configured or the
+  //      manager wants the StrataWise address for compliance reasons.
+  // Duplicates are de-duped. When only one option exists the dialog
+  // renders it as static text; with 2+, as a dropdown.
+  const [{ data: mcRow }, { data: primaryManagerRow }] = await Promise.all([
+    supabase
+      .from("management_companies")
+      .select("mail_provider, mail_provider_config")
+      .eq("id", oc.management_company_id)
+      .maybeSingle(),
+    supabase
+      .from("oc_members")
+      .select("profile_id, profiles!inner(email, email_username, first_name, last_name)")
+      .eq("oc_id", ocId)
+      .eq("role", "strata_manager")
+      .is("left_at", null)
+      .order("joined_at", { ascending: true })
+      .limit(1)
+      .maybeSingle(),
+  ]);
+  const mailRow = (mcRow as { mail_provider: string | null; mail_provider_config: { domain?: string } | null } | null);
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const primary = (primaryManagerRow as any)?.profiles as
+    | { email: string | null; email_username: string | null; first_name: string | null; last_name: string | null }
+    | null;
+  const managerEmail = primary?.email ?? null;
+  const stratawiseAlias = primary?.email_username
+    ? `${primary.email_username}@stratawise.com.au`
+    : null;
+
+  const mailboxOptions: Array<{ value: string; label: string }> = [];
+  // Gmail/Outlook connected mailbox , surface the manager's real email
+  // when the firm has a provider configured.
+  if (mailRow?.mail_provider === "gmail" || mailRow?.mail_provider === "outlook") {
+    if (managerEmail) {
+      mailboxOptions.push({ value: managerEmail, label: managerEmail });
+    }
+  }
+  // StrataWise alias always available as a secondary.
+  if (stratawiseAlias) {
+    if (!mailboxOptions.some((o) => o.value.toLowerCase() === stratawiseAlias.toLowerCase())) {
+      mailboxOptions.push({ value: stratawiseAlias, label: stratawiseAlias });
+    }
+  }
+  // Last-resort fallback so the dialog never shows an empty selector.
+  if (mailboxOptions.length === 0) {
+    mailboxOptions.push({ value: "noreply@stratawise.com.au", label: "noreply@stratawise.com.au" });
+  }
 
   return (
     <BatchDetailContent
       ocId={ocId}
       batch={batch}
       reminderSentLevyIds={reminderSentLevyIds}
-      mailProviderLabel={mailProviderLabel}
+      mailboxOptions={mailboxOptions}
     />
   );
 }

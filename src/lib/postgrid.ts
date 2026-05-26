@@ -126,47 +126,77 @@ export async function sendPostGridLetter(params: {
 }
 
 /**
- * Very loose AU postal-address parser. Splits "123 Smith St, Carlton VIC 3053"
- * into the fields PostGrid wants. Lives here (not in a utils file) because
- * it's only useful for the PostGrid adapter and we don't want callers
- * reaching for it elsewhere.
+ * AU postal-address parser. Handles BOTH common orderings used in the
+ * wild:
  *
- * Returns null when the input clearly isn't a postal address (no postcode,
- * no city, etc.) so callers can fall back to email or surface a warning.
+ *   "Unit 1, 25 Princes Highway, PAKENHAM 3810 VIC"   (postcode then state)
+ *   "123 Smith St, Carlton VIC 3053"                  (state then postcode)
+ *
+ * Lives here (not in a utils file) because it's only useful for the
+ * PostGrid adapter and we don't want callers reaching for it elsewhere.
+ *
+ * Returns null when the input clearly isn't a postal address so callers
+ * can fall back to email or surface a warning.
  */
 export function parseAuPostalAddress(raw: string | null | undefined): PostGridAddress | null {
   if (!raw) return null;
   const cleaned = raw.replace(/\s+/g, " ").trim();
   if (!cleaned) return null;
 
-  // Expect a 4-digit postcode at the end. Without it we can't reliably
-  // send to PostGrid (they require provinceOrState + postalOrZip).
-  const postcodeMatch = cleaned.match(/(\d{4})\s*$/);
-  if (!postcodeMatch) return null;
-  const postcode = postcodeMatch[1];
-  const beforePostcode = cleaned.slice(0, postcodeMatch.index).trim().replace(/[,\s]+$/, "");
+  const STATE_PATTERN = /\b(VIC|NSW|QLD|WA|SA|TAS|NT|ACT)\b/i;
+  const POSTCODE_PATTERN = /\b(\d{4})\b/;
 
-  // State sits immediately before the postcode.
-  const stateMatch = beforePostcode.match(/\b(VIC|NSW|QLD|WA|SA|TAS|NT|ACT)\s*$/i);
-  if (!stateMatch) return null;
-  const state = stateMatch[1].toUpperCase();
-  const beforeState = beforePostcode.slice(0, stateMatch.index).trim().replace(/[,\s]+$/, "");
+  // Try both orderings.
+  let state: string | null = null;
+  let postcode: string | null = null;
+  let tailIndex = -1;
 
-  // Everything before the state is "street + city". Split on the last
-  // comma if present , otherwise treat the last word block as the city.
-  let addressLine1 = beforeState;
-  let city = "";
-  const lastComma = beforeState.lastIndexOf(",");
-  if (lastComma !== -1) {
-    addressLine1 = beforeState.slice(0, lastComma).trim();
-    city = beforeState.slice(lastComma + 1).trim();
+  // Pattern A: state-before-postcode at the end ("... VIC 3053")
+  let m = cleaned.match(/(VIC|NSW|QLD|WA|SA|TAS|NT|ACT)\s+(\d{4})\s*$/i);
+  if (m) {
+    state = m[1].toUpperCase();
+    postcode = m[2];
+    tailIndex = m.index ?? -1;
   } else {
-    const tokens = beforeState.split(/\s+/);
+    // Pattern B: postcode-before-state at the end ("... 3810 VIC")
+    m = cleaned.match(/(\d{4})\s+(VIC|NSW|QLD|WA|SA|TAS|NT|ACT)\s*$/i);
+    if (m) {
+      postcode = m[1];
+      state = m[2].toUpperCase();
+      tailIndex = m.index ?? -1;
+    } else {
+      // Last-ditch: scan anywhere for state + postcode (any order).
+      const stateMatch = cleaned.match(STATE_PATTERN);
+      const postMatch = cleaned.match(POSTCODE_PATTERN);
+      if (stateMatch && postMatch) {
+        state = stateMatch[1].toUpperCase();
+        postcode = postMatch[1];
+        tailIndex = Math.min(stateMatch.index ?? Infinity, postMatch.index ?? Infinity);
+      }
+    }
+  }
+
+  if (!state || !postcode || tailIndex < 0) return null;
+
+  const beforeTail = cleaned.slice(0, tailIndex).trim().replace(/[,\s]+$/, "");
+
+  // Everything before the state/postcode tail is "street(s) + city". The
+  // city is the LAST comma-separated chunk if commas are present,
+  // otherwise the last word.
+  let addressLine1 = beforeTail;
+  let city = "";
+  const parts = beforeTail.split(",").map((p) => p.trim()).filter(Boolean);
+  if (parts.length >= 2) {
+    city = parts[parts.length - 1];
+    addressLine1 = parts.slice(0, -1).join(", ");
+  } else if (parts.length === 1) {
+    const tokens = parts[0].split(/\s+/);
     if (tokens.length >= 2) {
       city = tokens[tokens.length - 1];
       addressLine1 = tokens.slice(0, -1).join(" ");
     } else {
-      addressLine1 = beforeState;
+      addressLine1 = parts[0];
+      city = parts[0]; // last-resort , at least give PostGrid something
     }
   }
   if (!addressLine1 || !city) return null;

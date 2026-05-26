@@ -11,7 +11,9 @@ import { createServerClient } from "@/lib/supabase";
 
 export interface LotLevyRow {
   id: string;
-  reference_number: string;
+  /** Owner-facing reference: DRN if active, else lot_owners.payment_reference.
+   *  Internal LEV-NNNN is never surfaced here. */
+  display_reference: string;
   fund_type: "administrative" | "capital_works" | "maintenance_plan";
   levy_type: string;
   period_start: string;
@@ -36,23 +38,47 @@ export async function listLotLevies(lotId: string): Promise<LotLevyRow[]> {
   await requireCompanyRole();
   const supabase = createServerClient();
 
-  const { data, error } = await supabase
-    .from("levy_notices")
-    .select(
-      "id, reference_number, fund_type, levy_type, period_start, period_end, due_date, amount, amount_paid, status, pdf_url, issued_at, paid_at",
-    )
-    .eq("lot_id", lotId)
-    // Hide drafts , the owner never sees a notice that hasn't gone out,
-    // and listing them on the lot detail confuses managers reviewing what
-    // an owner owes.
-    .neq("status", "draft")
-    .order("due_date", { ascending: false })
-    .limit(500);
+  const [{ data, error }, { data: drns }, { data: ownerRefRow }] = await Promise.all([
+    supabase
+      .from("levy_notices")
+      .select(
+        "id, fund_type, levy_type, period_start, period_end, due_date, amount, amount_paid, status, pdf_url, issued_at, paid_at",
+      )
+      .eq("lot_id", lotId)
+      // Hide drafts , the owner never sees a notice that hasn't gone out,
+      // and listing them on the lot detail confuses managers reviewing what
+      // an owner owes.
+      .neq("status", "draft")
+      .order("due_date", { ascending: false })
+      .limit(500),
+    supabase
+      .from("lot_drns")
+      .select("drn, active_from, active_to")
+      .eq("lot_id", lotId)
+      .order("active_from", { ascending: false }),
+    supabase
+      .from("lot_owners")
+      .select("payment_reference")
+      .eq("lot_id", lotId)
+      .not("payment_reference", "is", null)
+      .limit(1)
+      .maybeSingle(),
+  ]);
 
   if (error || !data) return [];
+  const drnRows = (drns ?? []) as Array<{ drn: string; active_from: string; active_to: string | null }>;
+  const ownerRef = (ownerRefRow as { payment_reference: string | null } | null)?.payment_reference ?? null;
+
+  function refForPeriod(periodStart: string): string {
+    const active = drnRows.find(
+      (d) => d.active_from <= periodStart && (!d.active_to || d.active_to >= periodStart),
+    );
+    return active?.drn ?? ownerRef ?? "";
+  }
+
   return data.map((row) => ({
     id: row.id as string,
-    reference_number: row.reference_number as string,
+    display_reference: refForPeriod(row.period_start as string),
     fund_type: row.fund_type as LotLevyRow["fund_type"],
     levy_type: row.levy_type as string,
     period_start: row.period_start as string,

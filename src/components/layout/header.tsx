@@ -154,31 +154,41 @@ export function Header({ initialOCs }: HeaderProps) {
 
   return (
     <div className="grid grid-cols-3 items-center flex-1 gap-4">
-      {/* Breadcrumbs , left */}
+      {/* Breadcrumbs , left. Each segment truncates to ~30 chars with an
+          ellipsis when longer; the full label sits in a native `title`
+          attribute so the OS tooltip surfaces it on hover (no visible
+          hint that one exists , the user just discovers it). */}
       <nav className="flex items-center text-sm min-w-0">
-        {breadcrumbs.map((crumb, i) => (
-          <span key={i} className="flex items-center">
-            {i > 0 && <span className="mx-2 text-muted-foreground">/</span>}
-            {crumb.href && !crumb.isLast ? (
-              <Link
-                href={crumb.href}
-                className="text-muted-foreground hover:text-foreground transition-colors"
-              >
-                {crumb.label}
-              </Link>
-            ) : (
-              <span
-                className={
-                  crumb.isLast
-                    ? "font-medium text-foreground"
-                    : "text-muted-foreground"
-                }
-              >
-                {crumb.label}
-              </span>
-            )}
-          </span>
-        ))}
+        {breadcrumbs.map((crumb, i) => {
+          const shouldTruncate = crumb.label.length > 30;
+          const display = shouldTruncate ? `${crumb.label.slice(0, 27)}...` : crumb.label;
+          const titleAttr = shouldTruncate ? crumb.label : undefined;
+          return (
+            <span key={i} className="flex items-center min-w-0">
+              {i > 0 && <span className="mx-2 text-muted-foreground">/</span>}
+              {crumb.href && !crumb.isLast ? (
+                <Link
+                  href={crumb.href}
+                  title={titleAttr}
+                  className="text-muted-foreground hover:text-foreground transition-colors max-w-[18rem] truncate"
+                >
+                  {display}
+                </Link>
+              ) : (
+                <span
+                  title={titleAttr}
+                  className={
+                    crumb.isLast
+                      ? "font-medium text-foreground max-w-[24rem] truncate"
+                      : "text-muted-foreground max-w-[18rem] truncate"
+                  }
+                >
+                  {display}
+                </span>
+              )}
+            </span>
+          );
+        })}
       </nav>
 
       {/* Global document search , middle. Falls back to the page title when no

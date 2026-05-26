@@ -136,11 +136,12 @@ async function assembleLevyNoticeProps(
     { data: itemsRow },
     { data: memberRow },
     { data: drnRow },
+    { data: ownerRefRow },
   ] = await Promise.all([
     supabase
       .from("owners_corporations")
       .select(
-        "id, name, address, abn, plan_number, management_company_id, bank_bsb, bank_account_number, bank_account_name",
+        "id, name, address, abn, plan_number, management_company_id, bank_bsb, bank_account_number, bank_account_name, include_arrears_on_notice",
       )
       .eq("id", levy.oc_id)
       .single(),
@@ -176,8 +177,20 @@ async function assembleLevyNoticeProps(
       .order("active_from", { ascending: false })
       .limit(1)
       .maybeSingle(),
+    // Owner-reference fallback when no DRN is active. payment_reference
+    // is generated on OC creation ("WHDPE-001" = first-5-of-short_code
+    // + lot-number-padded-3) and is what the lot owner sees as their
+    // permanent billing reference.
+    supabase
+      .from("lot_owners")
+      .select("payment_reference")
+      .eq("lot_id", levy.lot_id)
+      .not("payment_reference", "is", null)
+      .limit(1)
+      .maybeSingle(),
   ]);
   const activeDrn = (drnRow as { drn: string } | null)?.drn ?? null;
+  const ownerPaymentRef = (ownerRefRow as { payment_reference: string | null } | null)?.payment_reference ?? null;
 
   const sub = subRow as {
     id: string;
@@ -189,11 +202,17 @@ async function assembleLevyNoticeProps(
     bank_bsb: string | null;
     bank_account_number: string | null;
     bank_account_name: string | null;
+    include_arrears_on_notice: boolean | null;
   } | null;
   if (!sub) {
     throw new Error(`assembleLevyNoticeProps: oc missing for levy ${levyId}`);
   }
   const lot = lotRow as { lot_number: number; unit_number: string | null } | null;
+
+  // Reference cascade: DRN > owner payment_reference > "Lot N" label.
+  // Internal LEV-NNNN is never surfaced to the owner (it's our DB
+  // sequence, not theirs).
+  const displayRef = activeDrn ?? ownerPaymentRef ?? `Lot ${lot?.lot_number ?? ""}`.trim();
 
   // Management company name + logo for the header.
   const { data: mcRow } = await supabase
@@ -228,6 +247,40 @@ async function assembleLevyNoticeProps(
   const hasEft = Boolean(sub.bank_bsb && sub.bank_account_number);
   const items = (itemsRow ?? []) as Array<{ description: string; amount: number | string }>;
 
+  // Arrears summary , only computed when the OC opts in. Sums the
+  // outstanding (amount minus amount_paid) for every PRIOR levy notice
+  // on this lot whose period started before this one's period_start.
+  // "As of" date = most recent bank_transactions.imported_at so the
+  // owner knows how fresh the balance is.
+  let priorArrears: { amount: number; asOf: string } | null = null;
+  if (sub.include_arrears_on_notice) {
+    const [{ data: priorRows }, { data: lastImport }] = await Promise.all([
+      supabase
+        .from("levy_notices")
+        .select("amount, amount_paid")
+        .eq("lot_id", levy.lot_id)
+        .lt("period_start", levy.period_start)
+        .in("status", ["issued", "partially_paid", "overdue"]),
+      supabase
+        .from("bank_transactions")
+        .select("imported_at")
+        .eq("oc_id", levy.oc_id)
+        .order("imported_at", { ascending: false })
+        .limit(1)
+        .maybeSingle(),
+    ]);
+    const outstanding = (priorRows ?? []).reduce((sum, r) => {
+      return sum + Math.max(0, Number(r.amount ?? 0) - Number(r.amount_paid ?? 0));
+    }, 0);
+    if (outstanding > 0) {
+      const importedAt = (lastImport as { imported_at: string } | null)?.imported_at;
+      priorArrears = {
+        amount: Math.round(outstanding * 100) / 100,
+        asOf: importedAt ? formatDateLong(importedAt.slice(0, 10)) : "today",
+      };
+    }
+  }
+
   const props: AssembledLevyProps = {
     _ocId: sub.id,
     managementCompany,
@@ -242,7 +295,7 @@ async function assembleLevyNoticeProps(
     // BPAY/EFT using their DRN, so the PDF should print the same number
     // Macquarie reconciles against. Falls back to the LEV-NNNN sequence
     // when the OC isn't on DEFT yet.
-    referenceNumber: activeDrn ?? levy.reference_number,
+    referenceNumber: displayRef,
     date: new Date(),
     lotOwner: {
       name: ownerName,
@@ -268,15 +321,16 @@ async function assembleLevyNoticeProps(
             account_name: sub.bank_account_name ?? sub.name,
             // EFT reference must match Macquarie's reconciliation key (the
             // DRN) when one exists, otherwise the LEV-NNNN sequence.
-            reference: activeDrn ?? levy.reference_number,
+            reference: displayRef,
           }
         : {
             bsb: "",
             account_number: "",
             account_name: "",
-            reference: activeDrn ?? levy.reference_number,
+            reference: displayRef,
           },
     },
+    priorArrears,
   };
 
   return props;

@@ -71,6 +71,9 @@ export interface LevyBatchDetail extends LevyBatchSummary {
      *  what the owner uses to pay , show it in preference to the LEV
      *  reference on dashboards and the levy notice. */
     drn: string | null;
+    /** Fallback owner reference (lot_owners.payment_reference, e.g.
+     *  "WHDPE-001") generated at OC creation. Used when no DRN exists. */
+    payment_reference: string | null;
     amount: number;
     status: string;
     pdf_url: string | null;
@@ -209,10 +212,17 @@ export async function getNextPeriod(ocId: string, budgetId: string) {
   // Check which periods already have batches
   const { data: existingBatches } = await supabase
     .from("levy_batches")
-    .select("period_start")
+    .select("period_start, status")
     .eq("budget_id", budgetId);
 
-  const existingPeriodStarts = new Set((existingBatches ?? []).map((b) => b.period_start));
+  // Cancelled batches DON'T block the period , the manager soft-cancelled
+  // because they want to regenerate. Every other batch (draft / sent /
+  // partially_sent / ledger_written) still blocks.
+  const existingPeriodStarts = new Set(
+    (existingBatches ?? [])
+      .filter((b) => b.status !== "cancelled")
+      .map((b) => b.period_start),
+  );
 
   // Find first period that hasn't been generated
   for (let i = 0; i < periodsPerYear; i++) {
@@ -262,10 +272,17 @@ export async function getAvailablePeriods(ocId: string, budgetId: string): Promi
 
   const { data: existingBatches } = await supabase
     .from("levy_batches")
-    .select("period_start")
+    .select("period_start, status")
     .eq("budget_id", budgetId);
 
-  const existingPeriodStarts = new Set((existingBatches ?? []).map((b) => b.period_start));
+  // Cancelled batches DON'T block the period , the manager soft-cancelled
+  // because they want to regenerate. Every other batch (draft / sent /
+  // partially_sent / ledger_written) still blocks.
+  const existingPeriodStarts = new Set(
+    (existingBatches ?? [])
+      .filter((b) => b.status !== "cancelled")
+      .map((b) => b.period_start),
+  );
 
   // Period label is the bare quarter / half / month chip ("Q1") , no year
   // suffix. The form composes a richer "Q1 1 Jul - 30 Jun" via formatDayMonthShort.
@@ -461,13 +478,20 @@ export async function generateLevyPreview(
 // internally. Prefer the administrative bank_accounts row; fall back to the
 // legacy OC-level columns when no admin account exists yet. Returns null when
 // neither is configured (PDF then shows blank EFT, as before).
-// Bulk DRN lookup for a set of levy notices. Returns a Map<levyId, drn>
-// for levies that had an active DRN on the levy's `period_start` date
-// (NULL active_to means still current). DRN-first reference policy: the
-// PDF, email body, EFT reference, and download filename all use the DRN
-// when present so owners see the same number Macquarie reconciles on.
-// Falls back to the LEV-NNNN reference for OCs not on DEFT yet.
-async function resolveDrnsForLevies(
+// Bulk reference lookup for a set of levy notices. Returns a
+// Map<levyId, ref> using a strict precedence:
+//
+//   1. DRN (lot_drns active on the levy's period_start)
+//   2. lot_owners.payment_reference (e.g. "WHDPE-001" , generated on OC
+//      creation as a system-owned "owner reference" similar to a DRN)
+//
+// The internal LEV-NNNN reference number is NEVER surfaced to owners.
+// If neither a DRN nor a payment_reference exists, the levy is mapped to
+// an empty string and callers should fall back to whatever sensible
+// label they have (lot number, owner name) , but in practice every lot
+// gets a payment_reference at OC creation, so this Map is always
+// populated.
+async function resolveLevyReferences(
   supabase: ReturnType<typeof createServerClient>,
   levies: Array<{ id: string; lot_id: string; period_start: string }>,
 ): Promise<Map<string, string>> {
@@ -475,18 +499,47 @@ async function resolveDrnsForLevies(
   if (!levies.length) return result;
   const lotIds = Array.from(new Set(levies.map((l) => l.lot_id))).filter(Boolean) as string[];
   if (!lotIds.length) return result;
+
+  // ── 1. DRN cascade ────────────────────────────────────────
   const { data: drnRows } = await supabase
     .from("lot_drns")
     .select("lot_id, drn, active_from, active_to")
     .in("lot_id", lotIds);
-  if (!drnRows?.length) return result;
+  const drnByLevy = new Map<string, string>();
   for (const levy of levies) {
-    const matches = drnRows
+    const matches = (drnRows ?? [])
       .filter((r) => r.lot_id === levy.lot_id)
       .filter((r) => r.active_from <= levy.period_start)
       .filter((r) => !r.active_to || r.active_to >= levy.period_start)
       .sort((a, b) => (a.active_from < b.active_from ? 1 : -1));
-    if (matches[0]) result.set(levy.id, matches[0].drn);
+    if (matches[0]) drnByLevy.set(levy.id, matches[0].drn);
+  }
+
+  // ── 2. payment_reference cascade ──────────────────────────
+  // First-seen wins for joint-owner lots; matches the PostGrid lookup.
+  const { data: ownerRows } = await supabase
+    .from("lot_owners")
+    .select("lot_id, payment_reference")
+    .in("lot_id", lotIds);
+  const refByLot = new Map<string, string>();
+  for (const r of ownerRows ?? []) {
+    if (r.lot_id && r.payment_reference && !refByLot.has(r.lot_id)) {
+      refByLot.set(r.lot_id, r.payment_reference);
+    }
+  }
+
+  for (const levy of levies) {
+    const drn = drnByLevy.get(levy.id);
+    if (drn) {
+      result.set(levy.id, drn);
+      continue;
+    }
+    const owner = refByLot.get(levy.lot_id);
+    if (owner) {
+      result.set(levy.id, owner);
+      continue;
+    }
+    result.set(levy.id, ""); // sentinel , callers default to lot label
   }
   return result;
 }
@@ -525,10 +578,95 @@ async function resolveReceivingEft(
   return null;
 }
 
+// Per-lot apportionment for a SPECIAL levy. Returns one row per active
+// lot in the OC with the lot's calculated share of the supplied total
+// amount, distributed by lot_liability (with lot_entitlement as a
+// fallback, matching the regular generator). The caller can then
+// adjust the per-lot amounts in the UI before sending to createLevyBatch.
+export async function previewSpecialLevy(
+  ocId: string,
+  totalAmount: number,
+): Promise<{
+  data?: {
+    lots: Array<{
+      lot_id: string;
+      lot_number: number;
+      unit_number: string | null;
+      owner_display_name: string | null;
+      liability: number;
+      share: number;
+    }>;
+    total: number;
+  };
+  error?: string;
+}> {
+  await requireOCAccess(ocId);
+  const supabase = createServerClient();
+  if (!Number.isFinite(totalAmount) || totalAmount <= 0) {
+    return { error: "Total amount must be greater than zero." };
+  }
+
+  const { data: rawLots } = await supabase
+    .from("lots")
+    .select("id, lot_number, unit_number, lot_entitlement, lot_liability")
+    .eq("oc_id", ocId)
+    .order("lot_number");
+  if (!rawLots?.length) return { error: "No lots found." };
+
+  const lotIds = rawLots.map((l) => l.id);
+  const owners = await getLotOwners(supabase, lotIds);
+
+  // Liability denominator: prefer lot_liability, fall back to entitlement,
+  // last-resort 1 so each lot pays an equal share.
+  const liabilities = rawLots.map((l) => ({
+    id: l.id,
+    lot_number: l.lot_number,
+    unit_number: l.unit_number,
+    liability:
+      Number(l.lot_liability) > 0
+        ? Number(l.lot_liability)
+        : Number(l.lot_entitlement) > 0
+        ? Number(l.lot_entitlement)
+        : 1,
+  }));
+  const totalLiability = liabilities.reduce((s, l) => s + l.liability, 0);
+
+  // Cents-precise apportionment: round to 2dp and assign the residual
+  // (rounding drift) to the lot with the largest liability so the sum
+  // ties out to totalAmount exactly.
+  const cents = Math.round(totalAmount * 100);
+  let assignedCents = 0;
+  const shares = liabilities.map((l) => {
+    const portion = Math.round((l.liability / totalLiability) * cents);
+    assignedCents += portion;
+    return { ...l, shareCents: portion };
+  });
+  const drift = cents - assignedCents;
+  if (drift !== 0) {
+    const largest = shares.reduce((a, b) => (a.liability >= b.liability ? a : b));
+    largest.shareCents += drift;
+  }
+
+  return {
+    data: {
+      lots: shares.map((s) => ({
+        lot_id: s.id,
+        lot_number: s.lot_number,
+        unit_number: s.unit_number,
+        owner_display_name: owners.get(s.id)?.owner_display_name ?? null,
+        liability: s.liability,
+        share: s.shareCents / 100,
+      })),
+      total: totalAmount,
+    },
+  };
+}
+
 export async function createLevyBatch(
   ocId: string,
   data: {
-    budget_id: string;
+    /** Required for regular budget-driven batches; null for special levies. */
+    budget_id: string | null;
     financial_year: string;
     fund_type: "administrative" | "capital_works" | "maintenance_plan";
     period_label: string;
@@ -540,6 +678,11 @@ export async function createLevyBatch(
       amount: number;
       items: { description: string; amount: number; budget_item_id: string | null; is_adjustment: boolean }[];
     }[];
+    /** Set true for special-purpose one-off levies. The batch gets
+     *  is_special=true + the descriptive purpose, and notices are
+     *  marked levy_type='special'. */
+    is_special?: boolean;
+    special_purpose?: string;
   },
 ): Promise<{ batchId?: string; error?: string }> {
   const profile = await requireCompanyRole();
@@ -564,6 +707,8 @@ export async function createLevyBatch(
       levy_count: data.lots.length,
       status: "draft",
       generated_by: profile.id,
+      is_special: data.is_special ?? false,
+      special_purpose: data.special_purpose ?? null,
     })
     .select("id")
     .single();
@@ -634,7 +779,7 @@ export async function createLevyBatch(
         reference_number: refNum,
         bpay_crn: bpayCrn,
         fund_type: data.fund_type,
-        levy_type: "regular",
+        levy_type: data.is_special ? "special" : "regular",
         period_start: data.period_start,
         period_end: data.period_end,
         amount: lot.amount,
@@ -849,7 +994,7 @@ export async function getLevyBatchDetail(ocId: string, batchId: string): Promise
   // stored reference; this lookup is only for what we DISPLAY to the
   // manager today.
   const today = new Date().toISOString().slice(0, 10);
-  const [{ data: allItems }, owners, { data: drns }] = await Promise.all([
+  const [{ data: allItems }, owners, { data: drns }, { data: ownerRefs }] = await Promise.all([
     levyIds.length > 0
       ? supabase.from("levy_notice_items").select("*").in("levy_notice_id", levyIds).order("sort_order")
       : Promise.resolve({ data: [] }),
@@ -861,11 +1006,22 @@ export async function getLevyBatchDetail(ocId: string, batchId: string): Promise
           .in("lot_id", lotIds)
           .lte("active_from", today)
       : Promise.resolve({ data: [] }),
+    lotIds.length > 0
+      ? supabase
+          .from("lot_owners")
+          .select("lot_id, payment_reference")
+          .in("lot_id", lotIds)
+          .not("payment_reference", "is", null)
+      : Promise.resolve({ data: [] }),
   ]);
   const drnByLot = new Map<string, string>();
   for (const d of (drns ?? []) as Array<{ lot_id: string; drn: string; active_to: string | null }>) {
     if (d.active_to && d.active_to < today) continue;
     if (!drnByLot.has(d.lot_id)) drnByLot.set(d.lot_id, d.drn);
+  }
+  const ownerRefByLot = new Map<string, string>();
+  for (const r of (ownerRefs ?? []) as Array<{ lot_id: string; payment_reference: string }>) {
+    if (!ownerRefByLot.has(r.lot_id)) ownerRefByLot.set(r.lot_id, r.payment_reference);
   }
 
   return {
@@ -893,6 +1049,7 @@ export async function getLevyBatchDetail(ocId: string, batchId: string): Promise
         owner_contact_email: owner?.owner_contact_email ?? null,
         reference_number: l.reference_number,
         drn: drnByLot.get(l.lot_id) ?? null,
+        payment_reference: ownerRefByLot.get(l.lot_id) ?? null,
         amount: Number(l.amount),
         status: l.status,
         pdf_url: l.pdf_url,
@@ -991,7 +1148,6 @@ export async function cancelBatch(ocId: string, batchId: string) {
   await requireOCAccess(ocId);
   const supabase = createServerClient();
 
-  // Only allow cancelling draft batches (not sent ones)
   const { data: batch } = await supabase
     .from("levy_batches")
     .select("status")
@@ -1008,22 +1164,22 @@ export async function cancelBatch(ocId: string, batchId: string) {
     };
   }
 
-  // Delete levy notice items first
-  const { data: levies } = await supabase
+  // Soft cancel: keep the batch row + every levy_notice + every line
+  // item intact so historical info is preserved. Status flips to
+  // 'cancelled' on both the batch and its notices so the period is
+  // free again for a fresh batch (getAvailablePeriods only blocks on
+  // active statuses). Audit/reporting still has the original data.
+  const nowIso = new Date().toISOString();
+
+  await supabase
     .from("levy_notices")
-    .select("id")
+    .update({ status: "cancelled", cancelled_at: nowIso })
     .eq("batch_id", batchId);
 
-  const levyIds = (levies ?? []).map((l) => l.id);
-  if (levyIds.length > 0) {
-    await supabase.from("levy_notice_items").delete().in("levy_notice_id", levyIds);
-  }
-
-  // Delete levy notices
-  await supabase.from("levy_notices").delete().eq("batch_id", batchId);
-
-  // Delete batch
-  await supabase.from("levy_batches").delete().eq("id", batchId);
+  await supabase
+    .from("levy_batches")
+    .update({ status: "cancelled", cancelled_at: nowIso })
+    .eq("id", batchId);
 
   await supabase.from("audit_log").insert({
     profile_id: profile.id,
@@ -1031,6 +1187,7 @@ export async function cancelBatch(ocId: string, batchId: string) {
     action: "cancel",
     entity_type: "levy_batch",
     entity_id: batchId,
+    metadata: { mode: "soft", policy: "keep_rows_free_period" },
   });
 
   revalidatePath("/ocs/[ocCode]/levies", "page");
@@ -1198,6 +1355,66 @@ export async function recallBatch(ocId: string, batchId: string) {
   return { success: true };
 }
 
+// Resolve the active lot_owner row id for a lot at "now". Used to
+// stamp communication_log rows so historical communications stay tied
+// to the owner who held the lot when they were sent (lot owner
+// segregation , a new owner doesn't inherit the previous owner's
+// inbox).
+async function activeLotOwnerId(
+  supabase: ReturnType<typeof createServerClient>,
+  lotId: string,
+): Promise<string | null> {
+  const { data } = await supabase
+    .from("lot_owners")
+    .select("id, ownership_since")
+    .eq("lot_id", lotId)
+    .order("ownership_since", { ascending: false, nullsFirst: false })
+    .limit(1)
+    .maybeSingle();
+  return (data as { id: string } | null)?.id ?? null;
+}
+
+// Centralised insert for email/letter sends into communication_log.
+// Keeps the column set + segregation rule (lot_owner_id_at_creation) in
+// one place so future sends can't accidentally drop fields the lot
+// communications tab + audit trail rely on.
+async function logLevyCommunication(
+  supabase: ReturnType<typeof createServerClient>,
+  args: {
+    ocId: string;
+    lotId: string;
+    senderProfileId: string;
+    recipientEmail?: string | null;
+    channel: "email" | "letter";
+    subject: string;
+    levyNoticeId: string;
+    bodyPreview?: string;
+    externalId?: string | null;
+    status?: "queued" | "sent" | "delivered" | "opened" | "bounced" | "failed";
+    sentAt?: string;
+  },
+): Promise<void> {
+  const ownerId = await activeLotOwnerId(supabase, args.lotId);
+  await supabase.from("communication_log").insert({
+    oc_id: args.ocId,
+    lot_id: args.lotId,
+    lot_owner_id_at_creation: ownerId,
+    sender_profile_id: args.senderProfileId,
+    recipient_email: args.recipientEmail ?? null,
+    channel: args.channel,
+    direction: "outbound",
+    type: "levy_notice",
+    subject: args.subject,
+    external_id: args.externalId ?? null,
+    status: args.status ?? "sent",
+    sent_at: args.sentAt ?? new Date().toISOString(),
+    related_entity_type: "levy_notice",
+    related_entity_id: args.levyNoticeId,
+    body_preview: args.bodyPreview ?? null,
+    confidential: false,
+  });
+}
+
 // ─── Send batch by post (PostGrid, currently TEST MODE only) ─────────
 //
 // Per-lot postal-mail dispatch via PostGrid. The integration is wired
@@ -1232,22 +1449,32 @@ export async function sendBatchByPost(
 
   const lotIds = levies.map((l) => l.lot_id).filter(Boolean) as string[];
 
-  // Pull postal_address + owner name directly from lot_owners (the
-  // legacy/manual owner record, not the portal profile) , this is the
-  // address strata managers maintain by hand and trust for mailing.
+  // Pull postal_address + owner name + owner row id + payment_reference
+  // directly from lot_owners (the legacy/manual owner record, not the
+  // portal profile) , this is the address strata managers maintain by
+  // hand and trust for mailing.
   const { data: ownerRows } = await supabase
     .from("lot_owners")
-    .select("lot_id, name, postal_address")
+    .select("id, lot_id, name, postal_address, payment_reference")
     .in("lot_id", lotIds);
-  const ownerByLot = new Map<string, { name: string | null; postal_address: string | null }>();
+  const ownerByLot = new Map<string, { id: string; name: string | null; postal_address: string | null; payment_reference: string | null }>();
   for (const r of ownerRows ?? []) {
     if (!r.lot_id) continue;
     // First non-null wins. Joint-owner lots may have multiple rows but the
     // first usable address is fine for a single-letter dispatch.
     if (!ownerByLot.has(r.lot_id)) {
-      ownerByLot.set(r.lot_id, { name: r.name ?? null, postal_address: r.postal_address ?? null });
+      ownerByLot.set(r.lot_id, {
+        id: r.id,
+        name: r.name ?? null,
+        postal_address: r.postal_address ?? null,
+        payment_reference: r.payment_reference ?? null,
+      });
     }
   }
+
+  // DRN cascade so the letter description shows the same reference as
+  // the PDF (and matches the resolveLevyReferences logic).
+  const refByLevy = await resolveLevyReferences(supabase, levies);
 
   let sentCount = 0;
   let skippedCount = 0;
@@ -1257,6 +1484,7 @@ export async function sendBatchByPost(
     if (!parsed) {
       // No usable postal address , skip and let the manager see the
       // count so they can fix the address row and retry.
+      console.warn(`[postBatch] skipping levy ${levy.id}: could not parse postal address "${owner?.postal_address ?? "<null>"}"`);
       skippedCount++;
       continue;
     }
@@ -1272,31 +1500,37 @@ export async function sendBatchByPost(
         continue;
       }
 
+      const displayRef = refByLevy.get(levy.id) || `Lot-${levy.lot_id.slice(0, 8)}`;
       const result = await sendPostGridLetter({
         to: parsed,
-        description: `Levy ${levy.reference_number} , ${batch?.period_label ?? ""}`,
+        description: `Levy ${displayRef} , ${batch?.period_label ?? ""}`,
         pdfBuffer,
-        pdfFilename: `${levy.reference_number}.pdf`,
+        pdfFilename: `${displayRef}.pdf`,
       });
 
       // communication_log keeps a "letter" channel row so the audit
-      // surface knows we attempted a post. status mirrors PostGrid's
-      // letter status (ready / printing / completed / failed).
+      // surface and the lot's communications tab pick it up. The
+      // lot_owner_id_at_creation column pins the row to the owner who
+      // held the lot when the letter was posted , a future owner won't
+      // see past owners' notices, matching the segregation policy.
       await supabase.from("communication_log").insert({
         oc_id: ocId,
-        profile_id: profile.id,
+        lot_id: levy.lot_id,
+        lot_owner_id_at_creation: owner?.id ?? null,
+        sender_profile_id: profile.id,
         channel: "letter",
-        notification_type: "levy_notice",
-        recipient_label: parsed.addressLine1,
+        direction: "outbound",
+        type: "levy_notice",
+        subject: `Levy notice ${displayRef}`,
+        external_id: result.id,
+        status: "sent",
+        sent_at: new Date().toISOString(),
         related_entity_type: "levy_notice",
         related_entity_id: levy.id,
-        external_id: result.id,
-        status: result.status,
-        metadata: {
-          test_mode: result.testMode,
-          provider: "postgrid",
-          batch_id: batchId,
-        },
+        body_preview: result.testMode
+          ? `Posted via PostGrid (test mode , id ${result.id})`
+          : `Posted via PostGrid (id ${result.id})`,
+        confidential: false,
       });
 
       // Only flip status from draft → issued , don't downgrade levies
@@ -1347,6 +1581,9 @@ export async function sendBatchEmailsCustom(
     emailOverrides?: Record<string, string>;
     /** Optional: extra files (base64-encoded) attached to every email. */
     extraAttachments?: Array<{ filename: string; contentBase64: string; contentType: string }>;
+    /** Optional: override the FROM mailbox address. The dialog passes the
+     *  manager's selection so the email comes from the right account. */
+    fromAddress?: string;
   } = {},
 ): Promise<{ sentCount?: number; error?: string }> {
   const profile = await requireCompanyRole();
@@ -1386,7 +1623,7 @@ export async function sendBatchEmailsCustom(
   const owners = await getLotOwners(supabase, lotIds);
   // Pull the active DRN per lot at the levy's period_start so the email
   // body shows the same reference the PDF and Macquarie reconciliation use.
-  const drnByLevy = await resolveDrnsForLevies(supabase, levies);
+  const drnByLevy = await resolveLevyReferences(supabase, levies);
 
   // Materialise extra attachments once , they're the same on every email.
   const extras = (options.extraAttachments ?? []).map((a) => ({
@@ -1412,9 +1649,13 @@ export async function sendBatchEmailsCustom(
       const formatCurrency = (n: number) =>
         new Intl.NumberFormat("en-AU", { style: "currency", currency: "AUD" }).format(n);
 
-      // DRN-first reference so owners see/use the same number Macquarie
-      // matches on. Falls back to LEV-NNNN for OCs not on DEFT yet.
-      const displayRef = drnByLevy.get(levy.id) ?? levy.reference_number;
+      // DRN-first → payment_reference (owner reference). LEV-NNNN is
+      // internal-only and is never surfaced to owners. Sentinel empty
+      // string falls back to the lot label so the email still names
+      // *something* useful (resolveLevyReferences always populates the
+      // map; the fallback is a defensive guard).
+      const resolvedRef = drnByLevy.get(levy.id) ?? "";
+      const displayRef = resolvedRef || `Lot ${levy.lot_id}`;
 
       await sendLevyEmail({
         to: email,
@@ -1430,6 +1671,18 @@ export async function sendBatchEmailsCustom(
         pdfFilename: `${displayRef}.pdf`,
         extraAttachments: extras,
         ocId,
+        fromOverride: options.fromAddress ?? null,
+      });
+
+      await logLevyCommunication(supabase, {
+        ocId,
+        lotId: levy.lot_id,
+        senderProfileId: profile.id,
+        recipientEmail: email,
+        channel: "email",
+        subject: `Levy notice ${displayRef}`,
+        levyNoticeId: levy.id,
+        bodyPreview: `Levy ${displayRef} due ${formatDateLong(levy.due_date)} (${formatCurrency(Number(levy.amount))})`,
       });
 
       await supabase
@@ -1479,6 +1732,7 @@ export async function resendBatchEmailsCustom(
   options: {
     emailOverrides?: Record<string, string>;
     extraAttachments?: Array<{ filename: string; contentBase64: string; contentType: string }>;
+    fromAddress?: string;
   } = {},
 ): Promise<{ sentCount?: number; error?: string }> {
   const profile = await requireCompanyRole();
@@ -1514,7 +1768,7 @@ export async function resendBatchEmailsCustom(
 
   const lotIds = levies.map((l) => l.lot_id).filter(Boolean) as string[];
   const owners = await getLotOwners(supabase, lotIds);
-  const drnByLevy = await resolveDrnsForLevies(supabase, levies);
+  const drnByLevy = await resolveLevyReferences(supabase, levies);
 
   const extras = (options.extraAttachments ?? []).map((a) => ({
     filename: a.filename,
@@ -1533,7 +1787,8 @@ export async function resendBatchEmailsCustom(
       if (!pdfBuffer) continue;
       const fmt = (n: number) =>
         new Intl.NumberFormat("en-AU", { style: "currency", currency: "AUD" }).format(n);
-      const displayRef = drnByLevy.get(levy.id) ?? levy.reference_number;
+      const resolvedRef = drnByLevy.get(levy.id) ?? "";
+      const displayRef = resolvedRef || `Lot ${levy.lot_id}`;
       await sendLevyEmail({
         to: email,
         ownerName: owner?.owner_display_name ?? null,
@@ -1548,6 +1803,17 @@ export async function resendBatchEmailsCustom(
         pdfFilename: `${displayRef}.pdf`,
         extraAttachments: extras,
         ocId,
+        fromOverride: options.fromAddress ?? null,
+      });
+      await logLevyCommunication(supabase, {
+        ocId,
+        lotId: levy.lot_id,
+        senderProfileId: profile.id,
+        recipientEmail: email,
+        channel: "email",
+        subject: `Levy notice ${displayRef} (resent)`,
+        levyNoticeId: levy.id,
+        bodyPreview: `Resent levy ${displayRef} due ${formatDateLong(levy.due_date)} (${fmt(Number(levy.amount))})`,
       });
       sentCount++;
     } catch (err) {
@@ -1621,7 +1887,7 @@ export async function sendBatchEmails(ocId: string, batchId: string) {
 
   const sendLotIds = levies.map((l) => l.lot_id).filter(Boolean) as string[];
   const sendOwners = await getLotOwners(supabase, sendLotIds);
-  const drnByLevy = await resolveDrnsForLevies(supabase, levies);
+  const drnByLevy = await resolveLevyReferences(supabase, levies);
 
   const eftAccount = await resolveReceivingEft(supabase, ocId, oc);
 
@@ -1649,7 +1915,8 @@ export async function sendBatchEmails(ocId: string, batchId: string) {
       const formatCurrency = (n: number) =>
         new Intl.NumberFormat("en-AU", { style: "currency", currency: "AUD" }).format(n);
 
-      const displayRef = drnByLevy.get(levy.id) ?? levy.reference_number;
+      const resolvedRef = drnByLevy.get(levy.id) ?? "";
+      const displayRef = resolvedRef || `Lot ${levy.lot_id}`;
 
       await sendLevyEmail({
         to: email,
@@ -1664,6 +1931,17 @@ export async function sendBatchEmails(ocId: string, batchId: string) {
         pdfBuffer,
         pdfFilename: `${displayRef}.pdf`,
         ocId,
+      });
+
+      await logLevyCommunication(supabase, {
+        ocId,
+        lotId: levy.lot_id,
+        senderProfileId: profile.id,
+        recipientEmail: email,
+        channel: "email",
+        subject: `Levy notice ${displayRef}`,
+        levyNoticeId: levy.id,
+        bodyPreview: `Levy ${displayRef} due ${formatDateLong(levy.due_date)} (${formatCurrency(Number(levy.amount))})`,
       });
 
       // Mark as issued

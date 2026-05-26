@@ -10,6 +10,9 @@ import {
   Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle,
 } from "@/components/ui/dialog";
 import {
+  Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
+} from "@/components/ui/select";
+import {
   Table, TableBody, TableCell, TableHead, TableHeader, TableRow,
 } from "@/components/ui/table";
 import { sendBatchEmailsCustom, resendBatchEmailsCustom } from "@/lib/actions/levy";
@@ -29,8 +32,11 @@ interface Props {
   /** Send mode dictates which action runs + the dialog copy. */
   mode: "send" | "resend";
   levies: LevyRow[];
-  /** Provider label shown in the "Sending from" line. */
-  mailProviderLabel: string;
+  /** Real mailbox addresses the manager can send from. Loaded server-side
+   *  before the page renders so the dialog opens with no loading state.
+   *  1 option = static label, 2+ = dropdown. Never reveals provider
+   *  internals (Resend / Gmail / Outlook); always shows real email. */
+  mailboxOptions: Array<{ value: string; label: string }>;
   open: boolean;
   onOpenChange: (open: boolean) => void;
   onSent: (sentCount: number) => void;
@@ -43,8 +49,15 @@ const ATTACHMENT_LIMIT_BYTES = 20 * 1024 * 1024;
 const RECIPIENT_TABLE_MAX_HEIGHT = 4.5 * 44 + 36; // + header
 
 export function SendEmailsDialog({
-  ocId, batchId, mode, levies, mailProviderLabel, open, onOpenChange, onSent,
+  ocId, batchId, mode, levies, mailboxOptions, open, onOpenChange, onSent,
 }: Props) {
+  // Selected sender address. Defaults to the first option (the firm's
+  // mailbox where configured). Stored as a string so the dropdown is
+  // controlled; on send we pass it through as fromAddress.
+  const [fromAddress, setFromAddress] = useState<string>(mailboxOptions[0]?.value ?? "");
+  useEffect(() => {
+    if (open) setFromAddress(mailboxOptions[0]?.value ?? "");
+  }, [open, mailboxOptions]);
   // Pre-fill overrides with the owner's stored email so the manager can
   // edit in place instead of typing into an empty input.
   const initialOverrides = useMemo(() => {
@@ -100,6 +113,7 @@ export function SendEmailsDialog({
       const result = await action(ocId, batchId, {
         emailOverrides: cleanOverrides,
         extraAttachments: extras,
+        fromAddress: fromAddress || undefined,
       });
       setSending(false);
       if (result.error) {
@@ -120,9 +134,26 @@ export function SendEmailsDialog({
             <Mail className="h-4 w-4" />
             {mode === "resend" ? "Resend levies by email" : "Send levies by email"}
           </DialogTitle>
-          {/* Sending from , short, factual. No marketing copy. */}
-          <DialogDescription>
-            Sending from <strong className="text-foreground">{mailProviderLabel}</strong>.
+          {/* Sending from , short, factual. Single mailbox = static
+              label, multiple = dropdown so the manager can pick. */}
+          <DialogDescription className="flex items-center gap-2">
+            <span>Sending from</span>
+            {mailboxOptions.length > 1 ? (
+              <Select value={fromAddress} onValueChange={(v) => setFromAddress(v ?? "")}>
+                <SelectTrigger className="h-7 w-auto min-w-[14rem] text-sm">
+                  <SelectValue placeholder="Pick a mailbox" />
+                </SelectTrigger>
+                <SelectContent>
+                  {mailboxOptions.map((o) => (
+                    <SelectItem key={o.value} value={o.value}>
+                      {o.label}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            ) : (
+              <strong className="text-foreground">{mailboxOptions[0]?.label ?? "noreply"}</strong>
+            )}
           </DialogDescription>
         </DialogHeader>
 

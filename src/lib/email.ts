@@ -445,6 +445,9 @@ interface SendLevyEmailParams {
    *  (Resend 40 MB / Gmail 25 MB). */
   extraAttachments?: Array<{ filename: string; content: Buffer; contentType: string }>;
   ocId?: string | null;
+  /** Optional explicit sender address (e.g. picked by the manager in the
+   *  send dialog). When set, overrides the OC-resolved default sender. */
+  fromOverride?: string | null;
 }
 
 export async function sendLevyEmail({
@@ -461,6 +464,7 @@ export async function sendLevyEmail({
   pdfFilename,
   extraAttachments,
   ocId,
+  fromOverride,
 }: SendLevyEmailParams) {
   const greeting = ownerName ? `Hi ${ownerName},` : "Hi,";
   const logoHtml = logoImg(companyLogoUrl);
@@ -470,7 +474,13 @@ export async function sendLevyEmail({
     return { success: true };
   }
 
-  const from = await resolveOcSenderFromHeader(ocId ?? null);
+  // Manager-picked override wins over the OC-resolved default. The
+  // override is already a bare email so wrap it with the firm display
+  // name when we have one; otherwise pass through as-is.
+  const resolved = await resolveOcSenderFromHeader(ocId ?? null);
+  const from = fromOverride && fromOverride.trim().length > 0
+    ? fromOverride
+    : resolved;
 
   const { error } = await transportSend({
     ocId: ocId ?? null,

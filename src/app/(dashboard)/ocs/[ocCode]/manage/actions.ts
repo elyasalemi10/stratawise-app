@@ -28,10 +28,19 @@ export async function updateOCField(
     "levy_calculation_basis",
     "meetings_postal_buffer_days", "levies_postal_buffer_days", "financial_postal_buffer_days",
     "default_delivery_method",
+    "include_arrears_on_notice",
   ];
 
   if (!allowedFields.includes(field)) {
     return { error: "Field not editable" };
+  }
+
+  // Settings UI sends "yes" / "no" through a select for boolean columns.
+  // Coerce them here so the column actually receives a boolean.
+  let coercedValue: typeof value = value;
+  if (field === "include_arrears_on_notice") {
+    if (value === "yes" || value === true) coercedValue = true;
+    else if (value === "no" || value === false) coercedValue = false;
   }
 
   const supabase = createServerClient();
@@ -44,7 +53,7 @@ export async function updateOCField(
 
   const { error } = await supabase
     .from("owners_corporations")
-    .update({ [field]: value })
+    .update({ [field]: coercedValue })
     .eq("id", ocId);
 
   if (error) return { error: error.message };
@@ -57,7 +66,7 @@ export async function updateOCField(
     entity_type: "oc",
     entity_id: ocId,
     before_state: before,
-    after_state: { [field]: value },
+    after_state: { [field]: coercedValue },
   });
 
   revalidatePath("/ocs/[ocCode]/manage", "page");

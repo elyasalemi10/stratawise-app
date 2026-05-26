@@ -267,11 +267,13 @@ export function DocumentManager({ ocId, lotId, initialDocuments, readOnly }: Doc
 
   return (
     <div className="space-y-4">
-      {/* Top toolbar , just Export + Upload now. Category filter pills and
-          the "New uploads tagged as" row are gone; categories are still
-          attached to each document automatically (see selectedCategory state
+      {/* Top toolbar , Upload + Export ZIP pushed to the RIGHT so the
+          left side stays empty for a future filter / search bar without
+          re-flowing the buttons. Category filter pills and the "New
+          uploads tagged as" row are gone; categories are still attached
+          to each document automatically (see selectedCategory state
           which defaults to "other") and surface on the per-row chip. */}
-      <div className="flex items-center justify-start gap-2">
+      <div className="flex items-center justify-end gap-2">
         {!readOnly && (
           <>
             <Button size="sm" onClick={() => fileInputRef.current?.click()}>

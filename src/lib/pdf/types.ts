@@ -76,6 +76,13 @@ export interface LevyNoticeProps extends BaseDocumentProps {
   note?: string;
   penaltyInterestRate?: number;
   brandColors?: BrandColors;
+  /** Optional arrears summary printed under the period total. Only set
+   *  when the OC opts in via include_arrears_on_notice. asOf carries the
+   *  bank-import date so the owner knows the figure is point-in-time. */
+  priorArrears?: {
+    amount: number;
+    asOf: string;
+  } | null;
 }
 
 // --- Budget Report ---

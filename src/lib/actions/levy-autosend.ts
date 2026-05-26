@@ -1,0 +1,129 @@
+"use server";
+
+import { requireCompanyRole, requireOCAccess } from "@/lib/auth";
+import { createServerClient } from "@/lib/supabase";
+import { revalidatePath } from "next/cache";
+
+// Auto-send levies = scheduled, cron-driven dispatch of the next levy
+// batch for an OC. Manager toggles it on from OC settings → picks the
+// budget + day-of-month + mailbox. The cron (separate Trigger.dev job)
+// generates the batch and sends it from the chosen mailbox. Arrears, if
+// the OC has them enabled, are computed at send-time using the latest
+// bank import , per the brief: "Send on schedule, show arrears as of
+// last bank import".
+
+export interface LevyAutosendSchedule {
+  id: string | null;
+  oc_id: string;
+  enabled: boolean;
+  budget_id: string | null;
+  send_day_of_month: number;
+  from_address: string | null;
+  last_sent_on: string | null;
+  next_send_date: string | null;
+  last_error: string | null;
+}
+
+export async function getLevyAutosendSchedule(
+  ocId: string,
+): Promise<LevyAutosendSchedule> {
+  await requireOCAccess(ocId);
+  const supabase = createServerClient();
+  const { data } = await supabase
+    .from("levy_autosend_schedules")
+    .select("id, enabled, budget_id, send_day_of_month, from_address, last_sent_on, next_send_date, last_error")
+    .eq("oc_id", ocId)
+    .maybeSingle();
+  if (!data) {
+    // Caller-friendly default so the UI can bind to a complete shape
+    // even when the row doesn't exist yet.
+    return {
+      id: null,
+      oc_id: ocId,
+      enabled: false,
+      budget_id: null,
+      send_day_of_month: 1,
+      from_address: null,
+      last_sent_on: null,
+      next_send_date: null,
+      last_error: null,
+    };
+  }
+  return { ...(data as Omit<LevyAutosendSchedule, "oc_id">), oc_id: ocId };
+}
+
+function nextSendDateFromDay(day: number, todayIso: string): string {
+  // Compute the next calendar date matching `day`. If today is on or
+  // before `day`, fire this month; otherwise fire next month.
+  const today = new Date(`${todayIso}T00:00:00Z`);
+  const y = today.getUTCFullYear();
+  const m = today.getUTCMonth();
+  const d = today.getUTCDate();
+  let targetMonth = m;
+  let targetYear = y;
+  if (day < d) {
+    targetMonth = m + 1;
+    if (targetMonth > 11) { targetMonth = 0; targetYear = y + 1; }
+  }
+  // Clamp to the month's last day (so day=31 in Feb resolves to 28/29).
+  const lastDay = new Date(Date.UTC(targetYear, targetMonth + 1, 0)).getUTCDate();
+  const safeDay = Math.min(day, lastDay);
+  const dt = new Date(Date.UTC(targetYear, targetMonth, safeDay));
+  return dt.toISOString().slice(0, 10);
+}
+
+export async function upsertLevyAutosendSchedule(
+  ocId: string,
+  input: {
+    enabled: boolean;
+    budget_id: string | null;
+    send_day_of_month: number;
+    from_address: string | null;
+  },
+): Promise<{ error?: string; schedule?: LevyAutosendSchedule }> {
+  await requireCompanyRole();
+  await requireOCAccess(ocId);
+
+  if (input.enabled) {
+    if (!input.budget_id) return { error: "Pick a budget for the auto-send to draw from." };
+    if (!input.from_address) return { error: "Pick which mailbox to send from." };
+    if (input.send_day_of_month < 1 || input.send_day_of_month > 31) {
+      return { error: "Send day must be between 1 and 31." };
+    }
+  }
+
+  const supabase = createServerClient();
+  const today = new Date().toISOString().slice(0, 10);
+  const nextSend = input.enabled
+    ? nextSendDateFromDay(input.send_day_of_month, today)
+    : null;
+
+  const { data, error } = await supabase
+    .from("levy_autosend_schedules")
+    .upsert(
+      {
+        oc_id: ocId,
+        enabled: input.enabled,
+        budget_id: input.budget_id,
+        send_day_of_month: input.send_day_of_month,
+        from_address: input.from_address,
+        next_send_date: nextSend,
+        // Clear the last_error whenever the manager touches the
+        // schedule , a fresh edit is the manager retrying.
+        last_error: null,
+        updated_at: new Date().toISOString(),
+      },
+      { onConflict: "oc_id" },
+    )
+    .select("id, enabled, budget_id, send_day_of_month, from_address, last_sent_on, next_send_date, last_error")
+    .single();
+
+  if (error || !data) {
+    return { error: error?.message ?? "Could not save auto-send schedule." };
+  }
+
+  revalidatePath("/ocs/[ocCode]/settings", "page");
+  return {
+    schedule: { ...(data as Omit<LevyAutosendSchedule, "oc_id">), oc_id: ocId },
+  };
+}

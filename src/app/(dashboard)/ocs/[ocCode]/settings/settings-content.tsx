@@ -48,6 +48,9 @@ interface OCData {
   meetings_postal_buffer_days?: number | null;
   levies_postal_buffer_days?: number | null;
   financial_postal_buffer_days?: number | null;
+  /** When true, levy notice PDFs include an "arrears as of {bank import
+   *  date}" line. Default false , managers opt in. */
+  include_arrears_on_notice?: boolean | null;
 }
 
 function EditableField({
@@ -287,6 +290,21 @@ export function SettingsContent({ oc: initial }: { oc: OCData }) {
               type={isEditing ? "select" : "text"}
               options={deliveryOptions}
               onSaved={(v) => onFieldSaved("default_delivery_method", v)}
+            />
+            {/* Arrears on notice toggle , when on, every levy notice
+                generated for this OC prints an "arrears as of {last
+                bank import}" line under the current period's total. */}
+            <EditableField
+              label="Include arrears on levy notices"
+              value={isEditing
+                ? (oc.include_arrears_on_notice ? "yes" : "no")
+                : (oc.include_arrears_on_notice ? "Yes" : "No")}
+              field="include_arrears_on_notice"
+              ocId={oc.id}
+              isEditing={isEditing}
+              type={isEditing ? "select" : "text"}
+              options={[{ value: "yes", label: "Yes" }, { value: "no", label: "No" }]}
+              onSaved={(v) => onFieldSaved("include_arrears_on_notice", v)}
             />
             <EditableField
               label="Meetings postal buffer (days)"

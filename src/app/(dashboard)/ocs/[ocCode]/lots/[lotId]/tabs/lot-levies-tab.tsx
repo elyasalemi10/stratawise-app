@@ -146,7 +146,7 @@ export function LotLeviesTab({ lotId }: Props) {
                 return (
                   <TableRow key={row.id}>
                     <TableCell className="font-mono text-xs">
-                      {row.reference_number}
+                      {row.display_reference}
                     </TableCell>
                     <TableCell className="text-xs text-muted-foreground">
                       {fmtDate(row.period_start)} , {fmtDate(row.period_end)}

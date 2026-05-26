@@ -355,7 +355,15 @@ export function BudgetDetailContent({
               {isDraft && !editing && (
                 <button
                   type="button"
-                  onClick={() => setEditing(true)}
+                  onClick={() => {
+                    // If the user is on "All funds" when they click Edit,
+                    // collapse to the first fund so every keystroke is
+                    // unambiguous about which fund it targets.
+                    if (funds.length > 1 && activeFund === "all") {
+                      setActiveFund(funds[0]);
+                    }
+                    setEditing(true);
+                  }}
                   className="flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-sm text-foreground hover:bg-muted cursor-pointer"
                 >
                   <Pencil className="size-3.5" />
@@ -364,7 +372,9 @@ export function BudgetDetailContent({
               )}
               {isDraft && !editing && (
                 <>
-                  <div className="my-1 h-px bg-border" />
+                  {/* Same vertical gap as the rows above , the divider
+                      is a hairline only, no extra margin. */}
+                  <div className="h-px bg-border" />
                   <button
                     type="button"
                     onClick={() => setDeleteOpen(true)}
@@ -390,8 +400,9 @@ export function BudgetDetailContent({
       )}
 
       {/* Multi-fund line tabs , only render when the budget actually
-          spans more than one fund. Single-fund budgets keep the same
-          layout as before. */}
+          spans more than one fund. The "All funds" tab is hidden while
+          editing , editing across funds in one table is confusing
+          because new rows can't pick which fund they belong to. */}
       {funds.length > 1 && (
         <div className="flex items-center gap-1 border-b border-border">
           {funds.map((f) => (
@@ -409,18 +420,20 @@ export function BudgetDetailContent({
               {FUND_LABEL[f] ?? f}
             </button>
           ))}
-          <button
-            type="button"
-            onClick={() => setActiveFund("all")}
-            className={cn(
-              "h-9 border-b-2 px-3 text-sm font-medium transition-colors cursor-pointer",
-              activeFund === "all"
-                ? "border-primary text-foreground"
-                : "border-transparent text-muted-foreground hover:text-foreground",
-            )}
-          >
-            All funds
-          </button>
+          {!editing && (
+            <button
+              type="button"
+              onClick={() => setActiveFund("all")}
+              className={cn(
+                "h-9 border-b-2 px-3 text-sm font-medium transition-colors cursor-pointer",
+                activeFund === "all"
+                  ? "border-primary text-foreground"
+                  : "border-transparent text-muted-foreground hover:text-foreground",
+              )}
+            >
+              All funds
+            </button>
+          )}
         </div>
       )}
 
@@ -488,7 +501,7 @@ export function BudgetDetailContent({
               <TableFooter>
                 <TableRow>
                   <TableCell colSpan={activeFund === "all" && funds.length > 1 ? 3 : 2} className="text-sm font-semibold text-foreground">
-                    {activeFund === "all" ? "Total annual" : `Total , ${FUND_LABEL[activeFund] ?? activeFund}`}
+                    {activeFund === "all" ? "Total annual" : `Total - ${FUND_LABEL[activeFund] ?? activeFund}`}
                   </TableCell>
                   <TableCell className="text-sm font-bold tabular-nums text-foreground pl-6">{formatCurrency(total)}</TableCell>
                   {editing && <TableCell />}

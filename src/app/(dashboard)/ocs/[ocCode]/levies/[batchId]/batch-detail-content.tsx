@@ -45,12 +45,15 @@ export function BatchDetailContent({
   ocId,
   batch: initialBatch,
   reminderSentLevyIds = [],
-  mailProviderLabel,
+  mailboxOptions,
 }: {
   ocId: string;
   batch: LevyBatchDetail;
   reminderSentLevyIds?: string[];
-  mailProviderLabel: string;
+  /** Real mailbox addresses the manager can send from. Computed
+   *  server-side from the firm's mail_provider + manager profile.
+   *  Never includes provider names like "Resend". */
+  mailboxOptions: Array<{ value: string; label: string }>;
 }) {
   const ocCode = useOCCode();
   const router = useRouter();
@@ -314,7 +317,10 @@ export function BatchDetailContent({
               )}
               {batch.status === "draft" && (
                 <>
-                  <div className="my-1 h-px bg-border" />
+                  {/* Hairline only, no extra margin , the gap matches
+                      the rows above so the divider is just a visual
+                      separator, not a section break. */}
+                  <div className="h-px bg-border" />
                   <button
                     type="button"
                     onClick={() => setShowCancelConfirm(true)}
@@ -353,17 +359,14 @@ export function BatchDetailContent({
                       <span className="ml-2 text-muted-foreground">
                         {levy.owner_display_name ?? "Unassigned"}
                       </span>
-                      {/* DRN / Macquarie reference first, internal LEV ref
-                          fades to muted secondary. */}
-                      <span className="ml-2 font-mono text-xs">
-                        {levy.drn ? (
-                          <>
-                            <span className="text-foreground">DRN {levy.drn}</span>
-                            <span className="ml-1 text-muted-foreground/70">· {levy.reference_number}</span>
-                          </>
-                        ) : (
-                          <span className="text-muted-foreground">{levy.reference_number}</span>
-                        )}
+                      {/* Reference cascade: DRN > owner payment_reference.
+                          The internal LEV-NNNN sequence is never shown
+                          to users (it's an internal sequence, not an
+                          owner-facing reference). */}
+                      <span className="ml-2 font-mono text-xs text-foreground">
+                        {levy.drn
+                          ? `DRN ${levy.drn}`
+                          : (levy.payment_reference ?? "")}
                       </span>
                     </div>
                   </div>
@@ -379,25 +382,28 @@ export function BatchDetailContent({
 
                 {openLevyId === levy.id && (
                   <div className="px-4 pb-3 pl-11 space-y-2">
-                    {/* Line items , compact shared Table. */}
+                    {/* Line items , extra-compact: text-[11px], py-0.5,
+                        tight w-24 amount column. The dropdown surface is
+                        already narrow so the table needs to feel like a
+                        sub-grid, not a full data table. */}
                     <div className="overflow-hidden rounded-md border border-border">
-                      <Table variant="bordered" className="text-xs">
+                      <Table variant="bordered" className="text-[11px]">
                         <TableHeader>
                           <TableRow>
-                            <TableHead className="py-1.5">Description</TableHead>
-                            <TableHead className="py-1.5 w-28 text-right">Amount</TableHead>
+                            <TableHead className="py-0.5 text-[11px]">Description</TableHead>
+                            <TableHead className="py-0.5 w-24 text-right text-[11px]">Amount</TableHead>
                           </TableRow>
                         </TableHeader>
                         <TableBody>
                           {levy.items.map((item, i) => (
                             <TableRow key={i}>
-                              <TableCell className="py-1.5 text-foreground">
+                              <TableCell className="py-0.5 text-foreground">
                                 {item.description}
                                 {item.is_adjustment && (
                                   <span className="ml-1 text-[10px] text-primary">(adj)</span>
                                 )}
                               </TableCell>
-                              <TableCell className="py-1.5 text-right tabular-nums text-foreground">
+                              <TableCell className="py-0.5 text-right tabular-nums text-foreground">
                                 {formatCurrency(item.amount)}
                               </TableCell>
                             </TableRow>
@@ -454,7 +460,7 @@ export function BatchDetailContent({
         batchId={batch.id}
         mode="send"
         levies={draftLeviesForDialog}
-        mailProviderLabel={mailProviderLabel}
+        mailboxOptions={mailboxOptions}
         open={emailDialogOpen}
         onOpenChange={setEmailDialogOpen}
         onSent={(sent) => {
@@ -481,7 +487,7 @@ export function BatchDetailContent({
         batchId={batch.id}
         mode="resend"
         levies={allLeviesForDialog}
-        mailProviderLabel={mailProviderLabel}
+        mailboxOptions={mailboxOptions}
         open={resendDialogOpen}
         onOpenChange={setResendDialogOpen}
         onSent={() => { /* Resend doesn't change status , nothing to mirror. */ }}

@@ -48,6 +48,7 @@ export function LevyNotice({
   includeGst,
   note,
   brandColors,
+  priorArrears,
 }: LevyNoticeProps) {
   const subtotal = lineItems.reduce((sum, item) => sum + item.amount, 0);
   const gst = includeGst ? Math.round(subtotal * 0.1 * 100) / 100 : 0;
@@ -305,9 +306,15 @@ export function LevyNotice({
               <Text style={s.totalLabel}>GST</Text>
               <Text style={s.totalValue}>{fmt(gst)}</Text>
             </View>
+            {priorArrears && priorArrears.amount > 0 ? (
+              <View style={s.totalRow}>
+                <Text style={s.totalLabel}>Arrears (as of {priorArrears.asOf})</Text>
+                <Text style={[s.totalValue, { color: c.destructive }]}>{fmt(priorArrears.amount)}</Text>
+              </View>
+            ) : null}
             <View style={s.totalDueRow}>
               <Text style={s.totalDueLabel}>Total amount due</Text>
-              <Text style={s.totalDueValue}>{fmt(subtotal + gst)}</Text>
+              <Text style={s.totalDueValue}>{fmt(subtotal + gst + (priorArrears?.amount ?? 0))}</Text>
             </View>
           </View>
         </View>
