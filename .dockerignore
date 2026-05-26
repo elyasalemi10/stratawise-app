@@ -1,0 +1,21 @@
+# Keep trigger.dev's build context small by excluding things its tasks
+# never reach for. Without this the remote builder's gRPC keepalive
+# times out on the upload (Depot/EBS pipe failures).
+.next
+.vercel
+.git
+node_modules/.cache
+node_modules/.bin
+supabase/.temp
+public
+*.log
+.DS_Store
+coverage
+test-results
+playwright-report
+.cache
+.turbo
+.parcel-cache
+out
+build
+dist
