@@ -36,6 +36,8 @@ interface CoaOption {
 
 type LevyKind = "regular" | "special";
 
+type FundType = "administrative" | "capital_works" | "maintenance_plan";
+
 const formatCurrency = (n: number) =>
   new Intl.NumberFormat("en-AU", { style: "currency", currency: "AUD" }).format(n);
 
@@ -216,6 +218,7 @@ export function GenerateLeviesForm({
   budgets,
   periodsByBudgetId,
   coaOptions,
+  availableFunds,
 }: {
   ocId: string;
   budgets: BudgetWithItems[];
@@ -223,6 +226,7 @@ export function GenerateLeviesForm({
   // does NOT make a fetch on budget selection.
   periodsByBudgetId: Record<string, AvailablePeriod[]>;
   coaOptions: CoaOption[];
+  availableFunds: FundType[];
 }) {
   const ocCode = useOCCode();
   const router = useRouter();
@@ -293,11 +297,13 @@ export function GenerateLeviesForm({
           // CoA pick drives BOTH the stored id AND the user-facing
           // description ("4310 , Window cleaning") so the ledger entry
           // and the levy notice describe the same line. No free text.
+          // Store the CoA name only (no code). The PDF / email body must
+          // never surface internal account codes to lot owners.
           const coa = coaOptions.find((c) => c.id === String(value));
           newAdj[adjIndex] = {
             ...newAdj[adjIndex],
             coa_account_id: coa?.id ?? null,
-            description: coa ? `${coa.code} , ${coa.name}` : "",
+            description: coa?.name ?? "",
           };
         } else if (field === "description") {
           newAdj[adjIndex] = { ...newAdj[adjIndex], description: String(value) };
@@ -427,6 +433,7 @@ export function GenerateLeviesForm({
       <SpecialLevyForm
         ocId={ocId}
         coaOptions={coaOptions}
+        availableFunds={availableFunds}
         onBack={() => setLevyKind(null)}
       />
     );
@@ -508,7 +515,7 @@ export function GenerateLeviesForm({
               </div>
               <div className="space-y-1.5">
                 <Label className="text-xs text-muted-foreground">Period end</Label>
-                <DatePicker value={periodEnd} onChange={setPeriodEnd} disabled={generating} />
+                <DatePicker value={periodEnd} onChange={setPeriodEnd} disabled={generating} minDate={periodStart || undefined} />
               </div>
               <div className="space-y-1.5">
                 <Label className="text-xs text-muted-foreground">Due date</Label>

@@ -110,7 +110,7 @@ async function assembleLevyNoticeProps(
   const { data: levyData, error: levyErr } = await supabase
     .from("levy_notices")
     .select(
-      "id, reference_number, amount, due_date, period_start, period_end, lot_id, oc_id",
+      "id, reference_number, amount, due_date, period_start, period_end, lot_id, oc_id, levy_type",
     )
     .eq("id", levyId)
     .single();
@@ -128,6 +128,7 @@ async function assembleLevyNoticeProps(
     period_end: string;
     lot_id: string;
     oc_id: string;
+    levy_type: "regular" | "special" | "penalty_interest";
   };
 
   const [
@@ -322,7 +323,10 @@ async function assembleLevyNoticeProps(
       abn: sub.abn,
       plan_number: sub.plan_number,
     },
-    documentTitle: "Levy Notice",
+    // Title varies by levy_type so the document reads correctly out of
+    // the box (Special Levy raises differ legally + visually from
+    // standard contributions).
+    documentTitle: levy.levy_type === "special" ? "Special Levy" : "Levy Notice",
     note: multilotNote ?? undefined,
     // Prefer the active DRN as the user-facing reference , owners pay via
     // BPAY/EFT using their DRN, so the PDF should print the same number

@@ -11,8 +11,8 @@ import { Label } from "@/components/ui/label";
 import { NumberInput } from "@/components/ui/number-input";
 import { DatePicker } from "@/components/shared/date-picker";
 import {
-  Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
-} from "@/components/ui/select";
+  Combobox, ComboboxContent, ComboboxEmpty, ComboboxInput, ComboboxItem, ComboboxList,
+} from "@/components/ui/combobox";
 import {
   Table, TableBody, TableCell, TableFooter, TableHead, TableHeader, TableRow,
 } from "@/components/ui/table";
@@ -28,6 +28,8 @@ interface CoaOption {
   name: string;
 }
 
+type FundType = "administrative" | "capital_works" | "maintenance_plan";
+
 interface PreviewLot {
   lot_id: string;
   lot_number: number;
@@ -37,25 +39,49 @@ interface PreviewLot {
   share: number;
 }
 
+const FUND_LABEL: Record<FundType, string> = {
+  administrative: "Administrative Fund",
+  capital_works: "Capital Works Fund",
+  maintenance_plan: "Maintenance Plan Fund",
+};
+
 const formatCurrency = (n: number) =>
   new Intl.NumberFormat("en-AU", { style: "currency", currency: "AUD" }).format(n);
 
-// Minimal special-levy wizard:
+interface LineItem {
+  coa_account_id: string | null;
+  description: string;
+  amount: string;
+}
+
+interface PerLotAdjustment {
+  coa_account_id: string | null;
+  description: string;
+  amount: string;
+}
+
+// Special-levy wizard:
 //   1. Manager enters purpose + period + due date + fund
-//   2. Adds one or more CoA-backed line items with $ amounts
-//   3. Hits "Calculate apportionment" , server splits the total by lot
-//      liability and returns a per-lot preview
-//   4. Manager tweaks per-lot amounts if needed
-//   5. Hits "Create special levy batch" , server creates a special
-//      batch (budget_id=null, is_special=true) and notices for every
-//      lot, then redirects to the batch detail page
+//      , fund options filtered to funds the OC actually has.
+//   2. Adds CoA-backed line items (combobox), each with $ amount.
+//   3. Hits "Calculate apportionment" , server splits by lot liability.
+//   4. Per-lot share is READ-ONLY. Manager can add EXTRA CoA-backed
+//      adjustments to a lot to INCREASE that lot's total (matches
+//      regular levy flow).
+//   5. "Create special levy" persists the batch + redirects.
+//
+// Validation: every required field flips its border red on a failed
+// submit attempt; field-level state clears on the next edit. Period
+// end can never be before period start.
 export function SpecialLevyForm({
   ocId,
   coaOptions,
+  availableFunds,
   onBack,
 }: {
   ocId: string;
   coaOptions: CoaOption[];
+  availableFunds: FundType[];
   onBack: () => void;
 }) {
   const ocCode = useOCCode();
@@ -65,14 +91,29 @@ export function SpecialLevyForm({
   const [periodStart, setPeriodStart] = useState("");
   const [periodEnd, setPeriodEnd] = useState("");
   const [dueDate, setDueDate] = useState("");
-  const [fundType, setFundType] = useState<"administrative" | "capital_works" | "maintenance_plan">("capital_works");
+  // Fund defaults to the first available fund the OC actually has.
+  const [fundType, setFundType] = useState<FundType>(availableFunds[0] ?? "capital_works");
 
-  type LineItem = { coa_account_id: string | null; description: string; amount: string };
   const [items, setItems] = useState<LineItem[]>([{ coa_account_id: null, description: "", amount: "" }]);
 
   const [lots, setLots] = useState<PreviewLot[] | null>(null);
+  // Per-lot extra adjustments , map<lotId, list>. Each extra adds to
+  // the locked apportioned share.
+  const [extras, setExtras] = useState<Record<string, PerLotAdjustment[]>>({});
+
   const [calculating, startCalculating] = useTransition();
   const [creating, setCreating] = useState(false);
+
+  // Submit-only validation flags. Each field defaults to false; flips
+  // true if invalid when the user tries to advance; clears on edit.
+  const [invalid, setInvalid] = useState<{
+    purpose?: boolean;
+    fund?: boolean;
+    periodStart?: boolean;
+    periodEnd?: boolean;
+    dueDate?: boolean;
+    items?: boolean;
+  }>({});
 
   const totalCharge = items.reduce((s, i) => s + (parseFloat(i.amount) || 0), 0);
 
@@ -82,29 +123,41 @@ export function SpecialLevyForm({
   function removeLine(i: number) {
     setItems((p) => p.filter((_, idx) => idx !== i));
   }
-  function updateLine(i: number, field: keyof LineItem, value: string) {
+  function updateLineCoa(i: number, accountId: string) {
+    const coa = coaOptions.find((c) => c.id === accountId);
     setItems((p) =>
-      p.map((row, idx) => {
-        if (idx !== i) return row;
-        if (field === "coa_account_id") {
-          const coa = coaOptions.find((c) => c.id === value);
-          return {
-            ...row,
-            coa_account_id: coa?.id ?? null,
-            description: coa ? `${coa.code} , ${coa.name}` : "",
-          };
-        }
-        if (field === "amount") return { ...row, amount: value };
-        return row;
-      }),
+      p.map((row, idx) =>
+        idx !== i
+          ? row
+          : { ...row, coa_account_id: coa?.id ?? null, description: coa?.name ?? "" },
+      ),
     );
+    setInvalid((v) => ({ ...v, items: false }));
+  }
+  function updateLineAmount(i: number, value: string) {
+    setItems((p) => p.map((row, idx) => (idx === i ? { ...row, amount: value } : row)));
+    setInvalid((v) => ({ ...v, items: false }));
   }
 
   async function handleCalculate() {
-    if (totalCharge <= 0) {
-      toast.error("Enter at least one line item with an amount.");
+    // Validate fields BEFORE firing , collect every problem so the
+    // manager sees ALL red borders, not just the first.
+    const problems: string[] = [];
+    const next: typeof invalid = {};
+    if (!purpose.trim()) { next.purpose = true; problems.push("purpose"); }
+    if (!availableFunds.includes(fundType)) { next.fund = true; problems.push("fund"); }
+    if (!periodStart) { next.periodStart = true; problems.push("period start"); }
+    if (!periodEnd) { next.periodEnd = true; problems.push("period end"); }
+    if (periodStart && periodEnd && periodEnd < periodStart) { next.periodEnd = true; problems.push("period end can't be before period start"); }
+    if (!dueDate) { next.dueDate = true; problems.push("due date"); }
+    const hasValidItem = items.some((i) => i.coa_account_id && (parseFloat(i.amount) || 0) > 0);
+    if (!hasValidItem) { next.items = true; problems.push("at least one line item"); }
+    setInvalid(next);
+    if (problems.length) {
+      toast.error(problems.length === 1 ? `Fill in the ${problems[0]} field.` : "Fix the highlighted fields.");
       return;
     }
+
     startCalculating(async () => {
       const res = await previewSpecialLevy(ocId, totalCharge);
       if (res.error || !res.data) {
@@ -112,34 +165,48 @@ export function SpecialLevyForm({
         return;
       }
       setLots(res.data.lots);
+      setExtras({});
     });
   }
 
-  function updateLotShare(lotId: string, v: string) {
-    setLots((prev) =>
-      prev ? prev.map((l) => (l.lot_id === lotId ? { ...l, share: parseFloat(v) || 0 } : l)) : prev,
-    );
+  // ── Per-lot adjustments (extras) ───────────────────────────
+  function addExtra(lotId: string) {
+    setExtras((p) => ({ ...p, [lotId]: [...(p[lotId] ?? []), { coa_account_id: null, description: "", amount: "" }] }));
+  }
+  function removeExtra(lotId: string, idx: number) {
+    setExtras((p) => ({ ...p, [lotId]: (p[lotId] ?? []).filter((_, i) => i !== idx) }));
+  }
+  function updateExtraCoa(lotId: string, idx: number, accountId: string) {
+    const coa = coaOptions.find((c) => c.id === accountId);
+    setExtras((p) => ({
+      ...p,
+      [lotId]: (p[lotId] ?? []).map((row, i) =>
+        i !== idx ? row : { ...row, coa_account_id: coa?.id ?? null, description: coa?.name ?? "" },
+      ),
+    }));
+  }
+  function updateExtraAmount(lotId: string, idx: number, v: string) {
+    setExtras((p) => ({
+      ...p,
+      [lotId]: (p[lotId] ?? []).map((row, i) => (i !== idx ? row : { ...row, amount: v })),
+    }));
+  }
+
+  function lotExtraTotal(lotId: string): number {
+    return (extras[lotId] ?? []).reduce((s, r) => s + (parseFloat(r.amount) || 0), 0);
+  }
+  function lotGrandTotal(l: PreviewLot): number {
+    return l.share + lotExtraTotal(l.lot_id);
   }
 
   async function handleCreate() {
     if (!lots) return;
-    if (!purpose.trim()) { toast.error("Add a purpose for the special levy."); return; }
-    if (!periodStart || !periodEnd || !dueDate) { toast.error("Pick the period and due date."); return; }
     setCreating(true);
-    const cleanItems = items
-      .filter((i) => i.coa_account_id && (parseFloat(i.amount) || 0) > 0);
-    if (cleanItems.length === 0) {
-      setCreating(false);
-      toast.error("Each line item needs a CoA account and a non-zero amount.");
-      return;
-    }
+    const cleanItems = items.filter((i) => i.coa_account_id && (parseFloat(i.amount) || 0) > 0);
 
-    // Apportion each CoA line per-lot in proportion to the lot's overall
-    // share of the total. Keeps the per-lot notice line itemised so the
-    // owner sees "Window cleaning, $X" not just "Special levy, $X".
     const lotPayloads = lots.map((l) => {
-      const proportion = l.share / totalCharge;
-      const lotItems = cleanItems.map((it) => {
+      const proportion = totalCharge > 0 ? l.share / totalCharge : 0;
+      const baseLines = cleanItems.map((it) => {
         const itemTotal = parseFloat(it.amount) || 0;
         const share = Math.round(itemTotal * proportion * 100) / 100;
         return {
@@ -150,15 +217,23 @@ export function SpecialLevyForm({
           is_adjustment: false,
         };
       });
+      const extraLines = (extras[l.lot_id] ?? [])
+        .filter((e) => e.coa_account_id && (parseFloat(e.amount) || 0) > 0)
+        .map((e) => ({
+          description: e.description,
+          amount: parseFloat(e.amount) || 0,
+          coa_account_id: e.coa_account_id,
+          budget_item_id: null,
+          is_adjustment: true,
+        }));
+      const allLines = [...baseLines, ...extraLines];
       return {
         lot_id: l.lot_id,
-        amount: lotItems.reduce((s, i) => s + i.amount, 0),
-        items: lotItems,
+        amount: Math.round(allLines.reduce((s, x) => s + x.amount, 0) * 100) / 100,
+        items: allLines,
       };
     });
 
-    // financial_year required by the batch row , use the period_start year
-    // and "+ next FY" suffix so the column has a useful filter value.
     const startYear = new Date(periodStart).getFullYear();
     const fy = `${startYear}-${startYear + 1}`;
 
@@ -183,6 +258,8 @@ export function SpecialLevyForm({
     router.push(`/ocs/${ocCode}/levies/${res.batchId}`);
   }
 
+  const fundItems = availableFunds.map((f) => ({ value: f, label: FUND_LABEL[f] }));
+
   return (
     <div className="space-y-6">
       <Card>
@@ -195,33 +272,63 @@ export function SpecialLevyForm({
           </div>
 
           <div className="space-y-1.5">
-            <Label>Purpose</Label>
-            <Input value={purpose} onChange={(e) => setPurpose(e.target.value)} placeholder="Reason for this special levy" />
+            <Label>Purpose <span className="text-destructive">*</span></Label>
+            <Input
+              value={purpose}
+              onChange={(e) => { setPurpose(e.target.value); setInvalid((v) => ({ ...v, purpose: false })); }}
+              placeholder="Reason for this special levy"
+              aria-invalid={invalid.purpose || undefined}
+            />
           </div>
 
           <div className="grid gap-4 sm:grid-cols-2">
             <div className="space-y-1.5">
-              <Label>Fund</Label>
-              <Select value={fundType} onValueChange={(v) => setFundType(v as typeof fundType)}>
-                <SelectTrigger><SelectValue /></SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="administrative">Administrative Fund</SelectItem>
-                  <SelectItem value="capital_works">Capital Works Fund</SelectItem>
-                  <SelectItem value="maintenance_plan">Maintenance Plan Fund</SelectItem>
-                </SelectContent>
-              </Select>
+              <Label>Fund <span className="text-destructive">*</span></Label>
+              <Combobox
+                items={fundItems}
+                value={fundType}
+                onValueChange={(v) => { setFundType(v as FundType); setInvalid((iv) => ({ ...iv, fund: false })); }}
+              >
+                <ComboboxInput
+                  placeholder="Pick a fund"
+                  className={invalid.fund ? "border-destructive" : undefined}
+                />
+                <ComboboxContent>
+                  <ComboboxEmpty>No funds available.</ComboboxEmpty>
+                  <ComboboxList>
+                    {(item: { value: string; label: string }) => (
+                      <ComboboxItem key={item.value} value={item.value}>
+                        {item.label}
+                      </ComboboxItem>
+                    )}
+                  </ComboboxList>
+                </ComboboxContent>
+              </Combobox>
             </div>
             <div className="space-y-1.5">
-              <Label>Due date</Label>
-              <DatePicker value={dueDate} onChange={setDueDate} />
+              <Label>Due date <span className="text-destructive">*</span></Label>
+              <DatePicker
+                value={dueDate}
+                onChange={(v) => { setDueDate(v); setInvalid((iv) => ({ ...iv, dueDate: false })); }}
+                invalid={invalid.dueDate}
+              />
             </div>
             <div className="space-y-1.5">
-              <Label>Period start</Label>
-              <DatePicker value={periodStart} onChange={setPeriodStart} />
+              <Label>Period start <span className="text-destructive">*</span></Label>
+              <DatePicker
+                value={periodStart}
+                onChange={(v) => { setPeriodStart(v); setInvalid((iv) => ({ ...iv, periodStart: false, periodEnd: false })); }}
+                invalid={invalid.periodStart}
+              />
             </div>
             <div className="space-y-1.5">
-              <Label>Period end</Label>
-              <DatePicker value={periodEnd} onChange={setPeriodEnd} />
+              <Label>Period end <span className="text-destructive">*</span></Label>
+              <DatePicker
+                value={periodEnd}
+                onChange={(v) => { setPeriodEnd(v); setInvalid((iv) => ({ ...iv, periodEnd: false })); }}
+                invalid={invalid.periodEnd}
+                minDate={periodStart || undefined}
+              />
             </div>
           </div>
         </CardContent>
@@ -230,7 +337,7 @@ export function SpecialLevyForm({
       <Card>
         <CardContent className="pt-5 space-y-3">
           <div className="flex items-center justify-between">
-            <Label>Line items</Label>
+            <Label>Line items <span className="text-destructive">*</span></Label>
             <Button variant="secondary" size="sm" onClick={addLine}>
               <Plus className="mr-1.5 h-3.5 w-3.5" />
               Add line
@@ -241,7 +348,7 @@ export function SpecialLevyForm({
               <TableHeader>
                 <TableRow>
                   <TableHead className="py-1">Account</TableHead>
-                  <TableHead className="py-1 w-[140px] text-right">Amount</TableHead>
+                  <TableHead className="py-1 w-[160px] text-right">Amount</TableHead>
                   <TableHead className="py-1 w-[36px]" />
                 </TableRow>
               </TableHeader>
@@ -249,34 +356,36 @@ export function SpecialLevyForm({
                 {items.map((it, i) => (
                   <TableRow key={i}>
                     <TableCell className="py-1">
-                      <Select
+                      <Combobox
+                        items={coaOptions}
                         value={it.coa_account_id ?? ""}
-                        onValueChange={(v) => updateLine(i, "coa_account_id", v ?? "")}
+                        onValueChange={(v) => updateLineCoa(i, v)}
                       >
-                        <SelectTrigger className="h-7 text-xs">
-                          <SelectValue placeholder="Pick a CoA account">
-                            {it.description || null}
-                          </SelectValue>
-                        </SelectTrigger>
-                        <SelectContent>
-                          {coaOptions.length === 0 ? (
-                            <div className="px-2 py-1.5 text-xs text-muted-foreground">No CoA accounts available</div>
-                          ) : (
-                            coaOptions.map((c) => (
-                              <SelectItem key={c.id} value={c.id}>{c.code} , {c.name}</SelectItem>
-                            ))
-                          )}
-                        </SelectContent>
-                      </Select>
+                        <ComboboxInput
+                          placeholder="Select an account"
+                          className={invalid.items && !it.coa_account_id ? "border-destructive" : undefined}
+                        />
+                        <ComboboxContent>
+                          <ComboboxEmpty>No accounts found.</ComboboxEmpty>
+                          <ComboboxList>
+                            {(c: CoaOption) => (
+                              <ComboboxItem key={c.id} value={c.id}>
+                                {c.name}
+                              </ComboboxItem>
+                            )}
+                          </ComboboxList>
+                        </ComboboxContent>
+                      </Combobox>
                     </TableCell>
                     <TableCell className="py-1">
                       <NumberInput
                         value={it.amount}
-                        onChange={(v) => updateLine(i, "amount", v)}
+                        onChange={(v) => updateLineAmount(i, v)}
                         thousandsSeparator
                         prefix="$"
                         placeholder="Amount"
                         allowDecimal
+                        invalid={invalid.items && !(parseFloat(it.amount) || 0)}
                       />
                     </TableCell>
                     <TableCell className="py-1">
@@ -322,37 +431,96 @@ export function SpecialLevyForm({
                     <TableHead className="py-0.5">Lot</TableHead>
                     <TableHead className="py-0.5">Owner</TableHead>
                     <TableHead className="py-0.5 w-[100px] text-right">Liability</TableHead>
-                    <TableHead className="py-0.5 w-[140px] text-right">Share</TableHead>
+                    <TableHead className="py-0.5 w-[120px] text-right">Apportioned</TableHead>
+                    <TableHead className="py-0.5 w-[140px] text-right">Total</TableHead>
+                    <TableHead className="py-0.5 w-[36px]" />
                   </TableRow>
                 </TableHeader>
                 <TableBody>
-                  {lots.map((l) => (
-                    <TableRow key={l.lot_id}>
-                      <TableCell className="py-0.5">
-                        Lot {l.lot_number}{l.unit_number ? ` (Unit ${l.unit_number})` : ""}
-                      </TableCell>
-                      <TableCell className="py-0.5 text-muted-foreground">
-                        {l.owner_display_name ?? "Unassigned"}
-                      </TableCell>
-                      <TableCell className="py-0.5 text-right tabular-nums">{l.liability.toFixed(4)}</TableCell>
-                      <TableCell className="py-0.5 text-right">
-                        <NumberInput
-                          value={String(l.share)}
-                          onChange={(v) => updateLotShare(l.lot_id, v)}
-                          thousandsSeparator
-                          prefix="$"
-                          allowDecimal
-                        />
-                      </TableCell>
-                    </TableRow>
-                  ))}
+                  {lots.map((l) => {
+                    const lotExtras = extras[l.lot_id] ?? [];
+                    return (
+                      <>
+                        <TableRow key={l.lot_id}>
+                          <TableCell className="py-0.5">
+                            Lot {l.lot_number}{l.unit_number ? ` (Unit ${l.unit_number})` : ""}
+                          </TableCell>
+                          <TableCell className="py-0.5 text-muted-foreground">
+                            {l.owner_display_name ?? ""}
+                          </TableCell>
+                          <TableCell className="py-0.5 text-right tabular-nums">
+                            {Number(l.liability).toString()}
+                          </TableCell>
+                          <TableCell className="py-0.5 text-right tabular-nums text-muted-foreground">
+                            {formatCurrency(l.share)}
+                          </TableCell>
+                          <TableCell className="py-0.5 text-right tabular-nums font-medium">
+                            {formatCurrency(lotGrandTotal(l))}
+                          </TableCell>
+                          <TableCell className="py-0.5 text-right">
+                            <button
+                              type="button"
+                              onClick={() => addExtra(l.lot_id)}
+                              className="text-muted-foreground hover:text-foreground cursor-pointer"
+                              title="Add adjustment to this lot"
+                            >
+                              <Plus className="h-3.5 w-3.5" />
+                            </button>
+                          </TableCell>
+                        </TableRow>
+                        {lotExtras.map((adj, ei) => (
+                          <TableRow key={`${l.lot_id}-x-${ei}`} className="bg-muted/30">
+                            <TableCell className="py-0.5 pl-6 text-muted-foreground">+ Adjustment</TableCell>
+                            <TableCell className="py-0.5" colSpan={2}>
+                              <Combobox
+                                items={coaOptions}
+                                value={adj.coa_account_id ?? ""}
+                                onValueChange={(v) => updateExtraCoa(l.lot_id, ei, v)}
+                              >
+                                <ComboboxInput placeholder="Select an account" />
+                                <ComboboxContent>
+                                  <ComboboxEmpty>No accounts found.</ComboboxEmpty>
+                                  <ComboboxList>
+                                    {(c: CoaOption) => (
+                                      <ComboboxItem key={c.id} value={c.id}>{c.name}</ComboboxItem>
+                                    )}
+                                  </ComboboxList>
+                                </ComboboxContent>
+                              </Combobox>
+                            </TableCell>
+                            <TableCell className="py-0.5" colSpan={2}>
+                              <NumberInput
+                                value={adj.amount}
+                                onChange={(v) => updateExtraAmount(l.lot_id, ei, v)}
+                                thousandsSeparator
+                                prefix="$"
+                                placeholder="Amount"
+                                allowDecimal
+                              />
+                            </TableCell>
+                            <TableCell className="py-0.5 text-right">
+                              <button
+                                type="button"
+                                onClick={() => removeExtra(l.lot_id, ei)}
+                                aria-label="Remove adjustment"
+                                className="text-muted-foreground hover:text-destructive cursor-pointer"
+                              >
+                                <X className="h-3.5 w-3.5" />
+                              </button>
+                            </TableCell>
+                          </TableRow>
+                        ))}
+                      </>
+                    );
+                  })}
                 </TableBody>
                 <TableFooter>
                   <TableRow>
-                    <TableCell colSpan={3} className="py-0.5 font-semibold">Apportioned total</TableCell>
+                    <TableCell colSpan={4} className="py-0.5 font-semibold">Grand total</TableCell>
                     <TableCell className="py-0.5 text-right font-bold tabular-nums">
-                      {formatCurrency(lots.reduce((s, l) => s + l.share, 0))}
+                      {formatCurrency(lots.reduce((s, l) => s + lotGrandTotal(l), 0))}
                     </TableCell>
+                    <TableCell />
                   </TableRow>
                 </TableFooter>
               </Table>

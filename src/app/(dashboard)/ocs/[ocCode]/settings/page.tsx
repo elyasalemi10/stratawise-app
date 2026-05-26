@@ -60,9 +60,18 @@ export default async function OCSettingsPage({
   }
   if (mailboxOptions.length === 0) mailboxOptions.push({ value: "noreply@stratawise.com.au", label: "noreply@stratawise.com.au" });
 
+  const FUND_LABEL_MAP: Record<string, string> = {
+    administrative: "Administrative Fund",
+    capital_works: "Capital Works Fund",
+    maintenance_plan: "Maintenance Plan Fund",
+  };
   const approvedBudgets = budgets
     .filter((b) => b.status === "approved")
-    .map((b) => ({ id: b.id, label: `${b.financial_year}, ${(b.fund_types?.length ? b.fund_types : (b.fund_type ? [b.fund_type] : [])).join(" + ")}` }));
+    .map((b) => {
+      const funds = b.fund_types?.length ? b.fund_types : (b.fund_type ? [b.fund_type] : []);
+      const fundLabel = funds.length ? funds.map((f) => FUND_LABEL_MAP[f] ?? f).join(" + ") : "Budget";
+      return { id: b.id, label: `${fundLabel} , ${b.financial_year}` };
+    });
 
   return (
     <div className="space-y-6">

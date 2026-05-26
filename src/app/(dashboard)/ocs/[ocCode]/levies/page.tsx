@@ -7,12 +7,28 @@ import { formatDateLong } from "@/lib/utils";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
+import {
+  Table, TableBody, TableCell, TableHead, TableHeader, TableRow,
+} from "@/components/ui/table";
 import { EmptyState } from "@/components/shared/empty-state";
 
 import { resolveOCFromCode } from "@/lib/oc-resolver";
 
 const formatCurrency = (n: number) =>
   new Intl.NumberFormat("en-AU", { style: "currency", currency: "AUD" }).format(n);
+
+// Recognised fund types , anything else falls into the "Other" column.
+const KNOWN_FUNDS = new Set(["administrative", "capital_works", "maintenance_plan"]);
+
+function fundAmount(
+  batch: { fund_type: string; total_amount: number },
+  target: "administrative" | "capital_works" | "maintenance_plan" | "other",
+): number | null {
+  if (target === "other") {
+    return KNOWN_FUNDS.has(batch.fund_type) ? null : batch.total_amount;
+  }
+  return batch.fund_type === target ? batch.total_amount : null;
+}
 
 export default async function LeviesPage({
   params,
@@ -31,7 +47,7 @@ export default async function LeviesPage({
   if (!oc) redirect("/dashboard");
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-4">
       {batches.length > 0 && (
         <div className="flex justify-end">
           <Link href={`/ocs/${ocCode}/generate`}>
@@ -58,50 +74,79 @@ export default async function LeviesPage({
           }
         />
       ) : (
-        <div className="space-y-3">
-          {batches.map((batch) => (
-            <Link
-              key={batch.id}
-              href={`/ocs/${ocCode}/levies/${batch.id}`}
-              className="block"
-            >
-              <Card className="transition-colors hover:border-primary/30 cursor-pointer">
-                <CardContent className="pt-5">
-                  <div className="flex items-center justify-between">
-                    <div>
-                      <div className="flex items-center gap-2">
-                        <h3 className="text-sm font-semibold text-foreground">{batch.period_label}</h3>
-                        <Badge variant={batch.fund_type === "administrative" ? "info" : "neutral"}>
-                          {batch.fund_type === "administrative" ? "Admin" : "Capital"}
-                        </Badge>
-                        <Badge
-                          variant={
-                            batch.status === "sent" ? "success"
-                            : batch.status === "partially_sent" ? "warning"
-                            : batch.status === "cancelled" ? "destructive"
-                            : "neutral"
-                          }
-                        >
-                          {batch.status === "sent" ? "Sent"
-                            : batch.status === "partially_sent" ? "Partially sent"
-                            : batch.status === "cancelled" ? "Cancelled"
-                            : "Draft"}
-                        </Badge>
-                      </div>
-                      <p className="mt-1 text-xs text-muted-foreground">
-                        {formatDateLong(batch.period_start)} , {formatDateLong(batch.period_end)} · Due {formatDateLong(batch.due_date)}
-                      </p>
-                    </div>
-                    <div className="text-right">
-                      <p className="text-sm font-semibold tabular-nums text-foreground">{formatCurrency(batch.total_amount)}</p>
-                      <p className="text-xs text-muted-foreground">{batch.levy_count} levies</p>
-                    </div>
-                  </div>
-                </CardContent>
-              </Card>
-            </Link>
-          ))}
-        </div>
+        <Card>
+          <CardContent className="pt-5">
+            <div className="overflow-hidden rounded-md border border-border">
+              <Table variant="striped">
+                <TableHeader>
+                  <TableRow>
+                    <TableHead className="w-24">Type</TableHead>
+                    <TableHead className="w-40">Financial Year</TableHead>
+                    <TableHead className="text-right">Admin</TableHead>
+                    <TableHead className="text-right">Capital Works</TableHead>
+                    <TableHead className="text-right">Maintenance</TableHead>
+                    <TableHead className="text-right">Other</TableHead>
+                    <TableHead className="w-36">Due date</TableHead>
+                    <TableHead className="w-36">Status</TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {batches.map((batch) => {
+                    const admin = fundAmount(batch, "administrative");
+                    const capital = fundAmount(batch, "capital_works");
+                    const maintenance = fundAmount(batch, "maintenance_plan");
+                    const other = fundAmount(batch, "other");
+                    return (
+                      <TableRow key={batch.id}>
+                        <TableCell>
+                          <Link
+                            href={`/ocs/${ocCode}/levies/${batch.id}`}
+                            className="text-foreground hover:underline"
+                          >
+                            {batch.is_special ? "Special" : "Regular"}
+                          </Link>
+                        </TableCell>
+                        <TableCell className="text-foreground">
+                          {batch.period_label} {batch.financial_year}
+                        </TableCell>
+                        <TableCell className="text-right tabular-nums text-foreground">
+                          {admin !== null ? formatCurrency(admin) : ""}
+                        </TableCell>
+                        <TableCell className="text-right tabular-nums text-foreground">
+                          {capital !== null ? formatCurrency(capital) : ""}
+                        </TableCell>
+                        <TableCell className="text-right tabular-nums text-foreground">
+                          {maintenance !== null ? formatCurrency(maintenance) : ""}
+                        </TableCell>
+                        <TableCell className="text-right tabular-nums text-foreground">
+                          {other !== null ? formatCurrency(other) : ""}
+                        </TableCell>
+                        <TableCell className="text-foreground text-sm">
+                          {formatDateLong(batch.due_date)}
+                        </TableCell>
+                        <TableCell>
+                          <Badge
+                            variant={
+                              batch.status === "sent" ? "success"
+                              : batch.status === "partially_sent" ? "warning"
+                              : batch.status === "cancelled" ? "destructive"
+                              : "neutral"
+                            }
+                          >
+                            {batch.status === "sent" ? "Sent"
+                              : batch.status === "partially_sent" ? "Partially sent"
+                              : batch.status === "cancelled" ? "Cancelled"
+                              : "Draft"}
+                          </Badge>
+                        </TableCell>
+                      </TableRow>
+                    );
+                  })}
+                </TableBody>
+              </Table>
+            </div>
+          </CardContent>
+        </Card>
       )}
     </div>
   );

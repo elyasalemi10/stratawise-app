@@ -41,6 +41,8 @@ export interface BudgetWithItems {
   status: "draft" | "approved";
   approved_at: string | null;
   approval_note: string | null;
+  /** Free-text description shown in the budgets list. Optional. */
+  description?: string | null;
   items: {
     id: string;
     category_id: string | null;
@@ -170,6 +172,7 @@ export async function getOCBudgets(ocId: string): Promise<BudgetWithItems[]> {
   return budgets.map((b) => ({
     ...b,
     fund_types: (b.fund_types ?? (b.fund_type ? [b.fund_type] : [])) as BudgetFundType[],
+    description: (b as { description?: string | null }).description ?? null,
     items: items
       .filter((i) => i.budget_id === b.id)
       .map((i) => ({
@@ -192,6 +195,8 @@ export async function createBudget(
     /** Every fund the budget touches. Required, must contain at least one. */
     fund_types: BudgetFundType[];
     items: BudgetItemData[];
+    /** Optional free-text description shown in the budgets list table. */
+    description?: string | null;
   }
 ) {
   const profile = await requireCompanyRole();
@@ -230,6 +235,7 @@ export async function createBudget(
       fund_types: fundTypes,
       total_amount: totalAmount,
       status: "draft",
+      description: data.description?.trim() || null,
     })
     .select("id")
     .single();

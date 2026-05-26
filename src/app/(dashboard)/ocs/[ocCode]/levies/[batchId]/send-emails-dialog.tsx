@@ -173,7 +173,7 @@ export function SendEmailsDialog({
                       {l.lot_number}{l.unit_number ? `/${l.unit_number}` : ""}
                     </TableCell>
                     <TableCell className="text-foreground">
-                      {l.owner_display_name ?? "Unassigned"}
+                      {l.owner_display_name ?? ""}
                     </TableCell>
                     <TableCell>
                       <Input

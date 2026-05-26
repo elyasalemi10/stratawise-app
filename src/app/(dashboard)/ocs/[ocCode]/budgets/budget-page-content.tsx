@@ -2,10 +2,14 @@
 
 import { useEffect, useState } from "react";
 import Link from "next/link";
-import { Plus, PieChart, CheckCircle2, CircleDashed } from "lucide-react";
+import { Plus, PieChart } from "lucide-react";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
+import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
+import {
+  Table, TableBody, TableCell, TableHead, TableHeader, TableRow,
+} from "@/components/ui/table";
 import { EmptyState } from "@/components/shared/empty-state";
 import { getOCBudgets, type BudgetWithItems } from "@/lib/actions/budget";
 import { useOCCode } from "@/lib/oc-context";
@@ -13,81 +17,27 @@ import { useOCCode } from "@/lib/oc-context";
 const formatCurrency = (n: number) =>
   new Intl.NumberFormat("en-AU", { style: "currency", currency: "AUD" }).format(n);
 
-const FUND_LABEL: Record<string, string> = {
-  administrative: "Administrative Fund",
-  capital_works: "Capital Works Fund",
-  maintenance_plan: "Maintenance Plan Fund",
-};
+const KNOWN_FUNDS = new Set(["administrative", "capital_works", "maintenance_plan"]);
 
-const dateFmt = new Intl.DateTimeFormat("en-AU", {
-  day: "numeric",
-  month: "short",
-  year: "numeric",
-});
-
-// Card lookups the budget by fund + year (one card per budget) and shows the
-// fund name + last-edited date. Click navigates to the per-budget detail page
-// where the PDF download lives.
-function BudgetCard({ budget }: { budget: BudgetWithItems & { updated_at?: string } }) {
-  const ocCode = useOCCode();
-  const isDraft = budget.status === "draft";
-  const funds = budget.fund_types?.length
-    ? budget.fund_types
-    : (budget.fund_type ? [budget.fund_type] : []);
-  const fundLabel = funds.length === 0
-    ? "Budget"
-    : funds.map((f) => FUND_LABEL[f] ?? f).join(" + ");
-  // updated_at lives on the row but isn't always on BudgetWithItems , fall
-  // back to approved_at then ""
-  const lastEditedSrc =
-    (budget as { updated_at?: string }).updated_at ??
-    budget.approved_at ??
-    null;
-  const lastEdited = lastEditedSrc ? dateFmt.format(new Date(lastEditedSrc)) : null;
-
-  return (
-    <Link href={`/ocs/${ocCode}/budgets/${budget.id}`} className="block">
-      <Card
-        className={`transition-colors hover:border-primary/30 cursor-pointer ${isDraft ? "border-dashed" : ""}`}
-      >
-        <CardContent className="pt-5">
-          <div className="flex items-center gap-4">
-            {/* Number column , the total sits on the left like a key
-                financial metric, status icon underneath. */}
-            <div className="flex w-32 shrink-0 flex-col items-start">
-              <p className="text-lg font-bold tabular-nums text-foreground">
-                {formatCurrency(Number(budget.total_amount))}
-              </p>
-              <div className="mt-1 flex items-center gap-1.5 text-xs">
-                {isDraft ? (
-                  <>
-                    <CircleDashed className="h-3 w-3 text-muted-foreground" />
-                    <span className="text-muted-foreground">Draft</span>
-                  </>
-                ) : (
-                  <>
-                    <CheckCircle2 className="h-3 w-3 text-emerald-600" />
-                    <span className="text-emerald-700">Approved</span>
-                  </>
-                )}
-              </div>
-            </div>
-            <div className="min-w-0 flex-1">
-              <p className="text-sm font-semibold text-foreground truncate">
-                {fundLabel}{" "}
-                <span className="text-muted-foreground font-normal">, {budget.financial_year}</span>
-              </p>
-              {lastEdited && (
-                <p className="mt-1 text-xs text-muted-foreground">
-                  Last edited {lastEdited}
-                </p>
-              )}
-            </div>
-          </div>
-        </CardContent>
-      </Card>
-    </Link>
-  );
+// Sum items per fund-type bucket. Unknown fund types (custom funds when
+// they ship) fall into "other" so the column is future-proof.
+function fundSplit(budget: BudgetWithItems): {
+  administrative: number;
+  capital_works: number;
+  maintenance_plan: number;
+  other: number;
+} {
+  const out = { administrative: 0, capital_works: 0, maintenance_plan: 0, other: 0 };
+  for (const it of budget.items) {
+    const f = it.fund_type ?? budget.fund_type ?? null;
+    const amt = Number(it.amount) || 0;
+    if (f === "administrative") out.administrative += amt;
+    else if (f === "capital_works") out.capital_works += amt;
+    else if (f === "maintenance_plan") out.maintenance_plan += amt;
+    else if (f && !KNOWN_FUNDS.has(f)) out.other += amt;
+    else out.other += amt; // null fund_type falls through to Other
+  }
+  return out;
 }
 
 export function BudgetPageContent({
@@ -98,7 +48,7 @@ export function BudgetPageContent({
   financialYearStartMonth: number;
 }) {
   const ocCode = useOCCode();
-  const [budgets, setBudgets] = useState<(BudgetWithItems & { updated_at?: string })[]>([]);
+  const [budgets, setBudgets] = useState<BudgetWithItems[]>([]);
   const [loading, setLoading] = useState(true);
   void financialYearStartMonth;
 
@@ -107,7 +57,7 @@ export function BudgetPageContent({
     (async () => {
       const buds = await getOCBudgets(ocId);
       if (mounted) {
-        setBudgets(buds as (BudgetWithItems & { updated_at?: string })[]);
+        setBudgets(buds);
         setLoading(false);
       }
     })();
@@ -120,29 +70,15 @@ export function BudgetPageContent({
         <div className="flex items-center justify-end">
           <Skeleton className="h-8 w-28 rounded-md" />
         </div>
-        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
-          {[0, 1, 2].map((i) => (
-            <Card key={i}>
-              <CardContent className="pt-5">
-                <div className="flex items-center gap-3">
-                  <Skeleton className="h-4 w-4 rounded-full" />
-                  <div className="flex-1">
-                    <Skeleton className="h-4 w-44" />
-                    <Skeleton className="mt-1.5 h-3 w-28" />
-                  </div>
-                  <Skeleton className="h-5 w-16" />
-                </div>
-              </CardContent>
-            </Card>
-          ))}
-        </div>
+        <Card>
+          <CardContent className="pt-5">
+            <Skeleton className="h-40 w-full" />
+          </CardContent>
+        </Card>
       </div>
     );
   }
 
-  // No more current-FY heading + previous-years split , the cards' year
-  // label + last-edited date give the manager everything they need to scan
-  // the list, and the heading was eating vertical space the cards could use.
   const sorted = [...budgets].sort((a, b) =>
     b.financial_year.localeCompare(a.financial_year),
   );
@@ -175,9 +111,62 @@ export function BudgetPageContent({
           }
         />
       ) : (
-        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
-          {sorted.map((b) => <BudgetCard key={b.id} budget={b} />)}
-        </div>
+        <Card>
+          <CardContent className="pt-5">
+            <div className="overflow-hidden rounded-md border border-border">
+              <Table variant="striped">
+                <TableHeader>
+                  <TableRow>
+                    <TableHead className="w-32">Financial Year</TableHead>
+                    <TableHead className="w-28">Status</TableHead>
+                    <TableHead>Description</TableHead>
+                    <TableHead className="text-right">Admin</TableHead>
+                    <TableHead className="text-right">Capital Works</TableHead>
+                    <TableHead className="text-right">Maintenance</TableHead>
+                    <TableHead className="text-right">Other</TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {sorted.map((b) => {
+                    const split = fundSplit(b);
+                    return (
+                      <TableRow key={b.id}>
+                        <TableCell>
+                          <Link
+                            href={`/ocs/${ocCode}/budgets/${b.id}`}
+                            className="text-foreground hover:underline"
+                          >
+                            {b.financial_year}
+                          </Link>
+                        </TableCell>
+                        <TableCell>
+                          <Badge variant={b.status === "approved" ? "success" : "neutral"}>
+                            {b.status === "approved" ? "Approved" : "Draft"}
+                          </Badge>
+                        </TableCell>
+                        <TableCell className="text-foreground text-sm truncate max-w-md">
+                          {b.description ?? ""}
+                        </TableCell>
+                        <TableCell className="text-right tabular-nums text-foreground">
+                          {split.administrative > 0 ? formatCurrency(split.administrative) : ""}
+                        </TableCell>
+                        <TableCell className="text-right tabular-nums text-foreground">
+                          {split.capital_works > 0 ? formatCurrency(split.capital_works) : ""}
+                        </TableCell>
+                        <TableCell className="text-right tabular-nums text-foreground">
+                          {split.maintenance_plan > 0 ? formatCurrency(split.maintenance_plan) : ""}
+                        </TableCell>
+                        <TableCell className="text-right tabular-nums text-foreground">
+                          {split.other > 0 ? formatCurrency(split.other) : ""}
+                        </TableCell>
+                      </TableRow>
+                    );
+                  })}
+                </TableBody>
+              </Table>
+            </div>
+          </CardContent>
+        </Card>
       )}
     </div>
   );

@@ -26,7 +26,7 @@ export interface LevyPreviewLot {
   total_entitlement: number;
   proportion: number; // lot UE / total UE
   base_amount: number;
-  items: { description: string; amount: number; budget_item_id: string | null }[];
+  items: { description: string; amount: number; budget_item_id: string | null; coa_account_id?: string | null }[];
 }
 
 export interface LevyPreviewData {
@@ -55,6 +55,8 @@ export interface LevyBatchSummary {
   levy_count: number;
   status: "draft" | "ledger_written" | "sent" | "partially_sent" | "cancelled";
   created_at: string;
+  /** Special-purpose one-off levy (raised outside the budget cycle). */
+  is_special: boolean;
 }
 
 export interface LevyBatchDetail extends LevyBatchSummary {
@@ -77,7 +79,7 @@ export interface LevyBatchDetail extends LevyBatchSummary {
     amount: number;
     status: string;
     pdf_url: string | null;
-    items: { description: string; amount: number; is_adjustment: boolean }[];
+    items: { description: string; amount: number; is_adjustment: boolean; coa_code: string | null }[];
   }[];
 }
 
@@ -418,6 +420,7 @@ export async function generateLevyPreview(
             "Budget item",
           amount: lotItemAmount,
           budget_item_id: bi.id,
+          coa_account_id: bi.coa_account_id ?? null,
         };
       });
 
@@ -706,7 +709,16 @@ export async function createLevyBatch(
     lots: {
       lot_id: string;
       amount: number;
-      items: { description: string; amount: number; budget_item_id: string | null; is_adjustment: boolean }[];
+      items: {
+        description: string;
+        amount: number;
+        budget_item_id: string | null;
+        is_adjustment: boolean;
+        /** Optional CoA account this line was raised against. Surfaced
+         *  to managers in the levy detail page (Code column); never
+         *  shown to lot owners on the PDF. */
+        coa_account_id?: string | null;
+      }[];
     }[];
     /** Set true for special-purpose one-off levies. The batch gets
      *  is_special=true + the descriptive purpose, and notices are
@@ -787,16 +799,22 @@ export async function createLevyBatch(
   const createdLevies: { id: string; lotId: string; refNum: string; items: typeof data.lots[0]["items"] }[] = [];
 
   for (const lot of data.lots) {
+    // Special levies use their own SLEV-NNNN per-OC sequence (the SLEV
+    // counter lives on owners_corporations.next_special_levy_number).
+    // Distinct prefix keeps ledger + audit lines obviously different
+    // from standard contributions in reporting.
+    const refPrefix = data.is_special ? "SLEV" : "LEV";
     const { data: refNum } = await supabase.rpc("next_reference_number", {
-      p_prefix: "LEV",
+      p_prefix: refPrefix,
       p_oc_id: ocId,
     });
     if (!refNum) continue;
 
-    // BPAY CRN: 7-digit zero-padded levy number + MOD10V01 check digit.
-    // Always populated regardless of whether the OC has registered a
-    // biller code , opt-in BPAY later requires no backfill (Gap 3).
-    const levyNumber = Number.parseInt(String(refNum).slice(4), 10);
+    // BPAY CRN: 7-digit zero-padded number + MOD10V01 check digit. Both
+    // LEV and SLEV use the same digit-extraction approach (strip the
+    // prefix + dash).
+    const numericStr = String(refNum).split("-").pop() ?? "";
+    const levyNumber = Number.parseInt(numericStr, 10);
     const bpayCrn = Number.isFinite(levyNumber) ? generateCrn(levyNumber) : null;
 
     const { data: levy, error: levyError } = await supabase
@@ -829,6 +847,7 @@ export async function createLevyBatch(
         amount: item.amount,
         is_adjustment: item.is_adjustment,
         budget_item_id: item.budget_item_id,
+        coa_account_id: item.coa_account_id ?? null,
         sort_order: i,
       }));
 
@@ -993,6 +1012,7 @@ export async function getLevyBatches(ocId: string): Promise<LevyBatchSummary[]> 
     levy_count: b.levy_count,
     status: b.status,
     created_at: b.created_at,
+    is_special: b.is_special ?? false,
   }));
 }
 
@@ -1026,7 +1046,11 @@ export async function getLevyBatchDetail(ocId: string, batchId: string): Promise
   const today = new Date().toISOString().slice(0, 10);
   const [{ data: allItems }, owners, { data: drns }, { data: ownerRefs }] = await Promise.all([
     levyIds.length > 0
-      ? supabase.from("levy_notice_items").select("*").in("levy_notice_id", levyIds).order("sort_order")
+      ? supabase
+          .from("levy_notice_items")
+          .select("*, chart_of_accounts(code)")
+          .in("levy_notice_id", levyIds)
+          .order("sort_order")
       : Promise.resolve({ data: [] }),
     getLotOwners(supabase, lotIds),
     lotIds.length > 0
@@ -1066,6 +1090,7 @@ export async function getLevyBatchDetail(ocId: string, batchId: string): Promise
     levy_count: batch.levy_count,
     status: batch.status,
     created_at: batch.created_at,
+    is_special: (batch as { is_special?: boolean }).is_special ?? false,
     levies: (levies ?? []).map((l) => {
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       const lot = (l as any).lots;
@@ -1089,6 +1114,8 @@ export async function getLevyBatchDetail(ocId: string, batchId: string): Promise
             description: item.description,
             amount: Number(item.amount),
             is_adjustment: item.is_adjustment,
+            // eslint-disable-next-line @typescript-eslint/no-explicit-any
+            coa_code: ((item as any).chart_of_accounts as { code: string } | null)?.code ?? null,
           })),
       };
     }),

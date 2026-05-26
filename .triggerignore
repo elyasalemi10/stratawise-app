@@ -1,0 +1,17 @@
+.next/**
+.vercel/**
+.git/**
+public/**
+*.log
+.DS_Store
+coverage/**
+test-results/**
+playwright-report/**
+.cache/**
+.turbo/**
+.parcel-cache/**
+out/**
+build/**
+dist/**
+node_modules/.cache/**
+supabase/.temp/**

@@ -22,6 +22,9 @@ export interface LevyAutosendSchedule {
   last_sent_on: string | null;
   next_send_date: string | null;
   last_error: string | null;
+  /** Per-month overrides keyed by "YYYY-MM" -> "YYYY-MM-DD". The
+   *  override date must fall in the same month bucket as the key. */
+  date_overrides: Record<string, string>;
 }
 
 export async function getLevyAutosendSchedule(
@@ -31,12 +34,10 @@ export async function getLevyAutosendSchedule(
   const supabase = createServerClient();
   const { data } = await supabase
     .from("levy_autosend_schedules")
-    .select("id, enabled, budget_id, send_day_of_month, from_address, last_sent_on, next_send_date, last_error")
+    .select("id, enabled, budget_id, send_day_of_month, from_address, last_sent_on, next_send_date, last_error, date_overrides")
     .eq("oc_id", ocId)
     .maybeSingle();
   if (!data) {
-    // Caller-friendly default so the UI can bind to a complete shape
-    // even when the row doesn't exist yet.
     return {
       id: null,
       oc_id: ocId,
@@ -47,9 +48,46 @@ export async function getLevyAutosendSchedule(
       last_sent_on: null,
       next_send_date: null,
       last_error: null,
+      date_overrides: {},
     };
   }
-  return { ...(data as Omit<LevyAutosendSchedule, "oc_id">), oc_id: ocId };
+  return {
+    ...(data as Omit<LevyAutosendSchedule, "oc_id" | "date_overrides">),
+    oc_id: ocId,
+    date_overrides: ((data as { date_overrides?: Record<string, string> }).date_overrides ?? {}) as Record<string, string>,
+  };
+}
+
+// buildPlannedSends lives in @/lib/levy-autosend-helpers (it's a pure
+// helper used by both server actions and client UI; can't sit in a
+// "use server" file because non-async exports there are rejected).
+
+// Save per-month overrides to the schedule. Validates each entry is
+// inside the same calendar month as its key. Used by the schedule
+// popup after the manager edits planned dates.
+export async function updateAutosendOverrides(
+  ocId: string,
+  overrides: Record<string, string>,
+): Promise<{ error?: string }> {
+  await requireCompanyRole();
+  await requireOCAccess(ocId);
+
+  for (const [key, val] of Object.entries(overrides)) {
+    if (!/^\d{4}-\d{2}$/.test(key)) return { error: `Bad month key: ${key}` };
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(val)) return { error: `Bad date for ${key}: ${val}` };
+    if (!val.startsWith(key)) {
+      return { error: `Override for ${key} must be a date in that same month (got ${val}).` };
+    }
+  }
+
+  const supabase = createServerClient();
+  const { error } = await supabase
+    .from("levy_autosend_schedules")
+    .update({ date_overrides: overrides, updated_at: new Date().toISOString() })
+    .eq("oc_id", ocId);
+  if (error) return { error: error.message };
+  revalidatePath("/ocs/[ocCode]/settings", "page");
+  return {};
 }
 
 function monthsPerCycle(cycle: string): number {
@@ -162,7 +200,7 @@ export async function upsertLevyAutosendSchedule(
       },
       { onConflict: "oc_id" },
     )
-    .select("id, enabled, budget_id, send_day_of_month, from_address, last_sent_on, next_send_date, last_error")
+    .select("id, enabled, budget_id, send_day_of_month, from_address, last_sent_on, next_send_date, last_error, date_overrides")
     .single();
 
   if (error || !data) {
@@ -171,6 +209,10 @@ export async function upsertLevyAutosendSchedule(
 
   revalidatePath("/ocs/[ocCode]/settings", "page");
   return {
-    schedule: { ...(data as Omit<LevyAutosendSchedule, "oc_id">), oc_id: ocId },
+    schedule: {
+      ...(data as Omit<LevyAutosendSchedule, "oc_id" | "date_overrides">),
+      oc_id: ocId,
+      date_overrides: ((data as { date_overrides?: Record<string, string> }).date_overrides ?? {}) as Record<string, string>,
+    },
   };
 }

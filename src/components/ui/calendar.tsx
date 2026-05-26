@@ -54,26 +54,26 @@ function Calendar({
         ),
         month: cn("flex w-full flex-col gap-3", defaultClassNames.month),
         nav: cn(
-          // Plain transparent strip with foreground chevrons , no more navy
-          // navigation bar. Sits above the month_caption via absolute
-          // positioning courtesy of react-day-picker.
-          "absolute inset-x-0 top-0 flex w-full items-center justify-between gap-1 bg-transparent px-1 py-1 z-10",
+          // Navy header strip , chevrons + month label sit on the navy
+          // band so the calendar matches the rest of the app's primary
+          // surfaces (tables, dialogs, etc).
+          "absolute inset-x-0 top-0 flex w-full items-center justify-between gap-1 bg-primary text-primary-foreground px-1 py-1 z-10 rounded-t-[var(--radius-md)]",
           defaultClassNames.nav
         ),
         button_previous: cn(
           buttonVariants({ variant: buttonVariant }),
-          "size-(--cell-size) p-0 select-none aria-disabled:opacity-50",
+          "size-(--cell-size) p-0 select-none aria-disabled:opacity-50 text-primary-foreground hover:!bg-white/10 hover:!text-primary-foreground",
           defaultClassNames.button_previous
         ),
         button_next: cn(
           buttonVariants({ variant: buttonVariant }),
-          "size-(--cell-size) p-0 select-none aria-disabled:opacity-50",
+          "size-(--cell-size) p-0 select-none aria-disabled:opacity-50 text-primary-foreground hover:!bg-white/10 hover:!text-primary-foreground",
           defaultClassNames.button_next
         ),
         month_caption: cn(
-          // Plain month / year label on transparent , same height as the
-          // nav row above so the chevrons sit either side of the label.
-          "relative flex h-(--cell-size) w-full items-center justify-center px-(--cell-size)",
+          // Sit on top of the navy bar; the caption text picks up
+          // primary-foreground via the `nav` class.
+          "relative flex h-(--cell-size) w-full items-center justify-center px-(--cell-size) bg-primary text-primary-foreground rounded-t-[var(--radius-md)]",
           defaultClassNames.month_caption
         ),
         dropdowns: cn(
@@ -89,10 +89,11 @@ function Calendar({
           defaultClassNames.dropdown
         ),
         caption_label: cn(
-          "font-medium select-none text-foreground",
+          // White text on the navy header band.
+          "font-medium select-none text-primary-foreground",
           captionLayout === "label"
             ? "text-sm"
-            : "flex items-center gap-1 rounded-(--cell-radius) text-sm [&>svg]:size-3.5 [&>svg]:text-foreground",
+            : "flex items-center gap-1 rounded-(--cell-radius) text-sm [&>svg]:size-3.5 [&>svg]:text-primary-foreground",
           defaultClassNames.caption_label
         ),
         table: "w-full border-collapse px-2 pb-2",

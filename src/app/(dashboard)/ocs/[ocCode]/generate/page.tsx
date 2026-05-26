@@ -47,12 +47,30 @@ export default async function GenerateLeviesPage({
     .filter((a) => a.account_type === "expense" || a.account_type === "income")
     .map((a) => ({ id: a.id, code: a.code, name: a.name }));
 
+  // Which funds does this OC actually have a budget for? Special-levy
+  // wizard hides options the OC can't use (e.g. Maintenance Plan when no
+  // maintenance budget exists). Derived from every budget the OC has,
+  // approved or not.
+  const fundsSet = new Set<string>();
+  for (const b of budgets) {
+    const fs = b.fund_types?.length ? b.fund_types : (b.fund_type ? [b.fund_type] : []);
+    for (const f of fs) fundsSet.add(f);
+  }
+  // Default fallback: admin + capital works are always present in a
+  // typical OC even before budgets exist.
+  if (fundsSet.size === 0) {
+    fundsSet.add("administrative");
+    fundsSet.add("capital_works");
+  }
+  const availableFunds = Array.from(fundsSet) as Array<"administrative" | "capital_works" | "maintenance_plan">;
+
   return (
     <GenerateLeviesForm
       ocId={ocId}
       budgets={approvedBudgets}
       periodsByBudgetId={periodsByBudgetId}
       coaOptions={adjustmentCoaOptions}
+      availableFunds={availableFunds}
     />
   );
 }

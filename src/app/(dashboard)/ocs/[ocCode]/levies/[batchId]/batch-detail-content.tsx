@@ -358,7 +358,7 @@ export function BatchDetailContent({
                         {levy.unit_number ? ` (Unit ${levy.unit_number})` : ""}
                       </span>
                       <span className="ml-2 text-muted-foreground">
-                        {levy.owner_display_name ?? "Unassigned"}
+                        {levy.owner_display_name ?? ""}
                       </span>
                       {/* Reference cascade: DRN > owner payment_reference.
                           The internal LEV-NNNN sequence is never shown
@@ -390,7 +390,8 @@ export function BatchDetailContent({
                         body rows invisible. A div grid lets us pick the
                         exact density (text-[11px], py-1 rows) directly. */}
                     <div className="overflow-hidden rounded-md border border-border bg-card">
-                      <div className="grid grid-cols-[1fr_auto] gap-x-4 px-3 py-1.5 bg-primary text-[11px] font-medium text-primary-foreground">
+                      <div className="grid grid-cols-[60px_1fr_auto] gap-x-4 px-3 py-1.5 bg-primary text-[11px] font-medium text-primary-foreground">
+                        <div>Code</div>
                         <div>Description</div>
                         <div className="w-24 text-right">Amount</div>
                       </div>
@@ -402,8 +403,11 @@ export function BatchDetailContent({
                         levy.items.map((item, i) => (
                           <div
                             key={i}
-                            className="grid grid-cols-[1fr_auto] gap-x-4 px-3 py-1 text-[11px] border-t border-border first:border-t-0 hover:bg-muted/40"
+                            className="grid grid-cols-[60px_1fr_auto] gap-x-4 px-3 py-1 text-[11px] border-t border-border first:border-t-0 hover:bg-muted/40"
                           >
+                            <div className="font-mono text-muted-foreground">
+                              {item.coa_code ?? ""}
+                            </div>
                             <div className="text-foreground">
                               {item.description}
                               {item.is_adjustment && (

@@ -11,19 +11,31 @@ interface DatePickerProps {
   value: string; // ISO date string YYYY-MM-DD
   onChange: (value: string) => void;
   error?: boolean;
+  /** Alias for `error`; matches the convention used by NumberInput /
+   *  PhoneInput so submit-time validation can flip a single prop. */
+  invalid?: boolean;
   id?: string;
   placeholder?: string;
   disabled?: boolean;
+  /** Earliest selectable date (YYYY-MM-DD). Dates before this are
+   *  disabled in the calendar. Used to enforce "end >= start" pairs. */
+  minDate?: string;
+  /** Latest selectable date (YYYY-MM-DD). */
+  maxDate?: string;
 }
 
 export function DatePicker({
   value,
   onChange,
   error,
+  invalid,
   id,
   placeholder = "Pick a date",
   disabled,
+  minDate,
+  maxDate,
 }: DatePickerProps) {
+  const hasError = Boolean(error || invalid);
   const [open, setOpen] = useState(false);
   const containerRef = useRef<HTMLDivElement>(null);
   const triggerRef = useRef<HTMLButtonElement>(null);
@@ -118,7 +130,7 @@ export function DatePicker({
         disabled={disabled}
         className={cn(
           "flex h-9 w-full items-center justify-start rounded-md border bg-card px-3 text-sm font-normal",
-          error ? "border-destructive" : "border-border",
+          hasError ? "border-destructive" : "border-border",
           !value && "text-muted-foreground",
           !disabled && "hover:border-primary/50",
           disabled && "cursor-not-allowed opacity-60",
@@ -146,6 +158,11 @@ export function DatePicker({
               mode="single"
               selected={date}
               defaultMonth={date}
+              disabled={(d) => {
+                if (minDate && d < new Date(`${minDate}T00:00:00`)) return true;
+                if (maxDate && d > new Date(`${maxDate}T00:00:00`)) return true;
+                return false;
+              }}
               onSelect={(d) => {
                 if (d) {
                   const iso = format(d, "yyyy-MM-dd");

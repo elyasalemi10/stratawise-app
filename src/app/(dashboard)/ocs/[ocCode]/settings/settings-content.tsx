@@ -12,13 +12,22 @@ import { NumberInput } from "@/components/ui/number-input";
 import {
   Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
 } from "@/components/ui/select";
+import {
+  Combobox, ComboboxContent, ComboboxEmpty, ComboboxInput, ComboboxItem, ComboboxList,
+} from "@/components/ui/combobox";
 import { Switch } from "@/components/ui/switch";
 import { cn } from "@/lib/utils";
 import { updateOCField } from "../manage/actions";
 import {
   upsertLevyAutosendSchedule,
+  updateAutosendOverrides,
   type LevyAutosendSchedule,
 } from "@/lib/actions/levy-autosend";
+import { buildPlannedSends } from "@/lib/levy-autosend-helpers";
+import {
+  Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle,
+} from "@/components/ui/dialog";
+import { DatePicker } from "@/components/shared/date-picker";
 
 const MONTHS = [
   "January", "February", "March", "April", "May", "June",
@@ -338,6 +347,16 @@ export function SettingsContent({
             <EditableField label="Annual interest rate (%)" value={String(oc.annual_interest_rate_percent ?? 0)} field="annual_interest_rate_percent" ocId={oc.id} isEditing={isEditing} onSaved={(v) => onFieldSaved("annual_interest_rate_percent", v)} />
             <EditableField label="Interest-free period (days)" value={String(oc.interest_free_period_days ?? 28)} field="interest_free_period_days" ocId={oc.id} isEditing={isEditing} onSaved={(v) => onFieldSaved("interest_free_period_days", v)} />
             <EditableField label="Arrears action threshold (cents)" value={String(oc.arrears_action_threshold_cents ?? 5000)} field="arrears_action_threshold_cents" ocId={oc.id} isEditing={isEditing} onSaved={(v) => onFieldSaved("arrears_action_threshold_cents", v)} />
+            <EditableField
+              label="Include arrears on levy notices"
+              value={isEditing ? (oc.include_arrears_on_notice ? "yes" : "no") : (oc.include_arrears_on_notice ? "Yes" : "No")}
+              field="include_arrears_on_notice"
+              ocId={oc.id}
+              isEditing={isEditing}
+              type={isEditing ? "select" : "text"}
+              options={[{ value: "yes", label: "Yes" }, { value: "no", label: "No" }]}
+              onSaved={(v) => onFieldSaved("include_arrears_on_notice", v)}
+            />
           </CardContent>
         </Card>
       )}
@@ -357,16 +376,9 @@ export function SettingsContent({
           <Card>
             <CardContent className="pt-5">
               <h3 className="text-sm font-semibold text-foreground mb-3">Levy notice content</h3>
-              <EditableField
-                label="Include arrears on levy notices"
-                value={isEditing ? (oc.include_arrears_on_notice ? "yes" : "no") : (oc.include_arrears_on_notice ? "Yes" : "No")}
-                field="include_arrears_on_notice"
-                ocId={oc.id}
-                isEditing={isEditing}
-                type={isEditing ? "select" : "text"}
-                options={[{ value: "yes", label: "Yes" }, { value: "no", label: "No" }]}
-                onSaved={(v) => onFieldSaved("include_arrears_on_notice", v)}
-              />
+              {/* "Include arrears on levy notices" lives in the
+                  Financial tab now (it's a money-content decision, not
+                  a delivery one). */}
               <EditableField
                 label="Add note for multi-lot owners"
                 value={isEditing ? (oc.multilot_note_enabled ? "yes" : "no") : (oc.multilot_note_enabled ? "Yes" : "No")}
@@ -446,6 +458,11 @@ function AutoSendCard({
   const [savedAt, setSavedAt] = useState<string | null>(initial.last_sent_on);
   const [nextDate, setNextDate] = useState<string | null>(initial.next_send_date);
 
+  // Schedule popup state. Opens after Save when auto-send is on.
+  const [scheduleOpen, setScheduleOpen] = useState(false);
+  const [overrides, setOverrides] = useState<Record<string, string>>(initial.date_overrides ?? {});
+  const [savingOverrides, setSavingOverrides] = useState(false);
+
   const cycleLabel: Record<string, string> = {
     monthly: "monthly",
     quarterly: "every 3 months",
@@ -468,7 +485,33 @@ function AutoSendCard({
       toast.success(draft.enabled ? "Auto-send is on" : "Auto-send is off");
       setSavedAt(res.schedule?.last_sent_on ?? null);
       setNextDate(res.schedule?.next_send_date ?? null);
+      // Pop the schedule preview right after save so the manager
+      // immediately sees the next 12 send dates and can tweak any
+      // specific month before walking away.
+      if (draft.enabled) setScheduleOpen(true);
     });
+  }
+
+  // Today's date used as the planner anchor. Computed at render so the
+  // preview matches "now" without needing a server round-trip.
+  const todayIso = new Date().toISOString().slice(0, 10);
+  const planned = buildPlannedSends(
+    { send_day_of_month: draft.send_day_of_month, date_overrides: overrides },
+    billingCycle,
+    todayIso,
+    12,
+  );
+
+  async function saveOverrides() {
+    setSavingOverrides(true);
+    const res = await updateAutosendOverrides(ocId, overrides);
+    setSavingOverrides(false);
+    if (res.error) {
+      toast.error(res.error);
+      return;
+    }
+    toast.success("Schedule updated");
+    setScheduleOpen(false);
   }
 
   return (
@@ -488,28 +531,32 @@ function AutoSendCard({
           />
         </div>
 
-        <div className="grid gap-4 sm:grid-cols-2">
-          <div className="space-y-1.5">
-            <Label>Budget</Label>
-            <Select
-              value={draft.budget_id}
-              onValueChange={(v) => setDraft((p) => ({ ...p, budget_id: v ?? "" }))}
-              disabled={!draft.enabled}
-            >
-              <SelectTrigger>
-                <SelectValue placeholder="Pick a budget" />
-              </SelectTrigger>
-              <SelectContent>
-                {budgets.length === 0 ? (
-                  <div className="px-2 py-1.5 text-xs text-muted-foreground">No approved budgets</div>
-                ) : (
-                  budgets.map((b) => (
-                    <SelectItem key={b.id} value={b.id}>{b.label}</SelectItem>
-                  ))
+        {/* Budget picker takes the full width when expanded so long
+            "Capital Works Fund , 2025-2026" labels aren't truncated.
+            Sits on its own row instead of sharing with the mailbox. */}
+        <div className="space-y-1.5">
+          <Label>Budget</Label>
+          <Combobox
+            items={budgets}
+            value={draft.budget_id}
+            onValueChange={(v) => setDraft((p) => ({ ...p, budget_id: v ?? "" }))}
+            disabled={!draft.enabled}
+          >
+            <ComboboxInput placeholder="Pick a budget" />
+            <ComboboxContent>
+              <ComboboxEmpty>No approved budgets.</ComboboxEmpty>
+              <ComboboxList>
+                {(b: { id: string; label: string }) => (
+                  <ComboboxItem key={b.id} value={b.id}>
+                    {b.label}
+                  </ComboboxItem>
                 )}
-              </SelectContent>
-            </Select>
-          </div>
+              </ComboboxList>
+            </ComboboxContent>
+          </Combobox>
+        </div>
+
+        <div className="grid gap-4 sm:grid-cols-2">
 
           <div className="space-y-1.5">
             <Label>Send mailbox</Label>
@@ -554,13 +601,86 @@ function AutoSendCard({
           </div>
         )}
 
-        <div className="flex justify-end">
+        <div className="flex justify-end gap-2">
+          {initial.enabled && (
+            <Button variant="secondary" onClick={() => setScheduleOpen(true)}>
+              View schedule
+            </Button>
+          )}
           <Button onClick={save} disabled={pending}>
             {pending && <Loader2 className="size-4 animate-spin" />}
             Save auto-send
           </Button>
         </div>
       </CardContent>
+
+      {/* Schedule popup. Shows the next 12 planned send dates. Each
+          row can be overridden to a different day in THE SAME month
+          (per the brief: no cross-month moves). Save persists the
+          overrides into levy_autosend_schedules.date_overrides. */}
+      <Dialog open={scheduleOpen} onOpenChange={(o) => { if (!savingOverrides) setScheduleOpen(o); }}>
+        <DialogContent className="sm:max-w-lg">
+          <DialogHeader>
+            <DialogTitle>Auto-send schedule</DialogTitle>
+            <DialogDescription>
+              Next 12 planned runs. Tweak any month&apos;s date , the override has to stay inside the same calendar month.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-2 max-h-[28rem] overflow-y-auto pr-1">
+            {planned.map((p) => {
+              const [yy, mm] = p.monthKey.split("-");
+              const monthLabel = new Date(Date.UTC(Number(yy), Number(mm) - 1, 1))
+                .toLocaleDateString("en-AU", { month: "long", year: "numeric" });
+              // Lock the calendar to this specific month.
+              const firstOfMonth = `${p.monthKey}-01`;
+              const lastDay = new Date(Date.UTC(Number(yy), Number(mm), 0)).getUTCDate();
+              const lastOfMonth = `${p.monthKey}-${lastDay.toString().padStart(2, "0")}`;
+              return (
+                <div key={p.monthKey} className="grid grid-cols-[1fr_180px_auto] items-center gap-3">
+                  <span className="text-sm font-medium text-foreground">{monthLabel}</span>
+                  <DatePicker
+                    value={p.effectiveDate}
+                    onChange={(v) => {
+                      setOverrides((o) => {
+                        const next = { ...o };
+                        if (v === p.defaultDate) delete next[p.monthKey];
+                        else next[p.monthKey] = v;
+                        return next;
+                      });
+                    }}
+                    minDate={firstOfMonth}
+                    maxDate={lastOfMonth}
+                  />
+                  {p.isOverridden ? (
+                    <button
+                      type="button"
+                      onClick={() => setOverrides((o) => {
+                        const next = { ...o };
+                        delete next[p.monthKey];
+                        return next;
+                      })}
+                      className="text-[11px] text-muted-foreground hover:text-foreground"
+                    >
+                      Reset
+                    </button>
+                  ) : (
+                    <span className="text-[11px] text-muted-foreground">Default</span>
+                  )}
+                </div>
+              );
+            })}
+          </div>
+          <DialogFooter>
+            <Button variant="secondary" onClick={() => setScheduleOpen(false)} disabled={savingOverrides}>
+              Close
+            </Button>
+            <Button onClick={saveOverrides} disabled={savingOverrides}>
+              {savingOverrides && <Loader2 className="size-4 animate-spin" />}
+              Save schedule
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </Card>
   );
 }

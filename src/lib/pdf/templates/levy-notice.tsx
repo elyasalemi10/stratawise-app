@@ -183,8 +183,10 @@ export function LevyNotice({
     totalDueValue: { fontSize: 11, fontFamily: FONT_BOLD, fontWeight: 700, color: c.foreground, textAlign: "right" as const },
     // Due date
     dueRow: { flexDirection: "row", justifyContent: "flex-end", alignItems: "center" as const, marginBottom: 14, gap: 12 },
-    dueLabel: { fontSize: 15, fontFamily: FONT_BOLD, fontWeight: 700, color: brand2 },
-    dueValue: { fontSize: 12, fontFamily: FONT_BOLD, fontWeight: 600, color: brand2 },
+    // "Payment due" label reads as supporting copy , normal weight ,
+    // while the date itself is the headline (bold, slightly larger).
+    dueLabel: { fontSize: 13, fontFamily: FONT, fontWeight: 400, color: brand2 },
+    dueValue: { fontSize: 15, fontFamily: FONT_BOLD, fontWeight: 700, color: brand2 },
     // Tear line
     tearLine: { borderBottomWidth: 1, borderBottomColor: c.border, borderStyle: "dashed" as const, marginVertical: 14 },
     // Payment slip
@@ -222,7 +224,7 @@ export function LevyNotice({
         {/* ── Centred period band at the very top ── */}
         <View style={s.periodBand}>
           <Text style={s.periodBandText}>
-            {levyPeriod.start} , {levyPeriod.end}
+            {levyPeriod.start} - {levyPeriod.end}
           </Text>
         </View>
 
