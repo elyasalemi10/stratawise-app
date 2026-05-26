@@ -74,8 +74,18 @@ export default async function LeviesPage({
                         <Badge variant={batch.fund_type === "administrative" ? "info" : "neutral"}>
                           {batch.fund_type === "administrative" ? "Admin" : "Capital"}
                         </Badge>
-                        <Badge variant={batch.status === "sent" ? "success" : batch.status === "partially_sent" ? "warning" : "neutral"}>
-                          {batch.status === "sent" ? "Sent" : batch.status === "partially_sent" ? "Partially sent" : "Draft"}
+                        <Badge
+                          variant={
+                            batch.status === "sent" ? "success"
+                            : batch.status === "partially_sent" ? "warning"
+                            : batch.status === "cancelled" ? "destructive"
+                            : "neutral"
+                          }
+                        >
+                          {batch.status === "sent" ? "Sent"
+                            : batch.status === "partially_sent" ? "Partially sent"
+                            : batch.status === "cancelled" ? "Cancelled"
+                            : "Draft"}
                         </Badge>
                       </div>
                       <p className="mt-1 text-xs text-muted-foreground">

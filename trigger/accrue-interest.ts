@@ -77,7 +77,7 @@ export const dailyAccrueInterest = schedules.task({
         listErr,
       );
       return {
-        timestamp: payload.timestamp,
+        timestamp: payload?.timestamp ?? new Date(),
         runDate,
         processed: 0,
         ok: 0,
@@ -89,7 +89,7 @@ export const dailyAccrueInterest = schedules.task({
     }
     if (!ocs || ocs.length === 0) {
       return {
-        timestamp: payload.timestamp,
+        timestamp: payload?.timestamp ?? new Date(),
         runDate,
         processed: 0,
         ok: 0,
@@ -181,7 +181,7 @@ export const dailyAccrueInterest = schedules.task({
     }
 
     return {
-      timestamp: payload.timestamp,
+      timestamp: payload?.timestamp ?? new Date(),
       runDate,
       processed: ocs.length,
       ok,

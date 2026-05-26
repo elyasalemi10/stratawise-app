@@ -56,7 +56,7 @@ export const dailyCheckEscalationSteps = schedules.task({
         metadata: { run_date: runDate, error: msg },
       });
       return {
-        timestamp: payload.timestamp,
+        timestamp: payload?.timestamp ?? new Date(),
         runDate,
         processed: 0,
         advanced: 0,
@@ -81,7 +81,7 @@ export const dailyCheckEscalationSteps = schedules.task({
     });
 
     return {
-      timestamp: payload.timestamp,
+      timestamp: payload?.timestamp ?? new Date(),
       runDate,
       processed: result.processed,
       advanced: result.advanced,

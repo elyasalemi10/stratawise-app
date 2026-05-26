@@ -10,9 +10,6 @@ import {
   Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle,
 } from "@/components/ui/dialog";
 import {
-  Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
-} from "@/components/ui/select";
-import {
   Table, TableBody, TableCell, TableHead, TableHeader, TableRow,
 } from "@/components/ui/table";
 import { sendBatchEmailsCustom, resendBatchEmailsCustom } from "@/lib/actions/levy";
@@ -33,9 +30,10 @@ interface Props {
   mode: "send" | "resend";
   levies: LevyRow[];
   /** Real mailbox addresses the manager can send from. Loaded server-side
-   *  before the page renders so the dialog opens with no loading state.
-   *  1 option = static label, 2+ = dropdown. Never reveals provider
-   *  internals (Resend / Gmail / Outlook); always shows real email. */
+   *  so the dialog opens instantly with no loading state. The sender is
+   *  fixed for this send , there's no dropdown to change it (intent:
+   *  once you commit to sending, the from-address is whatever the OC is
+   *  configured with). */
   mailboxOptions: Array<{ value: string; label: string }>;
   open: boolean;
   onOpenChange: (open: boolean) => void;
@@ -51,13 +49,11 @@ const RECIPIENT_TABLE_MAX_HEIGHT = 4.5 * 44 + 36; // + header
 export function SendEmailsDialog({
   ocId, batchId, mode, levies, mailboxOptions, open, onOpenChange, onSent,
 }: Props) {
-  // Selected sender address. Defaults to the first option (the firm's
-  // mailbox where configured). Stored as a string so the dropdown is
-  // controlled; on send we pass it through as fromAddress.
-  const [fromAddress, setFromAddress] = useState<string>(mailboxOptions[0]?.value ?? "");
-  useEffect(() => {
-    if (open) setFromAddress(mailboxOptions[0]?.value ?? "");
-  }, [open, mailboxOptions]);
+  // Sender is fixed = the first configured mailbox. Recorded so the
+  // server-side send still receives a `fromAddress` even though the UI
+  // doesn't expose a dropdown anymore.
+  const fromAddress = mailboxOptions[0]?.value ?? "";
+
   // Pre-fill overrides with the owner's stored email so the manager can
   // edit in place instead of typing into an empty input.
   const initialOverrides = useMemo(() => {
@@ -75,6 +71,10 @@ export function SendEmailsDialog({
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [pending, startTransition] = useTransition();
   const [sending, setSending] = useState(false);
+  // `locked` is the in-flight flag. ONCE the manager clicks Send we
+  // freeze every interactive control so they can't edit recipients,
+  // add attachments, or change the sender mid-dispatch.
+  const locked = sending || pending;
 
   function addFiles(files: FileList | null) {
     if (!files?.length) return;
@@ -127,125 +127,124 @@ export function SendEmailsDialog({
   }
 
   return (
-    <Dialog open={open} onOpenChange={onOpenChange}>
+    <Dialog
+      open={open}
+      onOpenChange={(o) => {
+        // Don't allow closing the dialog mid-send , the user could
+        // double-trigger or lose the in-progress state.
+        if (locked && !o) return;
+        onOpenChange(o);
+      }}
+    >
       <DialogContent className="sm:max-w-3xl">
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2">
             <Mail className="h-4 w-4" />
             {mode === "resend" ? "Resend levies by email" : "Send levies by email"}
           </DialogTitle>
-          {/* Sending from , short, factual. Single mailbox = static
-              label, multiple = dropdown so the manager can pick. */}
-          <DialogDescription className="flex items-center gap-2">
-            <span>Sending from</span>
-            {mailboxOptions.length > 1 ? (
-              <Select value={fromAddress} onValueChange={(v) => setFromAddress(v ?? "")}>
-                <SelectTrigger className="h-7 w-auto min-w-[14rem] text-sm">
-                  <SelectValue placeholder="Pick a mailbox" />
-                </SelectTrigger>
-                <SelectContent>
-                  {mailboxOptions.map((o) => (
-                    <SelectItem key={o.value} value={o.value}>
-                      {o.label}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            ) : (
-              <strong className="text-foreground">{mailboxOptions[0]?.label ?? "noreply"}</strong>
-            )}
+          {/* Sender is fixed , the mailbox label is read-only. */}
+          <DialogDescription>
+            Sending from <strong className="text-foreground">{mailboxOptions[0]?.label ?? "noreply"}</strong>
           </DialogDescription>
         </DialogHeader>
 
-        {/* Recipient table , scrolls past 4.5 rows so the dialog stays a
-            consistent height regardless of batch size. */}
-        <div
-          className="overflow-y-auto rounded-md border border-border"
-          style={{ maxHeight: `${RECIPIENT_TABLE_MAX_HEIGHT}px` }}
-        >
-          <Table variant="bordered" className="text-sm">
-            <TableHeader>
-              <TableRow>
-                <TableHead className="w-20">Lot</TableHead>
-                <TableHead>Owner</TableHead>
-                <TableHead>Email</TableHead>
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {levies.map((l) => (
-                <TableRow key={l.id}>
-                  <TableCell className="font-mono text-xs">
-                    {l.lot_number}{l.unit_number ? `/${l.unit_number}` : ""}
-                  </TableCell>
-                  <TableCell className="text-foreground">
-                    {l.owner_display_name ?? "Unassigned"}
-                  </TableCell>
-                  <TableCell>
-                    <Input
-                      value={overrides[l.id] ?? ""}
-                      onChange={(e) =>
-                        setOverrides((prev) => ({ ...prev, [l.id]: e.target.value }))
-                      }
-                      className="h-8 text-sm"
-                    />
-                  </TableCell>
+        {/* Whole body wrapper , when locked, drop interactivity + fade
+            so the manager sees the dialog is "in motion" and stays out
+            of the way. */}
+        <div className={locked ? "pointer-events-none opacity-60 transition-opacity" : ""}>
+          {/* Recipient table , scrolls past 4.5 rows so the dialog stays a
+              consistent height regardless of batch size. */}
+          <div
+            className="overflow-y-auto rounded-md border border-border"
+            style={{ maxHeight: `${RECIPIENT_TABLE_MAX_HEIGHT}px` }}
+          >
+            <Table variant="bordered" className="text-sm">
+              <TableHeader>
+                <TableRow>
+                  <TableHead className="w-20">Lot</TableHead>
+                  <TableHead>Owner</TableHead>
+                  <TableHead>Email</TableHead>
                 </TableRow>
-              ))}
-            </TableBody>
-          </Table>
-        </div>
-
-        {/* Attachments , no total counter, just the file list. */}
-        <div className="space-y-2">
-          <div className="flex items-center justify-between">
-            <Label>Attachments</Label>
-            <Button
-              type="button"
-              variant="secondary"
-              size="sm"
-              onClick={() => fileInputRef.current?.click()}
-            >
-              <Paperclip className="size-4" />
-              Add files
-            </Button>
-            <input
-              ref={fileInputRef}
-              type="file"
-              multiple
-              hidden
-              onChange={(e) => { addFiles(e.target.files); e.target.value = ""; }}
-            />
+              </TableHeader>
+              <TableBody>
+                {levies.map((l) => (
+                  <TableRow key={l.id}>
+                    <TableCell className="font-mono text-xs">
+                      {l.lot_number}{l.unit_number ? `/${l.unit_number}` : ""}
+                    </TableCell>
+                    <TableCell className="text-foreground">
+                      {l.owner_display_name ?? "Unassigned"}
+                    </TableCell>
+                    <TableCell>
+                      <Input
+                        value={overrides[l.id] ?? ""}
+                        onChange={(e) =>
+                          setOverrides((prev) => ({ ...prev, [l.id]: e.target.value }))
+                        }
+                        disabled={locked}
+                        className="h-8 text-sm"
+                      />
+                    </TableCell>
+                  </TableRow>
+                ))}
+              </TableBody>
+            </Table>
           </div>
-          {attachments.length > 0 ? (
-            <ul className="space-y-1 rounded-md border border-border p-2">
-              {attachments.map((f) => (
-                <li key={`${f.name}-${f.size}`} className="flex items-center justify-between text-sm">
-                  <span className="truncate text-foreground">
-                    {f.name}{" "}
-                    <span className="text-muted-foreground text-xs">
-                      ({(f.size / 1024).toFixed(0)} KB)
+
+          {/* Attachments , no total counter, just the file list. */}
+          <div className="space-y-2 mt-3">
+            <div className="flex items-center justify-between">
+              <Label>Attachments</Label>
+              <Button
+                type="button"
+                variant="secondary"
+                size="sm"
+                disabled={locked}
+                onClick={() => fileInputRef.current?.click()}
+              >
+                <Paperclip className="size-4" />
+                Add files
+              </Button>
+              <input
+                ref={fileInputRef}
+                type="file"
+                multiple
+                hidden
+                onChange={(e) => { addFiles(e.target.files); e.target.value = ""; }}
+              />
+            </div>
+            {attachments.length > 0 ? (
+              <ul className="space-y-1 rounded-md border border-border p-2">
+                {attachments.map((f) => (
+                  <li key={`${f.name}-${f.size}`} className="flex items-center justify-between text-sm">
+                    <span className="truncate text-foreground">
+                      {f.name}{" "}
+                      <span className="text-muted-foreground text-xs">
+                        ({(f.size / 1024).toFixed(0)} KB)
+                      </span>
                     </span>
-                  </span>
-                  <button
-                    type="button"
-                    onClick={() => removeFile(f.name, f.size)}
-                    aria-label="Remove attachment"
-                    className="text-muted-foreground hover:text-destructive cursor-pointer"
-                  >
-                    <X className="h-3.5 w-3.5" />
-                  </button>
-                </li>
-              ))}
-            </ul>
-          ) : null}
+                    <button
+                      type="button"
+                      onClick={() => removeFile(f.name, f.size)}
+                      aria-label="Remove attachment"
+                      disabled={locked}
+                      className="text-muted-foreground hover:text-destructive cursor-pointer disabled:cursor-not-allowed"
+                    >
+                      <X className="h-3.5 w-3.5" />
+                    </button>
+                  </li>
+                ))}
+              </ul>
+            ) : null}
+          </div>
         </div>
 
         <DialogFooter>
-          <Button variant="secondary" onClick={() => onOpenChange(false)} disabled={sending}>
+          <Button variant="secondary" onClick={() => onOpenChange(false)} disabled={locked}>
             Cancel
           </Button>
-          <Button onClick={handleSend} disabled={sending || pending}>
-            {sending && <Loader2 className="size-4 animate-spin" />}
+          <Button onClick={handleSend} disabled={locked}>
+            {locked && <Loader2 className="size-4 animate-spin" />}
             {mode === "resend" ? "Resend" : "Send"} {levies.length} {levies.length === 1 ? "email" : "emails"}
           </Button>
         </DialogFooter>

@@ -54,7 +54,10 @@ export const dailyCheckOverdueLevies = schedules.task({
         metadata: { run_date: runDate, error: msg },
       });
       return {
-        timestamp: payload.timestamp,
+        // `payload.timestamp` is undefined when the task is fired from
+        // the management API (manual trigger / test), so fall back to
+        // wall-clock now() to keep the return shape stable.
+        timestamp: payload?.timestamp ?? new Date(),
         runDate,
         processed: 0,
         sent: 0,
@@ -79,7 +82,7 @@ export const dailyCheckOverdueLevies = schedules.task({
     });
 
     return {
-      timestamp: payload.timestamp,
+      timestamp: payload?.timestamp ?? new Date(),
       runDate,
       processed: result.processed,
       sent: result.sent,

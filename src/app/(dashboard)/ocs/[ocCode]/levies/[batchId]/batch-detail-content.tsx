@@ -235,8 +235,18 @@ export function BatchDetailContent({
               <Badge variant={batch.fund_type === "administrative" ? "info" : "neutral"}>
                 {fundLabel}
               </Badge>
-              <Badge variant={batch.status === "sent" ? "success" : batch.status === "partially_sent" ? "warning" : "neutral"}>
-                {batch.status === "sent" ? "Sent" : batch.status === "partially_sent" ? "Partially sent" : "Draft"}
+              <Badge
+                variant={
+                  batch.status === "sent" ? "success"
+                  : batch.status === "partially_sent" ? "warning"
+                  : batch.status === "cancelled" ? "destructive"
+                  : "neutral"
+                }
+              >
+                {batch.status === "sent" ? "Sent"
+                  : batch.status === "partially_sent" ? "Partially sent"
+                  : batch.status === "cancelled" ? "Cancelled"
+                  : "Draft"}
               </Badge>
             </div>
           </div>
@@ -316,20 +326,14 @@ export function BatchDetailContent({
                 </button>
               )}
               {batch.status === "draft" && (
-                <>
-                  {/* Hairline only, no extra margin , the gap matches
-                      the rows above so the divider is just a visual
-                      separator, not a section break. */}
-                  <div className="h-px bg-border" />
-                  <button
-                    type="button"
-                    onClick={() => setShowCancelConfirm(true)}
-                    className="flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-sm text-destructive hover:bg-destructive/5 cursor-pointer"
-                  >
-                    <Trash2 className="size-3.5" />
-                    Cancel batch
-                  </button>
-                </>
+                <button
+                  type="button"
+                  onClick={() => setShowCancelConfirm(true)}
+                  className="flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-sm text-destructive hover:bg-destructive/5 cursor-pointer"
+                >
+                  <Trash2 className="size-3.5" />
+                  Cancel batch
+                </button>
               )}
             </PopoverContent>
           </Popover>
@@ -381,29 +385,29 @@ export function BatchDetailContent({
                 </button>
 
                 {openLevyId === levy.id && (
-                  <div className="px-4 pb-3 pl-11 space-y-2">
-                    {/* Line items , extra-compact: text-[11px], py-0.5,
-                        tight w-24 amount column. The dropdown surface is
-                        already narrow so the table needs to feel like a
-                        sub-grid, not a full data table. */}
+                  <div className="px-4 pb-2 pl-11 space-y-1.5">
+                    {/* Line items , ultra-compact: text-[10px], py-0,
+                        h-6 rows. This sub-grid lives inside a dropdown
+                        so it MUST read as detail-on-tap, not as a
+                        primary data table. */}
                     <div className="overflow-hidden rounded-md border border-border">
-                      <Table variant="bordered" className="text-[11px]">
+                      <Table variant="bordered" className="text-[10px]">
                         <TableHeader>
                           <TableRow>
-                            <TableHead className="py-0.5 text-[11px]">Description</TableHead>
-                            <TableHead className="py-0.5 w-24 text-right text-[11px]">Amount</TableHead>
+                            <TableHead className="py-0 h-5 text-[10px]">Description</TableHead>
+                            <TableHead className="py-0 h-5 w-20 text-right text-[10px]">Amount</TableHead>
                           </TableRow>
                         </TableHeader>
                         <TableBody>
                           {levy.items.map((item, i) => (
                             <TableRow key={i}>
-                              <TableCell className="py-0.5 text-foreground">
+                              <TableCell className="py-0 h-6 text-foreground">
                                 {item.description}
                                 {item.is_adjustment && (
-                                  <span className="ml-1 text-[10px] text-primary">(adj)</span>
+                                  <span className="ml-1 text-[9px] text-primary">(adj)</span>
                                 )}
                               </TableCell>
-                              <TableCell className="py-0.5 text-right tabular-nums text-foreground">
+                              <TableCell className="py-0 h-6 text-right tabular-nums text-foreground">
                                 {formatCurrency(item.amount)}
                               </TableCell>
                             </TableRow>

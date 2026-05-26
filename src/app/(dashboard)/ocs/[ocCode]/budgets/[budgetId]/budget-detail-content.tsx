@@ -371,19 +371,14 @@ export function BudgetDetailContent({
                 </button>
               )}
               {isDraft && !editing && (
-                <>
-                  {/* Same vertical gap as the rows above , the divider
-                      is a hairline only, no extra margin. */}
-                  <div className="h-px bg-border" />
-                  <button
-                    type="button"
-                    onClick={() => setDeleteOpen(true)}
-                    className="flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-sm text-destructive hover:bg-destructive/5 cursor-pointer"
-                  >
-                    <Trash2 className="size-3.5" />
-                    Delete budget
-                  </button>
-                </>
+                <button
+                  type="button"
+                  onClick={() => setDeleteOpen(true)}
+                  className="flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-sm text-destructive hover:bg-destructive/5 cursor-pointer"
+                >
+                  <Trash2 className="size-3.5" />
+                  Delete budget
+                </button>
               )}
             </PopoverContent>
           </Popover>

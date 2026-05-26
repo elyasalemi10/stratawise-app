@@ -31,18 +31,30 @@ export const dailyLevyAutosend = schedules.task({
 
     const { data: due } = await supabase
       .from("levy_autosend_schedules")
-      .select("id, oc_id, budget_id, send_day_of_month, from_address, next_send_date")
+      .select("id, oc_id, budget_id, send_day_of_month, from_address, next_send_date, owners_corporations!inner(billing_cycle)")
       .eq("enabled", true)
       .lte("next_send_date", today);
 
-    const rows = (due ?? []) as Array<{
-      id: string;
-      oc_id: string;
-      budget_id: string | null;
-      send_day_of_month: number;
-      from_address: string | null;
-      next_send_date: string | null;
-    }>;
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const rows = ((due as any[]) ?? []).map((r) => ({
+      id: r.id as string,
+      oc_id: r.oc_id as string,
+      budget_id: r.budget_id as string | null,
+      send_day_of_month: r.send_day_of_month as number,
+      from_address: r.from_address as string | null,
+      next_send_date: r.next_send_date as string | null,
+      billing_cycle: (r.owners_corporations?.billing_cycle ?? "monthly") as string,
+    }));
+
+    function monthsForCycle(c: string): number {
+      switch (c) {
+        case "monthly": return 1;
+        case "quarterly": return 3;
+        case "half_yearly": return 6;
+        case "annually": return 12;
+        default: return 1;
+      }
+    }
 
     let processed = 0;
     let errors = 0;
@@ -59,11 +71,13 @@ export const dailyLevyAutosend = schedules.task({
           metadata: { reason: "generator_not_wired_yet", today },
         });
 
-        // Roll next_send_date forward by 1 month so we don't loop on the
-        // same row tomorrow. Stamp last_sent_on too once the real send
-        // succeeds (in the eventual non-stub implementation).
+        // Roll next_send_date forward by the OC's billing cycle gap so
+        // quarterly/half/annual schedules don't fire monthly. Stamp
+        // last_sent_on too once the real send succeeds (in the
+        // eventual non-stub implementation).
+        const gap = monthsForCycle(r.billing_cycle);
         const next = new Date(`${today}T00:00:00Z`);
-        next.setUTCMonth(next.getUTCMonth() + 1);
+        next.setUTCMonth(next.getUTCMonth() + gap);
         const lastDay = new Date(Date.UTC(next.getUTCFullYear(), next.getUTCMonth() + 1, 0)).getUTCDate();
         const safeDay = Math.min(r.send_day_of_month, lastDay);
         const nextDate = new Date(Date.UTC(next.getUTCFullYear(), next.getUTCMonth(), safeDay));

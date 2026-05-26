@@ -53,7 +53,7 @@ export interface LevyBatchSummary {
   due_date: string;
   total_amount: number;
   levy_count: number;
-  status: "draft" | "ledger_written" | "sent" | "partially_sent";
+  status: "draft" | "ledger_written" | "sent" | "partially_sent" | "cancelled";
   created_at: string;
 }
 
@@ -491,6 +491,36 @@ export async function generateLevyPreview(
 // label they have (lot number, owner name) , but in practice every lot
 // gets a payment_reference at OC creation, so this Map is always
 // populated.
+// For each lot, count how many OTHER lots in the same OC share the same
+// owner contact (by email when present, otherwise by lot_owners.name).
+// Used to drive the auto multi-lot note + future "you own N lots"
+// hints. Returns Map<lotId, totalLotsThisOwnerHolds>; 1 = single-lot,
+// 2+ = multi-lot.
+async function countLotsPerOwnerInOc(
+  supabase: ReturnType<typeof createServerClient>,
+  ocId: string,
+): Promise<Map<string, number>> {
+  const result = new Map<string, number>();
+  const { data: rows } = await supabase
+    .from("lot_owners")
+    .select("lot_id, name, email")
+    .eq("oc_id", ocId);
+  if (!rows?.length) return result;
+  const groups = new Map<string, string[]>();
+  for (const r of rows) {
+    if (!r.lot_id) continue;
+    const key = (r.email ?? r.name ?? "").trim().toLowerCase();
+    if (!key) continue;
+    const arr = groups.get(key) ?? [];
+    if (!arr.includes(r.lot_id)) arr.push(r.lot_id);
+    groups.set(key, arr);
+  }
+  for (const arr of groups.values()) {
+    for (const lotId of arr) result.set(lotId, arr.length);
+  }
+  return result;
+}
+
 async function resolveLevyReferences(
   supabase: ReturnType<typeof createServerClient>,
   levies: Array<{ id: string; lot_id: string; period_start: string }>,
@@ -1169,17 +1199,35 @@ export async function cancelBatch(ocId: string, batchId: string) {
   // 'cancelled' on both the batch and its notices so the period is
   // free again for a fresh batch (getAvailablePeriods only blocks on
   // active statuses). Audit/reporting still has the original data.
+  //
+  // Use returning rows on each UPDATE so a silent failure (RLS denial,
+  // bad enum coercion, etc) raises an error instead of looking like a
+  // successful no-op. Earlier we hit the issue where the cancel
+  // appeared to "delete" the batch , the rows survived but the UI
+  // showed nothing because the update silently rejected, and a later
+  // delete path elsewhere did the actual removal.
   const nowIso = new Date().toISOString();
 
-  await supabase
+  const { error: notesErr } = await supabase
     .from("levy_notices")
     .update({ status: "cancelled", cancelled_at: nowIso })
-    .eq("batch_id", batchId);
+    .eq("batch_id", batchId)
+    .select("id");
+  if (notesErr) {
+    console.error("[cancelBatch] notices update failed:", notesErr);
+    return { error: "Couldn't cancel the batch's levies. Try again." };
+  }
 
-  await supabase
+  const { data: batchRow, error: batchUpdErr } = await supabase
     .from("levy_batches")
     .update({ status: "cancelled", cancelled_at: nowIso })
-    .eq("id", batchId);
+    .eq("id", batchId)
+    .select("id, status")
+    .single();
+  if (batchUpdErr || !batchRow) {
+    console.error("[cancelBatch] batch update failed:", batchUpdErr);
+    return { error: "Couldn't cancel the batch. Try again." };
+  }
 
   await supabase.from("audit_log").insert({
     profile_id: profile.id,
@@ -1191,6 +1239,7 @@ export async function cancelBatch(ocId: string, batchId: string) {
   });
 
   revalidatePath("/ocs/[ocCode]/levies", "page");
+  revalidatePath(`/ocs/[ocCode]/levies/${batchId}`, "page");
   return { success: true };
 }
 
@@ -1505,7 +1554,7 @@ export async function sendBatchByPost(
         to: parsed,
         description: `Levy ${displayRef} , ${batch?.period_label ?? ""}`,
         pdfBuffer,
-        pdfFilename: `${displayRef}.pdf`,
+        pdfFilename: `${levy.reference_number}.pdf`,
       });
 
       // communication_log keeps a "letter" channel row so the audit
@@ -1668,7 +1717,7 @@ export async function sendBatchEmailsCustom(
         totalAmount: formatCurrency(Number(levy.amount)),
         periodLabel: batch?.period_label ?? "",
         pdfBuffer,
-        pdfFilename: `${displayRef}.pdf`,
+        pdfFilename: `${levy.reference_number}.pdf`,
         extraAttachments: extras,
         ocId,
         fromOverride: options.fromAddress ?? null,
@@ -1800,7 +1849,7 @@ export async function resendBatchEmailsCustom(
         totalAmount: fmt(Number(levy.amount)),
         periodLabel: batch?.period_label ?? "",
         pdfBuffer,
-        pdfFilename: `${displayRef}.pdf`,
+        pdfFilename: `${levy.reference_number}.pdf`,
         extraAttachments: extras,
         ocId,
         fromOverride: options.fromAddress ?? null,
@@ -1929,7 +1978,7 @@ export async function sendBatchEmails(ocId: string, batchId: string) {
         totalAmount: formatCurrency(Number(levy.amount)),
         periodLabel: batch?.period_label ?? "",
         pdfBuffer,
-        pdfFilename: `${displayRef}.pdf`,
+        pdfFilename: `${levy.reference_number}.pdf`,
         ocId,
       });
 

@@ -29,6 +29,8 @@ export async function updateOCField(
     "meetings_postal_buffer_days", "levies_postal_buffer_days", "financial_postal_buffer_days",
     "default_delivery_method",
     "include_arrears_on_notice",
+    "multilot_note_enabled",
+    "multilot_note_text",
   ];
 
   if (!allowedFields.includes(field)) {
@@ -38,7 +40,8 @@ export async function updateOCField(
   // Settings UI sends "yes" / "no" through a select for boolean columns.
   // Coerce them here so the column actually receives a boolean.
   let coercedValue: typeof value = value;
-  if (field === "include_arrears_on_notice") {
+  const booleanFields = ["include_arrears_on_notice", "multilot_note_enabled"];
+  if (booleanFields.includes(field)) {
     if (value === "yes" || value === true) coercedValue = true;
     else if (value === "no" || value === false) coercedValue = false;
   }

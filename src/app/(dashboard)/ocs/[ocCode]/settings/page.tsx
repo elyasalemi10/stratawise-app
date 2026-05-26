@@ -4,6 +4,9 @@ import { redirect } from "next/navigation";
 import { SettingsContent } from "./settings-content";
 import { ManagementCard } from "./management-card";
 import { getActiveManagementAgreement } from "@/lib/actions/management-transfer";
+import { getLevyAutosendSchedule } from "@/lib/actions/levy-autosend";
+import { getOCBudgets } from "@/lib/actions/budget";
+import { createServerClient } from "@/lib/supabase";
 
 import { resolveOCFromCode } from "@/lib/oc-resolver";
 
@@ -16,9 +19,11 @@ export default async function OCSettingsPage({
   const resolved = await resolveOCFromCode(ocCode);
   if (!resolved) redirect("/dashboard");
   const ocId = resolved.id;
-  const [oc, profile] = await Promise.all([
+  const [oc, profile, autosend, budgets] = await Promise.all([
     getOC(ocId),
     getCurrentProfile(),
+    getLevyAutosendSchedule(ocId),
+    getOCBudgets(ocId),
   ]);
 
   if (!oc) redirect("/dashboard");
@@ -29,6 +34,35 @@ export default async function OCSettingsPage({
   // as a legacy pointer but the agreement record carries the audit trail.
   const ocMgmtCompanyId = (oc as unknown as { management_company_id: string }).management_company_id;
   const agreement = await getActiveManagementAgreement(ocId);
+
+  // Mailbox options for the auto-send schedule. Same resolution as the
+  // batch detail page so the manager sees real addresses, never provider
+  // names.
+  const supabase = createServerClient();
+  const { data: primaryManagerRow } = await supabase
+    .from("oc_members")
+    .select("profile_id, profiles!inner(email, email_username)")
+    .eq("oc_id", ocId)
+    .eq("role", "strata_manager")
+    .is("left_at", null)
+    .order("joined_at", { ascending: true })
+    .limit(1)
+    .maybeSingle();
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const primaryProf = (primaryManagerRow as any)?.profiles as { email: string | null; email_username: string | null } | null;
+  const mailboxOptions: Array<{ value: string; label: string }> = [];
+  if (primaryProf?.email) mailboxOptions.push({ value: primaryProf.email, label: primaryProf.email });
+  if (primaryProf?.email_username) {
+    const alias = `${primaryProf.email_username}@stratawise.com.au`;
+    if (!mailboxOptions.some((o) => o.value.toLowerCase() === alias.toLowerCase())) {
+      mailboxOptions.push({ value: alias, label: alias });
+    }
+  }
+  if (mailboxOptions.length === 0) mailboxOptions.push({ value: "noreply@stratawise.com.au", label: "noreply@stratawise.com.au" });
+
+  const approvedBudgets = budgets
+    .filter((b) => b.status === "approved")
+    .map((b) => ({ id: b.id, label: `${b.financial_year}, ${(b.fund_types?.length ? b.fund_types : (b.fund_type ? [b.fund_type] : [])).join(" + ")}` }));
 
   return (
     <div className="space-y-6">
@@ -66,7 +100,16 @@ export default async function OCSettingsPage({
         meetings_postal_buffer_days: (oc as unknown as { meetings_postal_buffer_days?: number | null }).meetings_postal_buffer_days ?? 14,
         levies_postal_buffer_days: (oc as unknown as { levies_postal_buffer_days?: number | null }).levies_postal_buffer_days ?? 14,
         financial_postal_buffer_days: (oc as unknown as { financial_postal_buffer_days?: number | null }).financial_postal_buffer_days ?? 14,
+        include_arrears_on_notice: (oc as unknown as { include_arrears_on_notice?: boolean | null }).include_arrears_on_notice ?? false,
+        multilot_note_enabled: (oc as unknown as { multilot_note_enabled?: boolean | null }).multilot_note_enabled ?? true,
+        multilot_note_text: (oc as unknown as { multilot_note_text?: string | null }).multilot_note_text ?? null,
+        bank_bsb: (oc as unknown as { bank_bsb?: string | null }).bank_bsb ?? null,
+        bank_account_number: (oc as unknown as { bank_account_number?: string | null }).bank_account_number ?? null,
+        bank_account_name: (oc as unknown as { bank_account_name?: string | null }).bank_account_name ?? null,
       }}
+      autosend={autosend}
+      autosendMailboxOptions={mailboxOptions}
+      autosendBudgets={approvedBudgets}
     />
     </div>
   );

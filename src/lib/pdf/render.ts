@@ -141,7 +141,7 @@ async function assembleLevyNoticeProps(
     supabase
       .from("owners_corporations")
       .select(
-        "id, name, address, abn, plan_number, management_company_id, bank_bsb, bank_account_number, bank_account_name, include_arrears_on_notice",
+        "id, name, address, abn, plan_number, management_company_id, bank_bsb, bank_account_number, bank_account_name, include_arrears_on_notice, multilot_note_enabled, multilot_note_text",
       )
       .eq("id", levy.oc_id)
       .single(),
@@ -203,6 +203,8 @@ async function assembleLevyNoticeProps(
     bank_account_number: string | null;
     bank_account_name: string | null;
     include_arrears_on_notice: boolean | null;
+    multilot_note_enabled: boolean | null;
+    multilot_note_text: string | null;
   } | null;
   if (!sub) {
     throw new Error(`assembleLevyNoticeProps: oc missing for levy ${levyId}`);
@@ -281,6 +283,36 @@ async function assembleLevyNoticeProps(
     }
   }
 
+  // Multi-lot detection: count distinct lots in this OC owned by the
+  // same contact (by email when present, else name). 2+ triggers the
+  // configured multi-lot note when the OC has it enabled.
+  let multilotNote: string | null = null;
+  if (sub.multilot_note_enabled) {
+    const ownerContact = await supabase
+      .from("lot_owners")
+      .select("email, name")
+      .eq("lot_id", levy.lot_id)
+      .order("ownership_since", { ascending: false, nullsFirst: false })
+      .limit(1)
+      .maybeSingle();
+    const me = (ownerContact.data as { email: string | null; name: string | null } | null);
+    const myKey = (me?.email ?? me?.name ?? "").trim().toLowerCase();
+    if (myKey) {
+      const { data: peers } = await supabase
+        .from("lot_owners")
+        .select("lot_id, email, name")
+        .eq("oc_id", levy.oc_id);
+      const lots = new Set<string>();
+      for (const p of peers ?? []) {
+        const key = (p.email ?? p.name ?? "").trim().toLowerCase();
+        if (key === myKey && p.lot_id) lots.add(p.lot_id);
+      }
+      if (lots.size >= 2) {
+        multilotNote = sub.multilot_note_text ?? null;
+      }
+    }
+  }
+
   const props: AssembledLevyProps = {
     _ocId: sub.id,
     managementCompany,
@@ -291,6 +323,7 @@ async function assembleLevyNoticeProps(
       plan_number: sub.plan_number,
     },
     documentTitle: "Levy Notice",
+    note: multilotNote ?? undefined,
     // Prefer the active DRN as the user-facing reference , owners pay via
     // BPAY/EFT using their DRN, so the PDF should print the same number
     // Macquarie reconciles against. Falls back to the LEV-NNNN sequence
