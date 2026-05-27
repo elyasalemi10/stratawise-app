@@ -83,6 +83,10 @@ export interface LevyNoticeProps extends BaseDocumentProps {
     amount: number;
     asOf: string;
   } | null;
+  /** Optional "Reason / Note" text for special levies. Rendered as a
+   *  quote-style block at the top of the notice (accent left border)
+   *  so the owner sees what this one-off raise is funding. */
+  specialReason?: string | null;
 }
 
 // --- Budget Report ---

@@ -1,27 +1,12 @@
 import { schedules } from "@trigger.dev/sdk";
 import { createServerClient } from "@/lib/supabase";
-import { nextSendDateFromSchedule } from "@/lib/levy-autosend-helpers";
+import { runAutosendForSchedule } from "@/lib/levy-autosend-runner";
 
 // Daily auto-send levies cron. Reads levy_autosend_schedules, finds
 // every enabled row whose next_send_date is today or earlier, and for
-// each one:
-//   1. Generates the next available period's batch from the chosen
-//      budget (mirrors what the manager would do in the generate page).
-//   2. Sends the batch via the chosen mailbox (fromOverride).
-//   3. Updates last_sent_on + next_send_date.
-//   4. On failure: stores last_error so the manager sees it in OC settings.
-//
-// Per the user's brief: send on schedule regardless of bank-import
-// freshness; the arrears line on each notice (when OC opts in) reflects
-// "as of {last bank import date}" so the owner knows the figure is
-// point-in-time, even if it's a few days old. The manager gets a
-// staleness banner in the dashboard if the import is >7 days behind.
-//
-// This is the scaffold , wiring up actual batch generation requires
-// dynamically calling the same code path as the manual flow. Kept as a
-// minimal stub for now; the production rollout will replace the inner
-// `processSchedule` body with a call into a shared generator+sender
-// helper.
+// each one runs the full generate → mark sent → send-emails cycle via
+// runAutosendForSchedule. Errors land on the row's last_error column
+// so the manager sees them in OC settings → Automation.
 
 export const dailyLevyAutosend = schedules.task({
   id: "daily-levy-autosend",
@@ -32,65 +17,45 @@ export const dailyLevyAutosend = schedules.task({
 
     const { data: due } = await supabase
       .from("levy_autosend_schedules")
-      .select("id, oc_id, budget_id, send_day_of_month, from_address, next_send_date, owners_corporations!inner(billing_cycle, financial_year_start_month)")
+      .select("id")
       .eq("enabled", true)
       .lte("next_send_date", today);
 
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const rows = ((due as any[]) ?? []).map((r) => ({
-      id: r.id as string,
-      oc_id: r.oc_id as string,
-      budget_id: r.budget_id as string | null,
-      send_day_of_month: r.send_day_of_month as number,
-      from_address: r.from_address as string | null,
-      next_send_date: r.next_send_date as string | null,
-      billing_cycle: (r.owners_corporations?.billing_cycle ?? "monthly") as string,
-      fy_start_month: (r.owners_corporations?.financial_year_start_month ?? 7) as number,
-    }));
+    const rows = ((due as { id: string }[]) ?? []);
 
     let processed = 0;
     let errors = 0;
+    const results: Array<{ id: string; status: string; reason?: string }> = [];
     for (const r of rows) {
       try {
-        // TODO: wire up actual batch generation + send via shared helper.
-        // Stub for now , logs to audit_log so we can monitor the cron is
-        // firing while the generator helper lands in a follow-up commit.
-        await supabase.from("audit_log").insert({
-          oc_id: r.oc_id,
-          action: "autosend_cron.skipped",
-          entity_type: "levy_autosend_schedule",
-          entity_id: r.id,
-          metadata: { reason: "generator_not_wired_yet", today },
-        });
-
-        // Advance next_send_date to the next FY-aligned period strictly
-        // AFTER today. Stamp last_sent_on too once the real send
-        // succeeds (in the eventual non-stub implementation).
-        const tomorrow = new Date(`${today}T00:00:00Z`);
-        tomorrow.setUTCDate(tomorrow.getUTCDate() + 1);
-        const nextIso = nextSendDateFromSchedule(
-          r.send_day_of_month,
-          r.billing_cycle,
-          tomorrow.toISOString().slice(0, 10),
-          r.fy_start_month,
-        );
-        await supabase
-          .from("levy_autosend_schedules")
-          .update({ next_send_date: nextIso, updated_at: new Date().toISOString() })
-          .eq("id", r.id);
-        processed++;
+        const res = await runAutosendForSchedule(r.id, today);
+        if (res.status === "error") {
+          errors++;
+          await supabase
+            .from("levy_autosend_schedules")
+            .update({
+              last_error: res.reason ?? "Auto-send failed",
+              updated_at: new Date().toISOString(),
+            })
+            .eq("id", r.id);
+        } else {
+          processed++;
+        }
+        results.push({ id: r.id, status: res.status, reason: res.reason });
       } catch (err) {
         errors++;
+        const msg = err instanceof Error ? err.message : "Auto-send failed";
         await supabase
           .from("levy_autosend_schedules")
           .update({
-            last_error: err instanceof Error ? err.message : "Auto-send failed",
+            last_error: msg,
             updated_at: new Date().toISOString(),
           })
           .eq("id", r.id);
+        results.push({ id: r.id, status: "error", reason: msg });
       }
     }
 
-    return { processed, errors, candidates: rows.length };
+    return { processed, errors, candidates: rows.length, results };
   },
 });

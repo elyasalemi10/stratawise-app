@@ -110,7 +110,7 @@ async function assembleLevyNoticeProps(
   const { data: levyData, error: levyErr } = await supabase
     .from("levy_notices")
     .select(
-      "id, reference_number, amount, due_date, period_start, period_end, lot_id, oc_id, levy_type",
+      "id, reference_number, amount, due_date, period_start, period_end, lot_id, oc_id, levy_type, batch_id",
     )
     .eq("id", levyId)
     .single();
@@ -129,7 +129,21 @@ async function assembleLevyNoticeProps(
     lot_id: string;
     oc_id: string;
     levy_type: "regular" | "special" | "penalty_interest";
+    batch_id: string | null;
   };
+
+  // Special-levy reason / note. Lives on the batch row, fetched only
+  // for `levy_type === 'special'` to skip a pointless query for the
+  // common case (regular quarterly levies have no batch-level note).
+  let specialReason: string | null = null;
+  if (levy.levy_type === "special" && levy.batch_id) {
+    const { data: batchRow } = await supabase
+      .from("levy_batches")
+      .select("special_purpose")
+      .eq("id", levy.batch_id)
+      .maybeSingle();
+    specialReason = (batchRow as { special_purpose: string | null } | null)?.special_purpose ?? null;
+  }
 
   const [
     { data: subRow },
@@ -326,11 +340,11 @@ async function assembleLevyNoticeProps(
     // standard contributions).
     documentTitle: levy.levy_type === "special" ? "Special Levy" : "Levy Notice",
     note: multilotNote ?? undefined,
-    // Prefer the active DRN as the user-facing reference , owners pay via
-    // BPAY/EFT using their DRN, so the PDF should print the same number
-    // Macquarie reconciles against. Falls back to the LEV-NNNN sequence
-    // when the OC isn't on DEFT yet.
-    referenceNumber: displayRef,
+    // Top-right of the PDF shows the LEV-/SLEV-NNNN sequence , the
+    // internal levy number managers cite when chasing this notice. The
+    // owner's permanent reference (DRN / payment_reference) goes into
+    // the EFT "Reference" field below where they actually need it.
+    referenceNumber: levy.reference_number,
     date: new Date(),
     lotOwner: {
       name: ownerName,
@@ -366,6 +380,7 @@ async function assembleLevyNoticeProps(
           },
     },
     priorArrears,
+    specialReason,
   };
 
   return props;

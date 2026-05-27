@@ -12,6 +12,9 @@ import {
 import {
   Table, TableBody, TableCell, TableHead, TableHeader, TableRow,
 } from "@/components/ui/table";
+import {
+  Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
+} from "@/components/ui/select";
 import { sendBatchEmailsCustom, resendBatchEmailsCustom } from "@/lib/actions/levy";
 
 interface LevyRow {
@@ -30,10 +33,10 @@ interface Props {
   mode: "send" | "resend";
   levies: LevyRow[];
   /** Real mailbox addresses the manager can send from. Loaded server-side
-   *  so the dialog opens instantly with no loading state. The sender is
-   *  fixed for this send , there's no dropdown to change it (intent:
-   *  once you commit to sending, the from-address is whatever the OC is
-   *  configured with). */
+   *  so the dialog opens instantly with no loading state. When there are
+   *  2+ options the dialog renders a dropdown so the manager can pick
+   *  between e.g. their connected Outlook address and the noreply@
+   *  StrataWise mailbox. */
   mailboxOptions: Array<{ value: string; label: string }>;
   open: boolean;
   onOpenChange: (open: boolean) => void;
@@ -49,10 +52,12 @@ const RECIPIENT_TABLE_MAX_HEIGHT = 4.5 * 44 + 36; // + header
 export function SendEmailsDialog({
   ocId, batchId, mode, levies, mailboxOptions, open, onOpenChange, onSent,
 }: Props) {
-  // Sender is fixed = the first configured mailbox. Recorded so the
-  // server-side send still receives a `fromAddress` even though the UI
-  // doesn't expose a dropdown anymore.
-  const fromAddress = mailboxOptions[0]?.value ?? "";
+  // Default to the first option (typically the manager's connected
+  // mailbox). Manager can switch when there are 2+ options.
+  const [fromAddress, setFromAddress] = useState<string>(mailboxOptions[0]?.value ?? "");
+  useEffect(() => {
+    if (open) setFromAddress(mailboxOptions[0]?.value ?? "");
+  }, [open, mailboxOptions]);
 
   // Pre-fill overrides with the owner's stored email so the manager can
   // edit in place instead of typing into an empty input.
@@ -142,11 +147,36 @@ export function SendEmailsDialog({
             <Mail className="h-4 w-4" />
             {mode === "resend" ? "Resend levies by email" : "Send levies by email"}
           </DialogTitle>
-          {/* Sender is fixed , the mailbox label is read-only. */}
           <DialogDescription>
-            Sending from <strong className="text-foreground">{mailboxOptions[0]?.label ?? "noreply"}</strong>
+            {mailboxOptions.length <= 1 ? (
+              <>Sending from <strong className="text-foreground">{mailboxOptions[0]?.label ?? "noreply"}</strong></>
+            ) : (
+              "Choose which mailbox these emails come from."
+            )}
           </DialogDescription>
         </DialogHeader>
+
+        {mailboxOptions.length > 1 && (
+          <div className="space-y-1.5">
+            <Label>Sending from</Label>
+            <Select
+              value={fromAddress}
+              onValueChange={(v) => setFromAddress(v ?? "")}
+              disabled={locked}
+            >
+              <SelectTrigger>
+                <SelectValue>
+                  {mailboxOptions.find((o) => o.value === fromAddress)?.label ?? fromAddress}
+                </SelectValue>
+              </SelectTrigger>
+              <SelectContent>
+                {mailboxOptions.map((o) => (
+                  <SelectItem key={o.value} value={o.value}>{o.label}</SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+        )}
 
         {/* Whole body wrapper , when locked, drop interactivity + fade
             so the manager sees the dialog is "in motion" and stays out

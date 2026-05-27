@@ -494,17 +494,13 @@ export async function sendLevyEmail({
           ${greeting} a new levy notice has been issued for <strong>${ocAddress}</strong>.
         </p>
         <div style="background:#FAF7F0;border:1px solid #E5E0D3;border-radius:6px;padding:16px;margin:0 0 24px;">
-          <p style="margin:0 0 4px;font-size:13px;color:#4A5868;">Reference</p>
+          <p style="margin:0 0 4px;font-size:13px;color:#4A5868;">Levy number</p>
           <p style="margin:0 0 12px;font-size:15px;font-weight:600;color:#0E314C;">${referenceNumber}</p>
-          <p style="margin:0 0 4px;font-size:13px;color:#4A5868;">Period</p>
-          <p style="margin:0 0 12px;font-size:14px;color:#0E314C;">${periodLabel}</p>
-          <p style="margin:0 0 4px;font-size:13px;color:#4A5868;">Amount due</p>
-          <p style="margin:0 0 12px;font-size:18px;font-weight:700;color:#0E314C;">${totalAmount}</p>
           <p style="margin:0 0 4px;font-size:13px;color:#4A5868;">Due date</p>
           <p style="margin:0;font-size:14px;font-weight:600;color:#0E314C;">${dueDate}</p>
         </div>
         <p style="margin:0;color:#0E314C;font-size:14px;">
-          Your levy notice is attached as a PDF. Please refer to the notice for payment details.
+          Your levy notice is attached as a PDF. Please open it for the full breakdown, including any arrears or adjustments, and payment details.
         </p>
       </div>
     `,

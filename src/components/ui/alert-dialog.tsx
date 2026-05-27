@@ -5,6 +5,7 @@ import { cn } from "@/lib/utils"
 import { Button } from "@/components/ui/button"
 import {
   Dialog,
+  DialogClose,
   DialogContent,
   DialogDescription,
   DialogFooter,
@@ -72,14 +73,25 @@ function AlertDialogAction({
 
 function AlertDialogCancel({
   className,
+  children,
   ...props
 }: React.ComponentProps<typeof Button>) {
+  // Uses base-ui's Close primitive (via `render`) so clicking actually
+  // closes the parent AlertDialog. Without this, the button rendered
+  // a plain <Button> with no handler , the visible bug on the recall
+  // + cancel popups where clicking Cancel did nothing.
   return (
-    <Button
-      variant="outline"
-      className={cn("cursor-pointer", className)}
-      {...props}
-    />
+    <DialogClose
+      render={
+        <Button
+          variant="secondary"
+          className={cn("cursor-pointer", className)}
+          {...props}
+        />
+      }
+    >
+      {children}
+    </DialogClose>
   )
 }
 

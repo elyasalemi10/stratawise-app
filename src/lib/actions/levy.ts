@@ -276,8 +276,9 @@ export async function generateLevyPreview(
   ocId: string,
   budgetId: string,
   periodIndex?: number,
+  options: { _systemBypass?: boolean } = {},
 ): Promise<{ data?: LevyPreviewData; error?: string }> {
-  await requireOCAccess(ocId);
+  if (!options._systemBypass) await requireOCAccess(ocId);
   const supabase = createServerClient();
 
   // Get budget with items
@@ -687,10 +688,17 @@ export async function createLevyBatch(
      *  marked levy_type='special'. */
     is_special?: boolean;
     special_purpose?: string;
+    /** Internal: when called from a server-only system context (e.g.
+     *  the auto-send cron), the caller resolves the performer profile
+     *  itself and skips the Clerk-based auth check that the manager
+     *  UI flow needs. NEVER expose this to client callers. */
+    _systemPerformerId?: string;
   },
 ): Promise<{ batchId?: string; error?: string }> {
-  const profile = await requireCompanyRole();
-  await requireOCAccess(ocId);
+  const profile = data._systemPerformerId
+    ? { id: data._systemPerformerId }
+    : await requireCompanyRole();
+  if (!data._systemPerformerId) await requireOCAccess(ocId);
   const supabase = createServerClient();
 
   const totalAmount = data.lots.reduce((sum, lot) => sum + lot.amount, 0);
@@ -1063,9 +1071,15 @@ export async function getLevyBatchDetail(ocId: string, batchId: string): Promise
 
 // ─── Mark batch as sent ────────────────────────────────────
 
-export async function markBatchSent(ocId: string, batchId: string) {
-  const profile = await requireCompanyRole();
-  await requireOCAccess(ocId);
+export async function markBatchSent(
+  ocId: string,
+  batchId: string,
+  options: { _systemPerformerId?: string } = {},
+) {
+  const profile = options._systemPerformerId
+    ? { id: options._systemPerformerId }
+    : await requireCompanyRole();
+  if (!options._systemPerformerId) await requireOCAccess(ocId);
   const supabase = createServerClient();
 
   // Update all draft levies to issued
@@ -1599,10 +1613,15 @@ export async function sendBatchEmailsCustom(
     /** Optional: override the FROM mailbox address. The dialog passes the
      *  manager's selection so the email comes from the right account. */
     fromAddress?: string;
+    /** Internal: bypass Clerk auth check when invoked from a system
+     *  context (auto-send cron). NEVER expose to client callers. */
+    _systemPerformerId?: string;
   } = {},
 ): Promise<{ sentCount?: number; error?: string }> {
-  const profile = await requireCompanyRole();
-  await requireOCAccess(ocId);
+  const profile = options._systemPerformerId
+    ? { id: options._systemPerformerId }
+    : await requireCompanyRole();
+  if (!options._systemPerformerId) await requireOCAccess(ocId);
   const supabase = createServerClient();
 
   const { data: batch } = await supabase

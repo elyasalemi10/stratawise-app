@@ -6,7 +6,7 @@ import { Plus, X, Loader2, ChevronDown } from "lucide-react";
 import { toast } from "sonner";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
+import { Textarea } from "@/components/ui/textarea";
 import { Label } from "@/components/ui/label";
 import { NumberInput } from "@/components/ui/number-input";
 import { DatePicker } from "@/components/shared/date-picker";
@@ -261,9 +261,13 @@ export function SpecialLevyForm({
   }
 
   const fundItems = availableFunds.map((f) => ({ value: f, label: FUND_LABEL[f] }));
+  // Lock every input + button once the manager fires either the
+  // apportionment calc or the final create , no second click, no edit
+  // mid-flight. Spinner stays on until navigation.
+  const locked = creating || calculating;
 
   return (
-    <div className="space-y-6">
+    <div className={`space-y-6 ${locked ? "pointer-events-none opacity-90" : ""}`}>
       <Card>
         <CardContent className="pt-5 space-y-4">
           <div className="flex items-center justify-between">
@@ -274,12 +278,13 @@ export function SpecialLevyForm({
           </div>
 
           <div className="space-y-1.5">
-            <Label>Purpose <span className="text-destructive">*</span></Label>
-            <Input
+            <Label>Reason / Note <span className="text-destructive">*</span></Label>
+            <Textarea
               value={purpose}
               onChange={(e) => { setPurpose(e.target.value); setInvalid((v) => ({ ...v, purpose: false })); }}
-              placeholder="Reason for this special levy"
+              placeholder="What this special levy is for. This note is printed at the top of every notice in this batch."
               aria-invalid={invalid.purpose || undefined}
+              rows={3}
             />
           </div>
 
@@ -465,13 +470,13 @@ export function SpecialLevyForm({
                     </button>
 
                     {isOpen && (
-                      <div className="px-4 pb-4 pl-11">
+                      <div className="px-4 pb-4">
                         <div className="overflow-hidden rounded-md border border-border">
-                          <Table variant="bordered" className="text-[10px]">
+                          <Table variant="bordered" className="text-xs">
                             <TableHeader>
                               <TableRow>
-                                <TableHead className="py-0.5 text-[10px]">Description</TableHead>
-                                <TableHead className="py-0.5 w-[96px] text-right text-[10px]">Amount</TableHead>
+                                <TableHead className="py-0.5 text-xs">Description</TableHead>
+                                <TableHead className="py-0.5 w-[96px] text-right text-xs">Amount</TableHead>
                                 <TableHead className="py-0.5 w-[28px]" />
                               </TableRow>
                             </TableHeader>
@@ -525,8 +530,8 @@ export function SpecialLevyForm({
                             </TableBody>
                             <TableFooter>
                               <TableRow>
-                                <TableCell className="py-0.5 font-semibold text-foreground text-[10px]">Total</TableCell>
-                                <TableCell className="py-0.5 text-right font-bold tabular-nums text-foreground text-[10px]">{formatCurrency(lotGrandTotal(l))}</TableCell>
+                                <TableCell className="py-0.5 font-semibold text-foreground text-xs">Total</TableCell>
+                                <TableCell className="py-0.5 text-right font-bold tabular-nums text-foreground text-xs">{formatCurrency(lotGrandTotal(l))}</TableCell>
                                 <TableCell className="py-0.5" />
                               </TableRow>
                             </TableFooter>

@@ -108,15 +108,15 @@ function LotRow({
       </button>
 
       {isOpen && (
-        <div className="px-4 pb-4 pl-11">
+        <div className="px-4 pb-4">
           {/* Compact table , extra-small text + minimal padding because
               this whole table sits inside a per-lot dropdown. */}
           <div className="overflow-hidden rounded-md border border-border">
-            <Table variant="bordered" className="text-[10px]">
+            <Table variant="bordered" className="text-xs">
               <TableHeader>
                 <TableRow>
-                  <TableHead className="py-0.5 text-[10px]">Description</TableHead>
-                  <TableHead className="py-0.5 w-[96px] text-right text-[10px]">Amount</TableHead>
+                  <TableHead className="py-0.5 text-xs">Description</TableHead>
+                  <TableHead className="py-0.5 w-[96px] text-right text-xs">Amount</TableHead>
                   <TableHead className="py-0.5 w-[28px]" />
                 </TableRow>
               </TableHeader>
@@ -182,8 +182,8 @@ function LotRow({
               </TableBody>
               <TableFooter>
                 <TableRow>
-                  <TableCell className="py-0.5 font-semibold text-foreground text-[10px]">Total</TableCell>
-                  <TableCell className="py-0.5 text-right font-bold tabular-nums text-foreground text-[10px]">{formatCurrency(totalAmount)}</TableCell>
+                  <TableCell className="py-0.5 font-semibold text-foreground text-xs">Total</TableCell>
+                  <TableCell className="py-0.5 text-right font-bold tabular-nums text-foreground text-xs">{formatCurrency(totalAmount)}</TableCell>
                   <TableCell className="py-0.5" />
                 </TableRow>
               </TableFooter>
@@ -440,7 +440,7 @@ export function GenerateLeviesForm({
   }
 
   return (
-    <div className="space-y-6">
+    <div className={`space-y-6 ${generating ? "pointer-events-none opacity-90" : ""}`}>
       <Card>
         <CardContent className="pt-5 space-y-4">
           <div className="flex items-center justify-between">

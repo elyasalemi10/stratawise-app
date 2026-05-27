@@ -154,19 +154,31 @@ export async function uploadObject(
  * reads from the bucket that `bucketForKey` resolves , no fallback,
  * so confidential prefixes can never accidentally leak into the
  * public bucket on either side of the upload/read pair.
+ *
+ * Tags the bucket name into thrown errors so OCR failures in the DB
+ * tell operators which bucket the worker tried to read from (catches
+ * env-var skew between Vercel and Trigger.dev at a glance).
  */
 export async function fetchObject(key: string): Promise<Buffer> {
   const client = getClient();
   const bucket = bucketForKey(key);
-  const res = await client.send(new GetObjectCommand({ Bucket: bucket, Key: key }));
-  if (!res.Body) {
-    throw new Error(`R2 fetchObject: empty body for ${key}`);
+  try {
+    const res = await client.send(new GetObjectCommand({ Bucket: bucket, Key: key }));
+    if (!res.Body) {
+      throw new Error(`R2 fetchObject: empty body for ${key} (bucket=${bucket})`);
+    }
+    const bodyAsAsyncIterable = res.Body as {
+      transformToByteArray: () => Promise<Uint8Array>;
+    };
+    const bytes = await bodyAsAsyncIterable.transformToByteArray();
+    return Buffer.from(bytes);
+  } catch (err) {
+    const code = (err as { name?: string; Code?: string }).name
+      ?? (err as { Code?: string }).Code
+      ?? "unknown";
+    const msg = err instanceof Error ? err.message : String(err);
+    throw new Error(`R2 fetchObject failed (bucket=${bucket}, code=${code}): ${msg}`);
   }
-  const bodyAsAsyncIterable = res.Body as {
-    transformToByteArray: () => Promise<Uint8Array>;
-  };
-  const bytes = await bodyAsAsyncIterable.transformToByteArray();
-  return Buffer.from(bytes);
 }
 
 /**

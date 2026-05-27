@@ -49,6 +49,7 @@ export function LevyNotice({
   note,
   brandColors,
   priorArrears,
+  specialReason,
 }: LevyNoticeProps) {
   const subtotal = lineItems.reduce((sum, item) => sum + item.amount, 0);
   const gst = includeGst ? Math.round(subtotal * 0.1 * 100) / 100 : 0;
@@ -68,7 +69,7 @@ export function LevyNotice({
     // levy's coverage window is the first thing the eye lands on.
     periodBand: {
       alignItems: "center" as const,
-      marginBottom: 16,
+      marginBottom: 6,
     },
     periodBandText: {
       fontSize: 11,
@@ -136,6 +137,29 @@ export function LevyNotice({
     // Note
     noteSection: { marginBottom: 14, paddingVertical: 8, paddingHorizontal: 10, backgroundColor: c.lightBg, borderRadius: 2 },
     noteText: { fontSize: 9, color: c.foreground, lineHeight: 1.5 },
+    // Special-levy "Reason / Note" quote block , accent-bordered card
+    // matching the budget PDF's OC quote style. Renders only when a
+    // specialReason is present (i.e. this batch is a special levy).
+    specialNote: {
+      marginBottom: 14,
+      backgroundColor: c.lightBg,
+      borderLeftWidth: 3,
+      borderLeftColor: brand2,
+      paddingLeft: 12,
+      paddingRight: 12,
+      paddingVertical: 10,
+      borderRadius: 2,
+    },
+    specialNoteLabel: {
+      fontSize: 9,
+      color: c.muted,
+      marginBottom: 4,
+      fontFamily: FONT_BOLD,
+      fontWeight: 600,
+      textTransform: "uppercase" as const,
+      letterSpacing: 0.5,
+    },
+    specialNoteText: { fontSize: 11, color: c.foreground, lineHeight: 1.5 },
     // Table header
     tableHeader: {
       flexDirection: "row",
@@ -275,6 +299,14 @@ export function LevyNotice({
             <Text style={s.ownerDetail}>Lot {lotOwner.lot_number}</Text>
           </View>
         </View>
+
+        {/* ── Special-levy reason / note (accent quote block) ── */}
+        {specialReason ? (
+          <View style={s.specialNote}>
+            <Text style={s.specialNoteLabel}>Reason / Note</Text>
+            <Text style={s.specialNoteText}>{specialReason}</Text>
+          </View>
+        ) : null}
 
         {/* ── Custom note (#2) ── */}
         {note ? (
