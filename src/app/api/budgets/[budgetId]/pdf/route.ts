@@ -5,6 +5,7 @@ import { BudgetReport } from "@/lib/pdf/templates/budget-report";
 import type { BudgetReportProps, BudgetReportItem } from "@/lib/pdf/types";
 import { getCurrentProfile, requireOCAccess } from "@/lib/auth";
 import { createServerClient } from "@/lib/supabase";
+import { forbiddenResponse } from "@/lib/forbidden";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -19,7 +20,7 @@ const FUND_LABEL: Record<string, string> = {
 // is rendered on demand (no caching to R2) , budgets are edited often
 // enough that a stale cache would mislead. Cheap enough to generate fresh.
 export async function GET(
-  _req: NextRequest,
+  req: NextRequest,
   context: { params: Promise<{ budgetId: string }> },
 ) {
   const profile = await getCurrentProfile();
@@ -43,7 +44,7 @@ export async function GET(
   try {
     await requireOCAccess(budget.oc_id);
   } catch {
-    return NextResponse.json({ error: "Forbidden" }, { status: 403 });
+    return forbiddenResponse(req);
   }
 
   // 2. Load items + the OC + the management company for the header block.

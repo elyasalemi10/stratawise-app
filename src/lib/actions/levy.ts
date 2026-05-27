@@ -810,12 +810,21 @@ export async function createLevyBatch(
     });
     if (!refNum) continue;
 
-    // BPAY CRN: 7-digit zero-padded number + MOD10V01 check digit. Both
-    // LEV and SLEV use the same digit-extraction approach (strip the
-    // prefix + dash).
+    // BPAY CRN: 7-digit zero-padded number + MOD10V01 check digit.
+    // ONLY generated for regular levies , special levies skip BPAY
+    // because:
+    //   (a) Special levies are typically settled by direct deposit,
+    //       not BPAY, and the unique index (oc_id, bpay_crn) would
+    //       collide with regular LEV-N notices that share the same
+    //       numeric value (SLEV-1's CRN == LEV-1's CRN), causing the
+    //       per-lot insert loop to silently fail and the batch to
+    //       land "0 of N notices written" in draft.
+    //   (b) Macquarie DRN already covers EFT identification.
     const numericStr = String(refNum).split("-").pop() ?? "";
     const levyNumber = Number.parseInt(numericStr, 10);
-    const bpayCrn = Number.isFinite(levyNumber) ? generateCrn(levyNumber) : null;
+    const bpayCrn = !data.is_special && Number.isFinite(levyNumber)
+      ? generateCrn(levyNumber)
+      : null;
 
     const { data: levy, error: levyError } = await supabase
       .from("levy_notices")

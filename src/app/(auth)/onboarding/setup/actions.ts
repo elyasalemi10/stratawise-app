@@ -21,6 +21,7 @@ async function getProfileId(authUserId: string) {
 
 export async function createCompany(formData: {
   name: string;
+  registered_name?: string;
   trading_as?: string;
   abn?: string;
   address?: string;
@@ -28,6 +29,7 @@ export async function createCompany(formData: {
   email: string;
   logo_url?: string;
   brand_color?: string;
+  brand_color_secondary?: string;
 }) {
   const userId = await getAuthUserId();
   if (!userId) throw new Error("Not authenticated");
@@ -48,6 +50,7 @@ export async function createCompany(formData: {
 
   const fields = {
     name: parsed.data.name,
+    registered_name: parsed.data.registered_name || null,
     trading_as: parsed.data.trading_as || null,
     abn: parsed.data.abn || null,
     address: parsed.data.address || null,
@@ -55,6 +58,7 @@ export async function createCompany(formData: {
     email: formData.email,
     logo_url: formData.logo_url || null,
     brand_color: formData.brand_color || null,
+    brand_color_secondary: formData.brand_color_secondary || null,
   };
 
   // Idempotent: if this manager already created a company (e.g. they went

@@ -568,14 +568,13 @@ function NavUser({
           </>
         ) : (
           <>
-            {/* Profile card avatar. Prefers the user's own avatar; falls back
-                to the company logo (firm-level identity) and finally to the
-                initial. No greyscale filter , brand colours should show. */}
+            {/* Profile card avatar. Personal avatar -> initial.
+                NEVER falls back to the company logo: a manager's
+                personal profile is a separate identity to the firm's
+                brand mark. */}
             <Avatar className="h-8 w-8 rounded-lg shrink-0">
               {profile?.userAvatarUrl ? (
                 <AvatarImage src={profile.userAvatarUrl} alt="Avatar" />
-              ) : profile?.companyLogoUrl ? (
-                <AvatarImage src={profile.companyLogoUrl} alt="Company logo" />
               ) : null}
               <AvatarFallback className="rounded-lg">
                 {profile?.userInitials ?? "?"}
@@ -604,13 +603,13 @@ function NavUser({
               : "left-full bottom-0 ml-2",
           )}
         >
-          {/* Header , avatar + company name + email, mirrors template */}
+          {/* Header , avatar + company name + email, mirrors template.
+              Personal avatar only; never falls back to the company
+              logo (see profile card above for rationale). */}
           <div className="flex items-center gap-2 px-1 py-1.5 text-left text-sm">
             <Avatar className="h-8 w-8 rounded-lg shrink-0">
               {profile?.userAvatarUrl ? (
                 <AvatarImage src={profile.userAvatarUrl} alt="Avatar" />
-              ) : profile?.companyLogoUrl ? (
-                <AvatarImage src={profile.companyLogoUrl} alt="Company logo" />
               ) : null}
               <AvatarFallback className="rounded-lg">
                 {profile?.userInitials ?? "?"}

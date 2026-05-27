@@ -11,20 +11,26 @@ interface LogoUploadProps {
   onChange: (url: string) => void;
   /** Fires once a logo is uploaded with the dominant brand colour as
    *  "#RRGGBB" or null if extraction failed. We run this BEFORE the
-   *  upload using a local blob URL so R2 CORS doesn't matter. */
-  onColourExtracted?: (hex: string | null) => void;
+   *  upload using a local blob URL so R2 CORS doesn't matter.
+   *  Second argument: the second-most-dominant colour for the
+   *  secondary brand picker (also "#RRGGBB" or null). */
+  onColourExtracted?: (primaryHex: string | null, secondaryHex: string | null) => void;
 }
 
-/** Pick a representative non-grey colour from an image's centre region by
- *  drawing at 60x60 and bucketing pixels at 32-step RGB quantisation. */
-async function extractDominantColour(objectUrl: string): Promise<string | null> {
+/** Pick the two most-dominant non-grey colours from a logo by drawing
+ *  at 60x60 and bucketing pixels at 32-step RGB quantisation. Returns
+ *  [primary, secondary] hex strings. Secondary is the next-best bucket
+ *  that is also "perceptually different" from primary (Manhattan
+ *  distance >= 96 in the quantised RGB space) so we don't pick a
+ *  near-identical shade. */
+async function extractTwoColours(objectUrl: string): Promise<[string | null, string | null]> {
   return new Promise((resolve) => {
     const img = new Image();
     img.onload = () => {
       try {
         const canvas = document.createElement("canvas");
         const ctx = canvas.getContext("2d");
-        if (!ctx) return resolve(null);
+        if (!ctx) return resolve([null, null]);
         canvas.width = 60;
         canvas.height = 60;
         ctx.drawImage(img, 0, 0, 60, 60);
@@ -41,24 +47,24 @@ async function extractDominantColour(objectUrl: string): Promise<string | null> 
           const key = `${qr},${qg},${qb}`;
           buckets.set(key, (buckets.get(key) ?? 0) + 1);
         }
-        if (buckets.size === 0) return resolve(null);
-        let best = "";
-        let bestCount = 0;
-        for (const [k, c] of buckets) {
-          if (c > bestCount) { best = k; bestCount = c; }
-        }
-        const [r, g, b] = best.split(",").map(Number);
-        const hex =
-          "#" +
-          [r, g, b]
-            .map((x) => x.toString(16).padStart(2, "0").toUpperCase())
-            .join("");
-        resolve(hex);
+        if (buckets.size === 0) return resolve([null, null]);
+        const sorted = Array.from(buckets.entries()).sort((a, b) => b[1] - a[1]);
+        const toHex = (key: string) => {
+          const [r, g, b] = key.split(",").map(Number);
+          return "#" + [r, g, b].map((x) => x.toString(16).padStart(2, "0").toUpperCase()).join("");
+        };
+        const primary = sorted[0][0];
+        const [pr, pg, pb] = primary.split(",").map(Number);
+        const secondary = sorted.slice(1).find(([key]) => {
+          const [r, g, b] = key.split(",").map(Number);
+          return Math.abs(r - pr) + Math.abs(g - pg) + Math.abs(b - pb) >= 96;
+        });
+        return resolve([toHex(primary), secondary ? toHex(secondary[0]) : null]);
       } catch {
-        resolve(null);
+        resolve([null, null]);
       }
     };
-    img.onerror = () => resolve(null);
+    img.onerror = () => resolve([null, null]);
     img.src = objectUrl;
   });
 }
@@ -78,12 +84,14 @@ export function LogoUpload({ value, onChange, onColourExtracted }: LogoUploadPro
       return;
     }
 
-    // Extract dominant colour from the local File BEFORE upload so we
-    // don't depend on R2 CORS for the canvas read.
+    // Extract dominant colours from the local File BEFORE upload so
+    // we don't depend on R2 CORS for the canvas read. Hands BOTH the
+    // primary and a perceptually-different secondary to the callback
+    // so the brand-colour pickers can prefill in one shot.
     if (onColourExtracted && file.type !== "image/svg+xml") {
       const objectUrl = URL.createObjectURL(file);
-      extractDominantColour(objectUrl).then((hex) => {
-        onColourExtracted(hex);
+      extractTwoColours(objectUrl).then(([primary, secondary]) => {
+        onColourExtracted(primary, secondary);
         URL.revokeObjectURL(objectUrl);
       });
     }

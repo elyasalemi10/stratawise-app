@@ -77,7 +77,10 @@ function Calendar({
           defaultClassNames.month_caption
         ),
         dropdowns: cn(
-          "flex h-(--cell-size) w-full items-center justify-center gap-1.5 text-sm font-medium",
+          // White text + chevrons on the navy band. Force via direct
+          // classes (and a !text-primary-foreground on the inner
+          // <select>) so DayPicker's defaults don't bleed through.
+          "flex h-(--cell-size) w-full items-center justify-center gap-1.5 text-sm font-medium text-primary-foreground [&_select]:!text-primary-foreground [&_button]:!text-primary-foreground",
           defaultClassNames.dropdowns
         ),
         dropdown_root: cn(
@@ -89,11 +92,13 @@ function Calendar({
           defaultClassNames.dropdown
         ),
         caption_label: cn(
-          // White text on the navy header band.
-          "font-medium select-none text-primary-foreground",
+          // White text on the navy header band. !text-primary-foreground
+          // beats any inherited color from the parent <button> that
+          // wraps the caption in dropdown captionLayout.
+          "font-medium select-none !text-primary-foreground",
           captionLayout === "label"
             ? "text-sm"
-            : "flex items-center gap-1 rounded-(--cell-radius) text-sm [&>svg]:size-3.5 [&>svg]:text-primary-foreground",
+            : "flex items-center gap-1 rounded-(--cell-radius) text-sm [&>svg]:size-3.5 [&>svg]:!text-primary-foreground",
           defaultClassNames.caption_label
         ),
         table: "w-full border-collapse px-2 pb-2",

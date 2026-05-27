@@ -154,7 +154,13 @@ export async function upsertLevyAutosendSchedule(
     if (!input.budget_id) return { error: "Pick a budget for the auto-send to draw from." };
     if (!input.from_address) return { error: "Pick which mailbox to send from." };
     if (input.send_day_of_month < 1 || input.send_day_of_month > 31) {
-      return { error: "Send day must be between 1 and 31." };
+      return { error: "Send day must be between 1 and 28, or 31 for last day of month." };
+    }
+    // 29 and 30 cause month-skip surprises (Feb has 28/29), so the UI
+    // caps the input at 28 and uses 31 as the sentinel for "last day
+    // of month" (which the cron clamps per-month).
+    if (input.send_day_of_month > 28 && input.send_day_of_month !== 31) {
+      return { error: "Pick a day between 1 and 28, or 'Last day of month'." };
     }
   }
 

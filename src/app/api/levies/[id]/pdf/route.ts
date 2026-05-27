@@ -2,6 +2,7 @@ import { NextResponse, type NextRequest } from "next/server";
 import { getCurrentProfile, requireOCAccess } from "@/lib/auth";
 import { createServerClient } from "@/lib/supabase";
 import { fetchObject, keyFromPublicUrl } from "@/lib/storage/r2";
+import { forbiddenResponse } from "@/lib/forbidden";
 
 // API routes MUST be node runtime so we have the full cookie store; the
 // auth check below relies on getCurrentProfile reading the session cookie.
@@ -18,7 +19,7 @@ export const dynamic = "force-dynamic";
 //   - OLD: pdf_url is a full https URL to the public R2 CDN; we fall back
 //     to keyFromPublicUrl + fetchObject for those rows.
 export async function GET(
-  _req: NextRequest,
+  req: NextRequest,
   context: { params: Promise<{ id: string }> },
 ) {
   // Explicit auth check up-front. Belt-and-braces alongside middleware so a
@@ -48,7 +49,7 @@ export async function GET(
   try {
     await requireOCAccess(levy.oc_id);
   } catch {
-    return NextResponse.json({ error: "Forbidden" }, { status: 403 });
+    return forbiddenResponse(req);
   }
   void levy.lot_id;
 

@@ -2,6 +2,10 @@ import { z } from "zod";
 
 export const companySchema = z.object({
   name: z.string().min(2, "Company name is required"),
+  // Legal name on the ASIC register, distinct from the operating
+  // (display) name above. Optional , some firms operate under the
+  // same name.
+  registered_name: z.string().optional(),
   // "Trading as" , optional alternate brand name (common for AU businesses).
   trading_as: z.string().optional(),
   // ABN is optional but if provided must be 11 digits (after stripping

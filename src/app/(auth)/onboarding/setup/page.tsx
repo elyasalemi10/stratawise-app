@@ -49,19 +49,21 @@ function SetupWizardContent() {
 
   return (
     <div className="w-full max-w-2xl mx-auto">
+      {/* Finish-later exit , top-right of the VIEWPORT, not the card,
+          so the same control sits in the same place regardless of how
+          tall the current step is. Save-as-draft semantics unchanged:
+          signing back in resumes. */}
+      <button
+        type="button"
+        onClick={() => setQuitOpen(true)}
+        aria-label="Finish later"
+        className="fixed right-4 top-4 z-50 inline-flex h-9 w-9 items-center justify-center rounded-md text-muted-foreground hover:bg-muted hover:text-foreground cursor-pointer"
+      >
+        <X className="h-4 w-4" />
+      </button>
+
       <StepIndicator current={step} />
       <div className="relative rounded-lg bg-card p-6 shadow-none">
-        {/* Finish-later exit , X in the top-right of the white card. We SAVE
-            AS DRAFT (never delete the account); signing back in resumes. */}
-        <button
-          type="button"
-          onClick={() => setQuitOpen(true)}
-          aria-label="Finish later"
-          className="absolute right-4 top-4 inline-flex h-8 w-8 items-center justify-center rounded-md text-muted-foreground hover:bg-muted hover:text-foreground cursor-pointer"
-        >
-          <X className="h-4 w-4" />
-        </button>
-
         <div className={cn(step !== 1 && "hidden")}>
           <StepCompany onNext={() => goToStep(2)} />
         </div>

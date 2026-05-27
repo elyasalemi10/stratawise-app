@@ -336,13 +336,7 @@ export function SpecialLevyForm({
 
       <Card>
         <CardContent className="pt-5 space-y-3">
-          <div className="flex items-center justify-between">
-            <Label>Line items <span className="text-destructive">*</span></Label>
-            <Button variant="secondary" size="sm" onClick={addLine}>
-              <Plus className="mr-1.5 h-3.5 w-3.5" />
-              Add line
-            </Button>
-          </div>
+          <Label>Line items <span className="text-destructive">*</span></Label>
           <div className="overflow-hidden rounded-md border border-border">
             <Table variant="bordered" className="text-xs">
               <TableHeader>
@@ -400,6 +394,21 @@ export function SpecialLevyForm({
                     </TableCell>
                   </TableRow>
                 ))}
+                {/* Inline "Add row" sits directly below the last data
+                    row so the manager doesn't have to hunt for it in
+                    the top-right of the card. */}
+                <TableRow>
+                  <TableCell colSpan={3} className="py-1">
+                    <button
+                      type="button"
+                      onClick={addLine}
+                      className="flex w-full items-center justify-center gap-1.5 rounded-md border border-dashed border-border py-1.5 text-xs text-muted-foreground hover:bg-muted hover:text-foreground cursor-pointer"
+                    >
+                      <Plus className="h-3.5 w-3.5" />
+                      Add row
+                    </button>
+                  </TableCell>
+                </TableRow>
               </TableBody>
               <TableFooter>
                 <TableRow>

@@ -50,6 +50,9 @@ export function StepCompany({ onNext }: { onNext: () => void }) {
   const [pending, setPending] = useState(false);
   const [logoUrl, setLogoUrl] = useState("");
   const [brandColour, setBrandColour] = useState("");
+  // Secondary colour mirrors the Company settings page , two pickers
+  // up front so the firm doesn't have to revisit settings later.
+  const [brandColourSecondary, setBrandColourSecondary] = useState("");
   const [phone, setPhone] = useState("+61 ");
   const [phoneInvalid, setPhoneInvalid] = useState(false);
   const [abn, setAbn] = useState("");
@@ -124,6 +127,7 @@ export function StepCompany({ onNext }: { onNext: () => void }) {
       email: userEmail,
       logo_url: logoUrl || undefined,
       brand_color: brandColour || undefined,
+      brand_color_secondary: brandColourSecondary || undefined,
     });
 
     if (result.error) {
@@ -156,27 +160,30 @@ export function StepCompany({ onNext }: { onNext: () => void }) {
           <LogoUpload
             value={logoUrl}
             onChange={setLogoUrl}
-            onColourExtracted={(hex) => {
-              // Only pre-fill if the user hasn't already chosen a colour
+            onColourExtracted={(hex, secondHex) => {
+              // Logo extraction prefills BOTH colour pickers when the
+              // manager hasn't chosen anything yet. The brand-colour
+              // pickers always commit-on-close, so a logo upload that
+              // arrives first happily seeds them; a manual pick later
+              // sticks.
               if (hex && !brandColour) setBrandColour(hex);
+              if (secondHex && !brandColourSecondary) setBrandColourSecondary(secondHex);
             }}
           />
-          <p className="text-xs text-muted-foreground">
-            Recommended: 800×400 PNG with transparent background.
-          </p>
         </div>
 
         <div className="space-y-1.5">
-          <Label htmlFor="brand-colour">Brand colour</Label>
-          <BrandColourPicker
-            id="brand-colour"
-            value={brandColour}
-            onChange={setBrandColour}
-          />
-          <p className="text-xs text-muted-foreground">
-            Used on levy notices and other documents , not on the app UI.
-            We&apos;ll try to pull it from your logo automatically.
-          </p>
+          <Label>Brand colours</Label>
+          <div className="flex items-center gap-4">
+            <div className="flex flex-col gap-1.5">
+              <span className="text-xs text-muted-foreground">Primary</span>
+              <BrandColourPicker id="brand-colour" value={brandColour} onChange={setBrandColour} />
+            </div>
+            <div className="flex flex-col gap-1.5">
+              <span className="text-xs text-muted-foreground">Secondary</span>
+              <BrandColourPicker id="brand-colour-secondary" value={brandColourSecondary} onChange={setBrandColourSecondary} />
+            </div>
+          </div>
         </div>
 
         <div className="space-y-1.5">
@@ -193,6 +200,16 @@ export function StepCompany({ onNext }: { onNext: () => void }) {
           {errors.name && (
             <p className="text-xs text-destructive mt-1">{errors.name.message}</p>
           )}
+        </div>
+
+        <div className="space-y-1.5">
+          <Label htmlFor="registered-name">Registered name</Label>
+          <Input
+            id="registered-name"
+            placeholder="Legal name on the ASIC register"
+            autoComplete="off"
+            {...register("registered_name")}
+          />
         </div>
 
         <div className="space-y-1.5">
