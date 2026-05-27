@@ -140,7 +140,15 @@ async function transportSend(
     managerProfileId = await resolveOcPrimaryManagerProfileId(opts.ocId);
   }
 
-  if (managerProfileId && isGmailConfigured()) {
+  // Honour an explicit stratawise.com.au sender override (the manager
+  // picked their stratawise alias / noreply in the send-emails dropdown).
+  // Skip the Gmail/Outlook providers entirely and go straight to Resend,
+  // which holds the verified DKIM/SPF for stratawise.com.au. Without
+  // this short-circuit the connected Gmail mailbox always wins, so the
+  // dropdown choice had no effect.
+  const forceResendForStratawise = /<[^>]*@stratawise\.com\.au>|@stratawise\.com\.au\b/i.test(resendFrom);
+
+  if (managerProfileId && isGmailConfigured() && !forceResendForStratawise) {
     const dispatch = await resolveDispatchProvider(managerProfileId);
     if (dispatch.provider === "gmail") {
       const senderEmail = await resolveManagerSenderEmail(

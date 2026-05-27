@@ -90,6 +90,33 @@ export async function getLevyAutosendSchedule(
 // helper used by both server actions and client UI; can't sit in a
 // "use server" file because non-async exports there are rejected).
 
+/**
+ * For the schedule preview: returns the set of YYYY-MM month keys for
+ * any period of `budgetId` that already has a non-cancelled batch.
+ * AutoSendCard uses this to hide already-generated periods from the
+ * preview so the manager doesn't see e.g. four quarterly slots when
+ * three are already issued , only the remaining one is auto-sendable.
+ */
+export async function getGeneratedPeriodMonthKeys(
+  ocId: string,
+  budgetId: string,
+): Promise<{ monthKeys: string[]; error?: string }> {
+  await requireOCAccess(ocId);
+  const supabase = createServerClient();
+  const { data, error } = await supabase
+    .from("levy_batches")
+    .select("period_start, status")
+    .eq("budget_id", budgetId);
+  if (error) return { monthKeys: [], error: error.message };
+  const keys = new Set<string>();
+  for (const row of (data ?? [])) {
+    const r = row as { period_start: string; status: string };
+    if (r.status === "cancelled") continue;
+    keys.add(r.period_start.slice(0, 7));
+  }
+  return { monthKeys: Array.from(keys) };
+}
+
 // Save per-month overrides to the schedule. Validates each entry is
 // inside the same calendar month as its key. Used by the schedule
 // popup after the manager edits planned dates.

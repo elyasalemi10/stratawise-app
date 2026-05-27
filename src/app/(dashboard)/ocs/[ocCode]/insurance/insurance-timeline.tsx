@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useRef } from "react";
 import { useRouter } from "next/navigation";
 import { Plus, ShieldAlert, ShieldX, Download, CalendarIcon, Loader2, X, Pencil, Trash2 } from "lucide-react";
 import { format } from "date-fns";
@@ -10,9 +10,12 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Badge } from "@/components/ui/badge";
 import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle } from "@/components/ui/sheet";
 import { Calendar } from "@/components/ui/calendar";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
+import { DatePicker } from "@/components/shared/date-picker";
 import { EmptyState } from "@/components/shared/empty-state";
+import { uploadAndParseInsuranceCoc } from "./parse-coc";
 import { formatDateLong } from "@/lib/utils";
 import {
   createInsurancePolicy,
@@ -322,9 +325,17 @@ function PolicyDetailDialog({
   );
 }
 
-// ─── Add Policy Dialog ─────────────────────────────────────
+// ─── Add Policy Drawer ─────────────────────────────────────
+//
+// Right-side sheet with a two-step flow:
+//   Step 1 "coc" , drop the Certificate of Currency PDF; we run Gemini
+//                  + Document AI to extract provider / number / sum
+//                  insured / premium / coverage dates. Manager can also
+//                  skip and enter manually.
+//   Step 2 "form" , fields, prefilled from the parse result when a CoC
+//                   was uploaded. Manager reviews + saves.
 
-function AddPolicyDialog({
+function AddPolicyDrawer({
   open,
   onClose,
   ocId,
@@ -335,49 +346,81 @@ function AddPolicyDialog({
   ocId: string;
   onCreated: () => void;
 }) {
+  const [step, setStep] = useState<"coc" | "form">("coc");
+  const [parsing, setParsing] = useState(false);
+  const [uploadName, setUploadName] = useState<string | null>(null);
+
   const [policyType, setPolicyType] = useState("building");
   const [provider, setProvider] = useState("");
   const [policyNumber, setPolicyNumber] = useState("");
   const [sumInsured, setSumInsured] = useState("");
   const [premium, setPremium] = useState("");
-  const [startDate, setStartDate] = useState<Date | undefined>(undefined);
-  const [endDate, setEndDate] = useState<Date | undefined>(undefined);
+  const [startDate, setStartDate] = useState<string>("");
+  const [endDate, setEndDate] = useState<string>("");
   const [documentUrl, setDocumentUrl] = useState<string | undefined>(undefined);
-  const [uploading, setUploading] = useState(false);
-  const [uploadName, setUploadName] = useState("");
   const [pending, setPending] = useState(false);
-  const [startOpen, setStartOpen] = useState(false);
-  const [endOpen, setEndOpen] = useState(false);
+  const fileInputRef = useRef<HTMLInputElement>(null);
 
-  async function handleFileUpload(file: File) {
+  function reset() {
+    setStep("coc");
+    setParsing(false);
+    setUploadName(null);
+    setPolicyType("building");
+    setProvider("");
+    setPolicyNumber("");
+    setSumInsured("");
+    setPremium("");
+    setStartDate("");
+    setEndDate("");
+    setDocumentUrl(undefined);
+  }
+
+  async function handleCocUpload(file: File) {
     setUploadName(file.name);
-    setUploading(true);
-    const formData = new FormData();
-    formData.append("file", file);
-    formData.append("oc_id", ocId);
-    formData.append("category", "insurance");
-    const res = await fetch("/api/documents", { method: "POST", body: formData });
-    if (res.ok) {
-      const data = await res.json();
-      setDocumentUrl(data.public_url);
-      toast.success("Document uploaded");
-    } else {
-      toast.error("Failed to upload document");
-      setUploadName("");
+    setParsing(true);
+    const fd = new FormData();
+    fd.append("file", file);
+    const res = await uploadAndParseInsuranceCoc(ocId, fd);
+    setParsing(false);
+    if (res.error) {
+      toast.error(res.error);
+      setUploadName(null);
+      return;
     }
-    setUploading(false);
+    setDocumentUrl(res.public_url);
+    // Prefill from the first policy in the CoC. Multi-policy CoCs (a
+    // building + public liability bundle, etc.) currently get the first
+    // section; the manager can edit before save, and add the others in
+    // separate runs.
+    const first = res.policies?.[0];
+    if (first) {
+      setPolicyType(first.policy_type === "combined" ? "building" : first.policy_type);
+      setProvider(first.provider ?? "");
+      setPolicyNumber(first.policy_number ?? "");
+      if (first.sum_insured !== null && first.sum_insured !== undefined) {
+        setSumInsured(String(first.sum_insured));
+      }
+      if (first.premium !== null && first.premium !== undefined) {
+        setPremium(String(first.premium));
+      }
+      if (first.start_date) setStartDate(first.start_date);
+      if (first.end_date) setEndDate(first.end_date);
+      toast.success("We pre-filled the form from your certificate.");
+    } else {
+      toast.info("Certificate uploaded. We couldn't extract policy fields, fill them in manually.");
+    }
+    setStep("form");
   }
 
   async function handleSubmit() {
     if (!provider || !startDate || !endDate) {
-      toast.error("Please fill in all required fields");
+      toast.error("Provider and coverage dates are required.");
       return;
     }
     if (endDate <= startDate) {
-      toast.error("End date must be after start date");
+      toast.error("End date must be after start date.");
       return;
     }
-
     setPending(true);
     const result = await createInsurancePolicy(ocId, {
       policy_type: policyType,
@@ -385,115 +428,141 @@ function AddPolicyDialog({
       policy_number: policyNumber || undefined,
       sum_insured: sumInsured ? Number(sumInsured) : undefined,
       premium: premium ? Number(premium) : undefined,
-      start_date: format(startDate, "yyyy-MM-dd"),
-      end_date: format(endDate, "yyyy-MM-dd"),
+      start_date: startDate,
+      end_date: endDate,
       document_url: documentUrl,
     });
-    setPending(false);
-
     if (result.error) {
+      setPending(false);
       toast.error(result.error);
-    } else {
-      toast.success("Insurance policy added");
-      onCreated();
-      onClose();
+      return;
     }
+    toast.success("Insurance policy added");
+    onCreated();
+    reset();
+    onClose();
   }
 
   return (
-    <Dialog open={open} onOpenChange={onClose}>
-      <DialogContent className="max-w-md overflow-visible">
-        <DialogHeader>
-          <DialogTitle>Add insurance policy</DialogTitle>
-        </DialogHeader>
+    <Sheet open={open} onOpenChange={(o) => { if (!o && !pending && !parsing) { reset(); onClose(); } }}>
+      <SheetContent side="right" className="flex w-full flex-col gap-0 sm:max-w-lg">
+        <SheetHeader>
+          <SheetTitle>Add insurance policy</SheetTitle>
+          <SheetDescription className="sr-only">
+            Upload a certificate of currency to prefill, or enter the policy details manually.
+          </SheetDescription>
+        </SheetHeader>
 
-        <div className="space-y-4">
-          <div className="space-y-1.5">
-            <Label>Policy type</Label>
-            <select value={policyType} onChange={(e) => setPolicyType(e.target.value)} className="h-9 w-full rounded-md border border-border bg-background px-3 text-sm">
-              {POLICY_TYPES.map((t) => <option key={t.value} value={t.value}>{t.label}</option>)}
-            </select>
-          </div>
-
-          <div className="space-y-1.5">
-            <Label>Provider *</Label>
-            <Input value={provider} onChange={(e) => setProvider(e.target.value)} placeholder="e.g. QBE, Allianz" />
-          </div>
-
-          <div className="space-y-1.5">
-            <Label>Policy number</Label>
-            <Input value={policyNumber} onChange={(e) => setPolicyNumber(e.target.value)} placeholder="Optional" />
-          </div>
-
-          <div className="grid grid-cols-2 gap-3">
-            <div className="space-y-1.5">
-              <Label>Start date *</Label>
-              <Popover open={startOpen} onOpenChange={setStartOpen}>
-                <PopoverTrigger className="flex h-9 w-full items-center gap-2 rounded-md border border-border bg-background px-3 text-sm cursor-pointer">
-                  <CalendarIcon className="h-3.5 w-3.5 text-muted-foreground" />
-                  {startDate ? format(startDate, "d MMM yyyy") : "Select"}
-                </PopoverTrigger>
-                <PopoverContent className="w-auto p-2" align="start" side="bottom">
-                  <Calendar mode="single" selected={startDate} onSelect={(d) => { setStartDate(d); if (d && endDate && endDate <= d) setEndDate(undefined); setStartOpen(false); }} />
-                </PopoverContent>
-              </Popover>
-            </div>
-            <div className="space-y-1.5">
-              <Label>End date *</Label>
-              <Popover open={endOpen} onOpenChange={setEndOpen}>
-                <PopoverTrigger className="flex h-9 w-full items-center gap-2 rounded-md border border-border bg-background px-3 text-sm cursor-pointer">
-                  <CalendarIcon className="h-3.5 w-3.5 text-muted-foreground" />
-                  {endDate ? format(endDate, "d MMM yyyy") : "Select"}
-                </PopoverTrigger>
-                <PopoverContent className="w-auto p-2" align="start" side="bottom">
-                  <Calendar mode="single" selected={endDate} onSelect={(d) => { setEndDate(d); setEndOpen(false); }} disabled={startDate ? { before: new Date(startDate.getTime() + 86400000) } : undefined} />
-                </PopoverContent>
-              </Popover>
-            </div>
-          </div>
-
-          <div className="grid grid-cols-2 gap-3">
-            <div className="space-y-1.5">
-              <Label>Sum insured</Label>
-              <AmountInput value={sumInsured} onChange={setSumInsured} placeholder="0.00" />
-            </div>
-            <div className="space-y-1.5">
-              <Label>Premium</Label>
-              <AmountInput value={premium} onChange={setPremium} placeholder="0.00" />
-            </div>
-          </div>
-
-          <div className="space-y-1.5">
-            <Label>Certificate of currency</Label>
-            {uploading ? (
-              <div className="flex items-center gap-2 py-2">
-                <span className="text-sm text-foreground truncate flex-1">{uploadName}</span>
-                <Loader2 className="h-4 w-4 animate-spin text-muted-foreground shrink-0" />
+        <div className="flex-1 overflow-y-auto p-4">
+          {step === "coc" && (
+            <div className="space-y-4">
+              <p className="text-sm text-foreground">
+                Drop your Certificate of Currency PDF here. We&apos;ll read the provider, policy number, sum insured, premium, and coverage dates and pre-fill the next page.
+              </p>
+              <div className="flex flex-col items-center gap-3 rounded-md border-2 border-dashed border-border bg-card px-4 py-10">
+                {parsing ? (
+                  <>
+                    <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
+                    <span className="text-sm text-muted-foreground">Reading {uploadName}...</span>
+                  </>
+                ) : (
+                  <>
+                    <Button
+                      type="button"
+                      variant="secondary"
+                      onClick={() => fileInputRef.current?.click()}
+                    >
+                      <Plus className="mr-1.5 h-3.5 w-3.5" />
+                      Choose certificate PDF
+                    </Button>
+                    <span className="text-xs text-muted-foreground">PDF, up to 25 MB</span>
+                  </>
+                )}
+                <input
+                  ref={fileInputRef}
+                  type="file"
+                  accept=".pdf,application/pdf"
+                  hidden
+                  onChange={(e) => {
+                    const f = e.target.files?.[0];
+                    if (f) handleCocUpload(f);
+                    e.target.value = "";
+                  }}
+                />
               </div>
-            ) : documentUrl ? (
-              <div className="flex items-center gap-2 py-2">
-                <span className="text-sm text-[hsl(160,100%,37%)] truncate flex-1">{uploadName}</span>
-                <button type="button" onClick={() => { setDocumentUrl(undefined); setUploadName(""); }} className="text-muted-foreground hover:text-destructive cursor-pointer">
-                  <X className="h-3.5 w-3.5" />
-                </button>
+            </div>
+          )}
+
+          {step === "form" && (
+            <div className={`space-y-4 ${pending ? "pointer-events-none opacity-90" : ""}`}>
+              {documentUrl && (
+                <div className="rounded-md border border-border bg-muted/40 px-3 py-2 text-xs text-muted-foreground">
+                  Pre-filled from your uploaded certificate. Review the fields before saving.
+                </div>
+              )}
+              <div className="space-y-1.5">
+                <Label>Policy type</Label>
+                <select value={policyType} onChange={(e) => setPolicyType(e.target.value)} className="h-9 w-full rounded-md border border-border bg-card px-3 text-sm">
+                  {POLICY_TYPES.map((t) => <option key={t.value} value={t.value}>{t.label}</option>)}
+                </select>
               </div>
-            ) : (
-              <label className="flex h-9 w-full items-center rounded-md border border-border bg-background px-3 text-sm text-muted-foreground cursor-pointer hover:border-primary/50">
-                <span>Choose file...</span>
-                <input type="file" accept=".pdf,.doc,.docx,.png,.jpg,.jpeg" onChange={(e) => { const f = e.target.files?.[0]; if (f) handleFileUpload(f); }} className="hidden" />
-              </label>
-            )}
-          </div>
+              <div className="space-y-1.5">
+                <Label>Provider <span className="text-destructive">*</span></Label>
+                <Input value={provider} onChange={(e) => setProvider(e.target.value)} placeholder="Insurer name" />
+              </div>
+              <div className="space-y-1.5">
+                <Label>Policy number</Label>
+                <Input value={policyNumber} onChange={(e) => setPolicyNumber(e.target.value)} placeholder="Policy number" />
+              </div>
+              <div className="grid grid-cols-2 gap-3">
+                <div className="space-y-1.5">
+                  <Label>Start date <span className="text-destructive">*</span></Label>
+                  <DatePicker value={startDate} onChange={setStartDate} />
+                </div>
+                <div className="space-y-1.5">
+                  <Label>End date <span className="text-destructive">*</span></Label>
+                  <DatePicker value={endDate} onChange={setEndDate} minDate={startDate || undefined} />
+                </div>
+              </div>
+              <div className="grid grid-cols-2 gap-3">
+                <div className="space-y-1.5">
+                  <Label>Sum insured</Label>
+                  <AmountInput value={sumInsured} onChange={setSumInsured} placeholder="0.00" />
+                </div>
+                <div className="space-y-1.5">
+                  <Label>Premium</Label>
+                  <AmountInput value={premium} onChange={setPremium} placeholder="0.00" />
+                </div>
+              </div>
+            </div>
+          )}
         </div>
 
-        <DialogFooter>
-          <Button variant="ghost" onClick={onClose} className="cursor-pointer">Cancel</Button>
-          <Button onClick={handleSubmit} disabled={pending || uploading || !provider || !startDate || !endDate} className="cursor-pointer">
-            {pending ? "Adding..." : "Add policy"}
-          </Button>
-        </DialogFooter>
-      </DialogContent>
-    </Dialog>
+        <div className="border-t border-border p-4 flex justify-end gap-2">
+          {step === "coc" && (
+            <>
+              <Button variant="secondary" onClick={() => { reset(); onClose(); }} disabled={parsing}>
+                Cancel
+              </Button>
+              <Button variant="secondary" onClick={() => setStep("form")} disabled={parsing}>
+                Skip and enter manually
+              </Button>
+            </>
+          )}
+          {step === "form" && (
+            <>
+              <Button variant="secondary" onClick={() => setStep("coc")} disabled={pending}>
+                Back
+              </Button>
+              <Button onClick={handleSubmit} disabled={pending || !provider || !startDate || !endDate}>
+                {pending && <Loader2 className="size-4 animate-spin" />}
+                Add policy
+              </Button>
+            </>
+          )}
+        </div>
+      </SheetContent>
+    </Sheet>
   );
 }
 
@@ -640,7 +709,7 @@ export function InsuranceTimeline({
       )}
 
       {showAdd && (
-        <AddPolicyDialog
+        <AddPolicyDrawer
           open={showAdd}
           onClose={() => setShowAdd(false)}
           ocId={ocId}

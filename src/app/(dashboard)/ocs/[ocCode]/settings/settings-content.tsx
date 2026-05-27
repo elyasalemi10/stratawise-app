@@ -21,6 +21,7 @@ import { updateOCField } from "../manage/actions";
 import {
   upsertLevyAutosendSchedule,
   updateAutosendOverrides,
+  getGeneratedPeriodMonthKeys,
   type LevyAutosendSchedule,
 } from "@/lib/actions/levy-autosend";
 import { buildPlannedSends, ordinalRunLabel } from "@/lib/levy-autosend-helpers";
@@ -838,7 +839,25 @@ function AutoSendCard({
   const previewDay = draft.last_day_of_month
     ? 31
     : (parseInt(draft.send_day_of_month, 10) || 1);
-  const planned = buildPlannedSends(
+
+  // Months that already have a batch issued for the currently-selected
+  // budget. Refreshed whenever the budget choice changes so the preview
+  // hides quarters the manager has already generated manually.
+  const [generatedMonthKeys, setGeneratedMonthKeys] = useState<string[]>([]);
+  useEffect(() => {
+    let cancelled = false;
+    if (!draft.budget_id) {
+      setGeneratedMonthKeys([]);
+      return;
+    }
+    getGeneratedPeriodMonthKeys(ocId, draft.budget_id).then((res) => {
+      if (!cancelled) setGeneratedMonthKeys(res.monthKeys);
+    });
+    return () => { cancelled = true; };
+  }, [draft.budget_id, ocId]);
+
+  const generatedSet = new Set(generatedMonthKeys);
+  const rawPlanned = buildPlannedSends(
     { send_day_of_month: previewDay, date_overrides: overrides },
     billingCycle,
     todayIso,
@@ -848,6 +867,10 @@ function AutoSendCard({
     ({ monthly: 12, quarterly: 4, half_yearly: 2, annually: 1 } as Record<string, number>)[billingCycle] ?? 12,
     fyStartMonth,
   );
+  // Drop periods that already have a non-cancelled batch , the cron
+  // would skip them anyway, no point asking the manager to confirm
+  // dates that won't fire.
+  const planned = rawPlanned.filter((p) => !generatedSet.has(p.monthKey));
 
   // ── Two-step flow when embedded ─────────────────────────────
   // Step "form": all the inputs + Next button.
@@ -956,30 +979,43 @@ function AutoSendCard({
 
       {embeddedStep === "schedule" && (
         <div className="space-y-3 max-h-[28rem] overflow-y-auto pr-1">
-          {planned.map((p, idx) => {
-            const [yy, mm] = p.monthKey.split("-");
-            const firstOfMonth = `${p.monthKey}-01`;
-            const lastDay = new Date(Date.UTC(Number(yy), Number(mm), 0)).getUTCDate();
-            const lastOfMonth = `${p.monthKey}-${lastDay.toString().padStart(2, "0")}`;
-            return (
-              <div key={p.monthKey} className="space-y-1.5">
-                <Label>{ordinalRunLabel(idx)}</Label>
-                <DatePicker
-                  value={p.effectiveDate}
-                  onChange={(v) => {
-                    setOverrides((o) => {
-                      const next = { ...o };
-                      if (v === p.defaultDate) delete next[p.monthKey];
-                      else next[p.monthKey] = v;
-                      return next;
-                    });
-                  }}
-                  minDate={firstOfMonth}
-                  maxDate={lastOfMonth}
-                />
-              </div>
-            );
-          })}
+          {planned.length === 0 ? (
+            <div className="rounded-md border border-border bg-muted/40 px-3 py-4 text-sm text-muted-foreground">
+              Every period for this budget has already been generated. Pick a different budget, or turn the automation off.
+            </div>
+          ) : (
+            <>
+              {generatedMonthKeys.length > 0 && (
+                <p className="text-xs text-muted-foreground">
+                  {generatedMonthKeys.length} period{generatedMonthKeys.length === 1 ? "" : "s"} already generated for this budget and will be skipped. The dates below cover what's left.
+                </p>
+              )}
+              {planned.map((p, idx) => {
+                const [yy, mm] = p.monthKey.split("-");
+                const firstOfMonth = `${p.monthKey}-01`;
+                const lastDay = new Date(Date.UTC(Number(yy), Number(mm), 0)).getUTCDate();
+                const lastOfMonth = `${p.monthKey}-${lastDay.toString().padStart(2, "0")}`;
+                return (
+                  <div key={p.monthKey} className="space-y-1.5">
+                    <Label>{ordinalRunLabel(idx)}</Label>
+                    <DatePicker
+                      value={p.effectiveDate}
+                      onChange={(v) => {
+                        setOverrides((o) => {
+                          const next = { ...o };
+                          if (v === p.defaultDate) delete next[p.monthKey];
+                          else next[p.monthKey] = v;
+                          return next;
+                        });
+                      }}
+                      minDate={firstOfMonth}
+                      maxDate={lastOfMonth}
+                    />
+                  </div>
+                );
+              })}
+            </>
+          )}
         </div>
       )}
 
