@@ -111,14 +111,18 @@ export async function ingestDocumentOcr(documentId: string): Promise<void> {
   } catch (err) {
     console.error(`ingestDocumentOcr: Document AI failed for ${documentId}`, err);
     const message = err instanceof Error ? err.message : String(err);
-    // Surface a generic message on the row; the real reason goes to logs.
+    // Surface the real Document AI / loader error in ocr_error so env-var
+    // skew between Vercel and Trigger.dev (e.g. missing GEMINI_API_KEY or
+    // GOOGLE_DOCUMENT_AI_PROCESSOR_ID) shows up directly in the row
+    // instead of behind a generic message.
+    const friendly = message.includes("INVALID_ARGUMENT")
+      ? "Document AI rejected this file (too large or unsupported)."
+      : `OCR failed: ${message.slice(0, 240)}`;
     await supabase
       .from("documents")
       .update({
         ocr_status: "failed",
-        ocr_error: message.includes("INVALID_ARGUMENT")
-          ? "Document AI rejected this file (too large or unsupported)."
-          : "OCR failed , the file is indexed by filename only.",
+        ocr_error: friendly,
         ocr_completed_at: new Date().toISOString(),
       })
       .eq("id", documentId);
