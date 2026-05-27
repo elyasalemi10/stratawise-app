@@ -425,7 +425,7 @@ export function SpecialLevyForm({
           <div className="flex justify-end">
             <Button onClick={handleCalculate} disabled={calculating || totalCharge <= 0}>
               {calculating && <Loader2 className="size-4 animate-spin" />}
-              Calculate per-lot apportionment
+              Calculate per lot levies
             </Button>
           </div>
         </CardContent>
@@ -435,73 +435,61 @@ export function SpecialLevyForm({
         <Card>
           <CardContent className="pt-5 space-y-3">
             <Label>Per lot levy breakdown</Label>
-            {/* Accordion: each lot is a clickable header row showing
-                the totals. Clicking expands a nested CoA-backed line
-                items table (matching the regular levy generator). */}
-            <div className="overflow-hidden rounded-md border border-border divide-y divide-border">
+            {/* Accordion: header row = Lot N / Owner / total. Click
+                expands a compact CoA-backed line items table , matches
+                the regular levy generator's LotRow exactly. */}
+            <div className="rounded-md border border-border">
               {lots.map((l) => {
                 const lotExtras = extras[l.lot_id] ?? [];
                 const isOpen = !!expanded[l.lot_id];
                 return (
-                  <div key={l.lot_id}>
+                  <div key={l.lot_id} className="border-t border-border/50 first:border-t-0">
                     <button
                       type="button"
                       onClick={() => setExpanded((p) => ({ ...p, [l.lot_id]: !p[l.lot_id] }))}
-                      className="grid w-full grid-cols-[24px_1fr_1fr_100px_120px_140px] items-center gap-3 px-3 py-2 text-left text-[12px] hover:bg-muted/40 cursor-pointer"
+                      className="flex w-full items-center justify-between px-4 py-3 text-sm hover:bg-muted/30 transition-colors cursor-pointer"
                     >
-                      <ChevronDown
-                        className={`h-3.5 w-3.5 text-muted-foreground transition-transform ${isOpen ? "rotate-180" : ""}`}
-                      />
-                      <span className="text-foreground">
-                        Lot {l.lot_number}{l.unit_number ? ` (Unit ${l.unit_number})` : ""}
-                      </span>
-                      <span className="text-muted-foreground truncate">
-                        {l.owner_display_name ?? ""}
-                      </span>
-                      <span className="text-right tabular-nums text-muted-foreground">
-                        {Number(l.liability).toString()}
-                      </span>
-                      <span className="text-right tabular-nums text-muted-foreground">
-                        {formatCurrency(l.share)}
-                      </span>
-                      <span className="text-right tabular-nums font-medium text-foreground">
-                        {formatCurrency(lotGrandTotal(l))}
-                      </span>
+                      <div className="flex items-center gap-3">
+                        <ChevronDown className={`h-4 w-4 text-muted-foreground transition-transform ${isOpen ? "rotate-180" : ""}`} />
+                        <div className="text-left">
+                          <span className="font-medium text-foreground">
+                            Lot {l.lot_number}
+                            {l.unit_number ? ` (Unit ${l.unit_number})` : ""}
+                          </span>
+                          <span className="ml-2 text-muted-foreground">
+                            {l.owner_display_name ?? "Unassigned"}
+                          </span>
+                        </div>
+                      </div>
+                      <span className="font-semibold tabular-nums text-foreground">{formatCurrency(lotGrandTotal(l))}</span>
                     </button>
 
                     {isOpen && (
-                      <div className="border-t border-border bg-muted/20 p-3 space-y-2">
-                        <div className="overflow-hidden rounded-md border border-border bg-card">
-                          <Table variant="bordered" className="text-xs">
+                      <div className="px-4 pb-4 pl-11">
+                        <div className="overflow-hidden rounded-md border border-border">
+                          <Table variant="bordered" className="text-[10px]">
                             <TableHeader>
                               <TableRow>
-                                <TableHead className="py-1">Account</TableHead>
-                                <TableHead className="py-1 w-[160px] text-right">Amount</TableHead>
-                                <TableHead className="py-1 w-[36px]" />
+                                <TableHead className="py-0.5 text-[10px]">Description</TableHead>
+                                <TableHead className="py-0.5 w-[96px] text-right text-[10px]">Amount</TableHead>
+                                <TableHead className="py-0.5 w-[28px]" />
                               </TableRow>
                             </TableHeader>
                             <TableBody>
-                              {/* The base apportioned share , a read-only
-                                  row so the manager can see what they're
-                                  adding adjustments on top of. */}
                               <TableRow>
-                                <TableCell className="py-1 text-muted-foreground">
-                                  Apportioned share
-                                </TableCell>
-                                <TableCell className="py-1 text-right tabular-nums text-muted-foreground">
-                                  {formatCurrency(l.share)}
-                                </TableCell>
-                                <TableCell className="py-1" />
+                                <TableCell className="py-0.5 text-foreground">Apportioned share</TableCell>
+                                <TableCell className="py-0.5 text-right tabular-nums text-foreground">{formatCurrency(l.share)}</TableCell>
+                                <TableCell className="py-0.5" />
                               </TableRow>
                               {lotExtras.map((adj, ei) => (
-                                <TableRow key={`${l.lot_id}-x-${ei}`}>
-                                  <TableCell className="py-1">
+                                <TableRow key={`adj-${ei}`}>
+                                  <TableCell className="py-0.5">
                                     <Combobox
                                       items={coaOptions}
                                       value={adj.coa_account_id ?? ""}
                                       onValueChange={(v) => updateExtraCoa(l.lot_id, ei, v)}
                                     >
-                                      <ComboboxInput placeholder="Select an account" />
+                                      <ComboboxInput placeholder="Pick a CoA account" />
                                       <ComboboxContent>
                                         <ComboboxEmpty>No accounts found.</ComboboxEmpty>
                                         <ComboboxList>
@@ -512,7 +500,7 @@ export function SpecialLevyForm({
                                       </ComboboxContent>
                                     </Combobox>
                                   </TableCell>
-                                  <TableCell className="py-1">
+                                  <TableCell className="py-0.5">
                                     <NumberInput
                                       value={adj.amount}
                                       onChange={(v) => updateExtraAmount(l.lot_id, ei, v)}
@@ -522,11 +510,11 @@ export function SpecialLevyForm({
                                       allowDecimal
                                     />
                                   </TableCell>
-                                  <TableCell className="py-1">
+                                  <TableCell className="py-0.5">
                                     <button
                                       type="button"
                                       onClick={() => removeExtra(l.lot_id, ei)}
-                                      aria-label="Remove line item"
+                                      aria-label="Remove adjustment"
                                       className="text-muted-foreground hover:text-destructive cursor-pointer"
                                     >
                                       <X className="h-3.5 w-3.5" />
@@ -534,46 +522,31 @@ export function SpecialLevyForm({
                                   </TableCell>
                                 </TableRow>
                               ))}
-                              <TableRow>
-                                <TableCell colSpan={3} className="py-1">
-                                  <button
-                                    type="button"
-                                    onClick={() => addExtra(l.lot_id)}
-                                    className="flex w-full items-center justify-center gap-1.5 rounded-md py-1.5 text-xs text-muted-foreground hover:bg-muted hover:text-foreground cursor-pointer"
-                                  >
-                                    <Plus className="h-3.5 w-3.5" />
-                                    Add line item
-                                  </button>
-                                </TableCell>
-                              </TableRow>
                             </TableBody>
                             <TableFooter>
                               <TableRow>
-                                <TableCell className="py-1 font-semibold">Lot total</TableCell>
-                                <TableCell className="py-1 text-right font-bold tabular-nums">
-                                  {formatCurrency(lotGrandTotal(l))}
-                                </TableCell>
-                                <TableCell />
+                                <TableCell className="py-0.5 font-semibold text-foreground text-[10px]">Total</TableCell>
+                                <TableCell className="py-0.5 text-right font-bold tabular-nums text-foreground text-[10px]">{formatCurrency(lotGrandTotal(l))}</TableCell>
+                                <TableCell className="py-0.5" />
                               </TableRow>
                             </TableFooter>
                           </Table>
                         </div>
+                        <Button
+                          type="button"
+                          variant="secondary"
+                          size="sm"
+                          onClick={() => addExtra(l.lot_id)}
+                          className="mt-3"
+                        >
+                          <Plus className="mr-1.5 h-3.5 w-3.5" />
+                          Add adjustment
+                        </Button>
                       </div>
                     )}
                   </div>
                 );
               })}
-
-              <div className="grid grid-cols-[24px_1fr_1fr_100px_120px_140px] items-center gap-3 px-3 py-2 text-[12px] bg-muted/30">
-                <span />
-                <span className="font-semibold text-foreground">Grand total</span>
-                <span />
-                <span />
-                <span />
-                <span className="text-right tabular-nums font-bold text-foreground">
-                  {formatCurrency(lots.reduce((s, l) => s + lotGrandTotal(l), 0))}
-                </span>
-              </div>
             </div>
 
             <div className="flex justify-end">

@@ -23,7 +23,7 @@ import {
   updateAutosendOverrides,
   type LevyAutosendSchedule,
 } from "@/lib/actions/levy-autosend";
-import { buildPlannedSends } from "@/lib/levy-autosend-helpers";
+import { buildPlannedSends, ordinalRunLabel } from "@/lib/levy-autosend-helpers";
 import {
   Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle,
 } from "@/components/ui/sheet";
@@ -583,6 +583,7 @@ export function SettingsContent({
         <AutomationsTab
           ocId={oc.id}
           billingCycle={oc.billing_cycle}
+          fyStartMonth={oc.financial_year_start_month}
           autosend={autosend}
           mailboxOptions={autosendMailboxOptions}
           budgets={autosendBudgets}
@@ -606,12 +607,14 @@ export function SettingsContent({
 function AutomationsTab({
   ocId,
   billingCycle,
+  fyStartMonth,
   autosend,
   mailboxOptions,
   budgets,
 }: {
   ocId: string;
   billingCycle: string;
+  fyStartMonth: number;
   autosend: LevyAutosendSchedule;
   mailboxOptions: Array<{ value: string; label: string }>;
   budgets: Array<{ id: string; label: string }>;
@@ -709,6 +712,7 @@ function AutomationsTab({
             <AutoSendCard
               ocId={ocId}
               billingCycle={billingCycle}
+              fyStartMonth={fyStartMonth}
               initial={autosend}
               mailboxOptions={mailboxOptions}
               budgets={budgets}
@@ -725,6 +729,7 @@ function AutomationsTab({
 function AutoSendCard({
   ocId,
   billingCycle,
+  fyStartMonth,
   initial,
   mailboxOptions,
   budgets,
@@ -733,6 +738,7 @@ function AutoSendCard({
 }: {
   ocId: string;
   billingCycle: string;
+  fyStartMonth: number;
   initial: LevyAutosendSchedule;
   mailboxOptions: Array<{ value: string; label: string }>;
   budgets: Array<{ id: string; label: string }>;
@@ -840,6 +846,7 @@ function AutoSendCard({
     // half-yearly = 2, annually = 1. Showing 12 "monthly" dates for
     // an annual schedule is just noise.
     ({ monthly: 12, quarterly: 4, half_yearly: 2, annually: 1 } as Record<string, number>)[billingCycle] ?? 12,
+    fyStartMonth,
   );
 
   // ── Two-step flow when embedded ─────────────────────────────
@@ -948,17 +955,15 @@ function AutoSendCard({
       )}
 
       {embeddedStep === "schedule" && (
-        <div className="space-y-2 max-h-[28rem] overflow-y-auto pr-1">
-          {planned.map((p) => {
+        <div className="space-y-3 max-h-[28rem] overflow-y-auto pr-1">
+          {planned.map((p, idx) => {
             const [yy, mm] = p.monthKey.split("-");
-            const monthLabel = new Date(Date.UTC(Number(yy), Number(mm) - 1, 1))
-              .toLocaleDateString("en-AU", { month: "long", year: "numeric" });
             const firstOfMonth = `${p.monthKey}-01`;
             const lastDay = new Date(Date.UTC(Number(yy), Number(mm), 0)).getUTCDate();
             const lastOfMonth = `${p.monthKey}-${lastDay.toString().padStart(2, "0")}`;
             return (
-              <div key={p.monthKey} className="grid grid-cols-[1fr_180px_auto] items-center gap-3">
-                <span className="text-sm font-medium text-foreground">{monthLabel}</span>
+              <div key={p.monthKey} className="space-y-1.5">
+                <Label>{ordinalRunLabel(idx)}</Label>
                 <DatePicker
                   value={p.effectiveDate}
                   onChange={(v) => {
@@ -972,21 +977,6 @@ function AutoSendCard({
                   minDate={firstOfMonth}
                   maxDate={lastOfMonth}
                 />
-                {p.isOverridden ? (
-                  <button
-                    type="button"
-                    onClick={() => setOverrides((o) => {
-                      const next = { ...o };
-                      delete next[p.monthKey];
-                      return next;
-                    })}
-                    className="text-[11px] text-muted-foreground hover:text-foreground"
-                  >
-                    Reset
-                  </button>
-                ) : (
-                  <span className="text-[11px] text-muted-foreground">Default</span>
-                )}
               </div>
             );
           })}

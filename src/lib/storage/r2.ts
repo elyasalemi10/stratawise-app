@@ -96,12 +96,22 @@ const CONFIDENTIAL_PREFIXES = [
   "levies/",
 ];
 
-// Resolve the bucket for a key. Confidential prefixes route to the private
-// bucket when configured; otherwise everything falls back to the public
-// bucket (so a single-bucket setup still works during migration).
+// Resolve the bucket for a key. Confidential prefixes (OC documents,
+// insurance, plans, rules, inbound emails, levies) ALWAYS go to the
+// private bucket. If R2_BUCKET_CONFIDENTIAL isn't configured we throw
+// rather than silently falling back to the public bucket , uploading
+// an OC document to a publicly-readable bucket is a data leak we never
+// want to ship by accident. Only non-sensitive prefixes (logos, blog
+// assets) live in the public bucket.
 function bucketForKey(key: string): string {
-  const confidential = process.env.R2_BUCKET_CONFIDENTIAL;
-  if (confidential && CONFIDENTIAL_PREFIXES.some((p) => key.startsWith(p))) {
+  const isConfidential = CONFIDENTIAL_PREFIXES.some((p) => key.startsWith(p));
+  if (isConfidential) {
+    const confidential = process.env.R2_BUCKET_CONFIDENTIAL;
+    if (!confidential) {
+      throw new Error(
+        "Confidential storage is not configured. Set R2_BUCKET_CONFIDENTIAL in Vercel AND Trigger.dev environments.",
+      );
+    }
     return confidential;
   }
   return getBucket();
@@ -140,46 +150,23 @@ export async function uploadObject(
 
 /**
  * Fetch an object's bytes from R2. Used by the email layer to attach
- * PDFs and by the OCR worker to read the uploaded source file.
- *
- * Two-bucket fallback: confidential prefixes prefer the private
- * bucket, but if the object isn't there (e.g. uploaded before the
- * private bucket existed, or env-var skew between upload-time and
- * read-time), we fall back to the public bucket. This made OCR fail
- * silently when `R2_BUCKET_CONFIDENTIAL` was unset at upload-time but
- * set at OCR-time (and vice versa).
+ * PDFs and by the OCR worker to read the uploaded source file. Always
+ * reads from the bucket that `bucketForKey` resolves , no fallback,
+ * so confidential prefixes can never accidentally leak into the
+ * public bucket on either side of the upload/read pair.
  */
 export async function fetchObject(key: string): Promise<Buffer> {
   const client = getClient();
-  const primary = bucketForKey(key);
-  const fallback = primary === getBucket() ? process.env.R2_BUCKET_CONFIDENTIAL : getBucket();
-
-  async function tryBucket(bucket: string | undefined): Promise<Buffer | null> {
-    if (!bucket) return null;
-    try {
-      const res = await client.send(new GetObjectCommand({ Bucket: bucket, Key: key }));
-      if (!res.Body) return null;
-      const bodyAsAsyncIterable = res.Body as {
-        transformToByteArray: () => Promise<Uint8Array>;
-      };
-      const bytes = await bodyAsAsyncIterable.transformToByteArray();
-      return Buffer.from(bytes);
-    } catch (err) {
-      // NoSuchKey / 404 is the "try fallback" signal. Anything else
-      // (auth, transport) re-throws so callers see real failures.
-      const code = (err as { name?: string; Code?: string }).name
-        ?? (err as { Code?: string }).Code
-        ?? "";
-      if (code === "NoSuchKey" || code === "NotFound") return null;
-      throw err;
-    }
+  const bucket = bucketForKey(key);
+  const res = await client.send(new GetObjectCommand({ Bucket: bucket, Key: key }));
+  if (!res.Body) {
+    throw new Error(`R2 fetchObject: empty body for ${key}`);
   }
-
-  const bytes = (await tryBucket(primary)) ?? (await tryBucket(fallback ?? undefined));
-  if (!bytes) {
-    throw new Error(`R2 fetchObject: key ${key} not found in any configured bucket`);
-  }
-  return bytes;
+  const bodyAsAsyncIterable = res.Body as {
+    transformToByteArray: () => Promise<Uint8Array>;
+  };
+  const bytes = await bodyAsAsyncIterable.transformToByteArray();
+  return Buffer.from(bytes);
 }
 
 /**

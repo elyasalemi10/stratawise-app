@@ -70,6 +70,7 @@ const GROUP_ICONS: Record<string, LucideIcon> = {
   Overview: LayoutDashboard,
   Management: Briefcase,
   Levies: Receipt,
+  Finance: Landmark,
   Banking: Landmark,
   Insurance: Shield,
   Settings: Settings,
@@ -167,9 +168,15 @@ function getOCNavGroups(ocCode: string, isLotOwner: boolean) {
         { href: `${base}/budgets`, label: "Budgets", icon: PieChart },
       ],
     },
-    // Banking section nuked along with the ledger / reconciliation /
-    // payer-mappings stack. The new banking flow is being rebuilt; the
-    // group reappears once that lands.
+    // Finance: bank accounts only for now , the rest of the banking
+    // stack (ledger / reconciliation / payer mappings) is being rebuilt
+    // and will land back under this group.
+    {
+      label: "Finance",
+      items: [
+        { href: `${base}/bank-accounts`, label: "Bank accounts", icon: Landmark },
+      ],
+    },
     {
       label: "Insurance",
       items: [

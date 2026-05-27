@@ -67,9 +67,17 @@ export async function ingestDocumentOcr(documentId: string): Promise<void> {
     bytes = await fetchObject(doc.file_path);
   } catch (err) {
     console.error(`ingestDocumentOcr: R2 fetch failed for ${documentId}`, err);
+    // Surface the real R2 error code (NoSuchKey, AccessDenied, missing
+    // env var, etc.) instead of a generic message so the operator can
+    // diagnose env-var skew between Vercel and Trigger.dev without
+    // having to scrape logs.
+    const errMsg = err instanceof Error ? err.message : String(err);
     await supabase
       .from("documents")
-      .update({ ocr_status: "failed", ocr_error: "Couldn't read the uploaded file from storage." })
+      .update({
+        ocr_status: "failed",
+        ocr_error: `Couldn't read the uploaded file from storage: ${errMsg.slice(0, 240)}`,
+      })
       .eq("id", documentId);
     return;
   }

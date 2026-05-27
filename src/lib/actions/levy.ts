@@ -157,58 +157,6 @@ function calculateDueDate(periodStart: string, noticeDays = 28): string {
   return d.toISOString().split("T")[0];
 }
 
-// ─── Rollback helper for createLevyBatch atomicity ──────────
-// If rpc_levy_batch_debit fails after we've inserted batch + notices + items,
-// this helper undoes the JS-side writes. Returns flags describing whether
-// anything was left behind so the caller can escalate to a critical audit.
-type RollbackReport = {
-  clean: boolean;
-  batchRemains: boolean;
-  orphanedNoticeIds: string[];
-  itemsDeleteFailed: boolean;
-};
-
-async function rollbackBatchInsert(
-  supabase: ReturnType<typeof createServerClient>,
-  batchId: string,
-  levyIds: string[],
-): Promise<RollbackReport> {
-  let itemsDeleteFailed = false;
-  const orphanedNoticeIds: string[] = [];
-  let batchRemains = false;
-
-  if (levyIds.length > 0) {
-    const { error: itemsErr } = await supabase
-      .from("levy_notice_items")
-      .delete()
-      .in("levy_notice_id", levyIds);
-    if (itemsErr) itemsDeleteFailed = true;
-
-    const { data: remaining, error: noticesErr } = await supabase
-      .from("levy_notices")
-      .delete()
-      .in("id", levyIds)
-      .select("id");
-    if (noticesErr) {
-      orphanedNoticeIds.push(...levyIds);
-    } else {
-      const deletedIds = new Set((remaining ?? []).map((r) => r.id));
-      const failedIds = levyIds.filter((id) => !deletedIds.has(id));
-      orphanedNoticeIds.push(...failedIds);
-    }
-  }
-
-  const { error: batchErr } = await supabase.from("levy_batches").delete().eq("id", batchId);
-  if (batchErr) batchRemains = true;
-
-  return {
-    clean: !batchRemains && orphanedNoticeIds.length === 0 && !itemsDeleteFailed,
-    batchRemains,
-    orphanedNoticeIds,
-    itemsDeleteFailed,
-  };
-}
-
 // ─── Get next period to generate ───────────────────────────
 
 export async function getNextPeriod(ocId: string, budgetId: string) {
@@ -483,13 +431,9 @@ export async function generateLevyPreview(
 //   3. Defensive parity check , if the loop produced fewer notices than lots
 //      we were given, bail out with a CRITICAL audit entry. The batch row
 //      is left in place (notices too) so an operator can inspect.
-//   4. Call rpc_levy_batch_debit , FOR UPDATE lock on the batch row is
-//      non-negotiable; writes one ledger debit per notice atomically;
-//      flips batch status draft → ledger_written.
-//      On failure, rollbackBatchInsert undoes the JS writes. If the
-//      rollback itself is unclean, write a CRITICAL audit entry naming
-//      the orphans and surface a loud error to the caller.
-//   5. Generate PDFs in parallel and stamp pdf_url.
+//   4. Generate PDFs in parallel and stamp pdf_url.
+//      (The old step 4 wrote ledger debits via rpc_levy_batch_debit; that
+//       was removed when the reconciliation/ledger stack was nuked.)
 //
 // Not using a single monolithic RPC because PDF generation + R2 uploads
 // live in JS and would require base64-shuttling through SQL.
@@ -909,41 +853,9 @@ export async function createLevyBatch(
     };
   }
 
-  // Step 1.5: Atomically write one ledger debit per notice.
-  const { error: debitError } = await supabase.rpc("rpc_levy_batch_debit", {
-    p_batch_id: batch.id,
-    p_created_by: profile.id,
-  });
-
-  if (debitError) {
-    const rollback = await rollbackBatchInsert(
-      supabase,
-      batch.id,
-      createdLevies.map((l) => l.id),
-    );
-    if (!rollback.clean) {
-      await supabase.from("audit_log").insert({
-        profile_id: profile.id,
-        oc_id: ocId,
-        action: "levy_batch.rollback.failed",
-        entity_type: "levy_batch",
-        entity_id: batch.id,
-        metadata: {
-          severity: "critical",
-          debit_error: debitError.message,
-          orphaned_batch_id: rollback.batchRemains ? batch.id : null,
-          orphaned_notice_ids: rollback.orphanedNoticeIds,
-          items_delete_failed: rollback.itemsDeleteFailed,
-        },
-      });
-      return {
-        error:
-          `Ledger debit generation failed AND rollback left orphaned records. ` +
-          `Contact support with batch id ${batch.id}. Reason: ${debitError.message}`,
-      };
-    }
-    return { error: `Ledger debit generation failed: ${debitError.message}` };
-  }
+  // Step 1.5 (ledger debit) was removed when the reconciliation /
+  // ledger stack was nuked. Batches are now persisted as notices +
+  // line items only; the ledger will be rebuilt in a follow-up.
 
   // Step 2: Generate all PDFs in parallel and upload to R2
   const pdfPromises = createdLevies.map(async (levy) => {

@@ -1,5 +1,6 @@
 import { schedules } from "@trigger.dev/sdk";
 import { createServerClient } from "@/lib/supabase";
+import { nextSendDateFromSchedule } from "@/lib/levy-autosend-helpers";
 
 // Daily auto-send levies cron. Reads levy_autosend_schedules, finds
 // every enabled row whose next_send_date is today or earlier, and for
@@ -31,7 +32,7 @@ export const dailyLevyAutosend = schedules.task({
 
     const { data: due } = await supabase
       .from("levy_autosend_schedules")
-      .select("id, oc_id, budget_id, send_day_of_month, from_address, next_send_date, owners_corporations!inner(billing_cycle)")
+      .select("id, oc_id, budget_id, send_day_of_month, from_address, next_send_date, owners_corporations!inner(billing_cycle, financial_year_start_month)")
       .eq("enabled", true)
       .lte("next_send_date", today);
 
@@ -44,17 +45,8 @@ export const dailyLevyAutosend = schedules.task({
       from_address: r.from_address as string | null,
       next_send_date: r.next_send_date as string | null,
       billing_cycle: (r.owners_corporations?.billing_cycle ?? "monthly") as string,
+      fy_start_month: (r.owners_corporations?.financial_year_start_month ?? 7) as number,
     }));
-
-    function monthsForCycle(c: string): number {
-      switch (c) {
-        case "monthly": return 1;
-        case "quarterly": return 3;
-        case "half_yearly": return 6;
-        case "annually": return 12;
-        default: return 1;
-      }
-    }
 
     let processed = 0;
     let errors = 0;
@@ -71,19 +63,20 @@ export const dailyLevyAutosend = schedules.task({
           metadata: { reason: "generator_not_wired_yet", today },
         });
 
-        // Roll next_send_date forward by the OC's billing cycle gap so
-        // quarterly/half/annual schedules don't fire monthly. Stamp
-        // last_sent_on too once the real send succeeds (in the
-        // eventual non-stub implementation).
-        const gap = monthsForCycle(r.billing_cycle);
-        const next = new Date(`${today}T00:00:00Z`);
-        next.setUTCMonth(next.getUTCMonth() + gap);
-        const lastDay = new Date(Date.UTC(next.getUTCFullYear(), next.getUTCMonth() + 1, 0)).getUTCDate();
-        const safeDay = Math.min(r.send_day_of_month, lastDay);
-        const nextDate = new Date(Date.UTC(next.getUTCFullYear(), next.getUTCMonth(), safeDay));
+        // Advance next_send_date to the next FY-aligned period strictly
+        // AFTER today. Stamp last_sent_on too once the real send
+        // succeeds (in the eventual non-stub implementation).
+        const tomorrow = new Date(`${today}T00:00:00Z`);
+        tomorrow.setUTCDate(tomorrow.getUTCDate() + 1);
+        const nextIso = nextSendDateFromSchedule(
+          r.send_day_of_month,
+          r.billing_cycle,
+          tomorrow.toISOString().slice(0, 10),
+          r.fy_start_month,
+        );
         await supabase
           .from("levy_autosend_schedules")
-          .update({ next_send_date: nextDate.toISOString().slice(0, 10), updated_at: new Date().toISOString() })
+          .update({ next_send_date: nextIso, updated_at: new Date().toISOString() })
           .eq("id", r.id);
         processed++;
       } catch (err) {
