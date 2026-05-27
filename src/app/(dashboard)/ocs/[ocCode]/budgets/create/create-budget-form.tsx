@@ -310,24 +310,39 @@ export function CreateBudgetForm({
 
           <div className="space-y-2">
             <Label>Funds</Label>
-            <div className="flex flex-wrap gap-3">
-              {fundOptions.map((opt) => {
-                const checked = selectedFunds.includes(opt.value);
-                return (
-                  <div key={opt.value} className="flex items-center gap-2 rounded-md border border-border bg-card px-3 py-2">
-                    <Checkbox
-                      id={`fund-${opt.value}`}
-                      checked={checked}
-                      onCheckedChange={(v) => toggleFund(opt.value, v === true)}
-                      className="bg-card"
-                    />
-                    <Label htmlFor={`fund-${opt.value}`} className="cursor-pointer text-sm font-normal">
-                      {opt.label}
-                    </Label>
-                  </div>
-                );
-              })}
-            </div>
+            {fundOptions.length === 0 ? (
+              // No funds exist yet on the OC. Without something to bill
+              // against we can't render the line-item tabs , send the
+              // manager to /funds/create to set one up first.
+              <div className="rounded-md border border-border bg-muted/40 px-4 py-4 text-sm text-foreground">
+                <p>This OC has no funds yet. Create at least one fund (Administrative, Capital Works, Maintenance Plan, or a custom one) before you can budget for it.</p>
+                <a
+                  href={`/ocs/${ocCode}/funds/create`}
+                  className="mt-2 inline-flex items-center gap-1.5 text-sm font-medium text-primary hover:underline"
+                >
+                  Go to fund setup &rarr;
+                </a>
+              </div>
+            ) : (
+              <div className="flex flex-wrap gap-3">
+                {fundOptions.map((opt) => {
+                  const checked = selectedFunds.includes(opt.value);
+                  return (
+                    <div key={opt.value} className="flex items-center gap-2 rounded-md border border-border bg-card px-3 py-2">
+                      <Checkbox
+                        id={`fund-${opt.value}`}
+                        checked={checked}
+                        onCheckedChange={(v) => toggleFund(opt.value, v === true)}
+                        className="bg-card"
+                      />
+                      <Label htmlFor={`fund-${opt.value}`} className="cursor-pointer text-sm font-normal">
+                        {opt.label}
+                      </Label>
+                    </div>
+                  );
+                })}
+              </div>
+            )}
           </div>
         </CardContent>
       </Card>

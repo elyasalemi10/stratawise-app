@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useEffect, useTransition } from "react";
-import { Pencil, Loader2 } from "lucide-react";
+import { Pencil, Loader2, Trash2 } from "lucide-react";
 import { toast } from "sonner";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -939,13 +939,25 @@ function AutoSendCard({
   // Step "schedule": planned-runs preview + Confirm/Back buttons.
   // Outside the drawer (standalone card) we skip the multi-step UX
   // and use the old single-page form.
-  const [embeddedStep, setEmbeddedStep] = useState<"form" | "schedule">("form");
+  // For EXISTING automations the schedule sits inline on the same
+  // page as the form , no Next button, no second step. For NEW
+  // automations we still use the two-step flow so the manager
+  // confirms the schedule before saving.
+  const isExisting = !!initial.id;
+  const [embeddedStep, setEmbeddedStep] = useState<"form" | "schedule">(
+    isExisting ? "schedule" : "form",
+  );
+  // When editing, render BOTH sections at once. We reuse the
+  // "schedule" branch's rendering by treating the form as always-on
+  // and showing schedule inline below it.
+  const showFormSection = embeddedStep === "form" || isExisting;
+  const showScheduleSection = embeddedStep === "schedule" || isExisting;
 
   // Body of the card. Single vertical column so it fits the narrow
   // drawer without anything being cramped.
   const body = (
     <div className={embedded ? "space-y-4" : ""}>
-      {embeddedStep === "form" && (
+      {showFormSection && (
         <>
           {/* Budget picker takes the full row. */}
           <div className="space-y-1.5">
@@ -1023,7 +1035,7 @@ function AutoSendCard({
         </>
       )}
 
-      {embeddedStep === "schedule" && (
+      {showScheduleSection && (
         <div className="space-y-3 max-h-[28rem] overflow-y-auto pr-1">
           {periodsLoading ? (
             // Skeleton shimmer , 3 stacked rows that look like the
@@ -1087,17 +1099,30 @@ function AutoSendCard({
         )}
 
       <div className="flex justify-between gap-2 pt-2">
-        {/* Delete sits on the left only when editing an existing
-            automation. New automations have nothing to delete yet. */}
+        {/* Delete is destructive-styled (red) and only shown when
+            editing an existing automation. New automations have
+            nothing to delete yet. */}
         <div>
-          {embedded && initial.id && (
-            <Button variant="secondary" onClick={handleDelete} disabled={pending}>
+          {embedded && isExisting && (
+            <Button
+              variant="secondary"
+              onClick={handleDelete}
+              disabled={pending}
+              className="!text-destructive hover:!bg-destructive/10"
+            >
+              <Trash2 className="mr-1.5 h-3.5 w-3.5" />
               Delete automation
             </Button>
           )}
         </div>
         <div className="flex gap-2">
-          {embedded && embeddedStep === "form" && (
+          {embedded && isExisting && (
+            <Button onClick={save} disabled={pending}>
+              {pending && <Loader2 className="size-4 animate-spin" />}
+              Save changes
+            </Button>
+          )}
+          {embedded && !isExisting && embeddedStep === "form" && (
             <Button
               onClick={() => {
                 if (validateForm() === null) return;
@@ -1109,14 +1134,11 @@ function AutoSendCard({
               Next
             </Button>
           )}
-          {embedded && embeddedStep === "schedule" && (
+          {embedded && !isExisting && embeddedStep === "schedule" && (
             <>
               <Button variant="secondary" onClick={() => setEmbeddedStep("form")} disabled={pending}>
                 Back
               </Button>
-              {/* Hide Confirm when every period is already generated ,
-                  there's nothing to schedule, so there's nothing to
-                  confirm. Manager either backs out or deletes. */}
               {planned.length > 0 && (
                 <Button onClick={save} disabled={pending}>
                   {pending && <Loader2 className="size-4 animate-spin" />}

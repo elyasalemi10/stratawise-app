@@ -268,12 +268,14 @@ function PolicyDetailDialog({
                 </div>
               )}
             </div>
-            {policy.document_url && (
-              <div className="border-t border-border pt-4 mt-2">
-                {/* Route via /api/insurance-docs/[id] for an authorised
-                    302 to a 15-min presigned R2 URL , the raw
-                    policy.document_url is a public R2 link we no longer
-                    expose directly. */}
+            {/* Download / Upload + Replace control. Order: when the
+                policy has a CoC, show the Download button big +
+                "Replace?" inline beneath it. When it doesn't (manager
+                entered fields manually), show only the Upload button
+                so no broken "download" appears for a non-existent
+                file. */}
+            {policy.document_url ? (
+              <div className="border-t border-border pt-4 mt-2 space-y-1.5">
                 <a
                   href={`/api/insurance-docs/${policy.id}`}
                   target="_blank"
@@ -284,41 +286,59 @@ function PolicyDetailDialog({
                     Download certificate of currency
                   </Button>
                 </a>
+                {!readOnly && (
+                  <div className="text-center">
+                    {uploadingDoc ? (
+                      <span className="inline-flex items-center gap-2 text-xs text-muted-foreground">
+                        <Loader2 className="h-3 w-3 animate-spin" />
+                        Replacing {uploadDocName}...
+                      </span>
+                    ) : (
+                      <label className="inline-flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground cursor-pointer">
+                        Replace?
+                        <input
+                          type="file"
+                          accept=".pdf,.doc,.docx,.png,.jpg,.jpeg"
+                          onChange={(e) => { const f = e.target.files?.[0]; if (f) handleReplaceDocument(f); }}
+                          className="hidden"
+                        />
+                      </label>
+                    )}
+                  </div>
+                )}
               </div>
-            )}
+            ) : !readOnly ? (
+              <div className="border-t border-border pt-4 mt-2">
+                {uploadingDoc ? (
+                  <div className="flex items-center gap-2 text-sm">
+                    <Loader2 className="h-4 w-4 animate-spin text-muted-foreground" />
+                    <span className="truncate text-foreground">{uploadDocName}</span>
+                  </div>
+                ) : (
+                  <label className="flex items-center justify-center gap-2 rounded-md border border-dashed border-border bg-card px-3 py-2 text-sm text-muted-foreground hover:border-primary/40 hover:bg-muted/40 cursor-pointer">
+                    <Plus className="h-3.5 w-3.5" />
+                    Upload certificate of currency
+                    <input
+                      type="file"
+                      accept=".pdf,.doc,.docx,.png,.jpg,.jpeg"
+                      onChange={(e) => { const f = e.target.files?.[0]; if (f) handleReplaceDocument(f); }}
+                      className="hidden"
+                    />
+                  </label>
+                )}
+              </div>
+            ) : null}
+
             {!readOnly && (
-              <div className="border-t border-border pt-4 mt-2 space-y-3">
-                {/* Replace certificate */}
-                <div>
-                  {uploadingDoc ? (
-                    <div className="flex items-center gap-2">
-                      <span className="text-sm text-foreground truncate flex-1">{uploadDocName}</span>
-                      <Loader2 className="h-4 w-4 animate-spin text-muted-foreground shrink-0" />
-                    </div>
-                  ) : (
-                    <label className="flex items-center gap-2 text-sm text-primary hover:text-primary/80 cursor-pointer">
-                      <Plus className="h-3.5 w-3.5" />
-                      {policy.document_url ? "Replace certificate of currency" : "Upload certificate of currency"}
-                      <input
-                        type="file"
-                        accept=".pdf,.doc,.docx,.png,.jpg,.jpeg"
-                        onChange={(e) => { const f = e.target.files?.[0]; if (f) handleReplaceDocument(f); }}
-                        className="hidden"
-                      />
-                    </label>
-                  )}
-                </div>
-                {/* Edit / Delete */}
-                <div className="flex items-center gap-2">
-                  <Button variant="outline" size="sm" onClick={startEdit} className="cursor-pointer">
-                    <Pencil className="mr-2 h-3.5 w-3.5" />
-                    Edit
-                  </Button>
-                  <Button variant="ghost" size="sm" onClick={handleDelete} disabled={deleting} className="cursor-pointer text-destructive hover:text-destructive">
-                    <Trash2 className="mr-2 h-3.5 w-3.5" />
-                    {deleting ? "Deleting..." : "Delete"}
-                  </Button>
-                </div>
+              <div className="border-t border-border pt-4 mt-2 flex items-center gap-2">
+                <Button variant="outline" size="sm" onClick={startEdit} className="cursor-pointer">
+                  <Pencil className="mr-2 h-3.5 w-3.5" />
+                  Edit
+                </Button>
+                <Button variant="ghost" size="sm" onClick={handleDelete} disabled={deleting} className="cursor-pointer text-destructive hover:text-destructive">
+                  <Trash2 className="mr-2 h-3.5 w-3.5" />
+                  {deleting ? "Deleting..." : "Delete"}
+                </Button>
               </div>
             )}
           </>
@@ -663,13 +683,19 @@ function AddPolicyDrawer({
 function InsuranceGantt({
   policies,
   managementStartDate,
+  fyStartMonth = 7,
   onPolicyClick,
 }: {
   policies: InsurancePolicy[];
   managementStartDate: string | null;
+  /** OC's financial year start month (1-12). Defaults to July (AU
+   *  standard). Axis ticks render on the FY-quarter starts: this
+   *  month, +3, +6, +9. */
+  fyStartMonth?: number;
   onPolicyClick: (p: InsurancePolicy) => void;
 }) {
-  // Group policies by type so each row shows one coverage line.
+  const [hovered, setHovered] = useState<{ policy: InsurancePolicy; x: number; y: number } | null>(null);
+
   const groups = new Map<string, InsurancePolicy[]>();
   for (const p of policies) {
     const key = p.policy_type;
@@ -677,8 +703,6 @@ function InsuranceGantt({
     groups.get(key)!.push(p);
   }
 
-  // Domain bounds. Start = earlier of (management start, oldest
-  // policy). End = max(today + 60d, latest policy end).
   const today = new Date();
   today.setHours(0, 0, 0, 0);
   const policyStarts = policies.map((p) => new Date(p.start_date).getTime());
@@ -690,7 +714,7 @@ function InsuranceGantt({
   const sixtyDaysOut = today.getTime() + 60 * 86400000;
   const maxMs = Math.max(sixtyDaysOut, ...policyEnds);
   const totalDays = Math.max(1, Math.round((maxMs - minMs) / 86400000));
-  const trackWidth = Math.max(1200, totalDays * 4);
+  const trackWidth = Math.max(1400, totalDays * 5);
   const pxPerDay = trackWidth / totalDays;
 
   function offsetPx(iso: string): number {
@@ -702,41 +726,47 @@ function InsuranceGantt({
     return Math.max(4, days * pxPerDay);
   }
 
-  // Month tick labels along the bottom axis.
+  // Quarter ticks only , the FY's four quarter starts. For FY July
+  // that's Jul / Oct / Jan / Apr; for FY January it's Jan / Apr / Jul
+  // / Oct. Walk by 3-month steps from the most recent FY-quarter
+  // boundary before minMs.
   const ticks: Array<{ iso: string; label: string }> = [];
+  const fyStartIdx = Math.max(0, Math.min(11, fyStartMonth - 1));
   const tickWalker = new Date(minMs);
   tickWalker.setDate(1);
+  // Snap walker back to the previous quarter boundary so the leftmost
+  // tick is always at a quarter start, never mid-quarter.
+  const monthOffsetFromFy = ((tickWalker.getMonth() - fyStartIdx) % 3 + 3) % 3;
+  tickWalker.setMonth(tickWalker.getMonth() - monthOffsetFromFy);
   while (tickWalker.getTime() <= maxMs) {
     ticks.push({
       iso: tickWalker.toISOString().slice(0, 10),
       label: tickWalker.toLocaleDateString("en-AU", { month: "short", year: "2-digit" }),
     });
-    tickWalker.setMonth(tickWalker.getMonth() + 1);
+    tickWalker.setMonth(tickWalker.getMonth() + 3);
   }
 
   const todayPx = ((today.getTime() - minMs) / 86400000) * pxPerDay;
   const ROW_LABEL_W = 180;
+  const ROW_H = 80; // was 56 (h-14) , taller so bars + provider name read at a glance.
 
   return (
-    <div className="rounded-md border border-border bg-card">
-      <div className="overflow-x-auto">
+    <div className="relative rounded-md border border-border bg-card">
+      <div className="overflow-auto max-h-[60vh]">
         <div className="relative" style={{ width: ROW_LABEL_W + trackWidth, minWidth: "100%" }}>
-          {/* Policy rows */}
           {Array.from(groups.entries()).map(([typeKey, group]) => (
             <div key={typeKey} className="flex items-stretch border-b border-border/50 last:border-b-0">
               <div
-                className="shrink-0 px-3 py-3 text-sm font-medium text-foreground border-r border-border bg-muted/30 flex items-center"
-                style={{ width: ROW_LABEL_W }}
+                className="shrink-0 px-3 text-sm font-medium text-foreground border-r border-border bg-muted/30 flex items-center sticky left-0 z-10"
+                style={{ width: ROW_LABEL_W, height: ROW_H }}
               >
                 {POLICY_LABELS[typeKey] ?? typeKey}
               </div>
               <div
-                className="relative h-14"
+                className="relative"
                 style={{
                   width: trackWidth,
-                  // Red/white 45deg stripes for "no cover" baseline.
-                  // Coverage bars sit ON TOP and hide the stripes
-                  // wherever a policy exists.
+                  height: ROW_H,
                   backgroundImage:
                     "repeating-linear-gradient(45deg, hsl(0, 72%, 92%) 0 8px, hsl(0, 0%, 100%) 8px 16px)",
                 }}
@@ -754,15 +784,17 @@ function InsuranceGantt({
                       key={p.id}
                       type="button"
                       onClick={() => onPolicyClick(p)}
+                      onMouseEnter={(e) => setHovered({ policy: p, x: e.clientX, y: e.clientY })}
+                      onMouseMove={(e) => setHovered({ policy: p, x: e.clientX, y: e.clientY })}
+                      onMouseLeave={() => setHovered(null)}
                       className={cn(
-                        "absolute top-2 bottom-2 rounded-md border px-2 text-left text-xs flex items-center gap-1 overflow-hidden hover:ring-2 hover:ring-primary/30 transition-shadow cursor-pointer",
+                        "absolute top-3 bottom-3 rounded-md border px-2 text-left text-xs flex items-center gap-1 overflow-hidden hover:ring-2 hover:ring-primary/30 transition-shadow cursor-pointer",
                         bg,
                       )}
                       style={{
                         left: offsetPx(p.start_date),
                         width: widthPx(p.start_date, p.end_date),
                       }}
-                      title={`${POLICY_LABELS[p.policy_type] ?? p.policy_type} — ${formatDateLong(p.start_date)} to ${formatDateLong(p.end_date)}`}
                     >
                       <span className="truncate font-medium">{p.provider}</span>
                       {p.premium && (
@@ -775,9 +807,12 @@ function InsuranceGantt({
             </div>
           ))}
 
-          {/* Time axis , month labels along the bottom. */}
-          <div className="flex border-t border-border bg-muted/40">
-            <div className="shrink-0 border-r border-border" style={{ width: ROW_LABEL_W }} />
+          {/* Time axis , FY quarter ticks along the bottom. */}
+          <div className="flex border-t border-border bg-muted/40 sticky bottom-0">
+            <div
+              className="shrink-0 border-r border-border bg-muted/30 sticky left-0 z-10"
+              style={{ width: ROW_LABEL_W }}
+            />
             <div className="relative h-9" style={{ width: trackWidth }}>
               {ticks.map((t) => (
                 <div
@@ -789,7 +824,6 @@ function InsuranceGantt({
                   <span className="text-[10px] text-muted-foreground mt-1 pl-1 whitespace-nowrap">{t.label}</span>
                 </div>
               ))}
-              {/* Today marker */}
               {todayPx >= 0 && todayPx <= trackWidth && (
                 <div
                   className="absolute top-0 bottom-0 w-px bg-primary"
@@ -803,35 +837,24 @@ function InsuranceGantt({
         </div>
       </div>
 
-      <div className="border-t border-border bg-muted/20 px-4 py-2 flex items-center gap-4 text-xs text-muted-foreground">
-        <span className="flex items-center gap-1.5">
-          <span className="h-3 w-3 rounded-sm bg-[hsl(160,100%,90%)] border border-[hsl(160,100%,37%)]" />
-          Active
-        </span>
-        <span className="flex items-center gap-1.5">
-          <span className="h-3 w-3 rounded-sm bg-warning/30 border border-warning" />
-          Expiring soon
-        </span>
-        <span className="flex items-center gap-1.5">
-          <span className="h-3 w-3 rounded-sm bg-muted-foreground/30 border border-muted-foreground/40" />
-          Expired
-        </span>
-        <span className="flex items-center gap-1.5">
-          <span
-            className="h-3 w-3 rounded-sm border border-destructive/40"
-            style={{
-              backgroundImage:
-                "repeating-linear-gradient(45deg, hsl(0, 72%, 80%) 0 3px, hsl(0, 0%, 100%) 3px 6px)",
-            }}
-          />
-          No cover
-        </span>
-        {managementStartDate && (
-          <span className="ml-auto">
-            Management started {formatDateLong(managementStartDate)}
-          </span>
-        )}
-      </div>
+      {/* Inline floating tooltip on hover. Pinned to client coords so
+          it follows the cursor without depending on layout / scroll
+          context. Clicking the bar still opens the full drawer. */}
+      {hovered && (
+        <div
+          className="pointer-events-none fixed z-50 rounded-md border border-border bg-card shadow-lg px-3 py-2 text-xs text-foreground"
+          style={{ left: hovered.x + 12, top: hovered.y + 12 }}
+        >
+          <div className="font-medium">{POLICY_LABELS[hovered.policy.policy_type] ?? hovered.policy.policy_type}</div>
+          <div className="text-muted-foreground">{hovered.policy.provider}</div>
+          <div className="text-muted-foreground mt-1">
+            {formatDateLong(hovered.policy.start_date)} - {formatDateLong(hovered.policy.end_date)}
+          </div>
+          {hovered.policy.premium ? (
+            <div className="mt-1 tabular-nums">Premium: {formatCurrency(Number(hovered.policy.premium))}</div>
+          ) : null}
+        </div>
+      )}
     </div>
   );
 }
@@ -843,6 +866,7 @@ export function InsuranceTimeline({
   policies: initialPolicies,
   readOnly,
   managementStartDate,
+  fyStartMonth = 7,
 }: {
   ocId: string;
   policies: InsurancePolicy[];
@@ -851,6 +875,9 @@ export function InsuranceTimeline({
    *  The gantt's time axis defaults to start here; a policy whose
    *  start_date is earlier overrides it (we expand the axis left). */
   managementStartDate?: string | null;
+  /** OC's financial-year start month (1-12), drives the quarter tick
+   *  positions on the gantt's time axis. */
+  fyStartMonth?: number;
 }) {
   const router = useRouter();
   const [policies, setPolicies] = useState(initialPolicies);
@@ -858,8 +885,10 @@ export function InsuranceTimeline({
   const [selectedPolicy, setSelectedPolicy] = useState<InsurancePolicy | null>(null);
 
   return (
-    <div className="space-y-6">
-      {!readOnly && policies.length > 0 && (
+    <div className="space-y-4">
+      {/* Top action bar , always visible (when not readOnly) so the
+          manager can add a policy whether or not the gantt has data. */}
+      {!readOnly && (
         <div className="flex justify-end">
           <Button size="sm" onClick={() => setShowAdd(true)}>
             <Plus className="mr-2 h-3.5 w-3.5" />
@@ -873,19 +902,12 @@ export function InsuranceTimeline({
           icon={ShieldAlert}
           title="No insurance policies"
           description={readOnly ? "No insurance policies have been added yet." : "Add your first insurance policy to track coverage and get expiry alerts."}
-          action={
-            !readOnly ? (
-              <Button className="mt-4" onClick={() => setShowAdd(true)}>
-                <Plus className="mr-2 h-4 w-4" />
-                Add policy
-              </Button>
-            ) : undefined
-          }
         />
       ) : (
         <InsuranceGantt
           policies={policies}
           managementStartDate={managementStartDate ?? null}
+          fyStartMonth={fyStartMonth}
           onPolicyClick={setSelectedPolicy}
         />
       )}

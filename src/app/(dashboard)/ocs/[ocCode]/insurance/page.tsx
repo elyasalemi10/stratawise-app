@@ -31,6 +31,7 @@ export default async function InsurancePage({
       policies={policies}
       readOnly={profile?.role === "lot_owner"}
       managementStartDate={agreement?.start_date ?? null}
+      fyStartMonth={oc.financial_year_start_month ?? 7}
     />
   );
 }

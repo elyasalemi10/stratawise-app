@@ -15,9 +15,6 @@ import {
 } from "@/components/ui/select";
 import { Label } from "@/components/ui/label";
 import {
-  Table, TableBody, TableCell, TableFooter, TableHead, TableHeader, TableRow,
-} from "@/components/ui/table";
-import {
   generateLevyPreview,
   createLevyBatch,
   type LevyPreviewData,
@@ -108,86 +105,83 @@ function LotRow({
       </button>
 
       {isOpen && (
-        <div className="px-4 pb-4">
-          {/* Compact table , extra-small text + minimal padding because
-              this whole table sits inside a per-lot dropdown. */}
-          <div className="overflow-hidden rounded-md border border-border">
-            <Table variant="bordered" className="text-xs">
-              <TableHeader>
-                <TableRow>
-                  <TableHead className="py-0.5 text-xs">Description</TableHead>
-                  <TableHead className="py-0.5 w-[96px] text-right text-xs">Amount</TableHead>
-                  <TableHead className="py-0.5 w-[28px]" />
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {lot.items.map((item, i) => (
-                  <TableRow key={`base-${i}`}>
-                    <TableCell className="py-0.5 text-foreground">{item.description}</TableCell>
-                    <TableCell className="py-0.5 text-right tabular-nums text-foreground">{formatCurrency(item.amount)}</TableCell>
-                    <TableCell className="py-0.5" />
-                  </TableRow>
-                ))}
-                {(lot.adjustments ?? []).map((adj, i) => (
-                  <TableRow key={`adj-${i}`}>
-                    <TableCell className="py-0.5">
-                      <Select
-                        value={adj.coa_account_id ?? ""}
-                        onValueChange={(v) => onUpdateAdjustment(i, "coa_account_id", v ?? "")}
-                        disabled={locked}
-                      >
-                        <SelectTrigger className="h-7 text-[11px]">
-                          <SelectValue placeholder="Pick a CoA account">
-                            {adj.description || null}
-                          </SelectValue>
-                        </SelectTrigger>
-                        <SelectContent>
-                          {coaOptions.length === 0 ? (
-                            <div className="px-2 py-1.5 text-xs text-muted-foreground">No CoA accounts available</div>
-                          ) : (
-                            coaOptions.map((c) => (
-                              <SelectItem key={c.id} value={c.id}>
-                                {c.code} , {c.name}
-                              </SelectItem>
-                            ))
-                          )}
-                        </SelectContent>
-                      </Select>
-                    </TableCell>
-                    <TableCell className="py-0.5">
-                      <NumberInput
-                        value={adj.amount ? String(adj.amount) : ""}
-                        onChange={(v) => onUpdateAdjustment(i, "amount", parseFloat(v) || 0)}
-                        thousandsSeparator
-                        prefix="$"
-                        placeholder="Amount"
-                        allowDecimal
-                        disabled={locked}
-                      />
-                    </TableCell>
-                    <TableCell className="py-0.5">
-                      {!locked && (
-                        <button
-                          type="button"
-                          onClick={() => onRemoveAdjustment(i)}
-                          aria-label="Remove adjustment"
-                          className="text-muted-foreground hover:text-destructive cursor-pointer"
-                        >
-                          <X className="h-3.5 w-3.5" />
-                        </button>
-                      )}
-                    </TableCell>
-                  </TableRow>
-                ))}
-              </TableBody>
-              <TableFooter>
-                <TableRow>
-                  <TableCell className="py-0.5 font-semibold text-foreground text-xs">Total</TableCell>
-                  <TableCell className="py-0.5 text-right font-bold tabular-nums text-foreground text-xs">{formatCurrency(totalAmount)}</TableCell>
-                  <TableCell className="py-0.5" />
-                </TableRow>
-              </TableFooter>
-            </Table>
+        <div className="px-4 pb-2 pl-11 space-y-1.5">
+          {/* Div + CSS grid version of the per-lot table , identical
+              footprint to the special-levy accordion so both flows
+              read the same. Cols: description (flex), amount (110px),
+              row actions (28px). */}
+          <div className="overflow-hidden rounded-md border border-border bg-card">
+            <div className="grid grid-cols-[1fr_110px_28px] gap-x-4 px-3 py-1.5 bg-primary text-[11px] font-medium text-primary-foreground">
+              <div>Description</div>
+              <div className="text-right">Amount</div>
+              <div />
+            </div>
+
+            {lot.items.map((item, i) => (
+              <div
+                key={`base-${i}`}
+                className="grid grid-cols-[1fr_110px_28px] gap-x-4 px-3 py-1 text-[11px] border-t border-border text-foreground"
+              >
+                <div>{item.description}</div>
+                <div className="text-right tabular-nums">{formatCurrency(item.amount)}</div>
+                <div />
+              </div>
+            ))}
+
+            {(lot.adjustments ?? []).map((adj, i) => (
+              <div
+                key={`adj-${i}`}
+                className="grid grid-cols-[1fr_110px_28px] gap-x-4 px-3 py-1 text-[11px] border-t border-border items-center"
+              >
+                <Select
+                  value={adj.coa_account_id ?? ""}
+                  onValueChange={(v) => onUpdateAdjustment(i, "coa_account_id", v ?? "")}
+                  disabled={locked}
+                >
+                  <SelectTrigger className="h-7 text-[11px]">
+                    <SelectValue placeholder="Pick a CoA account">
+                      {adj.description || null}
+                    </SelectValue>
+                  </SelectTrigger>
+                  <SelectContent>
+                    {coaOptions.length === 0 ? (
+                      <div className="px-2 py-1.5 text-xs text-muted-foreground">No CoA accounts available</div>
+                    ) : (
+                      coaOptions.map((c) => (
+                        <SelectItem key={c.id} value={c.id}>
+                          {c.code} , {c.name}
+                        </SelectItem>
+                      ))
+                    )}
+                  </SelectContent>
+                </Select>
+                <NumberInput
+                  value={adj.amount ? String(adj.amount) : ""}
+                  onChange={(v) => onUpdateAdjustment(i, "amount", parseFloat(v) || 0)}
+                  thousandsSeparator
+                  prefix="$"
+                  placeholder="Amount"
+                  allowDecimal
+                  disabled={locked}
+                />
+                {!locked ? (
+                  <button
+                    type="button"
+                    onClick={() => onRemoveAdjustment(i)}
+                    aria-label="Remove adjustment"
+                    className="text-muted-foreground hover:text-destructive cursor-pointer justify-self-center"
+                  >
+                    <X className="h-3.5 w-3.5" />
+                  </button>
+                ) : <div />}
+              </div>
+            ))}
+
+            <div className="grid grid-cols-[1fr_110px_28px] gap-x-4 px-3 py-1 text-[11px] border-t border-border font-semibold">
+              <div>Total</div>
+              <div className="text-right tabular-nums">{formatCurrency(totalAmount)}</div>
+              <div />
+            </div>
           </div>
           {!locked && (
             <Button

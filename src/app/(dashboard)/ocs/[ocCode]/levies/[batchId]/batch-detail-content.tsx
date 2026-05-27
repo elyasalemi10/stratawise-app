@@ -3,9 +3,10 @@
 import { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import {
-  ArrowLeft, CheckCircle2, ChevronDown, Download, ExternalLink, Mail, Trash2, FolderDown,
+  CheckCircle2, ChevronDown, Download, ExternalLink, Mail, Trash2, FolderDown,
   Undo2, RefreshCw, AlertTriangle, Loader2, Send,
 } from "lucide-react";
+import { useSetBreadcrumb } from "@/lib/breadcrumb-context";
 import { format } from "date-fns";
 import { formatDateLong } from "@/lib/utils";
 import { toast } from "sonner";
@@ -56,6 +57,14 @@ export function BatchDetailContent({
   const router = useRouter();
   const [batch, setBatch] = useState(initialBatch);
   const reminderSentSet = new Set(reminderSentLevyIds);
+
+  // Override the URL-derived breadcrumb so the manager sees
+  // "Levies > Regular batch" or "Levies > Special batch" instead of
+  // just "Levies" (the UUID segment gets skipped by default).
+  useSetBreadcrumb([
+    { label: "Levies", href: `/ocs/${ocCode}/levies` },
+    { label: batch.is_special ? "Special batch" : "Regular batch" },
+  ]);
   const [openLevyId, setOpenLevyId] = useState<string | null>(null);
 
   // Batch-level pending flags , each action keeps a spinner on its own button.
@@ -218,14 +227,9 @@ export function BatchDetailContent({
       {/* Header */}
       <div className="flex items-start justify-between gap-4">
         <div className="flex items-center gap-3">
-          <Button
-            variant="ghost"
-            size="icon"
-            className="h-8 w-8"
-            onClick={() => router.push(`/ocs/${ocCode}/levies`)}
-          >
-            <ArrowLeft className="h-4 w-4" />
-          </Button>
+          {/* Back arrow removed , the sidebar breadcrumb already
+              names "Levies > <Regular|Special> batch" so the manager
+              has a one-click way back without an extra in-page chevron. */}
           <div>
             <div className="flex items-center gap-2">
               <h1 className="text-lg font-semibold text-foreground">{batch.period_label}</h1>

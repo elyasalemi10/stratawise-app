@@ -2,6 +2,7 @@ import { getOC } from "@/lib/actions/oc";
 import { redirect } from "next/navigation";
 import { CreateBudgetForm } from "./create-budget-form";
 import { listChartOfAccounts } from "@/lib/actions/chart-of-accounts";
+import { ocHasMaintenanceFund } from "@/lib/actions/budget";
 import { getFunds } from "@/lib/actions/funds";
 
 import { resolveOCFromCode } from "@/lib/oc-resolver";
@@ -15,21 +16,25 @@ export default async function CreateBudgetPage({
   const resolved = await resolveOCFromCode(ocCode);
   if (!resolved) redirect("/dashboard");
   const ocId = resolved.id;
-  const [oc, accounts, ocFunds] = await Promise.all([
+  const [oc, accounts, ocFunds, hasMaintenanceFund] = await Promise.all([
     getOC(ocId),
     listChartOfAccounts(),
     getFunds(ocId),
+    ocHasMaintenanceFund(ocId),
   ]);
 
   if (!oc) redirect("/dashboard");
 
-  // Available fund types for this budget are gated by the OC's actual
-  // funds (the funds the manager has created on /funds). Legacy fund
-  // type enum on budgets only knows admin/cw/mp, so custom funds are
-  // filtered out for now , they can still be billed via special levies
-  // until budget tables learn fund_id.
+  // Available fund types: prefer the new `funds` table (manager-created
+  // funds via /funds). If the OC hasn't created any yet (e.g. brand-new
+  // OC, or hasn't visited /funds), fall back to the legacy capabilities
+  // so the manager can still budget , Admin + Capital Works are
+  // assumed; Maintenance Plan only when the OC settings flag is on.
   const ocFundKinds = new Set(ocFunds.map((f) => f.kind));
-  const availableSystemFunds = (["administrative", "capital_works", "maintenance_plan"] as const).filter((k) => ocFundKinds.has(k));
+  const systemKinds = (["administrative", "capital_works", "maintenance_plan"] as const).filter((k) => ocFundKinds.has(k));
+  const availableSystemFunds = systemKinds.length > 0
+    ? systemKinds
+    : (["administrative", "capital_works", ...(hasMaintenanceFund ? ["maintenance_plan" as const] : [])] as ("administrative" | "capital_works" | "maintenance_plan")[]);
 
   // Financial year runs from the OC's configured start month. The "current"
   // FY is the one we're inside today; budgets can only be for the current FY

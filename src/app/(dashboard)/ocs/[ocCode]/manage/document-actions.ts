@@ -72,7 +72,7 @@ export async function deleteDocument(documentId: string) {
 
   const { data: doc } = await supabase
     .from("documents")
-    .select("oc_id, file_name, file_path")
+    .select("oc_id, file_name, file_path, insurance_policy_id")
     .eq("id", documentId)
     .single();
 
@@ -80,9 +80,18 @@ export async function deleteDocument(documentId: string) {
 
   await requireOCAccess(doc.oc_id);
 
-  // Delete via API route (which handles R2 + DB)
-  // But since we're server-side, just delete from DB directly
-  // R2 cleanup happens via the API route or can be a background job
+  // Clear the parent policy's document_url first so the policy no
+  // longer offers a dead "Download certificate of currency" link.
+  // The reverse direction (deleting a policy unlinks its docs) is
+  // handled by the documents.insurance_policy_id ON DELETE SET NULL
+  // FK , no app code needed.
+  if (doc.insurance_policy_id) {
+    await supabase
+      .from("insurance_policies")
+      .update({ document_url: null })
+      .eq("id", doc.insurance_policy_id);
+  }
+
   const { error } = await supabase
     .from("documents")
     .delete()
