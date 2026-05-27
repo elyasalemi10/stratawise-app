@@ -43,7 +43,10 @@ function SheetContent({
   className,
   children,
   side = "right",
-  showCloseButton = true,
+  // X close button is OFF by default per design , drawers are
+  // dismissed by clicking the overlay. Opt-in only if a screen
+  // truly needs the in-content close affordance.
+  showCloseButton = false,
   ...props
 }: SheetPrimitive.Popup.Props & {
   side?: "top" | "right" | "bottom" | "left"

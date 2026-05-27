@@ -91,30 +91,70 @@ export async function getLevyAutosendSchedule(
 // "use server" file because non-async exports there are rejected).
 
 /**
- * For the schedule preview: returns the set of YYYY-MM month keys for
- * any period of `budgetId` that already has a non-cancelled batch.
- * AutoSendCard uses this to hide already-generated periods from the
- * preview so the manager doesn't see e.g. four quarterly slots when
- * three are already issued , only the remaining one is auto-sendable.
+ * For the schedule preview: returns the FY-aligned period schedule for
+ * `budgetId`, with `done` flagged for any period that already has a
+ * non-cancelled batch. The client only renders the `pending` entries,
+ * so the manager sees just the runs that will actually fire.
  */
-export async function getGeneratedPeriodMonthKeys(
+export interface PreviewPeriod {
+  periodIndex: number;
+  monthKey: string;       // "YYYY-MM"
+  plannedDate: string;     // "YYYY-MM-DD" (sendDay clamped)
+  periodStart: string;     // "YYYY-MM-DD"
+  periodEnd: string;       // "YYYY-MM-DD"
+  done: boolean;
+  batchId: string | null;
+}
+
+export async function getBudgetPlannedPeriods(
   ocId: string,
   budgetId: string,
-): Promise<{ monthKeys: string[]; error?: string }> {
+  sendDay: number,
+): Promise<{ periods: PreviewPeriod[]; doneCount: number; error?: string }> {
   await requireOCAccess(ocId);
   const supabase = createServerClient();
-  const { data, error } = await supabase
-    .from("levy_batches")
-    .select("period_start, status")
-    .eq("budget_id", budgetId);
-  if (error) return { monthKeys: [], error: error.message };
-  const keys = new Set<string>();
-  for (const row of (data ?? [])) {
-    const r = row as { period_start: string; status: string };
+
+  const [{ data: budget }, { data: ocRow }, { data: batches }] = await Promise.all([
+    supabase.from("budgets").select("financial_year").eq("id", budgetId).maybeSingle(),
+    supabase.from("owners_corporations").select("billing_cycle, financial_year_start_month").eq("id", ocId).maybeSingle(),
+    supabase.from("levy_batches").select("id, period_start, status").eq("budget_id", budgetId),
+  ]);
+  if (!budget?.financial_year) return { periods: [], doneCount: 0, error: "Budget has no financial year" };
+
+  const billingCycle = (ocRow as { billing_cycle: string } | null)?.billing_cycle ?? "monthly";
+  const fyStartMonth = (ocRow as { financial_year_start_month: number } | null)?.financial_year_start_month ?? 7;
+  const fyStartYear = Number((budget.financial_year as string).split("-")[0]);
+  const periodsPerYear = getPeriodsForCycle(billingCycle);
+
+  const batchByStart = new Map<string, { id: string; status: string }>();
+  for (const row of (batches ?? [])) {
+    const r = row as { id: string; period_start: string; status: string };
     if (r.status === "cancelled") continue;
-    keys.add(r.period_start.slice(0, 7));
+    batchByStart.set(r.period_start, { id: r.id, status: r.status });
   }
-  return { monthKeys: Array.from(keys) };
+
+  const periods: PreviewPeriod[] = [];
+  let doneCount = 0;
+  for (let i = 0; i < periodsPerYear; i++) {
+    const p = getPeriodDates(fyStartMonth, fyStartYear, i, periodsPerYear);
+    const [yy, mm] = p.start.split("-");
+    const lastDay = new Date(Date.UTC(Number(yy), Number(mm), 0)).getUTCDate();
+    const safeDay = Math.min(Math.max(1, sendDay), lastDay);
+    const plannedDate = `${yy}-${mm}-${safeDay.toString().padStart(2, "0")}`;
+    const existing = batchByStart.get(p.start);
+    const done = !!existing;
+    if (done) doneCount += 1;
+    periods.push({
+      periodIndex: i,
+      monthKey: `${yy}-${mm}`,
+      plannedDate,
+      periodStart: p.start,
+      periodEnd: p.end,
+      done,
+      batchId: existing?.id ?? null,
+    });
+  }
+  return { periods, doneCount };
 }
 
 // Save per-month overrides to the schedule. Validates each entry is

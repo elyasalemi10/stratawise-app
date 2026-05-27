@@ -7,6 +7,7 @@ import { format } from "date-fns";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { NumberInput } from "@/components/ui/number-input";
 import { Label } from "@/components/ui/label";
 import { Badge } from "@/components/ui/badge";
 import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
@@ -41,20 +42,19 @@ const POLICY_TYPES = [
 const POLICY_LABELS: Record<string, string> = Object.fromEntries(POLICY_TYPES.map((t) => [t.value, t.label]));
 
 // ─── Amount Input ──────────────────────────────────────────
+// Thin wrapper around NumberInput so every $ field in this file
+// gets the consistent "$" prefix + thousands separators per the
+// CLAUDE.md amount-input rule.
 
 function AmountInput({ value, onChange, placeholder }: { value: string; onChange: (v: string) => void; placeholder?: string }) {
   return (
-    <input
-      type="text"
-      inputMode="decimal"
+    <NumberInput
       value={value}
-      onChange={(e) => {
-        const raw = e.target.value;
-        if (raw === "" || /^\d*\.?\d{0,2}$/.test(raw)) onChange(raw);
-      }}
-      onKeyDown={(e) => { if (e.key === "e" || e.key === "E") e.preventDefault(); }}
+      onChange={onChange}
+      thousandsSeparator
+      prefix="$"
       placeholder={placeholder}
-      className="h-9 w-full rounded-md border border-border bg-background px-3 text-sm outline-none placeholder:text-muted-foreground focus:border-primary focus:ring-2 focus:ring-primary/20"
+      allowDecimal
     />
   );
 }
@@ -459,23 +459,25 @@ function AddPolicyDrawer({
               <p className="text-sm text-foreground">
                 Drop your Certificate of Currency PDF here. We&apos;ll read the provider, policy number, sum insured, premium, and coverage dates and pre-fill the next page.
               </p>
-              <div className="flex flex-col items-center gap-3 rounded-md border-2 border-dashed border-border bg-card px-4 py-10">
+              <label
+                className={`flex cursor-pointer flex-col items-center justify-center rounded-md border-2 border-dashed border-border bg-card px-4 py-12 text-center transition-colors hover:border-primary/40 hover:bg-muted/40 ${parsing ? "pointer-events-none opacity-70" : ""}`}
+                onDragOver={(e) => e.preventDefault()}
+                onDrop={(e) => {
+                  e.preventDefault();
+                  const f = e.dataTransfer.files?.[0];
+                  if (f) handleCocUpload(f);
+                }}
+              >
                 {parsing ? (
                   <>
                     <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
-                    <span className="text-sm text-muted-foreground">Reading {uploadName}...</span>
+                    <span className="mt-3 text-sm text-muted-foreground">Reading {uploadName}...</span>
                   </>
                 ) : (
                   <>
-                    <Button
-                      type="button"
-                      variant="secondary"
-                      onClick={() => fileInputRef.current?.click()}
-                    >
-                      <Plus className="mr-1.5 h-3.5 w-3.5" />
-                      Choose certificate PDF
-                    </Button>
-                    <span className="text-xs text-muted-foreground">PDF, up to 25 MB</span>
+                    <Plus className="h-8 w-8 text-muted-foreground" />
+                    <span className="mt-3 text-sm text-foreground">Drop your certificate here, or click to choose</span>
+                    <span className="mt-1 text-xs text-muted-foreground">PDF, up to 25 MB</span>
                   </>
                 )}
                 <input
@@ -489,17 +491,12 @@ function AddPolicyDrawer({
                     e.target.value = "";
                   }}
                 />
-              </div>
+              </label>
             </div>
           )}
 
           {step === "form" && (
             <div className={`space-y-4 ${pending ? "pointer-events-none opacity-90" : ""}`}>
-              {documentUrl && (
-                <div className="rounded-md border border-border bg-muted/40 px-3 py-2 text-xs text-muted-foreground">
-                  Pre-filled from your uploaded certificate. Review the fields before saving.
-                </div>
-              )}
               <div className="space-y-1.5">
                 <Label>Policy type</Label>
                 <select value={policyType} onChange={(e) => setPolicyType(e.target.value)} className="h-9 w-full rounded-md border border-border bg-card px-3 text-sm">
@@ -540,14 +537,9 @@ function AddPolicyDrawer({
 
         <div className="border-t border-border p-4 flex justify-end gap-2">
           {step === "coc" && (
-            <>
-              <Button variant="secondary" onClick={() => { reset(); onClose(); }} disabled={parsing}>
-                Cancel
-              </Button>
-              <Button variant="secondary" onClick={() => setStep("form")} disabled={parsing}>
-                Skip and enter manually
-              </Button>
-            </>
+            <Button variant="secondary" onClick={() => setStep("form")} disabled={parsing}>
+              Skip and enter manually
+            </Button>
           )}
           {step === "form" && (
             <>

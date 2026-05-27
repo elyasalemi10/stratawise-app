@@ -11,6 +11,9 @@ import { Label } from "@/components/ui/label";
 import { NumberInput } from "@/components/ui/number-input";
 import { DatePicker } from "@/components/shared/date-picker";
 import {
+  Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
+} from "@/components/ui/select";
+import {
   Combobox, ComboboxContent, ComboboxEmpty, ComboboxInput, ComboboxItem, ComboboxList,
 } from "@/components/ui/combobox";
 import {
@@ -203,6 +206,21 @@ export function SpecialLevyForm({
 
   async function handleCreate() {
     if (!lots) return;
+    // Block submit if any per-lot adjustment is incomplete (no CoA OR
+    // a $0 amount). A zero-dollar line item is never intended , the
+    // manager either didn't finish typing or forgot to pick a category.
+    const badExtras: string[] = [];
+    for (const [lotId, list] of Object.entries(extras)) {
+      for (const [idx, e] of list.entries()) {
+        const amount = parseFloat(e.amount);
+        if (!e.coa_account_id) badExtras.push(`${lotId}-${idx}-coa`);
+        else if (!Number.isFinite(amount) || amount <= 0) badExtras.push(`${lotId}-${idx}-amount`);
+      }
+    }
+    if (badExtras.length > 0) {
+      toast.error("Every per-lot adjustment needs a CoA account and an amount above zero.");
+      return;
+    }
     setCreating(true);
     const cleanItems = items.filter((i) => i.coa_account_id && (parseFloat(i.amount) || 0) > 0);
 
@@ -282,7 +300,7 @@ export function SpecialLevyForm({
             <Textarea
               value={purpose}
               onChange={(e) => { setPurpose(e.target.value); setInvalid((v) => ({ ...v, purpose: false })); }}
-              placeholder="What this special levy is for. This note is printed at the top of every notice in this batch."
+              placeholder="This will appear on the levy"
               aria-invalid={invalid.purpose || undefined}
               rows={3}
             />
@@ -489,21 +507,25 @@ export function SpecialLevyForm({
                               {lotExtras.map((adj, ei) => (
                                 <TableRow key={`adj-${ei}`}>
                                   <TableCell className="py-0.5">
-                                    <Combobox
-                                      items={coaOptions}
+                                    <Select
                                       value={adj.coa_account_id ?? ""}
-                                      onValueChange={(v) => updateExtraCoa(l.lot_id, ei, v)}
+                                      onValueChange={(v) => updateExtraCoa(l.lot_id, ei, v ?? "")}
                                     >
-                                      <ComboboxInput placeholder="Pick a CoA account" />
-                                      <ComboboxContent>
-                                        <ComboboxEmpty>No accounts found.</ComboboxEmpty>
-                                        <ComboboxList>
-                                          {(c: CoaOption) => (
-                                            <ComboboxItem key={c.id} value={c.id}>{c.name}</ComboboxItem>
-                                          )}
-                                        </ComboboxList>
-                                      </ComboboxContent>
-                                    </Combobox>
+                                      <SelectTrigger className="h-7 text-[11px]">
+                                        <SelectValue placeholder="Pick a CoA account">
+                                          {adj.description || null}
+                                        </SelectValue>
+                                      </SelectTrigger>
+                                      <SelectContent>
+                                        {coaOptions.length === 0 ? (
+                                          <div className="px-2 py-1.5 text-xs text-muted-foreground">No CoA accounts available</div>
+                                        ) : (
+                                          coaOptions.map((c) => (
+                                            <SelectItem key={c.id} value={c.id}>{c.name}</SelectItem>
+                                          ))
+                                        )}
+                                      </SelectContent>
+                                    </Select>
                                   </TableCell>
                                   <TableCell className="py-0.5">
                                     <NumberInput
@@ -513,6 +535,10 @@ export function SpecialLevyForm({
                                       prefix="$"
                                       placeholder="Amount"
                                       allowDecimal
+                                      invalid={
+                                        adj.amount !== "" &&
+                                        (!Number.isFinite(parseFloat(adj.amount)) || parseFloat(adj.amount) <= 0)
+                                      }
                                     />
                                   </TableCell>
                                   <TableCell className="py-0.5">

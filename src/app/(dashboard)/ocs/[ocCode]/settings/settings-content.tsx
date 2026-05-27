@@ -21,10 +21,11 @@ import { updateOCField } from "../manage/actions";
 import {
   upsertLevyAutosendSchedule,
   updateAutosendOverrides,
-  getGeneratedPeriodMonthKeys,
+  getBudgetPlannedPeriods,
   type LevyAutosendSchedule,
+  type PreviewPeriod,
 } from "@/lib/actions/levy-autosend";
-import { buildPlannedSends, ordinalRunLabel } from "@/lib/levy-autosend-helpers";
+import { ordinalRunLabel } from "@/lib/levy-autosend-helpers";
 import {
   Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle,
 } from "@/components/ui/sheet";
@@ -246,9 +247,6 @@ function SettingsEditDrawer({
           ))}
         </div>
         <div className="border-t border-border p-4 flex justify-end gap-2">
-          <Button variant="secondary" onClick={onClose} disabled={saving}>
-            Cancel
-          </Button>
           <Button onClick={save} disabled={saving}>
             {saving && <Loader2 className="size-4 animate-spin" />}
             Save
@@ -830,9 +828,6 @@ function AutoSendCard({
     });
   }
 
-  // Today's date used as the planner anchor. Computed at render so the
-  // preview matches "now" without needing a server round-trip.
-  const todayIso = new Date().toISOString().slice(0, 10);
   // Schedule preview reads the resolved day (1..28 or 31 for "last day").
   // Falls back to 1 while the manager is mid-edit so the popup always
   // has something to render without crashing.
@@ -840,37 +835,39 @@ function AutoSendCard({
     ? 31
     : (parseInt(draft.send_day_of_month, 10) || 1);
 
-  // Months that already have a batch issued for the currently-selected
-  // budget. Refreshed whenever the budget choice changes so the preview
-  // hides quarters the manager has already generated manually.
-  const [generatedMonthKeys, setGeneratedMonthKeys] = useState<string[]>([]);
+  // Server-resolved budget periods: walks the full FY period set for
+  // the selected budget, marking ones that already have a batch as
+  // done. Refreshed whenever the budget OR the send day changes (the
+  // day clamps differently per month so the planned date shifts).
+  const [budgetPeriods, setBudgetPeriods] = useState<PreviewPeriod[]>([]);
+  const [doneCount, setDoneCount] = useState(0);
   useEffect(() => {
     let cancelled = false;
     if (!draft.budget_id) {
-      setGeneratedMonthKeys([]);
+      setBudgetPeriods([]);
+      setDoneCount(0);
       return;
     }
-    getGeneratedPeriodMonthKeys(ocId, draft.budget_id).then((res) => {
-      if (!cancelled) setGeneratedMonthKeys(res.monthKeys);
+    getBudgetPlannedPeriods(ocId, draft.budget_id, previewDay).then((res) => {
+      if (cancelled) return;
+      setBudgetPeriods(res.periods);
+      setDoneCount(res.doneCount);
     });
     return () => { cancelled = true; };
-  }, [draft.budget_id, ocId]);
+  }, [draft.budget_id, ocId, previewDay]);
 
-  const generatedSet = new Set(generatedMonthKeys);
-  const rawPlanned = buildPlannedSends(
-    { send_day_of_month: previewDay, date_overrides: overrides },
-    billingCycle,
-    todayIso,
-    // Match the billing cycle: monthly = 12 dates, quarterly = 4,
-    // half-yearly = 2, annually = 1. Showing 12 "monthly" dates for
-    // an annual schedule is just noise.
-    ({ monthly: 12, quarterly: 4, half_yearly: 2, annually: 1 } as Record<string, number>)[billingCycle] ?? 12,
-    fyStartMonth,
-  );
-  // Drop periods that already have a non-cancelled batch , the cron
-  // would skip them anyway, no point asking the manager to confirm
-  // dates that won't fire.
-  const planned = rawPlanned.filter((p) => !generatedSet.has(p.monthKey));
+  // Only the pending periods need a date picker , done ones are
+  // skipped by the cron, no point showing them.
+  const planned = budgetPeriods
+    .filter((p) => !p.done)
+    .map((p) => ({
+      monthKey: p.monthKey,
+      defaultDate: p.plannedDate,
+      effectiveDate: overrides[p.monthKey] ?? p.plannedDate,
+      isOverridden: overrides[p.monthKey] && overrides[p.monthKey] !== p.plannedDate ? true : false,
+    }));
+  // suppress unused-var noise from removed-but-imported FY helpers
+  void fyStartMonth;
 
   // ── Two-step flow when embedded ─────────────────────────────
   // Step "form": all the inputs + Next button.
@@ -985,9 +982,9 @@ function AutoSendCard({
             </div>
           ) : (
             <>
-              {generatedMonthKeys.length > 0 && (
+              {doneCount > 0 && (
                 <p className="text-xs text-muted-foreground">
-                  {generatedMonthKeys.length} period{generatedMonthKeys.length === 1 ? "" : "s"} already generated for this budget and will be skipped. The dates below cover what's left.
+                  {doneCount} period{doneCount === 1 ? "" : "s"} already generated for this budget , skipped. The dates below cover what&apos;s left.
                 </p>
               )}
               {planned.map((p, idx) => {
@@ -1033,28 +1030,23 @@ function AutoSendCard({
 
       <div className="flex justify-end gap-2 pt-2">
         {embedded && embeddedStep === "form" && (
-          <>
-            <Button variant="secondary" onClick={() => onClose?.()}>
-              Cancel
-            </Button>
-            <Button
-              onClick={() => {
-                if (!draft.enabled) {
-                  // Schedule preview only makes sense when auto-send
-                  // is on. If they're turning it OFF, skip the
-                  // preview step and save straight away.
-                  save();
-                  return;
-                }
-                if (validateForm() === null) return;
-                setEmbeddedStep("schedule");
-              }}
-              disabled={pending}
-            >
-              {pending && <Loader2 className="size-4 animate-spin" />}
-              {draft.enabled ? "Next" : "Save"}
-            </Button>
-          </>
+          <Button
+            onClick={() => {
+              if (!draft.enabled) {
+                // Schedule preview only makes sense when auto-send
+                // is on. If they're turning it OFF, skip the
+                // preview step and save straight away.
+                save();
+                return;
+              }
+              if (validateForm() === null) return;
+              setEmbeddedStep("schedule");
+            }}
+            disabled={pending}
+          >
+            {pending && <Loader2 className="size-4 animate-spin" />}
+            {draft.enabled ? "Next" : "Save"}
+          </Button>
         )}
         {embedded && embeddedStep === "schedule" && (
           <>

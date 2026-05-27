@@ -148,7 +148,6 @@ export function LevyNotice({
       paddingLeft: 12,
       paddingRight: 12,
       paddingVertical: 10,
-      borderRadius: 2,
     },
     specialNoteLabel: {
       fontSize: 9,

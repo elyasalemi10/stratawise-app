@@ -1,8 +1,9 @@
 "use client";
 
 import { useState } from "react";
-import { Landmark, Upload } from "lucide-react";
+import { Upload } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 import { ImportCsvDialog } from "./import-csv-dialog";
 
 const FUND_LABEL: Record<string, string> = {
@@ -42,56 +43,77 @@ export function BankAccountsList({
   accounts: BankAccountRow[];
 }) {
   const [importTarget, setImportTarget] = useState<BankAccountRow | null>(null);
+  const [activeTab, setActiveTab] = useState<string>(accounts[0]?.id ?? "");
+
+  function switchTab(next: string) {
+    setActiveTab(next);
+    if (typeof window !== "undefined") {
+      const url = new URL(window.location.href);
+      url.searchParams.set("tab", next);
+      window.history.replaceState(null, "", url.toString());
+    }
+  }
 
   return (
-    <>
-      <div className="overflow-hidden rounded-md border border-border bg-card divide-y divide-border">
+    <div className="space-y-6">
+      <Tabs value={activeTab} onValueChange={switchTab}>
+        <TabsList
+          variant="line"
+          className="h-auto w-full flex-wrap justify-start gap-0 border-0 bg-transparent p-0"
+        >
+          {accounts.map((a) => (
+            <TabsTrigger
+              key={a.id}
+              value={a.id}
+              className="relative h-11 min-w-[6.5rem] rounded-none border-0 px-4 text-sm font-medium text-muted-foreground bg-transparent transition-colors hover:text-foreground hover:bg-transparent data-active:bg-transparent data-active:text-foreground group-data-horizontal/tabs:after:inset-x-2 group-data-horizontal/tabs:after:bottom-0 group-data-horizontal/tabs:after:h-0.5 data-active:after:bg-[color:var(--brand-gold)] data-active:after:rounded-full"
+            >
+              {a.account_name || a.bank_name || "Bank account"}
+            </TabsTrigger>
+          ))}
+        </TabsList>
+
         {accounts.map((a) => {
           const balance = Number(a.current_balance ?? 0);
           const asOf = formatDateLong(a.current_balance_as_of);
           return (
-            <div
-              key={a.id}
-              className="flex items-center justify-between gap-4 px-4 py-3 hover:bg-muted/30 transition-colors"
-            >
-              <div className="flex items-center gap-3 min-w-0">
-                <div className="flex h-9 w-9 items-center justify-center rounded-md bg-primary/10 text-primary shrink-0">
-                  <Landmark className="h-4 w-4" />
-                </div>
-                <div className="min-w-0">
-                  <div className="text-sm font-medium text-foreground truncate">
-                    {a.account_name || a.bank_name || "Bank account"}
+            <TabsContent key={a.id} value={a.id} className="mt-4">
+              <div className="rounded-md border border-border bg-card p-5 space-y-5">
+                <div className="flex items-start justify-between gap-4">
+                  <div className="space-y-1">
+                    <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
+                      Balance
+                    </p>
+                    <p className="text-3xl font-bold tabular-nums text-foreground">
+                      {formatCurrency(balance)}
+                    </p>
+                    {asOf && (
+                      <p className="text-xs text-muted-foreground">as of {asOf}</p>
+                    )}
                   </div>
-                  <div className="text-xs text-muted-foreground truncate">
-                    {FUND_LABEL[a.fund_type] ?? a.fund_type}
-                    {a.bsb && a.account_number ? (
-                      <> &middot; {a.bsb} {a.account_number}</>
-                    ) : null}
+                  <Button onClick={() => setImportTarget(a)}>
+                    <Upload className="mr-1.5 h-3.5 w-3.5" />
+                    Import CSV
+                  </Button>
+                </div>
+                <div className="grid grid-cols-1 gap-3 sm:grid-cols-3 border-t border-border pt-4">
+                  <div>
+                    <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">Fund</p>
+                    <p className="text-sm text-foreground mt-1">{FUND_LABEL[a.fund_type] ?? a.fund_type}</p>
+                  </div>
+                  <div>
+                    <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">BSB</p>
+                    <p className="text-sm text-foreground mt-1">{a.bsb || ""}</p>
+                  </div>
+                  <div>
+                    <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">Account number</p>
+                    <p className="text-sm text-foreground mt-1">{a.account_number || ""}</p>
                   </div>
                 </div>
               </div>
-              <div className="flex items-center gap-4 shrink-0">
-                <div className="text-right">
-                  <div className="text-sm font-semibold tabular-nums text-foreground">
-                    {formatCurrency(balance)}
-                  </div>
-                  {asOf && (
-                    <div className="text-[11px] text-muted-foreground">as of {asOf}</div>
-                  )}
-                </div>
-                <Button
-                  size="sm"
-                  variant="secondary"
-                  onClick={() => setImportTarget(a)}
-                >
-                  <Upload className="mr-1.5 h-3.5 w-3.5" />
-                  Import CSV
-                </Button>
-              </div>
-            </div>
+            </TabsContent>
           );
         })}
-      </div>
+      </Tabs>
 
       {importTarget && (
         <ImportCsvDialog
@@ -101,6 +123,6 @@ export function BankAccountsList({
           onOpenChange={(o) => { if (!o) setImportTarget(null); }}
         />
       )}
-    </>
+    </div>
   );
 }

@@ -167,7 +167,6 @@ export function BudgetReport({
       paddingLeft: 12,
       paddingRight: 12,
       paddingVertical: 10,
-      borderRadius: 2,
     },
     ocName: {
       fontSize: 11,
@@ -264,7 +263,6 @@ export function BudgetReport({
       backgroundColor: c.stripe,
       borderLeftWidth: 3,
       borderLeftColor: brand,
-      borderRadius: 2,
     },
     noteLabel: { fontSize: 8, color: c.muted, fontFamily: FONT, fontWeight: 600 },
     noteText: { fontSize: 9, color: c.foreground, lineHeight: 1.5, marginTop: 2 },

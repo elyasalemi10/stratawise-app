@@ -168,12 +168,12 @@ function getOCNavGroups(ocCode: string, isLotOwner: boolean) {
         { href: `${base}/budgets`, label: "Budgets", icon: PieChart },
       ],
     },
-    // Finance: bank accounts only for now , the rest of the banking
-    // stack (ledger / reconciliation / payer mappings) is being rebuilt
-    // and will land back under this group.
+    // Finance: bank accounts + funds. With 2+ items the sidebar
+    // renders Finance as a collapsible accordion group.
     {
       label: "Finance",
       items: [
+        { href: `${base}/funds`, label: "Funds", icon: Wallet },
         { href: `${base}/bank-accounts`, label: "Bank accounts", icon: Landmark },
       ],
     },
