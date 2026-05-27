@@ -82,23 +82,23 @@ export async function POST(request: NextRequest) {
   const buffer = Buffer.from(await file.arrayBuffer());
   await uploadObject(key, buffer, file.type);
 
-  // Categories that get OCR'd INLINE by their own flow (settlement parse,
-  // insurance parse, plan-of-subdivision + OC-rules in the wizard) , the
-  // caller needs the structured values back immediately, so they run OCR
-  // synchronously and store the text themselves. We must NOT also queue
-  // the background ocr-document task for these, or we'd double-OCR (and
-  // race the inline write). Only plain documents-page uploads (category
-  // "other" / generic) flow through the Trigger.dev background job.
-  const SELF_OCR_CATEGORIES = new Set([
-    "settlement",
-    "insurance_policy",
-    "plan_of_subdivision",
-    "oc_rules",
-  ]);
-  const selfOcr = SELF_OCR_CATEGORIES.has(category);
-
+  // The "self-OCR" categories (settlement parse, insurance parse,
+  // plan-of-subdivision + OC-rules + certificate_of_currency) used to
+  // SKIP the background Doc AI queue entirely because the inline
+  // Gemini parse already wrote structured fields. That meant their
+  // full-text wasn't searchable from the docs page.
+  //
+  // We now run BOTH pipelines: the upload route still queues Doc AI
+  // for plain-text indexing, AND the inline caller writes its
+  // structured output. Doc AI's `ocr_text` lands on the documents
+  // row; the inline parse's structured columns live wherever they
+  // belong (insurance_policies, settlements, oc_drafts, etc).
+  // ocr_status starts "pending" so the Trigger.dev worker can flip it
+  // to "complete" once Doc AI finishes; the inline self-OCR paths
+  // bypass that flag (they don't touch ocr_status when they finish
+  // their structured write).
   const willOcr = isOcrable(file.type);
-  const queueBackgroundOcr = willOcr && !selfOcr;
+  const queueBackgroundOcr = willOcr;
   const { data: doc, error } = await supabase
     .from("documents")
     .insert({

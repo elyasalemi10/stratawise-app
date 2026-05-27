@@ -3,7 +3,7 @@
 import { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import {
-  ArrowLeft, CheckCircle2, ChevronDown, Download, Mail, Trash2, FolderDown,
+  ArrowLeft, CheckCircle2, ChevronDown, Download, ExternalLink, Mail, Trash2, FolderDown,
   Undo2, RefreshCw, AlertTriangle, Loader2, Send,
 } from "lucide-react";
 import { format } from "date-fns";
@@ -438,12 +438,18 @@ export function BatchDetailContent({
                         </Button>
                       )}
                       {levy.pdf_url && (
-                        <a href={levy.pdf_url} target="_blank" rel="noopener noreferrer">
-                          <Button variant="outline" size="sm">
-                            <Download className="size-3.5" />
-                            Download PDF
-                          </Button>
-                        </a>
+                        <>
+                          <a href={levy.pdf_url} target="_blank" rel="noopener noreferrer" aria-label="Open levy PDF in new tab">
+                            <Button variant="outline" size="sm">
+                              <ExternalLink className="size-3.5" />
+                            </Button>
+                          </a>
+                          <a href={levy.pdf_url} download aria-label="Download levy PDF">
+                            <Button variant="outline" size="sm">
+                              <Download className="size-3.5" />
+                            </Button>
+                          </a>
+                        </>
                       )}
                     </div>
                   </div>

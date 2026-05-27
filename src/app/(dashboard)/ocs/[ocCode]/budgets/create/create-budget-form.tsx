@@ -156,39 +156,40 @@ export function CreateBudgetForm({
   accounts,
   fyOptions,
   defaultFinancialYear,
-  hasMaintenanceFund,
+  availableFunds,
 }: {
   ocId: string;
   accounts: CoaAccount[];
   fyOptions: string[];
   defaultFinancialYear: string;
-  hasMaintenanceFund: boolean;
+  /** Fund types the OC actually has on /funds. Filters which options
+   *  appear in the multi-select , an OC with only an admin fund won't
+   *  see Capital Works or Maintenance Plan as choices. */
+  availableFunds: FundType[];
 }) {
   const ocCode = useOCCode();
   const router = useRouter();
   const [allAccounts, setAllAccounts] = useState<CoaAccount[]>(accounts);
   const [financialYear, setFinancialYear] = useState(defaultFinancialYear);
 
-  // Funds the manager wants to budget for this year. At least one required.
-  const [selectedFunds, setSelectedFunds] = useState<FundType[]>(["administrative"]);
-  const [activeTab, setActiveTab] = useState<FundType>("administrative");
+  const fundOptions = FUND_OPTIONS.filter((o) => availableFunds.includes(o.value));
+  // Default to the first available fund (admin if present, otherwise
+  // whatever the OC has). Empty array if the OC has zero funds yet ,
+  // which the form handles below with a helpful empty state.
+  const defaultFund: FundType = (availableFunds[0] ?? "administrative") as FundType;
+  const [selectedFunds, setSelectedFunds] = useState<FundType[]>(
+    availableFunds.length > 0 ? [defaultFund] : [],
+  );
+  const [activeTab, setActiveTab] = useState<FundType>(defaultFund);
   const [itemsByFund, setItemsByFund] = useState<FundItemsMap>(emptyItems);
-  // Combobox visibility tracked per fund (re-opens on tab switch so each tab
-  // has one ready row to fill).
   const [comboOpen, setComboOpen] = useState<Record<FundType, boolean>>({
     administrative: true, capital_works: true, maintenance_plan: true,
   });
   const [pending, setPending] = useState(false);
 
-  // Drawer state , captures the fund the request came from + any typed name
-  // to seed into the drawer.
   const [drawerOpen, setDrawerOpen] = useState(false);
   const [drawerSeedName, setDrawerSeedName] = useState("");
-  const [drawerFund, setDrawerFund] = useState<FundType>("administrative");
-
-  const fundOptions = FUND_OPTIONS.filter(
-    (o) => o.value !== "maintenance_plan" || hasMaintenanceFund,
-  );
+  const [drawerFund, setDrawerFund] = useState<FundType>(defaultFund);
 
   // Keep the active tab pointing at a selected fund. If the manager unticks
   // the active fund, jump to the first one that's still selected.

@@ -67,22 +67,26 @@ export async function createInsurancePolicy(
   };
   if (data.document_url) insertData.document_url = data.document_url;
 
-  const { error } = await supabase
+  const { data: inserted, error } = await supabase
     .from("insurance_policies")
-    .insert(insertData);
+    .insert(insertData)
+    .select("id")
+    .single();
 
   if (error) return { error: error.message };
 
+  const policyId = (inserted as { id: string } | null)?.id;
   await supabase.from("audit_log").insert({
     profile_id: profile.id,
     oc_id: ocId,
     action: "create",
     entity_type: "insurance_policy",
+    entity_id: policyId,
     after_state: data,
   });
 
   revalidatePath("/ocs/[ocCode]/insurance", "page");
-  return { success: true };
+  return { success: true, policyId };
 }
 
 export async function updateInsurancePolicy(

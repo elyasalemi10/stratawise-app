@@ -75,7 +75,7 @@ const RESPONSE_SCHEMA = {
           policy_type: {
             type: Type.STRING,
             description:
-              "Best-fit category. PREFER one of: 'building', 'public_liability', 'combined' (bundled building + public liability), 'contents', 'workers_comp', 'office_bearers', 'fidelity'. If none fit, return a SHORT custom label (max 32 chars, snake_case, e.g. 'plant_machinery', 'cyber_liability'). Treat 'voluntary_workers' as a synonym for 'workers_comp'.",
+              "Best-fit category. PREFER one of these exact snake_case enum values: 'building', 'public_liability', 'contents', 'workers_comp', 'office_bearers', 'fidelity'. Treat 'voluntary_workers' as a synonym for 'workers_comp'. If the certificate covers MULTIPLE distinct sections (e.g. building + public liability + voluntary workers as one bundled policy), DO NOT return 'combined' or any other snake_case token , instead return a SHORT human-readable Title Case label describing the bundle, e.g. 'Building + Public Liability', 'Building + Indemnity + Workers Comp', 'Strata Pack'. The UI uses this string verbatim as the policy type, so write what a manager would say to another manager (not a code name).",
           },
           sum_insured: { type: Type.NUMBER, nullable: true, description: "Sum insured in AUD. Strip currency symbols + commas. Null if not applicable (public liability has 'limit of liability' , use that)." },
           premium: { type: Type.NUMBER, nullable: true, description: "Annual premium in AUD inclusive of GST + stamp duty. Null if not shown." },

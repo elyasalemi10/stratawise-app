@@ -17,6 +17,11 @@ export async function uploadAndParseInsuranceCoc(
 ): Promise<{
   storage_key?: string;
   public_url?: string;
+  /** Documents row id for the uploaded CoC. The drawer hands this back
+   *  to createInsurancePolicy via attachDocumentToPolicy() so the
+   *  document is permanently linked to the saved policy , the policy
+   *  detail page can then show "Source: filename.pdf" without scanning. */
+  document_id?: string;
   insured_name?: string | null;
   /** PS number Gemini read off the certificate. Returned so the
    *  drawer can compare against the OC's saved plan_number and ask
@@ -66,18 +71,26 @@ export async function uploadAndParseInsuranceCoc(
   }
 
   // Drop the file row into documents so the manager can find it in
-  // the docs page later, with OCR-ready storage path.
+  // the docs page later. Category is "certificate_of_currency" (not
+  // the generic "insurance") so the documents page can render the
+  // right badge + filter chip, and so we know which docs to back-link
+  // to a policy when the manager finishes the create flow.
   const supabase = createServerClient();
-  await supabase.from("documents").insert({
-    oc_id: ocId,
-    file_name: file.name,
-    file_path: key,
-    file_size: file.size,
-    mime_type: "application/pdf",
-    category: "insurance",
-    is_confidential: true,
-    ocr_status: "complete",
-  });
+  const { data: docRow } = await supabase
+    .from("documents")
+    .insert({
+      oc_id: ocId,
+      file_name: file.name,
+      file_path: key,
+      file_size: file.size,
+      mime_type: "application/pdf",
+      category: "certificate_of_currency",
+      is_confidential: true,
+      ocr_status: "complete",
+    })
+    .select("id")
+    .single();
+  const documentId = (docRow as { id: string } | null)?.id;
 
   // Compare the certificate's plan_number against the OC's so we can
   // warn the manager when the wrong CoC was uploaded against the wrong
@@ -95,9 +108,34 @@ export async function uploadAndParseInsuranceCoc(
   return {
     storage_key: key,
     public_url: `/api/insurance-doc?key=${encodeURIComponent(key)}`,
+    document_id: documentId,
     insured_name: parsed.insured_name,
     plan_number: parsed.plan_number ?? null,
     ps_match: psMatch,
     policies: parsed.policies,
   };
+}
+
+/**
+ * Back-links a previously-uploaded CoC document to the insurance
+ * policy that was created from it. Called by AddPolicyDrawer right
+ * after createInsurancePolicy returns, so the documents row gains
+ * insurance_policy_id and the policy detail page can render
+ * "Source: filename.pdf" without scanning.
+ */
+export async function attachDocumentToPolicy(
+  ocId: string,
+  documentId: string,
+  policyId: string,
+): Promise<{ error?: string }> {
+  await requireCompanyRole();
+  await requireOCAccess(ocId);
+  const supabase = createServerClient();
+  const { error } = await supabase
+    .from("documents")
+    .update({ insurance_policy_id: policyId })
+    .eq("id", documentId)
+    .eq("oc_id", ocId);
+  if (error) return { error: error.message };
+  return {};
 }

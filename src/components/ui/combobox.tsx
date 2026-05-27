@@ -189,7 +189,18 @@ function ComboboxContent({ children, className }: { children: React.ReactNode; c
       style={ctx.triggerWidth ? { width: ctx.triggerWidth } : undefined}
       className={cn("p-0 overflow-hidden", className)}
     >
-      <CommandPrimitive className="flex flex-col" filter={(v, search) => v.toLowerCase().includes(search.toLowerCase()) ? 1 : 0}>
+      <CommandPrimitive
+        className="flex flex-col"
+        // cmdk concatenates the item's `value` + every entry in
+        // `keywords` and matches the search against that combined
+        // string. Substring-includes (not fuzzy) keeps the behaviour
+        // predictable for code lookups , typing "man" matches
+        // "Management fees" via the keyword payload.
+        filter={(value, search, keywords) => {
+          const haystack = [value, ...(keywords ?? [])].join(" ").toLowerCase();
+          return haystack.includes(search.toLowerCase()) ? 1 : 0;
+        }}
+      >
         <div className="border-b border-border">
           <CommandPrimitive.Input
             value={ctx.query}
@@ -231,12 +242,16 @@ function ComboboxList<T>({
 }
 
 function ComboboxItem({
-  value, children, className, onSelect,
+  value, children, className, onSelect, keywords,
 }: {
   value: string;
   children: React.ReactNode;
   className?: string;
   onSelect?: (v: string) => void;
+  /** Extra search terms cmdk should match against (in addition to
+   *  `value`). Pass the human-readable label here when `value` is a
+   *  UUID/id , otherwise typing the label won't find the item. */
+  keywords?: string[];
 }) {
   const ctx = useCtx();
   const isSelected = ctx.value === value;
@@ -244,6 +259,7 @@ function ComboboxItem({
   return (
     <CommandPrimitive.Item
       value={value}
+      keywords={keywords}
       onSelect={(v) => {
         ctx.setValue(v);
         ctx.setSelectedLabel(children);

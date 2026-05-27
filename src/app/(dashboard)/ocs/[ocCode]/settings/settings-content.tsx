@@ -653,10 +653,16 @@ function AutomationsTab({
   return (
     <div className="space-y-4">
       <div className="flex justify-end">
-        <Button size="sm" onClick={() => setDrawerMode("new")}>
-          <PlusIcon className="mr-1.5 h-3.5 w-3.5" />
-          Add automation
-        </Button>
+        {/* Only one auto-send schedule per OC for now; when a row
+            already exists, manager edits it by clicking the row.
+            Showing Add at that point would just open a confusing
+            second draft of the same automation. */}
+        {rows.length === 0 && (
+          <Button size="sm" onClick={() => setDrawerMode("new")}>
+            <PlusIcon className="mr-1.5 h-3.5 w-3.5" />
+            Add automation
+          </Button>
+        )}
       </div>
 
       <div className="overflow-hidden rounded-md border border-border bg-card">
@@ -719,7 +725,13 @@ function AutomationsTab({
               ocId={ocId}
               billingCycle={billingCycle}
               fyStartMonth={fyStartMonth}
-              initial={autosend}
+              // For "new" we hand the drawer a blank schedule so the
+              // Delete-automation button stays hidden (there's nothing
+              // to delete yet) and no fields are pre-populated from a
+              // stray pre-existing row.
+              initial={drawerMode === "new"
+                ? { id: null, oc_id: ocId, enabled: false, budget_id: null, send_day_of_month: 1, from_address: null, last_sent_on: null, next_send_date: null, last_error: null, date_overrides: {}, planned_periods: [] }
+                : autosend}
               mailboxOptions={mailboxOptions}
               budgets={budgets}
               preloadedPeriods={preloadedPeriods}
@@ -948,7 +960,7 @@ function AutoSendCard({
                 <ComboboxEmpty>No approved budgets.</ComboboxEmpty>
                 <ComboboxList>
                   {(b: { id: string; label: string }) => (
-                    <ComboboxItem key={b.id} value={b.id}>
+                    <ComboboxItem key={b.id} value={b.id} keywords={[b.label]}>
                       {b.label}
                     </ComboboxItem>
                   )}
@@ -1065,15 +1077,12 @@ function AutoSendCard({
         </div>
       )}
 
-        {(nextDate || savedAt) && (
+        {/* Next-run line only shows on the standalone (non-embedded)
+            card. Inside the drawer the schedule step already lays out
+            every run date, so repeating "Next run" up top is noise. */}
+        {!embedded && savedAt && (
           <div className="rounded-md border border-border bg-muted/40 px-3 py-2 text-xs text-muted-foreground">
-            {nextDate && (
-              <div>
-                Next run will be on the{" "}
-                <span className="font-medium text-foreground">{formatNiceDate(nextDate)}</span>
-              </div>
-            )}
-            {savedAt && <div>Last sent: <span className="font-medium text-foreground">{savedAt}</span></div>}
+            Last sent: <span className="font-medium text-foreground">{savedAt}</span>
           </div>
         )}
 

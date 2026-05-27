@@ -2,7 +2,7 @@
 
 import { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
-import { Loader2, Landmark, Link as LinkIcon } from "lucide-react";
+import { Loader2, Wallet, Users, Landmark, ListChecks, type LucideIcon } from "lucide-react";
 import { toast } from "sonner";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -14,14 +14,13 @@ import {
   Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
 } from "@/components/ui/select";
 import {
+  Combobox, ComboboxContent, ComboboxEmpty, ComboboxInput, ComboboxItem, ComboboxList,
+} from "@/components/ui/combobox";
+import {
   Table, TableBody, TableCell, TableHead, TableHeader, TableRow,
 } from "@/components/ui/table";
 import { cn } from "@/lib/utils";
-import {
-  createFund,
-  type LotForFund,
-  type ExistingBankAccountOption,
-} from "@/lib/actions/funds";
+import { createFund, type LotForFund, type ExistingBankAccountOption } from "@/lib/actions/funds";
 import { FUND_KIND_LABEL, type FundKind } from "@/lib/funds-shared";
 
 type LotEntitlement = {
@@ -29,7 +28,60 @@ type LotEntitlement = {
   liability: string;
 };
 
-type Step = "kind" | "lots" | "bank";
+type Step = "kind" | "lots" | "bankChoice" | "bankDetails";
+
+const STEPS: Array<{ key: Step; number: number; label: string; icon: LucideIcon }> = [
+  { key: "kind", number: 1, label: "Fund type", icon: Wallet },
+  { key: "lots", number: 2, label: "Lots", icon: Users },
+  { key: "bankChoice", number: 3, label: "Bank choice", icon: ListChecks },
+  { key: "bankDetails", number: 4, label: "Bank details", icon: Landmark },
+];
+
+function StepIndicator({ current }: { current: Step }) {
+  const currentNumber = STEPS.find((s) => s.key === current)?.number ?? 1;
+  return (
+    <div className="mb-6 flex flex-wrap items-start justify-center gap-x-5 gap-y-4">
+      {STEPS.map((s, i) => {
+        const isDone = s.number < currentNumber;
+        const isCurrent = s.number === currentNumber;
+        const Icon = s.icon;
+        return (
+          <div key={s.key} className="flex items-start gap-4">
+            <div className="flex flex-col items-center gap-2">
+              <div
+                className={cn(
+                  "flex h-12 w-12 shrink-0 items-center justify-center rounded-full transition-colors",
+                  (isDone || isCurrent) && "bg-primary text-primary-foreground",
+                  !isDone && !isCurrent && "border-2 border-dashed border-border bg-background text-muted-foreground",
+                )}
+              >
+                <Icon className="h-5 w-5" strokeWidth={2} />
+              </div>
+              <span
+                className={cn(
+                  "text-sm whitespace-nowrap select-text",
+                  isCurrent && "font-semibold text-foreground",
+                  isDone && "font-medium text-primary",
+                  !isDone && !isCurrent && "text-muted-foreground",
+                )}
+              >
+                {s.label}
+              </span>
+            </div>
+            {i < STEPS.length - 1 && (
+              <div
+                className={cn(
+                  "mt-6 h-px w-10 shrink-0 border-t-2",
+                  isDone ? "border-solid border-primary" : "border-dashed border-border",
+                )}
+              />
+            )}
+          </div>
+        );
+      })}
+    </div>
+  );
+}
 
 export function CreateFundForm({
   ocId,
@@ -55,8 +107,6 @@ export function CreateFundForm({
     { value: "custom" as FundKind, label: "Other (custom fund)", disabled: false },
   ] as Array<{ value: FundKind; label: string; disabled: boolean }>).filter((k) => !k.disabled);
 
-  // Default to the first available kind. If everything's taken except
-  // custom, default to custom.
   const [kind, setKind] = useState<FundKind>(kindChoices[0]?.value ?? "custom");
   const [customName, setCustomName] = useState("");
 
@@ -66,10 +116,11 @@ export function CreateFundForm({
     ),
   );
 
-  // New funds default to creating a fresh bank account , the manager
-  // can switch to "share" if they want to link to an existing one.
-  const [bankMode, setBankMode] = useState<"new" | "shared">("new");
-  const [sharedParentId, setSharedParentId] = useState<string>(bankOptions[0]?.id ?? "");
+  // Bank: choice step first (yes/no share), then details step.
+  // bankMode is undefined until the manager picks ("" sentinel) so we
+  // don't auto-select and force them to make the call.
+  const [bankMode, setBankMode] = useState<"new" | "shared" | "">("");
+  const [sharedParentId, setSharedParentId] = useState<string>("");
   const [bsb, setBsb] = useState("");
   const [accountNumber, setAccountNumber] = useState("");
   const [accountName, setAccountName] = useState("");
@@ -80,16 +131,10 @@ export function CreateFundForm({
   const includedCount = Object.values(entitlements).filter((e) => e.selected).length;
 
   function toggleLot(lotId: string, checked: boolean) {
-    setEntitlements((p) => ({
-      ...p,
-      [lotId]: { ...p[lotId], selected: checked },
-    }));
+    setEntitlements((p) => ({ ...p, [lotId]: { ...p[lotId], selected: checked } }));
   }
   function updateLiability(lotId: string, v: string) {
-    setEntitlements((p) => ({
-      ...p,
-      [lotId]: { ...p[lotId], liability: v },
-    }));
+    setEntitlements((p) => ({ ...p, [lotId]: { ...p[lotId], liability: v } }));
   }
 
   function goNextFromKind() {
@@ -104,7 +149,18 @@ export function CreateFundForm({
       toast.error("Tick at least one lot for this fund.");
       return;
     }
-    setStep("bank");
+    setStep("bankChoice");
+  }
+  function goNextFromBankChoice() {
+    if (!bankMode) {
+      toast.error("Pick whether this fund uses a new account or shares an existing one.");
+      return;
+    }
+    if (bankMode === "shared" && bankOptions.length === 0) {
+      toast.error("No existing bank accounts to share with , create a new one instead.");
+      return;
+    }
+    setStep("bankDetails");
   }
 
   function handleSubmit() {
@@ -118,18 +174,16 @@ export function CreateFundForm({
       }
       ent[lotId] = v;
     }
-    if (Object.keys(ent).length === 0) {
-      toast.error("Pick at least one member lot.");
-      return;
-    }
     if (bankMode === "new") {
       if (!bsb.trim() || !accountNumber.trim()) {
-        toast.error("BSB and account number are required for a new bank account.");
+        toast.error("BSB and account number are required.");
         return;
       }
-    } else if (!sharedParentId) {
-      toast.error("Pick a bank account to share with.");
-      return;
+    } else if (bankMode === "shared") {
+      if (!sharedParentId) {
+        toast.error("Pick the bank account to share with.");
+        return;
+      }
     }
 
     startTransition(async () => {
@@ -157,17 +211,13 @@ export function CreateFundForm({
     });
   }
 
-  const stepNumber = step === "kind" ? 1 : step === "lots" ? 2 : 3;
-  const stepLabel = step === "kind" ? "Fund type" : step === "lots" ? "Member lots" : "Bank account";
+  // Sticky footer pattern matches the OC wizard , Back on the left,
+  // Next/Create on the right. Cancel-via-click-off doesn't apply here
+  // because the wizard is a full page, not a drawer.
 
   return (
     <div className={cn("space-y-6", pending && "pointer-events-none opacity-90")}>
-      {/* Step indicator */}
-      <div className="flex items-center gap-2 text-xs text-muted-foreground">
-        <span className="font-medium text-foreground">Step {stepNumber} of 3</span>
-        <span>·</span>
-        <span>{stepLabel}</span>
-      </div>
+      <StepIndicator current={step} />
 
       {step === "kind" && (
         <Card>
@@ -180,14 +230,13 @@ export function CreateFundForm({
                     {kind === "custom" ? "Other (custom fund)" : FUND_KIND_LABEL[kind]}
                   </SelectValue>
                 </SelectTrigger>
-                <SelectContent>
+                <SelectContent alignItemWithTrigger={false}>
                   {kindChoices.map((k) => (
                     <SelectItem key={k.value} value={k.value}>{k.label}</SelectItem>
                   ))}
                 </SelectContent>
               </Select>
             </div>
-
             {kind === "custom" && (
               <div className="space-y-1.5">
                 <Label>Fund name <span className="text-destructive">*</span></Label>
@@ -198,7 +247,6 @@ export function CreateFundForm({
                 />
               </div>
             )}
-
             <div className="flex justify-end">
               <Button onClick={goNextFromKind}>Next</Button>
             </div>
@@ -263,100 +311,129 @@ export function CreateFundForm({
         </Card>
       )}
 
-      {step === "bank" && (
-        <div className="space-y-4">
-          {/* Two large picker cards , New vs Share. */}
-          <div className="grid gap-3 sm:grid-cols-2">
-            <button
-              type="button"
-              onClick={() => setBankMode("new")}
-              className={cn(
-                "flex h-full flex-col items-start gap-2 rounded-md border bg-card p-4 text-left transition-colors cursor-pointer",
-                bankMode === "new" ? "border-primary ring-2 ring-primary/20" : "border-border hover:border-primary/40",
-              )}
-            >
-              <Landmark className="h-5 w-5 text-primary" />
-              <div className="text-sm font-medium text-foreground">Create new bank account</div>
-              <p className="text-xs text-muted-foreground">Add a fresh bank account dedicated to this fund.</p>
-            </button>
-            <button
-              type="button"
-              onClick={() => bankOptions.length > 0 && setBankMode("shared")}
-              disabled={bankOptions.length === 0}
-              className={cn(
-                "flex h-full flex-col items-start gap-2 rounded-md border bg-card p-4 text-left transition-colors cursor-pointer disabled:cursor-not-allowed disabled:opacity-60",
-                bankMode === "shared" ? "border-primary ring-2 ring-primary/20" : "border-border hover:border-primary/40",
-              )}
-            >
-              <LinkIcon className="h-5 w-5 text-primary" />
-              <div className="text-sm font-medium text-foreground">Share with another fund</div>
-              <p className="text-xs text-muted-foreground">
-                {bankOptions.length === 0
-                  ? "No existing bank accounts to share with yet."
-                  : "Link this fund to an existing bank account. Updates flow through automatically."}
-              </p>
-            </button>
-          </div>
+      {step === "bankChoice" && (
+        <Card>
+          <CardContent className="pt-5 space-y-4">
+            <Label>Does this fund share a bank account with another fund? <span className="text-destructive">*</span></Label>
+            <div className="grid gap-3 sm:grid-cols-2">
+              <button
+                type="button"
+                onClick={() => setBankMode("new")}
+                className={cn(
+                  "flex h-full flex-col items-start gap-2 rounded-md border bg-card p-4 text-left transition-colors cursor-pointer",
+                  bankMode === "new" ? "border-primary ring-2 ring-primary/20" : "border-border hover:border-primary/40",
+                )}
+              >
+                <Landmark className="h-5 w-5 text-primary" />
+                <div className="text-sm font-medium text-foreground">No, new bank account</div>
+                <p className="text-xs text-muted-foreground">Add a fresh bank account dedicated to this fund.</p>
+              </button>
+              <button
+                type="button"
+                onClick={() => bankOptions.length > 0 && setBankMode("shared")}
+                disabled={bankOptions.length === 0}
+                className={cn(
+                  "flex h-full flex-col items-start gap-2 rounded-md border bg-card p-4 text-left transition-colors cursor-pointer disabled:cursor-not-allowed disabled:opacity-60",
+                  bankMode === "shared" ? "border-primary ring-2 ring-primary/20" : "border-border hover:border-primary/40",
+                )}
+              >
+                <ListChecks className="h-5 w-5 text-primary" />
+                <div className="text-sm font-medium text-foreground">Yes, share with another fund</div>
+                <p className="text-xs text-muted-foreground">
+                  {bankOptions.length === 0
+                    ? "No existing accounts to share with yet."
+                    : "Link this fund to an existing bank account. Updates flow through automatically."}
+                </p>
+              </button>
+            </div>
+            <div className="flex justify-between">
+              <Button variant="secondary" onClick={() => setStep("lots")}>Back</Button>
+              <Button onClick={goNextFromBankChoice} disabled={!bankMode}>Next</Button>
+            </div>
+          </CardContent>
+        </Card>
+      )}
 
-          <Card>
-            <CardContent className="pt-5 space-y-4">
-              {bankMode === "new" ? (
-                <div className="grid gap-4 sm:grid-cols-2">
-                  <div className="space-y-1.5">
-                    <Label>Account name</Label>
-                    <Input
-                      value={accountName}
-                      onChange={(e) => setAccountName(e.target.value)}
-                      placeholder="Account name"
-                    />
-                  </div>
-                  <div className="space-y-1.5">
-                    <Label>Bank</Label>
-                    <Input
-                      value={bankName}
-                      onChange={(e) => setBankName(e.target.value)}
-                      placeholder="Bank name"
-                    />
-                  </div>
-                  <div className="space-y-1.5">
-                    <Label>BSB <span className="text-destructive">*</span></Label>
-                    <NumberInput value={bsb} onChange={setBsb} allowDecimal={false} placeholder="BSB" />
-                  </div>
-                  <div className="space-y-1.5">
-                    <Label>Account number <span className="text-destructive">*</span></Label>
-                    <NumberInput value={accountNumber} onChange={setAccountNumber} allowDecimal={false} placeholder="Account number" />
-                  </div>
-                </div>
-              ) : (
+      {step === "bankDetails" && (
+        <Card>
+          <CardContent className="pt-5 space-y-4">
+            {bankMode === "new" ? (
+              <div className="grid gap-4 sm:grid-cols-2">
                 <div className="space-y-1.5">
-                  <Label>Link to <span className="text-destructive">*</span></Label>
-                  <Select value={sharedParentId} onValueChange={(v) => setSharedParentId(v ?? "")}>
-                    <SelectTrigger>
-                      <SelectValue placeholder="Pick a bank account">
-                        {bankOptions.find((b) => b.id === sharedParentId)?.label ?? null}
-                      </SelectValue>
-                    </SelectTrigger>
-                    <SelectContent>
-                      {bankOptions.map((b) => (
-                        <SelectItem key={b.id} value={b.id}>
-                          {b.label}{b.bsb && b.account_number ? ` , ${b.bsb} ${b.account_number}` : ""}
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
+                  <Label>Account name</Label>
+                  <Input
+                    value={accountName}
+                    onChange={(e) => setAccountName(e.target.value)}
+                    placeholder="Account name"
+                  />
                 </div>
-              )}
-            </CardContent>
-          </Card>
-
-          <div className="flex justify-between">
-            <Button variant="secondary" onClick={() => setStep("lots")} disabled={pending}>Back</Button>
-            <Button onClick={handleSubmit} disabled={pending} size="lg">
-              {pending && <Loader2 className="mr-2 size-4 animate-spin" />}
-              Create fund
-            </Button>
-          </div>
-        </div>
+                <div className="space-y-1.5">
+                  <Label>Bank</Label>
+                  <Input
+                    value={bankName}
+                    onChange={(e) => setBankName(e.target.value)}
+                    placeholder="Bank name"
+                  />
+                </div>
+                <div className="space-y-1.5">
+                  <Label>BSB <span className="text-destructive">*</span></Label>
+                  <NumberInput value={bsb} onChange={setBsb} allowDecimal={false} placeholder="BSB" />
+                </div>
+                <div className="space-y-1.5">
+                  <Label>Account number <span className="text-destructive">*</span></Label>
+                  <NumberInput value={accountNumber} onChange={setAccountNumber} allowDecimal={false} placeholder="Account number" />
+                </div>
+              </div>
+            ) : (
+              <div className="space-y-1.5">
+                <Label>Link to <span className="text-destructive">*</span></Label>
+                {/* Combobox (searchable) replaces the Select so manager
+                    can type the bank name / BSB to find the right
+                    account quickly. No default selection. */}
+                <Combobox
+                  items={bankOptions}
+                  value={sharedParentId}
+                  onValueChange={(v) => setSharedParentId(v ?? "")}
+                >
+                  <ComboboxInput placeholder="Pick a bank account" />
+                  <ComboboxContent>
+                    <ComboboxEmpty>No bank accounts found.</ComboboxEmpty>
+                    <ComboboxList>
+                      {(b: ExistingBankAccountOption) => (
+                        <ComboboxItem
+                          key={b.id}
+                          value={b.id}
+                          keywords={[
+                            b.label,
+                            b.bsb ?? "",
+                            b.account_number ?? "",
+                          ]}
+                        >
+                          <span className="flex flex-col">
+                            <span>{b.label}</span>
+                            {b.bsb && b.account_number && (
+                              <span className="text-xs text-muted-foreground">{b.bsb} {b.account_number}</span>
+                            )}
+                          </span>
+                        </ComboboxItem>
+                      )}
+                    </ComboboxList>
+                  </ComboboxContent>
+                </Combobox>
+                <p className="text-xs text-muted-foreground">
+                  Changes to the linked account (BSB, account number, balance) flow through automatically.
+                </p>
+              </div>
+            )}
+            <div className="flex justify-between">
+              <Button variant="secondary" onClick={() => setStep("bankChoice")} disabled={pending}>Back</Button>
+              <Button onClick={handleSubmit} disabled={pending} size="lg">
+                {pending && <Loader2 className="mr-2 size-4 animate-spin" />}
+                Create fund
+              </Button>
+            </div>
+          </CardContent>
+        </Card>
       )}
     </div>
   );

@@ -19,7 +19,7 @@ import {
 } from "@/components/ui/select";
 import { DatePicker } from "@/components/shared/date-picker";
 import { EmptyState } from "@/components/shared/empty-state";
-import { uploadAndParseInsuranceCoc } from "./parse-coc";
+import { uploadAndParseInsuranceCoc, attachDocumentToPolicy } from "./parse-coc";
 import { formatDateLong } from "@/lib/utils";
 import {
   createInsurancePolicy,
@@ -366,6 +366,7 @@ function AddPolicyDrawer({
   const [startDate, setStartDate] = useState<string>("");
   const [endDate, setEndDate] = useState<string>("");
   const [documentUrl, setDocumentUrl] = useState<string | undefined>(undefined);
+  const [documentId, setDocumentId] = useState<string | undefined>(undefined);
   const [pending, setPending] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
@@ -383,6 +384,7 @@ function AddPolicyDrawer({
     setStartDate("");
     setEndDate("");
     setDocumentUrl(undefined);
+    setDocumentId(undefined);
   }
 
   async function handleCocUpload(file: File) {
@@ -398,6 +400,7 @@ function AddPolicyDrawer({
       return;
     }
     setDocumentUrl(res.public_url);
+    setDocumentId(res.document_id);
     // Prefill from the first policy in the CoC. Multi-policy CoCs (a
     // building + public liability bundle, etc.) currently get the first
     // section; the manager can edit before save, and add the others in
@@ -469,6 +472,14 @@ function AddPolicyDrawer({
       setPending(false);
       toast.error(result.error);
       return;
+    }
+    // Back-link the uploaded CoC document (if any) to the freshly
+    // created policy so the policy detail page can show "Source: <file>"
+    // and the documents page can filter by policy. Best-effort: a
+    // failure here doesn't undo the policy , the manager can re-attach
+    // from the docs page.
+    if (documentId && result.policyId) {
+      void attachDocumentToPolicy(ocId, documentId, result.policyId);
     }
     toast.success("Insurance policy added");
     onCreated();
@@ -552,7 +563,11 @@ function AddPolicyDrawer({
                       {POLICY_LABELS[policyType] ?? policyType}
                     </SelectValue>
                   </SelectTrigger>
-                  <SelectContent>
+                  {/* alignItemWithTrigger=false stops base-ui from
+                      aligning the selected item with the trigger , which
+                      was forcing the popup to open UPWARD inside the
+                      drawer. Default side="bottom" still applies. */}
+                  <SelectContent alignItemWithTrigger={false}>
                     {POLICY_TYPES.map((t) => (
                       <SelectItem key={t.value} value={t.value}>{t.label}</SelectItem>
                     ))}

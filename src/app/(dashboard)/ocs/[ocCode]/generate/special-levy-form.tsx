@@ -155,8 +155,25 @@ export function SpecialLevyForm({
     if (!periodEnd) { next.periodEnd = true; problems.push("period end"); }
     if (periodStart && periodEnd && periodEnd < periodStart) { next.periodEnd = true; problems.push("period end can't be before period start"); }
     if (!dueDate) { next.dueDate = true; problems.push("due date"); }
+    // Every line item that has EITHER an amount OR a CoA must have
+    // BOTH. A row with $1,000 but no CoA is a bug magnet , the
+    // proportional split would silently exclude it. Block here so the
+    // manager has to either fill the row or remove it.
+    const incompleteItems = items.some((i) => {
+      const amt = parseFloat(i.amount) || 0;
+      const hasCoa = !!i.coa_account_id;
+      const hasAmt = amt > 0;
+      return (hasCoa && !hasAmt) || (!hasCoa && hasAmt);
+    });
+    if (incompleteItems) {
+      next.items = true;
+      problems.push("every line item needs both a CoA account and an amount");
+    }
     const hasValidItem = items.some((i) => i.coa_account_id && (parseFloat(i.amount) || 0) > 0);
-    if (!hasValidItem) { next.items = true; problems.push("at least one line item"); }
+    if (!hasValidItem && !incompleteItems) {
+      next.items = true;
+      problems.push("at least one line item");
+    }
     setInvalid(next);
     if (problems.length) {
       toast.error(problems.length === 1 ? `Fill in the ${problems[0]} field.` : "Fix the highlighted fields.");
@@ -388,7 +405,7 @@ export function SpecialLevyForm({
                           <ComboboxEmpty>No accounts found.</ComboboxEmpty>
                           <ComboboxList>
                             {(c: CoaOption) => (
-                              <ComboboxItem key={c.id} value={c.id}>
+                              <ComboboxItem key={c.id} value={c.id} keywords={[c.name, c.code]}>
                                 {c.name}
                               </ComboboxItem>
                             )}
@@ -488,86 +505,84 @@ export function SpecialLevyForm({
                     </button>
 
                     {isOpen && (
-                      <div className="px-2 pb-2">
-                        <div className="overflow-hidden">
-                          <Table variant="bordered" className="text-xs">
-                            <TableHeader>
-                              <TableRow>
-                                <TableHead className="py-0.5 text-xs">Description</TableHead>
-                                <TableHead className="py-0.5 w-[110px] text-right text-xs">Amount</TableHead>
-                                <TableHead className="py-0.5 w-[24px]" />
-                              </TableRow>
-                            </TableHeader>
-                            <TableBody>
-                              <TableRow>
-                                <TableCell className="py-0.5 text-foreground">Apportioned share</TableCell>
-                                <TableCell className="py-0.5 text-right tabular-nums text-foreground">{formatCurrency(l.share)}</TableCell>
-                                <TableCell className="py-0.5" />
-                              </TableRow>
-                              {lotExtras.map((adj, ei) => (
-                                <TableRow key={`adj-${ei}`}>
-                                  <TableCell className="py-0.5">
-                                    <Combobox
-                                      items={coaOptions}
-                                      value={adj.coa_account_id ?? ""}
-                                      onValueChange={(v) => updateExtraCoa(l.lot_id, ei, v)}
-                                    >
-                                      <ComboboxInput
-                                        placeholder="Pick a CoA account"
-                                        className="h-7 text-[11px]"
-                                      />
-                                      <ComboboxContent>
-                                        <ComboboxEmpty>No accounts found.</ComboboxEmpty>
-                                        <ComboboxList>
-                                          {(c: CoaOption) => (
-                                            <ComboboxItem key={c.id} value={c.id}>{c.name}</ComboboxItem>
-                                          )}
-                                        </ComboboxList>
-                                      </ComboboxContent>
-                                    </Combobox>
-                                  </TableCell>
-                                  <TableCell className="py-0.5">
-                                    <NumberInput
-                                      value={adj.amount}
-                                      onChange={(v) => updateExtraAmount(l.lot_id, ei, v)}
-                                      thousandsSeparator
-                                      prefix="$"
-                                      placeholder="Amount"
-                                      allowDecimal
-                                      invalid={
-                                        adj.amount !== "" &&
-                                        (!Number.isFinite(parseFloat(adj.amount)) || parseFloat(adj.amount) <= 0)
-                                      }
-                                    />
-                                  </TableCell>
-                                  <TableCell className="py-0.5">
-                                    <button
-                                      type="button"
-                                      onClick={() => removeExtra(l.lot_id, ei)}
-                                      aria-label="Remove adjustment"
-                                      className="text-muted-foreground hover:text-destructive cursor-pointer"
-                                    >
-                                      <X className="h-3.5 w-3.5" />
-                                    </button>
-                                  </TableCell>
-                                </TableRow>
-                              ))}
-                            </TableBody>
-                            <TableFooter>
-                              <TableRow>
-                                <TableCell className="py-0.5 font-semibold text-foreground text-xs">Total</TableCell>
-                                <TableCell className="py-0.5 text-right font-bold tabular-nums text-foreground text-xs">{formatCurrency(lotGrandTotal(l))}</TableCell>
-                                <TableCell className="py-0.5" />
-                              </TableRow>
-                            </TableFooter>
-                          </Table>
+                      <div className="px-4 pb-2 pl-11 space-y-1.5">
+                        {/* Div-grid table , same pattern as the
+                            levy batch detail page so the manager has
+                            one mental model across both flows. Cols:
+                            description (flex), amount (110px), row
+                            actions (auto). */}
+                        <div className="overflow-hidden rounded-md border border-border bg-card">
+                          <div className="grid grid-cols-[1fr_110px_28px] gap-x-4 px-3 py-1.5 bg-primary text-[11px] font-medium text-primary-foreground">
+                            <div>Description</div>
+                            <div className="text-right">Amount</div>
+                            <div />
+                          </div>
+
+                          <div className="grid grid-cols-[1fr_110px_28px] gap-x-4 px-3 py-1 text-[11px] border-t border-border first:border-t-0 text-foreground">
+                            <div>Apportioned share</div>
+                            <div className="text-right tabular-nums">{formatCurrency(l.share)}</div>
+                            <div />
+                          </div>
+
+                          {lotExtras.map((adj, ei) => (
+                            <div
+                              key={`adj-${ei}`}
+                              className="grid grid-cols-[1fr_110px_28px] gap-x-4 px-3 py-1 text-[11px] border-t border-border items-center"
+                            >
+                              <Combobox
+                                items={coaOptions}
+                                value={adj.coa_account_id ?? ""}
+                                onValueChange={(v) => updateExtraCoa(l.lot_id, ei, v)}
+                              >
+                                <ComboboxInput
+                                  placeholder="Pick a CoA account"
+                                  className="h-7 text-[11px]"
+                                />
+                                <ComboboxContent>
+                                  <ComboboxEmpty>No accounts found.</ComboboxEmpty>
+                                  <ComboboxList>
+                                    {(c: CoaOption) => (
+                                      <ComboboxItem key={c.id} value={c.id} keywords={[c.name, c.code]}>{c.name}</ComboboxItem>
+                                    )}
+                                  </ComboboxList>
+                                </ComboboxContent>
+                              </Combobox>
+                              <NumberInput
+                                value={adj.amount}
+                                onChange={(v) => updateExtraAmount(l.lot_id, ei, v)}
+                                thousandsSeparator
+                                prefix="$"
+                                placeholder="Amount"
+                                allowDecimal
+                                invalid={
+                                  adj.amount !== "" &&
+                                  (!Number.isFinite(parseFloat(adj.amount)) || parseFloat(adj.amount) <= 0)
+                                }
+                              />
+                              <button
+                                type="button"
+                                onClick={() => removeExtra(l.lot_id, ei)}
+                                aria-label="Remove adjustment"
+                                className="text-muted-foreground hover:text-destructive cursor-pointer justify-self-center"
+                              >
+                                <X className="h-3.5 w-3.5" />
+                              </button>
+                            </div>
+                          ))}
+
+                          <div className="grid grid-cols-[1fr_110px_28px] gap-x-4 px-3 py-1 text-[11px] border-t border-border font-semibold">
+                            <div>Total</div>
+                            <div className="text-right tabular-nums">{formatCurrency(lotGrandTotal(l))}</div>
+                            <div />
+                          </div>
                         </div>
+
                         <Button
                           type="button"
                           variant="secondary"
                           size="sm"
                           onClick={() => addExtra(l.lot_id)}
-                          className="mt-3"
+                          className="mt-2"
                         >
                           <Plus className="mr-1.5 h-3.5 w-3.5" />
                           Add adjustment

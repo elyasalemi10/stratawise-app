@@ -1,8 +1,8 @@
 import { getOC } from "@/lib/actions/oc";
 import { redirect } from "next/navigation";
 import { CreateBudgetForm } from "./create-budget-form";
-import { ocHasMaintenanceFund } from "@/lib/actions/budget";
 import { listChartOfAccounts } from "@/lib/actions/chart-of-accounts";
+import { getFunds } from "@/lib/actions/funds";
 
 import { resolveOCFromCode } from "@/lib/oc-resolver";
 
@@ -15,13 +15,21 @@ export default async function CreateBudgetPage({
   const resolved = await resolveOCFromCode(ocCode);
   if (!resolved) redirect("/dashboard");
   const ocId = resolved.id;
-  const [oc, accounts, hasMaintenanceFund] = await Promise.all([
+  const [oc, accounts, ocFunds] = await Promise.all([
     getOC(ocId),
     listChartOfAccounts(),
-    ocHasMaintenanceFund(ocId),
+    getFunds(ocId),
   ]);
 
   if (!oc) redirect("/dashboard");
+
+  // Available fund types for this budget are gated by the OC's actual
+  // funds (the funds the manager has created on /funds). Legacy fund
+  // type enum on budgets only knows admin/cw/mp, so custom funds are
+  // filtered out for now , they can still be billed via special levies
+  // until budget tables learn fund_id.
+  const ocFundKinds = new Set(ocFunds.map((f) => f.kind));
+  const availableSystemFunds = (["administrative", "capital_works", "maintenance_plan"] as const).filter((k) => ocFundKinds.has(k));
 
   // Financial year runs from the OC's configured start month. The "current"
   // FY is the one we're inside today; budgets can only be for the current FY
@@ -49,7 +57,7 @@ export default async function CreateBudgetPage({
       accounts={budgetableAccounts}
       fyOptions={fyOptions}
       defaultFinancialYear={defaultFinancialYear}
-      hasMaintenanceFund={hasMaintenanceFund}
+      availableFunds={availableSystemFunds}
     />
   );
 }

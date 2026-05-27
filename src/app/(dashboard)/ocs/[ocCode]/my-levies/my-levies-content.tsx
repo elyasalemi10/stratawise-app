@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { FileText, Download, X } from "lucide-react";
+import { FileText, Download, ExternalLink, X } from "lucide-react";
 import { formatDateLong } from "@/lib/utils";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -107,20 +107,31 @@ export function MyLeviesContent({ levies }: { levies: Levy[] }) {
                         </td>
                         <td className="px-4 py-3 text-right">
                           {levy.pdf_url ? (
-                            <a
-                              href={levy.pdf_url}
-                              target="_blank"
-                              rel="noopener noreferrer"
-                              onClick={(e) => e.stopPropagation()}
-                            >
-                              <Button
-                                variant="outline"
-                                size="sm"
-                                className="h-7 text-xs cursor-pointer"
+                            <div className="inline-flex items-center gap-1" onClick={(e) => e.stopPropagation()}>
+                              <a
+                                href={levy.pdf_url}
+                                target="_blank"
+                                rel="noopener noreferrer"
+                                aria-label="Open levy PDF in new tab"
                               >
-                                View levy
-                              </Button>
-                            </a>
+                                <Button
+                                  variant="outline"
+                                  size="sm"
+                                  className="h-7 cursor-pointer px-2"
+                                >
+                                  <ExternalLink className="size-3.5" />
+                                </Button>
+                              </a>
+                              <a href={levy.pdf_url} download aria-label="Download levy PDF">
+                                <Button
+                                  variant="outline"
+                                  size="sm"
+                                  className="h-7 cursor-pointer px-2"
+                                >
+                                  <Download className="size-3.5" />
+                                </Button>
+                              </a>
+                            </div>
                           ) : (
                             <Button
                               variant="outline"
@@ -194,12 +205,16 @@ export function MyLeviesContent({ levies }: { levies: Levy[] }) {
                   )}
                 </div>
 
-                {/* Actions */}
+                {/* Actions , "Open" goes to a new tab (view),
+                    "Download" forces download. Same icon-pair pattern
+                    used elsewhere so the manager / lot owner builds
+                    one mental model. */}
                 {selectedLevy.pdf_url && (
                   <div className="border-t border-border pt-4 flex gap-2">
                     <a href={selectedLevy.pdf_url} target="_blank" rel="noopener noreferrer" className="flex-1">
                       <Button variant="default" className="w-full cursor-pointer">
-                        View levy
+                        <ExternalLink className="mr-2 h-4 w-4" />
+                        Open in new tab
                       </Button>
                     </a>
                     <a href={selectedLevy.pdf_url} download className="flex-1">
