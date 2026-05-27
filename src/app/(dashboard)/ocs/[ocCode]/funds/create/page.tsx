@@ -1,7 +1,11 @@
 import { redirect } from "next/navigation";
 import { resolveOCFromCode } from "@/lib/oc-resolver";
 import { requireOCAccess } from "@/lib/auth";
-import { getOcLots, getOcBankAccountOptions } from "@/lib/actions/funds";
+import {
+  getOcLots,
+  getOcBankAccountOptions,
+  getExistingFundKinds,
+} from "@/lib/actions/funds";
 import { CreateFundForm } from "./create-fund-form";
 
 export default async function CreateFundPage({
@@ -14,9 +18,10 @@ export default async function CreateFundPage({
   if (!resolved) redirect("/dashboard");
   await requireOCAccess(resolved.id);
 
-  const [lots, bankOptions] = await Promise.all([
+  const [lots, bankOptions, existingKinds] = await Promise.all([
     getOcLots(resolved.id),
     getOcBankAccountOptions(resolved.id),
+    getExistingFundKinds(resolved.id),
   ]);
 
   return (
@@ -25,6 +30,7 @@ export default async function CreateFundPage({
       ocCode={ocCode}
       lots={lots}
       bankOptions={bankOptions}
+      existingKinds={existingKinds}
     />
   );
 }

@@ -3,18 +3,18 @@
 import { requireCompanyRole, requireOCAccess } from "@/lib/auth";
 import { createServerClient } from "@/lib/supabase";
 import { revalidatePath } from "next/cache";
+import { FUND_KIND_LABEL, type FundKind } from "@/lib/funds-shared";
 
 export interface FundRow {
   id: string;
   name: string;
-  kind: "administrative" | "capital_works" | "maintenance_plan" | "custom";
-  is_system: boolean;
-  /** Aggregate balance across this fund's bank accounts (sum of
-   *  current_balance, following parent_account_id when linked). */
+  kind: FundKind;
+  /** Aggregate balance across this fund's bank accounts, following
+   *  parent_account_id when the row is a linked share. */
   total_balance: number;
-  /** Count of lots that contribute to this fund. */
+  /** Lots that contribute to this fund. */
   lot_count: number;
-  /** Count of bank accounts attached. */
+  /** Bank accounts attached. */
   bank_account_count: number;
 }
 
@@ -24,12 +24,11 @@ export async function getFunds(ocId: string): Promise<FundRow[]> {
 
   const { data: funds } = await supabase
     .from("funds")
-    .select("id, name, kind, is_system")
+    .select("id, name, kind")
     .eq("oc_id", ocId)
-    .order("is_system", { ascending: false })
     .order("name", { ascending: true });
 
-  const fundList = (funds ?? []) as Array<{ id: string; name: string; kind: string; is_system: boolean }>;
+  const fundList = (funds ?? []) as Array<{ id: string; name: string; kind: string }>;
   if (fundList.length === 0) return [];
 
   const fundIds = fundList.map((f) => f.id);
@@ -47,8 +46,6 @@ export async function getFunds(ocId: string): Promise<FundRow[]> {
     lotsByFund.set(fid, (lotsByFund.get(fid) ?? 0) + 1);
   }
 
-  // Map bank accounts to funds. For linked-shared rows (parent_account_id
-  // set), the balance comes from the parent so we don't double-count.
   const balanceById = new Map<string, number>();
   for (const a of (accounts ?? [])) {
     const id = (a as { id: string }).id;
@@ -70,12 +67,27 @@ export async function getFunds(ocId: string): Promise<FundRow[]> {
   return fundList.map((f) => ({
     id: f.id,
     name: f.name,
-    kind: f.kind as FundRow["kind"],
-    is_system: f.is_system,
+    kind: f.kind as FundKind,
     total_balance: balancesByFund.get(f.id) ?? 0,
     lot_count: lotsByFund.get(f.id) ?? 0,
     bank_account_count: countsByFund.get(f.id) ?? 0,
   }));
+}
+
+/**
+ * Returns which of the three "named" fund kinds (admin / capital works /
+ * maintenance plan) the OC already has. Used by the create-fund wizard
+ * to grey out kinds the manager has already added.
+ */
+export async function getExistingFundKinds(ocId: string): Promise<FundKind[]> {
+  await requireOCAccess(ocId);
+  const supabase = createServerClient();
+  const { data } = await supabase
+    .from("funds")
+    .select("kind")
+    .eq("oc_id", ocId)
+    .in("kind", ["administrative", "capital_works", "maintenance_plan"]);
+  return ((data ?? []) as Array<{ kind: FundKind }>).map((r) => r.kind);
 }
 
 export interface LotForFund {
@@ -129,7 +141,10 @@ export async function getOcBankAccountOptions(ocId: string): Promise<ExistingBan
 export async function createFund(
   ocId: string,
   data: {
-    name: string;
+    kind: FundKind;
+    /** Only used when kind === "custom". Ignored otherwise (system funds
+     *  resolve their name from FUND_KIND_LABEL). */
+    customName?: string;
     /** lot_id -> liability share. Lots omitted from the map are NOT
      *  members of this fund. */
     entitlements: Record<string, number>;
@@ -150,7 +165,11 @@ export async function createFund(
   const profile = await requireCompanyRole();
   await requireOCAccess(ocId);
 
-  if (!data.name.trim()) return { error: "Fund needs a name." };
+  const resolvedName =
+    data.kind === "custom"
+      ? (data.customName ?? "").trim()
+      : FUND_KIND_LABEL[data.kind];
+  if (!resolvedName) return { error: "Fund needs a name." };
   if (Object.keys(data.entitlements).length === 0) {
     return { error: "Pick at least one lot for this fund." };
   }
@@ -169,9 +188,21 @@ export async function createFund(
 
   const supabase = createServerClient();
 
+  // Block duplicate system funds at the server too , the wizard hides
+  // them but a stale tab could still try.
+  if (data.kind !== "custom") {
+    const { data: dup } = await supabase
+      .from("funds")
+      .select("id")
+      .eq("oc_id", ocId)
+      .eq("kind", data.kind)
+      .maybeSingle();
+    if (dup) return { error: `${FUND_KIND_LABEL[data.kind]} already exists for this OC.` };
+  }
+
   const { data: fundRow, error: fundErr } = await supabase
     .from("funds")
-    .insert({ oc_id: ocId, name: data.name.trim(), kind: "custom", is_system: false })
+    .insert({ oc_id: ocId, name: resolvedName, kind: data.kind, is_system: data.kind !== "custom" })
     .select("id")
     .single();
   if (fundErr || !fundRow) return { error: fundErr?.message ?? "Could not create fund." };
@@ -185,11 +216,18 @@ export async function createFund(
   if (entRows.length > 0) {
     const { error: entErr } = await supabase.from("fund_lot_entitlements").insert(entRows);
     if (entErr) {
-      // Roll back the fund row so we don't leak an empty one.
       await supabase.from("funds").delete().eq("id", fundId);
       return { error: entErr.message };
     }
   }
+
+  // bank_accounts.fund_type stays for backward compatibility. Custom
+  // funds map to "administrative" because the enum has no "custom"
+  // value yet , the fund_id column is the new source of truth.
+  const legacyFundType: "administrative" | "capital_works" | "maintenance_plan" =
+    data.kind === "capital_works" || data.kind === "maintenance_plan"
+      ? data.kind
+      : "administrative";
 
   if (data.bank.kind === "new") {
     const { error: bankErr } = await supabase
@@ -197,10 +235,8 @@ export async function createFund(
       .insert({
         oc_id: ocId,
         fund_id: fundId,
-        // fund_type column kept for back-compat; map custom funds to
-        // administrative for now so the existing NOT NULL holds.
-        fund_type: "administrative",
-        account_name: data.bank.account_name || data.name.trim(),
+        fund_type: legacyFundType,
+        account_name: data.bank.account_name || resolvedName,
         bsb: data.bank.bsb,
         account_number: data.bank.account_number,
         bank_name: data.bank.bank_name ?? null,
@@ -216,12 +252,9 @@ export async function createFund(
       .insert({
         oc_id: ocId,
         fund_id: fundId,
-        fund_type: "administrative",
+        fund_type: legacyFundType,
         parent_account_id: data.bank.parent_account_id,
-        // Linked row carries the parent's account name by reference;
-        // we duplicate it in account_name so listings render without an
-        // extra join when the parent details haven't been edited yet.
-        account_name: data.name.trim(),
+        account_name: resolvedName,
       });
     if (bankErr) {
       await supabase.from("fund_lot_entitlements").delete().eq("fund_id", fundId);
@@ -236,7 +269,7 @@ export async function createFund(
     action: "create",
     entity_type: "fund",
     entity_id: fundId,
-    after_state: { name: data.name, entitlement_count: entRows.length, bank_kind: data.bank.kind },
+    after_state: { name: resolvedName, kind: data.kind, entitlement_count: entRows.length, bank_kind: data.bank.kind },
   });
 
   revalidatePath("/ocs/[ocCode]/funds", "page");

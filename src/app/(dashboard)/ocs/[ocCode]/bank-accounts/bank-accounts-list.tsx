@@ -6,12 +6,6 @@ import { Button } from "@/components/ui/button";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 import { ImportCsvDialog } from "./import-csv-dialog";
 
-const FUND_LABEL: Record<string, string> = {
-  administrative: "Administrative Fund",
-  capital_works: "Capital Works Fund",
-  maintenance_plan: "Maintenance Plan Fund",
-};
-
 const formatCurrency = (n: number) =>
   new Intl.NumberFormat("en-AU", { style: "currency", currency: "AUD" }).format(n);
 
@@ -29,10 +23,12 @@ interface BankAccountRow {
   account_name: string | null;
   bsb: string | null;
   account_number: string | null;
-  fund_type: string;
   bank_name: string | null;
   current_balance: number | string | null;
   current_balance_as_of: string | null;
+  /** Names of every fund this physical account funds (primary + linked
+   *  children). One physical account, multiple funds. */
+  fund_labels: string[];
 }
 
 export function BankAccountsList({
@@ -97,8 +93,12 @@ export function BankAccountsList({
                 </div>
                 <div className="grid grid-cols-1 gap-3 sm:grid-cols-3 border-t border-border pt-4">
                   <div>
-                    <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">Fund</p>
-                    <p className="text-sm text-foreground mt-1">{FUND_LABEL[a.fund_type] ?? a.fund_type}</p>
+                    <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
+                      {a.fund_labels.length > 1 ? "Funds" : "Fund"}
+                    </p>
+                    <p className="text-sm text-foreground mt-1">
+                      {a.fund_labels.length > 0 ? a.fund_labels.join(", ") : ""}
+                    </p>
                   </div>
                   <div>
                     <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">BSB</p>

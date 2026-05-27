@@ -14,6 +14,9 @@ import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from "
 import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle } from "@/components/ui/sheet";
 import { Calendar } from "@/components/ui/calendar";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
+import {
+  Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
+} from "@/components/ui/select";
 import { DatePicker } from "@/components/shared/date-picker";
 import { EmptyState } from "@/components/shared/empty-state";
 import { uploadAndParseInsuranceCoc } from "./parse-coc";
@@ -346,11 +349,16 @@ function AddPolicyDrawer({
   ocId: string;
   onCreated: () => void;
 }) {
-  const [step, setStep] = useState<"coc" | "form">("coc");
+  // Step "psMismatch": shown when the uploaded CoC's PS number doesn't
+  // match the OC's. Manager either confirms it's still the right cert
+  // (continues to form) or backs out and re-uploads.
+  const [step, setStep] = useState<"coc" | "psMismatch" | "form">("coc");
   const [parsing, setParsing] = useState(false);
   const [uploadName, setUploadName] = useState<string | null>(null);
+  const [psMismatch, setPsMismatch] = useState<{ cert: string | null; oc: string | null } | null>(null);
 
   const [policyType, setPolicyType] = useState("building");
+  const [policyTypeCustom, setPolicyTypeCustom] = useState("");
   const [provider, setProvider] = useState("");
   const [policyNumber, setPolicyNumber] = useState("");
   const [sumInsured, setSumInsured] = useState("");
@@ -365,7 +373,9 @@ function AddPolicyDrawer({
     setStep("coc");
     setParsing(false);
     setUploadName(null);
+    setPsMismatch(null);
     setPolicyType("building");
+    setPolicyTypeCustom("");
     setProvider("");
     setPolicyNumber("");
     setSumInsured("");
@@ -394,7 +404,18 @@ function AddPolicyDrawer({
     // separate runs.
     const first = res.policies?.[0];
     if (first) {
-      setPolicyType(first.policy_type === "combined" ? "building" : first.policy_type);
+      // Map Gemini's policy_type to our select. "combined" + anything
+      // we don't have a tile for falls into "other" with the raw value
+      // pre-filled into the custom-type field so the manager can keep
+      // or tweak it.
+      const knownTypes = new Set(POLICY_TYPES.map((t) => t.value));
+      const incomingType = first.policy_type ?? "other";
+      if (knownTypes.has(incomingType) && incomingType !== "other") {
+        setPolicyType(incomingType);
+      } else {
+        setPolicyType("other");
+        setPolicyTypeCustom(incomingType === "other" ? "" : incomingType);
+      }
       setProvider(first.provider ?? "");
       setPolicyNumber(first.policy_number ?? "");
       if (first.sum_insured !== null && first.sum_insured !== undefined) {
@@ -409,12 +430,24 @@ function AddPolicyDrawer({
     } else {
       toast.info("Certificate uploaded. We couldn't extract policy fields, fill them in manually.");
     }
+    // PS-number mismatch → ask to confirm BEFORE moving to the form.
+    if (res.ps_match === false) {
+      setPsMismatch({ cert: res.plan_number ?? null, oc: null });
+      setStep("psMismatch");
+      return;
+    }
     setStep("form");
   }
 
   async function handleSubmit() {
+    const resolvedType =
+      policyType === "other" ? (policyTypeCustom.trim() || "other") : policyType;
     if (!provider || !startDate || !endDate) {
       toast.error("Provider and coverage dates are required.");
+      return;
+    }
+    if (policyType === "other" && !policyTypeCustom.trim()) {
+      toast.error("Name the custom policy type.");
       return;
     }
     if (endDate <= startDate) {
@@ -423,7 +456,7 @@ function AddPolicyDrawer({
     }
     setPending(true);
     const result = await createInsurancePolicy(ocId, {
-      policy_type: policyType,
+      policy_type: resolvedType,
       provider,
       policy_number: policyNumber || undefined,
       sum_insured: sumInsured ? Number(sumInsured) : undefined,
@@ -495,14 +528,47 @@ function AddPolicyDrawer({
             </div>
           )}
 
+          {step === "psMismatch" && (
+            <div className="space-y-4">
+              <div className="rounded-md border border-warning/40 bg-warning/10 p-4 space-y-2">
+                <p className="text-sm font-medium text-foreground">
+                  The plan number on this certificate doesn&apos;t match this OC.
+                </p>
+                <p className="text-sm text-muted-foreground">
+                  Certificate says <span className="font-medium text-foreground">{psMismatch?.cert ?? "(none found)"}</span>.
+                  If you&apos;re sure this is the right certificate for this OC, confirm to continue. Otherwise upload a different file.
+                </p>
+              </div>
+            </div>
+          )}
+
           {step === "form" && (
             <div className={`space-y-4 ${pending ? "pointer-events-none opacity-90" : ""}`}>
               <div className="space-y-1.5">
                 <Label>Policy type</Label>
-                <select value={policyType} onChange={(e) => setPolicyType(e.target.value)} className="h-9 w-full rounded-md border border-border bg-card px-3 text-sm">
-                  {POLICY_TYPES.map((t) => <option key={t.value} value={t.value}>{t.label}</option>)}
-                </select>
+                <Select value={policyType} onValueChange={(v) => setPolicyType(v ?? "building")}>
+                  <SelectTrigger>
+                    <SelectValue>
+                      {POLICY_LABELS[policyType] ?? policyType}
+                    </SelectValue>
+                  </SelectTrigger>
+                  <SelectContent>
+                    {POLICY_TYPES.map((t) => (
+                      <SelectItem key={t.value} value={t.value}>{t.label}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
               </div>
+              {policyType === "other" && (
+                <div className="space-y-1.5">
+                  <Label>Custom policy type <span className="text-destructive">*</span></Label>
+                  <Input
+                    value={policyTypeCustom}
+                    onChange={(e) => setPolicyTypeCustom(e.target.value)}
+                    placeholder="Policy type"
+                  />
+                </div>
+              )}
               <div className="space-y-1.5">
                 <Label>Provider <span className="text-destructive">*</span></Label>
                 <Input value={provider} onChange={(e) => setProvider(e.target.value)} placeholder="Insurer name" />
@@ -540,6 +606,16 @@ function AddPolicyDrawer({
             <Button variant="secondary" onClick={() => setStep("form")} disabled={parsing}>
               Skip and enter manually
             </Button>
+          )}
+          {step === "psMismatch" && (
+            <>
+              <Button variant="secondary" onClick={() => setStep("coc")} disabled={pending}>
+                Upload different file
+              </Button>
+              <Button onClick={() => setStep("form")} disabled={pending}>
+                Yes, use this certificate
+              </Button>
+            </>
           )}
           {step === "form" && (
             <>

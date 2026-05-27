@@ -488,14 +488,14 @@ export function SpecialLevyForm({
                     </button>
 
                     {isOpen && (
-                      <div className="px-4 pb-4">
-                        <div className="overflow-hidden rounded-md border border-border">
+                      <div className="px-2 pb-2">
+                        <div className="overflow-hidden">
                           <Table variant="bordered" className="text-xs">
                             <TableHeader>
                               <TableRow>
                                 <TableHead className="py-0.5 text-xs">Description</TableHead>
-                                <TableHead className="py-0.5 w-[96px] text-right text-xs">Amount</TableHead>
-                                <TableHead className="py-0.5 w-[28px]" />
+                                <TableHead className="py-0.5 w-[110px] text-right text-xs">Amount</TableHead>
+                                <TableHead className="py-0.5 w-[24px]" />
                               </TableRow>
                             </TableHeader>
                             <TableBody>
@@ -507,25 +507,24 @@ export function SpecialLevyForm({
                               {lotExtras.map((adj, ei) => (
                                 <TableRow key={`adj-${ei}`}>
                                   <TableCell className="py-0.5">
-                                    <Select
+                                    <Combobox
+                                      items={coaOptions}
                                       value={adj.coa_account_id ?? ""}
-                                      onValueChange={(v) => updateExtraCoa(l.lot_id, ei, v ?? "")}
+                                      onValueChange={(v) => updateExtraCoa(l.lot_id, ei, v)}
                                     >
-                                      <SelectTrigger className="h-7 text-[11px]">
-                                        <SelectValue placeholder="Pick a CoA account">
-                                          {adj.description || null}
-                                        </SelectValue>
-                                      </SelectTrigger>
-                                      <SelectContent>
-                                        {coaOptions.length === 0 ? (
-                                          <div className="px-2 py-1.5 text-xs text-muted-foreground">No CoA accounts available</div>
-                                        ) : (
-                                          coaOptions.map((c) => (
-                                            <SelectItem key={c.id} value={c.id}>{c.name}</SelectItem>
-                                          ))
-                                        )}
-                                      </SelectContent>
-                                    </Select>
+                                      <ComboboxInput
+                                        placeholder="Pick a CoA account"
+                                        className="h-7 text-[11px]"
+                                      />
+                                      <ComboboxContent>
+                                        <ComboboxEmpty>No accounts found.</ComboboxEmpty>
+                                        <ComboboxList>
+                                          {(c: CoaOption) => (
+                                            <ComboboxItem key={c.id} value={c.id}>{c.name}</ComboboxItem>
+                                          )}
+                                        </ComboboxList>
+                                      </ComboboxContent>
+                                    </Combobox>
                                   </TableCell>
                                   <TableCell className="py-0.5">
                                     <NumberInput

@@ -157,6 +157,31 @@ export async function getBudgetPlannedPeriods(
   return { periods, doneCount };
 }
 
+/**
+ * Delete the auto-send schedule for an OC. Used by the "Delete
+ * automation" action in OC settings , the Active toggle was removed,
+ * so disabling now means deleting the row outright. The cron treats a
+ * missing row as "no automation" and skips the OC.
+ */
+export async function deleteLevyAutosendSchedule(ocId: string): Promise<{ error?: string }> {
+  const profile = await requireCompanyRole();
+  await requireOCAccess(ocId);
+  const supabase = createServerClient();
+  const { error } = await supabase
+    .from("levy_autosend_schedules")
+    .delete()
+    .eq("oc_id", ocId);
+  if (error) return { error: error.message };
+  await supabase.from("audit_log").insert({
+    profile_id: profile.id,
+    oc_id: ocId,
+    action: "delete",
+    entity_type: "levy_autosend_schedule",
+  });
+  revalidatePath("/ocs/[ocCode]/settings", "page");
+  return {};
+}
+
 // Save per-month overrides to the schedule. Validates each entry is
 // inside the same calendar month as its key. Used by the schedule
 // popup after the manager edits planned dates.

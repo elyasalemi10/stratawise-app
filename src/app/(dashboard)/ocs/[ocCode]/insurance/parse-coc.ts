@@ -18,6 +18,15 @@ export async function uploadAndParseInsuranceCoc(
   storage_key?: string;
   public_url?: string;
   insured_name?: string | null;
+  /** PS number Gemini read off the certificate. Returned so the
+   *  drawer can compare against the OC's saved plan_number and ask
+   *  the manager to confirm if they don't match (defensive vs the
+   *  wrong CoC being uploaded against the wrong OC). */
+  plan_number?: string | null;
+  /** True when the parsed plan_number matches the OC's plan_number
+   *  (case-insensitive, whitespace-stripped). False = mismatch, null
+   *  = Gemini didn't find one on the certificate. */
+  ps_match?: boolean | null;
   policies?: ParsedInsurancePolicy[];
   error?: string;
 }> {
@@ -70,10 +79,25 @@ export async function uploadAndParseInsuranceCoc(
     ocr_status: "complete",
   });
 
+  // Compare the certificate's plan_number against the OC's so we can
+  // warn the manager when the wrong CoC was uploaded against the wrong
+  // OC. Strip whitespace + uppercase before comparing so "ps 812345 x"
+  // matches "PS812345X".
+  const { data: ocRow } = await supabase
+    .from("owners_corporations")
+    .select("plan_number")
+    .eq("id", ocId)
+    .maybeSingle();
+  const ocPlan = (ocRow as { plan_number: string | null } | null)?.plan_number?.replace(/\s+/g, "").toUpperCase() ?? null;
+  const certPlan = parsed.plan_number?.replace(/\s+/g, "").toUpperCase() ?? null;
+  const psMatch = !certPlan ? null : (ocPlan === certPlan);
+
   return {
     storage_key: key,
     public_url: `/api/insurance-doc?key=${encodeURIComponent(key)}`,
     insured_name: parsed.insured_name,
+    plan_number: parsed.plan_number ?? null,
+    ps_match: psMatch,
     policies: parsed.policies,
   };
 }

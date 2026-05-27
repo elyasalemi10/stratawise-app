@@ -9,18 +9,20 @@ import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { Label } from "@/components/ui/label";
 import { NumberInput } from "@/components/ui/number-input";
+import { Checkbox } from "@/components/ui/checkbox";
+import { Skeleton } from "@/components/ui/skeleton";
 import {
   Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
 } from "@/components/ui/select";
 import {
   Combobox, ComboboxContent, ComboboxEmpty, ComboboxInput, ComboboxItem, ComboboxList,
 } from "@/components/ui/combobox";
-import { Switch } from "@/components/ui/switch";
 import { cn } from "@/lib/utils";
 import { updateOCField } from "../manage/actions";
 import {
   upsertLevyAutosendSchedule,
   updateAutosendOverrides,
+  deleteLevyAutosendSchedule,
   getBudgetPlannedPeriods,
   type LevyAutosendSchedule,
   type PreviewPeriod,
@@ -309,11 +311,13 @@ export function SettingsContent({
   autosend,
   autosendMailboxOptions,
   autosendBudgets,
+  autosendPreloadedPeriods,
 }: {
   oc: OCData;
   autosend: LevyAutosendSchedule;
   autosendMailboxOptions: Array<{ value: string; label: string }>;
   autosendBudgets: Array<{ id: string; label: string }>;
+  autosendPreloadedPeriods?: Record<string, PreviewPeriod[]>;
 }) {
   const [oc, setOC] = useState(initial);
   // Per-card drawer state. Each card has its own key, exactly one
@@ -586,6 +590,7 @@ export function SettingsContent({
           autosend={autosend}
           mailboxOptions={autosendMailboxOptions}
           budgets={autosendBudgets}
+          preloadedPeriods={autosendPreloadedPeriods ?? {}}
         />
       )}
     </div>
@@ -610,6 +615,7 @@ function AutomationsTab({
   autosend,
   mailboxOptions,
   budgets,
+  preloadedPeriods,
 }: {
   ocId: string;
   billingCycle: string;
@@ -617,6 +623,7 @@ function AutomationsTab({
   autosend: LevyAutosendSchedule;
   mailboxOptions: Array<{ value: string; label: string }>;
   budgets: Array<{ id: string; label: string }>;
+  preloadedPeriods: Record<string, PreviewPeriod[]>;
 }) {
   // Drawer state. "edit" carries the row being edited (or "new" for
   // the Add Automation flow). null = closed.
@@ -715,6 +722,7 @@ function AutomationsTab({
               initial={autosend}
               mailboxOptions={mailboxOptions}
               budgets={budgets}
+              preloadedPeriods={preloadedPeriods}
               embedded
               onClose={() => setDrawerMode(null)}
             />
@@ -732,6 +740,7 @@ function AutoSendCard({
   initial,
   mailboxOptions,
   budgets,
+  preloadedPeriods,
   embedded = false,
   onClose,
 }: {
@@ -741,6 +750,9 @@ function AutoSendCard({
   initial: LevyAutosendSchedule;
   mailboxOptions: Array<{ value: string; label: string }>;
   budgets: Array<{ id: string; label: string }>;
+  /** Server-pre-loaded period maps so the schedule step renders
+   *  without a network round-trip when the cache hits. */
+  preloadedPeriods?: Record<string, PreviewPeriod[]>;
   /** When true, render the form's contents directly , no surrounding
    *  Card or duplicate header , so it sits cleanly inside the
    *  Automations side drawer. */
@@ -753,8 +765,15 @@ function AutoSendCard({
   // field while typing without us forcing 1 back in. The "Last day of
   // month" toggle short-circuits the number; when on we save 31 which
   // the cron clamps to the actual last day per month.
+  // Active toggle removed , an automation either exists (saved row =
+  // enabled) or it's deleted. draft.enabled is hardcoded true at save
+  // time so the cron picks it up. To turn it OFF the manager hits
+  // "Delete automation".
+  // Mailbox default: prefer the connected (Gmail/Outlook) mailbox over
+  // the StrataWise alias when both are present. mailboxOptions is
+  // already ordered "connected first" by the server, so [0] is the
+  // right default for new schedules.
   const [draft, setDraft] = useState({
-    enabled: initial.enabled,
     budget_id: initial.budget_id ?? "",
     send_day_of_month: String(initial.send_day_of_month === 31 ? "" : initial.send_day_of_month),
     last_day_of_month: initial.send_day_of_month === 31,
@@ -768,10 +787,10 @@ function AutoSendCard({
   const [overrides, setOverrides] = useState<Record<string, string>>(initial.date_overrides ?? {});
 
   const cycleLabel: Record<string, string> = {
-    monthly: "monthly",
-    quarterly: "every 3 months",
-    half_yearly: "every 6 months",
-    annually: "yearly",
+    monthly: "Monthly",
+    quarterly: "Every 3 months",
+    half_yearly: "Every 6 months",
+    annually: "Yearly",
   };
 
   /** Validate the form values. Returns the resolved day-of-month (1..31)
@@ -787,7 +806,7 @@ function AutoSendCard({
         resolvedDay = parsed;
       }
     }
-    if (draft.enabled && resolvedDay === null) {
+    if (resolvedDay === null) {
       setDayInvalid(true);
       toast.error("Pick a day between 1 and 28, or turn on 'Last day of month'.");
       return null;
@@ -798,22 +817,19 @@ function AutoSendCard({
 
   function save() {
     const resolvedDay = validateForm();
-    if (draft.enabled && resolvedDay === null) return;
+    if (resolvedDay === null) return;
 
     startTransition(async () => {
       const res = await upsertLevyAutosendSchedule(ocId, {
-        enabled: draft.enabled,
+        enabled: true,
         budget_id: draft.budget_id || null,
-        send_day_of_month: resolvedDay ?? 1,
+        send_day_of_month: resolvedDay,
         from_address: draft.from_address || null,
       });
       if (res.error) {
         toast.error(res.error);
         return;
       }
-      // Persist any date overrides set on the schedule step. Only run
-      // when there's something to write , avoids an empty round-trip
-      // for managers who didn't tweak the preview.
       if (Object.keys(overrides).length > 0) {
         const ovRes = await updateAutosendOverrides(ocId, overrides);
         if (ovRes.error) {
@@ -821,9 +837,21 @@ function AutoSendCard({
           return;
         }
       }
-      toast.success(draft.enabled ? "Auto-send is on" : "Auto-send is off");
+      toast.success("Automation saved");
       setSavedAt(res.schedule?.last_sent_on ?? null);
       setNextDate(res.schedule?.next_send_date ?? null);
+      onClose?.();
+    });
+  }
+
+  function handleDelete() {
+    startTransition(async () => {
+      const res = await deleteLevyAutosendSchedule(ocId);
+      if (res.error) {
+        toast.error(res.error);
+        return;
+      }
+      toast.success("Automation deleted");
       onClose?.();
     });
   }
@@ -839,22 +867,47 @@ function AutoSendCard({
   // the selected budget, marking ones that already have a batch as
   // done. Refreshed whenever the budget OR the send day changes (the
   // day clamps differently per month so the planned date shifts).
-  const [budgetPeriods, setBudgetPeriods] = useState<PreviewPeriod[]>([]);
-  const [doneCount, setDoneCount] = useState(0);
+  // `periodsLoading` drives a shimmer skeleton on the schedule step so
+  // the manager never sees "no periods" before the fetch resolves.
+  const [budgetPeriods, setBudgetPeriods] = useState<PreviewPeriod[]>(() => {
+    if (initial.budget_id && preloadedPeriods?.[initial.budget_id]) {
+      return preloadedPeriods[initial.budget_id];
+    }
+    return [];
+  });
+  const [doneCount, setDoneCount] = useState<number>(() => {
+    if (initial.budget_id && preloadedPeriods?.[initial.budget_id]) {
+      return preloadedPeriods[initial.budget_id].filter((p) => p.done).length;
+    }
+    return 0;
+  });
+  const [periodsLoading, setPeriodsLoading] = useState(false);
   useEffect(() => {
     let cancelled = false;
     if (!draft.budget_id) {
       setBudgetPeriods([]);
       setDoneCount(0);
+      setPeriodsLoading(false);
       return;
+    }
+    // Cache hit: paint instantly. Schedule a silent refresh in case
+    // the cached send-day differs from the manager's current draft.
+    const cached = preloadedPeriods?.[draft.budget_id];
+    if (cached) {
+      setBudgetPeriods(cached);
+      setDoneCount(cached.filter((p) => p.done).length);
+      setPeriodsLoading(false);
+    } else {
+      setPeriodsLoading(true);
     }
     getBudgetPlannedPeriods(ocId, draft.budget_id, previewDay).then((res) => {
       if (cancelled) return;
       setBudgetPeriods(res.periods);
       setDoneCount(res.doneCount);
+      setPeriodsLoading(false);
     });
     return () => { cancelled = true; };
-  }, [draft.budget_id, ocId, previewDay]);
+  }, [draft.budget_id, ocId, previewDay, preloadedPeriods]);
 
   // Only the pending periods need a date picker , done ones are
   // skipped by the cron, no point showing them.
@@ -889,7 +942,6 @@ function AutoSendCard({
               items={budgets}
               value={draft.budget_id}
               onValueChange={(v) => setDraft((p) => ({ ...p, budget_id: v ?? "" }))}
-              disabled={!draft.enabled}
             >
               <ComboboxInput placeholder="Pick a budget" />
               <ComboboxContent>
@@ -905,17 +957,16 @@ function AutoSendCard({
             </Combobox>
           </div>
 
-          {/* Stack vertically , drawer is narrow, side-by-side
-              fields get cramped and the dropdowns truncate. */}
           <div className="space-y-1.5">
             <Label>Send mailbox</Label>
             <Select
               value={draft.from_address}
               onValueChange={(v) => setDraft((p) => ({ ...p, from_address: v ?? "" }))}
-              disabled={!draft.enabled}
             >
               <SelectTrigger>
-                <SelectValue placeholder="Pick a mailbox" />
+                <SelectValue placeholder="Pick a mailbox">
+                  {mailboxOptions.find((o) => o.value === draft.from_address)?.label ?? null}
+                </SelectValue>
               </SelectTrigger>
               <SelectContent>
                 {mailboxOptions.map((o) => (
@@ -934,23 +985,21 @@ function AutoSendCard({
                 setDayInvalid(false);
               }}
               allowDecimal={false}
-              disabled={!draft.enabled || draft.last_day_of_month}
+              disabled={draft.last_day_of_month}
               invalid={dayInvalid}
               placeholder="1-28"
             />
-            <label className={`flex items-center gap-2 text-xs ${draft.enabled ? "text-muted-foreground cursor-pointer" : "text-muted-foreground/50"}`}>
-              <input
-                type="checkbox"
+            <div className="flex items-center gap-2 text-xs text-muted-foreground">
+              <Checkbox
                 checked={draft.last_day_of_month}
-                disabled={!draft.enabled}
-                onChange={(e) => {
-                  setDraft((p) => ({ ...p, last_day_of_month: e.target.checked, send_day_of_month: e.target.checked ? "" : p.send_day_of_month }));
+                onCheckedChange={(v) => {
+                  const checked = v === true;
+                  setDraft((p) => ({ ...p, last_day_of_month: checked, send_day_of_month: checked ? "" : p.send_day_of_month }));
                   setDayInvalid(false);
                 }}
-                className="cursor-pointer"
               />
-              Last day of month
-            </label>
+              <span>Last day of month</span>
+            </div>
           </div>
 
           <div className="space-y-1.5">
@@ -959,26 +1008,26 @@ function AutoSendCard({
               {cycleLabel[billingCycle] ?? billingCycle}
             </div>
           </div>
-
-          {/* Active toggle sits at the bottom of the form , the
-              automation's on/off state is the last decision the
-              manager makes after everything else is configured. */}
-          <div className="flex items-center justify-between rounded-md border border-border bg-card px-3 py-2">
-            <Label className="cursor-pointer">Active</Label>
-            <Switch
-              checked={draft.enabled}
-              onCheckedChange={(checked) => setDraft((p) => ({ ...p, enabled: checked }))}
-              aria-label="Active toggle"
-            />
-          </div>
         </>
       )}
 
       {embeddedStep === "schedule" && (
         <div className="space-y-3 max-h-[28rem] overflow-y-auto pr-1">
-          {planned.length === 0 ? (
+          {periodsLoading ? (
+            // Skeleton shimmer , 3 stacked rows that look like the
+            // real First/Second/Third run blocks. No reflow when the
+            // server resolves.
+            <div className="space-y-3">
+              {[0, 1, 2].map((i) => (
+                <div key={i} className="space-y-1.5">
+                  <Skeleton className="h-4 w-20" />
+                  <Skeleton className="h-9 w-full" />
+                </div>
+              ))}
+            </div>
+          ) : planned.length === 0 ? (
             <div className="rounded-md border border-border bg-muted/40 px-3 py-4 text-sm text-muted-foreground">
-              Every period for this budget has already been generated. Pick a different budget, or turn the automation off.
+              Every period for this budget has already been generated. Pick a different budget, or delete the automation.
             </div>
           ) : (
             <>
@@ -1028,43 +1077,52 @@ function AutoSendCard({
           </div>
         )}
 
-      <div className="flex justify-end gap-2 pt-2">
-        {embedded && embeddedStep === "form" && (
-          <Button
-            onClick={() => {
-              if (!draft.enabled) {
-                // Schedule preview only makes sense when auto-send
-                // is on. If they're turning it OFF, skip the
-                // preview step and save straight away.
-                save();
-                return;
-              }
-              if (validateForm() === null) return;
-              setEmbeddedStep("schedule");
-            }}
-            disabled={pending}
-          >
-            {pending && <Loader2 className="size-4 animate-spin" />}
-            {draft.enabled ? "Next" : "Save"}
-          </Button>
-        )}
-        {embedded && embeddedStep === "schedule" && (
-          <>
-            <Button variant="secondary" onClick={() => setEmbeddedStep("form")} disabled={pending}>
-              Back
+      <div className="flex justify-between gap-2 pt-2">
+        {/* Delete sits on the left only when editing an existing
+            automation. New automations have nothing to delete yet. */}
+        <div>
+          {embedded && initial.id && (
+            <Button variant="secondary" onClick={handleDelete} disabled={pending}>
+              Delete automation
             </Button>
+          )}
+        </div>
+        <div className="flex gap-2">
+          {embedded && embeddedStep === "form" && (
+            <Button
+              onClick={() => {
+                if (validateForm() === null) return;
+                setEmbeddedStep("schedule");
+              }}
+              disabled={pending}
+            >
+              {pending && <Loader2 className="size-4 animate-spin" />}
+              Next
+            </Button>
+          )}
+          {embedded && embeddedStep === "schedule" && (
+            <>
+              <Button variant="secondary" onClick={() => setEmbeddedStep("form")} disabled={pending}>
+                Back
+              </Button>
+              {/* Hide Confirm when every period is already generated ,
+                  there's nothing to schedule, so there's nothing to
+                  confirm. Manager either backs out or deletes. */}
+              {planned.length > 0 && (
+                <Button onClick={save} disabled={pending}>
+                  {pending && <Loader2 className="size-4 animate-spin" />}
+                  Confirm
+                </Button>
+              )}
+            </>
+          )}
+          {!embedded && (
             <Button onClick={save} disabled={pending}>
               {pending && <Loader2 className="size-4 animate-spin" />}
-              Confirm
+              Save auto-send
             </Button>
-          </>
-        )}
-        {!embedded && (
-          <Button onClick={save} disabled={pending}>
-            {pending && <Loader2 className="size-4 animate-spin" />}
-            Save auto-send
-          </Button>
-        )}
+          )}
+        </div>
       </div>
     </div>
   );

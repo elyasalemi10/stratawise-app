@@ -4,7 +4,7 @@ import { redirect } from "next/navigation";
 import { SettingsContent } from "./settings-content";
 import { ManagementCard } from "./management-card";
 import { getActiveManagementAgreement } from "@/lib/actions/management-transfer";
-import { getLevyAutosendSchedule } from "@/lib/actions/levy-autosend";
+import { getLevyAutosendSchedule, getBudgetPlannedPeriods, type PreviewPeriod } from "@/lib/actions/levy-autosend";
 import { getOCBudgets } from "@/lib/actions/budget";
 import { createServerClient } from "@/lib/supabase";
 
@@ -73,6 +73,23 @@ export default async function OCSettingsPage({
       return { id: b.id, label: `${fundLabel} , ${b.financial_year}` };
     });
 
+  // Pre-load the FY-aligned periods + done flags for every approved
+  // budget so the auto-send drawer's schedule step renders instantly
+  // when the manager picks a budget (no shimmer if the cache hit hits).
+  // Uses the schedule's saved send_day_of_month as the day; falls back
+  // to 1 for un-configured automations. The drawer still refreshes on
+  // send_day changes via its own useEffect.
+  const preloadDay = autosend.send_day_of_month && autosend.send_day_of_month >= 1
+    ? autosend.send_day_of_month
+    : 1;
+  const preloadedPairs = await Promise.all(
+    approvedBudgets.map(async (b) => {
+      const res = await getBudgetPlannedPeriods(ocId, b.id, preloadDay);
+      return [b.id, res.periods] as const;
+    }),
+  );
+  const preloadedPeriods: Record<string, PreviewPeriod[]> = Object.fromEntries(preloadedPairs);
+
   return (
     <div className="space-y-6">
       <ManagementCard
@@ -119,6 +136,7 @@ export default async function OCSettingsPage({
       autosend={autosend}
       autosendMailboxOptions={mailboxOptions}
       autosendBudgets={approvedBudgets}
+      autosendPreloadedPeriods={preloadedPeriods}
     />
     </div>
   );

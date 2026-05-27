@@ -12,7 +12,13 @@ import { GoogleGenAI, Type } from "@google/genai";
 export type ParsedInsurancePolicy = {
   provider: string;
   policy_number: string | null;
-  policy_type: "building" | "public_liability" | "combined" | "fidelity" | "voluntary_workers" | "other";
+  /** Gemini PREFERS one of: building, public_liability, combined,
+   *  contents, workers_comp, office_bearers, fidelity. Falls back to a
+   *  short custom snake_case label for unusual policy types (e.g.
+   *  plant_machinery, cyber_liability). UI maps unknown values onto
+   *  the "Other" select option with the raw value preserved as the
+   *  custom-type label. */
+  policy_type: string;
   sum_insured: number | null;
   premium: number | null;
   start_date: string | null;      // ISO yyyy-mm-dd
@@ -68,8 +74,8 @@ const RESPONSE_SCHEMA = {
           policy_number: { type: Type.STRING, nullable: true, description: "Policy number verbatim. Null if not shown." },
           policy_type: {
             type: Type.STRING,
-            enum: ["building", "public_liability", "combined", "fidelity", "voluntary_workers", "other"],
-            description: "Best-fit category. Use 'combined' when one policy clearly covers building + public liability.",
+            description:
+              "Best-fit category. PREFER one of: 'building', 'public_liability', 'combined' (bundled building + public liability), 'contents', 'workers_comp', 'office_bearers', 'fidelity'. If none fit, return a SHORT custom label (max 32 chars, snake_case, e.g. 'plant_machinery', 'cyber_liability'). Treat 'voluntary_workers' as a synonym for 'workers_comp'.",
           },
           sum_insured: { type: Type.NUMBER, nullable: true, description: "Sum insured in AUD. Strip currency symbols + commas. Null if not applicable (public liability has 'limit of liability' , use that)." },
           premium: { type: Type.NUMBER, nullable: true, description: "Annual premium in AUD inclusive of GST + stamp duty. Null if not shown." },

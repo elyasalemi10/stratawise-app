@@ -12,9 +12,9 @@ import { EmptyState } from "@/components/shared/empty-state";
 import { getFunds } from "@/lib/actions/funds";
 
 const KIND_LABEL: Record<string, string> = {
-  administrative: "System",
-  capital_works: "System",
-  maintenance_plan: "System",
+  administrative: "Administrative",
+  capital_works: "Capital Works",
+  maintenance_plan: "Maintenance Plan",
   custom: "Custom",
 };
 
@@ -66,7 +66,7 @@ export default async function FundsPage({
                 <TableRow key={f.id}>
                   <TableCell className="text-foreground font-medium">{f.name}</TableCell>
                   <TableCell>
-                    <Badge variant={f.is_system ? "neutral" : "success"}>
+                    <Badge variant={f.kind === "custom" ? "success" : "neutral"}>
                       {KIND_LABEL[f.kind] ?? "Custom"}
                     </Badge>
                   </TableCell>

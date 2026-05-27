@@ -413,7 +413,7 @@ export function LevyNotice({
             <View style={{ marginTop: 8, borderTopWidth: 0.5, borderTopColor: c.border, paddingTop: 6 }}>
               <View style={s.slipRow}>
                 <Text style={s.slipLabel}>Total payable:</Text>
-                <Text style={s.slipValue}>{fmt(subtotal + gst)}</Text>
+                <Text style={s.slipValue}>{fmt(subtotal + gst + (priorArrears?.amount ?? 0))}</Text>
               </View>
               <View style={s.slipRow}>
                 <Text style={s.slipLabel}>Due date:</Text>
