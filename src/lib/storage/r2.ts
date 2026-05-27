@@ -139,27 +139,47 @@ export async function uploadObject(
 }
 
 /**
- * Fetch an object's bytes from R2. Used by the email layer to attach PDFs.
- * Throws on missing object or transport error.
+ * Fetch an object's bytes from R2. Used by the email layer to attach
+ * PDFs and by the OCR worker to read the uploaded source file.
+ *
+ * Two-bucket fallback: confidential prefixes prefer the private
+ * bucket, but if the object isn't there (e.g. uploaded before the
+ * private bucket existed, or env-var skew between upload-time and
+ * read-time), we fall back to the public bucket. This made OCR fail
+ * silently when `R2_BUCKET_CONFIDENTIAL` was unset at upload-time but
+ * set at OCR-time (and vice versa).
  */
 export async function fetchObject(key: string): Promise<Buffer> {
   const client = getClient();
-  const res = await client.send(
-    new GetObjectCommand({
-      Bucket: bucketForKey(key),
-      Key: key,
-    }),
-  );
-  if (!res.Body) {
-    throw new Error(`R2 fetchObject: empty body for key ${key}`);
+  const primary = bucketForKey(key);
+  const fallback = primary === getBucket() ? process.env.R2_BUCKET_CONFIDENTIAL : getBucket();
+
+  async function tryBucket(bucket: string | undefined): Promise<Buffer | null> {
+    if (!bucket) return null;
+    try {
+      const res = await client.send(new GetObjectCommand({ Bucket: bucket, Key: key }));
+      if (!res.Body) return null;
+      const bodyAsAsyncIterable = res.Body as {
+        transformToByteArray: () => Promise<Uint8Array>;
+      };
+      const bytes = await bodyAsAsyncIterable.transformToByteArray();
+      return Buffer.from(bytes);
+    } catch (err) {
+      // NoSuchKey / 404 is the "try fallback" signal. Anything else
+      // (auth, transport) re-throws so callers see real failures.
+      const code = (err as { name?: string; Code?: string }).name
+        ?? (err as { Code?: string }).Code
+        ?? "";
+      if (code === "NoSuchKey" || code === "NotFound") return null;
+      throw err;
+    }
   }
-  // res.Body is a Web stream in Node 18+. transformToByteArray is the
-  // recommended way to materialise it.
-  const bodyAsAsyncIterable = res.Body as {
-    transformToByteArray: () => Promise<Uint8Array>;
-  };
-  const bytes = await bodyAsAsyncIterable.transformToByteArray();
-  return Buffer.from(bytes);
+
+  const bytes = (await tryBucket(primary)) ?? (await tryBucket(fallback ?? undefined));
+  if (!bytes) {
+    throw new Error(`R2 fetchObject: key ${key} not found in any configured bucket`);
+  }
+  return bytes;
 }
 
 /**

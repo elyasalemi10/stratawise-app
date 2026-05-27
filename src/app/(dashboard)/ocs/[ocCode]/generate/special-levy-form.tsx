@@ -2,7 +2,7 @@
 
 import { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
-import { Plus, X, Loader2 } from "lucide-react";
+import { Plus, X, Loader2, ChevronDown } from "lucide-react";
 import { toast } from "sonner";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -100,6 +100,8 @@ export function SpecialLevyForm({
   // Per-lot extra adjustments , map<lotId, list>. Each extra adds to
   // the locked apportioned share.
   const [extras, setExtras] = useState<Record<string, PerLotAdjustment[]>>({});
+  // Accordion state , which lot's line-item table is open.
+  const [expanded, setExpanded] = useState<Record<string, boolean>>({});
 
   const [calculating, startCalculating] = useTransition();
   const [creating, setCreating] = useState(false);
@@ -402,7 +404,7 @@ export function SpecialLevyForm({
                     <button
                       type="button"
                       onClick={addLine}
-                      className="flex w-full items-center justify-center gap-1.5 rounded-md border border-dashed border-border py-1.5 text-xs text-muted-foreground hover:bg-muted hover:text-foreground cursor-pointer"
+                      className="flex w-full items-center justify-center gap-1.5 rounded-md py-1.5 text-xs text-muted-foreground hover:bg-muted hover:text-foreground cursor-pointer"
                     >
                       <Plus className="h-3.5 w-3.5" />
                       Add row
@@ -432,107 +434,146 @@ export function SpecialLevyForm({
       {lots && lots.length > 0 && (
         <Card>
           <CardContent className="pt-5 space-y-3">
-            <Label>Per-lot apportionment</Label>
-            <div className="overflow-hidden rounded-md border border-border">
-              <Table variant="bordered" className="text-[11px]">
-                <TableHeader>
-                  <TableRow>
-                    <TableHead className="py-0.5">Lot</TableHead>
-                    <TableHead className="py-0.5">Owner</TableHead>
-                    <TableHead className="py-0.5 w-[100px] text-right">Liability</TableHead>
-                    <TableHead className="py-0.5 w-[120px] text-right">Apportioned</TableHead>
-                    <TableHead className="py-0.5 w-[140px] text-right">Total</TableHead>
-                    <TableHead className="py-0.5 w-[36px]" />
-                  </TableRow>
-                </TableHeader>
-                <TableBody>
-                  {lots.map((l) => {
-                    const lotExtras = extras[l.lot_id] ?? [];
-                    return (
-                      <>
-                        <TableRow key={l.lot_id}>
-                          <TableCell className="py-0.5">
-                            Lot {l.lot_number}{l.unit_number ? ` (Unit ${l.unit_number})` : ""}
-                          </TableCell>
-                          <TableCell className="py-0.5 text-muted-foreground">
-                            {l.owner_display_name ?? ""}
-                          </TableCell>
-                          <TableCell className="py-0.5 text-right tabular-nums">
-                            {Number(l.liability).toString()}
-                          </TableCell>
-                          <TableCell className="py-0.5 text-right tabular-nums text-muted-foreground">
-                            {formatCurrency(l.share)}
-                          </TableCell>
-                          <TableCell className="py-0.5 text-right tabular-nums font-medium">
-                            {formatCurrency(lotGrandTotal(l))}
-                          </TableCell>
-                          <TableCell className="py-0.5 text-right">
-                            <button
-                              type="button"
-                              onClick={() => addExtra(l.lot_id)}
-                              className="text-muted-foreground hover:text-foreground cursor-pointer"
-                              title="Add adjustment to this lot"
-                            >
-                              <Plus className="h-3.5 w-3.5" />
-                            </button>
-                          </TableCell>
-                        </TableRow>
-                        {lotExtras.map((adj, ei) => (
-                          <TableRow key={`${l.lot_id}-x-${ei}`} className="bg-muted/30">
-                            <TableCell className="py-0.5 pl-6 text-muted-foreground">+ Adjustment</TableCell>
-                            <TableCell className="py-0.5" colSpan={2}>
-                              <Combobox
-                                items={coaOptions}
-                                value={adj.coa_account_id ?? ""}
-                                onValueChange={(v) => updateExtraCoa(l.lot_id, ei, v)}
-                              >
-                                <ComboboxInput placeholder="Select an account" />
-                                <ComboboxContent>
-                                  <ComboboxEmpty>No accounts found.</ComboboxEmpty>
-                                  <ComboboxList>
-                                    {(c: CoaOption) => (
-                                      <ComboboxItem key={c.id} value={c.id}>{c.name}</ComboboxItem>
-                                    )}
-                                  </ComboboxList>
-                                </ComboboxContent>
-                              </Combobox>
-                            </TableCell>
-                            <TableCell className="py-0.5" colSpan={2}>
-                              <NumberInput
-                                value={adj.amount}
-                                onChange={(v) => updateExtraAmount(l.lot_id, ei, v)}
-                                thousandsSeparator
-                                prefix="$"
-                                placeholder="Amount"
-                                allowDecimal
-                              />
-                            </TableCell>
-                            <TableCell className="py-0.5 text-right">
-                              <button
-                                type="button"
-                                onClick={() => removeExtra(l.lot_id, ei)}
-                                aria-label="Remove adjustment"
-                                className="text-muted-foreground hover:text-destructive cursor-pointer"
-                              >
-                                <X className="h-3.5 w-3.5" />
-                              </button>
-                            </TableCell>
-                          </TableRow>
-                        ))}
-                      </>
-                    );
-                  })}
-                </TableBody>
-                <TableFooter>
-                  <TableRow>
-                    <TableCell colSpan={4} className="py-0.5 font-semibold">Grand total</TableCell>
-                    <TableCell className="py-0.5 text-right font-bold tabular-nums">
-                      {formatCurrency(lots.reduce((s, l) => s + lotGrandTotal(l), 0))}
-                    </TableCell>
-                    <TableCell />
-                  </TableRow>
-                </TableFooter>
-              </Table>
+            <Label>Per lot levy breakdown</Label>
+            {/* Accordion: each lot is a clickable header row showing
+                the totals. Clicking expands a nested CoA-backed line
+                items table (matching the regular levy generator). */}
+            <div className="overflow-hidden rounded-md border border-border divide-y divide-border">
+              {lots.map((l) => {
+                const lotExtras = extras[l.lot_id] ?? [];
+                const isOpen = !!expanded[l.lot_id];
+                return (
+                  <div key={l.lot_id}>
+                    <button
+                      type="button"
+                      onClick={() => setExpanded((p) => ({ ...p, [l.lot_id]: !p[l.lot_id] }))}
+                      className="grid w-full grid-cols-[24px_1fr_1fr_100px_120px_140px] items-center gap-3 px-3 py-2 text-left text-[12px] hover:bg-muted/40 cursor-pointer"
+                    >
+                      <ChevronDown
+                        className={`h-3.5 w-3.5 text-muted-foreground transition-transform ${isOpen ? "rotate-180" : ""}`}
+                      />
+                      <span className="text-foreground">
+                        Lot {l.lot_number}{l.unit_number ? ` (Unit ${l.unit_number})` : ""}
+                      </span>
+                      <span className="text-muted-foreground truncate">
+                        {l.owner_display_name ?? ""}
+                      </span>
+                      <span className="text-right tabular-nums text-muted-foreground">
+                        {Number(l.liability).toString()}
+                      </span>
+                      <span className="text-right tabular-nums text-muted-foreground">
+                        {formatCurrency(l.share)}
+                      </span>
+                      <span className="text-right tabular-nums font-medium text-foreground">
+                        {formatCurrency(lotGrandTotal(l))}
+                      </span>
+                    </button>
+
+                    {isOpen && (
+                      <div className="border-t border-border bg-muted/20 p-3 space-y-2">
+                        <div className="overflow-hidden rounded-md border border-border bg-card">
+                          <Table variant="bordered" className="text-xs">
+                            <TableHeader>
+                              <TableRow>
+                                <TableHead className="py-1">Account</TableHead>
+                                <TableHead className="py-1 w-[160px] text-right">Amount</TableHead>
+                                <TableHead className="py-1 w-[36px]" />
+                              </TableRow>
+                            </TableHeader>
+                            <TableBody>
+                              {/* The base apportioned share , a read-only
+                                  row so the manager can see what they're
+                                  adding adjustments on top of. */}
+                              <TableRow>
+                                <TableCell className="py-1 text-muted-foreground">
+                                  Apportioned share
+                                </TableCell>
+                                <TableCell className="py-1 text-right tabular-nums text-muted-foreground">
+                                  {formatCurrency(l.share)}
+                                </TableCell>
+                                <TableCell className="py-1" />
+                              </TableRow>
+                              {lotExtras.map((adj, ei) => (
+                                <TableRow key={`${l.lot_id}-x-${ei}`}>
+                                  <TableCell className="py-1">
+                                    <Combobox
+                                      items={coaOptions}
+                                      value={adj.coa_account_id ?? ""}
+                                      onValueChange={(v) => updateExtraCoa(l.lot_id, ei, v)}
+                                    >
+                                      <ComboboxInput placeholder="Select an account" />
+                                      <ComboboxContent>
+                                        <ComboboxEmpty>No accounts found.</ComboboxEmpty>
+                                        <ComboboxList>
+                                          {(c: CoaOption) => (
+                                            <ComboboxItem key={c.id} value={c.id}>{c.name}</ComboboxItem>
+                                          )}
+                                        </ComboboxList>
+                                      </ComboboxContent>
+                                    </Combobox>
+                                  </TableCell>
+                                  <TableCell className="py-1">
+                                    <NumberInput
+                                      value={adj.amount}
+                                      onChange={(v) => updateExtraAmount(l.lot_id, ei, v)}
+                                      thousandsSeparator
+                                      prefix="$"
+                                      placeholder="Amount"
+                                      allowDecimal
+                                    />
+                                  </TableCell>
+                                  <TableCell className="py-1">
+                                    <button
+                                      type="button"
+                                      onClick={() => removeExtra(l.lot_id, ei)}
+                                      aria-label="Remove line item"
+                                      className="text-muted-foreground hover:text-destructive cursor-pointer"
+                                    >
+                                      <X className="h-3.5 w-3.5" />
+                                    </button>
+                                  </TableCell>
+                                </TableRow>
+                              ))}
+                              <TableRow>
+                                <TableCell colSpan={3} className="py-1">
+                                  <button
+                                    type="button"
+                                    onClick={() => addExtra(l.lot_id)}
+                                    className="flex w-full items-center justify-center gap-1.5 rounded-md py-1.5 text-xs text-muted-foreground hover:bg-muted hover:text-foreground cursor-pointer"
+                                  >
+                                    <Plus className="h-3.5 w-3.5" />
+                                    Add line item
+                                  </button>
+                                </TableCell>
+                              </TableRow>
+                            </TableBody>
+                            <TableFooter>
+                              <TableRow>
+                                <TableCell className="py-1 font-semibold">Lot total</TableCell>
+                                <TableCell className="py-1 text-right font-bold tabular-nums">
+                                  {formatCurrency(lotGrandTotal(l))}
+                                </TableCell>
+                                <TableCell />
+                              </TableRow>
+                            </TableFooter>
+                          </Table>
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                );
+              })}
+
+              <div className="grid grid-cols-[24px_1fr_1fr_100px_120px_140px] items-center gap-3 px-3 py-2 text-[12px] bg-muted/30">
+                <span />
+                <span className="font-semibold text-foreground">Grand total</span>
+                <span />
+                <span />
+                <span />
+                <span className="text-right tabular-nums font-bold text-foreground">
+                  {formatCurrency(lots.reduce((s, l) => s + lotGrandTotal(l), 0))}
+                </span>
+              </div>
             </div>
 
             <div className="flex justify-end">

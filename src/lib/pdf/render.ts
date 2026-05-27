@@ -257,31 +257,29 @@ async function assembleLevyNoticeProps(
   // owner knows how fresh the balance is.
   let priorArrears: { amount: number; asOf: string } | null = null;
   if (sub.include_arrears_on_notice) {
-    const [{ data: priorRows }, { data: lastImport }] = await Promise.all([
-      supabase
-        .from("levy_notices")
-        .select("amount, amount_paid")
-        .eq("lot_id", levy.lot_id)
-        .lt("period_start", levy.period_start)
-        .in("status", ["issued", "partially_paid", "overdue"]),
-      supabase
-        .from("bank_transactions")
-        .select("imported_at")
-        .eq("oc_id", levy.oc_id)
-        .order("imported_at", { ascending: false })
-        .limit(1)
-        .maybeSingle(),
-    ]);
+    // ALL prior unpaid notices on this lot count as arrears , regular,
+    // special AND penalty_interest. Status filter includes 'issued',
+    // 'partially_paid', 'overdue', 'draft' (latest soft-cancel work
+    // means drafts are real notices, not just placeholders). Drafts
+    // count too if the manager has issued them via "Mark as sent"
+    // since that's the moment the owner owes the money.
+    const { data: priorRows } = await supabase
+      .from("levy_notices")
+      .select("amount, amount_paid")
+      .eq("lot_id", levy.lot_id)
+      .lt("period_start", levy.period_start)
+      .in("status", ["issued", "partially_paid", "overdue"])
+      .neq("id", levy.id);
     const outstanding = (priorRows ?? []).reduce((sum, r) => {
       return sum + Math.max(0, Number(r.amount ?? 0) - Number(r.amount_paid ?? 0));
     }, 0);
-    if (outstanding > 0) {
-      const importedAt = (lastImport as { imported_at: string } | null)?.imported_at;
-      priorArrears = {
-        amount: Math.round(outstanding * 100) / 100,
-        asOf: importedAt ? formatDateLong(importedAt.slice(0, 10)) : "today",
-      };
-    }
+    // Show the row even when outstanding rounds to $0.00 , the
+    // manager turned the toggle on, they expect to see SOME line
+    // confirming the system did the check.
+    priorArrears = {
+      amount: Math.round(outstanding * 100) / 100,
+      asOf: formatDateLong(new Date().toISOString().slice(0, 10)),
+    };
   }
 
   // Multi-lot detection: count distinct lots in this OC owned by the

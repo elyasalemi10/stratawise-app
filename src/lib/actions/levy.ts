@@ -9,7 +9,20 @@ import { sendLevyEmail } from "@/lib/email";
 import { formatDateLong } from "@/lib/utils";
 import { notifyOCLotOwners } from "@/lib/actions/notifications";
 import { getLotOwners } from "@/lib/actions/lot-ownership";
-import { generateCrn } from "@/lib/reconciliation/bpay-crn";
+// generateCrn lived in the nuked reconciliation stack. Inlined here
+// (BPAY MOD10V01 check digit), preserved for the bpay_crn column on
+// regular levies until the new reconciliation flow ships.
+function generateCrn(levyNumber: number): string {
+  const padded = String(levyNumber).padStart(7, "0");
+  const weights = [1, 2, 1, 2, 1, 2, 1];
+  let sum = 0;
+  for (let i = 0; i < 7; i++) {
+    const p = Number(padded[i]) * weights[i];
+    sum += p > 9 ? p - 9 : p;
+  }
+  const check = (10 - (sum % 10)) % 10;
+  return padded + String(check);
+}
 import { buildOCUrl } from "@/lib/oc-resolver";
 import { getLegislationRules } from "@/lib/legislation";
 import type { LevyNoticeProps } from "@/lib/pdf/types";
@@ -109,8 +122,13 @@ function getPeriodDates(
   const endPeriodMonth = ((fyStartMonth - 1) + (periodIndex + 1) * monthsPerPeriod) % 12;
   const endYear = fyStartYear + Math.floor(((fyStartMonth - 1) + (periodIndex + 1) * monthsPerPeriod) / 12);
 
-  const start = new Date(startYear, startMonth, 1);
-  const end = new Date(endYear, endPeriodMonth, 0); // last day of previous month
+  // CRITICAL: build dates with Date.UTC so .toISOString() doesn't
+  // shift the day by one in non-UTC timezones. Without this, a server
+  // (or dev machine) in Melbourne sees "first levy = 30 Jun" for an
+  // FY starting July, because new Date(y, m, 1) is LOCAL midnight which
+  // is 14:00 UTC the previous day.
+  const start = new Date(Date.UTC(startYear, startMonth, 1));
+  const end = new Date(Date.UTC(endYear, endPeriodMonth, 0)); // last day of previous month
 
   const formatDate = (d: Date) => d.toISOString().split("T")[0];
 

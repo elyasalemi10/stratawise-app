@@ -4,8 +4,9 @@ import { requireCompanyRole, getCurrentProfile } from "@/lib/auth";
 import { createServerClient } from "@/lib/supabase";
 import { sendInvitationEmail } from "@/lib/email";
 import { resolveCompanyLogo } from "@/lib/notifications";
-import { canonicaliseSender } from "@/lib/reconciliation/canonical";
-import { sweepMappingsForOwnerChange } from "@/lib/reconciliation/mappings";
+// canonicaliseSender / sweepMappingsForOwnerChange were part of the
+// nuked reconciliation stack; the owner-change sweep was a bank-payer
+// mapping update. New flow will rebuild this if needed.
 import { buildOCUrl } from "@/lib/oc-resolver";
 import { generateInviteCode, normaliseInviteCode } from "@/lib/invite-code";
 import { rateLimitCheck, getClientIp } from "@/lib/rate-limit";
@@ -296,15 +297,8 @@ export async function acceptInvitation(rawCode: string) {
         .trim();
       const ownerNameRaw =
         fromProfile.length > 0 ? fromProfile : (invitation.name ?? "").trim();
-      const ownerCanonical = canonicaliseSender(ownerNameRaw);
-      if (ownerCanonical) {
-        await sweepMappingsForOwnerChange(
-          invitation.oc_id,
-          invitation.lot_id,
-          ownerCanonical,
-          profile.id,
-        );
-      }
+      // Mapping sweep removed with the reconciliation nuke.
+      void ownerNameRaw;
     }
   }
 

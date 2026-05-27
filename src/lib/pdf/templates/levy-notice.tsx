@@ -308,10 +308,12 @@ export function LevyNotice({
               <Text style={s.totalLabel}>GST</Text>
               <Text style={s.totalValue}>{fmt(gst)}</Text>
             </View>
-            {priorArrears && priorArrears.amount > 0 ? (
+            {priorArrears ? (
               <View style={s.totalRow}>
                 <Text style={s.totalLabel}>Arrears (as of {priorArrears.asOf})</Text>
-                <Text style={[s.totalValue, { color: c.destructive }]}>{fmt(priorArrears.amount)}</Text>
+                <Text style={[s.totalValue, priorArrears.amount > 0 ? { color: c.destructive } : {}]}>
+                  {fmt(priorArrears.amount)}
+                </Text>
               </View>
             ) : null}
             <View style={s.totalDueRow}>

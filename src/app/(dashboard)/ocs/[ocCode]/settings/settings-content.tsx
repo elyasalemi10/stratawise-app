@@ -1,7 +1,7 @@
 "use client";
 
-import { useState, useRef, useCallback, useEffect, useTransition } from "react";
-import { Pencil, Check, Loader2 } from "lucide-react";
+import { useState, useEffect, useTransition } from "react";
+import { Pencil, Loader2 } from "lucide-react";
 import { toast } from "sonner";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -25,9 +25,6 @@ import {
 } from "@/lib/actions/levy-autosend";
 import { buildPlannedSends } from "@/lib/levy-autosend-helpers";
 import {
-  Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle,
-} from "@/components/ui/dialog";
-import {
   Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle,
 } from "@/components/ui/sheet";
 import {
@@ -41,13 +38,6 @@ const MONTHS = [
   "January", "February", "March", "April", "May", "June",
   "July", "August", "September", "October", "November", "December",
 ];
-
-const BILLING_LABELS: Record<string, string> = {
-  monthly: "Monthly",
-  quarterly: "Quarterly",
-  half_yearly: "Half-yearly",
-  annually: "Annually",
-};
 
 interface OCData {
   id: string;
@@ -89,134 +79,217 @@ interface OCData {
   bank_account_name?: string | null;
 }
 
-function EditableField({
-  label,
-  value,
-  field,
-  ocId,
-  isEditing,
-  type = "text",
-  options,
-  onSaved,
+// ─── Read-only key/value row ────────────────────────────────
+// Used for every line on every settings card. All edits happen
+// via SettingsEditDrawer (one per card), not inline.
+function ReadonlyField({
+  label, value, options,
 }: {
   label: string;
-  value: string | null | undefined;
-  field: string;
-  ocId: string;
-  isEditing: boolean;
-  type?: "text" | "textarea" | "select";
+  value: string | number | boolean | null | undefined;
   options?: { value: string; label: string }[];
-  onSaved?: (newValue: string) => void;
 }) {
-  const [editValue, setEditValue] = useState(value ?? "");
-  const inputRef = useRef<HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement>(null);
-  const [saving, setSaving] = useState(false);
-
-  useEffect(() => {
-    setEditValue(value ?? "");
-  }, [value, isEditing]);
-
-  const save = useCallback(async () => {
-    if (editValue === (value ?? "") || !field) return;
-    setSaving(true);
-    const result = await updateOCField(ocId, field, editValue || null);
-    setSaving(false);
-    if (result.error) {
-      toast.error(result.error);
-      setEditValue(value ?? "");
+  let display: React.ReactNode = "";
+  if (value !== null && value !== undefined && value !== "") {
+    if (options) {
+      display = options.find((o) => String(o.value) === String(value))?.label ?? String(value);
+    } else if (typeof value === "boolean") {
+      display = value ? "Yes" : "No";
     } else {
-      onSaved?.(editValue);
-      toast.success(`${label || "Field"} updated`);
+      display = String(value);
     }
-  }, [editValue, value, field, ocId, label, onSaved]);
-
-  if (!isEditing) {
-    const displayValue = options?.find((o) => o.value === value)?.label ?? value;
-    return (
-      <div className="flex justify-between items-start py-2.5 border-b border-border/50 last:border-b-0">
-        <span className="text-sm text-muted-foreground">{label}</span>
-        <span className="text-sm text-foreground text-right max-w-[60%]">{displayValue || ","}</span>
-      </div>
-    );
   }
-
-  if (type === "select" && options) {
-    return (
-      <div className="flex justify-between items-center py-2 border-b border-border/50 last:border-b-0">
-        <span className="text-sm text-muted-foreground">{label}</span>
-        <select
-          ref={inputRef as React.RefObject<HTMLSelectElement>}
-          value={editValue}
-          onChange={(e) => { setEditValue(e.target.value); }}
-          onBlur={save}
-          disabled={saving}
-          className="h-7 rounded-md border border-border bg-background px-2 text-sm"
-        >
-          {options.map((o) => (
-            <option key={o.value} value={o.value}>{o.label}</option>
-          ))}
-        </select>
-      </div>
-    );
-  }
-
-  if (type === "textarea") {
-    return (
-      <div className="py-2">
-        <Textarea
-          ref={inputRef as React.RefObject<HTMLTextAreaElement>}
-          value={editValue}
-          onChange={(e) => setEditValue(e.target.value)}
-          onBlur={save}
-          disabled={saving}
-          rows={4}
-          className="text-sm"
-        />
-      </div>
-    );
-  }
-
   return (
-    <div className="flex justify-between items-center py-2 border-b border-border/50 last:border-b-0">
+    <div className="flex justify-between items-start py-2.5 border-b border-border/50 last:border-b-0">
       <span className="text-sm text-muted-foreground">{label}</span>
-      <Input
-        ref={inputRef as React.RefObject<HTMLInputElement>}
-        value={editValue}
-        onChange={(e) => setEditValue(e.target.value)}
-        onBlur={save}
-        onKeyDown={(e) => { if (e.key === "Enter") { save(); (e.target as HTMLInputElement).blur(); } }}
-        disabled={saving}
-        className="h-7 w-48 text-sm text-right"
-      />
+      <span className="text-sm text-foreground text-right max-w-[60%]">{display}</span>
     </div>
   );
 }
 
-// Per-card editor header. Renders the section title + a small
-// Edit / Done toggle on the right. Replaces the old global Edit
-// button at the top of the settings page.
+// ─── Per-card edit drawer ───────────────────────────────────
+// Opens a side sheet with a form for every field on a card.
+// Save writes each changed field through updateOCField and then
+// closes the drawer. Cancel discards the in-flight edits without
+// touching server state.
+type FieldType = "text" | "textarea" | "number" | "select" | "boolean";
+type FieldConfig = {
+  key: string;
+  label: string;
+  type: FieldType;
+  value: string | number | boolean | null | undefined;
+  options?: { value: string; label: string }[];
+};
+
+function SettingsEditDrawer({
+  open, onClose, title, fields, ocId, onSaved,
+}: {
+  open: boolean;
+  onClose: () => void;
+  title: string;
+  fields: FieldConfig[];
+  ocId: string;
+  onSaved: (next: Record<string, string | boolean>) => void;
+}) {
+  // Stable string representation of each field's value. Booleans
+  // go through "yes" / "no" so they map cleanly onto the same
+  // Select primitive as other enum-style fields.
+  const initial = useState(() =>
+    Object.fromEntries(
+      fields.map((f) => {
+        if (f.type === "boolean") return [f.key, f.value ? "yes" : "no"];
+        return [f.key, f.value == null ? "" : String(f.value)];
+      }),
+    ) as Record<string, string>,
+  )[0];
+  const [values, setValues] = useState<Record<string, string>>(initial);
+  const [saving, setSaving] = useState(false);
+
+  // Whenever the drawer re-opens for the same card, snapshot the
+  // latest server values so cancel-then-reopen doesn't show stale
+  // edits.
+  useEffect(() => {
+    if (open) {
+      setValues(
+        Object.fromEntries(
+          fields.map((f) => {
+            if (f.type === "boolean") return [f.key, f.value ? "yes" : "no"];
+            return [f.key, f.value == null ? "" : String(f.value)];
+          }),
+        ) as Record<string, string>,
+      );
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [open]);
+
+  async function save() {
+    setSaving(true);
+    const next: Record<string, string | boolean> = {};
+    for (const f of fields) {
+      const current = values[f.key];
+      const original = f.type === "boolean"
+        ? (f.value ? "yes" : "no")
+        : (f.value == null ? "" : String(f.value));
+      if (current === original) continue;
+      const payload: string | boolean | null = f.type === "boolean"
+        ? current === "yes"
+        : current;
+      const res = await updateOCField(ocId, f.key, payload === "" ? null : payload);
+      if (res.error) {
+        setSaving(false);
+        toast.error(res.error);
+        return;
+      }
+      next[f.key] = payload === "" ? "" : payload;
+    }
+    setSaving(false);
+    onSaved(next);
+    toast.success(`${title} saved`);
+    onClose();
+  }
+
+  return (
+    <Sheet open={open} onOpenChange={(o) => { if (!o && !saving) onClose(); }}>
+      <SheetContent side="right" className="flex w-full flex-col gap-0 sm:max-w-lg">
+        <SheetHeader>
+          <SheetTitle>{title}</SheetTitle>
+          <SheetDescription className="sr-only">Edit {title}</SheetDescription>
+        </SheetHeader>
+        <div className="flex-1 overflow-y-auto p-4 space-y-4">
+          {fields.map((f) => (
+            <div key={f.key} className="space-y-1.5">
+              <Label>{f.label}</Label>
+              {f.type === "text" && (
+                <Input
+                  value={values[f.key] ?? ""}
+                  onChange={(e) => setValues((p) => ({ ...p, [f.key]: e.target.value }))}
+                />
+              )}
+              {f.type === "textarea" && (
+                <Textarea
+                  value={values[f.key] ?? ""}
+                  onChange={(e) => setValues((p) => ({ ...p, [f.key]: e.target.value }))}
+                  rows={4}
+                />
+              )}
+              {f.type === "number" && (
+                <NumberInput
+                  value={values[f.key] ?? ""}
+                  onChange={(v) => setValues((p) => ({ ...p, [f.key]: v }))}
+                  allowDecimal
+                />
+              )}
+              {(f.type === "select" || f.type === "boolean") && (
+                <Select
+                  value={values[f.key] ?? ""}
+                  onValueChange={(v) => setValues((p) => ({ ...p, [f.key]: v ?? "" }))}
+                >
+                  <SelectTrigger>
+                    <SelectValue>
+                      {(f.type === "boolean"
+                        ? (values[f.key] === "yes" ? "Yes" : "No")
+                        : (f.options?.find((o) => o.value === values[f.key])?.label ?? values[f.key])) || ""}
+                    </SelectValue>
+                  </SelectTrigger>
+                  <SelectContent>
+                    {(f.type === "boolean"
+                      ? [{ value: "yes", label: "Yes" }, { value: "no", label: "No" }]
+                      : (f.options ?? [])
+                    ).map((o) => (
+                      <SelectItem key={o.value} value={o.value}>{o.label}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              )}
+            </div>
+          ))}
+        </div>
+        <div className="border-t border-border p-4 flex justify-end gap-2">
+          <Button variant="secondary" onClick={onClose} disabled={saving}>
+            Cancel
+          </Button>
+          <Button onClick={save} disabled={saving}>
+            {saving && <Loader2 className="size-4 animate-spin" />}
+            Save
+          </Button>
+        </div>
+      </SheetContent>
+    </Sheet>
+  );
+}
+
+// "2026-08-01" -> "first of August 2026" , reads more like prose
+// than ISO. Used in the auto-send "Next run will be on the X" line.
+function formatNiceDate(iso: string): string {
+  if (!iso) return iso;
+  const [y, m, d] = iso.split("-").map(Number);
+  if (!y || !m || !d) return iso;
+  const months = ["January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December"];
+  const ord = (n: number) => {
+    if (n >= 11 && n <= 13) return `${n}th`;
+    const last = n % 10;
+    if (last === 1) return `${n}st`;
+    if (last === 2) return `${n}nd`;
+    if (last === 3) return `${n}rd`;
+    return `${n}th`;
+  };
+  return `${ord(d)} of ${months[m - 1]} ${y}`;
+}
+
+// Per-card editor header. Renders the section title + an Edit
+// button that opens a side drawer with the form for this card.
 function CardEditHeader({
-  title, editing, onToggle,
+  title, onEdit,
 }: {
   title: string;
-  editing: boolean;
-  onToggle: () => void;
+  onEdit: () => void;
 }) {
   return (
     <div className="mb-3 flex items-center justify-between">
       <h3 className="text-sm font-semibold text-foreground">{title}</h3>
-      <Button variant="secondary" size="sm" onClick={onToggle}>
-        {editing ? (
-          <>
-            <Check className="mr-1.5 h-3.5 w-3.5" />
-            Done
-          </>
-        ) : (
-          <>
-            <Pencil className="mr-1.5 h-3.5 w-3.5" />
-            Edit
-          </>
-        )}
+      <Button variant="secondary" size="sm" onClick={onEdit}>
+        <Pencil className="mr-1.5 h-3.5 w-3.5" />
+        Edit
       </Button>
     </div>
   );
@@ -244,16 +317,21 @@ export function SettingsContent({
   autosendBudgets: Array<{ id: string; label: string }>;
 }) {
   const [oc, setOC] = useState(initial);
-  // Per-card edit toggles , each card flips its own row so the
-  // manager only enters edit mode for the section they're tweaking.
-  // Keys: 'general' | 'certificate' | 'commonProperty' | 'financial' |
-  // 'communicationsDelivery' | 'communicationsNotice' | 'banking'
-  const [editing, setEditing] = useState<Record<string, boolean>>({});
-  const isCardEditing = (key: string) => !!editing[key];
-  const toggleCard = (key: string) => setEditing((p) => ({ ...p, [key]: !p[key] }));
+  // Per-card drawer state. Each card has its own key, exactly one
+  // drawer open at a time. null = nothing open.
+  const [openDrawer, setOpenDrawer] = useState<
+    | null
+    | "general"
+    | "certificate"
+    | "commonProperty"
+    | "financial"
+    | "commsDelivery"
+    | "commsNotice"
+    | "banking"
+  >(null);
 
-  function onFieldSaved(field: string, value: string) {
-    setOC((prev) => ({ ...prev, [field]: value }));
+  function applyDrawerSave(next: Record<string, string | boolean>) {
+    setOC((prev) => ({ ...prev, ...next } as OCData));
   }
 
   const fyMonth = MONTHS[(oc.financial_year_start_month ?? 7) - 1] ?? "July";
@@ -278,8 +356,6 @@ export function SettingsContent({
     { value: "mixed", label: "Mixed" },
     { value: "email", label: "Email by default" },
   ];
-  const levyBasisLabels: Record<string, string> = Object.fromEntries(levyBasisOptions.map((o) => [o.value, o.label]));
-  const deliveryLabels: Record<string, string> = Object.fromEntries(deliveryOptions.map((o) => [o.value, o.label]));
 
   // URL-synced tab state. ?tab=automation deep-links directly to the
   // auto-send card without the manager having to scroll.
@@ -329,42 +405,31 @@ export function SettingsContent({
         <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
           <Card>
             <CardContent className="pt-5">
-              <CardEditHeader title="General details" editing={isCardEditing("general")} onToggle={() => toggleCard("general")} />
-              <EditableField label="Name" value={oc.name} field="name" ocId={oc.id} isEditing={isCardEditing("general")} onSaved={(v) => onFieldSaved("name", v)} />
-              <EditableField label="Plan number" value={oc.plan_number} field="plan_number" ocId={oc.id} isEditing={isCardEditing("general")} onSaved={(v) => onFieldSaved("plan_number", v)} />
-              <EditableField label="Address" value={oc.address} field="address" ocId={oc.id} isEditing={isCardEditing("general")} onSaved={(v) => onFieldSaved("address", v)} />
-              {isCardEditing("general") ? (
-                <>
-                  <EditableField label="ABN" value={oc.abn ?? ""} field="abn" ocId={oc.id} isEditing={true} onSaved={(v) => onFieldSaved("abn", v)} />
-                  <EditableField label="TFN" value={oc.tfn ?? ""} field="tfn" ocId={oc.id} isEditing={true} onSaved={(v) => onFieldSaved("tfn", v)} />
-                </>
-              ) : (
-                <>
-                  <EditableField label="OC Tier" value={oc.oc_tier ? `Tier ${oc.oc_tier}` : null} field="" ocId={oc.id} isEditing={false} />
-                  <EditableField label="Total lots" value={String(oc.total_lots)} field="" ocId={oc.id} isEditing={false} />
-                </>
-              )}
+              <CardEditHeader title="General details" onEdit={() => setOpenDrawer("general")} />
+              <ReadonlyField label="Name" value={oc.name} />
+              <ReadonlyField label="Plan number" value={oc.plan_number} />
+              <ReadonlyField label="Address" value={oc.address} />
+              <ReadonlyField label="ABN" value={oc.abn} />
+              <ReadonlyField label="TFN" value={oc.tfn} />
+              <ReadonlyField label="OC Tier" value={oc.oc_tier ? `Tier ${oc.oc_tier}` : null} />
+              <ReadonlyField label="Total lots" value={oc.total_lots} />
             </CardContent>
           </Card>
 
           <Card>
             <CardContent className="pt-5">
-              <CardEditHeader title="Certificate settings" editing={isCardEditing("certificate")} onToggle={() => toggleCard("certificate")} />
-              <EditableField label="Common seal text" value={oc.common_seal_text ?? ""} field="common_seal_text" ocId={oc.id} isEditing={isCardEditing("certificate")} type={isCardEditing("certificate") ? "textarea" : "text"} onSaved={(v) => onFieldSaved("common_seal_text", v)} />
-              <EditableField label="Inspection address" value={oc.inspection_address ?? ""} field="inspection_address" ocId={oc.id} isEditing={isCardEditing("certificate")} onSaved={(v) => onFieldSaved("inspection_address", v)} />
+              <CardEditHeader title="Certificate settings" onEdit={() => setOpenDrawer("certificate")} />
+              <ReadonlyField label="Common seal text" value={oc.common_seal_text} />
+              <ReadonlyField label="Inspection address" value={oc.inspection_address} />
             </CardContent>
           </Card>
 
           <Card className="lg:col-span-2">
             <CardContent className="pt-5">
-              <CardEditHeader title="Common property description" editing={isCardEditing("commonProperty")} onToggle={() => toggleCard("commonProperty")} />
-              {isCardEditing("commonProperty") ? (
-                <EditableField label="" value={oc.common_property_description} field="common_property_description" ocId={oc.id} isEditing={true} type="textarea" onSaved={(v) => onFieldSaved("common_property_description", v)} />
-              ) : (
-                <p className="text-sm text-foreground whitespace-pre-wrap">
-                  {oc.common_property_description || ""}
-                </p>
-              )}
+              <CardEditHeader title="Common property description" onEdit={() => setOpenDrawer("commonProperty")} />
+              <p className="text-sm text-foreground whitespace-pre-wrap">
+                {oc.common_property_description || ""}
+              </p>
             </CardContent>
           </Card>
         </div>
@@ -373,25 +438,16 @@ export function SettingsContent({
       {activeTab === "financial" && (
         <Card>
           <CardContent className="pt-5">
-            <CardEditHeader title="Financial settings" editing={isCardEditing("financial")} onToggle={() => toggleCard("financial")} />
-            <EditableField label="Financial year starts" value={isCardEditing("financial") ? String(oc.financial_year_start_month) : fyMonth} field="financial_year_start_month" ocId={oc.id} isEditing={isCardEditing("financial")} type={isCardEditing("financial") ? "select" : "text"} options={monthOptions} onSaved={(v) => onFieldSaved("financial_year_start_month", v)} />
-            <EditableField label="Billing cycle" value={isCardEditing("financial") ? oc.billing_cycle : (BILLING_LABELS[oc.billing_cycle] ?? oc.billing_cycle)} field="billing_cycle" ocId={oc.id} isEditing={isCardEditing("financial")} type={isCardEditing("financial") ? "select" : "text"} options={billingOptions} onSaved={(v) => onFieldSaved("billing_cycle", v)} />
-            <EditableField label="Rules type" value={isCardEditing("financial") ? oc.rules_type : (oc.rules_type === "model" ? "Model rules" : "Custom rules")} field="rules_type" ocId={oc.id} isEditing={isCardEditing("financial")} type={isCardEditing("financial") ? "select" : "text"} options={rulesOptions} onSaved={(v) => onFieldSaved("rules_type", v)} />
-            <EditableField label="Levy calculation basis" value={isCardEditing("financial") ? (oc.levy_calculation_basis ?? "lot_liability") : (levyBasisLabels[oc.levy_calculation_basis ?? "lot_liability"] ?? "Lot liability")} field="levy_calculation_basis" ocId={oc.id} isEditing={isCardEditing("financial")} type={isCardEditing("financial") ? "select" : "text"} options={levyBasisOptions} onSaved={(v) => onFieldSaved("levy_calculation_basis", v)} />
-            <EditableField label="Early payment incentive (%)" value={String(oc.early_payment_incentive_percent ?? 0)} field="early_payment_incentive_percent" ocId={oc.id} isEditing={isCardEditing("financial")} onSaved={(v) => onFieldSaved("early_payment_incentive_percent", v)} />
-            <EditableField label="Annual interest rate (%)" value={String(oc.annual_interest_rate_percent ?? 0)} field="annual_interest_rate_percent" ocId={oc.id} isEditing={isCardEditing("financial")} onSaved={(v) => onFieldSaved("annual_interest_rate_percent", v)} />
-            <EditableField label="Interest-free period (days)" value={String(oc.interest_free_period_days ?? 28)} field="interest_free_period_days" ocId={oc.id} isEditing={isCardEditing("financial")} onSaved={(v) => onFieldSaved("interest_free_period_days", v)} />
-            <EditableField label="Arrears action threshold (cents)" value={String(oc.arrears_action_threshold_cents ?? 5000)} field="arrears_action_threshold_cents" ocId={oc.id} isEditing={isCardEditing("financial")} onSaved={(v) => onFieldSaved("arrears_action_threshold_cents", v)} />
-            <EditableField
-              label="Include arrears on levy notices"
-              value={isCardEditing("financial") ? (oc.include_arrears_on_notice ? "yes" : "no") : (oc.include_arrears_on_notice ? "Yes" : "No")}
-              field="include_arrears_on_notice"
-              ocId={oc.id}
-              isEditing={isCardEditing("financial")}
-              type={isCardEditing("financial") ? "select" : "text"}
-              options={[{ value: "yes", label: "Yes" }, { value: "no", label: "No" }]}
-              onSaved={(v) => onFieldSaved("include_arrears_on_notice", v)}
-            />
+            <CardEditHeader title="Financial settings" onEdit={() => setOpenDrawer("financial")} />
+            <ReadonlyField label="Financial year starts" value={fyMonth} />
+            <ReadonlyField label="Billing cycle" value={oc.billing_cycle} options={billingOptions} />
+            <ReadonlyField label="Rules type" value={oc.rules_type} options={rulesOptions} />
+            <ReadonlyField label="Levy calculation basis" value={oc.levy_calculation_basis ?? "lot_liability"} options={levyBasisOptions} />
+            <ReadonlyField label="Early payment incentive (%)" value={oc.early_payment_incentive_percent ?? 0} />
+            <ReadonlyField label="Annual interest rate (%)" value={oc.annual_interest_rate_percent ?? 0} />
+            <ReadonlyField label="Interest-free period (days)" value={oc.interest_free_period_days ?? 28} />
+            <ReadonlyField label="Arrears action threshold (cents)" value={oc.arrears_action_threshold_cents ?? 5000} />
+            <ReadonlyField label="Include arrears on levy notices" value={!!oc.include_arrears_on_notice} />
           </CardContent>
         </Card>
       )}
@@ -400,37 +456,20 @@ export function SettingsContent({
         <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
           <Card>
             <CardContent className="pt-5">
-              <CardEditHeader title="Delivery" editing={isCardEditing("commsDelivery")} onToggle={() => toggleCard("commsDelivery")} />
-              <EditableField label="Default delivery method" value={isCardEditing("commsDelivery") ? (oc.default_delivery_method ?? "postal") : (deliveryLabels[oc.default_delivery_method ?? "postal"] ?? "Postal only")} field="default_delivery_method" ocId={oc.id} isEditing={isCardEditing("commsDelivery")} type={isCardEditing("commsDelivery") ? "select" : "text"} options={deliveryOptions} onSaved={(v) => onFieldSaved("default_delivery_method", v)} />
-              <EditableField label="Meetings postal buffer (days)" value={String(oc.meetings_postal_buffer_days ?? 14)} field="meetings_postal_buffer_days" ocId={oc.id} isEditing={isCardEditing("commsDelivery")} onSaved={(v) => onFieldSaved("meetings_postal_buffer_days", v)} />
-              <EditableField label="Levies postal buffer (days)" value={String(oc.levies_postal_buffer_days ?? 14)} field="levies_postal_buffer_days" ocId={oc.id} isEditing={isCardEditing("commsDelivery")} onSaved={(v) => onFieldSaved("levies_postal_buffer_days", v)} />
-              <EditableField label="Financial documents postal buffer (days)" value={String(oc.financial_postal_buffer_days ?? 14)} field="financial_postal_buffer_days" ocId={oc.id} isEditing={isCardEditing("commsDelivery")} onSaved={(v) => onFieldSaved("financial_postal_buffer_days", v)} />
+              <CardEditHeader title="Delivery" onEdit={() => setOpenDrawer("commsDelivery")} />
+              <ReadonlyField label="Default delivery method" value={oc.default_delivery_method ?? "postal"} options={deliveryOptions} />
+              <ReadonlyField label="Meetings postal buffer (days)" value={oc.meetings_postal_buffer_days ?? 14} />
+              <ReadonlyField label="Levies postal buffer (days)" value={oc.levies_postal_buffer_days ?? 14} />
+              <ReadonlyField label="Financial documents postal buffer (days)" value={oc.financial_postal_buffer_days ?? 14} />
             </CardContent>
           </Card>
 
           <Card>
             <CardContent className="pt-5">
-              <CardEditHeader title="Levy notice content" editing={isCardEditing("commsNotice")} onToggle={() => toggleCard("commsNotice")} />
-              <EditableField
-                label="Add note for multi-lot owners"
-                value={isCardEditing("commsNotice") ? (oc.multilot_note_enabled ? "yes" : "no") : (oc.multilot_note_enabled ? "Yes" : "No")}
-                field="multilot_note_enabled"
-                ocId={oc.id}
-                isEditing={isCardEditing("commsNotice")}
-                type={isCardEditing("commsNotice") ? "select" : "text"}
-                options={[{ value: "yes", label: "Yes" }, { value: "no", label: "No" }]}
-                onSaved={(v) => onFieldSaved("multilot_note_enabled", v)}
-              />
+              <CardEditHeader title="Levy notice content" onEdit={() => setOpenDrawer("commsNotice")} />
+              <ReadonlyField label="Add note for multi-lot owners" value={!!oc.multilot_note_enabled} />
               {oc.multilot_note_enabled && (
-                <EditableField
-                  label="Multi-lot note text"
-                  value={oc.multilot_note_text ?? ""}
-                  field="multilot_note_text"
-                  ocId={oc.id}
-                  isEditing={isCardEditing("commsNotice")}
-                  type={isCardEditing("commsNotice") ? "textarea" : "text"}
-                  onSaved={(v) => onFieldSaved("multilot_note_text", v)}
-                />
+                <ReadonlyField label="Multi-lot note text" value={oc.multilot_note_text} />
               )}
             </CardContent>
           </Card>
@@ -440,13 +479,105 @@ export function SettingsContent({
       {activeTab === "banking" && (
         <Card>
           <CardContent className="pt-5">
-            <CardEditHeader title="Trust account details" editing={isCardEditing("banking")} onToggle={() => toggleCard("banking")} />
-            <EditableField label="Account name" value={oc.bank_account_name ?? ""} field="bank_account_name" ocId={oc.id} isEditing={isCardEditing("banking")} onSaved={(v) => onFieldSaved("bank_account_name", v)} />
-            <EditableField label="BSB" value={oc.bank_bsb ?? ""} field="bank_bsb" ocId={oc.id} isEditing={isCardEditing("banking")} onSaved={(v) => onFieldSaved("bank_bsb", v)} />
-            <EditableField label="Account number" value={oc.bank_account_number ?? ""} field="bank_account_number" ocId={oc.id} isEditing={isCardEditing("banking")} onSaved={(v) => onFieldSaved("bank_account_number", v)} />
+            <CardEditHeader title="Trust account details" onEdit={() => setOpenDrawer("banking")} />
+            <ReadonlyField label="Account name" value={oc.bank_account_name} />
+            <ReadonlyField label="BSB" value={oc.bank_bsb} />
+            <ReadonlyField label="Account number" value={oc.bank_account_number} />
           </CardContent>
         </Card>
       )}
+
+      {/* One drawer per card. Mounted at the page root so each
+          drawer renders its own form when opened. */}
+      <SettingsEditDrawer
+        open={openDrawer === "general"}
+        onClose={() => setOpenDrawer(null)}
+        title="General details"
+        ocId={oc.id}
+        onSaved={applyDrawerSave}
+        fields={[
+          { key: "name", label: "Name", type: "text", value: oc.name },
+          { key: "plan_number", label: "Plan number", type: "text", value: oc.plan_number },
+          { key: "address", label: "Address", type: "text", value: oc.address },
+          { key: "abn", label: "ABN", type: "text", value: oc.abn },
+          { key: "tfn", label: "TFN", type: "text", value: oc.tfn },
+        ]}
+      />
+      <SettingsEditDrawer
+        open={openDrawer === "certificate"}
+        onClose={() => setOpenDrawer(null)}
+        title="Certificate settings"
+        ocId={oc.id}
+        onSaved={applyDrawerSave}
+        fields={[
+          { key: "common_seal_text", label: "Common seal text", type: "textarea", value: oc.common_seal_text },
+          { key: "inspection_address", label: "Inspection address", type: "text", value: oc.inspection_address },
+        ]}
+      />
+      <SettingsEditDrawer
+        open={openDrawer === "commonProperty"}
+        onClose={() => setOpenDrawer(null)}
+        title="Common property description"
+        ocId={oc.id}
+        onSaved={applyDrawerSave}
+        fields={[
+          { key: "common_property_description", label: "Common property description", type: "textarea", value: oc.common_property_description },
+        ]}
+      />
+      <SettingsEditDrawer
+        open={openDrawer === "financial"}
+        onClose={() => setOpenDrawer(null)}
+        title="Financial settings"
+        ocId={oc.id}
+        onSaved={applyDrawerSave}
+        fields={[
+          { key: "financial_year_start_month", label: "Financial year starts", type: "select", value: String(oc.financial_year_start_month), options: monthOptions },
+          { key: "billing_cycle", label: "Billing cycle", type: "select", value: oc.billing_cycle, options: billingOptions },
+          { key: "rules_type", label: "Rules type", type: "select", value: oc.rules_type, options: rulesOptions },
+          { key: "levy_calculation_basis", label: "Levy calculation basis", type: "select", value: oc.levy_calculation_basis ?? "lot_liability", options: levyBasisOptions },
+          { key: "early_payment_incentive_percent", label: "Early payment incentive (%)", type: "number", value: oc.early_payment_incentive_percent ?? 0 },
+          { key: "annual_interest_rate_percent", label: "Annual interest rate (%)", type: "number", value: oc.annual_interest_rate_percent ?? 0 },
+          { key: "interest_free_period_days", label: "Interest-free period (days)", type: "number", value: oc.interest_free_period_days ?? 28 },
+          { key: "arrears_action_threshold_cents", label: "Arrears action threshold (cents)", type: "number", value: oc.arrears_action_threshold_cents ?? 5000 },
+          { key: "include_arrears_on_notice", label: "Include arrears on levy notices", type: "boolean", value: !!oc.include_arrears_on_notice },
+        ]}
+      />
+      <SettingsEditDrawer
+        open={openDrawer === "commsDelivery"}
+        onClose={() => setOpenDrawer(null)}
+        title="Delivery"
+        ocId={oc.id}
+        onSaved={applyDrawerSave}
+        fields={[
+          { key: "default_delivery_method", label: "Default delivery method", type: "select", value: oc.default_delivery_method ?? "postal", options: deliveryOptions },
+          { key: "meetings_postal_buffer_days", label: "Meetings postal buffer (days)", type: "number", value: oc.meetings_postal_buffer_days ?? 14 },
+          { key: "levies_postal_buffer_days", label: "Levies postal buffer (days)", type: "number", value: oc.levies_postal_buffer_days ?? 14 },
+          { key: "financial_postal_buffer_days", label: "Financial documents postal buffer (days)", type: "number", value: oc.financial_postal_buffer_days ?? 14 },
+        ]}
+      />
+      <SettingsEditDrawer
+        open={openDrawer === "commsNotice"}
+        onClose={() => setOpenDrawer(null)}
+        title="Levy notice content"
+        ocId={oc.id}
+        onSaved={applyDrawerSave}
+        fields={[
+          { key: "multilot_note_enabled", label: "Add note for multi-lot owners", type: "boolean", value: !!oc.multilot_note_enabled },
+          { key: "multilot_note_text", label: "Multi-lot note text", type: "textarea", value: oc.multilot_note_text },
+        ]}
+      />
+      <SettingsEditDrawer
+        open={openDrawer === "banking"}
+        onClose={() => setOpenDrawer(null)}
+        title="Trust account details"
+        ocId={oc.id}
+        onSaved={applyDrawerSave}
+        fields={[
+          { key: "bank_account_name", label: "Account name", type: "text", value: oc.bank_account_name },
+          { key: "bank_bsb", label: "BSB", type: "text", value: oc.bank_bsb },
+          { key: "bank_account_number", label: "Account number", type: "text", value: oc.bank_account_number },
+        ]}
+      />
 
       {activeTab === "automation" && (
         <AutomationsTab
@@ -575,11 +706,6 @@ function AutomationsTab({
             </SheetDescription>
           </SheetHeader>
           <div className="flex-1 overflow-y-auto p-4">
-            {drawerMode === "new" && (
-              <p className="text-xs text-muted-foreground mb-3">
-                Auto-send levies is the only automation today. More types coming soon.
-              </p>
-            )}
             <AutoSendCard
               ocId={ocId}
               billingCycle={billingCycle}
@@ -587,6 +713,7 @@ function AutomationsTab({
               mailboxOptions={mailboxOptions}
               budgets={budgets}
               embedded
+              onClose={() => setDrawerMode(null)}
             />
           </div>
         </SheetContent>
@@ -602,6 +729,7 @@ function AutoSendCard({
   mailboxOptions,
   budgets,
   embedded = false,
+  onClose,
 }: {
   ocId: string;
   billingCycle: string;
@@ -612,6 +740,9 @@ function AutoSendCard({
    *  Card or duplicate header , so it sits cleanly inside the
    *  Automations side drawer. */
   embedded?: boolean;
+  /** Drawer close handler. Called after a successful save so the
+   *  parent can dismiss the sheet. */
+  onClose?: () => void;
 }) {
   // Day-of-month input holds a STRING so the manager can clear the
   // field while typing without us forcing 1 back in. The "Last day of
@@ -629,10 +760,7 @@ function AutoSendCard({
   const [savedAt, setSavedAt] = useState<string | null>(initial.last_sent_on);
   const [nextDate, setNextDate] = useState<string | null>(initial.next_send_date);
 
-  // Schedule popup state. Opens after Save when auto-send is on.
-  const [scheduleOpen, setScheduleOpen] = useState(false);
   const [overrides, setOverrides] = useState<Record<string, string>>(initial.date_overrides ?? {});
-  const [savingOverrides, setSavingOverrides] = useState(false);
 
   const cycleLabel: Record<string, string> = {
     monthly: "monthly",
@@ -641,11 +769,10 @@ function AutoSendCard({
     annually: "yearly",
   };
 
-  function save() {
-    // Resolve the effective day-of-month:
-    // - "Last day of month" toggled on → 31 (cron clamps to actual last day).
-    // - Otherwise parse the input. Must be 1-28 to avoid month-skip
-    //   surprises (e.g. day 30 in Feb).
+  /** Validate the form values. Returns the resolved day-of-month (1..31)
+   *  on success, or null when invalid , in which case dayInvalid is set
+   *  and a toast is shown. */
+  function validateForm(): number | null {
     let resolvedDay: number | null = null;
     if (draft.last_day_of_month) {
       resolvedDay = 31;
@@ -658,9 +785,15 @@ function AutoSendCard({
     if (draft.enabled && resolvedDay === null) {
       setDayInvalid(true);
       toast.error("Pick a day between 1 and 28, or turn on 'Last day of month'.");
-      return;
+      return null;
     }
     setDayInvalid(false);
+    return resolvedDay;
+  }
+
+  function save() {
+    const resolvedDay = validateForm();
+    if (draft.enabled && resolvedDay === null) return;
 
     startTransition(async () => {
       const res = await upsertLevyAutosendSchedule(ocId, {
@@ -673,13 +806,20 @@ function AutoSendCard({
         toast.error(res.error);
         return;
       }
+      // Persist any date overrides set on the schedule step. Only run
+      // when there's something to write , avoids an empty round-trip
+      // for managers who didn't tweak the preview.
+      if (Object.keys(overrides).length > 0) {
+        const ovRes = await updateAutosendOverrides(ocId, overrides);
+        if (ovRes.error) {
+          toast.error(ovRes.error);
+          return;
+        }
+      }
       toast.success(draft.enabled ? "Auto-send is on" : "Auto-send is off");
       setSavedAt(res.schedule?.last_sent_on ?? null);
       setNextDate(res.schedule?.next_send_date ?? null);
-      // Pop the schedule preview right after save so the manager
-      // immediately sees the next 12 send dates and can tweak any
-      // specific month before walking away.
-      if (draft.enabled) setScheduleOpen(true);
+      onClose?.();
     });
   }
 
@@ -702,63 +842,44 @@ function AutoSendCard({
     ({ monthly: 12, quarterly: 4, half_yearly: 2, annually: 1 } as Record<string, number>)[billingCycle] ?? 12,
   );
 
-  async function saveOverrides() {
-    setSavingOverrides(true);
-    const res = await updateAutosendOverrides(ocId, overrides);
-    setSavingOverrides(false);
-    if (res.error) {
-      toast.error(res.error);
-      return;
-    }
-    toast.success("Schedule updated");
-    setScheduleOpen(false);
-  }
+  // ── Two-step flow when embedded ─────────────────────────────
+  // Step "form": all the inputs + Next button.
+  // Step "schedule": planned-runs preview + Confirm/Back buttons.
+  // Outside the drawer (standalone card) we skip the multi-step UX
+  // and use the old single-page form.
+  const [embeddedStep, setEmbeddedStep] = useState<"form" | "schedule">("form");
 
-  // Body of the card. Wrapped in <Card>/<CardContent> for standalone
-  // use; rendered as a plain div when embedded in a drawer.
+  // Body of the card. Single vertical column so it fits the narrow
+  // drawer without anything being cramped.
   const body = (
     <div className={embedded ? "space-y-4" : ""}>
-        <div className="flex items-center justify-between">
-          <div>
-            {!embedded && (<h3 className="text-sm font-semibold text-foreground">Auto-send levies</h3>)}
-            <p className="text-xs text-muted-foreground mt-0.5">
-              {draft.enabled ? "Enabled , the cron will send on the configured cadence." : "Off"}
-            </p>
+      {embeddedStep === "form" && (
+        <>
+          {/* Budget picker takes the full row. */}
+          <div className="space-y-1.5">
+            <Label>Budget</Label>
+            <Combobox
+              items={budgets}
+              value={draft.budget_id}
+              onValueChange={(v) => setDraft((p) => ({ ...p, budget_id: v ?? "" }))}
+              disabled={!draft.enabled}
+            >
+              <ComboboxInput placeholder="Pick a budget" />
+              <ComboboxContent>
+                <ComboboxEmpty>No approved budgets.</ComboboxEmpty>
+                <ComboboxList>
+                  {(b: { id: string; label: string }) => (
+                    <ComboboxItem key={b.id} value={b.id}>
+                      {b.label}
+                    </ComboboxItem>
+                  )}
+                </ComboboxList>
+              </ComboboxContent>
+            </Combobox>
           </div>
-          <Switch
-            checked={draft.enabled}
-            onCheckedChange={(checked) => setDraft((p) => ({ ...p, enabled: checked }))}
-            aria-label="Toggle auto-send"
-          />
-        </div>
 
-        {/* Budget picker takes the full width when expanded so long
-            "Capital Works Fund , 2025-2026" labels aren't truncated.
-            Sits on its own row instead of sharing with the mailbox. */}
-        <div className="space-y-1.5">
-          <Label>Budget</Label>
-          <Combobox
-            items={budgets}
-            value={draft.budget_id}
-            onValueChange={(v) => setDraft((p) => ({ ...p, budget_id: v ?? "" }))}
-            disabled={!draft.enabled}
-          >
-            <ComboboxInput placeholder="Pick a budget" />
-            <ComboboxContent>
-              <ComboboxEmpty>No approved budgets.</ComboboxEmpty>
-              <ComboboxList>
-                {(b: { id: string; label: string }) => (
-                  <ComboboxItem key={b.id} value={b.id}>
-                    {b.label}
-                  </ComboboxItem>
-                )}
-              </ComboboxList>
-            </ComboboxContent>
-          </Combobox>
-        </div>
-
-        <div className="grid gap-4 sm:grid-cols-2">
-
+          {/* Stack vertically , drawer is narrow, side-by-side
+              fields get cramped and the dropdowns truncate. */}
           <div className="space-y-1.5">
             <Label>Send mailbox</Label>
             <Select
@@ -779,19 +900,17 @@ function AutoSendCard({
 
           <div className="space-y-1.5">
             <Label>Day of month</Label>
-            <div className="flex gap-2">
-              <NumberInput
-                value={draft.send_day_of_month}
-                onChange={(v) => {
-                  setDraft((p) => ({ ...p, send_day_of_month: v, last_day_of_month: false }));
-                  setDayInvalid(false);
-                }}
-                allowDecimal={false}
-                disabled={!draft.enabled || draft.last_day_of_month}
-                invalid={dayInvalid}
-                placeholder="1-28"
-              />
-            </div>
+            <NumberInput
+              value={draft.send_day_of_month}
+              onChange={(v) => {
+                setDraft((p) => ({ ...p, send_day_of_month: v, last_day_of_month: false }));
+                setDayInvalid(false);
+              }}
+              allowDecimal={false}
+              disabled={!draft.enabled || draft.last_day_of_month}
+              invalid={dayInvalid}
+              placeholder="1-28"
+            />
             <label className={`flex items-center gap-2 text-xs ${draft.enabled ? "text-muted-foreground cursor-pointer" : "text-muted-foreground/50"}`}>
               <input
                 type="checkbox"
@@ -813,94 +932,122 @@ function AutoSendCard({
               {cycleLabel[billingCycle] ?? billingCycle}
             </div>
           </div>
+
+          {/* Active toggle sits at the bottom of the form , the
+              automation's on/off state is the last decision the
+              manager makes after everything else is configured. */}
+          <div className="flex items-center justify-between rounded-md border border-border bg-card px-3 py-2">
+            <Label className="cursor-pointer">Active</Label>
+            <Switch
+              checked={draft.enabled}
+              onCheckedChange={(checked) => setDraft((p) => ({ ...p, enabled: checked }))}
+              aria-label="Active toggle"
+            />
+          </div>
+        </>
+      )}
+
+      {embeddedStep === "schedule" && (
+        <div className="space-y-2 max-h-[28rem] overflow-y-auto pr-1">
+          {planned.map((p) => {
+            const [yy, mm] = p.monthKey.split("-");
+            const monthLabel = new Date(Date.UTC(Number(yy), Number(mm) - 1, 1))
+              .toLocaleDateString("en-AU", { month: "long", year: "numeric" });
+            const firstOfMonth = `${p.monthKey}-01`;
+            const lastDay = new Date(Date.UTC(Number(yy), Number(mm), 0)).getUTCDate();
+            const lastOfMonth = `${p.monthKey}-${lastDay.toString().padStart(2, "0")}`;
+            return (
+              <div key={p.monthKey} className="grid grid-cols-[1fr_180px_auto] items-center gap-3">
+                <span className="text-sm font-medium text-foreground">{monthLabel}</span>
+                <DatePicker
+                  value={p.effectiveDate}
+                  onChange={(v) => {
+                    setOverrides((o) => {
+                      const next = { ...o };
+                      if (v === p.defaultDate) delete next[p.monthKey];
+                      else next[p.monthKey] = v;
+                      return next;
+                    });
+                  }}
+                  minDate={firstOfMonth}
+                  maxDate={lastOfMonth}
+                />
+                {p.isOverridden ? (
+                  <button
+                    type="button"
+                    onClick={() => setOverrides((o) => {
+                      const next = { ...o };
+                      delete next[p.monthKey];
+                      return next;
+                    })}
+                    className="text-[11px] text-muted-foreground hover:text-foreground"
+                  >
+                    Reset
+                  </button>
+                ) : (
+                  <span className="text-[11px] text-muted-foreground">Default</span>
+                )}
+              </div>
+            );
+          })}
         </div>
+      )}
 
         {(nextDate || savedAt) && (
           <div className="rounded-md border border-border bg-muted/40 px-3 py-2 text-xs text-muted-foreground">
-            {nextDate && <div>Next run: <span className="font-medium text-foreground">{nextDate}</span></div>}
+            {nextDate && (
+              <div>
+                Next run will be on the{" "}
+                <span className="font-medium text-foreground">{formatNiceDate(nextDate)}</span>
+              </div>
+            )}
             {savedAt && <div>Last sent: <span className="font-medium text-foreground">{savedAt}</span></div>}
           </div>
         )}
 
-        <div className="flex justify-end gap-2">
-          {initial.enabled && (
-            <Button variant="secondary" onClick={() => setScheduleOpen(true)}>
-              View schedule
+      <div className="flex justify-end gap-2 pt-2">
+        {embedded && embeddedStep === "form" && (
+          <>
+            <Button variant="secondary" onClick={() => onClose?.()}>
+              Cancel
             </Button>
-          )}
+            <Button
+              onClick={() => {
+                if (!draft.enabled) {
+                  // Schedule preview only makes sense when auto-send
+                  // is on. If they're turning it OFF, skip the
+                  // preview step and save straight away.
+                  save();
+                  return;
+                }
+                if (validateForm() === null) return;
+                setEmbeddedStep("schedule");
+              }}
+              disabled={pending}
+            >
+              {pending && <Loader2 className="size-4 animate-spin" />}
+              {draft.enabled ? "Next" : "Save"}
+            </Button>
+          </>
+        )}
+        {embedded && embeddedStep === "schedule" && (
+          <>
+            <Button variant="secondary" onClick={() => setEmbeddedStep("form")} disabled={pending}>
+              Back
+            </Button>
+            <Button onClick={save} disabled={pending}>
+              {pending && <Loader2 className="size-4 animate-spin" />}
+              Confirm
+            </Button>
+          </>
+        )}
+        {!embedded && (
           <Button onClick={save} disabled={pending}>
             {pending && <Loader2 className="size-4 animate-spin" />}
             Save auto-send
           </Button>
-        </div>
-
-      {/* Schedule popup. Shows the next 12 planned send dates. Each
-          row can be overridden to a different day in THE SAME month
-          (per the brief: no cross-month moves). Save persists the
-          overrides into levy_autosend_schedules.date_overrides. */}
-      <Dialog open={scheduleOpen} onOpenChange={(o) => { if (!savingOverrides) setScheduleOpen(o); }}>
-        <DialogContent className="sm:max-w-lg">
-          <DialogHeader>
-            <DialogTitle>Auto-send schedule</DialogTitle>
-            <DialogDescription>
-              Next 12 planned runs. Tweak any month&apos;s date , the override has to stay inside the same calendar month.
-            </DialogDescription>
-          </DialogHeader>
-          <div className="space-y-2 max-h-[28rem] overflow-y-auto pr-1">
-            {planned.map((p) => {
-              const [yy, mm] = p.monthKey.split("-");
-              const monthLabel = new Date(Date.UTC(Number(yy), Number(mm) - 1, 1))
-                .toLocaleDateString("en-AU", { month: "long", year: "numeric" });
-              // Lock the calendar to this specific month.
-              const firstOfMonth = `${p.monthKey}-01`;
-              const lastDay = new Date(Date.UTC(Number(yy), Number(mm), 0)).getUTCDate();
-              const lastOfMonth = `${p.monthKey}-${lastDay.toString().padStart(2, "0")}`;
-              return (
-                <div key={p.monthKey} className="grid grid-cols-[1fr_180px_auto] items-center gap-3">
-                  <span className="text-sm font-medium text-foreground">{monthLabel}</span>
-                  <DatePicker
-                    value={p.effectiveDate}
-                    onChange={(v) => {
-                      setOverrides((o) => {
-                        const next = { ...o };
-                        if (v === p.defaultDate) delete next[p.monthKey];
-                        else next[p.monthKey] = v;
-                        return next;
-                      });
-                    }}
-                    minDate={firstOfMonth}
-                    maxDate={lastOfMonth}
-                  />
-                  {p.isOverridden ? (
-                    <button
-                      type="button"
-                      onClick={() => setOverrides((o) => {
-                        const next = { ...o };
-                        delete next[p.monthKey];
-                        return next;
-                      })}
-                      className="text-[11px] text-muted-foreground hover:text-foreground"
-                    >
-                      Reset
-                    </button>
-                  ) : (
-                    <span className="text-[11px] text-muted-foreground">Default</span>
-                  )}
-                </div>
-              );
-            })}
-          </div>
-          <DialogFooter>
-            <Button variant="secondary" onClick={() => setScheduleOpen(false)} disabled={savingOverrides}>
-              Close
-            </Button>
-            <Button onClick={saveOverrides} disabled={savingOverrides}>
-              {savingOverrides && <Loader2 className="size-4 animate-spin" />}
-              Save schedule
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
+        )}
+      </div>
     </div>
   );
 

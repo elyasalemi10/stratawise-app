@@ -8,7 +8,8 @@ import { getOC, getOCStats } from "@/lib/actions/oc";
 import { getCurrentProfile } from "@/lib/auth";
 import { resolveOCFromCode } from "@/lib/oc-resolver";
 import { createServerClient } from "@/lib/supabase";
-import { DrnImportPrompt } from "./_components/drn-import-prompt";
+// DrnImportPrompt removed with the reconciliation stack nuke. DRN
+// onboarding will be rebuilt as part of the new flow.
 
 interface KPICardProps {
   label: string;
@@ -286,12 +287,8 @@ export default async function OCDashboardPage({
     }
   }
 
-  return (
-    <>
-      <ManagerDashboard ocId={ocId} />
-      {showDrnPrompt && (
-        <DrnImportPrompt ocId={ocId} ocCode={ocCode} lots={lotsForDrn} />
-      )}
-    </>
-  );
+  void showDrnPrompt;
+  void lotsForDrn;
+  void ocCode;
+  return <ManagerDashboard ocId={ocId} />;
 }

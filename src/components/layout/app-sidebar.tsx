@@ -121,7 +121,8 @@ function getOCNavGroups(ocCode: string, isLotOwner: boolean) {
         items: [
           { href: base, label: "Dashboard", icon: LayoutDashboard },
           { href: `${base}/my-levies`, label: "My levies", icon: Receipt },
-          { href: `${base}/my-arrears`, label: "My arrears", icon: AlertTriangle },
+          // /my-arrears removed with the reconciliation nuke; new
+          // arrears surface lands as part of the rebuild.
         ],
       },
       {
@@ -166,15 +167,9 @@ function getOCNavGroups(ocCode: string, isLotOwner: boolean) {
         { href: `${base}/budgets`, label: "Budgets", icon: PieChart },
       ],
     },
-    {
-      label: "Banking",
-      items: [
-        { href: `${base}/ledger`, label: "Ledger", icon: Wallet },
-        { href: `${base}/reconciliation`, label: "Reconciliation", icon: GitMerge, badgeKey: "unmatched_count" as const },
-        { href: `${base}/bank-account`, label: "Bank account", icon: Landmark },
-        { href: `${base}/reconciliation/mappings`, label: "Payer mappings", icon: Users },
-      ],
-    },
+    // Banking section nuked along with the ledger / reconciliation /
+    // payer-mappings stack. The new banking flow is being rebuilt; the
+    // group reappears once that lands.
     {
       label: "Insurance",
       items: [

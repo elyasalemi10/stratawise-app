@@ -3,6 +3,7 @@ import { getCurrentProfile, requireOCAccess } from "@/lib/auth";
 import { createServerClient } from "@/lib/supabase";
 import { fetchObject, keyFromPublicUrl } from "@/lib/storage/r2";
 import { forbiddenResponse } from "@/lib/forbidden";
+import { renderLevyNoticePdf } from "@/lib/pdf/render";
 
 // API routes MUST be node runtime so we have the full cookie store; the
 // auth check below relies on getCurrentProfile reading the session cookie.
@@ -35,12 +36,14 @@ export async function GET(
 
   const { data: levy, error } = await supabase
     .from("levy_notices")
-    .select("id, oc_id, lot_id, reference_number, pdf_url")
+    .select("id, oc_id, lot_id, reference_number, pdf_url, owners_corporations!inner(include_arrears_on_notice)")
     .eq("id", id)
     .maybeSingle();
   if (error || !levy) {
     return NextResponse.json({ error: "Not found" }, { status: 404 });
   }
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const arrearsOn = !!((levy as any).owners_corporations as { include_arrears_on_notice?: boolean } | null)?.include_arrears_on_notice;
 
   // requireOCAccess enforces strata_manager + same management company OR
   // super_admin OR active lot_owner membership in the OC. Lot-level scoping
@@ -52,6 +55,25 @@ export async function GET(
     return forbiddenResponse(req);
   }
   void levy.lot_id;
+
+  // Arrears-enabled OCs MUST regenerate on every fetch , the
+  // outstanding figure changes with each payment/levy, so the cached
+  // PDF would lie. For everyone else, the cached R2 object is fine.
+  if (arrearsOn) {
+    try {
+      const buffer = await renderLevyNoticePdf(id, supabase, { force: true });
+      return new NextResponse(new Uint8Array(buffer), {
+        headers: {
+          "Content-Type": "application/pdf",
+          "Content-Disposition": `inline; filename="${levy.reference_number}.pdf"`,
+          "Cache-Control": "private, no-store",
+        },
+      });
+    } catch (err) {
+      console.error("Levy PDF live render failed", { id, err });
+      return NextResponse.json({ error: "PDF unavailable" }, { status: 502 });
+    }
+  }
 
   // Resolve the R2 key. New rows: deterministic key from ocId + reference.
   // Old rows: extract from the legacy public URL.

@@ -62,25 +62,28 @@ function Calendar({
         ),
         button_previous: cn(
           buttonVariants({ variant: buttonVariant }),
-          "size-(--cell-size) p-0 select-none aria-disabled:opacity-50 text-primary-foreground hover:!bg-white/10 hover:!text-primary-foreground",
+          // Arbitrary `[color:white]` beats every other class because
+          // it's tagged !important via the `!` modifier , the ghost
+          // button variant's `text-muted-foreground` was winning before.
+          "size-(--cell-size) p-0 select-none aria-disabled:opacity-50 [color:white]! hover:bg-white/10! hover:[color:white]! [&_svg]:[color:white]!",
           defaultClassNames.button_previous
         ),
         button_next: cn(
           buttonVariants({ variant: buttonVariant }),
-          "size-(--cell-size) p-0 select-none aria-disabled:opacity-50 text-primary-foreground hover:!bg-white/10 hover:!text-primary-foreground",
+          "size-(--cell-size) p-0 select-none aria-disabled:opacity-50 [color:white]! hover:bg-white/10! hover:[color:white]! [&_svg]:[color:white]!",
           defaultClassNames.button_next
         ),
         month_caption: cn(
-          // Sit on top of the navy bar; the caption text picks up
-          // primary-foreground via the `nav` class.
-          "relative flex h-(--cell-size) w-full items-center justify-center px-(--cell-size) bg-primary text-primary-foreground rounded-t-[var(--radius-md)]",
+          // Navy band with white text. Use [color:white]! so DayPicker's
+          // own defaults / any inherited color can't win.
+          "relative flex h-(--cell-size) w-full items-center justify-center px-(--cell-size) bg-primary [color:white]! rounded-t-[var(--radius-md)]",
           defaultClassNames.month_caption
         ),
         dropdowns: cn(
-          // White text + chevrons on the navy band. Force via direct
-          // classes (and a !text-primary-foreground on the inner
-          // <select>) so DayPicker's defaults don't bleed through.
-          "flex h-(--cell-size) w-full items-center justify-center gap-1.5 text-sm font-medium text-primary-foreground [&_select]:!text-primary-foreground [&_button]:!text-primary-foreground",
+          // White text + chevrons on the navy band. Force via
+          // [color:white]! so the inner <select> and <button> in
+          // dropdown-captionLayout pick it up too.
+          "flex h-(--cell-size) w-full items-center justify-center gap-1.5 text-sm font-medium [color:white]! [&_select]:[color:white]! [&_button]:[color:white]!",
           defaultClassNames.dropdowns
         ),
         dropdown_root: cn(
@@ -92,13 +95,11 @@ function Calendar({
           defaultClassNames.dropdown
         ),
         caption_label: cn(
-          // White text on the navy header band. !text-primary-foreground
-          // beats any inherited color from the parent <button> that
-          // wraps the caption in dropdown captionLayout.
-          "font-medium select-none !text-primary-foreground",
+          // White month/year label on the navy header band.
+          "font-medium select-none [color:white]!",
           captionLayout === "label"
             ? "text-sm"
-            : "flex items-center gap-1 rounded-(--cell-radius) text-sm [&>svg]:size-3.5 [&>svg]:!text-primary-foreground",
+            : "flex items-center gap-1 rounded-(--cell-radius) text-sm [&>svg]:size-3.5 [&>svg]:[color:white]!",
           defaultClassNames.caption_label
         ),
         table: "w-full border-collapse px-2 pb-2",
