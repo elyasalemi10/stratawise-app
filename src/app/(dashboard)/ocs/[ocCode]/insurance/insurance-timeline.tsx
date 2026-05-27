@@ -10,7 +10,6 @@ import { Input } from "@/components/ui/input";
 import { NumberInput } from "@/components/ui/number-input";
 import { Label } from "@/components/ui/label";
 import { Badge } from "@/components/ui/badge";
-import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle } from "@/components/ui/sheet";
 import { Calendar } from "@/components/ui/calendar";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
@@ -172,11 +171,13 @@ function PolicyDetailDialog({
   }
 
   return (
-    <Dialog open={open} onOpenChange={() => { setEditing(false); onClose(); }}>
-      <DialogContent className="max-w-md">
-        <DialogHeader>
-          <DialogTitle>{POLICY_LABELS[policy.policy_type] ?? policy.policy_type} insurance</DialogTitle>
-        </DialogHeader>
+    <Sheet open={open} onOpenChange={(o) => { if (!o) { setEditing(false); onClose(); } }}>
+      <SheetContent side="right" className="flex w-full flex-col gap-0 sm:max-w-lg">
+        <SheetHeader>
+          <SheetTitle>{POLICY_LABELS[policy.policy_type] ?? policy.policy_type} insurance</SheetTitle>
+          <SheetDescription className="sr-only">Policy details</SheetDescription>
+        </SheetHeader>
+        <div className="flex-1 overflow-y-auto p-4">
 
         {editing ? (
           <div className="space-y-3">
@@ -224,13 +225,13 @@ function PolicyDetailDialog({
                 <AmountInput value={editPremium} onChange={setEditPremium} placeholder="0.00" />
               </div>
             </div>
-            <DialogFooter>
-              <Button variant="ghost" onClick={() => setEditing(false)} className="cursor-pointer">Cancel</Button>
+            <div className="flex justify-end gap-2 pt-2">
+              <Button variant="secondary" onClick={() => setEditing(false)} className="cursor-pointer">Cancel</Button>
               <Button onClick={handleSave} disabled={saving} className="cursor-pointer">
                 {saving && <Loader2 className="size-4 animate-spin" />}
                 Save
               </Button>
-            </DialogFooter>
+            </div>
           </div>
         ) : (
           <>
@@ -287,14 +288,14 @@ function PolicyDetailDialog({
                   </Button>
                 </a>
                 {!readOnly && (
-                  <div className="text-center">
+                  <div className="text-left">
                     {uploadingDoc ? (
                       <span className="inline-flex items-center gap-2 text-xs text-muted-foreground">
                         <Loader2 className="h-3 w-3 animate-spin" />
                         Replacing {uploadDocName}...
                       </span>
                     ) : (
-                      <label className="inline-flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground cursor-pointer">
+                      <label className="inline-flex items-center gap-1 text-xs font-medium text-[color:var(--brand-gold)] hover:underline cursor-pointer">
                         Replace?
                         <input
                           type="file"
@@ -343,8 +344,9 @@ function PolicyDetailDialog({
             )}
           </>
         )}
-      </DialogContent>
-    </Dialog>
+        </div>
+      </SheetContent>
+    </Sheet>
   );
 }
 
@@ -696,11 +698,16 @@ function InsuranceGantt({
 }) {
   const [hovered, setHovered] = useState<{ policy: InsurancePolicy; x: number; y: number } | null>(null);
 
+  // Bucket policies by their type. We render a row for EVERY known
+  // policy type (even when empty) so the gantt is a complete picture
+  // of "what insurance the OC should have vs does have". Empty rows
+  // make missing categories visually obvious through the red/white
+  // no-cover band.
   const groups = new Map<string, InsurancePolicy[]>();
+  for (const t of POLICY_TYPES) groups.set(t.value, []);
   for (const p of policies) {
-    const key = p.policy_type;
-    if (!groups.has(key)) groups.set(key, []);
-    groups.get(key)!.push(p);
+    if (!groups.has(p.policy_type)) groups.set(p.policy_type, []);
+    groups.get(p.policy_type)!.push(p);
   }
 
   const today = new Date();
@@ -714,7 +721,9 @@ function InsuranceGantt({
   const sixtyDaysOut = today.getTime() + 60 * 86400000;
   const maxMs = Math.max(sixtyDaysOut, ...policyEnds);
   const totalDays = Math.max(1, Math.round((maxMs - minMs) / 86400000));
-  const trackWidth = Math.max(1400, totalDays * 5);
+  // Zoomed out: ~2.5 px per day so years compress nicely on screen.
+  // Min track width keeps the axis readable on short histories.
+  const trackWidth = Math.max(900, totalDays * 2.5);
   const pxPerDay = trackWidth / totalDays;
 
   function offsetPx(iso: string): number {
@@ -748,16 +757,20 @@ function InsuranceGantt({
 
   const todayPx = ((today.getTime() - minMs) / 86400000) * pxPerDay;
   const ROW_LABEL_W = 180;
-  const ROW_H = 80; // was 56 (h-14) , taller so bars + provider name read at a glance.
+  const ROW_H = 90; // generous so policy bars + label read in one glance
 
   return (
     <div className="relative rounded-md border border-border bg-card">
-      <div className="overflow-auto max-h-[60vh]">
+      {/* max-h roughly fills the viewport so the OC sees every
+          insurance type at once. overflow-auto enables BOTH H and V
+          scroll. Sticky cells (row labels left, axis bottom) use a
+          solid bg-card / bg-muted so they read opaque, not see-through. */}
+      <div className="overflow-auto max-h-[75vh]">
         <div className="relative" style={{ width: ROW_LABEL_W + trackWidth, minWidth: "100%" }}>
           {Array.from(groups.entries()).map(([typeKey, group]) => (
             <div key={typeKey} className="flex items-stretch border-b border-border/50 last:border-b-0">
               <div
-                className="shrink-0 px-3 text-sm font-medium text-foreground border-r border-border bg-muted/30 flex items-center sticky left-0 z-10"
+                className="shrink-0 px-3 text-sm font-medium text-foreground border-r border-border bg-card flex items-center sticky left-0 z-20"
                 style={{ width: ROW_LABEL_W, height: ROW_H }}
               >
                 {POLICY_LABELS[typeKey] ?? typeKey}
@@ -788,7 +801,7 @@ function InsuranceGantt({
                       onMouseMove={(e) => setHovered({ policy: p, x: e.clientX, y: e.clientY })}
                       onMouseLeave={() => setHovered(null)}
                       className={cn(
-                        "absolute top-3 bottom-3 rounded-md border px-2 text-left text-xs flex items-center gap-1 overflow-hidden hover:ring-2 hover:ring-primary/30 transition-shadow cursor-pointer",
+                        "absolute top-4 bottom-4 rounded-md border px-2 text-left text-xs flex items-center gap-1 overflow-hidden hover:ring-2 hover:ring-primary/30 transition-shadow cursor-pointer",
                         bg,
                       )}
                       style={{
@@ -808,12 +821,12 @@ function InsuranceGantt({
           ))}
 
           {/* Time axis , FY quarter ticks along the bottom. */}
-          <div className="flex border-t border-border bg-muted/40 sticky bottom-0">
+          <div className="flex border-t border-border bg-card sticky bottom-0 z-10">
             <div
-              className="shrink-0 border-r border-border bg-muted/30 sticky left-0 z-10"
+              className="shrink-0 border-r border-border bg-card sticky left-0 z-20"
               style={{ width: ROW_LABEL_W }}
             />
-            <div className="relative h-9" style={{ width: trackWidth }}>
+            <div className="relative h-9 bg-card" style={{ width: trackWidth }}>
               {ticks.map((t) => (
                 <div
                   key={t.iso}
@@ -837,22 +850,18 @@ function InsuranceGantt({
         </div>
       </div>
 
-      {/* Inline floating tooltip on hover. Pinned to client coords so
-          it follows the cursor without depending on layout / scroll
-          context. Clicking the bar still opens the full drawer. */}
       {hovered && (
         <div
           className="pointer-events-none fixed z-50 rounded-md border border-border bg-card shadow-lg px-3 py-2 text-xs text-foreground"
           style={{ left: hovered.x + 12, top: hovered.y + 12 }}
         >
-          <div className="font-medium">{POLICY_LABELS[hovered.policy.policy_type] ?? hovered.policy.policy_type}</div>
-          <div className="text-muted-foreground">{hovered.policy.provider}</div>
-          <div className="text-muted-foreground mt-1">
+          <div className="font-medium">
+            {hovered.policy.provider}
+            {hovered.policy.policy_number ? `: ${hovered.policy.policy_number}` : ""}
+          </div>
+          <div className="mt-2 text-muted-foreground">
             {formatDateLong(hovered.policy.start_date)} - {formatDateLong(hovered.policy.end_date)}
           </div>
-          {hovered.policy.premium ? (
-            <div className="mt-1 tabular-nums">Premium: {formatCurrency(Number(hovered.policy.premium))}</div>
-          ) : null}
         </div>
       )}
     </div>
@@ -886,22 +895,24 @@ export function InsuranceTimeline({
 
   return (
     <div className="space-y-4">
-      {/* Top action bar , always visible (when not readOnly) so the
-          manager can add a policy whether or not the gantt has data. */}
+      {/* Top action bar , title on the left, "Add policy" on the
+          right. Always rendered (when not readOnly) so the manager
+          can add a policy whether or not the gantt has data. */}
       {!readOnly && (
-        <div className="flex justify-end">
-          <Button size="sm" onClick={() => setShowAdd(true)}>
+        <div className="flex items-center justify-between gap-3">
+          <h2 className="text-sm font-medium text-muted-foreground">Insurance coverage</h2>
+          <Button onClick={() => setShowAdd(true)}>
             <Plus className="mr-2 h-3.5 w-3.5" />
             Add policy
           </Button>
         </div>
       )}
 
-      {policies.length === 0 ? (
+      {policies.length === 0 && readOnly ? (
         <EmptyState
           icon={ShieldAlert}
           title="No insurance policies"
-          description={readOnly ? "No insurance policies have been added yet." : "Add your first insurance policy to track coverage and get expiry alerts."}
+          description="No insurance policies have been added yet."
         />
       ) : (
         <InsuranceGantt

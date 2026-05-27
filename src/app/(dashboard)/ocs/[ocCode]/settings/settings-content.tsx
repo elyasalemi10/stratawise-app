@@ -653,16 +653,18 @@ function AutomationsTab({
   return (
     <div className="space-y-4">
       <div className="flex justify-end">
-        {/* Only one auto-send schedule per OC for now; when a row
-            already exists, manager edits it by clicking the row.
-            Showing Add at that point would just open a confusing
-            second draft of the same automation. */}
-        {rows.length === 0 && (
-          <Button size="sm" onClick={() => setDrawerMode("new")}>
-            <PlusIcon className="mr-1.5 h-3.5 w-3.5" />
-            Add automation
-          </Button>
-        )}
+        {/* Add automation is always visible. Today there's one
+            schedule per OC; clicking "Add" when a schedule already
+            exists opens the same drawer pre-loaded with the existing
+            row , equivalent to clicking the row. When more automation
+            types ship, this turns into a multi-option menu. */}
+        <Button
+          size="sm"
+          onClick={() => setDrawerMode(rows.length > 0 ? "edit-autosend" : "new")}
+        >
+          <PlusIcon className="mr-1.5 h-3.5 w-3.5" />
+          Add automation
+        </Button>
       </div>
 
       <div className="overflow-hidden rounded-md border border-border bg-card">
@@ -959,26 +961,37 @@ function AutoSendCard({
     <div className={embedded ? "space-y-4" : ""}>
       {showFormSection && (
         <>
-          {/* Budget picker takes the full row. */}
+          {/* Budget picker , LOCKED on existing automations. Changing
+              the budget mid-flight would invalidate the planned
+              periods + cron history, so we only allow it at creation
+              time. Same applies to day-of-month: the schedule is
+              already in flight against this day. Manager who wants to
+              switch budgets deletes + recreates. */}
           <div className="space-y-1.5">
             <Label>Budget</Label>
-            <Combobox
-              items={budgets}
-              value={draft.budget_id}
-              onValueChange={(v) => setDraft((p) => ({ ...p, budget_id: v ?? "" }))}
-            >
-              <ComboboxInput placeholder="Pick a budget" />
-              <ComboboxContent>
-                <ComboboxEmpty>No approved budgets.</ComboboxEmpty>
-                <ComboboxList>
-                  {(b: { id: string; label: string }) => (
-                    <ComboboxItem key={b.id} value={b.id} keywords={[b.label]}>
-                      {b.label}
-                    </ComboboxItem>
-                  )}
-                </ComboboxList>
-              </ComboboxContent>
-            </Combobox>
+            {isExisting ? (
+              <div className="h-9 rounded-md border border-border bg-cool-muted px-3 flex items-center text-sm text-cool-muted-foreground">
+                {budgets.find((b) => b.id === draft.budget_id)?.label ?? "(none)"}
+              </div>
+            ) : (
+              <Combobox
+                items={budgets}
+                value={draft.budget_id}
+                onValueChange={(v) => setDraft((p) => ({ ...p, budget_id: v ?? "" }))}
+              >
+                <ComboboxInput placeholder="Pick a budget" />
+                <ComboboxContent>
+                  <ComboboxEmpty>No approved budgets.</ComboboxEmpty>
+                  <ComboboxList>
+                    {(b: { id: string; label: string }) => (
+                      <ComboboxItem key={b.id} value={b.id} keywords={[b.label]}>
+                        {b.label}
+                      </ComboboxItem>
+                    )}
+                  </ComboboxList>
+                </ComboboxContent>
+              </Combobox>
+            )}
           </div>
 
           <div className="space-y-1.5">
@@ -1002,28 +1015,36 @@ function AutoSendCard({
 
           <div className="space-y-1.5">
             <Label>Day of month</Label>
-            <NumberInput
-              value={draft.send_day_of_month}
-              onChange={(v) => {
-                setDraft((p) => ({ ...p, send_day_of_month: v, last_day_of_month: false }));
-                setDayInvalid(false);
-              }}
-              allowDecimal={false}
-              disabled={draft.last_day_of_month}
-              invalid={dayInvalid}
-              placeholder="1-28"
-            />
-            <div className="flex items-center gap-2 text-xs text-muted-foreground">
-              <Checkbox
-                checked={draft.last_day_of_month}
-                onCheckedChange={(v) => {
-                  const checked = v === true;
-                  setDraft((p) => ({ ...p, last_day_of_month: checked, send_day_of_month: checked ? "" : p.send_day_of_month }));
-                  setDayInvalid(false);
+            {isExisting ? (
+              <div className="h-9 rounded-md border border-border bg-cool-muted px-3 flex items-center text-sm text-cool-muted-foreground">
+                {draft.last_day_of_month ? "Last day of month" : draft.send_day_of_month || "(none)"}
+              </div>
+            ) : (
+              <>
+                <NumberInput
+                  value={draft.send_day_of_month}
+                  onChange={(v) => {
+                    setDraft((p) => ({ ...p, send_day_of_month: v, last_day_of_month: false }));
+                    setDayInvalid(false);
+                  }}
+                  allowDecimal={false}
+                  disabled={draft.last_day_of_month}
+                  invalid={dayInvalid}
+                  placeholder="1-28"
+                />
+                <div className="flex items-center gap-2 text-xs text-muted-foreground">
+                  <Checkbox
+                    checked={draft.last_day_of_month}
+                    onCheckedChange={(v) => {
+                      const checked = v === true;
+                      setDraft((p) => ({ ...p, last_day_of_month: checked, send_day_of_month: checked ? "" : p.send_day_of_month }));
+                      setDayInvalid(false);
                 }}
               />
-              <span>Last day of month</span>
-            </div>
+                  <span>Last day of month</span>
+                </div>
+              </>
+            )}
           </div>
 
           <div className="space-y-1.5">
@@ -1065,9 +1086,18 @@ function AutoSendCard({
                 const firstOfMonth = `${p.monthKey}-01`;
                 const lastDay = new Date(Date.UTC(Number(yy), Number(mm), 0)).getUTCDate();
                 const lastOfMonth = `${p.monthKey}-${lastDay.toString().padStart(2, "0")}`;
+                // A quarter is "in the past" when its month-end is
+                // before today's date. The cron either fired it
+                // already or skipped it; either way changing the
+                // date now would be a no-op, so disable.
+                const periodEndMs = new Date(`${lastOfMonth}T23:59:59Z`).getTime();
+                const isPast = periodEndMs < Date.now();
                 return (
                   <div key={p.monthKey} className="space-y-1.5">
-                    <Label>{ordinalRunLabel(idx)}</Label>
+                    <Label className={isPast ? "text-muted-foreground" : undefined}>
+                      {ordinalRunLabel(idx)}
+                      {isPast && <span className="ml-2 text-[10px] uppercase tracking-wide">past</span>}
+                    </Label>
                     <DatePicker
                       value={p.effectiveDate}
                       onChange={(v) => {
@@ -1080,6 +1110,7 @@ function AutoSendCard({
                       }}
                       minDate={firstOfMonth}
                       maxDate={lastOfMonth}
+                      disabled={isPast}
                     />
                   </div>
                 );

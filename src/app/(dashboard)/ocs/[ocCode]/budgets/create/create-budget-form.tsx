@@ -157,6 +157,7 @@ export function CreateBudgetForm({
   fyOptions,
   defaultFinancialYear,
   availableFunds,
+  customFunds = [],
 }: {
   ocId: string;
   accounts: CoaAccount[];
@@ -166,6 +167,11 @@ export function CreateBudgetForm({
    *  appear in the multi-select , an OC with only an admin fund won't
    *  see Capital Works or Maintenance Plan as choices. */
   availableFunds: FundType[];
+  /** Custom funds created via /funds. Shown in the picker so the
+   *  manager sees they exist. Selection support for custom funds in
+   *  budgets is on the schema (budgets.fund_id) but not wired through
+   *  the line-item flow yet , marked "Coming soon" until that lands. */
+  customFunds?: Array<{ id: string; name: string }>;
 }) {
   const ocCode = useOCCode();
   const router = useRouter();
@@ -341,6 +347,23 @@ export function CreateBudgetForm({
                     </div>
                   );
                 })}
+                {/* Custom funds the OC has created via /funds. Shown
+                    so the manager sees they exist; selection is
+                    disabled until per-line-item fund_id wiring lands
+                    (the schema's already there). */}
+                {customFunds.map((cf) => (
+                  <div
+                    key={cf.id}
+                    className="flex items-center gap-2 rounded-md border border-dashed border-border bg-muted/40 px-3 py-2 opacity-70"
+                    title="Custom fund budgeting coming soon , use a special levy for one-off raises against this fund."
+                  >
+                    <Checkbox id={`fund-${cf.id}`} checked={false} disabled />
+                    <Label htmlFor={`fund-${cf.id}`} className="text-sm font-normal text-muted-foreground">
+                      {cf.name}
+                      <span className="ml-2 text-[10px] uppercase tracking-wide">soon</span>
+                    </Label>
+                  </div>
+                ))}
               </div>
             )}
           </div>

@@ -2,7 +2,8 @@
 
 import { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
-import { Loader2, Wallet, Users, Landmark, ListChecks, type LucideIcon } from "lucide-react";
+import { Loader2, Wallet, Users, Landmark, ListChecks, Building2, Hammer, Wrench, MoreHorizontal, type LucideIcon } from "lucide-react";
+import Image from "next/image";
 import { toast } from "sonner";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -10,9 +11,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Checkbox } from "@/components/ui/checkbox";
 import { NumberInput } from "@/components/ui/number-input";
-import {
-  Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
-} from "@/components/ui/select";
+import { BankSelect } from "@/components/shared/bank-select";
 import {
   Combobox, ComboboxContent, ComboboxEmpty, ComboboxInput, ComboboxItem, ComboboxList,
 } from "@/components/ui/combobox";
@@ -22,6 +21,7 @@ import {
 import { cn } from "@/lib/utils";
 import { createFund, type LotForFund, type ExistingBankAccountOption } from "@/lib/actions/funds";
 import { FUND_KIND_LABEL, type FundKind } from "@/lib/funds-shared";
+import { AUSTRALIAN_BANKS } from "@/lib/data/australian-banks";
 
 type LotEntitlement = {
   selected: boolean;
@@ -138,13 +138,13 @@ export function CreateFundForm({
   }
 
   function goNextFromKind() {
+    setStep("lots");
+  }
+  function goNextFromLots() {
     if (kind === "custom" && !customName.trim()) {
       toast.error("Name this fund before continuing.");
       return;
     }
-    setStep("lots");
-  }
-  function goNextFromLots() {
     if (includedCount === 0) {
       toast.error("Tick at least one lot for this fund.");
       return;
@@ -186,6 +186,14 @@ export function CreateFundForm({
       }
     }
 
+    // bankName from BankSelect is an id (e.g. "macquarie") or "other".
+    // Map it to the human-readable bank name for storage; ignore "other"
+    // so we don't write the literal word as the bank.
+    const resolvedBankName =
+      bankName && bankName !== "other"
+        ? (AUSTRALIAN_BANKS.find((b) => b.id === bankName)?.name ?? bankName)
+        : undefined;
+
     startTransition(async () => {
       const res = await createFund(ocId, {
         kind,
@@ -198,7 +206,7 @@ export function CreateFundForm({
                 bsb,
                 account_number: accountNumber,
                 account_name: accountName,
-                bank_name: bankName,
+                bank_name: resolvedBankName,
               }
             : { kind: "shared", parent_account_id: sharedParentId },
       });
@@ -222,31 +230,37 @@ export function CreateFundForm({
       {step === "kind" && (
         <Card>
           <CardContent className="pt-5 space-y-4">
-            <div className="space-y-1.5">
-              <Label>Fund type <span className="text-destructive">*</span></Label>
-              <Select value={kind} onValueChange={(v) => setKind((v as FundKind) ?? "custom")}>
-                <SelectTrigger>
-                  <SelectValue>
-                    {kind === "custom" ? "Other (custom fund)" : FUND_KIND_LABEL[kind]}
-                  </SelectValue>
-                </SelectTrigger>
-                <SelectContent alignItemWithTrigger={false}>
-                  {kindChoices.map((k) => (
-                    <SelectItem key={k.value} value={k.value}>{k.label}</SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
+            <Label>Fund type <span className="text-destructive">*</span></Label>
+            <div className="grid gap-3 sm:grid-cols-2">
+              {[
+                { value: "administrative" as FundKind, label: FUND_KIND_LABEL.administrative, icon: Building2, blurb: "Day-to-day OC running costs , insurance, cleaning, admin, manager fees." },
+                { value: "capital_works" as FundKind, label: FUND_KIND_LABEL.capital_works, icon: Hammer, blurb: "Long-term major works , painting, roof, lifts, structural repairs." },
+                { value: "maintenance_plan" as FundKind, label: FUND_KIND_LABEL.maintenance_plan, icon: Wrench, blurb: "Scheduled maintenance plan , recurring upkeep based on a 10-year plan." },
+                { value: "custom" as FundKind, label: "Other (custom fund)", icon: MoreHorizontal, blurb: "A purpose-specific fund , e.g. driveway, pool, lift modernisation." },
+              ].map((k) => {
+                const Icon = k.icon;
+                const disabled = k.value !== "custom" && existingSet.has(k.value);
+                const selected = kind === k.value;
+                return (
+                  <button
+                    key={k.value}
+                    type="button"
+                    disabled={disabled}
+                    onClick={() => setKind(k.value)}
+                    className={cn(
+                      "flex h-full flex-col items-start gap-2 rounded-md border bg-card p-4 text-left transition-colors cursor-pointer",
+                      selected ? "border-primary ring-2 ring-primary/20" : "border-border hover:border-primary/40",
+                      disabled && "opacity-40 cursor-not-allowed",
+                    )}
+                  >
+                    <Icon className="h-5 w-5 text-primary" />
+                    <div className="text-sm font-medium text-foreground">{k.label}</div>
+                    <p className="text-xs text-muted-foreground">{k.blurb}</p>
+                    {disabled && <span className="text-[10px] uppercase tracking-wide text-muted-foreground">Already exists</span>}
+                  </button>
+                );
+              })}
             </div>
-            {kind === "custom" && (
-              <div className="space-y-1.5">
-                <Label>Fund name <span className="text-destructive">*</span></Label>
-                <Input
-                  value={customName}
-                  onChange={(e) => setCustomName(e.target.value)}
-                  placeholder="Fund name"
-                />
-              </div>
-            )}
             <div className="flex justify-end">
               <Button onClick={goNextFromKind}>Next</Button>
             </div>
@@ -257,6 +271,17 @@ export function CreateFundForm({
       {step === "lots" && (
         <Card>
           <CardContent className="pt-5 space-y-3">
+            {kind === "custom" && (
+              <div className="space-y-1.5">
+                <Label>Fund name <span className="text-destructive">*</span></Label>
+                <Input
+                  value={customName}
+                  onChange={(e) => setCustomName(e.target.value)}
+                  placeholder="Fund name"
+                />
+              </div>
+            )}
+
             <div className="flex items-center justify-between">
               <Label>Member lots <span className="text-destructive">*</span></Label>
               <span className="text-xs text-muted-foreground">
@@ -369,10 +394,14 @@ export function CreateFundForm({
                 </div>
                 <div className="space-y-1.5">
                   <Label>Bank</Label>
-                  <Input
+                  {/* BankSelect renders each Australian bank with its
+                      logo + an "Other" fallback. The id maps to a
+                      stable bank.name resolved at submit time so the
+                      stored bank_name stays human-readable. */}
+                  <BankSelect
                     value={bankName}
-                    onChange={(e) => setBankName(e.target.value)}
-                    placeholder="Bank name"
+                    onChange={setBankName}
+                    includeOther
                   />
                 </div>
                 <div className="space-y-1.5">
@@ -387,9 +416,6 @@ export function CreateFundForm({
             ) : (
               <div className="space-y-1.5">
                 <Label>Link to <span className="text-destructive">*</span></Label>
-                {/* Combobox (searchable) replaces the Select so manager
-                    can type the bank name / BSB to find the right
-                    account quickly. No default selection. */}
                 <Combobox
                   items={bankOptions}
                   value={sharedParentId}
@@ -399,24 +425,43 @@ export function CreateFundForm({
                   <ComboboxContent>
                     <ComboboxEmpty>No bank accounts found.</ComboboxEmpty>
                     <ComboboxList>
-                      {(b: ExistingBankAccountOption) => (
-                        <ComboboxItem
-                          key={b.id}
-                          value={b.id}
-                          keywords={[
-                            b.label,
-                            b.bsb ?? "",
-                            b.account_number ?? "",
-                          ]}
-                        >
-                          <span className="flex flex-col">
-                            <span>{b.label}</span>
-                            {b.bsb && b.account_number && (
-                              <span className="text-xs text-muted-foreground">{b.bsb} {b.account_number}</span>
-                            )}
-                          </span>
-                        </ComboboxItem>
-                      )}
+                      {(b: ExistingBankAccountOption) => {
+                        // Try to match the stored bank_name to one of
+                        // our Australian banks (Macquarie / NAB / etc)
+                        // so the shared picker shows a logo too.
+                        const logo = b.bank_name
+                          ? AUSTRALIAN_BANKS.find(
+                              (bk) => bk.name.toLowerCase() === b.bank_name!.toLowerCase(),
+                            )?.logo
+                          : null;
+                        return (
+                          <ComboboxItem
+                            key={b.id}
+                            value={b.id}
+                            keywords={[
+                              b.label,
+                              b.bsb ?? "",
+                              b.account_number ?? "",
+                              b.bank_name ?? "",
+                            ]}
+                          >
+                            <span className="flex items-center gap-2 w-full">
+                              {logo ? (
+                                // eslint-disable-next-line @next/next/no-img-element
+                                <img src={logo} alt="" width={20} height={20} className="rounded shrink-0" />
+                              ) : (
+                                <Landmark className="h-4 w-4 text-muted-foreground shrink-0" />
+                              )}
+                              <span className="flex flex-col flex-1 min-w-0">
+                                <span className="truncate">{b.label}</span>
+                                {b.bsb && b.account_number && (
+                                  <span className="text-xs text-muted-foreground">{b.bsb} {b.account_number}</span>
+                                )}
+                              </span>
+                            </span>
+                          </ComboboxItem>
+                        );
+                      }}
                     </ComboboxList>
                   </ComboboxContent>
                 </Combobox>

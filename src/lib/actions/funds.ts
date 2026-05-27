@@ -118,6 +118,7 @@ export interface ExistingBankAccountOption {
   label: string;
   bsb: string | null;
   account_number: string | null;
+  bank_name: string | null;
 }
 
 export async function getOcBankAccountOptions(ocId: string): Promise<ExistingBankAccountOption[]> {
@@ -135,6 +136,7 @@ export async function getOcBankAccountOptions(ocId: string): Promise<ExistingBan
     label: a.account_name || a.bank_name || (a.bsb && a.account_number ? `${a.bsb} ${a.account_number}` : "Bank account"),
     bsb: a.bsb,
     account_number: a.account_number,
+    bank_name: a.bank_name,
   }));
 }
 
