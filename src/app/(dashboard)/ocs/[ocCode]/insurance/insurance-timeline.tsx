@@ -20,7 +20,7 @@ import {
 import { DatePicker } from "@/components/shared/date-picker";
 import { EmptyState } from "@/components/shared/empty-state";
 import { uploadAndParseInsuranceCoc, attachDocumentToPolicy } from "./parse-coc";
-import { formatDateLong } from "@/lib/utils";
+import { formatDateLong, cn } from "@/lib/utils";
 import {
   createInsurancePolicy,
   updateInsurancePolicy,
@@ -649,52 +649,213 @@ function AddPolicyDrawer({
   );
 }
 
+// ─── Insurance Gantt ───────────────────────────────────────
+// Horizontal scrollable timeline with one row per policy_type group.
+// Each policy renders as a positioned bar coloured by its current
+// expiry state. A red/white striped band sits in the background of
+// every row to make "no cover" gaps obvious at a glance.
+//
+// Time axis spans from earliest(managementStartDate, oldest policy
+// start) to latest(today + 60d, latest policy end). One pixel ≈ one
+// day; the inner track is set to max(1200, dayCount * 4) so short
+// histories still render generously and long ones scroll.
+
+function InsuranceGantt({
+  policies,
+  managementStartDate,
+  onPolicyClick,
+}: {
+  policies: InsurancePolicy[];
+  managementStartDate: string | null;
+  onPolicyClick: (p: InsurancePolicy) => void;
+}) {
+  // Group policies by type so each row shows one coverage line.
+  const groups = new Map<string, InsurancePolicy[]>();
+  for (const p of policies) {
+    const key = p.policy_type;
+    if (!groups.has(key)) groups.set(key, []);
+    groups.get(key)!.push(p);
+  }
+
+  // Domain bounds. Start = earlier of (management start, oldest
+  // policy). End = max(today + 60d, latest policy end).
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+  const policyStarts = policies.map((p) => new Date(p.start_date).getTime());
+  const policyEnds = policies.map((p) => new Date(p.end_date).getTime());
+  const mgmtStartMs = managementStartDate
+    ? new Date(`${managementStartDate}T00:00:00`).getTime()
+    : Infinity;
+  const minMs = Math.min(mgmtStartMs, ...policyStarts);
+  const sixtyDaysOut = today.getTime() + 60 * 86400000;
+  const maxMs = Math.max(sixtyDaysOut, ...policyEnds);
+  const totalDays = Math.max(1, Math.round((maxMs - minMs) / 86400000));
+  const trackWidth = Math.max(1200, totalDays * 4);
+  const pxPerDay = trackWidth / totalDays;
+
+  function offsetPx(iso: string): number {
+    const ms = new Date(`${iso}T00:00:00`).getTime();
+    return ((ms - minMs) / 86400000) * pxPerDay;
+  }
+  function widthPx(start: string, end: string): number {
+    const days = Math.max(1, (new Date(`${end}T00:00:00`).getTime() - new Date(`${start}T00:00:00`).getTime()) / 86400000);
+    return Math.max(4, days * pxPerDay);
+  }
+
+  // Month tick labels along the bottom axis.
+  const ticks: Array<{ iso: string; label: string }> = [];
+  const tickWalker = new Date(minMs);
+  tickWalker.setDate(1);
+  while (tickWalker.getTime() <= maxMs) {
+    ticks.push({
+      iso: tickWalker.toISOString().slice(0, 10),
+      label: tickWalker.toLocaleDateString("en-AU", { month: "short", year: "2-digit" }),
+    });
+    tickWalker.setMonth(tickWalker.getMonth() + 1);
+  }
+
+  const todayPx = ((today.getTime() - minMs) / 86400000) * pxPerDay;
+  const ROW_LABEL_W = 180;
+
+  return (
+    <div className="rounded-md border border-border bg-card">
+      <div className="overflow-x-auto">
+        <div className="relative" style={{ width: ROW_LABEL_W + trackWidth, minWidth: "100%" }}>
+          {/* Policy rows */}
+          {Array.from(groups.entries()).map(([typeKey, group]) => (
+            <div key={typeKey} className="flex items-stretch border-b border-border/50 last:border-b-0">
+              <div
+                className="shrink-0 px-3 py-3 text-sm font-medium text-foreground border-r border-border bg-muted/30 flex items-center"
+                style={{ width: ROW_LABEL_W }}
+              >
+                {POLICY_LABELS[typeKey] ?? typeKey}
+              </div>
+              <div
+                className="relative h-14"
+                style={{
+                  width: trackWidth,
+                  // Red/white 45deg stripes for "no cover" baseline.
+                  // Coverage bars sit ON TOP and hide the stripes
+                  // wherever a policy exists.
+                  backgroundImage:
+                    "repeating-linear-gradient(45deg, hsl(0, 72%, 92%) 0 8px, hsl(0, 0%, 100%) 8px 16px)",
+                }}
+              >
+                {group.map((p) => {
+                  const isExpired = new Date(p.end_date) < today;
+                  const isExpiringSoon = !isExpired && new Date(p.end_date) < new Date(today.getTime() + 30 * 86400000);
+                  const bg = isExpired
+                    ? "bg-muted-foreground/30 border-muted-foreground/40 text-muted-foreground"
+                    : isExpiringSoon
+                    ? "bg-warning/30 border-warning text-foreground"
+                    : "bg-[hsl(160,100%,90%)] border-[hsl(160,100%,37%)] text-foreground";
+                  return (
+                    <button
+                      key={p.id}
+                      type="button"
+                      onClick={() => onPolicyClick(p)}
+                      className={cn(
+                        "absolute top-2 bottom-2 rounded-md border px-2 text-left text-xs flex items-center gap-1 overflow-hidden hover:ring-2 hover:ring-primary/30 transition-shadow cursor-pointer",
+                        bg,
+                      )}
+                      style={{
+                        left: offsetPx(p.start_date),
+                        width: widthPx(p.start_date, p.end_date),
+                      }}
+                      title={`${POLICY_LABELS[p.policy_type] ?? p.policy_type} — ${formatDateLong(p.start_date)} to ${formatDateLong(p.end_date)}`}
+                    >
+                      <span className="truncate font-medium">{p.provider}</span>
+                      {p.premium && (
+                        <span className="ml-auto shrink-0 tabular-nums opacity-80">{formatCurrency(Number(p.premium))}</span>
+                      )}
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+          ))}
+
+          {/* Time axis , month labels along the bottom. */}
+          <div className="flex border-t border-border bg-muted/40">
+            <div className="shrink-0 border-r border-border" style={{ width: ROW_LABEL_W }} />
+            <div className="relative h-9" style={{ width: trackWidth }}>
+              {ticks.map((t) => (
+                <div
+                  key={t.iso}
+                  className="absolute top-0 bottom-0 flex flex-col items-start"
+                  style={{ left: offsetPx(t.iso) }}
+                >
+                  <div className="w-px h-2 bg-border" />
+                  <span className="text-[10px] text-muted-foreground mt-1 pl-1 whitespace-nowrap">{t.label}</span>
+                </div>
+              ))}
+              {/* Today marker */}
+              {todayPx >= 0 && todayPx <= trackWidth && (
+                <div
+                  className="absolute top-0 bottom-0 w-px bg-primary"
+                  style={{ left: todayPx }}
+                >
+                  <span className="absolute -top-3 left-1 text-[10px] font-medium text-primary whitespace-nowrap">Today</span>
+                </div>
+              )}
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div className="border-t border-border bg-muted/20 px-4 py-2 flex items-center gap-4 text-xs text-muted-foreground">
+        <span className="flex items-center gap-1.5">
+          <span className="h-3 w-3 rounded-sm bg-[hsl(160,100%,90%)] border border-[hsl(160,100%,37%)]" />
+          Active
+        </span>
+        <span className="flex items-center gap-1.5">
+          <span className="h-3 w-3 rounded-sm bg-warning/30 border border-warning" />
+          Expiring soon
+        </span>
+        <span className="flex items-center gap-1.5">
+          <span className="h-3 w-3 rounded-sm bg-muted-foreground/30 border border-muted-foreground/40" />
+          Expired
+        </span>
+        <span className="flex items-center gap-1.5">
+          <span
+            className="h-3 w-3 rounded-sm border border-destructive/40"
+            style={{
+              backgroundImage:
+                "repeating-linear-gradient(45deg, hsl(0, 72%, 80%) 0 3px, hsl(0, 0%, 100%) 3px 6px)",
+            }}
+          />
+          No cover
+        </span>
+        {managementStartDate && (
+          <span className="ml-auto">
+            Management started {formatDateLong(managementStartDate)}
+          </span>
+        )}
+      </div>
+    </div>
+  );
+}
+
 // ─── Main Component ────────────────────────────────────────
 
 export function InsuranceTimeline({
   ocId,
   policies: initialPolicies,
   readOnly,
+  managementStartDate,
 }: {
   ocId: string;
   policies: InsurancePolicy[];
   readOnly?: boolean;
+  /** ISO yyyy-mm-dd of when the current management agreement began.
+   *  The gantt's time axis defaults to start here; a policy whose
+   *  start_date is earlier overrides it (we expand the axis left). */
+  managementStartDate?: string | null;
 }) {
   const router = useRouter();
   const [policies, setPolicies] = useState(initialPolicies);
   const [showAdd, setShowAdd] = useState(false);
   const [selectedPolicy, setSelectedPolicy] = useState<InsurancePolicy | null>(null);
-
-  // Sort by start_date ascending
-  const sorted = [...policies].sort((a, b) => new Date(a.start_date).getTime() - new Date(b.start_date).getTime());
-
-  // Build timeline with gaps
-  type TimelineItem = { type: "covered" | "gap"; startDate: string; endDate: string; policy?: InsurancePolicy };
-  const timeline: TimelineItem[] = [];
-
-  for (let i = 0; i < sorted.length; i++) {
-    const policy = sorted[i];
-    if (i > 0) {
-      const prevEnd = new Date(sorted[i - 1].end_date);
-      const thisStart = new Date(policy.start_date);
-      prevEnd.setDate(prevEnd.getDate() + 1);
-      if (prevEnd < thisStart) {
-        timeline.push({ type: "gap", startDate: prevEnd.toISOString().split("T")[0], endDate: new Date(thisStart.getTime() - 86400000).toISOString().split("T")[0] });
-      }
-    }
-    timeline.push({ type: "covered", startDate: policy.start_date, endDate: policy.end_date, policy });
-  }
-
-  if (sorted.length > 0) {
-    const lastEnd = new Date(sorted[sorted.length - 1].end_date);
-    const now = new Date();
-    lastEnd.setDate(lastEnd.getDate() + 1);
-    if (lastEnd < now) {
-      timeline.push({ type: "gap", startDate: lastEnd.toISOString().split("T")[0], endDate: "now" });
-    }
-  }
-
-  const displayTimeline = [...timeline].reverse();
 
   return (
     <div className="space-y-6">
@@ -722,73 +883,11 @@ export function InsuranceTimeline({
           }
         />
       ) : (
-        <div className="space-y-0">
-          {displayTimeline.map((entry, i) => {
-            if (entry.type === "gap") {
-              return (
-                <div key={`gap-${i}`} className="flex items-stretch">
-                  <div className="w-24 shrink-0 pr-3 py-2 text-right">
-                    <p className="text-xs text-destructive">{formatDateLong(entry.startDate)}</p>
-                  </div>
-                  <div className="flex flex-col items-center px-3">
-                    <div className="h-3 w-3 rounded-full bg-destructive shrink-0" />
-                    <div className="w-0.5 flex-1 bg-destructive/20" />
-                  </div>
-                  <div className="flex-1 py-1.5 pb-3">
-                    <div className="flex items-center gap-2 rounded-md border border-destructive/20 bg-destructive/5 px-3 py-2">
-                      <ShieldX className="h-3.5 w-3.5 text-destructive shrink-0" />
-                      <span className="text-sm text-destructive">No coverage</span>
-                    </div>
-                  </div>
-                </div>
-              );
-            }
-
-            const policy = entry.policy!;
-            const isExpired = new Date(policy.end_date) < new Date();
-            const isExpiringSoon = !isExpired && new Date(policy.end_date) < new Date(Date.now() + 30 * 86400000);
-
-            return (
-              <div key={policy.id} className="flex items-stretch">
-                <div className="w-24 shrink-0 pr-3 py-2 text-right">
-                  <p className="text-xs text-muted-foreground">{formatDateLong(policy.start_date)}</p>
-                  <p className="text-xs text-muted-foreground/60 mt-0.5">{formatDateLong(policy.end_date)}</p>
-                </div>
-                <div className="flex flex-col items-center px-3">
-                  <div className={`h-3 w-3 rounded-full shrink-0 ${isExpired ? "bg-muted-foreground" : isExpiringSoon ? "bg-warning" : "bg-[hsl(160,100%,37%)]"}`} />
-                  <div className="w-0.5 flex-1 bg-border" />
-                </div>
-                <div className="flex-1 py-1.5 pb-3">
-                  <button
-                    type="button"
-                    onClick={() => setSelectedPolicy(policy)}
-                    className="flex w-full items-center justify-between rounded-md border border-border bg-card px-3 py-2.5 text-left hover:border-primary/30 transition-colors cursor-pointer"
-                  >
-                    <div className="flex items-center gap-3">
-                      <span className="text-sm font-medium text-foreground">{POLICY_LABELS[policy.policy_type] ?? policy.policy_type}</span>
-                      {isExpiringSoon && <Badge variant="warning">Expiring soon</Badge>}
-                      {isExpired && <Badge variant="neutral">Expired</Badge>}
-                    </div>
-                    <div className="flex items-center gap-3">
-                      {policy.premium && <span className="text-sm tabular-nums text-muted-foreground">{formatCurrency(Number(policy.premium))}</span>}
-                      {policy.document_url && (
-                        <a
-                          href={`/api/insurance-docs/${policy.id}`}
-                          target="_blank"
-                          rel="noopener noreferrer"
-                          onClick={(e) => e.stopPropagation()}
-                          className="flex h-7 w-7 items-center justify-center rounded-md text-muted-foreground hover:bg-muted hover:text-foreground"
-                        >
-                          <Download className="h-3.5 w-3.5" />
-                        </a>
-                      )}
-                    </div>
-                  </button>
-                </div>
-              </div>
-            );
-          })}
-        </div>
+        <InsuranceGantt
+          policies={policies}
+          managementStartDate={managementStartDate ?? null}
+          onPolicyClick={setSelectedPolicy}
+        />
       )}
 
       {showAdd && (

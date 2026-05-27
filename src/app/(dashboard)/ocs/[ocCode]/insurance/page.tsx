@@ -1,6 +1,7 @@
 import { getOC } from "@/lib/actions/oc";
 import { getCurrentProfile } from "@/lib/auth";
 import { getInsurancePolicies } from "@/lib/actions/insurance";
+import { getActiveManagementAgreement } from "@/lib/actions/management-transfer";
 import { redirect } from "next/navigation";
 import { InsuranceTimeline } from "./insurance-timeline";
 
@@ -15,10 +16,11 @@ export default async function InsurancePage({
   const resolved = await resolveOCFromCode(ocCode);
   if (!resolved) redirect("/dashboard");
   const ocId = resolved.id;
-  const [oc, policies, profile] = await Promise.all([
+  const [oc, policies, profile, agreement] = await Promise.all([
     getOC(ocId),
     getInsurancePolicies(ocId),
     getCurrentProfile(),
+    getActiveManagementAgreement(ocId),
   ]);
 
   if (!oc) redirect("/dashboard");
@@ -28,6 +30,7 @@ export default async function InsurancePage({
       ocId={ocId}
       policies={policies}
       readOnly={profile?.role === "lot_owner"}
+      managementStartDate={agreement?.start_date ?? null}
     />
   );
 }
