@@ -11,8 +11,7 @@ export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
 const FUND_LABEL: Record<string, string> = {
-  administrative: "Administrative Fund",
-  capital_works: "Capital Works Fund",
+  operating: "Operating Fund",
   maintenance_plan: "Maintenance Plan Fund",
 };
 
@@ -52,7 +51,7 @@ export async function GET(
     description: string | null;
     amount: number;
     sort_order: number;
-    fund_type: "administrative" | "capital_works" | "maintenance_plan" | null;
+    fund_type: "operating" | "maintenance_plan" | null;
     budget_categories: { name: string } | null;
     chart_of_accounts: { name: string; code: string } | null;
   };
@@ -105,7 +104,7 @@ export async function GET(
     // Fall back to the budget's legacy single fund_type when a row didn't
     // get tagged (older budgets pre-multi-fund). Lets the PDF group items
     // even when only the parent row carries fund context.
-    fund_type: i.fund_type ?? (budget.fund_type as "administrative" | "capital_works" | "maintenance_plan" | null) ?? null,
+    fund_type: i.fund_type ?? (budget.fund_type as "operating" | "maintenance_plan" | null) ?? null,
   }));
 
   // Brand colours come from management_companies. Primary drives the

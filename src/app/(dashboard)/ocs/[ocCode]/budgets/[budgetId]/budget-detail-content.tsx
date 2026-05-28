@@ -27,8 +27,7 @@ import { CreateAccountDrawer } from "@/components/chart-of-accounts/create-accou
 import { useSetBreadcrumb } from "@/lib/breadcrumb-context";
 
 const FUND_LABEL: Record<string, string> = {
-  administrative: "Administrative Fund",
-  capital_works: "Capital Works Fund",
+  operating: "Operating Fund",
   maintenance_plan: "Maintenance Plan Fund",
 };
 
@@ -118,7 +117,7 @@ interface DraftItem {
   description: string;
   amount: string;
   /** Which fund this line belongs to. Null on legacy single-fund rows. */
-  fund_type: "administrative" | "capital_works" | "maintenance_plan" | null;
+  fund_type: "operating" | "maintenance_plan" | null;
 }
 
 export function BudgetDetailContent({

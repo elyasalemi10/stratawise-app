@@ -27,14 +27,12 @@ export default async function CreateBudgetPage({
 
   // Available fund types: prefer the new `funds` table (manager-created
   // funds via /funds). If the OC hasn't created any yet, fall back to
-  // the legacy capabilities so the manager can still budget , Admin +
-  // Capital Works are assumed; Maintenance Plan only when the OC
-  // settings flag is on.
+  // operating (always present), plus maintenance when the OC opted in.
   const ocFundKinds = new Set(ocFunds.map((f) => f.kind));
-  const systemKinds = (["administrative", "capital_works", "maintenance_plan"] as const).filter((k) => ocFundKinds.has(k));
+  const systemKinds = (["operating", "maintenance_plan"] as const).filter((k) => ocFundKinds.has(k));
   const availableSystemFunds = systemKinds.length > 0
     ? systemKinds
-    : (["administrative", "capital_works", ...(hasMaintenanceFund ? ["maintenance_plan" as const] : [])] as ("administrative" | "capital_works" | "maintenance_plan")[]);
+    : (["operating", ...(hasMaintenanceFund ? ["maintenance_plan" as const] : [])] as ("operating" | "maintenance_plan")[]);
 
   // Custom funds from /funds. Each gets passed to the form so the
   // multi-select shows them alongside system funds. Budget submit

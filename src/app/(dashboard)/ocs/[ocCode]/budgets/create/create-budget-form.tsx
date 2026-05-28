@@ -27,7 +27,7 @@ import { useOCCode } from "@/lib/oc-context";
 const formatCurrency = (n: number) =>
   new Intl.NumberFormat("en-AU", { style: "currency", currency: "AUD" }).format(n);
 
-type FundType = "administrative" | "capital_works" | "maintenance_plan";
+type FundType = "operating" | "maintenance_plan";
 
 // FundKey is the unified identifier used in component state. System funds
 // are keyed by their enum string; custom funds use the `custom:<uuid>`
@@ -35,12 +35,11 @@ type FundType = "administrative" | "capital_works" | "maintenance_plan";
 type FundKey = string;
 
 const SYSTEM_FUND_LABELS: Record<FundType, string> = {
-  administrative: "Administrative Fund",
-  capital_works: "Capital Works Fund",
+  operating: "Operating Fund",
   maintenance_plan: "Maintenance Plan Fund",
 };
 
-const SYSTEM_FUND_VALUES: FundType[] = ["administrative", "capital_works", "maintenance_plan"];
+const SYSTEM_FUND_VALUES: FundType[] = ["operating", "maintenance_plan"];
 
 const isCustomKey = (k: FundKey) => k.startsWith("custom:");
 const customIdOf = (k: FundKey) => k.slice("custom:".length);
@@ -191,7 +190,7 @@ export function CreateBudgetForm({
     [customFunds],
   );
 
-  const defaultKey: FundKey = (fundOptionList[0]?.key ?? "administrative") as FundKey;
+  const defaultKey: FundKey = (fundOptionList[0]?.key ?? "operating") as FundKey;
 
   const [selectedKeys, setSelectedKeys] = useState<FundKey[]>(
     fundOptionList.length > 0 ? [defaultKey] : [],
@@ -350,7 +349,7 @@ export function CreateBudgetForm({
             <Label>Funds</Label>
             {fundOptionList.length === 0 ? (
               <div className="rounded-md border border-border bg-muted/40 px-4 py-4 text-sm text-foreground">
-                <p>This OC has no funds yet. Create at least one fund (Administrative, Capital Works, Maintenance Plan, or a custom one) before you can budget for it.</p>
+                <p>This OC has no funds yet. Create at least one fund (Operating, Maintenance Plan, or a custom one) before you can budget for it.</p>
                 <a
                   href={`/ocs/${ocCode}/funds/create`}
                   className="mt-2 inline-flex items-center gap-1.5 text-sm font-medium text-primary hover:underline"

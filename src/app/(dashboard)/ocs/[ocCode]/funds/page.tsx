@@ -12,8 +12,7 @@ import { EmptyState } from "@/components/shared/empty-state";
 import { getFunds } from "@/lib/actions/funds";
 
 const KIND_LABEL: Record<string, string> = {
-  administrative: "Administrative",
-  capital_works: "Capital Works",
+  operating: "Operating",
   maintenance_plan: "Maintenance Plan",
   custom: "Custom",
 };

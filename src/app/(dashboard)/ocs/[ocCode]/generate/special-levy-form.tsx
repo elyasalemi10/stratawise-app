@@ -28,7 +28,7 @@ interface CoaOption {
   name: string;
 }
 
-type FundType = "administrative" | "capital_works" | "maintenance_plan";
+type FundType = "operating" | "maintenance_plan";
 
 interface PreviewLot {
   lot_id: string;
@@ -40,8 +40,7 @@ interface PreviewLot {
 }
 
 const FUND_LABEL: Record<FundType, string> = {
-  administrative: "Administrative Fund",
-  capital_works: "Capital Works Fund",
+  operating: "Operating Fund",
   maintenance_plan: "Maintenance Plan Fund",
 };
 
@@ -104,7 +103,7 @@ export function SpecialLevyForm({
   const [periodEnd, setPeriodEnd] = useState("");
   const [dueDate, setDueDate] = useState("");
   // Fund defaults to the first available fund the OC actually has.
-  const [fundType, setFundType] = useState<FundType>(availableFunds[0] ?? "capital_works");
+  const [fundType, setFundType] = useState<FundType>(availableFunds[0] ?? "operating");
 
   const [items, setItems] = useState<LineItem[]>([{ coa_account_id: null, description: "", amount: "" }]);
 

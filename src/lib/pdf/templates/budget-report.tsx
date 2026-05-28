@@ -8,7 +8,7 @@ import "../fonts";
 // document title ("Budget breakdown") sits with the financial-year period
 // in the secondary brand colour. The OC subtitle uses a quote-style
 // rectangle (subtle background + left border in primary brand colour).
-// Each fund (Administrative / Capital Works / Maintenance Plan) renders as
+// Each fund (Operating / Maintenance Plan) renders as
 // a contained levy-style table , brand-coloured header row, striped body
 // rows, per-fund total. Multi-fund budgets get a grand total. The page
 // closes with the lot contributions table (per-lot share of the annual
@@ -46,8 +46,7 @@ function fmtPeriodLong(financialYear: string): string {
 }
 
 const FUND_SECTION_LABEL: Record<string, string> = {
-  administrative: "Administrative Fund",
-  capital_works: "Capital Works Fund",
+  operating: "Operating Fund",
   maintenance_plan: "Maintenance Plan Fund",
 };
 
@@ -85,10 +84,10 @@ export function BudgetReport({
   const brand2 = brandColors?.secondary ?? "#CFA753"; // gold default
 
   // Group items by fund_type so multi-fund budgets render one section per
-  // fund (Administrative, Capital Works, …) with a separator between.
+  // fund (Operating, Maintenance Plan, …) with a separator between.
   // Single-fund budgets still render with their fund name as the section
   // title (no generic "Expenditure" header).
-  const fundOrder = ["administrative", "capital_works", "maintenance_plan"] as const;
+  const fundOrder = ["operating", "maintenance_plan"] as const;
   const grouped = new Map<string, { items: typeof items; total: number }>();
   for (const it of items) {
     const key = it.fund_type ?? "_single";

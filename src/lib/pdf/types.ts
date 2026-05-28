@@ -100,7 +100,7 @@ export interface BudgetReportItem {
    *  the PDF: when items in `items` carry more than one distinct
    *  `fund_type`, the report renders one section per fund with a
    *  separator rule between them. */
-  fund_type?: "administrative" | "capital_works" | "maintenance_plan" | null;
+  fund_type?: "operating" | "maintenance_plan" | null;
 }
 
 export interface BudgetReportLot {

@@ -145,7 +145,7 @@ async function createFixture(): Promise<FixtureContext> {
       account_name: `Email Admin ${runId}`,
       bsb: "012-345",
       account_number: `${runId.slice(-8)}`,
-      fund_type: "administrative",
+      fund_type: "operating",
     })
     .select("id")
     .single();
@@ -193,7 +193,7 @@ async function createMatchedBankTxFixture(
     .insert({
       oc_id: ctx.ocId,
       lot_id: ctx.lotId,
-      fund_type: "administrative",
+      fund_type: "operating",
       entry_type: "credit",
       category: "payment",
       amount,
@@ -415,7 +415,7 @@ async function e7_emitPaymentNoBankTx(ctx: FixtureContext) {
     .insert({
       oc_id: ctx.ocId,
       lot_id: ctx.lotId,
-      fund_type: "administrative",
+      fund_type: "operating",
       entry_type: "credit",
       category: "payment",
       amount: 50,
@@ -474,7 +474,7 @@ async function e8_emitPaymentNoOwner(ctx: FixtureContext) {
     .insert({
       oc_id: ctx.ocId,
       lot_id: orphanLotId,
-      fund_type: "administrative",
+      fund_type: "operating",
       entry_type: "credit",
       category: "payment",
       amount: 60,

@@ -65,13 +65,12 @@ export default async function GenerateLeviesPage({
     const fs = b.fund_types?.length ? b.fund_types : (b.fund_type ? [b.fund_type] : []);
     for (const f of fs) fundsSet.add(f);
   }
-  // Default fallback: admin + capital works are always present in a
-  // typical OC even before budgets exist.
+  // Default fallback: operating fund is always present in a typical
+  // VIC OC even before budgets exist.
   if (fundsSet.size === 0) {
-    fundsSet.add("administrative");
-    fundsSet.add("capital_works");
+    fundsSet.add("operating");
   }
-  const availableFunds = Array.from(fundsSet) as Array<"administrative" | "capital_works" | "maintenance_plan">;
+  const availableFunds = Array.from(fundsSet) as Array<"operating" | "maintenance_plan">;
 
   // Pre-load OC lots + liability so the "Calculate per lot levies"
   // button in the special-levy flow is instant , the form does the

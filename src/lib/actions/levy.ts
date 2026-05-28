@@ -45,7 +45,7 @@ export interface LevyPreviewLot {
 export interface LevyPreviewData {
   budget_id: string;
   financial_year: string;
-  fund_type: "administrative" | "capital_works" | "maintenance_plan";
+  fund_type: "operating" | "maintenance_plan";
   period_label: string;
   period_start: string;
   period_end: string;
@@ -59,7 +59,7 @@ export interface LevyPreviewData {
 export interface LevyBatchSummary {
   id: string;
   financial_year: string;
-  fund_type: "administrative" | "capital_works" | "maintenance_plan";
+  fund_type: "operating" | "maintenance_plan";
   period_label: string;
   period_start: string;
   period_end: string;
@@ -441,7 +441,7 @@ export async function generateLevyPreview(
 // Receiving account for levy payments. Owners pay into the OC's ADMIN
 // (operating) trust account , the "main" account , regardless of which fund
 // a levy belongs to; the money is then disbursed across fund ledgers
-// internally. Prefer the administrative bank_accounts row; fall back to the
+// internally. Prefer the operating bank_accounts row; fall back to the
 // legacy OC-level columns when no admin account exists yet. Returns null when
 // neither is configured (PDF then shows blank EFT, as before).
 // Bulk reference lookup for a set of levy notices. Returns a
@@ -554,7 +554,7 @@ async function resolveReceivingEft(
     .from("bank_accounts")
     .select("bsb, account_number, account_name")
     .eq("oc_id", ocId)
-    .eq("fund_type", "administrative")
+    .eq("fund_type", "operating")
     .limit(1)
     .maybeSingle();
   if (admin?.bsb && admin?.account_number) {
@@ -664,7 +664,7 @@ export async function createLevyBatch(
     /** Required for regular budget-driven batches; null for special levies. */
     budget_id: string | null;
     financial_year: string;
-    fund_type: "administrative" | "capital_works" | "maintenance_plan";
+    fund_type: "operating" | "maintenance_plan";
     period_label: string;
     period_start: string;
     period_end: string;

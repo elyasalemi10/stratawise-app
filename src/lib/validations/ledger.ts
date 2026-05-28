@@ -1,6 +1,6 @@
 import { z } from "zod";
 
-export const FUND_TYPES = ["administrative", "capital_works", "maintenance_plan"] as const;
+export const FUND_TYPES = ["operating", "maintenance_plan"] as const;
 export type FundType = (typeof FUND_TYPES)[number];
 
 export const LEDGER_ENTRY_TYPES = ["debit", "credit"] as const;

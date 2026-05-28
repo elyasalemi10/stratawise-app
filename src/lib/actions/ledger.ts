@@ -274,7 +274,7 @@ export async function getLotStatement(
   let openCapital = 0;
   for (const r of openingRes.data ?? []) {
     const delta = r.entry_type === "credit" ? Number(r.amount) : -Number(r.amount);
-    if (r.fund_type === "administrative") openAdmin += delta;
+    if (r.fund_type === "operating") openAdmin += delta;
     else openCapital += delta;
   }
 
@@ -284,7 +284,7 @@ export async function getLotStatement(
   let closeCapital = openCapital;
   for (const e of entries) {
     const delta = e.entry_type === "credit" ? e.amount : -e.amount;
-    if (e.fund_type === "administrative") closeAdmin += delta;
+    if (e.fund_type === "operating") closeAdmin += delta;
     else closeCapital += delta;
   }
 

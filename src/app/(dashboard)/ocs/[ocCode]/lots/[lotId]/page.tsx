@@ -61,24 +61,19 @@ export default async function LotDetailPage({
     );
   }
 
-  // Pull balance from the materialised lot_ledger_state row. That row is
-  // the single source of truth , opening balances, levies, payments,
-  // interest accrual, voids, and adjustments all flow into it via the
-  // lot_ledger_entries trigger pipeline. The previous code summed
-  // levy_notices and payments directly, which missed opening balances
-  // (and double-counted nothing , payments still showed up but the seed
-  // entries didn't).
-  //
-  // Sign convention: lot_ledger_state stores `total_balance = credits −
-  // debits`. The UI convention is the inverse (positive = owes), so we
-  // flip the sign here once and the rest of the page consumes the
-  // familiar "+owes / −credit" semantic.
-  const [stateResult, documentsResult, ocLotsResult] = await Promise.all([
+  // Balance = lot opening balance (set at OC creation) + outstanding levy
+  // notices , payments. opening_balance sign convention is owes-positive,
+  // which is what the UI expects directly , no flip.
+  const [leviesResult, paymentsResult, documentsResult, ocLotsResult] = await Promise.all([
     supabase
-      .from("lot_ledger_state")
-      .select("total_balance")
+      .from("levy_notices")
+      .select("amount")
       .eq("lot_id", lotId)
-      .maybeSingle(),
+      .in("status", ["issued", "partially_paid", "overdue"]),
+    supabase
+      .from("payments")
+      .select("amount")
+      .eq("lot_id", lotId),
     supabase
       .from("documents")
       .select("*")
@@ -97,13 +92,16 @@ export default async function LotDetailPage({
     (l) => ({ id: l.id, lotNumber: Number(l.lot_number), unitNumber: l.unit_number }),
   );
 
-  // No state row yet (e.g. brand-new lot, never had a single entry) →
-  // treat as zero. The recompute trigger seeds the row on the first
-  // entry insertion.
-  const ledgerTotal = stateResult.data
-    ? Number((stateResult.data as { total_balance: number | string }).total_balance) || 0
-    : 0;
-  const balance = -ledgerTotal;
+  const opening = Number((lot as { opening_balance?: number | string | null }).opening_balance ?? 0);
+  const totalLevied = (leviesResult.data ?? []).reduce(
+    (s, r) => s + Number((r as { amount: number | string }).amount),
+    0,
+  );
+  const totalPaid = (paymentsResult.data ?? []).reduce(
+    (s, r) => s + Number((r as { amount: number | string }).amount),
+    0,
+  );
+  const balance = opening + totalLevied - totalPaid;
 
   const documents = (documentsResult.data as DocumentRecord[]) ?? [];
 

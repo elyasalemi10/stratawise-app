@@ -177,10 +177,10 @@ async function createFixture(): Promise<FixtureContext> {
     .from("bank_accounts")
     .insert({
       oc_id: ocId,
-      account_name: `Admin Fund Trust ${runId}`,
+      account_name: `Operating Fund Trust ${runId}`,
       bsb: "063000",
       account_number: `1234${runId.slice(-4)}`,
-      fund_type: "administrative",
+      fund_type: "operating",
       bank_name: "Westpac",
       opening_balance: 10000,
       opening_balance_date: daysBefore(todayIso(), 90),
@@ -227,7 +227,7 @@ async function insertLevy(
       oc_id: ctx.ocId,
       lot_id: lotId,
       reference_number: `LEV-RP-${refSuffix}`,
-      fund_type: "administrative",
+      fund_type: "operating",
       levy_type: opts.levyType ?? "regular",
       period_start: daysBefore(dueDate, 90),
       period_end: dueDate,
@@ -255,7 +255,7 @@ async function insertLedger(
   const { error } = await supabase.from("lot_ledger_entries").insert({
     oc_id: ctx.ocId,
     lot_id: lotId,
-    fund_type: "administrative",
+    fund_type: "operating",
     entry_type: entryType,
     category,
     amount,

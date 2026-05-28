@@ -19,22 +19,20 @@ import { useOCCode } from "@/lib/oc-context";
 const formatCurrency = (n: number) =>
   new Intl.NumberFormat("en-AU", { style: "currency", currency: "AUD" }).format(n);
 
-const KNOWN_FUNDS = new Set(["administrative", "capital_works", "maintenance_plan"]);
+const KNOWN_FUNDS = new Set(["operating", "maintenance_plan"]);
 
-// Sum items per fund-type bucket. Unknown fund types (custom funds when
-// they ship) fall into "other" so the column is future-proof.
+// Sum items per fund-type bucket. Unknown fund types (custom funds)
+// fall into "other" so the column is future-proof.
 function fundSplit(budget: BudgetWithItems): {
-  administrative: number;
-  capital_works: number;
+  operating: number;
   maintenance_plan: number;
   other: number;
 } {
-  const out = { administrative: 0, capital_works: 0, maintenance_plan: 0, other: 0 };
+  const out = { operating: 0, maintenance_plan: 0, other: 0 };
   for (const it of budget.items) {
     const f = it.fund_type ?? budget.fund_type ?? null;
     const amt = Number(it.amount) || 0;
-    if (f === "administrative") out.administrative += amt;
-    else if (f === "capital_works") out.capital_works += amt;
+    if (f === "operating") out.operating += amt;
     else if (f === "maintenance_plan") out.maintenance_plan += amt;
     else if (f && !KNOWN_FUNDS.has(f)) out.other += amt;
     else out.other += amt; // null fund_type falls through to Other
@@ -183,8 +181,7 @@ function BudgetsListView({
               <TableHead className="w-32">Financial Year</TableHead>
               <TableHead className="w-28">Status</TableHead>
               <TableHead>Description</TableHead>
-              <TableHead className="text-right">Admin</TableHead>
-              <TableHead className="text-right">Capital Works</TableHead>
+              <TableHead className="text-right">Operating</TableHead>
               <TableHead className="text-right">Maintenance</TableHead>
               <TableHead className="text-right">Other</TableHead>
             </TableRow>
@@ -192,7 +189,7 @@ function BudgetsListView({
           <TableBody>
             {filtered.length === 0 ? (
               <TableRow>
-                <TableCell colSpan={7} className="text-center py-10 text-sm text-muted-foreground">
+                <TableCell colSpan={6} className="text-center py-10 text-sm text-muted-foreground">
                   No budgets match your search.
                 </TableCell>
               </TableRow>
@@ -211,10 +208,7 @@ function BudgetsListView({
                       {b.description ?? ""}
                     </TableCell>
                     <TableCell className="text-right tabular-nums text-foreground">
-                      {split.administrative > 0 ? formatCurrency(split.administrative) : ""}
-                    </TableCell>
-                    <TableCell className="text-right tabular-nums text-foreground">
-                      {split.capital_works > 0 ? formatCurrency(split.capital_works) : ""}
+                      {split.operating > 0 ? formatCurrency(split.operating) : ""}
                     </TableCell>
                     <TableCell className="text-right tabular-nums text-foreground">
                       {split.maintenance_plan > 0 ? formatCurrency(split.maintenance_plan) : ""}

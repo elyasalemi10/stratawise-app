@@ -148,12 +148,14 @@ export type DraftJson = {
   // wizard. completeWizard will skip the bank_accounts insert and the
   // post-creation Settings → Banking page will prompt to finish setup.
   banking_deferred?: boolean;
-  // Admin fund , always present.
+  // Operating account , always present. Draft JSON keys keep the legacy
+  // `admin_*` prefix so in-flight drafts round-trip; UI labels it
+  // "Operating account".
   admin_bank_id?: string;        // e.g. "macquarie"
   admin_account_name?: string;
   admin_bsb?: string;
   admin_account_number?: string;
-  // Capital works fund , either inherits admin's account or its own bank details.
+  // Retained for back-compat with old draft JSON; ignored by the new wizard.
   capital_same_as_admin?: boolean;
   capital_bank_id?: string;
   capital_account_name?: string;
@@ -221,7 +223,8 @@ export type DraftJson = {
 
   // Page 8 (opening balances)
   opening_balance_date?: string;                 // ISO yyyy-mm-dd
-  opening_admin_balance?: number;
+  opening_operating_balance?: number;
+  /** Legacy , kept for in-flight drafts; folded into operating at OC creation. */
   opening_capital_works_balance?: number;
   opening_maintenance_plan_balance?: number;     // only when has_maintenance_plan_fund
 
@@ -1330,26 +1333,15 @@ export async function completeWizard(draftId: string) {
       if (!d.opening_balance_date) return { error: "Opening balance date is required (page 6)" };
     }
 
-    // Resolve per-fund bank details. Capital and maintenance can either share
-    // the admin account or have their own. Skipped when banking is deferred.
-    const capitalShared = d.capital_same_as_admin ?? true;
-    const capital = bankingDeferred
-      ? null
-      : capitalShared
-        ? { bank_id: d.admin_bank_id, account_name: d.admin_account_name, bsb: d.admin_bsb, account_number: d.admin_account_number }
-        : { bank_id: d.capital_bank_id, account_name: d.capital_account_name, bsb: d.capital_bsb, account_number: d.capital_account_number };
-    if (capital && (!capital.bsb || !capital.account_number || !capital.account_name || !capital.bank_id)) {
-      return { error: "Capital works trust account details are required (page 5)" };
-    }
-
+    // Maintenance plan fund , optional. Either shares the operating
+    // account or has its own bank.
     const hasMaintenance = !bankingDeferred && !!d.has_maintenance_plan_fund;
     const maintenanceShared = d.maintenance_same_as_admin ?? true;
-    const maintenance = !hasMaintenance ? null
-      : maintenanceShared
-        ? { bank_id: d.admin_bank_id, account_name: d.admin_account_name, bsb: d.admin_bsb, account_number: d.admin_account_number }
-        : { bank_id: d.maintenance_bank_id, account_name: d.maintenance_account_name, bsb: d.maintenance_bsb, account_number: d.maintenance_account_number };
+    const maintenance = !hasMaintenance || maintenanceShared
+      ? null
+      : { bank_id: d.maintenance_bank_id, account_name: d.maintenance_account_name, bsb: d.maintenance_bsb, account_number: d.maintenance_account_number };
     if (maintenance && (!maintenance.bsb || !maintenance.account_number || !maintenance.account_name || !maintenance.bank_id)) {
-      return { error: "Maintenance plan trust account details are required (page 5)" };
+      return { error: "Maintenance plan trust account details are required" };
     }
 
     const supabase = createServerClient();
@@ -1382,14 +1374,16 @@ export async function completeWizard(draftId: string) {
       notice_address_same_as_oc: !d.notice_address || d.notice_address.trim() === d.address.trim(),
       notice_address: d.notice_address || d.address,
       bank_provider: d.bank_provider ?? "other_csv",
-      uses_shared_trust_account: capitalShared && (!hasMaintenance || maintenanceShared),
-      // Legacy summary fields point at the admin trust account.
+      uses_shared_trust_account: !hasMaintenance || maintenanceShared,
+      // Legacy summary fields point at the operating trust account.
       bank_bsb: d.admin_bsb,
       bank_account_number: d.admin_account_number,
       bank_account_name: d.admin_account_name,
       opening_balance_date: d.opening_balance_date,
-      opening_admin_balance: d.opening_admin_balance ?? 0,
-      opening_capital_works_balance: d.opening_capital_works_balance ?? 0,
+      // Fold any legacy capital_works opening balance from in-flight drafts
+      // into the operating balance so no money is lost during the rename.
+      opening_operating_balance:
+        (d.opening_operating_balance ?? 0) + (d.opening_capital_works_balance ?? 0),
       opening_maintenance_plan_balance: hasMaintenance ? (d.opening_maintenance_plan_balance ?? 0) : null,
       // Rules + insurance moved out of the wizard in the May refresh.
       // Every new OC starts on Victoria's Model Rules; managers upload
@@ -1516,7 +1510,7 @@ export async function completeWizard(draftId: string) {
     // Seed lot_ledger_entries for any lot that arrived with a non-zero
     // opening_balance , otherwise the per-lot ledger tab is empty even
     // though the lot's overall balance reflects the arrears/credit. We
-    // put everything under fund_type=administrative because the wizard
+    // put everything under fund_type=operating because the wizard
     // only collects one number per lot; managers can re-fund later via
     // the ledger UI. Skipped when banking was deferred (no opening date
     // means no anchor for an entry_date).
@@ -1524,7 +1518,7 @@ export async function completeWizard(draftId: string) {
       const ledgerSeedRows: Array<{
         oc_id: string;
         lot_id: string;
-        fund_type: "administrative";
+        fund_type: "operating";
         entry_type: "debit" | "credit";
         category: "adjustment_debit" | "adjustment_credit";
         amount: number;
@@ -1541,7 +1535,7 @@ export async function completeWizard(draftId: string) {
         ledgerSeedRows.push({
           oc_id: oc.id,
           lot_id: l.id,
-          fund_type: "administrative",
+          fund_type: "operating",
           entry_type: isDebit ? "debit" : "credit",
           category: isDebit ? "adjustment_debit" : "adjustment_credit",
           amount: Math.abs(ob),
@@ -1808,63 +1802,51 @@ export async function completeWizard(draftId: string) {
       }
     }
 
-    // Trust accounts → bank_accounts rows per fund. Each fund references its
-    // own (resolved) BSB+account_number; shared-account funds end up with
-    // matching values, which the uq_bank_accounts_oc_fund_account index
-    // accepts (one row per fund_type). Errors are logged + surfaced , the
-    // wizard used to swallow them silently, so a constraint trip (e.g. on
-    // the now-removed global unique) produced an OC with zero bank rows
-    // and a baffled manager on the bank-account page.
-    //
-    // When `banking_deferred` was ticked, skip the entire block; the
-    // resulting OC has no bank_accounts rows until the manager
-    // configures them later from Settings → Banking.
+    // Trust accounts → bank_accounts rows. One row per PHYSICAL account:
+    // always the operating account; plus a separate maintenance row only
+    // when the manager opted into a maintenance plan AND ticked "use its
+    // own bank account". When maintenance shares the operating account
+    // there is NO maintenance bank_accounts row , the operating account
+    // holds maintenance fund money too, and the funds table (via
+    // funds.bank_account_id) is the source of truth for fund-to-account
+    // mapping. Skipped entirely when banking was deferred.
     if (!bankingDeferred) {
-    const { error: adminBankErr } = await supabase.from("bank_accounts").insert({
-      oc_id: oc.id,
-      fund_type: "administrative",
-      bank_name: d.admin_bank_id ?? null,
-      account_name: d.admin_account_name,
-      bsb: d.admin_bsb,
-      account_number: d.admin_account_number,
-      opening_balance: d.opening_admin_balance ?? 0,
-      opening_balance_date: d.opening_balance_date,
-    });
-    if (adminBankErr) {
-      console.error("completeWizard: admin bank_accounts insert failed", adminBankErr);
-      return { error: "Couldn't save the admin fund bank account. Please check the details and try again." };
-    }
-    const { error: capitalBankErr } = await supabase.from("bank_accounts").insert({
-      oc_id: oc.id,
-      fund_type: "capital_works",
-      bank_name: capital!.bank_id ?? null,
-      account_name: capital!.account_name!,
-      bsb: capital!.bsb!,
-      account_number: capital!.account_number!,
-      opening_balance: d.opening_capital_works_balance ?? 0,
-      opening_balance_date: d.opening_balance_date,
-    });
-    if (capitalBankErr) {
-      console.error("completeWizard: capital_works bank_accounts insert failed", capitalBankErr);
-      return { error: "Couldn't save the capital works fund bank account. Please check the details and try again." };
-    }
-    if (maintenance) {
-      const { error: mBankErr } = await supabase.from("bank_accounts").insert({
-        oc_id: oc.id,
-        fund_type: "maintenance_plan",
-        bank_name: maintenance.bank_id ?? null,
-        account_name: maintenance.account_name!,
-        bsb: maintenance.bsb!,
-        account_number: maintenance.account_number!,
-        opening_balance: d.opening_maintenance_plan_balance ?? 0,
-        opening_balance_date: d.opening_balance_date,
-      });
-      if (mBankErr) {
-        console.error("completeWizard: maintenance_plan bank_accounts insert failed", mBankErr);
-        return { error: "Couldn't save the maintenance plan fund bank account. Please check the details and try again." };
+      const { data: operatingBank, error: operatingBankErr } = await supabase
+        .from("bank_accounts")
+        .insert({
+          oc_id: oc.id,
+          fund_type: "operating",
+          bank_name: d.admin_bank_id ?? null,
+          account_name: d.admin_account_name,
+          bsb: d.admin_bsb,
+          account_number: d.admin_account_number,
+          opening_balance: (d.opening_operating_balance ?? 0) + (d.opening_capital_works_balance ?? 0),
+          opening_balance_date: d.opening_balance_date,
+        })
+        .select("id")
+        .single();
+      if (operatingBankErr || !operatingBank) {
+        console.error("completeWizard: operating bank_accounts insert failed", operatingBankErr);
+        return { error: "Couldn't save the operating account. Please check the details and try again." };
+      }
+
+      if (maintenance) {
+        const { error: mBankErr } = await supabase.from("bank_accounts").insert({
+          oc_id: oc.id,
+          fund_type: "maintenance_plan",
+          bank_name: maintenance.bank_id ?? null,
+          account_name: maintenance.account_name!,
+          bsb: maintenance.bsb!,
+          account_number: maintenance.account_number!,
+          opening_balance: d.opening_maintenance_plan_balance ?? 0,
+          opening_balance_date: d.opening_balance_date,
+        });
+        if (mBankErr) {
+          console.error("completeWizard: maintenance_plan bank_accounts insert failed", mBankErr);
+          return { error: "Couldn't save the maintenance plan fund bank account. Please check the details and try again." };
+        }
       }
     }
-    } // end if (!bankingDeferred)
 
     // DRN mappings (Macquarie only). The wizard staged rows in
     // draft_json.lot_drns keyed by lot_number; now that lots exist we resolve

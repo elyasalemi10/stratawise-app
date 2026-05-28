@@ -2,8 +2,6 @@
 
 import { useState } from "react";
 import { toast } from "sonner";
-import { Loader2 } from "lucide-react";
-import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Checkbox } from "@/components/ui/checkbox";
@@ -15,12 +13,9 @@ import { WizardActions } from "./_components/wizard-actions";
 
 // Wizard Step 4 , Banking.
 //
-// Per-fund trust account details. Admin fund is always present. Capital
-// works + (optional) Maintenance plan can either share the admin fund's
-// account or have their own.
-//
-// Macquarie DEFT panel (DRN CSV import) lives in OC Settings post-creation;
-// not captured by the new wizard.
+// VIC operating + (optional) maintenance plan. The operating account is
+// the one printed on every levy notice (EFT + BPAY). Maintenance can
+// share that account or have its own.
 
 function formatBsb(input: string): string {
   const d = input.replace(/\D/g, "").slice(0, 6);
@@ -134,27 +129,19 @@ export function Step4Banking({
   const stripLegacy = (s: string | undefined) =>
     s && legacyAutoName.test(s.trim()) ? "" : (s ?? "");
 
-  const [admin, setAdmin] = useState<FundFields>({
+  // Draft JSON keys stay `admin_*` for back-compat with in-flight wizards;
+  // UI calls this the Operating account.
+  const [operating, setOperating] = useState<FundFields>({
     bankId: initialDraft.admin_bank_id ?? "",
     accountName: stripLegacy(initialDraft.admin_account_name),
     bsb: initialDraft.admin_bsb ?? "",
     accountNumber: initialDraft.admin_account_number ?? "",
   });
 
-  const [capitalSameAsAdmin, setCapitalSameAsAdmin] = useState<boolean>(
-    initialDraft.capital_same_as_admin ?? true,
-  );
-  const [capital, setCapital] = useState<FundFields>({
-    bankId: initialDraft.capital_bank_id ?? "",
-    accountName: stripLegacy(initialDraft.capital_account_name),
-    bsb: initialDraft.capital_bsb ?? "",
-    accountNumber: initialDraft.capital_account_number ?? "",
-  });
-
   const [hasMaintenance, setHasMaintenance] = useState<boolean>(
     initialDraft.has_maintenance_plan_fund ?? isTier1or2,
   );
-  const [maintenanceSameAsAdmin, setMaintenanceSameAsAdmin] = useState<boolean>(
+  const [maintenanceSameAsOperating, setMaintenanceSameAsOperating] = useState<boolean>(
     initialDraft.maintenance_same_as_admin ?? true,
   );
   const [maintenance, setMaintenance] = useState<FundFields>({
@@ -164,17 +151,10 @@ export function Step4Banking({
     accountNumber: initialDraft.maintenance_account_number ?? "",
   });
 
-  const [adminInvalid, setAdminInvalid] = useState<InvalidFlags>(NO_INVALID);
-  const [capitalInvalid, setCapitalInvalid] = useState<InvalidFlags>(NO_INVALID);
+  const [operatingInvalid, setOperatingInvalid] = useState<InvalidFlags>(NO_INVALID);
   const [maintenanceInvalid, setMaintenanceInvalid] = useState<InvalidFlags>(NO_INVALID);
   const [pending, setPending] = useState(false);
 
-  // Banking choice , the step opens on a now/later fork. "now" reveals
-  // the fund-entry cards and advances to opening balances; "later" skips
-  // straight to creating the OC (no bank_accounts rows; configured later
-  // from Settings → Banking). Returning to a draft that already chose
-  // "later" reopens on that choice; one that has admin details reopens
-  // on "now".
   const hasExistingBankDetails = !!(
     initialDraft.admin_bank_id ||
     initialDraft.admin_bsb ||
@@ -197,9 +177,6 @@ export function Step4Banking({
     };
   }
 
-  // "Set up later" → persist the deferred flag, then create the OC right
-  // here (no redundant opening-balances step). completeWizard skips the
-  // bank_accounts inserts when banking_deferred is set.
   function createDeferred() {
     setPending(true);
     void (async () => {
@@ -225,8 +202,6 @@ export function Step4Banking({
         toast.error(result.error ?? "Failed to create the OC");
         return;
       }
-      // Keep the spinner ON through the navigation onComplete triggers ,
-      // clearing it here produced a visible spin → idle → redirect flash.
       onComplete({
         ocCode: result.ocCode,
         sourceDraftId: result.sourceDraftId,
@@ -242,50 +217,26 @@ export function Step4Banking({
     }
 
     const problems: string[] = [];
-    const adminFlags = validateFund(admin);
-    if (Object.values(adminFlags).some(Boolean)) problems.push("Admin fund details");
-
-    let capFlags: InvalidFlags = NO_INVALID;
-    if (!capitalSameAsAdmin) {
-      capFlags = validateFund(capital);
-      if (Object.values(capFlags).some(Boolean)) problems.push("Capital works fund details");
-    }
+    const opFlags = validateFund(operating);
+    if (Object.values(opFlags).some(Boolean)) problems.push("Operating account details");
 
     let mFlags: InvalidFlags = NO_INVALID;
-    if (hasMaintenance && !maintenanceSameAsAdmin) {
+    if (hasMaintenance && !maintenanceSameAsOperating) {
       mFlags = validateFund(maintenance);
       if (Object.values(mFlags).some(Boolean)) problems.push("Maintenance plan fund details");
     }
 
-    // Duplicate (BSB, account) across two ACTIVE funds = error.
-    type Slot = "admin" | "capital" | "maintenance";
-    const pairs: Array<{ slot: Slot; label: string; bsb: string; acc: string }> = [
-      { slot: "admin", label: "admin", bsb: admin.bsb, acc: admin.accountNumber },
-    ];
-    if (!capitalSameAsAdmin) pairs.push({ slot: "capital", label: "capital works", bsb: capital.bsb, acc: capital.accountNumber });
-    if (hasMaintenance && !maintenanceSameAsAdmin) pairs.push({ slot: "maintenance", label: "maintenance plan", bsb: maintenance.bsb, acc: maintenance.accountNumber });
-    const seen = new Map<string, { slot: Slot; label: string }>();
-    const dupSlots = new Set<Slot>();
-    let dupMessage: string | null = null;
-    for (const p of pairs) {
-      if (!p.bsb || !p.acc) continue;
-      const key = `${p.bsb}|${p.acc}`;
-      const prev = seen.get(key);
-      if (prev) {
-        dupSlots.add(prev.slot);
-        dupSlots.add(p.slot);
-        dupMessage = `Same BSB + account number used by both ${prev.label} and ${p.label}. Use the "same account as admin" toggle instead.`;
-      } else {
-        seen.set(key, { slot: p.slot, label: p.label });
-      }
+    // Duplicate (BSB, account) across operating + maintenance = error.
+    if (hasMaintenance && !maintenanceSameAsOperating
+        && operating.bsb && operating.accountNumber
+        && operating.bsb === maintenance.bsb
+        && operating.accountNumber === maintenance.accountNumber) {
+      problems.push(`Same BSB + account number used by both operating and maintenance plan. Use the "same account as operating" toggle instead.`);
+      opFlags.bsb = true; opFlags.acc = true;
+      mFlags.bsb = true; mFlags.acc = true;
     }
-    if (dupMessage) problems.push(dupMessage);
 
-    if (dupSlots.has("admin")) { adminFlags.bsb = true; adminFlags.acc = true; }
-    if (dupSlots.has("capital")) { capFlags.bsb = true; capFlags.acc = true; }
-    if (dupSlots.has("maintenance")) { mFlags.bsb = true; mFlags.acc = true; }
-    setAdminInvalid(adminFlags);
-    setCapitalInvalid(capFlags);
+    setOperatingInvalid(opFlags);
     setMaintenanceInvalid(mFlags);
 
     if (problems.length) {
@@ -297,23 +248,19 @@ export function Step4Banking({
     void (async () => {
       const r = await saveStep(draftId, {
         banking_deferred: false,
-        bank_provider: admin.bankId === "macquarie" ? "macquarie_deft" : "other_csv",
+        bank_provider: operating.bankId === "macquarie" ? "macquarie_deft" : "other_csv",
         has_maintenance_plan_fund: hasMaintenance,
-        admin_bank_id: admin.bankId,
-        admin_account_name: admin.accountName.trim(),
-        admin_bsb: admin.bsb,
-        admin_account_number: admin.accountNumber,
-        capital_same_as_admin: capitalSameAsAdmin,
-        capital_bank_id: capitalSameAsAdmin ? undefined : capital.bankId,
-        capital_account_name: capitalSameAsAdmin ? undefined : capital.accountName.trim(),
-        capital_bsb: capitalSameAsAdmin ? undefined : capital.bsb,
-        capital_account_number: capitalSameAsAdmin ? undefined : capital.accountNumber,
-        maintenance_same_as_admin: maintenanceSameAsAdmin,
-        maintenance_bank_id: !hasMaintenance || maintenanceSameAsAdmin ? undefined : maintenance.bankId,
-        maintenance_account_name: !hasMaintenance || maintenanceSameAsAdmin ? undefined : maintenance.accountName.trim(),
-        maintenance_bsb: !hasMaintenance || maintenanceSameAsAdmin ? undefined : maintenance.bsb,
-        maintenance_account_number: !hasMaintenance || maintenanceSameAsAdmin ? undefined : maintenance.accountNumber,
-      }, 4, 1); // Advance to Step 4.1 (Opening balances).
+        admin_bank_id: operating.bankId,
+        admin_account_name: operating.accountName.trim(),
+        admin_bsb: operating.bsb,
+        admin_account_number: operating.accountNumber,
+        capital_same_as_admin: true,
+        maintenance_same_as_admin: maintenanceSameAsOperating,
+        maintenance_bank_id: !hasMaintenance || maintenanceSameAsOperating ? undefined : maintenance.bankId,
+        maintenance_account_name: !hasMaintenance || maintenanceSameAsOperating ? undefined : maintenance.accountName.trim(),
+        maintenance_bsb: !hasMaintenance || maintenanceSameAsOperating ? undefined : maintenance.bsb,
+        maintenance_account_number: !hasMaintenance || maintenanceSameAsOperating ? undefined : maintenance.accountNumber,
+      }, 4, 1);
       if (r.error) {
         setPending(false);
         toast.error(r.error);
@@ -323,7 +270,6 @@ export function Step4Banking({
     })();
   }
 
-  // Silence unused-prop lint when totalLots isn't read directly here.
   void totalLots;
 
   return (
@@ -335,9 +281,6 @@ export function Step4Banking({
         </p>
       </div>
 
-      {/* Now / later fork , two selectable cards. Picking "later" flips
-          the action button to "Create OC"; picking "now" reveals the
-          fund-entry cards below and keeps the button as "Continue". */}
       <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
         <button
           type="button"
@@ -374,35 +317,18 @@ export function Step4Banking({
       {choice === "now" && (
       <>
       <div className="rounded-md border border-border bg-card p-4 space-y-3">
-        <h3 className="text-sm font-semibold text-foreground">Administrative fund</h3>
-        <FundFieldsBlock
-          value={admin}
-          onChange={(v) => { setAdmin(v); setAdminInvalid(NO_INVALID); }}
-          invalid={adminInvalid}
-          idPrefix="admin"
-        />
-      </div>
-
-      <div className="rounded-md border border-border bg-card p-4 space-y-3">
-        <h3 className="text-sm font-semibold text-foreground">Capital works fund</h3>
-        <div className="flex items-center gap-3">
-          <Checkbox
-            id="capital-same"
-            checked={capitalSameAsAdmin}
-            onCheckedChange={(v) => setCapitalSameAsAdmin(v === true)}
-          />
-          <Label className="text-sm font-normal text-foreground">
-            Use the same bank account as the admin fund
-          </Label>
+        <div>
+          <h3 className="text-sm font-semibold text-foreground">Operating account</h3>
+          <p className="mt-1 text-xs text-muted-foreground">
+            These bank details appear on every levy notice this OC sends (BPAY/EFT). Owners pay into this account regardless of which fund the levy is for.
+          </p>
         </div>
-        {!capitalSameAsAdmin && (
-          <FundFieldsBlock
-            value={capital}
-            onChange={(v) => { setCapital(v); setCapitalInvalid(NO_INVALID); }}
-            invalid={capitalInvalid}
-            idPrefix="capital"
-          />
-        )}
+        <FundFieldsBlock
+          value={operating}
+          onChange={(v) => { setOperating(v); setOperatingInvalid(NO_INVALID); }}
+          invalid={operatingInvalid}
+          idPrefix="operating"
+        />
       </div>
 
       <div className="rounded-md border border-border bg-card p-4 space-y-3">
@@ -423,14 +349,14 @@ export function Step4Banking({
             <div className="flex items-center gap-3 border-t border-border pt-3">
               <Checkbox
                 id="maintenance-same"
-                checked={maintenanceSameAsAdmin}
-                onCheckedChange={(v) => setMaintenanceSameAsAdmin(v === true)}
+                checked={maintenanceSameAsOperating}
+                onCheckedChange={(v) => setMaintenanceSameAsOperating(v === true)}
               />
               <Label className="text-sm font-normal text-foreground">
-                Use the same bank account as the admin fund
+                Use the same bank account as the operating account
               </Label>
             </div>
-            {!maintenanceSameAsAdmin && (
+            {!maintenanceSameAsOperating && (
               <FundFieldsBlock
                 value={maintenance}
                 onChange={(v) => { setMaintenance(v); setMaintenanceInvalid(NO_INVALID); }}
@@ -448,30 +374,21 @@ export function Step4Banking({
         draftId={draftId}
         onBack={onBack}
         onContinue={onContinue}
-        continueLabel={choice === "later" ? "Create OC" : "Continue"}
-        continuePending={pending}
         disabled={choice === null}
+        continuePending={pending}
+        continueLabel={choice === "later" ? "Create OC" : "Continue"}
         getCurrentPatch={() => ({
-          bank_provider: admin.bankId === "macquarie" ? "macquarie_deft" : "other_csv",
+          banking_deferred: choice === "later",
+          admin_bank_id: operating.bankId || undefined,
+          admin_account_name: operating.accountName.trim() || undefined,
+          admin_bsb: operating.bsb || undefined,
+          admin_account_number: operating.accountNumber || undefined,
           has_maintenance_plan_fund: hasMaintenance,
-          admin_bank_id: admin.bankId,
-          admin_account_name: admin.accountName.trim() || undefined,
-          admin_bsb: admin.bsb,
-          admin_account_number: admin.accountNumber,
-          capital_same_as_admin: capitalSameAsAdmin,
-          capital_bank_id: capitalSameAsAdmin ? undefined : capital.bankId,
-          capital_account_name: capitalSameAsAdmin ? undefined : capital.accountName.trim() || undefined,
-          capital_bsb: capitalSameAsAdmin ? undefined : capital.bsb,
-          capital_account_number: capitalSameAsAdmin ? undefined : capital.accountNumber,
-          maintenance_same_as_admin: maintenanceSameAsAdmin,
-          maintenance_bank_id:
-            !hasMaintenance || maintenanceSameAsAdmin ? undefined : maintenance.bankId,
-          maintenance_account_name:
-            !hasMaintenance || maintenanceSameAsAdmin ? undefined : maintenance.accountName.trim() || undefined,
-          maintenance_bsb:
-            !hasMaintenance || maintenanceSameAsAdmin ? undefined : maintenance.bsb,
-          maintenance_account_number:
-            !hasMaintenance || maintenanceSameAsAdmin ? undefined : maintenance.accountNumber,
+          maintenance_same_as_admin: maintenanceSameAsOperating,
+          maintenance_bank_id: !hasMaintenance || maintenanceSameAsOperating ? undefined : maintenance.bankId,
+          maintenance_account_name: !hasMaintenance || maintenanceSameAsOperating ? undefined : maintenance.accountName.trim(),
+          maintenance_bsb: !hasMaintenance || maintenanceSameAsOperating ? undefined : maintenance.bsb,
+          maintenance_account_number: !hasMaintenance || maintenanceSameAsOperating ? undefined : maintenance.accountNumber,
         })}
       />
     </div>

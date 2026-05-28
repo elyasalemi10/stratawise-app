@@ -33,14 +33,13 @@ interface CoaOption {
 
 type LevyKind = "regular" | "special";
 
-type FundType = "administrative" | "capital_works" | "maintenance_plan";
+type FundType = "operating" | "maintenance_plan";
 
 const formatCurrency = (n: number) =>
   new Intl.NumberFormat("en-AU", { style: "currency", currency: "AUD" }).format(n);
 
 const FUND_LABEL: Record<string, string> = {
-  administrative: "Administrative Fund",
-  capital_works: "Capital Works Fund",
+  operating: "Operating Fund",
   maintenance_plan: "Maintenance Plan Fund",
 };
 

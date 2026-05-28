@@ -10,12 +10,12 @@ import { formatDateLong } from "@/lib/utils";
 const formatCurrency = (n: number) =>
   new Intl.NumberFormat("en-AU", { style: "currency", currency: "AUD" }).format(n);
 
-const KNOWN_FUNDS = new Set(["administrative", "capital_works", "maintenance_plan"]);
+const KNOWN_FUNDS = new Set(["operating", "maintenance_plan"]);
 
 export interface LevyBatchRow {
   id: string;
   financial_year: string;
-  fund_type: "administrative" | "capital_works" | "maintenance_plan";
+  fund_type: "operating" | "maintenance_plan";
   period_label: string;
   due_date: string;
   total_amount: number;
@@ -25,7 +25,7 @@ export interface LevyBatchRow {
 
 function fundAmount(
   batch: { fund_type: string; total_amount: number },
-  target: "administrative" | "capital_works" | "maintenance_plan" | "other",
+  target: "operating" | "maintenance_plan" | "other",
 ): number | null {
   if (target === "other") {
     return KNOWN_FUNDS.has(batch.fund_type) ? null : batch.total_amount;
@@ -42,8 +42,7 @@ export function LeviesTable({ ocCode, batches }: { ocCode: string; batches: Levy
           <TableRow>
             <TableHead className="w-24">Type</TableHead>
             <TableHead className="w-40">Financial Year</TableHead>
-            <TableHead className="text-right">Admin</TableHead>
-            <TableHead className="text-right">Capital Works</TableHead>
+            <TableHead className="text-right">Operating</TableHead>
             <TableHead className="text-right">Maintenance</TableHead>
             <TableHead className="text-right">Other</TableHead>
             <TableHead className="w-36">Due date</TableHead>
@@ -52,8 +51,7 @@ export function LeviesTable({ ocCode, batches }: { ocCode: string; batches: Levy
         </TableHeader>
         <TableBody>
           {batches.map((batch) => {
-            const admin = fundAmount(batch, "administrative");
-            const capital = fundAmount(batch, "capital_works");
+            const operating = fundAmount(batch, "operating");
             const maintenance = fundAmount(batch, "maintenance_plan");
             const other = fundAmount(batch, "other");
             return (
@@ -75,10 +73,7 @@ export function LeviesTable({ ocCode, batches }: { ocCode: string; batches: Levy
                   {batch.is_special ? "Special" : `${batch.period_label} ${batch.financial_year}`}
                 </TableCell>
                 <TableCell className="text-right tabular-nums text-foreground">
-                  {admin !== null ? formatCurrency(admin) : ""}
-                </TableCell>
-                <TableCell className="text-right tabular-nums text-foreground">
-                  {capital !== null ? formatCurrency(capital) : ""}
+                  {operating !== null ? formatCurrency(operating) : ""}
                 </TableCell>
                 <TableCell className="text-right tabular-nums text-foreground">
                   {maintenance !== null ? formatCurrency(maintenance) : ""}

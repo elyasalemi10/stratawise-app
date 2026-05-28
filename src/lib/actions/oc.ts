@@ -305,7 +305,7 @@ export async function getLotsWithFinancials(ocId: string): Promise<LotWithFinanc
 
   const { data: lots } = await supabase
     .from("lots")
-    .select("id, lot_number, unit_number, lot_entitlement, lot_liability")
+    .select("id, lot_number, unit_number, lot_entitlement, lot_liability, opening_balance")
     .eq("oc_id", ocId)
     .order("lot_number");
 
@@ -337,9 +337,12 @@ export async function getLotsWithFinancials(ocId: string): Promise<LotWithFinanc
   });
 
   return lots.map((lot) => {
+    // Opening balance follows the wizard convention: positive = owes (debit),
+    // negative = credit. Plus outstanding levies, minus payments.
+    const opening = Number(lot.opening_balance ?? 0);
     const totalLevied = leviesByLot.get(lot.id) ?? 0;
     const totalPaid = paymentsByLot.get(lot.id) ?? 0;
-    const balance = totalLevied - totalPaid;
+    const balance = opening + totalLevied - totalPaid;
     const owner = owners.get(lot.id);
     const isAssigned = owner?.owner_status === "member";
 

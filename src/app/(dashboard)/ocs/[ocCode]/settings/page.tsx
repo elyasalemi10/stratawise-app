@@ -61,8 +61,7 @@ export default async function OCSettingsPage({
   if (mailboxOptions.length === 0) mailboxOptions.push({ value: "noreply@stratawise.com.au", label: "noreply@stratawise.com.au" });
 
   const FUND_LABEL_MAP: Record<string, string> = {
-    administrative: "Administrative Fund",
-    capital_works: "Capital Works Fund",
+    operating: "Operating Fund",
     maintenance_plan: "Maintenance Plan Fund",
   };
   const approvedBudgets = budgets

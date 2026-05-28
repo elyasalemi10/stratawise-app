@@ -2,12 +2,15 @@
 // "use server" boundary so client code can import the labels and enum
 // values directly (server actions in funds.ts can re-export them with
 // async wrappers if needed).
+//
+// VIC nomenclature: the Owners Corporations Act 2006 recognises an
+// operating fund (day-to-day) and , for tier 1/2 OCs , a maintenance
+// fund. There is no "capital works fund" in Victoria , that's NSW.
 
-export type FundKind = "administrative" | "capital_works" | "maintenance_plan" | "custom";
+export type FundKind = "operating" | "maintenance_plan" | "custom";
 
 export const FUND_KIND_LABEL: Record<FundKind, string> = {
-  administrative: "Administrative Fund",
-  capital_works: "Capital Works Fund",
+  operating: "Operating Fund",
   maintenance_plan: "Maintenance Plan Fund",
   custom: "Custom",
 };

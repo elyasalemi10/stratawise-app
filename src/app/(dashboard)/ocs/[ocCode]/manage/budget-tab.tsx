@@ -53,11 +53,7 @@ function BudgetCard({
   }
 
   const fundLabel =
-    budget.fund_type === "administrative"
-      ? "Administrative Fund"
-      : budget.fund_type === "capital_works"
-        ? "Capital Works Fund"
-        : "Maintenance Plan Fund";
+    budget.fund_type === "operating" ? "Operating Fund" : "Maintenance Plan Fund";
 
   return (
     <Card>

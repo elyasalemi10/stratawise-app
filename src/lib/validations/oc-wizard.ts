@@ -94,8 +94,7 @@ export const step4Schema = z.object({
 // ─── Step 5: Opening Balances ───────────────────────────────────
 
 export const step5Schema = z.object({
-  admin_opening_balance: z.coerce.number().min(0),
-  capital_works_opening_balance: z.coerce.number().min(0),
+  operating_opening_balance: z.coerce.number().min(0),
   opening_balance_date: z.string().min(1, "Opening balance date is required"),
 });
 

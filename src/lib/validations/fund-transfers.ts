@@ -17,8 +17,8 @@ export type FundTransferInput = z.input<typeof fundTransferSchema>;
 export interface FundTransferRecord {
   id: string;
   oc_id: string;
-  from_fund: "administrative" | "capital_works" | "maintenance_plan";
-  to_fund: "administrative" | "capital_works" | "maintenance_plan";
+  from_fund: "operating" | "maintenance_plan";
+  to_fund: "operating" | "maintenance_plan";
   amount: number;
   transfer_date: string;
   reason: string | null;

@@ -2,7 +2,7 @@
 
 import { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
-import { Loader2, Wallet, Users, Landmark, ListChecks, Building2, Hammer, Wrench, MoreHorizontal, type LucideIcon } from "lucide-react";
+import { Loader2, Wallet, Users, Landmark, ListChecks, Building2, Wrench, MoreHorizontal, type LucideIcon } from "lucide-react";
 import Image from "next/image";
 import { toast } from "sonner";
 import { Card, CardContent } from "@/components/ui/card";
@@ -101,8 +101,7 @@ export function CreateFundForm({
 
   const existingSet = new Set(existingKinds);
   const kindChoices = ([
-    { value: "administrative" as FundKind, label: FUND_KIND_LABEL.administrative, disabled: existingSet.has("administrative") },
-    { value: "capital_works" as FundKind, label: FUND_KIND_LABEL.capital_works, disabled: existingSet.has("capital_works") },
+    { value: "operating" as FundKind, label: FUND_KIND_LABEL.operating, disabled: existingSet.has("operating") },
     { value: "maintenance_plan" as FundKind, label: FUND_KIND_LABEL.maintenance_plan, disabled: existingSet.has("maintenance_plan") },
     { value: "custom" as FundKind, label: "Other (custom fund)", disabled: false },
   ] as Array<{ value: FundKind; label: string; disabled: boolean }>).filter((k) => !k.disabled);
@@ -233,8 +232,7 @@ export function CreateFundForm({
             <Label>Fund type <span className="text-destructive">*</span></Label>
             <div className="grid gap-3 sm:grid-cols-2">
               {[
-                { value: "administrative" as FundKind, label: FUND_KIND_LABEL.administrative, icon: Building2, blurb: "Day-to-day OC running costs , insurance, cleaning, admin, manager fees." },
-                { value: "capital_works" as FundKind, label: FUND_KIND_LABEL.capital_works, icon: Hammer, blurb: "Long-term major works , painting, roof, lifts, structural repairs." },
+                { value: "operating" as FundKind, label: FUND_KIND_LABEL.operating, icon: Building2, blurb: "Day-to-day OC running costs , insurance, cleaning, admin, manager fees." },
                 { value: "maintenance_plan" as FundKind, label: FUND_KIND_LABEL.maintenance_plan, icon: Wrench, blurb: "Scheduled maintenance plan , recurring upkeep based on a 10-year plan." },
                 { value: "custom" as FundKind, label: "Other (custom fund)", icon: MoreHorizontal, blurb: "A purpose-specific fund , e.g. driveway, pool, lift modernisation." },
               ].map((k) => {

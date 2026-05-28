@@ -75,9 +75,9 @@ export async function getFunds(ocId: string): Promise<FundRow[]> {
 }
 
 /**
- * Returns which of the three "named" fund kinds (admin / capital works /
- * maintenance plan) the OC already has. Used by the create-fund wizard
- * to grey out kinds the manager has already added.
+ * Returns which "named" fund kinds (operating / maintenance plan) the OC
+ * already has. Used by the create-fund wizard to grey out kinds the
+ * manager has already added.
  */
 export async function getExistingFundKinds(ocId: string): Promise<FundKind[]> {
   await requireOCAccess(ocId);
@@ -86,7 +86,7 @@ export async function getExistingFundKinds(ocId: string): Promise<FundKind[]> {
     .from("funds")
     .select("kind")
     .eq("oc_id", ocId)
-    .in("kind", ["administrative", "capital_works", "maintenance_plan"]);
+    .in("kind", ["operating", "maintenance_plan"]);
   return ((data ?? []) as Array<{ kind: FundKind }>).map((r) => r.kind);
 }
 
@@ -224,12 +224,10 @@ export async function createFund(
   }
 
   // bank_accounts.fund_type stays for backward compatibility. Custom
-  // funds map to "administrative" because the enum has no "custom"
+  // funds map to "operating" because the enum has no "custom"
   // value yet , the fund_id column is the new source of truth.
-  const legacyFundType: "administrative" | "capital_works" | "maintenance_plan" =
-    data.kind === "capital_works" || data.kind === "maintenance_plan"
-      ? data.kind
-      : "administrative";
+  const legacyFundType: "operating" | "maintenance_plan" =
+    data.kind === "maintenance_plan" ? "maintenance_plan" : "operating";
 
   if (data.bank.kind === "new") {
     const { error: bankErr } = await supabase

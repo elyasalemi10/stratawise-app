@@ -14,7 +14,7 @@ export interface LotLevyRow {
   /** Owner-facing reference: DRN if active, else lot_owners.payment_reference.
    *  Internal LEV-NNNN is never surfaced here. */
   display_reference: string;
-  fund_type: "administrative" | "capital_works" | "maintenance_plan";
+  fund_type: "operating" | "maintenance_plan";
   levy_type: string;
   period_start: string;
   period_end: string;

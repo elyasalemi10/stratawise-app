@@ -218,7 +218,7 @@ export function BatchDetailContent({
   });
   const draftLeviesForDialog = batch.levies.filter((l) => l.status === "draft").map(toLevyRow);
   const allLeviesForDialog = batch.levies.map(toLevyRow);
-  const fundLabel = batch.fund_type === "administrative" ? "Administrative Fund" : "Capital Works Fund";
+  const fundLabel = batch.fund_type === "operating" ? "Operating Fund" : "Maintenance Plan Fund";
   const hasPaidLevies = batch.levies.some((l) => l.status === "paid");
   const canRecall = (batch.status === "sent" || batch.status === "partially_sent") && !hasPaidLevies;
 
@@ -233,7 +233,7 @@ export function BatchDetailContent({
           <div>
             <div className="flex items-center gap-2">
               <h1 className="text-lg font-semibold text-foreground">{batch.period_label}</h1>
-              <Badge variant={batch.fund_type === "administrative" ? "info" : "neutral"}>
+              <Badge variant={batch.fund_type === "operating" ? "info" : "neutral"}>
                 {fundLabel}
               </Badge>
               <Badge

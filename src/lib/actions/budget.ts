@@ -8,11 +8,11 @@ export interface BudgetCategory {
   id: string;
   code: string;
   name: string;
-  fund_type: "administrative" | "capital_works" | "maintenance_plan";
+  fund_type: "operating" | "maintenance_plan";
   sort_order: number;
 }
 
-export type BudgetFundType = "administrative" | "capital_works" | "maintenance_plan";
+export type BudgetFundType = "operating" | "maintenance_plan";
 
 export interface BudgetItemData {
   // Either references a legacy budget_categories row (back-compat) or , for
@@ -25,7 +25,7 @@ export interface BudgetItemData {
    *  back-compat path leaves it null and inherits from the parent budget's
    *  legacy fund_type column. */
   fund_type?: BudgetFundType;
-  /** Custom-fund items set this in addition to fund_type=administrative
+  /** Custom-fund items set this in addition to fund_type=operating
    *  (placeholder for the NOT NULL enum). The new fund_id FK is the
    *  source of truth for downstream code. */
   fund_id?: string;
@@ -61,12 +61,6 @@ export interface BudgetWithItems {
   }[];
 }
 
-const FUND_LABEL: Record<"administrative" | "capital_works" | "maintenance_plan", string> = {
-  administrative: "Administrative Fund",
-  capital_works: "Capital Works Fund",
-  maintenance_plan: "Maintenance Plan Fund",
-};
-
 // True when the OC has a maintenance-plan fund (a bank_accounts row with
 // fund_type='maintenance_plan'). Drives whether the budget form offers a
 // maintenance budget at all.
@@ -92,7 +86,7 @@ export async function getBudgetCategories(): Promise<BudgetCategory[]> {
 
 export async function createBudgetCategory(
   name: string,
-  fundType: "administrative" | "capital_works" | "maintenance_plan"
+  fundType: "operating" | "maintenance_plan"
 ): Promise<{ id: string; error?: string }> {
   await requireCompanyRole();
   const trimmed = name.trim();
@@ -121,7 +115,7 @@ export async function createBudgetCategory(
     .single();
 
   const sortOrder = (maxSort?.sort_order ?? 0) + 1;
-  const code = `${fundType === "administrative" ? "2" : "3"}99${String(sortOrder).padStart(3, "0")}`;
+  const code = `${fundType === "operating" ? "2" : "3"}99${String(sortOrder).padStart(3, "0")}`;
 
   const { data: newCat, error } = await supabase
     .from("budget_categories")
@@ -201,7 +195,7 @@ export async function createBudget(
     fund_types: BudgetFundType[];
     /** Custom funds (via the new funds table) the budget touches. Items
      *  belonging to a custom fund set fund_id and leave fund_type at the
-     *  legacy "administrative" placeholder so the enum constraint stays
+     *  legacy "operating" placeholder so the enum constraint stays
      *  satisfied. */
     fund_ids?: string[];
     items: BudgetItemData[];
@@ -238,7 +232,7 @@ export async function createBudget(
 
   // For budgets that ONLY touch a single custom fund (no system funds),
   // the legacy fund_type column needs a value to satisfy old read paths
-  // , set it to administrative as a placeholder; downstream code now
+  // , set it to operating as a placeholder; downstream code now
   // reads fund_id when present.
   const headerFundId = customFundIds.length === 1 && fundTypes.length === 0
     ? customFundIds[0]
@@ -249,7 +243,7 @@ export async function createBudget(
     .insert({
       oc_id: ocId,
       financial_year: data.financial_year,
-      fund_type: legacyFundType ?? (customFundIds.length > 0 ? "administrative" : null),
+      fund_type: legacyFundType ?? (customFundIds.length > 0 ? "operating" : null),
       fund_types: fundTypes,
       fund_id: headerFundId,
       total_amount: totalAmount,
@@ -270,10 +264,10 @@ export async function createBudget(
       description: item.description || null,
       amount: item.amount,
       // For multi-fund budgets every item MUST carry its own fund_type. Custom
-      // funds set fund_id and leave fund_type at the legacy "administrative"
+      // funds set fund_id and leave fund_type at the legacy "operating"
       // placeholder so the NOT NULL enum constraint stays satisfied; reads
       // prefer fund_id when present.
-      fund_type: item.fund_type ?? legacyFundType ?? (item.fund_id ? "administrative" : null),
+      fund_type: item.fund_type ?? legacyFundType ?? (item.fund_id ? "operating" : null),
       fund_id: item.fund_id ?? null,
       sort_order: i,
     }));
