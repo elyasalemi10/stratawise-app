@@ -62,6 +62,7 @@ import {
 import {
   getManagerSendAddress,
   getSmsSenderId,
+  listManagerInboxes,
 } from "@/lib/actions/manager-username";
 
 // Communications tab: one "Actions" dropdown that opens a drawer per action
@@ -674,26 +675,42 @@ function SendEmailDrawer({
   const [subject, setSubject] = React.useState("");
   const [body, setBody] = React.useState("");
   const [attachments, setAttachments] = React.useState<AttachmentDraft[]>([]);
-  // Server-preloaded From address (see lot-detail-content → page.tsx).
-  // Fetch only as a fallback when the prop was null (e.g. preload failed
-  // server-side and we still want to display something).
-  const [senderAddress, setSenderAddress] = React.useState<string | null>(
-    initialSenderAddress,
+  // Inbox dropdown , populated from listManagerInboxes(). Default
+  // selection is the first connected custom inbox (Gmail/Outlook) if
+  // any, otherwise the manager's StrataWise address.
+  const [inboxes, setInboxes] = React.useState<Array<{ email: string; kind: "stratawise" | "gmail" | "outlook" }>>(
+    initialSenderAddress ? [{ email: initialSenderAddress, kind: "stratawise" }] : [],
   );
+  const [selectedInbox, setSelectedInbox] = React.useState<string>(initialSenderAddress ?? "");
   const fileInputRef = React.useRef<HTMLInputElement>(null);
 
   React.useEffect(() => {
-    if (senderAddress) return;
     let cancelled = false;
-    getManagerSendAddress()
-      .then((res) => {
-        if (!cancelled) setSenderAddress(res.address ?? null);
+    listManagerInboxes()
+      .then((rows) => {
+        if (cancelled) return;
+        if (rows.length === 0) return;
+        setInboxes(rows);
+        // Default to the first custom inbox; if none, fall back to whatever
+        // is first in the list (which will be the StrataWise default).
+        const firstCustom = rows.find((r) => r.kind !== "stratawise");
+        setSelectedInbox((prev) => prev || (firstCustom?.email ?? rows[0]?.email ?? ""));
       })
-      .catch(() => {});
+      .catch(() => {
+        // Fallback: at least show the stratawise address if we can.
+        getManagerSendAddress()
+          .then((res) => {
+            if (!cancelled && res.address) {
+              setInboxes([{ email: res.address, kind: "stratawise" }]);
+              setSelectedInbox((prev) => prev || res.address!);
+            }
+          })
+          .catch(() => {});
+      });
     return () => {
       cancelled = true;
     };
-  }, [senderAddress]);
+  }, []);
 
   const ownerHasEmail = !!(ownerEmail && ownerEmail.trim());
 
@@ -765,14 +782,24 @@ function SendEmailDrawer({
         <Label className="text-xs uppercase tracking-wide text-muted-foreground">
           From
         </Label>
-        {/* Single-identity render , the manager's outbound is routed
-            via their firm's configured provider (Gmail / Outlook /
-            StrataWise fallback). When we add a per-send provider
-            picker, swap this static line for a <Select> over the
-            available identities. */}
-        <p className="text-sm font-medium text-foreground break-all">
-          {senderAddress ?? "your StrataWise email address"}
-        </p>
+        {inboxes.length <= 1 ? (
+          <p className="text-sm font-medium text-foreground break-all">
+            {selectedInbox || "your StrataWise email address"}
+          </p>
+        ) : (
+          <Select value={selectedInbox} onValueChange={(v) => setSelectedInbox(v ?? "")}>
+            <SelectTrigger>
+              <SelectValue placeholder="Pick a sending inbox" />
+            </SelectTrigger>
+            <SelectContent>
+              {inboxes.map((i) => (
+                <SelectItem key={i.email} value={i.email}>
+                  {i.email}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        )}
       </div>
 
       <div className="space-y-1.5">

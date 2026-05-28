@@ -764,6 +764,30 @@ function InsuranceGantt({
           rows are unlabelled bars laid out along a shared time axis. */}
       <div className="overflow-x-auto overflow-y-hidden">
         <div className="relative" style={{ width: trackWidth, minWidth: "100%" }}>
+          {/* Time axis , FY quarter ticks along the top of the timeline. */}
+          <div className="border-b border-border bg-card">
+            <div className="relative h-9 bg-card" style={{ width: trackWidth }}>
+              {ticks.map((t) => (
+                <div
+                  key={t.iso}
+                  className="absolute top-0 bottom-0 flex flex-col items-start"
+                  style={{ left: offsetPx(t.iso) }}
+                >
+                  <span className="text-[10px] text-muted-foreground pl-1 pt-1 whitespace-nowrap">{t.label}</span>
+                  <div className="w-px flex-1 bg-border mt-auto" />
+                </div>
+              ))}
+              {todayPx >= 0 && todayPx <= trackWidth && (
+                <div
+                  className="absolute top-0 bottom-0 w-px bg-primary"
+                  style={{ left: todayPx }}
+                >
+                  <span className="absolute -top-3 left-1 text-[10px] font-medium text-primary whitespace-nowrap">Today</span>
+                </div>
+              )}
+            </div>
+          </div>
+
           {Array.from(groups.entries()).map(([typeKey, group]) => (
             <div key={typeKey} className="border-b border-border/50 last:border-b-0">
               <div
@@ -810,30 +834,6 @@ function InsuranceGantt({
               </div>
             </div>
           ))}
-
-          {/* Time axis , FY quarter ticks along the bottom. */}
-          <div className="border-t border-border bg-card">
-            <div className="relative h-9 bg-card" style={{ width: trackWidth }}>
-              {ticks.map((t) => (
-                <div
-                  key={t.iso}
-                  className="absolute top-0 bottom-0 flex flex-col items-start"
-                  style={{ left: offsetPx(t.iso) }}
-                >
-                  <div className="w-px h-2 bg-border" />
-                  <span className="text-[10px] text-muted-foreground mt-1 pl-1 whitespace-nowrap">{t.label}</span>
-                </div>
-              ))}
-              {todayPx >= 0 && todayPx <= trackWidth && (
-                <div
-                  className="absolute top-0 bottom-0 w-px bg-primary"
-                  style={{ left: todayPx }}
-                >
-                  <span className="absolute -top-3 left-1 text-[10px] font-medium text-primary whitespace-nowrap">Today</span>
-                </div>
-              )}
-            </div>
-          </div>
         </div>
       </div>
 

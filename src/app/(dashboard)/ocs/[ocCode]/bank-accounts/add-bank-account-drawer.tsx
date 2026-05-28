@@ -7,9 +7,7 @@ import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetFooter } from "@/com
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { NumberInput } from "@/components/ui/number-input";
 import { BankSelect } from "@/components/shared/bank-select";
-import { DatePicker } from "@/components/shared/date-picker";
 import { AUSTRALIAN_BANKS } from "@/lib/data/australian-banks";
 import { createBankAccount } from "./actions";
 
@@ -33,8 +31,6 @@ export function AddBankAccountDrawer({
   const [accountName, setAccountName] = useState("");
   const [bsb, setBsb] = useState("");
   const [accountNumber, setAccountNumber] = useState("");
-  const [openingBalance, setOpeningBalance] = useState("");
-  const [openingDate, setOpeningDate] = useState<string>("");
   const [invalid, setInvalid] = useState<{ bank?: boolean; name?: boolean; bsb?: boolean; acc?: boolean }>({});
   const [pending, startTransition] = useTransition();
 
@@ -43,8 +39,6 @@ export function AddBankAccountDrawer({
     setAccountName("");
     setBsb("");
     setAccountNumber("");
-    setOpeningBalance("");
-    setOpeningDate("");
     setInvalid({});
   }
 
@@ -62,7 +56,6 @@ export function AddBankAccountDrawer({
 
     const bankName = bankId === "other" ? null
       : (AUSTRALIAN_BANKS.find((b) => b.id === bankId)?.name ?? bankId);
-    const ob = parseFloat(openingBalance);
 
     startTransition(async () => {
       const res = await createBankAccount(ocId, {
@@ -70,8 +63,6 @@ export function AddBankAccountDrawer({
         bsb,
         account_number: accountNumber,
         bank_name: bankName,
-        opening_balance: Number.isFinite(ob) ? ob : 0,
-        opening_balance_date: openingDate || undefined,
       });
       if (res.error) {
         toast.error(res.error);
@@ -145,24 +136,6 @@ export function AddBankAccountDrawer({
             </div>
           </div>
 
-          <div className="grid grid-cols-2 gap-3 border-t border-border pt-4">
-            <div className="space-y-1.5">
-              <Label htmlFor="add-ob">Opening balance</Label>
-              <NumberInput
-                id="add-ob"
-                value={openingBalance}
-                onChange={setOpeningBalance}
-                thousandsSeparator
-                prefix="$"
-                allowDecimal
-                placeholder="Opening balance"
-              />
-            </div>
-            <div className="space-y-1.5">
-              <Label>Opening balance date</Label>
-              <DatePicker value={openingDate} onChange={setOpeningDate} />
-            </div>
-          </div>
         </div>
 
         <SheetFooter className="border-t border-border px-5 py-3">

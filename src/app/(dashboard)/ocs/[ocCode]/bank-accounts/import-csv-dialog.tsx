@@ -13,7 +13,7 @@ import {
 import {
   Table, TableBody, TableCell, TableHead, TableHeader, TableRow,
 } from "@/components/ui/table";
-import { updateBankAccountBalance } from "./actions";
+import { importBankTransactions } from "./actions";
 
 interface Account {
   id: string;
@@ -28,13 +28,6 @@ const formatDate = (iso: string | null): string => {
   if (!iso) return "";
   return new Date(`${iso}T00:00:00`).toLocaleDateString("en-AU", { day: "numeric", month: "short", year: "numeric" });
 };
-
-// CSV parsing happens in two passes:
-//   1. parseCsvCells: tokenise quoted cells into rows of strings; no
-//      interpretation yet.
-//   2. mapRows: applied AFTER the column-mapping dropdowns resolve,
-//      yielding typed { date, description, amount, balance } records.
-// This lets the manager re-pick the column meanings without re-uploading.
 
 function parseCsvCells(text: string): string[][] {
   const lines = text.split(/\r?\n/).filter((l) => l.trim().length > 0);
@@ -55,9 +48,6 @@ function parseCsvCells(text: string): string[][] {
   return lines.map(parseLine);
 }
 
-// Did the first row look like a header? If at least one cell contains a
-// recognised header keyword AND most cells are non-numeric, treat it as
-// a header. Bank exports without a header (e.g. CommBank) fall through.
 function detectHeader(firstRow: string[]): boolean {
   const KEYWORDS = ["date", "amount", "description", "narration", "details", "credit", "debit", "balance", "transaction", "narrative", "reference"];
   const lower = firstRow.map((c) => c.toLowerCase());
@@ -86,11 +76,6 @@ function autoDetect(headerCells: string[] | null, dataRow: string[]): Record<num
     });
     return map;
   }
-  // Headerless: guess from a data row. Pattern:
-  //   - first column that parses as a date  → date
-  //   - first numeric-looking column        → amount
-  //   - any remaining numeric column        → balance
-  //   - longest text column                 → description
   let dateAssigned = false;
   let amountAssigned = false;
   let balanceAssigned = false;
@@ -183,7 +168,6 @@ export function ImportCsvDialog({
   open: boolean;
   onOpenChange: (open: boolean) => void;
 }) {
-  const [fileName, setFileName] = useState<string | null>(null);
   const [rows, setRows] = useState<string[][] | null>(null);
   const [headerCells, setHeaderCells] = useState<string[] | null>(null);
   const [mapping, setMapping] = useState<Record<number, ColumnRole>>({});
@@ -200,25 +184,19 @@ export function ImportCsvDialog({
     [rows, mapping],
   );
 
-  // Closing balance derived for the silent current_balance update on
-  // Confirm. Not displayed (per item 7) , prefer the last row's balance
-  // column when present, else fall back to the sum of amounts.
-  const derivedBalance = useMemo(() => {
-    if (txns.length === 0) return null;
-    for (let i = txns.length - 1; i >= 0; i--) {
-      if (txns[i].balance !== null) return Math.round((txns[i].balance as number) * 100) / 100;
-    }
-    const sum = txns.reduce((s, t) => s + (t.amount ?? 0), 0);
-    return sum === 0 ? null : Math.round(sum * 100) / 100;
-  }, [txns]);
-
-  const derivedAsOf = useMemo(() => {
-    let latest: string | null = null;
-    for (const t of txns) {
-      if (t.date && (!latest || t.date > latest)) latest = t.date;
-    }
-    return latest;
-  }, [txns]);
+  // Item 6: confirm is allowed only when Date + Description are mapped
+  // AND an Amount mapping OR a (Credit AND Debit) pair is mapped. Mixing
+  // a standalone Amount with Credit/Debit isn't supported , block that.
+  const roleSet = useMemo(() => new Set(Object.values(mapping)), [mapping]);
+  const hasDate = roleSet.has("date");
+  const hasDesc = roleSet.has("description");
+  const hasAmount = roleSet.has("amount");
+  const hasCredit = roleSet.has("credit");
+  const hasDebit = roleSet.has("debit");
+  const amountConfigValid =
+    (hasAmount && !hasCredit && !hasDebit) ||
+    (!hasAmount && hasCredit && hasDebit);
+  const canConfirm = !!rows && rows.length > 0 && hasDate && hasDesc && amountConfigValid;
 
   async function handleFile(file: File) {
     const text = await file.text();
@@ -231,47 +209,30 @@ export function ImportCsvDialog({
     const header = looksLikeHeader ? parsed[0] : null;
     const data = looksLikeHeader ? parsed.slice(1) : parsed;
     const detected = autoDetect(header, data[0] ?? []);
-    setFileName(file.name);
     setHeaderCells(header);
     setRows(data);
     setMapping(detected);
   }
 
   function handleConfirm() {
-    if (!rows || rows.length === 0) {
-      toast.error("Pick a CSV first.");
-      return;
-    }
-    const hasAmount =
-      Object.values(mapping).includes("amount") ||
-      Object.values(mapping).includes("credit") ||
-      Object.values(mapping).includes("debit");
-    const hasDate = Object.values(mapping).includes("date");
-    const hasDesc = Object.values(mapping).includes("description");
-    if (!hasDate || !hasDesc || !hasAmount) {
-      toast.error("Assign the Date, Description, and Amount (or Credit/Debit) columns before confirming.");
-      return;
-    }
+    if (!canConfirm) return;
     startTransition(async () => {
-      const res = await updateBankAccountBalance(
+      const res = await importBankTransactions(
         ocId,
         account.id,
-        derivedBalance ?? 0,
-        derivedAsOf,
+        txns,
       );
       if (res.error) {
         toast.error(res.error);
         return;
       }
-      toast.success(`${accountLabel} balance updated`);
+      toast.success(`Imported ${res.inserted ?? 0} transaction${res.inserted === 1 ? "" : "s"}`);
       onOpenChange(false);
     });
   }
 
   if (!open) return null;
 
-  // Step 1: small popup with a single "Upload CSV" button. Once the file
-  // is chosen the view expands into the full-screen takeover (step 2).
   if (!rows) {
     return (
       <Dialog open={open} onOpenChange={onOpenChange}>
@@ -302,66 +263,42 @@ export function ImportCsvDialog({
     );
   }
 
-  // Step 2: full-screen takeover with column mapper + parsed preview.
+  // Full-screen takeover , no top bar, only an X in the top-right + a
+  // floating column-mapper + transactions preview + sticky confirm row.
   const columnCount = headerCells?.length ?? (rows[0]?.length ?? 0);
   const sampleRows = rows.slice(0, 5);
 
   return (
     <div className="fixed inset-0 z-50 bg-background flex flex-col">
-      <div className="flex items-center justify-between border-b border-border px-6 py-4">
-        <div>
-          <h2 className="text-base font-semibold text-foreground">Import CSV</h2>
-          <p className="text-xs text-muted-foreground mt-0.5">{accountLabel}</p>
-        </div>
-        <button
-          type="button"
-          onClick={() => !pending && onOpenChange(false)}
-          className="rounded-md p-1.5 text-muted-foreground hover:bg-muted hover:text-foreground cursor-pointer"
-          aria-label="Close"
-          disabled={pending}
-        >
-          <X className="h-5 w-5" />
-        </button>
-      </div>
+      <button
+        type="button"
+        onClick={() => !pending && onOpenChange(false)}
+        className="absolute top-4 right-4 z-10 rounded-md p-1.5 text-muted-foreground hover:bg-muted hover:text-foreground cursor-pointer"
+        aria-label="Close"
+        disabled={pending}
+      >
+        <X className="h-5 w-5" />
+      </button>
 
-      <div className="flex-1 overflow-auto px-6 py-6">
+      <div className="flex-1 overflow-auto px-6 pt-12 pb-6">
         <div className="max-w-5xl mx-auto space-y-4">
-          <div className="flex items-center justify-between">
-            <div className="text-sm text-foreground">
-              <span className="font-medium">{fileName}</span>
-              <span className="text-muted-foreground"> &middot; {rows.length} transaction{rows.length === 1 ? "" : "s"} parsed</span>
-            </div>
-            <Button variant="secondary" size="sm" onClick={() => fileInputRef.current?.click()} disabled={pending}>
-              <Upload className="mr-1.5 h-3.5 w-3.5" />
-              Replace file
-            </Button>
-            <input
-              ref={fileInputRef}
-              type="file"
-              accept=".csv,text/csv"
-              hidden
-              onChange={(e) => {
-                const f = e.target.files?.[0];
-                if (f) handleFile(f);
-                e.target.value = "";
-              }}
-            />
+          <div className="text-sm text-foreground">
+            <span className="text-muted-foreground">{rows.length} transaction{rows.length === 1 ? "" : "s"} parsed</span>
           </div>
 
           {/* Column mapper. One dropdown per CSV column. Sample rows below
-              the dropdowns help the manager pick. */}
+              the dropdowns help the manager pick. Spans the full card. */}
           <div className="rounded-md border border-border bg-card overflow-hidden">
-            <div className="px-4 py-2 border-b border-border bg-muted/40">
-              <p className="text-xs uppercase tracking-wide font-medium text-muted-foreground">
-                {headerCells ? "Auto-detected columns , adjust if anything is wrong" : "No header row found , assign each column"}
-              </p>
-            </div>
             <div className="overflow-x-auto">
-              <table className="text-xs">
+              <table className="w-full text-xs table-fixed">
                 <thead>
                   <tr className="bg-muted/20">
                     {Array.from({ length: columnCount }).map((_, i) => (
-                      <th key={i} className="px-3 py-2 text-left border-r border-border last:border-r-0 min-w-[140px]">
+                      <th
+                        key={i}
+                        className="px-3 py-2 text-left border-r border-border last:border-r-0"
+                        style={{ width: `${100 / columnCount}%` }}
+                      >
                         <Select
                           value={mapping[i] ?? "ignore"}
                           onValueChange={(v) => setMapping((prev) => ({ ...prev, [i]: v as ColumnRole }))}
@@ -390,7 +327,7 @@ export function ImportCsvDialog({
                   {sampleRows.map((row, ri) => (
                     <tr key={ri} className="border-t border-border">
                       {Array.from({ length: columnCount }).map((_, i) => (
-                        <td key={i} className="px-3 py-1.5 border-r border-border last:border-r-0 text-foreground truncate max-w-[200px]">
+                        <td key={i} className="px-3 py-1.5 border-r border-border last:border-r-0 text-foreground truncate">
                           {row[i] ?? ""}
                         </td>
                       ))}
@@ -432,7 +369,7 @@ export function ImportCsvDialog({
       </div>
 
       <div className="border-t border-border px-6 py-3 flex justify-end">
-        <Button onClick={handleConfirm} disabled={pending}>
+        <Button onClick={handleConfirm} disabled={pending || !canConfirm}>
           {pending && <Loader2 className="mr-2 size-4 animate-spin" />}
           Confirm import
         </Button>

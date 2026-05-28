@@ -319,8 +319,11 @@ export function BudgetDetailContent({
             <h1 className="text-lg font-semibold text-foreground">
               {fundLabel} <span className="text-muted-foreground font-normal">, {budget.financial_year}</span>
             </h1>
-            <div className="flex items-center gap-2 text-xs text-muted-foreground">
+            <div className="flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
               <Badge variant={isDraft ? "warning" : "success"}>{isDraft ? "Draft" : "Approved"}</Badge>
+              {funds.map((f) => (
+                <Badge key={f} variant="neutral">{FUND_LABEL[f] ?? f}</Badge>
+              ))}
               {budget.approved_at && <span>Approved {new Date(budget.approved_at).toLocaleDateString("en-AU")}</span>}
             </div>
           </div>

@@ -5,58 +5,60 @@ import { createServerClient } from "@/lib/supabase";
 import { revalidatePath } from "next/cache";
 
 /**
- * Update a bank account's running balance + statement date. Called from
- * the CSV import dialog after the client has parsed the file and we
- * have a single number to persist. The CSV rows themselves are NOT
- * stored yet (no transactions table in the new banking stack); only
- * the resulting balance is saved. The original CSV file isn't kept
- * either , managers re-upload when they need a fresh snapshot.
+ * Persist a batch of parsed CSV rows as bank_transactions. Imports are
+ * append-only (no dedup) , managers re-upload whenever they want a
+ * fresh snapshot, and may end up with duplicates if they import the
+ * same file twice. Acceptable trade for the simplest UX. No balance
+ * tracking , the import is for transaction history visibility only.
  */
-export async function updateBankAccountBalance(
+export async function importBankTransactions(
   ocId: string,
   accountId: string,
-  balance: number,
-  asOfDate: string | null,
-): Promise<{ error?: string }> {
+  rows: Array<{
+    date: string | null;
+    description: string;
+    amount: number | null;
+    balance: number | null;
+  }>,
+): Promise<{ inserted?: number; error?: string }> {
   const profile = await requireCompanyRole();
   await requireOCAccess(ocId);
-
-  if (!Number.isFinite(balance)) {
-    return { error: "Balance must be a number." };
-  }
-
   const supabase = createServerClient();
-  const { data: before } = await supabase
+
+  const { data: account } = await supabase
     .from("bank_accounts")
-    .select("current_balance, current_balance_as_of")
+    .select("id")
     .eq("id", accountId)
     .eq("oc_id", ocId)
     .maybeSingle();
-  if (!before) return { error: "Bank account not found." };
+  if (!account) return { error: "Bank account not found." };
 
-  const { error } = await supabase
-    .from("bank_accounts")
-    .update({
-      current_balance: Math.round(balance * 100) / 100,
-      current_balance_as_of: asOfDate,
-      updated_at: new Date().toISOString(),
-    })
-    .eq("id", accountId)
-    .eq("oc_id", ocId);
-  if (error) return { error: error.message };
+  const inserts = rows.map((r) => ({
+    oc_id: ocId,
+    bank_account_id: accountId,
+    transaction_date: r.date,
+    description: (r.description ?? "").slice(0, 1000),
+    amount: r.amount,
+    balance: r.balance,
+    imported_by: profile.id,
+  }));
+
+  if (inserts.length > 0) {
+    const { error } = await supabase.from("bank_transactions").insert(inserts);
+    if (error) return { error: error.message };
+  }
 
   await supabase.from("audit_log").insert({
     profile_id: profile.id,
     oc_id: ocId,
-    action: "update",
+    action: "import",
     entity_type: "bank_account",
     entity_id: accountId,
-    before_state: before,
-    after_state: { current_balance: balance, current_balance_as_of: asOfDate },
+    after_state: { transactions_imported: inserts.length },
   });
 
   revalidatePath("/ocs/[ocCode]/bank-accounts", "page");
-  return {};
+  return { inserted: inserts.length };
 }
 
 /**
@@ -71,8 +73,6 @@ export async function createBankAccount(
     bsb: string;
     account_number: string;
     bank_name: string | null;
-    opening_balance?: number;
-    opening_balance_date?: string;
   },
 ): Promise<{ id?: string; error?: string }> {
   const profile = await requireCompanyRole();
@@ -96,10 +96,6 @@ export async function createBankAccount(
       bsb,
       account_number: accountNumber,
       bank_name: data.bank_name || null,
-      opening_balance: data.opening_balance ?? 0,
-      opening_balance_date: data.opening_balance_date ?? null,
-      current_balance: data.opening_balance ?? 0,
-      current_balance_as_of: data.opening_balance_date ?? null,
     })
     .select("id")
     .single();
