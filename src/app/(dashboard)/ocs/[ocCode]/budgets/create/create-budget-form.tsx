@@ -35,7 +35,7 @@ type FundType = "operating" | "maintenance_plan";
 type FundKey = string;
 
 const SYSTEM_FUND_LABELS: Record<FundType, string> = {
-  operating: "Operating Fund",
+  operating: "Admin Fund",
   maintenance_plan: "Maintenance Plan Fund",
 };
 

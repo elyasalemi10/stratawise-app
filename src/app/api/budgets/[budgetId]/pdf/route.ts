@@ -2,7 +2,7 @@ import { NextResponse, type NextRequest } from "next/server";
 import { renderToBuffer } from "@react-pdf/renderer";
 import { createElement } from "react";
 import { BudgetReport } from "@/lib/pdf/templates/budget-report";
-import type { BudgetReportProps, BudgetReportItem } from "@/lib/pdf/types";
+import type { BudgetReportProps, BudgetReportItem, FundLotLiability } from "@/lib/pdf/types";
 import { getCurrentProfile, requireOCAccess } from "@/lib/auth";
 import { createServerClient } from "@/lib/supabase";
 import { forbiddenResponse } from "@/lib/forbidden";
@@ -11,7 +11,7 @@ export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
 const FUND_LABEL: Record<string, string> = {
-  operating: "Operating Fund",
+  operating: "Admin Fund",
   maintenance_plan: "Maintenance Plan Fund",
 };
 
@@ -52,15 +52,31 @@ export async function GET(
     amount: number;
     sort_order: number;
     fund_type: "operating" | "maintenance_plan" | null;
+    fund_id: string | null;
     budget_categories: { name: string } | null;
     chart_of_accounts: { name: string; code: string } | null;
   };
   const { data: rawItems } = await supabase
     .from("budget_items")
-    .select("description, amount, sort_order, fund_type, budget_categories(name), chart_of_accounts(name, code)")
+    .select("description, amount, sort_order, fund_type, fund_id, budget_categories(name), chart_of_accounts(name, code)")
     .eq("budget_id", budgetId)
     .order("sort_order");
   const items = (rawItems ?? []) as unknown as RawItem[];
+
+  // Custom fund names for any fund_id referenced by an item , the PDF
+  // template renders the actual fund name (e.g. "Driveway Fund") instead
+  // of the generic "Admin Fund" placeholder for custom items.
+  const customFundIds = Array.from(new Set(items.map((i) => i.fund_id).filter((id): id is string => !!id)));
+  const customFundNameById = new Map<string, string>();
+  if (customFundIds.length > 0) {
+    const { data: fundRows } = await supabase
+      .from("funds")
+      .select("id, name")
+      .in("id", customFundIds);
+    for (const f of (fundRows ?? []) as Array<{ id: string; name: string }>) {
+      customFundNameById.set(f.id, f.name);
+    }
+  }
 
   const { data: oc } = await supabase
     .from("owners_corporations")
@@ -82,10 +98,12 @@ export async function GET(
   // fallback, matching the levy generator at src/lib/actions/levy.ts).
   const { data: rawLots } = await supabase
     .from("lots")
-    .select("lot_number, unit_number, lot_entitlement, lot_liability")
+    .select("id, lot_number, unit_number, lot_entitlement, lot_liability")
     .eq("oc_id", oc.id)
     .order("lot_number");
-  const lots = (rawLots ?? []).map((l) => ({
+  type RawLot = { id: string; lot_number: number; unit_number: string | null; lot_entitlement: number; lot_liability: number };
+  const rawLotsTyped = (rawLots ?? []) as RawLot[];
+  const lots = rawLotsTyped.map((l) => ({
     lot_number: l.lot_number,
     unit_number: l.unit_number,
     liability:
@@ -95,6 +113,28 @@ export async function GET(
         ? l.lot_entitlement
         : 1,
   }));
+  const lotNumberById = new Map(rawLotsTyped.map((l) => [l.id, l.lot_number]));
+
+  // For any custom fund referenced by an item, pull its per-lot
+  // entitlements so the PDF can split that fund's total by the fund's
+  // OWN liability (not the OC-wide one). Admin + maintenance items keep
+  // using the OC-wide lots[].liability.
+  const fundLotLiabilities: FundLotLiability[] = [];
+  if (customFundIds.length > 0) {
+    const { data: ents } = await supabase
+      .from("fund_lot_entitlements")
+      .select("fund_id, lot_id, liability")
+      .in("fund_id", customFundIds);
+    for (const e of (ents ?? []) as Array<{ fund_id: string; lot_id: string; liability: number | string }>) {
+      const lotNumber = lotNumberById.get(e.lot_id);
+      if (lotNumber == null) continue;
+      fundLotLiabilities.push({
+        fund_key: `custom:${e.fund_id}`,
+        lot_number: lotNumber,
+        liability: Number(e.liability),
+      });
+    }
+  }
 
   const pdfItems: BudgetReportItem[] = items.map((i) => ({
     code: i.chart_of_accounts?.code ?? null,
@@ -105,6 +145,8 @@ export async function GET(
     // get tagged (older budgets pre-multi-fund). Lets the PDF group items
     // even when only the parent row carries fund context.
     fund_type: i.fund_type ?? (budget.fund_type as "operating" | "maintenance_plan" | null) ?? null,
+    fund_id: i.fund_id,
+    fund_name: i.fund_id ? (customFundNameById.get(i.fund_id) ?? null) : null,
   }));
 
   // Brand colours come from management_companies. Primary drives the
@@ -145,6 +187,7 @@ export async function GET(
     totalAmount: Number(budget.total_amount),
     brandColors: { primary: brandPrimary, secondary: brandSecondary },
     lots,
+    fundLotLiabilities,
     billingCycle: oc.billing_cycle ?? undefined,
   };
 

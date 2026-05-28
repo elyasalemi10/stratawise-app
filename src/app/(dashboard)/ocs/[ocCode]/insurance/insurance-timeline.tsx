@@ -756,25 +756,16 @@ function InsuranceGantt({
   }
 
   const todayPx = ((today.getTime() - minMs) / 86400000) * pxPerDay;
-  const ROW_LABEL_W = 180;
   const ROW_H = 90; // generous so policy bars + label read in one glance
 
   return (
     <div className="relative rounded-md border border-border bg-card">
-      {/* max-h roughly fills the viewport so the OC sees every
-          insurance type at once. overflow-auto enables BOTH H and V
-          scroll. Sticky cells (row labels left, axis bottom) use a
-          solid bg-card / bg-muted so they read opaque, not see-through. */}
-      <div className="overflow-auto max-h-[75vh]">
-        <div className="relative" style={{ width: ROW_LABEL_W + trackWidth, minWidth: "100%" }}>
+      {/* Horizontal-scrolling timeline. No sticky left labels , policy
+          rows are unlabelled bars laid out along a shared time axis. */}
+      <div className="overflow-x-auto overflow-y-hidden">
+        <div className="relative" style={{ width: trackWidth, minWidth: "100%" }}>
           {Array.from(groups.entries()).map(([typeKey, group]) => (
-            <div key={typeKey} className="flex items-stretch border-b border-border/50 last:border-b-0">
-              <div
-                className="shrink-0 px-3 text-sm font-medium text-foreground border-r border-border bg-card flex items-center sticky left-0 z-20"
-                style={{ width: ROW_LABEL_W, height: ROW_H }}
-              >
-                {POLICY_LABELS[typeKey] ?? typeKey}
-              </div>
+            <div key={typeKey} className="border-b border-border/50 last:border-b-0">
               <div
                 className="relative"
                 style={{
@@ -809,7 +800,7 @@ function InsuranceGantt({
                         width: widthPx(p.start_date, p.end_date),
                       }}
                     >
-                      <span className="truncate font-medium">{p.provider}</span>
+                      <span className="truncate font-medium">{POLICY_LABELS[typeKey] ?? typeKey}: {p.provider}</span>
                       {p.premium && (
                         <span className="ml-auto shrink-0 tabular-nums opacity-80">{formatCurrency(Number(p.premium))}</span>
                       )}
@@ -821,11 +812,7 @@ function InsuranceGantt({
           ))}
 
           {/* Time axis , FY quarter ticks along the bottom. */}
-          <div className="flex border-t border-border bg-card sticky bottom-0 z-10">
-            <div
-              className="shrink-0 border-r border-border bg-card sticky left-0 z-20"
-              style={{ width: ROW_LABEL_W }}
-            />
+          <div className="border-t border-border bg-card">
             <div className="relative h-9 bg-card" style={{ width: trackWidth }}>
               {ticks.map((t) => (
                 <div
@@ -899,8 +886,7 @@ export function InsuranceTimeline({
           right. Always rendered (when not readOnly) so the manager
           can add a policy whether or not the gantt has data. */}
       {!readOnly && (
-        <div className="flex items-center justify-between gap-3">
-          <h2 className="text-sm font-medium text-muted-foreground">Insurance coverage</h2>
+        <div className="flex items-center justify-end gap-3">
           <Button onClick={() => setShowAdd(true)}>
             <Plus className="mr-2 h-3.5 w-3.5" />
             Add policy

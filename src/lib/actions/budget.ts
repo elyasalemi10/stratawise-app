@@ -58,6 +58,9 @@ export interface BudgetWithItems {
     /** Per-item fund tag. New writes always set this; old rows are
      *  backfilled from the parent budget's fund_type. */
     fund_type: BudgetFundType | null;
+    /** Custom-fund items carry a fund_id FK; admin/maintenance items
+     *  leave this null and rely on fund_type alone. */
+    fund_id: string | null;
   }[];
 }
 
@@ -154,13 +157,14 @@ export async function getOCBudgets(ocId: string): Promise<BudgetWithItems[]> {
     amount: number;
     sort_order: number;
     fund_type: BudgetFundType | null;
+    fund_id: string | null;
     budget_categories: { name: string } | null;
     chart_of_accounts: { name: string; code: string } | null;
   };
   const { data: rawItems } = await supabase
     .from("budget_items")
     .select(
-      "id, budget_id, category_id, coa_account_id, description, amount, sort_order, fund_type, " +
+      "id, budget_id, category_id, coa_account_id, description, amount, sort_order, fund_type, fund_id, " +
       "budget_categories(name), chart_of_accounts(name, code)"
     )
     .in("budget_id", budgetIds)
@@ -182,6 +186,7 @@ export async function getOCBudgets(ocId: string): Promise<BudgetWithItems[]> {
         amount: Number(i.amount),
         sort_order: i.sort_order,
         fund_type: i.fund_type ?? (b.fund_type as BudgetFundType | null),
+        fund_id: i.fund_id,
       })),
   })) as BudgetWithItems[];
 }
@@ -445,6 +450,42 @@ export async function approveBudget(ocId: string, budgetId: string, note?: strin
   const supabase = createServerClient();
 
   const approvalNote = note?.trim() || null;
+
+  // Item 11: only ONE approved budget per (OC, financial year, fund) can
+  // exist at a time. Drafts are unlimited. Before approving, check every
+  // fund this budget touches against any other approved budget for the
+  // same OC + FY and block if overlap.
+  const { data: thisBudget } = await supabase
+    .from("budgets")
+    .select("id, financial_year, fund_types, fund_type, fund_id")
+    .eq("id", budgetId)
+    .eq("oc_id", ocId)
+    .maybeSingle();
+  if (!thisBudget) return { error: "Budget not found." };
+  const thisFunds = new Set<string>([
+    ...((thisBudget.fund_types as string[] | null) ?? []),
+    ...(thisBudget.fund_type ? [thisBudget.fund_type as string] : []),
+    ...(thisBudget.fund_id ? [`custom:${thisBudget.fund_id}`] : []),
+  ]);
+  const { data: otherApproved } = await supabase
+    .from("budgets")
+    .select("id, fund_types, fund_type, fund_id")
+    .eq("oc_id", ocId)
+    .eq("financial_year", thisBudget.financial_year)
+    .eq("status", "approved")
+    .neq("id", budgetId);
+  for (const row of otherApproved ?? []) {
+    const otherFunds = new Set<string>([
+      ...((row.fund_types as string[] | null) ?? []),
+      ...(row.fund_type ? [row.fund_type as string] : []),
+      ...(row.fund_id ? [`custom:${row.fund_id}`] : []),
+    ]);
+    for (const f of thisFunds) {
+      if (otherFunds.has(f)) {
+        return { error: "Another approved budget already covers this fund for the selected financial year. Delete or revert it before approving this one." };
+      }
+    }
+  }
 
   const { error } = await supabase
     .from("budgets")

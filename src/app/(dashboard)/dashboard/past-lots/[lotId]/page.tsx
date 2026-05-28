@@ -218,7 +218,7 @@ function EmptyRow({ icon, text }: { icon: React.ReactNode; text: string }) {
 }
 
 function labelForFund(fund: string): string {
-  if (fund === "operating") return "Operating fund";
+  if (fund === "operating") return "Admin fund";
   if (fund === "maintenance_plan") return "Maintenance plan";
   return fund;
 }

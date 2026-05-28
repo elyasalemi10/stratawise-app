@@ -302,13 +302,15 @@ export async function generateLevyPreview(
     amount: number;
     category_id: string | null;
     coa_account_id: string | null;
+    fund_type: string | null;
+    fund_id: string | null;
     budget_categories: { name: string } | null;
     chart_of_accounts: { name: string } | null;
   };
   const { data: rawBudgetItems } = await supabase
     .from("budget_items")
     .select(
-      "id, description, amount, category_id, coa_account_id, " +
+      "id, description, amount, category_id, coa_account_id, fund_type, fund_id, " +
       "budget_categories(name), chart_of_accounts(name)"
     )
     .eq("budget_id", budgetId)
@@ -359,26 +361,61 @@ export async function generateLevyPreview(
   const owners = await getLotOwners(supabase, lots.map((l) => l.id));
 
   const periodsPerYear = getPeriodsForCycle(oc.billing_cycle);
-  const periodAmount = Number(budget.total_amount) / periodsPerYear;
 
-  // Calculate total entitlement (use lot_liability if available, else lot_entitlement)
-  const totalEntitlement = lots.reduce((sum, lot) => {
-    const ue = lot.lot_liability > 0 ? lot.lot_liability : (lot.lot_entitlement > 0 ? lot.lot_entitlement : 1);
-    return sum + ue;
-  }, 0);
+  // OC-wide default liability (admin / maintenance fall back to this).
+  const defaultLiabByLotId = new Map<string, number>(
+    lots.map((l) => [
+      l.id,
+      l.lot_liability > 0 ? l.lot_liability : (l.lot_entitlement > 0 ? l.lot_entitlement : 1),
+    ]),
+  );
+  const defaultTotal = Array.from(defaultLiabByLotId.values()).reduce((s, v) => s + v, 0);
 
-  // Build per-lot preview
+  // Per-custom-fund liability: each custom fund has its own
+  // fund_lot_entitlements (subset of lots + per-lot liability). Pull for
+  // every custom fund referenced by an item so custom-fund items split
+  // by the fund's own liability, not the OC-wide one.
+  const customFundIds = Array.from(new Set(
+    budgetItems.map((bi) => bi.fund_id).filter((id): id is string => !!id),
+  ));
+  const fundLiabByLotId = new Map<string, Map<string, number>>();
+  if (customFundIds.length > 0) {
+    const { data: ents } = await supabase
+      .from("fund_lot_entitlements")
+      .select("fund_id, lot_id, liability")
+      .in("fund_id", customFundIds);
+    for (const e of (ents ?? []) as Array<{ fund_id: string; lot_id: string; liability: number | string }>) {
+      if (!fundLiabByLotId.has(e.fund_id)) fundLiabByLotId.set(e.fund_id, new Map());
+      fundLiabByLotId.get(e.fund_id)!.set(e.lot_id, Number(e.liability));
+    }
+  }
+
+  function liabFor(bi: RawBudgetItem, lotId: string): { liab: number; total: number } {
+    if (bi.fund_id) {
+      const map = fundLiabByLotId.get(bi.fund_id);
+      if (map && map.size > 0) {
+        const total = Array.from(map.values()).reduce((s, v) => s + v, 0);
+        return { liab: map.get(lotId) ?? 0, total };
+      }
+    }
+    return { liab: defaultLiabByLotId.get(lotId) ?? 0, total: defaultTotal };
+  }
+
+  // Build per-lot preview. base_amount + proportion + lot_entitlement
+  // are OC-wide values for the header chip; the real per-item math runs
+  // off liabFor() so custom-fund items respect their own liability.
   const previewLots: LevyPreviewLot[] = lots.map((lot) => {
-    const lotUE = lot.lot_liability > 0 ? lot.lot_liability : (lot.lot_entitlement > 0 ? lot.lot_entitlement : 1);
-    const proportion = lotUE / totalEntitlement;
-    const lotPeriodTotal = Math.round(periodAmount * proportion * 100) / 100;
+    const lotUE = defaultLiabByLotId.get(lot.id) ?? 1;
+    const proportion = defaultTotal > 0 ? lotUE / defaultTotal : 0;
 
-    // Split into line items proportional to budget items
     const items = budgetItems
       .filter((bi) => Number(bi.amount) > 0)
       .map((bi) => {
+        const { liab, total } = liabFor(bi, lot.id);
         const itemPeriodAmount = Number(bi.amount) / periodsPerYear;
-        const lotItemAmount = Math.round(itemPeriodAmount * proportion * 100) / 100;
+        const lotItemAmount = total > 0 && liab > 0
+          ? Math.round(itemPeriodAmount * (liab / total) * 100) / 100
+          : 0;
         return {
           description:
             bi.description ||
@@ -391,6 +428,7 @@ export async function generateLevyPreview(
         };
       });
 
+    const lotPeriodTotal = items.reduce((s, it) => s + it.amount, 0);
     const owner = owners.get(lot.id);
     return {
       lot_id: lot.id,
@@ -399,7 +437,7 @@ export async function generateLevyPreview(
       owner_display_name: owner?.owner_display_name ?? null,
       owner_contact_email: owner?.owner_contact_email ?? null,
       lot_entitlement: lotUE,
-      total_entitlement: totalEntitlement,
+      total_entitlement: defaultTotal,
       proportion,
       base_amount: lotPeriodTotal,
       items,
@@ -415,8 +453,8 @@ export async function generateLevyPreview(
       period_start: nextPeriod.start,
       period_end: nextPeriod.end,
       due_date: nextPeriod.due_date,
-      period_amount: periodAmount,
-      total_entitlement: totalEntitlement,
+      period_amount: previewLots.reduce((s, l) => s + l.base_amount, 0),
+      total_entitlement: defaultTotal,
       lots: previewLots,
       billing_cycle: oc.billing_cycle,
     },

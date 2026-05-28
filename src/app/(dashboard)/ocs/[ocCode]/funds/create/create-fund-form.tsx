@@ -101,7 +101,7 @@ export function CreateFundForm({
 
   const existingSet = new Set(existingKinds);
   const kindChoices = ([
-    { value: "operating" as FundKind, label: FUND_KIND_LABEL.operating, disabled: existingSet.has("operating") },
+    { value: "admin" as FundKind, label: FUND_KIND_LABEL.admin, disabled: existingSet.has("admin") },
     { value: "maintenance_plan" as FundKind, label: FUND_KIND_LABEL.maintenance_plan, disabled: existingSet.has("maintenance_plan") },
     { value: "custom" as FundKind, label: "Other (custom fund)", disabled: false },
   ] as Array<{ value: FundKind; label: string; disabled: boolean }>).filter((k) => !k.disabled);
@@ -232,7 +232,7 @@ export function CreateFundForm({
             <Label>Fund type <span className="text-destructive">*</span></Label>
             <div className="grid gap-3 sm:grid-cols-2">
               {[
-                { value: "operating" as FundKind, label: FUND_KIND_LABEL.operating, icon: Building2, blurb: "Day-to-day OC running costs , insurance, cleaning, admin, manager fees." },
+                { value: "admin" as FundKind, label: FUND_KIND_LABEL.admin, icon: Building2, blurb: "Day-to-day OC running costs , insurance, cleaning, admin, manager fees." },
                 { value: "maintenance_plan" as FundKind, label: FUND_KIND_LABEL.maintenance_plan, icon: Wrench, blurb: "Scheduled maintenance plan , recurring upkeep based on a 10-year plan." },
                 { value: "custom" as FundKind, label: "Other (custom fund)", icon: MoreHorizontal, blurb: "A purpose-specific fund , e.g. driveway, pool, lift modernisation." },
               ].map((k) => {
@@ -450,10 +450,10 @@ export function CreateFundForm({
                               ) : (
                                 <Landmark className="h-4 w-4 text-muted-foreground shrink-0" />
                               )}
-                              <span className="flex flex-col flex-1 min-w-0">
-                                <span className="truncate">{b.label}</span>
+                              <span className="flex flex-1 items-center gap-3 min-w-0">
+                                <span className="truncate text-foreground">{b.label}</span>
                                 {b.bsb && b.account_number && (
-                                  <span className="text-xs text-muted-foreground">{b.bsb} {b.account_number}</span>
+                                  <span className="ml-auto shrink-0 text-xs text-muted-foreground tabular-nums">{b.bsb} {b.account_number}</span>
                                 )}
                               </span>
                             </span>

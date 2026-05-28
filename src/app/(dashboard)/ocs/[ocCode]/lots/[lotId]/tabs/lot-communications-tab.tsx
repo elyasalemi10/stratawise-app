@@ -121,26 +121,6 @@ export function LotCommunicationsTab(props: Props) {
     setRows(initialCommunications);
   }, [initialCommunications]);
 
-  async function handleToggleConfidential(row: LotCommunicationRow) {
-    const next = !row.confidential;
-    // Optimistic update so the lock icon flips instantly. Roll back on error.
-    setRows((prev) =>
-      prev.map((r) => (r.id === row.id ? { ...r, confidential: next } : r)),
-    );
-    const res = await setCommunicationConfidential({
-      communication_log_id: row.id,
-      confidential: next,
-    });
-    if (!res.ok) {
-      setRows((prev) =>
-        prev.map((r) => (r.id === row.id ? { ...r, confidential: row.confidential } : r)),
-      );
-      toast.error(res.error);
-      return;
-    }
-    toast.success(next ? "Marked confidential" : "Marked unconfidential");
-  }
-
   return (
     <TooltipProvider delay={120}>
     <div className="space-y-6">
@@ -180,7 +160,6 @@ export function LotCommunicationsTab(props: Props) {
           <CommunicationHistoryList
             rows={rows}
             onRowClick={(row) => setDetail(row)}
-            onToggleConfidential={handleToggleConfidential}
           />
         </CardContent>
       </Card>
@@ -256,11 +235,9 @@ function rowTitle(row: LotCommunicationRow): string {
 function CommunicationHistoryList({
   rows,
   onRowClick,
-  onToggleConfidential,
 }: {
   rows: LotCommunicationRow[];
   onRowClick: (row: LotCommunicationRow) => void;
-  onToggleConfidential: (row: LotCommunicationRow) => void;
 }) {
   const [page, setPage] = React.useState(0);
   const totalPages = Math.max(1, Math.ceil(rows.length / HISTORY_PAGE_SIZE));
@@ -287,7 +264,6 @@ function CommunicationHistoryList({
             key={row.id}
             row={row}
             onClick={() => onRowClick(row)}
-            onToggleConfidential={onToggleConfidential}
           />
         ))}
       </ol>
@@ -327,11 +303,9 @@ function CommunicationHistoryList({
 function CommunicationRow({
   row,
   onClick,
-  onToggleConfidential,
 }: {
   row: LotCommunicationRow;
   onClick: () => void;
-  onToggleConfidential: (row: LotCommunicationRow) => void;
 }) {
   const Icon =
     row.channel === "email"
@@ -391,35 +365,6 @@ function CommunicationRow({
           <TooltipContent>Owner at the time: {row.owner_name}</TooltipContent>
         </Tooltip>
       )}
-      {/* Confidentiality quick-toggle. A click on the icon flips the flag
-          (and logs to audit); click on the row opens the detail dialog. */}
-      <Tooltip>
-        <TooltipTrigger
-          render={
-            <button
-              type="button"
-              onClick={(e) => {
-                e.stopPropagation();
-                onToggleConfidential(row);
-              }}
-              className={cn(
-                "inline-flex h-7 w-7 shrink-0 items-center justify-center rounded-md transition-colors cursor-pointer",
-                row.confidential
-                  ? "text-[color:var(--brand-gold)] hover:bg-[color:var(--brand-gold)]/10"
-                  : "text-muted-foreground/40 hover:bg-muted hover:text-muted-foreground",
-              )}
-              aria-label={row.confidential ? "Mark unconfidential" : "Mark confidential"}
-            />
-          }
-        >
-          {row.confidential ? <Lock className="size-3.5" /> : <Unlock className="size-3.5" />}
-        </TooltipTrigger>
-        <TooltipContent>
-          {row.confidential
-            ? "Confidential , hidden from future owners. Click to make visible."
-            : "Visible to future owners. Click to mark confidential."}
-        </TooltipContent>
-      </Tooltip>
     </li>
   );
 }
@@ -735,7 +680,6 @@ function SendEmailDrawer({
   const [senderAddress, setSenderAddress] = React.useState<string | null>(
     initialSenderAddress,
   );
-  const [confidential, setConfidential] = React.useState(false);
   const fileInputRef = React.useRef<HTMLInputElement>(null);
 
   React.useEffect(() => {
@@ -810,7 +754,6 @@ function SendEmailDrawer({
             contentType: a.file.type || "application/octet-stream",
             base64: a.base64,
           })),
-          confidential,
         });
         if (res.ok) onSaved();
         return res.ok
@@ -870,12 +813,6 @@ function SendEmailDrawer({
           className="max-h-72 resize-none overflow-y-auto"
         />
       </div>
-
-      <VisibilityToggle
-        confidential={confidential}
-        onChange={setConfidential}
-        channelNoun="email"
-      />
 
       <div className="space-y-1.5">
         <div className="flex items-center justify-between">
@@ -995,7 +932,6 @@ function SendSmsDrawer({
   const [phone, setPhone] = React.useState(ownerPhone ?? "");
   const [body, setBody] = React.useState("");
   const [billConsent, setBillConsent] = React.useState(false);
-  const [confidential, setConfidential] = React.useState(false);
   const ownerHasPhone = !!(ownerPhone && ownerPhone.trim());
 
   const counted = countSmsUnits(body);
@@ -1035,7 +971,6 @@ function SendSmsDrawer({
           recipient_phone: phone,
           body,
           confirmed: true,
-          confidential,
         });
         if (res.ok) onSaved();
         return res.ok
@@ -1084,12 +1019,6 @@ function SendSmsDrawer({
         )}
       </div>
 
-      <VisibilityToggle
-        confidential={confidential}
-        onChange={setConfidential}
-        channelNoun="SMS"
-      />
-
       <div className="flex items-start gap-2 text-sm">
         <Checkbox
           checked={billConsent}
@@ -1133,7 +1062,6 @@ function LogCallDrawer({
   });
   const [durationMinutes, setDurationMinutes] = React.useState<string>("");
   const [notes, setNotes] = React.useState("");
-  const [confidential, setConfidential] = React.useState(false);
 
   return (
     <EditSheet
@@ -1168,7 +1096,6 @@ function LogCallDrawer({
           call_date: callDate || undefined,
           duration_seconds: durationSeconds,
           notes,
-          confidential,
         });
         if (res.ok) onSaved();
         return res.ok
@@ -1238,71 +1165,7 @@ function LogCallDrawer({
         />
       </div>
 
-      <VisibilityToggle
-        confidential={confidential}
-        onChange={setConfidential}
-        channelNoun="call"
-      />
     </EditSheet>
   );
 }
 
-// Inline visibility radio pair. Used in the email + SMS composers (and the
-// reply drawer later, if needed). The selected pill carries the brand-gold
-// accent; the other reads as muted/unselected. `channelNoun` makes the
-// helper copy specific to the channel ("email" / "SMS") without
-// duplicating the markup.
-function VisibilityToggle({
-  confidential,
-  onChange,
-  channelNoun,
-}: {
-  confidential: boolean;
-  onChange: (v: boolean) => void;
-  channelNoun: string;
-}) {
-  return (
-    <div className="space-y-1.5">
-      <Label>Visibility</Label>
-      <div
-        role="radiogroup"
-        aria-label="Visibility"
-        className="inline-flex rounded-md border border-border bg-cool-muted p-0.5"
-      >
-        <button
-          type="button"
-          role="radio"
-          aria-checked={!confidential}
-          onClick={() => onChange(false)}
-          className={cn(
-            "px-3 py-1 text-xs font-medium rounded transition-colors cursor-pointer",
-            !confidential
-              ? "bg-card text-foreground shadow-sm"
-              : "text-muted-foreground hover:text-foreground",
-          )}
-        >
-          Visible to future owners
-        </button>
-        <button
-          type="button"
-          role="radio"
-          aria-checked={confidential}
-          onClick={() => onChange(true)}
-          className={cn(
-            "px-3 py-1 text-xs font-medium rounded transition-colors cursor-pointer inline-flex items-center gap-1.5",
-            confidential
-              ? "bg-primary text-primary-foreground shadow-sm"
-              : "text-muted-foreground hover:text-foreground",
-          )}
-        >
-          <Lock className="size-3" />
-          Confidential
-        </button>
-      </div>
-      <p className="text-xs text-muted-foreground">
-        Confidential {channelNoun}s are hidden from future lot owners. The
-        current owner and managers always see them.
-      </p>
-    </div>
-  );
-}

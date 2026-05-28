@@ -101,6 +101,22 @@ export interface BudgetReportItem {
    *  `fund_type`, the report renders one section per fund with a
    *  separator rule between them. */
   fund_type?: "operating" | "maintenance_plan" | null;
+  /** When set, this item belongs to a custom fund. The PDF groups by
+   *  fund_id (when present) instead of fund_type, and uses the resolved
+   *  custom fund name as the section title. */
+  fund_id?: string | null;
+  /** Display name for custom funds. Only set when fund_id is set. */
+  fund_name?: string | null;
+}
+
+/** Per-lot allocation map. For admin / maintenance funds the OC-wide
+ *  lot_liability applies. Custom funds have their own
+ *  fund_lot_entitlements so each fund pays only its member lots. The PDF
+ *  receives the resolved liability per (fund-key, lot_number) pair. */
+export interface FundLotLiability {
+  fund_key: string; // "operating" | "maintenance_plan" | `custom:${fundId}`
+  lot_number: number;
+  liability: number;
 }
 
 export interface BudgetReportLot {
@@ -123,6 +139,10 @@ export interface BudgetReportProps extends BaseDocumentProps {
    *  use lot numbers only (no owner names), so the document stays accurate as
    *  ownership changes. */
   lots?: BudgetReportLot[];
+  /** Per-fund per-lot liability overrides. Used by custom funds whose
+   *  member lots + liability values differ from the OC defaults. When a
+   *  fund key has no entry here the PDF falls back to `lots[].liability`. */
+  fundLotLiabilities?: FundLotLiability[];
   /** OC billing cycle (monthly / quarterly / half_yearly / annually) , drives the
    *  per-period column in the lot contributions table. */
   billingCycle?: "monthly" | "quarterly" | "half_yearly" | "annually" | string;

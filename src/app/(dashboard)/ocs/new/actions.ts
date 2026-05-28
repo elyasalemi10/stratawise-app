@@ -1810,6 +1810,7 @@ export async function completeWizard(draftId: string) {
     // holds maintenance fund money too, and the funds table (via
     // funds.bank_account_id) is the source of truth for fund-to-account
     // mapping. Skipped entirely when banking was deferred.
+    let operatingBankId: string | null = null;
     if (!bankingDeferred) {
       const { data: operatingBank, error: operatingBankErr } = await supabase
         .from("bank_accounts")
@@ -1829,6 +1830,7 @@ export async function completeWizard(draftId: string) {
         console.error("completeWizard: operating bank_accounts insert failed", operatingBankErr);
         return { error: "Couldn't save the operating account. Please check the details and try again." };
       }
+      operatingBankId = (operatingBank as { id: string }).id;
 
       if (maintenance) {
         const { error: mBankErr } = await supabase.from("bank_accounts").insert({
@@ -1845,6 +1847,35 @@ export async function completeWizard(draftId: string) {
           console.error("completeWizard: maintenance_plan bank_accounts insert failed", mBankErr);
           return { error: "Couldn't save the maintenance plan fund bank account. Please check the details and try again." };
         }
+      }
+    }
+
+    // Default Admin Fund , every OC needs one. Marked is_system=true so the
+    // funds page hides delete + edit controls. Linked to the operating
+    // bank account when the manager set one up (otherwise stands alone until
+    // banking is configured later from Settings → Banking).
+    const { data: adminFund, error: adminFundErr } = await supabase
+      .from("funds")
+      .insert({
+        oc_id: oc.id,
+        name: "Admin Fund",
+        kind: "admin",
+        is_system: true,
+      })
+      .select("id")
+      .single();
+    if (adminFundErr || !adminFund) {
+      console.error("completeWizard: default admin fund insert failed (non-fatal)", adminFundErr);
+    } else if (operatingBankId) {
+      // Link the operating bank_accounts row to the admin fund via fund_id.
+      // Non-fatal: a failure here just leaves the link blank and the
+      // manager can wire it up from /funds.
+      const { error: linkErr } = await supabase
+        .from("bank_accounts")
+        .update({ fund_id: (adminFund as { id: string }).id })
+        .eq("id", operatingBankId);
+      if (linkErr) {
+        console.error("completeWizard: linking operating bank to admin fund failed (non-fatal)", linkErr);
       }
     }
 

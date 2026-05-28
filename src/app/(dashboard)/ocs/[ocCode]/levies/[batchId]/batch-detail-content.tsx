@@ -218,7 +218,7 @@ export function BatchDetailContent({
   });
   const draftLeviesForDialog = batch.levies.filter((l) => l.status === "draft").map(toLevyRow);
   const allLeviesForDialog = batch.levies.map(toLevyRow);
-  const fundLabel = batch.fund_type === "operating" ? "Operating Fund" : "Maintenance Plan Fund";
+  const fundLabel = batch.fund_type === "operating" ? "Admin Fund" : "Maintenance Plan Fund";
   const hasPaidLevies = batch.levies.some((l) => l.status === "paid");
   const canRecall = (batch.status === "sent" || batch.status === "partially_sent") && !hasPaidLevies;
 

@@ -3,14 +3,17 @@
 // values directly (server actions in funds.ts can re-export them with
 // async wrappers if needed).
 //
-// VIC nomenclature: the Owners Corporations Act 2006 recognises an
-// operating fund (day-to-day) and , for tier 1/2 OCs , a maintenance
-// fund. There is no "capital works fund" in Victoria , that's NSW.
+// Naming distinction (important):
+//   - "Admin Fund" is the FUND label (the default day-to-day fund).
+//   - "Operating Account" is the BANK ACCOUNT label that primarily holds
+//     the admin fund's money (and gets printed on every levy notice).
+// They are tightly linked but separate concepts: one fund kind, one bank
+// account type.
 
-export type FundKind = "operating" | "maintenance_plan" | "custom";
+export type FundKind = "admin" | "maintenance_plan" | "custom";
 
 export const FUND_KIND_LABEL: Record<FundKind, string> = {
-  operating: "Operating Fund",
+  admin: "Admin Fund",
   maintenance_plan: "Maintenance Plan Fund",
   custom: "Custom",
 };

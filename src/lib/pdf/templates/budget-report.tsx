@@ -46,7 +46,7 @@ function fmtPeriodLong(financialYear: string): string {
 }
 
 const FUND_SECTION_LABEL: Record<string, string> = {
-  operating: "Operating Fund",
+  operating: "Admin Fund",
   maintenance_plan: "Maintenance Plan Fund",
 };
 
@@ -78,19 +78,24 @@ export function BudgetReport({
   totalAmount,
   brandColors,
   lots,
+  fundLotLiabilities,
   billingCycle,
 }: BudgetReportProps) {
   const brand = brandColors?.primary ?? "#1e7ec0"; // azure default
   const brand2 = brandColors?.secondary ?? "#CFA753"; // gold default
 
-  // Group items by fund_type so multi-fund budgets render one section per
-  // fund (Operating, Maintenance Plan, …) with a separator between.
-  // Single-fund budgets still render with their fund name as the section
-  // title (no generic "Expenditure" header).
+  // Group items by fund key. Custom funds get their own bucket keyed by
+  // `custom:<fund_id>` so each fund renders its own section with the
+  // fund's actual name (e.g. "Driveway Fund") rather than the generic
+  // "Admin Fund" placeholder enum used for back-compat in the DB.
   const fundOrder = ["operating", "maintenance_plan"] as const;
+  const fundLabelByKey = new Map<string, string>();
+  fundLabelByKey.set("operating", "Admin Fund");
+  fundLabelByKey.set("maintenance_plan", "Maintenance Plan Fund");
   const grouped = new Map<string, { items: typeof items; total: number }>();
   for (const it of items) {
-    const key = it.fund_type ?? "_single";
+    const key = it.fund_id ? `custom:${it.fund_id}` : (it.fund_type ?? "_single");
+    if (it.fund_id && it.fund_name) fundLabelByKey.set(key, it.fund_name);
     const bucket = grouped.get(key) ?? { items: [], total: 0 };
     bucket.items.push(it);
     bucket.total += Number(it.amount);
@@ -330,7 +335,7 @@ export function BudgetReport({
             a levy-style contained table, then the fund's total. ── */}
         {sortedFunds.map((fundKey, idx) => {
           const bucket = grouped.get(fundKey)!;
-          const sectionTitle = FUND_SECTION_LABEL[fundKey] ?? fundLabel ?? "Expenditure";
+          const sectionTitle = fundLabelByKey.get(fundKey) ?? FUND_SECTION_LABEL[fundKey] ?? fundLabel ?? "Expenditure";
           const totalCopy = `Total ${sectionTitle}`;
           return (
             <View key={fundKey} style={s.fundBlock} wrap={false}>
@@ -370,23 +375,44 @@ export function BudgetReport({
           </>
         )}
 
-        {/* ── Lot contributions , per-lot share of the annual budget,
-            calculated in proportion to each lot's liability. Lot rows use
-            lot numbers only so the document stays accurate as ownership
-            changes. ── */}
-        {lots && lots.length > 0 ? (() => {
-          const liabSafe = (l: { liability: number }) => l.liability > 0 ? l.liability : 1;
-          const totalLiability = lots.reduce((s, l) => s + liabSafe(l), 0);
+        {/* ── Lot contributions , one section per fund, each calculated in
+            proportion to that fund's per-lot liability. Custom funds use
+            their own fund_lot_entitlements (a fund may exclude some lots
+            entirely); admin / maintenance funds use the OC's lot_liability. ── */}
+        {lots && lots.length > 0 ? sortedFunds.map((fundKey) => {
+          const bucket = grouped.get(fundKey)!;
+          const fundTitle = fundLabelByKey.get(fundKey) ?? FUND_SECTION_LABEL[fundKey] ?? "Fund";
           const periods = BILLING_PERIODS_PER_YEAR[billingCycle ?? ""] ?? 1;
           const periodLabel = PERIOD_LABEL[billingCycle ?? ""] ?? "Per period";
           const showPerPeriod = periods > 1;
 
-          const rows = lots.map((lot) => {
-            const liab = liabSafe(lot);
+          // Resolve per-lot liability for this fund:
+          //   - custom fund (custom:<id>): look up fund_lot_entitlements
+          //   - admin / maintenance: use OC-wide lots[].liability
+          let liabByLot: Map<number, number>;
+          if (fundKey.startsWith("custom:") && fundLotLiabilities) {
+            liabByLot = new Map(
+              fundLotLiabilities
+                .filter((e) => e.fund_key === fundKey)
+                .map((e) => [e.lot_number, e.liability]),
+            );
+          } else {
+            liabByLot = new Map(lots.map((l) => [l.lot_number, l.liability > 0 ? l.liability : 1]));
+          }
+
+          // Only render lots that belong to this fund (custom funds may
+          // exclude lots; admin/maintenance always include every lot).
+          const memberLots = lots.filter((l) => liabByLot.has(l.lot_number));
+          if (memberLots.length === 0) return null;
+          const totalLiability = memberLots.reduce((s, l) => s + (liabByLot.get(l.lot_number) ?? 0), 0);
+          if (totalLiability <= 0) return null;
+
+          const rows = memberLots.map((lot) => {
+            const liab = liabByLot.get(lot.lot_number) ?? 0;
             const proportion = liab / totalLiability;
-            const annual = Math.round(totalAmount * proportion * 100) / 100;
+            const annual = Math.round(bucket.total * proportion * 100) / 100;
             const perPeriod = Math.round((annual / periods) * 100) / 100;
-            return { lot, annual, perPeriod };
+            return { lot, liab, annual, perPeriod };
           });
 
           const lotFlex = showPerPeriod ? 2.4 : 3;
@@ -394,10 +420,10 @@ export function BudgetReport({
           const numFlex = 1.4;
 
           return (
-            <View style={s.lotsBlock}>
-              <Text style={s.lotsTitle}>Lot contributions</Text>
+            <View key={`contrib-${fundKey}`} style={s.lotsBlock} wrap={false}>
+              <Text style={s.lotsTitle}>{fundTitle} , Lot contributions</Text>
               <Text style={s.lotsSubtitle}>
-                Each lot&apos;s share of the annual budget, calculated in proportion to its liability.
+                Each member lot&apos;s share of the {fundTitle} annual total, in proportion to its liability for this fund.
               </Text>
 
               <View style={s.itemsTableHeader}>
@@ -414,9 +440,7 @@ export function BudgetReport({
                   <Text style={[s.itemsCell, { flex: lotFlex }]}>
                     {fmtLot(r.lot.lot_number, r.lot.unit_number)}
                   </Text>
-                  <Text style={[s.itemsCellRight, { flex: liabFlex }]}>
-                    {liabSafe(r.lot)}
-                  </Text>
+                  <Text style={[s.itemsCellRight, { flex: liabFlex }]}>{r.liab}</Text>
                   <Text style={[s.itemsCellRight, { flex: numFlex }]}>{fmt(r.annual)}</Text>
                   {showPerPeriod ? (
                     <Text style={[s.itemsCellRight, { flex: numFlex }]}>{fmt(r.perPeriod)}</Text>
@@ -438,7 +462,7 @@ export function BudgetReport({
               </View>
             </View>
           );
-        })() : null}
+        }) : null}
 
         {approvalNote ? (
           <View style={s.noteSection}>

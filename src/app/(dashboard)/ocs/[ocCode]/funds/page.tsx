@@ -12,7 +12,7 @@ import { EmptyState } from "@/components/shared/empty-state";
 import { getFunds } from "@/lib/actions/funds";
 
 const KIND_LABEL: Record<string, string> = {
-  operating: "Operating",
+  admin: "Admin",
   maintenance_plan: "Maintenance Plan",
   custom: "Custom",
 };

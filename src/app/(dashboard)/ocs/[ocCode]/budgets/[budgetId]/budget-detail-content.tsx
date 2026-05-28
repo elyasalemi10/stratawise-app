@@ -27,7 +27,7 @@ import { CreateAccountDrawer } from "@/components/chart-of-accounts/create-accou
 import { useSetBreadcrumb } from "@/lib/breadcrumb-context";
 
 const FUND_LABEL: Record<string, string> = {
-  operating: "Operating Fund",
+  operating: "Admin Fund",
   maintenance_plan: "Maintenance Plan Fund",
 };
 

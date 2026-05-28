@@ -25,14 +25,17 @@ export default async function CreateBudgetPage({
 
   if (!oc) redirect("/dashboard");
 
-  // Available fund types: prefer the new `funds` table (manager-created
-  // funds via /funds). If the OC hasn't created any yet, fall back to
-  // operating (always present), plus maintenance when the OC opted in.
-  const ocFundKinds = new Set(ocFunds.map((f) => f.kind));
-  const systemKinds = (["operating", "maintenance_plan"] as const).filter((k) => ocFundKinds.has(k));
-  const availableSystemFunds = systemKinds.length > 0
-    ? systemKinds
-    : (["operating", ...(hasMaintenanceFund ? ["maintenance_plan" as const] : [])] as ("operating" | "maintenance_plan")[]);
+  // Available fund types for the budget picker. The funds table tracks the
+  // FUND kind ('admin' | 'maintenance_plan' | 'custom'), but budgets.fund_type
+  // is the legacy enum ('operating' | 'maintenance_plan'). Map kind → enum
+  // when feeding the form. Operating (admin) is always present after OC
+  // creation (default Admin Fund); maintenance shows only when the OC
+  // opted into a maintenance fund.
+  const hasAdminFund = ocFunds.some((f) => f.kind === "admin");
+  const hasMaintenanceFundRow = ocFunds.some((f) => f.kind === "maintenance_plan") || hasMaintenanceFund;
+  const availableSystemFunds: ("operating" | "maintenance_plan")[] = [];
+  if (hasAdminFund || ocFunds.length === 0) availableSystemFunds.push("operating");
+  if (hasMaintenanceFundRow) availableSystemFunds.push("maintenance_plan");
 
   // Custom funds from /funds. Each gets passed to the form so the
   // multi-select shows them alongside system funds. Budget submit

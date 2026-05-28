@@ -281,7 +281,7 @@ export async function getOCCertificateData(ocId: string, lotId: string, applican
     feesPaidUpTo: feesPaidUpTo ?? "n/a",
     unpaidFeesTotal: Math.max(0, unpaidTotal),
     levies: (levies ?? []).map((l) => ({
-      fund: l.fund_type === "operating" ? "Operating Fund" : "Maintenance Plan Fund",
+      fund: l.fund_type === "operating" ? "Admin Fund" : "Maintenance Plan Fund",
       amount: Number(l.amount),
       period_start: l.period_start,
       period_end: l.period_end,

@@ -40,7 +40,7 @@ interface PreviewLot {
 }
 
 const FUND_LABEL: Record<FundType, string> = {
-  operating: "Operating Fund",
+  operating: "Admin Fund",
   maintenance_plan: "Maintenance Plan Fund",
 };
 
