@@ -213,6 +213,7 @@ export function GenerateLeviesForm({
   periodsByBudgetId,
   coaOptions,
   availableFunds,
+  preloadedLots,
 }: {
   ocId: string;
   budgets: BudgetWithItems[];
@@ -221,6 +222,16 @@ export function GenerateLeviesForm({
   periodsByBudgetId: Record<string, AvailablePeriod[]>;
   coaOptions: CoaOption[];
   availableFunds: FundType[];
+  /** OC lots + per-lot liability + owner name, pre-loaded server-side
+   *  so the special-levy "Calculate per lot levies" button can run
+   *  the apportionment math client-side without a round-trip. */
+  preloadedLots: Array<{
+    lot_id: string;
+    lot_number: number;
+    unit_number: string | null;
+    owner_display_name: string | null;
+    liability: number;
+  }>;
 }) {
   const ocCode = useOCCode();
   const router = useRouter();
@@ -428,6 +439,7 @@ export function GenerateLeviesForm({
         ocId={ocId}
         coaOptions={coaOptions}
         availableFunds={availableFunds}
+        preloadedLots={preloadedLots}
         onBack={() => setLevyKind(null)}
       />
     );

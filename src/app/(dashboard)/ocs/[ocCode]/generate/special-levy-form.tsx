@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useTransition } from "react";
+import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { Plus, X, Loader2, ChevronDown } from "lucide-react";
 import { toast } from "sonner";
@@ -19,10 +19,7 @@ import {
 import {
   Table, TableBody, TableCell, TableFooter, TableHead, TableHeader, TableRow,
 } from "@/components/ui/table";
-import {
-  previewSpecialLevy,
-  createLevyBatch,
-} from "@/lib/actions/levy";
+import { createLevyBatch } from "@/lib/actions/levy";
 import { useOCCode } from "@/lib/oc-context";
 
 interface CoaOption {
@@ -80,11 +77,23 @@ export function SpecialLevyForm({
   ocId,
   coaOptions,
   availableFunds,
+  preloadedLots,
   onBack,
 }: {
   ocId: string;
   coaOptions: CoaOption[];
   availableFunds: FundType[];
+  /** OC lots + liability + owner name, server-pre-loaded so the
+   *  "Calculate per lot levies" button runs the apportionment math
+   *  client-side and renders instantly. previewSpecialLevy is no
+   *  longer called from this flow. */
+  preloadedLots: Array<{
+    lot_id: string;
+    lot_number: number;
+    unit_number: string | null;
+    owner_display_name: string | null;
+    liability: number;
+  }>;
   onBack: () => void;
 }) {
   const ocCode = useOCCode();
@@ -106,7 +115,6 @@ export function SpecialLevyForm({
   // Accordion state , which lot's line-item table is open.
   const [expanded, setExpanded] = useState<Record<string, boolean>>({});
 
-  const [calculating, startCalculating] = useTransition();
   const [creating, setCreating] = useState(false);
 
   // Submit-only validation flags. Each field defaults to false; flips
@@ -144,7 +152,7 @@ export function SpecialLevyForm({
     setInvalid((v) => ({ ...v, items: false }));
   }
 
-  async function handleCalculate() {
+  function handleCalculate() {
     // Validate fields BEFORE firing , collect every problem so the
     // manager sees ALL red borders, not just the first.
     const problems: string[] = [];
@@ -155,10 +163,6 @@ export function SpecialLevyForm({
     if (!periodEnd) { next.periodEnd = true; problems.push("period end"); }
     if (periodStart && periodEnd && periodEnd < periodStart) { next.periodEnd = true; problems.push("period end can't be before period start"); }
     if (!dueDate) { next.dueDate = true; problems.push("due date"); }
-    // Every line item that has EITHER an amount OR a CoA must have
-    // BOTH. A row with $1,000 but no CoA is a bug magnet , the
-    // proportional split would silently exclude it. Block here so the
-    // manager has to either fill the row or remove it.
     const incompleteItems = items.some((i) => {
       const amt = parseFloat(i.amount) || 0;
       const hasCoa = !!i.coa_account_id;
@@ -180,15 +184,37 @@ export function SpecialLevyForm({
       return;
     }
 
-    startCalculating(async () => {
-      const res = await previewSpecialLevy(ocId, totalCharge);
-      if (res.error || !res.data) {
-        toast.error(res.error ?? "Could not apportion the special levy.");
-        return;
-      }
-      setLots(res.data.lots);
-      setExtras({});
+    // Client-side apportionment , no round-trip to previewSpecialLevy.
+    // Cents-precise: each lot rounded to 2dp, residual drift assigned
+    // to the lot with the largest liability so the sum ties out exactly.
+    if (preloadedLots.length === 0) {
+      toast.error("This OC has no lots.");
+      return;
+    }
+    const totalLiability = preloadedLots.reduce((s, l) => s + l.liability, 0);
+    const cents = Math.round(totalCharge * 100);
+    let assignedCents = 0;
+    const shares = preloadedLots.map((l) => {
+      const portion = Math.round((l.liability / totalLiability) * cents);
+      assignedCents += portion;
+      return { ...l, shareCents: portion };
     });
+    const drift = cents - assignedCents;
+    if (drift !== 0) {
+      let biggest = shares[0];
+      for (const s of shares) if (s.liability > biggest.liability) biggest = s;
+      biggest.shareCents += drift;
+    }
+    const apportioned: PreviewLot[] = shares.map((s) => ({
+      lot_id: s.lot_id,
+      lot_number: s.lot_number,
+      unit_number: s.unit_number,
+      owner_display_name: s.owner_display_name,
+      liability: s.liability,
+      share: s.shareCents / 100,
+    }));
+    setLots(apportioned);
+    setExtras({});
   }
 
   // ── Per-lot adjustments (extras) ───────────────────────────
@@ -299,7 +325,7 @@ export function SpecialLevyForm({
   // Lock every input + button once the manager fires either the
   // apportionment calc or the final create , no second click, no edit
   // mid-flight. Spinner stays on until navigation.
-  const locked = creating || calculating;
+  const locked = creating;
 
   return (
     <div className={`space-y-6 ${locked ? "pointer-events-none opacity-90" : ""}`}>
@@ -307,7 +333,7 @@ export function SpecialLevyForm({
         <CardContent className="pt-5 space-y-4">
           <div className="flex items-center justify-between">
             <span className="text-xs uppercase tracking-wide text-muted-foreground">Special levy</span>
-            <Button variant="secondary" size="sm" onClick={onBack} disabled={creating || calculating}>
+            <Button variant="secondary" size="sm" onClick={onBack} disabled={creating}>
               Change levy kind
             </Button>
           </div>
@@ -463,8 +489,7 @@ export function SpecialLevyForm({
           </div>
 
           <div className="flex justify-end">
-            <Button onClick={handleCalculate} disabled={calculating || totalCharge <= 0}>
-              {calculating && <Loader2 className="size-4 animate-spin" />}
+            <Button onClick={handleCalculate} disabled={totalCharge <= 0}>
               Calculate per lot levies
             </Button>
           </div>

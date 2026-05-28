@@ -25,6 +25,10 @@ export interface BudgetItemData {
    *  back-compat path leaves it null and inherits from the parent budget's
    *  legacy fund_type column. */
   fund_type?: BudgetFundType;
+  /** Custom-fund items set this in addition to fund_type=administrative
+   *  (placeholder for the NOT NULL enum). The new fund_id FK is the
+   *  source of truth for downstream code. */
+  fund_id?: string;
 }
 
 export interface BudgetWithItems {
@@ -192,8 +196,14 @@ export async function createBudget(
   ocId: string,
   data: {
     financial_year: string;
-    /** Every fund the budget touches. Required, must contain at least one. */
+    /** Every system fund the budget touches (admin / cw / mp). Required at
+     *  least one of fund_types OR fund_ids must be present. */
     fund_types: BudgetFundType[];
+    /** Custom funds (via the new funds table) the budget touches. Items
+     *  belonging to a custom fund set fund_id and leave fund_type at the
+     *  legacy "administrative" placeholder so the enum constraint stays
+     *  satisfied. */
+    fund_ids?: string[];
     items: BudgetItemData[];
     /** Optional free-text description shown in the budgets list table. */
     description?: string | null;
@@ -203,10 +213,10 @@ export async function createBudget(
   await requireOCAccess(ocId);
   const supabase = createServerClient();
 
-  if (!data.fund_types?.length) {
+  const customFundIds = Array.from(new Set(data.fund_ids ?? []));
+  if (!data.fund_types?.length && customFundIds.length === 0) {
     return { error: "Pick at least one fund." };
   }
-  // De-dupe + canonical order.
   const fundTypes = Array.from(new Set(data.fund_types));
 
   // One budget per OC per financial year now , funds are stored on items.
@@ -226,13 +236,22 @@ export async function createBudget(
   // (back-compat with the per-fund levy generation path); null otherwise.
   const legacyFundType = fundTypes.length === 1 ? fundTypes[0] : null;
 
+  // For budgets that ONLY touch a single custom fund (no system funds),
+  // the legacy fund_type column needs a value to satisfy old read paths
+  // , set it to administrative as a placeholder; downstream code now
+  // reads fund_id when present.
+  const headerFundId = customFundIds.length === 1 && fundTypes.length === 0
+    ? customFundIds[0]
+    : null;
+
   const { data: budget, error } = await supabase
     .from("budgets")
     .insert({
       oc_id: ocId,
       financial_year: data.financial_year,
-      fund_type: legacyFundType,
+      fund_type: legacyFundType ?? (customFundIds.length > 0 ? "administrative" : null),
       fund_types: fundTypes,
+      fund_id: headerFundId,
       total_amount: totalAmount,
       status: "draft",
       description: data.description?.trim() || null,
@@ -250,10 +269,12 @@ export async function createBudget(
       coa_account_id: item.coa_account_id ?? null,
       description: item.description || null,
       amount: item.amount,
-      // For multi-fund budgets every item MUST carry its own fund_type. When
-      // the caller omits it (back-compat single-fund path) fall back to the
-      // budget's only fund.
-      fund_type: item.fund_type ?? legacyFundType ?? null,
+      // For multi-fund budgets every item MUST carry its own fund_type. Custom
+      // funds set fund_id and leave fund_type at the legacy "administrative"
+      // placeholder so the NOT NULL enum constraint stays satisfied; reads
+      // prefer fund_id when present.
+      fund_type: item.fund_type ?? legacyFundType ?? (item.fund_id ? "administrative" : null),
+      fund_id: item.fund_id ?? null,
       sort_order: i,
     }));
 

@@ -2,10 +2,19 @@ import { getOC } from "@/lib/actions/oc";
 import { getOCBudgets } from "@/lib/actions/budget";
 import { getAvailablePeriods, type AvailablePeriod } from "@/lib/actions/levy";
 import { listChartOfAccounts } from "@/lib/actions/chart-of-accounts";
+import { createServerClient } from "@/lib/supabase";
 import { redirect } from "next/navigation";
 import { GenerateLeviesForm } from "./generate-levies-form";
 
 import { resolveOCFromCode } from "@/lib/oc-resolver";
+
+interface PreloadedLot {
+  lot_id: string;
+  lot_number: number;
+  unit_number: string | null;
+  owner_display_name: string | null;
+  liability: number;
+}
 
 export default async function GenerateLeviesPage({
   params,
@@ -64,6 +73,50 @@ export default async function GenerateLeviesPage({
   }
   const availableFunds = Array.from(fundsSet) as Array<"administrative" | "capital_works" | "maintenance_plan">;
 
+  // Pre-load OC lots + liability so the "Calculate per lot levies"
+  // button in the special-levy flow is instant , the form does the
+  // apportionment client-side instead of round-tripping to
+  // previewSpecialLevy. Owner names included so the per-lot table
+  // can render the "Lot 4, Jane Doe" header right away.
+  const supabase = createServerClient();
+  const { data: rawLots } = await supabase
+    .from("lots")
+    .select("id, lot_number, unit_number, lot_liability, lot_entitlement")
+    .eq("oc_id", ocId)
+    .order("lot_number");
+  const lotIds = (rawLots ?? []).map((l) => l.id);
+  let ownersByLot = new Map<string, string>();
+  if (lotIds.length > 0) {
+    const { data: ownerRows } = await supabase
+      .from("lot_owners")
+      .select("lot_id, name, email")
+      .in("lot_id", lotIds);
+    for (const row of (ownerRows ?? []) as Array<{ lot_id: string; name: string | null; email: string | null }>) {
+      if (!ownersByLot.has(row.lot_id)) {
+        const label = (row.name ?? row.email ?? "").trim();
+        if (label) ownersByLot.set(row.lot_id, label);
+      }
+    }
+  }
+  const preloadedLots: PreloadedLot[] = ((rawLots ?? []) as Array<{
+    id: string;
+    lot_number: number;
+    unit_number: string | null;
+    lot_liability: number | null;
+    lot_entitlement: number | null;
+  }>).map((l) => ({
+    lot_id: l.id,
+    lot_number: l.lot_number,
+    unit_number: l.unit_number,
+    owner_display_name: ownersByLot.get(l.id) ?? null,
+    liability:
+      Number(l.lot_liability) > 0
+        ? Number(l.lot_liability)
+        : Number(l.lot_entitlement) > 0
+        ? Number(l.lot_entitlement)
+        : 1,
+  }));
+
   return (
     <GenerateLeviesForm
       ocId={ocId}
@@ -71,6 +124,7 @@ export default async function GenerateLeviesPage({
       periodsByBudgetId={periodsByBudgetId}
       coaOptions={adjustmentCoaOptions}
       availableFunds={availableFunds}
+      preloadedLots={preloadedLots}
     />
   );
 }

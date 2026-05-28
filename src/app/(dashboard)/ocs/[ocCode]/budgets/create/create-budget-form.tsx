@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useRef, useEffect, useCallback } from "react";
+import { useState, useRef, useEffect, useCallback, useMemo } from "react";
 import { useRouter } from "next/navigation";
 import { Plus, X, Loader2 } from "lucide-react";
 import { toast } from "sonner";
@@ -29,11 +29,22 @@ const formatCurrency = (n: number) =>
 
 type FundType = "administrative" | "capital_works" | "maintenance_plan";
 
-const FUND_OPTIONS: { value: FundType; label: string }[] = [
-  { value: "administrative", label: "Administrative Fund" },
-  { value: "capital_works", label: "Capital Works Fund" },
-  { value: "maintenance_plan", label: "Maintenance Plan Fund" },
-];
+// FundKey is the unified identifier used in component state. System funds
+// are keyed by their enum string; custom funds use the `custom:<uuid>`
+// form so a single Record can hold both line-item sets without collisions.
+type FundKey = string;
+
+const SYSTEM_FUND_LABELS: Record<FundType, string> = {
+  administrative: "Administrative Fund",
+  capital_works: "Capital Works Fund",
+  maintenance_plan: "Maintenance Plan Fund",
+};
+
+const SYSTEM_FUND_VALUES: FundType[] = ["administrative", "capital_works", "maintenance_plan"];
+
+const isCustomKey = (k: FundKey) => k.startsWith("custom:");
+const customIdOf = (k: FundKey) => k.slice("custom:".length);
+const customKey = (id: string) => `custom:${id}`;
 
 // ─── Account Combobox ──────────────────────────────────────
 // Search + pick from the firm-wide chart of accounts. "Add new account…"
@@ -51,8 +62,6 @@ function AccountCombobox({
   usedAccountIds: string[];
   onSelect: (account: CoaAccount) => void;
   onCancel: () => void;
-  /** Caller opens the create-account drawer. The typed query is forwarded so
-   *  the drawer can prefill the name field with what the manager was typing. */
   onRequestCreate: (seedName: string) => void;
 }) {
   const [query, setQuery] = useState("");
@@ -143,14 +152,6 @@ interface BudgetItem {
   amount: string;
 }
 
-// Per-fund line items, keyed by FundType. A budget is created per fund at
-// submit-time, so each selected fund's items are tracked independently.
-type FundItemsMap = Record<FundType, BudgetItem[]>;
-
-function emptyItems(): FundItemsMap {
-  return { administrative: [], capital_works: [], maintenance_plan: [] };
-}
-
 export function CreateBudgetForm({
   ocId,
   accounts,
@@ -163,14 +164,11 @@ export function CreateBudgetForm({
   accounts: CoaAccount[];
   fyOptions: string[];
   defaultFinancialYear: string;
-  /** Fund types the OC actually has on /funds. Filters which options
-   *  appear in the multi-select , an OC with only an admin fund won't
-   *  see Capital Works or Maintenance Plan as choices. */
+  /** System fund types the OC actually has on /funds. Filters which
+   *  system options appear in the multi-select. */
   availableFunds: FundType[];
-  /** Custom funds created via /funds. Shown in the picker so the
-   *  manager sees they exist. Selection support for custom funds in
-   *  budgets is on the schema (budgets.fund_id) but not wired through
-   *  the line-item flow yet , marked "Coming soon" until that lands. */
+  /** Custom funds created via /funds. Fully selectable and budgetable ,
+   *  items get a fund_id on submit instead of a fund_type. */
   customFunds?: Array<{ id: string; name: string }>;
 }) {
   const ocCode = useOCCode();
@@ -178,110 +176,144 @@ export function CreateBudgetForm({
   const [allAccounts, setAllAccounts] = useState<CoaAccount[]>(accounts);
   const [financialYear, setFinancialYear] = useState(defaultFinancialYear);
 
-  const fundOptions = FUND_OPTIONS.filter((o) => availableFunds.includes(o.value));
-  // Default to the first available fund (admin if present, otherwise
-  // whatever the OC has). Empty array if the OC has zero funds yet ,
-  // which the form handles below with a helpful empty state.
-  const defaultFund: FundType = (availableFunds[0] ?? "administrative") as FundType;
-  const [selectedFunds, setSelectedFunds] = useState<FundType[]>(
-    availableFunds.length > 0 ? [defaultFund] : [],
+  // All fund options for the picker, system first then custom.
+  const fundOptionList = useMemo(() => {
+    const sys = SYSTEM_FUND_VALUES.filter((v) => availableFunds.includes(v)).map((v) => ({
+      key: v as FundKey,
+      label: SYSTEM_FUND_LABELS[v],
+    }));
+    const custom = customFunds.map((cf) => ({ key: customKey(cf.id), label: cf.name }));
+    return [...sys, ...custom];
+  }, [availableFunds, customFunds]);
+
+  const customFundNameById = useMemo(
+    () => new Map(customFunds.map((cf) => [cf.id, cf.name])),
+    [customFunds],
   );
-  const [activeTab, setActiveTab] = useState<FundType>(defaultFund);
-  const [itemsByFund, setItemsByFund] = useState<FundItemsMap>(emptyItems);
-  const [comboOpen, setComboOpen] = useState<Record<FundType, boolean>>({
-    administrative: true, capital_works: true, maintenance_plan: true,
+
+  const defaultKey: FundKey = (fundOptionList[0]?.key ?? "administrative") as FundKey;
+
+  const [selectedKeys, setSelectedKeys] = useState<FundKey[]>(
+    fundOptionList.length > 0 ? [defaultKey] : [],
+  );
+  const [activeTab, setActiveTab] = useState<FundKey>(defaultKey);
+  const [itemsByFund, setItemsByFund] = useState<Record<FundKey, BudgetItem[]>>({
+    [defaultKey]: [],
+  });
+  const [comboOpen, setComboOpen] = useState<Record<FundKey, boolean>>({
+    [defaultKey]: true,
   });
   const [pending, setPending] = useState(false);
 
   const [drawerOpen, setDrawerOpen] = useState(false);
   const [drawerSeedName, setDrawerSeedName] = useState("");
-  const [drawerFund, setDrawerFund] = useState<FundType>(defaultFund);
+  const [drawerFund, setDrawerFund] = useState<FundKey>(defaultKey);
 
   // Keep the active tab pointing at a selected fund. If the manager unticks
   // the active fund, jump to the first one that's still selected.
   useEffect(() => {
-    if (!selectedFunds.includes(activeTab) && selectedFunds.length > 0) {
-      setActiveTab(selectedFunds[0]);
+    if (!selectedKeys.includes(activeTab) && selectedKeys.length > 0) {
+      setActiveTab(selectedKeys[0]);
     }
-  }, [selectedFunds, activeTab]);
+  }, [selectedKeys, activeTab]);
 
   const accountById = new Map(allAccounts.map((a) => [a.id, a]));
 
-  function toggleFund(fund: FundType, on: boolean) {
-    setSelectedFunds((prev) => {
-      if (on) return prev.includes(fund) ? prev : [...prev, fund];
-      return prev.filter((f) => f !== fund);
+  function labelFor(key: FundKey): string {
+    if (isCustomKey(key)) return customFundNameById.get(customIdOf(key)) ?? "Custom fund";
+    return SYSTEM_FUND_LABELS[key as FundType] ?? key;
+  }
+
+  function toggleFund(key: FundKey, on: boolean) {
+    setSelectedKeys((prev) => {
+      if (on) return prev.includes(key) ? prev : [...prev, key];
+      return prev.filter((f) => f !== key);
     });
-    if (!on) {
-      // Drop that fund's items so unticked + reticked starts clean.
-      setItemsByFund((prev) => ({ ...prev, [fund]: [] }));
-      setComboOpen((prev) => ({ ...prev, [fund]: true }));
+    if (on) {
+      setItemsByFund((prev) => (prev[key] ? prev : { ...prev, [key]: [] }));
+      setComboOpen((prev) => (key in prev ? prev : { ...prev, [key]: true }));
+    } else {
+      setItemsByFund((prev) => ({ ...prev, [key]: [] }));
+      setComboOpen((prev) => ({ ...prev, [key]: true }));
     }
   }
 
-  const addItem = useCallback((fund: FundType, account: CoaAccount) => {
+  const addItem = useCallback((fund: FundKey, account: CoaAccount) => {
     setItemsByFund((prev) => ({
       ...prev,
-      [fund]: [...prev[fund], { coa_account_id: account.id, description: account.name, amount: "" }],
+      [fund]: [...(prev[fund] ?? []), { coa_account_id: account.id, description: account.name, amount: "" }],
     }));
     setComboOpen((prev) => ({ ...prev, [fund]: false }));
   }, []);
 
-  function updateAmount(fund: FundType, index: number, value: string) {
+  function updateAmount(fund: FundKey, index: number, value: string) {
     setItemsByFund((prev) => ({
       ...prev,
-      [fund]: prev[fund].map((item, i) => (i === index ? { ...item, amount: value } : item)),
+      [fund]: (prev[fund] ?? []).map((item, i) => (i === index ? { ...item, amount: value } : item)),
     }));
   }
 
-  function removeItem(fund: FundType, index: number) {
+  function removeItem(fund: FundKey, index: number) {
     setItemsByFund((prev) => ({
       ...prev,
-      [fund]: prev[fund].filter((_, i) => i !== index),
+      [fund]: (prev[fund] ?? []).filter((_, i) => i !== index),
     }));
   }
 
-  function fundTotal(fund: FundType): number {
-    return itemsByFund[fund].reduce((sum, item) => sum + (parseFloat(item.amount) || 0), 0);
+  function fundTotal(fund: FundKey): number {
+    return (itemsByFund[fund] ?? []).reduce((sum, item) => sum + (parseFloat(item.amount) || 0), 0);
   }
 
   async function handleSubmit() {
-    if (selectedFunds.length === 0) {
+    if (selectedKeys.length === 0) {
       toast.error("Pick at least one fund.");
       return;
     }
-    // Validate every selected fund has at least one positive line item.
-    const empty = selectedFunds.filter(
-      (f) => itemsByFund[f].every((i) => (parseFloat(i.amount) || 0) <= 0),
+    const empty = selectedKeys.filter(
+      (f) => (itemsByFund[f] ?? []).every((i) => (parseFloat(i.amount) || 0) <= 0),
     );
     if (empty.length > 0) {
-      const labels = empty.map((f) => FUND_OPTIONS.find((o) => o.value === f)?.label).join(", ");
+      const labels = empty.map(labelFor).join(", ");
       toast.error(`Item amounts can't be 0. Set an amount on every line in: ${labels}.`);
       return;
     }
 
     setPending(true);
-    // ONE budget per OC + financial year, regardless of how many funds the
-    // manager ticked. Each item carries its own fund_type so the per-fund
-    // levy generation path can still filter when needed.
-    const allItems: { coa_account_id: string | null; description: string; amount: number; fund_type: FundType }[] = [];
-    for (const fund of selectedFunds) {
-      const items = itemsByFund[fund]
+    const allItems: {
+      coa_account_id: string | null;
+      description: string;
+      amount: number;
+      fund_type?: FundType;
+      fund_id?: string;
+    }[] = [];
+    for (const key of selectedKeys) {
+      const items = (itemsByFund[key] ?? [])
         .map((i) => ({ ...i, amount: parseFloat(i.amount) || 0 }))
         .filter((i) => i.amount > 0);
+      const isCustom = isCustomKey(key);
       for (const it of items) {
         allItems.push({
           coa_account_id: it.coa_account_id,
           description: it.description,
           amount: it.amount,
-          fund_type: fund,
+          ...(isCustom
+            ? { fund_id: customIdOf(key) }
+            : { fund_type: key as FundType }),
         });
       }
     }
 
+    const selectedSystemFunds = selectedKeys
+      .filter((k) => !isCustomKey(k))
+      .map((k) => k as FundType);
+    const selectedCustomFundIds = selectedKeys
+      .filter(isCustomKey)
+      .map(customIdOf);
+
     const result = await createBudget(ocId, {
       financial_year: financialYear,
-      fund_types: selectedFunds,
+      fund_types: selectedSystemFunds,
+      fund_ids: selectedCustomFundIds,
       items: allItems,
     });
 
@@ -316,10 +348,7 @@ export function CreateBudgetForm({
 
           <div className="space-y-2">
             <Label>Funds</Label>
-            {fundOptions.length === 0 ? (
-              // No funds exist yet on the OC. Without something to bill
-              // against we can't render the line-item tabs , send the
-              // manager to /funds/create to set one up first.
+            {fundOptionList.length === 0 ? (
               <div className="rounded-md border border-border bg-muted/40 px-4 py-4 text-sm text-foreground">
                 <p>This OC has no funds yet. Create at least one fund (Administrative, Capital Works, Maintenance Plan, or a custom one) before you can budget for it.</p>
                 <a
@@ -331,39 +360,22 @@ export function CreateBudgetForm({
               </div>
             ) : (
               <div className="flex flex-wrap gap-3">
-                {fundOptions.map((opt) => {
-                  const checked = selectedFunds.includes(opt.value);
+                {fundOptionList.map((opt) => {
+                  const checked = selectedKeys.includes(opt.key);
                   return (
-                    <div key={opt.value} className="flex items-center gap-2 rounded-md border border-border bg-card px-3 py-2">
+                    <div key={opt.key} className="flex items-center gap-2 rounded-md border border-border bg-card px-3 py-2">
                       <Checkbox
-                        id={`fund-${opt.value}`}
+                        id={`fund-${opt.key}`}
                         checked={checked}
-                        onCheckedChange={(v) => toggleFund(opt.value, v === true)}
+                        onCheckedChange={(v) => toggleFund(opt.key, v === true)}
                         className="bg-card"
                       />
-                      <Label htmlFor={`fund-${opt.value}`} className="cursor-pointer text-sm font-normal">
+                      <Label htmlFor={`fund-${opt.key}`} className="cursor-pointer text-sm font-normal">
                         {opt.label}
                       </Label>
                     </div>
                   );
                 })}
-                {/* Custom funds the OC has created via /funds. Shown
-                    so the manager sees they exist; selection is
-                    disabled until per-line-item fund_id wiring lands
-                    (the schema's already there). */}
-                {customFunds.map((cf) => (
-                  <div
-                    key={cf.id}
-                    className="flex items-center gap-2 rounded-md border border-dashed border-border bg-muted/40 px-3 py-2 opacity-70"
-                    title="Custom fund budgeting coming soon , use a special levy for one-off raises against this fund."
-                  >
-                    <Checkbox id={`fund-${cf.id}`} checked={false} disabled />
-                    <Label htmlFor={`fund-${cf.id}`} className="text-sm font-normal text-muted-foreground">
-                      {cf.name}
-                      <span className="ml-2 text-[10px] uppercase tracking-wide">soon</span>
-                    </Label>
-                  </div>
-                ))}
               </div>
             )}
           </div>
@@ -371,27 +383,24 @@ export function CreateBudgetForm({
       </Card>
 
       {/* One tab per selected fund. Line items are scoped per-fund. */}
-      {selectedFunds.length > 0 && (
+      {selectedKeys.length > 0 && (
         <Card>
           <CardContent className="pt-5">
-            <Tabs value={activeTab} onValueChange={(v) => setActiveTab((v as FundType) ?? selectedFunds[0])}>
+            <Tabs value={activeTab} onValueChange={(v) => setActiveTab((v as FundKey) ?? selectedKeys[0])}>
               <TabsList variant="line" className="border-b border-border">
-                {selectedFunds.map((fund) => {
-                  const label = FUND_OPTIONS.find((o) => o.value === fund)?.label ?? fund;
-                  return (
-                    <TabsTrigger key={fund} value={fund}>
-                      {label}
-                    </TabsTrigger>
-                  );
-                })}
+                {selectedKeys.map((key) => (
+                  <TabsTrigger key={key} value={key}>
+                    {labelFor(key)}
+                  </TabsTrigger>
+                ))}
               </TabsList>
 
-              {selectedFunds.map((fund) => {
-                const items = itemsByFund[fund];
-                const total = fundTotal(fund);
+              {selectedKeys.map((key) => {
+                const items = itemsByFund[key] ?? [];
+                const total = fundTotal(key);
                 const usedIds = items.map((i) => i.coa_account_id);
                 return (
-                  <TabsContent key={fund} value={fund} className="pt-5">
+                  <TabsContent key={key} value={key} className="pt-5">
                     {items.length > 0 && (
                       <div className="overflow-hidden rounded-lg border border-border">
                         <Table variant="bordered" className="text-sm">
@@ -413,7 +422,7 @@ export function CreateBudgetForm({
                                   <TableCell>
                                     <NumberInput
                                       value={item.amount}
-                                      onChange={(v) => updateAmount(fund, i, v)}
+                                      onChange={(v) => updateAmount(key, i, v)}
                                       thousandsSeparator
                                       prefix="$"
                                       placeholder="Annual amount"
@@ -422,7 +431,7 @@ export function CreateBudgetForm({
                                   <TableCell>
                                     <button
                                       type="button"
-                                      onClick={() => removeItem(fund, i)}
+                                      onClick={() => removeItem(key, i)}
                                       className="text-muted-foreground hover:text-destructive cursor-pointer"
                                       aria-label="Remove item"
                                     >
@@ -435,11 +444,6 @@ export function CreateBudgetForm({
                           </TableBody>
                           <TableFooter>
                             <TableRow>
-                              {/* Total label spans the left columns so it sits
-                                  flush-left under the Code column; the dollar
-                                  value gets a little extra indent so it
-                                  visually separates from the line-item amounts
-                                  above. */}
                               <TableCell colSpan={2} className="text-sm font-semibold text-foreground">Total annual</TableCell>
                               <TableCell className="text-sm font-bold text-foreground tabular-nums pl-6">{formatCurrency(total)}</TableCell>
                               <TableCell />
@@ -450,15 +454,15 @@ export function CreateBudgetForm({
                     )}
 
                     <div className="mt-3">
-                      {comboOpen[fund] ? (
+                      {comboOpen[key] ? (
                         <AccountCombobox
                           accounts={allAccounts}
                           usedAccountIds={usedIds}
-                          onSelect={(account) => addItem(fund, account)}
-                          onCancel={() => setComboOpen((prev) => ({ ...prev, [fund]: false }))}
+                          onSelect={(account) => addItem(key, account)}
+                          onCancel={() => setComboOpen((prev) => ({ ...prev, [key]: false }))}
                           onRequestCreate={(seedName) => {
                             setDrawerSeedName(seedName);
-                            setDrawerFund(fund);
+                            setDrawerFund(key);
                             setDrawerOpen(true);
                           }}
                         />
@@ -468,18 +472,16 @@ export function CreateBudgetForm({
                             type="button"
                             variant="secondary"
                             size="sm"
-                            onClick={() => setComboOpen((prev) => ({ ...prev, [fund]: true }))}
+                            onClick={() => setComboOpen((prev) => ({ ...prev, [key]: true }))}
                           >
                             <Plus className="mr-1.5 h-3.5 w-3.5" />
                             Add item
                           </Button>
-                          {/* Gold inline link: bypass the combobox and go straight
-                              to "create a brand-new account" in the firm CoA. */}
                           <button
                             type="button"
                             onClick={() => {
                               setDrawerSeedName("");
-                              setDrawerFund(fund);
+                              setDrawerFund(key);
                               setDrawerOpen(true);
                             }}
                             className="text-sm font-medium text-[color:var(--brand-gold)] hover:underline cursor-pointer"
@@ -501,7 +503,7 @@ export function CreateBudgetForm({
       <div className="flex justify-end">
         <Button
           onClick={handleSubmit}
-          disabled={pending || selectedFunds.length === 0 || selectedFunds.every((f) => fundTotal(f) === 0)}
+          disabled={pending || selectedKeys.length === 0 || selectedKeys.every((f) => fundTotal(f) === 0)}
         >
           {pending && <Loader2 className="size-4 animate-spin" />}
           Create budget
