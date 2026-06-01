@@ -175,6 +175,7 @@ function getOCNavGroups(ocCode: string, isLotOwner: boolean) {
       items: [
         { href: `${base}/funds`, label: "Funds", icon: Wallet },
         { href: `${base}/bank-accounts`, label: "Bank accounts", icon: Landmark },
+        { href: `${base}/reconciliation`, label: "Reconciliation", icon: GitMerge },
       ],
     },
     {

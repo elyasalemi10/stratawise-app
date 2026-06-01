@@ -3,13 +3,15 @@
 import { requireCompanyRole, requireOCAccess } from "@/lib/auth";
 import { createServerClient } from "@/lib/supabase";
 import { revalidatePath } from "next/cache";
+import { autoMatchBankTransactions } from "@/lib/banking/auto-match";
 
 /**
- * Persist a batch of parsed CSV rows as bank_transactions. Imports are
- * append-only (no dedup) , managers re-upload whenever they want a
- * fresh snapshot, and may end up with duplicates if they import the
- * same file twice. Acceptable trade for the simplest UX. No balance
- * tracking , the import is for transaction history visibility only.
+ * Persist a batch of parsed CSV rows as bank_transactions, then run the
+ * two-strategy auto-matcher (DRN → owner reference) on every newly-inserted
+ * credit-direction row. Imports themselves stay append-only (no dedup) —
+ * managers re-upload whenever they want a fresh snapshot. Auto-matched rows
+ * land at match_status='auto_matched'; everything else stays 'unmatched' and
+ * surfaces on the reconciliation queue.
  */
 export async function importBankTransactions(
   ocId: string,
@@ -19,8 +21,9 @@ export async function importBankTransactions(
     description: string;
     amount: number | null;
     balance: number | null;
+    reference: string | null;
   }>,
-): Promise<{ inserted?: number; error?: string }> {
+): Promise<{ inserted?: number; auto_matched?: number; error?: string }> {
   const profile = await requireCompanyRole();
   await requireOCAccess(ocId);
   const supabase = createServerClient();
@@ -36,16 +39,33 @@ export async function importBankTransactions(
   const inserts = rows.map((r) => ({
     oc_id: ocId,
     bank_account_id: accountId,
+    source: "csv_import" as const,
     transaction_date: r.date,
     description: (r.description ?? "").slice(0, 1000),
     amount: r.amount,
     balance: r.balance,
+    deft_reference_number: r.reference ? r.reference.slice(0, 64) : null,
     imported_by: profile.id,
   }));
 
+  let insertedIds: string[] = [];
   if (inserts.length > 0) {
-    const { error } = await supabase.from("bank_transactions").insert(inserts);
+    const { data, error } = await supabase
+      .from("bank_transactions")
+      .insert(inserts)
+      .select("id");
     if (error) return { error: error.message };
+    insertedIds = (data ?? []).map((r) => r.id as string);
+  }
+
+  let autoMatched = 0;
+  if (insertedIds.length > 0) {
+    const result = await autoMatchBankTransactions(
+      ocId,
+      insertedIds,
+      profile.id,
+    );
+    autoMatched = result.matched;
   }
 
   await supabase.from("audit_log").insert({
@@ -54,11 +74,15 @@ export async function importBankTransactions(
     action: "import",
     entity_type: "bank_account",
     entity_id: accountId,
-    after_state: { transactions_imported: inserts.length },
+    after_state: {
+      transactions_imported: inserts.length,
+      auto_matched: autoMatched,
+    },
   });
 
   revalidatePath("/ocs/[ocCode]/bank-accounts", "page");
-  return { inserted: inserts.length };
+  revalidatePath("/ocs/[ocCode]/reconciliation", "page");
+  return { inserted: inserts.length, auto_matched: autoMatched };
 }
 
 /**

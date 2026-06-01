@@ -59,7 +59,7 @@ function detectHeader(firstRow: string[]): boolean {
   return numericish < Math.ceil(firstRow.length / 2);
 }
 
-type ColumnRole = "date" | "description" | "amount" | "balance" | "credit" | "debit" | "ignore";
+type ColumnRole = "date" | "description" | "amount" | "balance" | "credit" | "debit" | "reference" | "ignore";
 
 function autoDetect(headerCells: string[] | null, dataRow: string[]): Record<number, ColumnRole> {
   const map: Record<number, ColumnRole> = {};
@@ -71,7 +71,8 @@ function autoDetect(headerCells: string[] | null, dataRow: string[]): Record<num
       else if (/credit/.test(lower)) map[i] = "credit";
       else if (/debit/.test(lower)) map[i] = "debit";
       else if (/amount/.test(lower)) map[i] = "amount";
-      else if (/description|narration|details|transaction|narrative|reference/.test(lower)) map[i] = "description";
+      else if (/\bdrn\b|deft.?ref|reference (?:number|no)|payer (?:ref|reference)/.test(lower)) map[i] = "reference";
+      else if (/description|narration|details|transaction|narrative/.test(lower)) map[i] = "description";
       else map[i] = "ignore";
     });
     return map;
@@ -107,6 +108,7 @@ interface ParsedTxn {
   description: string;
   amount: number | null;
   balance: number | null;
+  reference: string | null;
 }
 
 function num(s: string): number | null {
@@ -139,6 +141,7 @@ function mapRows(dataRows: string[][], mapping: Record<number, ColumnRole>): Par
   const balanceI = findIdx("balance");
   const creditI = findIdx("credit");
   const debitI = findIdx("debit");
+  const refI = findIdx("reference");
 
   return dataRows.map((r) => {
     let amount: number | null = null;
@@ -148,11 +151,13 @@ function mapRows(dataRows: string[][], mapping: Record<number, ColumnRole>): Par
       const d = debitI !== undefined ? (num(r[Number(debitI)] ?? "") ?? 0) : 0;
       amount = c - d;
     }
+    const rawRef = refI !== undefined ? (r[Number(refI)] ?? "").trim() : "";
     return {
       date: dateI !== undefined ? isoDate(r[Number(dateI)] ?? "") : null,
       description: descI !== undefined ? (r[Number(descI)] ?? "") : "",
       amount,
       balance: balanceI !== undefined ? num(r[Number(balanceI)] ?? "") : null,
+      reference: rawRef || null,
     };
   });
 }
@@ -313,6 +318,7 @@ export function ImportCsvDialog({
                             <SelectItem value="credit">Credit</SelectItem>
                             <SelectItem value="debit">Debit</SelectItem>
                             <SelectItem value="balance">Balance</SelectItem>
+                            <SelectItem value="reference">Reference / DRN</SelectItem>
                             <SelectItem value="ignore">Ignore</SelectItem>
                           </SelectContent>
                         </Select>
