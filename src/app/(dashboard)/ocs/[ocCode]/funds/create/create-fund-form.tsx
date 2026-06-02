@@ -108,6 +108,7 @@ export function CreateFundForm({
 
   const [kind, setKind] = useState<FundKind>(kindChoices[0]?.value ?? "custom");
   const [customName, setCustomName] = useState("");
+  const [customNameInvalid, setCustomNameInvalid] = useState(false);
 
   const [entitlements, setEntitlements] = useState<Record<string, LotEntitlement>>(() =>
     Object.fromEntries(
@@ -140,12 +141,16 @@ export function CreateFundForm({
     setStep("lots");
   }
   function goNextFromLots() {
+    const problems: string[] = [];
     if (kind === "custom" && !customName.trim()) {
-      toast.error("Name this fund before continuing.");
-      return;
+      problems.push("Name this fund before continuing.");
+      setCustomNameInvalid(true);
     }
     if (includedCount === 0) {
-      toast.error("Tick at least one lot for this fund.");
+      problems.push("Tick at least one lot for this fund.");
+    }
+    if (problems.length > 0) {
+      toast.error(problems.length === 1 ? problems[0] : "Fix the highlighted fields.");
       return;
     }
     setStep("bankChoice");
@@ -274,7 +279,11 @@ export function CreateFundForm({
                 <Label>Fund name <span className="text-destructive">*</span></Label>
                 <Input
                   value={customName}
-                  onChange={(e) => setCustomName(e.target.value)}
+                  onChange={(e) => {
+                    setCustomName(e.target.value);
+                    if (customNameInvalid) setCustomNameInvalid(false);
+                  }}
+                  aria-invalid={customNameInvalid || undefined}
                   placeholder="Fund name"
                 />
               </div>

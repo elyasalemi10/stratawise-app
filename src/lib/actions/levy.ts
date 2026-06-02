@@ -803,10 +803,16 @@ export async function createLevyBatch(
   // Build payment instructions (EFT from oc, no BPAY if not configured)
   const eftAccount = await resolveReceivingEft(supabase, ocId, oc);
 
-  // Step 1: Create all levy notices in DB (sequential for reference numbers)
+  // Step 1: Create all levy notices in DB (sequential for reference numbers).
+  // Skip lots that owe $0 for this period — there's nothing to bill so we
+  // don't generate a notice / PDF / ledger debit. They still appear in the
+  // breakdown UI; we just don't write a row for them. The defensive
+  // count-check below uses billableLots so a fully-zero allocation doesn't
+  // get flagged as a partial insert.
+  const billableLots = data.lots.filter((l) => Number(l.amount) > 0);
   const createdLevies: { id: string; lotId: string; refNum: string; items: typeof data.lots[0]["items"] }[] = [];
 
-  for (const lot of data.lots) {
+  for (const lot of billableLots) {
     // Special levies use their own SLEV-NNNN per-OC sequence (the SLEV
     // counter lives on owners_corporations.next_special_levy_number).
     // Distinct prefix keeps ledger + audit lines obviously different
@@ -875,9 +881,10 @@ export async function createLevyBatch(
     createdLevies.push({ id: levy.id, lotId: lot.lot_id, refNum, items: lot.items });
   }
 
-  // Defensive: every input lot must have produced a notice. If not, some
+  // Defensive: every billable lot must have produced a notice. If not, some
   // step silently failed , surface loudly before we write ledger debits.
-  if (createdLevies.length !== data.lots.length) {
+  // ($0 lots are intentionally excluded from billableLots above.)
+  if (createdLevies.length !== billableLots.length) {
     await supabase.from("audit_log").insert({
       profile_id: profile.id,
       oc_id: ocId,
@@ -886,15 +893,15 @@ export async function createLevyBatch(
       entity_id: batch.id,
       metadata: {
         severity: "critical",
-        expected_lot_count: data.lots.length,
+        expected_lot_count: billableLots.length,
         actual_notice_count: createdLevies.length,
         message:
-          "Per-lot notice insert loop produced fewer notices than lots supplied. Ledger debits not written. Batch left in draft for manual inspection.",
+          "Per-lot notice insert loop produced fewer notices than billable lots. Ledger debits not written. Batch left in draft for manual inspection.",
       },
     });
     return {
       error:
-        `Levy batch partially inserted (${createdLevies.length}/${data.lots.length} notices). ` +
+        `Levy batch partially inserted (${createdLevies.length}/${billableLots.length} notices). ` +
         `Ledger debits not written. Batch id ${batch.id} left in draft for manual review.`,
     };
   }
@@ -964,7 +971,9 @@ export async function createLevyBatch(
     after_state: {
       period_label: data.period_label,
       total_amount: totalAmount,
-      levy_count: data.lots.length,
+      levy_count: createdLevies.length,
+      lots_supplied: data.lots.length,
+      lots_skipped_zero_amount: data.lots.length - billableLots.length,
     },
   });
 

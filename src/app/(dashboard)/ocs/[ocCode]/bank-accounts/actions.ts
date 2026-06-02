@@ -60,12 +60,19 @@ export async function importBankTransactions(
 
   let autoMatched = 0;
   if (insertedIds.length > 0) {
-    const result = await autoMatchBankTransactions(
-      ocId,
-      insertedIds,
-      profile.id,
-    );
-    autoMatched = result.matched;
+    // Auto-match is best-effort: the underlying RPC depends on tables
+    // (reconciliation_matches, lot_ledger_entries) that may not exist yet
+    // in this environment. Don't let a matcher failure break the import.
+    try {
+      const result = await autoMatchBankTransactions(
+        ocId,
+        insertedIds,
+        profile.id,
+      );
+      autoMatched = result.matched;
+    } catch (err) {
+      console.error("auto-match orchestrator failed", err);
+    }
   }
 
   await supabase.from("audit_log").insert({
