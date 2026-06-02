@@ -4,6 +4,9 @@ import { getAvailablePeriods, type AvailablePeriod } from "@/lib/actions/levy";
 import { listChartOfAccounts } from "@/lib/actions/chart-of-accounts";
 import { createServerClient } from "@/lib/supabase";
 import { redirect } from "next/navigation";
+import Link from "next/link";
+import { Landmark } from "lucide-react";
+import { EmptyState } from "@/components/shared/empty-state";
 import { GenerateLeviesForm } from "./generate-levies-form";
 
 import { resolveOCFromCode } from "@/lib/oc-resolver";
@@ -25,13 +28,42 @@ export default async function GenerateLeviesPage({
   const resolved = await resolveOCFromCode(ocCode);
   if (!resolved) redirect("/dashboard");
   const ocId = resolved.id;
-  const [oc, budgets, coaAccounts] = await Promise.all([
+  const supabaseEarly = createServerClient();
+  const [oc, budgets, coaAccounts, { data: operatingAccount }] = await Promise.all([
     getOC(ocId),
     getOCBudgets(ocId),
     listChartOfAccounts(),
+    supabaseEarly
+      .from("bank_accounts")
+      .select("id")
+      .eq("oc_id", ocId)
+      .eq("fund_type", "operating")
+      .limit(1)
+      .maybeSingle(),
   ]);
 
   if (!oc) redirect("/dashboard");
+
+  // Levies must clear into an operating account — the LEV PDF prints its
+  // BSB/account on the payment-instructions block and reconciliation needs
+  // somewhere to land. Block the wizard until one exists.
+  if (!operatingAccount) {
+    return (
+      <EmptyState
+        icon={Landmark}
+        title="Add an operating account first"
+        description="Levies need an operating bank account so payers can pay you and we know where to reconcile receipts. Add one before generating a batch."
+        action={
+          <Link
+            href={`/ocs/${ocCode}/bank-accounts`}
+            className="mt-2 inline-flex h-9 items-center justify-center rounded-md bg-primary px-4 text-sm font-medium text-primary-foreground transition-colors hover:bg-primary/90 cursor-pointer"
+          >
+            Add operating account
+          </Link>
+        }
+      />
+    );
+  }
 
   // Only show approved + single-fund budgets , drafts can't have levies
   // generated, and multi-fund budgets need a per-fund picker that's not
@@ -77,7 +109,7 @@ export default async function GenerateLeviesPage({
   // apportionment client-side instead of round-tripping to
   // previewSpecialLevy. Owner names included so the per-lot table
   // can render the "Lot 4, Jane Doe" header right away.
-  const supabase = createServerClient();
+  const supabase = supabaseEarly;
   const { data: rawLots } = await supabase
     .from("lots")
     .select("id, lot_number, unit_number, lot_liability, lot_entitlement")

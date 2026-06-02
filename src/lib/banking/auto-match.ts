@@ -17,6 +17,7 @@ interface OpenLevyRow {
   amount: number | string;
   amount_paid: number | string;
   due_date: string;
+  status: string;
 }
 
 interface BankTxnRow {
@@ -38,19 +39,24 @@ interface AutoMatchResult {
 }
 
 /**
- * Run the two-strategy auto-matcher on a set of bank transactions:
+ * Two-strategy auto-matcher run after every CSV import:
  *
- *   1. DRN exact match against `lot_drns` (date-aware via active_from/active_to).
- *   2. Owner-reference match: scan the description / reference field for any
- *      open levy_notice.reference_number or bpay_crn substring. Single hit
- *      only — multiple hits stay unmatched so the manager resolves manually.
+ *   1. DRN exact match against lot_drns (date-aware via active_from/active_to)
+ *      → allocates to that lot's oldest open levy notice.
+ *   2. Owner-reference scan: description / DRN field substring-matches an
+ *      open levy_notice.reference_number (LEV-{n}) or bpay_crn. Single hit
+ *      only — multiple hits stay unmatched.
  *
- * Nothing else (no fuzzy sender matching, no amount-only matching). Anything
- * the cascade can't resolve stays at match_status='unmatched' for the
- * reconciliation queue.
+ * No fuzzy sender matching, no amount-only matching, no bank_payer_mappings
+ * fallback (per the cascade restriction the user asked for).
  *
- * The function is idempotent: it skips rows that are already matched,
- * excluded, voided, or debit-direction.
+ * Settlement: this runs as direct UPDATEs against levy_notices.amount_paid
+ * and bank_transactions.match_status / matched_total. It does NOT use
+ * rpc_reconcile_bank_transaction because that RPC depends on a ledger /
+ * reconciliation_matches stack that isn't built yet. The trade-off is that
+ * there's no atomic audit row per match — the audit lives on the
+ * bank_transaction itself (notes + match_status) and in the levy_notice's
+ * amount_paid / status. Good enough until the ledger lands.
  */
 export async function autoMatchBankTransactions(
   ocId: string,
@@ -95,9 +101,6 @@ export async function autoMatchBankTransactions(
     drnIndex.get(key)!.push(row);
   }
 
-  // Open / partly-paid levy notices for the OC. Paid/written-off/draft are
-  // skipped — auto-match only goes against notices a payer can still send
-  // money against.
   const { data: levyRows } = await supabase
     .from("levy_notices")
     .select(
@@ -106,7 +109,10 @@ export async function autoMatchBankTransactions(
     .eq("oc_id", ocId)
     .in("status", ["issued", "partially_paid", "overdue"])
     .order("due_date", { ascending: true });
-  const openLevies = (levyRows ?? []) as OpenLevyRow[];
+  // Build a mutable working copy so a second txn in the same batch sees
+  // the updated amount_paid from the first match (otherwise we'd over-pay
+  // when two payments arrive against the same levy in one import).
+  const openLevies: OpenLevyRow[] = ((levyRows ?? []) as OpenLevyRow[]).map((l) => ({ ...l }));
   const leviesByLot = new Map<string, OpenLevyRow[]>();
   for (const l of openLevies) {
     if (!leviesByLot.has(l.lot_id)) leviesByLot.set(l.lot_id, []);
@@ -117,57 +123,58 @@ export async function autoMatchBankTransactions(
   let skipped = 0;
 
   for (const t of txns) {
-    const allocation = chooseAllocation(t, drnIndex, openLevies, leviesByLot);
-    if (!allocation) {
+    const choice = chooseLevyForTxn(t, drnIndex, openLevies, leviesByLot);
+    if (!choice) {
+      skipped++;
+      continue;
+    }
+    const txnAmount = Number(t.amount);
+    const outstanding = Number(choice.levy.amount) - Number(choice.levy.amount_paid);
+    const allocated = Math.min(txnAmount, Math.max(outstanding, 0));
+    if (allocated <= 0) {
       skipped++;
       continue;
     }
 
-    const { error } = await supabase.rpc("rpc_reconcile_bank_transaction", {
-      p_bank_transaction_id: t.id,
-      p_allocations: [
-        {
-          lot_id: allocation.lot_id,
-          fund_type: allocation.fund_type,
-          amount: Number(t.amount),
-          levy_notice_id: allocation.levy_notice_id,
-          reference: allocation.reference,
-        },
-      ],
-      p_match_method: allocation.method,
-      p_match_confidence: "exact_reference",
-      p_notes: null,
-      p_performed_by: performedBy,
+    const ok = await applyMatch(supabase, {
+      txnId: t.id,
+      txnAmount,
+      allocated,
+      levy: choice.levy,
+      method: choice.method,
+      performedBy,
     });
-    if (error) {
-      console.error("auto-match RPC failed", {
-        bank_transaction_id: t.id,
-        reason: error.message,
-      });
+    if (ok) {
+      // Reflect the new amount_paid in our in-memory levy cache so the
+      // next iteration doesn't double-allocate to a now-saturated notice.
+      choice.levy.amount_paid = Number(choice.levy.amount_paid) + allocated;
+      if (Number(choice.levy.amount_paid) >= Number(choice.levy.amount)) {
+        choice.levy.status = "paid";
+      } else {
+        choice.levy.status = "partially_paid";
+      }
+      matched++;
+    } else {
       skipped++;
-      continue;
     }
-    matched++;
   }
 
   return { matched, skipped };
 }
 
-interface ChosenAllocation {
-  lot_id: string;
-  fund_type: "operating" | "maintenance_plan";
-  levy_notice_id: string | null;
-  reference: string | null;
+interface ChosenLevy {
+  levy: OpenLevyRow;
   method: "auto_reference" | "auto_bpay_crn";
 }
 
-function chooseAllocation(
+function chooseLevyForTxn(
   txn: BankTxnRow,
   drnIndex: Map<string, LotDrnRow[]>,
   allLevies: OpenLevyRow[],
   leviesByLot: Map<string, OpenLevyRow[]>,
-): ChosenAllocation | null {
-  // Strategy 1: DRN. Single, exact, date-bounded.
+): ChosenLevy | null {
+  // Strategy 1: DRN. Single, exact, date-bounded. Resolves to a lot; then
+  // we pick the lot's oldest open levy.
   const drn = (txn.deft_reference_number ?? "").trim().toUpperCase();
   if (drn) {
     const rows = drnIndex.get(drn) ?? [];
@@ -179,15 +186,7 @@ function chooseAllocation(
     if (active.length === 1) {
       const lotId = active[0].lot_id;
       const levy = pickLevyForLot(lotId, leviesByLot);
-      if (levy) {
-        return {
-          lot_id: lotId,
-          fund_type: levy.fund_type,
-          levy_notice_id: levy.id,
-          reference: levy.reference_number,
-          method: "auto_reference",
-        };
-      }
+      if (levy) return { levy, method: "auto_reference" };
     }
   }
 
@@ -210,13 +209,7 @@ function chooseAllocation(
 
   const levyId = Array.from(hits)[0];
   const levy = allLevies.find((l) => l.id === levyId)!;
-  return {
-    lot_id: levy.lot_id,
-    fund_type: levy.fund_type,
-    levy_notice_id: levy.id,
-    reference: levy.reference_number,
-    method: "auto_bpay_crn",
-  };
+  return { levy, method: "auto_bpay_crn" };
 }
 
 function pickLevyForLot(
@@ -225,5 +218,75 @@ function pickLevyForLot(
 ): OpenLevyRow | null {
   const list = leviesByLot.get(lotId);
   if (!list || list.length === 0) return null;
-  return list[0]; // oldest by due_date — sorted on fetch
+  // Skip levies that are already fully paid (mutated by an earlier iter).
+  const open = list.find(
+    (l) => Number(l.amount_paid) < Number(l.amount) && l.status !== "paid",
+  );
+  return open ?? null;
+}
+
+interface ApplyArgs {
+  txnId: string;
+  txnAmount: number;
+  allocated: number;
+  levy: OpenLevyRow;
+  method: "auto_reference" | "auto_bpay_crn";
+  performedBy: string;
+}
+
+async function applyMatch(
+  supabase: ReturnType<typeof createServerClient>,
+  args: ApplyArgs,
+): Promise<boolean> {
+  const newAmountPaid = Number(args.levy.amount_paid) + args.allocated;
+  const fullyPaid = newAmountPaid >= Number(args.levy.amount);
+
+  const { error: levyErr } = await supabase
+    .from("levy_notices")
+    .update({
+      amount_paid: newAmountPaid,
+      status: fullyPaid ? "paid" : "partially_paid",
+      paid_at: fullyPaid ? new Date().toISOString() : null,
+    })
+    .eq("id", args.levy.id);
+  if (levyErr) {
+    console.error("auto-match: levy update failed", {
+      levy_id: args.levy.id,
+      reason: levyErr.message,
+    });
+    return false;
+  }
+
+  const fullyMatched = args.allocated >= args.txnAmount;
+  const matchNote = `Auto-matched to ${args.levy.reference_number} via ${
+    args.method === "auto_reference" ? "DRN" : "owner reference"
+  }`;
+
+  const { error: txnErr } = await supabase
+    .from("bank_transactions")
+    .update({
+      matched_total: args.allocated,
+      match_status: fullyMatched ? "auto_matched" : "unmatched",
+      notes: matchNote,
+    })
+    .eq("id", args.txnId);
+  if (txnErr) {
+    console.error("auto-match: txn update failed", {
+      bank_transaction_id: args.txnId,
+      reason: txnErr.message,
+    });
+    // Best-effort rollback of the levy_notice update so we don't leave a
+    // double-paid notice behind.
+    await supabase
+      .from("levy_notices")
+      .update({
+        amount_paid: Number(args.levy.amount_paid),
+        status: args.levy.status,
+        paid_at: null,
+      })
+      .eq("id", args.levy.id);
+    return false;
+  }
+
+  return true;
 }

@@ -118,11 +118,32 @@ export async function createBankAccount(
 
   const supabase = createServerClient();
 
+  // If this is the OC's first bank account, auto-link it to the OC's
+  // operating ("admin") fund — that's the account the admin fund draws
+  // to/from. We only do this when there are zero existing bank_accounts;
+  // subsequent accounts can be linked from the funds page like usual.
+  const { count: existingCount } = await supabase
+    .from("bank_accounts")
+    .select("id", { count: "exact", head: true })
+    .eq("oc_id", ocId);
+
+  let operatingFundId: string | null = null;
+  if (!existingCount || existingCount === 0) {
+    const { data: opFund } = await supabase
+      .from("funds")
+      .select("id")
+      .eq("oc_id", ocId)
+      .eq("kind", "admin")
+      .maybeSingle();
+    operatingFundId = opFund?.id ?? null;
+  }
+
   const { data: row, error } = await supabase
     .from("bank_accounts")
     .insert({
       oc_id: ocId,
       fund_type: "operating",
+      fund_id: operatingFundId,
       account_name: accountName,
       bsb,
       account_number: accountNumber,

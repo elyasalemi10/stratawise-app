@@ -2,8 +2,9 @@
 
 import { useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
-import { Upload, Plus, Landmark, ChevronLeft, ChevronRight } from "lucide-react";
+import { Upload, Plus, Landmark, ChevronLeft, ChevronRight, ReceiptText } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { EmptyState } from "@/components/shared/empty-state";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 import {
   Table, TableBody, TableCell, TableHead, TableHeader, TableRow,
@@ -225,40 +226,41 @@ function AccountPane({
       </div>
 
       <div className="border-t border-border pt-4">
-        <div className="mb-3 flex items-center justify-between gap-3">
-          <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
-            Transactions
-          </p>
-          <div className="inline-flex items-center gap-1">
-            <button
-              type="button"
-              onClick={() => setActiveMonth((k) => shiftMonthKey(k, -1))}
-              aria-label="Previous month"
-              className="inline-flex h-7 w-7 items-center justify-center rounded-md text-muted-foreground hover:bg-muted hover:text-foreground cursor-pointer"
-            >
-              <ChevronLeft className="h-4 w-4" />
-            </button>
-            <span className="min-w-[8.5rem] text-center text-sm font-medium text-foreground tabular-nums">
-              {labelForMonthKey(activeMonth)}
-            </span>
-            <button
-              type="button"
-              onClick={() => setActiveMonth((k) => shiftMonthKey(k, 1))}
-              aria-label="Next month"
-              className="inline-flex h-7 w-7 items-center justify-center rounded-md text-muted-foreground hover:bg-muted hover:text-foreground cursor-pointer"
-            >
-              <ChevronRight className="h-4 w-4" />
-            </button>
-          </div>
+        <div className="mb-4 flex items-center justify-center gap-2">
+          <button
+            type="button"
+            onClick={() => setActiveMonth((k) => shiftMonthKey(k, -1))}
+            aria-label="Previous month"
+            className="inline-flex h-10 w-10 items-center justify-center rounded-md text-muted-foreground hover:bg-muted hover:text-foreground cursor-pointer"
+          >
+            <ChevronLeft className="h-5 w-5" />
+          </button>
+          <span className="min-w-[12rem] text-center text-lg font-semibold text-foreground tabular-nums">
+            {labelForMonthKey(activeMonth)}
+          </span>
+          <button
+            type="button"
+            onClick={() => setActiveMonth((k) => shiftMonthKey(k, 1))}
+            aria-label="Next month"
+            className="inline-flex h-10 w-10 items-center justify-center rounded-md text-muted-foreground hover:bg-muted hover:text-foreground cursor-pointer"
+          >
+            <ChevronRight className="h-5 w-5" />
+          </button>
         </div>
         {account.transactions.length === 0 ? (
-          <p className="text-sm text-muted-foreground">
-            No transactions imported yet. Use "Import CSV" to add a bank statement.
-          </p>
+          <EmptyState
+            icon={ReceiptText}
+            title="No transactions yet"
+            description='Import a CSV statement to populate this account. Use the "Import CSV" button above.'
+            card={false}
+          />
         ) : visibleTxns.length === 0 ? (
-          <p className="text-sm text-muted-foreground">
-            No transactions in {labelForMonthKey(activeMonth)}.
-          </p>
+          <EmptyState
+            icon={ReceiptText}
+            title={`No transactions in ${labelForMonthKey(activeMonth)}`}
+            description="Step to a different month or import more rows."
+            card={false}
+          />
         ) : (
           <div className="overflow-hidden rounded-md border border-border">
             <Table variant="striped">

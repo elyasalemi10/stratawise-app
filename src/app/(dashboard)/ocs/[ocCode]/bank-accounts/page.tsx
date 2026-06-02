@@ -1,10 +1,9 @@
 import { redirect } from "next/navigation";
-import { Landmark } from "lucide-react";
 import { resolveOCFromCode } from "@/lib/oc-resolver";
 import { createServerClient } from "@/lib/supabase";
 import { requireOCAccess } from "@/lib/auth";
-import { EmptyState } from "@/components/shared/empty-state";
 import { BankAccountsList } from "./bank-accounts-list";
+import { NoBankAccountsEmpty } from "./empty-state";
 
 interface RawAccountRow {
   id: string;
@@ -117,13 +116,7 @@ export default async function BankAccountsPage({
   });
 
   if (rows.length === 0) {
-    return (
-      <EmptyState
-        icon={Landmark}
-        title="No bank accounts"
-        description="This OC has no bank accounts on file yet."
-      />
-    );
+    return <NoBankAccountsEmpty ocId={ocId} />;
   }
 
   return <BankAccountsList ocId={ocId} accounts={rows} />;

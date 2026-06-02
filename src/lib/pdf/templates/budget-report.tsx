@@ -421,7 +421,7 @@ export function BudgetReport({
 
           return (
             <View key={`contrib-${fundKey}`} style={s.lotsBlock} wrap={false}>
-              <Text style={s.lotsTitle}>{fundTitle} , Lot contributions</Text>
+              <Text style={s.lotsTitle}>{fundTitle} - Lot contributions</Text>
               <Text style={s.lotsSubtitle}>
                 Each member lot&apos;s share of the {fundTitle} annual total, in proportion to its liability for this fund.
               </Text>
