@@ -37,6 +37,7 @@ import {
 import { Badge } from "@/components/ui/badge";
 import { Plus as PlusIcon } from "lucide-react";
 import { DatePicker } from "@/components/shared/date-picker";
+import { OCFollowupCard } from "./oc-followup-card";
 
 const MONTHS = [
   "January", "February", "March", "April", "May", "June",
@@ -707,6 +708,9 @@ function AutomationsTab({
           </ListTBody>
         </ListTable>
       </div>
+
+      {/* Per-OC levy follow-up: inherits the company default unless overridden. */}
+      <OCFollowupCard ocId={ocId} />
 
       {/* Side drawer , holds the auto-send config (today the only
           automation). For Add-Automation we surface the same form

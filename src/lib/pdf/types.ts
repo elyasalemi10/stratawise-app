@@ -180,6 +180,19 @@ export interface ActionItem {
   due_date?: string;
 }
 
+// --- Final Fee Notice (s.32) ---
+
+export interface FinalNoticeProps extends BaseDocumentProps {
+  lotOwner: LotOwner;
+  levyReference: string;
+  levyDueDate: string;
+  amountOutstanding: number;
+  interestAccrued: number;
+  dailyInterest: number;
+  interestRateMonthly: number;
+  brandColors?: BrandColors;
+}
+
 // --- Meeting Notice ---
 
 export interface MeetingNoticeAgendaItem {

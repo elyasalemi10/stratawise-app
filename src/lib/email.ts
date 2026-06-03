@@ -1279,6 +1279,49 @@ export async function sendMaintenanceReminderEmail(
   return { success: true, id: data?.id ?? null };
 }
 
+// ─── Levy follow-up / escalation email ─────────────────────────────────────
+// Sent by the daily follow-up cron. The subject + body are manager-authored
+// (merge fields already substituted by the caller); we just wrap the body in
+// the brand shell and optionally attach the final-notice PDF.
+
+export interface SendEscalationEmailParams {
+  to: string;
+  subject: string;
+  bodyText: string;            // plain text, already merge-rendered
+  companyLogoUrl?: string | null;
+  ocId?: string | null;
+  pdfBuffer?: Buffer | null;
+  pdfFilename?: string | null;
+}
+
+export async function sendEscalationEmail(
+  params: SendEscalationEmailParams,
+): Promise<EmailSendResult> {
+  const { to, subject, bodyText, companyLogoUrl, ocId, pdfBuffer, pdfFilename } = params;
+
+  if (isDryRun()) {
+    console.log(`[email-dry-run] type=levy_followup to=${to} subject="${subject}"`);
+    return { dryRun: true };
+  }
+
+  const paragraphs = bodyText
+    .split(/\n{2,}/)
+    .map((p) => `<p style="margin:0 0 14px;color:#0E314C;font-size:14px;line-height:1.6;">${escapeHtml(p).replace(/\n/g, "<br/>")}</p>`)
+    .join("");
+  const html = brandShell(paragraphs, companyLogoUrl);
+
+  const resendFrom = ocId ? await resolveOcSenderFromHeader(ocId) : noreplyFrom();
+  const attachments = pdfBuffer && pdfFilename
+    ? [{ filename: pdfFilename, content: pdfBuffer, contentType: "application/pdf" }]
+    : undefined;
+  const { data, error } = await transportSend({ ocId: ocId ?? null, to, subject, html, resendFrom, attachments });
+  if (error) {
+    console.error("Failed to send levy_followup email:", error);
+    return { error: error.message };
+  }
+  return { success: true, id: data?.id ?? null };
+}
+
 // ─── HTML escape helper ────────────────────────────────────────────────
 // Applied to user-controlled string interpolations in the new senders to
 // guard against accidental injection from owner names, oc

@@ -1177,55 +1177,83 @@ CREATE INDEX idx_audit_created ON audit_log(created_at);
 -- ============================================================================
 -- 35. ESCALATION WORKFLOWS
 -- ============================================================================
+-- Levy follow-up workflow. Company default = (management_company_id set,
+-- oc_id NULL, is_default true). Per-OC override = (oc_id set). OCs follow the
+-- company default unless they have their own override (linked-unless-overridden).
 CREATE TABLE escalation_workflows (
   id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
-  oc_id UUID REFERENCES owners_corporations(id),
+  management_company_id UUID REFERENCES management_companies(id) ON DELETE CASCADE,
+  oc_id UUID REFERENCES owners_corporations(id) ON DELETE CASCADE,
   name TEXT NOT NULL,
   description TEXT,
   is_default BOOLEAN NOT NULL DEFAULT false,
   status TEXT NOT NULL DEFAULT 'active',
-  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
+CREATE INDEX idx_escalation_wf_company ON escalation_workflows(management_company_id);
+CREATE INDEX idx_escalation_wf_oc ON escalation_workflows(oc_id);
 
 -- ============================================================================
--- 36. ESCALATION WORKFLOW STEPS
+-- 36. ESCALATION WORKFLOW STEPS  (editable subject/body with merge fields)
 -- ============================================================================
 CREATE TABLE escalation_workflow_steps (
   id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
   workflow_id UUID NOT NULL REFERENCES escalation_workflows(id) ON DELETE CASCADE,
   step_number INTEGER NOT NULL,
-  channel communication_channel NOT NULL DEFAULT 'email',
+  step_type TEXT NOT NULL DEFAULT 'email',          -- email | vcat
+  label TEXT,
   days_after_overdue INTEGER NOT NULL,
-  template_key TEXT NOT NULL,
-  requires_consent BOOLEAN NOT NULL DEFAULT false,
-  fallback_channel communication_channel DEFAULT 'email',
+  subject TEXT,
+  body TEXT,                                         -- merge-field template
   enabled BOOLEAN NOT NULL DEFAULT true,
   UNIQUE(workflow_id, step_number)
 );
+CREATE INDEX idx_escalation_steps_wf ON escalation_workflow_steps(workflow_id);
 
 -- ============================================================================
--- 37. ESCALATION INSTANCES
+-- 37. ESCALATION INSTANCES  (one active per overdue levy notice)
 -- ============================================================================
 CREATE TABLE escalation_instances (
   id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
-  levy_notice_id UUID NOT NULL REFERENCES levy_notices(id),
+  levy_notice_id UUID NOT NULL REFERENCES levy_notices(id) ON DELETE CASCADE,
   workflow_id UUID NOT NULL REFERENCES escalation_workflows(id),
-  reference_number TEXT UNIQUE,                     -- SW-ESC-YYYY-NNNNNN
+  oc_id UUID NOT NULL REFERENCES owners_corporations(id) ON DELETE CASCADE,
+  lot_id UUID REFERENCES lots(id) ON DELETE CASCADE,
+  reference_number TEXT,                            -- SW-ESC-YYYY-NNNNNN
   current_step INTEGER NOT NULL DEFAULT 1,
   status escalation_status NOT NULL DEFAULT 'active',
-  next_action_at TIMESTAMPTZ,
-  paused_at TIMESTAMPTZ,
-  paused_by UUID REFERENCES profiles(id),
-  paused_reason TEXT,
+  next_action_at DATE,
+  final_notice_pdf_url TEXT,                        -- R2 key of the s.32 final notice
+  final_notice_served_at TIMESTAMPTZ,
+  vcat_ready_at TIMESTAMPTZ,
   resolved_at TIMESTAMPTZ,
   resolved_reason TEXT,
   created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
   updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 
-CREATE INDEX idx_escalation_levy ON escalation_instances(levy_notice_id);
-CREATE INDEX idx_escalation_status ON escalation_instances(status);
-CREATE INDEX idx_escalation_next ON escalation_instances(next_action_at);
+CREATE UNIQUE INDEX idx_escalation_inst_notice_active ON escalation_instances(levy_notice_id) WHERE status = 'active';
+CREATE INDEX idx_escalation_inst_next ON escalation_instances(next_action_at) WHERE status = 'active';
+CREATE INDEX idx_escalation_inst_oc ON escalation_instances(oc_id);
+
+-- ============================================================================
+-- 37b. VCAT APPLICATION PACKS
+-- ============================================================================
+CREATE TABLE vcat_packs (
+  id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+  oc_id UUID NOT NULL REFERENCES owners_corporations(id) ON DELETE CASCADE,
+  lot_id UUID REFERENCES lots(id) ON DELETE SET NULL,
+  levy_notice_id UUID REFERENCES levy_notices(id) ON DELETE SET NULL,
+  escalation_instance_id UUID REFERENCES escalation_instances(id) ON DELETE SET NULL,
+  zip_key TEXT,                                     -- R2 key (vcat-packs/{ocId}/{packId}.zip)
+  status TEXT NOT NULL DEFAULT 'ready',             -- ready | failed
+  error TEXT,
+  created_by UUID REFERENCES profiles(id),
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+CREATE INDEX idx_vcat_packs_oc ON vcat_packs(oc_id);
+CREATE INDEX idx_vcat_packs_lot ON vcat_packs(lot_id);
 
 -- ============================================================================
 -- 38. CHARGE GROUPS
@@ -3404,17 +3432,15 @@ INSERT INTO budget_categories (code, name, fund_type, sort_order) VALUES
   ('309900', 'Other Capital', 'capital_works', 99);
 
 -- ============================================================================
--- SEED DATA — Default Escalation Workflow
+-- SEED DATA , Default Levy Follow-up Workflow (per management company)
+-- ----------------------------------------------------------------------------
+-- The default workflow is seeded PER management company via the
+-- seed_default_followup_workflow(p_company uuid) function (called at company
+-- creation + as a backfill). Steps: day 7 friendly reminder, day 14 second
+-- reminder, day 28 final notice (email), then a VCAT step at day 56. Bodies are
+-- editable per company and overridable per OC. See the function definition in
+-- the migration history.
 -- ============================================================================
-INSERT INTO escalation_workflows (id, name, description, is_default)
-VALUES (uuid_generate_v4(), 'Standard Overdue Levy', '3-step email escalation for overdue levies', true);
-
-INSERT INTO escalation_workflow_steps (workflow_id, step_number, channel, days_after_overdue, template_key)
-SELECT id, 1, 'email'::communication_channel, 14, 'levy_reminder_friendly' FROM escalation_workflows WHERE is_default = true
-UNION ALL
-SELECT id, 2, 'email'::communication_channel, 28, 'levy_reminder_firm'     FROM escalation_workflows WHERE is_default = true
-UNION ALL
-SELECT id, 3, 'email'::communication_channel, 42, 'levy_final_notice'      FROM escalation_workflows WHERE is_default = true;
 
 -- ============================================================================
 -- PRIVILEGES

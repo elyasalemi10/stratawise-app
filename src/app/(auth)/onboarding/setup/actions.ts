@@ -125,6 +125,15 @@ export async function createCompany(formData: {
     // Non-fatal: the firm can still operate; CoA can be re-seeded later.
   }
 
+  // Seed the default levy follow-up workflow (7/14/28-day reminders + VCAT).
+  // Idempotent; OCs follow this default unless they override it.
+  const { error: followupErr } = await supabase.rpc("seed_default_followup_workflow", {
+    p_company: company.id,
+  });
+  if (followupErr) {
+    console.error("Failed to seed follow-up workflow:", followupErr);
+  }
+
   return { companyId: company.id };
 }
 
