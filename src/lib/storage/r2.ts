@@ -96,6 +96,7 @@ const CONFIDENTIAL_PREFIXES = [
   "levies/",
   "contractors/",
   "meetings/",
+  "vcat-packs/",
 ];
 
 // Resolve the bucket for a key. Confidential prefixes (OC documents,
