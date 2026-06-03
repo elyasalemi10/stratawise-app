@@ -1,11 +1,11 @@
 "use client";
 
-import { useLayoutEffect, useMemo, useRef, useState, useTransition } from "react";
+import { useMemo, useRef, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { toast } from "sonner";
 import {
   Loader2, FileText, CalendarDays, ListChecks, Send, Plus, Trash2,
-  ArrowUp, ArrowDown, Eye, MapPin, Video, type LucideIcon,
+  GripVertical, MapPin, Video, type LucideIcon,
 } from "lucide-react";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -14,13 +14,10 @@ import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { DatePicker } from "@/components/shared/date-picker";
 import { TimeDropdowns } from "@/components/shared/time-dropdowns";
-import { PlacesAutocomplete } from "@/components/shared/places-autocomplete";
+import { VicAddressAutocomplete, type ParsedAddress } from "@/components/shared/vic-address-autocomplete";
 import { cn } from "@/lib/utils";
-import { createMeetingWithNotice, previewMeetingNotice } from "@/lib/actions/meetings";
-import {
-  MEETING_TYPE_LABELS, MEETING_PLATFORM_LABELS, detectMeetingPlatform,
-  type MeetingType, type MeetingFormat,
-} from "@/lib/validations/meetings";
+import { createMeetingWithNotice } from "@/lib/actions/meetings";
+import { MEETING_TYPE_LABELS, type MeetingType, type MeetingFormat } from "@/lib/validations/meetings";
 
 type Step = "type" | "details" | "agenda" | "review";
 
@@ -30,6 +27,8 @@ const STEPS: Array<{ key: Step; number: number; label: string; icon: LucideIcon 
   { key: "agenda", number: 3, label: "Agenda", icon: ListChecks },
   { key: "review", number: 4, label: "Review", icon: Send },
 ];
+
+const EMPTY_ADDRESS: ParsedAddress = { street_number: "", street_name: "", suburb: "", state: "VIC", postcode: "", formatted: "" };
 
 function StepIndicator({ current }: { current: Step }) {
   const currentNumber = STEPS.find((s) => s.key === current)?.number ?? 1;
@@ -86,14 +85,13 @@ export function CreateMeetingForm({
   const [date, setDate] = useState("");
   const [time, setTime] = useState("18:00");
   const [format, setFormat] = useState<MeetingFormat>("in_person");
-  const [location, setLocation] = useState("");
+  const [address, setAddress] = useState<ParsedAddress>(EMPTY_ADDRESS);
   const [link, setLink] = useState("");
   const [agenda, setAgenda] = useState<AgendaRow[]>([]);
   const idCounter = useRef(0);
 
   const [dateInvalid, setDateInvalid] = useState(false);
   const [linkInvalid, setLinkInvalid] = useState(false);
-  const [previewing, setPreviewing] = useState(false);
   const [pending, startTransition] = useTransition();
 
   // Minimum notice: 14 days for general meetings (AGM/SGM).
@@ -103,8 +101,6 @@ export function CreateMeetingForm({
     return d.toISOString().slice(0, 10);
   }, []);
 
-  const detectedPlatform = link.trim() ? detectMeetingPlatform(link.trim()) : null;
-
   function buildPayload() {
     const when = new Date(`${date}T${time}:00`);
     return {
@@ -113,9 +109,9 @@ export function CreateMeetingForm({
       title: title.trim() || null,
       date_time: when.toISOString(),
       meeting_format: format,
-      location: format === "in_person" ? (location.trim() || null) : null,
+      location: format === "in_person" ? (address.formatted.trim() || null) : null,
       virtual_meeting_link: format === "online" ? (link.trim() || null) : null,
-      online_platform: format === "online" && link.trim() ? detectMeetingPlatform(link.trim()) : null,
+      // online_platform is detected server-side (handles short links/redirects).
       agenda: agenda.filter((a) => a.title.trim()).map((a) => ({ title: a.title.trim(), motion: a.motion.trim() || null })),
     };
   }
@@ -138,31 +134,28 @@ export function CreateMeetingForm({
     setStep("agenda");
   }
 
+  function goNextFromAgenda() {
+    // Don't allow empty agenda items , every row must have a title.
+    if (agenda.some((a) => !a.title.trim())) {
+      toast.error("Remove or fill in the empty agenda items.");
+      return;
+    }
+    setStep("review");
+  }
+
   function addAgenda() { setAgenda((a) => [...a, { id: `r${idCounter.current++}`, title: "", motion: "" }]); }
   function updateAgenda(id: string, patch: Partial<AgendaRow>) {
     setAgenda((a) => a.map((row) => (row.id === id ? { ...row, ...patch } : row)));
   }
   function removeAgenda(id: string) { setAgenda((a) => a.filter((row) => row.id !== id)); }
-  function moveAgenda(index: number, dir: -1 | 1) {
+  function reorderAgenda(from: number, to: number) {
     setAgenda((a) => {
-      const j = index + dir;
-      if (j < 0 || j >= a.length) return a;
+      if (from === to || from < 0 || to < 0 || from >= a.length || to >= a.length) return a;
       const next = [...a];
-      [next[index], next[j]] = [next[j], next[index]];
+      const [moved] = next.splice(from, 1);
+      next.splice(to, 0, moved);
       return next;
     });
-  }
-
-  async function onPreview() {
-    setPreviewing(true);
-    try {
-      const res = await previewMeetingNotice(buildPayload());
-      if (res.error || !res.dataUrl) { toast.error(res.error ?? "Could not generate the preview."); return; }
-      const win = window.open();
-      if (win) win.document.write(`<iframe src="${res.dataUrl}" style="border:0;width:100%;height:100%"></iframe>`);
-    } finally {
-      setPreviewing(false);
-    }
   }
 
   function onSubmit() {
@@ -170,7 +163,6 @@ export function CreateMeetingForm({
       const res = await createMeetingWithNotice(buildPayload());
       if (!res.meetingId) { toast.error(res.error ?? "Could not create the meeting"); return; }
       if (res.error) toast.error(res.error); else toast.success("Meeting created");
-      // Spinner stays on through the navigation to the detail page (send from there).
       router.push(`/ocs/${ocCode}/meetings/${res.meetingId}`);
     });
   }
@@ -254,7 +246,7 @@ export function CreateMeetingForm({
             {format === "in_person" ? (
               <div className="space-y-1.5">
                 <Label>Address</Label>
-                <PlacesAutocomplete value={location} onChange={setLocation} placeholder="Meeting address" />
+                <VicAddressAutocomplete value={address} onChange={setAddress} />
               </div>
             ) : (
               <div className="space-y-1.5">
@@ -265,9 +257,6 @@ export function CreateMeetingForm({
                   aria-invalid={linkInvalid || undefined}
                   placeholder="Video call link"
                 />
-                {detectedPlatform && (
-                  <p className="text-xs text-muted-foreground">Detected: {MEETING_PLATFORM_LABELS[detectedPlatform]}</p>
-                )}
               </div>
             )}
 
@@ -291,16 +280,11 @@ export function CreateMeetingForm({
             {agenda.length === 0 ? (
               <p className="text-sm text-muted-foreground">No agenda items yet. Add motions in the order they&apos;ll be discussed.</p>
             ) : (
-              <AgendaList
-                rows={agenda}
-                onUpdate={updateAgenda}
-                onRemove={removeAgenda}
-                onMove={moveAgenda}
-              />
+              <AgendaList rows={agenda} onUpdate={updateAgenda} onRemove={removeAgenda} onReorder={reorderAgenda} />
             )}
             <div className="flex justify-between">
               <Button variant="secondary" onClick={() => setStep("details")}>Back</Button>
-              <Button onClick={() => setStep("review")}>Next</Button>
+              <Button onClick={goNextFromAgenda}>Next</Button>
             </div>
           </CardContent>
         </Card>
@@ -316,26 +300,20 @@ export function CreateMeetingForm({
               <dt className="text-muted-foreground">Title</dt><dd className="text-foreground">{title.trim() || MEETING_TYPE_LABELS[meetingType]}</dd>
               <dt className="text-muted-foreground">When</dt><dd className="text-foreground">{date ? new Date(`${date}T${time}:00`).toLocaleString("en-AU", { weekday: "short", day: "numeric", month: "short", year: "numeric", hour: "numeric", minute: "2-digit" }) : ""}</dd>
               <dt className="text-muted-foreground">Format</dt>
-              <dd className="text-foreground">{format === "online" ? `Online${detectedPlatform ? ` (${MEETING_PLATFORM_LABELS[detectedPlatform]})` : ""}` : "In person"}</dd>
-              {format === "in_person" && location && (<><dt className="text-muted-foreground">Address</dt><dd className="text-foreground">{location}</dd></>)}
+              <dd className="text-foreground">{format === "online" ? "Online" : "In person"}</dd>
+              {format === "in_person" && address.formatted && (<><dt className="text-muted-foreground">Address</dt><dd className="text-foreground">{address.formatted}</dd></>)}
               {format === "online" && link && (<><dt className="text-muted-foreground">Link</dt><dd className="truncate text-foreground">{link}</dd></>)}
-              <dt className="text-muted-foreground">Agenda items</dt><dd className="text-foreground">{agenda.filter((a) => a.title.trim()).length}</dd>
+              <dt className="text-muted-foreground">Agenda items</dt><dd className="text-foreground">{agenda.length}</dd>
             </dl>
             <p className="text-sm text-muted-foreground">
               Creating the meeting generates the branded notice. You can send it to owners from the meeting page.
             </p>
-            <div className="flex flex-wrap items-center justify-between gap-3 pt-2">
+            <div className="flex items-center justify-between gap-3 pt-2">
               <Button variant="secondary" onClick={() => setStep("agenda")} disabled={pending}>Back</Button>
-              <div className="flex gap-2">
-                <Button variant="secondary" onClick={onPreview} disabled={previewing || pending} className="cursor-pointer">
-                  {previewing ? <Loader2 className="size-4 animate-spin" /> : <Eye className="size-4" />}
-                  Preview notice
-                </Button>
-                <Button onClick={onSubmit} disabled={pending} size="lg">
-                  {pending && <Loader2 className="mr-2 size-4 animate-spin" />}
-                  Create meeting
-                </Button>
-              </div>
+              <Button onClick={onSubmit} disabled={pending} size="lg">
+                {pending && <Loader2 className="mr-2 size-4 animate-spin" />}
+                Create meeting
+              </Button>
             </div>
           </CardContent>
         </Card>
@@ -344,56 +322,42 @@ export function CreateMeetingForm({
   );
 }
 
-// Agenda list with a FLIP reorder animation (no framer-motion). Each row keeps
-// a stable id; when the order changes we invert the position delta and
-// transition it back to zero so rows visibly slide.
+// Agenda list with native drag-and-drop reordering (no framer-motion / no dnd
+// library). Each row is draggable by its grip handle.
 function AgendaList({
   rows,
   onUpdate,
   onRemove,
-  onMove,
+  onReorder,
 }: {
   rows: AgendaRow[];
   onUpdate: (id: string, patch: Partial<AgendaRow>) => void;
   onRemove: (id: string) => void;
-  onMove: (index: number, dir: -1 | 1) => void;
+  onReorder: (from: number, to: number) => void;
 }) {
-  const containerRef = useRef<HTMLDivElement>(null);
-  const prevTops = useRef<Map<string, number>>(new Map());
-
-  useLayoutEffect(() => {
-    const el = containerRef.current;
-    if (!el) return;
-    const nodes = Array.from(el.querySelectorAll<HTMLElement>("[data-agenda-row]"));
-    const newTops = new Map<string, number>();
-    for (const node of nodes) {
-      const id = node.dataset.agendaRow!;
-      const top = node.offsetTop;
-      newTops.set(id, top);
-      const prev = prevTops.current.get(id);
-      if (prev != null && prev !== top) {
-        const delta = prev - top;
-        node.style.transition = "none";
-        node.style.transform = `translateY(${delta}px)`;
-        // Next frame: animate back to resting position.
-        requestAnimationFrame(() => {
-          node.style.transition = "transform 200ms ease";
-          node.style.transform = "";
-        });
-      }
-    }
-    prevTops.current = newTops;
-  }, [rows]);
+  const [dragIndex, setDragIndex] = useState<number | null>(null);
+  const [overIndex, setOverIndex] = useState<number | null>(null);
 
   return (
-    <div ref={containerRef} className="space-y-3">
+    <div className="space-y-3">
       {rows.map((row, i) => (
-        <div key={row.id} data-agenda-row={row.id} className="rounded-md border border-border bg-card p-3 space-y-2">
+        <div
+          key={row.id}
+          draggable
+          onDragStart={() => setDragIndex(i)}
+          onDragOver={(e) => { e.preventDefault(); if (overIndex !== i) setOverIndex(i); }}
+          onDrop={(e) => { e.preventDefault(); if (dragIndex !== null) onReorder(dragIndex, i); setDragIndex(null); setOverIndex(null); }}
+          onDragEnd={() => { setDragIndex(null); setOverIndex(null); }}
+          className={cn(
+            "rounded-md border bg-card p-3 space-y-2 transition-colors",
+            overIndex === i && dragIndex !== null && dragIndex !== i ? "border-primary ring-2 ring-primary/20" : "border-border",
+            dragIndex === i && "opacity-60",
+          )}
+        >
           <div className="flex items-center gap-2">
+            <span className="cursor-grab text-muted-foreground active:cursor-grabbing" aria-label="Drag to reorder"><GripVertical className="h-4 w-4" /></span>
             <span className="text-sm font-semibold text-primary">{i + 1}.</span>
             <Input value={row.title} onChange={(e) => onUpdate(row.id, { title: e.target.value })} placeholder="Agenda item title" className="flex-1" />
-            <button type="button" onClick={() => onMove(i, -1)} disabled={i === 0} className="cursor-pointer text-muted-foreground hover:text-foreground disabled:opacity-30" aria-label="Move up"><ArrowUp className="h-4 w-4" /></button>
-            <button type="button" onClick={() => onMove(i, 1)} disabled={i === rows.length - 1} className="cursor-pointer text-muted-foreground hover:text-foreground disabled:opacity-30" aria-label="Move down"><ArrowDown className="h-4 w-4" /></button>
             <button type="button" onClick={() => onRemove(row.id)} className="cursor-pointer text-muted-foreground hover:text-destructive" aria-label="Remove"><Trash2 className="h-4 w-4" /></button>
           </div>
           <Textarea value={row.motion} onChange={(e) => onUpdate(row.id, { motion: e.target.value })} placeholder="Motion text (optional)" rows={2} />

@@ -8,6 +8,7 @@ import {
   createMeetingWithNoticeSchema,
   sendMeetingNoticeSchema,
   MEETING_TYPE_LABELS,
+  detectMeetingPlatform,
   type CreateMeetingInput,
   type CreateMeetingWithNoticeInput,
   type SendMeetingNoticeInput,
@@ -15,6 +16,21 @@ import {
   type MeetingType,
 } from "@/lib/validations/meetings";
 import { generateAndUploadMeetingNotice, generateMeetingNoticeBuffer } from "@/lib/meeting-pdf";
+
+// Detect the online platform from a meeting link. Unknown hosts (often short
+// links like bit.ly / a tenant vanity URL) are followed once to their final
+// URL and re-checked. Best-effort , falls back to "other".
+async function resolveOnlinePlatform(link: string): Promise<string> {
+  const direct = detectMeetingPlatform(link);
+  if (direct !== "other") return direct;
+  try {
+    const url = /^https?:\/\//i.test(link) ? link : `https://${link}`;
+    const res = await fetch(url, { method: "GET", redirect: "follow", signal: AbortSignal.timeout(4000) });
+    return detectMeetingPlatform(res.url || link);
+  } catch {
+    return "other";
+  }
+}
 import { runBulkEmail } from "@/lib/bulk-email-runner";
 import type { MeetingNoticeProps } from "@/lib/pdf/types";
 import { tasks } from "@trigger.dev/sdk";
@@ -194,6 +210,9 @@ export async function createMeetingWithNotice(
     .lt("date_time", `${year + 1}-01-01`);
   const reference = `${typeCode}-${year}-${(existingCount ?? 0) + 1}`;
 
+  const link = d.virtual_meeting_link?.trim() || null;
+  const onlinePlatform = d.meeting_format === "online" && link ? await resolveOnlinePlatform(link) : null;
+
   const { data: meeting, error } = await supabase
     .from("meetings")
     .insert({
@@ -204,8 +223,8 @@ export async function createMeetingWithNotice(
       date_time: d.date_time,
       meeting_format: d.meeting_format ?? "in_person",
       location: d.meeting_format === "online" ? null : (d.location?.trim() || null),
-      virtual_meeting_link: d.meeting_format === "online" ? (d.virtual_meeting_link?.trim() || null) : null,
-      online_platform: d.meeting_format === "online" ? (d.online_platform ?? null) : null,
+      virtual_meeting_link: d.meeting_format === "online" ? link : null,
+      online_platform: onlinePlatform,
       status: "draft",
       created_by: profile.id,
     })

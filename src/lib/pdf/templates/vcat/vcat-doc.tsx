@@ -19,22 +19,25 @@ export type VcatBlock =
 export interface VcatDocProps {
   companyName: string;
   companyLogoUrl?: string | null;
+  companyAbn?: string | null;
+  companyEmail?: string | null;
+  companyPhone?: string | null;
   brandColor?: string | null;
   title: string;
   subtitle?: string | null;
   reference?: string | null;
-  draft?: boolean;
   blocks: VcatBlock[];
 }
 
-export function VcatDoc({ companyName, companyLogoUrl, brandColor, title, subtitle, reference, draft, blocks }: VcatDocProps) {
+export function VcatDoc({ companyName, companyLogoUrl, companyAbn, companyEmail, companyPhone, brandColor, title, subtitle, reference, blocks }: VcatDocProps) {
   const brand = brandColor || "#0E314C";
   const s = StyleSheet.create({
     page: { fontFamily: FONT, fontSize: 10, color: c.foreground, paddingTop: 28, paddingBottom: 28, paddingHorizontal: 28 },
     topRow: { flexDirection: "row", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 10 },
     logo: { maxHeight: 50, maxWidth: 140, objectFit: "contain" as const },
+    companyBlock: { alignItems: "flex-end" as const },
     company: { fontSize: 10, fontWeight: 600, color: c.foreground, textAlign: "right" as const },
-    draftBadge: { color: "#b45309", fontSize: 8, textAlign: "right" as const, marginTop: 2 },
+    companyMeta: { fontSize: 8, color: c.muted, textAlign: "right" as const, marginTop: 1 },
     titleBar: { borderBottomWidth: 2, borderBottomColor: brand, paddingBottom: 6, marginBottom: 4 },
     title: { fontSize: 16, fontWeight: 700, color: brand },
     subtitle: { fontSize: 9, color: c.muted, marginTop: 2 },
@@ -42,7 +45,7 @@ export function VcatDoc({ companyName, companyLogoUrl, brandColor, title, subtit
     heading: { fontSize: 11, fontWeight: 700, color: c.foreground, marginTop: 12, marginBottom: 6 },
     para: { fontSize: 10, color: c.foreground, lineHeight: 1.5, marginBottom: 8 },
     kvRow: { flexDirection: "row", paddingVertical: 4, borderBottomWidth: 0.5, borderBottomColor: c.border },
-    kvLabel: { fontSize: 9, color: c.muted, width: 200 },
+    kvLabel: { fontSize: 9, color: c.muted, width: 210, paddingRight: 16 },
     kvValue: { fontSize: 10, color: c.foreground, flex: 1 },
     th: { flexDirection: "row", backgroundColor: brand, paddingVertical: 5, paddingHorizontal: 6 },
     thCell: { fontSize: 9, fontWeight: 700, color: c.white, flex: 1 },
@@ -54,10 +57,12 @@ export function VcatDoc({ companyName, companyLogoUrl, brandColor, title, subtit
     <Document>
       <Page size="A4" style={s.page}>
         <View style={s.topRow}>
-          {companyLogoUrl ? <Image src={companyLogoUrl} style={s.logo} /> : <Text style={s.company}>{companyName}</Text>}
-          <View>
+          {companyLogoUrl ? <Image src={companyLogoUrl} style={s.logo} /> : <View />}
+          <View style={s.companyBlock}>
             <Text style={s.company}>{companyName}</Text>
-            {draft ? <Text style={s.draftBadge}>DRAFT , VERIFY BEFORE FILING</Text> : null}
+            {companyAbn ? <Text style={s.companyMeta}>ABN {companyAbn}</Text> : null}
+            {companyEmail ? <Text style={s.companyMeta}>{companyEmail}</Text> : null}
+            {companyPhone ? <Text style={s.companyMeta}>{companyPhone}</Text> : null}
           </View>
         </View>
         <View style={s.titleBar}><Text style={s.title}>{title}</Text></View>
@@ -69,7 +74,7 @@ export function VcatDoc({ companyName, companyLogoUrl, brandColor, title, subtit
           if (b.type === "para") return <Text key={i} style={s.para}>{b.text}</Text>;
           if (b.type === "kv") return (
             <View key={i} style={{ marginBottom: 8 }}>
-              {b.rows.map((r, j) => (
+              {b.rows.filter((r) => r.value && r.value.trim().length > 0).map((r, j) => (
                 <View key={j} style={s.kvRow}><Text style={s.kvLabel}>{r.label}</Text><Text style={s.kvValue}>{r.value}</Text></View>
               ))}
             </View>

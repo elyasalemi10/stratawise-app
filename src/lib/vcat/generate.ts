@@ -107,6 +107,7 @@ export async function buildVcatPack(input: BuildVcatPackInput): Promise<{ packId
   const i = input.inputs;
   const base = (title: string, blocks: VcatBlock[], opts?: { subtitle?: string }): VcatDocProps => ({
     companyName, companyLogoUrl: logo, brandColor: brand,
+    companyAbn: (mc.abn as string) ?? null, companyEmail: (mc.email as string) ?? null, companyPhone: (mc.phone as string) ?? null,
     title, subtitle: opts?.subtitle ?? null, reference: `${ocLine} , ${lotLabel}`, blocks,
   });
 
@@ -193,16 +194,33 @@ export async function buildVcatPack(input: BuildVcatPackInput): Promise<{ packId
     ]) },
   ])) });
 
+  // Reconciled running statement: opening balance + levies , payments = closing.
+  // opening_balance is signed (negative = credit in the owner's favour).
+  const opening = Number(lot?.opening_balance ?? 0);
+  const totalLevied = (allLevies ?? []).reduce((sum, l) => sum + Number(l.amount), 0);
+  const totalPaid = (allLevies ?? []).reduce((sum, l) => sum + Number(l.amount_paid ?? 0), 0);
+  const closing = Math.round((opening + totalLevied - totalPaid) * 100) / 100;
+  let running = opening;
+  const statementRows: string[][] = [["", "Opening balance", "", "", money(running)]];
+  for (const l of allLevies ?? []) {
+    running = Math.round((running + Number(l.amount)) * 100) / 100;
+    statementRows.push([dateLong(l.due_date as string), `Levy ${l.reference_number ?? ""}`, money(Number(l.amount)), "", money(running)]);
+    if (Number(l.amount_paid ?? 0) > 0) {
+      running = Math.round((running - Number(l.amount_paid ?? 0)) * 100) / 100;
+      statementRows.push([dateLong(l.due_date as string), `Payment received , ${l.reference_number ?? ""}`, "", money(Number(l.amount_paid ?? 0)), money(running)]);
+    }
+  }
+  statementRows.push(["", "Closing balance (amount outstanding)", "", "", money(closing)]);
+
   docs.push({ filename: "06-Statement-of-account.pdf", buffer: await renderDoc(base("Statement of account", [
-    { type: "kv", rows: [{ label: "Opening balance", value: money(Number(lot?.opening_balance ?? 0)) }] },
-    { type: "table", head: ["Reference", "Period", "Due", "Levied", "Paid", "Outstanding"], rows: (allLevies ?? []).map((l) => [
-      String(l.reference_number ?? ""),
-      `${dateLong(l.period_start as string)} , ${dateLong(l.period_end as string)}`,
-      dateLong(l.due_date as string),
-      money(Number(l.amount)),
-      money(Number(l.amount_paid ?? 0)),
-      money(Number(l.amount) - Number(l.amount_paid ?? 0)),
-    ]) },
+    { type: "table", head: ["Date", "Detail", "Debit", "Credit", "Balance"], rows: statementRows },
+    { type: "kv", rows: [
+      { label: "Opening balance", value: money(opening) },
+      { label: "Total levied", value: money(totalLevied) },
+      { label: "Total paid", value: money(totalPaid) },
+      { label: "Closing balance (amount outstanding)", value: money(closing) },
+    ] },
+    { type: "para", text: `This application claims the unpaid amount of fee notice ${notice.reference_number ?? ""} (${money(principal)} principal plus ${money(interest.accrued)} interest to date). Where the closing balance above differs from the amount claimed, the difference reflects other levies or credits on the lot account that are not the subject of this application.` },
   ])) });
 
   docs.push({ filename: "07-Interest-calculation.pdf", buffer: await renderDoc(base("Interest calculation", [
@@ -226,9 +244,9 @@ export async function buildVcatPack(input: BuildVcatPackInput): Promise<{ packId
       { label: "ABN", value: oc?.abn ?? "" },
       { label: "Registered address", value: ocAddress },
       { label: "Manager", value: companyName },
-      { label: "Special resolution in support", value: i.special_resolution ? "Yes" : "Not required for fee recovery" },
+      { label: "Special resolution in support", value: i.special_resolution ? "Yes" : "No" },
     ] },
-    { type: "para", text: "No special resolution is required to commence fee recovery at VCAT. The Owners Corporation, through its appointed manager, is authorised to bring this application." },
+    { type: "para", text: "A special resolution is not required to commence fee recovery at VCAT. The Owners Corporation, through its appointed manager, is authorised to bring this application." },
   ])) });
 
   docs.push({ filename: "09-Respondent-details.pdf", buffer: await renderDoc(base("Respondent details", [
@@ -253,7 +271,19 @@ export async function buildVcatPack(input: BuildVcatPackInput): Promise<{ packId
     contactNumber: (mc.phone as string) ?? "",
     contactEmail: (mc.email as string) ?? "",
   });
-  if (appForm) docs.push({ filename: "10-VCAT-application-form.pdf", buffer: appForm });
+  docs.push(appForm
+    ? { filename: "10-VCAT-application-form.pdf", buffer: appForm }
+    : { filename: "10-VCAT-application-form.pdf", buffer: await renderDoc(base("VCAT application form", [
+        { type: "para", text: "Attach VCAT's official Application form (Owners Corporations list). The key details to enter are below." },
+        { type: "kv", rows: [
+          { label: "Claim amount", value: money(totalClaim) },
+          { label: "Premises", value: ocLine },
+          { label: "Address", value: ocAddress },
+          { label: "Owners Corporation", value: oc?.name ?? "" },
+          { label: "Plan of subdivision", value: oc?.plan_number ?? "" },
+          { label: "Contact", value: companyName },
+        ] },
+      ])) });
 
   // ── Zip + upload ──
   const zip = new JSZip();

@@ -13,6 +13,8 @@ export interface FollowupStep {
   days_after_overdue: number;
   subject: string | null;
   body: string | null;
+  attachment_url: string | null;
+  attachment_name: string | null;
   enabled: boolean;
 }
 
@@ -45,6 +47,8 @@ export const followupStepInputSchema = z.object({
   days_after_overdue: z.number().int().min(0).max(365),
   subject: z.string().trim().max(300).nullable().optional(),
   body: z.string().trim().max(8000).nullable().optional(),
+  attachment_url: z.string().trim().nullable().optional(),
+  attachment_name: z.string().trim().max(200).nullable().optional(),
   enabled: z.boolean(),
 });
 

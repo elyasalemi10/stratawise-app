@@ -219,6 +219,19 @@ async function advanceInstance(supabase: any, inst: Record<string, unknown>, tod
 
       const subject = renderTemplate(step.subject ?? "Levy payment overdue", vars);
       const body = renderTemplate(step.body ?? "", vars);
+      // Manager-uploaded per-step attachment (if any).
+      const extraAttachments: Array<{ filename: string; content: Buffer; contentType: string }> = [];
+      if (step.attachment_url) {
+        try {
+          const { fetchObject } = await import("@/lib/storage/r2");
+          const buf = await fetchObject(step.attachment_url);
+          const ext = step.attachment_url.split(".").pop()?.toLowerCase();
+          const ctype = ext === "png" ? "image/png" : ext === "jpg" || ext === "jpeg" ? "image/jpeg" : ext === "docx" ? "application/vnd.openxmlformats-officedocument.wordprocessingml.document" : "application/pdf";
+          extraAttachments.push({ filename: step.attachment_name || `attachment.${ext ?? "pdf"}`, content: buf, contentType: ctype });
+        } catch (err) {
+          console.error("escalation: could not fetch step attachment", err);
+        }
+      }
       const res = await sendEscalationEmail({
         to: owner.email,
         subject,
@@ -227,6 +240,7 @@ async function advanceInstance(supabase: any, inst: Record<string, unknown>, tod
         ocId: notice.oc_id,
         pdfBuffer,
         pdfFilename,
+        extraAttachments,
       });
       const sent = "success" in res || "dryRun" in res;
       await supabase.from("communication_log").insert({

@@ -73,12 +73,13 @@ export const sendMeetingNoticeSchema = z.object({
 });
 export type SendMeetingNoticeInput = z.input<typeof sendMeetingNoticeSchema>;
 
-// Platform detection from a meeting URL host.
+// Platform detection from a meeting URL (covers common hosts + short links
+// patterns). For unknown short links, the server follows redirects first.
 export function detectMeetingPlatform(url: string): MeetingPlatform {
   const u = url.toLowerCase();
-  if (u.includes("meet.google.com")) return "google_meet";
-  if (u.includes("zoom.us") || u.includes("zoom.com")) return "zoom";
-  if (u.includes("teams.microsoft.com") || u.includes("teams.live.com")) return "teams";
+  if (u.includes("meet.google.com") || u.includes("g.co/meet") || u.includes("meet.goo.gl")) return "google_meet";
+  if (u.includes("zoom.us") || u.includes("zoom.com") || u.includes("zoomgov.com") || u.includes("zoom.com.cn")) return "zoom";
+  if (u.includes("teams.microsoft.com") || u.includes("teams.live.com") || u.includes("teams.microsoft.us")) return "teams";
   return "other";
 }
 

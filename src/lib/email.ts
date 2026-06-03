@@ -1158,6 +1158,44 @@ export async function sendLevyCsvReminderEmail(
   return { success: true, id: data?.id ?? null };
 }
 
+// ─── Compliance reminder (manager-facing: insurance expiry, AGM due) ───────
+
+export interface SendComplianceReminderEmailParams {
+  to: string;
+  managerName: string | null;
+  heading: string;
+  body: string;
+  ctaPath?: string | null;   // dashboard path relative to /ocs/{code} or absolute
+  ctaShortCode?: string | null;
+  ctaLabel?: string;
+  companyLogoUrl?: string | null;
+  ocId?: string | null;
+}
+
+export async function sendComplianceReminderEmail(
+  params: SendComplianceReminderEmailParams,
+): Promise<EmailSendResult> {
+  const { to, managerName, heading, body, ctaPath, ctaShortCode, ctaLabel, companyLogoUrl, ocId } = params;
+  if (isDryRun()) {
+    console.log(`[email-dry-run] type=compliance_reminder to=${to} heading="${heading}"`);
+    return { dryRun: true };
+  }
+  const greetingLine = managerName ? `Hi ${escapeHtml(managerName)},` : "Hi,";
+  const cta = ctaShortCode && ctaPath
+    ? buildCtaBlock(ctaShortCode, ctaPath, ctaLabel ?? "Open StrataWise", body)
+    : "";
+  const html = brandShell(`
+    <h2 style="margin:0 0 16px;font-size:20px;font-weight:600;color:#0E314C;">${escapeHtml(heading)}</h2>
+    <p style="margin:0 0 20px;color:#0E314C;font-size:14px;line-height:1.6;">${greetingLine} ${escapeHtml(body)}</p>
+    ${cta}
+    <p style="margin:24px 0 0;color:#4A5868;font-size:12px;line-height:1.5;">You can turn these reminders off in Settings , Notifications.</p>
+  `, companyLogoUrl);
+  const resendFrom = ocId ? await resolveOcSenderFromHeader(ocId) : noreplyFrom();
+  const { data, error } = await transportSend({ ocId: ocId ?? null, to, subject: heading, html, resendFrom });
+  if (error) { console.error("Failed to send compliance_reminder email:", error); return { error: error.message }; }
+  return { success: true, id: data?.id ?? null };
+}
+
 // ─── Meeting notice (owner-facing, branded PDF attached) ───────────────────
 
 export interface SendMeetingNoticeEmailParams {
@@ -1292,12 +1330,13 @@ export interface SendEscalationEmailParams {
   ocId?: string | null;
   pdfBuffer?: Buffer | null;
   pdfFilename?: string | null;
+  extraAttachments?: Array<{ filename: string; content: Buffer; contentType: string }>;
 }
 
 export async function sendEscalationEmail(
   params: SendEscalationEmailParams,
 ): Promise<EmailSendResult> {
-  const { to, subject, bodyText, companyLogoUrl, ocId, pdfBuffer, pdfFilename } = params;
+  const { to, subject, bodyText, companyLogoUrl, ocId, pdfBuffer, pdfFilename, extraAttachments } = params;
 
   if (isDryRun()) {
     console.log(`[email-dry-run] type=levy_followup to=${to} subject="${subject}"`);
@@ -1311,10 +1350,11 @@ export async function sendEscalationEmail(
   const html = brandShell(paragraphs, companyLogoUrl);
 
   const resendFrom = ocId ? await resolveOcSenderFromHeader(ocId) : noreplyFrom();
-  const attachments = pdfBuffer && pdfFilename
-    ? [{ filename: pdfFilename, content: pdfBuffer, contentType: "application/pdf" }]
-    : undefined;
-  const { data, error } = await transportSend({ ocId: ocId ?? null, to, subject, html, resendFrom, attachments });
+  const attachments = [
+    ...(pdfBuffer && pdfFilename ? [{ filename: pdfFilename, content: pdfBuffer, contentType: "application/pdf" }] : []),
+    ...(extraAttachments ?? []),
+  ];
+  const { data, error } = await transportSend({ ocId: ocId ?? null, to, subject, html, resendFrom, attachments: attachments.length ? attachments : undefined });
   if (error) {
     console.error("Failed to send levy_followup email:", error);
     return { error: error.message };

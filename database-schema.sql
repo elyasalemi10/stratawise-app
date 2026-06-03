@@ -1206,6 +1206,8 @@ CREATE TABLE escalation_workflow_steps (
   days_after_overdue INTEGER NOT NULL,
   subject TEXT,
   body TEXT,                                         -- merge-field template
+  attachment_url TEXT,                               -- optional per-step attachment (R2 key)
+  attachment_name TEXT,
   enabled BOOLEAN NOT NULL DEFAULT true,
   UNIQUE(workflow_id, step_number)
 );

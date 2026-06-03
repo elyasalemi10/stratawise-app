@@ -24,6 +24,8 @@ export const NOTIFICATION_TYPES = [
   "escalation_step",
   "document_uploaded",
   "levy_csv_reminder",
+  "insurance_expiring",
+  "agm_due",
 ] as const;
 
 export type NotificationType = (typeof NOTIFICATION_TYPES)[number];

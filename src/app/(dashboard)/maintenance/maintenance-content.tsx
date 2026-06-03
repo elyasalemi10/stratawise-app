@@ -4,13 +4,14 @@ import { useEffect, useMemo, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { toast } from "sonner";
 import {
-  Wrench, Loader2, Plus, Search, Trash2, Upload, FileText, Pause, Play,
+  Wrench, Loader2, Plus, Search, Trash2, Upload, FileText,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Switch } from "@/components/ui/switch";
 import { Badge } from "@/components/ui/badge";
+import { cn } from "@/lib/utils";
 import { Checkbox } from "@/components/ui/checkbox";
 import { NumberInput } from "@/components/ui/number-input";
 import { Textarea } from "@/components/ui/textarea";
@@ -30,7 +31,7 @@ import {
 import { EmptyState } from "@/components/shared/empty-state";
 import { ContractorDrawer, type CreatedContractor } from "../contractors/contractors-content";
 import {
-  createRecurringJob, updateRecurringJob, deleteRecurringJob, setRecurringJobStatus,
+  createRecurringJob, updateRecurringJob, setRecurringJobStatus,
   getOCNotifyOwners, getRecurringJobNotifyTargets, getRecurringJobDocuments,
   uploadRecurringJobDocument, deleteRecurringJobDocument,
   type OCSelectOption, type NotifyOwnerOption, type RecurringJobDoc,
@@ -178,7 +179,7 @@ export function MaintenanceContent({
                 <TableRow key={j.id} className="cursor-pointer" onClick={() => openEdit(j)}>
                   <TableCell className="font-medium text-foreground">
                     {j.title}
-                    {j.trade && <span className="ml-2 text-xs text-muted-foreground">{tradeLabel(j.trade)}</span>}
+                    {!fixedOcId && j.trade && <span className="ml-2 text-xs text-muted-foreground">{tradeLabel(j.trade)}</span>}
                   </TableCell>
                   {!fixedOcId && <TableCell>{j.oc_name}</TableCell>}
                   <TableCell>{j.contractor_name}</TableCell>
@@ -275,6 +276,7 @@ function RecurringJobDrawer({
   const [docs, setDocs] = useState<RecurringJobDoc[]>([]);
   const [pendingFiles, setPendingFiles] = useState<File[]>([]); // queued before a new job exists
   const [uploading, setUploading] = useState(false);
+  const [dragActive, setDragActive] = useState(false);
 
   const [invalid, setInvalid] = useState<Record<string, boolean>>({});
   const [pending, startTransition] = useTransition();
@@ -600,9 +602,24 @@ function RecurringJobDrawer({
             <h3 className="text-sm font-semibold text-foreground">Documents</h3>
           </div>
           <div className="space-y-2">
-            <label className="inline-flex cursor-pointer items-center gap-2 rounded-md border border-border bg-card px-3 py-2 text-sm text-foreground hover:bg-muted">
-              {uploading ? <Loader2 className="h-4 w-4 animate-spin" /> : <Upload className="h-4 w-4" />}
-              <span>Attach document</span>
+            <label
+              onDragOver={(e) => { e.preventDefault(); setDragActive(true); }}
+              onDragLeave={() => setDragActive(false)}
+              onDrop={(e) => { e.preventDefault(); setDragActive(false); const f = e.dataTransfer.files?.[0]; if (f) onUploadDoc(f); }}
+              className={cn(
+                "flex cursor-pointer flex-col items-center justify-center gap-1.5 rounded-md border border-dashed px-4 py-6 text-center text-sm transition-colors",
+                dragActive ? "border-primary bg-primary/5" : "border-border bg-card hover:bg-muted",
+              )}
+            >
+              {uploading ? (
+                <Loader2 className="h-5 w-5 animate-spin text-muted-foreground" />
+              ) : (
+                <>
+                  <Upload className="h-5 w-5 text-muted-foreground" />
+                  <span className="text-muted-foreground">Drag a file here, or click to upload</span>
+                  <span className="text-xs text-muted-foreground">PDF, image or Word</span>
+                </>
+              )}
               <input
                 type="file"
                 accept="application/pdf,image/png,image/jpeg,application/vnd.openxmlformats-officedocument.wordprocessingml.document"
@@ -645,34 +662,18 @@ function RecurringJobDrawer({
 
         <SheetFooter>
           {editing && (
-            <div className="mr-auto flex gap-2">
-              <Button
-                variant="secondary"
-                className="cursor-pointer"
-                onClick={() => startTransition(async () => {
-                  const next = editing.status === "active" ? "paused" : "active";
+            <div className="mr-auto flex items-center gap-2.5">
+              <Switch
+                checked={editing.status === "active"}
+                onCheckedChange={(on) => startTransition(async () => {
+                  const next = on ? "active" : "paused";
                   const res = await setRecurringJobStatus(editing.id, next);
                   if (res.error) { toast.error(res.error); return; }
-                  toast.success(next === "paused" ? "Job paused" : "Job resumed");
+                  toast.success(next === "active" ? "Job active" : "Job paused");
                   onSaved();
                 })}
-              >
-                {editing.status === "active" ? <Pause className="size-4" /> : <Play className="size-4" />}
-                {editing.status === "active" ? "Pause" : "Resume"}
-              </Button>
-              <Button
-                variant="secondary"
-                className="cursor-pointer"
-                onClick={() => startTransition(async () => {
-                  const res = await deleteRecurringJob(editing.id);
-                  if (res.error) { toast.error(res.error); return; }
-                  toast.success("Job deleted");
-                  onSaved();
-                })}
-              >
-                <Trash2 className="size-4" />
-                Delete
-              </Button>
+              />
+              <Label className="cursor-default">Active</Label>
             </div>
           )}
           <Button onClick={onSubmit} disabled={pending || uploading} className="cursor-pointer">

@@ -24,7 +24,7 @@ async function loadWorkflow(
   if (!wf) return null;
   const { data: steps } = await supabase
     .from("escalation_workflow_steps")
-    .select("id, step_number, step_type, label, days_after_overdue, subject, body, enabled")
+    .select("id, step_number, step_type, label, days_after_overdue, subject, body, attachment_url, attachment_name, enabled")
     .eq("workflow_id", workflowId)
     .order("step_number", { ascending: true });
   return { ...wf, steps: (steps ?? []) as FollowupStep[] };
@@ -98,6 +98,8 @@ export async function updateFollowupSteps(input: UpdateFollowupStepsInput): Prom
         days_after_overdue: step.days_after_overdue,
         subject: step.subject?.trim() || null,
         body: step.body?.trim() || null,
+        attachment_url: step.attachment_url?.trim() || null,
+        attachment_name: step.attachment_name?.trim() || null,
         enabled: step.enabled,
       })
       .eq("id", step.id)
