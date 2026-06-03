@@ -28,7 +28,7 @@ import {
   Table, TableBody, TableCell, TableHead, TableHeader, TableRow,
 } from "@/components/ui/table";
 import { EmptyState } from "@/components/shared/empty-state";
-import { ContractorDrawer } from "../contractors/contractors-content";
+import { ContractorDrawer, type CreatedContractor } from "../contractors/contractors-content";
 import {
   createRecurringJob, updateRecurringJob, deleteRecurringJob, setRecurringJobStatus,
   getOCNotifyOwners, getRecurringJobNotifyTargets, getRecurringJobDocuments,
@@ -59,19 +59,41 @@ function formatMoney(n: number | null): string {
   return `$${n.toLocaleString("en-AU", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
 }
 
+type ContractorOption = { id: string; business_name: string; trade: string | null };
+
 export function MaintenanceContent({
   jobs,
   ocs,
   contractors,
+  fixedOcId,
 }: {
   jobs: RecurringJobRecord[];
   ocs: OCSelectOption[];
-  contractors: { id: string; business_name: string; trade: string | null }[];
+  contractors: ContractorOption[];
+  // When set (per-OC maintenance page), the OC is locked to this one and the
+  // OC combobox is hidden.
+  fixedOcId?: string;
 }) {
   const router = useRouter();
   const [query, setQuery] = useState("");
   const [drawerOpen, setDrawerOpen] = useState(false);
   const [editing, setEditing] = useState<RecurringJobRecord | null>(null);
+
+  // Contractor list is held locally so a contractor created from the job
+  // drawer can be appended + auto-selected without a full refresh (which would
+  // reset the open job drawer).
+  const [contractorList, setContractorList] = useState<ContractorOption[]>(contractors);
+  useEffect(() => { setContractorList(contractors); }, [contractors]);
+  const [contractorDrawerOpen, setContractorDrawerOpen] = useState(false);
+  const [selectContractorId, setSelectContractorId] = useState<string | null>(null);
+
+  function onContractorCreated(created?: CreatedContractor) {
+    setContractorDrawerOpen(false);
+    if (created) {
+      setContractorList((prev) => prev.some((c) => c.id === created.id) ? prev : [...prev, created]);
+      setSelectContractorId(created.id);
+    }
+  }
 
   const filtered = useMemo(() => {
     const q = query.trim().toLowerCase();
@@ -130,7 +152,7 @@ export function MaintenanceContent({
             <TableHeader>
               <TableRow>
                 <TableHead>Job</TableHead>
-                <TableHead>OC</TableHead>
+                {!fixedOcId && <TableHead>OC</TableHead>}
                 <TableHead>Contractor</TableHead>
                 <TableHead>Frequency</TableHead>
                 <TableHead>Next due</TableHead>
@@ -145,7 +167,7 @@ export function MaintenanceContent({
                     {j.title}
                     {j.trade && <span className="ml-2 text-xs text-muted-foreground">{tradeLabel(j.trade)}</span>}
                   </TableCell>
-                  <TableCell>{j.oc_name}</TableCell>
+                  {!fixedOcId && <TableCell>{j.oc_name}</TableCell>}
                   <TableCell>{j.contractor_name}</TableCell>
                   <TableCell>{RECURRING_FREQUENCY_LABELS[j.frequency]}</TableCell>
                   <TableCell>{formatDate(j.next_occurrence_date)}</TableCell>
@@ -159,7 +181,7 @@ export function MaintenanceContent({
               ))}
               {filtered.length === 0 && (
                 <TableRow>
-                  <TableCell colSpan={7} className="py-8 text-center text-sm text-muted-foreground">
+                  <TableCell colSpan={fixedOcId ? 6 : 7} className="py-8 text-center text-sm text-muted-foreground">
                     No jobs match your search.
                   </TableCell>
                 </TableRow>
@@ -175,8 +197,21 @@ export function MaintenanceContent({
         onOpenChange={setDrawerOpen}
         editing={editing}
         ocs={ocs}
-        contractors={contractors}
+        fixedOcId={fixedOcId}
+        contractors={contractorList}
+        selectContractorId={selectContractorId}
+        onContractorSelected={() => setSelectContractorId(null)}
+        onRequestCreateContractor={() => setContractorDrawerOpen(true)}
         onSaved={() => { setDrawerOpen(false); router.refresh(); }}
+      />
+
+      {/* Lifted to the page level so it stacks above the job drawer and its
+          overlay-dismiss closes only itself, leaving the job drawer open. */}
+      <ContractorDrawer
+        open={contractorDrawerOpen}
+        onOpenChange={setContractorDrawerOpen}
+        editing={null}
+        onSaved={onContractorCreated}
       />
     </div>
   );
@@ -187,18 +222,25 @@ function RecurringJobDrawer({
   onOpenChange,
   editing,
   ocs,
+  fixedOcId,
   contractors,
+  selectContractorId,
+  onContractorSelected,
+  onRequestCreateContractor,
   onSaved,
 }: {
   open: boolean;
   onOpenChange: (o: boolean) => void;
   editing: RecurringJobRecord | null;
   ocs: OCSelectOption[];
-  contractors: { id: string; business_name: string; trade: string | null }[];
+  fixedOcId?: string;
+  contractors: ContractorOption[];
+  selectContractorId: string | null;
+  onContractorSelected: () => void;
+  onRequestCreateContractor: () => void;
   onSaved: () => void;
 }) {
-  const router = useRouter();
-  const [ocId, setOcId] = useState(editing?.oc_id ?? "");
+  const [ocId, setOcId] = useState(editing?.oc_id ?? fixedOcId ?? "");
   const [contractorId, setContractorId] = useState(editing?.contractor_id ?? "");
   const [title, setTitle] = useState(editing?.title ?? "");
   const [trade, setTrade] = useState(editing?.trade ?? "");
@@ -218,11 +260,19 @@ function RecurringJobDrawer({
   const [loadingOwners, setLoadingOwners] = useState(false);
   const [docs, setDocs] = useState<RecurringJobDoc[]>([]);
   const [uploading, setUploading] = useState(false);
-  const [contractorDrawerOpen, setContractorDrawerOpen] = useState(false);
 
   const [invalid, setInvalid] = useState<Record<string, boolean>>({});
   const [pending, startTransition] = useTransition();
   const clearInvalid = (f: string) => setInvalid((p) => (p[f] ? { ...p, [f]: false } : p));
+
+  // A contractor was just created from the lifted drawer , select it here.
+  useEffect(() => {
+    if (selectContractorId) {
+      setContractorId(selectContractorId);
+      onContractorSelected();
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [selectContractorId]);
 
   // Load owners whenever an OC is chosen (used for the specific-notify list).
   useEffect(() => {
@@ -322,24 +372,26 @@ function RecurringJobDrawer({
         </SheetHeader>
 
         <div className="space-y-5 px-4 pb-4">
-          {/* OC */}
-          <div className="space-y-1.5">
-            <Label>Owners Corporation <span className="text-destructive">*</span></Label>
-            <Combobox items={ocs} value={ocId} onValueChange={(v) => { setOcId(v ?? ""); clearInvalid("ocId"); }}>
-              <ComboboxInput placeholder="Pick an OC" aria-invalid={invalid.ocId || undefined} />
-              <ComboboxContent>
-                <ComboboxEmpty>No OCs found.</ComboboxEmpty>
-                <ComboboxList>
-                  {(o: OCSelectOption) => (
-                    <ComboboxItem key={o.id} value={o.id} keywords={[o.name, o.short_code]}>
-                      {o.name}
-                    </ComboboxItem>
-                  )}
-                </ComboboxList>
-              </ComboboxContent>
-            </Combobox>
-            {selectedOc && <span className="hidden">{selectedOc.name}</span>}
-          </div>
+          {/* OC (hidden + locked on the per-OC maintenance page) */}
+          {!fixedOcId && (
+            <div className="space-y-1.5">
+              <Label>Owners Corporation <span className="text-destructive">*</span></Label>
+              <Combobox items={ocs} value={ocId} onValueChange={(v) => { setOcId(v ?? ""); clearInvalid("ocId"); }}>
+                <ComboboxInput placeholder="Pick an OC" aria-invalid={invalid.ocId || undefined} />
+                <ComboboxContent>
+                  <ComboboxEmpty>No OCs found.</ComboboxEmpty>
+                  <ComboboxList>
+                    {(o: OCSelectOption) => (
+                      <ComboboxItem key={o.id} value={o.id} keywords={[o.name, o.short_code]}>
+                        {o.name}
+                      </ComboboxItem>
+                    )}
+                  </ComboboxList>
+                </ComboboxContent>
+              </Combobox>
+              {selectedOc && <span className="hidden">{selectedOc.name}</span>}
+            </div>
+          )}
 
           {/* Contractor */}
           <div className="space-y-1.5">
@@ -347,7 +399,7 @@ function RecurringJobDrawer({
               <Label>Contractor</Label>
               <button
                 type="button"
-                onClick={() => setContractorDrawerOpen(true)}
+                onClick={onRequestCreateContractor}
                 className="cursor-pointer text-xs font-medium text-primary hover:underline"
               >
                 + Create contractor
@@ -381,16 +433,17 @@ function RecurringJobDrawer({
           </div>
           <div className="space-y-1.5">
             <Label>Trade</Label>
-            <Select value={trade} onValueChange={(v) => setTrade(v ?? "")}>
-              <SelectTrigger className="w-full">
-                <SelectValue placeholder="Trade">{trade ? tradeLabel(trade) : undefined}</SelectValue>
-              </SelectTrigger>
-              <SelectContent>
-                {CONTRACTOR_TRADE_OPTIONS.map((o) => (
-                  <SelectItem key={o.value} value={o.value}>{o.label}</SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
+            <Combobox items={CONTRACTOR_TRADE_OPTIONS} value={trade} onValueChange={(v) => setTrade(v ?? "")}>
+              <ComboboxInput placeholder={trade ? tradeLabel(trade) : "Search trade"} />
+              <ComboboxContent>
+                <ComboboxEmpty>No trade found.</ComboboxEmpty>
+                <ComboboxList>
+                  {(o: { value: string; label: string }) => (
+                    <ComboboxItem key={o.value} value={o.value} keywords={[o.label]}>{o.label}</ComboboxItem>
+                  )}
+                </ComboboxList>
+              </ComboboxContent>
+            </Combobox>
           </div>
 
           {/* Schedule */}
@@ -585,13 +638,6 @@ function RecurringJobDrawer({
           </Button>
         </SheetFooter>
       </SheetContent>
-
-      <ContractorDrawer
-        open={contractorDrawerOpen}
-        onOpenChange={setContractorDrawerOpen}
-        editing={null}
-        onSaved={() => { setContractorDrawerOpen(false); router.refresh(); }}
-      />
     </Sheet>
   );
 }

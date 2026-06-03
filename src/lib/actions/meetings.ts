@@ -6,9 +6,11 @@ import { revalidatePath } from "next/cache";
 import {
   createMeetingSchema,
   createMeetingWithNoticeSchema,
+  sendMeetingNoticeSchema,
   MEETING_TYPE_LABELS,
   type CreateMeetingInput,
   type CreateMeetingWithNoticeInput,
+  type SendMeetingNoticeInput,
   type MeetingRecord,
   type MeetingType,
 } from "@/lib/validations/meetings";
@@ -23,7 +25,7 @@ async function buildMeetingNoticeProps(
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   supabase: any,
   ocId: string,
-  d: { meeting_type: string; title: string; date_time: string; location?: string | null; virtual_meeting_link?: string | null; agenda?: Array<{ title: string; motion?: string | null }> },
+  d: { meeting_type: string; title?: string | null; date_time: string; meeting_format?: string | null; location?: string | null; virtual_meeting_link?: string | null; online_platform?: string | null; agenda?: Array<{ title: string; motion?: string | null }> },
   reference: string,
 ): Promise<MeetingNoticeProps> {
   const { data: oc } = await supabase
@@ -38,6 +40,8 @@ async function buildMeetingNoticeProps(
     weekday: "long", day: "numeric", month: "long", year: "numeric", hour: "numeric", minute: "2-digit",
   });
   const agenda = (d.agenda ?? []).filter((a) => a.title.trim().length > 0);
+  const typeLabel = MEETING_TYPE_LABELS[d.meeting_type as MeetingType];
+  const isOnline = d.meeting_format === "online";
 
   return {
     managementCompany: {
@@ -51,11 +55,11 @@ async function buildMeetingNoticeProps(
     documentTitle: "Meeting Notice",
     referenceNumber: reference,
     date: new Date(),
-    meetingTypeLabel: MEETING_TYPE_LABELS[d.meeting_type as MeetingType],
-    meetingTitle: d.title,
+    meetingTypeLabel: typeLabel,
+    meetingTitle: d.title?.trim() || typeLabel,
     whenLabel,
-    location: d.location?.trim() || null,
-    onlineLink: d.virtual_meeting_link?.trim() || null,
+    location: isOnline ? null : (d.location?.trim() || null),
+    onlineLink: isOnline ? (d.virtual_meeting_link?.trim() || null) : null,
     agenda: agenda.map((a, i) => ({ position: i + 1, title: a.title.trim(), motion: a.motion?.trim() || null })),
     brandColors: { primary: brand, secondary: brand },
   };
@@ -88,7 +92,7 @@ export async function listMeetings(ocId: string): Promise<MeetingRecord[]> {
   const { data, error } = await supabase
     .from("meetings")
     .select(
-      "id, oc_id, reference_number, meeting_type, title, date_time, location, virtual_meeting_link, status, notice_sent_at, created_at",
+      "id, oc_id, reference_number, meeting_type, title, date_time, location, virtual_meeting_link, meeting_format, online_platform, status, notice_sent_at, notice_pdf_url, created_at",
     )
     .eq("oc_id", ocId)
     .order("date_time", { ascending: false });
@@ -131,10 +135,12 @@ export async function createMeeting(
       oc_id: parsed.data.oc_id,
       reference_number: reference,
       meeting_type: parsed.data.meeting_type,
-      title: parsed.data.title,
+      title: parsed.data.title?.trim() || MEETING_TYPE_LABELS[parsed.data.meeting_type],
       date_time: parsed.data.date_time,
+      meeting_format: parsed.data.meeting_format ?? "in_person",
       location: parsed.data.location?.trim() || null,
       virtual_meeting_link: parsed.data.virtual_meeting_link?.trim() || null,
+      online_platform: parsed.data.online_platform ?? null,
       status: "draft",
       created_by: profile.id,
     })
@@ -160,10 +166,10 @@ export async function createMeeting(
   return { meetingId: data.id };
 }
 
-// ─── createMeetingWithNotice (wizard) ───────────────────────────
-// Inserts the meeting + agenda, renders the branded notice PDF, stores it on
-// the meeting, then fans the notice out to owners in the background via the
-// send-bulk-email task. Returns the meeting id; navigation happens client-side.
+// ─── createMeetingWithNotice (wizard, create-only) ──────────────
+// Inserts the meeting + agenda and renders the branded notice PDF (stored on
+// the meeting). Sending happens later from the meeting detail page. Returns
+// the meeting id; navigation happens client-side.
 export async function createMeetingWithNotice(
   input: CreateMeetingWithNoticeInput,
 ): Promise<{ meetingId?: string; error?: string }> {
@@ -172,6 +178,7 @@ export async function createMeetingWithNotice(
     return { error: parsed.error.issues[0]?.message ?? "Invalid input" };
   }
   const d = parsed.data;
+  const title = d.title?.trim() || MEETING_TYPE_LABELS[d.meeting_type];
 
   const profile = await requireCompanyRole(["admin", "manager"]);
   await requireOCAccess(d.oc_id);
@@ -193,10 +200,12 @@ export async function createMeetingWithNotice(
       oc_id: d.oc_id,
       reference_number: reference,
       meeting_type: d.meeting_type,
-      title: d.title,
+      title,
       date_time: d.date_time,
-      location: d.location?.trim() || null,
-      virtual_meeting_link: d.virtual_meeting_link?.trim() || null,
+      meeting_format: d.meeting_format ?? "in_person",
+      location: d.meeting_format === "online" ? null : (d.location?.trim() || null),
+      virtual_meeting_link: d.meeting_format === "online" ? (d.virtual_meeting_link?.trim() || null) : null,
+      online_platform: d.meeting_format === "online" ? (d.online_platform ?? null) : null,
       status: "draft",
       created_by: profile.id,
     })
@@ -218,14 +227,13 @@ export async function createMeetingWithNotice(
     );
   }
 
-  // Build + upload the branded notice PDF.
+  // Build + upload the branded notice PDF (ready to send from the detail page).
   try {
-    const props = await buildMeetingNoticeProps(supabase, d.oc_id, d, reference);
+    const props = await buildMeetingNoticeProps(supabase, d.oc_id, { ...d, title }, reference);
     const key = await generateAndUploadMeetingNotice(props, d.oc_id, reference);
     await supabase.from("meetings").update({ notice_pdf_url: key }).eq("id", meeting.id);
   } catch (err) {
     console.error("createMeetingWithNotice: PDF generation failed", err);
-    // The meeting still exists; surface a soft failure so the manager can retry sending.
     return { meetingId: meeting.id, error: "The meeting was created but the notice could not be generated. Try again from the meeting." };
   }
 
@@ -235,31 +243,91 @@ export async function createMeetingWithNotice(
     action: "meeting.created",
     entity_type: "meeting",
     entity_id: meeting.id,
-    after_state: { meeting_type: d.meeting_type, title: d.title, date_time: d.date_time, notify_scope: d.notify_scope },
+    after_state: { meeting_type: d.meeting_type, title, date_time: d.date_time },
   });
-
-  // Fan the notice out to owners in the background (unless "none").
-  if (d.notify_scope !== "none") {
-    const payload = {
-      kind: "meeting_notice" as const,
-      meetingId: meeting.id,
-      notifyScope: d.notify_scope,
-      lotOwnerIds: d.notify_scope === "specific" ? (d.notify_lot_owner_ids ?? []) : [],
-    };
-    if (process.env.TRIGGER_SECRET_KEY) {
-      try {
-        await tasks.trigger("send-bulk-email", payload);
-      } catch (err) {
-        console.error("createMeetingWithNotice: failed to queue send-bulk-email, sending inline", err);
-        await runBulkEmail(payload);
-      }
-    } else {
-      await runBulkEmail(payload);
-    }
-  }
 
   revalidatePath("/ocs/[ocCode]/meetings", "page");
   return { meetingId: meeting.id };
+}
+
+// ─── getMeetingDetail ───────────────────────────────────────────
+export interface MeetingAgendaItem { id: string; position: number; title: string; motion: string | null }
+export interface MeetingDetail extends MeetingRecord {
+  agenda: MeetingAgendaItem[];
+}
+
+export async function getMeetingDetail(meetingId: string): Promise<MeetingDetail | null> {
+  const supabase = createServerClient();
+  const { data: meeting } = await supabase
+    .from("meetings")
+    .select("id, oc_id, reference_number, meeting_type, title, date_time, location, virtual_meeting_link, meeting_format, online_platform, status, notice_sent_at, notice_pdf_url, created_at")
+    .eq("id", meetingId)
+    .maybeSingle();
+  if (!meeting) return null;
+  await requireOCAccess(meeting.oc_id as string);
+
+  const { data: agendaRows } = await supabase
+    .from("agenda_items")
+    .select("id, item_number, title, motion_text")
+    .eq("meeting_id", meetingId)
+    .order("item_number", { ascending: true });
+
+  const agenda: MeetingAgendaItem[] = (agendaRows ?? []).map((a) => ({
+    id: a.id as string,
+    position: a.item_number as number,
+    title: a.title as string,
+    motion: (a.motion_text as string) ?? null,
+  }));
+
+  return { ...(meeting as MeetingRecord), agenda };
+}
+
+// ─── sendMeetingNotice (from the detail page) ───────────────────
+export async function sendMeetingNotice(
+  input: SendMeetingNoticeInput,
+): Promise<{ error?: string }> {
+  const parsed = sendMeetingNoticeSchema.safeParse(input);
+  if (!parsed.success) return { error: parsed.error.issues[0]?.message ?? "Invalid input" };
+
+  const profile = await requireCompanyRole(["admin", "manager"]);
+  const supabase = createServerClient();
+  const { data: meeting } = await supabase
+    .from("meetings")
+    .select("id, oc_id, notice_pdf_url")
+    .eq("id", parsed.data.meeting_id)
+    .maybeSingle();
+  if (!meeting) return { error: "Meeting not found" };
+  await requireOCAccess(meeting.oc_id as string);
+  if (!meeting.notice_pdf_url) return { error: "The notice PDF isn't ready yet. Try again shortly." };
+
+  const payload = {
+    kind: "meeting_notice" as const,
+    meetingId: meeting.id as string,
+    notifyScope: parsed.data.notify_scope,
+    lotOwnerIds: parsed.data.notify_scope === "specific" ? (parsed.data.notify_lot_owner_ids ?? []) : [],
+  };
+  if (process.env.TRIGGER_SECRET_KEY) {
+    try {
+      await tasks.trigger("send-bulk-email", payload);
+    } catch (err) {
+      console.error("sendMeetingNotice: failed to queue send-bulk-email, sending inline", err);
+      await runBulkEmail(payload);
+    }
+  } else {
+    await runBulkEmail(payload);
+  }
+
+  await supabase.from("audit_log").insert({
+    profile_id: profile.id,
+    oc_id: meeting.oc_id,
+    action: "meeting.notice_sent",
+    entity_type: "meeting",
+    entity_id: meeting.id,
+    after_state: { notify_scope: parsed.data.notify_scope },
+  });
+
+  revalidatePath("/ocs/[ocCode]/meetings", "page");
+  return {};
 }
 
 // ─── cancelMeeting ──────────────────────────────────────────────

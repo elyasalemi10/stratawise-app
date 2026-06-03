@@ -1,12 +1,15 @@
 "use client";
 
 import Link from "next/link";
-import { CalendarDays, MapPin, Video, Plus } from "lucide-react";
-import { Card, CardContent } from "@/components/ui/card";
+import { useRouter } from "next/navigation";
+import { CalendarDays, Plus } from "lucide-react";
 import { buttonVariants } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { cn } from "@/lib/utils";
 import { EmptyState } from "@/components/shared/empty-state";
+import {
+  Table, TableBody, TableCell, TableHead, TableHeader, TableRow,
+} from "@/components/ui/table";
 import {
   MEETING_TYPE_LABELS,
   type MeetingRecord,
@@ -38,7 +41,6 @@ function formatWhen(iso: string): string {
 }
 
 export function MeetingsContent({
-  ocId,
   ocCode,
   meetings,
   readOnly,
@@ -48,7 +50,7 @@ export function MeetingsContent({
   meetings: MeetingRecord[];
   readOnly: boolean;
 }) {
-  void ocId;
+  const router = useRouter();
   const createHref = `/ocs/${ocCode}/meetings/create`;
 
   return (
@@ -80,48 +82,39 @@ export function MeetingsContent({
           }
         />
       ) : (
-        <div className="space-y-3">
-          {meetings.map((m) => (
-            <Card key={m.id}>
-              <CardContent className="pt-5">
-                <div className="flex items-start justify-between gap-4">
-                  <div className="min-w-0">
-                    <div className="flex flex-wrap items-center gap-2">
-                      <h3 className="text-sm font-semibold text-foreground">{m.title}</h3>
-                      <Badge variant={STATUS_VARIANT[m.status]} className="rounded-full">
-                        {STATUS_LABEL[m.status]}
-                      </Badge>
-                    </div>
-                    <p className="mt-1 text-xs text-muted-foreground">
-                      {MEETING_TYPE_LABELS[m.meeting_type as MeetingType]}
-                      {m.reference_number ? ` · ${m.reference_number}` : ""}
-                    </p>
-                    <div className="mt-2 flex flex-wrap items-center gap-x-4 gap-y-1 text-xs text-muted-foreground">
-                      <span className="inline-flex items-center gap-1.5">
-                        <CalendarDays className="h-3.5 w-3.5" />
-                        {formatWhen(m.date_time)}
-                      </span>
-                      {m.location && (
-                        <span className="inline-flex items-center gap-1.5">
-                          <MapPin className="h-3.5 w-3.5" />
-                          {m.location}
-                        </span>
-                      )}
-                      {m.virtual_meeting_link && (
-                        <span className="inline-flex items-center gap-1.5">
-                          <Video className="h-3.5 w-3.5" />
-                          Online
-                        </span>
-                      )}
-                    </div>
-                  </div>
-                </div>
-              </CardContent>
-            </Card>
-          ))}
+        <div className="overflow-x-auto rounded-lg border border-border">
+          <Table variant="striped">
+            <TableHeader>
+              <TableRow>
+                <TableHead>Reference</TableHead>
+                <TableHead>Type</TableHead>
+                <TableHead>Title</TableHead>
+                <TableHead>When</TableHead>
+                <TableHead>Status</TableHead>
+              </TableRow>
+            </TableHeader>
+            <TableBody>
+              {meetings.map((m) => (
+                <TableRow
+                  key={m.id}
+                  className="cursor-pointer"
+                  onClick={() => router.push(`/ocs/${ocCode}/meetings/${m.id}`)}
+                >
+                  <TableCell className="font-medium tabular-nums text-foreground">{m.reference_number}</TableCell>
+                  <TableCell>{MEETING_TYPE_LABELS[m.meeting_type as MeetingType]}</TableCell>
+                  <TableCell>{m.title}</TableCell>
+                  <TableCell>{formatWhen(m.date_time)}</TableCell>
+                  <TableCell>
+                    <Badge variant={STATUS_VARIANT[m.status]} className="rounded-full">
+                      {STATUS_LABEL[m.status]}
+                    </Badge>
+                  </TableCell>
+                </TableRow>
+              ))}
+            </TableBody>
+          </Table>
         </div>
       )}
     </div>
   );
 }
-

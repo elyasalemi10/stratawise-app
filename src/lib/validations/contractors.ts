@@ -71,10 +71,11 @@ export const contractorSchema = z
     contact_phone: z.string().trim().max(40).nullable().optional(),
     contact_email: z.string().trim().email("Enter a valid email").max(200).nullable().optional().or(z.literal("")),
     trade: z.string().trim().max(60).nullable().optional(),
-    // Bank details (identifiers, optional)
+    // Bank details (identifiers, optional). BSB is "XXX-XXX" (6 digits + dash);
+    // account number capped at 9 digits.
     bank_name: z.string().trim().max(120).nullable().optional(),
-    bsb: z.string().trim().max(10).nullable().optional(),
-    account_number: z.string().trim().max(20).nullable().optional(),
+    bsb: z.string().trim().max(7).nullable().optional(),
+    account_number: z.string().trim().max(9).nullable().optional(),
     // Public liability insurance (mandatory)
     pl_insurer: z.string().trim().min(1, "Insurer is required").max(200),
     pl_policy_number: z.string().trim().min(1, "Policy number is required").max(120),

@@ -1,51 +1,35 @@
 "use client";
 
-import { useState, useTransition } from "react";
+import { useLayoutEffect, useMemo, useRef, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { toast } from "sonner";
 import {
-  Loader2, FileText, CalendarDays, ListChecks, Users, Send, Plus, Trash2,
-  ArrowUp, ArrowDown, Eye, type LucideIcon,
+  Loader2, FileText, CalendarDays, ListChecks, Send, Plus, Trash2,
+  ArrowUp, ArrowDown, Eye, MapPin, Video, type LucideIcon,
 } from "lucide-react";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
-import { Checkbox } from "@/components/ui/checkbox";
-import { NumberInput } from "@/components/ui/number-input";
 import { DatePicker } from "@/components/shared/date-picker";
-import {
-  Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
-} from "@/components/ui/select";
+import { TimeDropdowns } from "@/components/shared/time-dropdowns";
+import { PlacesAutocomplete } from "@/components/shared/places-autocomplete";
 import { cn } from "@/lib/utils";
 import { createMeetingWithNotice, previewMeetingNotice } from "@/lib/actions/meetings";
-import { MEETING_TYPE_LABELS, type MeetingType } from "@/lib/validations/meetings";
-import type { NotifyOwnerOption } from "@/lib/actions/recurring-jobs";
+import {
+  MEETING_TYPE_LABELS, MEETING_PLATFORM_LABELS, detectMeetingPlatform,
+  type MeetingType, type MeetingFormat,
+} from "@/lib/validations/meetings";
 
-type Step = "type" | "details" | "agenda" | "notify" | "review";
+type Step = "type" | "details" | "agenda" | "review";
 
 const STEPS: Array<{ key: Step; number: number; label: string; icon: LucideIcon }> = [
   { key: "type", number: 1, label: "Type", icon: FileText },
   { key: "details", number: 2, label: "Details", icon: CalendarDays },
   { key: "agenda", number: 3, label: "Agenda", icon: ListChecks },
-  { key: "notify", number: 4, label: "Notify", icon: Users },
-  { key: "review", number: 5, label: "Review", icon: Send },
+  { key: "review", number: 4, label: "Review", icon: Send },
 ];
-
-const TIME_SLOTS = (() => {
-  const out: { value: string; label: string }[] = [];
-  for (let h = 7; h <= 21; h++) {
-    for (const m of [0, 30]) {
-      const hh = String(h).padStart(2, "0");
-      const mm = String(m).padStart(2, "0");
-      const ampm = h < 12 ? "am" : "pm";
-      const h12 = h % 12 === 0 ? 12 : h % 12;
-      out.push({ value: `${hh}:${mm}`, label: `${h12}:${mm} ${ampm}` });
-    }
-  }
-  return out;
-})();
 
 function StepIndicator({ current }: { current: Step }) {
   const currentNumber = STEPS.find((s) => s.key === current)?.number ?? 1;
@@ -82,18 +66,17 @@ function StepIndicator({ current }: { current: Step }) {
   );
 }
 
-type AgendaRow = { title: string; motion: string };
+type AgendaRow = { id: string; title: string; motion: string };
 
 export function CreateMeetingForm({
   ocId,
   ocCode,
   ocName,
-  owners,
 }: {
   ocId: string;
   ocCode: string;
   ocName: string;
-  owners: NotifyOwnerOption[];
+  owners?: unknown; // unused now (sending moved to the detail page)
 }) {
   const router = useRouter();
   const [step, setStep] = useState<Step>("type");
@@ -102,70 +85,70 @@ export function CreateMeetingForm({
   const [title, setTitle] = useState("");
   const [date, setDate] = useState("");
   const [time, setTime] = useState("18:00");
+  const [format, setFormat] = useState<MeetingFormat>("in_person");
   const [location, setLocation] = useState("");
   const [link, setLink] = useState("");
   const [agenda, setAgenda] = useState<AgendaRow[]>([]);
-  const [notifyScope, setNotifyScope] = useState<"all_owners" | "specific" | "none">("all_owners");
-  const [notifyOwnerIds, setNotifyOwnerIds] = useState<Set<string>>(new Set(owners.map((o) => o.lot_owner_id)));
-  const [leadTime, setLeadTime] = useState("14");
+  const idCounter = useRef(0);
 
-  const [titleInvalid, setTitleInvalid] = useState(false);
   const [dateInvalid, setDateInvalid] = useState(false);
+  const [linkInvalid, setLinkInvalid] = useState(false);
   const [previewing, setPreviewing] = useState(false);
   const [pending, startTransition] = useTransition();
 
-  const noticeWarning = (() => {
-    if (!date || meetingType === "committee") return null;
-    const days = Math.ceil((new Date(`${date}T${time}:00`).getTime() - Date.now()) / 86_400_000);
-    return days < 14 ? `AGM/SGM usually need 14 days' notice, this is ${days} day${days === 1 ? "" : "s"} away.` : null;
-  })();
+  // Minimum notice: 14 days for AGM/SGM, next day for committee.
+  const minDate = useMemo(() => {
+    const d = new Date();
+    d.setDate(d.getDate() + (meetingType === "committee" ? 1 : 14));
+    return d.toISOString().slice(0, 10);
+  }, [meetingType]);
+
+  const detectedPlatform = link.trim() ? detectMeetingPlatform(link.trim()) : null;
 
   function buildPayload() {
     const when = new Date(`${date}T${time}:00`);
     return {
       oc_id: ocId,
       meeting_type: meetingType,
-      title: title.trim(),
+      title: title.trim() || null,
       date_time: when.toISOString(),
-      location: location.trim() || null,
-      virtual_meeting_link: link.trim() || null,
+      meeting_format: format,
+      location: format === "in_person" ? (location.trim() || null) : null,
+      virtual_meeting_link: format === "online" ? (link.trim() || null) : null,
+      online_platform: format === "online" && link.trim() ? detectMeetingPlatform(link.trim()) : null,
       agenda: agenda.filter((a) => a.title.trim()).map((a) => ({ title: a.title.trim(), motion: a.motion.trim() || null })),
-      notify_scope: notifyScope,
-      notify_lot_owner_ids: notifyScope === "specific" ? Array.from(notifyOwnerIds) : [],
-      lead_time_days: leadTime.trim() ? parseInt(leadTime, 10) : 14,
     };
   }
 
   function goNextFromDetails() {
     const problems: string[] = [];
-    if (!title.trim()) { problems.push("Title is required."); setTitleInvalid(true); } else setTitleInvalid(false);
     const when = date ? new Date(`${date}T${time}:00`) : null;
-    if (!date || !when || Number.isNaN(when.getTime())) { problems.push("Pick a meeting date."); setDateInvalid(true); }
-    else if (when.getTime() < Date.now()) { problems.push("Meeting date must be in the future."); setDateInvalid(true); }
-    else setDateInvalid(false);
+    if (!date || !when || Number.isNaN(when.getTime())) {
+      problems.push("Pick a meeting date."); setDateInvalid(true);
+    } else if (date < minDate) {
+      problems.push(meetingType === "committee" ? "Pick a future date." : "AGM/SGM need at least 14 days' notice.");
+      setDateInvalid(true);
+    } else setDateInvalid(false);
+
+    if (format === "online" && !link.trim()) {
+      problems.push("Add the online meeting link."); setLinkInvalid(true);
+    } else setLinkInvalid(false);
+
     if (problems.length) { toast.error(problems.length === 1 ? problems[0] : "Fix the highlighted fields."); return; }
     setStep("agenda");
   }
 
-  function addAgenda() { setAgenda((a) => [...a, { title: "", motion: "" }]); }
-  function updateAgenda(i: number, patch: Partial<AgendaRow>) {
-    setAgenda((a) => a.map((row, idx) => (idx === i ? { ...row, ...patch } : row)));
+  function addAgenda() { setAgenda((a) => [...a, { id: `r${idCounter.current++}`, title: "", motion: "" }]); }
+  function updateAgenda(id: string, patch: Partial<AgendaRow>) {
+    setAgenda((a) => a.map((row) => (row.id === id ? { ...row, ...patch } : row)));
   }
-  function removeAgenda(i: number) { setAgenda((a) => a.filter((_, idx) => idx !== i)); }
-  function moveAgenda(i: number, dir: -1 | 1) {
+  function removeAgenda(id: string) { setAgenda((a) => a.filter((row) => row.id !== id)); }
+  function moveAgenda(index: number, dir: -1 | 1) {
     setAgenda((a) => {
-      const j = i + dir;
+      const j = index + dir;
       if (j < 0 || j >= a.length) return a;
       const next = [...a];
-      [next[i], next[j]] = [next[j], next[i]];
-      return next;
-    });
-  }
-
-  function toggleOwner(id: string, checked: boolean) {
-    setNotifyOwnerIds((prev) => {
-      const next = new Set(prev);
-      if (checked) next.add(id); else next.delete(id);
+      [next[index], next[j]] = [next[j], next[index]];
       return next;
     });
   }
@@ -185,15 +168,12 @@ export function CreateMeetingForm({
   function onSubmit() {
     startTransition(async () => {
       const res = await createMeetingWithNotice(buildPayload());
-      if (res.error && !res.meetingId) { toast.error(res.error); return; }
-      if (res.error) { toast.error(res.error); }
-      else { toast.success(notifyScope === "none" ? "Meeting created" : "Meeting created, notices sending in the background"); }
-      // Spinner stays on through the navigation (no setPending(false)).
-      router.push(`/ocs/${ocCode}/meetings`);
+      if (!res.meetingId) { toast.error(res.error ?? "Could not create the meeting"); return; }
+      if (res.error) toast.error(res.error); else toast.success("Meeting created");
+      // Spinner stays on through the navigation to the detail page (send from there).
+      router.push(`/ocs/${ocCode}/meetings/${res.meetingId}`);
     });
   }
-
-  const recipientCount = notifyScope === "all_owners" ? owners.length : notifyScope === "specific" ? notifyOwnerIds.size : 0;
 
   return (
     <div className={cn("space-y-6", pending && "pointer-events-none opacity-90")}>
@@ -230,33 +210,67 @@ export function CreateMeetingForm({
         <Card>
           <CardContent className="pt-5 space-y-4">
             <div className="space-y-1.5">
-              <Label>Title <span className="text-destructive">*</span></Label>
-              <Input value={title} onChange={(e) => { setTitle(e.target.value); if (titleInvalid) setTitleInvalid(false); }} aria-invalid={titleInvalid || undefined} placeholder="Meeting title" />
+              <Label>Title</Label>
+              <Input value={title} onChange={(e) => setTitle(e.target.value)} placeholder={MEETING_TYPE_LABELS[meetingType]} />
             </div>
             <div className="grid grid-cols-2 gap-4">
               <div className="space-y-1.5">
                 <Label>Date <span className="text-destructive">*</span></Label>
-                <DatePicker value={date} onChange={(v) => { setDate(v); if (dateInvalid) setDateInvalid(false); }} error={dateInvalid} />
+                <DatePicker value={date} onChange={(v) => { setDate(v); if (dateInvalid) setDateInvalid(false); }} error={dateInvalid} minDate={minDate} />
               </div>
               <div className="space-y-1.5">
                 <Label>Time <span className="text-destructive">*</span></Label>
-                <Select value={time} onValueChange={(v) => setTime(v ?? "18:00")}>
-                  <SelectTrigger className="w-full"><SelectValue>{TIME_SLOTS.find((t) => t.value === time)?.label ?? time}</SelectValue></SelectTrigger>
-                  <SelectContent>
-                    {TIME_SLOTS.map((t) => <SelectItem key={t.value} value={t.value}>{t.label}</SelectItem>)}
-                  </SelectContent>
-                </Select>
+                <TimeDropdowns value={time} onChange={setTime} />
               </div>
             </div>
-            {noticeWarning && <p className="text-xs text-amber-700">{noticeWarning}</p>}
+
+            {/* Format: in person vs online */}
             <div className="space-y-1.5">
-              <Label>Location</Label>
-              <Input value={location} onChange={(e) => setLocation(e.target.value)} placeholder="Where the meeting is held" />
+              <Label>Format <span className="text-destructive">*</span></Label>
+              <div className="grid gap-3 sm:grid-cols-2">
+                <button
+                  type="button"
+                  onClick={() => setFormat("in_person")}
+                  className={cn(
+                    "flex items-center gap-2 rounded-md border bg-card p-3 text-left text-sm transition-colors cursor-pointer",
+                    format === "in_person" ? "border-primary ring-2 ring-primary/20" : "border-border hover:border-primary/40",
+                  )}
+                >
+                  <MapPin className="h-4 w-4 text-primary" /> In person
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setFormat("online")}
+                  className={cn(
+                    "flex items-center gap-2 rounded-md border bg-card p-3 text-left text-sm transition-colors cursor-pointer",
+                    format === "online" ? "border-primary ring-2 ring-primary/20" : "border-border hover:border-primary/40",
+                  )}
+                >
+                  <Video className="h-4 w-4 text-primary" /> Online
+                </button>
+              </div>
             </div>
-            <div className="space-y-1.5">
-              <Label>Online meeting link</Label>
-              <Input value={link} onChange={(e) => setLink(e.target.value)} placeholder="Video call link for remote attendees" />
-            </div>
+
+            {format === "in_person" ? (
+              <div className="space-y-1.5">
+                <Label>Address</Label>
+                <PlacesAutocomplete value={location} onChange={setLocation} placeholder="Meeting address" />
+              </div>
+            ) : (
+              <div className="space-y-1.5">
+                <Label>Meeting link <span className="text-destructive">*</span></Label>
+                <Input
+                  value={link}
+                  onChange={(e) => { setLink(e.target.value); if (linkInvalid) setLinkInvalid(false); }}
+                  aria-invalid={linkInvalid || undefined}
+                  placeholder="Video call link"
+                />
+                {detectedPlatform && (
+                  <p className="text-xs text-muted-foreground">Detected: {MEETING_PLATFORM_LABELS[detectedPlatform]}</p>
+                )}
+              </div>
+            )}
+
             <div className="flex justify-between">
               <Button variant="secondary" onClick={() => setStep("type")}>Back</Button>
               <Button onClick={goNextFromDetails}>Next</Button>
@@ -275,67 +289,17 @@ export function CreateMeetingForm({
               </Button>
             </div>
             {agenda.length === 0 ? (
-              <p className="text-sm text-muted-foreground">No agenda items yet. Add motions in the order they'll be discussed.</p>
+              <p className="text-sm text-muted-foreground">No agenda items yet. Add motions in the order they&apos;ll be discussed.</p>
             ) : (
-              <div className="space-y-3">
-                {agenda.map((row, i) => (
-                  <div key={i} className="rounded-md border border-border p-3 space-y-2">
-                    <div className="flex items-center gap-2">
-                      <span className="text-sm font-semibold text-primary">{i + 1}.</span>
-                      <Input value={row.title} onChange={(e) => updateAgenda(i, { title: e.target.value })} placeholder="Agenda item title" className="flex-1" />
-                      <button type="button" onClick={() => moveAgenda(i, -1)} disabled={i === 0} className="cursor-pointer text-muted-foreground hover:text-foreground disabled:opacity-30" aria-label="Move up"><ArrowUp className="h-4 w-4" /></button>
-                      <button type="button" onClick={() => moveAgenda(i, 1)} disabled={i === agenda.length - 1} className="cursor-pointer text-muted-foreground hover:text-foreground disabled:opacity-30" aria-label="Move down"><ArrowDown className="h-4 w-4" /></button>
-                      <button type="button" onClick={() => removeAgenda(i)} className="cursor-pointer text-muted-foreground hover:text-destructive" aria-label="Remove"><Trash2 className="h-4 w-4" /></button>
-                    </div>
-                    <Textarea value={row.motion} onChange={(e) => updateAgenda(i, { motion: e.target.value })} placeholder="Motion text (optional)" rows={2} />
-                  </div>
-                ))}
-              </div>
+              <AgendaList
+                rows={agenda}
+                onUpdate={updateAgenda}
+                onRemove={removeAgenda}
+                onMove={moveAgenda}
+              />
             )}
             <div className="flex justify-between">
               <Button variant="secondary" onClick={() => setStep("details")}>Back</Button>
-              <Button onClick={() => setStep("notify")}>Next</Button>
-            </div>
-          </CardContent>
-        </Card>
-      )}
-
-      {step === "notify" && (
-        <Card>
-          <CardContent className="pt-5 space-y-4">
-            <Label>Who should receive the notice?</Label>
-            <div className="space-y-2">
-              {(["all_owners", "specific", "none"] as const).map((scopeKey) => (
-                <label key={scopeKey} className="flex cursor-pointer items-center gap-2.5 text-sm">
-                  <input type="radio" name="notify_scope" checked={notifyScope === scopeKey} onChange={() => setNotifyScope(scopeKey)} className="size-4 accent-[color:var(--primary)]" />
-                  <span className="text-foreground">
-                    {scopeKey === "all_owners" ? "All lot owners" : scopeKey === "specific" ? "Specific lot owners" : "Don't send (create only)"}
-                  </span>
-                </label>
-              ))}
-            </div>
-            {notifyScope !== "none" && owners.length === 0 && (
-              <p className="text-sm text-muted-foreground">No owners with an email on file (post-only owners are excluded).</p>
-            )}
-            {notifyScope === "specific" && owners.length > 0 && (
-              <div className="max-h-56 space-y-1.5 overflow-y-auto rounded-md border border-border p-2">
-                {owners.map((o) => (
-                  <div key={o.lot_owner_id} className="flex items-center gap-2.5">
-                    <Checkbox checked={notifyOwnerIds.has(o.lot_owner_id)} onCheckedChange={(v) => toggleOwner(o.lot_owner_id, v === true)} />
-                    <span className="text-sm text-foreground">{o.name}</span>
-                    <span className="text-xs text-muted-foreground">{o.lot_label}</span>
-                  </div>
-                ))}
-              </div>
-            )}
-            {notifyScope !== "none" && (
-              <div className="space-y-1.5">
-                <Label>Lead time (days before the meeting)</Label>
-                <NumberInput value={leadTime} onChange={setLeadTime} allowDecimal={false} placeholder="Lead time in days" />
-              </div>
-            )}
-            <div className="flex justify-between">
-              <Button variant="secondary" onClick={() => setStep("agenda")}>Back</Button>
               <Button onClick={() => setStep("review")}>Next</Button>
             </div>
           </CardContent>
@@ -349,14 +313,19 @@ export function CreateMeetingForm({
             <dl className="grid grid-cols-2 gap-x-4 gap-y-2 text-sm">
               <dt className="text-muted-foreground">OC</dt><dd className="text-foreground">{ocName}</dd>
               <dt className="text-muted-foreground">Type</dt><dd className="text-foreground">{MEETING_TYPE_LABELS[meetingType]}</dd>
-              <dt className="text-muted-foreground">Title</dt><dd className="text-foreground">{title}</dd>
+              <dt className="text-muted-foreground">Title</dt><dd className="text-foreground">{title.trim() || MEETING_TYPE_LABELS[meetingType]}</dd>
               <dt className="text-muted-foreground">When</dt><dd className="text-foreground">{date ? new Date(`${date}T${time}:00`).toLocaleString("en-AU", { weekday: "short", day: "numeric", month: "short", year: "numeric", hour: "numeric", minute: "2-digit" }) : ""}</dd>
-              {location && (<><dt className="text-muted-foreground">Location</dt><dd className="text-foreground">{location}</dd></>)}
+              <dt className="text-muted-foreground">Format</dt>
+              <dd className="text-foreground">{format === "online" ? `Online${detectedPlatform ? ` (${MEETING_PLATFORM_LABELS[detectedPlatform]})` : ""}` : "In person"}</dd>
+              {format === "in_person" && location && (<><dt className="text-muted-foreground">Address</dt><dd className="text-foreground">{location}</dd></>)}
+              {format === "online" && link && (<><dt className="text-muted-foreground">Link</dt><dd className="truncate text-foreground">{link}</dd></>)}
               <dt className="text-muted-foreground">Agenda items</dt><dd className="text-foreground">{agenda.filter((a) => a.title.trim()).length}</dd>
-              <dt className="text-muted-foreground">Recipients</dt><dd className="text-foreground">{notifyScope === "none" ? "None (create only)" : `${recipientCount} owner${recipientCount === 1 ? "" : "s"} by email`}</dd>
             </dl>
+            <p className="text-sm text-muted-foreground">
+              Creating the meeting generates the branded notice. You can send it to owners from the meeting page.
+            </p>
             <div className="flex flex-wrap items-center justify-between gap-3 pt-2">
-              <Button variant="secondary" onClick={() => setStep("notify")} disabled={pending}>Back</Button>
+              <Button variant="secondary" onClick={() => setStep("agenda")} disabled={pending}>Back</Button>
               <div className="flex gap-2">
                 <Button variant="secondary" onClick={onPreview} disabled={previewing || pending} className="cursor-pointer">
                   {previewing ? <Loader2 className="size-4 animate-spin" /> : <Eye className="size-4" />}
@@ -364,13 +333,72 @@ export function CreateMeetingForm({
                 </Button>
                 <Button onClick={onSubmit} disabled={pending} size="lg">
                   {pending && <Loader2 className="mr-2 size-4 animate-spin" />}
-                  {notifyScope === "none" ? "Create meeting" : "Generate & send notice"}
+                  Create meeting
                 </Button>
               </div>
             </div>
           </CardContent>
         </Card>
       )}
+    </div>
+  );
+}
+
+// Agenda list with a FLIP reorder animation (no framer-motion). Each row keeps
+// a stable id; when the order changes we invert the position delta and
+// transition it back to zero so rows visibly slide.
+function AgendaList({
+  rows,
+  onUpdate,
+  onRemove,
+  onMove,
+}: {
+  rows: AgendaRow[];
+  onUpdate: (id: string, patch: Partial<AgendaRow>) => void;
+  onRemove: (id: string) => void;
+  onMove: (index: number, dir: -1 | 1) => void;
+}) {
+  const containerRef = useRef<HTMLDivElement>(null);
+  const prevTops = useRef<Map<string, number>>(new Map());
+
+  useLayoutEffect(() => {
+    const el = containerRef.current;
+    if (!el) return;
+    const nodes = Array.from(el.querySelectorAll<HTMLElement>("[data-agenda-row]"));
+    const newTops = new Map<string, number>();
+    for (const node of nodes) {
+      const id = node.dataset.agendaRow!;
+      const top = node.offsetTop;
+      newTops.set(id, top);
+      const prev = prevTops.current.get(id);
+      if (prev != null && prev !== top) {
+        const delta = prev - top;
+        node.style.transition = "none";
+        node.style.transform = `translateY(${delta}px)`;
+        // Next frame: animate back to resting position.
+        requestAnimationFrame(() => {
+          node.style.transition = "transform 200ms ease";
+          node.style.transform = "";
+        });
+      }
+    }
+    prevTops.current = newTops;
+  }, [rows]);
+
+  return (
+    <div ref={containerRef} className="space-y-3">
+      {rows.map((row, i) => (
+        <div key={row.id} data-agenda-row={row.id} className="rounded-md border border-border bg-card p-3 space-y-2">
+          <div className="flex items-center gap-2">
+            <span className="text-sm font-semibold text-primary">{i + 1}.</span>
+            <Input value={row.title} onChange={(e) => onUpdate(row.id, { title: e.target.value })} placeholder="Agenda item title" className="flex-1" />
+            <button type="button" onClick={() => onMove(i, -1)} disabled={i === 0} className="cursor-pointer text-muted-foreground hover:text-foreground disabled:opacity-30" aria-label="Move up"><ArrowUp className="h-4 w-4" /></button>
+            <button type="button" onClick={() => onMove(i, 1)} disabled={i === rows.length - 1} className="cursor-pointer text-muted-foreground hover:text-foreground disabled:opacity-30" aria-label="Move down"><ArrowDown className="h-4 w-4" /></button>
+            <button type="button" onClick={() => onRemove(row.id)} className="cursor-pointer text-muted-foreground hover:text-destructive" aria-label="Remove"><Trash2 className="h-4 w-4" /></button>
+          </div>
+          <Textarea value={row.motion} onChange={(e) => onUpdate(row.id, { motion: e.target.value })} placeholder="Motion text (optional)" rows={2} />
+        </div>
+      ))}
     </div>
   );
 }

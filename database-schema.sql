@@ -876,6 +876,8 @@ CREATE TABLE meetings (
   status meeting_status NOT NULL DEFAULT 'draft',
   notice_sent_at TIMESTAMPTZ,
   notice_pdf_url TEXT,                              -- generated meeting-notice PDF (R2)
+  meeting_format TEXT,                              -- in_person | online
+  online_platform TEXT,                            -- google_meet | zoom | teams | other
   quorum_met BOOLEAN,
   quorum_percentage DECIMAL(5,2),
   created_by UUID REFERENCES profiles(id),

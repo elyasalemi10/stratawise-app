@@ -12,9 +12,11 @@ import { Badge } from "@/components/ui/badge";
 import { NumberInput } from "@/components/ui/number-input";
 import { Textarea } from "@/components/ui/textarea";
 import { DatePicker } from "@/components/shared/date-picker";
+import { PhoneInput } from "@/components/shared/phone-input";
+import { BsbInput } from "@/components/shared/bsb-input";
 import {
-  Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
-} from "@/components/ui/select";
+  Combobox, ComboboxContent, ComboboxEmpty, ComboboxInput, ComboboxItem, ComboboxList,
+} from "@/components/ui/combobox";
 import {
   Sheet, SheetContent, SheetHeader, SheetTitle, SheetDescription, SheetFooter,
 } from "@/components/ui/sheet";
@@ -162,6 +164,12 @@ export function ContractorsContent({ contractors }: { contractors: ContractorRec
   );
 }
 
+export interface CreatedContractor {
+  id: string;
+  business_name: string;
+  trade: string | null;
+}
+
 export function ContractorDrawer({
   open,
   onOpenChange,
@@ -171,7 +179,7 @@ export function ContractorDrawer({
   open: boolean;
   onOpenChange: (o: boolean) => void;
   editing: ContractorRecord | null;
-  onSaved: () => void;
+  onSaved: (created?: CreatedContractor) => void;
 }) {
   const [businessName, setBusinessName] = useState(editing?.business_name ?? "");
   const [abn, setAbn] = useState(editing?.abn ?? "");
@@ -191,12 +199,35 @@ export function ContractorDrawer({
   const [docName, setDocName] = useState(editing?.pl_document_url ? "Certificate on file" : "");
   const [notes, setNotes] = useState(editing?.notes ?? "");
   const [uploading, setUploading] = useState(false);
+  const [lookingUp, setLookingUp] = useState(false);
 
   const [invalid, setInvalid] = useState<Record<string, boolean>>({});
   const [pending, startTransition] = useTransition();
 
   function clearInvalid(field: string) {
     setInvalid((p) => (p[field] ? { ...p, [field]: false } : p));
+  }
+
+  async function onLookupAbn() {
+    const digits = abn.replace(/\D/g, "");
+    if (digits.length !== 11) return;
+    setLookingUp(true);
+    try {
+      const res = await fetch(`/api/abn-lookup?abn=${digits}`);
+      const json = await res.json();
+      if (!json.found) {
+        toast.error("We couldn't find that ABN. Enter the details manually.");
+        return;
+      }
+      const r = json.result as { businessName: string | null; gstRegistered: boolean };
+      if (r.businessName && !businessName.trim()) setBusinessName(r.businessName);
+      setGst(r.gstRegistered);
+      toast.success("ABN details filled in");
+    } catch {
+      toast.error("Lookup is unavailable right now. Enter the details manually.");
+    } finally {
+      setLookingUp(false);
+    }
   }
 
   async function onUpload(file: File) {
@@ -260,12 +291,17 @@ export function ContractorDrawer({
     };
 
     startTransition(async () => {
-      const res = editing
-        ? await updateContractor(editing.id, payload)
-        : await createContractor(payload);
+      if (editing) {
+        const res = await updateContractor(editing.id, payload);
+        if (res.error) { toast.error(res.error); return; }
+        toast.success("Contractor updated");
+        onSaved();
+        return;
+      }
+      const res = await createContractor(payload);
       if (res.error) { toast.error(res.error); return; }
-      toast.success(editing ? "Contractor updated" : "Contractor added");
-      onSaved();
+      toast.success("Contractor added");
+      onSaved(res.contractorId ? { id: res.contractorId, business_name: businessName.trim(), trade: trade || null } : undefined);
     });
   }
 
@@ -293,20 +329,32 @@ export function ContractorDrawer({
           <div className="grid grid-cols-2 gap-4">
             <div className="space-y-1.5">
               <Label>ABN</Label>
-              <NumberInput value={abn} onChange={(v) => setAbn(v)} allowDecimal={false} placeholder="ABN" />
+              <div className="flex gap-2">
+                <NumberInput value={abn} onChange={(v) => setAbn(v)} allowDecimal={false} maxLength={11} placeholder="11-digit ABN" />
+                <Button
+                  type="button"
+                  variant="secondary"
+                  className="shrink-0 cursor-pointer"
+                  disabled={lookingUp || abn.replace(/\D/g, "").length !== 11}
+                  onClick={onLookupAbn}
+                >
+                  {lookingUp ? <Loader2 className="size-4 animate-spin" /> : "Look up"}
+                </Button>
+              </div>
             </div>
             <div className="space-y-1.5">
               <Label>Trade</Label>
-              <Select value={trade} onValueChange={(v) => setTrade(v ?? "")}>
-                <SelectTrigger className="w-full">
-                  <SelectValue placeholder="Trade">{trade ? tradeLabel(trade) : undefined}</SelectValue>
-                </SelectTrigger>
-                <SelectContent>
-                  {CONTRACTOR_TRADE_OPTIONS.map((o) => (
-                    <SelectItem key={o.value} value={o.value}>{o.label}</SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
+              <Combobox items={CONTRACTOR_TRADE_OPTIONS} value={trade} onValueChange={(v) => setTrade(v ?? "")}>
+                <ComboboxInput placeholder={trade ? tradeLabel(trade) : "Search trade"} />
+                <ComboboxContent>
+                  <ComboboxEmpty>No trade found.</ComboboxEmpty>
+                  <ComboboxList>
+                    {(o: { value: string; label: string }) => (
+                      <ComboboxItem key={o.value} value={o.value} keywords={[o.label]}>{o.label}</ComboboxItem>
+                    )}
+                  </ComboboxList>
+                </ComboboxContent>
+              </Combobox>
             </div>
           </div>
           <div className="flex items-center gap-3">
@@ -330,11 +378,10 @@ export function ContractorDrawer({
           <div className="grid grid-cols-2 gap-4">
             <div className="space-y-1.5">
               <Label>Phone</Label>
-              <Input
+              <PhoneInput
                 value={phone}
-                onChange={(e) => { setPhone(e.target.value); clearInvalid("phone"); clearInvalid("email"); }}
-                aria-invalid={invalid.phone || undefined}
-                placeholder="Phone"
+                onChange={(v) => { setPhone(v); clearInvalid("phone"); clearInvalid("email"); }}
+                error={invalid.phone}
               />
             </div>
             <div className="space-y-1.5">
@@ -359,11 +406,11 @@ export function ContractorDrawer({
           <div className="grid grid-cols-2 gap-4">
             <div className="space-y-1.5">
               <Label>BSB</Label>
-              <NumberInput value={bsb} onChange={setBsb} allowDecimal={false} placeholder="6-digit BSB" />
+              <BsbInput value={bsb} onChange={setBsb} placeholder="6-digit BSB" />
             </div>
             <div className="space-y-1.5">
               <Label>Account number</Label>
-              <NumberInput value={accountNumber} onChange={setAccountNumber} allowDecimal={false} placeholder="Account number" />
+              <NumberInput value={accountNumber} onChange={setAccountNumber} allowDecimal={false} maxLength={9} placeholder="Account number" />
             </div>
           </div>
 

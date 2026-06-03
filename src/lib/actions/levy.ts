@@ -9,6 +9,9 @@ import { sendLevyEmail } from "@/lib/email";
 import { formatDateLong } from "@/lib/utils";
 import { notifyOCLotOwners } from "@/lib/actions/notifications";
 import { getLotOwners } from "@/lib/actions/lot-ownership";
+import { uploadObject } from "@/lib/storage/r2";
+import { runLevyBatchSend } from "@/lib/levy-batch-send-runner";
+import { tasks } from "@trigger.dev/sdk";
 // generateCrn lived in the nuked reconciliation stack. Inlined here
 // (BPAY MOD10V01 check digit), preserved for the bpay_crn column on
 // regular levies until the new reconciliation flow ships.
@@ -1814,10 +1817,14 @@ export async function resendBatchEmailsCustom(
     emailOverrides?: Record<string, string>;
     extraAttachments?: Array<{ filename: string; contentBase64: string; contentType: string }>;
     fromAddress?: string;
+    /** Internal: bypass Clerk auth when invoked from the background send task. */
+    _systemPerformerId?: string;
   } = {},
 ): Promise<{ sentCount?: number; error?: string }> {
-  const profile = await requireCompanyRole();
-  await requireOCAccess(ocId);
+  const profile = options._systemPerformerId
+    ? { id: options._systemPerformerId }
+    : await requireCompanyRole();
+  if (!options._systemPerformerId) await requireOCAccess(ocId);
   const supabase = createServerClient();
 
   const { data: batch } = await supabase
@@ -1917,6 +1924,59 @@ export async function resendBatchEmailsCustom(
 
   revalidatePath("/ocs/[ocCode]/levies", "page");
   return { sentCount };
+}
+
+// ─── queueBatchSend (background dispatch for the send/resend dialog) ────────
+// The manager's "Send" click should return instantly instead of blocking
+// while every notice email goes out. This validates + auth-checks, uploads
+// any manager attachments to R2 (so only keys cross the queue), then enqueues
+// the send-levy-batch Trigger task. The status flip + email loop happen inside
+// the task (via runLevyBatchSend -> sendBatchEmailsCustom). Falls back to an
+// inline run when Trigger.dev isn't configured (local dev).
+export async function queueBatchSend(
+  ocId: string,
+  batchId: string,
+  mode: "send" | "resend",
+  options: {
+    emailOverrides?: Record<string, string>;
+    extraAttachments?: Array<{ filename: string; contentBase64: string; contentType: string }>;
+    fromAddress?: string;
+  } = {},
+): Promise<{ queued?: boolean; error?: string }> {
+  const profile = await requireCompanyRole();
+  await requireOCAccess(ocId);
+
+  // Park attachments in R2 so the queue payload stays small (keys, not bytes).
+  const attachmentKeys: Array<{ key: string; filename: string; contentType: string }> = [];
+  for (const a of options.extraAttachments ?? []) {
+    const safe = a.filename.replace(/[/\\]/g, "_").slice(0, 200) || "attachment";
+    const key = `levies/${ocId}/send-attachments/${crypto.randomUUID()}-${safe}`;
+    await uploadObject(key, Buffer.from(a.contentBase64, "base64"), a.contentType || "application/octet-stream");
+    attachmentKeys.push({ key, filename: a.filename, contentType: a.contentType });
+  }
+
+  const payload = {
+    ocId,
+    batchId,
+    mode,
+    emailOverrides: options.emailOverrides,
+    attachmentKeys,
+    fromAddress: options.fromAddress ?? null,
+    performerId: profile.id,
+  };
+
+  if (process.env.TRIGGER_SECRET_KEY) {
+    try {
+      await tasks.trigger("send-levy-batch", payload);
+      return { queued: true };
+    } catch (err) {
+      console.error("queueBatchSend: failed to queue send-levy-batch, sending inline", err);
+    }
+  }
+  // Dev / fallback: run inline (still returns once done).
+  const res = await runLevyBatchSend(payload);
+  if (res.error) return { error: res.error };
+  return { queued: true };
 }
 
 export async function sendBatchEmails(ocId: string, batchId: string) {

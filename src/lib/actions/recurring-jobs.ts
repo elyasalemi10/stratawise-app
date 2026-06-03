@@ -74,45 +74,61 @@ export async function getOCNotifyOwners(ocId: string): Promise<NotifyOwnerOption
   });
 }
 
+const RECURRING_JOB_SELECT =
+  "id, oc_id, reference_number, title, trade, contractor_id, frequency, start_date, end_date, lead_time_days, notify_scope, scope, cost_per_visit, fund_type, approval_reference, status, next_occurrence_date, created_at, owners_corporations(name, short_code), contractors(business_name)";
+
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+function mapJobRow(row: any): RecurringJobRecord {
+  const oc = (row as { owners_corporations: { name?: string; short_code?: string } | null }).owners_corporations;
+  const contractor = (row as { contractors: { business_name?: string } | null }).contractors;
+  return {
+    id: row.id as string,
+    oc_id: row.oc_id as string,
+    oc_name: oc?.name ?? null,
+    oc_code: oc?.short_code ?? null,
+    reference_number: (row.reference_number as string) ?? null,
+    title: row.title as string,
+    trade: (row.trade as string) ?? null,
+    contractor_id: (row.contractor_id as string) ?? null,
+    contractor_name: contractor?.business_name ?? null,
+    frequency: row.frequency as RecurringJobRecord["frequency"],
+    start_date: row.start_date as string,
+    end_date: (row.end_date as string) ?? null,
+    lead_time_days: (row.lead_time_days as number) ?? 0,
+    notify_scope: (row.notify_scope as RecurringJobRecord["notify_scope"]) ?? "none",
+    scope: (row.scope as string) ?? null,
+    cost_per_visit: row.cost_per_visit != null ? Number(row.cost_per_visit) : null,
+    fund_type: (row.fund_type as RecurringJobRecord["fund_type"]) ?? null,
+    approval_reference: (row.approval_reference as string) ?? null,
+    status: (row.status as RecurringJobRecord["status"]) ?? "active",
+    next_occurrence_date: (row.next_occurrence_date as string) ?? null,
+    created_at: row.created_at as string,
+  } satisfies RecurringJobRecord;
+}
+
+// Per-OC list (for the OC dashboard maintenance page).
+export async function getRecurringJobsForOC(ocId: string): Promise<RecurringJobRecord[]> {
+  await requireOCAccess(ocId);
+  const supabase = createServerClient();
+  const { data } = await supabase
+    .from("recurring_jobs")
+    .select(RECURRING_JOB_SELECT)
+    .eq("oc_id", ocId)
+    .order("next_occurrence_date", { ascending: true, nullsFirst: false });
+  return (data ?? []).map(mapJobRow);
+}
+
 export async function getRecurringJobs(): Promise<RecurringJobRecord[]> {
   const profile = await requireCompanyRole();
   const supabase = createServerClient();
 
   const { data } = await supabase
     .from("recurring_jobs")
-    .select(
-      "id, oc_id, reference_number, title, trade, contractor_id, frequency, start_date, end_date, lead_time_days, notify_scope, scope, cost_per_visit, fund_type, approval_reference, status, next_occurrence_date, created_at, owners_corporations(name, short_code), contractors(business_name)",
-    )
+    .select(RECURRING_JOB_SELECT)
     .eq("management_company_id", profile.management_company_id)
     .order("next_occurrence_date", { ascending: true, nullsFirst: false });
 
-  return (data ?? []).map((row) => {
-    const oc = (row as { owners_corporations: { name?: string; short_code?: string } | null }).owners_corporations;
-    const contractor = (row as { contractors: { business_name?: string } | null }).contractors;
-    return {
-      id: row.id as string,
-      oc_id: row.oc_id as string,
-      oc_name: oc?.name ?? null,
-      oc_code: oc?.short_code ?? null,
-      reference_number: (row.reference_number as string) ?? null,
-      title: row.title as string,
-      trade: (row.trade as string) ?? null,
-      contractor_id: (row.contractor_id as string) ?? null,
-      contractor_name: contractor?.business_name ?? null,
-      frequency: row.frequency as RecurringJobRecord["frequency"],
-      start_date: row.start_date as string,
-      end_date: (row.end_date as string) ?? null,
-      lead_time_days: (row.lead_time_days as number) ?? 0,
-      notify_scope: (row.notify_scope as RecurringJobRecord["notify_scope"]) ?? "none",
-      scope: (row.scope as string) ?? null,
-      cost_per_visit: row.cost_per_visit != null ? Number(row.cost_per_visit) : null,
-      fund_type: (row.fund_type as RecurringJobRecord["fund_type"]) ?? null,
-      approval_reference: (row.approval_reference as string) ?? null,
-      status: (row.status as RecurringJobRecord["status"]) ?? "active",
-      next_occurrence_date: (row.next_occurrence_date as string) ?? null,
-      created_at: row.created_at as string,
-    } satisfies RecurringJobRecord;
-  });
+  return (data ?? []).map(mapJobRow);
 }
 
 async function syncNotifyTargets(

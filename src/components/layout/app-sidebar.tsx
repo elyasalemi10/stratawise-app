@@ -155,6 +155,7 @@ function getOCNavGroups(ocCode: string, isLotOwner: boolean) {
       items: [
         { href: `${base}/lots`, label: "Lots & owners", icon: Users },
         { href: `${base}/meetings`, label: "Meetings", icon: CalendarCheck },
+        { href: `${base}/maintenance`, label: "Maintenance", icon: Wrench },
         { href: `${base}/documents`, label: "Documents", icon: FileText },
         { href: `${base}/reports`, label: "Reports", icon: ClipboardList },
       ],
@@ -726,17 +727,34 @@ export function AppSidebar({
   const urlOCCode = ocMatch?.[1] ?? null;
   const [stickyOCCode, setStickyOCCode] = useState<string | null>(null);
 
+  // Top-level company routes that should RESET to the company-wide nav rather
+  // than keep showing the previously-visited OC. Visiting the Main dashboard
+  // (or the company-wide OCs / Maintenance / Contractors / Chart of Accounts
+  // lists) clears the sticky OC. Only /settings and /inbox keep OC context.
+  const COMPANY_CONTEXT_ROUTES = ["/dashboard", "/ocs", "/maintenance", "/contractors", "/chart-of-accounts"];
+
   useEffect(() => {
     if (typeof window === "undefined") return;
     if (urlOCCode && urlOCCode !== "new") {
       window.sessionStorage.setItem("sw_last_oc", urlOCCode);
       setStickyOCCode(urlOCCode);
-    } else {
-      // Non-OC route , show the last OC's nav if we have one in session.
-      const cached = window.sessionStorage.getItem("sw_last_oc");
-      setStickyOCCode(cached ?? null);
+      return;
     }
-  }, [urlOCCode]);
+    // A company-context route (Main dashboard, OCs list, etc.) , drop the
+    // remembered OC so the company-wide nav + "Main dashboard" header show.
+    const isCompanyContext = COMPANY_CONTEXT_ROUTES.some(
+      (r) => pathname === r || pathname.startsWith(`${r}/`),
+    );
+    if (isCompanyContext) {
+      window.sessionStorage.removeItem("sw_last_oc");
+      setStickyOCCode(null);
+      return;
+    }
+    // Other non-OC routes (/settings, /inbox) , keep the last OC's nav.
+    const cached = window.sessionStorage.getItem("sw_last_oc");
+    setStickyOCCode(cached ?? null);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [urlOCCode, pathname]);
 
   const currentOCCode = urlOCCode ?? stickyOCCode;
   const isInOC = currentOCCode !== null && currentOCCode !== "new";

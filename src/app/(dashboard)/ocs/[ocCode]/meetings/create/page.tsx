@@ -1,7 +1,6 @@
 import { redirect } from "next/navigation";
 import { resolveOCFromCode } from "@/lib/oc-resolver";
 import { requireOCAccess } from "@/lib/auth";
-import { getOCNotifyOwners } from "@/lib/actions/recurring-jobs";
 import { CreateMeetingForm } from "./create-meeting-form";
 
 export default async function CreateMeetingPage({
@@ -14,14 +13,11 @@ export default async function CreateMeetingPage({
   if (!resolved) redirect("/dashboard");
   await requireOCAccess(resolved.id);
 
-  const owners = await getOCNotifyOwners(resolved.id);
-
   return (
     <CreateMeetingForm
       ocId={resolved.id}
       ocCode={ocCode}
       ocName={resolved.name ?? "Owners Corporation"}
-      owners={owners}
     />
   );
 }

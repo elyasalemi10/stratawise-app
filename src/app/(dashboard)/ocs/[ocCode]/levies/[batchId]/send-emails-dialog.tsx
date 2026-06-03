@@ -15,7 +15,7 @@ import {
 import {
   Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
 } from "@/components/ui/select";
-import { sendBatchEmailsCustom, resendBatchEmailsCustom } from "@/lib/actions/levy";
+import { queueBatchSend } from "@/lib/actions/levy";
 
 interface LevyRow {
   id: string;
@@ -114,8 +114,7 @@ export function SendEmailsDialog({
         Object.entries(overrides).filter(([, v]) => v.trim().length > 0),
       );
 
-      const action = mode === "resend" ? resendBatchEmailsCustom : sendBatchEmailsCustom;
-      const result = await action(ocId, batchId, {
+      const result = await queueBatchSend(ocId, batchId, mode, {
         emailOverrides: cleanOverrides,
         extraAttachments: extras,
         fromAddress: fromAddress || undefined,
@@ -125,8 +124,10 @@ export function SendEmailsDialog({
         toast.error(result.error);
         return;
       }
-      toast.success(`${result.sentCount} levy ${result.sentCount === 1 ? "email" : "emails"} ${mode === "resend" ? "resent" : "sent"}`);
-      onSent(result.sentCount ?? 0);
+      toast.success(
+        `${levies.length} levy ${levies.length === 1 ? "email" : "emails"} ${mode === "resend" ? "resending" : "sending"} in the background`,
+      );
+      onSent(levies.length);
       onOpenChange(false);
     });
   }
