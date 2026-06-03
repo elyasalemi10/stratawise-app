@@ -400,3 +400,25 @@
 
 /* Timeline icons in published HTML are <img> SVG data-URIs. */
 .sw-timeline-emoji img { width: 20px; height: 20px; }
+
+/* Inline merge-field editor (follow-up email subjects/bodies). Tokens render as
+   atomic coloured chips; the manager never types raw {{...}}. */
+.mfe-chip {
+  display: inline-block;
+  padding: 0 0.4rem;
+  margin: 0 0.1rem;
+  border-radius: 9999px;
+  font-size: 0.75rem;
+  font-weight: 500;
+  line-height: 1.35;
+  color: var(--primary);
+  background: color-mix(in srgb, var(--primary) 12%, transparent);
+  user-select: none;
+  white-space: nowrap;
+  vertical-align: baseline;
+}
+.mfe:empty::before {
+  content: attr(data-placeholder);
+  color: var(--muted-foreground);
+  pointer-events: none;
+}

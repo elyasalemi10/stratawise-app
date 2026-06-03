@@ -202,11 +202,17 @@ export interface MeetingNoticeAgendaItem {
 }
 
 export interface MeetingNoticeProps extends BaseDocumentProps {
+  meetingType: "agm" | "sgm";
   meetingTypeLabel: string;
   meetingTitle: string;
   whenLabel: string;
+  dateLabel: string;       // "Monday, 25 May 2026"
+  timeLabel: string;       // "6:00 pm"
+  format: "in_person" | "online";
   location?: string | null;
   onlineLink?: string | null;
+  onlinePlatformLabel?: string | null;
+  ocLotCount: number;
   agenda: MeetingNoticeAgendaItem[];
   brandColors?: BrandColors;
 }

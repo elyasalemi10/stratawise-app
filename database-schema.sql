@@ -1360,6 +1360,25 @@ ALTER TABLE recurring_jobs ENABLE ROW LEVEL SECURITY;
 CREATE TRIGGER trg_updated_at_recurring_jobs
   BEFORE UPDATE ON recurring_jobs FOR EACH ROW EXECUTE FUNCTION update_updated_at();
 
+-- Editable service schedule + attendance log for a recurring job. The
+-- recurrence rule drives suggested upcoming dates; these rows are the
+-- explicitly-managed visits (manager-added dates + logged attendance).
+CREATE TABLE recurring_job_occurrences (
+  id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+  recurring_job_id UUID NOT NULL REFERENCES recurring_jobs(id) ON DELETE CASCADE,
+  oc_id UUID NOT NULL REFERENCES owners_corporations(id) ON DELETE CASCADE,
+  scheduled_date DATE NOT NULL,
+  status TEXT NOT NULL DEFAULT 'scheduled',   -- scheduled | attended | skipped
+  notes TEXT,
+  completed_at TIMESTAMPTZ,
+  created_by UUID REFERENCES profiles(id),
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+CREATE INDEX idx_rjo_job ON recurring_job_occurrences(recurring_job_id);
+CREATE INDEX idx_rjo_date ON recurring_job_occurrences(scheduled_date);
+ALTER TABLE recurring_job_occurrences ENABLE ROW LEVEL SECURITY;
+
 -- Specific lot-owner recipients for a recurring job (notify_scope='specific').
 CREATE TABLE recurring_job_notify_targets (
   id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),

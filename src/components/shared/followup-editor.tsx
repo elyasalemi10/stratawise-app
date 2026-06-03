@@ -5,16 +5,14 @@ import { toast } from "sonner";
 import { Loader2, Gavel, Mail, Upload, FileText, X } from "lucide-react";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Switch } from "@/components/ui/switch";
-import { Textarea } from "@/components/ui/textarea";
 import { NumberInput } from "@/components/ui/number-input";
+import { MergeFieldEditor, type MergeFieldEditorHandle } from "@/components/shared/merge-field-editor";
 import { updateFollowupSteps } from "@/lib/actions/followup";
 import { MERGE_FIELDS, type FollowupWorkflow, type FollowupStep } from "@/lib/validations/escalation";
 
 type EditableStep = FollowupStep & { daysStr: string };
-type FocusTarget = { stepId: string; field: "subject" | "body"; el: HTMLInputElement | HTMLTextAreaElement };
 
 export function FollowupEditor({
   workflow,
@@ -28,27 +26,21 @@ export function FollowupEditor({
   );
   const [pending, startTransition] = useTransition();
   const [uploadingId, setUploadingId] = useState<string | null>(null);
-  const lastFocused = useRef<FocusTarget | null>(null);
+  // Handles to every subject/body editor, keyed "stepId:field"; the palette
+  // inserts into whichever was last focused.
+  const editorHandles = useRef<Map<string, MergeFieldEditorHandle | null>>(new Map());
+  const lastFocusedKey = useRef<string | null>(null);
 
   function update(id: string, patch: Partial<EditableStep>) {
     setSteps((prev) => prev.map((s) => (s.id === id ? { ...s, ...patch } : s)));
   }
 
-  // Insert a merge field at the cursor of whichever subject/message box was
-  // last focused. The manager never types {{...}} by hand.
+  // Insert a merge field into whichever subject/message editor was last focused.
   function insertField(token: string) {
-    const f = lastFocused.current;
-    if (!f) { toast.error("Click into a subject or message box first."); return; }
-    const el = f.el;
-    const start = el.selectionStart ?? el.value.length;
-    const end = el.selectionEnd ?? start;
-    const next = el.value.slice(0, start) + token + el.value.slice(end);
-    update(f.stepId, { [f.field]: next } as Partial<EditableStep>);
-    requestAnimationFrame(() => {
-      el.focus();
-      const pos = start + token.length;
-      el.setSelectionRange(pos, pos);
-    });
+    const key = lastFocusedKey.current;
+    const h = key ? editorHandles.current.get(key) : null;
+    if (!h) { toast.error("Click into a subject or message box first."); return; }
+    h.insertToken(token);
   }
 
   async function onUpload(stepId: string, file: File) {
@@ -148,21 +140,24 @@ export function FollowupEditor({
               <>
                 <div className="space-y-1.5">
                   <Label>Email subject</Label>
-                  <Input
+                  <MergeFieldEditor
                     value={s.subject ?? ""}
-                    onChange={(e) => update(s.id, { subject: e.target.value })}
-                    onFocus={(e) => { lastFocused.current = { stepId: s.id, field: "subject", el: e.target }; }}
+                    onChange={(v) => update(s.id, { subject: v })}
+                    onFocus={() => { lastFocusedKey.current = `${s.id}:subject`; }}
+                    ref={(h) => { editorHandles.current.set(`${s.id}:subject`, h); }}
                     placeholder="Email subject"
+                    singleLine
                   />
                 </div>
                 <div className="space-y-1.5">
                   <Label>Message</Label>
-                  <Textarea
+                  <MergeFieldEditor
                     value={s.body ?? ""}
-                    onChange={(e) => update(s.id, { body: e.target.value })}
-                    onFocus={(e) => { lastFocused.current = { stepId: s.id, field: "body", el: e.target }; }}
-                    rows={7}
+                    onChange={(v) => update(s.id, { body: v })}
+                    onFocus={() => { lastFocusedKey.current = `${s.id}:body`; }}
+                    ref={(h) => { editorHandles.current.set(`${s.id}:body`, h); }}
                     placeholder="Email message"
+                    rows={7}
                   />
                 </div>
                 <div className="space-y-1.5">

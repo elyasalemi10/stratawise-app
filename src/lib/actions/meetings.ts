@@ -8,7 +8,9 @@ import {
   createMeetingWithNoticeSchema,
   sendMeetingNoticeSchema,
   MEETING_TYPE_LABELS,
+  MEETING_PLATFORM_LABELS,
   detectMeetingPlatform,
+  type MeetingPlatform,
   type CreateMeetingInput,
   type CreateMeetingWithNoticeInput,
   type SendMeetingNoticeInput,
@@ -44,20 +46,25 @@ async function buildMeetingNoticeProps(
   d: { meeting_type: string; title?: string | null; date_time: string; meeting_format?: string | null; location?: string | null; virtual_meeting_link?: string | null; online_platform?: string | null; agenda?: Array<{ title: string; motion?: string | null }> },
   reference: string,
 ): Promise<MeetingNoticeProps> {
-  const { data: oc } = await supabase
-    .from("owners_corporations")
-    .select("name, plan_number, abn, address, suburb, state, postcode, management_companies(name, logo_url, brand_color, phone, email, abn)")
-    .eq("id", ocId)
-    .maybeSingle();
+  const [{ data: oc }, { count: lotCount }] = await Promise.all([
+    supabase
+      .from("owners_corporations")
+      .select("name, plan_number, abn, address, suburb, state, postcode, management_companies(name, logo_url, brand_color, phone, email, abn)")
+      .eq("id", ocId)
+      .maybeSingle(),
+    supabase.from("lots").select("id", { count: "exact", head: true }).eq("oc_id", ocId),
+  ]);
   const mc = (oc as { management_companies: { name?: string; logo_url?: string | null; brand_color?: string | null; phone?: string | null; email?: string | null; abn?: string | null } | null } | null)?.management_companies ?? null;
   const ocAddress = [oc?.address, oc?.suburb, oc?.state, oc?.postcode].filter(Boolean).join(", ");
   const brand = mc?.brand_color || "#0E314C";
-  const whenLabel = new Date(d.date_time).toLocaleString("en-AU", {
-    weekday: "long", day: "numeric", month: "long", year: "numeric", hour: "numeric", minute: "2-digit",
-  });
+  const when = new Date(d.date_time);
+  const whenLabel = when.toLocaleString("en-AU", { weekday: "long", day: "numeric", month: "long", year: "numeric", hour: "numeric", minute: "2-digit" });
+  const dateLabel = when.toLocaleDateString("en-AU", { weekday: "long", day: "numeric", month: "long", year: "numeric" });
+  const timeLabel = when.toLocaleTimeString("en-AU", { hour: "numeric", minute: "2-digit" });
   const agenda = (d.agenda ?? []).filter((a) => a.title.trim().length > 0);
   const typeLabel = MEETING_TYPE_LABELS[d.meeting_type as MeetingType];
   const isOnline = d.meeting_format === "online";
+  const platformLabel = d.online_platform ? MEETING_PLATFORM_LABELS[d.online_platform as MeetingPlatform] : null;
 
   return {
     managementCompany: {
@@ -71,11 +78,17 @@ async function buildMeetingNoticeProps(
     documentTitle: "Meeting Notice",
     referenceNumber: reference,
     date: new Date(),
+    meetingType: (d.meeting_type === "sgm" ? "sgm" : "agm"),
     meetingTypeLabel: typeLabel,
     meetingTitle: d.title?.trim() || typeLabel,
     whenLabel,
+    dateLabel,
+    timeLabel,
+    format: isOnline ? "online" : "in_person",
     location: isOnline ? null : (d.location?.trim() || null),
     onlineLink: isOnline ? (d.virtual_meeting_link?.trim() || null) : null,
+    onlinePlatformLabel: isOnline ? platformLabel : null,
+    ocLotCount: lotCount ?? 0,
     agenda: agenda.map((a, i) => ({ position: i + 1, title: a.title.trim(), motion: a.motion?.trim() || null })),
     brandColors: { primary: brand, secondary: brand },
   };

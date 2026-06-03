@@ -34,7 +34,9 @@ import {
   createRecurringJob, updateRecurringJob, setRecurringJobStatus,
   getOCNotifyOwners, getRecurringJobNotifyTargets, getRecurringJobDocuments,
   uploadRecurringJobDocument, deleteRecurringJobDocument,
+  getJobSchedule, addJobOccurrence, updateJobOccurrence, deleteJobOccurrence, logJobVisit,
   type OCSelectOption, type NotifyOwnerOption, type RecurringJobDoc,
+  type JobSchedule, type JobOccurrence,
 } from "@/lib/actions/recurring-jobs";
 import {
   RECURRING_FREQUENCY_OPTIONS, RECURRING_FREQUENCY_LABELS,
@@ -658,6 +660,16 @@ function RecurringJobDrawer({
               </div>
             ))}
           </div>
+
+          {/* Schedule & visits (edit mode) */}
+          {editing && (
+            <>
+              <div className="border-t border-border pt-4">
+                <h3 className="text-sm font-semibold text-foreground">Schedule & visits</h3>
+              </div>
+              <JobScheduleSection jobId={editing.id} />
+            </>
+          )}
         </div>
 
         <SheetFooter>
@@ -683,5 +695,104 @@ function RecurringJobDrawer({
         </SheetFooter>
       </SheetContent>
     </Sheet>
+  );
+}
+
+const OCC_STATUS_LABEL: Record<string, string> = { scheduled: "Scheduled", attended: "Attended", skipped: "Skipped" };
+
+function JobScheduleSection({ jobId }: { jobId: string }) {
+  const [schedule, setSchedule] = useState<JobSchedule>({ upcoming: [], logged: [] });
+  const [loading, setLoading] = useState(true);
+  const [addDate, setAddDate] = useState("");
+  const [pending, startTransition] = useTransition();
+
+  function reload() {
+    getJobSchedule(jobId).then(setSchedule).catch(() => {}).finally(() => setLoading(false));
+  }
+  useEffect(() => { reload(); /* eslint-disable-next-line react-hooks/exhaustive-deps */ }, [jobId]);
+
+  function fmt(iso: string) {
+    return new Date(`${iso.slice(0, 10)}T00:00:00`).toLocaleDateString("en-AU", { weekday: "short", day: "numeric", month: "short", year: "numeric" });
+  }
+
+  if (loading) return <div className="flex items-center gap-2 text-sm text-muted-foreground"><Loader2 className="size-4 animate-spin" /> Loading schedule</div>;
+
+  return (
+    <div className="space-y-4">
+      {/* Upcoming suggested dates */}
+      <div className="space-y-1.5">
+        <Label className="text-xs uppercase tracking-wide text-muted-foreground">Upcoming</Label>
+        {schedule.upcoming.length === 0 ? (
+          <p className="text-sm text-muted-foreground">No upcoming dates.</p>
+        ) : (
+          <div className="space-y-1.5">
+            {schedule.upcoming.map((d) => (
+              <div key={d} className="flex items-center justify-between rounded-md border border-border px-3 py-2 text-sm">
+                <span className="text-foreground">{fmt(d)}</span>
+                <div className="flex gap-2">
+                  <button type="button" disabled={pending} className="cursor-pointer text-xs font-medium text-primary hover:underline"
+                    onClick={() => startTransition(async () => { const r = await logJobVisit(jobId, d, "attended"); if (r.error) { toast.error(r.error); return; } toast.success("Visit logged"); reload(); })}>
+                    Mark attended
+                  </button>
+                  <button type="button" disabled={pending} className="cursor-pointer text-xs font-medium text-muted-foreground hover:underline"
+                    onClick={() => startTransition(async () => { const r = await logJobVisit(jobId, d, "skipped"); if (r.error) { toast.error(r.error); return; } toast.success("Marked skipped"); reload(); })}>
+                    Skip
+                  </button>
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
+
+      {/* Logged visits */}
+      {schedule.logged.length > 0 && (
+        <div className="space-y-1.5">
+          <Label className="text-xs uppercase tracking-wide text-muted-foreground">Visits</Label>
+          <div className="space-y-1.5">
+            {schedule.logged.map((o: JobOccurrence) => (
+              <div key={o.id} className="flex items-center justify-between rounded-md border border-border px-3 py-2 text-sm">
+                <div className="flex items-center gap-2">
+                  <span className="text-foreground">{fmt(o.scheduled_date)}</span>
+                  <Badge variant={o.status === "attended" ? "success" : o.status === "skipped" ? "neutral" : "info"} className="rounded-full">{OCC_STATUS_LABEL[o.status]}</Badge>
+                </div>
+                <div className="flex items-center gap-2">
+                  {o.status !== "attended" && (
+                    <button type="button" disabled={pending} className="cursor-pointer text-xs font-medium text-primary hover:underline"
+                      onClick={() => startTransition(async () => { const r = await updateJobOccurrence(o.id, { status: "attended" }); if (r.error) { toast.error(r.error); return; } reload(); })}>
+                      Mark attended
+                    </button>
+                  )}
+                  <button type="button" disabled={pending} className="cursor-pointer text-muted-foreground hover:text-destructive" aria-label="Remove"
+                    onClick={() => startTransition(async () => { const r = await deleteJobOccurrence(o.id); if (r.error) { toast.error(r.error); return; } reload(); })}>
+                    <Trash2 className="h-4 w-4" />
+                  </button>
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {/* Add a specific date */}
+      <div className="flex items-end gap-2">
+        <div className="flex-1 space-y-1.5">
+          <Label>Add a visit date</Label>
+          <DatePicker value={addDate} onChange={setAddDate} />
+        </div>
+        <Button
+          variant="secondary"
+          disabled={pending || !addDate}
+          className="cursor-pointer"
+          onClick={() => startTransition(async () => {
+            const r = await addJobOccurrence(jobId, { scheduled_date: addDate, status: "scheduled" });
+            if (r.error) { toast.error(r.error); return; }
+            setAddDate(""); toast.success("Date added"); reload();
+          })}
+        >
+          Add
+        </Button>
+      </div>
+    </div>
   );
 }

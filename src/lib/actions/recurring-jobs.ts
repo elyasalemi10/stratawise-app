@@ -8,7 +8,8 @@ import {
   type RecurringJobInput,
   type RecurringJobRecord,
 } from "@/lib/validations/recurring-jobs";
-import { computeNextOccurrence, anchorFromStart } from "@/lib/recurring-jobs-helpers";
+import { computeNextOccurrence, advance, anchorFromStart } from "@/lib/recurring-jobs-helpers";
+import type { RecurringFrequency } from "@/lib/validations/recurring-jobs";
 
 // Recurring maintenance jobs are managed company-wide but each job runs for a
 // single OC (so owner notifications resolve correctly). All reads scope by the
@@ -425,6 +426,142 @@ export async function deleteRecurringJobDocument(docId: string): Promise<{ error
     return { error: "Document not found" };
   }
   const { error } = await supabase.from("documents").delete().eq("id", docId);
+  if (error) return { error: error.message };
+  revalidatePath("/maintenance");
+  return {};
+}
+
+// ─── Service schedule + attendance (recurring_job_occurrences) ──────────────
+
+export interface JobOccurrence {
+  id: string;
+  scheduled_date: string;
+  status: "scheduled" | "attended" | "skipped";
+  notes: string | null;
+  completed_at: string | null;
+}
+
+export interface JobSchedule {
+  upcoming: string[];        // suggested dates from the recurrence rule, not yet logged
+  logged: JobOccurrence[];   // explicitly-managed visits (attendance + overrides)
+}
+
+// Compute the next `count` dates from the recurrence rule on/after today,
+// excluding any already present as a logged occurrence.
+function computeUpcoming(
+  startDate: string,
+  frequency: RecurringFrequency,
+  endDate: string | null,
+  fromIso: string,
+  exclude: Set<string>,
+  count: number,
+): string[] {
+  const out: string[] = [];
+  let cursor = computeNextOccurrence({ startDate, frequency, endDate, fromIso });
+  let guard = 0;
+  while (cursor && out.length < count && guard < 400) {
+    if (!exclude.has(cursor)) out.push(cursor);
+    const next = advance(cursor, frequency);
+    if (endDate && next > endDate.slice(0, 10)) break;
+    cursor = next;
+    guard++;
+  }
+  return out;
+}
+
+export async function getJobSchedule(jobId: string): Promise<JobSchedule> {
+  await requireCompanyRole();
+  const supabase = createServerClient();
+  const { data: job } = await supabase
+    .from("recurring_jobs")
+    .select("id, start_date, frequency, end_date, management_company_id")
+    .eq("id", jobId)
+    .maybeSingle();
+  if (!job) return { upcoming: [], logged: [] };
+
+  const { data: rows } = await supabase
+    .from("recurring_job_occurrences")
+    .select("id, scheduled_date, status, notes, completed_at")
+    .eq("recurring_job_id", jobId)
+    .order("scheduled_date", { ascending: false });
+  const logged = (rows ?? []) as JobOccurrence[];
+
+  const today = new Date().toISOString().slice(0, 10);
+  const exclude = new Set(logged.map((r) => r.scheduled_date.slice(0, 10)));
+  const upcoming = computeUpcoming(
+    job.start_date as string,
+    job.frequency as RecurringFrequency,
+    (job.end_date as string) ?? null,
+    today,
+    exclude,
+    6,
+  );
+  return { upcoming, logged };
+}
+
+export async function addJobOccurrence(
+  jobId: string,
+  input: { scheduled_date: string; status?: "scheduled" | "attended" | "skipped"; notes?: string | null },
+): Promise<{ error?: string }> {
+  const profile = await requireCompanyRole();
+  const supabase = createServerClient();
+  const { data: job } = await supabase
+    .from("recurring_jobs")
+    .select("id, oc_id, management_company_id")
+    .eq("id", jobId)
+    .maybeSingle();
+  if (!job || job.management_company_id !== profile.management_company_id) return { error: "Job not found" };
+  if (!input.scheduled_date) return { error: "Pick a date" };
+
+  const status = input.status ?? "scheduled";
+  const { error } = await supabase.from("recurring_job_occurrences").insert({
+    recurring_job_id: jobId,
+    oc_id: job.oc_id,
+    scheduled_date: input.scheduled_date,
+    status,
+    notes: input.notes?.trim() || null,
+    completed_at: status === "attended" ? new Date().toISOString() : null,
+    created_by: profile.id,
+  });
+  if (error) return { error: error.message };
+  revalidatePath("/maintenance");
+  return {};
+}
+
+export async function updateJobOccurrence(
+  occurrenceId: string,
+  patch: { scheduled_date?: string; status?: "scheduled" | "attended" | "skipped"; notes?: string | null },
+): Promise<{ error?: string }> {
+  await requireCompanyRole();
+  const supabase = createServerClient();
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const update: Record<string, any> = {};
+  if (patch.scheduled_date) update.scheduled_date = patch.scheduled_date;
+  if (patch.status) {
+    update.status = patch.status;
+    update.completed_at = patch.status === "attended" ? new Date().toISOString() : null;
+  }
+  if (patch.notes !== undefined) update.notes = patch.notes?.trim() || null;
+  const { error } = await supabase.from("recurring_job_occurrences").update(update).eq("id", occurrenceId);
+  if (error) return { error: error.message };
+  revalidatePath("/maintenance");
+  return {};
+}
+
+// Log an attended (or skipped) visit for a suggested date that has no row yet.
+export async function logJobVisit(
+  jobId: string,
+  scheduledDate: string,
+  status: "attended" | "skipped",
+  notes?: string | null,
+): Promise<{ error?: string }> {
+  return addJobOccurrence(jobId, { scheduled_date: scheduledDate, status, notes });
+}
+
+export async function deleteJobOccurrence(occurrenceId: string): Promise<{ error?: string }> {
+  await requireCompanyRole();
+  const supabase = createServerClient();
+  const { error } = await supabase.from("recurring_job_occurrences").delete().eq("id", occurrenceId);
   if (error) return { error: error.message };
   revalidatePath("/maintenance");
   return {};
