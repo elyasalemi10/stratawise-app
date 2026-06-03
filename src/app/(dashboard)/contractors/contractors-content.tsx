@@ -3,7 +3,7 @@
 import { useMemo, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { toast } from "sonner";
-import { HardHat, Loader2, Plus, Search, Trash2, Upload, FileText } from "lucide-react";
+import { HardHat, Loader2, Plus, Search, Upload, FileText, Power } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -21,15 +21,12 @@ import {
   Sheet, SheetContent, SheetHeader, SheetTitle, SheetDescription, SheetFooter,
 } from "@/components/ui/sheet";
 import {
-  AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent,
-  AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle,
-} from "@/components/ui/alert-dialog";
-import {
   Table, TableBody, TableCell, TableHead, TableHeader, TableRow,
 } from "@/components/ui/table";
 import { EmptyState } from "@/components/shared/empty-state";
+import { cn } from "@/lib/utils";
 import {
-  createContractor, updateContractor, deleteContractor,
+  createContractor, updateContractor, setContractorStatus,
 } from "@/lib/actions/contractors";
 import {
   CONTRACTOR_TRADE_OPTIONS, tradeLabel, type ContractorRecord,
@@ -123,19 +120,18 @@ export function ContractorsContent({ contractors }: { contractors: ContractorRec
                 <TableHead>ABN</TableHead>
                 <TableHead>GST</TableHead>
                 <TableHead>Public liability expiry</TableHead>
+                <TableHead>Status</TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
               {filtered.map((c) => {
                 const badge = expiryBadge(c.insurance_expiry);
+                const inactive = c.status === "inactive";
                 return (
-                  <TableRow key={c.id} className="cursor-pointer" onClick={() => openEdit(c)}>
+                  <TableRow key={c.id} className={cn("cursor-pointer", inactive && "opacity-55")} onClick={() => openEdit(c)}>
                     <TableCell className="font-medium text-foreground">{c.business_name}</TableCell>
                     <TableCell>{tradeLabel(c.trade)}</TableCell>
-                    <TableCell>
-                      <div className="text-foreground">{c.name}</div>
-                      <div className="text-xs text-muted-foreground">{c.email || c.phone}</div>
-                    </TableCell>
+                    <TableCell className="text-foreground">{c.name}</TableCell>
                     <TableCell className="tabular-nums">{c.abn}</TableCell>
                     <TableCell>{c.gst_registered ? "Registered" : ""}</TableCell>
                     <TableCell>
@@ -143,12 +139,17 @@ export function ContractorsContent({ contractors }: { contractors: ContractorRec
                         <Badge variant={badge.variant} className="rounded-full">{badge.label}</Badge>
                       )}
                     </TableCell>
+                    <TableCell>
+                      <Badge variant={inactive ? "neutral" : "success"} className="rounded-full">
+                        {inactive ? "Inactive" : "Active"}
+                      </Badge>
+                    </TableCell>
                   </TableRow>
                 );
               })}
               {filtered.length === 0 && (
                 <TableRow>
-                  <TableCell colSpan={6} className="py-8 text-center text-sm text-muted-foreground">
+                  <TableCell colSpan={7} className="py-8 text-center text-sm text-muted-foreground">
                     No contractors match your search.
                   </TableCell>
                 </TableRow>
@@ -205,6 +206,7 @@ export function ContractorDrawer({
   const [notes, setNotes] = useState(editing?.notes ?? "");
   const [uploading, setUploading] = useState(false);
   const [lookingUp, setLookingUp] = useState(false);
+  const [dragActive, setDragActive] = useState(false);
   // New contractors start on the ABN step (look up or skip), then prefill the
   // form. Editing jumps straight to the form.
   const [step, setStep] = useState<"abn" | "form">(editing ? "form" : "abn");
@@ -217,7 +219,7 @@ export function ContractorDrawer({
   }
 
   // Fills business name + GST from the ABR for the given digits. Returns true
-  // if it found something. Used by both the ABN step and the form's Look up.
+  // if it found something. Used by the ABN step.
   async function runAbnLookup(digits: string): Promise<boolean> {
     setLookingUp(true);
     try {
@@ -233,13 +235,6 @@ export function ContractorDrawer({
     } finally {
       setLookingUp(false);
     }
-  }
-
-  async function onLookupAbn() {
-    const digits = abn.replace(/\D/g, "");
-    if (digits.length !== 11) return;
-    const found = await runAbnLookup(digits);
-    toast[found ? "success" : "error"](found ? "ABN details filled in" : "We couldn't find that ABN. Enter the details manually.");
   }
 
   // ABN step: look up (if 11 digits) then move to the form.
@@ -369,36 +364,23 @@ export function ContractorDrawer({
               placeholder="Business name"
             />
           </div>
-          <div className="grid grid-cols-2 gap-4">
-            <div className="space-y-1.5">
-              <Label>ABN</Label>
-              <div className="flex gap-2">
-                <NumberInput value={abn} onChange={(v) => setAbn(v)} allowDecimal={false} maxLength={11} placeholder="11-digit ABN" />
-                <Button
-                  type="button"
-                  variant="secondary"
-                  className="shrink-0 cursor-pointer"
-                  disabled={lookingUp || abn.replace(/\D/g, "").length !== 11}
-                  onClick={onLookupAbn}
-                >
-                  {lookingUp ? <Loader2 className="size-4 animate-spin" /> : "Look up"}
-                </Button>
-              </div>
-            </div>
-            <div className="space-y-1.5">
-              <Label>Trade</Label>
-              <Combobox items={CONTRACTOR_TRADE_OPTIONS} value={trade} onValueChange={(v) => setTrade(v ?? "")}>
-                <ComboboxInput placeholder={trade ? tradeLabel(trade) : "Search trade"} />
-                <ComboboxContent>
-                  <ComboboxEmpty>No trade found.</ComboboxEmpty>
-                  <ComboboxList>
-                    {(o: { value: string; label: string }) => (
-                      <ComboboxItem key={o.value} value={o.value} keywords={[o.label]}>{o.label}</ComboboxItem>
-                    )}
-                  </ComboboxList>
-                </ComboboxContent>
-              </Combobox>
-            </div>
+          <div className="space-y-1.5">
+            <Label>ABN</Label>
+            <NumberInput value={abn} onChange={(v) => setAbn(v)} allowDecimal={false} maxLength={11} placeholder="11-digit ABN" />
+          </div>
+          <div className="space-y-1.5">
+            <Label>Trade</Label>
+            <Combobox items={CONTRACTOR_TRADE_OPTIONS} value={trade} onValueChange={(v) => setTrade(v ?? "")}>
+              <ComboboxInput placeholder={trade ? tradeLabel(trade) : "Search trade"} />
+              <ComboboxContent>
+                <ComboboxEmpty>No trade found.</ComboboxEmpty>
+                <ComboboxList>
+                  {(o: { value: string; label: string }) => (
+                    <ComboboxItem key={o.value} value={o.value} keywords={[o.label]}>{o.label}</ComboboxItem>
+                  )}
+                </ComboboxList>
+              </ComboboxContent>
+            </Combobox>
           </div>
           <div className="flex items-center gap-3">
             <Switch checked={gst} onCheckedChange={setGst} />
@@ -418,24 +400,22 @@ export function ContractorDrawer({
               placeholder="Contact name"
             />
           </div>
-          <div className="grid grid-cols-2 gap-4">
-            <div className="space-y-1.5">
-              <Label>Phone</Label>
-              <PhoneInput
-                value={phone}
-                onChange={(v) => { setPhone(v); clearInvalid("phone"); clearInvalid("email"); }}
-                error={invalid.phone}
-              />
-            </div>
-            <div className="space-y-1.5">
-              <Label>Email</Label>
-              <Input
-                value={email}
-                onChange={(e) => { setEmail(e.target.value); clearInvalid("email"); clearInvalid("phone"); }}
-                aria-invalid={invalid.email || undefined}
-                placeholder="Email"
-              />
-            </div>
+          <div className="space-y-1.5">
+            <Label>Phone</Label>
+            <PhoneInput
+              value={phone}
+              onChange={(v) => { setPhone(v); clearInvalid("phone"); clearInvalid("email"); }}
+              error={invalid.phone}
+            />
+          </div>
+          <div className="space-y-1.5">
+            <Label>Email</Label>
+            <Input
+              value={email}
+              onChange={(e) => { setEmail(e.target.value); clearInvalid("email"); clearInvalid("phone"); }}
+              aria-invalid={invalid.email || undefined}
+              placeholder="Email"
+            />
           </div>
 
           {/* Bank details */}
@@ -446,15 +426,13 @@ export function ContractorDrawer({
             <Label>Bank name</Label>
             <Input value={bankName} onChange={(e) => setBankName(e.target.value)} placeholder="Bank name" />
           </div>
-          <div className="grid grid-cols-2 gap-4">
-            <div className="space-y-1.5">
-              <Label>BSB</Label>
-              <BsbInput value={bsb} onChange={setBsb} placeholder="6-digit BSB" />
-            </div>
-            <div className="space-y-1.5">
-              <Label>Account number</Label>
-              <NumberInput value={accountNumber} onChange={setAccountNumber} allowDecimal={false} maxLength={9} placeholder="Account number" />
-            </div>
+          <div className="space-y-1.5">
+            <Label>BSB</Label>
+            <BsbInput value={bsb} onChange={setBsb} placeholder="6-digit BSB" />
+          </div>
+          <div className="space-y-1.5">
+            <Label>Account number</Label>
+            <NumberInput value={accountNumber} onChange={setAccountNumber} allowDecimal={false} maxLength={9} placeholder="Account number" />
           </div>
 
           {/* Public liability insurance */}
@@ -470,28 +448,27 @@ export function ContractorDrawer({
               placeholder="Insurer / underwriter name"
             />
           </div>
-          <div className="grid grid-cols-2 gap-4">
-            <div className="space-y-1.5">
-              <Label>Policy number <span className="text-destructive">*</span></Label>
-              <Input
-                value={plPolicy}
-                onChange={(e) => { setPlPolicy(e.target.value); clearInvalid("plPolicy"); }}
-                aria-invalid={invalid.plPolicy || undefined}
-                placeholder="Policy number"
-              />
-            </div>
-            <div className="space-y-1.5">
-              <Label>Coverage limit <span className="text-destructive">*</span></Label>
-              <NumberInput
-                value={plLimit}
-                onChange={(v) => { setPlLimit(v); clearInvalid("plLimit"); }}
-                invalid={invalid.plLimit}
-                thousandsSeparator
-                prefix="$"
-                allowDecimal
-                placeholder="Coverage limit"
-              />
-            </div>
+          <div className="space-y-1.5">
+            <Label>Policy number <span className="text-destructive">*</span></Label>
+            <Input
+              value={plPolicy}
+              onChange={(e) => { setPlPolicy(e.target.value); clearInvalid("plPolicy"); }}
+              aria-invalid={invalid.plPolicy || undefined}
+              placeholder="Policy number"
+            />
+          </div>
+          <div className="space-y-1.5">
+            <Label>Coverage limit <span className="text-destructive">*</span></Label>
+            <NumberInput
+              value={plLimit}
+              onChange={(v) => { setPlLimit(v); clearInvalid("plLimit"); }}
+              invalid={invalid.plLimit}
+              thousandsSeparator
+              prefix="$"
+              allowDecimal
+              maxLength={12}
+              placeholder="Coverage limit"
+            />
           </div>
           <div className="space-y-1.5">
             <Label>Expiry date <span className="text-destructive">*</span></Label>
@@ -501,25 +478,37 @@ export function ContractorDrawer({
               invalid={invalid.plExpiry}
             />
           </div>
+
+          {/* Related documents / certificate of currency , drop zone */}
           <div className="space-y-1.5">
-            <Label>Certificate of currency</Label>
-            <div className="flex items-center gap-2">
-              <label className="inline-flex cursor-pointer items-center gap-2 rounded-md border border-border bg-card px-3 py-2 text-sm text-foreground hover:bg-muted">
-                {uploading ? <Loader2 className="h-4 w-4 animate-spin" /> : <Upload className="h-4 w-4" />}
-                <span>Upload</span>
-                <input
-                  type="file"
-                  accept="application/pdf,image/png,image/jpeg"
-                  className="hidden"
-                  onChange={(e) => { const f = e.target.files?.[0]; if (f) onUpload(f); }}
-                />
-              </label>
-              {docName && (
-                <span className="inline-flex items-center gap-1.5 text-sm text-muted-foreground">
-                  <FileText className="h-4 w-4" /> {docName}
-                </span>
+            <Label>Related documents / certificate of currency</Label>
+            <label
+              onDragOver={(e) => { e.preventDefault(); setDragActive(true); }}
+              onDragLeave={() => setDragActive(false)}
+              onDrop={(e) => { e.preventDefault(); setDragActive(false); const f = e.dataTransfer.files?.[0]; if (f) onUpload(f); }}
+              className={cn(
+                "flex cursor-pointer flex-col items-center justify-center gap-1.5 rounded-md border border-dashed px-4 py-6 text-center text-sm transition-colors",
+                dragActive ? "border-primary bg-primary/5" : "border-border bg-card hover:bg-muted",
               )}
-            </div>
+            >
+              {uploading ? (
+                <Loader2 className="h-5 w-5 animate-spin text-muted-foreground" />
+              ) : docName ? (
+                <span className="inline-flex items-center gap-1.5 text-foreground"><FileText className="h-4 w-4" /> {docName}</span>
+              ) : (
+                <>
+                  <Upload className="h-5 w-5 text-muted-foreground" />
+                  <span className="text-muted-foreground">Drag a file here, or click to upload</span>
+                  <span className="text-xs text-muted-foreground">PDF, PNG or JPG</span>
+                </>
+              )}
+              <input
+                type="file"
+                accept="application/pdf,image/png,image/jpeg"
+                className="hidden"
+                onChange={(e) => { const f = e.target.files?.[0]; if (f) onUpload(f); }}
+              />
+            </label>
           </div>
 
           <div className="space-y-1.5">
@@ -530,7 +519,7 @@ export function ContractorDrawer({
 
         <SheetFooter>
           {editing && (
-            <DeleteContractorButton contractorId={editing.id} onDeleted={onSaved} />
+            <ContractorStatusButton contractorId={editing.id} status={editing.status} onChanged={onSaved} />
           )}
           <Button onClick={onSubmit} disabled={pending || uploading} className="cursor-pointer">
             {pending && <Loader2 className="size-4 animate-spin" />}
@@ -544,41 +533,33 @@ export function ContractorDrawer({
   );
 }
 
-function DeleteContractorButton({ contractorId, onDeleted }: { contractorId: string; onDeleted: () => void }) {
+// We don't delete contractors , we deactivate them. Inactive contractors stay
+// in the book + on historical jobs but drop out of the new-job picker.
+function ContractorStatusButton({
+  contractorId,
+  status,
+  onChanged,
+}: {
+  contractorId: string;
+  status: "active" | "inactive";
+  onChanged: () => void;
+}) {
   const [pending, startTransition] = useTransition();
-  const [open, setOpen] = useState(false);
+  const next = status === "active" ? "inactive" : "active";
   return (
-    <>
-      <Button variant="secondary" className="cursor-pointer mr-auto" onClick={() => setOpen(true)}>
-        <Trash2 className="size-4" />
-        Delete
-      </Button>
-      <AlertDialog open={open} onOpenChange={setOpen}>
-      <AlertDialogContent>
-        <AlertDialogHeader>
-          <AlertDialogTitle>Delete this contractor?</AlertDialogTitle>
-          <AlertDialogDescription>
-            This removes the contractor from your contact book. Recurring jobs that used them keep their history but lose the link.
-          </AlertDialogDescription>
-        </AlertDialogHeader>
-        <AlertDialogFooter>
-          <AlertDialogCancel>Cancel</AlertDialogCancel>
-          <AlertDialogAction
-            onClick={() => startTransition(async () => {
-              const res = await deleteContractor(contractorId);
-              if (res.error) { toast.error(res.error); return; }
-              toast.success("Contractor deleted");
-              setOpen(false);
-              onDeleted();
-            })}
-            disabled={pending}
-          >
-            {pending && <Loader2 className="size-4 animate-spin" />}
-            Delete
-          </AlertDialogAction>
-        </AlertDialogFooter>
-      </AlertDialogContent>
-    </AlertDialog>
-    </>
+    <Button
+      variant="secondary"
+      className="mr-auto cursor-pointer"
+      disabled={pending}
+      onClick={() => startTransition(async () => {
+        const res = await setContractorStatus(contractorId, next);
+        if (res.error) { toast.error(res.error); return; }
+        toast.success(next === "inactive" ? "Contractor deactivated" : "Contractor reactivated");
+        onChanged();
+      })}
+    >
+      {pending ? <Loader2 className="size-4 animate-spin" /> : status === "active" ? <Power className="size-4" /> : <Power className="size-4" />}
+      {status === "active" ? "Deactivate" : "Reactivate"}
+    </Button>
   );
 }

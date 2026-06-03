@@ -139,6 +139,33 @@ export async function updateContractor(
   return {};
 }
 
+// Soft activate/deactivate instead of deleting. Inactive contractors stay in
+// the contact book (and on any historical jobs) but drop out of the
+// new-job contractor picker (getContractorOptions filters status='active').
+export async function setContractorStatus(
+  contractorId: string,
+  status: "active" | "inactive",
+): Promise<{ error?: string }> {
+  const profile = await requireCompanyRole();
+  const supabase = createServerClient();
+  const { error } = await supabase
+    .from("contractors")
+    .update({ status })
+    .eq("id", contractorId)
+    .eq("management_company_id", profile.management_company_id);
+  if (error) return { error: error.message };
+  await supabase.from("audit_log").insert({
+    profile_id: profile.id,
+    oc_id: null,
+    action: "update",
+    entity_type: "contractor",
+    entity_id: contractorId,
+    after_state: { status },
+  });
+  revalidatePath("/contractors");
+  return {};
+}
+
 export async function deleteContractor(contractorId: string): Promise<{ error?: string }> {
   const profile = await requireCompanyRole();
   const supabase = createServerClient();

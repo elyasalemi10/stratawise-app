@@ -1305,7 +1305,7 @@ CREATE TABLE contractors (
   account_number TEXT,
   pl_insurer TEXT,                                  -- public liability insurer
   pl_policy_number TEXT,
-  pl_coverage_limit DECIMAL(14,2),
+  pl_coverage_limit DECIMAL(16,2),
   pl_document_url TEXT,                             -- optional COC upload (R2)
   insurance_expiry DATE,                            -- public liability expiry
   notes TEXT,
