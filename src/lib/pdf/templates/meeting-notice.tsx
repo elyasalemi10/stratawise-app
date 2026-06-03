@@ -38,7 +38,7 @@ export function MeetingNotice(props: MeetingNoticeProps) {
     companyMeta: { fontSize: 8.5, color: c.muted, textAlign: "right" as const, marginTop: 1 },
     title: { fontSize: 17, fontWeight: 700, color: brand, textAlign: "center" as const, marginTop: 6 },
     titleRule: { borderBottomWidth: 2, borderBottomColor: brand, width: 120, alignSelf: "center" as const, marginTop: 6, marginBottom: 4 },
-    subtitle: { fontSize: 9.5, color: c.muted, textAlign: "center" as const, fontStyle: "italic" as const, marginBottom: 16 },
+    subtitle: { fontSize: 9.5, color: c.muted, textAlign: "center" as const, marginBottom: 16 },
     sectionTitle: { fontSize: 12, fontWeight: 700, color: brand, marginTop: 14, marginBottom: 6 },
     para: { fontSize: 10, color: c.foreground, marginBottom: 8 },
     detailRow: { flexDirection: "row", borderBottomWidth: 0.5, borderBottomColor: c.border, paddingVertical: 5 },
@@ -49,7 +49,9 @@ export function MeetingNotice(props: MeetingNoticeProps) {
     agendaText: { fontSize: 10, color: c.foreground, flex: 1 },
     motionBox: { borderLeftWidth: 3, borderLeftColor: brand, backgroundColor: c.lightBg, paddingVertical: 8, paddingHorizontal: 12, marginBottom: 10 },
     motionTitle: { fontSize: 10.5, fontWeight: 700, color: c.foreground, marginBottom: 3 },
-    motionText: { fontSize: 10, color: c.foreground, fontStyle: "italic" as const, marginBottom: 4 },
+    motionText: { fontSize: 10, color: c.foreground, marginBottom: 4 },
+    voteBox: { width: 11, height: 11, borderWidth: 1, borderColor: c.foreground, borderRadius: 1 },
+    voteCell: { alignItems: "center" as const, justifyContent: "center" as const },
     motionMeta: { fontSize: 9, color: c.muted },
     bullet: { flexDirection: "row", gap: 6, marginBottom: 4 },
     bulletDot: { fontSize: 10, color: c.foreground },
@@ -181,9 +183,9 @@ export function MeetingNotice(props: MeetingNoticeProps) {
             <View key={i} style={s.tr}>
               <Text style={[s.td, { width: 60, fontWeight: 700 }]}>{motions.length > 0 ? `Motion ${i + 1}` : "-"}</Text>
               <Text style={[s.td, { flex: 1 }]}>{m.title}</Text>
-              <Text style={[s.td, { width: 50, textAlign: "center" as const }]}>{"☐"}</Text>
-              <Text style={[s.td, { width: 60, textAlign: "center" as const }]}>{"☐"}</Text>
-              <Text style={[s.td, { width: 60, textAlign: "center" as const }]}>{"☐"}</Text>
+              <View style={[s.voteCell, { width: 50 }]}><View style={s.voteBox} /></View>
+              <View style={[s.voteCell, { width: 60 }]}><View style={s.voteBox} /></View>
+              <View style={[s.voteCell, { width: 60 }]}><View style={s.voteBox} /></View>
             </View>
           ))}
         </View>

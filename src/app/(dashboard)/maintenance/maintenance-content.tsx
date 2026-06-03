@@ -33,23 +33,19 @@ import { ContractorDrawer, type CreatedContractor } from "../contractors/contrac
 import {
   createRecurringJob, updateRecurringJob, setRecurringJobStatus,
   getOCNotifyOwners, getRecurringJobNotifyTargets, getRecurringJobDocuments,
-  uploadRecurringJobDocument, deleteRecurringJobDocument,
-  getJobSchedule, addJobOccurrence, updateJobOccurrence, deleteJobOccurrence, logJobVisit,
+  linkRecurringJobDocs, deleteRecurringJobDocument, type UploadedDocRef,
+  getJobSchedule, addJobOccurrence, updateJobOccurrence, deleteJobOccurrence,
   type OCSelectOption, type NotifyOwnerOption, type RecurringJobDoc,
-  type JobSchedule, type JobOccurrence,
+  type JobOccurrence,
 } from "@/lib/actions/recurring-jobs";
 import {
   RECURRING_FREQUENCY_OPTIONS, RECURRING_FREQUENCY_LABELS,
-  RECURRING_JOB_STATUS_LABELS, type RecurringJobRecord, type RecurringFrequency,
+  RECURRING_JOB_STATUS_LABELS, RECURRING_FUND_OPTIONS, RECURRING_FUND_LABELS,
+  type RecurringJobRecord, type RecurringFrequency, type RecurringFundType,
 } from "@/lib/validations/recurring-jobs";
 import {
   CONTRACTOR_TRADE_OPTIONS, tradeLabel,
 } from "@/lib/validations/contractors";
-
-const FUND_LABELS: Record<string, string> = {
-  administrative: "Administrative fund",
-  capital_works: "Capital works fund",
-};
 
 function formatDate(iso: string | null): string {
   if (!iso) return "";
@@ -276,7 +272,7 @@ function RecurringJobDrawer({
   const [owners, setOwners] = useState<NotifyOwnerOption[]>([]);
   const [loadingOwners, setLoadingOwners] = useState(false);
   const [docs, setDocs] = useState<RecurringJobDoc[]>([]);
-  const [pendingFiles, setPendingFiles] = useState<File[]>([]); // queued before a new job exists
+  const [pendingDocs, setPendingDocs] = useState<UploadedDocRef[]>([]); // uploaded to R2, linked on save (new job)
   const [uploading, setUploading] = useState(false);
   const [dragActive, setDragActive] = useState(false);
 
@@ -320,19 +316,27 @@ function RecurringJobDrawer({
     });
   }
 
+  // Upload to R2 immediately (progress shown straight away, like contractor
+  // docs). On an existing job the documents row is created now; on a new job
+  // the uploaded refs are linked on save.
   async function onUploadDoc(file: File) {
-    if (!editing) {
-      // New job doesn't exist yet , queue the file; uploaded after create.
-      setPendingFiles((p) => [...p, file]);
-      return;
-    }
+    if (!ocId) { toast.error("Pick an OC first."); return; }
     setUploading(true);
     try {
       const fd = new FormData();
       fd.append("file", file);
-      const res = await uploadRecurringJobDocument(editing.id, fd);
-      if (res.error) { toast.error(res.error); return; }
-      setDocs((d) => [{ id: res.docId!, file_name: res.file_name!, created_at: new Date().toISOString() }, ...d]);
+      fd.append("oc_id", ocId);
+      const res = await fetch("/api/recurring-job-docs", { method: "POST", body: fd });
+      const json = await res.json();
+      if (!res.ok) { toast.error(json.error ?? "Could not upload the document"); return; }
+      const ref: UploadedDocRef = { key: json.key, file_name: json.file_name, file_size: json.file_size, mime_type: json.mime_type };
+      if (editing) {
+        const linked = await linkRecurringJobDocs(editing.id, [ref]);
+        if (linked.error || !linked.docs) { toast.error(linked.error ?? "Could not attach the document"); return; }
+        setDocs((d) => [...linked.docs!, ...d]);
+      } else {
+        setPendingDocs((p) => [...p, ref]);
+      }
     } finally {
       setUploading(false);
     }
@@ -368,7 +372,7 @@ function RecurringJobDrawer({
       notify_lot_owner_ids: notifyScope === "specific" ? Array.from(notifyOwnerIds) : [],
       scope: scope.trim() || null,
       cost_per_visit: cost != null && Number.isFinite(cost) ? cost : null,
-      fund_type: (fundType || null) as "administrative" | "capital_works" | null,
+      fund_type: (fundType || null) as RecurringFundType | null,
       approval_reference: approvalRef.trim() || null,
       status: editing?.status ?? "active",
     };
@@ -383,12 +387,8 @@ function RecurringJobDrawer({
       }
       const res = await createRecurringJob(payload);
       if (res.error || !res.jobId) { toast.error(res.error ?? "Could not create job"); return; }
-      // Upload any documents queued before the job existed.
-      for (const f of pendingFiles) {
-        const fd = new FormData();
-        fd.append("file", f);
-        await uploadRecurringJobDocument(res.jobId, fd);
-      }
+      // Link documents already uploaded to R2 during the wizard.
+      if (pendingDocs.length > 0) await linkRecurringJobDocs(res.jobId, pendingDocs);
       toast.success("Recurring job created");
       onSaved();
     });
@@ -524,11 +524,12 @@ function RecurringJobDrawer({
               <Label>Fund</Label>
               <Select value={fundType} onValueChange={(v) => setFundType((v as typeof fundType) ?? "")}>
                 <SelectTrigger className="w-full">
-                  <SelectValue placeholder="Fund">{fundType ? FUND_LABELS[fundType] : undefined}</SelectValue>
+                  <SelectValue placeholder="Fund">{fundType ? RECURRING_FUND_LABELS[fundType as RecurringFundType] : undefined}</SelectValue>
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="administrative">Administrative fund</SelectItem>
-                  <SelectItem value="capital_works">Capital works fund</SelectItem>
+                  {RECURRING_FUND_OPTIONS.map((o) => (
+                    <SelectItem key={o.value} value={o.value}>{o.label}</SelectItem>
+                  ))}
                 </SelectContent>
               </Select>
             </div>
@@ -646,12 +647,12 @@ function RecurringJobDrawer({
                 </button>
               </div>
             ))}
-            {pendingFiles.map((f, i) => (
-              <div key={`pending-${i}`} className="flex items-center justify-between rounded-md border border-dashed border-border px-3 py-2 text-sm">
-                <span className="inline-flex items-center gap-1.5 text-foreground"><FileText className="h-4 w-4 text-muted-foreground" /> {f.name} <span className="text-xs text-muted-foreground">(uploads on save)</span></span>
+            {pendingDocs.map((d, i) => (
+              <div key={`pending-${i}`} className="flex items-center justify-between rounded-md border border-border px-3 py-2 text-sm">
+                <span className="inline-flex items-center gap-1.5 text-foreground"><FileText className="h-4 w-4 text-muted-foreground" /> {d.file_name}</span>
                 <button
                   type="button"
-                  onClick={() => setPendingFiles((p) => p.filter((_, idx) => idx !== i))}
+                  onClick={() => setPendingDocs((p) => p.filter((_, idx) => idx !== i))}
                   className="cursor-pointer text-muted-foreground hover:text-destructive"
                   aria-label="Remove document"
                 >
@@ -699,98 +700,111 @@ function RecurringJobDrawer({
 }
 
 const OCC_STATUS_LABEL: Record<string, string> = { scheduled: "Scheduled", attended: "Attended", skipped: "Skipped" };
+const OCC_STATUS_VARIANT: Record<string, "success" | "neutral" | "info"> = { scheduled: "info", attended: "success", skipped: "neutral" };
+
+function fmtOccDate(iso: string) {
+  return new Date(`${iso.slice(0, 10)}T00:00:00`).toLocaleDateString("en-AU", { weekday: "short", day: "numeric", month: "short", year: "numeric" });
+}
 
 function JobScheduleSection({ jobId }: { jobId: string }) {
-  const [schedule, setSchedule] = useState<JobSchedule>({ upcoming: [], logged: [] });
+  const [rows, setRows] = useState<JobOccurrence[]>([]);
   const [loading, setLoading] = useState(true);
   const [addDate, setAddDate] = useState("");
-  const [pending, startTransition] = useTransition();
+  const [adding, setAdding] = useState(false);
+  const [busyId, setBusyId] = useState<string | null>(null);
 
-  function reload() {
-    getJobSchedule(jobId).then(setSchedule).catch(() => {}).finally(() => setLoading(false));
+  useEffect(() => {
+    let cancelled = false;
+    getJobSchedule(jobId)
+      .then((r) => { if (!cancelled) setRows(r); })
+      .catch(() => {})
+      .finally(() => { if (!cancelled) setLoading(false); });
+    return () => { cancelled = true; };
+  }, [jobId]);
+
+  // Insert keeping the list sorted by date ascending.
+  function upsertRow(occ: JobOccurrence) {
+    setRows((prev) => {
+      const next = prev.some((r) => r.id === occ.id) ? prev.map((r) => (r.id === occ.id ? occ : r)) : [...prev, occ];
+      return next.sort((a, b) => a.scheduled_date.localeCompare(b.scheduled_date));
+    });
   }
-  useEffect(() => { reload(); /* eslint-disable-next-line react-hooks/exhaustive-deps */ }, [jobId]);
 
-  function fmt(iso: string) {
-    return new Date(`${iso.slice(0, 10)}T00:00:00`).toLocaleDateString("en-AU", { weekday: "short", day: "numeric", month: "short", year: "numeric" });
+  async function setStatus(id: string, status: "scheduled" | "attended" | "skipped") {
+    setBusyId(id);
+    const res = await updateJobOccurrence(id, { status });
+    setBusyId(null);
+    if (res.error || !res.occurrence) { toast.error(res.error ?? "Could not update the visit"); return; }
+    upsertRow(res.occurrence);
+  }
+
+  async function remove(id: string) {
+    setBusyId(id);
+    const res = await deleteJobOccurrence(id);
+    setBusyId(null);
+    if (res.error) { toast.error(res.error); return; }
+    setRows((prev) => prev.filter((r) => r.id !== id));
+  }
+
+  async function add() {
+    if (!addDate) return;
+    setAdding(true);
+    const res = await addJobOccurrence(jobId, { scheduled_date: addDate, status: "scheduled" });
+    setAdding(false);
+    if (res.error || !res.occurrence) { toast.error(res.error ?? "Could not add the visit"); return; }
+    upsertRow(res.occurrence);
+    setAddDate("");
   }
 
   if (loading) return <div className="flex items-center gap-2 text-sm text-muted-foreground"><Loader2 className="size-4 animate-spin" /> Loading schedule</div>;
 
   return (
-    <div className="space-y-4">
-      {/* Upcoming suggested dates */}
-      <div className="space-y-1.5">
-        <Label className="text-xs uppercase tracking-wide text-muted-foreground">Upcoming</Label>
-        {schedule.upcoming.length === 0 ? (
-          <p className="text-sm text-muted-foreground">No upcoming dates.</p>
-        ) : (
-          <div className="space-y-1.5">
-            {schedule.upcoming.map((d) => (
-              <div key={d} className="flex items-center justify-between rounded-md border border-border px-3 py-2 text-sm">
-                <span className="text-foreground">{fmt(d)}</span>
-                <div className="flex gap-2">
-                  <button type="button" disabled={pending} className="cursor-pointer text-xs font-medium text-primary hover:underline"
-                    onClick={() => startTransition(async () => { const r = await logJobVisit(jobId, d, "attended"); if (r.error) { toast.error(r.error); return; } toast.success("Visit logged"); reload(); })}>
-                    Mark attended
-                  </button>
-                  <button type="button" disabled={pending} className="cursor-pointer text-xs font-medium text-muted-foreground hover:underline"
-                    onClick={() => startTransition(async () => { const r = await logJobVisit(jobId, d, "skipped"); if (r.error) { toast.error(r.error); return; } toast.success("Marked skipped"); reload(); })}>
-                    Skip
-                  </button>
-                </div>
-              </div>
-            ))}
-          </div>
-        )}
-      </div>
-
-      {/* Logged visits */}
-      {schedule.logged.length > 0 && (
+    <div className="space-y-3">
+      {rows.length === 0 ? (
+        <p className="text-sm text-muted-foreground">No visits scheduled yet. Add one below.</p>
+      ) : (
         <div className="space-y-1.5">
-          <Label className="text-xs uppercase tracking-wide text-muted-foreground">Visits</Label>
-          <div className="space-y-1.5">
-            {schedule.logged.map((o: JobOccurrence) => (
-              <div key={o.id} className="flex items-center justify-between rounded-md border border-border px-3 py-2 text-sm">
+          {rows.map((o) => {
+            const busy = busyId === o.id;
+            return (
+              <div key={o.id} className="flex items-center justify-between gap-2 rounded-md border border-border px-3 py-2 text-sm">
                 <div className="flex items-center gap-2">
-                  <span className="text-foreground">{fmt(o.scheduled_date)}</span>
-                  <Badge variant={o.status === "attended" ? "success" : o.status === "skipped" ? "neutral" : "info"} className="rounded-full">{OCC_STATUS_LABEL[o.status]}</Badge>
+                  <span className="text-foreground">{fmtOccDate(o.scheduled_date)}</span>
+                  <Badge variant={OCC_STATUS_VARIANT[o.status]} className="rounded-full">{OCC_STATUS_LABEL[o.status]}</Badge>
                 </div>
-                <div className="flex items-center gap-2">
+                <div className="flex items-center gap-1.5">
                   {o.status !== "attended" && (
-                    <button type="button" disabled={pending} className="cursor-pointer text-xs font-medium text-primary hover:underline"
-                      onClick={() => startTransition(async () => { const r = await updateJobOccurrence(o.id, { status: "attended" }); if (r.error) { toast.error(r.error); return; } reload(); })}>
-                      Mark attended
-                    </button>
+                    <Button size="sm" variant="secondary" className="h-7 cursor-pointer px-2" disabled={busy} onClick={() => setStatus(o.id, "attended")}>
+                      {busy ? <Loader2 className="size-3.5 animate-spin" /> : "Mark attended"}
+                    </Button>
                   )}
-                  <button type="button" disabled={pending} className="cursor-pointer text-muted-foreground hover:text-destructive" aria-label="Remove"
-                    onClick={() => startTransition(async () => { const r = await deleteJobOccurrence(o.id); if (r.error) { toast.error(r.error); return; } reload(); })}>
+                  {o.status === "scheduled" && (
+                    <Button size="sm" variant="secondary" className="h-7 cursor-pointer px-2" disabled={busy} onClick={() => setStatus(o.id, "skipped")}>
+                      Skip
+                    </Button>
+                  )}
+                  {o.status !== "scheduled" && (
+                    <Button size="sm" variant="secondary" className="h-7 cursor-pointer px-2" disabled={busy} onClick={() => setStatus(o.id, "scheduled")}>
+                      Reset
+                    </Button>
+                  )}
+                  <button type="button" disabled={busy} onClick={() => remove(o.id)} className="cursor-pointer text-muted-foreground hover:text-destructive disabled:opacity-40" aria-label="Remove visit">
                     <Trash2 className="h-4 w-4" />
                   </button>
                 </div>
               </div>
-            ))}
-          </div>
+            );
+          })}
         </div>
       )}
 
-      {/* Add a specific date */}
       <div className="flex items-end gap-2">
         <div className="flex-1 space-y-1.5">
           <Label>Add a visit date</Label>
           <DatePicker value={addDate} onChange={setAddDate} />
         </div>
-        <Button
-          variant="secondary"
-          disabled={pending || !addDate}
-          className="cursor-pointer"
-          onClick={() => startTransition(async () => {
-            const r = await addJobOccurrence(jobId, { scheduled_date: addDate, status: "scheduled" });
-            if (r.error) { toast.error(r.error); return; }
-            setAddDate(""); toast.success("Date added"); reload();
-          })}
-        >
-          Add
+        <Button variant="secondary" disabled={adding || !addDate} className="cursor-pointer" onClick={add}>
+          {adding ? <Loader2 className="size-4 animate-spin" /> : "Add"}
         </Button>
       </div>
     </div>

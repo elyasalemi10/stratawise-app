@@ -199,6 +199,11 @@ export async function createRecurringJob(
 
   await syncNotifyTargets(supabase, data.id, d.notify_scope ?? "none", d.notify_lot_owner_ids ?? []);
 
+  // Materialise the forward schedule so the manager has editable visit dates.
+  await seedJobOccurrences(supabase, {
+    id: data.id, oc_id: d.oc_id, start_date: d.start_date, frequency: d.frequency, end_date: d.end_date ?? null,
+  }, profile.id);
+
   await supabase.from("audit_log").insert({
     profile_id: profile.id,
     oc_id: d.oc_id,
@@ -358,6 +363,43 @@ export async function getRecurringJobDocuments(jobId: string): Promise<Recurring
   }));
 }
 
+// Link already-uploaded R2 objects (from /api/recurring-job-docs) to a job by
+// creating documents rows. Used after create + for immediate links on edit.
+export interface UploadedDocRef { key: string; file_name: string; file_size?: number; mime_type?: string }
+
+export async function linkRecurringJobDocs(
+  jobId: string,
+  docs: UploadedDocRef[],
+): Promise<{ docs?: RecurringJobDoc[]; error?: string }> {
+  if (docs.length === 0) return { docs: [] };
+  const profile = await requireCompanyRole();
+  const supabase = createServerClient();
+  const { data: job } = await supabase
+    .from("recurring_jobs")
+    .select("id, oc_id, management_company_id")
+    .eq("id", jobId)
+    .maybeSingle();
+  if (!job || job.management_company_id !== profile.management_company_id) return { error: "Job not found" };
+
+  const { data: inserted, error } = await supabase
+    .from("documents")
+    .insert(docs.map((d) => ({
+      oc_id: job.oc_id,
+      category: "maintenance",
+      file_name: d.file_name,
+      file_path: d.key,
+      file_size: d.file_size ?? null,
+      mime_type: d.mime_type ?? null,
+      uploaded_by: profile.id,
+      recurring_job_id: jobId,
+      ocr_status: "skipped",
+    })))
+    .select("id, file_name, created_at");
+  if (error) return { error: error.message };
+  revalidatePath("/maintenance");
+  return { docs: (inserted ?? []).map((d) => ({ id: d.id as string, file_name: d.file_name as string, created_at: d.created_at as string })) };
+}
+
 const ALLOWED_DOC_TYPES = [
   "application/pdf", "image/png", "image/jpeg",
   "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
@@ -441,80 +483,75 @@ export interface JobOccurrence {
   completed_at: string | null;
 }
 
-export interface JobSchedule {
-  upcoming: string[];        // suggested dates from the recurrence rule, not yet logged
-  logged: JobOccurrence[];   // explicitly-managed visits (attendance + overrides)
-}
+const OCC_SELECT = "id, scheduled_date, status, notes, completed_at";
 
-// Compute the next `count` dates from the recurrence rule on/after today,
-// excluding any already present as a logged occurrence.
-function computeUpcoming(
-  startDate: string,
-  frequency: RecurringFrequency,
-  endDate: string | null,
-  fromIso: string,
-  exclude: Set<string>,
-  count: number,
-): string[] {
-  const out: string[] = [];
-  let cursor = computeNextOccurrence({ startDate, frequency, endDate, fromIso });
+// Materialise the next `count` occurrence dates from the recurrence rule into
+// the DB (status 'scheduled'), skipping dates already present. Called once when
+// a job is created and as a top-up when a manager opens an empty schedule.
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+export async function seedJobOccurrences(
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  supabase: any,
+  job: { id: string; oc_id: string; start_date: string; frequency: RecurringFrequency; end_date: string | null },
+  createdBy: string | null,
+  count = 12,
+) {
+  const { data: existing } = await supabase
+    .from("recurring_job_occurrences").select("scheduled_date").eq("recurring_job_id", job.id);
+  const have = new Set((existing ?? []).map((r: { scheduled_date: string }) => r.scheduled_date.slice(0, 10)));
+  const today = new Date().toISOString().slice(0, 10);
+  const rows: Array<Record<string, unknown>> = [];
+  let cursor = computeNextOccurrence({ startDate: job.start_date, frequency: job.frequency, endDate: job.end_date, fromIso: today });
   let guard = 0;
-  while (cursor && out.length < count && guard < 400) {
-    if (!exclude.has(cursor)) out.push(cursor);
-    const next = advance(cursor, frequency);
-    if (endDate && next > endDate.slice(0, 10)) break;
+  while (cursor && rows.length < count && guard < 400) {
+    if (!have.has(cursor)) rows.push({ recurring_job_id: job.id, oc_id: job.oc_id, scheduled_date: cursor, status: "scheduled", created_by: createdBy });
+    const next = advance(cursor, job.frequency);
+    if (job.end_date && next > job.end_date.slice(0, 10)) break;
     cursor = next;
     guard++;
   }
-  return out;
+  if (rows.length > 0) await supabase.from("recurring_job_occurrences").insert(rows);
 }
 
-export async function getJobSchedule(jobId: string): Promise<JobSchedule> {
-  await requireCompanyRole();
+// Returns the stored occurrence rows (ascending). Seeds upcoming dates the
+// first time a job has none, so the schedule is persisted, not recomputed.
+export async function getJobSchedule(jobId: string): Promise<JobOccurrence[]> {
+  const profile = await requireCompanyRole();
   const supabase = createServerClient();
   const { data: job } = await supabase
     .from("recurring_jobs")
-    .select("id, start_date, frequency, end_date, management_company_id")
+    .select("id, oc_id, start_date, frequency, end_date, management_company_id")
     .eq("id", jobId)
     .maybeSingle();
-  if (!job) return { upcoming: [], logged: [] };
+  if (!job || job.management_company_id !== profile.management_company_id) return [];
+
+  const { count } = await supabase
+    .from("recurring_job_occurrences").select("id", { count: "exact", head: true }).eq("recurring_job_id", jobId);
+  if ((count ?? 0) === 0) {
+    await seedJobOccurrences(supabase, {
+      id: job.id as string, oc_id: job.oc_id as string, start_date: job.start_date as string,
+      frequency: job.frequency as RecurringFrequency, end_date: (job.end_date as string) ?? null,
+    }, profile.id);
+  }
 
   const { data: rows } = await supabase
-    .from("recurring_job_occurrences")
-    .select("id, scheduled_date, status, notes, completed_at")
-    .eq("recurring_job_id", jobId)
-    .order("scheduled_date", { ascending: false });
-  const logged = (rows ?? []) as JobOccurrence[];
-
-  const today = new Date().toISOString().slice(0, 10);
-  const exclude = new Set(logged.map((r) => r.scheduled_date.slice(0, 10)));
-  const upcoming = computeUpcoming(
-    job.start_date as string,
-    job.frequency as RecurringFrequency,
-    (job.end_date as string) ?? null,
-    today,
-    exclude,
-    6,
-  );
-  return { upcoming, logged };
+    .from("recurring_job_occurrences").select(OCC_SELECT).eq("recurring_job_id", jobId).order("scheduled_date", { ascending: true });
+  return (rows ?? []) as JobOccurrence[];
 }
 
 export async function addJobOccurrence(
   jobId: string,
   input: { scheduled_date: string; status?: "scheduled" | "attended" | "skipped"; notes?: string | null },
-): Promise<{ error?: string }> {
+): Promise<{ occurrence?: JobOccurrence; error?: string }> {
   const profile = await requireCompanyRole();
   const supabase = createServerClient();
   const { data: job } = await supabase
-    .from("recurring_jobs")
-    .select("id, oc_id, management_company_id")
-    .eq("id", jobId)
-    .maybeSingle();
+    .from("recurring_jobs").select("id, oc_id, management_company_id").eq("id", jobId).maybeSingle();
   if (!job || job.management_company_id !== profile.management_company_id) return { error: "Job not found" };
   if (!input.scheduled_date) return { error: "Pick a date" };
 
   const status = input.status ?? "scheduled";
-  const { error } = await supabase.from("recurring_job_occurrences").insert({
+  const { data, error } = await supabase.from("recurring_job_occurrences").insert({
     recurring_job_id: jobId,
     oc_id: job.oc_id,
     scheduled_date: input.scheduled_date,
@@ -522,16 +559,16 @@ export async function addJobOccurrence(
     notes: input.notes?.trim() || null,
     completed_at: status === "attended" ? new Date().toISOString() : null,
     created_by: profile.id,
-  });
-  if (error) return { error: error.message };
+  }).select(OCC_SELECT).single();
+  if (error || !data) return { error: error?.message ?? "Could not add the visit" };
   revalidatePath("/maintenance");
-  return {};
+  return { occurrence: data as JobOccurrence };
 }
 
 export async function updateJobOccurrence(
   occurrenceId: string,
   patch: { scheduled_date?: string; status?: "scheduled" | "attended" | "skipped"; notes?: string | null },
-): Promise<{ error?: string }> {
+): Promise<{ occurrence?: JobOccurrence; error?: string }> {
   await requireCompanyRole();
   const supabase = createServerClient();
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -542,20 +579,10 @@ export async function updateJobOccurrence(
     update.completed_at = patch.status === "attended" ? new Date().toISOString() : null;
   }
   if (patch.notes !== undefined) update.notes = patch.notes?.trim() || null;
-  const { error } = await supabase.from("recurring_job_occurrences").update(update).eq("id", occurrenceId);
-  if (error) return { error: error.message };
+  const { data, error } = await supabase.from("recurring_job_occurrences").update(update).eq("id", occurrenceId).select(OCC_SELECT).single();
+  if (error || !data) return { error: error?.message ?? "Could not update the visit" };
   revalidatePath("/maintenance");
-  return {};
-}
-
-// Log an attended (or skipped) visit for a suggested date that has no row yet.
-export async function logJobVisit(
-  jobId: string,
-  scheduledDate: string,
-  status: "attended" | "skipped",
-  notes?: string | null,
-): Promise<{ error?: string }> {
-  return addJobOccurrence(jobId, { scheduled_date: scheduledDate, status, notes });
+  return { occurrence: data as JobOccurrence };
 }
 
 export async function deleteJobOccurrence(occurrenceId: string): Promise<{ error?: string }> {

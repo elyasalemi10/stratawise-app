@@ -25,6 +25,21 @@ export const RECURRING_FREQUENCY_OPTIONS = RECURRING_FREQUENCIES.map((value) => 
   label: RECURRING_FREQUENCY_LABELS[value],
 }));
 
+// ─── Fund (matches the fund_type DB enum) ────────────────────────────────────
+export const RECURRING_FUND_TYPES = ["operating", "capital_works", "maintenance_plan"] as const;
+export type RecurringFundType = (typeof RECURRING_FUND_TYPES)[number];
+
+export const RECURRING_FUND_LABELS: Record<RecurringFundType, string> = {
+  operating: "Administrative fund",
+  capital_works: "Capital works fund",
+  maintenance_plan: "Maintenance plan fund",
+};
+
+export const RECURRING_FUND_OPTIONS = RECURRING_FUND_TYPES.map((value) => ({
+  value,
+  label: RECURRING_FUND_LABELS[value],
+}));
+
 // ─── Status ─────────────────────────────────────────────────────────────────
 export const RECURRING_JOB_STATUSES = ["active", "paused"] as const;
 export type RecurringJobStatus = (typeof RECURRING_JOB_STATUSES)[number];
@@ -58,7 +73,7 @@ export const recurringJobSchema = z.object({
   notify_lot_owner_ids: z.array(z.string().uuid()).default([]),
   scope: z.string().trim().max(4000).nullable().optional(),
   cost_per_visit: z.number().nonnegative().nullable().optional(),
-  fund_type: z.enum(["administrative", "capital_works"]).nullable().optional(),
+  fund_type: z.enum(RECURRING_FUND_TYPES).nullable().optional(),
   approval_reference: z.string().trim().max(120).nullable().optional(),
   status: z.enum(RECURRING_JOB_STATUSES).default("active"),
 });
@@ -82,7 +97,7 @@ export interface RecurringJobRecord {
   notify_scope: RecurringNotifyScope;
   scope: string | null;
   cost_per_visit: number | null;
-  fund_type: "administrative" | "capital_works" | null;
+  fund_type: RecurringFundType | null;
   approval_reference: string | null;
   status: RecurringJobStatus;
   next_occurrence_date: string | null;

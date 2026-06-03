@@ -8,6 +8,7 @@ import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
 import { Switch } from "@/components/ui/switch";
 import { NumberInput } from "@/components/ui/number-input";
+import { cn } from "@/lib/utils";
 import { MergeFieldEditor, type MergeFieldEditorHandle } from "@/components/shared/merge-field-editor";
 import { updateFollowupSteps } from "@/lib/actions/followup";
 import { MERGE_FIELDS, type FollowupWorkflow, type FollowupStep } from "@/lib/validations/escalation";
@@ -26,6 +27,7 @@ export function FollowupEditor({
   );
   const [pending, startTransition] = useTransition();
   const [uploadingId, setUploadingId] = useState<string | null>(null);
+  const [daysInvalidId, setDaysInvalidId] = useState<string | null>(null);
   // Handles to every subject/body editor, keyed "stepId:field"; the palette
   // inserts into whichever was last focused.
   const editorHandles = useRef<Map<string, MergeFieldEditorHandle | null>>(new Map());
@@ -64,10 +66,12 @@ export function FollowupEditor({
       const prev = parseInt(emailSteps[i - 1].daysStr || "0", 10);
       const cur = parseInt(emailSteps[i].daysStr || "0", 10);
       if (cur < prev) {
+        setDaysInvalidId(emailSteps[i].id);
         toast.error(`"${emailSteps[i].label ?? "A step"}" can't be before the step above it (${prev} days).`);
         return;
       }
     }
+    setDaysInvalidId(null);
     startTransition(async () => {
       const res = await updateFollowupSteps({
         workflow_id: workflow.id,
@@ -100,9 +104,10 @@ export function FollowupEditor({
               <button
                 key={f.token}
                 type="button"
-                onMouseDown={(e) => e.preventDefault()} /* keep the textarea focused */
+                onMouseDown={(e) => e.preventDefault()} /* keep the editor focused */
                 onClick={() => insertField(f.token)}
-                className="cursor-pointer rounded-full bg-primary/10 px-2.5 py-1 text-xs font-medium text-primary hover:bg-primary/20"
+                style={{ color: f.color, background: `color-mix(in srgb, ${f.color} 12%, transparent)` }}
+                className="cursor-pointer rounded-full px-2.5 py-1 text-xs font-medium hover:brightness-95"
               >
                 {f.label}
               </button>
@@ -112,7 +117,7 @@ export function FollowupEditor({
       )}
 
       {steps.map((s) => (
-        <Card key={s.id}>
+        <Card key={s.id} className={cn(!s.enabled && "border-dashed")}>
           <CardContent className="space-y-3 pt-5">
             <div className="flex items-center justify-between gap-3">
               <div className="flex items-center gap-2">
@@ -125,10 +130,19 @@ export function FollowupEditor({
               </div>
             </div>
 
+            {/* Everything below the toggle dims when the step is off. */}
+            <div className={cn("space-y-3", !s.enabled && "pointer-events-none opacity-50")}>
             <div className="flex items-center gap-2">
               <Label className="text-sm">Days after due date</Label>
               <div className="w-28">
-                <NumberInput value={s.daysStr} onChange={(v) => update(s.id, { daysStr: v })} allowDecimal={false} maxLength={3} placeholder="Days" />
+                <NumberInput
+                  value={s.daysStr}
+                  onChange={(v) => { update(s.id, { daysStr: v }); if (daysInvalidId === s.id) setDaysInvalidId(null); }}
+                  allowDecimal={false}
+                  maxLength={3}
+                  invalid={daysInvalidId === s.id}
+                  placeholder="Days"
+                />
               </div>
             </div>
 
@@ -182,6 +196,7 @@ export function FollowupEditor({
                 </div>
               </>
             )}
+            </div>
           </CardContent>
         </Card>
       ))}

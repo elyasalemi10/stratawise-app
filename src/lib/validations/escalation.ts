@@ -29,16 +29,22 @@ export interface FollowupWorkflow {
 
 // Merge fields available in step subjects/bodies. Shown as a legend under the
 // editor; substituted at send time by renderTemplate().
-export const MERGE_FIELDS: Array<{ token: string; label: string }> = [
-  { token: "{{owner_name}}", label: "Owner name" },
-  { token: "{{oc_name}}", label: "OC name" },
-  { token: "{{reference}}", label: "Levy reference" },
-  { token: "{{amount_due}}", label: "Amount outstanding" },
-  { token: "{{due_date}}", label: "Due date" },
-  { token: "{{days_overdue}}", label: "Days overdue" },
-  { token: "{{interest_accrued}}", label: "Interest accrued" },
-  { token: "{{daily_interest}}", label: "Daily interest" },
+// Each field carries a distinct colour so chips are visually distinguishable
+// in the editor + palette.
+export const MERGE_FIELDS: Array<{ token: string; label: string; color: string }> = [
+  { token: "{{owner_name}}", label: "Owner name", color: "#2563eb" },
+  { token: "{{oc_name}}", label: "OC name", color: "#7c3aed" },
+  { token: "{{reference}}", label: "Levy reference", color: "#0891b2" },
+  { token: "{{amount_due}}", label: "Amount outstanding", color: "#16a34a" },
+  { token: "{{due_date}}", label: "Due date", color: "#d97706" },
+  { token: "{{days_overdue}}", label: "Days overdue", color: "#dc2626" },
+  { token: "{{interest_accrued}}", label: "Interest accrued", color: "#db2777" },
+  { token: "{{daily_interest}}", label: "Daily interest", color: "#0d9488" },
 ];
+
+export const MERGE_FIELD_COLORS: Record<string, string> = Object.fromEntries(
+  MERGE_FIELDS.map((f) => [f.token, f.color]),
+);
 
 // One step in an update payload. vcat steps carry no email body.
 export const followupStepInputSchema = z.object({

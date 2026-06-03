@@ -2,7 +2,7 @@
 
 import { forwardRef, useEffect, useImperativeHandle, useRef } from "react";
 import { cn } from "@/lib/utils";
-import { MERGE_FIELDS } from "@/lib/validations/escalation";
+import { MERGE_FIELDS, MERGE_FIELD_COLORS } from "@/lib/validations/escalation";
 
 // Inline merge-field editor. Renders {{tokens}} as atomic coloured chips inside
 // a contentEditable box; the manager never sees or types raw {{...}}. The value
@@ -21,6 +21,11 @@ function chipEl(token: string): HTMLSpanElement {
   span.dataset.token = token;
   span.contentEditable = "false";
   span.className = "mfe-chip";
+  const color = MERGE_FIELD_COLORS[token];
+  if (color) {
+    span.style.color = color;
+    span.style.background = `color-mix(in srgb, ${color} 14%, transparent)`;
+  }
   span.textContent = LABEL_BY_TOKEN.get(token) ?? token;
   return span;
 }
