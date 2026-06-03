@@ -96,12 +96,12 @@ export function CreateMeetingForm({
   const [previewing, setPreviewing] = useState(false);
   const [pending, startTransition] = useTransition();
 
-  // Minimum notice: 14 days for AGM/SGM, next day for committee.
+  // Minimum notice: 14 days for general meetings (AGM/SGM).
   const minDate = useMemo(() => {
     const d = new Date();
-    d.setDate(d.getDate() + (meetingType === "committee" ? 1 : 14));
+    d.setDate(d.getDate() + 14);
     return d.toISOString().slice(0, 10);
-  }, [meetingType]);
+  }, []);
 
   const detectedPlatform = link.trim() ? detectMeetingPlatform(link.trim()) : null;
 
@@ -126,7 +126,7 @@ export function CreateMeetingForm({
     if (!date || !when || Number.isNaN(when.getTime())) {
       problems.push("Pick a meeting date."); setDateInvalid(true);
     } else if (date < minDate) {
-      problems.push(meetingType === "committee" ? "Pick a future date." : "AGM/SGM need at least 14 days' notice.");
+      problems.push("Meetings need at least 14 days' notice.");
       setDateInvalid(true);
     } else setDateInvalid(false);
 
@@ -183,8 +183,8 @@ export function CreateMeetingForm({
         <Card>
           <CardContent className="pt-5 space-y-4">
             <Label>Meeting type <span className="text-destructive">*</span></Label>
-            <div className="grid gap-3 sm:grid-cols-3">
-              {(["agm", "sgm", "committee"] as MeetingType[]).map((t) => (
+            <div className="grid gap-3 sm:grid-cols-2">
+              {(["agm", "sgm"] as MeetingType[]).map((t) => (
                 <button
                   key={t}
                   type="button"

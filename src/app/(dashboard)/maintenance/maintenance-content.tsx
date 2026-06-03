@@ -85,7 +85,13 @@ export function MaintenanceContent({
   const [contractorList, setContractorList] = useState<ContractorOption[]>(contractors);
   useEffect(() => { setContractorList(contractors); }, [contractors]);
   const [contractorDrawerOpen, setContractorDrawerOpen] = useState(false);
+  const [contractorKey, setContractorKey] = useState(0);
   const [selectContractorId, setSelectContractorId] = useState<string | null>(null);
+
+  function openContractorDrawer() {
+    setContractorKey((k) => k + 1);
+    setContractorDrawerOpen(true);
+  }
 
   function onContractorCreated(created?: CreatedContractor) {
     setContractorDrawerOpen(false);
@@ -201,13 +207,14 @@ export function MaintenanceContent({
         contractors={contractorList}
         selectContractorId={selectContractorId}
         onContractorSelected={() => setSelectContractorId(null)}
-        onRequestCreateContractor={() => setContractorDrawerOpen(true)}
+        onRequestCreateContractor={openContractorDrawer}
         onSaved={() => { setDrawerOpen(false); router.refresh(); }}
       />
 
       {/* Lifted to the page level so it stacks above the job drawer and its
           overlay-dismiss closes only itself, leaving the job drawer open. */}
       <ContractorDrawer
+        key={contractorKey}
         open={contractorDrawerOpen}
         onOpenChange={setContractorDrawerOpen}
         editing={null}

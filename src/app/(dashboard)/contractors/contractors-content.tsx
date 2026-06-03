@@ -49,6 +49,9 @@ export function ContractorsContent({ contractors }: { contractors: ContractorRec
   const [query, setQuery] = useState("");
   const [drawerOpen, setDrawerOpen] = useState(false);
   const [editing, setEditing] = useState<ContractorRecord | null>(null);
+  // Bumped on each open so the drawer remounts fresh (resets the ABN step +
+  // fields) without disturbing the close animation.
+  const [openKey, setOpenKey] = useState(0);
 
   const filtered = useMemo(() => {
     const q = query.trim().toLowerCase();
@@ -61,10 +64,12 @@ export function ContractorsContent({ contractors }: { contractors: ContractorRec
 
   function openAdd() {
     setEditing(null);
+    setOpenKey((k) => k + 1);
     setDrawerOpen(true);
   }
   function openEdit(c: ContractorRecord) {
     setEditing(c);
+    setOpenKey((k) => k + 1);
     setDrawerOpen(true);
   }
 
@@ -154,7 +159,7 @@ export function ContractorsContent({ contractors }: { contractors: ContractorRec
       )}
 
       <ContractorDrawer
-        key={editing?.id ?? "new"}
+        key={openKey}
         open={drawerOpen}
         onOpenChange={setDrawerOpen}
         editing={editing}
@@ -200,6 +205,9 @@ export function ContractorDrawer({
   const [notes, setNotes] = useState(editing?.notes ?? "");
   const [uploading, setUploading] = useState(false);
   const [lookingUp, setLookingUp] = useState(false);
+  // New contractors start on the ABN step (look up or skip), then prefill the
+  // form. Editing jumps straight to the form.
+  const [step, setStep] = useState<"abn" | "form">(editing ? "form" : "abn");
 
   const [invalid, setInvalid] = useState<Record<string, boolean>>({});
   const [pending, startTransition] = useTransition();
@@ -208,26 +216,40 @@ export function ContractorDrawer({
     setInvalid((p) => (p[field] ? { ...p, [field]: false } : p));
   }
 
-  async function onLookupAbn() {
-    const digits = abn.replace(/\D/g, "");
-    if (digits.length !== 11) return;
+  // Fills business name + GST from the ABR for the given digits. Returns true
+  // if it found something. Used by both the ABN step and the form's Look up.
+  async function runAbnLookup(digits: string): Promise<boolean> {
     setLookingUp(true);
     try {
       const res = await fetch(`/api/abn-lookup?abn=${digits}`);
       const json = await res.json();
-      if (!json.found) {
-        toast.error("We couldn't find that ABN. Enter the details manually.");
-        return;
-      }
+      if (!json.found) return false;
       const r = json.result as { businessName: string | null; gstRegistered: boolean };
-      if (r.businessName && !businessName.trim()) setBusinessName(r.businessName);
+      if (r.businessName) setBusinessName(r.businessName);
       setGst(r.gstRegistered);
-      toast.success("ABN details filled in");
+      return true;
     } catch {
-      toast.error("Lookup is unavailable right now. Enter the details manually.");
+      return false;
     } finally {
       setLookingUp(false);
     }
+  }
+
+  async function onLookupAbn() {
+    const digits = abn.replace(/\D/g, "");
+    if (digits.length !== 11) return;
+    const found = await runAbnLookup(digits);
+    toast[found ? "success" : "error"](found ? "ABN details filled in" : "We couldn't find that ABN. Enter the details manually.");
+  }
+
+  // ABN step: look up (if 11 digits) then move to the form.
+  async function lookupAndContinue() {
+    const digits = abn.replace(/\D/g, "");
+    if (digits.length === 11) {
+      const found = await runAbnLookup(digits);
+      if (!found) toast.error("We couldn't find that ABN. Fill the details manually.");
+    }
+    setStep("form");
   }
 
   async function onUpload(file: File) {
@@ -315,6 +337,27 @@ export function ContractorDrawer({
           </SheetDescription>
         </SheetHeader>
 
+        {step === "abn" && (
+          <div className="space-y-4 px-4 pb-4">
+            <div className="space-y-1.5">
+              <Label>ABN</Label>
+              <NumberInput value={abn} onChange={(v) => setAbn(v)} allowDecimal={false} maxLength={11} placeholder="11-digit ABN" />
+              <p className="text-xs text-muted-foreground">We&apos;ll look it up and fill in the business name and GST status.</p>
+            </div>
+            <div className="flex justify-between gap-2">
+              <Button variant="secondary" className="cursor-pointer" onClick={() => setStep("form")} disabled={lookingUp}>
+                Skip
+              </Button>
+              <Button className="cursor-pointer" onClick={lookupAndContinue} disabled={lookingUp || abn.replace(/\D/g, "").length !== 11}>
+                {lookingUp && <Loader2 className="size-4 animate-spin" />}
+                Look up and continue
+              </Button>
+            </div>
+          </div>
+        )}
+
+        {step === "form" && (
+        <>
         <div className="space-y-5 px-4 pb-4">
           {/* Business */}
           <div className="space-y-1.5">
@@ -494,6 +537,8 @@ export function ContractorDrawer({
             {editing ? "Save changes" : "Add contractor"}
           </Button>
         </SheetFooter>
+        </>
+        )}
       </SheetContent>
     </Sheet>
   );

@@ -71,7 +71,7 @@ export function MeetingsContent({
         <EmptyState
           icon={CalendarDays}
           title="No meetings yet"
-          description="Create an AGM, special general meeting, or committee meeting. Agendas, notices, and minutes build on each meeting."
+          description="Create an AGM or special general meeting. Agendas, notices, and minutes build on each meeting."
           action={
             !readOnly ? (
               <Link href={createHref} className={cn(buttonVariants({ size: "sm" }))}>

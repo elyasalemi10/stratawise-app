@@ -119,7 +119,7 @@ export async function createMeeting(
   // type in that year + 1 (e.g. "AGM-2026-7" = the 7th AGM across all OCs in
   // 2026). Global numbering means an owner in two OCs never sees the same
   // code twice. Uniqueness is enforced by idx_meetings_reference_global.
-  const typeCode = { agm: "AGM", sgm: "SGM", committee: "CM" }[parsed.data.meeting_type];
+  const typeCode = { agm: "AGM", sgm: "SGM" }[parsed.data.meeting_type];
   const year = new Date(parsed.data.date_time).getFullYear();
   const { count: existingCount } = await supabase
     .from("meetings")
@@ -184,7 +184,7 @@ export async function createMeetingWithNotice(
   await requireOCAccess(d.oc_id);
   const supabase = createServerClient();
 
-  const typeCode = { agm: "AGM", sgm: "SGM", committee: "CM" }[d.meeting_type];
+  const typeCode = { agm: "AGM", sgm: "SGM" }[d.meeting_type];
   const year = new Date(d.date_time).getFullYear();
   const { count: existingCount } = await supabase
     .from("meetings")
