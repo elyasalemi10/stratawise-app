@@ -30,6 +30,8 @@ import {
   PieChart,
   Briefcase,
   BookOpen,
+  Wrench,
+  HardHat,
   type LucideIcon,
 } from "lucide-react";
 
@@ -89,6 +91,8 @@ const managerMainNavGroups = [
     label: "Management",
     items: [
       { href: "/ocs", label: "OCs", icon: Building2 },
+      { href: "/maintenance", label: "Maintenance", icon: Wrench },
+      { href: "/contractors", label: "Contractors", icon: HardHat },
       { href: "/chart-of-accounts", label: "Chart of Accounts", icon: BookOpen },
     ],
   },

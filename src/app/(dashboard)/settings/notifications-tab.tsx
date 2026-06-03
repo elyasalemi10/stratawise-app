@@ -32,6 +32,7 @@ const TYPE_LABELS: Record<NotificationType, string> = {
   complaint_update: "Complaint update",
   escalation_step: "Escalation step",
   document_uploaded: "Document uploaded",
+  levy_csv_reminder: "Levy CSV reminder",
 };
 
 type Channel = "email" | "in_app";

@@ -1,0 +1,415 @@
+"use server";
+
+import { requireCompanyRole, requireOCAccess } from "@/lib/auth";
+import { createServerClient } from "@/lib/supabase";
+import { revalidatePath } from "next/cache";
+import {
+  recurringJobSchema,
+  type RecurringJobInput,
+  type RecurringJobRecord,
+} from "@/lib/validations/recurring-jobs";
+import { computeNextOccurrence, anchorFromStart } from "@/lib/recurring-jobs-helpers";
+
+// Recurring maintenance jobs are managed company-wide but each job runs for a
+// single OC (so owner notifications resolve correctly). All reads scope by the
+// firm's management_company_id; the chosen OC is access-checked on write.
+
+function todayIso(): string {
+  return new Date().toISOString().slice(0, 10);
+}
+
+export interface OCSelectOption {
+  id: string;
+  name: string;
+  short_code: string;
+}
+
+export async function getCompanyOCsForSelect(): Promise<OCSelectOption[]> {
+  const profile = await requireCompanyRole();
+  const supabase = createServerClient();
+  const { data } = await supabase
+    .from("owners_corporations")
+    .select("id, name, short_code")
+    .eq("management_company_id", profile.management_company_id)
+    .order("name", { ascending: true });
+  return (data ?? []).map((r) => ({
+    id: r.id as string,
+    name: (r.name as string) ?? "OC",
+    short_code: (r.short_code as string) ?? "",
+  }));
+}
+
+export interface NotifyOwnerOption {
+  lot_owner_id: string;
+  name: string;
+  email: string;
+  lot_label: string;
+}
+
+// Email-eligible lot owners for an OC: have an email AND aren't post-only.
+// Post recipients are excluded , chasing physical mail is too slow to be a
+// useful notification channel.
+export async function getOCNotifyOwners(ocId: string): Promise<NotifyOwnerOption[]> {
+  await requireOCAccess(ocId);
+  const supabase = createServerClient();
+  const { data } = await supabase
+    .from("lot_owners")
+    .select("id, name, email, delivery_preference, lots!inner(oc_id, lot_number, unit_number)")
+    .eq("lots.oc_id", ocId)
+    .not("email", "is", null)
+    .neq("delivery_preference", "post");
+
+  return (data ?? []).map((r) => {
+    const lot = (r as { lots: { lot_number?: number; unit_number?: string | null } | { lot_number?: number; unit_number?: string | null }[] }).lots;
+    const lotRow = Array.isArray(lot) ? lot[0] : lot;
+    const lotLabel = lotRow
+      ? `Lot ${lotRow.lot_number}${lotRow.unit_number ? ` (Unit ${lotRow.unit_number})` : ""}`
+      : "";
+    return {
+      lot_owner_id: r.id as string,
+      name: (r.name as string) ?? "Owner",
+      email: r.email as string,
+      lot_label: lotLabel,
+    };
+  });
+}
+
+export async function getRecurringJobs(): Promise<RecurringJobRecord[]> {
+  const profile = await requireCompanyRole();
+  const supabase = createServerClient();
+
+  const { data } = await supabase
+    .from("recurring_jobs")
+    .select(
+      "id, oc_id, reference_number, title, trade, contractor_id, frequency, start_date, end_date, lead_time_days, notify_scope, scope, cost_per_visit, fund_type, approval_reference, status, next_occurrence_date, created_at, owners_corporations(name, short_code), contractors(business_name)",
+    )
+    .eq("management_company_id", profile.management_company_id)
+    .order("next_occurrence_date", { ascending: true, nullsFirst: false });
+
+  return (data ?? []).map((row) => {
+    const oc = (row as { owners_corporations: { name?: string; short_code?: string } | null }).owners_corporations;
+    const contractor = (row as { contractors: { business_name?: string } | null }).contractors;
+    return {
+      id: row.id as string,
+      oc_id: row.oc_id as string,
+      oc_name: oc?.name ?? null,
+      oc_code: oc?.short_code ?? null,
+      reference_number: (row.reference_number as string) ?? null,
+      title: row.title as string,
+      trade: (row.trade as string) ?? null,
+      contractor_id: (row.contractor_id as string) ?? null,
+      contractor_name: contractor?.business_name ?? null,
+      frequency: row.frequency as RecurringJobRecord["frequency"],
+      start_date: row.start_date as string,
+      end_date: (row.end_date as string) ?? null,
+      lead_time_days: (row.lead_time_days as number) ?? 0,
+      notify_scope: (row.notify_scope as RecurringJobRecord["notify_scope"]) ?? "none",
+      scope: (row.scope as string) ?? null,
+      cost_per_visit: row.cost_per_visit != null ? Number(row.cost_per_visit) : null,
+      fund_type: (row.fund_type as RecurringJobRecord["fund_type"]) ?? null,
+      approval_reference: (row.approval_reference as string) ?? null,
+      status: (row.status as RecurringJobRecord["status"]) ?? "active",
+      next_occurrence_date: (row.next_occurrence_date as string) ?? null,
+      created_at: row.created_at as string,
+    } satisfies RecurringJobRecord;
+  });
+}
+
+async function syncNotifyTargets(
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  supabase: any,
+  jobId: string,
+  scope: string,
+  lotOwnerIds: string[],
+) {
+  await supabase.from("recurring_job_notify_targets").delete().eq("recurring_job_id", jobId);
+  if (scope === "specific" && lotOwnerIds.length > 0) {
+    await supabase.from("recurring_job_notify_targets").insert(
+      lotOwnerIds.map((lot_owner_id) => ({ recurring_job_id: jobId, lot_owner_id })),
+    );
+  }
+}
+
+export async function createRecurringJob(
+  input: RecurringJobInput,
+): Promise<{ jobId?: string; error?: string }> {
+  const parsed = recurringJobSchema.safeParse(input);
+  if (!parsed.success) {
+    return { error: parsed.error.issues[0]?.message ?? "Invalid input" };
+  }
+  const d = parsed.data;
+  const profile = await requireCompanyRole();
+  await requireOCAccess(d.oc_id);
+  const supabase = createServerClient();
+
+  const { data: refRow } = await supabase.rpc("next_reference_number", { p_prefix: "RJB" });
+  const reference = typeof refRow === "string" ? refRow : null;
+
+  const next = computeNextOccurrence({
+    startDate: d.start_date,
+    frequency: d.frequency,
+    endDate: d.end_date ?? null,
+    fromIso: todayIso(),
+  });
+
+  const { data, error } = await supabase
+    .from("recurring_jobs")
+    .insert({
+      management_company_id: profile.management_company_id,
+      oc_id: d.oc_id,
+      reference_number: reference,
+      title: d.title.trim(),
+      trade: d.trade?.trim() || null,
+      contractor_id: d.contractor_id || null,
+      frequency: d.frequency,
+      start_date: d.start_date,
+      anchor_day: anchorFromStart(d.start_date, d.frequency),
+      end_date: d.end_date || null,
+      lead_time_days: d.lead_time_days ?? 0,
+      notify_scope: d.notify_scope ?? "none",
+      scope: d.scope?.trim() || null,
+      cost_per_visit: d.cost_per_visit ?? null,
+      fund_type: d.fund_type ?? null,
+      approval_reference: d.approval_reference?.trim() || null,
+      status: d.status ?? "active",
+      next_occurrence_date: next,
+      created_by: profile.id,
+    })
+    .select("id")
+    .single();
+
+  if (error || !data) return { error: error?.message ?? "Could not create job" };
+
+  await syncNotifyTargets(supabase, data.id, d.notify_scope ?? "none", d.notify_lot_owner_ids ?? []);
+
+  await supabase.from("audit_log").insert({
+    profile_id: profile.id,
+    oc_id: d.oc_id,
+    action: "create",
+    entity_type: "recurring_job",
+    entity_id: data.id,
+    after_state: { title: d.title, frequency: d.frequency },
+  });
+
+  revalidatePath("/maintenance");
+  return { jobId: data.id };
+}
+
+export async function updateRecurringJob(
+  jobId: string,
+  input: RecurringJobInput,
+): Promise<{ error?: string }> {
+  const parsed = recurringJobSchema.safeParse(input);
+  if (!parsed.success) {
+    return { error: parsed.error.issues[0]?.message ?? "Invalid input" };
+  }
+  const d = parsed.data;
+  const profile = await requireCompanyRole();
+  await requireOCAccess(d.oc_id);
+  const supabase = createServerClient();
+
+  const next = computeNextOccurrence({
+    startDate: d.start_date,
+    frequency: d.frequency,
+    endDate: d.end_date ?? null,
+    fromIso: todayIso(),
+  });
+
+  const { error } = await supabase
+    .from("recurring_jobs")
+    .update({
+      oc_id: d.oc_id,
+      title: d.title.trim(),
+      trade: d.trade?.trim() || null,
+      contractor_id: d.contractor_id || null,
+      frequency: d.frequency,
+      start_date: d.start_date,
+      anchor_day: anchorFromStart(d.start_date, d.frequency),
+      end_date: d.end_date || null,
+      lead_time_days: d.lead_time_days ?? 0,
+      notify_scope: d.notify_scope ?? "none",
+      scope: d.scope?.trim() || null,
+      cost_per_visit: d.cost_per_visit ?? null,
+      fund_type: d.fund_type ?? null,
+      approval_reference: d.approval_reference?.trim() || null,
+      status: d.status ?? "active",
+      next_occurrence_date: next,
+    })
+    .eq("id", jobId)
+    .eq("management_company_id", profile.management_company_id);
+
+  if (error) return { error: error.message };
+
+  await syncNotifyTargets(supabase, jobId, d.notify_scope ?? "none", d.notify_lot_owner_ids ?? []);
+
+  await supabase.from("audit_log").insert({
+    profile_id: profile.id,
+    oc_id: d.oc_id,
+    action: "update",
+    entity_type: "recurring_job",
+    entity_id: jobId,
+    after_state: { title: d.title, frequency: d.frequency },
+  });
+
+  revalidatePath("/maintenance");
+  return {};
+}
+
+export async function setRecurringJobStatus(
+  jobId: string,
+  status: "active" | "paused",
+): Promise<{ error?: string }> {
+  const profile = await requireCompanyRole();
+  const supabase = createServerClient();
+
+  const { error } = await supabase
+    .from("recurring_jobs")
+    .update({ status })
+    .eq("id", jobId)
+    .eq("management_company_id", profile.management_company_id);
+
+  if (error) return { error: error.message };
+
+  await supabase.from("audit_log").insert({
+    profile_id: profile.id,
+    oc_id: null,
+    action: "update",
+    entity_type: "recurring_job",
+    entity_id: jobId,
+    after_state: { status },
+  });
+
+  revalidatePath("/maintenance");
+  return {};
+}
+
+export async function deleteRecurringJob(jobId: string): Promise<{ error?: string }> {
+  const profile = await requireCompanyRole();
+  const supabase = createServerClient();
+
+  const { error } = await supabase
+    .from("recurring_jobs")
+    .delete()
+    .eq("id", jobId)
+    .eq("management_company_id", profile.management_company_id);
+
+  if (error) return { error: error.message };
+
+  await supabase.from("audit_log").insert({
+    profile_id: profile.id,
+    oc_id: null,
+    action: "delete",
+    entity_type: "recurring_job",
+    entity_id: jobId,
+  });
+
+  revalidatePath("/maintenance");
+  return {};
+}
+
+// Currently-selected specific notify targets for a job (for the edit drawer).
+export async function getRecurringJobNotifyTargets(jobId: string): Promise<string[]> {
+  await requireCompanyRole();
+  const supabase = createServerClient();
+  const { data } = await supabase
+    .from("recurring_job_notify_targets")
+    .select("lot_owner_id")
+    .eq("recurring_job_id", jobId);
+  return (data ?? []).map((r) => r.lot_owner_id as string);
+}
+
+// ─── Documents linked to a recurring job ────────────────────────────────────
+
+export interface RecurringJobDoc {
+  id: string;
+  file_name: string;
+  created_at: string;
+}
+
+export async function getRecurringJobDocuments(jobId: string): Promise<RecurringJobDoc[]> {
+  await requireCompanyRole();
+  const supabase = createServerClient();
+  const { data } = await supabase
+    .from("documents")
+    .select("id, file_name, created_at")
+    .eq("recurring_job_id", jobId)
+    .order("created_at", { ascending: false });
+  return (data ?? []).map((d) => ({
+    id: d.id as string,
+    file_name: d.file_name as string,
+    created_at: d.created_at as string,
+  }));
+}
+
+const ALLOWED_DOC_TYPES = [
+  "application/pdf", "image/png", "image/jpeg",
+  "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+];
+
+export async function uploadRecurringJobDocument(
+  jobId: string,
+  formData: FormData,
+): Promise<{ docId?: string; file_name?: string; error?: string }> {
+  const profile = await requireCompanyRole();
+  const supabase = createServerClient();
+
+  const { data: job } = await supabase
+    .from("recurring_jobs")
+    .select("id, oc_id, management_company_id")
+    .eq("id", jobId)
+    .maybeSingle();
+  if (!job || job.management_company_id !== profile.management_company_id) {
+    return { error: "Job not found" };
+  }
+
+  const file = formData.get("file") as File | null;
+  if (!file) return { error: "No file provided" };
+  if (!ALLOWED_DOC_TYPES.includes(file.type)) return { error: "File type not supported" };
+  if (file.size > 25 * 1024 * 1024) return { error: "File too large. Maximum 25MB." };
+
+  const { uploadObject } = await import("@/lib/storage/r2");
+  const safeName = file.name.replace(/[/\\]/g, "_").replace(/[\x00-\x1f]/g, "").trim().slice(0, 200) || "document";
+  const key = `documents/${job.oc_id}/recurring-jobs/${crypto.randomUUID()}-${safeName}`;
+  const buffer = Buffer.from(await file.arrayBuffer());
+  await uploadObject(key, buffer, file.type);
+
+  const { data: doc, error } = await supabase
+    .from("documents")
+    .insert({
+      oc_id: job.oc_id,
+      category: "maintenance",
+      file_name: safeName,
+      file_path: key,
+      file_size: file.size,
+      mime_type: file.type,
+      uploaded_by: profile.id,
+      recurring_job_id: jobId,
+      ocr_status: "skipped",
+    })
+    .select("id")
+    .single();
+
+  if (error || !doc) return { error: error?.message ?? "Could not save document" };
+
+  revalidatePath("/maintenance");
+  return { docId: doc.id, file_name: safeName };
+}
+
+export async function deleteRecurringJobDocument(docId: string): Promise<{ error?: string }> {
+  const profile = await requireCompanyRole();
+  const supabase = createServerClient();
+  // Confine to docs that belong to a recurring job in this manager's company.
+  const { data: doc } = await supabase
+    .from("documents")
+    .select("id, recurring_job_id, recurring_jobs(management_company_id)")
+    .eq("id", docId)
+    .maybeSingle();
+  const company = (doc as { recurring_jobs: { management_company_id?: string } | null } | null)?.recurring_jobs?.management_company_id;
+  if (!doc || !doc.recurring_job_id || company !== profile.management_company_id) {
+    return { error: "Document not found" };
+  }
+  const { error } = await supabase.from("documents").delete().eq("id", docId);
+  if (error) return { error: error.message };
+  revalidatePath("/maintenance");
+  return {};
+}

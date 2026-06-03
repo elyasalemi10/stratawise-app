@@ -5,9 +5,80 @@ import { createServerClient } from "@/lib/supabase";
 import { revalidatePath } from "next/cache";
 import {
   createMeetingSchema,
+  createMeetingWithNoticeSchema,
+  MEETING_TYPE_LABELS,
   type CreateMeetingInput,
+  type CreateMeetingWithNoticeInput,
   type MeetingRecord,
+  type MeetingType,
 } from "@/lib/validations/meetings";
+import { generateAndUploadMeetingNotice, generateMeetingNoticeBuffer } from "@/lib/meeting-pdf";
+import { runBulkEmail } from "@/lib/bulk-email-runner";
+import type { MeetingNoticeProps } from "@/lib/pdf/types";
+import { tasks } from "@trigger.dev/sdk";
+
+// Builds the branded meeting-notice PDF props for an OC + parsed wizard input.
+// Private helper shared by the create + preview actions.
+async function buildMeetingNoticeProps(
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  supabase: any,
+  ocId: string,
+  d: { meeting_type: string; title: string; date_time: string; location?: string | null; virtual_meeting_link?: string | null; agenda?: Array<{ title: string; motion?: string | null }> },
+  reference: string,
+): Promise<MeetingNoticeProps> {
+  const { data: oc } = await supabase
+    .from("owners_corporations")
+    .select("name, plan_number, abn, address, suburb, state, postcode, management_companies(name, logo_url, brand_color, phone, email, abn)")
+    .eq("id", ocId)
+    .maybeSingle();
+  const mc = (oc as { management_companies: { name?: string; logo_url?: string | null; brand_color?: string | null; phone?: string | null; email?: string | null; abn?: string | null } | null } | null)?.management_companies ?? null;
+  const ocAddress = [oc?.address, oc?.suburb, oc?.state, oc?.postcode].filter(Boolean).join(", ");
+  const brand = mc?.brand_color || "#0E314C";
+  const whenLabel = new Date(d.date_time).toLocaleString("en-AU", {
+    weekday: "long", day: "numeric", month: "long", year: "numeric", hour: "numeric", minute: "2-digit",
+  });
+  const agenda = (d.agenda ?? []).filter((a) => a.title.trim().length > 0);
+
+  return {
+    managementCompany: {
+      name: mc?.name ?? "StrataWise",
+      logo_url: mc?.logo_url ?? null,
+      phone: mc?.phone ?? null,
+      email: mc?.email ?? null,
+      abn: mc?.abn ?? null,
+    },
+    oc: { name: oc?.name ?? "Owners Corporation", address: ocAddress, abn: oc?.abn ?? null, plan_number: oc?.plan_number ?? "" },
+    documentTitle: "Meeting Notice",
+    referenceNumber: reference,
+    date: new Date(),
+    meetingTypeLabel: MEETING_TYPE_LABELS[d.meeting_type as MeetingType],
+    meetingTitle: d.title,
+    whenLabel,
+    location: d.location?.trim() || null,
+    onlineLink: d.virtual_meeting_link?.trim() || null,
+    agenda: agenda.map((a, i) => ({ position: i + 1, title: a.title.trim(), motion: a.motion?.trim() || null })),
+    brandColors: { primary: brand, secondary: brand },
+  };
+}
+
+// Renders a preview of the notice PDF without persisting anything. Returns a
+// base64 data URL the client opens in a new tab from the wizard's review step.
+export async function previewMeetingNotice(
+  input: CreateMeetingWithNoticeInput,
+): Promise<{ dataUrl?: string; error?: string }> {
+  const parsed = createMeetingWithNoticeSchema.safeParse(input);
+  if (!parsed.success) return { error: parsed.error.issues[0]?.message ?? "Invalid input" };
+  await requireOCAccess(parsed.data.oc_id);
+  const supabase = createServerClient();
+  try {
+    const props = await buildMeetingNoticeProps(supabase, parsed.data.oc_id, parsed.data, "PREVIEW");
+    const buffer = await generateMeetingNoticeBuffer(props);
+    return { dataUrl: `data:application/pdf;base64,${buffer.toString("base64")}` };
+  } catch (err) {
+    console.error("previewMeetingNotice failed", err);
+    return { error: "Could not generate the preview. Try again." };
+  }
+}
 
 // ─── listMeetings ───────────────────────────────────────────────
 export async function listMeetings(ocId: string): Promise<MeetingRecord[]> {
@@ -87,6 +158,108 @@ export async function createMeeting(
 
   revalidatePath("/ocs/[ocCode]/meetings", "page");
   return { meetingId: data.id };
+}
+
+// ─── createMeetingWithNotice (wizard) ───────────────────────────
+// Inserts the meeting + agenda, renders the branded notice PDF, stores it on
+// the meeting, then fans the notice out to owners in the background via the
+// send-bulk-email task. Returns the meeting id; navigation happens client-side.
+export async function createMeetingWithNotice(
+  input: CreateMeetingWithNoticeInput,
+): Promise<{ meetingId?: string; error?: string }> {
+  const parsed = createMeetingWithNoticeSchema.safeParse(input);
+  if (!parsed.success) {
+    return { error: parsed.error.issues[0]?.message ?? "Invalid input" };
+  }
+  const d = parsed.data;
+
+  const profile = await requireCompanyRole(["admin", "manager"]);
+  await requireOCAccess(d.oc_id);
+  const supabase = createServerClient();
+
+  const typeCode = { agm: "AGM", sgm: "SGM", committee: "CM" }[d.meeting_type];
+  const year = new Date(d.date_time).getFullYear();
+  const { count: existingCount } = await supabase
+    .from("meetings")
+    .select("id", { count: "exact", head: true })
+    .eq("meeting_type", d.meeting_type)
+    .gte("date_time", `${year}-01-01`)
+    .lt("date_time", `${year + 1}-01-01`);
+  const reference = `${typeCode}-${year}-${(existingCount ?? 0) + 1}`;
+
+  const { data: meeting, error } = await supabase
+    .from("meetings")
+    .insert({
+      oc_id: d.oc_id,
+      reference_number: reference,
+      meeting_type: d.meeting_type,
+      title: d.title,
+      date_time: d.date_time,
+      location: d.location?.trim() || null,
+      virtual_meeting_link: d.virtual_meeting_link?.trim() || null,
+      status: "draft",
+      created_by: profile.id,
+    })
+    .select("id")
+    .single();
+  if (error || !meeting) return { error: error?.message ?? "Failed to create meeting" };
+
+  // Agenda items.
+  const agenda = (d.agenda ?? []).filter((a) => a.title.trim().length > 0);
+  if (agenda.length > 0) {
+    await supabase.from("agenda_items").insert(
+      agenda.map((a, i) => ({
+        meeting_id: meeting.id,
+        item_number: i + 1,
+        title: a.title.trim(),
+        motion_text: a.motion?.trim() || null,
+        sort_order: i + 1,
+      })),
+    );
+  }
+
+  // Build + upload the branded notice PDF.
+  try {
+    const props = await buildMeetingNoticeProps(supabase, d.oc_id, d, reference);
+    const key = await generateAndUploadMeetingNotice(props, d.oc_id, reference);
+    await supabase.from("meetings").update({ notice_pdf_url: key }).eq("id", meeting.id);
+  } catch (err) {
+    console.error("createMeetingWithNotice: PDF generation failed", err);
+    // The meeting still exists; surface a soft failure so the manager can retry sending.
+    return { meetingId: meeting.id, error: "The meeting was created but the notice could not be generated. Try again from the meeting." };
+  }
+
+  await supabase.from("audit_log").insert({
+    profile_id: profile.id,
+    oc_id: d.oc_id,
+    action: "meeting.created",
+    entity_type: "meeting",
+    entity_id: meeting.id,
+    after_state: { meeting_type: d.meeting_type, title: d.title, date_time: d.date_time, notify_scope: d.notify_scope },
+  });
+
+  // Fan the notice out to owners in the background (unless "none").
+  if (d.notify_scope !== "none") {
+    const payload = {
+      kind: "meeting_notice" as const,
+      meetingId: meeting.id,
+      notifyScope: d.notify_scope,
+      lotOwnerIds: d.notify_scope === "specific" ? (d.notify_lot_owner_ids ?? []) : [],
+    };
+    if (process.env.TRIGGER_SECRET_KEY) {
+      try {
+        await tasks.trigger("send-bulk-email", payload);
+      } catch (err) {
+        console.error("createMeetingWithNotice: failed to queue send-bulk-email, sending inline", err);
+        await runBulkEmail(payload);
+      }
+    } else {
+      await runBulkEmail(payload);
+    }
+  }
+
+  revalidatePath("/ocs/[ocCode]/meetings", "page");
+  return { meetingId: meeting.id };
 }
 
 // ─── cancelMeeting ──────────────────────────────────────────────

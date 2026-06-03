@@ -23,6 +23,7 @@ export const NOTIFICATION_TYPES = [
   "complaint_update",
   "escalation_step",
   "document_uploaded",
+  "levy_csv_reminder",
 ] as const;
 
 export type NotificationType = (typeof NOTIFICATION_TYPES)[number];

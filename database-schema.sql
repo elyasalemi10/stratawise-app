@@ -56,6 +56,8 @@ CREATE TYPE payment_plan_status AS ENUM ('active', 'completed', 'defaulted', 'ca
 CREATE TYPE reserve_priority AS ENUM ('critical', 'high', 'medium', 'low');
 CREATE TYPE reserve_status AS ENUM ('planned', 'in_progress', 'completed');
 CREATE TYPE contractor_status AS ENUM ('active', 'inactive');
+CREATE TYPE recurring_frequency AS ENUM ('weekly', 'fortnightly', 'monthly', 'quarterly', 'half_yearly', 'annually');
+CREATE TYPE recurring_job_status AS ENUM ('active', 'paused');
 
 -- Lot ledger (Prompt 1)
 CREATE TYPE ledger_entry_type AS ENUM ('debit', 'credit');
@@ -100,6 +102,7 @@ CREATE SEQUENCE sw_min_seq  START 1;   -- MIN  — Meeting minutes
 CREATE SEQUENCE sw_pol_seq  START 1;   -- POL  — Insurance policies
 CREATE SEQUENCE sw_clm_seq  START 1;   -- CLM  — Insurance claims
 CREATE SEQUENCE sw_mnt_seq  START 1;   -- MNT  — Maintenance requests
+CREATE SEQUENCE sw_rjb_seq  START 1;   -- RJB - Recurring jobs
 CREATE SEQUENCE sw_inv_seq  START 1;   -- INV  — Invitations
 CREATE SEQUENCE sw_cmp_seq  START 1;   -- CMP  — Complaints
 CREATE SEQUENCE sw_esc_seq  START 1;   -- ESC  — Escalation instances
@@ -522,6 +525,7 @@ CREATE TABLE lot_owners (
   email TEXT,
   phone TEXT,
   postal_address TEXT,
+  delivery_preference TEXT NOT NULL DEFAULT 'email', -- email | post; post-only owners are excluded from email notify lists
   share_fraction NUMERIC NOT NULL DEFAULT 1.0 CHECK (share_fraction > 0 AND share_fraction <= 1),
   is_occupied_by_owner BOOLEAN NOT NULL DEFAULT true,
   occupancy_status lot_occupancy_status NOT NULL DEFAULT 'owner_occupied',
@@ -871,6 +875,7 @@ CREATE TABLE meetings (
   virtual_meeting_link TEXT,
   status meeting_status NOT NULL DEFAULT 'draft',
   notice_sent_at TIMESTAMPTZ,
+  notice_pdf_url TEXT,                              -- generated meeting-notice PDF (R2)
   quorum_met BOOLEAN,
   quorum_percentage DECIMAL(5,2),
   created_by UUID REFERENCES profiles(id),
@@ -1069,6 +1074,7 @@ CREATE TABLE documents (
   mime_type TEXT,
   is_confidential BOOLEAN NOT NULL DEFAULT false,
   uploaded_by UUID REFERENCES profiles(id),
+  recurring_job_id UUID REFERENCES recurring_jobs(id) ON DELETE SET NULL, -- doc linked to a recurring job
   created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 
@@ -1245,25 +1251,93 @@ CREATE TABLE charge_group_lots (
 );
 
 -- ============================================================================
--- 40. CONTRACTORS
+-- 40. CONTRACTORS  (management-company-wide contact book, reused across OCs)
 -- ============================================================================
+-- Contractors belong to a management company and are reusable across every OC
+-- it manages. oc_id is kept nullable for any legacy OC-specific contractor but
+-- is null for company-wide entries. name/phone/email are the PRIMARY CONTACT
+-- (app enforces at least one of phone/email). Public-liability cover is
+-- mandatory at the app layer (insurer, policy number, coverage limit, expiry).
 CREATE TABLE contractors (
   id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
-  oc_id UUID NOT NULL REFERENCES owners_corporations(id) ON DELETE CASCADE,
-  name TEXT NOT NULL,
+  management_company_id UUID REFERENCES management_companies(id) ON DELETE CASCADE,
+  oc_id UUID REFERENCES owners_corporations(id) ON DELETE CASCADE, -- legacy/optional OC scope
+  business_name TEXT,
+  name TEXT NOT NULL,                               -- primary contact name
   company TEXT,
-  phone TEXT,
-  email TEXT,
+  phone TEXT,                                       -- primary contact phone
+  email TEXT,                                       -- primary contact email
   trade TEXT,
   abn TEXT,
-  insurance_expiry DATE,
+  gst_registered BOOLEAN NOT NULL DEFAULT false,
+  bank_name TEXT,
+  bsb TEXT,
+  account_number TEXT,
+  pl_insurer TEXT,                                  -- public liability insurer
+  pl_policy_number TEXT,
+  pl_coverage_limit DECIMAL(14,2),
+  pl_document_url TEXT,                             -- optional COC upload (R2)
+  insurance_expiry DATE,                            -- public liability expiry
   notes TEXT,
   status contractor_status NOT NULL DEFAULT 'active',
-  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
+
+CREATE INDEX idx_contractors_company ON contractors(management_company_id);
+ALTER TABLE contractors ENABLE ROW LEVEL SECURITY;
+CREATE TRIGGER trg_updated_at_contractors
+  BEFORE UPDATE ON contractors FOR EACH ROW EXECUTE FUNCTION update_updated_at();
 
 ALTER TABLE maintenance_requests ADD CONSTRAINT fk_maintenance_contractor
   FOREIGN KEY (contractor_id) REFERENCES contractors(id);
+
+-- ============================================================================
+-- 40b. RECURRING JOBS  (company-wide maintenance schedule, each tied to one OC)
+-- ============================================================================
+CREATE TABLE recurring_jobs (
+  id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+  management_company_id UUID NOT NULL REFERENCES management_companies(id) ON DELETE CASCADE,
+  oc_id UUID NOT NULL REFERENCES owners_corporations(id) ON DELETE CASCADE,
+  reference_number TEXT UNIQUE,                     -- SW-RJB-YYYY-NNNNNN
+  title TEXT NOT NULL,
+  trade TEXT,
+  contractor_id UUID REFERENCES contractors(id) ON DELETE SET NULL,
+  frequency recurring_frequency NOT NULL,
+  start_date DATE NOT NULL,
+  anchor_day INT,                                   -- day-of-month (1-31) or weekday (0-6)
+  end_date DATE,                                    -- null = ongoing
+  lead_time_days INT NOT NULL DEFAULT 0,
+  notify_scope TEXT NOT NULL DEFAULT 'none',        -- all_owners | specific | none
+  scope TEXT,                                       -- work description
+  cost_per_visit DECIMAL(12,2),
+  fund_type fund_type,                              -- administrative | capital_works
+  approval_reference TEXT,                          -- e.g. a meeting motion (wired later)
+  status recurring_job_status NOT NULL DEFAULT 'active',
+  next_occurrence_date DATE,                        -- cached by cron
+  last_notified_occurrence DATE,                    -- idempotency for owner reminders
+  created_by UUID REFERENCES profiles(id),
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+CREATE INDEX idx_recurring_jobs_company ON recurring_jobs(management_company_id);
+CREATE INDEX idx_recurring_jobs_oc ON recurring_jobs(oc_id);
+CREATE INDEX idx_recurring_jobs_next ON recurring_jobs(next_occurrence_date) WHERE status = 'active';
+ALTER TABLE recurring_jobs ENABLE ROW LEVEL SECURITY;
+CREATE TRIGGER trg_updated_at_recurring_jobs
+  BEFORE UPDATE ON recurring_jobs FOR EACH ROW EXECUTE FUNCTION update_updated_at();
+
+-- Specific lot-owner recipients for a recurring job (notify_scope='specific').
+CREATE TABLE recurring_job_notify_targets (
+  id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+  recurring_job_id UUID NOT NULL REFERENCES recurring_jobs(id) ON DELETE CASCADE,
+  lot_owner_id UUID NOT NULL REFERENCES lot_owners(id) ON DELETE CASCADE,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  UNIQUE (recurring_job_id, lot_owner_id)
+);
+CREATE INDEX idx_rjnt_job ON recurring_job_notify_targets(recurring_job_id);
+ALTER TABLE recurring_job_notify_targets ENABLE ROW LEVEL SECURITY;
 
 -- ============================================================================
 -- 41. PAYMENT PLANS

@@ -1097,6 +1097,188 @@ export async function sendNewClaimSubmittedEmail(
   return { success: true, id: data?.id ?? null };
 }
 
+// ─── Levy CSV reminder (manager-facing) ───────────────────────────────────
+// Sent by the daily cron when an OC's levy run is due within 7 days but no
+// fresh bank CSV has been imported in the last 7 days, so the manager can
+// upload one before the run fires "blind" (arrears computed off stale data).
+
+export interface SendLevyCsvReminderEmailParams {
+  to: string;
+  managerName: string | null;
+  ocName: string;
+  ocShortCode: string;
+  nextSendDate: string;        // human-readable
+  lastImportLabel: string;     // e.g. "never" or a date
+  companyLogoUrl?: string | null;
+  ocId?: string | null;
+}
+
+export async function sendLevyCsvReminderEmail(
+  params: SendLevyCsvReminderEmailParams,
+): Promise<EmailSendResult> {
+  const { to, managerName, ocName, ocShortCode, nextSendDate, lastImportLabel, companyLogoUrl, ocId } = params;
+  const subject = `Bank CSV due before the next levy run , ${ocName}`;
+
+  if (isDryRun()) {
+    console.log(`[email-dry-run] type=levy_csv_reminder to=${to} oc="${ocName}" nextSend=${nextSendDate}`);
+    return { dryRun: true };
+  }
+
+  const greetingLine = managerName ? `Hi ${managerName},` : "Hi,";
+  const ctaBlock = buildCtaBlock(
+    ocShortCode,
+    "reconciliation",
+    "Upload bank CSV",
+    "Log in to StrataWise and import the latest bank CSV before the run.",
+  );
+
+  const html = brandShell(`
+    <h2 style="margin:0 0 16px;font-size:20px;font-weight:600;color:#0E314C;">Upload a bank CSV before the next levy run</h2>
+    <p style="margin:0 0 20px;color:#0E314C;font-size:14px;line-height:1.6;">
+      ${greetingLine} the next levy run for <strong>${escapeHtml(ocName)}</strong> is scheduled for <strong>${escapeHtml(nextSendDate)}</strong>, but we haven't seen a fresh bank CSV recently. Importing one now keeps arrears accurate on the notices.
+    </p>
+    <div style="background:#FAF7F0;border:1px solid #E5E0D3;border-radius:6px;padding:16px;margin:0 0 24px;">
+      <p style="margin:0 0 4px;font-size:13px;color:#4A5868;">Next levy run</p>
+      <p style="margin:0 0 12px;font-size:14px;color:#0E314C;">${escapeHtml(nextSendDate)}</p>
+      <p style="margin:0 0 4px;font-size:13px;color:#4A5868;">Last bank CSV imported</p>
+      <p style="margin:0;font-size:14px;color:#0E314C;">${escapeHtml(lastImportLabel)}</p>
+    </div>
+    ${ctaBlock}
+    <p style="margin:24px 0 0;color:#4A5868;font-size:12px;line-height:1.5;">
+      You can turn these reminders off in Settings , Notifications.
+    </p>
+  `, companyLogoUrl);
+
+  const resendFrom = ocId ? await resolveOcSenderFromHeader(ocId) : noreplyFrom();
+  const { data, error } = await transportSend({ ocId: ocId ?? null, to, subject, html, resendFrom });
+  if (error) {
+    console.error("Failed to send levy_csv_reminder email:", error);
+    return { error: error.message };
+  }
+  return { success: true, id: data?.id ?? null };
+}
+
+// ─── Meeting notice (owner-facing, branded PDF attached) ───────────────────
+
+export interface SendMeetingNoticeEmailParams {
+  to: string;
+  ownerName: string | null;
+  ocName: string;
+  meetingTypeLabel: string;
+  meetingTitle: string;
+  whenLabel: string;
+  location: string | null;
+  onlineLink: string | null;
+  agenda: Array<{ position: number; title: string }>;
+  pdfBuffer: Buffer;
+  pdfFilename: string;
+  companyLogoUrl?: string | null;
+  ocId?: string | null;
+}
+
+export async function sendMeetingNoticeEmail(
+  params: SendMeetingNoticeEmailParams,
+): Promise<EmailSendResult> {
+  const { to, ownerName, ocName, meetingTypeLabel, meetingTitle, whenLabel, location, onlineLink, agenda, pdfBuffer, pdfFilename, companyLogoUrl, ocId } = params;
+  const subject = `Meeting notice , ${meetingTypeLabel} for ${ocName}`;
+
+  if (isDryRun()) {
+    console.log(`[email-dry-run] type=meeting_notice to=${to} oc="${ocName}" when=${whenLabel}`);
+    return { dryRun: true };
+  }
+
+  const greetingLine = ownerName ? `Hi ${escapeHtml(ownerName)},` : "Hi,";
+  const agendaBlock = agenda.length > 0
+    ? `<div style="background:#FAF7F0;border:1px solid #E5E0D3;border-radius:6px;padding:16px;margin:0 0 24px;">
+         <p style="margin:0 0 8px;font-size:13px;color:#4A5868;">Agenda</p>
+         <ol style="margin:0;padding-left:18px;color:#0E314C;font-size:14px;line-height:1.7;">
+           ${agenda.map((a) => `<li>${escapeHtml(a.title)}</li>`).join("")}
+         </ol>
+       </div>`
+    : "";
+
+  const html = brandShell(`
+    <h2 style="margin:0 0 16px;font-size:20px;font-weight:600;color:#0E314C;">${escapeHtml(meetingTypeLabel)}</h2>
+    <p style="margin:0 0 20px;color:#0E314C;font-size:14px;line-height:1.6;">
+      ${greetingLine} you're invited to the following meeting for <strong>${escapeHtml(ocName)}</strong>. The full notice is attached.
+    </p>
+    <div style="background:#FAF7F0;border:1px solid #E5E0D3;border-radius:6px;padding:16px;margin:0 0 16px;">
+      <p style="margin:0 0 4px;font-size:13px;color:#4A5868;">Meeting</p>
+      <p style="margin:0 0 12px;font-size:14px;color:#0E314C;">${escapeHtml(meetingTitle)}</p>
+      <p style="margin:0 0 4px;font-size:13px;color:#4A5868;">When</p>
+      <p style="margin:0 0 12px;font-size:14px;color:#0E314C;">${escapeHtml(whenLabel)}</p>
+      ${location ? `<p style="margin:0 0 4px;font-size:13px;color:#4A5868;">Where</p><p style="margin:0 0 12px;font-size:14px;color:#0E314C;">${escapeHtml(location)}</p>` : ""}
+      ${onlineLink ? `<p style="margin:0 0 4px;font-size:13px;color:#4A5868;">Online</p><p style="margin:0;font-size:14px;color:#0E314C;"><a href="${escapeHtml(onlineLink)}" style="color:#0E314C;">${escapeHtml(onlineLink)}</a></p>` : ""}
+    </div>
+    ${agendaBlock}
+  `, companyLogoUrl);
+
+  const resendFrom = ocId ? await resolveOcSenderFromHeader(ocId) : noreplyFrom();
+  const { data, error } = await transportSend({
+    ocId: ocId ?? null,
+    to,
+    subject,
+    html,
+    resendFrom,
+    attachments: [{ filename: pdfFilename, content: pdfBuffer, contentType: "application/pdf" }],
+  });
+  if (error) {
+    console.error("Failed to send meeting_notice email:", error);
+    return { error: error.message };
+  }
+  return { success: true, id: data?.id ?? null };
+}
+
+// ─── Maintenance reminder (owner-facing) ───────────────────────────────────
+
+export interface SendMaintenanceReminderEmailParams {
+  to: string;
+  ownerName: string | null;
+  ocName: string;
+  jobTitle: string;
+  occurrenceLabel: string;
+  contractorName: string | null;
+  scope: string | null;
+  companyLogoUrl?: string | null;
+  ocId?: string | null;
+}
+
+export async function sendMaintenanceReminderEmail(
+  params: SendMaintenanceReminderEmailParams,
+): Promise<EmailSendResult> {
+  const { to, ownerName, ocName, jobTitle, occurrenceLabel, contractorName, scope, companyLogoUrl, ocId } = params;
+  const subject = `Upcoming maintenance , ${jobTitle} at ${ocName}`;
+
+  if (isDryRun()) {
+    console.log(`[email-dry-run] type=maintenance_update to=${to} oc="${ocName}" job="${jobTitle}"`);
+    return { dryRun: true };
+  }
+
+  const greetingLine = ownerName ? `Hi ${escapeHtml(ownerName)},` : "Hi,";
+  const html = brandShell(`
+    <h2 style="margin:0 0 16px;font-size:20px;font-weight:600;color:#0E314C;">Upcoming maintenance</h2>
+    <p style="margin:0 0 20px;color:#0E314C;font-size:14px;line-height:1.6;">
+      ${greetingLine} scheduled maintenance is coming up at <strong>${escapeHtml(ocName)}</strong>.
+    </p>
+    <div style="background:#FAF7F0;border:1px solid #E5E0D3;border-radius:6px;padding:16px;margin:0 0 24px;">
+      <p style="margin:0 0 4px;font-size:13px;color:#4A5868;">Job</p>
+      <p style="margin:0 0 12px;font-size:14px;color:#0E314C;">${escapeHtml(jobTitle)}</p>
+      <p style="margin:0 0 4px;font-size:13px;color:#4A5868;">Scheduled for</p>
+      <p style="margin:0 0 12px;font-size:14px;color:#0E314C;">${escapeHtml(occurrenceLabel)}</p>
+      ${contractorName ? `<p style="margin:0 0 4px;font-size:13px;color:#4A5868;">Contractor</p><p style="margin:0 0 12px;font-size:14px;color:#0E314C;">${escapeHtml(contractorName)}</p>` : ""}
+      ${scope ? `<p style="margin:0 0 4px;font-size:13px;color:#4A5868;">Details</p><p style="margin:0;font-size:14px;color:#0E314C;line-height:1.5;">${escapeHtml(scope)}</p>` : ""}
+    </div>
+  `, companyLogoUrl);
+
+  const resendFrom = ocId ? await resolveOcSenderFromHeader(ocId) : noreplyFrom();
+  const { data, error } = await transportSend({ ocId: ocId ?? null, to, subject, html, resendFrom });
+  if (error) {
+    console.error("Failed to send maintenance_update email:", error);
+    return { error: error.message };
+  }
+  return { success: true, id: data?.id ?? null };
+}
+
 // ─── HTML escape helper ────────────────────────────────────────────────
 // Applied to user-controlled string interpolations in the new senders to
 // guard against accidental injection from owner names, oc

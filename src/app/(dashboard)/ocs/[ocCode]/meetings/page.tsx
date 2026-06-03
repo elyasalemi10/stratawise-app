@@ -21,6 +21,7 @@ export default async function MeetingsPage({
   return (
     <MeetingsContent
       ocId={resolved.id}
+      ocCode={ocCode}
       meetings={meetings}
       readOnly={profile?.role === "lot_owner"}
     />

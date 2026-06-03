@@ -30,6 +30,27 @@ export const createMeetingSchema = z.object({
 
 export type CreateMeetingInput = z.input<typeof createMeetingSchema>;
 
+// ─── Agenda + notice (create-meeting wizard) ────────────────────────────────
+
+export const agendaItemSchema = z.object({
+  title: z.string().trim().min(1, "Each agenda item needs a title").max(300),
+  motion: z.string().trim().max(2000).nullable().optional(),
+});
+export type AgendaItemInput = z.input<typeof agendaItemSchema>;
+
+export const MEETING_NOTIFY_SCOPES = ["all_owners", "specific", "none"] as const;
+export type MeetingNotifyScope = (typeof MEETING_NOTIFY_SCOPES)[number];
+
+export const createMeetingWithNoticeSchema = createMeetingSchema.extend({
+  agenda: z.array(agendaItemSchema).max(100).default([]),
+  notify_scope: z.enum(MEETING_NOTIFY_SCOPES).default("all_owners"),
+  // lot_owner ids to notify when notify_scope === "specific".
+  notify_lot_owner_ids: z.array(z.string().uuid()).default([]),
+  lead_time_days: z.number().int().min(0).max(120).default(14),
+});
+
+export type CreateMeetingWithNoticeInput = z.input<typeof createMeetingWithNoticeSchema>;
+
 export interface MeetingRecord {
   id: string;
   oc_id: string;

@@ -180,6 +180,24 @@ export interface ActionItem {
   due_date?: string;
 }
 
+// --- Meeting Notice ---
+
+export interface MeetingNoticeAgendaItem {
+  position: number;
+  title: string;
+  motion?: string | null;
+}
+
+export interface MeetingNoticeProps extends BaseDocumentProps {
+  meetingTypeLabel: string;
+  meetingTitle: string;
+  whenLabel: string;
+  location?: string | null;
+  onlineLink?: string | null;
+  agenda: MeetingNoticeAgendaItem[];
+  brandColors?: BrandColors;
+}
+
 export interface MeetingMinutesProps extends BaseDocumentProps {
   meetingType: "AGM" | "SGM" | "Committee";
   meetingDate: string;
