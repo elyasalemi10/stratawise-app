@@ -99,7 +99,7 @@ function Combobox<T>({
         const obj = it as any;
         const keyVal = obj.value ?? obj.id;
         if (String(keyVal) === v) {
-          const label = obj.label ?? obj.name ?? String(keyVal);
+          const label = obj.label ?? obj.name ?? obj.business_name ?? String(keyVal);
           setSelectedLabel(label);
           return;
         }
@@ -274,8 +274,8 @@ function ComboboxItem({
         className,
       )}
     >
-      <CheckIcon className={cn("size-4 shrink-0", isSelected ? "opacity-100" : "opacity-0")} />
       <span className="flex-1 truncate">{children}</span>
+      {isSelected && <CheckIcon className="size-4 shrink-0 text-primary" />}
     </CommandPrimitive.Item>
   );
 }

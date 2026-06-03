@@ -4,7 +4,8 @@ import { requireCompanyRole, requireOCAccess } from "@/lib/auth";
 import { createServerClient } from "@/lib/supabase";
 import { revalidatePath } from "next/cache";
 import { buildVcatPack } from "@/lib/vcat/generate";
-import { tasks } from "@trigger.dev/sdk";
+import { vcatPackInputsSchema, type VcatPackInputs } from "@/lib/validations/vcat";
+import { notifyOcManagers } from "@/lib/escalation/runner";
 
 export interface VcatStatus {
   eligible: boolean;
@@ -12,6 +13,7 @@ export interface VcatStatus {
   levyNoticeId: string | null; // the notice past its final notice
   eligibleFrom: string | null;
   latestPackId: string | null;
+  hasArrears: boolean;         // any overdue/unpaid notice on this lot
 }
 
 // Is there an overdue notice for this lot whose final notice has been served
@@ -21,8 +23,17 @@ export async function getVcatStatus(lotId: string): Promise<VcatStatus> {
   const supabase = createServerClient();
 
   const { data: lot } = await supabase.from("lots").select("oc_id").eq("id", lotId).maybeSingle();
-  if (!lot) return { eligible: false, reason: "Lot not found", levyNoticeId: null, eligibleFrom: null, latestPackId: null };
+  if (!lot) return { eligible: false, reason: "Lot not found", levyNoticeId: null, eligibleFrom: null, latestPackId: null, hasArrears: false };
   await requireOCAccess(lot.oc_id as string);
+
+  const today = new Date().toISOString().slice(0, 10);
+  const { count: arrearsCount } = await supabase
+    .from("levy_notices")
+    .select("id", { count: "exact", head: true })
+    .eq("lot_id", lotId)
+    .in("status", ["issued", "partially_paid", "overdue"])
+    .lt("due_date", today);
+  const hasArrears = (arrearsCount ?? 0) > 0;
 
   const { data: inst } = await supabase
     .from("escalation_instances")
@@ -38,7 +49,13 @@ export async function getVcatStatus(lotId: string): Promise<VcatStatus> {
   const latestPackId = (pack?.id as string) ?? null;
 
   if (!inst || !inst.final_notice_served_at) {
-    return { eligible: false, reason: "A final notice must be served before a VCAT pack can be prepared.", levyNoticeId: null, eligibleFrom: null, latestPackId };
+    return {
+      eligible: false,
+      reason: hasArrears
+        ? "Follow-up runs automatically. A VCAT pack can be prepared once a final notice has been served for 28 days."
+        : "No overdue levies on this lot.",
+      levyNoticeId: null, eligibleFrom: null, latestPackId, hasArrears,
+    };
   }
   const eligibleFrom = new Date(new Date(inst.final_notice_served_at as string).getTime() + 28 * 86_400_000);
   const eligible = eligibleFrom.getTime() <= Date.now();
@@ -48,10 +65,17 @@ export async function getVcatStatus(lotId: string): Promise<VcatStatus> {
     levyNoticeId: inst.levy_notice_id as string,
     eligibleFrom: eligibleFrom.toISOString().slice(0, 10),
     latestPackId,
+    hasArrears,
   };
 }
 
-export async function generateVcatPack(lotId: string, levyNoticeId: string): Promise<{ packId?: string; error?: string }> {
+export async function generateVcatPack(
+  lotId: string,
+  levyNoticeId: string,
+  inputs: VcatPackInputs,
+): Promise<{ packId?: string; error?: string }> {
+  const parsed = vcatPackInputsSchema.safeParse(inputs);
+  if (!parsed.success) return { error: parsed.error.issues[0]?.message ?? "Confirm the acknowledgement to continue." };
   const profile = await requireCompanyRole();
   const supabase = createServerClient();
   const { data: lot } = await supabase.from("lots").select("oc_id").eq("id", lotId).maybeSingle();
@@ -60,7 +84,7 @@ export async function generateVcatPack(lotId: string, levyNoticeId: string): Pro
 
   // Run inline (the manager waits for the download). Could be backgrounded for
   // very large packs; inline keeps the "Download" link immediate.
-  const res = await buildVcatPack({ lotId, levyNoticeId, performerId: profile.id });
+  const res = await buildVcatPack({ lotId, levyNoticeId, performerId: profile.id, inputs: parsed.data });
   if (res.error || !res.packId) return { error: res.error ?? "Could not generate the pack" };
 
   await supabase.from("audit_log").insert({
@@ -71,27 +95,9 @@ export async function generateVcatPack(lotId: string, levyNoticeId: string): Pro
     entity_id: res.packId,
   });
 
+  // Notify the OC's managers the pack is ready (toggleable, opt-out respected).
+  await notifyOcManagers(supabase, lot.oc_id as string, "VCAT pack ready to download", "The VCAT fee-recovery pack has been generated and is ready to download.");
+
   revalidatePath("/ocs/[ocCode]/lots/[lotId]", "page");
   return { packId: res.packId };
-}
-
-// Optional background variant (kept for parity; the UI uses the inline action).
-export async function queueVcatPack(lotId: string, levyNoticeId: string): Promise<{ queued?: boolean; error?: string }> {
-  const profile = await requireCompanyRole();
-  const supabase = createServerClient();
-  const { data: lot } = await supabase.from("lots").select("oc_id").eq("id", lotId).maybeSingle();
-  if (!lot) return { error: "Lot not found" };
-  await requireOCAccess(lot.oc_id as string);
-
-  if (process.env.TRIGGER_SECRET_KEY) {
-    try {
-      await tasks.trigger("generate-vcat-pack", { lotId, levyNoticeId, performerId: profile.id });
-      return { queued: true };
-    } catch (err) {
-      console.error("queueVcatPack: failed to queue", err);
-    }
-  }
-  const res = await buildVcatPack({ lotId, levyNoticeId, performerId: profile.id });
-  if (res.error) return { error: res.error };
-  return { queued: true };
 }

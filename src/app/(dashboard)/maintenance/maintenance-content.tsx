@@ -59,7 +59,14 @@ function formatMoney(n: number | null): string {
   return `$${n.toLocaleString("en-AU", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
 }
 
-type ContractorOption = { id: string; business_name: string; trade: string | null };
+type ContractorOption = {
+  id: string;
+  business_name: string;
+  trade: string | null;
+  contact_name?: string | null;
+  contact_phone?: string | null;
+  contact_email?: string | null;
+};
 
 export function MaintenanceContent({
   jobs,
@@ -266,6 +273,7 @@ function RecurringJobDrawer({
   const [owners, setOwners] = useState<NotifyOwnerOption[]>([]);
   const [loadingOwners, setLoadingOwners] = useState(false);
   const [docs, setDocs] = useState<RecurringJobDoc[]>([]);
+  const [pendingFiles, setPendingFiles] = useState<File[]>([]); // queued before a new job exists
   const [uploading, setUploading] = useState(false);
 
   const [invalid, setInvalid] = useState<Record<string, boolean>>({});
@@ -309,7 +317,11 @@ function RecurringJobDrawer({
   }
 
   async function onUploadDoc(file: File) {
-    if (!editing) return;
+    if (!editing) {
+      // New job doesn't exist yet , queue the file; uploaded after create.
+      setPendingFiles((p) => [...p, file]);
+      return;
+    }
     setUploading(true);
     try {
       const fd = new FormData();
@@ -358,11 +370,22 @@ function RecurringJobDrawer({
     };
 
     startTransition(async () => {
-      const res = editing
-        ? await updateRecurringJob(editing.id, payload)
-        : await createRecurringJob(payload);
-      if (res.error) { toast.error(res.error); return; }
-      toast.success(editing ? "Recurring job updated" : "Recurring job created");
+      if (editing) {
+        const res = await updateRecurringJob(editing.id, payload);
+        if (res.error) { toast.error(res.error); return; }
+        toast.success("Recurring job updated");
+        onSaved();
+        return;
+      }
+      const res = await createRecurringJob(payload);
+      if (res.error || !res.jobId) { toast.error(res.error ?? "Could not create job"); return; }
+      // Upload any documents queued before the job existed.
+      for (const f of pendingFiles) {
+        const fd = new FormData();
+        fd.append("file", f);
+        await uploadRecurringJobDocument(res.jobId, fd);
+      }
+      toast.success("Recurring job created");
       onSaved();
     });
   }
@@ -417,8 +440,12 @@ function RecurringJobDrawer({
               <ComboboxContent>
                 <ComboboxEmpty>No contractors yet.</ComboboxEmpty>
                 <ComboboxList>
-                  {(c: { id: string; business_name: string; trade: string | null }) => (
-                    <ComboboxItem key={c.id} value={c.id} keywords={[c.business_name, tradeLabel(c.trade)]}>
+                  {(c: ContractorOption) => (
+                    <ComboboxItem
+                      key={c.id}
+                      value={c.id}
+                      keywords={[c.business_name, tradeLabel(c.trade), c.contact_name ?? "", c.contact_phone ?? "", c.contact_email ?? ""]}
+                    >
                       {c.business_name}
                       {c.trade && <span className="ml-2 text-xs text-muted-foreground">{tradeLabel(c.trade)}</span>}
                     </ComboboxItem>
@@ -568,43 +595,52 @@ function RecurringJobDrawer({
             <NumberInput value={costPerVisit} onChange={setCostPerVisit} thousandsSeparator prefix="$" allowDecimal placeholder="Cost per visit" />
           </div>
 
-          {/* Documents (edit mode only , the job must exist to attach to it) */}
-          {editing && (
-            <>
-              <div className="border-t border-border pt-4">
-                <h3 className="text-sm font-semibold text-foreground">Documents</h3>
+          {/* Documents , attach files to this job (queued before save on a new job). */}
+          <div className="border-t border-border pt-4">
+            <h3 className="text-sm font-semibold text-foreground">Documents</h3>
+          </div>
+          <div className="space-y-2">
+            <label className="inline-flex cursor-pointer items-center gap-2 rounded-md border border-border bg-card px-3 py-2 text-sm text-foreground hover:bg-muted">
+              {uploading ? <Loader2 className="h-4 w-4 animate-spin" /> : <Upload className="h-4 w-4" />}
+              <span>Attach document</span>
+              <input
+                type="file"
+                accept="application/pdf,image/png,image/jpeg,application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+                className="hidden"
+                onChange={(e) => { const f = e.target.files?.[0]; if (f) onUploadDoc(f); e.currentTarget.value = ""; }}
+              />
+            </label>
+            {docs.map((d) => (
+              <div key={d.id} className="flex items-center justify-between rounded-md border border-border px-3 py-2 text-sm">
+                <span className="inline-flex items-center gap-1.5 text-foreground"><FileText className="h-4 w-4 text-muted-foreground" /> {d.file_name}</span>
+                <button
+                  type="button"
+                  onClick={() => startTransition(async () => {
+                    const res = await deleteRecurringJobDocument(d.id);
+                    if (res.error) { toast.error(res.error); return; }
+                    setDocs((cur) => cur.filter((x) => x.id !== d.id));
+                  })}
+                  className="cursor-pointer text-muted-foreground hover:text-destructive"
+                  aria-label="Remove document"
+                >
+                  <Trash2 className="h-4 w-4" />
+                </button>
               </div>
-              <div className="space-y-2">
-                <label className="inline-flex cursor-pointer items-center gap-2 rounded-md border border-border bg-card px-3 py-2 text-sm text-foreground hover:bg-muted">
-                  {uploading ? <Loader2 className="h-4 w-4 animate-spin" /> : <Upload className="h-4 w-4" />}
-                  <span>Attach document</span>
-                  <input
-                    type="file"
-                    accept="application/pdf,image/png,image/jpeg,application/vnd.openxmlformats-officedocument.wordprocessingml.document"
-                    className="hidden"
-                    onChange={(e) => { const f = e.target.files?.[0]; if (f) onUploadDoc(f); }}
-                  />
-                </label>
-                {docs.map((d) => (
-                  <div key={d.id} className="flex items-center justify-between rounded-md border border-border px-3 py-2 text-sm">
-                    <span className="inline-flex items-center gap-1.5 text-foreground"><FileText className="h-4 w-4 text-muted-foreground" /> {d.file_name}</span>
-                    <button
-                      type="button"
-                      onClick={() => startTransition(async () => {
-                        const res = await deleteRecurringJobDocument(d.id);
-                        if (res.error) { toast.error(res.error); return; }
-                        setDocs((cur) => cur.filter((x) => x.id !== d.id));
-                      })}
-                      className="cursor-pointer text-muted-foreground hover:text-destructive"
-                      aria-label="Remove document"
-                    >
-                      <Trash2 className="h-4 w-4" />
-                    </button>
-                  </div>
-                ))}
+            ))}
+            {pendingFiles.map((f, i) => (
+              <div key={`pending-${i}`} className="flex items-center justify-between rounded-md border border-dashed border-border px-3 py-2 text-sm">
+                <span className="inline-flex items-center gap-1.5 text-foreground"><FileText className="h-4 w-4 text-muted-foreground" /> {f.name} <span className="text-xs text-muted-foreground">(uploads on save)</span></span>
+                <button
+                  type="button"
+                  onClick={() => setPendingFiles((p) => p.filter((_, idx) => idx !== i))}
+                  className="cursor-pointer text-muted-foreground hover:text-destructive"
+                  aria-label="Remove document"
+                >
+                  <Trash2 className="h-4 w-4" />
+                </button>
               </div>
-            </>
-          )}
+            ))}
+          </div>
         </div>
 
         <SheetFooter>

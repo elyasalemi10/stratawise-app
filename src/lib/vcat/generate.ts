@@ -8,9 +8,11 @@ import { createElement } from "react";
 import JSZip from "jszip";
 import { createServerClient } from "@/lib/supabase";
 import { fetchObject, uploadObject } from "@/lib/storage/r2";
+import { getLevyNoticePdfBuffer } from "@/lib/pdf/render";
 import { computeInterest } from "@/lib/escalation/helpers";
 import { VcatDoc, type VcatBlock, type VcatDocProps } from "@/lib/pdf/templates/vcat/vcat-doc";
 import { fillApplicationForm } from "@/lib/vcat/application-form";
+import type { VcatPackInputsParsed } from "@/lib/validations/vcat";
 
 function money(n: number): string {
   return `$${n.toLocaleString("en-AU", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
@@ -30,6 +32,7 @@ export interface BuildVcatPackInput {
   lotId: string;
   levyNoticeId: string;
   performerId: string | null;
+  inputs: VcatPackInputsParsed;
 }
 
 export async function buildVcatPack(input: BuildVcatPackInput): Promise<{ packId?: string; zipKey?: string; error?: string }> {
@@ -101,19 +104,20 @@ export async function buildVcatPack(input: BuildVcatPackInput): Promise<{ packId
   const ownerName = owner?.name ?? "";
   const ownerAddress = owner?.postal_address || ocAddress;
 
-  const base = (title: string, blocks: VcatBlock[], opts?: { draft?: boolean; subtitle?: string }): VcatDocProps => ({
+  const i = input.inputs;
+  const base = (title: string, blocks: VcatBlock[], opts?: { subtitle?: string }): VcatDocProps => ({
     companyName, companyLogoUrl: logo, brandColor: brand,
-    title, subtitle: opts?.subtitle ?? null, reference: `${ocLine} , ${lotLabel}`, draft: opts?.draft, blocks,
+    title, subtitle: opts?.subtitle ?? null, reference: `${ocLine} , ${lotLabel}`, blocks,
   });
 
   // ── Build the branded documents ──
   const docs: Array<{ filename: string; buffer: Buffer }> = [];
 
   docs.push({ filename: "01-Cover-index.pdf", buffer: await renderDoc(base("VCAT application pack , contents", [
-    { type: "para", text: "This pack supports an application to the Victorian Civil and Administrative Tribunal (VCAT) to recover unpaid Owners Corporation fees under the Owners Corporations Act 2006 (Vic). Verify every document before lodging." },
+    { type: "para", text: "This pack supports an application to the Victorian Civil and Administrative Tribunal (VCAT) to recover unpaid Owners Corporation fees under the Owners Corporations Act 2006 (Vic)." },
     { type: "table", head: ["#", "Document", "Date"], rows: [
       ["1", "Cover index (this page)", dateLong(today)],
-      ["2", "Summary of Proofs (draft)", dateLong(today)],
+      ["2", "Summary of Proofs", dateLong(today)],
       ["3", "Fee notice (s.31)", dateLong(notice.due_date as string)],
       ["4", "Final fee notice (s.32)", dateLong(inst.final_notice_served_at as string)],
       ["5", "Proof of service", dateLong(today)],
@@ -121,7 +125,7 @@ export async function buildVcatPack(input: BuildVcatPackInput): Promise<{ packId
       ["7", "Interest calculation", dateLong(today)],
       ["8", "Owners Corporation standing", dateLong(today)],
       ["9", "Respondent details", dateLong(today)],
-      ["10", "VCAT application form (official, part-filled)", dateLong(today)],
+      ["10", "VCAT application form (official)", dateLong(today)],
     ] },
   ])) });
 
@@ -137,9 +141,9 @@ export async function buildVcatPack(input: BuildVcatPackInput): Promise<{ packId
       { label: "Fees and interest to the final fee notice", value: money(principal + interest.accrued) },
       { label: "Interest since the final fee notice", value: `accruing at ${money(interest.dailyRate)} per day` },
       { label: "Rate of interest", value: `${ratePct}% per month` },
-      { label: "Interest approved by resolution at general meeting", value: "Yes / No (verify)" },
-      { label: "Reasonable costs incurred", value: "(insert)" },
-      { label: "Costs in the proceeding (including application fee)", value: "(insert)" },
+      { label: "Interest approved by resolution at general meeting", value: i.interest_resolution ? `Yes${i.interest_resolution_date ? ` (resolved ${dateLong(i.interest_resolution_date)})` : ""}` : "No" },
+      { label: "Reasonable costs incurred", value: money(i.reasonable_costs) + (i.reasonable_costs_details ? ` , ${i.reasonable_costs_details}` : "") },
+      { label: "Costs in the proceeding (including application fee)", value: money(i.costs_in_proceeding) },
     ] },
     { type: "heading", text: "Fee notices" },
     { type: "kv", rows: [
@@ -148,20 +152,35 @@ export async function buildVcatPack(input: BuildVcatPackInput): Promise<{ packId
       { label: "Address served", value: ownerAddress },
     ] },
     { type: "para", text: "Copies of all fee notices issued in respect of the total amount claimed are attached. All items claimed are fees or charges the Owners Corporation is entitled to levy under ss 23, 23A and 24 of the Owners Corporations Act 2006 (Vic). Items that are not such a fee or charge have been deducted." },
-  ], { draft: true, subtitle: "Statutory declaration form , pre-filled draft for the manager to verify, complete and sign." })) });
+  ])) });
 
-  // 03 + 04: the actual served notices (fetched from R2). Fall back to a note.
-  let s31: Buffer | null = null;
-  if (notice.pdf_url) { try { s31 = await fetchObject(notice.pdf_url as string); } catch { s31 = null; } }
+  // 03: the s.31 fee notice (regenerate from the levy notice so it's a real PDF).
+  let s31: Buffer | null = await getLevyNoticePdfBuffer(notice.id as string, supabase);
+  if (!s31 && notice.pdf_url) { try { s31 = await fetchObject(notice.pdf_url as string); } catch { s31 = null; } }
   docs.push(s31
     ? { filename: "03-Fee-notice-s31.pdf", buffer: s31 }
-    : { filename: "03-Fee-notice-s31.pdf", buffer: await renderDoc(base("Fee notice (s.31)", [{ type: "para", text: `The original fee notice ${notice.reference_number ?? ""} is not on file as a PDF. Attach the issued levy notice before filing.` }])) });
+    : { filename: "03-Fee-notice-s31.pdf", buffer: await renderDoc(base("Fee notice (s.31)", [
+        { type: "kv", rows: [
+          { label: "Reference", value: notice.reference_number ?? "" },
+          { label: "Period", value: `${dateLong(notice.period_start as string)} , ${dateLong(notice.period_end as string)}` },
+          { label: "Due date", value: dateLong(notice.due_date as string) },
+          { label: "Amount", value: money(Number(notice.amount)) },
+        ] },
+      ])) });
 
+  // 04: the served s.32 final notice.
   let s32: Buffer | null = null;
   try { s32 = await fetchObject(inst.final_notice_pdf_url as string); } catch { s32 = null; }
   docs.push(s32
     ? { filename: "04-Final-fee-notice-s32.pdf", buffer: s32 }
-    : { filename: "04-Final-fee-notice-s32.pdf", buffer: await renderDoc(base("Final fee notice (s.32)", [{ type: "para", text: "The final fee notice PDF could not be retrieved. Re-generate it before filing." }])) });
+    : { filename: "04-Final-fee-notice-s32.pdf", buffer: await renderDoc(base("Final fee notice (s.32)", [
+        { type: "kv", rows: [
+          { label: "Reference", value: notice.reference_number ?? "" },
+          { label: "Final notice served", value: dateLong(inst.final_notice_served_at as string) },
+          { label: "Amount outstanding", value: money(principal) },
+          { label: "Interest accrued", value: money(interest.accrued) },
+        ] },
+      ])) });
 
   docs.push({ filename: "05-Proof-of-service.pdf", buffer: await renderDoc(base("Proof of service", [
     { type: "para", text: "Record of notices served on the lot owner, drawn from the communication log." },
@@ -195,7 +214,9 @@ export async function buildVcatPack(input: BuildVcatPackInput): Promise<{ packId
       { label: "Interest accrued to date", value: money(interest.accrued) },
       { label: "Total claim (principal + interest)", value: money(totalClaim) },
     ] },
-    { type: "para", text: "Interest is calculated as simple interest on the outstanding principal from the due date (after any grace period), capped at the maximum rate permitted. Confirm the resolution authorising interest under s.29 before filing." },
+    { type: "para", text: i.interest_resolution
+      ? `Interest is simple interest on the outstanding principal from the due date (after any grace period), authorised by resolution${i.interest_resolution_date ? ` of ${dateLong(i.interest_resolution_date)}` : ""} under s.29.`
+      : "Interest is simple interest on the outstanding principal from the due date (after any grace period)." },
   ])) });
 
   docs.push({ filename: "08-OC-standing.pdf", buffer: await renderDoc(base("Owners Corporation standing and authority", [
@@ -205,18 +226,19 @@ export async function buildVcatPack(input: BuildVcatPackInput): Promise<{ packId
       { label: "ABN", value: oc?.abn ?? "" },
       { label: "Registered address", value: ocAddress },
       { label: "Manager", value: companyName },
+      { label: "Special resolution in support", value: i.special_resolution ? "Yes" : "Not required for fee recovery" },
     ] },
-    { type: "para", text: "No special resolution is required to commence fee recovery at VCAT. The Owners Corporation, through its appointed manager, is authorised to bring this application. Attach any internal authorisation your process requires." },
+    { type: "para", text: "No special resolution is required to commence fee recovery at VCAT. The Owners Corporation, through its appointed manager, is authorised to bring this application." },
   ])) });
 
   docs.push({ filename: "09-Respondent-details.pdf", buffer: await renderDoc(base("Respondent details", [
     { type: "kv", rows: [
-      { label: "Respondent (legal owner)", value: ownerName || "(verify , owner name missing)" },
+      { label: "Respondent (legal owner)", value: ownerName },
       { label: "Service address", value: ownerAddress },
       { label: "Lot", value: lotLabel },
-      { label: "Owner recorded since", value: owner?.ownership_since ? dateLong(owner.ownership_since as string) : "(verify , ownership date not recorded)" },
+      { label: "Owner recorded since", value: owner?.ownership_since ? dateLong(owner.ownership_since as string) : "" },
+      { label: "Current registered proprietor", value: i.respondent_is_current_owner ? "Yes" : "No" },
     ] },
-    { type: "para", text: owner?.name ? "Confirm the respondent is the current registered proprietor before filing." : "WARNING: no owner name is recorded for this lot. Confirm the current registered proprietor before filing , a wrong respondent name can defeat the application." },
   ])) });
 
   // 10: official application form, best-effort fill.

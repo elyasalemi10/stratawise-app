@@ -6,9 +6,26 @@
 
 import { createServerClient } from "@/lib/supabase";
 import { sendEscalationEmail } from "@/lib/email";
+import { isNotificationOptedOut } from "@/lib/notifications";
 import { generateAndUploadFinalNotice } from "@/lib/final-notice-pdf";
 import { resolveWorkflowForOC, renderTemplate, computeInterest, addDaysIso } from "@/lib/escalation/helpers";
 import type { FollowupStep } from "@/lib/validations/escalation";
+
+// In-app notify the OC's managers about a follow-up event (escalation email
+// sent, VCAT ready). Type 'escalation_step' is opt-outable in Settings ,
+// Notifications, so we honour each manager's preference.
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+export async function notifyOcManagers(supabase: any, ocId: string, title: string, body: string, link?: string) {
+  const { data: managers } = await supabase
+    .from("oc_members").select("profile_id").eq("oc_id", ocId).eq("role", "strata_manager").is("left_at", null);
+  if (!managers || managers.length === 0) return;
+  const rows = [];
+  for (const m of managers as Array<{ profile_id: string }>) {
+    if (await isNotificationOptedOut(supabase, m.profile_id, "escalation_step", "in_app")) continue;
+    rows.push({ profile_id: m.profile_id, oc_id: ocId, type: "escalation_step", title, body, link: link ?? null });
+  }
+  if (rows.length > 0) await supabase.from("notifications").insert(rows);
+}
 
 function fmtMoney(n: number): string {
   return `$${n.toLocaleString("en-AU", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
@@ -155,23 +172,17 @@ async function advanceInstance(supabase: any, inst: Record<string, unknown>, tod
     daily_interest: fmtMoney(interest.dailyRate),
   };
 
+  const lotLabel = lot ? `Lot ${lot.lot_number}` : "a lot";
+
   if (step.step_type === "vcat") {
     // Raise the VCAT task; the manager generates the pack from the lot page.
     await supabase.from("escalation_instances").update({ vcat_ready_at: new Date().toISOString() }).eq("id", instanceId);
-    const { data: managers } = await supabase
-      .from("oc_members").select("profile_id").eq("oc_id", notice.oc_id).eq("role", "strata_manager").is("left_at", null);
-    if (managers && managers.length > 0) {
-      const lotLabel = lot ? `Lot ${lot.lot_number}` : "a lot";
-      await supabase.from("notifications").insert(
-        (managers as Array<{ profile_id: string }>).map((m) => ({
-          profile_id: m.profile_id,
-          oc_id: notice.oc_id,
-          type: "escalation_step",
-          title: `VCAT application ready for ${lotLabel}`,
-          body: `${vars.oc_name}: levy ${vars.reference} is unpaid past the final notice. Prepare the VCAT fee-recovery pack.`,
-        })),
-      );
-    }
+    await notifyOcManagers(
+      supabase,
+      notice.oc_id,
+      `VCAT application ready for ${lotLabel}`,
+      `${vars.oc_name}: levy ${vars.reference} is unpaid past the final notice. Prepare the VCAT fee-recovery pack.`,
+    );
     result.stepsFired++;
   } else {
     // Email step.
@@ -233,7 +244,15 @@ async function advanceInstance(supabase: any, inst: Record<string, unknown>, tod
         direction: "outbound",
         confidential: false,
       });
-      if (sent) result.stepsFired++;
+      if (sent) {
+        result.stepsFired++;
+        await notifyOcManagers(
+          supabase,
+          notice.oc_id,
+          `${isFinal ? "Final notice" : "Reminder"} sent for ${lotLabel}`,
+          `${vars.oc_name}: ${isFinal ? "final notice" : (step.label ?? "reminder")} for levy ${vars.reference} (${vars.amount_due}) was emailed to ${owner.name ?? "the owner"}.`,
+        );
+      }
     }
   }
 

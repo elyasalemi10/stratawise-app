@@ -190,15 +190,24 @@ export async function deleteContractor(contractorId: string): Promise<{ error?: 
   return {};
 }
 
-// Lightweight list for the recurring-job drawer's contractor dropdown.
-export async function getContractorOptions(): Promise<
-  { id: string; business_name: string; trade: string | null }[]
-> {
+// Lightweight list for the recurring-job drawer's contractor dropdown. Returns
+// the primary contact's name/phone/email too so the picker can be searched by
+// them (without displaying them). Only active contractors are pickable.
+export interface ContractorOption {
+  id: string;
+  business_name: string;
+  trade: string | null;
+  contact_name: string | null;
+  contact_phone: string | null;
+  contact_email: string | null;
+}
+
+export async function getContractorOptions(): Promise<ContractorOption[]> {
   const profile = await requireCompanyRole();
   const supabase = createServerClient();
   const { data } = await supabase
     .from("contractors")
-    .select("id, business_name, trade")
+    .select("id, business_name, trade, name, phone, email")
     .eq("management_company_id", profile.management_company_id)
     .eq("status", "active")
     .order("business_name", { ascending: true });
@@ -206,5 +215,8 @@ export async function getContractorOptions(): Promise<
     id: r.id as string,
     business_name: (r.business_name as string) ?? "Contractor",
     trade: (r.trade as string) ?? null,
+    contact_name: (r.name as string) ?? null,
+    contact_phone: (r.phone as string) ?? null,
+    contact_email: (r.email as string) ?? null,
   }));
 }
