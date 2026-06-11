@@ -3,7 +3,7 @@ import { redirect } from "next/navigation";
 import { CreateBudgetForm } from "./create-budget-form";
 import { listChartOfAccounts } from "@/lib/actions/chart-of-accounts";
 import { ocHasMaintenanceFund } from "@/lib/actions/budget";
-import { getFunds } from "@/lib/actions/funds";
+import { getFunds, getOcLots } from "@/lib/actions/funds";
 
 import { resolveOCFromCode } from "@/lib/oc-resolver";
 
@@ -16,11 +16,12 @@ export default async function CreateBudgetPage({
   const resolved = await resolveOCFromCode(ocCode);
   if (!resolved) redirect("/dashboard");
   const ocId = resolved.id;
-  const [oc, accounts, ocFunds, hasMaintenanceFund] = await Promise.all([
+  const [oc, accounts, ocFunds, hasMaintenanceFund, lots] = await Promise.all([
     getOC(ocId),
     listChartOfAccounts(),
     getFunds(ocId),
     ocHasMaintenanceFund(ocId),
+    getOcLots(ocId),
   ]);
 
   if (!oc) redirect("/dashboard");
@@ -72,6 +73,7 @@ export default async function CreateBudgetPage({
       defaultFinancialYear={defaultFinancialYear}
       availableFunds={availableSystemFunds}
       customFunds={customFunds}
+      lots={lots}
     />
   );
 }

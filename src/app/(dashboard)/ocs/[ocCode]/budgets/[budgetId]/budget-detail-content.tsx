@@ -23,7 +23,9 @@ import {
 } from "@/components/ui/table";
 import { approveBudget, deleteBudget, updateBudgetItems, type BudgetWithItems } from "@/lib/actions/budget";
 import type { CoaAccount } from "@/lib/chart-of-accounts";
+import type { LotForFund } from "@/lib/actions/funds";
 import { CreateAccountDrawer } from "@/components/chart-of-accounts/create-account-drawer";
+import { ExcludeLotsDrawer } from "@/components/budget/exclude-lots-drawer";
 import { useSetBreadcrumb } from "@/lib/breadcrumb-context";
 
 const FUND_LABEL: Record<string, string> = {
@@ -118,15 +120,19 @@ interface DraftItem {
   amount: string;
   /** Which fund this line belongs to. Null on legacy single-fund rows. */
   fund_type: "operating" | "maintenance_plan" | null;
+  /** Lots excluded from paying for this line. Empty = every lot pays. */
+  excludedLotIds: string[];
 }
 
 export function BudgetDetailContent({
-  ocCode, ocId, budget, accounts,
+  ocCode, ocId, budget, accounts, lots,
 }: {
   ocCode: string;
   ocId: string;
   budget: BudgetWithItems;
   accounts: CoaAccount[];
+  /** Every lot in the OC, for the per-line "Exclude lots" picker. */
+  lots: LotForFund[];
 }) {
   const router = useRouter();
   const isDraft = budget.status === "draft";
@@ -163,11 +169,13 @@ export function BudgetDetailContent({
       description: it.description || it.category_name,
       amount: String(it.amount),
       fund_type: it.fund_type,
+      excludedLotIds: it.excluded_lot_ids ?? [],
     })),
   []);
   const savedItemsRef = useRef<DraftItem[]>(buildSnapshot(budget));
   const [items, setItems] = useState<DraftItem[]>(savedItemsRef.current);
   const [comboOpen, setComboOpen] = useState(false);
+  const [excludeIndex, setExcludeIndex] = useState<number | null>(null);
   const [drawerOpen, setDrawerOpen] = useState(false);
   const [drawerSeedName, setDrawerSeedName] = useState("");
   const [allAccounts, setAllAccounts] = useState<CoaAccount[]>(accounts);
@@ -201,6 +209,7 @@ export function BudgetDetailContent({
         // New rows added under a specific fund tab inherit that fund; the
         // "all" tab leaves it null and the user can re-tab to set it.
         fund_type: activeFund === "all" ? null : (activeFund as DraftItem["fund_type"]),
+        excludedLotIds: [],
       },
     ]);
     setComboOpen(false);
@@ -212,8 +221,19 @@ export function BudgetDetailContent({
   function updateAmount(i: number, v: string) {
     setItems((prev) => prev.map((it, idx) => (idx === i ? { ...it, amount: v } : it)));
   }
+  function setExcludedLots(i: number, ids: string[]) {
+    setItems((prev) => prev.map((it, idx) => (idx === i ? { ...it, excludedLotIds: ids } : it)));
+  }
 
   async function handleSave() {
+    // A line can't exclude every lot , then no one would pay for it.
+    const allExcluded = items.some(
+      (it) => (parseFloat(it.amount) || 0) > 0 && lots.length > 0 && it.excludedLotIds.length >= lots.length,
+    );
+    if (allExcluded) {
+      toast.error("A line can't exclude every lot. At least one lot must pay for it.");
+      return;
+    }
     setSavePending(true);
     const payload = items
       .map((it) => ({
@@ -222,6 +242,7 @@ export function BudgetDetailContent({
         description: it.description,
         amount: parseFloat(it.amount) || 0,
         fund_type: it.fund_type ?? undefined,
+        excluded_lot_ids: it.excludedLotIds,
       }))
       .filter((it) => it.amount > 0 && (it.coa_account_id || it.category_id));
     if (payload.length === 0) {
@@ -446,6 +467,7 @@ export function BudgetDetailContent({
                   {activeFund === "all" && funds.length > 1 && (
                     <TableHead className="w-40">Fund</TableHead>
                   )}
+                  <TableHead className="w-[170px]">Paying lots</TableHead>
                   <TableHead className="w-[220px]">Annual amount</TableHead>
                   {editing && <TableHead className="w-12" />}
                 </TableRow>
@@ -466,6 +488,27 @@ export function BudgetDetailContent({
                           {item.fund_type ? (FUND_LABEL[item.fund_type] ?? item.fund_type) : ""}
                         </TableCell>
                       )}
+                      <TableCell>
+                        {editing ? (
+                          <Button
+                            type="button"
+                            variant="secondary"
+                            size="sm"
+                            className="h-8 font-normal"
+                            onClick={() => setExcludeIndex(i)}
+                          >
+                            {item.excludedLotIds.length === 0
+                              ? "All lots"
+                              : `${lots.length - item.excludedLotIds.length} of ${lots.length} lots`}
+                          </Button>
+                        ) : (
+                          <span className="text-sm text-muted-foreground">
+                            {item.excludedLotIds.length === 0
+                              ? "All lots"
+                              : `${lots.length - item.excludedLotIds.length} of ${lots.length} lots`}
+                          </span>
+                        )}
+                      </TableCell>
                       <TableCell>
                         {editing ? (
                           <NumberInput
@@ -497,7 +540,7 @@ export function BudgetDetailContent({
               </TableBody>
               <TableFooter>
                 <TableRow>
-                  <TableCell colSpan={activeFund === "all" && funds.length > 1 ? 3 : 2} className="text-sm font-semibold text-foreground">
+                  <TableCell colSpan={activeFund === "all" && funds.length > 1 ? 4 : 3} className="text-sm font-semibold text-foreground">
                     {activeFund === "all" ? "Total annual" : `Total - ${FUND_LABEL[activeFund] ?? activeFund}`}
                   </TableCell>
                   <TableCell className="text-sm font-bold tabular-nums text-foreground pl-6">{formatCurrency(total)}</TableCell>
@@ -611,6 +654,15 @@ export function BudgetDetailContent({
           setAllAccounts((prev) => [...prev, account]);
           addItem(account);
         }}
+      />
+
+      <ExcludeLotsDrawer
+        open={excludeIndex !== null}
+        onOpenChange={(o) => { if (!o) setExcludeIndex(null); }}
+        lots={lots}
+        value={excludeIndex !== null ? (items[excludeIndex]?.excludedLotIds ?? []) : []}
+        onChange={(ids) => { if (excludeIndex !== null) setExcludedLots(excludeIndex, ids); }}
+        itemLabel={excludeIndex !== null ? (items[excludeIndex]?.description ?? "") : ""}
       />
     </div>
   );

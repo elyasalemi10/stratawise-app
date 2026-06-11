@@ -29,6 +29,12 @@ export interface BudgetItemData {
    *  (placeholder for the NOT NULL enum). The new fund_id FK is the
    *  source of truth for downstream code. */
   fund_id?: string;
+  /** Lots that do NOT pay for this specific line item (e.g. a lot with no
+   *  garden is excluded from "Gardening"). Empty / omitted = every lot pays.
+   *  Persisted by reusing the charge_groups infrastructure , see
+   *  applyBudgetItemExclusions. The remaining lots absorb the full line cost,
+   *  renormalised by their lot liability. */
+  excluded_lot_ids?: string[];
 }
 
 export interface BudgetWithItems {
@@ -61,7 +67,57 @@ export interface BudgetWithItems {
     /** Custom-fund items carry a fund_id FK; admin/maintenance items
      *  leave this null and rely on fund_type alone. */
     fund_id: string | null;
+    /** Lots excluded from this line item (don't pay for it). Empty = all
+     *  lots pay. Drives the per-item "Exclude lots" control in the editor. */
+    excluded_lot_ids: string[];
   }[];
+}
+
+// ─── Per-line-item lot exclusions ──────────────────────────
+//
+// A budget item can exclude specific lots (e.g. a lot with no garden doesn't
+// pay for "Gardening"). We store this by reusing the existing charge_groups
+// tables: an excluding item gets a charge_groups row whose charge_group_lots
+// list the EXCLUDED lots, and budget_items.charge_group_id points at it. Items
+// with no exclusions leave charge_group_id NULL (= every lot pays, default).
+// The levy apportionment (generateLevyPreview) reads these and renormalises
+// the remaining lots' shares by liability so they cover the full line cost.
+
+/** Create charge groups for the freshly-inserted budget items that carry
+ *  exclusions, then stamp each item's charge_group_id. `excludedBySortOrder`
+ *  maps a row's sort_order to its excluded lot ids. */
+async function applyBudgetItemExclusions(
+  supabase: ReturnType<typeof createServerClient>,
+  ocId: string,
+  inserted: Array<{ id: string; sort_order: number }>,
+  excludedBySortOrder: Map<number, string[]>,
+): Promise<void> {
+  for (const row of inserted) {
+    const excluded = excludedBySortOrder.get(row.sort_order);
+    if (!excluded || excluded.length === 0) continue;
+    const { data: group } = await supabase
+      .from("charge_groups")
+      .insert({ oc_id: ocId, name: "Budget line lot exclusions" })
+      .select("id")
+      .single();
+    if (!group) continue;
+    await supabase
+      .from("charge_group_lots")
+      .insert(excluded.map((lot_id) => ({ charge_group_id: group.id, lot_id })));
+    await supabase.from("budget_items").update({ charge_group_id: group.id }).eq("id", row.id);
+  }
+}
+
+/** Delete the charge groups referenced by a budget's current items (called
+ *  before a wipe-and-reinsert edit so stale groups don't pile up). Reads the
+ *  ids first, then deletes the items, then the now-unreferenced groups;
+ *  charge_group_lots cascade-delete with the group. */
+async function clearBudgetChargeGroups(
+  supabase: ReturnType<typeof createServerClient>,
+  groupIds: string[],
+): Promise<void> {
+  if (groupIds.length === 0) return;
+  await supabase.from("charge_groups").delete().in("id", groupIds);
 }
 
 // True when the OC has a maintenance-plan fund (a bank_accounts row with
@@ -187,6 +243,9 @@ export async function getOCBudgets(ocId: string): Promise<BudgetWithItems[]> {
         sort_order: i.sort_order,
         fund_type: i.fund_type ?? (b.fund_type as BudgetFundType | null),
         fund_id: i.fund_id,
+        // The list view doesn't render exclusions; the detail/edit load
+        // (getBudgetById) resolves the real set when needed.
+        excluded_lot_ids: [],
       })),
   })) as BudgetWithItems[];
 }
@@ -260,26 +319,38 @@ export async function createBudget(
 
   if (error) return { error: error.message };
 
-  const itemInserts = data.items
-    .filter((item) => item.amount > 0)
-    .map((item, i) => ({
-      budget_id: budget.id,
-      category_id: item.coa_account_id ? null : (item.category_id ?? null),
-      coa_account_id: item.coa_account_id ?? null,
-      description: item.description || null,
-      amount: item.amount,
-      // For multi-fund budgets every item MUST carry its own fund_type. Custom
-      // funds set fund_id and leave fund_type at the legacy "operating"
-      // placeholder so the NOT NULL enum constraint stays satisfied; reads
-      // prefer fund_id when present.
-      fund_type: item.fund_type ?? legacyFundType ?? (item.fund_id ? "operating" : null),
-      fund_id: item.fund_id ?? null,
-      sort_order: i,
-    }));
+  const filteredItems = data.items.filter((item) => item.amount > 0);
+  const itemInserts = filteredItems.map((item, i) => ({
+    budget_id: budget.id,
+    category_id: item.coa_account_id ? null : (item.category_id ?? null),
+    coa_account_id: item.coa_account_id ?? null,
+    description: item.description || null,
+    amount: item.amount,
+    // For multi-fund budgets every item MUST carry its own fund_type. Custom
+    // funds set fund_id and leave fund_type at the legacy "operating"
+    // placeholder so the NOT NULL enum constraint stays satisfied; reads
+    // prefer fund_id when present.
+    fund_type: item.fund_type ?? legacyFundType ?? (item.fund_id ? "operating" : null),
+    fund_id: item.fund_id ?? null,
+    sort_order: i,
+  }));
 
   if (itemInserts.length > 0) {
-    const { error: itemError } = await supabase.from("budget_items").insert(itemInserts);
+    const { data: inserted, error: itemError } = await supabase
+      .from("budget_items")
+      .insert(itemInserts)
+      .select("id, sort_order");
     if (itemError) return { error: itemError.message };
+
+    const excludedBySortOrder = new Map<number, string[]>();
+    filteredItems.forEach((item, i) => {
+      if (item.excluded_lot_ids && item.excluded_lot_ids.length > 0) {
+        excludedBySortOrder.set(i, item.excluded_lot_ids);
+      }
+    });
+    if (excludedBySortOrder.size > 0) {
+      await applyBudgetItemExclusions(supabase, ocId, inserted ?? [], excludedBySortOrder);
+    }
   }
 
   await supabase.from("audit_log").insert({
@@ -315,18 +386,37 @@ export async function getBudgetById(budgetId: string): Promise<BudgetWithItems |
     amount: number;
     sort_order: number;
     fund_type: BudgetFundType | null;
+    charge_group_id: string | null;
     budget_categories: { name: string } | null;
     chart_of_accounts: { name: string; code: string } | null;
   };
   const { data: rawItems } = await supabase
     .from("budget_items")
     .select(
-      "id, category_id, coa_account_id, description, amount, sort_order, fund_type, " +
+      "id, category_id, coa_account_id, description, amount, sort_order, fund_type, charge_group_id, " +
       "budget_categories(name), chart_of_accounts(name, code)"
     )
     .eq("budget_id", budgetId)
     .order("sort_order");
   const items = (rawItems ?? []) as unknown as RawItem[];
+
+  // Resolve each item's excluded lots via its charge group (if any). One
+  // round-trip for all groups in the budget.
+  const groupIds = Array.from(
+    new Set(items.map((i) => i.charge_group_id).filter((id): id is string => !!id)),
+  );
+  const excludedByGroup = new Map<string, string[]>();
+  if (groupIds.length > 0) {
+    const { data: links } = await supabase
+      .from("charge_group_lots")
+      .select("charge_group_id, lot_id")
+      .in("charge_group_id", groupIds);
+    for (const link of (links ?? []) as Array<{ charge_group_id: string; lot_id: string }>) {
+      const arr = excludedByGroup.get(link.charge_group_id) ?? [];
+      arr.push(link.lot_id);
+      excludedByGroup.set(link.charge_group_id, arr);
+    }
+  }
 
   return {
     ...budget,
@@ -340,6 +430,7 @@ export async function getBudgetById(budgetId: string): Promise<BudgetWithItems |
       amount: Number(i.amount),
       sort_order: i.sort_order,
       fund_type: i.fund_type ?? (budget.fund_type as BudgetFundType | null),
+      excluded_lot_ids: i.charge_group_id ? (excludedByGroup.get(i.charge_group_id) ?? []) : [],
     })),
   } as BudgetWithItems;
 }
@@ -397,9 +488,22 @@ export async function updateBudgetItems(
   const nonZero = items.filter((i) => i.amount > 0);
   const totalAmount = nonZero.reduce((s, i) => s + i.amount, 0);
 
+  // Read the charge groups the current items point at BEFORE deleting, so we
+  // can drop the now-stale groups after the items are gone.
+  const { data: oldItems } = await supabase
+    .from("budget_items")
+    .select("charge_group_id")
+    .eq("budget_id", budgetId);
+  const oldGroupIds = Array.from(
+    new Set(((oldItems ?? []) as Array<{ charge_group_id: string | null }>)
+      .map((r) => r.charge_group_id)
+      .filter((id): id is string => !!id)),
+  );
+
   // Wipe + reinsert , simplest and safe since the budget is still draft.
   const { error: delErr } = await supabase.from("budget_items").delete().eq("budget_id", budgetId);
   if (delErr) return { error: delErr.message };
+  await clearBudgetChargeGroups(supabase, oldGroupIds);
 
   if (nonZero.length > 0) {
     const inserts = nonZero.map((item, i) => ({
@@ -411,8 +515,21 @@ export async function updateBudgetItems(
       fund_type: item.fund_type ?? null,
       sort_order: i,
     }));
-    const { error: insErr } = await supabase.from("budget_items").insert(inserts);
+    const { data: inserted, error: insErr } = await supabase
+      .from("budget_items")
+      .insert(inserts)
+      .select("id, sort_order");
     if (insErr) return { error: insErr.message };
+
+    const excludedBySortOrder = new Map<number, string[]>();
+    nonZero.forEach((item, i) => {
+      if (item.excluded_lot_ids && item.excluded_lot_ids.length > 0) {
+        excludedBySortOrder.set(i, item.excluded_lot_ids);
+      }
+    });
+    if (excludedBySortOrder.size > 0) {
+      await applyBudgetItemExclusions(supabase, budget.oc_id, inserted ?? [], excludedBySortOrder);
+    }
   }
 
   // Refresh fund_types from the items list so the budget header stays in

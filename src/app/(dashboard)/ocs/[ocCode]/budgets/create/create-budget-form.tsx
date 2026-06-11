@@ -21,7 +21,9 @@ import {
 } from "@/components/ui/table";
 import { createBudget } from "@/lib/actions/budget";
 import type { CoaAccount } from "@/lib/chart-of-accounts";
+import type { LotForFund } from "@/lib/actions/funds";
 import { CreateAccountDrawer } from "@/components/chart-of-accounts/create-account-drawer";
+import { ExcludeLotsDrawer } from "@/components/budget/exclude-lots-drawer";
 import { useOCCode } from "@/lib/oc-context";
 
 const formatCurrency = (n: number) =>
@@ -149,6 +151,8 @@ interface BudgetItem {
   // Held as a string so the field can be cleared mid-edit ("" = nothing
   // typed). Parsed to a number at submit. See NumberInput.
   amount: string;
+  /** Lots excluded from paying for this line. Empty = every lot pays. */
+  excludedLotIds: string[];
 }
 
 export function CreateBudgetForm({
@@ -158,6 +162,7 @@ export function CreateBudgetForm({
   defaultFinancialYear,
   availableFunds,
   customFunds = [],
+  lots,
 }: {
   ocId: string;
   accounts: CoaAccount[];
@@ -169,6 +174,8 @@ export function CreateBudgetForm({
   /** Custom funds created via /funds. Fully selectable and budgetable ,
    *  items get a fund_id on submit instead of a fund_type. */
   customFunds?: Array<{ id: string; name: string }>;
+  /** Every lot in the OC, for the per-line "Exclude lots" picker. */
+  lots: LotForFund[];
 }) {
   const ocCode = useOCCode();
   const router = useRouter();
@@ -208,6 +215,10 @@ export function CreateBudgetForm({
   const [drawerSeedName, setDrawerSeedName] = useState("");
   const [drawerFund, setDrawerFund] = useState<FundKey>(defaultKey);
 
+  // Which line item's "Exclude lots" drawer is open, by fund + row index.
+  const [excludeTarget, setExcludeTarget] = useState<{ fund: FundKey; index: number } | null>(null);
+  const excludeItem = excludeTarget ? itemsByFund[excludeTarget.fund]?.[excludeTarget.index] : undefined;
+
   // Keep the active tab pointing at a selected fund. If the manager unticks
   // the active fund, jump to the first one that's still selected.
   useEffect(() => {
@@ -240,7 +251,7 @@ export function CreateBudgetForm({
   const addItem = useCallback((fund: FundKey, account: CoaAccount) => {
     setItemsByFund((prev) => ({
       ...prev,
-      [fund]: [...(prev[fund] ?? []), { coa_account_id: account.id, description: account.name, amount: "" }],
+      [fund]: [...(prev[fund] ?? []), { coa_account_id: account.id, description: account.name, amount: "", excludedLotIds: [] }],
     }));
     setComboOpen((prev) => ({ ...prev, [fund]: false }));
   }, []);
@@ -249,6 +260,13 @@ export function CreateBudgetForm({
     setItemsByFund((prev) => ({
       ...prev,
       [fund]: (prev[fund] ?? []).map((item, i) => (i === index ? { ...item, amount: value } : item)),
+    }));
+  }
+
+  function setExcludedLots(fund: FundKey, index: number, ids: string[]) {
+    setItemsByFund((prev) => ({
+      ...prev,
+      [fund]: (prev[fund] ?? []).map((item, i) => (i === index ? { ...item, excludedLotIds: ids } : item)),
     }));
   }
 
@@ -277,6 +295,17 @@ export function CreateBudgetForm({
       return;
     }
 
+    // A line can't exclude every lot , then no one would pay for it.
+    const allExcluded = selectedKeys.some((f) =>
+      (itemsByFund[f] ?? []).some(
+        (i) => (parseFloat(i.amount) || 0) > 0 && lots.length > 0 && i.excludedLotIds.length >= lots.length,
+      ),
+    );
+    if (allExcluded) {
+      toast.error("A line can't exclude every lot. At least one lot must pay for it.");
+      return;
+    }
+
     setPending(true);
     const allItems: {
       coa_account_id: string | null;
@@ -284,6 +313,7 @@ export function CreateBudgetForm({
       amount: number;
       fund_type?: FundType;
       fund_id?: string;
+      excluded_lot_ids?: string[];
     }[] = [];
     for (const key of selectedKeys) {
       const items = (itemsByFund[key] ?? [])
@@ -295,6 +325,7 @@ export function CreateBudgetForm({
           coa_account_id: it.coa_account_id,
           description: it.description,
           amount: it.amount,
+          excluded_lot_ids: it.excludedLotIds,
           ...(isCustom
             ? { fund_id: customIdOf(key) }
             : { fund_type: key as FundType }),
@@ -407,6 +438,7 @@ export function CreateBudgetForm({
                             <TableRow>
                               <TableHead className="w-24">Code</TableHead>
                               <TableHead>Account</TableHead>
+                              <TableHead className="w-[170px]">Paying lots</TableHead>
                               <TableHead className="w-[200px]">Annual amount</TableHead>
                               <TableHead className="w-[48px]" />
                             </TableRow>
@@ -418,6 +450,19 @@ export function CreateBudgetForm({
                                 <TableRow key={i}>
                                   <TableCell className="font-mono text-xs">{account?.code ?? ""}</TableCell>
                                   <TableCell className="text-sm text-foreground">{item.description}</TableCell>
+                                  <TableCell>
+                                    <Button
+                                      type="button"
+                                      variant="secondary"
+                                      size="sm"
+                                      className="h-8 font-normal"
+                                      onClick={() => setExcludeTarget({ fund: key, index: i })}
+                                    >
+                                      {item.excludedLotIds.length === 0
+                                        ? "All lots"
+                                        : `${lots.length - item.excludedLotIds.length} of ${lots.length} lots`}
+                                    </Button>
+                                  </TableCell>
                                   <TableCell>
                                     <NumberInput
                                       value={item.amount}
@@ -443,7 +488,7 @@ export function CreateBudgetForm({
                           </TableBody>
                           <TableFooter>
                             <TableRow>
-                              <TableCell colSpan={2} className="text-sm font-semibold text-foreground">Total annual</TableCell>
+                              <TableCell colSpan={3} className="text-sm font-semibold text-foreground">Total annual</TableCell>
                               <TableCell className="text-sm font-bold text-foreground tabular-nums pl-6">{formatCurrency(total)}</TableCell>
                               <TableCell />
                             </TableRow>
@@ -518,6 +563,15 @@ export function CreateBudgetForm({
           setAllAccounts((prev) => [...prev, account]);
           addItem(drawerFund, account);
         }}
+      />
+
+      <ExcludeLotsDrawer
+        open={!!excludeTarget}
+        onOpenChange={(o) => { if (!o) setExcludeTarget(null); }}
+        lots={lots}
+        value={excludeItem?.excludedLotIds ?? []}
+        onChange={(ids) => excludeTarget && setExcludedLots(excludeTarget.fund, excludeTarget.index, ids)}
+        itemLabel={excludeItem?.description ?? ""}
       />
     </div>
   );

@@ -307,13 +307,14 @@ export async function generateLevyPreview(
     coa_account_id: string | null;
     fund_type: string | null;
     fund_id: string | null;
+    charge_group_id: string | null;
     budget_categories: { name: string } | null;
     chart_of_accounts: { name: string } | null;
   };
   const { data: rawBudgetItems } = await supabase
     .from("budget_items")
     .select(
-      "id, description, amount, category_id, coa_account_id, fund_type, fund_id, " +
+      "id, description, amount, category_id, coa_account_id, fund_type, fund_id, charge_group_id, " +
       "budget_categories(name), chart_of_accounts(name)"
     )
     .eq("budget_id", budgetId)
@@ -393,15 +394,58 @@ export async function generateLevyPreview(
     }
   }
 
+  // Per-line-item lot exclusions: an item with a charge_group_id has a set of
+  // lots that DON'T pay for it (stored as charge_group_lots). Those lots get a
+  // 0 share and the item's liability total is summed over the remaining lots
+  // only, so they absorb the full line cost renormalised by their liability.
+  const chargeGroupIds = Array.from(new Set(
+    budgetItems.map((bi) => bi.charge_group_id).filter((id): id is string => !!id),
+  ));
+  const excludedByGroup = new Map<string, Set<string>>();
+  if (chargeGroupIds.length > 0) {
+    const { data: links } = await supabase
+      .from("charge_group_lots")
+      .select("charge_group_id, lot_id")
+      .in("charge_group_id", chargeGroupIds);
+    for (const link of (links ?? []) as Array<{ charge_group_id: string; lot_id: string }>) {
+      if (!excludedByGroup.has(link.charge_group_id)) excludedByGroup.set(link.charge_group_id, new Set());
+      excludedByGroup.get(link.charge_group_id)!.add(link.lot_id);
+    }
+  }
+  // Memoise each item's renormalised total (sum of liabilities of the lots
+  // that DO pay). Keyed by item id since it depends only on the item's fund +
+  // exclusion set, not the lot being priced.
+  const itemTotalCache = new Map<string, number>();
+  function excludedFor(bi: RawBudgetItem): Set<string> | undefined {
+    return bi.charge_group_id ? excludedByGroup.get(bi.charge_group_id) : undefined;
+  }
+
   function liabFor(bi: RawBudgetItem, lotId: string): { liab: number; total: number } {
+    const excluded = excludedFor(bi);
+    // Custom-fund items split by the fund's own per-lot liability map.
     if (bi.fund_id) {
       const map = fundLiabByLotId.get(bi.fund_id);
       if (map && map.size > 0) {
-        const total = Array.from(map.values()).reduce((s, v) => s + v, 0);
-        return { liab: map.get(lotId) ?? 0, total };
+        let total = itemTotalCache.get(bi.id);
+        if (total === undefined) {
+          total = 0;
+          for (const [lid, v] of map) if (!excluded?.has(lid)) total += v;
+          itemTotalCache.set(bi.id, total);
+        }
+        return { liab: excluded?.has(lotId) ? 0 : (map.get(lotId) ?? 0), total };
       }
     }
-    return { liab: defaultLiabByLotId.get(lotId) ?? 0, total: defaultTotal };
+    // System-fund items split by OC-wide lot liability.
+    if (!excluded || excluded.size === 0) {
+      return { liab: defaultLiabByLotId.get(lotId) ?? 0, total: defaultTotal };
+    }
+    let total = itemTotalCache.get(bi.id);
+    if (total === undefined) {
+      total = 0;
+      for (const [lid, v] of defaultLiabByLotId) if (!excluded.has(lid)) total += v;
+      itemTotalCache.set(bi.id, total);
+    }
+    return { liab: excluded.has(lotId) ? 0 : (defaultLiabByLotId.get(lotId) ?? 0), total };
   }
 
   // Build per-lot preview. base_amount + proportion + lot_entitlement
