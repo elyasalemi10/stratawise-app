@@ -36,14 +36,23 @@ export async function renderLevyNoticePdf(
   // re-rendering).
   const { data: levyRow } = await supabase
     .from("levy_notices")
-    .select("id, pdf_url")
+    .select("id, oc_id, reference_number, pdf_url")
     .eq("id", levyId)
     .single();
-  const existingPdfUrl = (levyRow as { pdf_url: string | null } | null)?.pdf_url ?? null;
+  const row = levyRow as
+    | { pdf_url: string | null; oc_id: string | null; reference_number: string | null }
+    | null;
+  const existingPdfUrl = row?.pdf_url ?? null;
 
   if (!opts.force && existingPdfUrl) {
-    // Cached path , fetch from R2 to satisfy the buffer contract.
-    const key = keyFromPublicUrl(existingPdfUrl);
+    // Cached path , fetch from R2 to satisfy the buffer contract. Levy PDFs
+    // live in the CONFIDENTIAL bucket at a deterministic key, and pdf_url is
+    // now the authenticated app route (/api/levies/{id}/pdf), so derive the
+    // key from oc_id + reference. Fall back to keyFromPublicUrl for any legacy
+    // rows that still store a CDN URL.
+    const key = (row?.oc_id && row?.reference_number)
+      ? `levies/${row.oc_id}/${row.reference_number}.pdf`
+      : keyFromPublicUrl(existingPdfUrl);
     if (key) {
       try {
         return await fetchObject(key);
@@ -57,17 +66,16 @@ export async function renderLevyNoticePdf(
     }
   }
 
-  // Fresh render path: assemble props, upload to R2, stamp DB.
+  // Fresh render path: assemble props, upload to R2, stamp DB. The upload
+  // returns a public CDN URL, but levy objects live in the confidential
+  // bucket with NO public CDN , storing that URL would 404. Persist the
+  // authenticated app route instead (matches createLevyBatch).
   const props = await assembleLevyNoticeProps(supabase, levyId);
-  const publicUrl = await generateAndUploadLevyPDF(
-    props,
-    props._ocId,
-    props.referenceNumber,
-  );
+  await generateAndUploadLevyPDF(props, props._ocId, props.referenceNumber);
   await supabase
     .from("levy_notices")
     .update({
-      pdf_url: publicUrl,
+      pdf_url: `/api/levies/${levyId}/pdf`,
       pdf_generated_at: new Date().toISOString(),
     })
     .eq("id", levyId);

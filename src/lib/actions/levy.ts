@@ -1414,7 +1414,13 @@ export async function regenerateBatch(ocId: string, batchId: string, newDueDate:
         },
       };
 
-      const pdfUrl = await generateAndUploadLevyPDF(pdfProps, ocId, levy.reference_number);
+      // Upload to R2 (confidential bucket). The public URL it returns won't
+      // resolve from outside the app , persist the authenticated app route
+      // instead so the dashboard <a href={pdf_url}> hits /api/levies, which
+      // streams the bytes via fetchObject. (Mirrors createLevyBatch; storing
+      // the CDN URL here was the 404-on-regenerate bug.)
+      await generateAndUploadLevyPDF(pdfProps, ocId, levy.reference_number);
+      const pdfUrl = `/api/levies/${levy.id}/pdf`;
       await supabase.from("levy_notices").update({ pdf_url: pdfUrl }).eq("id", levy.id);
     } catch (err) {
       console.error("PDF regeneration failed for", levy.reference_number, err);
