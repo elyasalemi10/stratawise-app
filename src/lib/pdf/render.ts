@@ -75,7 +75,9 @@ export async function renderLevyNoticePdf(
   await supabase
     .from("levy_notices")
     .update({
-      pdf_url: `/api/levies/${levyId}/pdf`,
+      // ?v cache-buster so a re-render is picked up by browsers that cached
+      // the previous /api/levies/{id}/pdf response.
+      pdf_url: `/api/levies/${levyId}/pdf?v=${Date.now()}`,
       pdf_generated_at: new Date().toISOString(),
     })
     .eq("id", levyId);
@@ -239,15 +241,28 @@ async function assembleLevyNoticeProps(
   // sequence, not theirs).
   const displayRef = activeDrn ?? ownerPaymentRef ?? `Lot ${lot?.lot_number ?? ""}`.trim();
 
-  // Management company name + logo for the header.
+  // Management company name + logo + brand colours for the header. Reading
+  // brand_color here keeps the resend / arrears re-render visually identical
+  // to the batch-generated notice; without it this path silently fell back to
+  // the template default navy, which read slightly off next to brand-coloured
+  // notices from the same OC.
   const { data: mcRow } = await supabase
     .from("management_companies")
-    .select("name, logo_url")
+    .select("name, logo_url, brand_color, brand_color_secondary")
     .eq("id", sub.management_company_id)
     .single();
-  const managementCompany = (mcRow as { name: string; logo_url: string | null } | null) ?? {
-    name: "",
-    logo_url: null,
+  const mc = mcRow as
+    | { name: string; logo_url: string | null; brand_color: string | null; brand_color_secondary: string | null }
+    | null;
+  const managementCompany = mc
+    ? { name: mc.name, logo_url: mc.logo_url }
+    : { name: "", logo_url: null };
+  const isHex = (v: string | null | undefined): v is string => !!v && /^#[0-9a-f]{3,8}$/i.test(v);
+  const primaryHex = mc?.brand_color;
+  const secondaryHex = mc?.brand_color_secondary;
+  const brandColors = {
+    primary: isHex(primaryHex) ? primaryHex : "#0E314C",
+    secondary: isHex(secondaryHex) ? secondaryHex : "#CFA753",
   };
 
   // Owner display name.
@@ -389,6 +404,7 @@ async function assembleLevyNoticeProps(
     },
     priorArrears,
     specialReason,
+    brandColors,
   };
 
   return props;

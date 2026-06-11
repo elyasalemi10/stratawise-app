@@ -151,13 +151,18 @@ function getPeriodDates(
   return { start: formatDate(start), end: formatDate(end), label };
 }
 
-// Suggested default due date = period_start + state's legislated notice
-// window. Result is only a DEFAULT pre-fill , the form allows the manager
-// to set any date (no minimum enforcement, per requirement 16).
+// Suggested default due date = the state's legislated notice window from the
+// LATER of the period start or today. Anchoring on max(periodStart, today)
+// stops a levy raised mid- or post-period from pre-filling a due date in the
+// past (e.g. generating Q4 in June used to default to "1 Apr + 28 = 29 Apr",
+// a date already gone). Result is only a DEFAULT pre-fill , the form lets the
+// manager set any date (no minimum enforcement, per requirement 16).
 function calculateDueDate(periodStart: string, noticeDays = 28): string {
-  const d = new Date(periodStart);
-  d.setDate(d.getDate() + noticeDays);
-  return d.toISOString().split("T")[0];
+  const start = new Date(`${periodStart}T00:00:00Z`);
+  const today = new Date(`${new Date().toISOString().slice(0, 10)}T00:00:00Z`);
+  const base = start.getTime() > today.getTime() ? start : today;
+  base.setUTCDate(base.getUTCDate() + noticeDays);
+  return base.toISOString().split("T")[0];
 }
 
 // ─── Get next period to generate ───────────────────────────
@@ -957,11 +962,22 @@ export async function createLevyBatch(
   // ledger stack was nuked. Batches are now persisted as notices +
   // line items only; the ledger will be rebuilt in a follow-up.
 
+  // Owner-facing payment reference for the EFT "Reference" line: DRN >
+  // lot_owners.payment_reference > "Lot N". NEVER the internal LEV-NNNN
+  // sequence (that's our DB counter, shown only as the document reference
+  // top-right). Mirrors assembleLevyNoticeProps so every levy PDF, however
+  // it's produced, prints the same reference the owner reconciles against.
+  const ownerRefByLevy = await resolveLevyReferences(
+    supabase,
+    createdLevies.map((l) => ({ id: l.id, lot_id: l.lotId, period_start: data.period_start })),
+  );
+
   // Step 2: Generate all PDFs in parallel and upload to R2
   const pdfPromises = createdLevies.map(async (levy) => {
     try {
       const lotInfo = lotMap.get(levy.lotId);
       const ownerInfo = ownerMap.get(levy.lotId);
+      const ownerRef = ownerRefByLevy.get(levy.id) || `Lot ${lotInfo?.lot_number ?? ""}`.trim();
       const pdfProps: LevyNoticeProps = {
         managementCompany,
         oc: {
@@ -988,8 +1004,8 @@ export async function createLevyBatch(
           bpay: null,
           eft: eftAccount ? {
             ...eftAccount,
-            reference: levy.refNum,
-          } : { bsb: "", account_number: "", account_name: "", reference: levy.refNum },
+            reference: ownerRef,
+          } : { bsb: "", account_number: "", account_name: "", reference: ownerRef },
         },
         brandColors,
       };
@@ -997,9 +1013,11 @@ export async function createLevyBatch(
       // Upload to R2 (confidential bucket per CONFIDENTIAL_PREFIXES). The
       // public URL it returns won't resolve from outside the app , that's
       // intentional. We persist the authenticated app URL instead so the
-      // dashboard <a href={pdf_url}> still works.
+      // dashboard <a href={pdf_url}> still works. The ?v cache-buster changes
+      // each (re)generation so a refreshed dashboard never serves a stale
+      // browser-cached PDF after the levy is regenerated.
       await generateAndUploadLevyPDF(pdfProps, ocId, levy.refNum);
-      const pdfUrl = `/api/levies/${levy.id}/pdf`;
+      const pdfUrl = `/api/levies/${levy.id}/pdf?v=${Date.now()}`;
       await supabase.from("levy_notices").update({ pdf_url: pdfUrl }).eq("id", levy.id);
     } catch (err) {
       console.error("PDF generation failed for", levy.refNum, err);
@@ -1373,12 +1391,20 @@ export async function regenerateBatch(ocId: string, batchId: string, newDueDate:
   const regenLotIds = (levies ?? []).map((l) => l.lot_id).filter(Boolean) as string[];
   const regenOwners = await getLotOwners(supabase, regenLotIds);
 
+  // Owner payment reference (DRN > payment_reference > "Lot N") for the EFT
+  // line, same as createLevyBatch. Never the internal LEV-NNNN.
+  const ownerRefByLevy = await resolveLevyReferences(
+    supabase,
+    (levies ?? []).map((l) => ({ id: l.id, lot_id: l.lot_id as string, period_start: l.period_start })),
+  );
+
   // Regenerate PDFs in parallel
   const pdfPromises = (levies ?? []).map(async (levy) => {
     try {
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       const lot = (levy as any).lots;
       const owner = regenOwners.get(levy.lot_id);
+      const ownerRef = ownerRefByLevy.get(levy.id) || `Lot ${lot?.lot_number ?? ""}`.trim();
       const { data: items } = await supabase
         .from("levy_notice_items")
         .select("description, amount")
@@ -1409,9 +1435,10 @@ export async function regenerateBatch(ocId: string, batchId: string, newDueDate:
           bpay: null,
           eft: eftAccount ? {
             ...eftAccount,
-            reference: levy.reference_number,
-          } : { bsb: "", account_number: "", account_name: "", reference: levy.reference_number },
+            reference: ownerRef,
+          } : { bsb: "", account_number: "", account_name: "", reference: ownerRef },
         },
+        brandColors,
       };
 
       // Upload to R2 (confidential bucket). The public URL it returns won't
@@ -1420,7 +1447,10 @@ export async function regenerateBatch(ocId: string, batchId: string, newDueDate:
       // streams the bytes via fetchObject. (Mirrors createLevyBatch; storing
       // the CDN URL here was the 404-on-regenerate bug.)
       await generateAndUploadLevyPDF(pdfProps, ocId, levy.reference_number);
-      const pdfUrl = `/api/levies/${levy.id}/pdf`;
+      // ?v changes every regeneration so a dashboard that already cached the
+      // previous PDF (Cache-Control max-age) re-fetches the fresh one , this
+      // was why "only some" notices appeared to keep the old due date.
+      const pdfUrl = `/api/levies/${levy.id}/pdf?v=${Date.now()}`;
       await supabase.from("levy_notices").update({ pdf_url: pdfUrl }).eq("id", levy.id);
     } catch (err) {
       console.error("PDF regeneration failed for", levy.reference_number, err);
@@ -2049,21 +2079,14 @@ export async function sendBatchEmails(ocId: string, batchId: string) {
     .single();
 
   let managementCompany = { name: "", logo_url: null as string | null };
-  let brandColors = { primary: "#0E314C", secondary: "#CFA753" };
   if (oc?.management_company_id) {
     const { data: mc } = await supabase
       .from("management_companies")
-      .select("name, logo_url, brand_color, brand_color_secondary")
+      .select("name, logo_url")
       .eq("id", oc.management_company_id)
       .single();
     if (mc) {
       managementCompany = { name: mc.name, logo_url: mc.logo_url };
-      const isHex = (v: string | null | undefined): v is string =>
-        !!v && /^#[0-9a-f]{3,8}$/i.test(v);
-      brandColors = {
-        primary: isHex(mc.brand_color) ? mc.brand_color : "#0E314C",
-        secondary: isHex(mc.brand_color_secondary) ? mc.brand_color_secondary : "#CFA753",
-      };
     }
   }
 
@@ -2205,21 +2228,14 @@ export async function resendBatchEmails(ocId: string, batchId: string) {
     .single();
 
   let managementCompany = { name: "", logo_url: null as string | null };
-  let brandColors = { primary: "#0E314C", secondary: "#CFA753" };
   if (oc?.management_company_id) {
     const { data: mc } = await supabase
       .from("management_companies")
-      .select("name, logo_url, brand_color, brand_color_secondary")
+      .select("name, logo_url")
       .eq("id", oc.management_company_id)
       .single();
     if (mc) {
       managementCompany = { name: mc.name, logo_url: mc.logo_url };
-      const isHex = (v: string | null | undefined): v is string =>
-        !!v && /^#[0-9a-f]{3,8}$/i.test(v);
-      brandColors = {
-        primary: isHex(mc.brand_color) ? mc.brand_color : "#0E314C",
-        secondary: isHex(mc.brand_color_secondary) ? mc.brand_color_secondary : "#CFA753",
-      };
     }
   }
 
