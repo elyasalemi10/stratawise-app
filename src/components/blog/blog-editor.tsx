@@ -114,7 +114,7 @@ export function BlogEditor({ post }: { post: BlogPostRow }) {
       : (post.body && post.body.trim().length > 0 ? post.body : "<p></p>"),
     editorProps: {
       attributes: {
-        class: "prose prose-sm max-w-none min-h-[360px] focus:outline-none [&_table]:border-collapse [&_td]:border [&_td]:border-border [&_td]:p-2 [&_th]:border [&_th]:border-border [&_th]:bg-muted [&_th]:p-2",
+        class: "prose prose-sm max-w-none min-h-[360px] focus:outline-none [&_table]:w-full [&_table]:table-fixed [&_table]:border-collapse [&_td]:border [&_td]:border-border [&_td]:p-2 [&_td]:align-top [&_td]:break-words [&_td]:whitespace-normal [&_th]:border [&_th]:border-border [&_th]:bg-muted [&_th]:p-2 [&_th]:align-top [&_th]:break-words [&_th]:whitespace-normal",
       },
     },
   });

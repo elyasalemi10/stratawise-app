@@ -4,8 +4,8 @@ import { useEffect, useState } from "react";
 import { toast } from "sonner";
 import { Loader2, ShieldCheck } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { OtpInput } from "@/components/ui/otp-input";
 import { Card, CardContent } from "@/components/ui/card";
 import { getSupabaseClient } from "@/lib/supabase";
 import { logMfaEvent } from "../internal-actions/audit";
@@ -90,22 +90,11 @@ export function MfaChallengeClient() {
           ) : (
             <form onSubmit={handleSubmit} className="space-y-3">
               <div className="space-y-1.5">
-                <Label htmlFor="mfa-code">
+                <Label>
                   Authenticator code{" "}
                   <span className="text-destructive">*</span>
                 </Label>
-                <Input
-                  id="mfa-code"
-                  inputMode="numeric"
-                  maxLength={6}
-                  placeholder="6-digit code"
-                  autoComplete="one-time-code"
-                  autoFocus
-                  value={code}
-                  onChange={(e) =>
-                    setCode(e.target.value.replace(/\D/g, "").slice(0, 6))
-                  }
-                />
+                <OtpInput value={code} onChange={setCode} autoFocus />
               </div>
               <Button
                 type="submit"

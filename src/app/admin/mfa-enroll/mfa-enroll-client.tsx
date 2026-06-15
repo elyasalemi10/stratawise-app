@@ -6,8 +6,8 @@ import { toast } from "sonner";
 import { QRCodeSVG } from "qrcode.react";
 import { Loader2, ShieldCheck, Copy } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { OtpInput } from "@/components/ui/otp-input";
 import { Card, CardContent } from "@/components/ui/card";
 import { getSupabaseClient } from "@/lib/supabase";
 import { logMfaEvent } from "../internal-actions/audit";
@@ -163,21 +163,11 @@ export function MfaEnrollClient() {
               )}
               <form onSubmit={handleVerify} className="space-y-3">
                 <div className="space-y-1.5">
-                  <Label htmlFor="mfa-code">
+                  <Label>
                     Code from your authenticator{" "}
                     <span className="text-destructive">*</span>
                   </Label>
-                  <Input
-                    id="mfa-code"
-                    inputMode="numeric"
-                    maxLength={6}
-                    placeholder="6-digit code"
-                    autoComplete="one-time-code"
-                    value={code}
-                    onChange={(e) =>
-                      setCode(e.target.value.replace(/\D/g, "").slice(0, 6))
-                    }
-                  />
+                  <OtpInput value={code} onChange={setCode} />
                 </div>
                 <Button
                   type="submit"
