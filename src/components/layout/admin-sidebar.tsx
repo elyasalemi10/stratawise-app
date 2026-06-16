@@ -1,10 +1,10 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import {
-  LayoutDashboard, Newspaper, Settings, ShieldCheck, ExternalLink, LogOut, MoreVertical,
+  LayoutDashboard, Newspaper, Building2, Settings, ShieldCheck, LogOut, MoreVertical,
 } from "lucide-react";
 import {
   Sidebar, SidebarContent, SidebarFooter, SidebarGroup, SidebarGroupContent,
@@ -16,8 +16,8 @@ import type { SidebarProfile } from "@/lib/actions/profile";
 
 const NAV = [
   { label: "Overview", href: "/admin", icon: LayoutDashboard, exact: true },
+  { label: "Management firms", href: "/admin/firms", icon: Building2, exact: false },
   { label: "Blog", href: "/admin/blog", icon: Newspaper, exact: false },
-  { label: "Settings", href: "/admin/settings", icon: Settings, exact: false },
 ];
 
 export function AdminSidebar({ profile }: { profile: SidebarProfile | null }) {
@@ -56,16 +56,6 @@ export function AdminSidebar({ profile }: { profile: SidebarProfile | null }) {
                   </SidebarMenuButton>
                 </SidebarMenuItem>
               ))}
-              <SidebarMenuItem>
-                <SidebarMenuButton
-                  size="lg"
-                  className="text-base [&>svg]:!size-5"
-                  render={<Link href="/dashboard" />}
-                >
-                  <ExternalLink />
-                  <span>App view</span>
-                </SidebarMenuButton>
-              </SidebarMenuItem>
             </SidebarMenu>
           </SidebarGroupContent>
         </SidebarGroup>
@@ -81,9 +71,20 @@ export function AdminSidebar({ profile }: { profile: SidebarProfile | null }) {
 function AdminNavUser({ profile }: { profile: SidebarProfile | null }) {
   const [open, setOpen] = useState(false);
   const { isMobile } = useSidebar();
+  const containerRef = useRef<HTMLDivElement>(null);
+
+  // Close the popup when clicking anywhere outside it.
+  useEffect(() => {
+    if (!open) return;
+    function onPointerDown(e: PointerEvent) {
+      if (!containerRef.current?.contains(e.target as Node)) setOpen(false);
+    }
+    document.addEventListener("pointerdown", onPointerDown);
+    return () => document.removeEventListener("pointerdown", onPointerDown);
+  }, [open]);
 
   return (
-    <div className="relative">
+    <div className="relative" ref={containerRef}>
       <button
         type="button"
         onClick={() => setOpen((o) => !o)}

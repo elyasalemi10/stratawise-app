@@ -1,9 +1,8 @@
-import Link from "next/link";
 import { redirect } from "next/navigation";
 import { createServerClient } from "@/lib/supabase";
 import { evaluateSuperAdminGate } from "@/lib/admin-auth";
 import { Card, CardContent } from "@/components/ui/card";
-import { Building2, Users, Mail, ShieldCheck } from "lucide-react";
+import { Building2, Users, Mail, ShieldCheck, Boxes } from "lucide-react";
 
 // Super admin landing page.
 //
@@ -42,6 +41,7 @@ export default async function SuperAdminDashboardPage() {
     { count: managerCount },
     { count: ocCount },
     { count: lotOwnerCount },
+    { count: lotCount },
   ] = await Promise.all([
     supabase.from("management_companies").select("id", { count: "exact", head: true }),
     supabase
@@ -53,6 +53,7 @@ export default async function SuperAdminDashboardPage() {
       .from("profiles")
       .select("id", { count: "exact", head: true })
       .eq("role", "lot_owner"),
+    supabase.from("lots").select("id", { count: "exact", head: true }),
   ]);
 
   return (
@@ -67,7 +68,7 @@ export default async function SuperAdminDashboardPage() {
         </p>
       </div>
 
-      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
+      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5">
         <KpiCard
           label="Management firms"
           value={companyCount ?? 0}
@@ -84,27 +85,16 @@ export default async function SuperAdminDashboardPage() {
           icon={<Mail className="h-3.5 w-3.5" />}
         />
         <KpiCard
+          label="Lots managed"
+          value={lotCount ?? 0}
+          icon={<Boxes className="h-3.5 w-3.5" />}
+        />
+        <KpiCard
           label="Lot owners"
           value={lotOwnerCount ?? 0}
           icon={<Users className="h-3.5 w-3.5" />}
         />
       </div>
-
-      <Card>
-        <CardContent className="pt-5 space-y-3">
-          <h2 className="text-base font-semibold text-foreground">Next up</h2>
-          <p className="text-sm text-muted-foreground">
-            More tooling lands here: tenant impersonation, audit log search,
-            feature flag toggles, billing health, integration status.
-          </p>
-          <Link
-            href="/dashboard"
-            className="inline-block text-sm font-medium text-[color:var(--brand-gold)] hover:underline"
-          >
-            Open the regular app dashboard →
-          </Link>
-        </CardContent>
-      </Card>
     </div>
   );
 }
