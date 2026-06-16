@@ -45,6 +45,53 @@ async function ttsChunk(voiceId: string, key: string, text: string): Promise<{ a
   };
 }
 
+// ElevenLabs returns each chunk as a self-contained MP3: a leading ID3v2 tag
+// plus a LAME "Info"/"Xing" header frame. Naively concatenating several of
+// them leaves multiple ID3 tags and Xing headers mid-stream, and browsers
+// read only the FIRST Xing header , so they mis-report the total duration
+// (it "grows" as playback discovers more frames) and seek against the first
+// chunk's table-of-contents, landing far from the requested time. Since the
+// audio is constant-bitrate, stripping the ID3 tag and the Xing/Info frame
+// from each chunk yields one continuous CBR stream the browser can measure
+// from file size and seek linearly , accurate duration and accurate skips.
+const MP3_BR_KBPS = [0, 32, 40, 48, 56, 64, 80, 96, 112, 128, 160, 192, 224, 256, 320, 0];
+const MP3_SR_HZ = [44100, 48000, 32000, 0];
+
+function mp3FrameLength(buf: Buffer, off: number): number {
+  const b1 = buf[off + 1];
+  const b2 = buf[off + 2];
+  const version = (b1 >> 3) & 0x03; // 3 = MPEG-1
+  const layer = (b1 >> 1) & 0x03; // 1 = Layer III
+  if (version !== 3 || layer !== 1) return 0;
+  const bitrate = MP3_BR_KBPS[(b2 >> 4) & 0x0f] * 1000;
+  const sampleRate = MP3_SR_HZ[(b2 >> 2) & 0x03];
+  const padding = (b2 >> 1) & 0x01;
+  if (!bitrate || !sampleRate) return 0;
+  return Math.floor((144 * bitrate) / sampleRate) + padding;
+}
+
+function stripMp3Headers(buf: Buffer): Buffer {
+  let off = 0;
+  // Leading ID3v2 tag: "ID3" + version(2) + flags(1) + syncsafe size(4).
+  if (buf.length > 10 && buf[0] === 0x49 && buf[1] === 0x44 && buf[2] === 0x33) {
+    const size =
+      ((buf[6] & 0x7f) << 21) |
+      ((buf[7] & 0x7f) << 14) |
+      ((buf[8] & 0x7f) << 7) |
+      (buf[9] & 0x7f);
+    off = 10 + size;
+  }
+  // A Xing/Info header sits in the first audio frame; drop the whole frame.
+  if (off + 4 <= buf.length && buf[off] === 0xff && (buf[off + 1] & 0xe0) === 0xe0) {
+    const len = mp3FrameLength(buf, off);
+    if (len > 0 && off + len <= buf.length) {
+      const frame = buf.subarray(off, off + len);
+      if (frame.includes("Xing") || frame.includes("Info")) off += len;
+    }
+  }
+  return off > 0 ? buf.subarray(off) : buf;
+}
+
 // Greedily pack words so each chunk's character span stays under CHAR_CAP.
 function chunkWords(words: NarrationWord[]): NarrationWord[][] {
   const chunks: NarrationWord[][] = [];
@@ -100,7 +147,9 @@ export async function generateNarration(
         const end = (ends[Math.min(le, ends.length - 1)] ?? start) + timeOffset;
         timings.push({ w: word.w, start, end });
       }
-      audioParts.push(audio);
+      // Strip per-chunk ID3/Xing headers so the concatenation is one clean
+      // CBR stream (correct duration + accurate seeking in the browser).
+      audioParts.push(stripMp3Headers(audio));
       timeOffset += lastEnd;
     }
 
