@@ -1,7 +1,7 @@
 "use server";
 
 import { z } from "zod";
-import { requireCompanyRole } from "@/lib/auth";
+import { requireCompanyRole, requireOCAccess } from "@/lib/auth";
 import { createServerClient } from "@/lib/supabase";
 import { logAudit } from "@/lib/audit";
 import { sendSms, normaliseAuMobile } from "@/lib/sms";
@@ -45,6 +45,7 @@ export async function logPhoneCall(
   if (!parsed.success) return { ok: false, error: parsed.error.issues[0]?.message ?? "Invalid input" };
 
   const profile = await requireCompanyRole();
+  await requireOCAccess(parsed.data.oc_id);
   const supabase = createServerClient();
 
   // sent_at = when the call actually happened (driven by call_date input).
@@ -136,6 +137,7 @@ export async function sendLotSms(
     };
 
   const profile = await requireCompanyRole();
+  await requireOCAccess(parsed.data.oc_id);
   const supabase = createServerClient();
 
   const normalised = normaliseAuMobile(parsed.data.recipient_phone);
@@ -247,6 +249,7 @@ export async function sendLotEmail(
   if (!parsed.success) return { ok: false, error: parsed.error.issues[0]?.message ?? "Invalid input" };
 
   const profile = await requireCompanyRole();
+  await requireOCAccess(parsed.data.oc_id);
   const supabase = createServerClient();
 
   // Best-effort username creation. If it fails we still send from the legacy
@@ -384,6 +387,15 @@ export async function listLotCommunications(lotId: string): Promise<LotCommunica
   await requireCompanyRole();
   const supabase = createServerClient();
 
+  // Authorize against the lot's OC before reading another firm's comms.
+  const { data: lot } = await supabase
+    .from("lots")
+    .select("oc_id")
+    .eq("id", lotId)
+    .maybeSingle();
+  if (!lot) return [];
+  await requireOCAccess(lot.oc_id as string);
+
   const { data } = await supabase
     .from("communication_log")
     .select(
@@ -520,6 +532,10 @@ export async function setCommunicationConfidential(
     .eq("id", parsed.data.communication_log_id)
     .maybeSingle();
   if (!existing) return { ok: false, error: "Communication not found." };
+
+  // Authorize against the row's OC before flipping its confidential flag.
+  if (!existing.oc_id) return { ok: false, error: "Communication not found." };
+  await requireOCAccess(existing.oc_id as string);
 
   const { error } = await supabase
     .from("communication_log")

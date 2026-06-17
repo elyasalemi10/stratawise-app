@@ -26,6 +26,21 @@ export async function createFundTransfer(
   await requireOCAccess(parsed.data.oc_id);
   const supabase = createServerClient();
 
+  // Both legs must be accounts of THIS OC, so a valid OC id can't be paired
+  // with another OC's bank account to misattribute the transfer.
+  const { data: accts } = await supabase
+    .from("bank_accounts")
+    .select("id")
+    .eq("oc_id", parsed.data.oc_id)
+    .in("id", [parsed.data.from_bank_account_id, parsed.data.to_bank_account_id]);
+  const okIds = new Set((accts ?? []).map((a) => a.id as string));
+  if (
+    !okIds.has(parsed.data.from_bank_account_id) ||
+    !okIds.has(parsed.data.to_bank_account_id)
+  ) {
+    return { error: "That bank account doesn't belong to this owners corporation." };
+  }
+
   const { data, error } = await supabase.rpc("rpc_create_fund_transfer", {
     p_oc_id: parsed.data.oc_id,
     p_from_bank_account_id: parsed.data.from_bank_account_id,

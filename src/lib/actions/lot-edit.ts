@@ -1,7 +1,7 @@
 "use server";
 
 import { z } from "zod";
-import { requireCompanyRole } from "@/lib/auth";
+import { requireCompanyRole, requireOCAccess } from "@/lib/auth";
 import { createServerClient } from "@/lib/supabase";
 import { logAudit, diffFields } from "@/lib/audit";
 
@@ -40,6 +40,9 @@ export async function updateLotDetails(
     .eq("id", parsed.data.lot_id)
     .single();
   if (fetchErr || !before) return { ok: false, error: "Lot not found" };
+
+  // Authorize against the lot's OC before mutating (prevents cross-tenant edits).
+  await requireOCAccess(before.oc_id as string);
 
   const update: Record<string, unknown> = {};
   if (parsed.data.unit_number !== undefined) update.unit_number = parsed.data.unit_number;
@@ -106,6 +109,16 @@ export async function updateLotOwnerContact(
     .single();
   if (fetchErr || !before) return { ok: false, error: "Owner not found" };
 
+  // Resolve the owning OC and authorize before any mutation.
+  const { data: ownerLot } = await supabase
+    .from("lots")
+    .select("oc_id")
+    .eq("id", before.lot_id as string)
+    .maybeSingle();
+  const ocId = (ownerLot?.oc_id as string | undefined) ?? null;
+  if (!ocId) return { ok: false, error: "Owner not found" };
+  await requireOCAccess(ocId);
+
   // Block email edits when the owner has accepted the invite , they own their
   // login email at that point and changes need to go through the portal.
   if (parsed.data.email !== undefined && before.invitation_id) {
@@ -144,17 +157,10 @@ export async function updateLotOwnerContact(
     .eq("id", parsed.data.lot_owner_id);
   if (updErr) return { ok: false, error: "Could not save changes" };
 
-  // Look up oc_id via the lot for audit-log scoping.
-  const { data: lotRow } = await supabase
-    .from("lots")
-    .select("oc_id")
-    .eq("id", before.lot_id as string)
-    .maybeSingle();
-
   const diff = diffFields(before, update);
   await logAudit({
     profileId: profile.id,
-    ocId: (lotRow?.oc_id as string) ?? null,
+    ocId,
     action: "update",
     entityType: "lot_owner",
     entityId: parsed.data.lot_owner_id,
@@ -193,6 +199,15 @@ export async function updateTenant(
     .single();
   if (fetchErr || !before) return { ok: false, error: "Lot owner not found" };
 
+  const { data: tenantLot } = await supabase
+    .from("lots")
+    .select("oc_id")
+    .eq("id", before.lot_id as string)
+    .maybeSingle();
+  const ocId = (tenantLot?.oc_id as string | undefined) ?? null;
+  if (!ocId) return { ok: false, error: "Lot owner not found" };
+  await requireOCAccess(ocId);
+
   const update: Record<string, unknown> = {};
   if (parsed.data.tenant_name !== undefined) update.tenant_name = parsed.data.tenant_name;
   if (parsed.data.tenant_email !== undefined) update.tenant_email = parsed.data.tenant_email;
@@ -207,16 +222,10 @@ export async function updateTenant(
     .eq("id", parsed.data.lot_owner_id);
   if (updErr) return { ok: false, error: "Could not save changes" };
 
-  const { data: lotRow } = await supabase
-    .from("lots")
-    .select("oc_id")
-    .eq("id", before.lot_id as string)
-    .maybeSingle();
-
   const diff = diffFields(before, update);
   await logAudit({
     profileId: profile.id,
-    ocId: (lotRow?.oc_id as string) ?? null,
+    ocId,
     action: "update",
     entityType: "tenant",
     entityId: parsed.data.lot_owner_id,
@@ -258,6 +267,15 @@ export async function updateOccupancyStatus(
     .single();
   if (fetchErr || !before) return { ok: false, error: "Lot owner not found" };
 
+  const { data: occupancyLot } = await supabase
+    .from("lots")
+    .select("oc_id")
+    .eq("id", before.lot_id as string)
+    .maybeSingle();
+  const ocId = (occupancyLot?.oc_id as string | undefined) ?? null;
+  if (!ocId) return { ok: false, error: "Lot owner not found" };
+  await requireOCAccess(ocId);
+
   const update: Record<string, unknown> = {
     occupancy_status: parsed.data.occupancy_status,
     is_occupied_by_owner: parsed.data.occupancy_status === "owner_occupied",
@@ -278,15 +296,9 @@ export async function updateOccupancyStatus(
     .eq("id", parsed.data.lot_owner_id);
   if (updErr) return { ok: false, error: "Could not save changes" };
 
-  const { data: lotRow } = await supabase
-    .from("lots")
-    .select("oc_id")
-    .eq("id", before.lot_id as string)
-    .maybeSingle();
-
   await logAudit({
     profileId: profile.id,
-    ocId: (lotRow?.oc_id as string) ?? null,
+    ocId,
     action: "update",
     entityType: "occupancy",
     entityId: parsed.data.lot_owner_id,
@@ -327,6 +339,15 @@ export async function updateConsentCategories(
     .single();
   if (fetchErr || !before) return { ok: false, error: "Lot owner not found" };
 
+  const { data: consentLot } = await supabase
+    .from("lots")
+    .select("oc_id")
+    .eq("id", before.lot_id as string)
+    .maybeSingle();
+  const ocId = (consentLot?.oc_id as string | undefined) ?? null;
+  if (!ocId) return { ok: false, error: "Lot owner not found" };
+  await requireOCAccess(ocId);
+
   const { error: updErr } = await supabase
     .from("lot_owners")
     .update({
@@ -336,15 +357,9 @@ export async function updateConsentCategories(
     .eq("id", parsed.data.lot_owner_id);
   if (updErr) return { ok: false, error: "Could not save changes" };
 
-  const { data: lotRow } = await supabase
-    .from("lots")
-    .select("oc_id")
-    .eq("id", before.lot_id as string)
-    .maybeSingle();
-
   await logAudit({
     profileId: profile.id,
-    ocId: (lotRow?.oc_id as string) ?? null,
+    ocId,
     action: "update",
     entityType: "consent",
     entityId: parsed.data.lot_owner_id,

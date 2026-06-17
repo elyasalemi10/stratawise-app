@@ -15,7 +15,7 @@ import TableCell from "@tiptap/extension-table-cell";
 import {
   Bold, Italic, Heading1, Heading2, Heading3, List, ListOrdered, Quote,
   Image as ImageIcon, Youtube as YoutubeIcon, Table as TableIcon,
-  Loader2, ArrowLeft, Strikethrough, UploadCloud, AudioLines,
+  Loader2, Strikethrough, UploadCloud, AudioLines,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -31,6 +31,7 @@ import {
   Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription,
 } from "@/components/ui/dialog";
 import { NarrationPlayer } from "./narration-player";
+import { useSetBreadcrumb } from "@/lib/breadcrumb-context";
 import { saveBlogPost, setBlogPostStatus, type BlogPostRow } from "@/lib/actions/blog";
 import { generateNarration, type NarrationWordTiming } from "@/lib/actions/blog-audio";
 
@@ -229,6 +230,12 @@ export function BlogEditor({ post }: { post: BlogPostRow }) {
     toast.success(next === "published" ? "Published , live on the marketing site" : "Moved to draft");
   }
 
+  // Top-bar breadcrumb: "Blog / {title}", replacing the inline back button.
+  useSetBreadcrumb([
+    { label: "Blog", href: "/admin/blog" },
+    { label: title.trim() || "Untitled post" },
+  ]);
+
   if (!editor) {
     return <div className="flex items-center justify-center py-20"><Loader2 className="size-5 animate-spin text-muted-foreground" /></div>;
   }
@@ -236,10 +243,7 @@ export function BlogEditor({ post }: { post: BlogPostRow }) {
 
   return (
     <div className="mx-auto max-w-3xl space-y-5">
-      <div className="flex items-center justify-between gap-3">
-        <button type="button" onClick={() => router.push("/admin/blog")} className="inline-flex items-center gap-1.5 text-sm text-muted-foreground hover:text-foreground cursor-pointer">
-          <ArrowLeft className="h-4 w-4" /> Posts
-        </button>
+      <div className="flex items-center justify-end gap-3">
         <div className="flex items-center gap-2">
           <Badge variant={isPublished ? "success" : "neutral"} className="rounded-full">{isPublished ? "Published" : "Draft"}</Badge>
           <Button variant="secondary" size="sm" onClick={handleSave} disabled={saving || statusPending}>

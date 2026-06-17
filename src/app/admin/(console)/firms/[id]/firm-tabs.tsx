@@ -3,6 +3,7 @@
 import { Suspense, useState } from "react";
 import { useSearchParams } from "next/navigation";
 import { Building2, Users } from "lucide-react";
+import { useSetBreadcrumb } from "@/lib/breadcrumb-context";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
@@ -89,6 +90,12 @@ function FirmTabsInner({ firm }: { firm: FirmDetail }) {
   const searchParams = useSearchParams();
   const [activeTab, setActiveTab] = useState(searchParams.get("tab") ?? "overview");
   const totalLots = firm.ocs.reduce((sum, o) => sum + o.totalLots, 0);
+
+  // Top-bar breadcrumb: "Management firms / {firm name}".
+  useSetBreadcrumb([
+    { label: "Management firms", href: "/admin/firms" },
+    { label: firm.name },
+  ]);
 
   function onTabChange(value: string) {
     setActiveTab(value);

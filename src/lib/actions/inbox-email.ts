@@ -1,7 +1,7 @@
 "use server";
 
 import { z } from "zod";
-import { requireCompanyRole } from "@/lib/auth";
+import { requireCompanyRole, requireOCAccess } from "@/lib/auth";
 import { createServerClient } from "@/lib/supabase";
 import { sendManagerMessageEmail } from "@/lib/email";
 import { logAudit } from "@/lib/audit";
@@ -350,6 +350,20 @@ export async function associateInboxEmailToLot(
     .single();
   if (!existing || existing.recipient_id !== profile.id) {
     return { ok: false, error: "You don't have access to this email" };
+  }
+
+  // The target OC must belong to the caller's company, and a chosen lot must
+  // be within that OC, so an email can't be stamped onto another firm's ids.
+  await requireOCAccess(parsed.data.oc_id);
+  if (parsed.data.lot_id) {
+    const { data: lot } = await supabase
+      .from("lots")
+      .select("oc_id")
+      .eq("id", parsed.data.lot_id)
+      .maybeSingle();
+    if (!lot || lot.oc_id !== parsed.data.oc_id) {
+      return { ok: false, error: "That lot isn't part of the selected owners corporation." };
+    }
   }
 
   const { error } = await supabase
@@ -711,6 +725,7 @@ export async function listLotsForAssociate(
   ocId: string,
 ): Promise<LotPickerOption[]> {
   await requireCompanyRole();
+  await requireOCAccess(ocId);
   const supabase = createServerClient();
 
   const { data } = await supabase

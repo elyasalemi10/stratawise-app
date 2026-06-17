@@ -408,6 +408,7 @@ export async function applySettlementToLot(input: ApplySettlementInput) {
   // oc via the lot row directly.
   let resolvedOcId: string;
   let docMeta: { id: string; file_name: string } | null = null;
+  let docNeedsRepoint = false;
   if (documentId) {
     const { data: doc } = await supabase
       .from("documents")
@@ -416,16 +417,9 @@ export async function applySettlementToLot(input: ApplySettlementInput) {
       .single();
 
     if (!doc) return { error: "Document not found" };
-    // The manager may have re-targeted the settlement to a different lot via
-    // the drawer's lot selector. The doc must follow the chosen lot, so
-    // re-point it here rather than rejecting , the wrong-lot mismatch popup
-    // already warned them at parse time. Same OC only (the selector only
-    // offers lots within this OC).
-    if (doc.lot_id !== lotId) {
-      await supabase.from("documents").update({ lot_id: lotId }).eq("id", documentId);
-    }
     resolvedOcId = doc.oc_id;
     docMeta = { id: doc.id, file_name: doc.file_name };
+    docNeedsRepoint = doc.lot_id !== lotId;
   } else {
     const { data: lotRow } = await supabase
       .from("lots")
@@ -436,6 +430,7 @@ export async function applySettlementToLot(input: ApplySettlementInput) {
     resolvedOcId = lotRow.oc_id;
   }
   void docMeta;
+  // Authorize BEFORE any mutation, then confirm the target lot is in this OC.
   await requireOCAccess(resolvedOcId);
 
   const { data: lot } = await supabase
@@ -446,6 +441,13 @@ export async function applySettlementToLot(input: ApplySettlementInput) {
     .single();
 
   if (!lot) return { error: "Lot not found in this oc" };
+
+  // The manager may have re-targeted the settlement to a different lot via the
+  // drawer's lot selector; re-point the doc now that access + same-OC lot
+  // ownership are both verified.
+  if (docNeedsRepoint && documentId) {
+    await supabase.from("documents").update({ lot_id: lotId }).eq("id", documentId);
+  }
 
   // The OC's management company scopes the owners table (an Owner lives
   // under one management company; if it ever transfers to another we'll

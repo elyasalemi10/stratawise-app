@@ -1,6 +1,6 @@
 "use server";
 
-import { requireCompanyRole } from "@/lib/auth";
+import { requireCompanyRole, requireOCAccess } from "@/lib/auth";
 import { createServerClient } from "@/lib/supabase";
 
 // Per-lot engagement read model , meeting participation, votes cast, proxies
@@ -40,9 +40,27 @@ export interface LotEngagement {
   recentMeetings: LotEngagementMeeting[];
 }
 
+const EMPTY_ENGAGEMENT: LotEngagement = {
+  meetingsAttended: 0,
+  votesCast: 0,
+  proxiesGiven: 0,
+  lastMeetingAt: null,
+  choices: [],
+  recentMeetings: [],
+};
+
 export async function getLotEngagement(lotId: string): Promise<LotEngagement> {
   await requireCompanyRole();
   const supabase = createServerClient();
+
+  // Authorize against the lot's OC before reading its voting / meeting data.
+  const { data: lot } = await supabase
+    .from("lots")
+    .select("oc_id")
+    .eq("id", lotId)
+    .maybeSingle();
+  if (!lot) return EMPTY_ENGAGEMENT;
+  await requireOCAccess(lot.oc_id as string);
 
   // Pull every vote row attributed to this lot. votes.lot_id is the canonical
   // "who voted" column; a row exists when the lot was registered for the

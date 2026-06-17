@@ -1,6 +1,4 @@
-import Link from "next/link";
 import { notFound, redirect } from "next/navigation";
-import { ArrowLeft } from "lucide-react";
 import { createServerClient } from "@/lib/supabase";
 import { evaluateSuperAdminGate } from "@/lib/admin-auth";
 import { FirmTabs, type FirmDetail } from "./firm-tabs";
@@ -70,14 +68,7 @@ export default async function AdminFirmDetailPage({
 
   return (
     <div className="space-y-6">
-      <div className="space-y-2">
-        <Link
-          href="/admin/firms"
-          className="inline-flex items-center gap-1.5 text-sm font-medium text-muted-foreground transition-colors hover:text-foreground"
-        >
-          <ArrowLeft className="h-3.5 w-3.5" />
-          All firms
-        </Link>
+      <div className="space-y-1">
         <h1 className="text-2xl font-semibold tracking-tight text-foreground">
           {detail.name}
         </h1>

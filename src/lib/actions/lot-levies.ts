@@ -1,6 +1,6 @@
 "use server";
 
-import { requireCompanyRole } from "@/lib/auth";
+import { requireCompanyRole, requireOCAccess } from "@/lib/auth";
 import { createServerClient } from "@/lib/supabase";
 
 // Levy notices issued against a lot. Returned ordered most-recent first by
@@ -37,6 +37,15 @@ export interface LotLevyRow {
 export async function listLotLevies(lotId: string): Promise<LotLevyRow[]> {
   await requireCompanyRole();
   const supabase = createServerClient();
+
+  // Authorize against the lot's OC before reading its levy / DRN / payment data.
+  const { data: lot } = await supabase
+    .from("lots")
+    .select("oc_id")
+    .eq("id", lotId)
+    .maybeSingle();
+  if (!lot) return [];
+  await requireOCAccess(lot.oc_id as string);
 
   const [{ data, error }, { data: drns }, { data: ownerRefRow }] = await Promise.all([
     supabase

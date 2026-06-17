@@ -98,7 +98,12 @@ export async function globalSearch(
   }
   const supabase = createServerClient();
   const companyId = profile.management_company_id;
-  const like = `%${trimmed.replace(/[%_]/g, (m) => "\\" + m)}%`;
+  // Strip characters that are special inside PostgREST `.or()` syntax (comma =
+  // condition separator, parens = grouping, backslash = escape) so a search
+  // term can't inject extra OR conditions. Then escape SQL LIKE wildcards.
+  const sanitized = trimmed.replace(/[,()\\]/g, " ").replace(/\s+/g, " ").trim();
+  if (sanitized.length < 2) return { hits: [] };
+  const like = `%${sanitized.replace(/[%_]/g, (m) => "\\" + m)}%`;
 
   // Resolve the scope: a single ocId when the caller is inside an OC, or the
   // full company-wide list of ocIds for the dashboard view.

@@ -2,14 +2,23 @@
 
 import { createServerClient } from "@/lib/supabase";
 import { createSupabaseServerClient } from "@/lib/supabase-server";
-import { requireRole, getAuthUserId } from "@/lib/auth";
+import { getAuthUserId } from "@/lib/auth";
+import { evaluateSuperAdminGate } from "@/lib/admin-auth";
+
+// Guard every admin action with the FULL super-admin + AAL2 (MFA) gate, not
+// just the role, so an un-MFA'd session can't invoke them directly.
+async function assertAdmin(): Promise<{ error?: string }> {
+  const gate = await evaluateSuperAdminGate();
+  return gate.kind === "ok" ? {} : { error: "Not authorized" };
+}
 
 // Update the super-admin's own name + avatar.
 export async function updateAdminProfile(input: {
   firstName: string;
   lastName: string;
 }): Promise<{ success?: true; error?: string }> {
-  await requireRole(["super_admin"]);
+  const guard = await assertAdmin();
+  if (guard.error) return guard;
   const userId = await getAuthUserId();
   if (!userId) return { error: "Not authenticated" };
 
@@ -33,7 +42,8 @@ export async function updateAdminProfile(input: {
 export async function updateAdminAvatar(
   avatarUrl: string,
 ): Promise<{ success?: true; error?: string }> {
-  await requireRole(["super_admin"]);
+  const guard = await assertAdmin();
+  if (guard.error) return guard;
   const userId = await getAuthUserId();
   if (!userId) return { error: "Not authenticated" };
 
@@ -54,7 +64,8 @@ export async function changeAdminPassword(
   currentPassword: string,
   newPassword: string,
 ): Promise<{ success?: true; error?: string }> {
-  await requireRole(["super_admin"]);
+  const guard = await assertAdmin();
+  if (guard.error) return guard;
 
   const supabase = await createSupabaseServerClient();
   const { data: { user } } = await supabase.auth.getUser();

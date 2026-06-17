@@ -571,6 +571,14 @@ export async function updateJobOccurrence(
 ): Promise<{ occurrence?: JobOccurrence; error?: string }> {
   await requireCompanyRole();
   const supabase = createServerClient();
+  // Authorize against the occurrence's OC before mutating it.
+  const { data: occ } = await supabase
+    .from("recurring_job_occurrences")
+    .select("oc_id")
+    .eq("id", occurrenceId)
+    .maybeSingle();
+  if (!occ) return { error: "Visit not found" };
+  await requireOCAccess(occ.oc_id as string);
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const update: Record<string, any> = {};
   if (patch.scheduled_date) update.scheduled_date = patch.scheduled_date;
@@ -588,6 +596,13 @@ export async function updateJobOccurrence(
 export async function deleteJobOccurrence(occurrenceId: string): Promise<{ error?: string }> {
   await requireCompanyRole();
   const supabase = createServerClient();
+  const { data: occ } = await supabase
+    .from("recurring_job_occurrences")
+    .select("oc_id")
+    .eq("id", occurrenceId)
+    .maybeSingle();
+  if (!occ) return { error: "Visit not found" };
+  await requireOCAccess(occ.oc_id as string);
   const { error } = await supabase.from("recurring_job_occurrences").delete().eq("id", occurrenceId);
   if (error) return { error: error.message };
   revalidatePath("/maintenance");
