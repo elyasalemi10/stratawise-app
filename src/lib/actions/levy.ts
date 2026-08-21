@@ -874,74 +874,99 @@ export async function createLevyBatch(
   const billableLots = data.lots.filter((l) => Number(l.amount) > 0);
   const createdLevies: { id: string; lotId: string; refNum: string; items: typeof data.lots[0]["items"] }[] = [];
 
-  for (const lot of billableLots) {
-    // Special levies use their own SLEV-NNNN per-OC sequence (the SLEV
-    // counter lives on owners_corporations.next_special_levy_number).
-    // Distinct prefix keeps ledger + audit lines obviously different
-    // from standard contributions in reporting.
-    const refPrefix = data.is_special ? "SLEV" : "LEV";
-    const { data: refNum } = await supabase.rpc("next_reference_number", {
-      p_prefix: refPrefix,
-      p_oc_id: ocId,
-    });
-    if (!refNum) continue;
+  // Reference numbers, notices and items are each allocated in ONE round
+  // trip rather than one per lot. The previous shape did three sequential
+  // calls inside this loop, so a 100-lot OC cost ~300 round trips at ~55ms
+  // each: roughly 16 seconds of pure network before any real work.
+  const refPrefix = data.is_special ? "SLEV" : "LEV";
+  const { data: refRows, error: refError } = await supabase.rpc("next_reference_numbers", {
+    p_prefix: refPrefix,
+    p_oc_id: ocId,
+    p_count: billableLots.length,
+  });
+  if (refError || !refRows || refRows.length !== billableLots.length) {
+    console.error("Failed to allocate levy reference numbers:", refError);
+    return { error: "Couldn't generate this levy batch , please try again." };
+  }
+  // The function returns the contiguous block it reserved, ordered by idx.
+  const refs = [...(refRows as Array<{ idx: number; reference: string }>)]
+    .sort((a, b) => a.idx - b.idx)
+    .map((r) => r.reference);
 
+  const noticeRows = billableLots.map((lot, i) => {
+    const refNum = refs[i];
     // BPAY CRN: 7-digit zero-padded number + MOD10V01 check digit.
     // ONLY generated for regular levies , special levies skip BPAY
     // because:
     //   (a) Special levies are typically settled by direct deposit,
     //       not BPAY, and the unique index (oc_id, bpay_crn) would
     //       collide with regular LEV-N notices that share the same
-    //       numeric value (SLEV-1's CRN == LEV-1's CRN), causing the
-    //       per-lot insert loop to silently fail and the batch to
-    //       land "0 of N notices written" in draft.
+    //       numeric value (SLEV-1's CRN == LEV-1's CRN).
     //   (b) Macquarie DRN already covers EFT identification.
     const numericStr = String(refNum).split("-").pop() ?? "";
     const levyNumber = Number.parseInt(numericStr, 10);
     const bpayCrn = !data.is_special && Number.isFinite(levyNumber)
       ? generateCrn(levyNumber)
       : null;
+    return {
+      oc_id: ocId,
+      lot_id: lot.lot_id,
+      budget_id: data.budget_id,
+      batch_id: batch.id,
+      reference_number: refNum,
+      bpay_crn: bpayCrn,
+      fund_type: data.fund_type,
+      levy_type: data.is_special ? "special" : "regular",
+      period_start: data.period_start,
+      period_end: data.period_end,
+      amount: lot.amount,
+      due_date: data.due_date,
+      issue_date: issueDate,
+      status: "draft" as const,
+    };
+  });
 
-    const { data: levy, error: levyError } = await supabase
-      .from("levy_notices")
-      .insert({
-        oc_id: ocId,
-        lot_id: lot.lot_id,
-        budget_id: data.budget_id,
-        batch_id: batch.id,
-        reference_number: refNum,
-        bpay_crn: bpayCrn,
-        fund_type: data.fund_type,
-        levy_type: data.is_special ? "special" : "regular",
-        period_start: data.period_start,
-        period_end: data.period_end,
-        amount: lot.amount,
-        due_date: data.due_date,
-        issue_date: issueDate,
-        status: "draft",
-      })
-      .select("id")
-      .single();
+  const { data: insertedNotices, error: noticesError } = await supabase
+    .from("levy_notices")
+    .insert(noticeRows)
+    .select("id, lot_id, reference_number");
 
-    if (levyError) { console.error("Failed to create levy:", levyError); continue; }
+  if (noticesError || !insertedNotices) {
+    console.error("Failed to create levies:", noticesError);
+    return { error: "Couldn't generate this levy batch , please try again." };
+  }
 
-    const itemInserts = lot.items
+  // Map back by reference_number: it is unique per OC and we just minted it,
+  // so it identifies each row unambiguously even if a lot appears twice.
+  const noticeByRef = new Map(
+    (insertedNotices as Array<{ id: string; lot_id: string; reference_number: string }>)
+      .map((n) => [n.reference_number, n]),
+  );
+
+  const itemRows: Array<Record<string, unknown>> = [];
+  for (let i = 0; i < billableLots.length; i++) {
+    const notice = noticeByRef.get(refs[i]);
+    if (!notice) continue;
+    const lot = billableLots[i];
+    lot.items
       .filter((item) => item.amount !== 0)
-      .map((item, i) => ({
-        levy_notice_id: levy.id,
-        description: item.description,
-        amount: item.amount,
-        is_adjustment: item.is_adjustment,
-        budget_item_id: item.budget_item_id,
-        coa_account_id: item.coa_account_id ?? null,
-        sort_order: i,
-      }));
+      .forEach((item, sortOrder) => {
+        itemRows.push({
+          levy_notice_id: notice.id,
+          description: item.description,
+          amount: item.amount,
+          is_adjustment: item.is_adjustment,
+          budget_item_id: item.budget_item_id,
+          coa_account_id: item.coa_account_id ?? null,
+          sort_order: sortOrder,
+        });
+      });
+    createdLevies.push({ id: notice.id, lotId: lot.lot_id, refNum: refs[i], items: lot.items });
+  }
 
-    if (itemInserts.length > 0) {
-      await supabase.from("levy_notice_items").insert(itemInserts);
-    }
-
-    createdLevies.push({ id: levy.id, lotId: lot.lot_id, refNum, items: lot.items });
+  if (itemRows.length > 0) {
+    const { error: itemsError } = await supabase.from("levy_notice_items").insert(itemRows);
+    if (itemsError) console.error("Failed to create levy notice items:", itemsError);
   }
 
   // Defensive: every billable lot must have produced a notice. If not, some
