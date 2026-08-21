@@ -148,6 +148,20 @@ const REVALIDATE_INTERVAL_MS = 30_000;
 /** Backstop on a refresh that never reports finishing. */
 const REFRESH_FAILSAFE_MS = 15_000;
 
+/** router.refresh() clears the client Router Cache for EVERY route, not just
+ *  the one being refreshed. Left alone that means each refresh makes the
+ *  NEXT navigation a cold fetch, so you get the skeleton on a page you have
+ *  already visited , the exact thing the cache exists to prevent. After a
+ *  refresh settles we re-prefetch the handful of URLs seen most recently so
+ *  their entries are warm again. Bounded because each one is a round trip. */
+const REWARM_LIMIT = 5;
+
+/** lastLoadedAt keys are `${pathname}?${searchParams}`; with no query that
+ *  leaves a bare trailing "?" which is not a valid href to prefetch. */
+function hrefFromKey(key: string): string {
+  return key.endsWith("?") ? key.slice(0, -1) : key;
+}
+
 // Caching and the bar apply to the APP only. This is an allowlist, not a
 // blocklist: sign-in, sign-up, forgot / reset password, verify-email,
 // onboarding, invite acceptance and the legal pages have no data worth
@@ -203,6 +217,10 @@ function StaleWhileRevalidate() {
   // effect, while isPending is still the false from the previous render,
   // and stops the bar before it has ever been painted.
   const sawPendingRef = useRef(false);
+  /** Whether the in-flight refresh is the arrival one. Only that case
+   *  re-warms the cache , doing it after every silent 30s poll would be
+   *  five extra round trips a minute for nothing anyone can see. */
+  const isArrivalRef = useRef(false);
   const doneRef = useRef<(() => void) | null>(null);
   const failsafeRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
@@ -232,6 +250,7 @@ function StaleWhileRevalidate() {
     (showBar: boolean) => {
       if (inFlightRef.current) return; // one in flight is enough
       inFlightRef.current = true;
+      isArrivalRef.current = showBar;
       if (showBar) doneRef.current = startRefreshing();
       markLoaded(key, Date.now());
       // If a transition somehow never reports back, don't wedge the in-flight
@@ -312,7 +331,15 @@ function StaleWhileRevalidate() {
     if (!sawPendingRef.current || !inFlightRef.current) return;
     markLoaded(key, Date.now());
     settle();
-  }, [isPending, key, settle]);
+
+    // Put back what the refresh just knocked out. Without this, A -> B -> A
+    // leaves B cold, so returning to B shows loading.tsx even though it is a
+    // page you were on moments ago.
+    if (!isArrivalRef.current) return;
+    isArrivalRef.current = false;
+    const others = [...lastLoadedAt.keys()].filter((k) => k !== key).slice(-REWARM_LIMIT);
+    for (const other of others) router.prefetch(hrefFromKey(other));
+  }, [isPending, key, settle, router]);
 
   return null;
 }
