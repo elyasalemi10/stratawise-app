@@ -1,7 +1,7 @@
 "use server";
 
 import { getOC, getLotsWithFinancials, type LotWithFinancials } from "@/lib/actions/oc";
-import { getCurrentProfile, requireOCAccess } from "@/lib/auth";
+import { getCurrentProfile } from "@/lib/auth";
 import { getLotInvitationStatus } from "../manage/invitation-actions";
 
 // One aggregate fetch per page, called from the client through
@@ -10,8 +10,9 @@ import { getLotInvitationStatus } from "../manage/invitation-actions";
 //
 // Auth lives HERE, not in page.tsx. When the client owns the fetching the
 // page component is only a shell, so a check that stayed up there would be
-// skipped on every refresh after the first. requireOCAccess throws, which
-// the hook reports as an error rather than blanking the page.
+// skipped on every refresh after the first. getLotsWithFinancials calls
+// requireOCAccess, which throws on denial, and the hook reports that as an
+// error rather than blanking the page.
 
 export interface LotsPageData {
   lots: LotWithFinancials[];
@@ -21,8 +22,8 @@ export interface LotsPageData {
 }
 
 export async function getLotsPageData(ocId: string): Promise<LotsPageData> {
-  await requireOCAccess(ocId);
-
+  // getLotsWithFinancials calls requireOCAccess itself, and it is memoised
+  // per request, so there is no separate check here to pay for.
   const [oc, lots, profile] = await Promise.all([
     getOC(ocId),
     getLotsWithFinancials(ocId),

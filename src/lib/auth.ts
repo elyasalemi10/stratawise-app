@@ -210,8 +210,15 @@ async function seedNotificationPreferences(supabase: any, profileId: string) {
 }
 
 // ─── requireOCAccess ───────────────────────────────────
+//
+// Wrapped in React cache() so repeated calls within one request hit the
+// database once. This is called defensively at the top of most OC-scoped
+// actions, and aggregate page fetches routinely call two or three of those,
+// so uncached it was costing an extra owners_corporations (or oc_members)
+// round trip per call. Measured at ~55ms each against Supabase from a dev
+// machine, on a page whose whole fetch has a ~460ms sequential floor.
 
-export async function requireOCAccess(
+export const requireOCAccess = cache(async function requireOCAccess(
   ocId: string,
 ): Promise<Profile> {
   const profile = await getCurrentProfile();
@@ -247,7 +254,7 @@ export async function requireOCAccess(
 
   if (!membership) throw new Error("Access denied");
   return profile;
-}
+})
 
 // ─── getOnboardingRedirect ──────────────────────────────────────
 
