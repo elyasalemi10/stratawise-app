@@ -43,6 +43,7 @@
 
 import { Suspense, useCallback, useEffect, useRef, useSyncExternalStore, useTransition } from "react";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
+import { isClientCached } from "@/lib/use-cached-data";
 
 // ─── Ref-counted store ────────────────────────────────────────────────
 // Ref-counted rather than a boolean so overlapping refreshes can't have the
@@ -225,7 +226,11 @@ function StaleWhileRevalidate() {
   const failsafeRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const key = `${pathname}?${searchParams}`;
-  const skip = !shouldRevalidate(pathname);
+  // A page served by useCachedData owns its own freshness. Refreshing it
+  // through the router as well would double-fetch AND wipe the Router Cache
+  // for every other route, which is the exact behaviour the client cache
+  // exists to avoid. This is what lets the two coexist during migration.
+  const skip = !shouldRevalidate(pathname) || isClientCached(pathname);
 
   const settle = useCallback(() => {
     inFlightRef.current = false;
