@@ -46,20 +46,29 @@ import { startRefreshing } from "@/components/layout/refresh-bar";
 
 // ─── The cache ────────────────────────────────────────────────────────
 
-const cache = new Map<string, unknown>();
+interface CacheEntry {
+  value: unknown;
+  /** When this value came back from the server. Age is measured from HERE,
+   *  not from when you left the page: once you navigate away the page's poll
+   *  stops and the entry freezes, so "time since I left" would undercount
+   *  how stale it actually is. */
+  fetchedAt: number;
+}
+
+const cache = new Map<string, CacheEntry>();
 
 /** A long session should not accumulate an entry per entity visited. Map
  *  iterates in insertion order, so dropping from the front sheds the
  *  oldest. Bounded because each entry can hold a full page payload. */
 const MAX_CACHE_ENTRIES = 100;
 
-function readCache<T>(key: string): T | undefined {
-  return cache.get(key) as T | undefined;
+function readCache(key: string): CacheEntry | undefined {
+  return cache.get(key);
 }
 
 function writeCache<T>(key: string, value: T): void {
   cache.delete(key); // re-insert so recently used moves to the back
-  cache.set(key, value);
+  cache.set(key, { value, fetchedAt: Date.now() });
   while (cache.size > MAX_CACHE_ENTRIES) {
     const oldest = cache.keys().next().value;
     if (oldest === undefined) break;
@@ -136,8 +145,8 @@ export function useCachedData<T>(
   fetcher: () => Promise<T>,
   options?: { autoRefresh?: boolean },
 ): CachedData<T> {
-  const cached = readCache<T>(key);
-  const [data, setDataState] = useState<T | undefined>(cached);
+  const cached = readCache(key);
+  const [data, setDataState] = useState<T | undefined>(cached?.value as T | undefined);
   const [loading, setLoading] = useState(cached === undefined);
   const [isEntering, setIsEntering] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -193,14 +202,32 @@ export function useCachedData<T>(
     [],
   );
 
-  // Arrival. Cached -> paint it and check behind it (bar). Not cached ->
-  // skeletons, no bar, because there is nothing on screen to caveat.
+  // Arrival.
+  //
+  // No cache at all: skeletons, no bar. Nothing on screen to caveat.
+  //
+  // Cached: paint it immediately and ALWAYS re-fetch behind it, so what you
+  // are looking at is never knowingly stale. Whether the BAR shows is a
+  // separate question from whether the fetch happens:
+  //
+  //   younger than AUTO_REFRESH_MS  fetch silently. Had you stayed on the
+  //                                 page, the poll would not have fired yet
+  //                                 either, so there is nothing to announce
+  //                                 and a bar on every hop is just noise.
+  //   older                         fetch with the bar. The data predates
+  //                                 the freshness the page would have had
+  //                                 if you had stayed, which is exactly the
+  //                                 thing the bar exists to say.
+  //
+  // Same constant on purpose: the promise is "never more than one poll
+  // interval stale", whether you stayed or left and came back.
   useEffect(() => {
-    const existing = readCache<T>(key);
+    const existing = readCache(key);
     if (existing !== undefined) {
-      setDataState(existing);
+      setDataState(existing.value as T);
       setLoading(false);
-      void run("arrival");
+      const age = Date.now() - existing.fetchedAt;
+      void run(age >= AUTO_REFRESH_MS ? "arrival" : "silent");
     } else {
       setLoading(true);
       void run("first");
