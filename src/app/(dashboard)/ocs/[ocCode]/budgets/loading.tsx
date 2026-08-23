@@ -1,43 +1,58 @@
-import { Skeleton } from "@/components/ui/skeleton";
-import { Card, CardContent } from "@/components/ui/card";
+import { Plus, Search } from "lucide-react";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { TableSkeleton } from "@/components/shared/table-skeleton";
+
+// Everything on this page except the cell values is fixed: the search box,
+// the all / approved / draft filter chips, the Create button, and the six
+// column headings. All of it renders for real, disabled, and only the cells
+// shimmer.
+//
+// Mirrors budget-page-content.tsx.
+
+const FILTERS = ["all", "approved", "draft"] as const;
 
 export default function BudgetsLoading() {
   return (
     <div className="space-y-4">
-      <div className="flex justify-end">
-        <Skeleton className="h-8 w-28 rounded-md" />
+      <div className="flex flex-wrap items-center gap-3">
+        <div className="relative flex-1 min-w-[16rem]">
+          <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-muted-foreground" />
+          <Input
+            disabled
+            placeholder="Search by financial year or description"
+            className="pl-9 h-9 text-sm"
+          />
+        </div>
+        <div className="flex gap-1 rounded-md border border-border p-0.5 bg-card">
+          {FILTERS.map((s, i) => (
+            <span
+              key={s}
+              className={`flex h-7 items-center rounded-sm px-3 text-xs font-medium capitalize ${
+                i === 0 ? "bg-primary text-primary-foreground" : "text-muted-foreground"
+              }`}
+            >
+              {s}
+            </span>
+          ))}
+        </div>
+        <Button size="sm" disabled>
+          <Plus className="mr-2 h-3.5 w-3.5" />
+          Create budget
+        </Button>
       </div>
-      <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
-        {[0, 1].map((i) => (
-          <Card key={i}>
-            <CardContent className="pt-5">
-              <div className="flex items-center justify-between mb-4">
-                <div>
-                  <Skeleton className="h-4 w-36" />
-                  <Skeleton className="mt-1.5 h-3 w-20" />
-                </div>
-                <Skeleton className="h-5 w-16 rounded-full" />
-              </div>
-              <div className="rounded-lg border border-border overflow-hidden">
-                <div className="bg-muted/50 px-4 py-2.5 flex justify-between">
-                  <Skeleton className="h-3 w-12" />
-                  <Skeleton className="h-3 w-14" />
-                </div>
-                {[0, 1, 2, 3].map((j) => (
-                  <div key={j} className="px-4 py-2.5 flex justify-between border-t border-border/50">
-                    <Skeleton className="h-3 w-28" />
-                    <Skeleton className="h-3 w-16" />
-                  </div>
-                ))}
-                <div className="px-4 py-3 flex justify-between border-t-2 border-foreground/20">
-                  <Skeleton className="h-3.5 w-12" />
-                  <Skeleton className="h-3.5 w-20" />
-                </div>
-              </div>
-            </CardContent>
-          </Card>
-        ))}
-      </div>
+
+      <TableSkeleton
+        rows={5}
+        columns={[
+          { label: "Financial Year", cell: "w-20" },
+          { label: "Status", pill: true },
+          { label: "Description", cell: "w-56" },
+          { label: "Admin", cell: "w-16", align: "right" },
+          { label: "Maintenance", cell: "w-16", align: "right" },
+          { label: "Other", cell: "w-16", align: "right" },
+        ]}
+      />
     </div>
   );
 }

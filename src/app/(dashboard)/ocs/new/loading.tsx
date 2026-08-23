@@ -1,38 +1,56 @@
-import { X } from "lucide-react";
+import { Building2, Landmark, Settings2, Users } from "lucide-react";
+import { Card, CardContent } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
 
-// Loading state for /ocs/new. Mirrors the live chrome: X corner button, no
-// autosave copy, and the 4-step indicator rendered flat (no active highlight).
-export default function Loading() {
+// The wizard's four steps are a hardcoded STEPS array in
+// step-indicator.tsx, labels and icons both, so the indicator renders for
+// real with step 1 active. Only the form contents shimmer.
+//
+// Mirrors ocs/new/step-indicator.tsx.
+
+const STEPS = [
+  { label: "General", Icon: Building2 },
+  { label: "Settings", Icon: Settings2 },
+  { label: "Lots & Owners", Icon: Users },
+  { label: "Banking", Icon: Landmark },
+];
+
+export default function NewOCLoading() {
   return (
-    <div className="mx-auto w-full max-w-5xl">
-      <div className="relative flex h-12 items-center">
-        <span className="absolute -left-4 inline-flex h-8 w-8 items-center justify-center text-muted-foreground">
-          <X className="h-5 w-5" />
-        </span>
-        <div className="mx-auto flex flex-wrap items-start justify-center gap-x-5 gap-y-4">
-          {Array.from({ length: 4 }).map((_, i) => (
-            <div key={i} className="flex items-start gap-4">
-              <div className="flex flex-col items-center gap-2">
-                <Skeleton className="h-12 w-12 rounded-full" />
-                <Skeleton className="h-4 w-24" />
-              </div>
-              {i < 3 && <Skeleton className="mt-6 h-px w-10" />}
+    <div className="space-y-6">
+      <div className="mb-6 flex flex-wrap items-start justify-center gap-x-5 gap-y-4">
+        {STEPS.map(({ label, Icon }, i) => (
+          <div key={label} className="flex flex-col items-center gap-1.5">
+            <div
+              className={`flex size-9 items-center justify-center rounded-full border ${
+                i === 0
+                  ? "border-primary bg-primary text-primary-foreground"
+                  : "border-border text-muted-foreground"
+              }`}
+            >
+              <Icon className="size-4" />
+            </div>
+            <span
+              className={`text-xs font-medium ${
+                i === 0 ? "text-foreground" : "text-muted-foreground"
+              }`}
+            >
+              {label}
+            </span>
+          </div>
+        ))}
+      </div>
+
+      <Card>
+        <CardContent className="pt-5 space-y-4">
+          {Array.from({ length: 5 }).map((_, i) => (
+            <div key={i} className="space-y-1.5">
+              <Skeleton className="h-3 w-28" />
+              <Skeleton className="h-9 w-full rounded-md" />
             </div>
           ))}
-        </div>
-      </div>
-      <div className="mt-6 space-y-6">
-        <div className="text-center">
-          <Skeleton className="mx-auto h-6 w-72" />
-          <Skeleton className="mx-auto mt-2 h-4 w-96" />
-        </div>
-        <Skeleton className="h-48 w-full rounded-lg" />
-        <div className="flex items-center justify-between pt-2">
-          <Skeleton className="h-4 w-32" />
-          <Skeleton className="h-9 w-24" />
-        </div>
-      </div>
+        </CardContent>
+      </Card>
     </div>
   );
 }

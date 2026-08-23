@@ -1,36 +1,44 @@
-import { Skeleton } from "@/components/ui/skeleton";
 import { Card, CardContent } from "@/components/ui/card";
+import { Skeleton } from "@/components/ui/skeleton";
 
-export default function SettingsLoading() {
+// The five tab labels are a hardcoded TABS array in settings-content.tsx,
+// so they render as real text with General active. Only the field values
+// come from the server.
+//
+// Mirrors settings-content.tsx. Keep TABS in step.
+
+const TABS = ["General", "Financial", "Communications", "Banking", "Automation"];
+
+export default function OCSettingsLoading() {
   return (
     <div className="space-y-6">
-      <div className="flex justify-end">
-        <Skeleton className="h-8 w-16 rounded-md" />
+      <div className="flex w-full flex-wrap justify-start gap-0">
+        {TABS.map((label, i) => (
+          <span
+            key={label}
+            className={`relative flex h-11 min-w-[6.5rem] items-center justify-center px-4 text-sm font-medium ${
+              i === 0
+                ? "text-foreground after:absolute after:inset-x-2 after:bottom-0 after:h-0.5 after:rounded-full after:bg-[color:var(--brand-gold)]"
+                : "text-muted-foreground"
+            }`}
+          >
+            {label}
+          </span>
+        ))}
       </div>
-      <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
-        <Card>
-          <CardContent className="pt-5 space-y-3">
-            <Skeleton className="h-4 w-28" />
-            {Array.from({ length: 5 }).map((_, i) => (
-              <div key={i} className="flex justify-between py-2">
-                <Skeleton className="h-3 w-20" />
-                <Skeleton className="h-3 w-32" />
+
+      {Array.from({ length: 2 }).map((_, i) => (
+        <Card key={i}>
+          <CardContent className="pt-5 space-y-4">
+            {Array.from({ length: 4 }).map((_, j) => (
+              <div key={j} className="flex items-center justify-between gap-6">
+                <Skeleton className="h-3.5 w-40" />
+                <Skeleton className="h-3.5 w-56" />
               </div>
             ))}
           </CardContent>
         </Card>
-        <Card>
-          <CardContent className="pt-5 space-y-3">
-            <Skeleton className="h-4 w-32" />
-            {Array.from({ length: 3 }).map((_, i) => (
-              <div key={i} className="flex justify-between py-2">
-                <Skeleton className="h-3 w-28" />
-                <Skeleton className="h-3 w-24" />
-              </div>
-            ))}
-          </CardContent>
-        </Card>
-      </div>
+      ))}
     </div>
   );
 }
