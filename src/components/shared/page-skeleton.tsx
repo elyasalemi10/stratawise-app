@@ -1,16 +1,23 @@
 import { Skeleton } from "@/components/ui/skeleton";
 import { Card, CardContent } from "@/components/ui/card";
 
-// Default skeleton for pages that don't need a precise structural mirror.
-// Renders a title shimmer + a few full-width card placeholders so users see
-// "the page is loading" instantly instead of staring at a blank viewport
-// while server data fetches. CLAUDE.md "Snappy navigation" rule: every
-// page.tsx that does any server-side data fetching MUST have a sibling
-// loading.tsx , use this component when you don't have a more specific one.
+// Last-resort skeleton, for pages whose shape is genuinely a stack of cards
+// and nothing more specific fits.
+//
+// Prefer a specific one. <TableSkeleton> renders a table's real column
+// headings with only the cells shimmering, and <KpiSkeleton> does the same
+// for a row of KPI labels. Both look correct because they know what is
+// fixed; this one cannot know, so it can only approximate.
+//
+// showTitle now defaults to FALSE. It used to shimmer a heading on every
+// page, but per CLAUDE.md flat list pages deliberately have no H1 (the
+// breadcrumb already names the page), so on most routes that bar was
+// promising a title that never arrived. Pass showTitle on the detail pages
+// that really do render one.
 
 export function PageSkeleton({
   rows = 3,
-  showTitle = true,
+  showTitle = false,
 }: { rows?: number; showTitle?: boolean }) {
   return (
     <div className="space-y-6">

@@ -1,8 +1,18 @@
-import { PageSkeleton } from "@/components/shared/page-skeleton";
+import { TableSkeleton } from "@/components/shared/table-skeleton";
 
-// CLAUDE.md "Snappy navigation": Next.js streams this component while the
-// real page.tsx fetches server data, so the user sees layout immediately
-// instead of waiting for the route to resolve.
-export default function Loading() {
-  return <PageSkeleton />;
+// Column headings are fixed, so they render as real text; only the cells
+// shimmer. Keep these labels in step with the real table or the columns
+// jump when the data arrives.
+export default function OcsLeviesLoading() {
+  return (
+    <div className="space-y-6">
+      <TableSkeleton
+        columns={[
+          { label: "Lot", cell: "w-12" },
+          { label: "Owner", cell: "w-40" },
+          { label: "Email", cell: "w-40" },
+        ]}
+      />
+    </div>
+  );
 }

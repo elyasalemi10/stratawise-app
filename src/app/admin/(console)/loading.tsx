@@ -1,5 +1,13 @@
-import { PageSkeleton } from "@/components/shared/page-skeleton";
+import { KpiSkeleton } from "@/components/shared/kpi-skeleton";
 
-export default function Loading() {
-  return <PageSkeleton />;
+// Platform-wide counts. The labels are fixed, only the numbers shimmer.
+export default function AdminConsoleLoading() {
+  return (
+    <div className="space-y-6">
+      <KpiSkeleton
+        labels={["Management firms", "Owners corporations", "Lots managed", "Lot owners"]}
+        columns={4}
+      />
+    </div>
+  );
 }

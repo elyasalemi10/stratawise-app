@@ -1,8 +1,11 @@
-import { PageSkeleton } from "@/components/shared/page-skeleton";
+import { KpiSkeleton } from "@/components/shared/kpi-skeleton";
 
-// CLAUDE.md "Snappy navigation": Next.js streams this component while the
-// real page.tsx fetches server data, so the user sees layout immediately
-// instead of waiting for the route to resolve.
-export default function Loading() {
-  return <PageSkeleton />;
+// The three KPI labels are fixed copy in page.tsx, so only the figures
+// shimmer.
+export default function LeviesLoading() {
+  return (
+    <div className="space-y-6">
+      <KpiSkeleton labels={["Total levied", "Total paid", "Outstanding"]} columns={3} />
+    </div>
+  );
 }
