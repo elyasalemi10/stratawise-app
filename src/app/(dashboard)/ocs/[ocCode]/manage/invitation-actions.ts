@@ -353,6 +353,33 @@ export async function getLotInvitationHistory(
   }));
 }
 
+/**
+ * Same precedence logic as getLotInvitationStatus, but scoped by oc_id only
+ * so it does not have to wait for the lots query to produce ids. Callers that
+ * already hold the lot list can just look up the lots they care about; extra
+ * keys in the map are harmless.
+ */
+export async function getLotInvitationStatusByOc(ocId: string) {
+  const supabase = createServerClient();
+
+  const { data } = await supabase
+    .from("invitations")
+    .select("lot_id, status")
+    .eq("oc_id", ocId)
+    .in("status", ["noted", "pending", "accepted"]);
+
+  const rank: Record<string, number> = { accepted: 3, pending: 2, noted: 1 };
+  const statusMap = new Map<string, "accepted" | "pending" | "noted">();
+  data?.forEach((inv) => {
+    if (!inv.lot_id) return;
+    const next = inv.status as "accepted" | "pending" | "noted";
+    const current = statusMap.get(inv.lot_id);
+    if (!current || rank[next] > rank[current]) statusMap.set(inv.lot_id, next);
+  });
+
+  return statusMap;
+}
+
 export async function getLotInvitationStatus(ocId: string, lotIds: string[]) {
   const supabase = createServerClient();
 

@@ -84,14 +84,24 @@ export function clearCachedData(): void {
   cache.clear();
 }
 
-/** Routes currently served by this hook. The refresh bar's router-based
- *  fallback checks this so a migrated page is not ALSO refreshed through
- *  router.refresh(), which would double-fetch and wipe the Router Cache
- *  for everything else. */
-const clientCachedPaths = new Set<string>();
+/** Routes served by this hook.
+ *
+ *  STATIC on purpose. This was a runtime Set that each hook registered into
+ *  from an effect, which raced: <RefreshBar /> renders before {children} in
+ *  the root layout, so StaleWhileRevalidate's arrival effect ran BEFORE the
+ *  page's hook could register, fired router.refresh() anyway, and the page
+ *  paid for both a router refresh and the hook's fetch. Both held the
+ *  ref-counted bar, so the gold line outlived the data it was waiting on.
+ *
+ *  A pattern list has no ordering dependency and is greppable: when a page
+ *  is converted to useCachedData, add its route here. */
+const CLIENT_CACHED_ROUTES: RegExp[] = [
+  /^\/ocs\/[^/]+\/lots$/,
+  /^\/ocs\/[^/]+\/documents$/,
+];
 
 export function isClientCached(pathname: string): boolean {
-  return clientCachedPaths.has(pathname);
+  return CLIENT_CACHED_ROUTES.some((re) => re.test(pathname));
 }
 
 // ─── The hook ─────────────────────────────────────────────────────────
@@ -124,7 +134,7 @@ export interface CachedData<T> {
 export function useCachedData<T>(
   key: string,
   fetcher: () => Promise<T>,
-  options?: { pathname?: string; autoRefresh?: boolean },
+  options?: { autoRefresh?: boolean },
 ): CachedData<T> {
   const cached = readCache<T>(key);
   const [data, setDataState] = useState<T | undefined>(cached);
@@ -151,16 +161,6 @@ export function useCachedData<T>(
       mountedRef.current = false;
     };
   }, []);
-
-  // Register the path so the router-based fallback leaves it alone.
-  const pathname = options?.pathname;
-  useEffect(() => {
-    if (!pathname) return;
-    clientCachedPaths.add(pathname);
-    return () => {
-      clientCachedPaths.delete(pathname);
-    };
-  }, [pathname]);
 
   const run = useCallback(
     async (mode: "first" | "arrival" | "silent") => {

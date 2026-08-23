@@ -4,7 +4,7 @@ import { useCallback } from "react";
 import { useCachedData } from "@/lib/use-cached-data";
 import { LotsPageContent } from "./lots-page-content";
 import { getLotsPageData, type LotsPageData } from "./data";
-import LotsLoading from "./loading";
+import { LotsSkeleton } from "./lots-skeleton";
 
 // Client half of the lots register.
 //
@@ -18,13 +18,11 @@ import LotsLoading from "./loading";
 // They are mutually exclusive, so the page never shimmers and claims to be
 // refreshing at the same time.
 
-export function LotsClient({ ocId, pathname }: { ocId: string; pathname: string }) {
+export function LotsClient({ ocId }: { ocId: string }) {
   const fetcher = useCallback(() => getLotsPageData(ocId), [ocId]);
-  const { data, loading } = useCachedData<LotsPageData>(`lots:${ocId}`, fetcher, {
-    pathname,
-  });
+  const { data, loading } = useCachedData<LotsPageData>(`lots:${ocId}`, fetcher);
 
-  if (loading || !data) return <LotsLoading />;
+  if (loading || !data) return <LotsSkeleton />;
 
   return (
     <LotsPageContent

@@ -2,10 +2,9 @@
 
 import { getOC, getLotsWithFinancials, type LotWithFinancials } from "@/lib/actions/oc";
 import { getCurrentProfile } from "@/lib/auth";
-import { getLotInvitationStatus } from "../manage/invitation-actions";
+import { getLotInvitationStatusByOc } from "../manage/invitation-actions";
 
-// One aggregate fetch per page, called from the client through
-// useCachedData. Everything the lots register needs, in a single round trip,
+// One aggregate fetch per page, called from the client through useCachedData,
 // so the hook has exactly one thing to cache under `lots:${ocId}`.
 //
 // Auth lives HERE, not in page.tsx. When the client owns the fetching the
@@ -13,6 +12,12 @@ import { getLotInvitationStatus } from "../manage/invitation-actions";
 // skipped on every refresh after the first. getLotsWithFinancials calls
 // requireOCAccess, which throws on denial, and the hook reports that as an
 // error rather than blanking the page.
+//
+// EVERYTHING GOES IN ONE Promise.all. The refresh bar is visible for exactly
+// as long as this function takes, so every avoidable sequential round trip is
+// a longer gold line. Invitation status used to run afterwards because it was
+// keyed off the lot ids this function had just read; getLotInvitationStatusByOc
+// scopes by oc_id instead, which removes that dependency entirely.
 
 export interface LotsPageData {
   lots: LotWithFinancials[];
@@ -22,29 +27,20 @@ export interface LotsPageData {
 }
 
 export async function getLotsPageData(ocId: string): Promise<LotsPageData> {
-  // getLotsWithFinancials calls requireOCAccess itself, and it is memoised
-  // per request, so there is no separate check here to pay for.
-  const [oc, lots, profile] = await Promise.all([
+  const [oc, lots, profile, inviteMap] = await Promise.all([
     getOC(ocId),
     getLotsWithFinancials(ocId),
     getCurrentProfile(),
+    getLotInvitationStatusByOc(ocId),
   ]);
   if (!oc) throw new Error("This Owners Corporation is no longer available.");
 
-  // Invitation status is a second query keyed off the lots we just read, so
-  // it can't join the Promise.all above.
-  const raw =
-    lots.length > 0
-      ? await getLotInvitationStatus(ocId, lots.map((l) => l.id))
-      : ({} as Record<string, string>);
-
+  // The map is oc-wide, so narrow it to the lots actually on screen. Cheap in
+  // memory and keeps the payload the hook caches to what the page renders.
   const inviteStatus: Record<string, string> = {};
-  if (raw instanceof Map) {
-    raw.forEach((v, k) => {
-      inviteStatus[k] = String(v);
-    });
-  } else if (raw && typeof raw === "object") {
-    for (const [k, v] of Object.entries(raw)) inviteStatus[k] = String(v);
+  for (const lot of lots) {
+    const status = inviteMap.get(lot.id);
+    if (status) inviteStatus[lot.id] = status;
   }
 
   return {

@@ -4,7 +4,7 @@ import { useCallback } from "react";
 import { useCachedData } from "@/lib/use-cached-data";
 import { DocumentManager } from "@/components/shared/document-manager";
 import { getDocumentsPageData, type DocumentsPageData } from "./data";
-import DocumentsLoading from "./loading";
+import { DocumentsSkeleton } from "./documents-skeleton";
 
 // Client half of the documents library. Returning to this page paints the
 // previous document list, INCLUDING an empty one, straight out of the tab
@@ -12,15 +12,11 @@ import DocumentsLoading from "./loading";
 // so a second visit shows it immediately with the bar running rather than
 // flashing skeletons at a question it has already answered.
 
-export function DocumentsClient({ ocId, pathname }: { ocId: string; pathname: string }) {
+export function DocumentsClient({ ocId }: { ocId: string }) {
   const fetcher = useCallback(() => getDocumentsPageData(ocId), [ocId]);
-  const { data, loading } = useCachedData<DocumentsPageData>(
-    `documents:${ocId}`,
-    fetcher,
-    { pathname },
-  );
+  const { data, loading } = useCachedData<DocumentsPageData>(`documents:${ocId}`, fetcher);
 
-  if (loading || !data) return <DocumentsLoading />;
+  if (loading || !data) return <DocumentsSkeleton />;
 
   return (
     <div className="space-y-6">

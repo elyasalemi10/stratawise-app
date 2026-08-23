@@ -54,11 +54,22 @@ export async function getLotOwners(
   // email/name/phone over the older entity-model rows. The historical
   // `lot_ownerships → owners` data still feeds the portal-user link
   // (member vs pending), but the contact details follow lot_owners.
-  const { data: contacts } = await supabase
-    .from("lot_owners")
-    .select("lot_id, name, email, phone, ownership_since")
-    .in("lot_id", lotIds)
-    .order("ownership_since", { ascending: false, nullsFirst: false });
+  // These two reads are independent of each other , only the oc_members
+  // fallback further down depends on their combined result , so they go in
+  // parallel. Sequentially they cost two round trips at ~55ms each on every
+  // lots page load.
+  const [{ data: contacts }, { data: ownerships }] = await Promise.all([
+    supabase
+      .from("lot_owners")
+      .select("lot_id, name, email, phone, ownership_since")
+      .in("lot_id", lotIds)
+      .order("ownership_since", { ascending: false, nullsFirst: false }),
+    supabase
+      .from("lot_ownerships")
+      .select("lot_id, owners!inner(id, name, email, phone, profile_id)")
+      .in("lot_id", lotIds)
+      .is("end_date", null),
+  ]);
 
   const contactByLot = new Map<string, { name: string | null; email: string | null; phone: string | null }>();
   for (const c of contacts ?? []) {
@@ -79,11 +90,6 @@ export async function getLotOwners(
   // For OCs created post-entity-migration, every captured owner has an
   // active lot_ownership pointing at an owner row. profile_id != null on
   // the owner row means they've accepted a portal invite (= "member").
-  const { data: ownerships } = await supabase
-    .from("lot_ownerships")
-    .select("lot_id, owners!inner(id, name, email, phone, profile_id)")
-    .in("lot_id", lotIds)
-    .is("end_date", null);
 
   for (const lo of ownerships ?? []) {
     if (!lo.lot_id) continue;

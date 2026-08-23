@@ -19,5 +19,5 @@ export default async function LotsPage({
   const resolved = await resolveOCFromCode(ocCode);
   if (!resolved) redirect("/dashboard");
 
-  return <LotsClient ocId={resolved.id} pathname={`/ocs/${ocCode}/lots`} />;
+  return <LotsClient ocId={resolved.id} />;
 }

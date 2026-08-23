@@ -14,5 +14,5 @@ export default async function DocumentsPage({
   const resolved = await resolveOCFromCode(ocCode);
   if (!resolved) redirect("/dashboard");
 
-  return <DocumentsClient ocId={resolved.id} pathname={`/ocs/${ocCode}/documents`} />;
+  return <DocumentsClient ocId={resolved.id} />;
 }
