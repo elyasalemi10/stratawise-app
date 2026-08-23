@@ -1,19 +1,16 @@
-// Deliberately renders nothing.
+import { LotsSkeleton } from "./lots-skeleton";
+
+// Renders the SAME skeleton the client renders.
 //
-// page.tsx is a shell: it resolves the OC code and fetches no page data, so
-// there is nothing here worth covering with a skeleton. The skeleton belongs
-// to LotsClient, which is the thing that actually knows whether there is
-// cached data to show instead.
+// This covers the gap while the server shell streams. Returning null here
+// instead left a blank grey page for the length of that round trip, then the
+// skeleton appeared once the client mounted, which is a worse first frame
+// than a shimmer that is already correct.
 //
-// Rendering the skeleton here as well caused two visible problems:
-//   1. Two mounts of the same skeleton with a blank gap between them, because
-//      <Skeleton>'s 200ms anti-flash delay restarts on each mount.
-//   2. A skeleton flash when RETURNING to a page whose data is already in the
-//      tab cache. loading.tsx runs while the server shell streams, before
-//      LotsClient can paint from cache, so a cache hit still flashed.
-//
-// CLAUDE.md requires a loading.tsx on every route that does server work; this
-// satisfies that while letting the client own the loading state.
+// Rendering it in both places used to cause a visible double-flash, but only
+// because <Skeleton> waited 200ms before showing and that delay restarted on
+// the second mount. Skeleton now paints immediately, so the handover from
+// this boundary to LotsClient is continuous.
 export default function LotsLoading() {
-  return null;
+  return <LotsSkeleton />;
 }
