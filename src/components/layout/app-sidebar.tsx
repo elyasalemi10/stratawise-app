@@ -219,6 +219,7 @@ function SimpleDropdown({
   matchWidth = false,
   closeOnClick = true,
   onClose,
+  closeRef,
 }: {
   trigger: React.ReactNode;
   children: React.ReactNode;
@@ -232,8 +233,16 @@ function SimpleDropdown({
    *  or selecting an item with closeOnClick=true). Lets callers reset
    *  ephemeral state like a search query so the next open starts clean. */
   onClose?: () => void;
+  /** Filled with a function that closes the panel, so a parent can dismiss
+   *  it directly instead of relying on a click bubbling through the portal.
+   *  The OC switcher uses this to close BEFORE it navigates. */
+  closeRef?: React.MutableRefObject<(() => void) | null>;
 }) {
   const [open, setOpen] = useState(false);
+  // `open` is also mirrored in a ref. The trigger's toggle reads the ref
+  // rather than the render-time closure, so a click that arrives while a
+  // close is already in flight can never flip it back open.
+  const openRef = useRef(false);
   // `mounted` keeps the panel in the DOM during the exit animation so it
   // can fade out before being removed. `open` drives the animation
   // direction (true → animate-in, false → animate-out). After the
@@ -246,9 +255,27 @@ function SimpleDropdown({
   useEffect(() => { onCloseRef.current = onClose; }, [onClose]);
 
   function closePanel() {
+    openRef.current = false;
     setOpen(false);
     onCloseRef.current?.();
   }
+
+  function openPanel() {
+    openRef.current = true;
+    setOpen(true);
+  }
+
+  useEffect(() => {
+    if (!closeRef) return;
+    closeRef.current = () => {
+      openRef.current = false;
+      setOpen(false);
+      onCloseRef.current?.();
+    };
+    return () => {
+      closeRef.current = null;
+    };
+  }, [closeRef]);
 
   // Drive mount/unmount around `open` so the exit animation actually
   // plays. Animation duration is 120ms (matches the in-animation).
@@ -310,7 +337,12 @@ function SimpleDropdown({
 
   return (
     <div ref={wrapperRef} className="relative">
-      <div onClick={() => (open ? closePanel() : setOpen(true))} className="cursor-pointer">{trigger}</div>
+      <div
+        onClick={() => (openRef.current ? closePanel() : openPanel())}
+        className="cursor-pointer"
+      >
+        {trigger}
+      </div>
       {mounted && typeof window !== "undefined" && createPortal(
         <div
           ref={panelRef}
@@ -689,6 +721,10 @@ export function AppSidebar({
   // the profile loads (will be re-keyed on next render).
   const { pins, togglePin, isPinned } = usePinnedOCs(profile?.userEmail ?? null);
   const [switcherQuery, setSwitcherQuery] = useState("");
+  const switcherCloseRef = useRef<(() => void) | null>(null);
+  function closeSwitcher() {
+    switcherCloseRef.current?.();
+  }
 
   // Accordion: only ONE group open at a time. null = all collapsed. Picking a
   // new group auto-closes the previous one. NOT persisted , each page load
@@ -792,8 +828,15 @@ export function AppSidebar({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [pathname, searchParams, isInOC]);
 
-  // Smart oc switching , preserve current sub-page
+  // Smart oc switching , preserve current sub-page.
+  //
+  // Closes the panel EXPLICITLY before navigating. It used to rely on the
+  // click bubbling through the portal to SimpleDropdown's closeOnClick,
+  // which left the dismiss racing a route change: the panel was still
+  // mounted playing its 120ms exit animation while the new route re-rendered
+  // the sidebar, which is what made it look like it flickered away and back.
   function switchOC(newCode: string | null) {
+    closeSwitcher();
     if (newCode === null) {
       router.push("/dashboard");
       return;
@@ -815,6 +858,7 @@ export function AppSidebar({
           <SidebarMenuItem>
             <SimpleDropdown
               side="right"
+              closeRef={switcherCloseRef}
               // Auto-dismiss on any click inside the panel. The search
               // input and pin star already e.stopPropagation() so they
               // stay interactive without dismissing.
