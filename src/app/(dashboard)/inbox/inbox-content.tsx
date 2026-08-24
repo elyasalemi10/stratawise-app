@@ -3,12 +3,10 @@
 import Image from "next/image";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import {
   Inbox,
-  Check,
-  RefreshCw,
   FileText,
   Shield,
   CalendarDays,
@@ -52,7 +50,6 @@ import { cn } from "@/lib/utils";
 import { formatDateLong } from "@/lib/utils";
 import {
   markAsRead,
-  markAllAsRead,
   type Notification,
 } from "@/lib/actions/notifications";
 import {
@@ -166,66 +163,18 @@ export function InboxContent({
   const searchParams = useSearchParams();
   const [notifications, setNotifications] = useState(initial);
   const [openId, setOpenId] = useState<string | null>(null);
-  // Manual + auto refresh. `refreshing` drives the button's spinner;
-  // `lastRefreshAt` is updated after each successful refresh so the
-  // "Refreshed Xs ago" label stays honest. Auto-poll fires every 60s
-  // when the tab is visible (skipped when the user has tabbed away).
-  const [refreshing, setRefreshing] = useState(false);
-  const [lastRefreshAt, setLastRefreshAt] = useState<number>(() => Date.now());
+  // This component used to run its own 60s router.refresh() poll, plus a
+  // visibility listener that refreshed on tab focus, plus a manual Refresh
+  // button. All three are gone.
+  //
+  // The page is served by useCachedData now, which already polls every 30s,
+  // already re-fetches the moment the tab becomes visible, and does it for
+  // this page's key alone. router.refresh() clears the client Router Cache
+  // for EVERY route, so the old poll was quietly making the whole app cold
+  // once a minute for as long as the inbox sat open in a tab.
 
-  const handleRefresh = useCallback(() => {
-    setRefreshing(true);
-    router.refresh();
-    setLastRefreshAt(Date.now());
-    // router.refresh() resolves synchronously; the server fetch happens
-    // out of band. Drop the spinner after a short delay so users see
-    // it long enough to register the click.
-    window.setTimeout(() => setRefreshing(false), 600);
-  }, [router]);
-
-  // Auto-refresh every 60s while the tab is visible. Pause when hidden
-  // so background tabs don't keep hitting the server. The visibility
-  // listener also fires an immediate refresh when the tab is re-shown
-  // (managers who come back after lunch get fresh state instantly).
-  useEffect(() => {
-    const POLL_MS = 60_000;
-    let intervalId: number | null = null;
-    function start() {
-      if (intervalId != null) return;
-      intervalId = window.setInterval(() => {
-        if (!document.hidden) {
-          router.refresh();
-          setLastRefreshAt(Date.now());
-        }
-      }, POLL_MS);
-    }
-    function stop() {
-      if (intervalId != null) {
-        window.clearInterval(intervalId);
-        intervalId = null;
-      }
-    }
-    function onVisibilityChange() {
-      if (document.hidden) {
-        stop();
-      } else {
-        // Re-show → fresh data + restart the poll.
-        router.refresh();
-        setLastRefreshAt(Date.now());
-        start();
-      }
-    }
-    start();
-    document.addEventListener("visibilitychange", onVisibilityChange);
-    return () => {
-      stop();
-      document.removeEventListener("visibilitychange", onVisibilityChange);
-    };
-  }, [router]);
-
-  // Sync local notifications with server-rendered prop after every
-  // router.refresh , without this the auto-refresh runs but the list
-  // stays stale because we never read the new prop.
+  // Keep the list in step with the prop, which the cache hook re-supplies
+  // after each background re-fetch.
   useEffect(() => {
     setNotifications(initial);
   }, [initial]);
@@ -239,7 +188,6 @@ export function InboxContent({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [urlOpenId]);
 
-  const unreadCount = notifications.filter((n) => !n.read_at).length;
   const openNotification = notifications.find((n) => n.id === openId) ?? null;
 
   async function handleOpen(notification: Notification) {
@@ -266,12 +214,6 @@ export function InboxContent({
     window.history.replaceState(null, "", url.toString());
   }
 
-  async function handleMarkAllRead() {
-    await markAllAsRead();
-    setNotifications((prev) =>
-      prev.map((n) => ({ ...n, read_at: n.read_at ?? new Date().toISOString() })),
-    );
-  }
 
   async function handleRemove(notificationId: string) {
     const res = await removeInboxEmail(notificationId);
@@ -305,39 +247,11 @@ export function InboxContent({
         )}
       >
         <CardContent className="p-0 flex flex-col min-h-0 flex-1">
-          <div className="flex items-center justify-between gap-2 border-b border-border bg-muted/40 px-3 py-2 shrink-0">
-            <p className="text-xs text-muted-foreground">
-              {unreadCount > 0 ? `${unreadCount} unread` : `${notifications.length} total`}
-            </p>
-            <div className="flex items-center gap-1">
-              {/* Manual refresh , checks for new inbound mail without
-                  changing read state. Auto-refresh fires every 60s in
-                  the background; this button is the manager's escape
-                  hatch when something arrives mid-call. */}
-              <Button
-                variant="ghost"
-                size="sm"
-                onClick={handleRefresh}
-                disabled={refreshing}
-                className="h-7 cursor-pointer text-xs"
-                title={`Last refreshed ${Math.max(0, Math.round((Date.now() - lastRefreshAt) / 1000))}s ago`}
-              >
-                <RefreshCw className={`mr-1 size-3 ${refreshing ? "animate-spin" : ""}`} />
-                Refresh
-              </Button>
-              {unreadCount > 0 && (
-                <Button
-                  variant="ghost"
-                  size="sm"
-                  onClick={handleMarkAllRead}
-                  className="h-7 cursor-pointer text-xs"
-                >
-                  <Check className="mr-1 size-3" />
-                  Mark all read
-                </Button>
-              )}
-            </div>
-          </div>
+          {/* No header bar. The unread count, the manual Refresh and
+              "Mark all read" were all removed: the list already shows which
+              rows are unread, and useCachedData re-fetches this page every
+              30s and again the moment the tab regains focus, so a manual
+              refresh button does nothing the page is not already doing. */}
           {/* Scroll-hidden list , content fills the panel and you scroll by
               wheel / touchpad / arrow keys. No visible bar (matches the
               global no-scrollbar treatment for body / dashboard <main>). */}
@@ -688,7 +602,7 @@ function EmailDetailPane({
             <p className="text-foreground">
               <span className="text-muted-foreground">From: </span>
               <span className="font-medium break-all">
-                {detail.sender_email || ","}
+                {detail.sender_email || ""}
               </span>
             </p>
             <p className="text-foreground">
@@ -726,33 +640,46 @@ function EmailDetailPane({
           )}
         </div>
 
-        {/* Original outbound thread, if matched */}
+        {/* The outbound message this reply answers.
+            Presented exactly like the email above it: the same label-prefixed
+            address lines and the same bordered body panel. It used to be a
+            collapsed <details> with an ALL-CAPS summary, which read as a
+            different kind of object entirely, and hid the one piece of
+            context that makes the reply make sense. */}
         {detail.outbound && (
-          <details className="rounded-md border border-border bg-card">
-            <summary className="cursor-pointer px-3 py-2 text-xs font-medium uppercase tracking-wide text-muted-foreground">
-              In reply to ,{" "}
-              {detail.outbound.subject ?? "(no subject)"}
+          <div className="space-y-3 border-t border-border pt-4">
+            <p className="text-sm font-semibold text-foreground">Replying To</p>
+
+            <div className="space-y-1.5 text-sm">
+              <p className="text-foreground">
+                <span className="text-muted-foreground">Subject: </span>
+                <span className="font-medium break-all">
+                  {detail.outbound.subject ?? ""}
+                </span>
+              </p>
               {detail.outbound.sent_at && (
-                <> · {formatDateLong(detail.outbound.sent_at)}</>
+                <p className="text-foreground">
+                  <span className="text-muted-foreground">Sent: </span>
+                  <span>{formatDateLong(detail.outbound.sent_at)}</span>
+                </p>
               )}
-            </summary>
-            <div className="border-t border-border p-3 text-sm text-muted-foreground prose prose-sm max-w-none prose-headings:text-foreground prose-a:text-blue-600">
+            </div>
+
+            <div className="rounded-md border border-border bg-cool-muted p-4 max-h-[40rem] overflow-y-auto text-sm leading-relaxed text-foreground prose prose-sm max-w-none prose-headings:text-foreground prose-strong:text-foreground prose-a:text-blue-600">
               {detail.outbound.body ? (
                 <ReactMarkdown remarkPlugins={[remarkGfm]}>
                   {detail.outbound.body}
                 </ReactMarkdown>
               ) : (
-                "(no body)"
+                <p className="text-muted-foreground">(empty)</p>
               )}
             </div>
-          </details>
+          </div>
         )}
 
         {detail.attachments.length > 0 && (
           <div className="space-y-1.5">
-            <p className="text-xs uppercase tracking-wide text-muted-foreground">
-              Attachments
-            </p>
+            <p className="text-sm font-semibold text-foreground">Attachments</p>
             <ul className="space-y-1">
               {detail.attachments.map((att) => (
                 <li key={att.id}>
