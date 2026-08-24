@@ -105,8 +105,14 @@ export function clearCachedData(): void {
  *  A pattern list has no ordering dependency and is greppable: when a page
  *  is converted to useCachedData, add its route here. */
 const CLIENT_CACHED_ROUTES: RegExp[] = [
+  /^\/ocs$/,
   /^\/ocs\/[^/]+\/lots$/,
   /^\/ocs\/[^/]+\/documents$/,
+  /^\/contractors$/,
+  /^\/chart-of-accounts$/,
+  /^\/maintenance$/,
+  /^\/inbox$/,
+  /^\/dashboard$/,
 ];
 
 export function isClientCached(pathname: string): boolean {

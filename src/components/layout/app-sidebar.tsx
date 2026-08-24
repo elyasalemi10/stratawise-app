@@ -851,7 +851,10 @@ export function AppSidebar({
   }
 
   return (
-    <Sidebar collapsible="offcanvas" {...props}>
+    // collapsible="icon" keeps a narrow rail of icons when collapsed.
+    // "offcanvas" removed the whole sidebar, which loses the nav entirely
+    // and makes the collapse feel like a mistake rather than a mode.
+    <Sidebar collapsible="icon" {...props}>
       {/* Dashboard switcher , styled like shadcn TeamSwitcher */}
       <SidebarHeader className="p-2">
         <SidebarMenu>

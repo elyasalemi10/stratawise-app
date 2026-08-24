@@ -1,4 +1,5 @@
-import { Archive, CheckCircle2, PauseCircle } from "lucide-react";
+import Image from "next/image";
+import { Archive, PauseCircle } from "lucide-react";
 
 // Owners Corporation status, as an icon rather than a pill.
 //
@@ -20,21 +21,31 @@ export const SUBDIVISION_STATUS_LABEL: Record<SubdivisionStatus, string> = {
   suspended: "Suspended",
 };
 
-const ICONS: Record<SubdivisionStatus, { Icon: typeof CheckCircle2; className: string }> = {
-  active: { Icon: CheckCircle2, className: "text-green-600" },
+// Active uses the supplied /tick.svg so the tick matches the brand asset
+// rather than lucide's outline check. The other two stay on lucide, which
+// has no equivalent bespoke asset.
+const FALLBACK = {
   suspended: { Icon: PauseCircle, className: "text-[color:var(--warning)]" },
   archived: { Icon: Archive, className: "text-muted-foreground" },
-};
+} as const;
 
 export function OCStatusIcon({ status }: { status: string | null | undefined }) {
   const key = (status ?? "active") as SubdivisionStatus;
-  const entry = ICONS[key] ?? ICONS.active;
   const label = SUBDIVISION_STATUS_LABEL[key] ?? SUBDIVISION_STATUS_LABEL.active;
-  const { Icon, className } = entry;
 
+  if (key !== "suspended" && key !== "archived") {
+    return (
+      <span className="shrink-0" title={label}>
+        <Image src="/tick.svg" alt="" width={28} height={28} className="size-7" aria-hidden />
+        <span className="sr-only">{label}</span>
+      </span>
+    );
+  }
+
+  const { Icon, className } = FALLBACK[key];
   return (
     <span className="shrink-0" title={label}>
-      <Icon className={`size-4 ${className}`} aria-hidden />
+      <Icon className={`size-7 ${className}`} aria-hidden />
       <span className="sr-only">{label}</span>
     </span>
   );
