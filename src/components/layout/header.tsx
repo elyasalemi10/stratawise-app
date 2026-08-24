@@ -4,7 +4,6 @@ import { useEffect } from "react";
 import { usePathname } from "next/navigation";
 import Link from "next/link";
 import { NotificationBell } from "./notification-bell";
-import { DocumentSearch } from "./document-search";
 import {
   setCachedOCs,
   SIDEBAR_REFRESH_EVENT,
@@ -191,11 +190,11 @@ export function Header({ initialOCs }: HeaderProps) {
         })}
       </nav>
 
-      {/* Global document search , middle. Falls back to the page title when no
-          query is active. */}
-      <div className="flex justify-center min-w-0">
-        <DocumentSearch />
-      </div>
+      {/* Middle column left intentionally empty. The global document search
+          used to sit here; the sidebar switcher and breadcrumb already say
+          where you are, and a search box on every screen was answering a
+          question nobody was asking. */}
+      <div className="min-w-0" />
 
       {/* Notification bell , right. Center title was removed: the sidebar's
           larger switcher already shows the current dashboard. */}

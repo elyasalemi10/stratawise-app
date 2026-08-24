@@ -3,6 +3,7 @@ import { Suspense } from "react";
 import Link from "next/link";
 import { Building2, DollarSign, Users, Plus, MapPin, AlertTriangle, CheckCircle2, ArrowRight, History } from "lucide-react";
 import { WelcomeConfetti } from "./_components/welcome-confetti";
+import { OCStatusIcon } from "@/components/shared/oc-status-icon";
 import { getCurrentProfile } from "@/lib/auth";
 import { getCompanyOCSummary } from "@/lib/actions/oc";
 import { createServerClient } from "@/lib/supabase";
@@ -346,6 +347,13 @@ export default async function DashboardPage() {
         <WelcomeConfetti />
       </Suspense>
 
+      {/* The one place an H1 is right on a list-ish page: it is not repeating
+          the breadcrumb, it is addressing the person. Falls back to a plain
+          "Welcome back" when the profile has no first name yet. */}
+      <h1 className="text-2xl font-semibold tracking-tight text-foreground">
+        {profile.first_name ? `Welcome back, ${profile.first_name}` : "Welcome back"}
+      </h1>
+
       {/* Company KPIs */}
       <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
         <KPICard
@@ -419,28 +427,19 @@ export default async function DashboardPage() {
             >
               <Card className="transition-colors hover:border-primary/30 cursor-pointer">
                 <CardContent className="pt-5">
-                  <div className="flex items-start justify-between">
-                    <div className="flex-1 min-w-0">
-                      <div className="flex items-center gap-2">
-                        <h3 className="text-sm font-semibold text-foreground truncate">
-                          {sub.name}
-                        </h3>
-                        <Badge variant="neutral" className="shrink-0">
-                          {sub.status}
-                        </Badge>
-                      </div>
+                  <div className="flex items-start justify-between gap-2">
+                    <div className="min-w-0">
+                      <h3 className="text-sm font-semibold text-foreground truncate">
+                        {sub.name}
+                      </h3>
                       <p className="mt-1 text-xs text-muted-foreground">
                         {sub.plan_number}
                       </p>
                     </div>
+                    <OCStatusIcon status={sub.status} />
                   </div>
 
-                  <div className="mt-4 flex items-center gap-1 text-xs text-muted-foreground">
-                    <MapPin className="h-3 w-3" />
-                    <span className="truncate">{sub.address}</span>
-                  </div>
-
-                  <div className="mt-3 flex items-center gap-4 border-t border-border pt-3">
+                  <div className="mt-4 flex items-center gap-4 border-t border-border pt-3">
                     <div>
                       <p className="text-lg font-bold tabular-nums text-foreground">
                         {sub.total_lots}

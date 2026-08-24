@@ -225,7 +225,18 @@ function StaleWhileRevalidate() {
   const doneRef = useRef<(() => void) | null>(null);
   const failsafeRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
-  const key = `${pathname}?${searchParams}`;
+  // `tab` is excluded from the key on purpose. Per CLAUDE.md every tabbed
+  // page renders ALL tabs at once and hides the inactive ones with CSS, so
+  // switching tabs changes nothing the server decides. Including it made
+  // each tab of /settings look like a separate page, so every tab click
+  // fired its own refresh and its own gold bar.
+  const revalidationKey = (() => {
+    const p = new URLSearchParams(searchParams.toString());
+    p.delete("tab");
+    const q = p.toString();
+    return q ? `${pathname}?${q}` : pathname;
+  })();
+  const key = revalidationKey;
   // A page served by useCachedData owns its own freshness. Refreshing it
   // through the router as well would double-fetch AND wipe the Router Cache
   // for every other route, which is the exact behaviour the client cache
@@ -268,25 +279,23 @@ function StaleWhileRevalidate() {
     [key, router, settle],
   );
 
-  // Arrival.
+  // Arrival. Mirrors useCachedData exactly, so a converted page and an
+  // unconverted one behave identically.
   //
-  // First time this URL has been seen this session: there is no cache, so
-  // there is nothing on screen to caveat and no bar. loading.tsx already
-  // covered it with skeletons.
+  // First time this URL has been seen: no cache, nothing to caveat, no bar.
   //
-  // Every RETURN to a URL seen before: the router cache paints the previous
-  // data instantly, and this fetch checks whether it is still correct. That
-  // is the whole job of the bar, so it runs on every return with no age
-  // threshold , "I have been here before" is the entire condition. If the
-  // data comes back identical, nothing on screen changes and the bar just
-  // stops, which is the correct outcome, not a wasted trip.
+  // Return: always re-fetch, but only ANNOUNCE it when the copy is older
+  // than one poll interval. Under that, had you stayed on the page the 30s
+  // poll would not have fired either, so there is nothing worth a bar and
+  // firing one on every hop is just noise.
   useEffect(() => {
     if (skip) return;
-    if (!lastLoadedAt.has(key)) {
+    const previous = lastLoadedAt.get(key);
+    if (previous === undefined) {
       markLoaded(key, Date.now()); // first visit: no cache, no bar
       return;
     }
-    revalidate(true);
+    revalidate(Date.now() - previous >= REVALIDATE_INTERVAL_MS);
   }, [key, skip, revalidate]);
 
   // While the page sits open in front of someone, keep it current. Silent:
