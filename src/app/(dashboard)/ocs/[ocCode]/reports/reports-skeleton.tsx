@@ -1,19 +1,20 @@
+import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Label } from "@/components/ui/label";
 import { Select, SelectTrigger, SelectValue } from "@/components/ui/select";
 
-// No shimmer here on purpose.
+// No shimmer here on purpose. Nothing on this page shimmers, because nothing
+// on it is server data until you pick a report.
 //
-// Everything visible on first paint is fixed: the "Reports" heading, the
-// "Report type" label, and the picker itself. The nine report types are a
-// hardcoded REPORTS array in reports-content.tsx, and the server data (the
-// lot list) only fills a secondary dropdown that appears after you have
-// chosen a report. There is no page of content arriving, so a skeleton would
-// be animating a wait that produces nothing visible.
+// The heading, the "Report type" label, the picker, the Generate button and
+// the "select a report" panel are all fixed, so all five render for real. The
+// nine report types are a hardcoded REPORTS array in reports-content.tsx; the
+// server data (the lot list) only fills a secondary dropdown that appears
+// after a report is chosen.
 //
-// The picker is the real <Select>, disabled, rather than a div dressed up to
-// look like one. That way the handover to reports-content.tsx changes one
-// thing (the control becomes usable) instead of swapping the element out.
+// The controls are real components, disabled, rather than divs dressed up to
+// look like them, so the handover to reports-content.tsx changes exactly one
+// thing: they become usable.
 //
 // Mirrors reports-content.tsx.
 
@@ -25,7 +26,7 @@ export function ReportsSkeleton() {
       <Card>
         <CardContent className="pt-5">
           <div className="flex flex-wrap items-end gap-4">
-            <div className="space-y-1.5 flex-1 min-w-[200px]">
+            <div className="min-w-[200px] flex-1 space-y-1.5">
               <Label>Report type</Label>
               <Select disabled>
                 <SelectTrigger className="h-9 w-full">
@@ -33,7 +34,17 @@ export function ReportsSkeleton() {
                 </SelectTrigger>
               </Select>
             </div>
+
+            <Button disabled>Generate report</Button>
           </div>
+        </CardContent>
+      </Card>
+
+      <Card>
+        <CardContent className="flex items-center justify-center py-16">
+          <p className="text-sm text-muted-foreground">
+            Select a report type and click generate to preview.
+          </p>
         </CardContent>
       </Card>
     </div>

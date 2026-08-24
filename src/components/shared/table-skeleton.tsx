@@ -1,3 +1,4 @@
+import { cn } from "@/lib/utils";
 import { Skeleton } from "@/components/ui/skeleton";
 import {
   Table,
@@ -54,16 +55,22 @@ export function TableSkeleton({
           {Array.from({ length: rows }).map((_, i) => (
             <TableRow key={i}>
               {columns.map((c) => (
+                // Right-aligned cells align their shimmer with ml-auto, NOT
+                // by making the cell a flex container. `display:flex` on a
+                // <td> takes it out of the table layout algorithm, so a run
+                // of right-aligned columns stops claiming its own width and
+                // the shimmers pile up in the first one. Three money columns
+                // in a row (Operating / Maintenance / Other) rendered as
+                // three pills stacked in Operating.
                 <TableCell
                   key={c.label}
-                  className={c.align === "right" ? "flex justify-end" : undefined}
+                  className={c.align === "right" ? "text-right" : undefined}
                 >
                   <Skeleton
-                    className={
-                      c.pill
-                        ? "h-5 w-20 rounded-full"
-                        : `h-3.5 ${c.cell ?? "w-24"}`
-                    }
+                    className={cn(
+                      c.pill ? "h-5 w-20 rounded-full" : `h-3.5 ${c.cell ?? "w-24"}`,
+                      c.align === "right" && "ml-auto",
+                    )}
                   />
                 </TableCell>
               ))}

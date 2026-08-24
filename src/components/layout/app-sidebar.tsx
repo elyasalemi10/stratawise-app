@@ -236,7 +236,7 @@ function SimpleDropdown({
   /** Filled with a function that closes the panel, so a parent can dismiss
    *  it directly instead of relying on a click bubbling through the portal.
    *  The OC switcher uses this to close BEFORE it navigates. */
-  closeRef?: React.MutableRefObject<((immediate?: boolean) => void) | null>;
+  closeRef?: React.MutableRefObject<(() => void) | null>;
 }) {
   const [open, setOpen] = useState(false);
   // `open` is also mirrored in a ref. The trigger's toggle reads the ref
@@ -267,18 +267,9 @@ function SimpleDropdown({
 
   useEffect(() => {
     if (!closeRef) return;
-    // `immediate` drops the panel in the SAME commit instead of leaving it
-    // mounted for the 120ms exit animation. Callers that are about to
-    // navigate use it: an animating panel outlives the click by more than a
-    // frame, which leaves a window where a concurrent re-render of the
-    // sidebar (a route change, a router.refresh(), new layout props) can
-    // interleave with the dismissal. That window is what made the switcher
-    // look like it vanished and came back. Closing in one commit removes the
-    // window rather than trying to win the race inside it.
-    closeRef.current = (immediate?: boolean) => {
+    closeRef.current = () => {
       openRef.current = false;
       setOpen(false);
-      if (immediate) setMounted(false);
       onCloseRef.current?.();
     };
     return () => {
@@ -730,9 +721,9 @@ export function AppSidebar({
   // the profile loads (will be re-keyed on next render).
   const { pins, togglePin, isPinned } = usePinnedOCs(profile?.userEmail ?? null);
   const [switcherQuery, setSwitcherQuery] = useState("");
-  const switcherCloseRef = useRef<((immediate?: boolean) => void) | null>(null);
-  function closeSwitcher(immediate?: boolean) {
-    switcherCloseRef.current?.(immediate);
+  const switcherCloseRef = useRef<(() => void) | null>(null);
+  function closeSwitcher() {
+    switcherCloseRef.current?.();
   }
 
   // Accordion: only ONE group open at a time. null = all collapsed. Picking a
@@ -839,22 +830,14 @@ export function AppSidebar({
 
   // Smart oc switching , preserve current sub-page.
   //
-  // Two things keep the dismissal out of the route change's way:
-  //
-  //   1. closeSwitcher(true) unmounts the panel in the same commit rather
-  //      than leaving it up for its 120ms exit animation. An animating panel
-  //      outlives the click, and anything that re-renders the sidebar in that
-  //      window (the new route, a router.refresh(), fresh layout props) lands
-  //      on a half-dismissed panel.
-  //   2. The push waits a frame, so the browser has painted the panel gone
-  //      before any route work starts. Navigating in the same tick puts the
-  //      dismissal and the transition in one batch, where React is free to
-  //      order them either way.
-  //
-  // Between them there is no window left for the two to interleave, which is
-  // what the flicker was.
+  // The panel keeps its 120ms fade-out; the dismissal just has to be
+  // COMMITTED before the route change starts. Pushing in the same tick put
+  // the two in one batch, where React is free to order them either way, and
+  // the panel could re-render mid-dismissal. One frame of deferral (~16ms,
+  // imperceptible) means the close has painted before any route work begins,
+  // so the fade plays out over the new page instead of racing it.
   function navigateFromSwitcher(href: string) {
-    closeSwitcher(true);
+    closeSwitcher();
     requestAnimationFrame(() => router.push(href));
   }
 

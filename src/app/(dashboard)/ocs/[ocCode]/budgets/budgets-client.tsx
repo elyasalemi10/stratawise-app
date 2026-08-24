@@ -14,7 +14,7 @@ export function BudgetsClient({ ocId }: { ocId: string }) {
 
   return (
     <BudgetPageContent
-      ocId={ocId}
+      budgets={data.budgets}
       financialYearStartMonth={data.financialYearStartMonth}
     />
   );

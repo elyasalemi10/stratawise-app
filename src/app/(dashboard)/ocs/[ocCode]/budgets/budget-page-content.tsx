@@ -1,19 +1,18 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useState } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { Plus, PieChart, Search } from "lucide-react";
-import { Card, CardContent } from "@/components/ui/card";
+
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
-import { Skeleton } from "@/components/ui/skeleton";
 import {
   Table, TableBody, TableCell, TableHead, TableHeader, TableRow,
 } from "@/components/ui/table";
 import { EmptyState } from "@/components/shared/empty-state";
-import { getOCBudgets, type BudgetWithItems } from "@/lib/actions/budget";
+import type { BudgetWithItems } from "@/lib/actions/budget";
 import { useOCCode } from "@/lib/oc-context";
 
 const formatCurrency = (n: number) =>
@@ -42,51 +41,21 @@ function fundSplit(budget: BudgetWithItems): {
   return out;
 }
 
+// Budgets arrive as a prop now. This component used to fetch them itself in
+// a useEffect and render its own skeleton while it waited, which meant the
+// page showed two loading states in sequence: the route skeleton, then a
+// grey block. The fetch lives in data.ts with the rest of the page's data.
 export function BudgetPageContent({
-  ocId,
+  budgets,
   financialYearStartMonth,
 }: {
-  ocId: string;
+  budgets: BudgetWithItems[];
   financialYearStartMonth: number;
 }) {
   const ocCode = useOCCode();
-  const [budgets, setBudgets] = useState<BudgetWithItems[]>([]);
-  const [loading, setLoading] = useState(true);
   void financialYearStartMonth;
 
-  useEffect(() => {
-    let mounted = true;
-    (async () => {
-      const buds = await getOCBudgets(ocId);
-      if (mounted) {
-        setBudgets(buds);
-        setLoading(false);
-      }
-    })();
-    return () => { mounted = false; };
-  }, [ocId]);
-
-  if (loading) {
-    return (
-      <div className="space-y-4">
-        <div className="flex items-center justify-end">
-          <Skeleton className="h-8 w-28 rounded-md" />
-        </div>
-        <Card>
-          <CardContent className="pt-5">
-            <Skeleton className="h-40 w-full" />
-          </CardContent>
-        </Card>
-      </div>
-    );
-  }
-
-  return (
-    <BudgetsListView
-      budgets={budgets}
-      ocCode={ocCode}
-    />
-  );
+  return <BudgetsListView budgets={budgets} ocCode={ocCode} />;
 }
 
 // ── List view , search bar, status filter, table ───────────────────
