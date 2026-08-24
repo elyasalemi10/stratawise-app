@@ -1,0 +1,103 @@
+"use server";
+
+import { getOC } from "@/lib/actions/oc";
+import { getLevyBatchDetail } from "@/lib/actions/levy";
+import { requireOCAccess } from "@/lib/auth";
+import { createServerClient } from "@/lib/supabase";
+
+// One aggregate fetch for a levy batch.
+//
+// The auth check lives here, not in page.tsx: page.tsx only runs on the
+// initial shell request, so a check left up there would be skipped on every
+// refresh the client drives afterwards.
+
+export interface BatchDetailPageData {
+  batch: NonNullable<Awaited<ReturnType<typeof getLevyBatchDetail>>>;
+  reminderSentLevyIds: string[];
+  mailboxOptions: Array<{ value: string; label: string }>;
+}
+
+export async function getBatchDetailPageData(
+  ocId: string,
+  batchId: string,
+): Promise<BatchDetailPageData> {
+  await requireOCAccess(ocId);
+
+  const supabase = createServerClient();
+
+  const [oc, batch] = await Promise.all([
+    getOC(ocId),
+    getLevyBatchDetail(ocId, batchId),
+  ]);
+  if (!oc || !batch) throw new Error("Levy batch not found.");
+
+  // Per-levy reminder_sent flag for the LevyStatusBadge, and the mailbox
+  // options for the send dialog. Independent of each other, so one wave.
+  //
+  // Mailboxes are always real email addresses, never a provider name
+  // ("Resend"), so the manager sees exactly what the recipient will see.
+  // Two sources: the firm's connected Gmail mailbox, and the manager's
+  // permanent StrataWise alias. De-duped; the dialog renders a single option
+  // as static text and two or more as a dropdown.
+  const levyIds = batch.levies.map((l) => l.id);
+  const [{ data: escalations }, { data: mcRow }, { data: primaryManagerRow }] =
+    await Promise.all([
+      levyIds.length
+        ? supabase
+            .from("escalation_instances")
+            .select("levy_notice_id, current_step")
+            .in("levy_notice_id", levyIds)
+        : Promise.resolve({ data: [] as Array<{ levy_notice_id: string; current_step: number }> }),
+      supabase
+        .from("management_companies")
+        .select("mail_provider, mail_provider_config")
+        .eq("id", oc.management_company_id)
+        .maybeSingle(),
+      supabase
+        .from("oc_members")
+        .select("profile_id, profiles!inner(email, email_username, first_name, last_name)")
+        .eq("oc_id", ocId)
+        .eq("role", "strata_manager")
+        .is("left_at", null)
+        .order("joined_at", { ascending: true })
+        .limit(1)
+        .maybeSingle(),
+    ]);
+
+  const mailRow = mcRow as {
+    mail_provider: string | null;
+    mail_provider_config: { domain?: string } | null;
+  } | null;
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const primary = (primaryManagerRow as any)?.profiles as
+    | { email: string | null; email_username: string | null }
+    | null;
+  const stratawiseAlias = primary?.email_username
+    ? `${primary.email_username}@stratawise.com.au`
+    : null;
+
+  const mailboxOptions: Array<{ value: string; label: string }> = [];
+  if (mailRow?.mail_provider === "gmail" && primary?.email) {
+    mailboxOptions.push({ value: primary.email, label: primary.email });
+  }
+  if (
+    stratawiseAlias &&
+    !mailboxOptions.some((o) => o.value.toLowerCase() === stratawiseAlias.toLowerCase())
+  ) {
+    mailboxOptions.push({ value: stratawiseAlias, label: stratawiseAlias });
+  }
+  if (mailboxOptions.length === 0) {
+    mailboxOptions.push({
+      value: "noreply@stratawise.com.au",
+      label: "noreply@stratawise.com.au",
+    });
+  }
+
+  return {
+    batch,
+    reminderSentLevyIds: (escalations ?? [])
+      .filter((e) => (e as { current_step: number }).current_step >= 1)
+      .map((e) => (e as { levy_notice_id: string }).levy_notice_id),
+    mailboxOptions,
+  };
+}

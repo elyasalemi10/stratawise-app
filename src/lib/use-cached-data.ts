@@ -93,7 +93,13 @@ export function clearCachedData(): void {
   cache.clear();
 }
 
-/** Routes served by this hook.
+/** Routes the router-based fallback must NOT refresh on arrival.
+ *
+ *  Two kinds qualify, and both want the same treatment:
+ *    - pages served by this hook, which fetch for themselves
+ *    - pages with nothing to revalidate: static copy, pure redirects, and
+ *      forms that own their state client-side (a refresh under one throws
+ *      the user's work away)
  *
  *  STATIC on purpose. This was a runtime Set that each hook registered into
  *  from an effect, which raced: <RefreshBar /> renders before {children} in
@@ -107,6 +113,7 @@ export function clearCachedData(): void {
 const CLIENT_CACHED_ROUTES: RegExp[] = [
   // Firm-level
   /^\/dashboard$/,
+  /^\/dashboard\/past-lots\/[^/]+$/,
   /^\/ocs$/,
   /^\/inbox$/,
   /^\/contractors$/,
@@ -115,14 +122,21 @@ const CLIENT_CACHED_ROUTES: RegExp[] = [
   /^\/trust-accounts$/,
   /^\/levies$/,
   /^\/settings$/,
+  // Static , nothing to fetch, so nothing to revalidate either. Listed so
+  // the router fallback does not fire a pointless refresh on arrival.
+  /^\/meetings$/,
   // Per-OC
   /^\/ocs\/[^/]+$/,
   /^\/ocs\/[^/]+\/lots$/,
+  /^\/ocs\/[^/]+\/lots\/[^/]+$/,
   /^\/ocs\/[^/]+\/documents$/,
   /^\/ocs\/[^/]+\/levies$/,
+  /^\/ocs\/[^/]+\/levies\/[^/]+$/,
   /^\/ocs\/[^/]+\/my-levies$/,
   /^\/ocs\/[^/]+\/budgets$/,
+  /^\/ocs\/[^/]+\/budgets\/[^/]+$/,
   /^\/ocs\/[^/]+\/meetings$/,
+  /^\/ocs\/[^/]+\/meetings\/[^/]+$/,
   /^\/ocs\/[^/]+\/insurance$/,
   /^\/ocs\/[^/]+\/maintenance$/,
   /^\/ocs\/[^/]+\/funds$/,
@@ -130,6 +144,16 @@ const CLIENT_CACHED_ROUTES: RegExp[] = [
   /^\/ocs\/[^/]+\/reconciliation$/,
   /^\/ocs\/[^/]+\/reports$/,
   /^\/ocs\/[^/]+\/rules$/,
+  /^\/ocs\/[^/]+\/settings$/,
+  // Forms, wizards and redirects. Nothing to revalidate, and a refresh under
+  // a half-filled form is destructive. Two of these (budgets/create,
+  // meetings/create) already fell under the detail-page patterns above by
+  // accident; listed explicitly so the intent is legible.
+  /^\/ocs\/[^/]+\/(budgets|funds|meetings)\/create$/,
+  /^\/ocs\/[^/]+\/generate$/,
+  /^\/ocs\/[^/]+\/manage$/,
+  // Static help copy.
+  /^\/help\//,
 ];
 
 export function isClientCached(pathname: string): boolean {
