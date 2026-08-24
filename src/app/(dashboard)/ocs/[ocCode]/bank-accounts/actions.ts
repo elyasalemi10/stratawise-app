@@ -8,7 +8,7 @@ import { autoMatchBankTransactions } from "@/lib/banking/auto-match";
 /**
  * Persist a batch of parsed CSV rows as bank_transactions, then run the
  * two-strategy auto-matcher (DRN → owner reference) on every newly-inserted
- * credit-direction row. Imports themselves stay append-only (no dedup) —
+ * credit-direction row. Imports themselves stay append-only (no dedup),
  * managers re-upload whenever they want a fresh snapshot. Auto-matched rows
  * land at match_status='auto_matched'; everything else stays 'unmatched' and
  * surfaces on the reconciliation queue.
@@ -119,7 +119,7 @@ export async function createBankAccount(
   const supabase = createServerClient();
 
   // If this is the OC's first bank account, auto-link it to the OC's
-  // operating ("admin") fund — that's the account the admin fund draws
+  // operating ("admin") fund, that's the account the admin fund draws
   // to/from. We only do this when there are zero existing bank_accounts;
   // subsequent accounts can be linked from the funds page like usual.
   const { count: existingCount } = await supabase

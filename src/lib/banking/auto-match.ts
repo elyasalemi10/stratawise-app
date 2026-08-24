@@ -45,7 +45,7 @@ interface AutoMatchResult {
  *      → allocates to that lot's oldest open levy notice.
  *   2. Owner-reference scan: description / DRN field substring-matches an
  *      open levy_notice.reference_number (LEV-{n}) or bpay_crn. Single hit
- *      only — multiple hits stay unmatched.
+ *      only, multiple hits stay unmatched.
  *
  * No fuzzy sender matching, no amount-only matching, no bank_payer_mappings
  * fallback (per the cascade restriction the user asked for).
@@ -54,7 +54,7 @@ interface AutoMatchResult {
  * and bank_transactions.match_status / matched_total. It does NOT use
  * rpc_reconcile_bank_transaction because that RPC depends on a ledger /
  * reconciliation_matches stack that isn't built yet. The trade-off is that
- * there's no atomic audit row per match — the audit lives on the
+ * there's no atomic audit row per match, the audit lives on the
  * bank_transaction itself (notes + match_status) and in the levy_notice's
  * amount_paid / status. Good enough until the ledger lands.
  */

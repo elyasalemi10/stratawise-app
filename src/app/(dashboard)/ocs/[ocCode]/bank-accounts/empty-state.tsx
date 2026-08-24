@@ -9,7 +9,7 @@ import { AddBankAccountDrawer } from "./add-bank-account-drawer";
 
 // Shown when the OC has zero bank_accounts rows. The first account created
 // here is intentionally the operating account (the one the admin/operating
-// fund draws to/from) — createBankAccount defaults fund_type to 'operating'
+// fund draws to/from), createBankAccount defaults fund_type to 'operating'
 // and the server action links it to the OC's existing operating fund if one
 // is present.
 export function NoBankAccountsEmpty({ ocId }: { ocId: string }) {

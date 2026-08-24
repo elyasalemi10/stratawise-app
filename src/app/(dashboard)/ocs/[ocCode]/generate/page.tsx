@@ -44,7 +44,7 @@ export default async function GenerateLeviesPage({
 
   if (!oc) redirect("/dashboard");
 
-  // Levies must clear into an operating account — the LEV PDF prints its
+  // Levies must clear into an operating account, the LEV PDF prints its
   // BSB/account on the payment-instructions block and reconciliation needs
   // somewhere to land. Block the wizard until one exists.
   if (!operatingAccount) {

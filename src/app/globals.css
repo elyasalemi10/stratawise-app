@@ -2,7 +2,7 @@
 @import "tw-animate-css";
 @import "shadcn/tailwind.css";
 
-/* Markdown rendering uses Tailwind Typography's `prose` classes — wires
+/* Markdown rendering uses Tailwind Typography's `prose` classes, wires
    up sane defaults for headings, lists, code, links inside the inbox
    email body. Loaded via Tailwind v4's @plugin directive. */
 @plugin "@tailwindcss/typography";
@@ -35,14 +35,14 @@
   --color-muted: var(--muted);
   --color-muted-foreground: var(--muted-foreground);
 
-  /* Cool-muted — system / disabled / technical surfaces (codes, reference
+  /* Cool-muted, system / disabled / technical surfaces (codes, reference
      numbers, read-only fields). Hue intentionally pulled toward midnight
      (~210) so it reads as system-related rather than alien. Distinct from
      --muted (which carries the soft-surface role for stripes / hovers). */
   --color-cool-muted: var(--cool-muted);
   --color-cool-muted-foreground: var(--cool-muted-foreground);
 
-  /* Secondary hover — exposed as a Tailwind utility so table-row hover and
+  /* Secondary hover, exposed as a Tailwind utility so table-row hover and
      button hover share the same darker token. Without this wiring the
      hover value is only reachable as an arbitrary hsl(). */
   --color-secondary-hover: var(--secondary-hover);
@@ -95,20 +95,20 @@
 }
 
 /* ============================================
-   STRATA WISE DESIGN SYSTEM — LIGHT MODE ONLY
+   STRATA WISE DESIGN SYSTEM, LIGHT MODE ONLY
    Brand palette:
-     Midnight (text)   #0E314C  — primary, foreground, sidebar bg
+     Midnight (text)   #0E314C , primary, foreground, sidebar bg
      Paper (cards)     #FFFFFF
      Page bg           #F4F5F7  (cool soft grey)
      Border            #E5E7EB  (cool stone)
-     Gold (accent)     #CFA753  — sidebar-active, PDF accents
+     Gold (accent)     #CFA753 , sidebar-active, PDF accents
      Slate (muted)     #4A5868
    The 2026-05 palette shift swapped warm cream/stone for cool slate-grey to
    stop the page feeling muddy under navy headers and let the gold accent pop.
    ============================================ */
 
 :root {
-  /* Primary — Midnight #0E314C (action colour for buttons + focus) */
+  /* Primary, Midnight #0E314C (action colour for buttons + focus) */
   --primary: hsl(208, 70%, 18%);
   --primary-hover: hsl(208, 70%, 26%);
   --primary-foreground: hsl(0, 0%, 100%);
@@ -118,20 +118,20 @@
   --brand-gold: hsl(40, 57%, 57%);
   --brand-gold-hover: hsl(40, 57%, 47%);
 
-  /* Secondary — cool slate-grey (subtle button bg) */
+  /* Secondary, cool slate-grey (subtle button bg) */
   --secondary: hsl(220, 13%, 91%);
   --secondary-hover: hsl(220, 13%, 84%);
   --secondary-foreground: hsl(208, 70%, 18%);
 
-  /* Destructive — Red */
+  /* Destructive, Red */
   --destructive: hsl(0, 72%, 51%);
   --destructive-foreground: hsl(0, 0%, 100%);
 
-  /* Warning — Amber (kept harmonious with gold) */
+  /* Warning, Amber (kept harmonious with gold) */
   --warning: hsl(38, 92%, 50%);
   --warning-foreground: hsl(38, 92%, 25%);
 
-  /* Background & Surface — cool soft grey replaces the old warm cream. */
+  /* Background & Surface, cool soft grey replaces the old warm cream. */
   --background: hsl(220, 14%, 96%);            /* page bg #F4F5F7 */
   --foreground: hsl(208, 70%, 18%);            /* midnight #0E314C */
   --card: hsl(0, 0%, 100%);                    /* paper #FFFFFF */
@@ -139,14 +139,14 @@
   --popover: hsl(0, 0%, 100%);
   --popover-foreground: hsl(208, 70%, 18%);
 
-  /* Muted — soft surfaces (table stripes, banner backgrounds, hovered
+  /* Muted, soft surfaces (table stripes, banner backgrounds, hovered
      menu items, disabled fields). Bumped from 93% → 88% lightness so it
      actually separates from --background (96%); the old value was so
      close to the page bg that nothing built on it read as distinct. */
   --muted: hsl(220, 14%, 88%);
   --muted-foreground: hsl(211, 17%, 35%);      /* slate #4A5868 */
 
-  /* Cool-muted — deliberately bluer than --muted so it stands apart from
+  /* Cool-muted, deliberately bluer than --muted so it stands apart from
      soft-surface contexts. Reserved for system / disabled / technical
      contexts: reference numbers, code blocks, read-only inputs that need
      to read as "this is data the system owns" rather than "this is a
@@ -155,7 +155,7 @@
   --cool-muted: hsl(210, 25%, 90%);
   --cool-muted-foreground: hsl(208, 30%, 30%);
 
-  /* Accent — kept lighter than --muted (was historically tied at 93%).
+  /* Accent, kept lighter than --muted (was historically tied at 93%).
      Now intentionally distinct so dropdown / menu-item hover stays a
      soft tint while --muted carries the heavier soft-surface role. */
   --accent: hsl(220, 14%, 93%);
@@ -166,7 +166,7 @@
   --input: hsl(220, 13%, 91%);
   --ring: hsl(208, 70%, 18%);                  /* midnight ring on focus */
 
-  /* Sidebar — midnight bg + paper text + gold active */
+  /* Sidebar, midnight bg + paper text + gold active */
   --sidebar: hsl(208, 70%, 18%);
   --sidebar-foreground: hsl(40, 30%, 88%);     /* warm light on midnight */
   --sidebar-text: hsl(40, 30%, 88%);
@@ -181,7 +181,7 @@
   --sidebar-border: hsl(0, 0%, 100%, 0.08);
   --sidebar-ring: hsl(40, 57%, 57%);
 
-  /* Charts — brand-led palette */
+  /* Charts, brand-led palette */
   --chart-1: hsl(40, 57%, 57%);                /* gold */
   --chart-2: hsl(208, 70%, 18%);               /* midnight */
   --chart-3: hsl(211, 17%, 35%);               /* slate */
@@ -206,7 +206,7 @@
 
   /* Hide the page-level browser scrollbar across the app. Inner scroll
      containers (rule lists inside parsed-rules cards, popovers, modal bodies,
-     etc.) keep their own scrollbar — only the body / dashboard <main>
+     etc.) keep their own scrollbar, only the body / dashboard <main>
      vertical bar disappears, since seeing a thin grey bar against the brand
      background looks scrappy. Page is still scrollable via
      wheel/touchpad/keyboard. The dashboard's <main> wraps every authenticated
@@ -236,10 +236,10 @@
      autofilled inputs which clashes with the brand palette. The
      transition + huge inset shadow trick effectively masks the native
      fill with the paper background and forces our midnight text colour.
-     5000s delay on the transition is the well-known hack — autofill
+     5000s delay on the transition is the well-known hack, autofill
      fires before the transition can complete, so the background never
      repaints. */
-  /* Autofill defeat — Chrome / Edge / Safari paint a yellow-blue
+  /* Autofill defeat, Chrome / Edge / Safari paint a yellow-blue
      background on autofilled inputs. The two-pronged defeat:
        1. Huge inset box-shadow masks the native fill with our paper
           white. text-fill-color forces the visible text colour.
@@ -327,7 +327,7 @@
     from { background-position: 200% 0; }
     to   { background-position: -200% 0; }
   }
-  /* Welcome overlay animations — used by WelcomeConfetti on ?welcome=1.
+  /* Welcome overlay animations, used by WelcomeConfetti on ?welcome=1.
      Enter: slide up + fade in. Exit: fade out + drift up. */
   @keyframes welcome-in {
     0% {

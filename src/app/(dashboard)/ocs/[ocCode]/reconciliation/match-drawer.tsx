@@ -198,7 +198,7 @@ export function MatchDrawer({
                 {lots.map((l) => {
                   const lotLabel = l.unit_number
                     ? `Unit ${l.unit_number}`
-                    : `Lot ${l.lot_number ?? "—"}`;
+                    : `Lot ${l.lot_number ?? ""}`.trim();
                   return (
                     <SelectItem key={l.id} value={l.id}>
                       {lotLabel}

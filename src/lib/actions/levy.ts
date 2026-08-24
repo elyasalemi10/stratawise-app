@@ -866,7 +866,7 @@ export async function createLevyBatch(
   const eftAccount = await resolveReceivingEft(supabase, ocId, oc);
 
   // Step 1: Create all levy notices in DB (sequential for reference numbers).
-  // Skip lots that owe $0 for this period — there's nothing to bill so we
+  // Skip lots that owe $0 for this period, there's nothing to bill so we
   // don't generate a notice / PDF / ledger debit. They still appear in the
   // breakdown UI; we just don't write a row for them. The defensive
   // count-check below uses billableLots so a fully-zero allocation doesn't

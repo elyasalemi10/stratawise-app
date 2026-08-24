@@ -6,7 +6,7 @@ import { createServerClient } from "@/lib/supabase";
 
 /**
  * Manual reconcile: same settlement model as the auto-matcher in
- * src/lib/banking/auto-match.ts — direct UPDATEs on levy_notices and
+ * src/lib/banking/auto-match.ts, direct UPDATEs on levy_notices and
  * bank_transactions. We skip rpc_reconcile_bank_transaction because its
  * downstream tables (reconciliation_matches, lot_ledger_entries) don't
  * exist yet in this environment. When the ledger lands, both this action
