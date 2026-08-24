@@ -511,6 +511,19 @@ export async function resolveInboxRowProviders(
 
 // ─── Remove from inbox (dismisses notification, keeps comm_log audit) ──
 
+// Delete an email from the inbox.
+//
+// This used to remove the notification row only, which left the underlying
+// communication_log row in place: the email vanished from the inbox but
+// stayed on the lot's Communications tab forever, with no surface anywhere
+// to remove it from. Delete now means delete , the inbox row AND the lot's
+// copy of the conversation go together, which is the only reading of the
+// button that is not a lie.
+//
+// Attachments cascade off communication_log, so they go with it.
+//
+// Reading an email does NOT come through here. Read mail stays in the inbox
+// and moves to the Read section; this is only the explicit delete.
 export async function removeInboxEmail(
   notificationId: string,
 ): Promise<Result<{ id: string }>> {
@@ -520,11 +533,25 @@ export async function removeInboxEmail(
 
   const { data: notif } = await supabase
     .from("notifications")
-    .select("id, profile_id")
+    .select("id, profile_id, oc_id, metadata")
     .eq("id", notificationId)
     .maybeSingle();
   if (!notif || (notif as { profile_id: string }).profile_id !== profile.id) {
     return { ok: false, error: "You don't have access to this notification" };
+  }
+
+  const meta = ((notif as { metadata: Record<string, unknown> | null }).metadata ??
+    {}) as Record<string, unknown>;
+  const commLogId = (meta.communication_log_id as string | undefined) ?? null;
+
+  // The lot's copy first. If this fails we stop rather than orphan it by
+  // deleting the notification and losing the only pointer to it.
+  if (commLogId) {
+    const { error: commErr } = await supabase
+      .from("communication_log")
+      .delete()
+      .eq("id", commLogId);
+    if (commErr) return { ok: false, error: commErr.message };
   }
 
   const { error } = await supabase
@@ -533,6 +560,15 @@ export async function removeInboxEmail(
     .eq("id", notificationId)
     .eq("profile_id", profile.id);
   if (error) return { ok: false, error: error.message };
+
+  await supabase.from("audit_log").insert({
+    profile_id: profile.id,
+    oc_id: (notif as { oc_id: string | null }).oc_id,
+    action: "inbox_email_deleted",
+    entity_type: "communication_log",
+    entity_id: commLogId,
+    metadata: { notification_id: notificationId },
+  });
 
   return { ok: true, data: { id: notificationId } };
 }

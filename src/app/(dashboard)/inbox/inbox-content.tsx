@@ -3,10 +3,9 @@
 import Image from "next/image";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import {
-  Inbox,
   FileText,
   Shield,
   CalendarDays,
@@ -14,10 +13,10 @@ import {
   Info,
   ArrowLeft,
   Reply,
+  AlertTriangle,
   Loader2,
   Link as LinkIcon,
   Trash2,
-  ChevronDown,
   Paperclip,
 } from "lucide-react";
 import { Card, CardContent } from "@/components/ui/card";
@@ -30,21 +29,20 @@ import {
   TooltipProvider,
   TooltipTrigger,
 } from "@/components/ui/tooltip";
-import {
-  Popover,
-  PopoverContent,
-  PopoverTrigger,
-} from "@/components/ui/popover";
-import {
-  Command,
-  CommandEmpty,
-  CommandGroup,
-  CommandInput,
-  CommandItem,
-  CommandList,
-} from "@/components/ui/command";
 import { EditSheet } from "@/components/shared/edit-sheet";
+import {
+  AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent,
+  AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
 import { EmptyState } from "@/components/shared/empty-state";
+import {
+  Combobox,
+  ComboboxContent,
+  ComboboxEmpty,
+  ComboboxInput,
+  ComboboxItem,
+  ComboboxList,
+} from "@/components/ui/combobox";
 import { toast } from "sonner";
 import { cn } from "@/lib/utils";
 import { formatDateLong } from "@/lib/utils";
@@ -189,6 +187,10 @@ export function InboxContent({
   }, [urlOpenId]);
 
   const openNotification = notifications.find((n) => n.id === openId) ?? null;
+  const [deleteTarget, setDeleteTarget] = useState<string | null>(null);
+  const [deleting, setDeleting] = useState(false);
+  const unread = notifications.filter((n) => !n.read_at);
+  const read = notifications.filter((n) => !!n.read_at);
 
   async function handleOpen(notification: Notification) {
     setOpenId(notification.id);
@@ -215,28 +217,30 @@ export function InboxContent({
   }
 
 
+  // Deleting an email now also removes it from the linked lot's
+  // communications, so it goes behind a confirmation like every other
+  // destructive action in the app.
   async function handleRemove(notificationId: string) {
+    setDeleting(true);
     const res = await removeInboxEmail(notificationId);
+    setDeleting(false);
     if (!res.ok) {
       toast.error(res.error);
       return;
     }
     setNotifications((prev) => prev.filter((n) => n.id !== notificationId));
+    setDeleteTarget(null);
     if (openId === notificationId) {
       handleClose();
     }
-    toast.success("Removed from inbox");
+    toast.success("Email deleted");
   }
 
-  if (notifications.length === 0) {
-    return (
-      <EmptyState
-        icon={Inbox}
-        title="All caught up"
-        description="You'll receive notifications here for levy notices, owner replies, insurance alerts, meetings, and more."
-      />
-    );
-  }
+  // No early return for the empty case. It used to bail out to a lone
+  // centred EmptyState, which threw away the two-pane layout entirely: an
+  // empty inbox looked like a different page from a full one, and the first
+  // message to arrive rearranged the whole screen. The shell always renders;
+  // the Unread and Read sections say they are empty in place.
 
   return (
     <div className="grid h-[calc(100vh-7rem)] grid-cols-1 gap-4 lg:grid-cols-[360px_1fr]">
@@ -252,69 +256,33 @@ export function InboxContent({
               rows are unread, and useCachedData re-fetches this page every
               30s and again the moment the tab regains focus, so a manual
               refresh button does nothing the page is not already doing. */}
-          {/* Scroll-hidden list , content fills the panel and you scroll by
+          {/* Unread above Read, each under its own sticky heading.
+              Reading a message does not remove it: it crosses the divide and
+              stays available, which is the whole point of keeping mail here
+              rather than treating the inbox as a queue you drain.
+
+              Scroll-hidden , content fills the panel and you scroll by
               wheel / touchpad / arrow keys. No visible bar (matches the
               global no-scrollbar treatment for body / dashboard <main>). */}
-          <div className="divide-y divide-border flex-1 min-h-0 overflow-y-auto [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
-            {notifications.map((n) => {
-              const Icon = TYPE_ICONS[n.type] ?? Info;
-              const isUnread = !n.read_at;
-              const isOpen = n.id === openId;
-              const provider = rowProviders[n.id] ?? null;
-              const showProvider = n.type === "email_reply";
-
-              return (
-                <button
-                  key={n.id}
-                  type="button"
-                  onClick={() => handleOpen(n)}
-                  className={cn(
-                    "flex w-full items-center gap-3 px-3 py-3 text-left transition-colors cursor-pointer",
-                    isOpen
-                      ? "bg-primary/10"
-                      : isUnread
-                        ? "bg-primary/5 hover:bg-primary/10"
-                        : "hover:bg-muted/30",
-                  )}
-                >
-                  <div className="flex h-8 w-8 items-center justify-center shrink-0">
-                    {showProvider ? (
-                      <ProviderIcon provider={provider} size="md" />
-                    ) : (
-                      <Icon className={cn(
-                        "h-4 w-4",
-                        // Tint matches the previous chip background's accent so the row
-                        // still communicates type at a glance, just without the circle.
-                        (TYPE_COLORS[n.type] ?? TYPE_COLORS.system).split(" ").find((c) => c.startsWith("text-")) ?? "text-muted-foreground",
-                      )} />
-                    )}
-                  </div>
-                  <div className="flex-1 min-w-0">
-                    <div className="flex items-center gap-2">
-                      <p
-                        className={cn(
-                          "text-sm truncate",
-                          isUnread
-                            ? "font-semibold text-foreground"
-                            : "text-foreground",
-                        )}
-                      >
-                        {n.title}
-                      </p>
-                      <span className="ml-auto text-xs text-muted-foreground/60 shrink-0">
-                        {timeAgo(n.created_at)}
-                      </span>
-                    </div>
-                    <p className="text-xs text-muted-foreground truncate mt-0.5">
-                      {stripMarkdownForPreview(n.message)}
-                    </p>
-                  </div>
-                  {isUnread && (
-                    <div className="h-2 w-2 rounded-full bg-primary shrink-0" />
-                  )}
-                </button>
-              );
-            })}
+          <div className="flex-1 min-h-0 overflow-y-auto [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
+            <InboxSection
+              label="Unread"
+              count={unread.length}
+              rows={unread}
+              emptyText="Nothing unread."
+              openId={openId}
+              rowProviders={rowProviders}
+              onOpen={handleOpen}
+            />
+            <InboxSection
+              label="Read"
+              count={read.length}
+              rows={read}
+              emptyText="Nothing read yet."
+              openId={openId}
+              rowProviders={rowProviders}
+              onOpen={handleOpen}
+            />
           </div>
         </CardContent>
       </Card>
@@ -326,7 +294,7 @@ export function InboxContent({
               key={openNotification.id}
               notification={openNotification}
               onBack={handleClose}
-              onRemove={() => handleRemove(openNotification.id)}
+              onRemove={() => setDeleteTarget(openNotification.id)}
               prefetched={prefetchedEmails[openNotification.id] ?? null}
               allOwnerships={allOwnerships}
             />
@@ -341,12 +309,163 @@ export function InboxContent({
           <Card>
             <CardContent className="flex h-full min-h-[20rem] flex-col items-center justify-center gap-2 py-12 text-sm text-muted-foreground">
               <Mail className="size-10 text-muted-foreground/40" />
-              <p>Pick an email from the list to read it.</p>
+              <p>
+                {notifications.length === 0
+                  ? "Replies to mail you send land here, ready to link to a lot."
+                  : "Pick an email from the list to read it."}
+              </p>
             </CardContent>
           </Card>
         )}
       </div>
+
+      <AlertDialog
+        open={!!deleteTarget}
+        onOpenChange={(o) => { if (!o && !deleting) setDeleteTarget(null); }}
+      >
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle className="flex items-center gap-2">
+              <AlertTriangle className="h-4 w-4 text-destructive" />
+              Delete this email?
+            </AlertDialogTitle>
+            <AlertDialogDescription>
+              It is removed from your inbox and from the linked lot&apos;s
+              communications, along with any attachments. The original stays in
+              your mailbox. This cannot be undone.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel disabled={deleting}>Cancel</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={() => deleteTarget && handleRemove(deleteTarget)}
+              disabled={deleting}
+            >
+              {deleting && <Loader2 className="size-4 animate-spin" />}
+              Delete
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
+  );
+}
+
+// ─── List section + row ───────────────────────────────────────────────────
+//
+// The left pane is two sections, Unread then Read, each with a sticky
+// heading carrying its count. A section with nothing in it still renders its
+// heading and a one-line note, so the divide is visible from the first frame
+// and the layout does not reflow as mail moves across it.
+
+export function InboxSection({
+  label,
+  count,
+  rows,
+  emptyText,
+  openId,
+  rowProviders,
+  onOpen,
+}: {
+  label: string;
+  count: number;
+  rows: Notification[];
+  emptyText: string;
+  openId: string | null;
+  rowProviders: Record<string, "gmail">;
+  onOpen: (n: Notification) => void;
+}) {
+  return (
+    <section>
+      <div className="sticky top-0 z-10 flex items-center justify-between border-b border-border bg-muted/60 px-3 py-1.5 backdrop-blur-sm">
+        <span className="text-xs font-medium text-foreground">{label}</span>
+        <span className="text-xs tabular-nums text-muted-foreground">{count}</span>
+      </div>
+      {rows.length === 0 ? (
+        <p className="border-b border-border px-3 py-4 text-xs text-muted-foreground">
+          {emptyText}
+        </p>
+      ) : (
+        <div className="divide-y divide-border">
+          {rows.map((n) => (
+            <InboxRow
+              key={n.id}
+              notification={n}
+              isOpen={n.id === openId}
+              provider={rowProviders[n.id] ?? null}
+              onOpen={onOpen}
+            />
+          ))}
+        </div>
+      )}
+    </section>
+  );
+}
+
+function InboxRow({
+  notification: n,
+  isOpen,
+  provider,
+  onOpen,
+}: {
+  notification: Notification;
+  isOpen: boolean;
+  provider: "gmail" | null;
+  onOpen: (n: Notification) => void;
+}) {
+  const Icon = TYPE_ICONS[n.type] ?? Info;
+  const isUnread = !n.read_at;
+  const showProvider = n.type === "email_reply";
+
+  return (
+    <button
+      type="button"
+      onClick={() => onOpen(n)}
+      className={cn(
+        "flex w-full items-center gap-3 px-3 py-3 text-left transition-colors cursor-pointer",
+        isOpen
+          ? "bg-primary/10"
+          : isUnread
+            ? "bg-primary/5 hover:bg-primary/10"
+            : "hover:bg-muted/30",
+      )}
+    >
+      <div className="flex h-8 w-8 shrink-0 items-center justify-center">
+        {showProvider ? (
+          <ProviderIcon provider={provider} size="md" />
+        ) : (
+          <Icon
+            className={cn(
+              "h-4 w-4",
+              // Tint matches the previous chip background's accent so the row
+              // still communicates type at a glance, just without the circle.
+              (TYPE_COLORS[n.type] ?? TYPE_COLORS.system)
+                .split(" ")
+                .find((c) => c.startsWith("text-")) ?? "text-muted-foreground",
+            )}
+          />
+        )}
+      </div>
+      <div className="min-w-0 flex-1">
+        <div className="flex items-center gap-2">
+          <p
+            className={cn(
+              "truncate text-sm",
+              isUnread ? "font-semibold text-foreground" : "text-foreground",
+            )}
+          >
+            {n.title}
+          </p>
+          <span className="ml-auto shrink-0 text-xs text-muted-foreground/60">
+            {timeAgo(n.created_at)}
+          </span>
+        </div>
+        <p className="mt-0.5 truncate text-xs text-muted-foreground">
+          {stripMarkdownForPreview(n.message)}
+        </p>
+      </div>
+      {isUnread && <div className="h-2 w-2 shrink-0 rounded-full bg-primary" />}
+    </button>
   );
 }
 
@@ -514,7 +633,7 @@ function EmailDetailPane({
                 <Reply className="mr-1.5 h-3.5 w-3.5" />
                 Reply
               </Button>
-              <LinkToLotPopover
+              <LinkToLotPicker
                 ownerships={allOwnerships}
                 linkedKey={
                   detail.oc_id && detail.lot_id
@@ -587,10 +706,11 @@ function EmailDetailPane({
                   }
                 >
                   <Trash2 className="size-4" />
-                  <span className="sr-only">Remove from inbox</span>
+                  <span className="sr-only">Delete email</span>
                 </TooltipTrigger>
                 <TooltipContent>
-                  Removes from your StrataWise inbox only , the original stays in
+                  Deletes this email here AND from the lot&apos;s communications.
+                  The original stays in
                   {provider === "gmail" ? " Gmail" : " your mailbox"}.
                 </TooltipContent>
               </Tooltip>
@@ -808,21 +928,24 @@ function ReplyDrawer({
 // Communications tab; we don't store anything about the OWNER because
 // documents/comms are lot-keyed in this codebase.
 
-// LinkToLotPopover , inline combobox button. The popover sits anchored to
-// the trigger (no overlay / page grey-out: Base UI's Popover doesn't
-// render a backdrop by default, which is what we want). Vertical
-// rectangle layout , narrow + tall , with a chevron arrow on the button.
+// LinkToLotPicker , the shadcn <Combobox>, not a hand-rolled one.
 //
-// All ownerships for the firm are eager-loaded server-side and passed in
-// via `ownerships`, so search filters client-side with no network hit.
-// We still show a tiny spinner during a typed search to acknowledge the
-// keystroke; the underlying filter is synchronous but the spinner gives
-// the input some life.
+// This was a Popover wrapping a raw cmdk Command with its own filter, its
+// own empty state and a fake 200ms spinner that pulsed after every keystroke
+// to make a synchronous array filter look like a network call. All of that
+// is what the shared component already does, correctly and consistently with
+// every other picker in the app, so none of it is here any more.
 //
-// When already linked, the button shows the linked lot's label
-// (e.g. "Joe Smith · Lot 12") instead of "Change lot" , so the manager
-// reads the current state without having to open the popover.
-function LinkToLotPopover({
+// Every ownership for the firm is eager-loaded server-side and passed in via
+// `ownerships`, so the combobox filters locally with no network hit. Item
+// values are the composite ownership key; `keywords` carries the human text
+// so typing an owner name, a lot label or a plan number finds the row even
+// though the value itself is an id.
+//
+// When already linked the trigger reads the linked lot ("Joe Smith · Lot
+// 12") instead of "Link to lot", so the current state is visible without
+// opening it.
+function LinkToLotPicker({
   ownerships,
   linkedKey,
   onPick,
@@ -831,108 +954,50 @@ function LinkToLotPopover({
   linkedKey: string | null;
   onPick: (option: PersonOwnershipOption) => Promise<void> | void;
 }) {
-  const [open, setOpen] = useState(false);
-  const [query, setQuery] = useState("");
-  // Synthetic spinner , pulses for ~200ms after each keystroke so the
-  // search feels alive even though filtering is local.
-  const [searching, setSearching] = useState(false);
-  useEffect(() => {
-    if (!query) {
-      setSearching(false);
-      return;
-    }
-    setSearching(true);
-    const t = window.setTimeout(() => setSearching(false), 200);
-    return () => window.clearTimeout(t);
-  }, [query]);
-
-  // Local case-insensitive substring filter across owner / lot / oc / PS.
-  const filtered = useMemo(() => {
-    const q = query.trim().toLowerCase();
-    if (!q) return ownerships;
-    return ownerships.filter((p) => {
-      const haystack = `${p.owner_name} ${p.lot_label} ${p.oc_name} ${p.oc_short_code} ${p.owner_email ?? ""}`.toLowerCase();
-      return haystack.includes(q);
-    });
-  }, [query, ownerships]);
-
   const linked = linkedKey
     ? ownerships.find((p) => p.key === linkedKey) ?? null
     : null;
 
   return (
-    <Popover open={open} onOpenChange={setOpen}>
-      <PopoverTrigger
-        render={
-          <Button
-            variant="secondary"
-            size="sm"
-            className="max-w-64 justify-between gap-2"
-          />
-        }
-      >
-        <span className="inline-flex items-center gap-1.5 truncate min-w-0">
-          <LinkIcon className="h-3.5 w-3.5 shrink-0" />
-          <span className="truncate">
-            {linked
-              ? `${linked.owner_name} · ${linked.lot_label}`
-              : "Link to lot"}
-          </span>
-        </span>
-        <ChevronDown className="h-3.5 w-3.5 shrink-0 opacity-60" />
-      </PopoverTrigger>
-      <PopoverContent
-        align="end"
-        showBackdrop={false}
-        className="w-72 p-0 flex flex-col max-h-[28rem]"
-      >
-        <Command shouldFilter={false} className="flex-1 min-h-0">
-          <div className="relative">
-            <CommandInput
-              value={query}
-              onValueChange={setQuery}
-              placeholder="Search owner, lot, PS…"
-            />
-            {searching && (
-              <Loader2 className="absolute right-2 top-1/2 size-3.5 -translate-y-1/2 animate-spin text-muted-foreground" />
-            )}
-          </div>
-          <CommandList className="max-h-[24rem]">
-            {filtered.length === 0 ? (
-              <CommandEmpty>No matching owners.</CommandEmpty>
-            ) : (
-              <CommandGroup>
-                {filtered.map((p) => (
-                  <CommandItem
-                    key={p.key}
-                    value={p.key}
-                    onSelect={async () => {
-                      setOpen(false);
-                      await onPick(p);
-                    }}
-                    className={cn(
-                      // Compact one-line row , owner / lot / PS on a single
-                      // line so the popover fits more without scrolling.
-                      "flex items-center gap-1.5 py-1 text-sm",
-                      linkedKey === p.key && "bg-primary/10",
-                    )}
-                  >
-                    <span className="font-medium text-foreground truncate min-w-0 flex-1">
-                      {p.owner_name}
-                    </span>
-                    <span className="text-xs text-muted-foreground shrink-0 truncate">
-                      {p.lot_label}
-                    </span>
-                    <span className="text-[10px] font-mono text-muted-foreground/60 shrink-0">
-                      {p.oc_short_code}
-                    </span>
-                  </CommandItem>
-                ))}
-              </CommandGroup>
-            )}
-          </CommandList>
-        </Command>
-      </PopoverContent>
-    </Popover>
+    <Combobox
+      items={ownerships}
+      value={linkedKey ?? ""}
+      onValueChange={(key) => {
+        const picked = ownerships.find((p) => p.key === key);
+        if (picked) void onPick(picked);
+      }}
+    >
+      <ComboboxInput
+        className="h-9 max-w-64"
+        placeholder="Link to lot"
+        display={linked ? `${linked.owner_name} · ${linked.lot_label}` : undefined}
+      />
+      <ComboboxContent className="w-72">
+        <ComboboxEmpty>No matching owners.</ComboboxEmpty>
+        <ComboboxList>
+          {(p: PersonOwnershipOption) => (
+            <ComboboxItem
+              key={p.key}
+              value={p.key}
+              keywords={[p.owner_name, p.lot_label, p.oc_name, p.oc_short_code, p.owner_email ?? ""]}
+            >
+              {/* One line per ownership so the list fits more without
+                  scrolling: owner, then lot, then plan number. */}
+              <span className="flex items-center gap-1.5">
+                <span className="min-w-0 flex-1 truncate font-medium text-foreground">
+                  {p.owner_name}
+                </span>
+                <span className="shrink-0 truncate text-xs text-muted-foreground">
+                  {p.lot_label}
+                </span>
+                <span className="shrink-0 font-mono text-[10px] text-muted-foreground/60">
+                  {p.oc_short_code}
+                </span>
+              </span>
+            </ComboboxItem>
+          )}
+        </ComboboxList>
+      </ComboboxContent>
+    </Combobox>
   );
 }
