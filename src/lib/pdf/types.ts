@@ -13,10 +13,16 @@ export interface ManagementCompany {
 }
 
 export interface OC {
+  /** The manager's NICKNAME ("Melia St"). Internal only , it has no legal
+   *  standing. Documents name the entity with ocLegalName(), which is built
+   *  from the plan number. See src/lib/oc-legal-name.ts. */
   name: string;
   address: string;
   abn?: string | null;
   plan_number: string;
+  /** Which owners corporation on the plan. Plans commonly carry only one, in
+   *  which case the legal name omits the number. */
+  oc_number?: number | null;
 }
 
 export interface BaseDocumentProps {
@@ -198,7 +204,12 @@ export interface FinalNoticeProps extends BaseDocumentProps {
 export interface MeetingNoticeAgendaItem {
   position: number;
   title: string;
+  /** Background for owners, printed under the item title. */
+  description?: string | null;
   motion?: string | null;
+  /** "Special resolution" etc. Printed on the motion so owners know the
+   *  threshold before they vote. */
+  resolutionLabel?: string | null;
 }
 
 export interface MeetingNoticeProps extends BaseDocumentProps {
@@ -214,6 +225,16 @@ export interface MeetingNoticeProps extends BaseDocumentProps {
   onlinePlatformLabel?: string | null;
   ocLotCount: number;
   agenda: MeetingNoticeAgendaItem[];
+  /** Name of the person chairing. */
+  chairperson?: string | null;
+  /** Formatted cut-off for lodging proxies, e.g. "5:00 pm, Friday 22 May". */
+  proxyCutoffLabel?: string | null;
+  /** Where a completed proxy goes back to (email or postal). */
+  proxyReturnTo?: string | null;
+  /** Documents issued with the notice, one per entry. */
+  accompanyingDocuments?: string[];
+  /** Free text the manager wants on the notice. */
+  noticeNotes?: string | null;
   brandColors?: BrandColors;
 }
 

@@ -1,6 +1,7 @@
 "use server";
 
 import { getOC } from "@/lib/actions/oc";
+import { ocLegalName } from "@/lib/oc-legal-name";
 import { requireOCAccess } from "@/lib/auth";
 import { createServerClient } from "@/lib/supabase";
 import { getOCLots } from "@/lib/actions/reports";
@@ -34,7 +35,10 @@ export async function getReportsPageData(ocId: string): Promise<ReportsPageData>
   }
 
   return {
-    ocName: oc.name,
+    // The LEGAL name, not the manager's nickname: every report here is a
+    // document a lot owner or a purchaser can end up holding, and "Melia St"
+    // names nothing. See src/lib/oc-legal-name.ts.
+    ocName: ocLegalName(oc),
     ocAddress: oc.address ?? "",
     ocPlanNumber: oc.plan_number ?? "",
     logoUrl,

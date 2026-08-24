@@ -16,6 +16,8 @@ import {
   type SendMeetingNoticeInput,
   type MeetingRecord,
   type MeetingType,
+  type ResolutionType,
+  RESOLUTION_TYPE_LABELS,
 } from "@/lib/validations/meetings";
 import { generateAndUploadMeetingNotice, generateMeetingNoticeBuffer } from "@/lib/meeting-pdf";
 
@@ -43,13 +45,24 @@ async function buildMeetingNoticeProps(
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   supabase: any,
   ocId: string,
-  d: { meeting_type: string; title?: string | null; date_time: string; meeting_format?: string | null; location?: string | null; virtual_meeting_link?: string | null; online_platform?: string | null; agenda?: Array<{ title: string; motion?: string | null }> },
+  d: {
+    meeting_type: string; title?: string | null; date_time: string;
+    meeting_format?: string | null; location?: string | null;
+    virtual_meeting_link?: string | null; online_platform?: string | null;
+    chairperson?: string | null; proxy_cutoff_at?: string | null;
+    proxy_return_to?: string | null; accompanying_documents?: string | null;
+    notice_notes?: string | null;
+    agenda?: Array<{
+      title: string; description?: string | null; motion?: string | null;
+      resolution_type?: ResolutionType | null;
+    }>;
+  },
   reference: string,
 ): Promise<MeetingNoticeProps> {
   const [{ data: oc }, { count: lotCount }] = await Promise.all([
     supabase
       .from("owners_corporations")
-      .select("name, plan_number, abn, address, suburb, state, postcode, management_companies(name, logo_url, brand_color, phone, email, abn)")
+      .select("name, plan_number, oc_number, abn, address, suburb, state, postcode, management_companies(name, logo_url, brand_color, phone, email, abn)")
       .eq("id", ocId)
       .maybeSingle(),
     supabase.from("lots").select("id", { count: "exact", head: true }).eq("oc_id", ocId),
@@ -74,7 +87,7 @@ async function buildMeetingNoticeProps(
       email: mc?.email ?? null,
       abn: mc?.abn ?? null,
     },
-    oc: { name: oc?.name ?? "Owners Corporation", address: ocAddress, abn: oc?.abn ?? null, plan_number: oc?.plan_number ?? "" },
+    oc: { name: oc?.name ?? "Owners Corporation", address: ocAddress, abn: oc?.abn ?? null, plan_number: oc?.plan_number ?? "", oc_number: oc?.oc_number ?? null },
     documentTitle: "Meeting Notice",
     referenceNumber: reference,
     date: new Date(),
@@ -89,7 +102,31 @@ async function buildMeetingNoticeProps(
     onlineLink: isOnline ? (d.virtual_meeting_link?.trim() || null) : null,
     onlinePlatformLabel: isOnline ? platformLabel : null,
     ocLotCount: lotCount ?? 0,
-    agenda: agenda.map((a, i) => ({ position: i + 1, title: a.title.trim(), motion: a.motion?.trim() || null })),
+    agenda: agenda.map((a, i) => ({
+      position: i + 1,
+      title: a.title.trim(),
+      description: a.description?.trim() || null,
+      motion: a.motion?.trim() || null,
+      // "For information" carries no threshold, so there is nothing worth
+      // printing next to the motion for it.
+      resolutionLabel:
+        a.resolution_type && a.resolution_type !== "information"
+          ? RESOLUTION_TYPE_LABELS[a.resolution_type]
+          : null,
+    })),
+    chairperson: d.chairperson?.trim() || null,
+    proxyCutoffLabel: d.proxy_cutoff_at
+      ? new Date(d.proxy_cutoff_at).toLocaleString("en-AU", {
+          weekday: "long", day: "numeric", month: "long", year: "numeric",
+          hour: "numeric", minute: "2-digit",
+        })
+      : null,
+    proxyReturnTo: d.proxy_return_to?.trim() || null,
+    accompanyingDocuments: (d.accompanying_documents ?? "")
+      .split("\n")
+      .map((l) => l.trim())
+      .filter(Boolean),
+    noticeNotes: d.notice_notes?.trim() || null,
     brandColors: { primary: brand, secondary: brand },
   };
 }
@@ -171,6 +208,11 @@ export async function createMeeting(
       virtual_meeting_link: parsed.data.virtual_meeting_link?.trim() || null,
       online_platform: parsed.data.online_platform ?? null,
       status: "draft",
+      chairperson: parsed.data.chairperson?.trim() || null,
+      proxy_cutoff_at: parsed.data.proxy_cutoff_at || null,
+      proxy_return_to: parsed.data.proxy_return_to?.trim() || null,
+      accompanying_documents: parsed.data.accompanying_documents?.trim() || null,
+      notice_notes: parsed.data.notice_notes?.trim() || null,
       created_by: profile.id,
     })
     .select("id")
@@ -239,6 +281,11 @@ export async function createMeetingWithNotice(
       virtual_meeting_link: d.meeting_format === "online" ? link : null,
       online_platform: onlinePlatform,
       status: "draft",
+      chairperson: d.chairperson?.trim() || null,
+      proxy_cutoff_at: d.proxy_cutoff_at || null,
+      proxy_return_to: d.proxy_return_to?.trim() || null,
+      accompanying_documents: d.accompanying_documents?.trim() || null,
+      notice_notes: d.notice_notes?.trim() || null,
       created_by: profile.id,
     })
     .select("id")
@@ -253,7 +300,9 @@ export async function createMeetingWithNotice(
         meeting_id: meeting.id,
         item_number: i + 1,
         title: a.title.trim(),
+        description: a.description?.trim() || null,
         motion_text: a.motion?.trim() || null,
+        resolution_type: a.resolution_type ?? "information",
         sort_order: i + 1,
       })),
     );

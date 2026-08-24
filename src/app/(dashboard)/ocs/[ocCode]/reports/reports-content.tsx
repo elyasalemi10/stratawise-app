@@ -370,7 +370,12 @@ export function ReportsContent({
                 onValueChange={(v) => { setReportType((v ?? "") as ReportType); setPdfUrl(null); }}
               >
                 <SelectTrigger className="h-9 w-full">
-                  <SelectValue placeholder="Select a report..." />
+                  {/* Children, not a bare <SelectValue>. Without them the
+                      trigger falls back to the raw value and the manager
+                      reads "trust_account_summary" instead of the label. */}
+                  <SelectValue placeholder="Select a report...">
+                    {REPORTS.find((r) => r.id === reportType)?.label}
+                  </SelectValue>
                 </SelectTrigger>
                 <SelectContent>
                   {availableReports.map((r) => (
@@ -389,7 +394,11 @@ export function ReportsContent({
                   onValueChange={(v) => setSelectedLotId(!v || v === ALL_LOTS ? "" : v)}
                 >
                   <SelectTrigger className="h-9 w-full">
-                    <SelectValue placeholder="All lots" />
+                    <SelectValue placeholder="All lots">
+                      {selectedLotId
+                        ? lotLabel(lots.find((l) => l.id === selectedLotId)!)
+                        : "All lots"}
+                    </SelectValue>
                   </SelectTrigger>
                   <SelectContent>
                     <SelectItem value={ALL_LOTS}>All lots</SelectItem>
@@ -416,7 +425,11 @@ export function ReportsContent({
                   <Label>Lot</Label>
                   <Select value={selectedLotId} onValueChange={(v) => setSelectedLotId(v ?? "")}>
                     <SelectTrigger className="h-9 w-full">
-                      <SelectValue placeholder="Select lot..." />
+                      <SelectValue placeholder="Select lot...">
+                        {selectedLotId
+                          ? lotLabel(lots.find((l) => l.id === selectedLotId)!)
+                          : undefined}
+                      </SelectValue>
                     </SelectTrigger>
                     <SelectContent>
                       {lots.map((lot) => (
@@ -457,7 +470,11 @@ export function ReportsContent({
                   <Label>Lot</Label>
                   <Select value={certLotId} onValueChange={(v) => setCertLotId(v ?? "")}>
                     <SelectTrigger className="h-9 w-full">
-                      <SelectValue placeholder="Select lot..." />
+                      <SelectValue placeholder="Select lot...">
+                        {certLotId
+                          ? lotLabel(lots.find((l) => l.id === certLotId)!)
+                          : undefined}
+                      </SelectValue>
                     </SelectTrigger>
                     <SelectContent>
                       {lots.map((lot) => (

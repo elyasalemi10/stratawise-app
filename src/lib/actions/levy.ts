@@ -830,7 +830,7 @@ export async function createLevyBatch(
   // Fetch oc + management company for PDF generation
   const { data: oc } = await supabase
     .from("owners_corporations")
-    .select("name, address, abn, plan_number, bank_bsb, bank_account_number, bank_account_name, management_company_id")
+    .select("name, address, abn, plan_number, oc_number, bank_bsb, bank_account_number, bank_account_name, management_company_id")
     .eq("id", ocId)
     .single();
 
@@ -1021,6 +1021,7 @@ export async function createLevyBatch(
           address: oc?.address ?? "",
           abn: oc?.abn ?? null,
           plan_number: oc?.plan_number ?? "",
+          oc_number: oc?.oc_number ?? null,
         },
         documentTitle: "Levy Notice",
         referenceNumber: levy.refNum,
@@ -1404,7 +1405,7 @@ export async function regenerateBatch(ocId: string, batchId: string, newDueDate:
   // Fetch data for PDF regeneration
   const { data: oc } = await supabase
     .from("owners_corporations")
-    .select("name, address, abn, plan_number, bank_bsb, bank_account_number, bank_account_name, management_company_id")
+    .select("name, address, abn, plan_number, oc_number, bank_bsb, bank_account_number, bank_account_name, management_company_id")
     .eq("id", ocId)
     .single();
 
@@ -1465,6 +1466,7 @@ export async function regenerateBatch(ocId: string, batchId: string, newDueDate:
           address: oc?.address ?? "",
           abn: oc?.abn ?? null,
           plan_number: oc?.plan_number ?? "",
+          oc_number: oc?.oc_number ?? null,
         },
         documentTitle: "Levy Notice",
         referenceNumber: levy.reference_number,

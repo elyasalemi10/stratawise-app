@@ -195,7 +195,7 @@ async function advanceInstance(supabase: any, inst: Record<string, unknown>, tod
         const key = await generateAndUploadFinalNotice(
           {
             managementCompany: { name: (mc?.name as string) ?? "StrataWise", logo_url: (mc?.logo_url as string) ?? null, phone: (mc?.phone as string) ?? null, email: (mc?.email as string) ?? null, abn: (mc?.abn as string) ?? null },
-            oc: { name: oc?.name ?? "Owners Corporation", address: ocAddress, abn: oc?.abn ?? null, plan_number: oc?.plan_number ?? "" },
+            oc: { name: oc?.name ?? "Owners Corporation", address: ocAddress, abn: oc?.abn ?? null, plan_number: oc?.plan_number ?? "", oc_number: oc?.oc_number ?? null },
             documentTitle: "Final Fee Notice",
             referenceNumber: notice.reference_number ?? "",
             date: new Date(),

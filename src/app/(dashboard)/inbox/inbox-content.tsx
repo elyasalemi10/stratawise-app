@@ -972,7 +972,7 @@ function LinkToLotPicker({
         placeholder="Link to lot"
         display={linked ? `${linked.owner_name} · ${linked.lot_label}` : undefined}
       />
-      <ComboboxContent className="w-72">
+      <ComboboxContent className="w-96">
         <ComboboxEmpty>No matching owners.</ComboboxEmpty>
         <ComboboxList>
           {(p: PersonOwnershipOption) => (
@@ -980,18 +980,21 @@ function LinkToLotPicker({
               key={p.key}
               value={p.key}
               keywords={[p.owner_name, p.lot_label, p.oc_name, p.oc_short_code, p.owner_email ?? ""]}
+              className="py-2"
             >
-              {/* One line per ownership so the list fits more without
-                  scrolling: owner, then lot, then plan number. */}
-              <span className="flex items-center gap-1.5">
-                <span className="min-w-0 flex-1 truncate font-medium text-foreground">
+              {/* Two lines, name first. You are looking for a PERSON here ,
+                  the email came from someone, and their name is what you
+                  recognise. The lot and which OC it is in answer the next
+                  question, so they sit underneath rather than competing for
+                  the same line. The one-line version put all three in a row
+                  and truncated the name, which is the one part that had to
+                  survive. */}
+              <span className="flex min-w-0 flex-col gap-0.5">
+                <span className="truncate text-sm font-medium text-foreground">
                   {p.owner_name}
                 </span>
-                <span className="shrink-0 truncate text-xs text-muted-foreground">
-                  {p.lot_label}
-                </span>
-                <span className="shrink-0 font-mono text-[10px] text-muted-foreground/60">
-                  {p.oc_short_code}
+                <span className="truncate text-xs text-muted-foreground">
+                  {p.lot_label} · {p.oc_name}
                 </span>
               </span>
             </ComboboxItem>

@@ -4,7 +4,7 @@ import { useMemo, useRef, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { toast } from "sonner";
 import {
-  Loader2, FileText, CalendarDays, ListChecks, Send, Plus, Trash2,
+  Loader2, FileText, CalendarDays, ListChecks, Gavel, Send, Plus, Trash2,
   GripVertical, MapPin, Video, type LucideIcon,
 } from "lucide-react";
 import { Card, CardContent } from "@/components/ui/card";
@@ -12,6 +12,9 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
+import {
+  Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
+} from "@/components/ui/select";
 import { DatePicker } from "@/components/shared/date-picker";
 import { TimeDropdowns } from "@/components/shared/time-dropdowns";
 import { VicAddressAutocomplete, type ParsedAddress } from "@/components/shared/vic-address-autocomplete";
@@ -19,13 +22,14 @@ import { cn } from "@/lib/utils";
 import { createMeetingWithNotice } from "@/lib/actions/meetings";
 import { MEETING_TYPE_LABELS, type MeetingType, type MeetingFormat } from "@/lib/validations/meetings";
 
-type Step = "type" | "details" | "agenda" | "review";
+type Step = "type" | "details" | "agenda" | "notice" | "review";
 
 const STEPS: Array<{ key: Step; number: number; label: string; icon: LucideIcon }> = [
   { key: "type", number: 1, label: "Type", icon: FileText },
   { key: "details", number: 2, label: "Details", icon: CalendarDays },
   { key: "agenda", number: 3, label: "Agenda", icon: ListChecks },
-  { key: "review", number: 4, label: "Review", icon: Send },
+  { key: "notice", number: 4, label: "Notice", icon: Gavel },
+  { key: "review", number: 5, label: "Review", icon: Send },
 ];
 
 const EMPTY_ADDRESS: ParsedAddress = { street_number: "", street_name: "", suburb: "", state: "VIC", postcode: "", formatted: "" };
@@ -69,7 +73,31 @@ export function StepIndicator({ current }: { current: Step }) {
   );
 }
 
-type AgendaRow = { id: string; title: string; motion: string };
+type AgendaRow = {
+  id: string;
+  title: string;
+  /** Background the owner needs to read the motion. agenda_items.description
+   *  has always existed; the wizard just never asked for it. */
+  description: string;
+  motion: string;
+  /** Ordinary / special / unanimous. Special and unanimous resolutions have
+   *  different thresholds under the Act, and a notice that does not say which
+   *  a motion needs cannot be voted on properly. */
+  resolutionType: ResolutionType;
+};
+
+type ResolutionType = "ordinary" | "special" | "unanimous" | "information";
+
+const RESOLUTION_LABEL: Record<ResolutionType, string> = {
+  information: "For information (no vote)",
+  ordinary: "Ordinary resolution",
+  special: "Special resolution",
+  unanimous: "Unanimous resolution",
+};
+
+const RESOLUTION_OPTIONS = (
+  Object.keys(RESOLUTION_LABEL) as ResolutionType[]
+).map((value) => ({ value, label: RESOLUTION_LABEL[value] }));
 
 export function CreateMeetingForm({
   ocId,
@@ -94,6 +122,15 @@ export function CreateMeetingForm({
   const [agenda, setAgenda] = useState<AgendaRow[]>([]);
   const idCounter = useRef(0);
 
+  // Notice step. All optional , a notice is valid without them, but every
+  // one of these is something an owner reading the notice would otherwise
+  // have to ring the office to find out.
+  const [chairperson, setChairperson] = useState("");
+  const [proxyCutoff, setProxyCutoff] = useState("");
+  const [proxyReturnTo, setProxyReturnTo] = useState("");
+  const [accompanyingDocuments, setAccompanyingDocuments] = useState("");
+  const [noticeNotes, setNoticeNotes] = useState("");
+
   const [dateInvalid, setDateInvalid] = useState(false);
   const [linkInvalid, setLinkInvalid] = useState(false);
   const [pending, startTransition] = useTransition();
@@ -116,7 +153,19 @@ export function CreateMeetingForm({
       location: format === "in_person" ? (address.formatted.trim() || null) : null,
       virtual_meeting_link: format === "online" ? (link.trim() || null) : null,
       // online_platform is detected server-side (handles short links/redirects).
-      agenda: agenda.filter((a) => a.title.trim()).map((a) => ({ title: a.title.trim(), motion: a.motion.trim() || null })),
+      chairperson: chairperson.trim() || null,
+      proxy_cutoff_at: proxyCutoff ? new Date(`${proxyCutoff}T23:59:00`).toISOString() : null,
+      proxy_return_to: proxyReturnTo.trim() || null,
+      accompanying_documents: accompanyingDocuments.trim() || null,
+      notice_notes: noticeNotes.trim() || null,
+      agenda: agenda
+        .filter((a) => a.title.trim())
+        .map((a) => ({
+          title: a.title.trim(),
+          description: a.description.trim() || null,
+          motion: a.motion.trim() || null,
+          resolution_type: a.resolutionType,
+        })),
     };
   }
 
@@ -144,10 +193,15 @@ export function CreateMeetingForm({
       toast.error("Remove or fill in the empty agenda items.");
       return;
     }
-    setStep("review");
+    setStep("notice");
   }
 
-  function addAgenda() { setAgenda((a) => [...a, { id: `r${idCounter.current++}`, title: "", motion: "" }]); }
+  function addAgenda() {
+    setAgenda((a) => [
+      ...a,
+      { id: `r${idCounter.current++}`, title: "", description: "", motion: "", resolutionType: "information" },
+    ]);
+  }
   function updateAgenda(id: string, patch: Partial<AgendaRow>) {
     setAgenda((a) => a.map((row) => (row.id === id ? { ...row, ...patch } : row)));
   }
@@ -294,6 +348,66 @@ export function CreateMeetingForm({
         </Card>
       )}
 
+      {step === "notice" && (
+        <Card>
+          <CardContent className="pt-5 space-y-4">
+            <div className="grid gap-4 sm:grid-cols-2">
+              <div className="space-y-1.5">
+                <Label>Chairperson</Label>
+                <Input
+                  value={chairperson}
+                  onChange={(e) => setChairperson(e.target.value)}
+                  placeholder="Name of the person chairing"
+                />
+              </div>
+              <div className="space-y-1.5">
+                <Label>Proxies close</Label>
+                <DatePicker
+                  value={proxyCutoff}
+                  onChange={setProxyCutoff}
+                  maxDate={date || undefined}
+                  placeholder="Last day to lodge a proxy"
+                />
+              </div>
+            </div>
+
+            <div className="space-y-1.5">
+              <Label>Return proxies to</Label>
+              <Input
+                value={proxyReturnTo}
+                onChange={(e) => setProxyReturnTo(e.target.value)}
+                placeholder="Email address or postal address"
+              />
+            </div>
+
+            <div className="space-y-1.5">
+              <Label>Documents issued with this notice</Label>
+              <Textarea
+                value={accompanyingDocuments}
+                onChange={(e) => setAccompanyingDocuments(e.target.value)}
+                placeholder="One per line"
+                rows={3}
+              />
+            </div>
+
+            <div className="space-y-1.5">
+              <Label>Notes to owners</Label>
+              <Textarea
+                value={noticeNotes}
+                onChange={(e) => setNoticeNotes(e.target.value)}
+                placeholder="Anything else that should appear on the notice"
+                rows={3}
+              />
+            </div>
+
+            <div className="flex justify-between">
+              <Button variant="secondary" onClick={() => setStep("agenda")}>Back</Button>
+              <Button onClick={() => setStep("review")}>Next</Button>
+            </div>
+          </CardContent>
+        </Card>
+      )}
+
       {step === "review" && (
         <Card>
           <CardContent className="pt-5 space-y-4">
@@ -309,11 +423,8 @@ export function CreateMeetingForm({
               {format === "online" && link && (<><dt className="text-muted-foreground">Link</dt><dd className="truncate text-foreground">{link}</dd></>)}
               <dt className="text-muted-foreground">Agenda items</dt><dd className="text-foreground">{agenda.length}</dd>
             </dl>
-            <p className="text-sm text-muted-foreground">
-              Creating the meeting generates the branded notice. You can send it to owners from the meeting page.
-            </p>
             <div className="flex items-center justify-between gap-3 pt-2">
-              <Button variant="secondary" onClick={() => setStep("agenda")} disabled={pending}>Back</Button>
+              <Button variant="secondary" onClick={() => setStep("notice")} disabled={pending}>Back</Button>
               <Button onClick={onSubmit} disabled={pending} size="lg">
                 {pending && <Loader2 className="mr-2 size-4 animate-spin" />}
                 Create meeting
@@ -364,7 +475,35 @@ function AgendaList({
             <Input value={row.title} onChange={(e) => onUpdate(row.id, { title: e.target.value })} placeholder="Agenda item title" className="flex-1" />
             <button type="button" onClick={() => onRemove(row.id)} className="cursor-pointer text-muted-foreground hover:text-destructive" aria-label="Remove"><Trash2 className="h-4 w-4" /></button>
           </div>
-          <Textarea value={row.motion} onChange={(e) => onUpdate(row.id, { motion: e.target.value })} placeholder="Motion text (optional)" rows={2} />
+          <Textarea
+            value={row.description}
+            onChange={(e) => onUpdate(row.id, { description: e.target.value })}
+            placeholder="Background for owners"
+            rows={2}
+          />
+          <div className="grid gap-2 sm:grid-cols-[1fr_14rem]">
+            <Textarea
+              value={row.motion}
+              onChange={(e) => onUpdate(row.id, { motion: e.target.value })}
+              placeholder="Motion text"
+              rows={2}
+            />
+            <Select
+              value={row.resolutionType}
+              onValueChange={(v) =>
+                onUpdate(row.id, { resolutionType: (v ?? "information") as ResolutionType })
+              }
+            >
+              <SelectTrigger>
+                <SelectValue>{RESOLUTION_LABEL[row.resolutionType]}</SelectValue>
+              </SelectTrigger>
+              <SelectContent>
+                {RESOLUTION_OPTIONS.map((o) => (
+                  <SelectItem key={o.value} value={o.value}>{o.label}</SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
         </div>
       ))}
     </div>

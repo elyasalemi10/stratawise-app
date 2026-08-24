@@ -80,7 +80,7 @@ export async function GET(
 
   const { data: oc } = await supabase
     .from("owners_corporations")
-    .select("id, name, plan_number, address, abn, management_company_id, billing_cycle")
+    .select("id, name, plan_number, oc_number, address, abn, management_company_id, billing_cycle")
     .eq("id", budget.oc_id)
     .maybeSingle();
   if (!oc) {
@@ -168,6 +168,7 @@ export async function GET(
     oc: {
       name: oc.name,
       plan_number: oc.plan_number,
+      oc_number: oc.oc_number ?? null,
       address: oc.address,
       abn: oc.abn ?? null,
     },

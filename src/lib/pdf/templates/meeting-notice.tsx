@@ -1,4 +1,5 @@
 import { Page, View, Text, Image, Document, StyleSheet } from "@react-pdf/renderer";
+import { ocLegalName } from "@/lib/oc-legal-name";
 import type { MeetingNoticeProps } from "../types";
 import "../fonts"; // Register NunitoSans
 
@@ -17,6 +18,7 @@ export function MeetingNotice(props: MeetingNoticeProps) {
     managementCompany, oc, referenceNumber, date, meetingType, meetingTypeLabel,
     meetingTitle, dateLabel, timeLabel, format, location, onlineLink, onlinePlatformLabel,
     ocLotCount, agenda, brandColors,
+    chairperson, proxyCutoffLabel, proxyReturnTo, accompanyingDocuments, noticeNotes,
   } = props;
   const brand = brandColors?.primary ?? "#0E314C";
 
@@ -37,7 +39,10 @@ export function MeetingNotice(props: MeetingNoticeProps) {
     companyName: { fontSize: 11, fontWeight: 700, color: c.foreground, textAlign: "right" as const },
     companyMeta: { fontSize: 8.5, color: c.muted, textAlign: "right" as const, marginTop: 1 },
     title: { fontSize: 17, fontWeight: 700, color: brand, textAlign: "center" as const, marginTop: 6 },
-    titleRule: { borderBottomWidth: 2, borderBottomColor: brand, width: 120, alignSelf: "center" as const, marginTop: 6, marginBottom: 4 },
+    // A filled 2pt bar, NOT a zero-height View with a bottom border.
+    // react-pdf gives a border-only View no box to draw in, so the rule
+    // came out broken: clipped at one end, or missing entirely.
+    titleRule: { height: 2, width: 120, backgroundColor: brand, alignSelf: "center" as const, marginTop: 6, marginBottom: 4 },
     subtitle: { fontSize: 9.5, color: c.muted, textAlign: "center" as const, marginBottom: 16 },
     sectionTitle: { fontSize: 12, fontWeight: 700, color: brand, marginTop: 14, marginBottom: 6 },
     para: { fontSize: 10, color: c.foreground, marginBottom: 8 },
@@ -47,6 +52,8 @@ export function MeetingNotice(props: MeetingNoticeProps) {
     agendaItem: { flexDirection: "row", marginBottom: 4, gap: 6 },
     agendaNum: { fontSize: 10, fontWeight: 700, color: c.foreground, width: 18 },
     agendaText: { fontSize: 10, color: c.foreground, flex: 1 },
+    agendaDesc: { fontSize: 9.5, color: c.muted, marginLeft: 24, marginBottom: 4 },
+    docItem: { fontSize: 10, color: c.foreground, marginBottom: 3, marginLeft: 6 },
     motionBox: { borderLeftWidth: 3, borderLeftColor: brand, backgroundColor: c.lightBg, paddingVertical: 8, paddingHorizontal: 12, marginBottom: 10 },
     motionTitle: { fontSize: 10.5, fontWeight: 700, color: c.foreground, marginBottom: 3 },
     motionText: { fontSize: 10, color: c.foreground, marginBottom: 4 },
@@ -89,24 +96,33 @@ export function MeetingNotice(props: MeetingNoticeProps) {
         <Text style={s.subtitle}>Issued under the Owners Corporations Act 2006 (Vic)</Text>
 
         <Text style={s.para}>
-          Notice is given to all lot owners of {oc.name}{oc.plan_number ? ` , ${oc.plan_number}` : ""} that {isAgm ? "the Annual General Meeting" : "a Special General Meeting"} of the Owners Corporation will be held as set out below. The purpose of the meeting is to address the business listed in the agenda{motions.length > 0 ? " and to consider the motion(s) set out in this notice" : ""}.
+          Notice is given to all lot owners of {ocLegalName(oc)} that {isAgm ? "the Annual General Meeting" : "a Special General Meeting"} of the Owners Corporation will be held as set out below. The purpose of the meeting is to address the business listed in the agenda{motions.length > 0 ? " and to consider the motion(s) set out in this notice" : ""}.
         </Text>
 
         <Text style={s.sectionTitle}>Meeting details</Text>
         <View>
-          <View style={s.detailRow}><Text style={s.detailLabel}>Owners Corporation</Text><Text style={s.detailValue}>{oc.name}{oc.plan_number ? ` , ${oc.plan_number}` : ""}</Text></View>
+          <View style={s.detailRow}><Text style={s.detailLabel}>Owners Corporation</Text><Text style={s.detailValue}>{ocLegalName(oc)}</Text></View>
           <View style={s.detailRow}><Text style={s.detailLabel}>Property</Text><Text style={s.detailValue}>{oc.address}</Text></View>
           {oc.abn ? <View style={s.detailRow}><Text style={s.detailLabel}>ABN</Text><Text style={s.detailValue}>{oc.abn}</Text></View> : null}
           <View style={s.detailRow}><Text style={s.detailLabel}>Meeting type</Text><Text style={s.detailValue}>{meetingTypeLabel}{meetingTitle && meetingTitle !== meetingTypeLabel ? ` , ${meetingTitle}` : ""}</Text></View>
           <View style={s.detailRow}><Text style={s.detailLabel}>Date</Text><Text style={s.detailValue}>{dateLabel}</Text></View>
           <View style={s.detailRow}><Text style={s.detailLabel}>Time</Text><Text style={s.detailValue}>{timeLabel}</Text></View>
           <View style={s.detailRow}><Text style={s.detailLabel}>Format</Text><Text style={s.detailValue}>{formatLabel}</Text></View>
+          {chairperson ? <View style={s.detailRow}><Text style={s.detailLabel}>Chairperson</Text><Text style={s.detailValue}>{chairperson}</Text></View> : null}
+          {proxyCutoffLabel ? <View style={s.detailRow}><Text style={s.detailLabel}>Proxies close</Text><Text style={s.detailValue}>{proxyCutoffLabel}</Text></View> : null}
+          {proxyReturnTo ? <View style={s.detailRow}><Text style={s.detailLabel}>Return proxies to</Text><Text style={s.detailValue}>{proxyReturnTo}</Text></View> : null}
           <View style={s.detailRow}><Text style={s.detailLabel}>Notice issued</Text><Text style={s.detailValue}>{noticeDateLabel}</Text></View>
         </View>
 
         <Text style={s.sectionTitle}>Agenda</Text>
         {agenda.length > 0 ? agenda.map((a) => (
-          <View key={a.position} style={s.agendaItem}><Text style={s.agendaNum}>{a.position}.</Text><Text style={s.agendaText}>{a.title}</Text></View>
+          <View key={a.position}>
+            <View style={s.agendaItem}>
+              <Text style={s.agendaNum}>{a.position}.</Text>
+              <Text style={s.agendaText}>{a.title}</Text>
+            </View>
+            {a.description ? <Text style={s.agendaDesc}>{a.description}</Text> : null}
+          </View>
         )) : (
           <View>
             <View style={s.agendaItem}><Text style={s.agendaNum}>1.</Text><Text style={s.agendaText}>Welcome and confirmation of quorum</Text></View>
@@ -123,7 +139,23 @@ export function MeetingNotice(props: MeetingNoticeProps) {
               <View key={m.position} style={s.motionBox}>
                 <Text style={s.motionTitle}>Motion {i + 1} , {m.title}</Text>
                 <Text style={s.motionText}>{m.motion}</Text>
-                <Text style={s.motionMeta}>Vote required: ordinary resolution (simple majority), unless the Act requires otherwise.</Text>
+                <Text style={s.motionMeta}>
+                  Vote required: {m.resolutionLabel
+                    ? m.resolutionLabel.toLowerCase()
+                    : "ordinary resolution (simple majority)"}, unless the Act requires otherwise.
+                </Text>
+              </View>
+            ))}
+          </>
+        ) : null}
+
+        {accompanyingDocuments && accompanyingDocuments.length > 0 ? (
+          <>
+            <Text style={s.sectionTitle}>Issued with this notice</Text>
+            {accompanyingDocuments.map((docName, i) => (
+              <View key={i} style={s.bullet}>
+                <Text style={s.bulletDot}>{"\u2022"}</Text>
+                <Text style={s.bulletText}>{docName}</Text>
               </View>
             ))}
           </>
@@ -139,9 +171,16 @@ export function MeetingNotice(props: MeetingNoticeProps) {
           If you are unable to attend, you may appoint another person to attend and vote on your behalf by completing the proxy appointment form attached to this notice. The completed form must be returned to {managementCompany.name}{managementCompany.email ? ` at ${managementCompany.email}` : ""} no later than 24 hours before the scheduled start of the meeting. Under the Owners Corporations Act 2006 (Vic), a manager and certain related parties are restricted from acting as proxy on matters in which they have an interest.
         </Text>
 
+        {noticeNotes ? (
+          <>
+            <Text style={s.sectionTitle}>Additional information</Text>
+            <Text style={s.para}>{noticeNotes}</Text>
+          </>
+        ) : null}
+
         <View style={s.sigLine} />
         <Text style={s.sigText}>{managementCompany.name}</Text>
-        <Text style={s.sigText}>Manager, {oc.name}{oc.plan_number ? ` ${oc.plan_number}` : ""}</Text>
+        <Text style={s.sigText}>Manager, {ocLegalName(oc)}</Text>
         {managementCompany.email || managementCompany.phone ? <Text style={s.sigText}>{[managementCompany.email, managementCompany.phone].filter(Boolean).join(" · ")}</Text> : null}
         <Text style={s.sigText}>Date: {noticeDateLabel}</Text>
       </Page>
@@ -151,9 +190,9 @@ export function MeetingNotice(props: MeetingNoticeProps) {
         <Header />
         <Text style={s.title}>PROXY APPOINTMENT FORM</Text>
         <View style={s.titleRule} />
-        <Text style={s.subtitle}>{meetingTypeLabel} , {dateLabel} , {oc.name}{oc.plan_number ? ` ${oc.plan_number}` : ""}</Text>
+        <Text style={s.subtitle}>{meetingTypeLabel} , {dateLabel} , {ocLegalName(oc)}</Text>
 
-        <Text style={s.para}>Owners Corporation: {oc.name}{oc.plan_number ? ` , ${oc.plan_number}` : ""} , {oc.address}</Text>
+        <Text style={s.para}>Owners Corporation: {ocLegalName(oc)} , {oc.address}</Text>
 
         <Text style={s.sectionTitle}>Part A , Appointment</Text>
         <Text style={s.para}>

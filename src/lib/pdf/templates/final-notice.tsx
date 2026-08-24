@@ -1,4 +1,5 @@
 import { Page, View, Text, Image, Document, StyleSheet } from "@react-pdf/renderer";
+import { ocLegalName } from "@/lib/oc-legal-name";
 import type { FinalNoticeProps } from "../types";
 import "../fonts";
 
@@ -86,7 +87,7 @@ export function FinalNotice({
 
         <View style={s.infoRow}>
           <View style={{ flex: 1 }}>
-            <View style={s.infoLine}><Text style={s.infoLabel}>Issued for</Text><Text style={s.infoValue}>{oc.name} {oc.plan_number}</Text></View>
+            <View style={s.infoLine}><Text style={s.infoLabel}>Issued for</Text><Text style={s.infoValue}>{ocLegalName(oc)}</Text></View>
             <View style={s.infoLine}><Text style={s.infoLabel}>Property</Text><Text style={s.infoValue}>{oc.address}</Text></View>
             {oc.abn ? <View style={s.infoLine}><Text style={s.infoLabel}>ABN</Text><Text style={s.infoValue}>{oc.abn}</Text></View> : null}
             <View style={s.infoLine}><Text style={s.infoLabel}>Date</Text><Text style={s.infoValue}>{fmtDate(date)}</Text></View>
@@ -120,7 +121,7 @@ export function FinalNotice({
 
         <View style={s.footer}>
           <Text style={s.footerText}>
-            Issued by {managementCompany.name} on behalf of {oc.name}.
+            Issued by {managementCompany.name} on behalf of {ocLegalName(oc)}.
             {managementCompany.phone ? ` Phone ${managementCompany.phone}.` : ""}
             {managementCompany.email ? ` Email ${managementCompany.email}.` : ""}
           </Text>

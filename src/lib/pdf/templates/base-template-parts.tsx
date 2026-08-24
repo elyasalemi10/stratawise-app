@@ -1,4 +1,5 @@
 import React from "react";
+import { ocLegalName } from "@/lib/oc-legal-name";
 import { View, Text, Image } from "@react-pdf/renderer";
 import { baseStyles } from "../styles";
 import type { ManagementCompany, OC } from "../types";
@@ -47,7 +48,7 @@ export function PDFHeader({
               {managementCompany.name}
             </Text>
             <Text style={baseStyles.ocDetails}>
-              {oc.name}
+              {ocLegalName(oc)}
             </Text>
             <Text style={baseStyles.ocDetails}>
               {oc.address}

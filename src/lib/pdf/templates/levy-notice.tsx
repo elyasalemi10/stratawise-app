@@ -1,4 +1,5 @@
 import { Page, View, Text, Image, Document } from "@react-pdf/renderer";
+import { ocLegalName } from "@/lib/oc-legal-name";
 import { StyleSheet } from "@react-pdf/renderer";
 import type { LevyNoticeProps } from "../types";
 import "../fonts"; // Register NunitoSans
@@ -270,7 +271,7 @@ export function LevyNotice({
           <View style={s.infoLeft}>
             <View style={s.infoLine}>
               <Text style={s.infoLabel}>Issued for</Text>
-              <Text style={s.infoValueBold}>{oc.name} {oc.plan_number}</Text>
+              <Text style={s.infoValueBold}>{ocLegalName(oc)}</Text>
             </View>
             <View style={s.infoLine}>
               <Text style={s.infoLabel}>Address</Text>

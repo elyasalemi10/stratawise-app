@@ -43,15 +43,44 @@ export const createMeetingSchema = z.object({
   location: z.string().trim().max(300).nullable().optional(),
   virtual_meeting_link: z.string().trim().max(500).nullable().optional(),
   online_platform: z.enum(MEETING_PLATFORMS).nullable().optional(),
+
+  // ── Notice detail ──
+  // All optional: a notice is valid without them. Each is something an owner
+  // reading the notice would otherwise have to ring the office to find out.
+  chairperson: z.string().trim().max(200).nullable().optional(),
+  /** Proxies lodged after this instant are not accepted. */
+  proxy_cutoff_at: z.string().nullable().optional(),
+  proxy_return_to: z.string().trim().max(300).nullable().optional(),
+  /** Newline-separated list of documents issued with the notice. */
+  accompanying_documents: z.string().trim().max(2000).nullable().optional(),
+  notice_notes: z.string().trim().max(4000).nullable().optional(),
 });
 
 export type CreateMeetingInput = z.input<typeof createMeetingSchema>;
 
 // ─── Agenda (create-meeting wizard, create-only) ────────────────────────────
 
+export const RESOLUTION_TYPES = ["information", "ordinary", "special", "unanimous"] as const;
+export type ResolutionType = (typeof RESOLUTION_TYPES)[number];
+
+/** Every enum gets a _LABEL lookup. Components import the labels, never the
+ *  raw values. */
+export const RESOLUTION_TYPE_LABELS: Record<ResolutionType, string> = {
+  information: "For information (no vote)",
+  ordinary: "Ordinary resolution",
+  special: "Special resolution",
+  unanimous: "Unanimous resolution",
+};
+
 export const agendaItemSchema = z.object({
   title: z.string().trim().min(1, "Each agenda item needs a title").max(300),
+  /** Background an owner needs to read the motion. */
+  description: z.string().trim().max(4000).nullable().optional(),
   motion: z.string().trim().max(2000).nullable().optional(),
+  /** Special and unanimous resolutions carry different thresholds under the
+   *  Act; a notice that does not say which a motion needs cannot be voted on
+   *  properly. */
+  resolution_type: z.enum(RESOLUTION_TYPES).default("information"),
 });
 export type AgendaItemInput = z.input<typeof agendaItemSchema>;
 

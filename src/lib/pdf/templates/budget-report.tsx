@@ -1,4 +1,5 @@
 import { Page, View, Text, Image, Document, StyleSheet } from "@react-pdf/renderer";
+import { ocLegalName } from "@/lib/oc-legal-name";
 import type { BudgetReportProps } from "../types";
 import "../fonts";
 
@@ -326,7 +327,7 @@ export function BudgetReport({
         {/* ── OC quote-style box ── */}
         <View style={s.ocQuote}>
           <Text style={s.ocName}>
-            {oc.name}{oc.plan_number ? ` , ${oc.plan_number}` : ""}
+            {ocLegalName(oc)}
           </Text>
           <Text style={s.ocAddress}>{oc.address}</Text>
         </View>
