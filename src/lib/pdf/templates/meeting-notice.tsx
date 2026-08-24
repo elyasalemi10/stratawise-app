@@ -38,11 +38,22 @@ export function MeetingNotice(props: MeetingNoticeProps) {
     companyBlock: { alignItems: "flex-end" as const },
     companyName: { fontSize: 11, fontWeight: 700, color: c.foreground, textAlign: "right" as const },
     companyMeta: { fontSize: 8.5, color: c.muted, textAlign: "right" as const, marginTop: 1 },
-    title: { fontSize: 17, fontWeight: 700, color: brand, textAlign: "center" as const, marginTop: 6 },
-    // A filled 2pt bar, NOT a zero-height View with a bottom border.
-    // react-pdf gives a border-only View no box to draw in, so the rule
-    // came out broken: clipped at one end, or missing entirely.
-    titleRule: { height: 2, width: 120, backgroundColor: brand, alignSelf: "center" as const, marginTop: 6, marginBottom: 4 },
+    // Title and its rule live in ONE centred container.
+    //
+    // They used to be siblings of the Page, with the rule positioned by
+    // alignSelf. Two things went wrong. The rule was a zero-height View with
+    // a bottom border, and react-pdf gives a border-only View no box to draw
+    // in. And the page sets lineHeight 1.5, so the title's line box is taller
+    // than its glyphs, but the following sibling was laid out against the
+    // glyph height , which put the "rule" straight through the middle of the
+    // title, underlining "ANNUAL GENERAL".
+    //
+    // A wrapper with alignItems center means the rule is a normal block child
+    // measured against the title's real box, and lineHeight 1.2 on the title
+    // keeps that box tight to the text.
+    titleBlock: { alignItems: "center" as const, marginTop: 6, marginBottom: 4 },
+    title: { fontSize: 17, fontWeight: 700, color: brand, textAlign: "center" as const, lineHeight: 1.2 },
+    titleRule: { height: 2, width: 120, backgroundColor: brand, marginTop: 6 },
     subtitle: { fontSize: 9.5, color: c.muted, textAlign: "center" as const, marginBottom: 16 },
     sectionTitle: { fontSize: 12, fontWeight: 700, color: brand, marginTop: 14, marginBottom: 6 },
     para: { fontSize: 10, color: c.foreground, marginBottom: 8 },
@@ -91,8 +102,10 @@ export function MeetingNotice(props: MeetingNoticeProps) {
       {/* ── Page 1: Notice ── */}
       <Page size="A4" style={s.page}>
         <Header />
-        <Text style={s.title}>{titleLine}</Text>
-        <View style={s.titleRule} />
+        <View style={s.titleBlock}>
+          <Text style={s.title}>{titleLine}</Text>
+          <View style={s.titleRule} />
+        </View>
         <Text style={s.subtitle}>Issued under the Owners Corporations Act 2006 (Vic)</Text>
 
         <Text style={s.para}>
@@ -151,7 +164,7 @@ export function MeetingNotice(props: MeetingNoticeProps) {
 
         {accompanyingDocuments && accompanyingDocuments.length > 0 ? (
           <>
-            <Text style={s.sectionTitle}>Issued with this notice</Text>
+            <Text style={s.sectionTitle}>Documents included</Text>
             {accompanyingDocuments.map((docName, i) => (
               <View key={i} style={s.bullet}>
                 <Text style={s.bulletDot}>{"\u2022"}</Text>

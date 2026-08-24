@@ -103,10 +103,17 @@ export function CreateMeetingForm({
   ocId,
   ocCode,
   ocName,
+  defaultChairperson,
+  defaultProxyReturnTo,
 }: {
   ocId: string;
   ocCode: string;
   ocName: string;
+  /** The signed-in manager. They chair their own OCs' meetings in the
+   *  ordinary case, so it is prefilled rather than typed every time. */
+  defaultChairperson?: string | null;
+  /** The firm's email. Where proxies go back to, unless told otherwise. */
+  defaultProxyReturnTo?: string | null;
   owners?: unknown; // unused now (sending moved to the detail page)
 }) {
   const router = useRouter();
@@ -125,15 +132,30 @@ export function CreateMeetingForm({
   // Notice step. All optional , a notice is valid without them, but every
   // one of these is something an owner reading the notice would otherwise
   // have to ring the office to find out.
-  const [chairperson, setChairperson] = useState("");
+  const [chairperson, setChairperson] = useState(defaultChairperson ?? "");
   const [proxyCutoff, setProxyCutoff] = useState("");
-  const [proxyReturnTo, setProxyReturnTo] = useState("");
+  const [proxyReturnTo, setProxyReturnTo] = useState(defaultProxyReturnTo ?? "");
+  // Proxies close the day before the meeting by default. Follows the meeting
+  // date until the manager sets one themselves, at which point we stop
+  // moving it under them.
+  const [proxyCutoffTouched, setProxyCutoffTouched] = useState(false);
   const [accompanyingDocuments, setAccompanyingDocuments] = useState("");
   const [noticeNotes, setNoticeNotes] = useState("");
 
   const [dateInvalid, setDateInvalid] = useState(false);
   const [linkInvalid, setLinkInvalid] = useState(false);
   const [pending, startTransition] = useTransition();
+
+  const defaultProxyCutoff = useMemo(() => {
+    if (!date) return "";
+    const d = new Date(`${date}T00:00:00`);
+    d.setDate(d.getDate() - 1);
+    const m = `${d.getMonth() + 1}`.padStart(2, "0");
+    const day = `${d.getDate()}`.padStart(2, "0");
+    return `${d.getFullYear()}-${m}-${day}`;
+  }, [date]);
+
+  const effectiveProxyCutoff = proxyCutoffTouched ? proxyCutoff : defaultProxyCutoff;
 
   // Minimum notice: 14 days for general meetings (AGM/SGM).
   const minDate = useMemo(() => {
@@ -154,7 +176,9 @@ export function CreateMeetingForm({
       virtual_meeting_link: format === "online" ? (link.trim() || null) : null,
       // online_platform is detected server-side (handles short links/redirects).
       chairperson: chairperson.trim() || null,
-      proxy_cutoff_at: proxyCutoff ? new Date(`${proxyCutoff}T23:59:00`).toISOString() : null,
+      proxy_cutoff_at: effectiveProxyCutoff
+        ? new Date(`${effectiveProxyCutoff}T17:00:00`).toISOString()
+        : null,
       proxy_return_to: proxyReturnTo.trim() || null,
       accompanying_documents: accompanyingDocuments.trim() || null,
       notice_notes: noticeNotes.trim() || null,
@@ -363,8 +387,8 @@ export function CreateMeetingForm({
               <div className="space-y-1.5">
                 <Label>Proxies close</Label>
                 <DatePicker
-                  value={proxyCutoff}
-                  onChange={setProxyCutoff}
+                  value={effectiveProxyCutoff}
+                  onChange={(v) => { setProxyCutoffTouched(true); setProxyCutoff(v); }}
                   maxDate={date || undefined}
                   placeholder="Last day to lodge a proxy"
                 />
@@ -381,11 +405,11 @@ export function CreateMeetingForm({
             </div>
 
             <div className="space-y-1.5">
-              <Label>Documents issued with this notice</Label>
+              <Label>Documents included</Label>
               <Textarea
                 value={accompanyingDocuments}
                 onChange={(e) => setAccompanyingDocuments(e.target.value)}
-                placeholder="One per line"
+                placeholder="One document per line"
                 rows={3}
               />
             </div>
