@@ -1,15 +1,25 @@
+import { Plus } from "lucide-react";
+import { Button } from "@/components/ui/button";
 import { TableSkeleton } from "@/components/shared/table-skeleton";
 
-// Column headings are fixed, so they render as real text; only the cells
-// shimmer. Keep these labels in step with the real table or the columns
-// jump when the data arrives.
+// Mirrors levies-client.tsx. "Generate levies" is fixed, so it renders for
+// real; only the batch rows are server data.
+
 export function LeviesSkeleton() {
   return (
-    <div className="space-y-6">
+    <div className="space-y-4">
+      <div className="flex justify-end">
+        <Button size="sm" disabled>
+          <Plus className="mr-2 h-3.5 w-3.5" />
+          Generate levies
+        </Button>
+      </div>
+
       <TableSkeleton
+        rows={5}
         columns={[
-          { label: "Type", pill: true },
-          { label: "Financial Year", cell: "w-24" },
+          { label: "Type", cell: "w-16" },
+          { label: "Financial Year", cell: "w-28" },
           { label: "Operating", cell: "w-16", align: "right" },
           { label: "Maintenance", cell: "w-16", align: "right" },
           { label: "Other", cell: "w-12", align: "right" },

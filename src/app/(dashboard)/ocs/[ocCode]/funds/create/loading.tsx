@@ -1,17 +1,62 @@
-import { TableSkeleton } from "@/components/shared/table-skeleton";
+import { Building2, MoreHorizontal, Wrench } from "lucide-react";
+import { Card, CardContent } from "@/components/ui/card";
+import { Label } from "@/components/ui/label";
+import { FUND_KIND_LABEL } from "@/lib/funds-shared";
+import { StepIndicator } from "./create-fund-form";
 
-// Column headings are fixed, so they render as real text; only the cells
-// shimmer. Keep these labels in step with the real table or the columns
-// jump when the data arrives.
-export default function OcsFundsCreateLoading() {
+// No shimmer. Step 1 of the wizard is the fund-type picker, and all of it
+// (the step strip, the label, the three choice cards) is fixed copy. The
+// server data only decides which of the three are already taken, which is a
+// disabled state, not content.
+//
+// It previously rendered a two-column Lot / Liability table skeleton , a
+// screen that belongs to step 2.
+
+const CHOICES = [
+  {
+    label: FUND_KIND_LABEL.admin,
+    icon: Building2,
+    blurb: "Day-to-day OC running costs , insurance, cleaning, admin, manager fees.",
+  },
+  {
+    label: FUND_KIND_LABEL.maintenance_plan,
+    icon: Wrench,
+    blurb: "Scheduled maintenance plan , recurring upkeep based on a 10-year plan.",
+  },
+  {
+    label: "Other (custom fund)",
+    icon: MoreHorizontal,
+    blurb: "A purpose-specific fund , e.g. driveway, pool, lift modernisation.",
+  },
+];
+
+export default function Loading() {
   return (
     <div className="space-y-6">
-      <TableSkeleton
-        columns={[
-          { label: "Lot", cell: "w-12" },
-          { label: "Liability for this fund", cell: "w-16", align: "right" },
-        ]}
-      />
+      <StepIndicator current="kind" />
+
+      <Card>
+        <CardContent className="space-y-4 pt-5">
+          <Label>
+            Fund type <span className="text-destructive">*</span>
+          </Label>
+          <div className="grid gap-3 sm:grid-cols-2">
+            {CHOICES.map((c) => {
+              const Icon = c.icon;
+              return (
+                <div
+                  key={c.label}
+                  className="flex h-full flex-col items-start gap-2 rounded-md border border-border bg-card p-4 text-left"
+                >
+                  <Icon className="h-5 w-5 text-primary" />
+                  <div className="text-sm font-medium text-foreground">{c.label}</div>
+                  <p className="text-xs text-muted-foreground">{c.blurb}</p>
+                </div>
+              );
+            })}
+          </div>
+        </CardContent>
+      </Card>
     </div>
   );
 }

@@ -37,7 +37,11 @@ const STEPS: Array<{ key: Step; number: number; label: string; icon: LucideIcon 
   { key: "bankDetails", number: 4, label: "Bank details", icon: Landmark },
 ];
 
-function StepIndicator({ current }: { current: Step }) {
+// Exported so loading.tsx can render the exact same strip. Step 1 of this
+// wizard is entirely fixed copy, so its loading state is the real first
+// screen rather than a shimmer, and duplicating this markup over there
+// would let the two drift.
+export function StepIndicator({ current }: { current: Step }) {
   const currentNumber = STEPS.find((s) => s.key === current)?.number ?? 1;
   return (
     <div className="mb-6 flex flex-wrap items-start justify-center gap-x-5 gap-y-4">
