@@ -12,6 +12,7 @@ import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
 import { Input } from "@/components/ui/input";
+import { NumberInput } from "@/components/ui/number-input";
 import { DatePicker } from "@/components/shared/date-picker";
 import {
   Select,
@@ -511,7 +512,7 @@ export function ReportsContent({
               <div className="w-full border-t border-border pt-4 mt-2 grid grid-cols-1 sm:grid-cols-2 gap-3">
                 <div className="space-y-1.5">
                   <Label className="text-xs">1. Current fees{prefilling ? " (loading…)" : ""}</Label>
-                  <Input value={certCurrentFees} onChange={(e) => setCertCurrentFees(e.target.value)} placeholder="$0.00" className="h-8 text-sm" />
+                  <NumberInput value={certCurrentFees} onChange={setCertCurrentFees} thousandsSeparator prefix="$" allowDecimal placeholder="Current fees" className="h-8 text-sm" />
                 </div>
                 <div className="space-y-1.5">
                   <Label className="text-xs">Billing cycle</Label>
@@ -533,8 +534,8 @@ export function ReportsContent({
                   <Input value={certFeesPaidUpTo} onChange={(e) => setCertFeesPaidUpTo(e.target.value)} placeholder="YYYY-MM-DD or n/a" className="h-8 text-sm" />
                 </div>
                 <div className="space-y-1.5">
-                  <Label className="text-xs">3. Unpaid fees total ($)</Label>
-                  <Input value={certUnpaidFees} onChange={(e) => setCertUnpaidFees(e.target.value)} placeholder="0.00" className="h-8 text-sm" inputMode="decimal" />
+                  <Label className="text-xs">3. Unpaid fees total</Label>
+                  <NumberInput value={certUnpaidFees} onChange={setCertUnpaidFees} thousandsSeparator prefix="$" allowDecimal placeholder="Unpaid fees total" className="h-8 text-sm" />
                 </div>
                 <div className="space-y-1.5">
                   <Label className="text-xs">5. Repairs / maintenance</Label>
@@ -542,10 +543,7 @@ export function ReportsContent({
                 </div>
                 <div className="space-y-1.5">
                   <Label className="text-xs">8. Total funds held</Label>
-                  <div className="flex h-8 w-full overflow-hidden rounded-md border border-border bg-card text-sm transition-colors focus-within:border-primary focus-within:ring-2 focus-within:ring-primary/20">
-                    <div className="flex items-center border-r border-border bg-cool-muted px-2.5 text-sm font-medium text-cool-muted-foreground select-none">$</div>
-                    <input value={certFunds} onChange={(e) => setCertFunds(e.target.value)} placeholder="Total funds held" className="flex-1 min-w-0 bg-transparent px-3 outline-none placeholder:text-muted-foreground" />
-                  </div>
+                  <NumberInput value={certFunds} onChange={setCertFunds} thousandsSeparator prefix="$" allowDecimal placeholder="Total funds held" className="h-8 text-sm" />
                 </div>
                 <div className="space-y-1.5">
                   <Label className="text-xs">9. Liabilities</Label>

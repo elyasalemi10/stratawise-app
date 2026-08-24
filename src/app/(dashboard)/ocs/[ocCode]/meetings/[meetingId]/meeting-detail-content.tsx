@@ -9,6 +9,7 @@ import {
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
+import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
 import { Checkbox } from "@/components/ui/checkbox";
 import {
   Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle,
@@ -24,6 +25,13 @@ import {
   type MeetingType, type MeetingStatus, type MeetingPlatform,
 } from "@/lib/validations/meetings";
 import type { NotifyOwnerOption } from "@/lib/actions/recurring-jobs";
+
+/** Every enum gets a _LABEL lookup. Components import the labels, never the
+ *  raw values. */
+const NOTICE_SCOPE_OPTIONS = [
+  { value: "all_owners", label: "All lot owners" },
+  { value: "specific", label: "Specific lot owners" },
+] as const;
 
 const STATUS_LABEL: Record<MeetingStatus, string> = {
   draft: "Draft", notice_sent: "Notice sent", in_progress: "In progress", completed: "Completed", cancelled: "Cancelled",
@@ -240,14 +248,17 @@ function SendNoticeDialog({
           <DialogDescription>The notice PDF is emailed to the chosen owners (post-only owners are excluded).</DialogDescription>
         </DialogHeader>
         <div className="space-y-3">
-          <div className="space-y-2">
-            {(["all_owners", "specific"] as const).map((s) => (
-              <label key={s} className="flex cursor-pointer items-center gap-2.5 text-sm">
-                <input type="radio" name="scope" checked={scope === s} onChange={() => setScope(s)} className="size-4 accent-[color:var(--primary)]" />
-                <span className="text-foreground">{s === "all_owners" ? "All lot owners" : "Specific lot owners"}</span>
-              </label>
+          <RadioGroup
+            value={scope}
+            onValueChange={(v) => setScope((v ?? "all_owners") as "all_owners" | "specific")}
+          >
+            {NOTICE_SCOPE_OPTIONS.map((o) => (
+              <div key={o.value} className="flex items-center gap-2.5 text-sm">
+                <RadioGroupItem value={o.value} />
+                <span className="text-foreground">{o.label}</span>
+              </div>
             ))}
-          </div>
+          </RadioGroup>
           {owners.length === 0 && (
             <p className="text-sm text-muted-foreground">No owners with an email on file (post-only owners are excluded).</p>
           )}

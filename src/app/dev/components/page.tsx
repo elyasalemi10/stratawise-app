@@ -352,10 +352,15 @@ export default function ComponentShowcase() {
                     <Label htmlFor="totalLots">
                       Total lots <span className="text-destructive">*</span>
                     </Label>
+                    {/* A showcase that demonstrates the wrong control is
+                        worse than no showcase: this is the page people copy
+                        from. type="number" ships browser spinner arrows and
+                        accepts scientific notation, and the placeholder was
+                        previewing a value rather than naming the field. */}
                     <Input
                       id="totalLots"
-                      type="number"
-                      placeholder="e.g. 42"
+                      inputMode="numeric"
+                      placeholder="Total lots"
                       aria-invalid={!!errors.totalLots}
                       {...register("totalLots")}
                     />

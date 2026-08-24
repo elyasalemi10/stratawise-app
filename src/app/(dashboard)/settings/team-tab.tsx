@@ -5,6 +5,9 @@ import { toast } from "sonner";
 import { UserMinus, Shield, Eye, Pencil } from "lucide-react";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
+import {
+  Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
+} from "@/components/ui/select";
 import { Badge } from "@/components/ui/badge";
 import { UserAvatar } from "@/components/shared/user-avatar";
 import {
@@ -13,11 +16,18 @@ import {
   type TeamMember,
 } from "@/lib/actions/team";
 
+type TeamRole = "admin" | "manager" | "viewer";
+
 const ROLE_CONFIG = {
   admin: { label: "Admin", variant: "info" as const, icon: Shield, description: "Full access. Can manage roles and company settings." },
-  manager: { label: "Manager", variant: "success" as const, icon: Pencil, description: "Can manage ocs, levies, and documents." },
-  viewer: { label: "Viewer", variant: "neutral" as const, icon: Eye, description: "Read-only access to all ocs." },
+  manager: { label: "Manager", variant: "success" as const, icon: Pencil, description: "Can manage OCs, levies, and documents." },
+  viewer: { label: "Viewer", variant: "neutral" as const, icon: Eye, description: "Read-only access to all OCs." },
 };
+
+const ROLE_OPTIONS = (Object.keys(ROLE_CONFIG) as TeamRole[]).map((value) => ({
+  value,
+  label: ROLE_CONFIG[value].label,
+}));
 
 function MemberRow({
   member,
@@ -83,16 +93,20 @@ function MemberRow({
       <div className="flex items-center gap-2">
         {isAdmin && !isCurrentUser ? (
           <>
-            <select
+            <Select
               value={role}
-              onChange={(e) => handleRoleChange(e.target.value as "admin" | "manager" | "viewer")}
+              onValueChange={(v) => handleRoleChange((v ?? "manager") as TeamRole)}
               disabled={changingRole}
-              className="h-7 rounded-md border border-border bg-background px-2 text-xs outline-none focus:border-primary"
             >
-              <option value="admin">Admin</option>
-              <option value="manager">Manager</option>
-              <option value="viewer">Viewer</option>
-            </select>
+              <SelectTrigger className="h-7 w-28 text-xs">
+                <SelectValue>{ROLE_CONFIG[role as TeamRole]?.label}</SelectValue>
+              </SelectTrigger>
+              <SelectContent>
+                {ROLE_OPTIONS.map((o) => (
+                  <SelectItem key={o.value} value={o.value}>{o.label}</SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
             <Button
               variant="ghost"
               size="icon"

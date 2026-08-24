@@ -9,6 +9,7 @@ import {
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
 import { Switch } from "@/components/ui/switch";
 import { Badge } from "@/components/ui/badge";
 import { cn } from "@/lib/utils";
@@ -230,6 +231,76 @@ export function MaintenanceContent({
   );
 }
 
+// The recurring-job form is a four-page stepper, not one long scroll.
+//
+// It was sixteen fields in a single drawer , OC, contractor, title, trade,
+// dates, frequency, fund, approval reference, notify scope and its owner
+// list, lead time, scope, cost, uploads , which is more than anyone reads
+// before they start guessing. Four pages, each a question you can answer
+// without scrolling.
+//
+// Editing keeps the same steps: a manager who opens an existing job to
+// change its cost should land on the page that has cost on it, not re-read
+// the whole thing.
+type NotifyScope = "all_owners" | "specific" | "none";
+
+/** Every enum gets a _LABEL lookup. Components import the labels, never the
+ *  raw values. */
+const NOTIFY_SCOPE_LABEL: Record<NotifyScope, string> = {
+  all_owners: "All lot owners",
+  specific: "Specific lot owners",
+  none: "Don't notify owners",
+};
+
+const NOTIFY_SCOPE_OPTIONS = (Object.keys(NOTIFY_SCOPE_LABEL) as NotifyScope[]).map(
+  (value) => ({ value, label: NOTIFY_SCOPE_LABEL[value] }),
+);
+
+type JobStep = "job" | "schedule" | "details" | "documents";
+
+const JOB_STEPS: Array<{ key: JobStep; number: number; label: string }> = [
+  { key: "job", number: 1, label: "Job" },
+  { key: "schedule", number: 2, label: "Schedule" },
+  { key: "details", number: 3, label: "Details" },
+  { key: "documents", number: 4, label: "Documents" },
+];
+
+function JobStepIndicator({
+  current,
+  onJump,
+}: {
+  current: JobStep;
+  /** Steps already passed are clickable; you cannot skip ahead past
+   *  validation. */
+  onJump: (s: JobStep) => void;
+}) {
+  const currentNumber = JOB_STEPS.find((s) => s.key === current)?.number ?? 1;
+  return (
+    <div className="flex items-center gap-1 border-b border-border px-4">
+      {JOB_STEPS.map((s) => {
+        const isCurrent = s.number === currentNumber;
+        const isDone = s.number < currentNumber;
+        return (
+          <button
+            key={s.key}
+            type="button"
+            disabled={!isDone && !isCurrent}
+            onClick={() => onJump(s.key)}
+            className={cn(
+              "h-9 border-b-2 px-3 text-sm font-medium transition-colors",
+              isCurrent && "border-primary text-foreground",
+              isDone && "cursor-pointer border-transparent text-primary hover:text-foreground",
+              !isCurrent && !isDone && "border-transparent text-muted-foreground",
+            )}
+          >
+            {s.label}
+          </button>
+        );
+      })}
+    </div>
+  );
+}
+
 function RecurringJobDrawer({
   open,
   onOpenChange,
@@ -276,9 +347,16 @@ function RecurringJobDrawer({
   const [uploading, setUploading] = useState(false);
   const [dragActive, setDragActive] = useState(false);
 
+  const [step, setStep] = useState<JobStep>("job");
   const [invalid, setInvalid] = useState<Record<string, boolean>>({});
   const [pending, startTransition] = useTransition();
   const clearInvalid = (f: string) => setInvalid((p) => (p[f] ? { ...p, [f]: false } : p));
+
+  // Reopening always starts at page one; a drawer that remembers where you
+  // were last time is disorienting when the thing you are editing changed.
+  useEffect(() => {
+    if (open) setStep("job");
+  }, [open]);
 
   // A contractor was just created from the lifted drawer , select it here.
   useEffect(() => {
@@ -342,19 +420,51 @@ function RecurringJobDrawer({
     }
   }
 
-  function onSubmit() {
+  // Per-step validation. Every problem on the page is collected and every
+  // offending field flagged, never short-circuiting on the first, so the
+  // manager fixes one page in one pass.
+  function validateStep(target: JobStep): boolean {
     const problems: string[] = [];
     const nextInvalid: Record<string, boolean> = {};
-    if (!ocId) { problems.push("Pick an OC."); nextInvalid.ocId = true; }
-    if (!title.trim()) { problems.push("Job title is required."); nextInvalid.title = true; }
-    if (!startDate) { problems.push("Start date is required."); nextInvalid.startDate = true; }
-    if (!ongoing && endDate && startDate && endDate < startDate) {
-      problems.push("End date can't be before the start date."); nextInvalid.endDate = true;
+
+    if (target === "job") {
+      if (!ocId) { problems.push("Pick an OC."); nextInvalid.ocId = true; }
+      if (!title.trim()) { problems.push("Job title is required."); nextInvalid.title = true; }
     }
+    if (target === "schedule") {
+      if (!startDate) { problems.push("Start date is required."); nextInvalid.startDate = true; }
+      if (!ongoing && endDate && startDate && endDate < startDate) {
+        problems.push("End date can't be before the start date."); nextInvalid.endDate = true;
+      }
+    }
+
     if (problems.length) {
-      setInvalid(nextInvalid);
+      setInvalid((prev) => ({ ...prev, ...nextInvalid }));
       toast.error(problems.length === 1 ? problems[0] : "Fix the highlighted fields.");
-      return;
+      return false;
+    }
+    return true;
+  }
+
+  function goNext() {
+    if (!validateStep(step)) return;
+    const i = JOB_STEPS.findIndex((s) => s.key === step);
+    setStep(JOB_STEPS[Math.min(i + 1, JOB_STEPS.length - 1)].key);
+  }
+
+  function goBack() {
+    const i = JOB_STEPS.findIndex((s) => s.key === step);
+    setStep(JOB_STEPS[Math.max(i - 1, 0)].key);
+  }
+
+  function onSubmit() {
+    // Re-check EVERY page, not just the one in front of you. Jumping back to
+    // an earlier step and clearing a required field would otherwise submit.
+    for (const s of JOB_STEPS) {
+      if (!validateStep(s.key)) {
+        setStep(s.key);
+        return;
+      }
     }
 
     const cost = costPerVisit.trim() ? parseFloat(costPerVisit) : null;
@@ -405,7 +515,15 @@ function RecurringJobDrawer({
           <SheetDescription>Set it up once; it runs for the chosen OC on schedule.</SheetDescription>
         </SheetHeader>
 
+        <JobStepIndicator
+          current={step}
+          onJump={(s) => setStep(s)}
+        />
+
         <div className="space-y-5 px-4 pb-4">
+        {/* Step 1 , what the job is and who does it. */}
+        {step === "job" && (
+          <>
           {/* OC (hidden + locked on the per-OC maintenance page) */}
           {!fixedOcId && (
             <div className="space-y-1.5">
@@ -484,6 +602,12 @@ function RecurringJobDrawer({
             </Combobox>
           </div>
 
+          </>
+        )}
+
+        {/* Step 2 , when and how often. */}
+        {step === "schedule" && (
+          <>
           {/* Schedule */}
           <div className="border-t border-border pt-4">
             <h3 className="text-sm font-semibold text-foreground">Schedule</h3>
@@ -539,26 +663,27 @@ function RecurringJobDrawer({
             </div>
           </div>
 
+          </>
+        )}
+
+        {/* Step 3 , money, scope, and who hears about it. */}
+        {step === "details" && (
+          <>
           {/* Notify */}
           <div className="border-t border-border pt-4">
             <h3 className="text-sm font-semibold text-foreground">Notify lot owners</h3>
           </div>
-          <div className="space-y-2">
-            {(["all_owners", "specific", "none"] as const).map((scopeKey) => (
-              <label key={scopeKey} className="flex cursor-pointer items-center gap-2.5 text-sm">
-                <input
-                  type="radio"
-                  name="notify_scope"
-                  checked={notifyScope === scopeKey}
-                  onChange={() => setNotifyScope(scopeKey)}
-                  className="size-4 accent-[color:var(--primary)]"
-                />
-                <span className="text-foreground">
-                  {scopeKey === "all_owners" ? "All lot owners" : scopeKey === "specific" ? "Specific lot owners" : "Don't notify owners"}
-                </span>
-              </label>
+          <RadioGroup
+            value={notifyScope}
+            onValueChange={(v) => setNotifyScope(v as "all_owners" | "specific" | "none")}
+          >
+            {NOTIFY_SCOPE_OPTIONS.map((o) => (
+              <div key={o.value} className="flex items-center gap-2.5 text-sm">
+                <RadioGroupItem value={o.value} />
+                <span className="text-foreground">{o.label}</span>
+              </div>
             ))}
-          </div>
+          </RadioGroup>
           {notifyScope === "specific" && (
             <div className="space-y-2">
               {!ocId ? (
@@ -601,6 +726,12 @@ function RecurringJobDrawer({
           </div>
 
           {/* Documents , attach files to this job (queued before save on a new job). */}
+          </>
+        )}
+
+        {/* Step 4 , attachments, plus the visit schedule when editing. */}
+        {step === "documents" && (
+          <>
           <div className="border-t border-border pt-4">
             <h3 className="text-sm font-semibold text-foreground">Documents</h3>
           </div>
@@ -671,6 +802,8 @@ function RecurringJobDrawer({
               <JobScheduleSection jobId={editing.id} />
             </>
           )}
+          </>
+        )}
         </div>
 
         <SheetFooter>
@@ -689,10 +822,21 @@ function RecurringJobDrawer({
               <Label className="cursor-default">Active</Label>
             </div>
           )}
-          <Button onClick={onSubmit} disabled={pending || uploading} className="cursor-pointer">
-            {pending && <Loader2 className="size-4 animate-spin" />}
-            {editing ? "Save changes" : "Create job"}
-          </Button>
+          {step !== "job" && (
+            <Button variant="secondary" onClick={goBack} disabled={pending} className="cursor-pointer">
+              Back
+            </Button>
+          )}
+          {step === "documents" ? (
+            <Button onClick={onSubmit} disabled={pending || uploading} className="cursor-pointer">
+              {pending && <Loader2 className="size-4 animate-spin" />}
+              {editing ? "Save changes" : "Create job"}
+            </Button>
+          ) : (
+            <Button onClick={goNext} disabled={pending} className="cursor-pointer">
+              Next
+            </Button>
+          )}
         </SheetFooter>
       </SheetContent>
     </Sheet>
