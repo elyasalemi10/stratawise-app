@@ -1,11 +1,7 @@
-import { KpiSkeleton } from "@/components/shared/kpi-skeleton";
+import { OwnerLeviesSkeleton } from "./owner-levies-skeleton";
 
-// The three KPI labels are fixed copy in page.tsx, so only the figures
-// shimmer.
-export default function LeviesLoading() {
-  return (
-    <div className="space-y-6">
-      <KpiSkeleton labels={["Total levied", "Total paid", "Outstanding"]} columns={3} />
-    </div>
-  );
+// Same skeleton the client renders, so the handover from this boundary to
+// the client component is continuous rather than a blank frame.
+export default function Loading() {
+  return <OwnerLeviesSkeleton />;
 }

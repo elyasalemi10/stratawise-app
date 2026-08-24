@@ -1,19 +1,7 @@
-import { TableSkeleton } from "@/components/shared/table-skeleton";
+import { BankAccountsSkeleton } from "./bank-accounts-skeleton";
 
-// Column headings are fixed, so they render as real text; only the cells
-// shimmer. Keep these labels in step with the real table or the columns
-// jump when the data arrives.
-export default function OcsBankAccountsLoading() {
-  return (
-    <div className="space-y-6">
-      <TableSkeleton
-        columns={[
-          { label: "Date", cell: "w-24" },
-          { label: "Description", cell: "w-40" },
-          { label: "Amount", cell: "w-16", align: "right" },
-          { label: "Balance", cell: "w-16", align: "right" },
-        ]}
-      />
-    </div>
-  );
+// Same skeleton the client renders, so the handover from this boundary to
+// the client component is continuous rather than a blank frame.
+export default function Loading() {
+  return <BankAccountsSkeleton />;
 }

@@ -12,7 +12,7 @@ import { EmailTab, type MailProviderConfig } from "./email-tab";
 import { FollowupTab } from "./followup-tab";
 import type { Profile } from "@/lib/auth";
 import type { TeamMember } from "@/lib/actions/team";
-import type { NotificationPrefRow, AutoOptOutEntry } from "./page";
+import type { NotificationPrefRow, AutoOptOutEntry } from "./data";
 
 interface CompanyData {
   id: string;

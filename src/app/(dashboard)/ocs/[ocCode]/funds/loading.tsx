@@ -1,19 +1,7 @@
-import { TableSkeleton } from "@/components/shared/table-skeleton";
+import { FundsSkeleton } from "./funds-skeleton";
 
-// Column headings are fixed, so they render as real text; only the cells
-// shimmer. Keep these labels in step with the real table.
-export default function FundsLoading() {
-  return (
-    <div className="space-y-6">
-      <TableSkeleton
-        columns={[
-          { label: "Fund", cell: "w-40" },
-          { label: "Kind", pill: true },
-          { label: "Lots", cell: "w-12" },
-          { label: "Accounts", cell: "w-12" },
-          { label: "Balance", cell: "w-16", align: "right" },
-        ]}
-      />
-    </div>
-  );
+// Same skeleton the client renders, so the handover from this boundary to
+// the client component is continuous rather than a blank frame.
+export default function Loading() {
+  return <FundsSkeleton />;
 }

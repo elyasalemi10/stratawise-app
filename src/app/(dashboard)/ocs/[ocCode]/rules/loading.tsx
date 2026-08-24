@@ -1,8 +1,7 @@
-import { PageSkeleton } from "@/components/shared/page-skeleton";
+import { RulesSkeleton } from "./rules-skeleton";
 
-// CLAUDE.md "Snappy navigation": Next.js streams this component while the
-// real page.tsx fetches server data, so the user sees layout immediately
-// instead of waiting for the route to resolve.
+// Same skeleton the client renders, so the handover from this boundary to
+// the client component is continuous rather than a blank frame.
 export default function Loading() {
-  return <PageSkeleton />;
+  return <RulesSkeleton />;
 }

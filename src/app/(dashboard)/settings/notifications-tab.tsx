@@ -12,7 +12,7 @@ import {
 import { updateNotificationPreferences } from "@/lib/actions/notification-preferences";
 import { Button } from "@/components/ui/button";
 import { Switch } from "@/components/ui/switch";
-import type { NotificationPrefRow, AutoOptOutEntry } from "./page";
+import type { NotificationPrefRow, AutoOptOutEntry } from "./data";
 
 // Human-readable labels for each notification type. Renders in the
 // settings table; falls back to the raw type if not in the map.

@@ -1,8 +1,6 @@
 import { redirect } from "next/navigation";
 import { resolveOCFromCode } from "@/lib/oc-resolver";
-import { getCurrentProfile } from "@/lib/auth";
-import { listMeetings } from "@/lib/actions/meetings";
-import { MeetingsContent } from "./meetings-content";
+import { MeetingsClient } from "./meetings-client";
 
 export default async function MeetingsPage({
   params,
@@ -13,17 +11,5 @@ export default async function MeetingsPage({
   const resolved = await resolveOCFromCode(ocCode);
   if (!resolved) redirect("/dashboard");
 
-  const [profile, meetings] = await Promise.all([
-    getCurrentProfile(),
-    listMeetings(resolved.id),
-  ]);
-
-  return (
-    <MeetingsContent
-      ocId={resolved.id}
-      ocCode={ocCode}
-      meetings={meetings}
-      readOnly={profile?.role === "lot_owner"}
-    />
-  );
+  return <MeetingsClient ocId={resolved.id} ocCode={ocCode} />;
 }

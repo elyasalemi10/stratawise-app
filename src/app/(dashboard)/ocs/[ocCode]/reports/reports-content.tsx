@@ -14,6 +14,13 @@ import { Label } from "@/components/ui/label";
 import { Input } from "@/components/ui/input";
 import { DatePicker } from "@/components/shared/date-picker";
 import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
+import {
   getLevyHistory,
   getInsuranceStatus,
   getLotOwnerRegister,
@@ -47,6 +54,22 @@ interface LotOption {
   unit_number: string | null;
   owner_display_name: string | null;
 }
+
+// Radix Select cannot carry an empty-string item value, so "no lot filter"
+// needs a sentinel. It never leaves this component: selectedLotId stays ""
+// for "all lots", which is what the report actions expect.
+const ALL_LOTS = "__all";
+
+const lotLabel = (lot: LotOption) =>
+  `Lot ${lot.lot_number}${lot.owner_display_name ? ` , ${lot.owner_display_name}` : ""}`;
+
+/** Billing cycle is stored snake_case; the user never sees the raw value. */
+const BILLING_CYCLE_LABEL: Record<string, string> = {
+  monthly: "Monthly",
+  quarterly: "Quarterly",
+  half_yearly: "Half-yearly",
+  annually: "Annually",
+};
 
 type ReportType =
   | "levy_history"
@@ -342,34 +365,39 @@ export function ReportsContent({
           <div className="flex flex-wrap items-end gap-4">
             <div className="space-y-1.5 flex-1 min-w-[200px]">
               <Label>Report type</Label>
-              <select
+              <Select
                 value={reportType}
-                onChange={(e) => { setReportType(e.target.value as ReportType); setPdfUrl(null); }}
-                className="h-9 w-full rounded-md border border-border bg-background px-3 text-sm outline-none focus:border-primary focus:ring-2 focus:ring-primary/20"
+                onValueChange={(v) => { setReportType((v ?? "") as ReportType); setPdfUrl(null); }}
               >
-                <option value="">Select a report...</option>
-                {availableReports.map((r) => (
-                  <option key={r.id} value={r.id}>{r.label}</option>
-                ))}
-              </select>
+                <SelectTrigger className="h-9 w-full">
+                  <SelectValue placeholder="Select a report..." />
+                </SelectTrigger>
+                <SelectContent>
+                  {availableReports.map((r) => (
+                    <SelectItem key={r.id} value={r.id}>{r.label}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
             </div>
 
             {/* Lot filter for levy history (managers only) */}
             {reportType === "levy_history" && !isLotOwner && (
               <div className="space-y-1.5 min-w-[200px]">
                 <Label>Lot owner</Label>
-                <select
-                  value={selectedLotId}
-                  onChange={(e) => setSelectedLotId(e.target.value)}
-                  className="h-9 w-full rounded-md border border-border bg-background px-3 text-sm outline-none focus:border-primary focus:ring-2 focus:ring-primary/20"
+                <Select
+                  value={selectedLotId || ALL_LOTS}
+                  onValueChange={(v) => setSelectedLotId(!v || v === ALL_LOTS ? "" : v)}
                 >
-                  <option value="">All lots</option>
-                  {lots.map((lot) => (
-                    <option key={lot.id} value={lot.id}>
-                      Lot {lot.lot_number}{lot.owner_display_name ? ` , ${lot.owner_display_name}` : ""}
-                    </option>
-                  ))}
-                </select>
+                  <SelectTrigger className="h-9 w-full">
+                    <SelectValue placeholder="All lots" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value={ALL_LOTS}>All lots</SelectItem>
+                    {lots.map((lot) => (
+                      <SelectItem key={lot.id} value={lot.id}>{lotLabel(lot)}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
               </div>
             )}
 
@@ -386,18 +414,16 @@ export function ReportsContent({
               <>
                 <div className="space-y-1.5 min-w-[200px]">
                   <Label>Lot</Label>
-                  <select
-                    value={selectedLotId}
-                    onChange={(e) => setSelectedLotId(e.target.value)}
-                    className="h-9 w-full rounded-md border border-border bg-background px-3 text-sm outline-none focus:border-primary focus:ring-2 focus:ring-primary/20"
-                  >
-                    <option value="">Select lot...</option>
-                    {lots.map((lot) => (
-                      <option key={lot.id} value={lot.id}>
-                        Lot {lot.lot_number}{lot.owner_display_name ? ` , ${lot.owner_display_name}` : ""}
-                      </option>
-                    ))}
-                  </select>
+                  <Select value={selectedLotId} onValueChange={(v) => setSelectedLotId(v ?? "")}>
+                    <SelectTrigger className="h-9 w-full">
+                      <SelectValue placeholder="Select lot..." />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {lots.map((lot) => (
+                        <SelectItem key={lot.id} value={lot.id}>{lotLabel(lot)}</SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
                 </div>
                 <div className="space-y-1.5 min-w-[160px]">
                   <Label>From</Label>
@@ -429,18 +455,16 @@ export function ReportsContent({
               <>
                 <div className="space-y-1.5 min-w-[200px]">
                   <Label>Lot</Label>
-                  <select
-                    value={certLotId}
-                    onChange={(e) => setCertLotId(e.target.value)}
-                    className="h-9 w-full rounded-md border border-border bg-background px-3 text-sm outline-none focus:border-primary focus:ring-2 focus:ring-primary/20"
-                  >
-                    <option value="">Select lot...</option>
-                    {lots.map((lot) => (
-                      <option key={lot.id} value={lot.id}>
-                        Lot {lot.lot_number}{lot.owner_display_name ? ` , ${lot.owner_display_name}` : ""}
-                      </option>
-                    ))}
-                  </select>
+                  <Select value={certLotId} onValueChange={(v) => setCertLotId(v ?? "")}>
+                    <SelectTrigger className="h-9 w-full">
+                      <SelectValue placeholder="Select lot..." />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {lots.map((lot) => (
+                        <SelectItem key={lot.id} value={lot.id}>{lotLabel(lot)}</SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
                 </div>
                 <div className="space-y-1.5 min-w-[180px]">
                   <Label>Applicant name</Label>
@@ -474,16 +498,18 @@ export function ReportsContent({
                 </div>
                 <div className="space-y-1.5">
                   <Label className="text-xs">Billing cycle</Label>
-                  <select
-                    value={certBillingCycle}
-                    onChange={(e) => setCertBillingCycle(e.target.value)}
-                    className="h-8 w-full rounded-md border border-border bg-background px-3 text-sm outline-none focus:border-primary focus:ring-2 focus:ring-primary/20"
-                  >
-                    <option value="monthly">monthly</option>
-                    <option value="quarterly">quarterly</option>
-                    <option value="half_yearly">half-yearly</option>
-                    <option value="annually">annually</option>
-                  </select>
+                  <Select value={certBillingCycle} onValueChange={(v) => setCertBillingCycle(v ?? "monthly")}>
+                    <SelectTrigger className="h-8 w-full">
+                      <SelectValue placeholder="Billing cycle">
+                        {BILLING_CYCLE_LABEL[certBillingCycle]}
+                      </SelectValue>
+                    </SelectTrigger>
+                    <SelectContent>
+                      {Object.entries(BILLING_CYCLE_LABEL).map(([value, label]) => (
+                        <SelectItem key={value} value={value}>{label}</SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
                 </div>
                 <div className="space-y-1.5">
                   <Label className="text-xs">2. Fees paid up to</Label>

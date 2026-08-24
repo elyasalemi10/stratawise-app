@@ -105,14 +105,31 @@ export function clearCachedData(): void {
  *  A pattern list has no ordering dependency and is greppable: when a page
  *  is converted to useCachedData, add its route here. */
 const CLIENT_CACHED_ROUTES: RegExp[] = [
+  // Firm-level
+  /^\/dashboard$/,
   /^\/ocs$/,
-  /^\/ocs\/[^/]+\/lots$/,
-  /^\/ocs\/[^/]+\/documents$/,
+  /^\/inbox$/,
   /^\/contractors$/,
   /^\/chart-of-accounts$/,
   /^\/maintenance$/,
-  /^\/inbox$/,
-  /^\/dashboard$/,
+  /^\/trust-accounts$/,
+  /^\/levies$/,
+  /^\/settings$/,
+  // Per-OC
+  /^\/ocs\/[^/]+$/,
+  /^\/ocs\/[^/]+\/lots$/,
+  /^\/ocs\/[^/]+\/documents$/,
+  /^\/ocs\/[^/]+\/levies$/,
+  /^\/ocs\/[^/]+\/my-levies$/,
+  /^\/ocs\/[^/]+\/budgets$/,
+  /^\/ocs\/[^/]+\/meetings$/,
+  /^\/ocs\/[^/]+\/insurance$/,
+  /^\/ocs\/[^/]+\/maintenance$/,
+  /^\/ocs\/[^/]+\/funds$/,
+  /^\/ocs\/[^/]+\/bank-accounts$/,
+  /^\/ocs\/[^/]+\/reconciliation$/,
+  /^\/ocs\/[^/]+\/reports$/,
+  /^\/ocs\/[^/]+\/rules$/,
 ];
 
 export function isClientCached(pathname: string): boolean {
