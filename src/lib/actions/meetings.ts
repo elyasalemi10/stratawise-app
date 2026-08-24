@@ -37,7 +37,8 @@ async function resolveOnlinePlatform(link: string): Promise<string> {
 }
 import { runBulkEmail } from "@/lib/bulk-email-runner";
 import type { MeetingNoticeProps } from "@/lib/pdf/types";
-import { tasks } from "@trigger.dev/sdk";
+import { after } from "next/server";
+import { enqueueJob, drainJobs } from "@/lib/jobs/queue";
 
 // Builds the branded meeting-notice PDF props for an OC + parsed wizard input.
 // Private helper shared by the create + preview actions.
@@ -387,15 +388,19 @@ export async function sendMeetingNotice(
     notifyScope: parsed.data.notify_scope,
     lotOwnerIds: parsed.data.notify_scope === "specific" ? (parsed.data.notify_lot_owner_ids ?? []) : [],
   };
-  if (process.env.TRIGGER_SECRET_KEY) {
-    try {
-      await tasks.trigger("send-bulk-email", payload);
-    } catch (err) {
-      console.error("sendMeetingNotice: failed to queue send-bulk-email, sending inline", err);
-      await runBulkEmail(payload);
-    }
-  } else {
+  // Queue it, then start it on this same invocation once the response has
+  // gone out. The manager's click returns immediately and the emails begin
+  // sending straight away; the row in background_jobs is what makes it
+  // survive the invocation being killed mid-send. /api/cron/jobs picks up
+  // anything left over.
+  const queued = await enqueueJob({ kind: "send_bulk_email", payload }, profile.id);
+  if ("error" in queued) {
+    // Could not even record the job , send inline rather than silently
+    // dropping the notice.
+    console.error("sendMeetingNotice: could not queue, sending inline", queued.error);
     await runBulkEmail(payload);
+  } else {
+    after(() => drainJobs());
   }
 
   await supabase.from("audit_log").insert({

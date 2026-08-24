@@ -1,4 +1,5 @@
-import { schedules, tasks } from "@trigger.dev/sdk";
+import { schedules } from "@trigger.dev/sdk";
+import { enqueueJob } from "@/lib/jobs/queue";
 import { createServerClient } from "@/lib/supabase";
 import { advance, computeNextOccurrence } from "@/lib/recurring-jobs-helpers";
 import type { RecurringFrequency } from "@/lib/validations/recurring-jobs";
@@ -70,15 +71,20 @@ export const recurringJobReminders = schedules.task({
       // Only act inside the lead-time window and only once per occurrence.
       const withinLead = daysUntil <= (j.lead_time_days ?? 0) && daysUntil >= 0;
       if (withinLead && j.notify_scope !== "none" && j.last_notified_occurrence !== occurrence) {
-        // Background fan-out for the owner emails.
-        try {
-          await tasks.trigger("send-bulk-email", {
+        // Background fan-out for the owner emails. Goes on the
+        // background_jobs queue like every other bulk send; there is no
+        // request to hang after() off here, so /api/cron/jobs picks it up
+        // within the minute.
+        const queued = await enqueueJob({
+          kind: "send_bulk_email",
+          payload: {
             kind: "recurring_job",
             recurringJobId: j.id,
             occurrenceDate: occurrence,
-          });
-        } catch (err) {
-          console.error("recurring-job-reminders: failed to queue bulk-email", err);
+          },
+        });
+        if ("error" in queued) {
+          console.error("recurring-job-reminders: could not queue bulk email", queued.error);
         }
 
         // In-app notification for the OC's owners (broad signal). Email is the

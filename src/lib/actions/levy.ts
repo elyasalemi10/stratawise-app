@@ -11,7 +11,8 @@ import { notifyOCLotOwners } from "@/lib/actions/notifications";
 import { getLotOwners } from "@/lib/actions/lot-ownership";
 import { uploadObject } from "@/lib/storage/r2";
 import { runLevyBatchSend } from "@/lib/levy-batch-send-runner";
-import { tasks } from "@trigger.dev/sdk";
+import { after } from "next/server";
+import { enqueueJob, drainJobs } from "@/lib/jobs/queue";
 // generateCrn lived in the nuked reconciliation stack. Inlined here
 // (BPAY MOD10V01 check digit), preserved for the bpay_crn column on
 // regular levies until the new reconciliation flow ships.
@@ -1943,17 +1944,22 @@ export async function queueBatchSend(
     performerId: profile.id,
   };
 
-  if (process.env.TRIGGER_SECRET_KEY) {
-    try {
-      await tasks.trigger("send-levy-batch", payload);
-      return { queued: true };
-    } catch (err) {
-      console.error("queueBatchSend: failed to queue send-levy-batch, sending inline", err);
-    }
+  // Queue it, then start it on this same invocation once the response has
+  // gone out. The manager's Send returns immediately and the notices begin
+  // going out straight away; the row in background_jobs is what makes it
+  // survive the invocation being killed mid-send. /api/cron/jobs picks up
+  // anything left over.
+  const queued = await enqueueJob({ kind: "send_levy_batch", payload }, profile.id);
+  if ("error" in queued) {
+    // Could not even record the job , send inline rather than silently
+    // dropping the batch.
+    console.error("queueBatchSend: could not queue, sending inline", queued.error);
+    const res = await runLevyBatchSend(payload);
+    if (res.error) return { error: res.error };
+    return { queued: true };
   }
-  // Dev / fallback: run inline (still returns once done).
-  const res = await runLevyBatchSend(payload);
-  if (res.error) return { error: res.error };
+
+  after(() => drainJobs());
   return { queued: true };
 }
 
