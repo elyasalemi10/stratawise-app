@@ -236,7 +236,7 @@ function SimpleDropdown({
   /** Filled with a function that closes the panel, so a parent can dismiss
    *  it directly instead of relying on a click bubbling through the portal.
    *  The OC switcher uses this to close BEFORE it navigates. */
-  closeRef?: React.MutableRefObject<(() => void) | null>;
+  closeRef?: React.MutableRefObject<((immediate?: boolean) => void) | null>;
 }) {
   const [open, setOpen] = useState(false);
   // `open` is also mirrored in a ref. The trigger's toggle reads the ref
@@ -267,9 +267,18 @@ function SimpleDropdown({
 
   useEffect(() => {
     if (!closeRef) return;
-    closeRef.current = () => {
+    // `immediate` drops the panel in the SAME commit instead of leaving it
+    // mounted for the 120ms exit animation. Callers that are about to
+    // navigate use it: an animating panel outlives the click by more than a
+    // frame, which leaves a window where a concurrent re-render of the
+    // sidebar (a route change, a router.refresh(), new layout props) can
+    // interleave with the dismissal. That window is what made the switcher
+    // look like it vanished and came back. Closing in one commit removes the
+    // window rather than trying to win the race inside it.
+    closeRef.current = (immediate?: boolean) => {
       openRef.current = false;
       setOpen(false);
+      if (immediate) setMounted(false);
       onCloseRef.current?.();
     };
     return () => {
@@ -721,9 +730,9 @@ export function AppSidebar({
   // the profile loads (will be re-keyed on next render).
   const { pins, togglePin, isPinned } = usePinnedOCs(profile?.userEmail ?? null);
   const [switcherQuery, setSwitcherQuery] = useState("");
-  const switcherCloseRef = useRef<(() => void) | null>(null);
-  function closeSwitcher() {
-    switcherCloseRef.current?.();
+  const switcherCloseRef = useRef<((immediate?: boolean) => void) | null>(null);
+  function closeSwitcher(immediate?: boolean) {
+    switcherCloseRef.current?.(immediate);
   }
 
   // Accordion: only ONE group open at a time. null = all collapsed. Picking a
@@ -830,23 +839,36 @@ export function AppSidebar({
 
   // Smart oc switching , preserve current sub-page.
   //
-  // Closes the panel EXPLICITLY before navigating. It used to rely on the
-  // click bubbling through the portal to SimpleDropdown's closeOnClick,
-  // which left the dismiss racing a route change: the panel was still
-  // mounted playing its 120ms exit animation while the new route re-rendered
-  // the sidebar, which is what made it look like it flickered away and back.
+  // Two things keep the dismissal out of the route change's way:
+  //
+  //   1. closeSwitcher(true) unmounts the panel in the same commit rather
+  //      than leaving it up for its 120ms exit animation. An animating panel
+  //      outlives the click, and anything that re-renders the sidebar in that
+  //      window (the new route, a router.refresh(), fresh layout props) lands
+  //      on a half-dismissed panel.
+  //   2. The push waits a frame, so the browser has painted the panel gone
+  //      before any route work starts. Navigating in the same tick puts the
+  //      dismissal and the transition in one batch, where React is free to
+  //      order them either way.
+  //
+  // Between them there is no window left for the two to interleave, which is
+  // what the flicker was.
+  function navigateFromSwitcher(href: string) {
+    closeSwitcher(true);
+    requestAnimationFrame(() => router.push(href));
+  }
+
   function switchOC(newCode: string | null) {
-    closeSwitcher();
     if (newCode === null) {
-      router.push("/dashboard");
+      navigateFromSwitcher("/dashboard");
       return;
     }
     // The oc index page IS the dashboard now , no /dashboard segment.
     if (currentOCCode) {
       const subPage = pathname.replace(`/ocs/${currentOCCode}`, "");
-      router.push(`/ocs/${newCode}${subPage}`);
+      navigateFromSwitcher(`/ocs/${newCode}${subPage}`);
     } else {
-      router.push(`/ocs/${newCode}`);
+      navigateFromSwitcher(`/ocs/${newCode}`);
     }
   }
 
@@ -996,7 +1018,7 @@ export function AppSidebar({
                       <div className="border-t border-border bg-popover p-1">
                         <button
                           type="button"
-                          onClick={() => router.push("/ocs/new")}
+                          onClick={() => navigateFromSwitcher("/ocs/new")}
                           className="flex w-full cursor-pointer items-center gap-2 rounded-md px-2 py-1.5 text-sm text-foreground hover:bg-accent"
                         >
                           <div className="flex size-6 items-center justify-center rounded-md border border-border bg-transparent">
