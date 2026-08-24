@@ -48,6 +48,43 @@ export async function getNotifications(limit = 20): Promise<Notification[]> {
   }));
 }
 
+// ─── The Inbox's own query ────────────────────────────────────────────
+//
+// getNotifications() above deliberately excludes `email_reply`: those rows
+// are inbound mail, and they'd drown the real alerts in the bell dropdown.
+//
+// The Inbox is the surface those rows exist FOR, so it needs the unfiltered
+// list. It was calling getNotifications() instead, which meant the inbox
+// filtered out the only thing it was built to render , every inbound reply
+// was ingested correctly, written to notifications, and then hidden.
+//
+// Two callers, two intents, two queries. Do not merge them.
+
+export async function getInboxNotifications(limit = 50): Promise<Notification[]> {
+  const profile = await getCurrentProfile();
+  if (!profile) return [];
+
+  const supabase = createServerClient();
+  const { data } = await supabase
+    .from("notifications")
+    .select("id, type, title, body, link, read_at, created_at, oc_id, metadata")
+    .eq("profile_id", profile.id)
+    .order("created_at", { ascending: false })
+    .limit(limit);
+
+  return (data ?? []).map((n) => ({
+    id: n.id,
+    type: n.type,
+    title: n.title,
+    message: n.body,
+    link: n.link,
+    read_at: n.read_at,
+    created_at: n.created_at,
+    oc_id: n.oc_id,
+    metadata: (n.metadata as Record<string, unknown> | null) ?? null,
+  }));
+}
+
 export async function getUnreadCount(): Promise<number> {
   const profile = await getCurrentProfile();
   if (!profile) return 0;

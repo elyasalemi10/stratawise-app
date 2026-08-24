@@ -1,7 +1,7 @@
 "use server";
 
 import { getCurrentProfile } from "@/lib/auth";
-import { getNotifications } from "@/lib/actions/notifications";
+import { getInboxNotifications } from "@/lib/actions/notifications";
 import {
   resolveInboxRowProviders,
   prefetchInboxEmails,
@@ -15,7 +15,7 @@ import {
 // check left only up there would be skipped.
 
 export interface InboxPageData {
-  notifications: Awaited<ReturnType<typeof getNotifications>>;
+  notifications: Awaited<ReturnType<typeof getInboxNotifications>>;
   rowProviders: Awaited<ReturnType<typeof resolveInboxRowProviders>>;
   prefetchedEmails: Awaited<ReturnType<typeof prefetchInboxEmails>>;
   allOwnerships: Awaited<ReturnType<typeof listAllPeopleOwnerships>>;
@@ -25,7 +25,7 @@ export async function getInboxPageData(): Promise<InboxPageData> {
   const profile = await getCurrentProfile();
   if (!profile) throw new Error("Not authenticated.");
 
-  const notifications = await getNotifications(50);
+  const notifications = await getInboxNotifications(50);
 
   // Three server-side enrichments in parallel:
   //   1. provider hint for each row (Gmail glyph)
