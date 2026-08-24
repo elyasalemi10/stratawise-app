@@ -1,17 +1,23 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
-import { ChevronDown } from "lucide-react";
 import {
-  Command,
-  CommandInput,
-  CommandList,
-  CommandEmpty,
-  CommandItem,
-  CommandGroup,
-} from "@/components/ui/command";
-import { cn } from "@/lib/utils";
+  Combobox,
+  ComboboxContent,
+  ComboboxEmpty,
+  ComboboxInput,
+  ComboboxItem,
+  ComboboxList,
+} from "@/components/ui/combobox";
 import { SUBURBS_BY_STATE } from "@/lib/data/australian-suburbs";
+
+// Suburb picker, scoped to the chosen state.
+//
+// Was a hand-rolled trigger + click-outside listener + absolutely-positioned
+// panel wrapping a raw cmdk Command. <Combobox> is all of that, already
+// consistent with every other picker, so the bespoke version is gone.
+//
+// Disabled until a state is chosen, since the list is state-scoped and
+// offering every suburb in Australia would be useless.
 
 interface StateSuburbSelectProps {
   state: string | null;
@@ -28,70 +34,32 @@ export function StateSuburbSelect({
   error,
   id,
 }: StateSuburbSelectProps) {
-  const [open, setOpen] = useState(false);
-  const ref = useRef<HTMLDivElement>(null);
-
-  // Close on click outside
-  useEffect(() => {
-    function handler(e: MouseEvent) {
-      if (ref.current && !ref.current.contains(e.target as Node)) {
-        setOpen(false);
-      }
-    }
-    document.addEventListener("mousedown", handler);
-    return () => document.removeEventListener("mousedown", handler);
-  }, []);
-
   const suburbs = state ? (SUBURBS_BY_STATE[state] ?? []) : [];
   const disabled = !state;
 
   return (
-    <div ref={ref} className="relative">
-      <button
-        type="button"
-        id={id}
-        disabled={disabled}
-        onClick={() => !disabled && setOpen((o) => !o)}
-        className={cn(
-          "flex h-9 w-full items-center justify-between rounded-md border bg-background px-3 text-sm",
-          disabled && "cursor-not-allowed bg-muted text-muted-foreground",
-          error ? "border-destructive" : "border-border",
-          !disabled && "hover:border-primary/50"
-        )}
-      >
-        <span className={cn(!value && "text-muted-foreground")}>
-          {disabled
-            ? "Select a state first"
-            : value || "Search suburbs..."}
-        </span>
-        <ChevronDown className="h-4 w-4 text-muted-foreground" />
-      </button>
-
-      {open && !disabled && (
-        <div className="absolute top-full left-0 z-50 mt-1 w-full rounded-lg border border-border bg-popover shadow-md">
-          <Command>
-            <CommandInput placeholder="Search suburb or postcode..." />
-            <CommandList className="max-h-48">
-              <CommandEmpty>No suburbs found</CommandEmpty>
-              <CommandGroup>
-                {suburbs.map((suburb) => (
-                  <CommandItem
-                    key={suburb}
-                    value={suburb}
-                    data-checked={value === suburb}
-                    onSelect={() => {
-                      onChange(suburb);
-                      setOpen(false);
-                    }}
-                  >
-                    {suburb}
-                  </CommandItem>
-                ))}
-              </CommandGroup>
-            </CommandList>
-          </Command>
-        </div>
-      )}
-    </div>
+    <Combobox
+      id={id}
+      items={suburbs}
+      value={value}
+      onValueChange={(v) => onChange(v ?? "")}
+      disabled={disabled}
+    >
+      <ComboboxInput
+        placeholder={disabled ? "Select a state first" : "Search suburbs…"}
+        display={value || undefined}
+        className={error ? "h-9 border-destructive" : "h-9"}
+      />
+      <ComboboxContent>
+        <ComboboxEmpty>No suburbs found.</ComboboxEmpty>
+        <ComboboxList>
+          {(suburb: string) => (
+            <ComboboxItem key={suburb} value={suburb}>
+              {suburb}
+            </ComboboxItem>
+          )}
+        </ComboboxList>
+      </ComboboxContent>
+    </Combobox>
   );
 }

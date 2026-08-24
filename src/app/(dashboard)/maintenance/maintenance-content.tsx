@@ -440,7 +440,7 @@ function RecurringJobDrawer({
               </button>
             </div>
             <Combobox items={contractors} value={contractorId} onValueChange={(v) => setContractorId(v ?? "")}>
-              <ComboboxInput placeholder={selectedContractor?.business_name ?? "Pick a contractor"} />
+              <ComboboxInput placeholder="Pick a contractor" display={selectedContractor?.business_name} />
               <ComboboxContent>
                 <ComboboxEmpty>No contractors yet.</ComboboxEmpty>
                 <ComboboxList>
@@ -472,7 +472,7 @@ function RecurringJobDrawer({
           <div className="space-y-1.5">
             <Label>Trade</Label>
             <Combobox items={CONTRACTOR_TRADE_OPTIONS} value={trade} onValueChange={(v) => setTrade(v ?? "")}>
-              <ComboboxInput placeholder={trade ? tradeLabel(trade) : "Search trade"} />
+              <ComboboxInput placeholder="Search trade" display={trade ? tradeLabel(trade) : undefined} />
               <ComboboxContent>
                 <ComboboxEmpty>No trade found.</ComboboxEmpty>
                 <ComboboxList>

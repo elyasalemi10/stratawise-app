@@ -61,16 +61,27 @@ interface ComboboxProps<T> {
   onValueChange?: (v: string) => void;
   disabled?: boolean;
   id?: string;
+  /** Open on mount. For pickers that REPLACE a button when activated, where
+   *  making the user click a second time to see the list is pure friction. */
+  defaultOpen?: boolean;
+  /** Fires whenever the popover opens or closes, including on dismiss. Lets
+   *  a caller that swapped a button out for this treat "closed" as cancel. */
+  onOpenChange?: (open: boolean) => void;
   children: React.ReactNode;
 }
 
 function Combobox<T>({
-  items, value, defaultValue, onValueChange, disabled = false, id, children,
+  items, value, defaultValue, onValueChange, disabled = false, id,
+  defaultOpen = false, onOpenChange, children,
 }: ComboboxProps<T>) {
   const [innerValue, setInnerValue] = React.useState(defaultValue ?? "");
   const v = value ?? innerValue;
   const [query, setQuery] = React.useState("");
-  const [open, setOpen] = React.useState(false);
+  const [open, setOpenState] = React.useState(defaultOpen);
+  const setOpen = React.useCallback((o: boolean) => {
+    setOpenState(o);
+    onOpenChange?.(o);
+  }, [onOpenChange]);
   const [selectedLabel, setSelectedLabel] = React.useState<React.ReactNode | null>(null);
   const [triggerWidth, setTriggerWidth] = React.useState<number | null>(null);
   const [placeholder, setPlaceholder] = React.useState<string | null>(null);
@@ -139,9 +150,21 @@ function Combobox<T>({
 // label. Typing happens inside the popover.
 function ComboboxInput({
   placeholder = "Select an option",
+  display,
   className,
 }: {
   placeholder?: string;
+  /** What the trigger shows for the current value.
+   *
+   *  `selectedLabel` is only populated when the user picks something in this
+   *  session, so a CONTROLLED combobox rendered with a value already set had
+   *  nothing to show and fell through to the placeholder. Callers were
+   *  working around that by stuffing the label into `placeholder`, which
+   *  renders it in muted grey as though nothing were selected.
+   *
+   *  Pass `display` and the trigger shows it in foreground colour, like a
+   *  selection should read. */
+  display?: React.ReactNode;
   className?: string;
 }) {
   const ctx = useCtx();
@@ -156,6 +179,10 @@ function ComboboxInput({
     }
   }, [ctx]);
 
+  // An explicit `display` wins over whatever was last picked, so a
+  // controlled value stays correct across remounts.
+  const shown = display ?? ctx.selectedLabel;
+
   return (
     <PopoverTrigger
       ref={ref}
@@ -168,8 +195,8 @@ function ComboboxInput({
         className,
       )}
     >
-      <span className={cn("truncate", !ctx.selectedLabel && "text-muted-foreground")}>
-        {ctx.selectedLabel ?? placeholder}
+      <span className={cn("truncate", shown == null && "text-muted-foreground")}>
+        {shown ?? placeholder}
       </span>
       <ChevronsUpDownIcon className="ml-2 size-4 shrink-0 text-muted-foreground" />
     </PopoverTrigger>
@@ -280,9 +307,46 @@ function ComboboxItem({
   );
 }
 
+// ── Create row ──────────────────────────────────────────────────
+// A footer action pinned under the list, for "nothing here matches, make a
+// new one". It receives the current query so the caller can seed whatever it
+// opens with the text already typed.
+function ComboboxCreateItem({
+  onCreate,
+  children,
+  className,
+}: {
+  onCreate: (query: string) => void;
+  /** Rendered with the current query so the row can echo it back. */
+  children: (query: string) => React.ReactNode;
+  className?: string;
+}) {
+  const ctx = useCtx();
+  return (
+    <button
+      type="button"
+      onMouseDown={(e) => e.preventDefault()}
+      onClick={() => {
+        const q = ctx.query.trim();
+        ctx.setOpen(false);
+        ctx.setQuery("");
+        onCreate(q);
+      }}
+      className={cn(
+        "flex w-full cursor-pointer items-center gap-2 border-t border-border px-3 py-2 text-sm text-primary",
+        "hover:bg-muted",
+        className,
+      )}
+    >
+      {children(ctx.query.trim())}
+    </button>
+  );
+}
+
 export {
   Combobox,
   ComboboxInput,
+  ComboboxCreateItem,
   ComboboxContent,
   ComboboxEmpty,
   ComboboxList,

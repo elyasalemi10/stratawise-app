@@ -1,17 +1,23 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
-import { ChevronDown } from "lucide-react";
+import { useEffect } from "react";
 import {
-  Command,
-  CommandInput,
-  CommandList,
-  CommandEmpty,
-  CommandItem,
-  CommandGroup,
-} from "@/components/ui/command";
-import { cn } from "@/lib/utils";
+  Combobox,
+  ComboboxContent,
+  ComboboxEmpty,
+  ComboboxInput,
+  ComboboxItem,
+  ComboboxList,
+} from "@/components/ui/combobox";
 import { AUSTRALIAN_BANKS, type BankOption } from "@/lib/data/australian-banks";
+
+// Searchable bank picker.
+//
+// This was a hand-rolled dropdown: its own trigger button, its own
+// click-outside listener, its own absolutely-positioned panel, with a raw
+// cmdk Command inside. All of that is what <Combobox> already does, so none
+// of it is here any more , and the picker now behaves and looks identical to
+// every other combobox in the app instead of being a one-off.
 
 interface BankSelectProps {
   value: string;
@@ -24,14 +30,28 @@ interface BankSelectProps {
 
 const OTHER_OPTION: BankOption = { id: "other", name: "Other", logo: null };
 
+function BankRow({ bank }: { bank: BankOption }) {
+  return (
+    <span className="flex min-w-0 items-center gap-2">
+      {bank.logo && (
+        // eslint-disable-next-line @next/next/no-img-element
+        <img src={bank.logo} alt="" width={20} height={20} className="shrink-0 rounded" />
+      )}
+      <span className="truncate">{bank.name}</span>
+      {bank.recommended && (
+        <span className="ml-1 shrink-0 rounded bg-green-100 px-1.5 py-0.5 text-[10px] font-medium text-green-900">
+          DEFT auto-recon
+        </span>
+      )}
+    </span>
+  );
+}
+
 export function BankSelect({ value, onChange, error, id, includeOther }: BankSelectProps) {
-  const [open, setOpen] = useState(false);
-  const ref = useRef<HTMLDivElement>(null);
-
   const options = includeOther ? [...AUSTRALIAN_BANKS, OTHER_OPTION] : AUSTRALIAN_BANKS;
-  const selectedBank = options.find((b) => b.id === value);
+  const selected = options.find((b) => b.id === value) ?? null;
 
-  // Preload all bank images on mount
+  // Preload the logos so the list does not pop in row by row on first open.
   useEffect(() => {
     AUSTRALIAN_BANKS.forEach((bank) => {
       if (bank.logo) {
@@ -41,97 +61,23 @@ export function BankSelect({ value, onChange, error, id, includeOther }: BankSel
     });
   }, []);
 
-  useEffect(() => {
-    function handler(e: MouseEvent) {
-      if (ref.current && !ref.current.contains(e.target as Node)) {
-        setOpen(false);
-      }
-    }
-    document.addEventListener("mousedown", handler);
-    return () => document.removeEventListener("mousedown", handler);
-  }, []);
-
   return (
-    <div ref={ref} className="relative">
-      <button
-        type="button"
-        id={id}
-        onClick={() => setOpen((o) => !o)}
-        className={cn(
-          "flex h-9 w-full items-center justify-between rounded-md border bg-background px-3 text-sm",
-          error ? "border-destructive" : "border-border",
-          "hover:border-primary/50"
-        )}
-      >
-        <span className="flex items-center gap-2 truncate">
-          {selectedBank ? (
-            <>
-              {selectedBank.logo && (
-                // eslint-disable-next-line @next/next/no-img-element
-                <img
-                  src={selectedBank.logo}
-                  alt={selectedBank.name}
-                  width={20}
-                  height={20}
-                  className="rounded"
-                />
-              )}
-              <span className="truncate">{selectedBank.name}</span>
-              {selectedBank.recommended && (
-                <span className="ml-1 shrink-0 rounded bg-green-100 px-1.5 py-0.5 text-[10px] font-medium text-green-900">
-                  DEFT auto-recon
-                </span>
-              )}
-            </>
-          ) : (
-            <span className="text-muted-foreground">Select a bank…</span>
+    <Combobox id={id} items={options} value={value} onValueChange={(v) => onChange(v ?? "")}>
+      <ComboboxInput
+        placeholder="Select a bank…"
+        display={selected ? <BankRow bank={selected} /> : undefined}
+        className={error ? "h-9 border-destructive" : "h-9"}
+      />
+      <ComboboxContent>
+        <ComboboxEmpty>No banks found.</ComboboxEmpty>
+        <ComboboxList>
+          {(bank: BankOption) => (
+            <ComboboxItem key={bank.id} value={bank.id} keywords={[bank.name]}>
+              <BankRow bank={bank} />
+            </ComboboxItem>
           )}
-        </span>
-        <ChevronDown className="h-4 w-4 text-muted-foreground" />
-      </button>
-
-      {open && (
-        <div className="absolute top-full left-0 z-50 mt-1 w-full rounded-lg border border-border bg-popover shadow-md">
-          <Command>
-            <CommandInput placeholder="Search bank..." />
-            <CommandList className="max-h-40">
-              <CommandEmpty>No banks found</CommandEmpty>
-              <CommandGroup>
-                {options.map((bank) => (
-                  <CommandItem
-                    key={bank.id}
-                    value={bank.name}
-                    data-checked={value === bank.id}
-                    onSelect={() => {
-                      onChange(bank.id);
-                      setOpen(false);
-                    }}
-                  >
-                    <span className="flex items-center gap-2">
-                      {bank.logo && (
-                        // eslint-disable-next-line @next/next/no-img-element
-                        <img
-                          src={bank.logo}
-                          alt={bank.name}
-                          width={20}
-                          height={20}
-                          className="rounded"
-                        />
-                      )}
-                      {bank.name}
-                      {bank.recommended && (
-                        <span className="ml-1 rounded bg-green-100 px-1.5 py-0.5 text-[10px] font-medium text-green-900">
-                          DEFT auto-recon
-                        </span>
-                      )}
-                    </span>
-                  </CommandItem>
-                ))}
-              </CommandGroup>
-            </CommandList>
-          </Command>
-        </div>
-      )}
-    </div>
+        </ComboboxList>
+      </ComboboxContent>
+    </Combobox>
   );
 }

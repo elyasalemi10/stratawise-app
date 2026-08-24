@@ -1,12 +1,11 @@
 "use client";
 
-import { useState, useRef, useEffect, useCallback, useMemo } from "react";
+import { useState, useEffect, useCallback, useMemo } from "react";
 import { useRouter } from "next/navigation";
 import { Plus, X, Loader2 } from "lucide-react";
 import { toast } from "sonner";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
 import { NumberInput } from "@/components/ui/number-input";
 import { Label } from "@/components/ui/label";
 import { Checkbox } from "@/components/ui/checkbox";
@@ -22,6 +21,7 @@ import {
 import { createBudget } from "@/lib/actions/budget";
 import type { CoaAccount } from "@/lib/chart-of-accounts";
 import type { LotForFund } from "@/lib/actions/funds";
+import { AccountPicker } from "@/components/shared/account-picker";
 import { CreateAccountDrawer } from "@/components/chart-of-accounts/create-account-drawer";
 import { ExcludeLotsDrawer } from "@/components/budget/exclude-lots-drawer";
 import { useOCCode } from "@/lib/oc-context";
@@ -51,99 +51,6 @@ const customKey = (id: string) => `custom:${id}`;
 // Search + pick from the firm-wide chart of accounts. "Add new account…"
 // opens the right-side drawer (shared with the Chart of accounts page) so a
 // new account is created against the firm rather than this single budget.
-
-function AccountCombobox({
-  accounts,
-  usedAccountIds,
-  onSelect,
-  onCancel,
-  onRequestCreate,
-}: {
-  accounts: CoaAccount[];
-  usedAccountIds: string[];
-  onSelect: (account: CoaAccount) => void;
-  onCancel: () => void;
-  onRequestCreate: (seedName: string) => void;
-}) {
-  const [query, setQuery] = useState("");
-  const [open, setOpen] = useState(true);
-  const inputRef = useRef<HTMLInputElement>(null);
-  const containerRef = useRef<HTMLDivElement>(null);
-
-  useEffect(() => {
-    inputRef.current?.focus();
-  }, []);
-
-  useEffect(() => {
-    function handleClickOutside(e: MouseEvent) {
-      if (containerRef.current && !containerRef.current.contains(e.target as Node)) {
-        onCancel();
-      }
-    }
-    document.addEventListener("mousedown", handleClickOutside);
-    return () => document.removeEventListener("mousedown", handleClickOutside);
-  }, [onCancel]);
-
-  const q = query.toLowerCase();
-  const filtered = accounts.filter(
-    (a) => !usedAccountIds.includes(a.id) && (a.code.includes(q) || a.name.toLowerCase().includes(q)),
-  );
-
-  function handleKeyDown(e: React.KeyboardEvent) {
-    if (e.key === "Escape") { onCancel(); return; }
-    if (e.key === "Enter") {
-      e.preventDefault();
-      if (filtered.length === 1) {
-        onSelect(filtered[0]);
-        setQuery("");
-      } else if (query.trim()) {
-        onRequestCreate(query.trim());
-      }
-    }
-  }
-
-  return (
-    <div ref={containerRef} className="relative">
-      <Input
-        ref={inputRef}
-        value={query}
-        onChange={(e) => { setQuery(e.target.value); setOpen(true); }}
-        onFocus={() => setOpen(true)}
-        onKeyDown={handleKeyDown}
-        placeholder="Search code or account name…"
-        className="h-8 text-sm"
-      />
-      {open && (
-        <div className="absolute top-full left-0 right-0 mt-1 z-50 max-h-56 overflow-y-auto rounded-lg border border-border bg-popover shadow-md">
-          {filtered.map((a) => (
-            <button
-              key={a.id}
-              type="button"
-              onClick={() => { onSelect(a); setQuery(""); }}
-              className="flex w-full items-center justify-between px-3 py-2 text-sm text-foreground hover:bg-accent hover:text-accent-foreground cursor-pointer"
-            >
-              <span>{a.name}</span>
-              <span className="ml-3 font-mono text-xs text-muted-foreground">{a.code}</span>
-            </button>
-          ))}
-          <button
-            type="button"
-            onClick={() => onRequestCreate(query.trim())}
-            className="flex w-full items-center px-3 py-2 text-sm text-primary hover:bg-accent cursor-pointer border-t border-border"
-          >
-            <Plus className="mr-2 h-3.5 w-3.5" />
-            Add new account{query.trim() ? `, "${query.trim()}"` : ""}
-          </button>
-          {filtered.length === 0 && !query.trim() && (
-            <div className="border-t border-border px-3 py-2 text-xs text-muted-foreground">No accounts left to add</div>
-          )}
-        </div>
-      )}
-    </div>
-  );
-}
-
-// ─── Main Form ─────────────────────────────────────────────
 
 interface BudgetItem {
   coa_account_id: string;
@@ -499,7 +406,7 @@ export function CreateBudgetForm({
 
                     <div className="mt-3">
                       {comboOpen[key] ? (
-                        <AccountCombobox
+                        <AccountPicker
                           accounts={allAccounts}
                           usedAccountIds={usedIds}
                           onSelect={(account) => addItem(key, account)}

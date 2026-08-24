@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef, useState, useCallback, useTransition } from "react";
+import { useRef, useState, useCallback, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import {
   CheckCircle2, ChevronDown, CircleDashed, Download, Loader2, Pencil, Plus, Trash2, X,
@@ -9,7 +9,6 @@ import { toast } from "sonner";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
-import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { NumberInput } from "@/components/ui/number-input";
@@ -18,6 +17,7 @@ import {
 } from "@/components/ui/dialog";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { cn } from "@/lib/utils";
+import { AccountPicker } from "@/components/shared/account-picker";
 import {
   Table, TableBody, TableCell, TableFooter, TableHead, TableHeader, TableRow,
 } from "@/components/ui/table";
@@ -35,82 +35,6 @@ const FUND_LABEL: Record<string, string> = {
 
 const formatCurrency = (n: number) =>
   new Intl.NumberFormat("en-AU", { style: "currency", currency: "AUD" }).format(n);
-
-// Single-fund variant of the budget create form's combobox.
-function AccountCombobox({
-  accounts,
-  usedAccountIds,
-  onSelect,
-  onCancel,
-  onRequestCreate,
-}: {
-  accounts: CoaAccount[];
-  usedAccountIds: string[];
-  onSelect: (account: CoaAccount) => void;
-  onCancel: () => void;
-  onRequestCreate: (seedName: string) => void;
-}) {
-  const [query, setQuery] = useState("");
-  const containerRef = useRef<HTMLDivElement>(null);
-  const inputRef = useRef<HTMLInputElement>(null);
-
-  useEffect(() => { inputRef.current?.focus(); }, []);
-  useEffect(() => {
-    function clickOutside(e: MouseEvent) {
-      if (containerRef.current && !containerRef.current.contains(e.target as Node)) onCancel();
-    }
-    document.addEventListener("mousedown", clickOutside);
-    return () => document.removeEventListener("mousedown", clickOutside);
-  }, [onCancel]);
-
-  const q = query.toLowerCase();
-  const filtered = accounts.filter(
-    (a) => !usedAccountIds.includes(a.id) && (a.code.includes(q) || a.name.toLowerCase().includes(q)),
-  );
-
-  function handleKeyDown(e: React.KeyboardEvent) {
-    if (e.key === "Escape") { onCancel(); return; }
-    if (e.key === "Enter") {
-      e.preventDefault();
-      if (filtered.length === 1) { onSelect(filtered[0]); setQuery(""); }
-      else if (query.trim()) onRequestCreate(query.trim());
-    }
-  }
-
-  return (
-    <div ref={containerRef} className="relative">
-      <Input
-        ref={inputRef}
-        value={query}
-        onChange={(e) => setQuery(e.target.value)}
-        onKeyDown={handleKeyDown}
-        placeholder="Search code or account name…"
-        className="h-8 text-sm"
-      />
-      <div className="absolute top-full left-0 right-0 mt-1 z-50 max-h-56 overflow-y-auto rounded-lg border border-border bg-popover shadow-md">
-        {filtered.map((a) => (
-          <button
-            key={a.id}
-            type="button"
-            onClick={() => { onSelect(a); setQuery(""); }}
-            className="flex w-full items-center justify-between px-3 py-2 text-sm text-foreground hover:bg-accent cursor-pointer"
-          >
-            <span>{a.name}</span>
-            <span className="ml-3 font-mono text-xs text-muted-foreground">{a.code}</span>
-          </button>
-        ))}
-        <button
-          type="button"
-          onClick={() => onRequestCreate(query.trim())}
-          className="flex w-full items-center px-3 py-2 text-sm text-primary hover:bg-accent cursor-pointer border-t border-border"
-        >
-          <Plus className="mr-2 h-3.5 w-3.5" />
-          Add new account{query.trim() ? `, "${query.trim()}"` : ""}
-        </button>
-      </div>
-    </div>
-  );
-}
 
 interface DraftItem {
   id?: string; // present for items loaded from DB; absent for new rows
@@ -553,7 +477,7 @@ export function BudgetDetailContent({
           {editing && (
             <div className="mt-3 space-y-2">
               {comboOpen ? (
-                <AccountCombobox
+                <AccountPicker
                   accounts={allAccounts}
                   usedAccountIds={items.map((i) => i.coa_account_id).filter((x): x is string => !!x)}
                   onSelect={addItem}

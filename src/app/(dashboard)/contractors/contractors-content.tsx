@@ -371,7 +371,7 @@ export function ContractorDrawer({
           <div className="space-y-1.5">
             <Label>Trade</Label>
             <Combobox items={CONTRACTOR_TRADE_OPTIONS} value={trade} onValueChange={(v) => setTrade(v ?? "")}>
-              <ComboboxInput placeholder={trade ? tradeLabel(trade) : "Search trade"} />
+              <ComboboxInput placeholder="Search trade" display={trade ? tradeLabel(trade) : undefined} />
               <ComboboxContent>
                 <ComboboxEmpty>No trade found.</ComboboxEmpty>
                 <ComboboxList>
