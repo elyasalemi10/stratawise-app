@@ -318,6 +318,20 @@
      transform only, never width or left: this animates precisely while the
      page is busy fetching and re-rendering, and a bar that stutters during
      work is worse than no bar because the stutter is the thing you notice. */
+  /* tw-animate-css leaves animation-fill-mode at `none`. For anything that
+     plays `animate-out` and is then unmounted on a timer, that is a visible
+     bug: the moment the exit animation finishes the element SNAPS BACK to
+     full opacity and scale, and stays there until the timer removes it. If
+     the timer lands even one frame late, which it does whenever the main
+     thread is busy (a route change, say), you watch the thing fade out,
+     pop back, and vanish.
+
+     Hold the end state instead. The timer then only removes an element that
+     is already invisible, so its exact timing stops mattering. */
+  .animate-exit-hold {
+    --tw-animation-fill-mode: forwards;
+  }
+
   @keyframes refreshbar {
     0%   { transform: translateX(-100%); }
     100% { transform: translateX(400%); }

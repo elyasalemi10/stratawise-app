@@ -277,8 +277,13 @@ function SimpleDropdown({
     };
   }, [closeRef]);
 
-  // Drive mount/unmount around `open` so the exit animation actually
-  // plays. Animation duration is 120ms (matches the in-animation).
+  // Drive mount/unmount around `open` so the exit animation actually plays.
+  // Animation duration is 120ms (matches the in-animation).
+  //
+  // The panel carries `animate-exit-hold` while closing. Without it the exit
+  // animation ends at 120ms and the panel snaps back to fully visible until
+  // this timer removes it, so any delay to the timer, e.g. a route change
+  // occupying the main thread, reads as: fades out, reappears, vanishes.
   useEffect(() => {
     if (open) {
       setMounted(true);
@@ -354,7 +359,7 @@ function SimpleDropdown({
           className={`z-[100] rounded-lg border border-border bg-popover shadow-md duration-120 ${
             open
               ? "animate-in fade-in-0 zoom-in-95"
-              : "animate-out fade-out-0 zoom-out-95"
+              : "animate-out fade-out-0 zoom-out-95 animate-exit-hold"
           } ${matchWidth ? "" : "min-w-56"}`}
           onClick={closeOnClick ? () => closePanel() : undefined}
           onMouseDown={closeOnClick ? undefined : (e) => e.stopPropagation()}
