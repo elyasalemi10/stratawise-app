@@ -338,8 +338,8 @@
   }
 
   @keyframes skeleton-shimmer {
-    from { background-position: 200% 0; }
-    to   { background-position: -200% 0; }
+    from { transform: translateX(-100%); }
+    to   { transform: translateX(100%); }
   }
   /* Welcome overlay animations, used by WelcomeConfetti on ?welcome=1.
      Enter: slide up + fade in. Exit: fade out + drift up. */
@@ -372,18 +372,32 @@
 
   /* The highlight is 30% of the gradient's width with soft edges at 65%
      white. Narrower or harder reads as a glare rather than a sheen. */
+  /* A band that sweeps across an overlay, NOT an animated background-position.
+     The old version sized the gradient at 200% and ran background-position
+     from 200% to -200%. Percentage background-position resolves against
+     (container width - image width), so at 200% image size that is a
+     NEGATIVE reference: the band spent most of each cycle parked off-screen
+     and only crossed the element for part of it. The first pass looked like
+     it stalled and only found its rhythm afterwards, because the stall was
+     real , it just repeated identically once you had seen one.
+
+     A pseudo-element translating -100% to 100% crosses the element exactly
+     once per iteration, edge to edge, evenly, from the very first frame. */
   .skeleton-shimmer {
     position: relative;
     overflow: hidden;
+  }
+
+  .skeleton-shimmer::after {
+    content: "";
+    position: absolute;
+    inset: 0;
     background-image: linear-gradient(
       90deg,
-      var(--muted) 0%,
-      var(--muted) 35%,
+      transparent 0%,
       hsl(0 0% 100% / 0.65) 50%,
-      var(--muted) 65%,
-      var(--muted) 100%
+      transparent 100%
     );
-    background-size: 200% 100%;
     animation: skeleton-shimmer 1.4s linear infinite;
   }
 
@@ -391,9 +405,8 @@
      is a skeleton with a permanent stripe across it, which reads as a
      rendering bug. bg-muted on the component is the fallback. */
   @media (prefers-reduced-motion: reduce) {
-    .skeleton-shimmer {
-      animation: none;
-      background-image: none;
+    .skeleton-shimmer::after {
+      content: none;
     }
   }
 }

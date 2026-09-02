@@ -212,6 +212,30 @@ Known drift, found 2026-08-24:
 - **One permissive policy per table per command.** Permissive policies are OR'd, so a second `true` policy silently negates a restrictive one. This had actually happened on `post_tags`.
 - **Ignore the "unused index" advisor** while the database is this small. With almost no query traffic, "unused" means "not yet queried", not "useless". Dropping on that evidence would be wrong.
 
+## Design system , read DESIGN-SYSTEM.md
+
+[DESIGN-SYSTEM.md](DESIGN-SYSTEM.md) is the full set of UI/UX rules with the
+reasoning behind each. The headlines, all enforceable by reading a diff:
+
+1. **Never build a control we already have.** No native `<select>`,
+   `<textarea>`, `type="date|number|radio|checkbox">`, and no hand-rolled
+   dropdowns , that is a `Popover`, `Select` or `Combobox`. Add from the
+   shadcn registry before writing anything.
+2. **Nothing the app already knows should shimmer.** Labels, headings, column
+   names and buttons render for real in loading states; only server values
+   shimmer. A page whose first screen is entirely fixed gets no skeleton at
+   all. The `loading.tsx` renders the SAME component the client does.
+3. **No helper copy.** Label, placeholder, submit-time error. A field that
+   genuinely needs a sentence gets an `InfoTooltip`, never a paragraph.
+4. **The user's answers must not move the page.** Either/or field groups go in
+   `SwapSlot`; `<Button loading>` keeps its width; every popup positions
+   `fixed` so it cannot change document height.
+5. **Modal scrims are `bg-black/45`.** Controls in a row share `h-9`.
+6. **Validation collects every problem and red-outlines each field**, on
+   submit only, never on keystroke.
+7. **Never an em dash. Never a raw enum. Missing values render as nothing.**
+   Documents name the legal entity via `ocLegalName()`, never the nickname.
+
 ## UI Primitives (non-negotiable)
 - **Never use native HTML controls** for anything we have a shadcn equivalent for. NO `<select>`, NO native dropdowns, NO browser date pickers (`<input type="date">`). Always use shadcn `Select`, shadcn `Calendar`/`DatePicker`, shadcn `Checkbox`, etc. Native controls don't match our palette and break on Safari + mobile.
 - **EVERY date field uses the shadcn `<DatePicker>` from [src/components/shared/date-picker.tsx](src/components/shared/date-picker.tsx).** No exceptions. `<input type="date">` is never acceptable , not in dialogs, not in drawers, not in inline editors, not in filters, not in wizards. Browser date pickers render differently on every OS, ignore our palette, and behave inconsistently on Safari iOS (where the native control covers the whole viewport). If a date input ships without the shadcn DatePicker, it's a bug , replace it on sight, no questions.

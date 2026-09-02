@@ -31,11 +31,10 @@ function SheetOverlay({ className, ...props }: SheetPrimitive.Backdrop.Props) {
         // White wash, no blur. 220ms fade with smooth ease-out , slow enough
         // that the eye reads it as an animation, not an instant flash, but
         // still snappy. Matches the drawer panel's own slide-in curve.
-        // Darken behind the drawer rather than washing it out. A white/50
-        // scrim on a light page barely reads as an overlay: the content
-        // behind it looks disabled or half-loaded instead of backgrounded,
-        // and the drawer's own white surface stops standing apart from it.
-        "fixed inset-0 z-50 bg-foreground/40 transition-opacity duration-[220ms] ease-[cubic-bezier(0.22,1,0.36,1)] data-ending-style:opacity-0 data-starting-style:opacity-0",
+        // Plain black, not the brand navy. A tinted scrim reads as a
+        // coloured wash over the page; black just removes light from it,
+        // which is what "that part is behind this" should look like.
+        "fixed inset-0 z-50 bg-black/45 transition-opacity duration-[220ms] ease-[cubic-bezier(0.22,1,0.36,1)] data-ending-style:opacity-0 data-starting-style:opacity-0",
         className
       )}
       {...props}

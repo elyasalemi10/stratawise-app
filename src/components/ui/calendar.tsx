@@ -34,7 +34,7 @@ function Calendar({
         // Plain card-coloured calendar. No more navy strip up top , the
         // simple shadcn layout reads better when embedded in dialogs /
         // drawers and against the page grey.
-        "group/calendar bg-card [--cell-radius:var(--radius-md)] [--cell-size:--spacing(7)] in-data-[slot=card-content]:bg-transparent in-data-[slot=popover-content]:bg-transparent",
+        "group/calendar bg-card [--cell-radius:var(--radius-md)] [--cell-size:--spacing(9)] in-data-[slot=card-content]:bg-transparent in-data-[slot=popover-content]:bg-transparent",
         String.raw`rtl:**:[.rdp-button\_next>svg]:rotate-180`,
         String.raw`rtl:**:[.rdp-button\_previous>svg]:rotate-180`,
         className

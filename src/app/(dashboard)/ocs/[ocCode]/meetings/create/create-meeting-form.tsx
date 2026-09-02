@@ -16,6 +16,7 @@ import {
   Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
 } from "@/components/ui/select";
 import { DatePicker } from "@/components/shared/date-picker";
+import { SwapSlot } from "@/components/shared/swap-slot";
 import { TimeDropdowns } from "@/components/shared/time-dropdowns";
 import { VicAddressAutocomplete, type ParsedAddress } from "@/components/shared/vic-address-autocomplete";
 import { cn } from "@/lib/utils";
@@ -325,22 +326,37 @@ export function CreateMeetingForm({
               </div>
             </div>
 
-            {format === "in_person" ? (
-              <div className="space-y-1.5">
-                <Label>Address</Label>
-                <VicAddressAutocomplete value={address} onChange={setAddress} />
-              </div>
-            ) : (
-              <div className="space-y-1.5">
-                <Label>Meeting link <span className="text-destructive">*</span></Label>
-                <Input
-                  value={link}
-                  onChange={(e) => { setLink(e.target.value); if (linkInvalid) setLinkInvalid(false); }}
-                  aria-invalid={linkInvalid || undefined}
-                  placeholder="Video call link"
-                />
-              </div>
-            )}
+            {/* Both branches share one cell, so picking Online instead of In
+                person does not move the Back/Next row underneath. */}
+            <SwapSlot
+              cases={[
+                {
+                  key: "in_person",
+                  active: format === "in_person",
+                  node: (
+                    <div className="space-y-1.5">
+                      <Label>Address</Label>
+                      <VicAddressAutocomplete value={address} onChange={setAddress} />
+                    </div>
+                  ),
+                },
+                {
+                  key: "online",
+                  active: format === "online",
+                  node: (
+                    <div className="space-y-1.5">
+                      <Label>Meeting link <span className="text-destructive">*</span></Label>
+                      <Input
+                        value={link}
+                        onChange={(e) => { setLink(e.target.value); if (linkInvalid) setLinkInvalid(false); }}
+                        aria-invalid={linkInvalid || undefined}
+                        placeholder="Video call link"
+                      />
+                    </div>
+                  ),
+                },
+              ]}
+            />
 
             <div className="flex justify-between">
               <Button variant="secondary" onClick={() => setStep("type")}>Back</Button>

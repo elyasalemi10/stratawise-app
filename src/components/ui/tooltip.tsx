@@ -41,6 +41,15 @@ function TooltipContent({
   return (
     <TooltipPrimitive.Portal>
       <TooltipPrimitive.Positioner
+        // fixed, not the Base UI default of absolute.
+        //
+        // An absolutely-positioned popup is placed in DOCUMENT coordinates,
+        // so one that opens near the bottom of a long page extends the
+        // document's height. The scroll extent changes, the page reflows,
+        // and whatever sits below the trigger visibly jumps , opening a
+        // date picker nudged the next field down. Fixed positions against
+        // the viewport and can never change document size.
+        positionMethod="fixed"
         align={align}
         alignOffset={alignOffset}
         side={side}
