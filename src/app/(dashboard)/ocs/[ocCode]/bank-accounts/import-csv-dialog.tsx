@@ -1,7 +1,7 @@
 "use client";
 
 import { useMemo, useRef, useState, useTransition } from "react";
-import { Loader2, Upload, X } from "lucide-react";
+import { Upload, X } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import {
@@ -375,8 +375,7 @@ export function ImportCsvDialog({
       </div>
 
       <div className="border-t border-border px-6 py-3 flex justify-end">
-        <Button onClick={handleConfirm} disabled={pending || !canConfirm}>
-          {pending && <Loader2 className="mr-2 size-4 animate-spin" />}
+        <Button onClick={handleConfirm} disabled={pending || !canConfirm} loading={pending}>
           Confirm import
         </Button>
       </div>

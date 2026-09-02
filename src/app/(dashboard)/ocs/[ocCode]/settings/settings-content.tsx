@@ -250,8 +250,7 @@ function SettingsEditDrawer({
           ))}
         </div>
         <div className="border-t border-border p-4 flex justify-end gap-2">
-          <Button onClick={save} disabled={saving}>
-            {saving && <Loader2 className="size-4 animate-spin" />}
+          <Button onClick={save} disabled={saving} loading={saving}>
             Save
           </Button>
         </div>
@@ -1152,8 +1151,7 @@ function AutoSendCard({
         </div>
         <div className="flex gap-2">
           {embedded && isExisting && (
-            <Button onClick={save} disabled={pending}>
-              {pending && <Loader2 className="size-4 animate-spin" />}
+            <Button onClick={save} disabled={pending} loading={pending}>
               Save changes
             </Button>
           )}
@@ -1175,16 +1173,14 @@ function AutoSendCard({
                 Back
               </Button>
               {planned.length > 0 && (
-                <Button onClick={save} disabled={pending}>
-                  {pending && <Loader2 className="size-4 animate-spin" />}
+                <Button onClick={save} disabled={pending} loading={pending}>
                   Confirm
                 </Button>
               )}
             </>
           )}
           {!embedded && (
-            <Button onClick={save} disabled={pending}>
-              {pending && <Loader2 className="size-4 animate-spin" />}
+            <Button onClick={save} disabled={pending} loading={pending}>
               Save auto-send
             </Button>
           )}

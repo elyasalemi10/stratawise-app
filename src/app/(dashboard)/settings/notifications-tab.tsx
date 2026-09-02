@@ -2,7 +2,7 @@
 
 import { useState, useTransition } from "react";
 import { toast } from "sonner";
-import { AlertTriangle, Loader2 } from "lucide-react";
+import { AlertTriangle } from "lucide-react";
 import {
   NOTIFICATION_TYPES,
   MANDATORY_NOTIFICATION_TYPES,
@@ -197,8 +197,7 @@ export function NotificationsTab({
       </div>
 
       <div className="flex justify-end">
-        <Button onClick={onSubmit} disabled={pending} className="cursor-pointer">
-          {pending && <Loader2 className="size-4 animate-spin" />}
+        <Button onClick={onSubmit} disabled={pending} className="cursor-pointer" loading={pending}>
           Save preferences
         </Button>
       </div>

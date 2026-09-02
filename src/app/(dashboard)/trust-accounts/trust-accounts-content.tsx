@@ -3,7 +3,7 @@
 import { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { toast } from "sonner";
-import { Plus, Landmark, Loader2 } from "lucide-react";
+import { Plus, Landmark } from "lucide-react";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -274,8 +274,7 @@ function CreateTrustAccountDialog({
           >
             Cancel
           </Button>
-          <Button size="sm" onClick={handleSubmit} disabled={pending}>
-            {pending && <Loader2 className="mr-1.5 h-3.5 w-3.5 animate-spin" />}
+          <Button size="sm" onClick={handleSubmit} disabled={pending} loading={pending}>
             Create
           </Button>
         </DialogFooter>

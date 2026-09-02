@@ -569,8 +569,7 @@ export function RulesList({ ocId, ocCode, rules, sourceDocumentName }: Props) {
           </div>
           <DialogFooter>
             <Button variant="ghost" onClick={() => setCreateOpen(false)} disabled={newPending}>Cancel</Button>
-            <Button onClick={onCreate} disabled={newPending}>
-              {newPending && <Loader2 className="size-4 animate-spin" />}
+            <Button onClick={onCreate} disabled={newPending} loading={newPending}>
               Add rule
             </Button>
           </DialogFooter>
@@ -633,8 +632,7 @@ export function RulesList({ ocId, ocCode, rules, sourceDocumentName }: Props) {
           </div>
           <DialogFooter>
             <Button variant="ghost" onClick={() => setEditRule(null)} disabled={editPending}>Cancel</Button>
-            <Button onClick={onSaveEdit} disabled={editPending}>
-              {editPending && <Loader2 className="size-4 animate-spin" />}
+            <Button onClick={onSaveEdit} disabled={editPending} loading={editPending}>
               Save changes
             </Button>
           </DialogFooter>
@@ -654,8 +652,7 @@ export function RulesList({ ocId, ocCode, rules, sourceDocumentName }: Props) {
           </DialogHeader>
           <DialogFooter>
             <Button variant="ghost" onClick={() => setDeleteRule(null)} disabled={deletePending}>Cancel</Button>
-            <Button onClick={onConfirmDelete} disabled={deletePending} className="bg-destructive hover:bg-destructive/90">
-              {deletePending && <Loader2 className="size-4 animate-spin" />}
+            <Button onClick={onConfirmDelete} disabled={deletePending} className="bg-destructive hover:bg-destructive/90" loading={deletePending}>
               Remove rule
             </Button>
           </DialogFooter>

@@ -581,8 +581,7 @@ export function SettlementDialog(props: Props) {
               </div>
             </div>
             <div className="flex flex-col gap-2 sm:flex-row sm:justify-end">
-              <Button type="button" variant="secondary" size="sm" onClick={handleJumpToParsedLot} disabled={jumpingToLot}>
-                {jumpingToLot && <Loader2 className="size-3.5 animate-spin" />}
+              <Button type="button" variant="secondary" size="sm" onClick={handleJumpToParsedLot} disabled={jumpingToLot} loading={jumpingToLot}>
                 Go to Lot {review.parsed.lotNumber}
               </Button>
               <Button type="button" size="sm" onClick={() => { setMismatchStep(null); applyPrefill(); }}>

@@ -4,7 +4,7 @@ import { useMemo, useRef, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { toast } from "sonner";
 import {
-  Loader2, FileText, CalendarDays, ListChecks, Gavel, Send, Plus, Trash2,
+  FileText, CalendarDays, ListChecks, Gavel, Send, Plus, Trash2,
   GripVertical, MapPin, Video, type LucideIcon,
 } from "lucide-react";
 import { Card, CardContent } from "@/components/ui/card";
@@ -449,8 +449,7 @@ export function CreateMeetingForm({
             </dl>
             <div className="flex items-center justify-between gap-3 pt-2">
               <Button variant="secondary" onClick={() => setStep("notice")} disabled={pending}>Back</Button>
-              <Button onClick={onSubmit} disabled={pending} size="lg">
-                {pending && <Loader2 className="mr-2 size-4 animate-spin" />}
+              <Button onClick={onSubmit} disabled={pending} size="lg" loading={pending}>
                 Create meeting
               </Button>
             </div>

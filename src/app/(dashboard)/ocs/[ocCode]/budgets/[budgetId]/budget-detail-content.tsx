@@ -504,8 +504,7 @@ export function BudgetDetailContent({
                 <Button variant="secondary" onClick={handleCancelEdit} disabled={savePending}>
                   Cancel
                 </Button>
-                <Button onClick={handleSave} disabled={savePending}>
-                  {savePending && <Loader2 className="size-4 animate-spin" />}
+                <Button onClick={handleSave} disabled={savePending} loading={savePending}>
                   Save changes
                 </Button>
               </div>
@@ -537,8 +536,7 @@ export function BudgetDetailContent({
             <Button variant="secondary" onClick={() => setApproveOpen(false)} disabled={approving}>
               Cancel
             </Button>
-            <Button onClick={handleApprove} disabled={approving}>
-              {approving && <Loader2 className="size-4 animate-spin" />}
+            <Button onClick={handleApprove} disabled={approving} loading={approving}>
               Approve budget
             </Button>
           </DialogFooter>
@@ -561,8 +559,7 @@ export function BudgetDetailContent({
               onClick={handleDelete}
               disabled={deleting}
               className="bg-destructive hover:bg-destructive/90"
-            >
-              {deleting && <Loader2 className="size-4 animate-spin" />}
+             loading={deleting}>
               Delete budget
             </Button>
           </DialogFooter>

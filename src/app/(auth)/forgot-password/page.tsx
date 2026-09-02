@@ -132,8 +132,7 @@ export default function ForgotPasswordPage() {
             type="submit"
             className="w-full h-11 border border-foreground/15 shadow-sm"
             disabled={pending}
-          >
-            {pending && <Loader2 className="size-4 animate-spin" />}
+           loading={pending}>
             Send code
           </Button>
         </form>
@@ -227,8 +226,7 @@ export default function ForgotPasswordPage() {
           type="submit"
           className="w-full h-11 border border-foreground/15 shadow-sm"
           disabled={pending}
-        >
-          {pending && <Loader2 className="size-4 animate-spin" />}
+         loading={pending}>
           Reset password
         </Button>
       </form>

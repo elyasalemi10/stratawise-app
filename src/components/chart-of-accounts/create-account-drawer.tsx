@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import { Loader2, AlertTriangle } from "lucide-react";
+import { AlertTriangle } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -215,8 +215,7 @@ export function CreateAccountDrawer({ open, onOpenChange, lockedType, initialNam
           <Button variant="secondary" onClick={() => onOpenChange(false)} disabled={pending}>
             Cancel
           </Button>
-          <Button onClick={handleCreate} disabled={pending}>
-            {pending && <Loader2 className="size-4 animate-spin" />}
+          <Button onClick={handleCreate} disabled={pending} loading={pending}>
             Add account
           </Button>
         </div>

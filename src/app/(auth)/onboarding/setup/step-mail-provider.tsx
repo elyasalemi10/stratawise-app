@@ -3,7 +3,6 @@
 import { useState } from "react";
 import { toast } from "sonner";
 import {
-  Loader2,
   Mail,
   Globe,
   ShieldCheck,
@@ -181,8 +180,7 @@ export function StepMailProvider({
           <ArrowLeft className="mr-1.5 h-3.5 w-3.5" />
           Back
         </Button>
-        <Button type="button" onClick={handleContinue} disabled={pending}>
-          {pending && <Loader2 className="mr-1.5 h-3.5 w-3.5 animate-spin" />}
+        <Button type="button" onClick={handleContinue} disabled={pending} loading={pending}>
           Finish setup
           <ArrowRight className="ml-1.5 h-3.5 w-3.5" />
         </Button>

@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import { useRouter } from "next/navigation";
-import { Plus, X, Loader2, ChevronDown } from "lucide-react";
+import { Plus, X, ChevronDown } from "lucide-react";
 import { toast } from "sonner";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -641,8 +641,7 @@ export function SpecialLevyForm({
             </div>
 
             <div className="flex justify-end">
-              <Button onClick={handleCreate} disabled={creating} size="lg">
-                {creating && <Loader2 className="mr-2 size-4 animate-spin" />}
+              <Button onClick={handleCreate} disabled={creating} size="lg" loading={creating}>
                 Create special levy
               </Button>
             </div>

@@ -147,8 +147,7 @@ export function BlogList({ posts }: { posts: BlogPostRow[] }) {
           </div>
           <DialogFooter className="shrink-0">
             <Button variant="secondary" onClick={() => setImportOpen(false)} disabled={importing}>Cancel</Button>
-            <Button onClick={handleImport} disabled={importing || !importJson.trim()}>
-              {importing && <Loader2 className="size-4 animate-spin" />}
+            <Button onClick={handleImport} disabled={importing || !importJson.trim()} loading={importing}>
               Import
             </Button>
           </DialogFooter>
@@ -165,8 +164,7 @@ export function BlogList({ posts }: { posts: BlogPostRow[] }) {
           </DialogHeader>
           <DialogFooter>
             <Button variant="secondary" onClick={() => setDeleteTarget(null)} disabled={deleting}>Cancel</Button>
-            <Button variant="destructive" onClick={handleDelete} disabled={deleting}>
-              {deleting && <Loader2 className="size-4 animate-spin" />}
+            <Button variant="destructive" onClick={handleDelete} disabled={deleting} loading={deleting}>
               Delete
             </Button>
           </DialogFooter>

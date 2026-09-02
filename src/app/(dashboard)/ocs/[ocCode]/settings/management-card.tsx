@@ -185,8 +185,7 @@ export function ManagementCard({
             <Button variant="secondary" onClick={() => setOpen(false)} disabled={submitting}>
               Cancel
             </Button>
-            <Button onClick={submit} disabled={submitting || options.length === 0}>
-              {submitting && <Loader2 className="size-4 animate-spin" />}
+            <Button onClick={submit} disabled={submitting || options.length === 0} loading={submitting}>
               {submitting ? "Transferring…" : "Transfer management"}
             </Button>
           </DialogFooter>

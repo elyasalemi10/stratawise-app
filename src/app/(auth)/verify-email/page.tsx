@@ -164,8 +164,7 @@ function VerifyEmailContent() {
           type="submit"
           className="w-full h-11 border border-foreground/15 shadow-sm"
           disabled={verifying || code.length !== 6}
-        >
-          {verifying && <Loader2 className="size-4 animate-spin" />}
+         loading={verifying}>
           Verify email
         </Button>
       </form>

@@ -36,7 +36,8 @@ function DialogOverlay({
         // Base UI: data-starting-style runs on mount, data-ending-style
         // runs on close before unmount , both pinned to opacity:0 so the
         // backdrop fades in and out smoothly via transition-opacity.
-        "fixed inset-0 isolate z-50 bg-white/50 backdrop-blur-sm transition-opacity duration-[220ms] ease-[cubic-bezier(0.22,1,0.36,1)] data-starting-style:opacity-0 data-ending-style:opacity-0",
+        // Matches the Sheet scrim. See the note there.
+        "fixed inset-0 isolate z-50 bg-foreground/40 backdrop-blur-sm transition-opacity duration-[220ms] ease-[cubic-bezier(0.22,1,0.36,1)] data-starting-style:opacity-0 data-ending-style:opacity-0",
         className
       )}
       {...props}

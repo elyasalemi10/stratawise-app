@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useRef, useState, useTransition } from "react";
-import { Loader2, Paperclip, X, Mail } from "lucide-react";
+import { Paperclip, X, Mail } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -274,8 +274,7 @@ export function SendEmailsDialog({
           <Button variant="secondary" onClick={() => onOpenChange(false)} disabled={locked}>
             Cancel
           </Button>
-          <Button onClick={handleSend} disabled={locked}>
-            {locked && <Loader2 className="size-4 animate-spin" />}
+          <Button onClick={handleSend} disabled={locked} loading={locked}>
             {mode === "resend" ? "Resend" : "Send"} {levies.length} {levies.length === 1 ? "email" : "emails"}
           </Button>
         </DialogFooter>

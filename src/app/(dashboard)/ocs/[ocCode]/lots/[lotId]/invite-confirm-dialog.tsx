@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import { toast } from "sonner";
-import { Loader2, Mail } from "lucide-react";
+import { Mail } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import {
   Dialog,
@@ -114,8 +114,7 @@ export function InviteConfirmDialog({
           <Button variant="secondary" onClick={onClose} disabled={sending}>
             Cancel
           </Button>
-          <Button onClick={handleSend} disabled={sending || !ownerEmail || !ownerName}>
-            {sending && <Loader2 className="size-3.5 animate-spin" />}
+          <Button onClick={handleSend} disabled={sending || !ownerEmail || !ownerName} loading={sending}>
             Send invitation
           </Button>
         </DialogFooter>

@@ -2,7 +2,6 @@
 
 import { useState } from "react";
 import { toast } from "sonner";
-import { Loader2 } from "lucide-react";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
@@ -101,8 +100,7 @@ export function OcConsentStep({
         Anything you don&apos;t select will be sent to you by post instead.
       </p>
 
-      <Button className="w-full mt-4" disabled={pending} onClick={handleSubmit}>
-        {pending && <Loader2 className="size-4 animate-spin" />}
+      <Button className="w-full mt-4" disabled={pending} onClick={handleSubmit} loading={pending}>
         Confirm preferences
       </Button>
     </div>

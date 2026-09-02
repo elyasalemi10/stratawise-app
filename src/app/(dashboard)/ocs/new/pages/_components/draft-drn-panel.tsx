@@ -173,8 +173,7 @@ export function DraftDrnPanel({ draftId, initialMappings, lots }: Props) {
               when you create this OC.
             </span>
           </div>
-          <Button type="button" variant="ghost" size="sm" onClick={onRemoveAll} disabled={removing}>
-            {removing && <Loader2 className="size-3.5 animate-spin" />}
+          <Button type="button" variant="ghost" size="sm" onClick={onRemoveAll} disabled={removing} loading={removing}>
             <Trash2 className="size-3.5" />
             Remove
           </Button>

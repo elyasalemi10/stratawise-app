@@ -1,7 +1,6 @@
 "use client";
 
 import { useEffect, useMemo, useState, useTransition } from "react";
-import { Loader2 } from "lucide-react";
 import { toast } from "sonner";
 import {
   Sheet, SheetContent, SheetHeader, SheetTitle, SheetFooter,
@@ -285,8 +284,7 @@ export function MatchDrawer({
         </div>
 
         <SheetFooter>
-          <Button onClick={submit} disabled={pending}>
-            {pending && <Loader2 className="mr-2 size-4 animate-spin" />}
+          <Button onClick={submit} disabled={pending} loading={pending}>
             Save match
           </Button>
         </SheetFooter>

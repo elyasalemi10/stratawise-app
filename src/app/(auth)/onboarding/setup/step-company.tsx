@@ -5,7 +5,6 @@ import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { toast } from "sonner";
 import Link from "next/link";
-import { Loader2 } from "lucide-react";
 import { companySchema, type CompanyFormValues } from "@/lib/validations/onboarding-setup";
 import { createCompany } from "./actions";
 import { Button } from "@/components/ui/button";
@@ -320,8 +319,7 @@ export function StepCompany({ onNext }: { onNext: () => void }) {
         </div>
 
         <div className="flex justify-end pt-2">
-          <Button type="submit" disabled={pending}>
-            {pending && <Loader2 className="size-4 animate-spin" />}
+          <Button type="submit" disabled={pending} loading={pending}>
             Continue
           </Button>
         </div>

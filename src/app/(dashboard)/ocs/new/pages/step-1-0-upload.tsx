@@ -229,16 +229,14 @@ export function Step1Upload({
           variant="secondary"
           onClick={onContinueManually}
           disabled={busy || skipping || continuePending}
-        >
-          {skipping && <Loader2 className="size-4 animate-spin" />}
+         loading={skipping}>
           Continue manually
         </Button>
         <Button
           type="button"
           onClick={onContinue}
           disabled={(phase !== "complete" && phase !== "failed") || continuePending}
-        >
-          {continuePending && <Loader2 className="size-4 animate-spin" />}
+         loading={continuePending}>
           Continue
         </Button>
       </div>

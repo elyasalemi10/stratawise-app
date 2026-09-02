@@ -1,7 +1,6 @@
 "use client";
 
 import { useState, useTransition } from "react";
-import { Loader2 } from "lucide-react";
 import { toast } from "sonner";
 import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetFooter } from "@/components/ui/sheet";
 import { Button } from "@/components/ui/button";
@@ -139,8 +138,7 @@ export function AddBankAccountDrawer({
         </div>
 
         <SheetFooter className="border-t border-border px-5 py-3">
-          <Button onClick={submit} disabled={pending} className="w-full">
-            {pending && <Loader2 className="mr-2 size-4 animate-spin" />}
+          <Button onClick={submit} disabled={pending} className="w-full" loading={pending}>
             Add bank account
           </Button>
         </SheetFooter>

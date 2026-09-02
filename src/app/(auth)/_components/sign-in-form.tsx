@@ -4,7 +4,7 @@ import { useState, Suspense } from "react";
 import { useSearchParams } from "next/navigation";
 import Link from "next/link";
 import { toast } from "sonner";
-import { Loader2, Eye, EyeOff } from "lucide-react";
+import { Eye, EyeOff } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -145,8 +145,7 @@ function SignInContent() {
           type="submit"
           className="w-full h-11 border border-foreground/15 shadow-sm"
           disabled={pending}
-        >
-          {pending && <Loader2 className="size-4 animate-spin" />}
+         loading={pending}>
           Sign in
         </Button>
 

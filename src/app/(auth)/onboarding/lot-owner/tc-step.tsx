@@ -3,7 +3,6 @@
 import { useState } from "react";
 import Link from "next/link";
 import { toast } from "sonner";
-import { Loader2 } from "lucide-react";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
@@ -62,8 +61,7 @@ export function TcStep() {
         className="w-full mt-4"
         disabled={!accepted || pending}
         onClick={handleSubmit}
-      >
-        {pending && <Loader2 className="size-4 animate-spin" />}
+       loading={pending}>
         Continue
       </Button>
     </div>

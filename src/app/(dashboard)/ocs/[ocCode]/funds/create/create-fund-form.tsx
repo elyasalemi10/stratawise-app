@@ -2,7 +2,7 @@
 
 import { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
-import { Loader2, Wallet, Users, Landmark, ListChecks, Building2, Wrench, MoreHorizontal, type LucideIcon } from "lucide-react";
+import { Wallet, Users, Landmark, ListChecks, Building2, Wrench, MoreHorizontal, type LucideIcon } from "lucide-react";
 import Image from "next/image";
 import { toast } from "sonner";
 import { Card, CardContent } from "@/components/ui/card";
@@ -483,8 +483,7 @@ export function CreateFundForm({
             )}
             <div className="flex justify-between">
               <Button variant="secondary" onClick={() => setStep("bankChoice")} disabled={pending}>Back</Button>
-              <Button onClick={handleSubmit} disabled={pending} size="lg">
-                {pending && <Loader2 className="mr-2 size-4 animate-spin" />}
+              <Button onClick={handleSubmit} disabled={pending} size="lg" loading={pending}>
                 Create fund
               </Button>
             </div>

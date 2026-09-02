@@ -828,8 +828,7 @@ function RecurringJobDrawer({
             </Button>
           )}
           {step === "documents" ? (
-            <Button onClick={onSubmit} disabled={pending || uploading} className="cursor-pointer">
-              {pending && <Loader2 className="size-4 animate-spin" />}
+            <Button onClick={onSubmit} disabled={pending || uploading} className="cursor-pointer" loading={pending}>
               {editing ? "Save changes" : "Create job"}
             </Button>
           ) : (

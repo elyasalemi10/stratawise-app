@@ -202,8 +202,7 @@ export function FollowupEditor({
       ))}
 
       <div className="flex justify-end">
-        <Button onClick={onSave} disabled={pending} className="cursor-pointer">
-          {pending && <Loader2 className="size-4 animate-spin" />}
+        <Button onClick={onSave} disabled={pending} className="cursor-pointer" loading={pending}>
           Save follow-up
         </Button>
       </div>

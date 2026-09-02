@@ -472,8 +472,7 @@ function Wizard({
                 Cancel
               </Button>
             )}
-            <Button size="sm" onClick={handleSave} disabled={pending}>
-              {pending && <Loader2 className="mr-1.5 h-3.5 w-3.5 animate-spin" />}
+            <Button size="sm" onClick={handleSave} disabled={pending} loading={pending}>
               Save
             </Button>
           </div>

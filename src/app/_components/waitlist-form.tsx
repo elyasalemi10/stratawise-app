@@ -1,7 +1,6 @@
 "use client";
 
 import { useState, useTransition } from "react";
-import { Loader2 } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -112,8 +111,7 @@ export function WaitlistForm() {
         type="submit"
         disabled={isPending}
         className="h-11 w-full border border-white/20 bg-primary text-primary-foreground hover:bg-primary/90"
-      >
-        {isPending && <Loader2 className="size-4 animate-spin" />}
+       loading={isPending}>
         Join the waitlist
       </Button>
     </form>

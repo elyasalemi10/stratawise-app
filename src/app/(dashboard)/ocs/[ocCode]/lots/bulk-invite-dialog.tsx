@@ -1,7 +1,6 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { Loader2 } from "lucide-react";
 import { toast } from "sonner";
 import {
   Dialog,
@@ -162,8 +161,7 @@ export function BulkInviteDialog({ open, onClose, ocId, lots, inviteStatusMap }:
 
         <DialogFooter>
           <Button variant="secondary" onClick={onClose} disabled={sending}>Cancel</Button>
-          <Button onClick={send} disabled={sending || checkedCount === 0}>
-            {sending && <Loader2 className="size-4 animate-spin" />}
+          <Button onClick={send} disabled={sending || checkedCount === 0} loading={sending}>
             Send {checkedCount > 0 ? checkedCount : ""} invitation{checkedCount === 1 ? "" : "s"}
           </Button>
         </DialogFooter>

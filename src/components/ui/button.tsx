@@ -2,6 +2,7 @@
 
 import * as React from "react"
 import { cva, type VariantProps } from "class-variance-authority"
+import { Loader2 } from "lucide-react"
 
 import { cn } from "@/lib/utils"
 
@@ -48,14 +49,47 @@ function Button({
   className,
   variant,
   size,
+  loading = false,
+  disabled,
+  children,
   ...props
-}: React.ComponentProps<"button"> & VariantProps<typeof buttonVariants>) {
+}: React.ComponentProps<"button"> &
+  VariantProps<typeof buttonVariants> & {
+    /** Show a spinner and block interaction, WITHOUT resizing the button.
+     *
+     *  The pattern this replaces was `{pending && <Loader2 />}` in front of
+     *  the label, which widens the button by the icon plus its gap the
+     *  moment you click it. Every row of buttons around it shifts, which is
+     *  the one thing a loading state should not do.
+     *
+     *  Here the label stays in the layout and just goes invisible, so the
+     *  button keeps its exact width, and the spinner is centred over it.
+     *  The label text is unchanged too , never swap it for "Saving..."
+     *  (CLAUDE.md). */
+    loading?: boolean
+  }) {
   return (
     <button
       data-slot="button"
-      className={cn(buttonVariants({ variant, size, className }))}
+      className={cn(buttonVariants({ variant, size, className }), loading && "relative")}
+      // A button mid-request must not be clickable twice, but `disabled`
+      // alone would also drop the focus ring and the pointer cursor, so
+      // aria-busy carries the meaning for assistive tech.
+      disabled={disabled || loading}
+      aria-busy={loading || undefined}
       {...props}
-    />
+    >
+      {loading && (
+        <span
+          className="absolute inset-0 flex items-center justify-center"
+          aria-hidden
+        >
+          <Loader2 className="size-4 animate-spin" />
+        </span>
+      )}
+      {/* invisible, not hidden: it still occupies its width. */}
+      <span className={cn("contents", loading && "invisible")}>{children}</span>
+    </button>
   )
 }
 

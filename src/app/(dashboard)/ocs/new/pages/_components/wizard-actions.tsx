@@ -2,7 +2,6 @@
 
 import { useEffect, useRef, useState } from "react";
 import { toast } from "sonner";
-import { Loader2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { saveDraftPatch, type DraftJson } from "../../actions";
 
@@ -105,12 +104,10 @@ export function WizardActions({
           variant="secondary"
           onClick={handleSave}
           disabled={continuePending || saving || disabled}
-        >
-          {saving && <Loader2 className="mr-1 size-3.5 animate-spin" />}
+         loading={saving}>
           Save
         </Button>
-        <Button type="button" onClick={onContinue} disabled={continuePending || disabled}>
-          {continuePending && <Loader2 className="mr-1 size-3.5 animate-spin" />}
+        <Button type="button" onClick={onContinue} disabled={continuePending || disabled} loading={continuePending}>
           {continueLabel}
         </Button>
       </div>

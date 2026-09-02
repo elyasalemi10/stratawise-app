@@ -2,7 +2,6 @@
 
 import { useState } from "react";
 import { toast } from "sonner";
-import { Loader2 } from "lucide-react";
 import { saveOperatingAccount } from "./actions";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -150,8 +149,7 @@ export function StepOperating({ onNext, onBack }: { onNext: () => void; onBack: 
           <Button type="button" variant="secondary" onClick={onBack} disabled={pending}>
             Back
           </Button>
-          <Button type="button" onClick={onSubmit} disabled={pending}>
-            {pending && <Loader2 className="size-4 animate-spin" />}
+          <Button type="button" onClick={onSubmit} disabled={pending} loading={pending}>
             {isBlank ? "Skip for now" : "Continue"}
           </Button>
         </div>

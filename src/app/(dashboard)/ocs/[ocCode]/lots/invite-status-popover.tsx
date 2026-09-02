@@ -5,7 +5,6 @@ import {
   Calendar,
   Check,
   ExternalLink,
-  Loader2,
   Mail,
   MailOpen,
   Pencil,
@@ -346,8 +345,7 @@ function ConfirmInviteBlock({
         </div>
       </div>
       <div className="flex justify-end">
-        <Button size="sm" onClick={sendInvite} disabled={sending}>
-          {sending && <Loader2 className="mr-1 h-3 w-3 animate-spin" />}
+        <Button size="sm" onClick={sendInvite} disabled={sending} loading={sending}>
           Send invitation
         </Button>
       </div>

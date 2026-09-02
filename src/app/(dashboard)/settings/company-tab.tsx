@@ -2,7 +2,7 @@
 
 import { useState, useRef } from "react";
 import { toast } from "sonner";
-import { Upload, Building2, Pencil, Loader2 } from "lucide-react";
+import { Upload, Building2, Pencil } from "lucide-react";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -149,8 +149,7 @@ function EditCompanyDrawer({
         </div>
         <div className="flex justify-end gap-2 border-t border-border p-4">
           <Button variant="secondary" onClick={() => onOpenChange(false)} disabled={saving}>Cancel</Button>
-          <Button onClick={handleSave} disabled={saving}>
-            {saving && <Loader2 className="size-4 animate-spin" />}
+          <Button onClick={handleSave} disabled={saving} loading={saving}>
             Save changes
           </Button>
         </div>

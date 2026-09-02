@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState, useTransition } from "react";
-import { AlertTriangle, Pencil, Loader2 } from "lucide-react";
+import { AlertTriangle, Pencil } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -221,8 +221,7 @@ export function AccountDetailDrawer({ account, onOpenChange, onAccountUpdated, o
               <Button variant="secondary" onClick={handleCancel} disabled={savePending}>
                 Cancel
               </Button>
-              <Button onClick={handleSave} disabled={savePending}>
-                {savePending && <Loader2 className="size-4 animate-spin" />}
+              <Button onClick={handleSave} disabled={savePending} loading={savePending}>
                 Save changes
               </Button>
             </>

@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { toast } from "sonner";
-import { Gavel, Loader2, Download, AlertTriangle } from "lucide-react";
+import { Gavel, Download, AlertTriangle } from "lucide-react";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -192,8 +192,7 @@ function VcatInputsDrawer({
         </div>
 
         <SheetFooter>
-          <Button onClick={onGenerate} disabled={pending || !acknowledged} className="cursor-pointer">
-            {pending && <Loader2 className="size-4 animate-spin" />}
+          <Button onClick={onGenerate} disabled={pending || !acknowledged} className="cursor-pointer" loading={pending}>
             Generate pack
           </Button>
         </SheetFooter>

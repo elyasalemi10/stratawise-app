@@ -343,8 +343,7 @@ export function ContractorDrawer({
               <Button variant="secondary" className="cursor-pointer" onClick={() => setStep("form")} disabled={lookingUp}>
                 Skip
               </Button>
-              <Button className="cursor-pointer" onClick={lookupAndContinue} disabled={lookingUp || abn.replace(/\D/g, "").length !== 11}>
-                {lookingUp && <Loader2 className="size-4 animate-spin" />}
+              <Button className="cursor-pointer" onClick={lookupAndContinue} disabled={lookingUp || abn.replace(/\D/g, "").length !== 11} loading={lookingUp}>
                 Look up and continue
               </Button>
             </div>
@@ -521,8 +520,7 @@ export function ContractorDrawer({
           {editing && (
             <ContractorStatusButton contractorId={editing.id} status={editing.status} onChanged={onSaved} />
           )}
-          <Button onClick={onSubmit} disabled={pending || uploading} className="cursor-pointer">
-            {pending && <Loader2 className="size-4 animate-spin" />}
+          <Button onClick={onSubmit} disabled={pending || uploading} className="cursor-pointer" loading={pending}>
             {editing ? "Save changes" : "Add contractor"}
           </Button>
         </SheetFooter>

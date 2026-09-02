@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import { toast } from "sonner";
-import { Info, Loader2 } from "lucide-react";
+import { Info } from "lucide-react";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
@@ -166,8 +166,7 @@ export function Step4OpeningBalances({
         </div>
         <div className="flex items-center justify-between pt-2">
           <Button type="button" variant="secondary" onClick={onBack}>Back</Button>
-          <Button type="button" onClick={onCreate} disabled={pending}>
-            {pending && <Loader2 className="size-4 animate-spin" />}
+          <Button type="button" onClick={onCreate} disabled={pending} loading={pending}>
             Create OC
           </Button>
         </div>

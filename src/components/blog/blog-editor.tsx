@@ -246,11 +246,11 @@ export function BlogEditor({ post }: { post: BlogPostRow }) {
       <div className="flex items-center justify-end gap-3">
         <div className="flex items-center gap-2">
           <Badge variant={isPublished ? "success" : "neutral"} className="rounded-full">{isPublished ? "Published" : "Draft"}</Badge>
-          <Button variant="secondary" size="sm" onClick={handleSave} disabled={saving || statusPending}>
-            {saving && <Loader2 className="size-4 animate-spin" />}Save
+          <Button variant="secondary" size="sm" onClick={handleSave} disabled={saving || statusPending} loading={saving}>
+            Save
           </Button>
-          <Button size="sm" onClick={handlePublishToggle} disabled={saving || statusPending}>
-            {statusPending && <Loader2 className="size-4 animate-spin" />}{isPublished ? "Unpublish" : "Publish"}
+          <Button size="sm" onClick={handlePublishToggle} disabled={saving || statusPending} loading={statusPending}>
+            {isPublished ? "Unpublish" : "Publish"}
           </Button>
         </div>
       </div>
@@ -396,8 +396,7 @@ export function BlogEditor({ post }: { post: BlogPostRow }) {
             Preview
           </Button>
         )}
-        <Button size="sm" onClick={handleGenerateNarration} disabled={narrating || saving}>
-          {narrating && <Loader2 className="size-4 animate-spin" />}
+        <Button size="sm" onClick={handleGenerateNarration} disabled={narrating || saving} loading={narrating}>
           {audioUrl ? "Regenerate narration" : "Generate narration"}
         </Button>
       </div>

@@ -173,8 +173,7 @@ export function MfaEnrollClient() {
                   type="submit"
                   className="w-full"
                   disabled={verifying || code.length !== 6}
-                >
-                  {verifying && <Loader2 className="mr-1.5 size-3.5 animate-spin" />}
+                 loading={verifying}>
                   Verify and enable MFA
                 </Button>
               </form>

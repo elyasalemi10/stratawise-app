@@ -3,7 +3,6 @@
 import { Suspense, useState } from "react";
 import { useSearchParams } from "next/navigation";
 import { toast } from "sonner";
-import { Loader2 } from "lucide-react";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -91,8 +90,7 @@ function ProfileTab({ profile }: { profile: AdminSettingsProfile }) {
         />
       </div>
 
-      <Button type="submit" disabled={pending}>
-        {pending && <Loader2 className="mr-2 size-4 animate-spin" />}
+      <Button type="submit" disabled={pending} loading={pending}>
         Save changes
       </Button>
     </form>
@@ -171,8 +169,7 @@ function SecurityTab() {
                 onChange={(e) => { setConfirm(e.target.value); setInvalid((p) => ({ ...p, confirm: false })); }}
               />
             </div>
-            <Button type="submit" disabled={pending}>
-              {pending && <Loader2 className="mr-2 size-4 animate-spin" />}
+            <Button type="submit" disabled={pending} loading={pending}>
               Update password
             </Button>
           </form>

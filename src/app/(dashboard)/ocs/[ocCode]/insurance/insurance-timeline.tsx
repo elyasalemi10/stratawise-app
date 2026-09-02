@@ -227,8 +227,7 @@ function PolicyDetailDialog({
             </div>
             <div className="flex justify-end gap-2 pt-2">
               <Button variant="secondary" onClick={() => setEditing(false)} className="cursor-pointer">Cancel</Button>
-              <Button onClick={handleSave} disabled={saving} className="cursor-pointer">
-                {saving && <Loader2 className="size-4 animate-spin" />}
+              <Button onClick={handleSave} disabled={saving} className="cursor-pointer" loading={saving}>
                 Save
               </Button>
             </div>
@@ -659,8 +658,7 @@ function AddPolicyDrawer({
               <Button variant="secondary" onClick={() => setStep("coc")} disabled={pending}>
                 Back
               </Button>
-              <Button onClick={handleSubmit} disabled={pending || !provider || !startDate || !endDate}>
-                {pending && <Loader2 className="size-4 animate-spin" />}
+              <Button onClick={handleSubmit} disabled={pending || !provider || !startDate || !endDate} loading={pending}>
                 Add policy
               </Button>
             </>

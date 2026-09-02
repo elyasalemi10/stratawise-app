@@ -2,7 +2,7 @@
 
 import { Fragment, useEffect, useMemo, useState } from "react";
 import { toast } from "sonner";
-import { AlertTriangle, Download, FileSpreadsheet, Info, Loader2, Upload } from "lucide-react";
+import { AlertTriangle, Download, FileSpreadsheet, Info, Upload } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";

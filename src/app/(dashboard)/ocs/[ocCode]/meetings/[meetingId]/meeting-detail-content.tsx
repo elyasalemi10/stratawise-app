@@ -276,8 +276,7 @@ function SendNoticeDialog({
         </div>
         <DialogFooter>
           <Button variant="secondary" onClick={() => { if (!pending) onClose(); }} disabled={pending}>Cancel</Button>
-          <Button onClick={onSubmit} disabled={pending || owners.length === 0} className="cursor-pointer">
-            {pending && <Loader2 className="size-4 animate-spin" />}
+          <Button onClick={onSubmit} disabled={pending || owners.length === 0} className="cursor-pointer" loading={pending}>
             Send notice
           </Button>
         </DialogFooter>

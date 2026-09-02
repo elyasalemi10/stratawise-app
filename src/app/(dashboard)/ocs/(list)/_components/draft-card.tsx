@@ -4,7 +4,7 @@ import { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { toast } from "sonner";
-import { CircleDashed, Loader2, Trash2 } from "lucide-react";
+import { CircleDashed, Trash2 } from "lucide-react";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import {
@@ -118,8 +118,7 @@ export function DraftCard({ draft }: { draft: DraftCardData }) {
               onClick={handleDelete}
               disabled={pending}
               className="bg-destructive hover:bg-destructive/90"
-            >
-              {pending && <Loader2 className="size-4 animate-spin" />}
+             loading={pending}>
               Delete draft
             </Button>
           </DialogFooter>
