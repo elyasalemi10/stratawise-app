@@ -1,6 +1,5 @@
 import "server-only";
 import { runComplianceReminders } from "./tasks/compliance-reminders";
-import { runGmailWatchRefresh } from "./tasks/gmail-watch-refresh";
 import { runLevyAutosend } from "./tasks/levy-autosend";
 import { runLevyCsvReminder } from "./tasks/levy-csv-reminder";
 import { runLevyFollowupEscalation } from "./tasks/levy-followup-escalation";
@@ -30,16 +29,17 @@ export interface CronTask {
   run: () => Promise<unknown>;
 }
 
+// Gmail watch renewal is deliberately NOT here. /api/cron/gmail-sweep owns
+// it, on a 5-minute tick with a 2-day renewal window. The daily task that
+// used to do it also wrote the fresh historyId from users.watch() onto the
+// subscription, which jumps the cursor past anything the push webhook never
+// delivered , the exact failure gmail-sweep exists to catch. Renewing and
+// advancing the read cursor must not be the same action.
+//
 // Ordered by hour so the file reads as the day does. Where several share an
 // hour the order here is the order they run in, which matters: levy autosend
 // must land before the follow-up sweep looks for overdue notices.
 export const CRON_TASKS: CronTask[] = [
-  {
-    id: "gmail-watch-refresh",
-    hour: 2,
-    label: "Refresh Gmail mailbox watches",
-    run: runGmailWatchRefresh,
-  },
   {
     id: "compliance-reminders",
     hour: 8,
