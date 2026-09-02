@@ -14,11 +14,6 @@ import { ensureManagerUsername } from "@/lib/actions/manager-username";
 //     a reply to (if any), with sender/recipient/subject/body for the
 //     email-style detail view.
 //
-//   replyToInboxEmail({ communicationLogId, body })
-//     Sends a reply via sendManagerMessageEmail, writes a new outbound
-//     row to communication_log, audits the send. Recipient = the
-//     inbound row's sender; subject = "Re: <subject>" (skipping
-//     duplicate "Re:" prefixes).
 //
 //   associateInboxEmailToLot({ communicationLogId, oc_id, lot_id })
 //     Manual fallback when In-Reply-To match failed. Updates the
@@ -230,99 +225,6 @@ const replySchema = z.object({
   communicationLogId: z.string().uuid(),
   body: z.string().trim().min(1).max(20000),
 });
-
-export async function replyToInboxEmail(
-  input: z.input<typeof replySchema>,
-): Promise<Result<{ id: string }>> {
-  const parsed = replySchema.safeParse(input);
-  if (!parsed.success)
-    return { ok: false, error: parsed.error.issues[0]?.message ?? "Invalid input" };
-
-  const profile = await requireCompanyRole();
-  const supabase = createServerClient();
-
-  const detail = await getInboxEmail(parsed.data.communicationLogId);
-  if (!detail.ok) return detail;
-
-  const { data } = detail;
-  if (!data.sender_email) {
-    return { ok: false, error: "Couldn't determine the original sender." };
-  }
-
-  await ensureManagerUsername();
-
-  const replySubject = data.subject.toLowerCase().startsWith("re:")
-    ? data.subject
-    : `Re: ${data.subject}`;
-
-  const result = await sendManagerMessageEmail({
-    managerProfileId: profile.id,
-    to: data.sender_email,
-    subject: replySubject,
-    bodyText: parsed.data.body,
-  });
-
-  if ("error" in result) return { ok: false, error: result.error };
-
-  const externalId = "id" in result ? result.id : null;
-
-  // Inherit confidentiality (+ owner pin) from the inbound row we're
-  // replying to so the thread stays consistent. The original send →
-  // inbound reply → our reply trio all carry the same flag.
-  const { data: inboundRow } = await supabase
-    .from("communication_log")
-    .select("confidential, lot_owner_id_at_creation")
-    .eq("id", data.id)
-    .maybeSingle();
-  const inheritedConfidential = !!(inboundRow as { confidential?: boolean } | null)?.confidential;
-  const inheritedLotOwnerId =
-    (inboundRow as { lot_owner_id_at_creation?: string | null } | null)
-      ?.lot_owner_id_at_creation ?? null;
-
-  const { data: outbound, error: insertErr } = await supabase
-    .from("communication_log")
-    .insert({
-      oc_id: data.oc_id,
-      lot_id: data.lot_id,
-      sender_profile_id: profile.id,
-      channel: "email",
-      type: "manager_message",
-      direction: "outbound",
-      recipient_email: data.sender_email,
-      subject: replySubject,
-      body_preview: parsed.data.body.slice(0, 200),
-      body_full: parsed.data.body,
-      status: "sent",
-      external_id: externalId,
-      sent_at: new Date().toISOString(),
-      related_entity_type: "communication_log",
-      related_entity_id: data.id,
-      confidential: inheritedConfidential,
-      lot_owner_id_at_creation: inheritedLotOwnerId,
-    })
-    .select("id")
-    .single();
-
-  if (insertErr || !outbound) {
-    return { ok: false, error: "Reply sent but the log row didn't save." };
-  }
-
-  await logAudit({
-    profileId: profile.id,
-    ocId: data.oc_id ?? undefined,
-    action: "send",
-    entityType: "email",
-    entityId: outbound.id as string,
-    after: {
-      reply_to: data.id,
-      recipient_email: data.sender_email,
-      subject: replySubject,
-    },
-    metadata: data.lot_id ? { lot_id: data.lot_id } : undefined,
-  });
-
-  return { ok: true, data: { id: outbound.id as string } };
-}
 
 // ─── Manual associate (fallback when auto-match failed) ────────────────
 

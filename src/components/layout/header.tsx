@@ -36,7 +36,6 @@ const routeLabels: Record<string, string> = {
   maintenance: "Maintenance",
   "my-levies": "My levies",
   "chart-of-accounts": "Chart of Accounts",
-  "trust-accounts": "Trust accounts",
   "help": "Help",
 };
 

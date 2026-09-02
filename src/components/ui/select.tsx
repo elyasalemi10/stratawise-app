@@ -67,7 +67,15 @@ function SelectContent({
   sideOffset = 0,
   align = "start",
   alignOffset = 0,
-  alignItemWithTrigger = true,
+  // false, not Base UI's default of true.
+  //
+  // With it on, the popup is positioned so the SELECTED item lands on top of
+  // the trigger , the old macOS native-select behaviour. The panel ends up
+  // overlapping the bar at an offset that depends on which item is chosen,
+  // which reads as a card that popped out over the field rather than the
+  // field opening downward. Off, it opens below the trigger, aligned to it,
+  // at its width, every time.
+  alignItemWithTrigger = false,
   ...props
 }: SelectPrimitive.Popup.Props &
   Pick<

@@ -12,7 +12,6 @@ import {
   Mail,
   Info,
   ArrowLeft,
-  Reply,
   AlertTriangle,
   Loader2,
   Link as LinkIcon,
@@ -21,15 +20,12 @@ import {
 } from "lucide-react";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { Label } from "@/components/ui/label";
-import { Textarea } from "@/components/ui/textarea";
 import {
   Tooltip,
   TooltipContent,
   TooltipProvider,
   TooltipTrigger,
 } from "@/components/ui/tooltip";
-import { EditSheet } from "@/components/shared/edit-sheet";
 import {
   AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent,
   AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle,
@@ -52,7 +48,6 @@ import {
 } from "@/lib/actions/notifications";
 import {
   getInboxEmail,
-  replyToInboxEmail,
   associateInboxEmailToLot,
   removeInboxEmail,
   type InboxEmailDetail,
@@ -140,6 +135,17 @@ function timeAgo(dateStr: string): string {
   if (days < 7) return `${days}d ago`;
   return formatDateLong(dateStr);
 }
+
+// The inbox is READ-ONLY on purpose.
+//
+// It used to carry a reply composer, which made it a worse Gmail: no
+// threading, no search, no mobile app, and it only ever saw replies to mail
+// we sent. Managers replied in their real mail client anyway , the "Open in
+// Gmail" action conceded as much.
+//
+// What it is good at is the thing a mail client cannot do: showing inbound
+// mail beside system notifications, and letting you attach a message to a
+// lot so it lands on that lot's Communications tab. Read, link, move on.
 
 export function InboxContent({
   notifications: initial,
@@ -542,7 +548,6 @@ function EmailDetailPane({
   // so stale prefetches (e.g. assoc was set in another tab) overwrite.
   const [detail, setDetail] = useState<InboxEmailDetail | null>(prefetched);
   const [error, setError] = useState<string | null>(null);
-  const [replyOpen, setReplyOpen] = useState(false);
 
   useEffect(() => {
     if (!communicationLogId) {
@@ -629,10 +634,6 @@ function EmailDetailPane({
               </div>
             </div>
             <div className="flex items-center gap-1.5 shrink-0">
-              <Button size="sm" onClick={() => setReplyOpen(true)}>
-                <Reply className="mr-1.5 h-3.5 w-3.5" />
-                Reply
-              </Button>
               <LinkToLotPicker
                 ownerships={allOwnerships}
                 linkedKey={
@@ -825,12 +826,6 @@ function EmailDetailPane({
         )}
         </CardContent>
 
-        <ReplyDrawer
-          open={replyOpen}
-          onClose={() => setReplyOpen(false)}
-          detail={detail}
-          onSent={() => setReplyOpen(false)}
-        />
       </Card>
     </TooltipProvider>
   );
@@ -848,75 +843,6 @@ function BackBar({ onBack, compact = false }: { onBack: () => void; compact?: bo
         Back to inbox
       </button>
     </div>
-  );
-}
-
-// ─── Reply drawer ────────────────────────────────────────────────────────
-
-function ReplyDrawer({
-  open,
-  onClose,
-  detail,
-  onSent,
-}: {
-  open: boolean;
-  onClose: () => void;
-  detail: InboxEmailDetail;
-  onSent: () => void;
-}) {
-  const [body, setBody] = useState("");
-
-  useEffect(() => {
-    if (!open) setBody("");
-  }, [open]);
-
-  if (!open) return null;
-  return (
-    <EditSheet
-      label={`Reply to ${detail.sender_email || "owner"}`}
-      description={
-        detail.subject.toLowerCase().startsWith("re:")
-          ? detail.subject
-          : `Re: ${detail.subject}`
-      }
-      headerKicker={null}
-      open
-      onOpenChange={(o) => {
-        if (!o) onClose();
-      }}
-      renderTrigger={() => <span />}
-      saveLabel="Send reply"
-      successToast="Reply sent"
-      onSave={async () => {
-        if (!body.trim())
-          return { ok: false as const, error: "Reply body is required." };
-        const res = await replyToInboxEmail({
-          communicationLogId: detail.id,
-          body,
-        });
-        if (res.ok) onSent();
-        return res.ok
-          ? { ok: true as const }
-          : { ok: false as const, error: res.error };
-      }}
-    >
-      <div className="space-y-1.5">
-        <Label>To</Label>
-        <p className="rounded-md border border-border bg-card px-3 py-2 text-sm font-medium text-foreground break-all">
-          {detail.sender_email}
-        </p>
-      </div>
-      <div className="space-y-1.5">
-        <Label>Reply</Label>
-        <Textarea
-          value={body}
-          onChange={(e) => setBody(e.target.value)}
-          placeholder="Write your reply…"
-          rows={10}
-          className="max-h-80 resize-none overflow-y-auto"
-        />
-      </div>
-    </EditSheet>
   );
 }
 

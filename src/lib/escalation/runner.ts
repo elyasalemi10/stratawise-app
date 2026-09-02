@@ -175,13 +175,17 @@ async function advanceInstance(supabase: any, inst: Record<string, unknown>, tod
   const lotLabel = lot ? `Lot ${lot.lot_number}` : "a lot";
 
   if (step.step_type === "vcat") {
-    // Raise the VCAT task; the manager generates the pack from the lot page.
+    // Raise the VCAT signal. We do not assemble the application , that was
+    // 845 lines of PDF and form-building for a step a manager takes a
+    // handful of times a year, and always checks by hand anyway. What has
+    // value is knowing the debt has run out of internal remedies, which is
+    // this notification and vcat_ready_at.
     await supabase.from("escalation_instances").update({ vcat_ready_at: new Date().toISOString() }).eq("id", instanceId);
     await notifyOcManagers(
       supabase,
       notice.oc_id,
       `VCAT application ready for ${lotLabel}`,
-      `${vars.oc_name}: levy ${vars.reference} is unpaid past the final notice. Prepare the VCAT fee-recovery pack.`,
+      `${vars.oc_name}: levy ${vars.reference} is unpaid past the final notice. It is ready to take to VCAT.`,
     );
     result.stepsFired++;
   } else {

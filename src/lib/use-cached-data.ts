@@ -119,7 +119,6 @@ const CLIENT_CACHED_ROUTES: RegExp[] = [
   /^\/contractors$/,
   /^\/chart-of-accounts$/,
   /^\/maintenance$/,
-  /^\/trust-accounts$/,
   /^\/levies$/,
   /^\/settings$/,
   // Static , nothing to fetch, so nothing to revalidate either. Listed so

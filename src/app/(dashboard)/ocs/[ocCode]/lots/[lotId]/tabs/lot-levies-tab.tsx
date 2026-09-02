@@ -6,7 +6,6 @@ import { Badge } from "@/components/ui/badge";
 import { Wallet, FileText, ArrowDownToLine, Loader2 } from "lucide-react";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { listLotLevies, type LotLevyRow } from "@/lib/actions/lot-levies";
-import { VcatPackPanel } from "./vcat-pack-panel";
 
 // Levies tab , every levy notice ever issued to this lot, paid or unpaid.
 // One row per notice. Paid/unpaid is read directly from the row's status +
@@ -120,7 +119,6 @@ export function LotLeviesTab({ lotId }: Props) {
 
   return (
     <div className="space-y-4">
-    <VcatPackPanel lotId={lotId} />
     <Card>
       <CardContent className="pt-5 space-y-3">
         <div className="flex items-center gap-2">

@@ -400,6 +400,12 @@
     bottom: 0;
     left: 0;
     width: 50%;
+    /* Match the animation's from-state.
+       Without it the ::after paints at translateX(0) , sitting over the left
+       half of the element , for the frame before the animation takes over,
+       so every skeleton flashed a stripe on mount and then jumped left to
+       start its sweep. */
+    transform: translateX(-100%);
     background-image: linear-gradient(
       90deg,
       transparent 0%,
