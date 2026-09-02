@@ -76,45 +76,59 @@ export function DatePicker({
   const isOutOfRange = (d: Date) => (min ? d < min : false) || (max ? d > max : false);
 
   return (
-    <Popover open={open} onOpenChange={setOpen}>
-      <PopoverTrigger
-        id={id}
-        disabled={disabled}
-        render={<Button variant="secondary" type="button" />}
-        className={cn(
-          "h-9 w-full justify-between px-3 font-normal",
-          // White field on the grey page, like every other input.
-          "bg-card hover:bg-card",
-          hasError && "border-destructive",
-          !date && "text-muted-foreground",
-        )}
-        aria-invalid={hasError || undefined}
-      >
-        <span className="flex min-w-0 items-center">
-          <CalendarIcon className="mr-2 size-4 shrink-0 text-muted-foreground" />
-          <span className="truncate">{date ? format(date, "d MMM yyyy") : placeholder}</span>
-        </span>
-        <ChevronDownIcon className="size-4 shrink-0 text-muted-foreground" />
-      </PopoverTrigger>
+    // The wrapper is load-bearing.
+    //
+    // Base UI's Popover.Root renders no element of its own, so its trigger
+    // AND the focus-guard spans it mounts on open become direct children of
+    // whatever contains this component , usually a `space-y-1.5` field
+    // group. `space-y-*` is `> * + *`, which applies to every sibling after
+    // the first regardless of whether it is in flow, so the guards appearing
+    // on open added a 6px margin and pushed the next field down. Opening a
+    // date picker visibly nudged the rest of the form.
+    //
+    // Keeping the guards inside our own element means the field group only
+    // ever sees one child, and nothing moves.
+    <div className="relative">
+      <Popover open={open} onOpenChange={setOpen}>
+        <PopoverTrigger
+          id={id}
+          disabled={disabled}
+          render={<Button variant="secondary" type="button" />}
+          className={cn(
+            "h-9 w-full justify-between px-3 font-normal",
+            // White field on the grey page, like every other input.
+            "bg-card hover:bg-card",
+            hasError && "border-destructive",
+            !date && "text-muted-foreground",
+          )}
+          aria-invalid={hasError || undefined}
+        >
+          <span className="flex min-w-0 items-center">
+            <CalendarIcon className="mr-2 size-4 shrink-0 text-muted-foreground" />
+            <span className="truncate">{date ? format(date, "d MMM yyyy") : placeholder}</span>
+          </span>
+          <ChevronDownIcon className="size-4 shrink-0 text-muted-foreground" />
+        </PopoverTrigger>
 
-      <PopoverContent
-        align="start"
-        showBackdrop={false}
-        className="w-auto overflow-hidden p-0"
-      >
-        <Calendar
-          mode="single"
-          selected={date}
-          defaultMonth={date}
-          disabled={isOutOfRange}
-          onSelect={(d) => {
-            if (!d) return;
-            onChange(toISO(d));
-            setOpen(false);
-          }}
-          className="rounded-lg border"
-        />
-      </PopoverContent>
-    </Popover>
+        <PopoverContent
+          align="start"
+          showBackdrop={false}
+          className="w-auto overflow-hidden p-0"
+        >
+          <Calendar
+            mode="single"
+            selected={date}
+            defaultMonth={date}
+            disabled={isOutOfRange}
+            onSelect={(d) => {
+              if (!d) return;
+              onChange(toISO(d));
+              setOpen(false);
+            }}
+            className="rounded-lg border"
+          />
+        </PopoverContent>
+      </Popover>
+    </div>
   );
 }

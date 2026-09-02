@@ -339,7 +339,7 @@
 
   @keyframes skeleton-shimmer {
     from { transform: translateX(-100%); }
-    to   { transform: translateX(100%); }
+    to   { transform: translateX(200%); }
   }
   /* Welcome overlay animations, used by WelcomeConfetti on ?welcome=1.
      Enter: slide up + fade in. Exit: fade out + drift up. */
@@ -388,17 +388,25 @@
     overflow: hidden;
   }
 
+  /* The band is HALF the element wide, not the full width. A full-width
+     gradient means the highlight is the size of the thing it is crossing, so
+     it reads as the whole row slowly brightening rather than something
+     travelling over it. Half-width, moving from just off the left edge to
+     just off the right, is a sweep you can actually see move. */
   .skeleton-shimmer::after {
     content: "";
     position: absolute;
-    inset: 0;
+    top: 0;
+    bottom: 0;
+    left: 0;
+    width: 50%;
     background-image: linear-gradient(
       90deg,
       transparent 0%,
-      hsl(0 0% 100% / 0.65) 50%,
+      hsl(0 0% 100% / 0.7) 50%,
       transparent 100%
     );
-    animation: skeleton-shimmer 1.4s linear infinite;
+    animation: skeleton-shimmer 1s linear infinite;
   }
 
   /* Drop the gradient entirely, not just the animation. A frozen gradient

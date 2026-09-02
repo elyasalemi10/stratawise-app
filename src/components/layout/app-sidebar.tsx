@@ -79,17 +79,19 @@ const GROUP_ICONS: Record<string, LucideIcon> = {
   OC: Building2,
 };
 
+// One flat list, no headings.
+//
+// A section heading buys you something when a list is long enough that you
+// scan for the right region before the right item. Six items is not that:
+// "Management" sat above four links you can read in one glance, adding a row
+// of chrome and a second visual rhythm for nothing. The per-OC nav keeps its
+// groups because it genuinely has enough items to need them.
 const managerMainNavGroups = [
   {
     label: "",
     items: [
       { href: "/dashboard", label: "Dashboard", icon: LayoutDashboard },
       { href: "/inbox", label: "Inbox", icon: Inbox },
-    ],
-  },
-  {
-    label: "Management",
-    items: [
       { href: "/ocs", label: "OCs", icon: Building2 },
       { href: "/maintenance", label: "Maintenance", icon: Wrench },
       { href: "/contractors", label: "Contractors", icon: HardHat },
@@ -104,11 +106,6 @@ const lotOwnerMainNavGroups = [
     items: [
       { href: "/dashboard", label: "Dashboard", icon: LayoutDashboard },
       { href: "/inbox", label: "Inbox", icon: Inbox },
-    ],
-  },
-  {
-    label: "Overview",
-    items: [
       { href: "/levies", label: "Levies", icon: Wallet },
       { href: "/meetings", label: "Meetings", icon: CalendarCheck },
       { href: "/trust-accounts", label: "Trust accounts", icon: Landmark },

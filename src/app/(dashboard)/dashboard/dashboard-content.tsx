@@ -38,7 +38,10 @@ function KPICard({
 }: {
   label: string;
   value: string;
-  description: string;
+  /** Optional. Only worth a line when it says something the label and the
+   *  number do not , "3 overdue" earns its place, "Active OCs" under a
+   *  figure already labelled OCs does not. */
+  description?: string;
   icon: React.ReactNode;
 }) {
   return (
@@ -55,7 +58,9 @@ function KPICard({
             {icon}
           </div>
         </div>
-        <p className="mt-3 text-xs text-muted-foreground">{description}</p>
+        {description ? (
+          <p className="mt-3 text-xs text-muted-foreground">{description}</p>
+        ) : null}
       </CardContent>
     </Card>
   );
@@ -313,25 +318,21 @@ function ManagerDashboard({
         <KPICard
           label="OCs"
           value={String(totalOCs)}
-          description={totalOCs === 0 ? "Create your first OC" : "Active OCs"}
           icon={<Building2 className="h-5 w-5" />}
         />
         <KPICard
           label="Total lots"
           value={String(totalLots)}
-          description="Across all OCs"
           icon={<Users className="h-5 w-5" />}
         />
         <KPICard
           label="Total levied"
           value="$0.00"
-          description="No levies issued yet"
           icon={<DollarSign className="h-5 w-5" />}
         />
         <KPICard
           label="Outstanding"
           value="$0.00"
-          description="No outstanding amounts"
           icon={<DollarSign className="h-5 w-5" />}
         />
       </div>
