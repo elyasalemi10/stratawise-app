@@ -2,7 +2,7 @@
 
 import { useCallback } from "react";
 import Link from "next/link";
-import { FileText, Plus } from "lucide-react";
+import { Plus } from "lucide-react";
 import { useCachedData } from "@/lib/use-cached-data";
 import { Button } from "@/components/ui/button";
 import { EmptyState } from "@/components/shared/empty-state";
@@ -33,7 +33,7 @@ export function LeviesClient({ ocId, ocCode }: { ocId: string; ocCode: string })
 
       {batches.length === 0 ? (
         <EmptyState
-          icon={FileText}
+          illustration="documents"
           title="No levies generated yet"
           description="Generate levies from an approved budget to start issuing levy notices to lot owners."
           action={

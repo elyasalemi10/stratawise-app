@@ -39,7 +39,7 @@ function BankRow({ bank }: { bank: BankOption }) {
       )}
       <span className="truncate">{bank.name}</span>
       {bank.recommended && (
-        <span className="ml-1 shrink-0 rounded bg-green-100 px-1.5 py-0.5 text-[10px] font-medium text-green-900">
+        <span className="ml-1 shrink-0 rounded bg-success-muted px-1.5 py-0.5 text-[10px] font-medium text-success-foreground">
           DEFT auto-recon
         </span>
       )}

@@ -19,11 +19,11 @@ const TYPE_ICONS: Record<string, typeof FileText> = {
 };
 
 const TYPE_COLORS: Record<string, string> = {
-  levy_issued: "text-blue-600",
-  insurance_expiry: "text-amber-600",
+  levy_issued: "text-info-foreground",
+  insurance_expiry: "text-warning-foreground",
   meeting_notice: "text-purple-600",
-  invitation: "text-green-600",
-  payment_received: "text-emerald-600",
+  invitation: "text-success-foreground",
+  payment_received: "text-success-foreground",
   email_reply: "text-[color:var(--brand-gold)]",
   system: "text-muted-foreground",
 };

@@ -135,7 +135,6 @@ export async function recordAdjustment(
   // Ledger entry adjustments may affect any /levies, /budgets, /reconciliation
   // page in the oc; broad pattern invalidation is the simplest correct.
   revalidatePath("/ocs/[ocCode]/levies", "page");
-  revalidatePath("/ocs/[ocCode]/reconciliation", "page");
   revalidatePath("/ocs/[ocCode]/lots/[lotId]", "page");
   return { entryId: data as string };
 }
@@ -172,7 +171,6 @@ export async function voidLedgerEntry(
   if (error) return { error: error.message };
 
   revalidatePath("/ocs/[ocCode]/levies", "page");
-  revalidatePath("/ocs/[ocCode]/reconciliation", "page");
   revalidatePath("/ocs/[ocCode]/lots/[lotId]", "page");
   return { offsetId: data as string };
 }

@@ -2,7 +2,7 @@
 
 import { useState, useRef } from "react";
 import { useRouter } from "next/navigation";
-import { Plus, ShieldAlert, Download, CalendarIcon, Loader2, Pencil, Trash2 } from "lucide-react";
+import { Plus, Download, CalendarIcon, Loader2, Pencil, Trash2 } from "lucide-react";
 import { format } from "date-fns";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
@@ -899,7 +899,7 @@ export function InsuranceTimeline({
 
       {policies.length === 0 && readOnly ? (
         <EmptyState
-          icon={ShieldAlert}
+          illustration="checklist"
           title="No insurance policies"
           description="No insurance policies have been added yet."
         />

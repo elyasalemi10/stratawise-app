@@ -2,7 +2,7 @@
 
 import { useCallback } from "react";
 import Link from "next/link";
-import { Plus, Wallet } from "lucide-react";
+import { Plus } from "lucide-react";
 import { useCachedData } from "@/lib/use-cached-data";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -43,7 +43,7 @@ export function FundsClient({ ocId, ocCode }: { ocId: string; ocCode: string }) 
 
       {funds.length === 0 ? (
         <EmptyState
-          icon={Wallet}
+          illustration="money"
           title="No funds yet"
           description="Create your first fund to start tracking balances and assigning lots."
         />

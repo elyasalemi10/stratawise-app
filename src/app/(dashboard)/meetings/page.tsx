@@ -10,7 +10,7 @@ export default async function MeetingsPage() {
 
   return (
     <EmptyState
-      icon={CalendarDays}
+      illustration="calendar"
       title="No meetings yet"
       description="Meeting notices, agendas, and minutes will appear here once your strata manager schedules them."
     />

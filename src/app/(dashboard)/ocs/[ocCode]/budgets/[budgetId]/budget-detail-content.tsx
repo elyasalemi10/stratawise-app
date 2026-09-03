@@ -264,7 +264,7 @@ export function BudgetDetailContent({
           {isDraft ? (
             <CircleDashed className="h-5 w-5 text-muted-foreground" />
           ) : (
-            <CheckCircle2 className="h-5 w-5 text-emerald-600" />
+            <CheckCircle2 className="h-5 w-5 text-success-foreground" />
           )}
           <div>
             <h1 className="text-lg font-semibold text-foreground">

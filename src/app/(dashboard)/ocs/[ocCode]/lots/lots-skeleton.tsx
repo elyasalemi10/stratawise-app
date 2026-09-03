@@ -3,6 +3,9 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Skeleton } from "@/components/ui/skeleton";
 import {
+  Select, SelectTrigger, SelectValue,
+} from "@/components/ui/select";
+import {
   Table,
   TableBody,
   TableCell,
@@ -49,13 +52,29 @@ export function LotsSkeleton() {
           />
         </div>
 
-        <Button variant="secondary" size="sm" disabled>
+        <Select disabled>
+          <SelectTrigger className="w-36">
+            <SelectValue placeholder="Any balance" />
+          </SelectTrigger>
+        </Select>
+        <Select disabled>
+          <SelectTrigger className="w-40">
+            <SelectValue placeholder="Any owner" />
+          </SelectTrigger>
+        </Select>
+        <Select disabled>
+          <SelectTrigger className="w-40">
+            <SelectValue placeholder="Any occupancy" />
+          </SelectTrigger>
+        </Select>
+
+        <Button variant="secondary" disabled>
           <ArrowUpDown className="mr-2 h-3.5 w-3.5" />
           Sort: Lot number (low → high)
           <ChevronDown className="ml-1 h-3.5 w-3.5 opacity-60" />
         </Button>
 
-        <Button variant="secondary" size="sm" disabled>
+        <Button variant="secondary" className="ml-auto" disabled>
           <Wrench className="mr-2 h-3.5 w-3.5" />
           Tools
           <ChevronDown className="ml-1 h-3.5 w-3.5" />

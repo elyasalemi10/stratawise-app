@@ -58,7 +58,6 @@ function ocScopedPages(shortCode: string): Array<{ title: string; href: string; 
     { title: "Meetings", href: `/ocs/${shortCode}/meetings`, aliases: ["agm", "egm"] },
     { title: "Insurance", href: `/ocs/${shortCode}/insurance`, aliases: ["policy"] },
     { title: "Rules", href: `/ocs/${shortCode}/rules`, aliases: ["by-laws"] },
-    { title: "Reconciliation", href: `/ocs/${shortCode}/reconciliation`, aliases: ["bank", "transactions"] },
     { title: "Reports", href: `/ocs/${shortCode}/reports`, aliases: ["statement"] },
     { title: "Bank account", href: `/ocs/${shortCode}/bank-account`, aliases: ["trust"] },
     { title: "Settings", href: `/ocs/${shortCode}/settings`, aliases: [] },

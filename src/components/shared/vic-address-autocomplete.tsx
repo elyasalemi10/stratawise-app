@@ -407,7 +407,7 @@ export function VicAddressAutocomplete({ value, onChange, id, error }: Props) {
           </button>
         )}
         {sdkFailed && (
-          <p className="text-xs text-amber-700">
+          <p className="text-xs text-warning-foreground">
             Address search is temporarily unavailable. Enter the address manually.
           </p>
         )}
@@ -450,7 +450,7 @@ export function VicAddressAutocomplete({ value, onChange, id, error }: Props) {
           </div>
         )}
       </div>
-      {searchError && <p className="text-xs text-amber-700">{searchError}</p>}
+      {searchError && <p className="text-xs text-warning-foreground">{searchError}</p>}
       <button
         type="button"
         onClick={() => setMode("manual")}

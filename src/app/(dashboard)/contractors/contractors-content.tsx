@@ -3,7 +3,7 @@
 import { useMemo, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { toast } from "sonner";
-import { HardHat, Loader2, Plus, Search, Upload, FileText, Power } from "lucide-react";
+import { Loader2, Plus, Search, Upload, FileText, Power } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -99,7 +99,7 @@ export function ContractorsContent({ contractors }: { contractors: ContractorRec
 
       {contractors.length === 0 ? (
         <EmptyState
-          icon={HardHat}
+          illustration="checklist"
           title="No contractors yet"
           description="Build a reusable contact book of contractors you can attach to recurring jobs across every OC."
           action={

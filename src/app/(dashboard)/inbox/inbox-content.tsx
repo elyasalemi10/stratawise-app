@@ -65,11 +65,11 @@ const TYPE_ICONS: Record<string, typeof FileText> = {
 };
 
 const TYPE_COLORS: Record<string, string> = {
-  levy_issued: "bg-blue-50 text-blue-600",
-  insurance_expiry: "bg-amber-50 text-amber-600",
+  levy_issued: "bg-info-muted text-info-foreground",
+  insurance_expiry: "bg-warning-muted text-warning-foreground",
   meeting_notice: "bg-purple-50 text-purple-600",
-  invitation: "bg-green-50 text-green-600",
-  payment_received: "bg-emerald-50 text-emerald-600",
+  invitation: "bg-success-muted text-success-foreground",
+  payment_received: "bg-success-muted text-success-foreground",
   email_reply: "bg-[color:var(--brand-gold)]/15 text-[color:var(--brand-gold)]",
   system: "bg-muted text-muted-foreground",
 };
@@ -583,7 +583,7 @@ function EmailDetailPane({
       <Card>
         <CardContent className="pt-5 space-y-4">
           <BackBar onBack={onBack} compact />
-          <EmptyState icon={Mail} title="Email unavailable" description={error} card={false} />
+          <EmptyState illustration="inbox" title="Email unavailable" description={error} card={false} />
         </CardContent>
       </Card>
     );
@@ -735,7 +735,7 @@ function EmailDetailPane({
               {detail.oc_short_code && detail.lot_id ? (
                 <a
                   href={`/ocs/${detail.oc_short_code}/lots/${detail.lot_id}?tab=communications`}
-                  className="inline-flex items-center gap-1 text-blue-600 underline-offset-4 hover:underline"
+                  className="inline-flex items-center gap-1 text-info-foreground underline-offset-4 hover:underline"
                 >
                   {detail.lot_link_label ?? "View lot"}
                   <LinkIcon className="h-3 w-3" />
@@ -751,7 +751,7 @@ function EmailDetailPane({
             (auto-quoted links, bullet lists, *bold*) that managers expect
             to read formatted. remark-gfm picks up tables, autolinks, and
             strikethrough. */}
-        <div className="rounded-md border border-border bg-cool-muted p-4 max-h-[40rem] overflow-y-auto text-sm leading-relaxed text-foreground prose prose-sm max-w-none prose-headings:text-foreground prose-strong:text-foreground prose-a:text-blue-600">
+        <div className="rounded-md border border-border bg-cool-muted p-4 max-h-[40rem] overflow-y-auto text-sm leading-relaxed text-foreground prose prose-sm max-w-none prose-headings:text-foreground prose-strong:text-foreground prose-a:text-info-foreground">
           {detail.body ? (
             <ReactMarkdown remarkPlugins={[remarkGfm]}>
               {detail.body}
@@ -786,7 +786,7 @@ function EmailDetailPane({
               )}
             </div>
 
-            <div className="rounded-md border border-border bg-cool-muted p-4 max-h-[40rem] overflow-y-auto text-sm leading-relaxed text-foreground prose prose-sm max-w-none prose-headings:text-foreground prose-strong:text-foreground prose-a:text-blue-600">
+            <div className="rounded-md border border-border bg-cool-muted p-4 max-h-[40rem] overflow-y-auto text-sm leading-relaxed text-foreground prose prose-sm max-w-none prose-headings:text-foreground prose-strong:text-foreground prose-a:text-info-foreground">
               {detail.outbound.body ? (
                 <ReactMarkdown remarkPlugins={[remarkGfm]}>
                   {detail.outbound.body}

@@ -76,7 +76,7 @@ export function PastLotClient({ lotId }: { lotId: string }) {
   if (!data.found || !data.oc || !data.lot) {
     return (
       <EmptyState
-        icon={FileText}
+        illustration="documents"
         title="Records not found"
         description="There is no ownership record for this lot on your account."
         card={false}

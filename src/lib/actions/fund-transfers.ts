@@ -70,7 +70,6 @@ export async function createFundTransfer(
 
   await revalidateSidebarForOC(parsed.data.oc_id);
   revalidatePath("/ocs/[ocCode]/bank-account", "page");
-  revalidatePath("/ocs/[ocCode]/reconciliation", "page");
   return { transferId: data as string };
 }
 

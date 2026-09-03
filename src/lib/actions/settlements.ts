@@ -471,27 +471,6 @@ export async function applySettlementToLot(input: ApplySettlementInput) {
     });
   }
 
-  // 1a. End the active lot_ownership for the new entity model. Set end_date
-  //     to the settlement date. There may be 0 (first-ever owner) or 1
-  //     active row; the partial index lot_ownerships_active_idx makes the
-  //     lookup cheap.
-  let endedLotOwnershipId: string | null = null;
-  {
-    const { data: activeOwnership } = await supabase
-      .from("lot_ownerships")
-      .select("id")
-      .eq("lot_id", lotId)
-      .is("end_date", null)
-      .maybeSingle();
-    if (activeOwnership) {
-      await supabase
-        .from("lot_ownerships")
-        .update({ end_date: settlementDate })
-        .eq("id", activeOwnership.id);
-      endedLotOwnershipId = activeOwnership.id;
-    }
-  }
-
   // 2. Mark any existing pending invitation as revoked (replaced by this settlement).
   const { data: existingPending } = await supabase
     .from("invitations")
@@ -537,108 +516,83 @@ export async function applySettlementToLot(input: ApplySettlementInput) {
     invitation = createdInvite;
   }
 
-  // 3a. Owner + lot_ownership + settlement , the new entity-model writes.
-  //     Owner is matched by case-insensitive email within the OC's
-  //     management company; if no match, a new owner row is inserted.
-  //     A fresh lot_ownership row starts the new tenure (end_date null).
-  //     The settlement row links the old + new lot_ownerships together
-  //     with the source PDF document.
-  let newOwnerId: string | null = null;
-  let newLotOwnershipId: string | null = null;
+  // 3a. The ownership change itself. ONE call: it reuses an existing owner
+  //     by email within this management company, closes whatever ownership
+  //     was open on the lot, and opens the new one, in a single
+  //     transaction.
+  //
+  //     This used to be four separate writes, each marked "non-fatal": the
+  //     old ownership was closed first, then the owner was looked up or
+  //     inserted, then the new ownership. If any step after the first failed
+  //     we logged and carried on, leaving the lot with NO owner , invisible
+  //     to v_lot_current_owners, so absent from owner lists, levy
+  //     distribution and communications, with nothing to indicate it. A
+  //     half-transferred lot is worse than a failed transfer, so this one is
+  //     fatal.
+  const occupancy = parsed.data.occupancyStatus ?? "owner_occupied";
+  const tenanted = occupancy === "tenanted";
+
+  const { data: setRows, error: setErr } = await supabase.rpc("set_lot_owner", {
+    p_lot_id: lotId,
+    p_oc_id: resolvedOcId,
+    p_management_company_id: managementCompanyId,
+    p_name: newOwner.name,
+    p_email: newOwner.email || null,
+    p_phone: newOwner.phone ?? null,
+    p_postal_address: newOwner.postalAddress ?? null,
+    p_owner_type: "individual",
+    p_start_date: settlementDate,
+    p_occupancy_status: occupancy,
+    p_tenant_name: tenanted ? parsed.data.tenantName : null,
+    p_tenant_email: tenanted ? parsed.data.tenantEmail : null,
+    p_tenant_phone: tenanted ? parsed.data.tenantPhone : null,
+  });
+
+  const transfer = (setRows as Array<{
+    owner_id: string; ownership_id: string; ended_ownership_id: string | null;
+  }> | null)?.[0];
+
+  if (setErr || !transfer) {
+    console.error("applySettlementToLot: set_lot_owner failed", setErr);
+    return { error: "Could not record the change of ownership. Nothing was saved." };
+  }
+
+  const newOwnerId = transfer.owner_id;
+  const newLotOwnershipId = transfer.ownership_id;
+  const endedLotOwnershipId = transfer.ended_ownership_id;
+
+  // The settlement row links the outgoing and incoming ownerships to the
+  // source document. It is a record OF the transfer, not part of it, so a
+  // failure here leaves the transfer standing.
   let settlementRowId: string | null = null;
-  try {
-    const normEmail = (newOwner.email ?? "").trim().toLowerCase();
-    if (normEmail) {
-      const { data: existingOwner } = await supabase
-        .from("owners")
-        .select("id")
-        .eq("management_company_id", managementCompanyId)
-        .ilike("email", normEmail)
-        .maybeSingle();
-      if (existingOwner) newOwnerId = existingOwner.id;
-    }
-    if (!newOwnerId) {
-      const { data: createdOwner, error: ownerErr } = await supabase
-        .from("owners")
-        .insert({
-          management_company_id: managementCompanyId,
-          owner_type: "individual",
-          name: newOwner.name,
-          email: newOwner.email ?? null,
-          phone: newOwner.phone ?? null,
-          postal_address: newOwner.postalAddress ?? null,
-          date_of_birth: newOwner.dateOfBirth ?? null,
-        })
-        .select("id")
-        .single();
-      if (ownerErr || !createdOwner) {
-        console.error("applySettlementToLot: owner insert failed (non-fatal)", ownerErr);
-      } else {
-        newOwnerId = createdOwner.id;
-      }
-    }
+  const { data: settlementRow, error: settlementErr } = await supabase
+    .from("settlements")
+    .insert({
+      oc_id: resolvedOcId,
+      lot_id: lotId,
+      document_id: documentId,
+      settlement_date: settlementDate,
+      ended_lot_ownership_id: endedLotOwnershipId,
+      created_lot_ownership_id: newLotOwnershipId,
+      recorded_by: profile.id,
+    })
+    .select("id")
+    .single();
+  if (settlementErr || !settlementRow) {
+    console.error("applySettlementToLot: settlement insert failed (non-fatal)", settlementErr);
+  } else {
+    settlementRowId = settlementRow.id;
+    await supabase
+      .from("lot_ownerships")
+      .update({ source_settlement_id: settlementRow.id })
+      .eq("id", newLotOwnershipId);
+  }
 
-    if (newOwnerId) {
-      // Occupancy normalisation. A new owner defaults to owner-occupied
-      // unless the manager flagged the lot as tenanted / vacant on the
-      // settlement form. Tenant fields only persist when tenanted.
-      const occupancy = parsed.data.occupancyStatus ?? "owner_occupied";
-      const tenanted = occupancy === "tenanted";
-      const { data: newOwnership, error: ownershipErr } = await supabase
-        .from("lot_ownerships")
-        .insert({
-          lot_id: lotId,
-          owner_id: newOwnerId,
-          oc_id: resolvedOcId,
-          start_date: settlementDate,
-          is_primary_contact: true,
-          is_financial: true,
-          occupancy_status: occupancy,
-          tenant_name: tenanted ? parsed.data.tenantName : null,
-          tenant_email: tenanted ? parsed.data.tenantEmail : null,
-          tenant_phone: tenanted ? parsed.data.tenantPhone : null,
-        })
-        .select("id")
-        .single();
-      if (ownershipErr || !newOwnership) {
-        console.error("applySettlementToLot: lot_ownership insert failed (non-fatal)", ownershipErr);
-      } else {
-        newLotOwnershipId = newOwnership.id;
-      }
-    }
-
-    if (newLotOwnershipId) {
-      const { data: settlementRow, error: settlementErr } = await supabase
-        .from("settlements")
-        .insert({
-          oc_id: resolvedOcId,
-          lot_id: lotId,
-          document_id: documentId,
-          settlement_date: settlementDate,
-          ended_lot_ownership_id: endedLotOwnershipId,
-          created_lot_ownership_id: newLotOwnershipId,
-          recorded_by: profile.id,
-        })
-        .select("id")
-        .single();
-      if (settlementErr || !settlementRow) {
-        console.error("applySettlementToLot: settlement insert failed (non-fatal)", settlementErr);
-      } else {
-        settlementRowId = settlementRow.id;
-        // Backfill source_settlement_id on the just-created lot_ownership.
-        await supabase
-          .from("lot_ownerships")
-          .update({ source_settlement_id: settlementRow.id })
-          .eq("id", newLotOwnershipId);
-      }
-    }
-  } catch (err) {
-    // The new-table writes are non-fatal in this first cut , the legacy
-    // invitation + oc_members flow below remains the source of truth for
-    // the existing UI. If owner / lot_ownership / settlement fails we
-    // log and carry on; a follow-up migration can repair from the
-    // invitation + audit_log records.
-    console.error("applySettlementToLot: entity-model writes failed (non-fatal)", err);
+  if (invitation) {
+    await supabase
+      .from("lot_ownerships")
+      .update({ invitation_id: invitation.id })
+      .eq("id", newLotOwnershipId);
   }
 
   // 4. Audit-log the incoming side of the transfer. When there was no

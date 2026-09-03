@@ -6,13 +6,34 @@ import { isNotificationOptedOut, resolveCompanyLogo } from "@/lib/notifications"
 // respected) about:
 //   - OC insurance policies expiring within 30 days  (type insurance_expiring)
 //   - contractor public-liability expiring within 30 days (insurance_expiring)
-//   - OCs whose last AGM was over 12 months ago  (type agm_due)
+//   - OCs whose AGM deadline falls within a month (type agm_due_soon)
+//   - OCs whose AGM deadline has passed           (type agm_due)
 // De-duped: skips if the same notification (by link) was sent recently.
 
 const INSURANCE_WINDOW_DAYS = 30;
 const INSURANCE_DEDUPE_DAYS = 25;
-const AGM_DUE_MONTHS = 12;
+// An owners corporation must hold its AGM within 15 months of the last one
+// (Owners Corporations Act 2006 (Vic) s.68). Twelve months is the cadence;
+// fifteen is the deadline, and the deadline is what a manager gets in
+// trouble for missing , so that is what we count to.
+const AGM_DEADLINE_MONTHS = 15;
+// How far ahead to warn. A month is enough notice to book a venue, prepare
+// the notice period and still send it: the statutory notice period alone is
+// 14 days.
+const AGM_WARN_DAYS = 30;
 const AGM_DEDUPE_DAYS = 45;
+const AGM_SOON_DEDUPE_DAYS = 21;
+
+function addMonths(iso: string, months: number): string {
+  const d = new Date(`${iso.slice(0, 10)}T00:00:00.000Z`);
+  const day = d.getUTCDate();
+  d.setUTCDate(1);
+  d.setUTCMonth(d.getUTCMonth() + months);
+  // Clamp for short months: 31 Jan + 1 month is 28/29 Feb, not 3 March.
+  const lastOfMonth = new Date(Date.UTC(d.getUTCFullYear(), d.getUTCMonth() + 1, 0)).getUTCDate();
+  d.setUTCDate(Math.min(day, lastOfMonth));
+  return d.toISOString().slice(0, 10);
+}
 
 function addDays(iso: string, days: number): string {
   const d = new Date(`${iso}T00:00:00.000Z`);
@@ -106,23 +127,62 @@ export async function runComplianceReminders() {
     }
   }
 
-  // 3) AGM due , OCs whose last AGM was over 12 months ago (or never).
-  const agmCutoff = new Date(); agmCutoff.setMonth(agmCutoff.getMonth() - AGM_DUE_MONTHS);
-  const agmCutoffIso = agmCutoff.toISOString();
-  const { data: ocs } = await supabase.from("owners_corporations").select("id, name, short_code").eq("kind", "active");
-  for (const oc of (ocs ?? []) as Array<{ id: string; name: string; short_code: string }>) {
-    const { data: lastAgm } = await supabase
-      .from("meetings").select("date_time").eq("oc_id", oc.id).eq("meeting_type", "agm")
-      .order("date_time", { ascending: false }).limit(1).maybeSingle();
-    const lastDate = (lastAgm?.date_time as string) ?? null;
-    if (lastDate && lastDate > agmCutoffIso) continue; // within the last 12 months
-    const link = `/ocs/${oc.short_code}/meetings`;
-    const title = `AGM due , ${oc.name}`;
-    const body = lastDate
-      ? `The last AGM was held on ${humanDate(lastDate)}. An annual general meeting is now due , schedule one to stay compliant.`
-      : `No AGM is on record for this Owners Corporation. Schedule the annual general meeting to stay compliant.`;
-    for (const pid of await ocManagers(supabase, oc.id)) {
-      if (await notifyManager(supabase, { profileId: pid, type: "agm_due", ocId: oc.id, title, body, link, ctaShortCode: oc.short_code, ctaPath: "meetings", ctaLabel: "Schedule meeting", dedupeDays: AGM_DEDUPE_DAYS })) sent++;
+  // 3) AGM. Two notifications off one deadline: a warning while there is
+  //    still time to act, and an overdue alert once there is not.
+  //
+  //    This used to fetch the last AGM once per OC, inside the loop. At ~55ms
+  //    of network each that is a query per row, which is the thing the schema
+  //    rules forbid , one query for every OC's AGMs, grouped here instead.
+  const { data: ocs } = await supabase
+    .from("owners_corporations")
+    .select("id, name, short_code, created_at")
+    .eq("kind", "active");
+  const ocList = (ocs ?? []) as Array<{ id: string; name: string; short_code: string; created_at: string }>;
+
+  if (ocList.length > 0) {
+    const { data: agms } = await supabase
+      .from("meetings")
+      .select("oc_id, date_time")
+      .eq("meeting_type", "agm")
+      .in("oc_id", ocList.map((o) => o.id))
+      .order("date_time", { ascending: false });
+
+    const lastAgmByOc = new Map<string, string>();
+    for (const m of (agms ?? []) as Array<{ oc_id: string; date_time: string }>) {
+      // Ordered newest-first, so the first hit per OC is the latest AGM.
+      if (!lastAgmByOc.has(m.oc_id)) lastAgmByOc.set(m.oc_id, m.date_time);
+    }
+
+    const warnCutoff = addDays(today, AGM_WARN_DAYS);
+
+    for (const oc of ocList) {
+      const lastDate = lastAgmByOc.get(oc.id) ?? null;
+      // An OC that has never held one counts from when it came onto the
+      // platform , otherwise every new OC is instantly overdue.
+      const from = (lastDate ?? oc.created_at).slice(0, 10);
+      const deadline = addMonths(from, AGM_DEADLINE_MONTHS);
+
+      const link = `/ocs/${oc.short_code}/meetings`;
+      const heldLine = lastDate
+        ? `The last AGM was held on ${humanDate(lastDate)}.`
+        : `No AGM is on record for this Owners Corporation.`;
+
+      if (deadline < today) {
+        const title = `AGM overdue , ${oc.name}`;
+        const body = `${heldLine} The 15-month deadline passed on ${humanDate(deadline)}. Schedule the annual general meeting.`;
+        for (const pid of await ocManagers(supabase, oc.id)) {
+          if (await notifyManager(supabase, { profileId: pid, type: "agm_due", ocId: oc.id, title, body, link, ctaShortCode: oc.short_code, ctaPath: "meetings", ctaLabel: "Schedule meeting", dedupeDays: AGM_DEDUPE_DAYS })) sent++;
+        }
+        continue;
+      }
+
+      if (deadline <= warnCutoff) {
+        const title = `AGM due soon , ${oc.name}`;
+        const body = `${heldLine} The next one must be held by ${humanDate(deadline)}. Allow for the 14-day notice period when you pick a date.`;
+        for (const pid of await ocManagers(supabase, oc.id)) {
+          if (await notifyManager(supabase, { profileId: pid, type: "agm_due_soon", ocId: oc.id, title, body, link, ctaShortCode: oc.short_code, ctaPath: "meetings", ctaLabel: "Schedule meeting", dedupeDays: AGM_SOON_DEDUPE_DAYS })) sent++;
+        }
+      }
     }
   }
 

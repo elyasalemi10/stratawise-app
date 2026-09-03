@@ -1009,9 +1009,9 @@ export async function sendNewClaimSubmittedEmail(
 
   const ctaBlock = buildCtaBlock(
     ocShortCode,
-    "reconciliation/claims",
+    "bank-accounts",
     "Review claim",
-    "Log in to StrataWise to review this claim in the reconciliation queue.",
+    "Log in to StrataWise to review this claim on the bank account.",
   );
 
   const html = brandShell(`
@@ -1082,7 +1082,7 @@ export async function sendLevyCsvReminderEmail(
   const greetingLine = managerName ? `Hi ${managerName},` : "Hi,";
   const ctaBlock = buildCtaBlock(
     ocShortCode,
-    "reconciliation",
+    "bank-accounts",
     "Upload bank CSV",
     "Log in to StrataWise and import the latest bank CSV before the run.",
   );

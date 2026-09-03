@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useMemo, useState } from "react";
-import { Plus, BookOpen, Download } from "lucide-react";
+import { Plus, Download } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { EmptyState } from "@/components/shared/empty-state";
@@ -23,11 +23,11 @@ import { toast } from "sonner";
 import { CreateAccountDrawer } from "@/components/chart-of-accounts/create-account-drawer";
 
 const TYPE_BADGE: Record<CoaAccountType, string> = {
-  asset: "bg-blue-50 text-blue-700 border-blue-200",
+  asset: "bg-info-muted text-info-foreground border-info/25",
   liability: "bg-rose-50 text-rose-700 border-rose-200",
   equity: "bg-violet-50 text-violet-700 border-violet-200",
-  income: "bg-emerald-50 text-emerald-700 border-emerald-200",
-  expense: "bg-amber-50 text-amber-700 border-amber-200",
+  income: "bg-success-muted text-success-foreground border-success/25",
+  expense: "bg-warning-muted text-warning-foreground border-warning/25",
 };
 
 function downloadCsv(rows: CoaAccount[]) {
@@ -144,7 +144,7 @@ export function ChartOfAccountsContent({ initialAccounts }: { initialAccounts: C
 
       {filtered.length === 0 ? (
         <EmptyState
-          icon={BookOpen}
+          illustration="documents"
           title="No accounts match"
           description={query || typeFilter !== "all" || statusFilter !== "all" ? "Try clearing the filters." : "Add your first account to get started."}
         />

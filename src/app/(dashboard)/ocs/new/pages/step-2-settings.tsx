@@ -237,7 +237,7 @@ export function Step2Settings({
                     placeholder="Days"
                   />
                   {showInterestFreeWarn && (
-                    <div className="flex items-start gap-1.5 text-xs text-amber-700">
+                    <div className="flex items-start gap-1.5 text-xs text-warning-foreground">
                       <AlertTriangle className="h-3.5 w-3.5 mt-0.5 shrink-0" />
                       <span>Most OCs use 28–60 days. Are you sure?</span>
                     </div>

@@ -50,7 +50,7 @@ export default async function GenerateLeviesPage({
   if (!operatingAccount) {
     return (
       <EmptyState
-        icon={Landmark}
+        illustration="money"
         title="Add an operating account first"
         description="Levies need an operating bank account so payers can pay you and we know where to reconcile receipts. Add one before generating a batch."
         action={

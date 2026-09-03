@@ -3,7 +3,7 @@
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { toast } from "sonner";
-import { Plus, Loader2, Newspaper, Trash2, Pencil, Sparkles, Copy, Check } from "lucide-react";
+import { Plus, Loader2, Trash2, Pencil, Sparkles, Copy, Check } from "lucide-react";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -88,7 +88,7 @@ export function BlogList({ posts }: { posts: BlogPostRow[] }) {
 
       {posts.length === 0 ? (
         <EmptyState
-          icon={Newspaper}
+          illustration="documents"
           title="No posts yet"
           description="Write your first post , headings, images, tables, YouTube embeds and timelines are all supported."
           action={<Button size="sm" onClick={handleNew} disabled={creating}><Plus className="mr-1.5 h-3.5 w-3.5" />New post</Button>}

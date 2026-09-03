@@ -19,7 +19,7 @@ export function RulesClient({ ocId, ocCode }: { ocId: string; ocCode: string }) 
   if (!isCustom || data.rules.length === 0) {
     return (
       <EmptyState
-        icon={Scale}
+        illustration="documents"
         title={isCustom ? "Rules upload pending" : "Using Victoria's Model Rules"}
         description={
           isCustom

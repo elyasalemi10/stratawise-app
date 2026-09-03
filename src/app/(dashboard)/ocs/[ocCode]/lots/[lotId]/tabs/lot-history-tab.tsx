@@ -111,7 +111,7 @@ export function LotHistoryTab({ activity }: { activity: LotActivityEntry[] }) {
   if (activity.length === 0) {
     return (
       <EmptyState
-        icon={HistoryIcon}
+        illustration="checklist"
         title="No activity yet"
         description="Edits, levies and payments will show up here as they happen."
       />

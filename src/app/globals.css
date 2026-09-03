@@ -55,9 +55,17 @@
   --color-destructive: var(--destructive);
   --color-destructive-foreground: var(--destructive-foreground);
 
-  /* Warning */
+  /* Status: warning / success / info. Each has a solid, a darker
+     foreground for text on white, and a tint for the badge background. */
   --color-warning: var(--warning);
   --color-warning-foreground: var(--warning-foreground);
+  --color-warning-muted: var(--warning-muted);
+  --color-success: var(--success);
+  --color-success-foreground: var(--success-foreground);
+  --color-success-muted: var(--success-muted);
+  --color-info: var(--info);
+  --color-info-foreground: var(--info-foreground);
+  --color-info-muted: var(--info-muted);
 
   /* Border / Input / Ring */
   --color-border: var(--border);
@@ -130,9 +138,29 @@
   --destructive: hsl(0, 72%, 51%);
   --destructive-foreground: hsl(0, 0%, 100%);
 
-  /* Warning, Amber (kept harmonious with gold) */
-  --warning: hsl(38, 92%, 50%);
-  --warning-foreground: hsl(38, 92%, 25%);
+  /* Warning, Amber.
+     
+     Pushed from hue 38 to 30. At 38 it sat two degrees from --brand-gold
+     (40), so a gold accent and an amber warning were the same colour to
+     anyone not comparing them side by side , which defeats the point of a
+     warning. Eight degrees is enough separation to read as orange-vs-gold. */
+  --warning: hsl(30, 92%, 48%);
+  --warning-foreground: hsl(30, 85%, 26%);
+  --warning-muted: hsl(30, 92%, 96%);
+
+  /* Success, Green. Was not a token at all: components reached for
+     Tailwind's emerald-600 in some places and green-600 in others, for the
+     same meaning, so "paid" was two different greens depending on the page. */
+  --success: hsl(160, 84%, 30%);
+  --success-foreground: hsl(160, 84%, 20%);
+  --success-muted: hsl(160, 60%, 96%);
+
+  /* Info, Blue. Same story as success , hard-coded blue-600 / blue-50.
+     Deliberately a lighter, brighter blue than the midnight foreground so
+     an info badge does not read as a plain navy label. */
+  --info: hsl(214, 84%, 48%);
+  --info-foreground: hsl(214, 84%, 30%);
+  --info-muted: hsl(214, 84%, 97%);
 
   /* Background & Surface , WHITE page, grey controls.
      

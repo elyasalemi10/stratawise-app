@@ -8,8 +8,7 @@ import {
   AlertTriangle,
   Users,
   ArrowRight,
-  Home,
-} from "lucide-react";
+  } from "lucide-react";
 import { formatDateLong } from "@/lib/utils";
 import { useCachedData } from "@/lib/use-cached-data";
 import { Card, CardContent } from "@/components/ui/card";
@@ -61,7 +60,7 @@ function OwnerOverview({ data, ocCode }: { data: OwnerOverviewData; ocCode: stri
   if (!data.hasLots) {
     return (
       <EmptyState
-        icon={Home}
+        illustration="building"
         title="No lots assigned"
         description="Your strata manager hasn't assigned you to a lot in this OC yet."
         card={false}
@@ -158,7 +157,7 @@ function ManagerOverview({
   if (data.setupIncomplete) {
     return (
       <EmptyState
-        icon={Building2}
+        illustration="building"
         title="Setup incomplete"
         description="This OC hasn't finished setup yet. Continue from where you left off."
         card={false}

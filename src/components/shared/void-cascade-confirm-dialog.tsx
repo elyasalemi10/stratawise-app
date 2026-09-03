@@ -103,7 +103,7 @@ export function VoidCascadeConfirmDialog({
         <DialogHeader>
           <DialogTitle>Void this transaction?</DialogTitle>
           <DialogDescription>
-            This will mark the transaction as voided and remove it from the reconciliation queue.
+            This will mark the transaction as voided and remove it from the bank account.
             The transaction record stays for audit but won&apos;t be reconciled.
           </DialogDescription>
         </DialogHeader>
@@ -111,20 +111,20 @@ export function VoidCascadeConfirmDialog({
         {/* Cascade preview */}
         <div className="space-y-4">
           {affectedLots > 0 && (
-            <div className="p-3 bg-amber-50 rounded-lg border border-amber-200">
+            <div className="p-3 bg-warning-muted rounded-lg border border-amber-200">
               <div className="flex gap-2">
-                <AlertCircle className="h-5 w-5 text-amber-600 flex-shrink-0 mt-0.5" />
+                <AlertCircle className="h-5 w-5 text-warning-foreground flex-shrink-0 mt-0.5" />
                 <div className="flex-1 text-sm">
-                  <div className="font-medium text-amber-900 mb-2">
+                  <div className="font-medium text-warning-foreground mb-2">
                     This will affect {affectedLots} lot{affectedLots !== 1 ? "s" : ""}
                   </div>
                   {cascadePreview.matches_to_unlink.length > 0 && (
                     <div className="mb-2">
-                      <div className="text-xs font-medium text-amber-800 mb-1">
+                      <div className="text-xs font-medium text-warning-foreground mb-1">
                         Unmatched entries:
                       </div>
                       {cascadePreview.matches_to_unlink.map((m, i) => (
-                        <div key={i} className="text-xs text-amber-700">
+                        <div key={i} className="text-xs text-warning-foreground">
                           Lot {m.lot_number}: {formatCurrency(m.amount)}
                           {m.levy_reference && ` (${m.levy_reference})`}
                         </div>
@@ -133,11 +133,11 @@ export function VoidCascadeConfirmDialog({
                   )}
                   {cascadePreview.credits_to_void.length > 0 && (
                     <div className="mb-2">
-                      <div className="text-xs font-medium text-amber-800 mb-1">
+                      <div className="text-xs font-medium text-warning-foreground mb-1">
                         Voided credits:
                       </div>
                       {cascadePreview.credits_to_void.map((c, i) => (
-                        <div key={i} className="text-xs text-amber-700">
+                        <div key={i} className="text-xs text-warning-foreground">
                           Lot {c.lot_number}: {formatCurrency(c.amount)} ({c.category})
                         </div>
                       ))}
@@ -145,11 +145,11 @@ export function VoidCascadeConfirmDialog({
                   )}
                   {cascadePreview.undeposited_receipts_to_reopen.length > 0 && (
                     <div>
-                      <div className="text-xs font-medium text-amber-800 mb-1">
+                      <div className="text-xs font-medium text-warning-foreground mb-1">
                         Reopened receipts:
                       </div>
                       {cascadePreview.undeposited_receipts_to_reopen.map((r, i) => (
-                        <div key={i} className="text-xs text-amber-700">
+                        <div key={i} className="text-xs text-warning-foreground">
                           Lot {r.lot_number}: {formatCurrency(r.amount)} (#{r.receipt_number})
                         </div>
                       ))}

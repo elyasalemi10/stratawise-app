@@ -4,7 +4,7 @@ import { useEffect, useMemo, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { toast } from "sonner";
 import {
-  Wrench, Loader2, Plus, Search, Trash2, Upload, FileText,
+  Loader2, Plus, Search, Trash2, Upload, FileText,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -149,7 +149,7 @@ export function MaintenanceContent({
 
       {jobs.length === 0 ? (
         <EmptyState
-          icon={Wrench}
+          illustration="checklist"
           title="No recurring jobs yet"
           description="Set up recurring maintenance (lift servicing, fire testing, gardening) once and let it run across the right OC on schedule."
           action={

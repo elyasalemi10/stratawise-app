@@ -142,7 +142,6 @@ const CLIENT_CACHED_ROUTES: RegExp[] = [
   /^\/ocs\/[^/]+\/maintenance$/,
   /^\/ocs\/[^/]+\/funds$/,
   /^\/ocs\/[^/]+\/bank-accounts$/,
-  /^\/ocs\/[^/]+\/reconciliation$/,
   /^\/ocs\/[^/]+\/reports$/,
   /^\/ocs\/[^/]+\/rules$/,
   // OC settings is six section routes now, all sharing one aggregate fetch

@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { Building2, MapPin, Plus } from "lucide-react";
+import { MapPin, Plus } from "lucide-react";
 import type { getCompanyOCSummary } from "@/lib/actions/oc";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -54,7 +54,7 @@ export function OCsContent({ summary }: { summary: Summary }) {
           state is gone , so the two never duplicate. */}
       {ocs.length === 0 && drafts.length === 0 ? (
         <EmptyState
-          icon={Building2}
+          illustration="building"
           title="No OCs yet"
           description="Create your first OC to start managing lots, levies, and meetings."
           action={

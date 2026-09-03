@@ -267,14 +267,14 @@ export function Step3PostalContact({
         </div>
 
         {csvErrors.length > 0 && (
-          <div className="rounded-md border border-amber-200 bg-amber-50 p-3">
+          <div className="rounded-md border border-amber-200 bg-warning-muted p-3">
             <div className="flex items-start gap-2">
-              <AlertTriangle className="mt-0.5 h-4 w-4 text-amber-600 shrink-0" />
+              <AlertTriangle className="mt-0.5 h-4 w-4 text-warning-foreground shrink-0" />
               <div className="flex-1">
-                <p className="text-sm font-medium text-amber-900">
+                <p className="text-sm font-medium text-warning-foreground">
                   {csvErrors.length} row{csvErrors.length === 1 ? "" : "s"} need attention
                 </p>
-                <ul className="mt-1 text-xs text-amber-900 list-disc pl-4 space-y-0.5">
+                <ul className="mt-1 text-xs text-warning-foreground list-disc pl-4 space-y-0.5">
                   {csvErrors.slice(0, 5).map((e, i) => (
                     <li key={i}>Row {e.row}: {e.reason}</li>
                   ))}

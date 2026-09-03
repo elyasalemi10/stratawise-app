@@ -22,7 +22,7 @@ export function OwnerLeviesClient() {
   if (!data.hasLots) {
     return (
       <EmptyState
-        icon={FileText}
+        illustration="documents"
         title="No levies yet"
         description="You'll see your levy notices here once they've been issued."
       />
@@ -66,7 +66,7 @@ export function OwnerLeviesClient() {
 
       {data.levies.length === 0 ? (
         <EmptyState
-          icon={FileText}
+          illustration="documents"
           title="No levies issued yet"
           description="Your levy notices will appear here once issued by your strata manager."
         />

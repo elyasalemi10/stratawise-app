@@ -165,9 +165,9 @@ export function Step1Upload({
             {busy ? (
               <Loader2 className="h-8 w-8 animate-spin text-primary" />
             ) : phase === "complete" ? (
-              <CheckCircle2 className="h-8 w-8 text-green-600" />
+              <CheckCircle2 className="h-8 w-8 text-success-foreground" />
             ) : (
-              <AlertTriangle className="h-8 w-8 text-amber-600" />
+              <AlertTriangle className="h-8 w-8 text-warning-foreground" />
             )}
             <div className="flex items-center gap-2 max-w-full">
               <FileText className="h-3.5 w-3.5 text-muted-foreground shrink-0" />
@@ -185,7 +185,7 @@ export function Step1Upload({
               </p>
             )}
             {phase === "failed" && parseError && (
-              <p className="text-xs text-amber-700">{parseError}</p>
+              <p className="text-xs text-warning-foreground">{parseError}</p>
             )}
           </div>
         </div>

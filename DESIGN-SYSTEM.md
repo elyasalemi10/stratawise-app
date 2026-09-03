@@ -194,3 +194,47 @@ screen. New forms use `Form`. Touched forms should move toward it.
   Email"), so the user is not left guessing whether a silent switch stuck.
 - **Bulk actions send only what changed.** "Turn all off" on a column that is
   already mostly off should write the two rows that differ, not eighteen.
+
+---
+
+## 10. Colour , the hierarchy, and what it is for
+
+Five colours carry meaning. Anything outside this list is decoration and
+should be a token, not a Tailwind ramp reached into at the call site.
+
+| Role | Token | What it means |
+|---|---|---|
+| Navy | `--primary` / `--foreground` | The brand, and the ONE primary action per view |
+| Gold | `--brand-gold` | Brand accent: sidebar active state, links on auth pages, first chart series |
+| Grey | `--muted` / `--secondary` / `--accent` | "This is a control", and every surface that is not doing anything |
+| Red | `--destructive` | Something failed, or is about to be destroyed |
+| Amber | `--warning` | Something needs attention but nothing is broken |
+| Green | `--success` | Settled, paid, verified |
+| Blue | `--info` | Neutral fact worth flagging |
+
+**Rules the audit added:**
+
+- **Never reach for a Tailwind colour ramp.** `text-emerald-600`,
+  `bg-blue-50`, `text-amber-700` had spread to about forty places, and the
+  same meaning had two colours: "paid" was `emerald-600` on one page and
+  `green-600` on another. Green and blue are tokens now (`--success`,
+  `--info`) with a `-muted` tint for badge backgrounds.
+- **Amber is not gold.** `--warning` was `hsl(38, …)` and `--brand-gold` is
+  `hsl(40, …)` , two degrees apart, which means a warning badge and a brand
+  accent were the same colour to anyone not holding them side by side.
+  Warning moved to hue 30 so it reads as orange against the gold.
+- **One accent per view.** Gold is what the eye lands on, so two gold
+  elements in one frame means no focal point. The empty-state illustrations
+  follow the same rule: one gold element each, never two.
+- **Category colours are not status colours.** The chart-of-accounts type
+  badges (asset / liability / equity / income / expense) are a category
+  ramp; they borrow the status tokens where the meaning genuinely overlaps
+  and keep their own hues elsewhere. Do not read green there as "good".
+
+**Known tension, deliberately unresolved:** `--primary` and `--foreground`
+are the SAME navy, so a primary button is body-text colour with white text
+on it. It works, and it is what makes the palette feel like one thing, but
+it means a primary button leans entirely on its fill to stand out , which is
+why secondary buttons had to become grey rather than white-with-a-border.
+If a page ever needs two levels of emphasis above secondary, that is the
+constraint that will bite.

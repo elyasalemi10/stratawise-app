@@ -3,7 +3,7 @@
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
-import { Plus, PieChart, Search } from "lucide-react";
+import { Plus, Search } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -90,7 +90,7 @@ function BudgetsListView({
   if (budgets.length === 0) {
     return (
       <EmptyState
-        icon={PieChart}
+        illustration="money"
         title="No budgets yet"
         description="Create an annual budget to start generating levy notices."
         action={

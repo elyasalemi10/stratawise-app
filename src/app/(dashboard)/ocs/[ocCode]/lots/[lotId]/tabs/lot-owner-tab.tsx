@@ -24,7 +24,6 @@ import {
   ExternalLink,
   Mail,
   FileSignature,
-  UserRound,
   Vote,
   CalendarDays,
 } from "lucide-react";
@@ -135,7 +134,7 @@ export function LotOwnerTab(props: Props) {
   if (!activeOwner.owner_display_name) {
     return (
       <EmptyState
-        icon={UserRound}
+        illustration="people"
         title="No owner on file yet"
         description="Record the settlement to assign the new owner to this lot."
         action={

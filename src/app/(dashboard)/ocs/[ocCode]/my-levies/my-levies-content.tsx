@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { FileText, Download, ExternalLink } from "lucide-react";
+import { Download, ExternalLink } from "lucide-react";
 import { formatDateLong } from "@/lib/utils";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -60,7 +60,7 @@ export function MyLeviesContent({ levies }: { levies: Levy[] }) {
       {/* Levies table */}
       {levies.length === 0 ? (
         <EmptyState
-          icon={FileText}
+          illustration="documents"
           title="No levies issued yet"
           description="Your levy notices will appear here once issued by your strata manager."
         />

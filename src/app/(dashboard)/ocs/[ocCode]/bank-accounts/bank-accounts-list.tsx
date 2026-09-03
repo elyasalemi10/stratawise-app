@@ -3,7 +3,7 @@
 import { useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import {
-  Upload, Plus, Landmark, ChevronLeft, ChevronRight, ReceiptText, Trash2,
+  Upload, Plus, Landmark, ChevronLeft, ChevronRight, Trash2,
   AlertTriangle, Loader2,
 } from "lucide-react";
 import { toast } from "sonner";
@@ -325,14 +325,14 @@ function AccountPane({
         </div>
         {account.transactions.length === 0 ? (
           <EmptyState
-            icon={ReceiptText}
+            illustration="money"
             title="No transactions yet"
             description='Import a CSV statement to populate this account. Use the "Import CSV" button above.'
             card={false}
           />
         ) : visibleTxns.length === 0 ? (
           <EmptyState
-            icon={ReceiptText}
+            illustration="money"
             title={`No transactions in ${labelForMonthKey(activeMonth)}`}
             description="Step to a different month or import more rows."
             card={false}

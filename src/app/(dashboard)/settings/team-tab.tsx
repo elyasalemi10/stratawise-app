@@ -188,7 +188,7 @@ export function TeamTab({
 
       {members.length === 0 ? (
         <EmptyState
-          icon={UserPlus}
+          illustration="people"
           title="No team members yet"
           description="Invite a colleague to give them access to your OCs."
         />

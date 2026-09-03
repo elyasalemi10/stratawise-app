@@ -145,7 +145,7 @@ function OwnerDashboard({ data }: { data: OwnerDashboardData }) {
           <WelcomeConfetti />
         </Suspense>
         <EmptyState
-          icon={Building2}
+          illustration="building"
           title="No Owners Corporations assigned"
           description="Your strata manager hasn't assigned you to an Owners Corporation yet. Check your email for an invitation link, or contact your strata manager."
           card={false}
@@ -359,7 +359,7 @@ function ManagerDashboard({
 
       {ocs.length === 0 ? (
         <EmptyState
-          icon={Building2}
+          illustration="building"
           title="No OCs yet"
           description="Create your first OC to start managing lots, levies, and meetings."
           action={

@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import { useRouter } from "next/navigation";
-import { Landmark, Plus } from "lucide-react";
+import { Plus } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { EmptyState } from "@/components/shared/empty-state";
 import { AddBankAccountDrawer } from "./add-bank-account-drawer";
@@ -19,7 +19,7 @@ export function NoBankAccountsEmpty({ ocId }: { ocId: string }) {
   return (
     <>
       <EmptyState
-        icon={Landmark}
+        illustration="money"
         title="No bank accounts yet"
         description="Add your first bank account to start importing transactions. The first account becomes the operating account that the admin fund draws to and from."
         action={

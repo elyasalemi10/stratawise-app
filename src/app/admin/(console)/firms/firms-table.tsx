@@ -39,7 +39,7 @@ export function FirmsTable({ firms }: { firms: FirmRow[] }) {
   if (firms.length === 0) {
     return (
       <EmptyState
-        icon={Building2}
+        illustration="building"
         title="No management firms yet"
         description="Firms appear here as managing agents onboard to the platform."
       />

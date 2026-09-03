@@ -1,13 +1,14 @@
 import * as React from "react";
 import { Card, CardContent } from "@/components/ui/card";
+import { EmptyIllustration, type IllustrationName } from "./empty-illustration";
 
 // Standardised empty-state block. Used wherever a card/section/tab has
-// nothing to show , guarantees a consistent visual (faded icon → bold
+// nothing to show , guarantees a consistent visual (illustration → bold
 // title → muted description → optional action) instead of every page
 // inventing its own.
 //
 // Visual contract (locked in CLAUDE.md):
-//   - icon  , h-12 w-12, text-muted-foreground/40 (faded grey)
+//   - illustration , one of the set in empty-illustration.tsx
 //   - title , text-base font-semibold text-foreground
 //   - body  , text-sm text-muted-foreground
 //   - action , optional <Button> rendered below the body
@@ -16,7 +17,8 @@ import { Card, CardContent } from "@/components/ui/card";
 // render bare (for empty states inside an existing card or table cell).
 
 interface EmptyStateProps {
-  icon: React.ElementType;
+  /** Which drawing to show. */
+  illustration: IllustrationName;
   title: string;
   description?: React.ReactNode;
   action?: React.ReactNode;
@@ -26,7 +28,7 @@ interface EmptyStateProps {
 }
 
 export function EmptyState({
-  icon: Icon,
+  illustration,
   title,
   description,
   action,
@@ -37,7 +39,7 @@ export function EmptyState({
     <div
       className={`flex flex-col items-center gap-3 py-12 text-center ${className ?? ""}`}
     >
-      <Icon className="h-12 w-12 text-muted-foreground/40" />
+      <EmptyIllustration name={illustration} />
       <p className="text-base font-semibold text-foreground">{title}</p>
       {description && (
         <p className="max-w-sm text-sm text-muted-foreground">{description}</p>

@@ -132,7 +132,7 @@ export async function runLevyCsvReminder() {
         type: "levy_csv_reminder",
         title: `Upload a bank CSV for ${ocName}`,
         body: `The next levy run is due ${nextSendLabel} but no fresh bank CSV has been imported. Import one to keep arrears accurate.`,
-        link: ocShortCode ? `/ocs/${ocShortCode}/reconciliation` : null,
+        link: ocShortCode ? `/ocs/${ocShortCode}/bank-accounts` : null,
       });
     }
 

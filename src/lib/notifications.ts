@@ -574,8 +574,8 @@ export async function emitNewClaimSubmitted(
   // not in email); email CTA URL is built by the sender via
   // NEXT_PUBLIC_APP_URL + ocShortCode.
   const reviewPath = ocShortCode
-    ? `/ocs/${ocShortCode}/reconciliation/claims`
-    : "/reconciliation/claims";
+    ? `/ocs/${ocShortCode}/bank-accounts`
+    : "/dashboard";
 
   // Active managers for this oc.
   const { data: managerRows } = await supabase

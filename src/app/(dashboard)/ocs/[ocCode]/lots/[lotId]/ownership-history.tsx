@@ -1,4 +1,4 @@
-import { ExternalLink, History } from "lucide-react";
+import { ExternalLink } from "lucide-react";
 import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { EmptyState } from "@/components/shared/empty-state";
@@ -19,7 +19,7 @@ export function OwnershipHistory({ history }: Props) {
   if (history.length === 0) {
     return (
       <EmptyState
-        icon={History}
+        illustration="checklist"
         title="No ownership history"
         description="Past and current owners will appear here once the lot has had at least one accepted owner."
       />

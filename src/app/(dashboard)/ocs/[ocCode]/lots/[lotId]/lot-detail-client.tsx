@@ -20,7 +20,7 @@ export function LotDetailClient({ ocId, lotId }: { ocId: string; lotId: string }
   if (!data.lot) {
     return (
       <EmptyState
-        icon={Home}
+        illustration="building"
         title="Lot not found"
         description="This lot doesn't exist in this Owners Corporation, or it has been removed."
         card={false}

@@ -9,11 +9,11 @@ const badgeVariants = cva(
     variants: {
       variant: {
         default: "bg-primary/10 text-primary",
-        success: "bg-[hsl(160,100%,37%)]/10 text-[hsl(160,100%,37%)]",
-        warning: "bg-[hsl(38,92%,50%)]/10 text-[hsl(38,92%,35%)]",
+        success: "bg-success-muted text-success-foreground",
+        warning: "bg-warning-muted text-warning-foreground",
         destructive: "bg-destructive/10 text-destructive",
         neutral: "bg-muted text-muted-foreground",
-        info: "bg-primary/10 text-primary",
+        info: "bg-info-muted text-info-foreground",
       },
     },
     defaultVariants: {

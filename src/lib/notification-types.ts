@@ -26,6 +26,7 @@ export const NOTIFICATION_TYPES = [
   "levy_csv_reminder",
   "insurance_expiring",
   "agm_due",
+  "agm_due_soon",
 ] as const;
 
 export type NotificationType = (typeof NOTIFICATION_TYPES)[number];
@@ -81,7 +82,8 @@ export const NOTIFICATION_GROUPS: Array<{
     items: [
       { type: "meeting_notice", label: "Meeting notice", description: "A meeting has been scheduled and its notice issued." },
       { type: "meeting_minutes", label: "Meeting minutes", description: "Minutes have been published for a past meeting." },
-      { type: "agm_due", label: "AGM due", description: "Twelve months have passed since the last annual general meeting." },
+      { type: "agm_due_soon", label: "AGM deadline approaching", description: "An OC must hold its AGM within the next month." },
+      { type: "agm_due", label: "AGM overdue", description: "The fifteen-month deadline for an AGM has passed." },
     ],
   },
   {

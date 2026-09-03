@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { CalendarDays, Plus } from "lucide-react";
+import { Plus } from "lucide-react";
 import { buttonVariants } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { cn } from "@/lib/utils";
@@ -69,7 +69,7 @@ export function MeetingsContent({
 
       {meetings.length === 0 ? (
         <EmptyState
-          icon={CalendarDays}
+          illustration="calendar"
           title="No meetings yet"
           description="Create an AGM or special general meeting. Agendas, notices, and minutes build on each meeting."
           action={

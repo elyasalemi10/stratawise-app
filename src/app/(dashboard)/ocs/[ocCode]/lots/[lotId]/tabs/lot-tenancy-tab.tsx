@@ -9,7 +9,7 @@ import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { PhoneInput } from "@/components/shared/phone-input";
 import { EditSheet } from "@/components/shared/edit-sheet";
-import { Home, Users, DoorOpen } from "lucide-react";
+import { Users } from "lucide-react";
 import {
   updateTenant,
   updateOccupancyStatus,
@@ -58,7 +58,7 @@ export function LotTenancyTab(props: Props) {
     <div className="space-y-6">
       {view.occupancy === "owner_occupied" && (
         <EmptyState
-          icon={Home}
+          illustration="building"
           title="This lot is owner-occupied"
           description="The owner lives in the lot themselves , no tenant on file."
           action={
@@ -84,7 +84,7 @@ export function LotTenancyTab(props: Props) {
 
       {view.occupancy === "vacant" && (
         <EmptyState
-          icon={DoorOpen}
+          illustration="building"
           title="This lot is currently vacant"
           description="No tenant on file."
           action={

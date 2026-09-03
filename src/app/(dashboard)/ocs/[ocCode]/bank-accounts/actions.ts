@@ -87,7 +87,6 @@ export async function importBankTransactions(
   });
 
   revalidatePath("/ocs/[ocCode]/bank-accounts", "page");
-  revalidatePath("/ocs/[ocCode]/reconciliation", "page");
   return { inserted: inserts.length, auto_matched: autoMatched };
 }
 
@@ -347,6 +346,5 @@ export async function deleteBankAccount(
 
   revalidatePath("/ocs/[ocCode]/bank-accounts", "page");
   revalidatePath("/ocs/[ocCode]/funds", "page");
-  revalidatePath("/ocs/[ocCode]/reconciliation", "page");
   return { promotedAccountId: successor.id };
 }

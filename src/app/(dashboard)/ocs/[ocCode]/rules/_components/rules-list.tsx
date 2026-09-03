@@ -3,7 +3,7 @@
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { toast } from "sonner";
-import { ChevronDown, ExternalLink, FileText, Loader2, Pencil, Plus, Scale, ScrollText, Trash2, X } from "lucide-react";
+import { ChevronDown, ExternalLink, FileText, Loader2, Pencil, Plus, Scale, Trash2, X } from "lucide-react";
 import { Card, CardContent } from "@/components/ui/card";
 import { EmptyState } from "@/components/shared/empty-state";
 import { Input } from "@/components/ui/input";
@@ -47,9 +47,9 @@ interface Props {
 }
 
 function RuleTypeBadge({ type }: { type: OCRule["rule_type"] }) {
-  if (type === "model") return <span className="rounded-full bg-blue-100 px-1.5 py-0.5 text-[10px] font-medium text-blue-900">Model</span>;
-  if (type === "standing") return <span className="rounded-full bg-amber-100 px-1.5 py-0.5 text-[10px] font-medium text-amber-900">Standing</span>;
-  return <span className="rounded-full bg-emerald-100 px-1.5 py-0.5 text-[10px] font-medium text-emerald-900">Registered</span>;
+  if (type === "model") return <span className="rounded-full bg-info-muted px-1.5 py-0.5 text-[10px] font-medium text-info-foreground">Model</span>;
+  if (type === "standing") return <span className="rounded-full bg-warning-muted px-1.5 py-0.5 text-[10px] font-medium text-warning-foreground">Standing</span>;
+  return <span className="rounded-full bg-success-muted px-1.5 py-0.5 text-[10px] font-medium text-success-foreground">Registered</span>;
 }
 
 // Pick the next sequential rule number under the chosen depth + parent.
@@ -311,12 +311,12 @@ export function RulesList({ ocId, ocCode, rules, sourceDocumentName }: Props) {
             />
             <DropdownMenuContent align="end">
               <DropdownMenuItem onClick={() => openCreate("registered")}>
-                <Scale className="mr-2 h-3.5 w-3.5 text-emerald-700" />
+                <Scale className="mr-2 h-3.5 w-3.5 text-success-foreground" />
                 Registered rule
                 <span className="ml-auto text-[10px] text-muted-foreground">Land Use Victoria</span>
               </DropdownMenuItem>
               <DropdownMenuItem onClick={() => openCreate("standing")}>
-                <FileText className="mr-2 h-3.5 w-3.5 text-amber-700" />
+                <FileText className="mr-2 h-3.5 w-3.5 text-warning-foreground" />
                 Standing rule
                 <span className="ml-auto text-[10px] text-muted-foreground">Committee policy</span>
               </DropdownMenuItem>
@@ -333,7 +333,7 @@ export function RulesList({ ocId, ocCode, rules, sourceDocumentName }: Props) {
         <div className={viewerOpen ? "lg:flex-1 lg:min-w-0" : "w-full"}>
           {filtered.length === 0 ? (
             <EmptyState
-              icon={ScrollText}
+              illustration="documents"
               title={
                 query.trim()
                   ? `No rules match "${query.trim()}"`
@@ -368,7 +368,7 @@ export function RulesList({ ocId, ocCode, rules, sourceDocumentName }: Props) {
                             )}
                             <RuleTypeBadge type={rule.rule_type} />
                             {rule.confidence != null && rule.confidence < 0.6 && (
-                              <span className="rounded bg-amber-100 px-1.5 py-0.5 text-[10px] font-medium text-amber-900">
+                              <span className="rounded bg-warning-muted px-1.5 py-0.5 text-[10px] font-medium text-warning-foreground">
                                 Low confidence
                               </span>
                             )}

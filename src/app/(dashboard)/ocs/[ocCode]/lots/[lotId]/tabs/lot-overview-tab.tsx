@@ -12,9 +12,7 @@ import {
   Activity,
   ChevronRight,
   Hash,
-  CalendarCheck,
-  FileText,
-} from "lucide-react";
+  } from "lucide-react";
 import type {
   NextLevyDue,
   LotActivityEntry,
@@ -183,7 +181,7 @@ export function LotOverviewTab({
             </>
           ) : (
             <EmptyState
-              icon={CalendarCheck}
+              illustration="calendar"
               title={anyLevyEverIssued ? "All levies paid" : "No levies issued"}
               description={
                 anyLevyEverIssued
@@ -223,7 +221,7 @@ export function LotOverviewTab({
           </div>
           {recentActivity.length === 0 ? (
             <EmptyState
-              icon={FileText}
+              illustration="documents"
               title="No activity yet"
               description="Owner updates, levies and payments will show up here as they happen."
               card={false}

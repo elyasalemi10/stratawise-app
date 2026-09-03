@@ -530,8 +530,8 @@ export function SettlementDialog(props: Props) {
             stays hidden until the manager resolves it. */}
         {stage === "review" && mismatchStep === "plan" && review && (
           <div className="space-y-4">
-            <div className="flex items-start gap-2.5 rounded-md border border-amber-200 bg-amber-50 p-4">
-              <AlertTriangle className="mt-0.5 h-5 w-5 shrink-0 text-amber-600" />
+            <div className="flex items-start gap-2.5 rounded-md border border-amber-200 bg-warning-muted p-4">
+              <AlertTriangle className="mt-0.5 h-5 w-5 shrink-0 text-warning-foreground" />
               <div>
                 <p className="text-sm font-semibold text-foreground">This document is for a different plan</p>
                 <p className="mt-1 text-sm text-muted-foreground">
@@ -567,8 +567,8 @@ export function SettlementDialog(props: Props) {
 
         {stage === "review" && mismatchStep === "lot" && review && (
           <div className="space-y-4">
-            <div className="flex items-start gap-2.5 rounded-md border border-amber-200 bg-amber-50 p-4">
-              <AlertTriangle className="mt-0.5 h-5 w-5 shrink-0 text-amber-600" />
+            <div className="flex items-start gap-2.5 rounded-md border border-amber-200 bg-warning-muted p-4">
+              <AlertTriangle className="mt-0.5 h-5 w-5 shrink-0 text-warning-foreground" />
               <div>
                 <p className="text-sm font-semibold text-foreground">This document is for a different lot</p>
                 <p className="mt-1 text-sm text-muted-foreground">
@@ -723,7 +723,7 @@ function ReviewForm(props: {
   return (
     <div className="space-y-4 max-h-[78vh] overflow-y-auto pr-1">
       {couldNotExtract && (
-        <div className="flex items-start gap-2 rounded-md border border-amber-500/30 bg-amber-500/10 px-3 py-2 text-xs text-amber-900">
+        <div className="flex items-start gap-2 rounded-md border border-warning/30 bg-warning-muted px-3 py-2 text-xs text-warning-foreground">
           <AlertTriangle className="h-4 w-4 shrink-0 mt-0.5" />
           <span>
             We could not extract the standard fields from this PDF (it may be a scanned image).
@@ -747,7 +747,7 @@ function ReviewForm(props: {
       )}
 
       {review.pendingInvitationId && (
-        <div className="flex items-start gap-2 rounded-md border border-amber-500/30 bg-amber-500/10 px-3 py-2 text-xs text-amber-900">
+        <div className="flex items-start gap-2 rounded-md border border-warning/30 bg-warning-muted px-3 py-2 text-xs text-warning-foreground">
           <AlertTriangle className="h-4 w-4 shrink-0 mt-0.5" />
           <span>
             A pending invitation already exists for this lot. Confirming will revoke it and replace

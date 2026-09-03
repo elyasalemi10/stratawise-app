@@ -246,7 +246,7 @@ function CommunicationHistoryList({
   if (rows.length === 0) {
     return (
       <EmptyState
-        icon={MessageSquare}
+        illustration="inbox"
         title="No communications yet"
         description="Calls, SMS and emails to the lot owner will show up here."
         card={false}

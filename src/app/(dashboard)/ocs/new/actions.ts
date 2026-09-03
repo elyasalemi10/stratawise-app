@@ -1430,7 +1430,7 @@ export async function completeWizard(draftId: string) {
       if (setErr) {
         console.error("completeWizard: set_lot_owners_bulk failed", setErr);
       }
-      for (const r of (setRows ?? []) as Array<{ lot_id: string; ownership_id: string }>) {
+      for (const r of (setRows ?? []) as Array<{ lot_id: string; ownership_id: string; ended_ownership_id: string | null }>) {
         if (r.lot_id && r.ownership_id) ownershipIdByLotId.set(r.lot_id, r.ownership_id);
       }
       const missing = ownerRows.filter((r) => !ownershipIdByLotId.has(r.lot_id));

@@ -4,8 +4,7 @@ import { useEffect, useState } from "react";
 import { useSearchParams, useRouter } from "next/navigation";
 import {
   FileSignature, UserPlus,
-  MoreVertical, Hash,
-  Mail, MessageSquare,
+  MoreVertical, Mail, MessageSquare,
 } from "lucide-react";
 import { useSetBreadcrumb } from "@/lib/breadcrumb-context";
 import { Card, CardContent } from "@/components/ui/card";
@@ -490,7 +489,7 @@ export function LotDetailContent({
 function ComingSoonTab({ name }: { name: string }) {
   return (
     <EmptyState
-      icon={Hash}
+      illustration="search"
       title={`${name} , coming soon`}
       description="We're still building this tab."
     />

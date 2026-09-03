@@ -39,11 +39,11 @@ interface DocumentManagerProps {
 function getFileIcon(mimeType: string | null, size: "sm" | "lg" = "sm") {
   const cls = size === "lg" ? "h-8 w-8" : "h-4 w-4";
   if (!mimeType) return <File className={`${cls} text-muted-foreground`} />;
-  if (mimeType.includes("pdf")) return <FileText className={`${cls} text-red-500`} />;
+  if (mimeType.includes("pdf")) return <FileText className={`${cls} text-destructive`} />;
   if (mimeType.includes("spreadsheet") || mimeType.includes("excel") || mimeType.includes("csv"))
-    return <FileSpreadsheet className={`${cls} text-green-600`} />;
-  if (mimeType.startsWith("image/")) return <FileImage className={`${cls} text-blue-500`} />;
-  if (mimeType.includes("word")) return <FileText className={`${cls} text-blue-600`} />;
+    return <FileSpreadsheet className={`${cls} text-success-foreground`} />;
+  if (mimeType.startsWith("image/")) return <FileImage className={`${cls} text-info-foreground`} />;
+  if (mimeType.includes("word")) return <FileText className={`${cls} text-info-foreground`} />;
   return <File className={`${cls} text-muted-foreground`} />;
 }
 

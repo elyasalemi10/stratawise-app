@@ -18,6 +18,9 @@ import {
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import {
+  Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
+} from "@/components/ui/select";
+import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
@@ -27,7 +30,6 @@ import { LotsTab } from "../manage/lots-tab";
 import { getLotInvitationStatus } from "../manage/invitation-actions";
 import { SettlementDialog } from "./[lotId]/settlement-dialog";
 import { BulkInviteDialog } from "./bulk-invite-dialog";
-import { cn } from "@/lib/utils";
 import type { LotWithFinancials } from "@/lib/actions/oc";
 
 type SortKey =
@@ -36,6 +38,32 @@ type SortKey =
   | "balance_desc"
   | "balance_asc"
   | "owner_asc";
+
+// The filters a manager actually reaches for on this page: who owes money,
+// who is not on the portal yet, and how the lot is lived in. There was
+// nothing here before but a search box and a sort , both of which answer
+// "find this one lot", not "show me the group I need to act on".
+type BalanceFilter = "all" | "arrears" | "settled";
+type PortalFilter = "all" | "member" | "pending_invitation" | "unowned";
+type OccupancyFilter = "all" | "owner_occupied" | "tenanted" | "vacant";
+
+const BALANCE_OPTIONS: Array<{ value: BalanceFilter; label: string }> = [
+  { value: "all", label: "Any balance" },
+  { value: "arrears", label: "In arrears" },
+  { value: "settled", label: "Settled" },
+];
+const PORTAL_OPTIONS: Array<{ value: PortalFilter; label: string }> = [
+  { value: "all", label: "Any owner" },
+  { value: "member", label: "On the portal" },
+  { value: "pending_invitation", label: "Invited" },
+  { value: "unowned", label: "No owner" },
+];
+const OCCUPANCY_OPTIONS: Array<{ value: OccupancyFilter; label: string }> = [
+  { value: "all", label: "Any occupancy" },
+  { value: "owner_occupied", label: "Owner-occupied" },
+  { value: "tenanted", label: "Tenanted" },
+  { value: "vacant", label: "Vacant" },
+];
 
 const SORT_OPTIONS: Array<{ value: SortKey; label: string }> = [
   { value: "lot_asc", label: "Lot number (low → high)" },
@@ -97,6 +125,9 @@ export function LotsPageContent({
   const [bulkInviteOpen, setBulkInviteOpen] = useState(false);
   const [searchText, setSearchText] = useState("");
   const [sortKey, setSortKey] = useState<SortKey>("lot_asc");
+  const [balanceFilter, setBalanceFilter] = useState<BalanceFilter>("all");
+  const [portalFilter, setPortalFilter] = useState<PortalFilter>("all");
+  const [occupancyFilter, setOccupancyFilter] = useState<OccupancyFilter>("all");
   // Single source of truth for invite-status. Seeded from the
   // server-rendered prop so the lots tab paints with the right pills on
   // first frame , no spinner-then-pop. Re-fetched only after a
@@ -164,6 +195,10 @@ export function LotsPageContent({
   const filteredLots = useMemo(() => {
     const needle = searchText.trim().toLowerCase();
     const filtered = lots.filter((lot) => {
+      if (balanceFilter === "arrears" && !(lot.balance > 0)) return false;
+      if (balanceFilter === "settled" && lot.balance > 0) return false;
+      if (portalFilter !== "all" && lot.owner_status !== portalFilter) return false;
+      if (occupancyFilter !== "all" && lot.occupancy_status !== occupancyFilter) return false;
       if (!needle) return true;
       const haystacks = [
         String(lot.lot_number),
@@ -196,9 +231,20 @@ export function LotsPageContent({
       }
     });
     return arr;
-  }, [lots, searchText, sortKey]);
+  }, [lots, searchText, sortKey, balanceFilter, portalFilter, occupancyFilter]);
 
-  const activeFilters = searchText.trim() ? 1 : 0;
+  const activeFilters =
+    (searchText.trim() ? 1 : 0) +
+    (balanceFilter !== "all" ? 1 : 0) +
+    (portalFilter !== "all" ? 1 : 0) +
+    (occupancyFilter !== "all" ? 1 : 0);
+
+  function clearFilters() {
+    setSearchText("");
+    setBalanceFilter("all");
+    setPortalFilter("all");
+    setOccupancyFilter("all");
+  }
 
   function exportCsv() {
     const blob = new Blob([lotsToCsv(lots)], { type: "text/csv;charset=utf-8;" });
@@ -240,10 +286,29 @@ export function LotsPageContent({
               )}
             </div>
 
+            <FilterSelect
+              value={balanceFilter}
+              onChange={setBalanceFilter}
+              options={BALANCE_OPTIONS}
+              width="w-36"
+            />
+            <FilterSelect
+              value={portalFilter}
+              onChange={setPortalFilter}
+              options={PORTAL_OPTIONS}
+              width="w-40"
+            />
+            <FilterSelect
+              value={occupancyFilter}
+              onChange={setOccupancyFilter}
+              options={OCCUPANCY_OPTIONS}
+              width="w-40"
+            />
+
             <DropdownMenu>
               <DropdownMenuTrigger
                 render={
-                  <Button variant="secondary" size="sm">
+                  <Button variant="secondary">
                     <ArrowUpDown className="mr-2 h-3.5 w-3.5" />
                     Sort: {sortLabel}
                     <ChevronDown className="ml-1 h-3.5 w-3.5 opacity-60" />
@@ -267,7 +332,7 @@ export function LotsPageContent({
             <DropdownMenu>
               <DropdownMenuTrigger
                 render={
-                  <Button variant="secondary" size="sm">
+                  <Button variant="secondary" className="ml-auto">
                     <Wrench className="mr-2 h-3.5 w-3.5" />
                     Tools
                     <ChevronDown className="ml-1 h-3.5 w-3.5" />
@@ -295,9 +360,18 @@ export function LotsPageContent({
       )}
 
       {activeFilters > 0 && (
-        <p className="text-xs text-muted-foreground">
-          Showing {filteredLots.length} of {lots.length} lots
-        </p>
+        <div className="flex items-center gap-3">
+          <p className="text-xs text-muted-foreground">
+            Showing {filteredLots.length} of {lots.length} lots
+          </p>
+          <button
+            type="button"
+            onClick={clearFilters}
+            className="cursor-pointer text-xs text-muted-foreground underline-offset-4 hover:text-foreground hover:underline"
+          >
+            Clear filters
+          </button>
+        </div>
       )}
 
       <LotsTab
@@ -328,5 +402,32 @@ export function LotsPageContent({
         </>
       )}
     </div>
+  );
+}
+
+// One filter dropdown. The trigger always shows a label, so a filter set to
+// "any" still reads as a control you can use rather than an empty box.
+function FilterSelect<T extends string>({
+  value,
+  onChange,
+  options,
+  width,
+}: {
+  value: T;
+  onChange: (next: T) => void;
+  options: Array<{ value: T; label: string }>;
+  width: string;
+}) {
+  return (
+    <Select value={value} onValueChange={(v) => onChange((v ?? options[0].value) as T)}>
+      <SelectTrigger className={width}>
+        <SelectValue>{options.find((o) => o.value === value)?.label}</SelectValue>
+      </SelectTrigger>
+      <SelectContent>
+        {options.map((o) => (
+          <SelectItem key={o.value} value={o.value}>{o.label}</SelectItem>
+        ))}
+      </SelectContent>
+    </Select>
   );
 }

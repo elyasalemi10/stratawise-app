@@ -2,7 +2,7 @@
 
 import { Suspense, useState } from "react";
 import { useSearchParams } from "next/navigation";
-import { Building2, Users } from "lucide-react";
+import { Users } from "lucide-react";
 import { useSetBreadcrumb } from "@/lib/breadcrumb-context";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Card, CardContent } from "@/components/ui/card";
@@ -160,7 +160,7 @@ function FirmTabsInner({ firm }: { firm: FirmDetail }) {
         {/* Owners corporations */}
         <div className={activeTab === "ocs" ? "" : "hidden"}>
           {firm.ocs.length === 0 ? (
-            <EmptyState icon={Building2} title="No owners corporations" description="This firm hasn't created any OCs yet." />
+            <EmptyState illustration="building" title="No owners corporations" description="This firm hasn't created any OCs yet." />
           ) : (
             <div className="overflow-x-auto rounded-lg border border-border">
               <Table variant="striped">
@@ -201,7 +201,7 @@ function FirmTabsInner({ firm }: { firm: FirmDetail }) {
         {/* Team */}
         <div className={activeTab === "team" ? "" : "hidden"}>
           {firm.managers.length === 0 ? (
-            <EmptyState icon={Users} title="No managers" description="No strata managers belong to this firm yet." />
+            <EmptyState illustration="people" title="No managers" description="No strata managers belong to this firm yet." />
           ) : (
             <div className="overflow-x-auto rounded-lg border border-border">
               <Table variant="striped">

@@ -231,7 +231,7 @@ export function InviteStatusPopover({
                 </div>
                 <Link
                   href={`/ocs/${ocCode}/lots/${lotId}?tab=owner`}
-                  className="inline-flex items-center text-sm font-medium text-blue-600 underline-offset-4 hover:underline"
+                  className="inline-flex items-center text-sm font-medium text-info-foreground underline-offset-4 hover:underline"
                   onClick={() => setOpen(false)}
                 >
                   Add email

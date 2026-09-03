@@ -10,7 +10,7 @@ import { EmptyState } from "@/components/shared/empty-state";
 export default function Loading() {
   return (
     <EmptyState
-      icon={CalendarDays}
+      illustration="calendar"
       title="No meetings yet"
       description="Meeting notices, agendas, and minutes will appear here once your strata manager schedules them."
     />
