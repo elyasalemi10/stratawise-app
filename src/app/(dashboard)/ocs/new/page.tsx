@@ -3,7 +3,6 @@
 import { useEffect, useRef, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { Suspense } from "react";
-import { Skeleton } from "@/components/ui/skeleton";
 import { StepIndicator } from "./step-indicator";
 import { Step1Upload } from "./pages/step-1-0-upload";
 import { Step1General } from "./pages/step-1-general";
@@ -15,7 +14,7 @@ import { Step4Banking } from "./pages/step-4-banking";
 import { Step4OpeningBalances } from "./pages/step-4-1-opening-balances";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
-import { X } from "lucide-react";
+import { Upload, X } from "lucide-react";
 import { createDraftAndLoad, createDraftFromDetectedOc, getDraft, type DraftJson } from "./actions";
 import { revalidateSidebarFromClient } from "@/lib/sidebar-cache";
 
@@ -183,15 +182,28 @@ function WizardContent() {
           </span>
           <StepIndicator current={step} />
         </div>
+        {/* Step 1 is a heading, a sentence and a dropzone , none of it comes
+            from the server. Only the draft ROW does, and the sole thing that
+            needs it is the upload itself. So the step renders for real with
+            its dropzone inert for the ~50ms the round trip takes, rather
+            than four grey bars pretending the page does not know what it
+            says. Keep this in step with step-1-0-upload.tsx. */}
         <div className="mt-2 space-y-6">
           <div className="text-center">
-            <Skeleton className="mx-auto h-6 w-72" />
-            <Skeleton className="mx-auto mt-2 h-4 w-96" />
+            <h2 className="text-lg font-semibold text-foreground">Upload your plan of subdivision</h2>
+            <p className="mt-1 text-sm text-muted-foreground">
+              We&apos;ll read your document and pre-fill the OC details, lot schedule, and entitlements. You can skip this and enter everything manually.
+            </p>
           </div>
-          <Skeleton className="h-48 w-full rounded-lg" />
-          <div className="flex items-center justify-between pt-2">
-            <Skeleton className="h-4 w-32" />
-            <Skeleton className="h-9 w-24" />
+          <div
+            aria-hidden
+            className="flex h-48 w-full flex-col items-center justify-center gap-2 rounded-lg border-2 border-dashed border-border bg-card text-sm text-muted-foreground opacity-60"
+          >
+            <Upload className="size-5" />
+            Drop your plan here, or click to choose one
+          </div>
+          <div className="flex items-center justify-end pt-2">
+            <Button disabled>Continue</Button>
           </div>
         </div>
       </div>

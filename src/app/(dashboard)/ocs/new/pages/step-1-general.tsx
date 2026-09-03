@@ -258,6 +258,7 @@ export function Step1General({
           </Label>
           <DatePicker
             id="management-start-date"
+            className="w-48"
             value={managementStartDate}
             onChange={(v) => { setManagementStartDate(v); if (managementStartDateInvalid) setManagementStartDateInvalid(false); }}
             error={managementStartDateInvalid}

@@ -7,7 +7,7 @@ import { createServerClient } from "@/lib/supabase";
 import { sendEscalationEmail } from "@/lib/email";
 import { isNotificationOptedOut } from "@/lib/notifications";
 import { generateAndUploadFinalNotice } from "@/lib/final-notice-pdf";
-import { resolveWorkflowForOC, renderTemplate, computeInterest, addDaysIso } from "@/lib/escalation/helpers";
+import { resolveWorkflowForOC, renderTemplate, computeInterest, addDaysIso, fallbackReminder, isUnusable } from "@/lib/escalation/helpers";
 import type { FollowupStep } from "@/lib/validations/escalation";
 import { companyLegalName } from "@/lib/company-name";
 
@@ -266,8 +266,22 @@ async function advanceInstance(supabase: any, inst: Record<string, unknown>, tod
         await supabase.from("escalation_instances").update({ final_notice_pdf_url: key, final_notice_served_at: new Date().toISOString() }).eq("id", instanceId);
       }
 
-      const subject = renderTemplate(step.subject ?? "Levy payment overdue", vars);
-      const body = renderTemplate(step.body ?? "", vars);
+      // A manager's template can be blanked, or can lose enough to missing
+      // values that what is left reads as broken. Fall back to a plain
+      // message that only uses facts we always have, rather than sending a
+      // sentence with a hole in it.
+      let subject = renderTemplate(step.subject ?? "", vars);
+      let body = renderTemplate(step.body ?? "", vars);
+      if (isUnusable(body) || !subject.trim()) {
+        const generic = fallbackReminder(vars);
+        if (!subject.trim()) subject = generic.subject;
+        if (isUnusable(body)) {
+          console.warn(
+            `[escalation] step ${step.id} rendered unusably; sent the generic reminder instead.`,
+          );
+          body = generic.body;
+        }
+      }
       // Manager-uploaded per-step attachment (if any).
       const extraAttachments: Array<{ filename: string; content: Buffer; contentType: string }> = [];
       if (step.attachment_url) {

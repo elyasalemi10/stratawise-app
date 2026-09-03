@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
+import { createPortal } from "react-dom";
 import { setOptions, importLibrary } from "@googlemaps/js-api-loader";
 import { cn } from "@/lib/utils";
 import { Input } from "@/components/ui/input";
@@ -166,6 +167,11 @@ export function VicAddressAutocomplete({ value, onChange, id, error }: Props) {
   const [open, setOpen] = useState(false);
   const [activeIdx, setActiveIdx] = useState(0);
   const [searchError, setSearchError] = useState<string | null>(null);
+  // Position for the portalled suggestion list. Fixed to the viewport and
+  // measured off the input, because the list has to escape whatever
+  // overflow-hidden ancestor the field is sitting in , inside a table body
+  // the old absolute list was simply cut off at the last row.
+  const [menuStyle, setMenuStyle] = useState<React.CSSProperties | null>(null);
 
   const sdkRef = useRef<{
     AutocompleteSuggestion: NewAutocompleteSuggestionCtor;
@@ -174,6 +180,44 @@ export function VicAddressAutocomplete({ value, onChange, id, error }: Props) {
   const sessionTokenRef = useRef<unknown>(null);
   const predictionByIdRef = useRef<Map<string, NewPlacePrediction>>(new Map());
   const wrapperRef = useRef<HTMLDivElement>(null);
+  const inputWrapRef = useRef<HTMLDivElement>(null);
+
+  // Position for the portalled suggestion list. Fixed to the viewport and
+  // measured off the input, because the list has to escape whatever
+  // overflow-hidden ancestor the field sits in , inside a table body the old
+  // absolutely-positioned list was simply cut off at the last row.
+  useEffect(() => {
+    if (!open || suggestions.length === 0) {
+      setMenuStyle(null);
+      return;
+    }
+    function place() {
+      const el = inputWrapRef.current;
+      if (!el) return;
+      const r = el.getBoundingClientRect();
+      // Flip above when there is more room up than down, so the list is
+      // never half off-screen at the bottom of a long table.
+      const below = window.innerHeight - r.bottom;
+      const openUp = below < 220 && r.top > below;
+      setMenuStyle({
+        position: "fixed",
+        left: r.left,
+        width: r.width,
+        ...(openUp
+          ? { bottom: window.innerHeight - r.top + 4, maxHeight: Math.min(280, r.top - 8) }
+          : { top: r.bottom + 4, maxHeight: Math.min(280, below - 8) }),
+        overflowY: "auto",
+      });
+    }
+    place();
+    window.addEventListener("scroll", place, true);
+    window.addEventListener("resize", place);
+    return () => {
+      window.removeEventListener("scroll", place, true);
+      window.removeEventListener("resize", place);
+    };
+  }, [open, suggestions.length]);
+
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   // Tracks whether the Places SDK actually loaded. We can't tell *why* a load
@@ -417,7 +461,7 @@ export function VicAddressAutocomplete({ value, onChange, id, error }: Props) {
 
   return (
     <div className="space-y-1.5">
-      <div ref={wrapperRef} className="relative">
+      <div ref={(el) => { wrapperRef.current = el; inputWrapRef.current = el; }} className="relative">
         <Input
           id={id}
           value={searchInput}
@@ -431,24 +475,29 @@ export function VicAddressAutocomplete({ value, onChange, id, error }: Props) {
           // single search box red too, not just the manual sub-inputs.
           aria-invalid={error || undefined}
         />
-        {open && suggestions.length > 0 && (
-          <div className="absolute left-0 right-0 top-full z-50 mt-1 rounded-md border border-border bg-popover shadow-md">
-            {suggestions.map((s, i) => (
-              <button
-                key={s.placeId}
-                type="button"
-                onMouseDown={(e) => { e.preventDefault(); void selectSuggestion(s); }}
-                onMouseEnter={() => setActiveIdx(i)}
-                className={cn(
-                  "block w-full truncate px-3 py-2 text-left text-sm cursor-pointer",
-                  i === activeIdx ? "bg-muted text-foreground" : "text-foreground hover:bg-muted",
-                )}
-              >
-                {s.description}
-              </button>
-            ))}
-          </div>
-        )}
+        {open && suggestions.length > 0 && menuStyle &&
+          createPortal(
+            <div
+              style={menuStyle}
+              className="z-[60] overflow-hidden rounded-md border border-border bg-popover shadow-md"
+            >
+              {suggestions.map((s, i) => (
+                <button
+                  key={s.placeId}
+                  type="button"
+                  onMouseDown={(e) => { e.preventDefault(); void selectSuggestion(s); }}
+                  onMouseEnter={() => setActiveIdx(i)}
+                  className={cn(
+                    "block w-full truncate px-3 py-2 text-left text-sm cursor-pointer",
+                    i === activeIdx ? "bg-muted text-foreground" : "text-foreground hover:bg-muted",
+                  )}
+                >
+                  {s.description}
+                </button>
+              ))}
+            </div>,
+            document.body,
+          )}
       </div>
       {searchError && <p className="text-xs text-warning-foreground">{searchError}</p>}
       <button

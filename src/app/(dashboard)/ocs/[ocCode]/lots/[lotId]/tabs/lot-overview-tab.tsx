@@ -1,7 +1,6 @@
 "use client";
 
 import { useState } from "react";
-import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -110,8 +109,7 @@ export function LotOverviewTab({
   return (
     <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
       {/* Lot details ------------------------------------------------------ */}
-      <Card className="lg:col-span-2">
-        <CardContent className="pt-5">
+      <section className="border-b border-border pb-6 last:border-b-0 last:pb-0 lg:col-span-2">
           <div className="flex items-start justify-between gap-3 mb-3">
             <div className="flex items-center gap-2">
               <Hash className="h-4 w-4 text-[color:var(--brand-gold)]" />
@@ -153,12 +151,10 @@ export function LotOverviewTab({
               </div>
             )}
           </dl>
-        </CardContent>
-      </Card>
+        </section>
 
       {/* Next levy due ---------------------------------------------------- */}
-      <Card>
-        <CardContent className="pt-5">
+      <section className="border-b border-border pb-6 last:border-b-0 last:pb-0">
           <div className="flex items-center gap-2 mb-2">
             <Calendar className="h-4 w-4 text-[color:var(--brand-gold)]" />
             <h3 className="text-sm font-semibold text-foreground">Next levy due</h3>
@@ -186,24 +182,20 @@ export function LotOverviewTab({
               card={false}
             />
           )}
-        </CardContent>
-      </Card>
+        </section>
 
       {/* Snapshot --------------------------------------------------------- */}
-      <Card>
-        <CardContent className="pt-5">
+      <section className="border-b border-border pb-6 last:border-b-0 last:pb-0">
           <h3 className="text-sm font-semibold text-foreground mb-3">Snapshot</h3>
           <dl className="space-y-2.5 text-sm">
             <SnapshotRow label="Owner" value={ownerDisplayName ?? "Unassigned"} />
             <SnapshotRow label="Ownership since" value={ownershipSinceLabel} muted={!ownershipSince} />
             <SnapshotRow label="Portal last active" value={portalLabel} muted={!portalLastActiveAt} />
           </dl>
-        </CardContent>
-      </Card>
+        </section>
 
       {/* Recent activity -------------------------------------------------- */}
-      <Card className="lg:col-span-2">
-        <CardContent className="pt-5">
+      <section className="border-b border-border pb-6 last:border-b-0 last:pb-0 lg:col-span-2">
           <div className="flex items-center justify-between mb-3">
             <div className="flex items-center gap-2">
               <Activity className="h-4 w-4 text-[color:var(--brand-gold)]" />
@@ -240,8 +232,7 @@ export function LotOverviewTab({
               ))}
             </ol>
           )}
-        </CardContent>
-      </Card>
+        </section>
     </div>
   );
 }

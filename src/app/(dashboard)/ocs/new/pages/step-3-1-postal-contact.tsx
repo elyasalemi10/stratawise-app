@@ -353,7 +353,18 @@ export function Step3PostalContact({
                           )}
                         >
                           <div className="overflow-hidden">
-                            <div className="pb-1">
+                            {/* Clicking anywhere outside collapses the row
+                                back to its one-liner. An expanded row that
+                                stays expanded turns a twenty-lot table into
+                                a wall the moment you have touched a few. */}
+                            <div
+                              className="pb-1"
+                              onBlur={(e) => {
+                                if (!e.currentTarget.contains(e.relatedTarget as Node | null)) {
+                                  setAddressOpenIdx((cur) => (cur === idx ? null : cur));
+                                }
+                              }}
+                            >
                               <VicAddressAutocomplete
                                 id={`lot-${idx}-address`}
                                 value={addressPartsFor(idx, lot.owner_postal_address ?? "")}

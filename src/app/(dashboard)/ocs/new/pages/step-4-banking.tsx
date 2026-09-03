@@ -7,6 +7,8 @@ import { Label } from "@/components/ui/label";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Switch } from "@/components/ui/switch";
 import { Landmark, Clock } from "lucide-react";
+import { bankFromBsb } from "@/lib/data/australian-banks";
+import { cn } from "@/lib/utils";
 import { saveStep, completeWizard, type DraftJson } from "../actions";
 import { WizardActions } from "./_components/wizard-actions";
 
@@ -44,6 +46,7 @@ interface FundFieldsProps {
 }
 
 function FundFieldsBlock({ value, onChange, invalid, idPrefix }: FundFieldsProps) {
+  const bank = bankFromBsb(value.bsb);
   return (
     <div className="space-y-3">
       <div className="space-y-1.5">
@@ -58,20 +61,45 @@ function FundFieldsBlock({ value, onChange, invalid, idPrefix }: FundFieldsProps
           aria-invalid={invalid.name || undefined}
         />
       </div>
-      <div className="grid grid-cols-[180px_1fr] gap-3">
+      {/* BSB then account number, both sized to what they hold rather than
+          stretched across the row , an account number is nine digits and was
+          getting the width of a sentence. The spare width goes to the right
+          of both. */}
+      <div className="grid grid-cols-[200px_200px_1fr] gap-3">
         <div className="space-y-1.5">
           <Label htmlFor={`${idPrefix}-bsb`}>
             BSB <span className="text-destructive">*</span>
           </Label>
-          <Input
-            id={`${idPrefix}-bsb`}
-            placeholder="6-digit BSB"
-            value={value.bsb}
-            onChange={(e) => onChange({ ...value, bsb: formatBsb(e.target.value) })}
-            inputMode="numeric"
-            maxLength={7}
-            aria-invalid={invalid.bsb || undefined}
-          />
+          <div className="relative">
+            <Input
+              id={`${idPrefix}-bsb`}
+              placeholder="6-digit BSB"
+              value={value.bsb}
+              onChange={(e) => onChange({ ...value, bsb: formatBsb(e.target.value) })}
+              inputMode="numeric"
+              maxLength={7}
+              aria-invalid={invalid.bsb || undefined}
+              className="pl-9"
+            />
+            {/* The BSB names the bank, so the badge appears as it is typed ,
+                confirmation you are entering the account you think you are,
+                at the moment you would notice a wrong digit. Faded in rather
+                than popped so it does not snatch attention mid-keystroke. */}
+            <span
+              aria-hidden
+              className={cn(
+                "pointer-events-none absolute left-2.5 top-1/2 flex size-5 -translate-y-1/2 items-center justify-center transition-opacity duration-200",
+                bank ? "opacity-100" : "opacity-0",
+              )}
+            >
+              {bank?.logo ? (
+                // eslint-disable-next-line @next/next/no-img-element
+                <img src={bank.logo} alt="" className="size-4 rounded-sm object-contain" />
+              ) : (
+                <Landmark className="size-4 text-muted-foreground" />
+              )}
+            </span>
+          </div>
         </div>
         <div className="space-y-1.5">
           <Label htmlFor={`${idPrefix}-acc`}>

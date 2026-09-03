@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import { format } from "date-fns";
-import { CalendarIcon, ChevronDownIcon } from "lucide-react";
+import { CalendarIcon } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Calendar } from "@/components/ui/calendar";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
@@ -40,6 +40,10 @@ interface DatePickerProps {
   minDate?: string;
   /** Latest selectable date (YYYY-MM-DD). */
   maxDate?: string;
+  /** Extra classes on the trigger. A date is nine characters wide, so a
+   *  full-width trigger is mostly empty box; pass a width where the field
+   *  sits beside others. */
+  className?: string;
 }
 
 /** Local-noon parse. `new Date("2026-03-01")` is parsed as UTC midnight,
@@ -66,6 +70,7 @@ export function DatePicker({
   disabled,
   minDate,
   maxDate,
+  className,
 }: DatePickerProps) {
   const [open, setOpen] = useState(false);
   const hasError = Boolean(error || invalid);
@@ -102,6 +107,7 @@ export function DatePicker({
             "border border-input bg-card hover:bg-card",
             hasError && "border-destructive",
             !date && "text-muted-foreground",
+            className,
           )}
           aria-invalid={hasError || undefined}
         >
@@ -109,7 +115,6 @@ export function DatePicker({
             <CalendarIcon className="mr-2 size-4 shrink-0 text-muted-foreground" />
             <span className="truncate">{date ? format(date, "d MMM yyyy") : placeholder}</span>
           </span>
-          <ChevronDownIcon className="size-4 shrink-0 text-muted-foreground" />
         </PopoverTrigger>
 
         <PopoverContent

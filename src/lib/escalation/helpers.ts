@@ -110,3 +110,44 @@ export function addDaysIso(iso: string, days: number): string {
   d.setUTCDate(d.getUTCDate() + days);
   return d.toISOString().slice(0, 10);
 }
+
+// The message that goes out when a manager's own template cannot carry the
+// facts , they blanked the body, or every token in it resolved to nothing
+// and what is left says nothing useful.
+//
+// A reminder that arrives half-written is worse than a plain one: the owner
+// reads a sentence with a hole in it and decides the sender is not to be
+// taken seriously, which is the opposite of what a reminder is for. This is
+// the floor, and it is deliberately generic , it names only what we always
+// know: an OC, a reference, an amount, a due date.
+export function fallbackReminder(vars: Record<string, string>): { subject: string; body: string } {
+  const oc = vars.oc_name || "your Owners Corporation";
+  const reference = vars.reference ? ` ${vars.reference}` : "";
+  const amount = vars.amount_due ? ` The amount outstanding is ${vars.amount_due}.` : "";
+  const due = vars.due_date ? ` It was due on ${vars.due_date}.` : "";
+
+  return {
+    subject: `Levy payment outstanding, ${oc}`,
+    body: [
+      vars.owner_name ? `Hi ${vars.owner_name},` : "Hi,",
+      "",
+      `Our records show levy${reference} for ${oc} is unpaid.${due}${amount}`,
+      "",
+      "If you have already paid, please disregard this notice. Otherwise please arrange payment, or reply to this email if something does not look right.",
+      "",
+      "Kind regards",
+    ].join("\n"),
+  };
+}
+
+/**
+ * True when a rendered message has lost so much to missing values that it is
+ * not worth sending. Anything under a couple of sentences, or left with a
+ * dangling "is ." style gap, falls back.
+ */
+export function isUnusable(text: string): boolean {
+  const t = text.trim();
+  if (t.length < 40) return true;
+  // A value vanished mid-sentence and left the verb hanging.
+  return /\b(is|of|to|at|on|by|was)\s*[.,;]/i.test(t);
+}

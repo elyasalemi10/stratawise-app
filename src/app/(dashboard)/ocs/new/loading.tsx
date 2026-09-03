@@ -1,12 +1,13 @@
-import { Building2, Landmark, Settings2, Users } from "lucide-react";
-import { Card, CardContent } from "@/components/ui/card";
-import { Skeleton } from "@/components/ui/skeleton";
+import { Building2, Landmark, Settings2, Upload, Users } from "lucide-react";
+import { Button } from "@/components/ui/button";
 
-// The wizard's four steps are a hardcoded STEPS array in
-// step-indicator.tsx, labels and icons both, so the indicator renders for
-// real with step 1 active. Only the form contents shimmer.
+// Nothing on the wizard's first screen comes from the server: the four step
+// labels, the heading, the sentence and the dropzone are all fixed. So there
+// is nothing to shimmer , this renders the real thing with the dropzone
+// inert, and the only change when the draft arrives is that it starts
+// accepting files.
 //
-// Mirrors ocs/new/step-indicator.tsx.
+// Mirrors ocs/new/page.tsx's pre-draft branch and step-1-0-upload.tsx.
 
 const STEPS = [
   { label: "General", Icon: Building2 },
@@ -17,7 +18,7 @@ const STEPS = [
 
 export default function NewOCLoading() {
   return (
-    <div className="space-y-6">
+    <div className="mx-auto w-full max-w-5xl">
       <div className="mb-6 flex flex-wrap items-start justify-center gap-x-5 gap-y-4">
         {STEPS.map(({ label, Icon }, i) => (
           <div key={label} className="flex flex-col items-center gap-1.5">
@@ -41,16 +42,24 @@ export default function NewOCLoading() {
         ))}
       </div>
 
-      <Card>
-        <CardContent className="pt-5 space-y-4">
-          {Array.from({ length: 5 }).map((_, i) => (
-            <div key={i} className="space-y-1.5">
-              <Skeleton className="h-3 w-28" />
-              <Skeleton className="h-9 w-full rounded-md" />
-            </div>
-          ))}
-        </CardContent>
-      </Card>
+      <div className="mt-2 space-y-6">
+        <div className="text-center">
+          <h2 className="text-lg font-semibold text-foreground">Upload your plan of subdivision</h2>
+          <p className="mt-1 text-sm text-muted-foreground">
+            We&apos;ll read your document and pre-fill the OC details, lot schedule, and entitlements. You can skip this and enter everything manually.
+          </p>
+        </div>
+        <div
+          aria-hidden
+          className="flex h-48 w-full flex-col items-center justify-center gap-2 rounded-lg border-2 border-dashed border-border bg-card text-sm text-muted-foreground opacity-60"
+        >
+          <Upload className="size-5" />
+          Drop your plan here, or click to choose one
+        </div>
+        <div className="flex items-center justify-end pt-2">
+          <Button disabled>Continue</Button>
+        </div>
+      </div>
     </div>
   );
 }
