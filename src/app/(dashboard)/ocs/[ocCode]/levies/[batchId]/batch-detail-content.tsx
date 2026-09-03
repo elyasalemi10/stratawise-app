@@ -336,14 +336,11 @@ export function BatchDetailContent({
                       <span className="ml-2 text-muted-foreground">
                         {levy.owner_display_name ?? ""}
                       </span>
-                      {/* Reference cascade: DRN > owner payment_reference.
-                          The internal LEV-NNNN sequence is never shown
-                          to users (it's an internal sequence, not an
-                          owner-facing reference). */}
+                      {/* The owner's payment_reference. The internal
+                          LEV-NNNN sequence is never shown , it is an
+                          internal sequence, not an owner-facing one. */}
                       <span className="ml-2 font-mono text-xs text-foreground">
-                        {levy.drn
-                          ? `DRN ${levy.drn}`
-                          : (levy.payment_reference ?? "")}
+                        {levy.payment_reference ?? ""}
                       </span>
                     </div>
                   </div>

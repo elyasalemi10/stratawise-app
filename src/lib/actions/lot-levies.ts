@@ -47,7 +47,7 @@ export async function listLotLevies(lotId: string): Promise<LotLevyRow[]> {
   if (!lot) return [];
   await requireOCAccess(lot.oc_id as string);
 
-  const [{ data, error }, { data: drns }, { data: ownerRefRow }] = await Promise.all([
+  const [{ data, error }, { data: ownerRefRow }] = await Promise.all([
     supabase
       .from("levy_notices")
       .select(
@@ -61,11 +61,6 @@ export async function listLotLevies(lotId: string): Promise<LotLevyRow[]> {
       .order("due_date", { ascending: false })
       .limit(500),
     supabase
-      .from("lot_drns")
-      .select("drn, active_from, active_to")
-      .eq("lot_id", lotId)
-      .order("active_from", { ascending: false }),
-    supabase
       .from("lot_owners")
       .select("payment_reference")
       .eq("lot_id", lotId)
@@ -75,19 +70,16 @@ export async function listLotLevies(lotId: string): Promise<LotLevyRow[]> {
   ]);
 
   if (error || !data) return [];
-  const drnRows = (drns ?? []) as Array<{ drn: string; active_from: string; active_to: string | null }>;
   const ownerRef = (ownerRefRow as { payment_reference: string | null } | null)?.payment_reference ?? null;
 
-  function refForPeriod(periodStart: string): string {
-    const active = drnRows.find(
-      (d) => d.active_from <= periodStart && (!d.active_to || d.active_to >= periodStart),
-    );
-    return active?.drn ?? ownerRef ?? "";
-  }
+  // One reference per lot now. It used to be period-aware because a DRN
+  // could be reassigned mid-history and an old notice had to keep the one
+  // that was live when it was raised. payment_reference does not move.
+  const displayRef = ownerRef ?? "";
 
   return data.map((row) => ({
     id: row.id as string,
-    display_reference: refForPeriod(row.period_start as string),
+    display_reference: displayRef,
     fund_type: row.fund_type as LotLevyRow["fund_type"],
     levy_type: row.levy_type as string,
     period_start: row.period_start as string,

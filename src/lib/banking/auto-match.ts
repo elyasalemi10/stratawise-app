@@ -39,10 +39,8 @@ interface AutoMatchResult {
 /**
  * Two-strategy auto-matcher run after every CSV import:
  *
- *   1. DRN exact match against lot_drns (date-aware via active_from/active_to)
  *      → allocates to that lot's oldest open levy notice.
  *   2. Owner-reference scan: description / DRN field substring-matches an
- *      open levy_notice.reference_number (LEV-{n}) or bpay_crn. Single hit
  *      only, multiple hits stay unmatched.
  *
  * No fuzzy sender matching, no amount-only matching, no bank_payer_mappings

@@ -31,23 +31,10 @@ export type ImportTransactionsInput = z.infer<typeof importTransactionsSchema>;
 export const bankAccountUpdateSchema = z
   .object({
     id: z.string().uuid(),
-    bpay_biller_code: z
-      .string()
-      .regex(/^\d{1,7}$/, "BPAY biller code must be 1-7 digits")
-      .nullable()
-      .optional(),
-    bpay_crn_prefix: z
-      .string()
-      .max(15, "CRN prefix max 15 characters")
-      .nullable()
-      .optional(),
-  })
-  .refine(
-    (v) =>
-      v.bpay_biller_code !== undefined ||
-      v.bpay_crn_prefix !== undefined,
-    { message: "No fields to update" },
-  );
+    // Nothing manager-editable on a bank account right now. The BPAY biller
+    // code lived here and went with BPAY; the shape stays so the next
+    // editable field has somewhere to land.
+  });
 
 export type BankAccountUpdateInput = z.input<typeof bankAccountUpdateSchema>;
 
@@ -65,13 +52,12 @@ export interface BankAccountSummary {
   last_transaction_date: string | null;
   transaction_count: number;
   bpay_biller_code: string | null;
-  bpay_crn_prefix: string | null;
 }
 
 export interface BankTransactionRecord {
   id: string;
   bank_account_id: string;
-  source: "manual" | "csv_import" | "macquarie_txn" | "macquarie_pay";
+  source: "manual" | "csv_import";
   transaction_date: string;
   amount: number;
   description: string | null;

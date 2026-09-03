@@ -102,7 +102,7 @@ export async function getLotDetailPageData(
     supabase.from("lots").select("*").eq("id", lotId).eq("oc_id", ocId).single(),
     supabase
       .from("owners_corporations")
-      .select("address, bank_provider")
+      .select("address")
       .eq("id", ocId)
       .single(),
     supabase

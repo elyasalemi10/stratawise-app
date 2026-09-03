@@ -20,7 +20,6 @@ const PUBLIC_PATHS = [
   "/log-out",
   "/dev",
   "/invite",
-  "/test",
 ];
 
 // Auth-flow pages that signed-in users should bounce *out* of , e.g. an

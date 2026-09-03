@@ -6,7 +6,6 @@ import { FUND_TYPES, LEDGER_ENTRY_CATEGORIES, type FundType } from "./ledger";
 export const RECONCILIATION_MATCH_METHODS = [
   "manual",
   "auto_reference",
-  "auto_bpay_crn",
   "auto_sender",
   "auto_amount",
   "system",
@@ -33,7 +32,8 @@ export const MATCH_STATUSES = [
 ] as const;
 export type MatchStatus = (typeof MATCH_STATUSES)[number];
 
-export const TRANSACTION_SOURCES = ["manual", "csv_import", "macquarie_txn", "macquarie_pay"] as const;
+// Only two sources now. The Macquarie DEFT TXN/PAY parsers went with DRN.
+export const TRANSACTION_SOURCES = ["manual", "csv_import"] as const;
 export type TransactionSource = (typeof TRANSACTION_SOURCES)[number];
 
 // PP5-A: bank_transactions.duplicate_status enum values. Status is orthogonal

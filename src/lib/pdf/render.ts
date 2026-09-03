@@ -161,7 +161,6 @@ async function assembleLevyNoticeProps(
     { data: lotRow },
     { data: itemsRow },
     { data: memberRow },
-    { data: drnRow },
     { data: ownerRefRow },
   ] = await Promise.all([
     supabase
@@ -189,21 +188,9 @@ async function assembleLevyNoticeProps(
       .eq("role", "lot_owner")
       .eq("is_primary_contact", true)
       .maybeSingle(),
-    // DRN active on the levy's PERIOD_START , Macquarie issues one DRN per
-    // lot but they can be reassigned on owner change; using the period_start
-    // as the cutoff keeps the historical notice tied to the DRN that was
-    // current when the levy was raised. Null when the OC isn't on Macquarie
-    // DEFT yet , callers fall back to the LEV-NNNN reference.
-    supabase
-      .from("lot_drns")
-      .select("drn")
-      .eq("lot_id", levy.lot_id)
-      .lte("active_from", levy.period_start)
-      .or(`active_to.is.null,active_to.gte.${levy.period_start}`)
-      .order("active_from", { ascending: false })
-      .limit(1)
-      .maybeSingle(),
-    // Owner-reference fallback when no DRN is active. payment_reference
+    // The owner's permanent billing reference. payment_reference is
+    // generated on OC creation ("WHDPE-001" = first-5-of-short_code +
+    // lot-number-padded-3) and is what the lot owner sees on every notice. payment_reference
     // is generated on OC creation ("WHDPE-001" = first-5-of-short_code
     // + lot-number-padded-3) and is what the lot owner sees as their
     // permanent billing reference.
@@ -215,7 +202,6 @@ async function assembleLevyNoticeProps(
       .limit(1)
       .maybeSingle(),
   ]);
-  const activeDrn = (drnRow as { drn: string } | null)?.drn ?? null;
   const ownerPaymentRef = (ownerRefRow as { payment_reference: string | null } | null)?.payment_reference ?? null;
 
   const sub = subRow as {
@@ -237,10 +223,11 @@ async function assembleLevyNoticeProps(
   }
   const lot = lotRow as { lot_number: number; unit_number: string | null } | null;
 
-  // Reference cascade: DRN > owner payment_reference > "Lot N" label.
+  // Reference: the owner's permanent payment_reference, falling back to a
+  // "Lot N" label when a lot has none.
   // Internal LEV-NNNN is never surfaced to the owner (it's our DB
   // sequence, not theirs).
-  const displayRef = activeDrn ?? ownerPaymentRef ?? `Lot ${lot?.lot_number ?? ""}`.trim();
+  const displayRef = ownerPaymentRef ?? `Lot ${lot?.lot_number ?? ""}`.trim();
 
   // Management company name + logo + brand colours for the header. Reading
   // brand_color here keeps the resend / arrears re-render visually identical
@@ -366,7 +353,7 @@ async function assembleLevyNoticeProps(
     note: multilotNote ?? undefined,
     // Top-right of the PDF shows the LEV-/SLEV-NNNN sequence , the
     // internal levy number managers cite when chasing this notice. The
-    // owner's permanent reference (DRN / payment_reference) goes into
+    // owner's permanent payment_reference goes into
     // the EFT "Reference" field below where they actually need it.
     referenceNumber: levy.reference_number,
     // The issue date the manager picked when the batch was raised. Only
@@ -389,14 +376,13 @@ async function assembleLevyNoticeProps(
     totalDue: Number(levy.amount),
     dueDate: formatDateLong(levy.due_date),
     paymentInstructions: {
-      bpay: null,
       eft: hasEft
         ? {
             bsb: sub.bank_bsb!,
             account_number: sub.bank_account_number!,
             account_name: sub.bank_account_name ?? sub.name,
             // EFT reference must match Macquarie's reconciliation key (the
-            // DRN) when one exists, otherwise the LEV-NNNN sequence.
+            // payment_reference when one exists, otherwise the LEV-NNNN sequence.
             reference: displayRef,
           }
         : {

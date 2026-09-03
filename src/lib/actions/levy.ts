@@ -13,20 +13,6 @@ import { uploadObject } from "@/lib/storage/r2";
 import { runLevyBatchSend } from "@/lib/levy-batch-send-runner";
 import { after } from "next/server";
 import { enqueueJob, drainJobs } from "@/lib/jobs/queue";
-// generateCrn lived in the nuked reconciliation stack. Inlined here
-// (BPAY MOD10V01 check digit), preserved for the bpay_crn column on
-// regular levies until the new reconciliation flow ships.
-function generateCrn(levyNumber: number): string {
-  const padded = String(levyNumber).padStart(7, "0");
-  const weights = [1, 2, 1, 2, 1, 2, 1];
-  let sum = 0;
-  for (let i = 0; i < 7; i++) {
-    const p = Number(padded[i]) * weights[i];
-    sum += p > 9 ? p - 9 : p;
-  }
-  const check = (10 - (sum % 10)) % 10;
-  return padded + String(check);
-}
 import { buildOCUrl } from "@/lib/oc-resolver";
 import { getLegislationRules } from "@/lib/legislation";
 import type { LevyNoticeProps } from "@/lib/pdf/types";
@@ -89,7 +75,6 @@ export interface LevyBatchDetail extends LevyBatchSummary {
     /** Macquarie DEFT Reference Number (DRN) active for the lot. This is
      *  what the owner uses to pay , show it in preference to the LEV
      *  reference on dashboards and the levy notice. */
-    drn: string | null;
     /** Fallback owner reference (lot_owners.payment_reference, e.g.
      *  "WHDPE-001") generated at OC creation. Used when no DRN exists. */
     payment_reference: string | null;
@@ -538,12 +523,11 @@ export async function generateLevyPreview(
 // Bulk reference lookup for a set of levy notices. Returns a
 // Map<levyId, ref> using a strict precedence:
 //
-//   1. DRN (lot_drns active on the levy's period_start)
-//   2. lot_owners.payment_reference (e.g. "WHDPE-001" , generated on OC
-//      creation as a system-owned "owner reference" similar to a DRN)
+//   lot_owners.payment_reference (e.g. "WHDPE-001" , generated on OC
+//   creation as a system-owned owner reference)
 //
 // The internal LEV-NNNN reference number is NEVER surfaced to owners.
-// If neither a DRN nor a payment_reference exists, the levy is mapped to
+// If no payment_reference exists, the levy is mapped to
 // an empty string and callers should fall back to whatever sensible
 // label they have (lot number, owner name) , but in practice every lot
 // gets a payment_reference at OC creation, so this Map is always
@@ -587,22 +571,8 @@ async function resolveLevyReferences(
   const lotIds = Array.from(new Set(levies.map((l) => l.lot_id))).filter(Boolean) as string[];
   if (!lotIds.length) return result;
 
-  // ── 1. DRN cascade ────────────────────────────────────────
-  const { data: drnRows } = await supabase
-    .from("lot_drns")
-    .select("lot_id, drn, active_from, active_to")
-    .in("lot_id", lotIds);
-  const drnByLevy = new Map<string, string>();
-  for (const levy of levies) {
-    const matches = (drnRows ?? [])
-      .filter((r) => r.lot_id === levy.lot_id)
-      .filter((r) => r.active_from <= levy.period_start)
-      .filter((r) => !r.active_to || r.active_to >= levy.period_start)
-      .sort((a, b) => (a.active_from < b.active_from ? 1 : -1));
-    if (matches[0]) drnByLevy.set(levy.id, matches[0].drn);
-  }
-
-  // ── 2. payment_reference cascade ──────────────────────────
+  // payment_reference is the only reference now. The DRN cascade above it
+  // went with Macquarie DEFT.
   // First-seen wins for joint-owner lots.
   const { data: ownerRows } = await supabase
     .from("lot_owners")
@@ -616,11 +586,6 @@ async function resolveLevyReferences(
   }
 
   for (const levy of levies) {
-    const drn = drnByLevy.get(levy.id);
-    if (drn) {
-      result.set(levy.id, drn);
-      continue;
-    }
     const owner = refByLot.get(levy.lot_id);
     if (owner) {
       result.set(levy.id, owner);
@@ -896,19 +861,6 @@ export async function createLevyBatch(
 
   const noticeRows = billableLots.map((lot, i) => {
     const refNum = refs[i];
-    // BPAY CRN: 7-digit zero-padded number + MOD10V01 check digit.
-    // ONLY generated for regular levies , special levies skip BPAY
-    // because:
-    //   (a) Special levies are typically settled by direct deposit,
-    //       not BPAY, and the unique index (oc_id) would
-    //       collide with regular LEV-N notices that share the same
-    //       numeric value (SLEV-1's CRN == LEV-1's CRN).
-    //   (b) Macquarie DRN already covers EFT identification.
-    const numericStr = String(refNum).split("-").pop() ?? "";
-    const levyNumber = Number.parseInt(numericStr, 10);
-    const bpayCrn = !data.is_special && Number.isFinite(levyNumber)
-      ? generateCrn(levyNumber)
-      : null;
     return {
       oc_id: ocId,
       lot_id: lot.lot_id,
@@ -1038,7 +990,6 @@ export async function createLevyBatch(
         totalDue: levy.items.reduce((s, i) => s + i.amount, 0),
         dueDate: formatDateLong(data.due_date),
         paymentInstructions: {
-          bpay: null,
           eft: eftAccount ? {
             ...eftAccount,
             reference: ownerRef,
@@ -1141,7 +1092,7 @@ export async function getLevyBatchDetail(ocId: string, batchId: string): Promise
   // stored reference; this lookup is only for what we DISPLAY to the
   // manager today.
   const today = new Date().toISOString().slice(0, 10);
-  const [{ data: allItems }, owners, { data: drns }, { data: ownerRefs }] = await Promise.all([
+  const [{ data: allItems }, owners, { data: ownerRefs }] = await Promise.all([
     levyIds.length > 0
       ? supabase
           .from("levy_notice_items")
@@ -1152,24 +1103,12 @@ export async function getLevyBatchDetail(ocId: string, batchId: string): Promise
     getLotOwners(supabase, lotIds),
     lotIds.length > 0
       ? supabase
-          .from("lot_drns")
-          .select("lot_id, drn, active_from, active_to")
-          .in("lot_id", lotIds)
-          .lte("active_from", today)
-      : Promise.resolve({ data: [] }),
-    lotIds.length > 0
-      ? supabase
           .from("lot_owners")
           .select("lot_id, payment_reference")
           .in("lot_id", lotIds)
           .not("payment_reference", "is", null)
       : Promise.resolve({ data: [] }),
   ]);
-  const drnByLot = new Map<string, string>();
-  for (const d of (drns ?? []) as Array<{ lot_id: string; drn: string; active_to: string | null }>) {
-    if (d.active_to && d.active_to < today) continue;
-    if (!drnByLot.has(d.lot_id)) drnByLot.set(d.lot_id, d.drn);
-  }
   const ownerRefByLot = new Map<string, string>();
   for (const r of (ownerRefs ?? []) as Array<{ lot_id: string; payment_reference: string }>) {
     if (!ownerRefByLot.has(r.lot_id)) ownerRefByLot.set(r.lot_id, r.payment_reference);
@@ -1200,7 +1139,6 @@ export async function getLevyBatchDetail(ocId: string, batchId: string): Promise
         owner_display_name: owner?.owner_display_name ?? null,
         owner_contact_email: owner?.owner_contact_email ?? null,
         reference_number: l.reference_number,
-        drn: drnByLot.get(l.lot_id) ?? null,
         payment_reference: ownerRefByLot.get(l.lot_id) ?? null,
         amount: Number(l.amount),
         status: l.status,
@@ -1481,7 +1419,6 @@ export async function regenerateBatch(ocId: string, batchId: string, newDueDate:
         totalDue: Number(levy.amount),
         dueDate: formatDateLong(newDueDate),
         paymentInstructions: {
-          bpay: null,
           eft: eftAccount ? {
             ...eftAccount,
             reference: ownerRef,

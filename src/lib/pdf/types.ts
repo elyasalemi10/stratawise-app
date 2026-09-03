@@ -47,10 +47,6 @@ export interface LevyLineItem {
 }
 
 export interface PaymentInstructions {
-  bpay?: {
-    biller_code: string;
-    reference: string;
-  } | null;
   eft: {
     bsb: string;
     account_number: string;

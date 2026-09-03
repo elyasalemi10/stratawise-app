@@ -124,26 +124,6 @@ export async function getLotActivity(
   }));
 }
 
-export interface LotDrn {
-  drn: string;
-  primary_id: string | null;
-  secondary_id: string | null;
-  active_from: string;
-  active_to: string | null;
-}
-
-export async function getActiveDrnsForLot(lotId: string): Promise<LotDrn[]> {
-  const supabase = createServerClient();
-  const today = new Date().toISOString().slice(0, 10);
-  const { data } = await supabase
-    .from("lot_drns")
-    .select("drn, primary_id, secondary_id, active_from, active_to")
-    .eq("lot_id", lotId)
-    .or(`active_to.is.null,active_to.gte.${today}`)
-    .order("active_from", { ascending: false });
-  return (data ?? []) as LotDrn[];
-}
-
 export interface PortalActivity {
   profile_id: string | null;
   last_active_at: string | null;

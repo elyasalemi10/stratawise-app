@@ -14,7 +14,7 @@ import { WizardActions } from "./_components/wizard-actions";
 // Wizard Step 4 , Banking.
 //
 // VIC operating + (optional) maintenance plan. The operating account is
-// the one printed on every levy notice (EFT + BPAY). Maintenance can
+// the one printed on every levy notice (EFT). Maintenance can
 // share that account or have its own.
 
 function formatBsb(input: string): string {
@@ -318,7 +318,7 @@ export function Step4Banking({
         <div>
           <h3 className="text-sm font-semibold text-foreground">Operating account</h3>
           <p className="mt-1 text-xs text-muted-foreground">
-            These bank details appear on every levy notice this OC sends (BPAY/EFT). Owners pay into this account regardless of which fund the levy is for.
+            These bank details appear on every levy notice this OC sends. Owners pay into this account regardless of which fund the levy is for.
           </p>
         </div>
         <FundFieldsBlock
