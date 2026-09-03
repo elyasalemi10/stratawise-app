@@ -7,6 +7,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { AvatarCropDialog } from "@/components/shared/avatar-crop-dialog";
+import { revalidateSidebarFromClient } from "@/lib/sidebar-cache";
 import { updateProfile, updateAvatar } from "./actions";
 import { ChangeEmailDialog, ChangePasswordDialog } from "./credential-dialogs";
 import type { Profile } from "@/lib/auth";
@@ -79,6 +80,11 @@ export function ProfileTab({ profile }: { profile: Profile }) {
       toast.error(saved.error);
       return;
     }
+    // Tell the rest of the chrome. The header and sidebar hold their own
+    // copy of the profile, so without this the new picture appears on this
+    // page and the old one stays in the corner of every screen until a hard
+    // reload , which reads as the upload having half-worked.
+    revalidateSidebarFromClient();
     toast.success("Profile picture updated");
   }
 
@@ -105,6 +111,7 @@ export function ProfileTab({ profile }: { profile: Profile }) {
       return;
     }
     setAvatarUrl("");
+    revalidateSidebarFromClient();
     toast.success("Profile picture removed");
   }
 

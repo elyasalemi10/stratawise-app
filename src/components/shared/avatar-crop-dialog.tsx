@@ -27,8 +27,21 @@ import { Slider } from "@/components/ui/slider";
 // looks like a different photo.
 
 const OUTPUT_PX = 512;
-const MIN_ZOOM = 0.2;
-const MAX_ZOOM = 3;
+
+// The slider is a MULTIPLE of "fill", not an absolute scale.
+//
+// It used to be absolute: the value was the raw px-to-px ratio, so the zoom
+// that exactly fills the circle was 0.13 for a 4000px photo and 2.6 for a
+// 200px one. Half the time that landed outside the slider's own range, so
+// the handle pinned to one end and the first drag jumped somewhere unrelated
+// , which is why it felt broken until you had clicked around a bit.
+//
+// As a multiple, 1 always means "fills the circle exactly, nothing cropped
+// beyond what the circle needs", whatever the photo. That is the default:
+// no added zoom, just fill.
+const MIN_FACTOR = 0.5; // below 1 the photo shrinks inside the circle
+const MAX_FACTOR = 3;
+const DEFAULT_FACTOR = 1;
 
 export function AvatarCropDialog({
   file,
@@ -44,7 +57,7 @@ export function AvatarCropDialog({
   onCropped: (blob: Blob) => Promise<void> | void;
 }) {
   const [image, setImage] = React.useState<HTMLImageElement | null>(null);
-  const [zoom, setZoom] = React.useState(1);
+  const [factor, setFactor] = React.useState(DEFAULT_FACTOR);
   const [offset, setOffset] = React.useState({ x: 0, y: 0 });
   const [saving, setSaving] = React.useState(false);
   const canvasRef = React.useRef<HTMLCanvasElement>(null);
@@ -63,15 +76,20 @@ export function AvatarCropDialog({
       const img = new Image();
       img.onload = () => {
         setImage(img);
-        // Start at "cover": the smallest zoom that fills the circle, which is
-        // the framing people want the vast majority of the time.
-        setZoom(OUTPUT_PX / Math.min(img.width, img.height));
+        setFactor(DEFAULT_FACTOR);
         setOffset({ x: 0, y: 0 });
       };
       img.src = reader.result as string;
     };
     reader.readAsDataURL(file);
   }, [file]);
+
+  // The scale that exactly fills the circle. Everything else is a multiple
+  // of it, so the slider means the same thing for every photo.
+  const coverScale = image
+    ? OUTPUT_PX / Math.min(image.width, image.height)
+    : 1;
+  const scale = coverScale * factor;
 
   // Paint on every change. White first, so any area the image does not cover
   // is white rather than transparent.
@@ -85,8 +103,8 @@ export function AvatarCropDialog({
     ctx.fillRect(0, 0, OUTPUT_PX, OUTPUT_PX);
     if (!image) return;
 
-    const w = image.width * zoom;
-    const h = image.height * zoom;
+    const w = image.width * scale;
+    const h = image.height * scale;
     ctx.drawImage(
       image,
       OUTPUT_PX / 2 - w / 2 + offset.x,
@@ -94,7 +112,7 @@ export function AvatarCropDialog({
       w,
       h,
     );
-  }, [image, zoom, offset]);
+  }, [image, scale, offset]);
 
   function onPointerDown(e: React.PointerEvent<HTMLCanvasElement>) {
     if (!image) return;
@@ -157,12 +175,12 @@ export function AvatarCropDialog({
           </div>
 
           <Slider
-            value={[zoom]}
-            min={MIN_ZOOM}
-            max={MAX_ZOOM}
+            value={[factor]}
+            min={MIN_FACTOR}
+            max={MAX_FACTOR}
             step={0.01}
             disabled={!image}
-            onValueChange={(v) => setZoom(Array.isArray(v) ? v[0] : v)}
+            onValueChange={(v) => setFactor(Array.isArray(v) ? v[0] : v)}
             className="w-56"
             aria-label="Zoom"
           />
