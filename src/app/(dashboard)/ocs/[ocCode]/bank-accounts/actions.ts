@@ -44,7 +44,6 @@ export async function importBankTransactions(
     description: (r.description ?? "").slice(0, 1000),
     amount: r.amount,
     balance: r.balance,
-    deft_reference_number: r.reference ? r.reference.slice(0, 64) : null,
     imported_by: profile.id,
   }));
 

@@ -11,7 +11,6 @@ import {
 import {
   getNextLevyDue,
   getLotActivity,
-  getActiveDrnsForLot,
   getPortalActivity,
   hasAnyLevyEverBeenIssued,
 } from "@/lib/actions/lot-overview";
@@ -62,11 +61,9 @@ export interface LotDetailPageData {
   anyLevyEverIssued: boolean;
   lotAddress: string | null;
   activity: Awaited<ReturnType<typeof getLotActivity>>;
-  drns: Awaited<ReturnType<typeof getActiveDrnsForLot>>;
   portalActivity: Awaited<ReturnType<typeof getPortalActivity>>;
   communications: Awaited<ReturnType<typeof listLotCommunications>>;
   engagement: Awaited<ReturnType<typeof getLotEngagement>>;
-  bankProvider: string | null;
   initialSenderEmailAddress: string | null;
   initialSmsSenderId: string | null;
   ocLots: Array<{ id: string; lotNumber: number; unitNumber: string | null }>;
@@ -96,7 +93,6 @@ export async function getLotDetailPageData(
     nextLevy,
     anyLevyEver,
     activity,
-    drns,
     portalActivity,
     communications,
     engagement,
@@ -154,7 +150,6 @@ export async function getLotDetailPageData(
     getNextLevyDue(lotId),
     hasAnyLevyEverBeenIssued(lotId),
     getLotActivity(lotId, 50),
-    getActiveDrnsForLot(lotId),
     getPortalActivity(lotId),
     listLotCommunications(lotId),
     getLotEngagement(lotId),
@@ -177,7 +172,6 @@ export async function getLotDetailPageData(
       anyLevyEverIssued: false,
       lotAddress: null,
       activity: [],
-      drns: [],
       portalActivity: [],
       communications: [],
       engagement: null,
@@ -235,11 +229,9 @@ export async function getLotDetailPageData(
       ? `${lot.unit_number ? `Unit ${lot.unit_number} / ` : ""}${oc.address}`
       : null,
     activity,
-    drns,
     portalActivity,
     communications,
     engagement,
-    bankProvider: (oc as { bank_provider?: string } | null)?.bank_provider ?? null,
     initialSenderEmailAddress:
       (managerSendAddressResult as { address?: string | null })?.address ?? null,
     initialSmsSenderId: (smsSenderResult as { sender?: string | null })?.sender ?? null,

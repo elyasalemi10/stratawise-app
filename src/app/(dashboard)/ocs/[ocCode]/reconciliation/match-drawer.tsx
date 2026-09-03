@@ -21,7 +21,6 @@ interface Txn {
   description: string | null;
   amount: number;
   matched_total: number;
-  deft_reference_number: string | null;
 }
 
 interface Lot {
@@ -176,11 +175,6 @@ export function MatchDrawer({
             {transaction.description && (
               <p className="text-xs text-muted-foreground">
                 {transaction.description}
-              </p>
-            )}
-            {transaction.deft_reference_number && (
-              <p className="text-xs text-muted-foreground">
-                Reference: {transaction.deft_reference_number}
               </p>
             )}
           </div>

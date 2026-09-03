@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { FileText, Download, ExternalLink, X } from "lucide-react";
+import { FileText, Download, ExternalLink } from "lucide-react";
 import { formatDateLong } from "@/lib/utils";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";

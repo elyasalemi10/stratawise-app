@@ -900,7 +900,7 @@ export async function createLevyBatch(
     // ONLY generated for regular levies , special levies skip BPAY
     // because:
     //   (a) Special levies are typically settled by direct deposit,
-    //       not BPAY, and the unique index (oc_id, bpay_crn) would
+    //       not BPAY, and the unique index (oc_id) would
     //       collide with regular LEV-N notices that share the same
     //       numeric value (SLEV-1's CRN == LEV-1's CRN).
     //   (b) Macquarie DRN already covers EFT identification.
@@ -915,7 +915,6 @@ export async function createLevyBatch(
       budget_id: data.budget_id,
       batch_id: batch.id,
       reference_number: refNum,
-      bpay_crn: bpayCrn,
       fund_type: data.fund_type,
       levy_type: data.is_special ? "special" : "regular",
       period_start: data.period_start,

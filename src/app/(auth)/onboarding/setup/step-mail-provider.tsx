@@ -4,7 +4,6 @@ import { useState } from "react";
 import { toast } from "sonner";
 import {
   Mail,
-  Globe,
   ShieldCheck,
   CheckCircle2,
   Building2,

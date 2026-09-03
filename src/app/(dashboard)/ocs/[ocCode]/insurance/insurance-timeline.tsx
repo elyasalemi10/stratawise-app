@@ -2,7 +2,7 @@
 
 import { useState, useRef } from "react";
 import { useRouter } from "next/navigation";
-import { Plus, ShieldAlert, ShieldX, Download, CalendarIcon, Loader2, X, Pencil, Trash2 } from "lucide-react";
+import { Plus, ShieldAlert, Download, CalendarIcon, Loader2, Pencil, Trash2 } from "lucide-react";
 import { format } from "date-fns";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";

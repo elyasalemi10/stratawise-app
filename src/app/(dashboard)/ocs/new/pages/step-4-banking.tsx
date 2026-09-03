@@ -182,7 +182,6 @@ export function Step4Banking({
     void (async () => {
       const save = await saveStep(draftId, {
         banking_deferred: true,
-        bank_provider: undefined,
         has_maintenance_plan_fund: false,
         admin_bank_id: undefined,
         admin_account_name: undefined,
@@ -248,7 +247,6 @@ export function Step4Banking({
     void (async () => {
       const r = await saveStep(draftId, {
         banking_deferred: false,
-        bank_provider: operating.bankId === "macquarie" ? "macquarie_deft" : "other_csv",
         has_maintenance_plan_fund: hasMaintenance,
         admin_bank_id: operating.bankId,
         admin_account_name: operating.accountName.trim(),

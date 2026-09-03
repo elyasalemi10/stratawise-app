@@ -13,7 +13,6 @@ interface OpenLevyRow {
   lot_id: string;
   fund_type: "operating" | "maintenance_plan";
   reference_number: string;
-  bpay_crn: string | null;
   amount: number | string;
   amount_paid: number | string;
   due_date: string;
@@ -27,7 +26,6 @@ interface BankTxnRow {
   transaction_date: string;
   amount: number | string;
   description: string | null;
-  deft_reference_number: string | null;
   match_status: string;
   matched_total: number | string;
   is_voided: boolean;
@@ -69,7 +67,7 @@ export async function autoMatchBankTransactions(
   const { data: txnsRaw } = await supabase
     .from("bank_transactions")
     .select(
-      "id, oc_id, bank_account_id, transaction_date, amount, description, deft_reference_number, match_status, matched_total, is_voided",
+      "id, oc_id, bank_account_id, transaction_date, amount, description, match_status, matched_total, is_voided",
     )
     .in("id", bankTransactionIds);
   const txns = ((txnsRaw ?? []) as BankTxnRow[]).filter(
@@ -90,21 +88,11 @@ export async function autoMatchBankTransactions(
     return { matched: 0, skipped: txns.length };
   }
 
-  const { data: drnRows } = await supabase
-    .from("lot_drns")
-    .select("drn, lot_id, active_from, active_to")
-    .in("lot_id", ocLotIds);
-  const drnIndex = new Map<string, LotDrnRow[]>();
-  for (const row of (drnRows ?? []) as LotDrnRow[]) {
-    const key = row.drn.trim().toUpperCase();
-    if (!drnIndex.has(key)) drnIndex.set(key, []);
-    drnIndex.get(key)!.push(row);
-  }
 
   const { data: levyRows } = await supabase
     .from("levy_notices")
     .select(
-      "id, lot_id, fund_type, reference_number, bpay_crn, amount, amount_paid, due_date, status",
+      "id, lot_id, fund_type, reference_number, amount, amount_paid, due_date, status",
     )
     .eq("oc_id", ocId)
     .in("status", ["issued", "partially_paid", "overdue"])
@@ -123,7 +111,7 @@ export async function autoMatchBankTransactions(
   let skipped = 0;
 
   for (const t of txns) {
-    const choice = chooseLevyForTxn(t, drnIndex, openLevies, leviesByLot);
+    const choice = chooseLevyForTxn(t, openLevies);
     if (!choice) {
       skipped++;
       continue;
@@ -164,52 +152,37 @@ export async function autoMatchBankTransactions(
 
 interface ChosenLevy {
   levy: OpenLevyRow;
-  method: "auto_reference" | "auto_bpay_crn";
+  method: "auto_reference";
 }
 
+// One strategy: does the levy's own reference appear in what the bank told
+// us about the payment?
+//
+// This was a cascade , DRN first, then BPAY CRN, then the reference , with
+// the DRN branch resolving to a lot and guessing which of its levies was
+// meant. DRN and BPAY are gone (see the notes on the levy notice), and the
+// guessing was the wrong trade at this size: a manager with thirty lots
+// recognises their own payers instantly, and a wrong automatic allocation
+// costs far more to find than an unmatched row costs to clear.
+//
+// So: an unambiguous single hit matches. Anything else waits for a human.
 function chooseLevyForTxn(
   txn: BankTxnRow,
-  drnIndex: Map<string, LotDrnRow[]>,
   allLevies: OpenLevyRow[],
-  leviesByLot: Map<string, OpenLevyRow[]>,
 ): ChosenLevy | null {
-  // Strategy 1: DRN. Single, exact, date-bounded. Resolves to a lot; then
-  // we pick the lot's oldest open levy.
-  const drn = (txn.deft_reference_number ?? "").trim().toUpperCase();
-  if (drn) {
-    const rows = drnIndex.get(drn) ?? [];
-    const active = rows.filter(
-      (r) =>
-        r.active_from <= txn.transaction_date &&
-        (r.active_to == null || r.active_to >= txn.transaction_date),
-    );
-    if (active.length === 1) {
-      const lotId = active[0].lot_id;
-      const levy = pickLevyForLot(lotId, leviesByLot);
-      if (levy) return { levy, method: "auto_reference" };
-    }
-  }
-
-  // Strategy 2: owner reference. The payer typed a reference (BPAY CRN or
-  // the LEV-{n} number) that appears in the description / reference field.
-  // Single match wins; multiple hits stay unmatched.
-  const haystack = `${txn.description ?? ""} ${txn.deft_reference_number ?? ""}`
-    .trim()
-    .toUpperCase();
+  const haystack = `${txn.description ?? ""}`.trim().toUpperCase();
   if (!haystack) return null;
 
   const hits = new Set<string>();
   for (const levy of allLevies) {
     const ref = levy.reference_number?.toUpperCase();
-    const crn = levy.bpay_crn?.toUpperCase();
     if (ref && haystack.includes(ref)) hits.add(levy.id);
-    else if (crn && haystack.includes(crn)) hits.add(levy.id);
   }
+  // Two candidates is not a match, it is a coin toss.
   if (hits.size !== 1) return null;
 
   const levyId = Array.from(hits)[0];
-  const levy = allLevies.find((l) => l.id === levyId)!;
-  return { levy, method: "auto_bpay_crn" };
+  return { levy: allLevies.find((l) => l.id === levyId)!, method: "auto_reference" };
 }
 
 function pickLevyForLot(
@@ -230,7 +203,7 @@ interface ApplyArgs {
   txnAmount: number;
   allocated: number;
   levy: OpenLevyRow;
-  method: "auto_reference" | "auto_bpay_crn";
+  method: "auto_reference";
   performedBy: string;
 }
 

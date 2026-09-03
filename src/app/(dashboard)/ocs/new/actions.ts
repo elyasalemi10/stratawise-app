@@ -7,7 +7,6 @@ import { insertOCWithCode } from "@/lib/oc-code";
 import { parsePlanPdf, type ParsedPlan } from "@/lib/parse-plan";
 import { parseRulesPdf, type ParsedRulesDocument } from "@/lib/parse-rules";
 import { parseInsurancePdf, type ParsedInsurancePolicy } from "@/lib/parse-insurance";
-import { parseDrnCsv, matchDrnsToLots, type DrnMatchResult, type LotForMatch, type LotOwnerForMatch } from "@/lib/macquarie/drn-import";
 import { uploadObject, fetchObject, deleteObject, publicUrlFor } from "@/lib/storage/r2";
 
 // ─── Types stored on draft_json ─────────────────────────────────
@@ -129,17 +128,6 @@ export type DraftJson = {
   committee_members?: DraftCommitteeMember[];
   last_agm_date?: string; // ISO yyyy-mm-dd
   // Page 5 (trust accounts) , per-fund bank arrangement.
-  bank_provider?: "macquarie_deft" | "other_csv";
-  // Macquarie DRN mappings the manager uploaded during the wizard. We stage
-  // by lot_number rather than by lot_id because lots don't exist yet (they're
-  // inserted by completeWizard). On completion we look up each row's real
-  // lot_id and write the lot_drns table.
-  lot_drns?: Array<{
-    drn: string;
-    lot_number: number;
-    primary_id: string | null;
-    secondary_id: string | null;
-  }>;
   // Whether this OC holds a third "maintenance plan" reserve fund. Tier 1/2
   // is mandatory (the UI forces this on); higher tiers can opt in.
   has_maintenance_plan_fund?: boolean;
@@ -1040,131 +1028,6 @@ export async function getDraftRulesSourceUrl(
   }
 }
 
-// ─── DRN CSV staging during the wizard ──────────────────────────
-//
-// Macquarie users get a "Upload DRN CSV" panel on Page 5 once they pick
-// Macquarie as the admin bank. The CSV is parsed + auto-matched against the
-// draft's lot schedule (by lot number / unit number / payer name → owner)
-// the same way macquarie-ingest does it for live OCs. The big difference:
-// lots don't exist yet, so the preview ships back lot_numbers rather than
-// lot_ids, and the staged rows live on draft_json.lot_drns until
-// completeWizard resolves them and writes lot_drns.
-
-export type WizardDrnPreviewMatch = {
-  rowNumber: number;
-  drn: string;
-  primaryId: string | null;
-  secondaryId: string | null;
-  /** Lot number from the draft this row was auto-matched to (null = needs
-   *  manual resolution). The UI lets the manager override via a Select that
-   *  picks from the same lot_numbers list. */
-  lot_number: number | null;
-  matchedBy: DrnMatchResult["matchedBy"];
-  confidence: DrnMatchResult["confidence"];
-  note?: string;
-};
-
-export type WizardDrnPreview = {
-  matches: WizardDrnPreviewMatch[];
-  totals: { total: number; matchedExact: number; matchedFuzzy: number; unmatched: number };
-};
-
-export async function previewDraftDrnCsv(
-  draftId: string,
-  formData: FormData,
-): Promise<{ preview?: WizardDrnPreview; error?: string }> {
-  try {
-    const { draft } = await loadDraft(draftId);
-    const file = formData.get("file");
-    if (!(file instanceof File)) return { error: "No file uploaded" };
-    if (file.size > 5 * 1024 * 1024) return { error: "CSV exceeds 5MB" };
-
-    const text = await file.text();
-    const { rows, errors } = parseDrnCsv(text);
-    if (errors.length > 0 && rows.length === 0) {
-      return { error: errors[0].message };
-    }
-
-    // matchDrnsToLots expects {id, lot_number, unit_number}. Wizard lots don't
-    // have ids yet, so we use lot_number as a stand-in id and translate back
-    // when we ship the response.
-    const d = draft.draft_json as DraftJson;
-    const draftLots: LotForMatch[] = (d.lots ?? []).map((l) => ({
-      id: String(l.lot_number),
-      lot_number: l.lot_number,
-      unit_number: l.unit_number ?? null,
-    }));
-    const draftOwners: LotOwnerForMatch[] = (d.lots ?? [])
-      .filter((l) => l.owner_name?.trim())
-      .map((l) => ({ lot_id: String(l.lot_number), name: (l.owner_name ?? "").trim() }));
-
-    const matchResults = matchDrnsToLots(rows, draftLots, draftOwners);
-
-    let exact = 0, fuzzy = 0, unmatched = 0;
-    const matches: WizardDrnPreviewMatch[] = matchResults.map((m) => {
-      if (m.confidence === "exact") exact++;
-      else if (m.confidence === "fuzzy") fuzzy++;
-      else unmatched++;
-      return {
-        rowNumber: m.drnRow.rowNumber,
-        drn: m.drnRow.drn,
-        primaryId: m.drnRow.primaryId,
-        secondaryId: m.drnRow.secondaryId,
-        lot_number: m.lotId ? parseInt(m.lotId, 10) : null,
-        matchedBy: m.matchedBy,
-        confidence: m.confidence,
-        note: m.note,
-      };
-    });
-
-    return {
-      preview: {
-        matches,
-        totals: { total: matches.length, matchedExact: exact, matchedFuzzy: fuzzy, unmatched },
-      },
-    };
-  } catch (err) {
-    console.error("previewDraftDrnCsv: unexpected error", err);
-    return { error: "Couldn't read the DRN file , please try again." };
-  }
-}
-
-export async function saveDraftDrnMappings(
-  draftId: string,
-  mappings: Array<{ drn: string; lot_number: number; primary_id: string | null; secondary_id: string | null }>,
-): Promise<{ success?: true; error?: string }> {
-  try {
-    const { draft } = await loadDraft(draftId);
-    const supabase = createServerClient();
-    const merged: DraftJson = { ...(draft.draft_json as DraftJson), lot_drns: mappings };
-    const { error } = await supabase
-      .from("oc_drafts")
-      .update({ draft_json: merged })
-      .eq("id", draft.id);
-    if (error) return { error: error.message };
-    return { success: true };
-  } catch (err) {
-    return { error: err instanceof Error ? err.message : "Unexpected error" };
-  }
-}
-
-export async function clearDraftDrnMappings(draftId: string): Promise<{ success?: true; error?: string }> {
-  try {
-    const { draft } = await loadDraft(draftId);
-    const supabase = createServerClient();
-    const merged: DraftJson = { ...(draft.draft_json as DraftJson) };
-    delete merged.lot_drns;
-    const { error } = await supabase
-      .from("oc_drafts")
-      .update({ draft_json: merged })
-      .eq("id", draft.id);
-    if (error) return { error: error.message };
-    return { success: true };
-  } catch (err) {
-    return { error: err instanceof Error ? err.message : "Unexpected error" };
-  }
-}
-
 // ─── skipParsing: user opted to enter manually ──────────────────
 
 export async function skipParsing(draftId: string) {
@@ -1326,7 +1189,6 @@ export async function completeWizard(draftId: string) {
       // Notice address always set , wizard defaults to OC address; user can override.
       notice_address_same_as_oc: !d.notice_address || d.notice_address.trim() === d.address.trim(),
       notice_address: d.notice_address || d.address,
-      bank_provider: d.bank_provider ?? "other_csv",
       uses_shared_trust_account: !hasMaintenance || maintenanceShared,
       // Legacy summary fields point at the operating trust account.
       bank_bsb: d.admin_bsb,
@@ -1829,33 +1691,6 @@ export async function completeWizard(draftId: string) {
         .eq("id", operatingBankId);
       if (linkErr) {
         console.error("completeWizard: linking operating bank to admin fund failed (non-fatal)", linkErr);
-      }
-    }
-
-    // DRN mappings (Macquarie only). The wizard staged rows in
-    // draft_json.lot_drns keyed by lot_number; now that lots exist we resolve
-    // each row to a real lot_id and write the lot_drns table. Rows that
-    // didn't resolve to a lot are silently skipped , the manager can fix
-    // them from the OC's DRN page later.
-    if (d.lot_drns && d.lot_drns.length > 0) {
-      const drnRows = d.lot_drns
-        .map((m) => {
-          const lotId = lotByNumber.get(m.lot_number);
-          if (!lotId) return null;
-          return {
-            lot_id: lotId,
-            drn: m.drn,
-            primary_id: m.primary_id,
-            secondary_id: m.secondary_id,
-            source: "macquarie_csv" as const,
-          };
-        })
-        .filter((x): x is NonNullable<typeof x> => x !== null);
-      if (drnRows.length > 0) {
-        const { error: drnError } = await supabase.from("lot_drns").insert(drnRows);
-        if (drnError) {
-          console.error("completeWizard: lot_drns insert failed (non-fatal)", drnError);
-        }
       }
     }
 

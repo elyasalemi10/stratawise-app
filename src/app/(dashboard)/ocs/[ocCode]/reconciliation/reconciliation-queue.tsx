@@ -16,7 +16,6 @@ interface UnmatchedTxn {
   description: string | null;
   amount: number;
   matched_total: number;
-  deft_reference_number: string | null;
 }
 
 interface BankAccount {
@@ -100,7 +99,6 @@ export function ReconciliationQueue({
               <TableHead className="w-[110px]">Date</TableHead>
               <TableHead className="w-[170px]">Account</TableHead>
               <TableHead>Description</TableHead>
-              <TableHead className="w-[130px]">Reference</TableHead>
               <TableHead className="w-[130px] text-right">Amount</TableHead>
               <TableHead className="w-[120px] text-right">Action</TableHead>
             </TableRow>
@@ -119,9 +117,6 @@ export function ReconciliationQueue({
                 </TableCell>
                 <TableCell className="text-foreground text-xs">
                   {t.description ?? ""}
-                </TableCell>
-                <TableCell className="text-foreground text-xs">
-                  {t.deft_reference_number ?? ""}
                 </TableCell>
                 <TableCell className="text-right tabular-nums text-xs text-foreground">
                   {currencyFmt.format(t.amount)}

@@ -39,9 +39,7 @@ import {
   PhoneCall,
   Send,
   ChevronDown,
-  Lock,
-  Unlock,
-} from "lucide-react";
+  } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { Checkbox } from "@/components/ui/checkbox";
 import {
@@ -56,7 +54,6 @@ import {
   logPhoneCall,
   sendLotSms,
   sendLotEmail,
-  setCommunicationConfidential,
   type LotCommunicationRow,
 } from "@/lib/actions/lot-communications";
 import {

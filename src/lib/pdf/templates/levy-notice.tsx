@@ -3,7 +3,6 @@ import { ocLegalName } from "@/lib/oc-legal-name";
 import { StyleSheet } from "@react-pdf/renderer";
 import type { LevyNoticeProps } from "../types";
 import "../fonts"; // Register NunitoSans
-import { BPAY_LOGO } from "../bpay-logo";
 
 const c = {
   foreground: "#1a1f2e",
@@ -230,13 +229,6 @@ export function LevyNotice({
     bankRow: { flexDirection: "row", marginBottom: 5 },
     bankLabel: { fontSize: 13, fontFamily: FONT_BOLD, fontWeight: 600, color: c.foreground, width: 110 },
     bankValue: { fontSize: 13, color: c.foreground, flex: 1 },
-    // BPAY , fixed-width logo, text wraps in its own column (#6)
-    bpaySection: { marginTop: 14, flexDirection: "row", alignItems: "flex-start" as const, gap: 14 },
-    bpayLogo: { width: 90, height: 36, objectFit: "contain" as const },
-    bpayDetails: { flex: 1 },
-    bpayRow: { flexDirection: "row", marginBottom: 3 },
-    bpayLabel: { fontSize: 11, fontFamily: FONT_BOLD, fontWeight: 600, color: c.foreground, width: 80 },
-    bpayValue: { fontSize: 11, color: c.foreground, flex: 1 },
     slipRow: { flexDirection: "row", justifyContent: "space-between", paddingVertical: 2 },
     slipLabel: { fontSize: 9, fontFamily: FONT_BOLD, fontWeight: 600, color: c.foreground },
     slipValue: { fontSize: 10, fontFamily: FONT_BOLD, fontWeight: 600, color: c.foreground, textAlign: "right" as const },
@@ -386,22 +378,6 @@ export function LevyNotice({
               <Text style={s.bankValue}>{paymentInstructions.eft.reference}</Text>
             </View>
 
-            {/* #1: BPAY at bottom-left, #6: fixed logo width, text wraps independently */}
-            {paymentInstructions.bpay ? (
-              <View style={s.bpaySection}>
-                <Image src={BPAY_LOGO} style={s.bpayLogo} />
-                <View style={s.bpayDetails}>
-                  <View style={s.bpayRow}>
-                    <Text style={s.bpayLabel}>Biller code:</Text>
-                    <Text style={s.bpayValue}>{paymentInstructions.bpay.biller_code}</Text>
-                  </View>
-                  <View style={[s.bpayRow, { marginBottom: 0 }]}>
-                    <Text style={s.bpayLabel}>Reference:</Text>
-                    <Text style={s.bpayValue}>{paymentInstructions.bpay.reference}</Text>
-                  </View>
-                </View>
-              </View>
-            ) : null}
           </View>
 
           <View style={s.paymentRight}>

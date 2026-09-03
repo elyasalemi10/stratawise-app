@@ -36,7 +36,6 @@ import type { LotOwnerInfo } from "@/lib/actions/lot-ownership";
 import type {
   NextLevyDue,
   LotActivityEntry,
-  LotDrn,
   PortalActivity,
 } from "@/lib/actions/lot-overview";
 import { useOCCode } from "@/lib/oc-context";
@@ -72,11 +71,9 @@ interface LotDetailContentProps {
   anyLevyEverIssued: boolean;
   lotAddress: string | null;
   activity: LotActivityEntry[];
-  drns: LotDrn[];
   portalActivity: PortalActivity;
   communications: LotCommunicationRow[];
   engagement: LotEngagement;
-  bankProvider: string | null;
   initialSenderEmailAddress?: string | null;
   initialSmsSenderId?: string | null;
   /** All lots in the OC , lets the settlement drawer re-target the lot. */
@@ -140,11 +137,9 @@ export function LotDetailContent({
   anyLevyEverIssued,
   lotAddress,
   activity,
-  drns,
   portalActivity,
   communications,
   engagement,
-  bankProvider,
   initialSenderEmailAddress,
   initialSmsSenderId,
   ocLots,
@@ -396,8 +391,6 @@ export function LotDetailContent({
           portalActive={portalActive}
           portalInviteAccepted={portalActive}
           consentCategories={lotOwnerExtra?.digital_consent_categories ?? []}
-          drns={drns}
-          bankProvider={bankProvider}
           engagement={engagement}
           onTransfer={() => setSettlementOpen(true)}
         />

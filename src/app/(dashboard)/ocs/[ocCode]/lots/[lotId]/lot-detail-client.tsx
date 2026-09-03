@@ -42,11 +42,9 @@ export function LotDetailClient({ ocId, lotId }: { ocId: string; lotId: string }
       anyLevyEverIssued={data.anyLevyEverIssued}
       lotAddress={data.lotAddress}
       activity={data.activity}
-      drns={data.drns}
       portalActivity={data.portalActivity}
       communications={data.communications}
       engagement={data.engagement}
-      bankProvider={data.bankProvider}
       initialSenderEmailAddress={data.initialSenderEmailAddress}
       initialSmsSenderId={data.initialSmsSenderId}
       ocLots={data.ocLots}

@@ -16,7 +16,6 @@ interface UnmatchedTxnRow {
   description: string | null;
   amount: number | string;
   matched_total: number | string;
-  deft_reference_number: string | null;
 }
 
 interface BankAccountRow {
@@ -76,7 +75,7 @@ export async function getReconciliationPageData(
     supabase
       .from("bank_transactions")
       .select(
-        "id, bank_account_id, transaction_date, description, amount, matched_total, deft_reference_number",
+        "id, bank_account_id, transaction_date, description, amount, matched_total",
       )
       .eq("oc_id", ocId)
       .eq("match_status", "unmatched")

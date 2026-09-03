@@ -23,7 +23,6 @@ import {
   ShieldOff,
   ExternalLink,
   Mail,
-  Hash,
   FileSignature,
   UserRound,
   Vote,
@@ -31,7 +30,6 @@ import {
 } from "lucide-react";
 import type { LotOwnerInfo } from "@/lib/actions/lot-ownership";
 import type { OwnershipHistoryEntry } from "@/lib/validations/settlement";
-import type { LotDrn } from "@/lib/actions/lot-overview";
 import type { LotEngagement } from "@/lib/actions/lot-engagement";
 import {
   updateLotOwnerContact,
@@ -97,12 +95,6 @@ interface Props {
   portalActive: boolean;
   portalInviteAccepted: boolean;
   consentCategories: string[];
-  drns: LotDrn[];
-  // owners_corporations.bank_provider , drives whether we render the
-  // Macquarie DRN row at all. Non-Macquarie OCs hide it entirely
-  // (regardless of whether a DRN happens to be linked) so the lot owner
-  // panel doesn't carry Macquarie-only chrome for, say, CBA accounts.
-  bankProvider: string | null;
   engagement: LotEngagement;
   onTransfer: () => void;
 }
@@ -119,8 +111,6 @@ export function LotOwnerTab(props: Props) {
     portalActive,
     portalInviteAccepted,
     consentCategories,
-    drns,
-    bankProvider,
     engagement,
     onTransfer,
   } = props;
@@ -243,26 +233,6 @@ export function LotOwnerTab(props: Props) {
           <h3 className="text-sm font-semibold text-foreground mb-3">Identifier &amp; payment details</h3>
           <dl className="divide-y divide-border">
             <KvRow label="Payment reference" value={paymentReference ?? ""} mono />
-            {bankProvider !== "macquarie_deft" ? null : drns.length === 0 ? (
-              <KvRow label="Macquarie DRN" value="" hint="No DRN" />
-            ) : (
-              drns.map((d, i) => (
-                <div key={d.drn + i} className="flex items-baseline justify-between py-2.5">
-                  <dt className="text-sm text-muted-foreground inline-flex items-center gap-1.5">
-                    <Hash className="h-3 w-3" />
-                    Macquarie DRN
-                  </dt>
-                  <dd className="text-right">
-                    <span className="font-mono text-xs font-medium text-foreground">{d.drn}</span>
-                    {d.secondary_id && (
-                      <span className="ml-2 text-xs text-muted-foreground">
-                        {d.secondary_id}
-                      </span>
-                    )}
-                  </dd>
-                </div>
-              ))
-            )}
           </dl>
         </CardContent>
       </Card>

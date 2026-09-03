@@ -184,12 +184,12 @@ export async function globalSearch(
       p_query: trimmed,
     }),
 
-    // Levies , match reference_number + bpay_crn.
+    // Levies , match reference_number.
     supabase
       .from("levy_notices")
-      .select("id, oc_id, reference_number, bpay_crn, amount, due_date, status")
+      .select("id, oc_id, reference_number, amount, due_date, status")
       .in("oc_id", scopedOcIds)
-      .or(`reference_number.ilike.${like},bpay_crn.ilike.${like}`)
+      .ilike("reference_number", like)
       .limit(PER_TYPE_LIMIT),
 
     // Meetings , title + reference_number.
@@ -314,7 +314,7 @@ export async function globalSearch(
 
   // Levies.
   for (const r of (levyRows.data ?? []) as Array<{
-    id: string; oc_id: string; reference_number: string; bpay_crn: string | null; amount: number; status: string;
+    id: string; oc_id: string; reference_number: string; amount: number; status: string;
   }>) {
     const oc = ocCodeById.get(r.oc_id);
     if (!oc) continue;
