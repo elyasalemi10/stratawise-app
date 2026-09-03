@@ -414,8 +414,8 @@
     );
     /* Negative delay set per-instance by the Skeleton component, so a
        skeleton mounting mid-sweep joins the one already running rather
-       than restarting it. Keep 1s in step with SWEEP_MS there. */
-    animation: skeleton-shimmer 1s linear infinite;
+       than restarting it. Keep 0.75s in step with SWEEP_MS there. */
+    animation: skeleton-shimmer 0.75s linear infinite;
     animation-delay: var(--shimmer-delay, 0ms);
   }
 

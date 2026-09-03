@@ -1,9 +1,15 @@
 import { redirect } from "next/navigation";
+import { SectionHeader } from "../section-header";
 import { getCurrentProfile } from "@/lib/auth";
 import { ProfileTab } from "../profile-tab";
 
 export default async function Page() {
   const profile = await getCurrentProfile();
   if (!profile) redirect("/sign-in");
-  return <ProfileTab profile={profile} />;
+  return (
+    <>
+      <SectionHeader title="My Profile" />
+      <ProfileTab profile={profile} />
+    </>
+  );
 }

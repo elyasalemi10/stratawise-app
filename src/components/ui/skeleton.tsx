@@ -18,7 +18,7 @@ import { cn } from "@/lib/utils";
 // shows when prefers-reduced-motion drops the gradient.
 
 /** Must match the animation duration in .skeleton-shimmer. */
-const SWEEP_MS = 1000;
+const SWEEP_MS = 750;
 
 // ── Why this needs a ref at all ───────────────────────────────────────────
 //

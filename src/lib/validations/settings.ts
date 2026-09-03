@@ -1,6 +1,8 @@
 import { z } from "zod";
 
 export const profileSchema = z.object({
+  first_name: z.string().trim().max(100).optional(),
+  last_name: z.string().trim().max(100).optional(),
   phone: z.string().optional(),
   postal_address: z.string().optional(),
 });

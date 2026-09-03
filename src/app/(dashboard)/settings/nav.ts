@@ -1,4 +1,4 @@
-import { Bell, Building2, Mail, Repeat, ShieldCheck, User, Users, type LucideIcon } from "lucide-react";
+import { Bell, Building2, Mail, Repeat, User, Users, type LucideIcon } from "lucide-react";
 
 // The settings rail, in one place, so the layout and every skeleton agree.
 //
@@ -18,7 +18,6 @@ export const SETTINGS_NAV: Array<{ label: string; items: SettingsNavItem[] }> = 
     label: "Account",
     items: [
       { href: "/settings/profile", label: "Profile", icon: User },
-      { href: "/settings/security", label: "Security", icon: ShieldCheck },
       { href: "/settings/notifications", label: "Notifications", icon: Bell },
     ],
   },

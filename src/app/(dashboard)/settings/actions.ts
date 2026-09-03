@@ -8,6 +8,8 @@ import { profileSchema } from "@/lib/validations/settings";
 import { uploadObject } from "@/lib/storage/r2";
 
 export async function updateProfile(formData: {
+  first_name?: string;
+  last_name?: string;
   phone?: string;
   postal_address?: string;
 }) {
@@ -24,8 +26,14 @@ export async function updateProfile(formData: {
   const { error } = await supabase
     .from("profiles")
     .update({
-      phone: parsed.data.phone || null,
-      postal_address: parsed.data.postal_address || null,
+      // Only the keys the caller sent. The profile page saves one field at a
+      // time on blur, so a name save must not blank the phone number.
+      ...(parsed.data.first_name !== undefined ? { first_name: parsed.data.first_name || null } : {}),
+      ...(parsed.data.last_name !== undefined ? { last_name: parsed.data.last_name || null } : {}),
+      ...(parsed.data.phone !== undefined ? { phone: parsed.data.phone || null } : {}),
+      ...(parsed.data.postal_address !== undefined
+        ? { postal_address: parsed.data.postal_address || null }
+        : {}),
     })
     .eq("auth_user_id", userId);
 
@@ -79,6 +87,40 @@ export async function changePassword(currentPassword: string, newPassword: strin
   }
 
   return { success: true };
+}
+
+export async function requestEmailChange(currentPassword: string, newEmail: string) {
+  const supabase = await createSupabaseServerClient();
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user?.email) throw new Error("Not authenticated");
+
+  const email = newEmail.trim().toLowerCase();
+  if (!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(email)) {
+    return { error: "That doesn't look like an email address." };
+  }
+  if (email === user.email.toLowerCase()) {
+    return { error: "That is already your email address." };
+  }
+
+  // Same re-auth pattern as changePassword. An email address is the account's
+  // recovery route, so changing it behind an unlocked laptop should not be
+  // possible without the password.
+  const { error: verifyError } = await supabase.auth.signInWithPassword({
+    email: user.email,
+    password: currentPassword,
+  });
+  if (verifyError) {
+    return { error: "Current password is incorrect." };
+  }
+
+  // Supabase sends a confirmation link to the NEW address; the change only
+  // lands once it is clicked, so nobody can lock you out by typo.
+  const { error } = await supabase.auth.updateUser({ email });
+  if (error) {
+    return { error: error.message || "Could not start the email change." };
+  }
+
+  return { success: true, pendingEmail: email };
 }
 
 // ─── Company settings ──────────────────────────────────────

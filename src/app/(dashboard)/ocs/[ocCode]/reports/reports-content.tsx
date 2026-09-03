@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { Download, Loader2, CalendarIcon } from "lucide-react";
+import { Download, CalendarIcon } from "lucide-react";
 import { format } from "date-fns";
 import { Calendar } from "@/components/ui/calendar";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
@@ -386,6 +386,28 @@ export function ReportsContent({
               </Select>
             </div>
 
+            {/* The picker and Generate stay on this row, ALWAYS.
+                Report-specific fields go in the block below it.
+
+                They used to share one flex row, so choosing a report inserted
+                controls BETWEEN the picker and the button, and the button
+                jumped out from under the cursor mid-click. That reflow is
+                what read as the page flashing. */}
+            <Button onClick={handleGenerate} disabled={!reportType || generating} loading={generating}>
+              Generate report
+            </Button>
+
+            {pdfUrl && (
+              <Button variant="outline" onClick={handleDownload}>
+                <Download className="mr-2 h-4 w-4" />
+                Download PDF
+              </Button>
+            )}
+          </div>
+
+          {/* empty:hidden so an unchosen report leaves no gap. */}
+          <div className="mt-4 flex flex-wrap items-end gap-4 empty:hidden">
+
             {/* Lot filter for levy history (managers only) */}
             {reportType === "levy_history" && !isLotOwner && (
               <div className="space-y-1.5 min-w-[200px]">
@@ -591,27 +613,6 @@ export function ReportsContent({
               </div>
             )}
 
-            <Button
-              onClick={handleGenerate}
-              disabled={!reportType || generating}
-              className="cursor-pointer"
-            >
-              {generating ? (
-                <>
-                  <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                  Generating...
-                </>
-              ) : (
-                "Generate report"
-              )}
-            </Button>
-
-            {pdfUrl && (
-              <Button variant="outline" onClick={handleDownload} className="cursor-pointer">
-                <Download className="mr-2 h-4 w-4" />
-                Download PDF
-              </Button>
-            )}
 
             {csvBlobUrl && (
               <Button
