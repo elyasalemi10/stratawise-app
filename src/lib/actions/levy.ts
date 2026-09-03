@@ -543,7 +543,7 @@ async function countLotsPerOwnerInOc(
 ): Promise<Map<string, number>> {
   const result = new Map<string, number>();
   const { data: rows } = await supabase
-    .from("lot_owners")
+    .from("v_lot_current_owners")
     .select("lot_id, name, email")
     .eq("oc_id", ocId);
   if (!rows?.length) return result;
@@ -575,7 +575,7 @@ async function resolveLevyReferences(
   // went with Macquarie DEFT.
   // First-seen wins for joint-owner lots.
   const { data: ownerRows } = await supabase
-    .from("lot_owners")
+    .from("v_lot_current_owners")
     .select("lot_id, payment_reference")
     .in("lot_id", lotIds);
   const refByLot = new Map<string, string>();
@@ -1103,7 +1103,7 @@ export async function getLevyBatchDetail(ocId: string, batchId: string): Promise
     getLotOwners(supabase, lotIds),
     lotIds.length > 0
       ? supabase
-          .from("lot_owners")
+          .from("v_lot_current_owners")
           .select("lot_id, payment_reference")
           .in("lot_id", lotIds)
           .not("payment_reference", "is", null)
@@ -1510,7 +1510,7 @@ async function activeLotOwnerId(
   lotId: string,
 ): Promise<string | null> {
   const { data } = await supabase
-    .from("lot_owners")
+    .from("v_lot_current_owners")
     .select("id, ownership_since")
     .eq("lot_id", lotId)
     .order("ownership_since", { ascending: false, nullsFirst: false })

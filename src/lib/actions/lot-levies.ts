@@ -61,7 +61,7 @@ export async function listLotLevies(lotId: string): Promise<LotLevyRow[]> {
       .order("due_date", { ascending: false })
       .limit(500),
     supabase
-      .from("lot_owners")
+      .from("v_lot_current_owners")
       .select("payment_reference")
       .eq("lot_id", lotId)
       .not("payment_reference", "is", null)

@@ -55,12 +55,11 @@ export async function autoLinkBySenderEmail(
   // Join via the inner select on lots → owners_corporations so RLS /
   // direct filtering both work.
   const { data: matches } = await supabase
-    .from("lot_owners")
+    .from("v_lot_current_owners")
     .select(
       "id, lot_id, oc_id, lots!inner(id, oc_id, owners_corporations!inner(management_company_id))",
     )
     .ilike("email", email)
-    .is("left_at", null)
     .eq("lots.owners_corporations.management_company_id", companyId);
 
   const rows = (matches ?? []) as Array<{

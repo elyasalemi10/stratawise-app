@@ -106,19 +106,17 @@ export async function recordOcConsent(ocId: string, categories: string[]) {
     return { error: "Failed to save your preferences. Please try again." };
   }
 
-  // Mirror onto the owner's lot_owners row + audit log (best-effort).
+  // Record it on the ownership + audit log (best-effort).
   if (membership.lot_id) {
     const { data: lotOwner } = await supabase
-      .from("lot_owners")
+      .from("v_lot_current_owners")
       .select("id, digital_consent_categories")
       .eq("lot_id", membership.lot_id)
-      .order("created_at", { ascending: false })
-      .limit(1)
       .maybeSingle();
     if (lotOwner) {
       const before = (lotOwner.digital_consent_categories as string[] | null) ?? [];
       await supabase
-        .from("lot_owners")
+        .from("lot_ownerships")
         .update({
           digital_consent_categories: cats,
           digital_consent_given_at: new Date().toISOString(),

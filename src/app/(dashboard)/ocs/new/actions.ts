@@ -1381,7 +1381,18 @@ export async function completeWizard(draftId: string) {
       }
     }
 
-    // Insert lot_owners for any lot that had at least a name or contact.
+    // Owners. ONE call: set_lot_owners_bulk writes the owners row and the
+    // open lot_ownerships row for every captured lot inside a single
+    // transaction, and hands back the ids so the audit trail can be written
+    // without a second lookup.
+    //
+    // This used to be an insert into the denormalised lot_owners table
+    // followed by a per-lot RPC, both marked non-fatal: if the first failed
+    // we logged and carried on, and a lot could end up with a contact row
+    // and no ownership at all , invisible to v_lot_current_owners, and
+    // therefore absent from owner lists, levy distribution and
+    // communications, with nothing to indicate it. One table, one call, and
+    // failures are reported rather than swallowed.
     const lotByNumber = new Map<number, string>();
     for (const l of insertedLots) lotByNumber.set(l.lot_number, l.id);
 
@@ -1390,6 +1401,11 @@ export async function completeWizard(draftId: string) {
     const refPrefix = oc.short_code.slice(0, 5).toUpperCase();
     const paymentRefFor = (lotNumber: number) =>
       `${refPrefix}-${String(lotNumber).padStart(3, "0")}`;
+
+    const ownerStartDate =
+      d.manager_appointment_date ??
+      d.opening_balance_date ??
+      new Date().toISOString().slice(0, 10);
 
     const ownerRows = d.lots
       .map((l) => {
@@ -1400,17 +1416,9 @@ export async function completeWizard(draftId: string) {
         if (!name && !email && !phone && !postal) return null;
         const lotId = lotByNumber.get(l.lot_number);
         if (!lotId) return null;
-        // Initial digital-comms consent recorded by the manager on Step 3.2
-        // of the wizard. source='manager_initial' (no IP / user-agent)
-        // because the manager is attesting on the owner's behalf , when the
-        // owner later signs up via the portal, that flow overwrites these
-        // with source='signup_flow' + their real IP + UA.
-        const consentCats = l.digital_consent_categories ?? [];
-        const hasConsent = consentCats.length > 0;
-        const signupCats = l.at_portal_signup_categories ?? [];
         // Resolve occupancy. The explicit enum wins; if the manager skipped
-        // tenant info (Item 18) we default to 'vacant'. Otherwise derive from
-        // the legacy boolean + tenant presence.
+        // tenant info we default to 'vacant'. Otherwise derive from the
+        // wizard's owner-occupied flag + whether a tenant was named.
         const occupancyStatus: "owner_occupied" | "tenanted" | "vacant" =
           l.occupancy_status ??
           (l.is_occupied_by_owner === false
@@ -1418,196 +1426,137 @@ export async function completeWizard(draftId: string) {
               ? "tenanted"
               : "vacant"
             : "owner_occupied");
+        // Initial digital-comms consent recorded by the manager on Step 3.2
+        // of the wizard. source='manager_initial' (no IP / user-agent)
+        // because the manager is attesting on the owner's behalf , when the
+        // owner later signs up via the portal, that flow overwrites these
+        // with source='portal_signup' + their real IP + UA.
+        const consentCats = l.digital_consent_categories ?? [];
         return {
           lot_id: lotId,
+          lot_number: l.lot_number,
           oc_id: oc.id,
+          management_company_id: profile.management_company_id,
           name: name || "Owner",
           owner_type: l.owner_type ?? "individual",
           email: email || null,
           phone: phone || null,
           postal_address: postal || null,
-          is_occupied_by_owner: occupancyStatus === "owner_occupied",
+          start_date: ownerStartDate,
+          payment_reference: paymentRefFor(l.lot_number),
           occupancy_status: occupancyStatus,
           tenant_name: occupancyStatus === "tenanted" ? l.tenant_name || null : null,
           tenant_email: occupancyStatus === "tenanted" ? l.tenant_email || null : null,
           tenant_phone: occupancyStatus === "tenanted" ? l.tenant_phone || null : null,
-          digital_consent_categories: consentCats,
-          digital_consent_given_at: hasConsent ? new Date().toISOString() : null,
-          digital_consent_source: hasConsent ? "manager_initial" as const : null,
-          at_portal_signup_categories: signupCats,
-          payment_reference: paymentRefFor(l.lot_number),
+          consent_categories: consentCats,
+          consent_source: consentCats.length > 0 ? "manager_initial" : null,
+          at_portal_signup_categories: l.at_portal_signup_categories ?? [],
         };
       })
       .filter((x): x is NonNullable<typeof x> => x !== null);
 
+    const ownershipIdByLotId = new Map<string, string>();
     if (ownerRows.length > 0) {
-      const { data: insertedOwners, error: ownersError } = await supabase
-        .from("lot_owners")
-        .insert(ownerRows)
-        .select("id, lot_id, digital_consent_categories");
-      if (ownersError) {
-        console.error("lot_owners insert failed (non-fatal):", ownersError);
+      const { data: setRows, error: setErr } = await supabase.rpc("set_lot_owners_bulk", {
+        p_rows: ownerRows,
+      });
+      if (setErr) {
+        console.error("completeWizard: set_lot_owners_bulk failed", setErr);
       }
-      // Seed the consent audit log for any owner who arrived with
-      // categories ticked by the manager. before_categories is empty
-      // (no prior state); after carries the manager-attested set.
-      // Source = manager_initial; IP / UA are null because the manager
-      // is attesting on the owner's behalf, not the owner themselves.
-      if (insertedOwners && insertedOwners.length > 0) {
-        const consentLogRows = insertedOwners
-          .filter((o) => Array.isArray(o.digital_consent_categories) && o.digital_consent_categories.length > 0)
-          .map((o) => ({
-            lot_owner_id: o.id,
-            oc_id: oc.id,
-            before_categories: [],
-            after_categories: o.digital_consent_categories,
-            source: "manager_initial" as const,
-            actor_profile_id: profile.id,
-          }));
-        if (consentLogRows.length > 0) {
-          const { error: consentLogErr } = await supabase.from("lot_owner_consent_log").insert(consentLogRows);
-          if (consentLogErr) {
-            console.error("lot_owner_consent_log seed failed (non-fatal):", consentLogErr);
-          }
-        }
+      for (const r of (setRows ?? []) as Array<{ lot_id: string; ownership_id: string }>) {
+        if (r.lot_id && r.ownership_id) ownershipIdByLotId.set(r.lot_id, r.ownership_id);
+      }
+      const missing = ownerRows.filter((r) => !ownershipIdByLotId.has(r.lot_id));
+      if (missing.length > 0) {
+        console.error(
+          "completeWizard: lots created without a recorded owner:",
+          missing.map((r) => r.lot_number).join(", "),
+        );
+      }
 
-        // Per-owner audit entries so the lot history shows "Owner added"
-        // for each lot that had an owner attached at OC creation.
-        const ownerAuditRows = insertedOwners.map((o) => {
-          const draftLot = (d.lots ?? []).find((dl) => lotByNumber.get(dl.lot_number) === o.lot_id);
-          return {
-            profile_id: profile.id,
-            oc_id: oc.id,
-            action: "create" as const,
-            entity_type: "lot_owner" as const,
-            entity_id: o.id,
-            after_state: draftLot
-              ? {
-                  name: draftLot.owner_name ?? null,
-                  email: draftLot.owner_email ?? null,
-                  occupancy_status: draftLot.occupancy_status ?? null,
-                }
-              : {},
-            metadata: { source: "oc_wizard_v2", lot_id: o.lot_id },
-          };
-        });
-        if (ownerAuditRows.length > 0) {
-          const { error: ownerAuditErr } = await supabase
-            .from("audit_log")
-            .insert(ownerAuditRows);
-          if (ownerAuditErr) {
-            console.error("completeWizard: owner-create audit insert failed (non-fatal)", ownerAuditErr);
-          }
+      // The wizard also captures which categories to ASK about at portal
+      // signup. That is not part of setting an owner, so it goes on in a
+      // single follow-up write rather than widening the RPC further.
+      const signupRows = ownerRows.filter(
+        (r) => r.at_portal_signup_categories.length > 0 && ownershipIdByLotId.has(r.lot_id),
+      );
+      for (const r of signupRows) {
+        await supabase
+          .from("lot_ownerships")
+          .update({ at_portal_signup_categories: r.at_portal_signup_categories })
+          .eq("id", ownershipIdByLotId.get(r.lot_id) as string);
+      }
+
+      // Seed the consent audit log for any owner who arrived with
+      // categories ticked by the manager. before_categories is empty (no
+      // prior state); after carries the manager-attested set. IP / UA are
+      // null because the manager is attesting on the owner's behalf.
+      const consentLogRows = ownerRows
+        .filter((r) => r.consent_categories.length > 0 && ownershipIdByLotId.has(r.lot_id))
+        .map((r) => ({
+          lot_owner_id: ownershipIdByLotId.get(r.lot_id) as string,
+          oc_id: oc.id,
+          before_categories: [],
+          after_categories: r.consent_categories,
+          source: "manager_initial" as const,
+          actor_profile_id: profile.id,
+        }));
+      if (consentLogRows.length > 0) {
+        const { error: consentLogErr } = await supabase
+          .from("lot_owner_consent_log")
+          .insert(consentLogRows);
+        if (consentLogErr) {
+          console.error("lot_owner_consent_log seed failed (non-fatal):", consentLogErr);
+        }
+      }
+
+      // Per-owner audit entries so the lot history shows "Owner added"
+      // for each lot that had an owner attached at OC creation.
+      const ownerAuditRows = ownerRows
+        .filter((r) => ownershipIdByLotId.has(r.lot_id))
+        .map((r) => ({
+          profile_id: profile.id,
+          oc_id: oc.id,
+          action: "create" as const,
+          entity_type: "lot_owner" as const,
+          entity_id: ownershipIdByLotId.get(r.lot_id) as string,
+          after_state: {
+            name: r.name,
+            email: r.email,
+            occupancy_status: r.occupancy_status,
+          },
+          metadata: { source: "oc_wizard_v2", lot_id: r.lot_id },
+        }));
+      if (ownerAuditRows.length > 0) {
+        const { error: ownerAuditErr } = await supabase
+          .from("audit_log")
+          .insert(ownerAuditRows);
+        if (ownerAuditErr) {
+          console.error("completeWizard: owner-create audit insert failed (non-fatal)", ownerAuditErr);
         }
       }
     }
 
-    // Entity-model writes: every captured lot owner also gets an owner
-    // row + an active lot_ownership row. profile_id stays NULL until the
-    // owner accepts a portal invite , at which point a future migration
-    // step (the accept flow) flips profile_id on the owner row. Both
-    // writes are non-fatal so a failure here can't break OC creation.
-    try {
-      const startDate = d.manager_appointment_date
-        ?? d.opening_balance_date
-        ?? new Date().toISOString().slice(0, 10);
-      const ownerEntityRows = d.lots
-        .map((l) => {
-          const name = (l.owner_name ?? "").trim();
-          const email = (l.owner_email ?? "").trim();
-          const phone = (l.owner_phone ?? "").trim();
-          const postal = (l.owner_postal_address ?? "").trim();
-          if (!name && !email && !phone && !postal) return null;
-          const lotId = lotByNumber.get(l.lot_number);
-          if (!lotId) return null;
-          return {
-            lot_id: lotId,
-            lot_number: l.lot_number,
-            owner_payload: {
-              management_company_id: profile.management_company_id,
-              owner_type: (l.owner_type ?? "individual") as "individual" | "company",
-              name: name || "Owner",
-              email: email || null,
-              phone: phone || null,
-              postal_address: postal || null,
-            },
-          };
-        })
-        .filter((x): x is NonNullable<typeof x> => x !== null);
-
-      // Ownership goes through set_lot_owner, which writes owners,
-      // lot_ownerships AND the lot_owners mirror in ONE transaction.
-      //
-      // This used to be two inserts here, both marked non-fatal: if the
-      // owners insert failed we logged and carried on, and if the count came
-      // back short we skipped every ownership row. A lot could end up in
-      // lot_owners with no ownership at all , invisible to
-      // v_lot_current_owners, and therefore absent from owner lists, levy
-      // distribution and communications, with nothing to indicate it.
-      //
-      // Failures are reported now rather than swallowed. An OC created
-      // without owners is worth telling someone about.
-      const ownershipFailures: number[] = [];
-      for (const r of ownerEntityRows) {
-        const { error: setErr } = await supabase.rpc("set_lot_owner", {
-          p_lot_id: r.lot_id,
-          p_oc_id: oc.id,
-          p_management_company_id: profile.management_company_id,
-          p_name: r.owner_payload.name,
-          p_email: r.owner_payload.email,
-          p_phone: r.owner_payload.phone,
-          p_postal_address: r.owner_payload.postal_address,
-          p_owner_type: r.owner_payload.owner_type,
-          p_start_date: startDate,
-          p_payment_reference: paymentRefFor(r.lot_number),
-        });
-        if (setErr) {
-          console.error(`set_lot_owner failed for lot ${r.lot_number}:`, setErr);
-          ownershipFailures.push(r.lot_number);
-        }
-      }
-      if (ownershipFailures.length > 0) {
-        console.error(
-          "completeWizard: lots created without a recorded owner:",
-          ownershipFailures.join(", "),
-        );
-      }
-
-      // management_agreements: every newly-created OC gets an active
-      // agreement row scoped to the current manager. Mirrors the backfill
-      // applied to existing OCs in the entity-model migration.
-      const { error: agreementErr } = await supabase
-        .from("management_agreements")
-        .insert({
-          oc_id: oc.id,
-          management_company_id: profile.management_company_id,
-          start_date: d.manager_appointment_date ?? new Date().toISOString().slice(0, 10),
-        });
-      if (agreementErr) {
-        console.error("management_agreements insert failed (non-fatal):", agreementErr);
-      }
-    } catch (err) {
-      console.error("entity-model writes failed (non-fatal)", err);
+    // management_agreements: every newly-created OC gets an active
+    // agreement row scoped to the current manager. Mirrors the backfill
+    // applied to existing OCs in the entity-model migration.
+    const { error: agreementErr } = await supabase
+      .from("management_agreements")
+      .insert({
+        oc_id: oc.id,
+        management_company_id: profile.management_company_id,
+        start_date: d.manager_appointment_date ?? new Date().toISOString().slice(0, 10),
+      });
+    if (agreementErr) {
+      console.error("management_agreements insert failed (non-fatal):", agreementErr);
     }
 
     // Committee snapshot. Only insert rows when the manager said the OC
     // has an active committee AND captured at least one name on Step 6.
-    // Empty roles are dropped. lot_owner_id is resolved by mapping each
-    // committee member's lot_number to the inserted lots and looking up
-    // the matching lot_owner from the freshly-inserted lot_owners rows.
+    // Empty roles are dropped. lot_owner_id is the ownership the bulk owner
+    // write just created for that member's lot.
     const committeeMembers = d.committee_members ?? [];
     if ((d.has_active_committee ?? true) && committeeMembers.length > 0) {
-      // Fetch the inserted lot_owners' ids keyed by lot_id, so we can
-      // populate lot_owner_id for each committee row that points at a
-      // captured lot owner.
-      const { data: ownersForCommittee } = await supabase
-        .from("lot_owners")
-        .select("id, lot_id")
-        .in("lot_id", insertedLots.map((l) => l.id));
-      const ownerIdByLotId = new Map<string, string>();
-      for (const o of ownersForCommittee ?? []) {
-        if (!ownerIdByLotId.has(o.lot_id)) ownerIdByLotId.set(o.lot_id, o.id);
-      }
       const committeeRows = committeeMembers
         .filter((m) => (m.name ?? "").trim())
         .map((m) => {
@@ -1615,7 +1564,7 @@ export async function completeWizard(draftId: string) {
           return {
             oc_id: oc.id,
             role: m.role,
-            lot_owner_id: lotId ? (ownerIdByLotId.get(lotId) ?? null) : null,
+            lot_owner_id: lotId ? (ownershipIdByLotId.get(lotId) ?? null) : null,
             name: m.name.trim(),
             email: m.email?.trim() || null,
             phone: m.phone?.trim() || null,

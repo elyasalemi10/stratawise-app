@@ -67,13 +67,18 @@ export async function updateLotDetails(
 }
 
 // ─── updateLotOwnerContact ──────────────────────────────────────────────────
-// Edits the lot_owners contact record. The email column on lot_owners is the
-// OC-facing contact email , it's intentionally separate from the platform
-// login email on profiles (Item 19). When the lot owner has already accepted
-// their portal invite, we lock the email field (the popover must hide it)
-// because changing it without their consent would be a personal-data issue.
+// Edits the PERSON, not the lot link. Name, email, phone, postal address and
+// owner type live on `owners`, so a manager fixing a typo on one lot fixes it
+// on every lot that person owns , which is the reason the model was split in
+// the first place.
+//
+// The email column here is the OC-facing contact email; it is intentionally
+// separate from the platform login email on profiles. Once the owner has
+// accepted their portal invite we refuse email edits, because changing it
+// without their consent is a personal-data problem.
 
 const updateLotOwnerContactSchema = z.object({
+  // The ownership row's id (what v_lot_current_owners exposes as `id`).
   lot_owner_id: z.string().uuid(),
   owner_type: z.enum(["individual", "company"]).nullable().optional(),
   name: z.string().trim().min(1).max(120).optional(),
@@ -99,32 +104,29 @@ export async function updateLotOwnerContact(
   const profile = await requireCompanyRole();
   const supabase = createServerClient();
 
-  const { data: before, error: fetchErr } = await supabase
-    .from("lot_owners")
-    .select(
-      "id, lot_id, owner_type, name, phone, postal_address, email, invitation_id, postal_address_verification_status",
-    )
+  const { data: ownership, error: fetchErr } = await supabase
+    .from("lot_ownerships")
+    .select("id, lot_id, oc_id, owner_id, invitation_id")
     .eq("id", parsed.data.lot_owner_id)
     .single();
-  if (fetchErr || !before) return { ok: false, error: "Owner not found" };
+  if (fetchErr || !ownership) return { ok: false, error: "Owner not found" };
 
-  // Resolve the owning OC and authorize before any mutation.
-  const { data: ownerLot } = await supabase
-    .from("lots")
-    .select("oc_id")
-    .eq("id", before.lot_id as string)
-    .maybeSingle();
-  const ocId = (ownerLot?.oc_id as string | undefined) ?? null;
-  if (!ocId) return { ok: false, error: "Owner not found" };
-  await requireOCAccess(ocId);
+  await requireOCAccess(ownership.oc_id as string);
+
+  const { data: before, error: ownerErr } = await supabase
+    .from("owners")
+    .select("id, owner_type, name, phone, postal_address, email")
+    .eq("id", ownership.owner_id as string)
+    .single();
+  if (ownerErr || !before) return { ok: false, error: "Owner not found" };
 
   // Block email edits when the owner has accepted the invite , they own their
   // login email at that point and changes need to go through the portal.
-  if (parsed.data.email !== undefined && before.invitation_id) {
+  if (parsed.data.email !== undefined && ownership.invitation_id) {
     const { data: inv } = await supabase
       .from("invitations")
       .select("status")
-      .eq("id", before.invitation_id as string)
+      .eq("id", ownership.invitation_id as string)
       .maybeSingle();
     if (inv?.status === "accepted") {
       return {
@@ -149,30 +151,31 @@ export async function updateLotOwnerContact(
   if (Object.keys(update).length === 0) {
     return { ok: true, data: { lot_owner_id: parsed.data.lot_owner_id } };
   }
+  update.updated_at = new Date().toISOString();
 
   const { error: updErr } = await supabase
-    .from("lot_owners")
+    .from("owners")
     .update(update)
-    .eq("id", parsed.data.lot_owner_id);
+    .eq("id", ownership.owner_id as string);
   if (updErr) return { ok: false, error: "Could not save changes" };
 
   const diff = diffFields(before, update);
   await logAudit({
     profileId: profile.id,
-    ocId,
+    ocId: ownership.oc_id as string,
     action: "update",
-    entityType: "lot_owner",
-    entityId: parsed.data.lot_owner_id,
+    entityType: "owner",
+    entityId: ownership.owner_id as string,
     before: diff?.before ?? null,
     after: diff?.after ?? null,
-    metadata: { lot_id: before.lot_id },
+    metadata: { lot_id: ownership.lot_id, ownership_id: ownership.id },
   });
 
   return { ok: true, data: { lot_owner_id: parsed.data.lot_owner_id } };
 }
 
 // ─── updateTenant ───────────────────────────────────────────────────────────
-// Tenant fields on lot_owners are nullable; passing null clears them. Editing
+// Tenant fields on the ownership are nullable; passing null clears them. Editing
 // is only meaningful when occupancy_status='tenanted'; the UI gates this.
 
 const updateTenantSchema = z.object({
@@ -192,19 +195,13 @@ export async function updateTenant(
   const supabase = createServerClient();
 
   const { data: before, error: fetchErr } = await supabase
-    .from("lot_owners")
-    .select("id, lot_id, tenant_name, tenant_email, tenant_phone")
+    .from("lot_ownerships")
+    .select("id, lot_id, oc_id, tenant_name, tenant_email, tenant_phone")
     .eq("id", parsed.data.lot_owner_id)
     .single();
   if (fetchErr || !before) return { ok: false, error: "Lot owner not found" };
 
-  const { data: tenantLot } = await supabase
-    .from("lots")
-    .select("oc_id")
-    .eq("id", before.lot_id as string)
-    .maybeSingle();
-  const ocId = (tenantLot?.oc_id as string | undefined) ?? null;
-  if (!ocId) return { ok: false, error: "Lot owner not found" };
+  const ocId = before.oc_id as string;
   await requireOCAccess(ocId);
 
   const update: Record<string, unknown> = {};
@@ -216,7 +213,7 @@ export async function updateTenant(
   }
 
   const { error: updErr } = await supabase
-    .from("lot_owners")
+    .from("lot_ownerships")
     .update(update)
     .eq("id", parsed.data.lot_owner_id);
   if (updErr) return { ok: false, error: "Could not save changes" };
@@ -237,10 +234,11 @@ export async function updateTenant(
 }
 
 // ─── updateOccupancyStatus ──────────────────────────────────────────────────
-// Drives the 3-state Tenancy tab (Item 14). The canonical column is
-// occupancy_status (enum); we sync is_occupied_by_owner for the legacy boolean
-// reader. Moving to 'vacant' or 'owner_occupied' also clears tenant fields to
-// avoid leaving stale data behind.
+// Drives the 3-state Tenancy tab. occupancy_status (enum) is the only
+// column: the is_occupied_by_owner boolean was a second copy that could
+// disagree with it, and is now derived in the view instead. Moving to
+// 'vacant' or 'owner_occupied' also clears tenant fields so no stale
+// tenant is left behind.
 
 const updateOccupancySchema = z.object({
   lot_owner_id: z.string().uuid(),
@@ -258,26 +256,17 @@ export async function updateOccupancyStatus(
   const supabase = createServerClient();
 
   const { data: before, error: fetchErr } = await supabase
-    .from("lot_owners")
-    .select(
-      "id, lot_id, occupancy_status, is_occupied_by_owner, tenant_name, tenant_email, tenant_phone",
-    )
+    .from("lot_ownerships")
+    .select("id, lot_id, oc_id, occupancy_status, tenant_name, tenant_email, tenant_phone")
     .eq("id", parsed.data.lot_owner_id)
     .single();
   if (fetchErr || !before) return { ok: false, error: "Lot owner not found" };
 
-  const { data: occupancyLot } = await supabase
-    .from("lots")
-    .select("oc_id")
-    .eq("id", before.lot_id as string)
-    .maybeSingle();
-  const ocId = (occupancyLot?.oc_id as string | undefined) ?? null;
-  if (!ocId) return { ok: false, error: "Lot owner not found" };
+  const ocId = before.oc_id as string;
   await requireOCAccess(ocId);
 
   const update: Record<string, unknown> = {
     occupancy_status: parsed.data.occupancy_status,
-    is_occupied_by_owner: parsed.data.occupancy_status === "owner_occupied",
   };
 
   if (
@@ -290,7 +279,7 @@ export async function updateOccupancyStatus(
   }
 
   const { error: updErr } = await supabase
-    .from("lot_owners")
+    .from("lot_ownerships")
     .update(update)
     .eq("id", parsed.data.lot_owner_id);
   if (updErr) return { ok: false, error: "Could not save changes" };
@@ -332,23 +321,17 @@ export async function updateConsentCategories(
   const supabase = createServerClient();
 
   const { data: before, error: fetchErr } = await supabase
-    .from("lot_owners")
-    .select("id, lot_id, digital_consent_categories")
+    .from("lot_ownerships")
+    .select("id, lot_id, oc_id, digital_consent_categories")
     .eq("id", parsed.data.lot_owner_id)
     .single();
   if (fetchErr || !before) return { ok: false, error: "Lot owner not found" };
 
-  const { data: consentLot } = await supabase
-    .from("lots")
-    .select("oc_id")
-    .eq("id", before.lot_id as string)
-    .maybeSingle();
-  const ocId = (consentLot?.oc_id as string | undefined) ?? null;
-  if (!ocId) return { ok: false, error: "Lot owner not found" };
+  const ocId = before.oc_id as string;
   await requireOCAccess(ocId);
 
   const { error: updErr } = await supabase
-    .from("lot_owners")
+    .from("lot_ownerships")
     .update({
       digital_consent_categories: parsed.data.categories,
       digital_consent_source: "manager_edit",

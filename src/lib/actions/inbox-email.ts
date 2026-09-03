@@ -536,7 +536,7 @@ export async function searchPeopleForAssociate(
   // Step 3: current owners across those lots.
   const lotIds = Array.from(lotMap.keys());
   const { data: owners } = await supabase
-    .from("lot_owners")
+    .from("v_lot_current_owners")
     .select("lot_id, name, email")
     .in("lot_id", lotIds);
 
@@ -603,7 +603,7 @@ export async function listAllPeopleOwnerships(): Promise<PersonOwnershipOption[]
   if (lotMap.size === 0) return [];
 
   const { data: owners } = await supabase
-    .from("lot_owners")
+    .from("v_lot_current_owners")
     .select("lot_id, name, email")
     .in("lot_id", Array.from(lotMap.keys()));
 
@@ -677,7 +677,7 @@ export async function listLotsForAssociate(
   const ownerLookup: Record<string, string | null> = {};
   if (lotIds.length > 0) {
     const { data: owners } = await supabase
-      .from("lot_owners")
+      .from("v_lot_current_owners")
       .select("lot_id, name")
       .in("lot_id", lotIds);
     for (const o of owners ?? []) {

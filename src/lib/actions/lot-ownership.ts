@@ -46,86 +46,31 @@ export async function getLotOwners(
 
   for (const id of lotIds) result.set(id, emptyOwner(id));
 
-  // ─── Source of truth #0 (manager-maintained contact): lot_owners ─────
-  // The lot_owners table is the manually-maintained contact record that
-  // managers edit from the lot detail page. When a manager removes /
-  // updates an email here, the change SHOULD propagate to outgoing
-  // levies immediately , so we read this table FIRST and prefer its
-  // email/name/phone over the older entity-model rows. The historical
-  // `lot_ownerships → owners` data still feeds the portal-user link
-  // (member vs pending), but the contact details follow lot_owners.
-  // These two reads are independent of each other , only the oc_members
-  // fallback further down depends on their combined result , so they go in
-  // parallel. Sequentially they cost two round trips at ~55ms each on every
-  // lots page load.
-  const [{ data: contacts }, { data: ownerships }] = await Promise.all([
-    supabase
-      .from("lot_owners")
-      .select("lot_id, name, email, phone, ownership_since")
-      .in("lot_id", lotIds)
-      .order("ownership_since", { ascending: false, nullsFirst: false }),
-    supabase
-      .from("lot_ownerships")
-      .select("lot_id, owners!inner(id, name, email, phone, profile_id)")
-      .in("lot_id", lotIds)
-      .is("end_date", null),
-  ]);
-
-  const contactByLot = new Map<string, { name: string | null; email: string | null; phone: string | null }>();
-  for (const c of contacts ?? []) {
-    if (!c.lot_id) continue;
-    // First-seen wins because the order is most-recent ownership first.
-    // Older / removed contact rows for the same lot are ignored.
-    if (!contactByLot.has(c.lot_id)) {
-      contactByLot.set(c.lot_id, {
-        name: c.name ?? null,
-        email: c.email ?? null,
-        phone: c.phone ?? null,
-      });
-    }
-  }
-
-  // ─── Source of truth #1: lot_ownerships + owners (new entity model) ──
+  // ─── Source of truth #1: the current ownership ───────────────────────
   //
-  // For OCs created post-entity-migration, every captured owner has an
-  // active lot_ownership pointing at an owner row. profile_id != null on
-  // the owner row means they've accepted a portal invite (= "member").
+  // One read. There used to be two, because contact details lived on the
+  // denormalised lot_owners row while the portal link lived on owners, and
+  // this function had to merge them field by field and decide which won.
+  // Both now come from the same row, so there is nothing to reconcile.
+  //
+  // profile_id != null on the owner means they have accepted a portal
+  // invite (= "member"); otherwise they are a captured owner awaiting one.
+  const { data: currentOwners } = await supabase
+    .from("v_lot_current_owners")
+    .select("lot_id, name, email, phone, profile_id")
+    .in("lot_id", lotIds);
 
-  for (const lo of ownerships ?? []) {
-    if (!lo.lot_id) continue;
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const owner = (lo as any).owners;
-    if (!owner) continue;
-    // Prefer the manager-maintained lot_owners contact email/name/phone
-    // when present; fall back to the entity-model owner's fields.
-    const contact = contactByLot.get(lo.lot_id);
-    result.set(lo.lot_id, {
-      lot_id: lo.lot_id,
-      owner_status: owner.profile_id ? "member" : "pending_invitation",
-      owner_display_name: contact?.name ?? owner.name ?? null,
-      owner_contact_email: contact?.email ?? owner.email ?? null,
-      owner_contact_phone: contact?.phone ?? owner.phone ?? null,
-      profile_id: owner.profile_id ?? null,
+  for (const o of currentOwners ?? []) {
+    if (!o.lot_id) continue;
+    result.set(o.lot_id, {
+      lot_id: o.lot_id,
+      owner_status: o.profile_id ? "member" : "pending_invitation",
+      owner_display_name: o.name ?? null,
+      owner_contact_email: o.email ?? null,
+      owner_contact_phone: o.phone ?? null,
+      profile_id: o.profile_id ?? null,
       invitation_id: null,
     });
-  }
-
-  // For OCs that have no lot_ownerships rows yet (purely wizard-created,
-  // never migrated), the lot_owners contact alone is sufficient. Seed
-  // those lots from the contact map now , the legacy fallbacks below
-  // only fire when nothing else resolved.
-  for (const [lotId, contact] of contactByLot.entries()) {
-    if (result.get(lotId)?.owner_status === "unowned" && contact.email) {
-      result.set(lotId, {
-        lot_id: lotId,
-        owner_status: "pending_invitation",
-        owner_display_name: contact.name,
-        owner_contact_email: contact.email,
-        owner_contact_phone: contact.phone,
-        profile_id: null,
-        invitation_id: null,
-      });
-    }
   }
 
   // ─── Source of truth #2: legacy oc_members (pre-entity-migration OCs) ─

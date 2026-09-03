@@ -63,11 +63,9 @@ export default async function LotOwnerOnboardingPage() {
   let initialCategories: string[] = [];
   if (pending.lot_id) {
     const { data: lotOwner } = await supabase
-      .from("lot_owners")
+      .from("v_lot_current_owners")
       .select("at_portal_signup_categories, digital_consent_categories")
       .eq("lot_id", pending.lot_id)
-      .order("created_at", { ascending: false })
-      .limit(1)
       .maybeSingle();
     initialCategories =
       (lotOwner?.at_portal_signup_categories as string[] | null) ??

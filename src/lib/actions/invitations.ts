@@ -253,6 +253,10 @@ export async function acceptInvitation(rawCode: string) {
             .from("owners")
             .update({ profile_id: profile.id })
             .eq("id", activeOwnership.owner_id);
+          await supabase
+            .from("lot_ownerships")
+            .update({ invitation_id: invitation.id })
+            .eq("id", activeOwnership.id);
         } else if (managementCompanyId) {
           // Legacy OC , no owner / lot_ownership yet. Create both.
           const acceptDate = new Date().toISOString().slice(0, 10);
@@ -276,6 +280,7 @@ export async function acceptInvitation(rawCode: string) {
               start_date: acceptDate,
               is_primary_contact: true,
               is_financial: true,
+              invitation_id: invitation.id,
             });
           }
         }

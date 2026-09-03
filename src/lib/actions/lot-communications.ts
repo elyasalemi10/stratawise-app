@@ -59,11 +59,9 @@ export async function logPhoneCall(
   // Snapshot current owner so future owners can't see confidential call
   // notes. Matches the email + SMS path.
   const { data: currentOwnerRow } = await supabase
-    .from("lot_owners")
+    .from("v_lot_current_owners")
     .select("id")
     .eq("lot_id", parsed.data.lot_id)
-    .order("created_at", { ascending: false })
-    .limit(1)
     .maybeSingle();
   const currentLotOwnerId =
     (currentOwnerRow as { id: string } | null)?.id ?? null;
@@ -150,11 +148,9 @@ export async function sendLotSms(
 
   // Snapshot current owner so future owners can't read confidential SMS.
   const { data: currentOwnerRow } = await supabase
-    .from("lot_owners")
+    .from("v_lot_current_owners")
     .select("id")
     .eq("lot_id", parsed.data.lot_id)
-    .order("created_at", { ascending: false })
-    .limit(1)
     .maybeSingle();
   const currentLotOwnerId =
     (currentOwnerRow as { id: string } | null)?.id ?? null;
@@ -284,11 +280,9 @@ export async function sendLotEmail(
   // Snapshot the current owner of the lot so future owners can't read
   // any confidential thread that pre-dates their ownership.
   const { data: currentOwnerRow } = await supabase
-    .from("lot_owners")
+    .from("v_lot_current_owners")
     .select("id")
     .eq("lot_id", parsed.data.lot_id)
-    .order("created_at", { ascending: false })
-    .limit(1)
     .maybeSingle();
   const currentLotOwnerId =
     (currentOwnerRow as { id: string } | null)?.id ?? null;
@@ -414,7 +408,7 @@ export async function listLotCommunications(lotId: string): Promise<LotCommunica
   const ownerMap: Record<string, { name: string | null; email: string | null }> = {};
   if (ownerIds.length > 0) {
     const { data: owners } = await supabase
-      .from("lot_owners")
+      .from("v_lot_current_owners")
       .select("id, name, email")
       .in("id", ownerIds);
     (owners ?? []).forEach((o) => {

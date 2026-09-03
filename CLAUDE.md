@@ -177,20 +177,48 @@ A `data.ts` that awaits four things in sequence is still four round trips deep, 
 ### Testing it
 - **`next dev` has no client Router Cache and Turbopack remounts aggressively.** Judge cache behaviour against `npx next start` only.
 
-## Owner data model , owners + lot_ownerships is the target, lot_owners is being retired
+## Owner data model , owners + lot_ownerships, and nothing else
 
-Two owner models exist and are dual-written. They currently hold 29 rows each with zero drift, but nothing enforces that, so a write that touches one and not the other diverges silently.
+`lot_owners` is **gone**. It was a denormalised 29-column table that inlined a
+person's name / email / phone / address onto each lot link, so one person
+owning two lots was stored twice and could drift apart, which it had: two rows
+disagreed at the time it was dropped.
 
-- **`lot_owners`** , 29 columns, denormalised. The person's name/email/phone/address are inlined on the lot link, so one person owning two lots is stored twice. Also carries digital consent, tenant details, postal verification and delivery preference. **40 call sites.** LEGACY.
-- **`owners`** , the person or entity, scoped to a management company. Canonical identity.
-- **`lot_ownerships`** , the time-bounded link: `start_date`, `end_date`, `share_fraction`, `is_primary_contact`, `is_financial`, `source_settlement_id`. The only model that can express ownership CHANGING, which settlements require.
+The model is two tables and a view:
 
-**The target shape is `owners` + `lot_ownerships`.** It expresses one person owning several lots, joint ownership with shares, and ownership history. `lot_owners` cannot express any of that. The per-ownership extras still on `lot_owners` (consent, delivery preference, tenant, address verification) move onto `lot_ownerships`, after which `lot_owners` is dropped.
+- **`owners`** , the person or entity, scoped to a management company. Name,
+  email, phone, postal address, ABN, DOB, `profile_id` (set when they accept a
+  portal invite), and the postal-address verification fields. Editing here
+  changes every lot that person owns, which is the point.
+- **`lot_ownerships`** , one person's hold on one lot, time-bounded by
+  `start_date` / `end_date`. Carries everything that is true of THAT ownership
+  and not of the person: `share_fraction`, `is_primary_contact`, `is_financial`,
+  `occupancy_status`, `tenant_*`, `delivery_preference`, `payment_reference`,
+  the digital-consent fields, `at_portal_signup_categories`, `invitation_id`,
+  `source_settlement_id`.
+- **`v_lot_current_owners`** , the two joined, filtered to `end_date IS NULL`.
+  **Read this for "who owns this lot now".** Its `id` IS the ownership's id,
+  and it derives `is_occupied_by_owner` from `occupancy_status` rather than
+  storing a second copy that can disagree.
 
-**Until then:**
-- **Read through `v_lot_current_owners`**, not `lot_owners` directly. It joins the normalised pair for identity and the legacy table for the extras, filtered to `end_date IS NULL`. When the columns move, the view absorbs the change and call sites do not.
-- **Do not add new reads of `lot_owners`.** Every one is another site to migrate.
-- **A write that changes ownership must write BOTH models** until the migration lands, or they drift.
+Rules:
+- **Reads go through `v_lot_current_owners`.** It is `security_invoker` and
+  `anon` has no grant on it; every app read is a server action on the service
+  role.
+- **Writes go to the table that owns the field.** Identity (name, email,
+  phone, address, owner_type) → `owners`. Anything about this lot → the
+  `lot_ownerships` row.
+- **Setting an owner goes through the RPC**, never hand-rolled inserts.
+  `set_lot_owner(...)` for one lot, `set_lot_owners_bulk(jsonb)` for many (OC
+  creation passes all lots in ONE call). They reuse an existing owner by
+  `(management_company_id, lower(email))`, close any other open ownership with
+  an `end_date`, and upsert the open one, in a single transaction.
+- **Selling a lot is an `end_date`, never a delete.** History survives, and
+  `communication_log.lot_owner_id_at_creation` keeps a previous owner's
+  correspondence out of the new owner's view.
+- Five tables carry an FK named `lot_owner_id` (or
+  `lot_owner_id_at_creation`). They all reference **`lot_ownerships(id)`**.
+  The name is historical; the column comments say so.
 
 ## Schema drift , database-schema.sql is a STALE snapshot, the live DB wins
 
@@ -199,6 +227,9 @@ Two owner models exist and are dual-written. They currently hold 29 rows each wi
 Known drift, found 2026-08-24:
 - It declares `fund_type AS ENUM ('administrative', 'capital_works')`. The live enum is `('operating', 'capital_works', 'maintenance_plan')`, and the app uses `'operating'` in 84 places and `'administrative'` in none. Applying anything from that file verbatim will create objects that raise at runtime.
 - It defines 6 tables that had **never been applied** to the live database: `payments`, `payment_plans`, `lot_ledger_entries`, `lot_ledger_state`, `reconciliation_matches`, `bank_payer_mappings`, plus `recompute_lot_ledger_state()` and the `v_levy_notice_status` view. 8 Postgres functions and 28 app call sites referenced them, so every ledger, payment and reconciliation call failed at runtime and lot balances were computed with the payments term always zero. Restored in the `restore_ledger_banking_cluster` migration.
+
+It also still declares `lot_owners`, which was dropped: the per-ownership
+columns moved onto `lot_ownerships` and identity lives on `owners`.
 
 **Before using anything from that file, diff it against the live catalog.** Before adding a migration, check the live enum values rather than the file's.
 

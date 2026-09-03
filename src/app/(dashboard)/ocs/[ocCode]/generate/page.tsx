@@ -119,7 +119,7 @@ export default async function GenerateLeviesPage({
   const ownersByLot = new Map<string, string>();
   if (lotIds.length > 0) {
     const { data: ownerRows } = await supabase
-      .from("lot_owners")
+      .from("v_lot_current_owners")
       .select("lot_id, name, email")
       .in("lot_id", lotIds);
     for (const row of (ownerRows ?? []) as Array<{ lot_id: string; name: string | null; email: string | null }>) {

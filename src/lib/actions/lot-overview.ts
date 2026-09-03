@@ -72,7 +72,7 @@ export async function getLotActivity(
   const supabase = createServerClient();
 
   const { data: lotOwnerRows } = await supabase
-    .from("lot_owners")
+    .from("v_lot_current_owners")
     .select("id")
     .eq("lot_id", lotId);
   const ownerIds = (lotOwnerRows ?? []).map((r) => r.id as string);

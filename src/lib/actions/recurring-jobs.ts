@@ -54,11 +54,11 @@ export async function getOCNotifyOwners(ocId: string): Promise<NotifyOwnerOption
   await requireOCAccess(ocId);
   const supabase = createServerClient();
   const { data } = await supabase
-    .from("lot_owners")
-    .select("id, name, email, delivery_preference, lots!inner(oc_id, lot_number, unit_number)")
-    .eq("lots.oc_id", ocId)
+    .from("v_lot_current_owners")
+    .select("id, name, email, delivery_preference, lots!inner(lot_number, unit_number)")
+    .eq("oc_id", ocId)
     .not("email", "is", null)
-    .neq("delivery_preference", "post");
+    .neq("delivery_preference", "postal");
 
   return (data ?? []).map((r) => {
     const lot = (r as { lots: { lot_number?: number; unit_number?: string | null } | { lot_number?: number; unit_number?: string | null }[] }).lots;

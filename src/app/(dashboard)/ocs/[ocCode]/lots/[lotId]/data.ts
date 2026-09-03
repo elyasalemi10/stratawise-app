@@ -123,18 +123,14 @@ export async function getLotDetailPageData(
       .select("id, lot_number, unit_number")
       .eq("oc_id", ocId)
       .order("lot_number", { ascending: true }),
-    // The current lot_owners row backs the header chip (payment_reference,
-    // owner_type, occupancy) and the Tenancy tab (tenant_*, consent). Not
-    // migrated to `owners` yet: the entity model only carries the universal
-    // fields, not these per-lot ones.
+    // The current ownership backs the header chip (payment_reference,
+    // owner_type, occupancy) and the Tenancy tab (tenant_*, consent).
     supabase
-      .from("lot_owners")
+      .from("v_lot_current_owners")
       .select(
         "id, owner_type, payment_reference, is_occupied_by_owner, occupancy_status, ownership_since, tenant_name, tenant_email, tenant_phone, digital_consent_categories, at_portal_signup_categories, postal_address",
       )
       .eq("lot_id", lotId)
-      .order("created_at", { ascending: false })
-      .limit(1)
       .maybeSingle(),
     // Most recent payment for the "Last payment" header line. payments uses
     // payment_date, not paid_at (that is a levy_notices column).

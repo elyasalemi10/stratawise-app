@@ -579,6 +579,11 @@ export async function applySettlementToLot(input: ApplySettlementInput) {
     }
 
     if (newOwnerId) {
+      // Occupancy normalisation. A new owner defaults to owner-occupied
+      // unless the manager flagged the lot as tenanted / vacant on the
+      // settlement form. Tenant fields only persist when tenanted.
+      const occupancy = parsed.data.occupancyStatus ?? "owner_occupied";
+      const tenanted = occupancy === "tenanted";
       const { data: newOwnership, error: ownershipErr } = await supabase
         .from("lot_ownerships")
         .insert({
@@ -588,6 +593,10 @@ export async function applySettlementToLot(input: ApplySettlementInput) {
           start_date: settlementDate,
           is_primary_contact: true,
           is_financial: true,
+          occupancy_status: occupancy,
+          tenant_name: tenanted ? parsed.data.tenantName : null,
+          tenant_email: tenanted ? parsed.data.tenantEmail : null,
+          tenant_phone: tenanted ? parsed.data.tenantPhone : null,
         })
         .select("id")
         .single();
@@ -630,56 +639,6 @@ export async function applySettlementToLot(input: ApplySettlementInput) {
     // log and carry on; a follow-up migration can repair from the
     // invitation + audit_log records.
     console.error("applySettlementToLot: entity-model writes failed (non-fatal)", err);
-  }
-
-  // 3b. Sync the legacy lot_owners row that the lot detail page still
-  // reads from (owner identity, postal address + verification status,
-  // occupancy, tenant). Best-effort , failures are logged but don't
-  // break the settlement.
-  try {
-    // Addresses are stored as-is. Address verification is not integrated.
-    const postalVerificationStatus: string | null = null;
-    const postalVerificationId: string | null = null;
-    const postalVerifiedAt: string | null = null;
-
-    // Occupancy normalisation. New owners default to owner-occupied unless
-    // the manager flagged the lot as tenanted / vacant on the settlement
-    // form. Tenant fields are only persisted when occupancy === tenanted.
-    const occupancy = parsed.data.occupancyStatus ?? null;
-    const ownerOccupied = occupancy === null ? null : occupancy === "owner_occupied";
-
-    // End any active lot_owners row for this lot (left_at semantics
-    // aren't on this table, so we just close-out the row to "ended" by
-    // setting ownership_until). Then insert the new owner.
-    await supabase
-      .from("lot_owners")
-      .update({ ownership_until: settlementDate })
-      .eq("lot_id", lotId)
-      .is("ownership_until", null);
-
-    await supabase.from("lot_owners").insert({
-      lot_id: lotId,
-      name: newOwner.name,
-      email: newOwner.email || null,
-      phone: newOwner.phone,
-      postal_address: newOwner.postalAddress,
-      ...(postalVerificationStatus
-        ? {
-            postal_address_verification_status: postalVerificationStatus,
-            postal_address_verification_id: postalVerificationId,
-            postal_address_verified_at: postalVerifiedAt,
-          }
-        : {}),
-      owner_type: "individual",
-      ownership_since: settlementDate,
-      occupancy_status: occupancy,
-      is_occupied_by_owner: ownerOccupied,
-      tenant_name: occupancy === "tenanted" ? parsed.data.tenantName : null,
-      tenant_email: occupancy === "tenanted" ? parsed.data.tenantEmail : null,
-      tenant_phone: occupancy === "tenanted" ? parsed.data.tenantPhone : null,
-    });
-  } catch (err) {
-    console.error("applySettlementToLot: lot_owners sync failed (non-fatal)", err);
   }
 
   // 4. Audit-log the incoming side of the transfer. When there was no

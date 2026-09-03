@@ -171,7 +171,7 @@ export async function globalSearch(
     // Lot owners , join via lots(oc_id). We can't do a nested filter cleanly
     // in PostgREST, so query lot_owners with embed.
     supabase
-      .from("lot_owners")
+      .from("v_lot_current_owners")
       .select("id, name, email, phone, postal_address, tenant_name, tenant_email, lot:lots!inner(id, oc_id, lot_number, unit_number)")
       .or(`name.ilike.${like},email.ilike.${like},phone.ilike.${like},postal_address.ilike.${like},tenant_name.ilike.${like},tenant_email.ilike.${like}`)
       .in("lot.oc_id", scopedOcIds)

@@ -34,11 +34,11 @@ async function resolveOwners(
   if (scope === "none") return [];
   // Email-eligible owners: have an email AND aren't post-only.
   let q = supabase
-    .from("lot_owners")
-    .select("id, name, email, delivery_preference, lots!inner(oc_id)")
-    .eq("lots.oc_id", ocId)
+    .from("v_lot_current_owners")
+    .select("id, name, email, delivery_preference")
+    .eq("oc_id", ocId)
     .not("email", "is", null)
-    .neq("delivery_preference", "post");
+    .neq("delivery_preference", "postal");
   if (scope === "specific") {
     if (lotOwnerIds.length === 0) return [];
     q = q.in("id", lotOwnerIds);

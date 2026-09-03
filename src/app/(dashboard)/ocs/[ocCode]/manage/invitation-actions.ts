@@ -186,6 +186,17 @@ export async function inviteLotOwner(
     invitation = created;
   }
 
+  // Point the ownership at the invitation. This is what tells the contact
+  // editor that an owner is already on the portal and their email is theirs
+  // to change, not the manager's.
+  if (lotId) {
+    await supabase
+      .from("lot_ownerships")
+      .update({ invitation_id: invitation.id })
+      .eq("lot_id", lotId)
+      .is("end_date", null);
+  }
+
   // Audit log
   await supabase.from("audit_log").insert({
     profile_id: profile.id,

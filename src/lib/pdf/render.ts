@@ -195,7 +195,7 @@ async function assembleLevyNoticeProps(
     // + lot-number-padded-3) and is what the lot owner sees as their
     // permanent billing reference.
     supabase
-      .from("lot_owners")
+      .from("v_lot_current_owners")
       .select("payment_reference")
       .eq("lot_id", levy.lot_id)
       .not("payment_reference", "is", null)
@@ -313,7 +313,7 @@ async function assembleLevyNoticeProps(
   let multilotNote: string | null = null;
   if (sub.multilot_note_enabled) {
     const ownerContact = await supabase
-      .from("lot_owners")
+      .from("v_lot_current_owners")
       .select("email, name")
       .eq("lot_id", levy.lot_id)
       .order("ownership_since", { ascending: false, nullsFirst: false })
@@ -323,7 +323,7 @@ async function assembleLevyNoticeProps(
     const myKey = (me?.email ?? me?.name ?? "").trim().toLowerCase();
     if (myKey) {
       const { data: peers } = await supabase
-        .from("lot_owners")
+        .from("v_lot_current_owners")
         .select("lot_id, email, name")
         .eq("oc_id", levy.oc_id);
       const lots = new Set<string>();

@@ -193,11 +193,9 @@ async function advanceInstance(supabase: any, inst: Record<string, unknown>, tod
   const ocAddress = [oc?.address, oc?.suburb, oc?.state, oc?.postcode].filter(Boolean).join(", ");
 
   const { data: owner } = await supabase
-    .from("lot_owners")
+    .from("v_lot_current_owners")
     .select("name, email, postal_address")
     .eq("lot_id", notice.lot_id)
-    .order("created_at", { ascending: true })
-    .limit(1)
     .maybeSingle();
   const { data: lot } = await supabase.from("lots").select("lot_number, unit_number").eq("id", notice.lot_id).maybeSingle();
 

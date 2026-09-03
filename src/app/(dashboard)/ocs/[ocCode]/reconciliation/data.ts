@@ -88,7 +88,7 @@ export async function getReconciliationPageData(
       .eq("oc_id", ocId),
     supabase
       .from("lots")
-      .select("id, lot_number, unit_number, owners:lot_owners(name)")
+      .select("id, lot_number, unit_number, owners:v_lot_current_owners(name)")
       .eq("oc_id", ocId)
       .order("lot_number", { ascending: true }),
     supabase
