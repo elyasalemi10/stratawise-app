@@ -7,7 +7,6 @@ import { Label } from "@/components/ui/label";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Switch } from "@/components/ui/switch";
 import { Landmark, Clock } from "lucide-react";
-import { BankSelect } from "@/components/shared/bank-select";
 import { saveStep, completeWizard, type DraftJson } from "../actions";
 import { WizardActions } from "./_components/wizard-actions";
 
@@ -29,14 +28,13 @@ function isValidAccountNumber(s: string): boolean {
 }
 
 type FundFields = {
-  bankId: string;
   accountName: string;
   bsb: string;
   accountNumber: string;
 };
 
-interface InvalidFlags { bank: boolean; name: boolean; bsb: boolean; acc: boolean }
-const NO_INVALID: InvalidFlags = { bank: false, name: false, bsb: false, acc: false };
+interface InvalidFlags { name: boolean; bsb: boolean; acc: boolean }
+const NO_INVALID: InvalidFlags = { name: false, bsb: false, acc: false };
 
 interface FundFieldsProps {
   value: FundFields;
@@ -48,18 +46,6 @@ interface FundFieldsProps {
 function FundFieldsBlock({ value, onChange, invalid, idPrefix }: FundFieldsProps) {
   return (
     <div className="space-y-3">
-      <div className="space-y-1.5">
-        <Label htmlFor={`${idPrefix}-bank`}>
-          Bank <span className="text-destructive">*</span>
-        </Label>
-        <BankSelect
-          id={`${idPrefix}-bank`}
-          value={value.bankId}
-          onChange={(v) => onChange({ ...value, bankId: v })}
-          error={invalid.bank}
-          includeOther
-        />
-      </div>
       <div className="space-y-1.5">
         <Label htmlFor={`${idPrefix}-name`}>
           Account name <span className="text-destructive">*</span>
@@ -120,11 +106,6 @@ export function Step4Banking({
   onNext: () => void;
   onComplete: (result: { ocCode: string; sourceDraftId?: string; nextOcIndex?: number | null }) => void;
 }) {
-  // Tier-1/2 mandates a maintenance plan fund (force on, disable the toggle).
-  // Tier 3-5 default OFF; manager can opt in.
-  const tier = initialDraft.tier ?? 5;
-  const isTier1or2 = tier <= 2;
-
   const legacyAutoName = /^Owners Corporation\s+PS\d{6}[A-Z]\s+Trust Account$/i;
   const stripLegacy = (s: string | undefined) =>
     s && legacyAutoName.test(s.trim()) ? "" : (s ?? "");
@@ -132,31 +113,15 @@ export function Step4Banking({
   // Draft JSON keys stay `admin_*` for back-compat with in-flight wizards;
   // UI calls this the Operating account.
   const [operating, setOperating] = useState<FundFields>({
-    bankId: initialDraft.admin_bank_id ?? "",
     accountName: stripLegacy(initialDraft.admin_account_name),
     bsb: initialDraft.admin_bsb ?? "",
     accountNumber: initialDraft.admin_account_number ?? "",
   });
 
-  const [hasMaintenance, setHasMaintenance] = useState<boolean>(
-    initialDraft.has_maintenance_plan_fund ?? isTier1or2,
-  );
-  const [maintenanceSameAsOperating, setMaintenanceSameAsOperating] = useState<boolean>(
-    initialDraft.maintenance_same_as_admin ?? true,
-  );
-  const [maintenance, setMaintenance] = useState<FundFields>({
-    bankId: initialDraft.maintenance_bank_id ?? "",
-    accountName: stripLegacy(initialDraft.maintenance_account_name),
-    bsb: initialDraft.maintenance_bsb ?? "",
-    accountNumber: initialDraft.maintenance_account_number ?? "",
-  });
-
   const [operatingInvalid, setOperatingInvalid] = useState<InvalidFlags>(NO_INVALID);
-  const [maintenanceInvalid, setMaintenanceInvalid] = useState<InvalidFlags>(NO_INVALID);
   const [pending, setPending] = useState(false);
 
   const hasExistingBankDetails = !!(
-    initialDraft.admin_bank_id ||
     initialDraft.admin_bsb ||
     initialDraft.admin_account_number
   );
@@ -170,7 +135,6 @@ export function Step4Banking({
 
   function validateFund(f: FundFields): InvalidFlags {
     return {
-      bank: !f.bankId,
       name: f.accountName.trim().length < 1,
       bsb: !isValidBsb(f.bsb),
       acc: !isValidAccountNumber(f.accountNumber),
@@ -183,12 +147,10 @@ export function Step4Banking({
       const save = await saveStep(draftId, {
         banking_deferred: true,
         has_maintenance_plan_fund: false,
-        admin_bank_id: undefined,
         admin_account_name: undefined,
         admin_bsb: undefined,
         admin_account_number: undefined,
         capital_same_as_admin: true,
-        maintenance_same_as_admin: true,
       }, 4, 1);
       if (save.error) {
         setPending(false);
@@ -219,24 +181,7 @@ export function Step4Banking({
     const opFlags = validateFund(operating);
     if (Object.values(opFlags).some(Boolean)) problems.push("Operating account details");
 
-    let mFlags: InvalidFlags = NO_INVALID;
-    if (hasMaintenance && !maintenanceSameAsOperating) {
-      mFlags = validateFund(maintenance);
-      if (Object.values(mFlags).some(Boolean)) problems.push("Maintenance plan fund details");
-    }
-
-    // Duplicate (BSB, account) across operating + maintenance = error.
-    if (hasMaintenance && !maintenanceSameAsOperating
-        && operating.bsb && operating.accountNumber
-        && operating.bsb === maintenance.bsb
-        && operating.accountNumber === maintenance.accountNumber) {
-      problems.push(`Same BSB + account number used by both operating and maintenance plan. Use the "same account as operating" toggle instead.`);
-      opFlags.bsb = true; opFlags.acc = true;
-      mFlags.bsb = true; mFlags.acc = true;
-    }
-
     setOperatingInvalid(opFlags);
-    setMaintenanceInvalid(mFlags);
 
     if (problems.length) {
       toast.error(problems.length === 1 ? problems[0] : "Fix the highlighted fields.");
@@ -247,17 +192,11 @@ export function Step4Banking({
     void (async () => {
       const r = await saveStep(draftId, {
         banking_deferred: false,
-        has_maintenance_plan_fund: hasMaintenance,
-        admin_bank_id: operating.bankId,
+        has_maintenance_plan_fund: false,
         admin_account_name: operating.accountName.trim(),
         admin_bsb: operating.bsb,
         admin_account_number: operating.accountNumber,
         capital_same_as_admin: true,
-        maintenance_same_as_admin: maintenanceSameAsOperating,
-        maintenance_bank_id: !hasMaintenance || maintenanceSameAsOperating ? undefined : maintenance.bankId,
-        maintenance_account_name: !hasMaintenance || maintenanceSameAsOperating ? undefined : maintenance.accountName.trim(),
-        maintenance_bsb: !hasMaintenance || maintenanceSameAsOperating ? undefined : maintenance.bsb,
-        maintenance_account_number: !hasMaintenance || maintenanceSameAsOperating ? undefined : maintenance.accountNumber,
       }, 4, 1);
       if (r.error) {
         setPending(false);
@@ -329,42 +268,6 @@ export function Step4Banking({
         />
       </div>
 
-      <div className="rounded-md border border-border bg-card p-4 space-y-3">
-        <div className="flex items-center justify-between gap-3">
-          <h3 className="text-sm font-semibold text-foreground">Maintenance plan fund</h3>
-          <Switch
-            checked={hasMaintenance}
-            onCheckedChange={(v) => setHasMaintenance(v === true)}
-            disabled={isTier1or2}
-            aria-label="This OC has a maintenance plan reserve fund"
-          />
-        </div>
-        {isTier1or2 && (
-          <p className="text-xs text-muted-foreground">Mandatory for Tier {tier}.</p>
-        )}
-        {hasMaintenance && (
-          <>
-            <div className="flex items-center gap-3 border-t border-border pt-3">
-              <Checkbox
-                id="maintenance-same"
-                checked={maintenanceSameAsOperating}
-                onCheckedChange={(v) => setMaintenanceSameAsOperating(v === true)}
-              />
-              <Label className="text-sm font-normal text-foreground">
-                Use the same bank account as the operating account
-              </Label>
-            </div>
-            {!maintenanceSameAsOperating && (
-              <FundFieldsBlock
-                value={maintenance}
-                onChange={(v) => { setMaintenance(v); setMaintenanceInvalid(NO_INVALID); }}
-                invalid={maintenanceInvalid}
-                idPrefix="maintenance"
-              />
-            )}
-          </>
-        )}
-      </div>
       </>
       )}
 
@@ -377,16 +280,10 @@ export function Step4Banking({
         continueLabel={choice === "later" ? "Create OC" : "Continue"}
         getCurrentPatch={() => ({
           banking_deferred: choice === "later",
-          admin_bank_id: operating.bankId || undefined,
           admin_account_name: operating.accountName.trim() || undefined,
           admin_bsb: operating.bsb || undefined,
           admin_account_number: operating.accountNumber || undefined,
-          has_maintenance_plan_fund: hasMaintenance,
-          maintenance_same_as_admin: maintenanceSameAsOperating,
-          maintenance_bank_id: !hasMaintenance || maintenanceSameAsOperating ? undefined : maintenance.bankId,
-          maintenance_account_name: !hasMaintenance || maintenanceSameAsOperating ? undefined : maintenance.accountName.trim(),
-          maintenance_bsb: !hasMaintenance || maintenanceSameAsOperating ? undefined : maintenance.bsb,
-          maintenance_account_number: !hasMaintenance || maintenanceSameAsOperating ? undefined : maintenance.accountNumber,
+          has_maintenance_plan_fund: false,
         })}
       />
     </div>

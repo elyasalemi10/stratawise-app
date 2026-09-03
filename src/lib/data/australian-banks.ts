@@ -28,3 +28,44 @@ export const AUSTRALIAN_BANKS: BankOption[] = [
   { id: "teachersmutual", name: "Teachers Mutual", logo: "/bank-logos/teachersmutual.webp" },
   { id: "heritage", name: "Heritage Bank", logo: "/bank-logos/heritage.webp" },
 ];
+
+// A BSB already says which bank the account is at , the first two digits are
+// the institution. So asking a manager to pick the bank from a list was
+// asking for a fact we hold, and one they could get wrong.
+//
+// The mapping is by BSB prefix as published by AusPayNet. Only the banks we
+// carry a logo for are listed; anything else resolves to null and the UI
+// falls back to a generic account icon, which is fine , the account still
+// works, it just has no badge.
+const BSB_PREFIX_TO_BANK: Record<string, string> = {
+  "01": "anz",
+  "03": "westpac",
+  "06": "cba",
+  "08": "nab",
+  "11": "stgeorge",
+  "12": "bankwest",
+  "18": "macquarie",
+  "19": "bankofmelb",
+  "63": "bankofmelb",
+  "73": "westpac",
+  "76": "banksa",
+  "63x": "bankofmelb",
+  "92": "suncorp",
+  "93": "bankofqld",
+  "63y": "bendigo",
+  "633": "bendigo",
+  "923": "ing",
+  "942": "amp",
+  "944": "me",
+  "512": "hsbc",
+};
+
+/** Resolve the bank from a BSB, if we recognise it. */
+export function bankFromBsb(bsb: string | null | undefined): BankOption | null {
+  const digits = (bsb ?? "").replace(/\D/g, "");
+  if (digits.length < 2) return null;
+  const id =
+    BSB_PREFIX_TO_BANK[digits.slice(0, 3)] ?? BSB_PREFIX_TO_BANK[digits.slice(0, 2)];
+  if (!id) return null;
+  return AUSTRALIAN_BANKS.find((b) => b.id === id) ?? null;
+}

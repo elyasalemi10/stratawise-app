@@ -389,7 +389,6 @@ export async function saveOperatingAccount(formData: {
   account_name: string;
   bsb: string;
   account_number: string;
-  bank_name?: string;
 }): Promise<{ success: true } | { error: string }> {
   const userId = await getAuthUserId();
   if (!userId) return { error: "Not authenticated" };
@@ -411,7 +410,6 @@ export async function saveOperatingAccount(formData: {
       operating_account_name: formData.account_name,
       operating_bsb: formData.bsb,
       operating_account_number: formData.account_number,
-      operating_bank_name: formData.bank_name ?? null,
     })
     .eq("id", profile.management_company_id);
 

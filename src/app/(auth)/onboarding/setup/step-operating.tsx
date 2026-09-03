@@ -7,8 +7,6 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { NumberInput } from "@/components/ui/number-input";
-import { BankSelect } from "@/components/shared/bank-select";
-import { AUSTRALIAN_BANKS } from "@/lib/data/australian-banks";
 
 function formatBsb(raw: string): string {
   const d = raw.replace(/\D/g, "").slice(0, 6);
@@ -21,8 +19,6 @@ export function StepOperating({ onNext, onBack }: { onNext: () => void; onBack: 
   const [accountName, setAccountName] = useState("");
   const [bsb, setBsb] = useState("");
   const [accountNumber, setAccountNumber] = useState("");
-  const [bankId, setBankId] = useState("");
-  const [otherBankName, setOtherBankName] = useState("");
 
   const [nameInvalid, setNameInvalid] = useState(false);
   const [bsbInvalid, setBsbInvalid] = useState(false);
@@ -59,16 +55,11 @@ export function StepOperating({ onNext, onBack }: { onNext: () => void; onBack: 
       return;
     }
 
-    const bankName = bankId === "other"
-      ? otherBankName.trim() || undefined
-      : AUSTRALIAN_BANKS.find((b) => b.id === bankId)?.name;
-
     setPending(true);
     const result = await saveOperatingAccount({
       account_name: accountName.trim(),
       bsb: bsbDigits,
       account_number: acctDigits,
-      bank_name: bankName || undefined,
     });
 
     if ("error" in result) {
@@ -132,18 +123,6 @@ export function StepOperating({ onNext, onBack }: { onNext: () => void; onBack: 
           </div>
         </div>
 
-        <div className="space-y-1.5">
-          <Label htmlFor="operating-bank">Bank</Label>
-          <BankSelect id="operating-bank" value={bankId} onChange={setBankId} includeOther />
-          {bankId === "other" && (
-            <Input
-              placeholder="Bank name"
-              value={otherBankName}
-              onChange={(e) => setOtherBankName(e.target.value)}
-              autoFocus
-            />
-          )}
-        </div>
 
         <div className="flex items-center justify-between pt-2">
           <Button type="button" variant="secondary" onClick={onBack} disabled={pending}>

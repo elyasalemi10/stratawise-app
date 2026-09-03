@@ -6,9 +6,8 @@ import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetFooter } from "@/com
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { BankSelect } from "@/components/shared/bank-select";
-import { AUSTRALIAN_BANKS } from "@/lib/data/australian-banks";
 import { createBankAccount } from "./actions";
+import { bankFromBsb } from "@/lib/data/australian-banks";
 
 function formatBsb(input: string): string {
   const d = input.replace(/\D/g, "").slice(0, 6);
@@ -26,15 +25,13 @@ export function AddBankAccountDrawer({
   onOpenChange: (open: boolean) => void;
   onCreated: (id: string) => void;
 }) {
-  const [bankId, setBankId] = useState("");
   const [accountName, setAccountName] = useState("");
   const [bsb, setBsb] = useState("");
   const [accountNumber, setAccountNumber] = useState("");
-  const [invalid, setInvalid] = useState<{ bank?: boolean; name?: boolean; bsb?: boolean; acc?: boolean }>({});
+  const [invalid, setInvalid] = useState<{ name?: boolean; bsb?: boolean; acc?: boolean }>({});
   const [pending, startTransition] = useTransition();
 
   function reset() {
-    setBankId("");
     setAccountName("");
     setBsb("");
     setAccountNumber("");
@@ -43,7 +40,6 @@ export function AddBankAccountDrawer({
 
   function submit() {
     const issues: typeof invalid = {};
-    if (!bankId) issues.bank = true;
     if (accountName.trim().length === 0) issues.name = true;
     if (bsb.replace(/\D/g, "").length !== 6) issues.bsb = true;
     if (!/^\d{6,9}$/.test(accountNumber.replace(/\D/g, ""))) issues.acc = true;
@@ -53,15 +49,13 @@ export function AddBankAccountDrawer({
       return;
     }
 
-    const bankName = bankId === "other" ? null
-      : (AUSTRALIAN_BANKS.find((b) => b.id === bankId)?.name ?? bankId);
-
     startTransition(async () => {
       const res = await createBankAccount(ocId, {
         account_name: accountName.trim(),
         bsb,
         account_number: accountNumber,
-        bank_name: bankName,
+        // Derived from the BSB rather than asked for.
+        bank_name: bankFromBsb(bsb)?.name ?? null,
       });
       if (res.error) {
         toast.error(res.error);
@@ -81,18 +75,6 @@ export function AddBankAccountDrawer({
         </SheetHeader>
 
         <div className="flex-1 overflow-y-auto px-5 py-4 space-y-4">
-          <div className="space-y-1.5">
-            <Label htmlFor="add-bank">
-              Bank <span className="text-destructive">*</span>
-            </Label>
-            <BankSelect
-              id="add-bank"
-              value={bankId}
-              onChange={(v) => { setBankId(v); if (invalid.bank) setInvalid({ ...invalid, bank: false }); }}
-              error={invalid.bank}
-              includeOther
-            />
-          </div>
           <div className="space-y-1.5">
             <Label htmlFor="add-name">
               Account name <span className="text-destructive">*</span>

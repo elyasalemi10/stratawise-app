@@ -114,7 +114,6 @@ export type DraftJson = {
   // Operating account , always present. Draft JSON keys keep the legacy
   // `admin_*` prefix so in-flight drafts round-trip; UI labels it
   // "Operating account".
-  admin_bank_id?: string;        // e.g. "macquarie"
   admin_account_name?: string;
   admin_bsb?: string;
   admin_account_number?: string;
@@ -124,12 +123,6 @@ export type DraftJson = {
   capital_account_name?: string;
   capital_bsb?: string;
   capital_account_number?: string;
-  // Maintenance plan fund , only relevant when has_maintenance_plan_fund.
-  maintenance_same_as_admin?: boolean;
-  maintenance_bank_id?: string;
-  maintenance_account_name?: string;
-  maintenance_bsb?: string;
-  maintenance_account_number?: string;
 
   // Notice address , collected on page 4 (lots) since it informs per-lot
   // postal address defaults. Always present; defaults to the OC address
@@ -1111,21 +1104,10 @@ export async function completeWizard(draftId: string) {
     const bankingDeferred = !!d.banking_deferred;
 
     if (!bankingDeferred) {
-      if (!d.admin_bsb || !d.admin_account_number || !d.admin_account_name || !d.admin_bank_id) {
+      if (!d.admin_bsb || !d.admin_account_number || !d.admin_account_name) {
         return { error: "Trust account details are required (page 5)" };
       }
       if (!d.opening_balance_date) return { error: "Opening balance date is required (page 6)" };
-    }
-
-    // Maintenance plan fund , optional. Either shares the operating
-    // account or has its own bank.
-    const hasMaintenance = !bankingDeferred && !!d.has_maintenance_plan_fund;
-    const maintenanceShared = d.maintenance_same_as_admin ?? true;
-    const maintenance = !hasMaintenance || maintenanceShared
-      ? null
-      : { bank_id: d.maintenance_bank_id, account_name: d.maintenance_account_name, bsb: d.maintenance_bsb, account_number: d.maintenance_account_number };
-    if (maintenance && (!maintenance.bsb || !maintenance.account_number || !maintenance.account_name || !maintenance.bank_id)) {
-      return { error: "Maintenance plan trust account details are required" };
     }
 
     const supabase = createServerClient();
@@ -1156,7 +1138,8 @@ export async function completeWizard(draftId: string) {
       // Notice address always set , wizard defaults to OC address; user can override.
       notice_address_same_as_oc: !d.notice_address || d.notice_address.trim() === d.address.trim(),
       notice_address: d.notice_address || d.address,
-      uses_shared_trust_account: !hasMaintenance || maintenanceShared,
+      // One bank account per OC, so every fund shares it.
+      uses_shared_trust_account: true,
       // Legacy summary fields point at the operating trust account.
       bank_bsb: d.admin_bsb,
       bank_account_number: d.admin_account_number,
@@ -1166,7 +1149,6 @@ export async function completeWizard(draftId: string) {
       // into the operating balance so no money is lost during the rename.
       opening_operating_balance:
         (d.opening_operating_balance ?? 0) + (d.opening_capital_works_balance ?? 0),
-      opening_maintenance_plan_balance: hasMaintenance ? (d.opening_maintenance_plan_balance ?? 0) : null,
       // Rules + insurance moved out of the wizard in the May refresh.
       // Every new OC starts on Victoria's Model Rules; managers upload
       // custom registered rules later from a post-wizard task card on
@@ -1494,7 +1476,6 @@ export async function completeWizard(draftId: string) {
         .insert({
           oc_id: oc.id,
           fund_type: "operating",
-          bank_name: d.admin_bank_id ?? null,
           account_name: d.admin_account_name,
           bsb: d.admin_bsb,
           account_number: d.admin_account_number,
@@ -1509,22 +1490,6 @@ export async function completeWizard(draftId: string) {
       }
       operatingBankId = (operatingBank as { id: string }).id;
 
-      if (maintenance) {
-        const { error: mBankErr } = await supabase.from("bank_accounts").insert({
-          oc_id: oc.id,
-          fund_type: "maintenance_plan",
-          bank_name: maintenance.bank_id ?? null,
-          account_name: maintenance.account_name!,
-          bsb: maintenance.bsb!,
-          account_number: maintenance.account_number!,
-          opening_balance: d.opening_maintenance_plan_balance ?? 0,
-          opening_balance_date: d.opening_balance_date,
-        });
-        if (mBankErr) {
-          console.error("completeWizard: maintenance_plan bank_accounts insert failed", mBankErr);
-          return { error: "Couldn't save the maintenance plan fund bank account. Please check the details and try again." };
-        }
-      }
     }
 
     // Default Admin Fund , every OC needs one. Marked is_system=true so the

@@ -17,7 +17,7 @@ import {
 import {
   Table, TableBody, TableCell, TableHead, TableHeader, TableRow,
 } from "@/components/ui/table";
-import { AUSTRALIAN_BANKS } from "@/lib/data/australian-banks";
+import { AUSTRALIAN_BANKS, bankFromBsb } from "@/lib/data/australian-banks";
 import { ImportCsvDialog } from "./import-csv-dialog";
 import { AddBankAccountDrawer } from "./add-bank-account-drawer";
 import { deleteBankAccount } from "./actions";
@@ -76,7 +76,12 @@ interface BankAccountRow {
   }>;
 }
 
-function logoFor(bankName: string | null | undefined): string | null {
+// The BSB identifies the institution, so the badge is derived. Rows created
+// before we stopped asking may carry a bank_name; use it as a fallback so
+// their logo does not disappear.
+function logoFor(bsb: string | null | undefined, bankName: string | null | undefined): string | null {
+  const fromBsb = bankFromBsb(bsb)?.logo;
+  if (fromBsb) return fromBsb;
   if (!bankName) return null;
   return AUSTRALIAN_BANKS.find(
     (b) => b.name.toLowerCase() === bankName.toLowerCase(),
@@ -134,7 +139,7 @@ export function BankAccountsList({
             className="h-auto flex-wrap justify-start gap-2 border-0 bg-transparent p-0"
           >
             {accounts.map((a) => {
-              const logo = logoFor(a.bank_name);
+              const logo = logoFor(a.bsb, a.bank_name);
               return (
                 <TabsTrigger
                   key={a.id}

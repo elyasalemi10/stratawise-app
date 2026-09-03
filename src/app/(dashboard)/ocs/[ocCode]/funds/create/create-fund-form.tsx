@@ -3,7 +3,6 @@
 import { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { Wallet, Users, Landmark, ListChecks, Building2, Wrench, MoreHorizontal, type LucideIcon } from "lucide-react";
-import Image from "next/image";
 import { toast } from "sonner";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -11,7 +10,6 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Checkbox } from "@/components/ui/checkbox";
 import { NumberInput } from "@/components/ui/number-input";
-import { BankSelect } from "@/components/shared/bank-select";
 import {
   Combobox, ComboboxContent, ComboboxEmpty, ComboboxInput, ComboboxItem, ComboboxList,
 } from "@/components/ui/combobox";
@@ -21,7 +19,7 @@ import {
 import { cn } from "@/lib/utils";
 import { createFund, type LotForFund, type ExistingBankAccountOption } from "@/lib/actions/funds";
 import { FUND_KIND_LABEL, type FundKind } from "@/lib/funds-shared";
-import { AUSTRALIAN_BANKS } from "@/lib/data/australian-banks";
+import { bankFromBsb } from "@/lib/data/australian-banks";
 
 type LotEntitlement = {
   selected: boolean;
@@ -128,7 +126,6 @@ export function CreateFundForm({
   const [bsb, setBsb] = useState("");
   const [accountNumber, setAccountNumber] = useState("");
   const [accountName, setAccountName] = useState("");
-  const [bankName, setBankName] = useState("");
 
   const [pending, startTransition] = useTransition();
 
@@ -194,13 +191,8 @@ export function CreateFundForm({
       }
     }
 
-    // bankName from BankSelect is an id (e.g. "macquarie") or "other".
-    // Map it to the human-readable bank name for storage; ignore "other"
-    // so we don't write the literal word as the bank.
-    const resolvedBankName =
-      bankName && bankName !== "other"
-        ? (AUSTRALIAN_BANKS.find((b) => b.id === bankName)?.name ?? bankName)
-        : undefined;
+    // The bank is whatever the BSB says it is , nothing to ask for.
+    const resolvedBankName = bankFromBsb(bsb)?.name;
 
     startTransition(async () => {
       const res = await createFund(ocId, {
@@ -403,19 +395,7 @@ export function CreateFundForm({
                     placeholder="Account name"
                   />
                 </div>
-                <div className="space-y-1.5">
-                  <Label>Bank</Label>
-                  {/* BankSelect renders each Australian bank with its
-                      logo + an "Other" fallback. The id maps to a
-                      stable bank.name resolved at submit time so the
-                      stored bank_name stays human-readable. */}
-                  <BankSelect
-                    value={bankName}
-                    onChange={setBankName}
-                    includeOther
-                  />
-                </div>
-                <div className="space-y-1.5">
+                                <div className="space-y-1.5">
                   <Label>BSB <span className="text-destructive">*</span></Label>
                   <NumberInput value={bsb} onChange={setBsb} allowDecimal={false} placeholder="BSB" />
                 </div>
@@ -437,14 +417,9 @@ export function CreateFundForm({
                     <ComboboxEmpty>No bank accounts found.</ComboboxEmpty>
                     <ComboboxList>
                       {(b: ExistingBankAccountOption) => {
-                        // Try to match the stored bank_name to one of
-                        // our Australian banks (Macquarie / NAB / etc)
-                        // so the shared picker shows a logo too.
-                        const logo = b.bank_name
-                          ? AUSTRALIAN_BANKS.find(
-                              (bk) => bk.name.toLowerCase() === b.bank_name!.toLowerCase(),
-                            )?.logo
-                          : null;
+                        // The BSB says which bank this is, so the logo is
+                        // derived rather than asked for.
+                        const logo = bankFromBsb(b.bsb)?.logo ?? null;
                         return (
                           <ComboboxItem
                             key={b.id}
@@ -453,7 +428,6 @@ export function CreateFundForm({
                               b.label,
                               b.bsb ?? "",
                               b.account_number ?? "",
-                              b.bank_name ?? "",
                             ]}
                           >
                             <span className="flex items-center gap-2 w-full">
