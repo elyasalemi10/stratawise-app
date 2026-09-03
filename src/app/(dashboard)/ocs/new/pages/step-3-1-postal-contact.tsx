@@ -10,6 +10,8 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/u
 import { PhoneInput } from "@/components/shared/phone-input";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import { saveStep, type DraftJson, type DraftLot } from "../actions";
+import { VicAddressAutocomplete, type ParsedAddress } from "@/components/shared/vic-address-autocomplete";
+import { cn } from "@/lib/utils";
 import { WizardActions } from "./_components/wizard-actions";
 
 // Wizard Step 3 sub-step 1 , Service address & contact.
@@ -138,6 +140,17 @@ export function Step3PostalContact({
   }, [initialDraft.lots, ocSiteAddress]);
 
   const [lots, setLots] = useState<DraftLot[]>(initialLots);
+  // Which row's address editor is expanded (one at a time , two open rows
+  // and the table stops being a table). null = all collapsed.
+  const [addressOpenIdx, setAddressOpenIdx] = useState<number | null>(null);
+  // The parsed parts are a WORKING VIEW of the stored string, not a second
+  // source of truth: owner_postal_address is what gets saved, and these are
+  // re-derived from it whenever a row is opened without them.
+  const [addressParts, setAddressParts] = useState<Record<number, ParsedAddress>>({});
+
+  function addressPartsFor(idx: number, stored: string): ParsedAddress {
+    return addressParts[idx] ?? splitAddress(stored);
+  }
   const [csvDialogOpen, setCsvDialogOpen] = useState(false);
   const [csvErrors, setCsvErrors] = useState<{ row: number; reason: string }[]>([]);
   const [rowErrors, setRowErrors] = useState<Array<{ email?: boolean; phone?: boolean; postal?: boolean }>>([]);
@@ -326,13 +339,45 @@ export function Step3PostalContact({
                         </span>
                       </td>
                       <td className="px-3 pb-3" colSpan={2}>
-                        <Input
-                          value={lot.owner_postal_address ?? ""}
-                          onChange={(e) => updateLot(idx, { owner_postal_address: e.target.value })}
-                          aria-invalid={errs.postal || undefined}
-                          placeholder="Street, suburb, state, postcode"
-                          className="h-8"
-                        />
+                        {/* Collapsed it is one line. Focused, the row grows
+                            into the full address: search-as-you-type, and
+                            street / suburb / postcode underneath for the
+                            addresses Google does not know , a new estate, a
+                            PO box, a unit Google merges into its building.
+                            Growing rather than opening a dialog keeps the
+                            row you are working on where it was. */}
+                        <div
+                          className={cn(
+                            "grid transition-all duration-200 ease-out",
+                            addressOpenIdx === idx ? "grid-rows-[1fr]" : "grid-rows-[0fr]",
+                          )}
+                        >
+                          <div className="overflow-hidden">
+                            <div className="pb-1">
+                              <VicAddressAutocomplete
+                                id={`lot-${idx}-address`}
+                                value={addressPartsFor(idx, lot.owner_postal_address ?? "")}
+                                onChange={(next) => {
+                                  setAddressParts((prev) => ({ ...prev, [idx]: next }));
+                                  updateLot(idx, {
+                                    owner_postal_address: next.formatted || joinAddress(next),
+                                  });
+                                }}
+                                error={errs.postal}
+                              />
+                            </div>
+                          </div>
+                        </div>
+                        {addressOpenIdx !== idx && (
+                          <Input
+                            value={lot.owner_postal_address ?? ""}
+                            onChange={(e) => updateLot(idx, { owner_postal_address: e.target.value })}
+                            onFocus={() => setAddressOpenIdx(idx)}
+                            aria-invalid={errs.postal || undefined}
+                            placeholder="Street, suburb, state, postcode"
+                            className="h-8"
+                          />
+                        )}
                       </td>
                     </tr>
                   </Fragment>
@@ -380,4 +425,39 @@ export function Step3PostalContact({
       </div>
     </TooltipProvider>
   );
+}
+
+// Best-effort split of a stored address back into parts, so opening the
+// editor on an address typed earlier does not start from blank. Anything it
+// cannot place stays in the street line, which is the field the manager is
+// most likely to correct anyway.
+function splitAddress(stored: string): ParsedAddress {
+  const empty: ParsedAddress = {
+    street_number: "", street_name: "", suburb: "", state: "VIC", postcode: "",
+    formatted: stored,
+  };
+  const text = stored.trim();
+  if (!text) return { ...empty, formatted: "" };
+
+  const parts = text.split(",").map((p) => p.trim()).filter(Boolean);
+  const street = parts[0] ?? "";
+  const tail = parts.slice(1).join(" ");
+  const postcode = tail.match(/\b(\d{4})\b/)?.[1] ?? "";
+  const suburb = tail.replace(/\bVIC\b/i, "").replace(/\b\d{4}\b/, "").trim();
+  const streetMatch = street.match(/^(\S+)\s+(.*)$/);
+
+  return {
+    street_number: streetMatch?.[1] ?? "",
+    street_name: streetMatch?.[2] ?? street,
+    suburb,
+    state: "VIC",
+    postcode,
+    formatted: text,
+  };
+}
+
+function joinAddress(p: ParsedAddress): string {
+  const street = `${p.street_number} ${p.street_name}`.replace(/\s+/g, " ").trim();
+  const tail = `${p.suburb} ${p.postcode}`.replace(/\s+/g, " ").trim();
+  return [street, tail].filter(Boolean).join(", ");
 }
