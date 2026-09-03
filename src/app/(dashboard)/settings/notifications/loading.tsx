@@ -35,6 +35,7 @@ export default function Loading() {
                   </div>
                 </th>
               ))}
+              <th className="w-full" />
             </tr>
           </thead>
           <tbody>
@@ -42,7 +43,7 @@ export default function Loading() {
               <React.Fragment key={group.label}>
                 <tr>
                   <th
-                    colSpan={3}
+                    colSpan={4}
                     className="bg-muted px-3 py-2 text-left text-sm font-medium text-foreground"
                   >
                     {group.label}
@@ -59,6 +60,7 @@ export default function Loading() {
                         <Skeleton className="mx-auto h-5 w-9 rounded-full" />
                       </td>
                     ))}
+                    <td />
                   </tr>
                 ))}
               </React.Fragment>

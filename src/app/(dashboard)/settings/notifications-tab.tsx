@@ -155,7 +155,7 @@ export function NotificationsTab({
   return (
     <div className="space-y-6">
       <div className="overflow-x-auto">
-        <table className="w-full min-w-[34rem] border-collapse text-sm">
+        <table className="w-full min-w-[34rem] table-auto border-collapse text-sm">
           <thead>
             <tr>
               <th className="pb-3 text-left align-bottom text-sm font-semibold text-foreground">
@@ -179,6 +179,10 @@ export function NotificationsTab({
                   </th>
                 );
               })}
+              {/* Spacer. The table spans the panel; the leftover width lands
+                  here rather than in the label column, so the switches stay
+                  beside the rows they belong to on a wide screen. */}
+              <th className="w-full" />
             </tr>
           </thead>
 
@@ -187,7 +191,7 @@ export function NotificationsTab({
               <React.Fragment key={group.label}>
                 <tr>
                   <th
-                    colSpan={3}
+                    colSpan={4}
                     className="bg-muted px-3 py-2 text-left text-sm font-medium text-foreground"
                   >
                     {group.label}
@@ -228,6 +232,7 @@ export function NotificationsTab({
                           </td>
                         );
                       })}
+                      <td />
                     </tr>
                   );
                 })}
