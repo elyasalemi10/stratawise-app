@@ -316,8 +316,8 @@ export function CompanyTab({ company }: { company: CompanyData | null }) {
           <h3 className="mb-4 text-sm font-semibold text-foreground">Company details</h3>
           <div className="grid gap-4 sm:grid-cols-2">
             <CompanyField id="co-name" label="Company name" field="name" company={localCompany!} onSaved={patchCompany} />
-            <CompanyField id="co-trad" label="Trading name" field="trading_as" company={localCompany!} onSaved={patchCompany} />
             <CompanyField id="co-reg" label="Registered name" field="registered_name" company={localCompany!} onSaved={patchCompany} />
+            <CompanyField id="co-trad" label="Trading name" field="trading_as" company={localCompany!} onSaved={patchCompany} />
             <CompanyField id="co-abn" label="ABN" field="abn" company={localCompany!} onSaved={patchCompany} />
             <CompanyField id="co-phone" label="Phone" field="phone" company={localCompany!} onSaved={patchCompany} />
             <CompanyField id="co-email" label="Email" field="email" company={localCompany!} onSaved={patchCompany} />

@@ -364,11 +364,7 @@ export function OCCertificate(props: OCCertificateProps) {
               <Text style={{ fontSize: 7, color: c.muted }}>(signature)</Text>
             </View>
           )}
-          <Text style={s.sigName}>
-            {registeredName && registeredName !== companyName
-              ? `${registeredName} trading as ${companyName}`
-              : companyName}
-          </Text>
+          <Text style={s.sigName}>{registeredName || companyName}</Text>
         </View>
 
         {/* Footer */}

@@ -1,6 +1,8 @@
 "use server";
 
-import { getAuthUserId } from "@/lib/auth";import { createServerClient } from "@/lib/supabase";
+import { getAuthUserId } from "@/lib/auth";
+import { createServerClient } from "@/lib/supabase";
+import { companyDisplayName as brandName } from "@/lib/company-name";
 
 export interface SidebarProfile {
   companyName: string | null;
@@ -35,8 +37,8 @@ export async function getSidebarProfile(): Promise<SidebarProfile | null> {
       .eq("id", profile.management_company_id)
       .single();
 
-    // Prefer the trading name when set; fall back to the legal company name.
-    companyName = company?.trading_as?.trim() || company?.name || null;
+    // The brand, not the registered business name , see lib/company-name.ts.
+    companyName = brandName(company ?? {}) || null;
     companyLogoUrl = company?.logo_url ?? null;
   }
 

@@ -13,11 +13,11 @@ import type { OCSettingsSection } from "./nav";
 //
 // Keep the field lists in step with settings-content.tsx.
 
-function FieldSkeleton({ label, wide }: { label: string; wide?: boolean }) {
+function FieldSkeleton({ label, wide, hideLabel }: { label: string; wide?: boolean; hideLabel?: boolean }) {
   return (
     <div className={wide ? "sm:col-span-2" : undefined}>
       <div className="space-y-1.5">
-        <Label>{label}</Label>
+        {!hideLabel && <Label>{label}</Label>}
         <Skeleton className="h-9 w-full rounded-md" />
       </div>
     </div>
@@ -150,7 +150,7 @@ export function OCSettingsSkeleton({ section }: { section: OCSettingsSection }) 
         <FieldSkeleton label="Inspection address" wide />
       </FieldCard>
       <FieldCard title="Common property description">
-        <FieldSkeleton label="Common property description" wide />
+        <FieldSkeleton label="Common property description" wide hideLabel />
       </FieldCard>
     </div>
   );

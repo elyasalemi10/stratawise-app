@@ -46,6 +46,7 @@ import {
   SidebarMenuBadge,
   SidebarMenuButton,
   SidebarMenuItem,
+  useSidebar,
 } from "@/components/ui/sidebar";
 import { Avatar, AvatarImage, AvatarFallback } from "@/components/ui/avatar";
 import { Input } from "@/components/ui/input";
@@ -591,10 +592,7 @@ function NavUser({
         tooltip={profile?.companyName ?? "Account"}
         aria-expanded={open}
         onClick={() => setOpen((o) => !o)}
-        className={cn(
-          "border border-sidebar-foreground/20",
-          open && "bg-sidebar-accent text-sidebar-accent-foreground",
-        )}
+        className={cn(open && "bg-sidebar-accent text-sidebar-accent-foreground")}
       >
         {!loaded ? (
           <>
@@ -706,6 +704,11 @@ export function AppSidebar({
   const pathname = usePathname();
   const searchParams = useSearchParams();
   const router = useRouter();
+  // Collapsed only changes how a GROUP opens: there is no room below a 48px
+  // rail row for an accordion panel, so the group's items fly out beside it
+  // instead. Everything else is the primitive's own icon-mode CSS.
+  const { state: sidebarState } = useSidebar();
+  const collapsed = sidebarState === "collapsed";
   // Seeded from the server layout so the initial render has no skeleton.
   // The localStorage cache is kept in sync for the dropdown switch (which
   // sometimes runs faster than a server roundtrip for repeat nav across
@@ -1149,22 +1152,49 @@ export function AppSidebar({
                 <SidebarGroupContent>
                   <SidebarMenu>
                     <SidebarMenuItem>
-                      <SidebarMenuButton
-                        size="lg"
-                        tooltip={group.label}
-                        className="text-base group-data-[collapsible=icon]:p-2!"
-                        aria-expanded={isOpen}
-                        onClick={() => setOpenGroup(isOpen ? null : group.label)}
-                      >
-                        <GroupIcon />
-                        <span>{group.label}</span>
-                        <ChevronDown
-                          className={cn(
-                            "ml-auto size-4 transition-transform duration-200 group-data-[collapsible=icon]:hidden",
-                            isOpen && "rotate-180",
-                          )}
-                        />
-                      </SidebarMenuButton>
+                      {collapsed ? (
+                        <SimpleDropdown
+                          side="right"
+                          trigger={
+                            <SidebarMenuButton
+                              size="lg"
+                              tooltip={group.label}
+                              className="text-base group-data-[collapsible=icon]:p-2!"
+                            >
+                              <GroupIcon />
+                              <span>{group.label}</span>
+                            </SidebarMenuButton>
+                          }
+                        >
+                          <DropdownLabel>{group.label}</DropdownLabel>
+                          {group.items.map((item) => (
+                            <DropdownItem
+                              key={item.href}
+                              onClick={() => router.push(item.href)}
+                            >
+                              <item.icon className="size-4 shrink-0" />
+                              {item.label}
+                            </DropdownItem>
+                          ))}
+                        </SimpleDropdown>
+                      ) : (
+                        <SidebarMenuButton
+                          size="lg"
+                          tooltip={group.label}
+                          className="text-base group-data-[collapsible=icon]:p-2!"
+                          aria-expanded={isOpen}
+                          onClick={() => setOpenGroup(isOpen ? null : group.label)}
+                        >
+                          <GroupIcon />
+                          <span>{group.label}</span>
+                          <ChevronDown
+                            className={cn(
+                              "ml-auto size-4 transition-transform duration-200",
+                              isOpen && "rotate-180",
+                            )}
+                          />
+                        </SidebarMenuButton>
+                      )}
                     </SidebarMenuItem>
                   </SidebarMenu>
                   <div
@@ -1195,8 +1225,10 @@ export function AppSidebar({
         })()}
       </SidebarContent>
 
-      {/* Footer , User profile */}
-      <SidebarFooter className="p-2">
+      {/* Footer , User profile. The rule runs the full width of the rail
+          rather than boxing the card, so the footer reads as a section of the
+          sidebar instead of a widget sitting in it. */}
+      <SidebarFooter className="gap-0 border-t border-sidebar-foreground/15 p-2">
         <SidebarMenu>
           <SidebarMenuItem>
             <NavUser

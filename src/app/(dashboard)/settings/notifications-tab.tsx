@@ -165,14 +165,14 @@ export function NotificationsTab({
         <table className="w-full min-w-[34rem] border-collapse text-sm">
           <thead>
             <tr>
-              <th className="w-[28rem] min-w-[18rem] pb-3 text-left align-bottom text-sm font-semibold text-foreground">
+              <th className="w-full pb-3 text-left align-bottom text-sm font-semibold text-foreground">
                 Notify me about
               </th>
               {CHANNELS.map(({ key, label, Icon }) => {
                 const allOn = columnAllOn(key);
                 return (
                   <th key={key} className="w-28 pb-3 align-bottom">
-                    <div className="flex flex-col items-end gap-1">
+                    <div className="flex flex-col items-center gap-1">
                       <Icon className="size-4 text-muted-foreground" aria-hidden />
                       <span className="text-sm font-medium text-foreground">{label}</span>
                       <button
@@ -186,12 +186,6 @@ export function NotificationsTab({
                   </th>
                 );
               })}
-              {/* Spacer. The table spans the panel; width past the label
-                  column's reading measure lands here rather than stretching
-                  it, so the switches stay beside the rows they belong to on
-                  a wide screen without the labels being squeezed on a
-                  narrow one. */}
-              <th className="w-auto" />
             </tr>
           </thead>
 
@@ -200,7 +194,7 @@ export function NotificationsTab({
               <React.Fragment key={group.label}>
                 <tr>
                   <th
-                    colSpan={4}
+                    colSpan={3}
                     className="bg-muted px-3 py-2 text-left text-sm font-medium text-foreground"
                   >
                     {group.label}
@@ -224,8 +218,8 @@ export function NotificationsTab({
                           (key === "in_app" && isManagerial);
                         const auto = autoOptOutMap.get(`${item.type}:${key}`);
                         return (
-                          <td key={key} className="py-3 text-right align-middle">
-                            <div className="flex flex-col items-end gap-1">
+                          <td key={key} className="py-3 text-center align-middle">
+                            <div className="flex flex-col items-center gap-1">
                               <Switch
                                 checked={locked ? true : !!state[item.type]?.[key]}
                                 disabled={locked}
@@ -241,7 +235,6 @@ export function NotificationsTab({
                           </td>
                         );
                       })}
-                      <td />
                     </tr>
                   );
                 })}

@@ -9,6 +9,7 @@ import { isNotificationOptedOut } from "@/lib/notifications";
 import { generateAndUploadFinalNotice } from "@/lib/final-notice-pdf";
 import { resolveWorkflowForOC, renderTemplate, computeInterest, addDaysIso } from "@/lib/escalation/helpers";
 import type { FollowupStep } from "@/lib/validations/escalation";
+import { companyLegalName } from "@/lib/company-name";
 
 // In-app notify the OC's managers about a follow-up event (escalation email
 // sent). Type 'escalation_step' is opt-outable in Settings ,
@@ -181,7 +182,7 @@ async function advanceInstance(supabase: any, inst: Record<string, unknown>, tod
   // Context for merge fields + PDFs.
   const { data: oc } = await supabase
     .from("owners_corporations")
-    .select("name, short_code, plan_number, abn, address, suburb, state, postcode, interest_rate_monthly, interest_grace_period_days, interest_enabled, management_companies(name, logo_url, brand_color, phone, email, abn)")
+    .select("name, short_code, plan_number, abn, address, suburb, state, postcode, interest_rate_monthly, interest_grace_period_days, interest_enabled, management_companies(name, trading_as, registered_name, logo_url, brand_color, phone, email, abn)")
     .eq("id", notice.oc_id)
     .maybeSingle();
   const mc = (oc as { management_companies: Record<string, unknown> | null } | null)?.management_companies ?? null;
@@ -232,7 +233,7 @@ async function advanceInstance(supabase: any, inst: Record<string, unknown>, tod
         const brand = (mc?.brand_color as string) || "#0E314C";
         const key = await generateAndUploadFinalNotice(
           {
-            managementCompany: { name: (mc?.name as string) ?? "StrataWise", logo_url: (mc?.logo_url as string) ?? null, phone: (mc?.phone as string) ?? null, email: (mc?.email as string) ?? null, abn: (mc?.abn as string) ?? null },
+            managementCompany: { name: companyLegalName(mc ?? {}) || "StrataWise", logo_url: (mc?.logo_url as string) ?? null, phone: (mc?.phone as string) ?? null, email: (mc?.email as string) ?? null, abn: (mc?.abn as string) ?? null },
             oc: { name: oc?.name ?? "Owners Corporation", address: ocAddress, abn: oc?.abn ?? null, plan_number: oc?.plan_number ?? "", oc_number: oc?.oc_number ?? null },
             documentTitle: "Final Fee Notice",
             referenceNumber: notice.reference_number ?? "",

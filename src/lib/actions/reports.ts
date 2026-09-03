@@ -3,6 +3,7 @@
 import { getCurrentProfile, requireOCAccess } from "@/lib/auth";
 import { createServerClient } from "@/lib/supabase";
 import { getLotOwners } from "@/lib/actions/lot-ownership";
+import { companyDisplayName, companyLegalName } from "@/lib/company-name";
 
 // ─── Levy History ──────────────────────────────────────────
 
@@ -298,12 +299,10 @@ export async function getOCCertificateData(ocId: string, lotId: string, applican
     managerAppointed: oc.manager_appointed ?? true,
     administratorAppointed: oc.administrator_appointed ?? false,
     lastAgmDate: "",
-    // Certificate shows the full legal form: "<legal name> trading as
-    // <trading name>" when a trading name is set, otherwise just the name.
-    companyName: company?.trading_as?.trim()
-      ? `${company.name} trading as ${company.trading_as.trim()}`
-      : (company?.name ?? ""),
-    registeredName: company?.registered_name ?? company?.name ?? "",
+    // The brand for prose ("a manager has been appointed: MyOCM"), the legal
+    // entity for the signature block. See src/lib/company-name.ts.
+    companyName: companyDisplayName(company ?? {}),
+    registeredName: companyLegalName(company ?? {}),
     companyAddress: company?.address ?? "",
     logoUrl: company?.logo_url ?? null,
     signatureUrl: company?.signature_url ?? null,

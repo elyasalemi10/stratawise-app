@@ -2,6 +2,7 @@ import { Resend } from "resend";
 import { createServerClient } from "@/lib/supabase";
 import { managerEmailFrom, brandDomain, formatFrom } from "@/lib/manager-username";
 import { sendViaGmail, isGmailConfigured } from "@/lib/google/gmail-client";
+import { companyDisplayName as brandName } from "@/lib/company-name";
 
 function getResend() {
   return new Resend(process.env.RESEND_API_KEY);
@@ -38,8 +39,7 @@ async function companyDisplayName(companyId: string): Promise<string | null> {
     .select("name, trading_as")
     .eq("id", companyId)
     .maybeSingle();
-  const c = data as { name: string | null; trading_as: string | null } | null;
-  return c?.trading_as?.trim() || c?.name?.trim() || null;
+  return brandName(data ?? {}) || null;
 }
 
 // Looks up the trading name of a manager's own firm, for orgNoreplyFrom.
@@ -99,7 +99,7 @@ export async function resolveManagerFromHeader(
         .select("name, trading_as")
         .eq("id", data.management_company_id)
         .maybeSingle();
-      companyName = company?.trading_as?.trim() || company?.name || null;
+      companyName = brandName(company ?? {}) || null;
     }
     return managerEmailFrom(data.email_username, personName, companyName);
   } catch (err) {

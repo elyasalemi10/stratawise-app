@@ -13,6 +13,7 @@
 
 import { Page, View, Text, Image, Document, StyleSheet } from "@react-pdf/renderer";
 import "../fonts";
+import { companyLegalName } from "@/lib/company-name";
 
 const c = {
   foreground: "#1a1f2e",
@@ -142,7 +143,7 @@ export function FinalNoticeCover(props: FinalNoticeCoverProps) {
         <View style={styles.header}>
           <View style={styles.companyBlock}>
             <Text style={styles.companyName}>
-              {managementCompany.registered_name ?? managementCompany.name}
+              {companyLegalName(managementCompany)}
             </Text>
             <Text style={{ fontSize: 9, color: c.muted, marginTop: 2 }}>
               Issued {issuedDate}

@@ -27,18 +27,17 @@ export function NotificationsSkeleton() {
         <table className="w-full min-w-[34rem] border-collapse text-sm">
           <thead>
             <tr>
-              <th className="w-[28rem] min-w-[18rem] pb-3 text-left align-bottom text-sm font-semibold text-foreground">
+              <th className="w-full pb-3 text-left align-bottom text-sm font-semibold text-foreground">
                 Notify me about
               </th>
               {CHANNELS.map(({ label, Icon }) => (
                 <th key={label} className="w-28 pb-3 align-bottom">
-                  <div className="flex flex-col items-end gap-1">
+                  <div className="flex flex-col items-center gap-1">
                     <Icon className="size-4 text-muted-foreground" aria-hidden />
                     <span className="text-sm font-medium text-foreground">{label}</span>
                   </div>
                 </th>
               ))}
-              <th className="w-auto" />
             </tr>
           </thead>
           <tbody>
@@ -46,7 +45,7 @@ export function NotificationsSkeleton() {
               <React.Fragment key={group.label}>
                 <tr>
                   <th
-                    colSpan={4}
+                    colSpan={3}
                     className="bg-muted px-3 py-2 text-left text-sm font-medium text-foreground"
                   >
                     {group.label}
@@ -59,11 +58,10 @@ export function NotificationsSkeleton() {
                       <div className="text-xs text-muted-foreground">{item.description}</div>
                     </td>
                     {CHANNELS.map(({ label }) => (
-                      <td key={label} className="py-3 text-right">
-                        <Skeleton className="ml-auto h-5 w-9 rounded-full" />
+                      <td key={label} className="py-3 text-center">
+                        <Skeleton className="mx-auto h-5 w-9 rounded-full" />
                       </td>
                     ))}
-                    <td />
                   </tr>
                 ))}
               </React.Fragment>

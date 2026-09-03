@@ -37,10 +37,14 @@ export interface OCFieldProps {
   /** Decimals allowed on a number field. */
   allowDecimal?: boolean;
   suffix?: string;
+  /** Drop the label. For a card whose single field repeats the card title ,
+   *  printing "Common property description" twice, one above the other,
+   *  reads as a bug. */
+  hideLabel?: boolean;
 }
 
 export function OCField({
-  ocId, fieldKey, label, type, value, options, onSaved, wide, allowDecimal = true, suffix,
+  ocId, fieldKey, label, type, value, options, onSaved, wide, allowDecimal = true, suffix, hideLabel,
 }: OCFieldProps) {
   const id = `oc-${fieldKey}`;
   const initial = value == null ? "" : String(value);
@@ -86,7 +90,7 @@ export function OCField({
   return (
     <div className={wide ? "sm:col-span-2" : undefined}>
       <div className="space-y-1.5">
-        <Label htmlFor={id}>{label}</Label>
+        {!hideLabel && <Label htmlFor={id}>{label}</Label>}
 
         {type === "text" && (
           <Input

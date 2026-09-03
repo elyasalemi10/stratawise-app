@@ -99,23 +99,38 @@ export function ManagementCard({
         <CardContent className="pt-5">
           <h3 className="text-sm font-semibold text-foreground mb-3">Management</h3>
           <div className="flex items-start justify-between gap-4 py-3">
-            <div className="min-w-0 flex-1">
-              <p className="text-sm text-muted-foreground">Current agency</p>
-              <p className="mt-1 text-base font-semibold text-foreground truncate">
-                {agreement?.manager_name ?? "Not set"}
-              </p>
-              {agreement?.manager_trading_as && (
-                <p className="text-xs text-muted-foreground truncate">
-                  trading as {agreement.manager_trading_as}
-                </p>
+            <div className="flex min-w-0 flex-1 items-start gap-3">
+              {agreement?.manager_logo_url ? (
+                // eslint-disable-next-line @next/next/no-img-element
+                <img
+                  src={agreement.manager_logo_url}
+                  alt=""
+                  className="h-10 w-10 shrink-0 rounded-md border border-border bg-card object-contain p-1"
+                />
+              ) : (
+                <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-md border border-border bg-muted">
+                  <Building2 className="h-4 w-4 text-muted-foreground" />
+                </div>
               )}
-              {agreement?.start_date && (
-                <p className="mt-1 text-xs text-muted-foreground">
-                  Active since {new Date(agreement.start_date).toLocaleDateString("en-AU", {
-                    day: "numeric", month: "short", year: "numeric",
-                  })}
+              <div className="min-w-0">
+                <p className="text-sm text-muted-foreground">Current agency</p>
+                <p className="mt-1 text-base font-semibold text-foreground truncate">
+                  {agreement?.manager_name ?? "Not set"}
                 </p>
-              )}
+                {agreement?.manager_legal_name &&
+                  agreement.manager_legal_name !== agreement.manager_name && (
+                    <p className="text-xs text-muted-foreground truncate">
+                      {agreement.manager_legal_name}
+                    </p>
+                  )}
+                {agreement?.start_date && (
+                  <p className="mt-1 text-xs text-muted-foreground">
+                    Active since {new Date(agreement.start_date).toLocaleDateString("en-AU", {
+                      day: "numeric", month: "short", year: "numeric",
+                    })}
+                  </p>
+                )}
+              </div>
             </div>
             <Button variant="secondary" size="sm" onClick={() => setOpen(true)}>
               <Repeat className="mr-2 h-3.5 w-3.5" />
@@ -157,7 +172,10 @@ export function ManagementCard({
                   <SelectContent>
                     {options.map((o) => (
                       <SelectItem key={o.id} value={o.id}>
-                        {o.name}{o.trading_as ? ` (${o.trading_as})` : ""}
+                        {o.name}
+                        {o.legal_name && o.legal_name !== o.name
+                          ? ` , ${o.legal_name}`
+                          : ""}
                       </SelectItem>
                     ))}
                   </SelectContent>

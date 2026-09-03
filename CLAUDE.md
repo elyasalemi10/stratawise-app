@@ -81,6 +81,31 @@
 - **Tier 1 / Tier 2 / Tier 3** (10+ lots) are NOT blocked at creation, but the tier-specific compliance features they legally require , audit obligations, 10-year maintenance plans, larger committee structures, formal AGM minute templates , are NOT built yet. They will be added once we ship for smaller OCs first.
 - Don't add tier-restriction UI / server blocks. Just keep building tier-4/5 features without breaking tier-1/2/3 OCs that happen to exist.
 
+## Company naming , brand vs legal entity
+
+A management company has THREE name fields and they are not interchangeable.
+The helper is [src/lib/company-name.ts](src/lib/company-name.ts); use it,
+never hand-roll the string.
+
+- **`name`** , the brand. "MyOCM". A nickname the firm picked, no legal
+  standing. **This is what the PLATFORM shows**: sidebar, headers, tables,
+  toasts, email sender names, anything a manager reads while working.
+  `companyDisplayName()`.
+- **`registered_name`** , the ASIC entity. "Perfect Design and Constructions
+  Pty Ltd". **This is what a DOCUMENT names.**
+- **`trading_as`** , the registered business name, when it differs from the
+  entity.
+
+`companyLegalName()` composes `"<registered_name> trading as <trading_as>"`,
+and drops the "trading as" half when there is no trading name or when it just
+repeats the entity. **"MyOCM trading as MyOCM" is the bug this exists to
+prevent** , it happened because two places each tried to build the legal form
+and their outputs got nested.
+
+Same shape as [src/lib/oc-legal-name.ts](src/lib/oc-legal-name.ts): a
+manager-facing nickname and a document-facing legal name, and the rule is
+which surface you are on, not which field is populated.
+
 ## Domain Nomenclature
 - An "Owners Corporation" (abbreviated "OC") is the legal entity that owns and manages common property , what's commonly called a "strata" in NSW or "body corporate" in QLD. Victoria uses "Owners Corporation" (Owners Corporations Act 2006).
 - **User-facing display:** ALWAYS uppercase "OC" (or full "Owners Corporation"). NEVER lowercase "oc" in prose, button labels, error toasts, table headers, breadcrumbs, etc. Watch for things like "this oc", "Failed to create oc", "Create new oc" , these are bugs.

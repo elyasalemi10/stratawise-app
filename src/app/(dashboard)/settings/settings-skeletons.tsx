@@ -96,8 +96,8 @@ export function CompanySkeleton() {
           <h3 className="mb-4 text-sm font-semibold text-foreground">Company details</h3>
           <div className="grid gap-4 sm:grid-cols-2">
             <FieldSkeleton label="Company name" />
-            <FieldSkeleton label="Trading name" />
             <FieldSkeleton label="Registered name" />
+            <FieldSkeleton label="Trading name" />
             <FieldSkeleton label="ABN" />
             <FieldSkeleton label="Phone" />
             <FieldSkeleton label="Email" />

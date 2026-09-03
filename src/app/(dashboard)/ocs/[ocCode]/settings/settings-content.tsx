@@ -185,7 +185,7 @@ export function SettingsContent({
           <Card>
             <CardContent className="pt-5">
               <h3 className="mb-4 text-sm font-semibold text-foreground">Common property description</h3>
-              {field({ fieldKey: "common_property_description", label: "Common property description", type: "textarea", value: oc.common_property_description, wide: true })}
+              {field({ fieldKey: "common_property_description", label: "Common property description", type: "textarea", value: oc.common_property_description, wide: true, hideLabel: true })}
             </CardContent>
           </Card>
         </div>

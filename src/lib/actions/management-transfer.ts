@@ -3,6 +3,7 @@
 import { revalidatePath } from "next/cache";
 import { requireCompanyRole, requireOCAccess } from "@/lib/auth";
 import { createServerClient } from "@/lib/supabase";
+import { companyDisplayName, companyLegalName } from "@/lib/company-name";
 
 // Manager transfer , closes the active management_agreement and opens a
 // new one for the chosen agency. Levies, audit_log, and historical
@@ -12,16 +13,17 @@ import { createServerClient } from "@/lib/supabase";
 
 export interface ManagementCompanyOption {
   id: string;
+  /** The brand, for the picker. */
   name: string;
-  trading_as: string | null;
+  /** The legal entity, shown underneath so the manager picks the right one. */
+  legal_name: string;
 }
 
 /**
  * List every management_company in the system. Used by the transfer
- * dialog's picker. We deliberately surface name + trading_as (not the
- * operating-account details) , a transfer needs the agency identity
- * only. Excludes the current manager since transferring to self is a
- * no-op.
+ * dialog's picker. We surface the brand and the legal entity (not the
+ * operating-account details) , a transfer needs the agency identity only.
+ * Excludes the current manager since transferring to self is a no-op.
  */
 export async function listManagementCompanies(
   currentCompanyId: string,
@@ -30,10 +32,14 @@ export async function listManagementCompanies(
   const supabase = createServerClient();
   const { data } = await supabase
     .from("management_companies")
-    .select("id, name, trading_as")
+    .select("id, name, trading_as, registered_name")
     .neq("id", currentCompanyId)
     .order("name", { ascending: true });
-  return (data ?? []) as ManagementCompanyOption[];
+  return (data ?? []).map((c) => ({
+    id: c.id as string,
+    name: companyDisplayName(c) || "Unnamed agency",
+    legal_name: companyLegalName(c),
+  }));
 }
 
 export interface TransferOCInput {
@@ -174,8 +180,11 @@ export async function transferOCManagement(input: TransferOCInput): Promise<
 export interface ActiveAgreement {
   id: string;
   start_date: string;
+  /** The firm's brand , what the platform shows. */
   manager_name: string;
-  manager_trading_as: string | null;
+  /** The legal entity, with its trading name when there is one. */
+  manager_legal_name: string;
+  manager_logo_url: string | null;
 }
 
 export async function getActiveManagementAgreement(
@@ -185,7 +194,7 @@ export async function getActiveManagementAgreement(
   const supabase = createServerClient();
   const { data } = await supabase
     .from("management_agreements")
-    .select("id, start_date, management_companies!inner(name, trading_as)")
+    .select("id, start_date, management_companies!inner(name, trading_as, registered_name, logo_url)")
     .eq("oc_id", ocId)
     .is("end_date", null)
     .maybeSingle();
@@ -195,7 +204,8 @@ export async function getActiveManagementAgreement(
   return {
     id: data.id,
     start_date: data.start_date,
-    manager_name: mc?.name ?? "Unknown agency",
-    manager_trading_as: mc?.trading_as ?? null,
+    manager_name: companyDisplayName(mc ?? {}) || "Unknown agency",
+    manager_legal_name: companyLegalName(mc ?? {}),
+    manager_logo_url: mc?.logo_url ?? null,
   };
 }
