@@ -117,7 +117,6 @@ const CLIENT_CACHED_ROUTES: RegExp[] = [
   /^\/ocs$/,
   /^\/inbox$/,
   /^\/contractors$/,
-  /^\/chart-of-accounts$/,
   /^\/maintenance$/,
   /^\/levies$/,
   // Settings is seven routes now, each fetching only its own section, so
@@ -146,7 +145,9 @@ const CLIENT_CACHED_ROUTES: RegExp[] = [
   /^\/ocs\/[^/]+\/reconciliation$/,
   /^\/ocs\/[^/]+\/reports$/,
   /^\/ocs\/[^/]+\/rules$/,
-  /^\/ocs\/[^/]+\/settings$/,
+  // OC settings is six section routes now, all sharing one aggregate fetch
+  // and one cache key, so switching sections costs nothing.
+  /^\/ocs\/[^/]+\/settings(\/[^/]+)?$/,
   // Forms, wizards and redirects. Nothing to revalidate, and a refresh under
   // a half-filled form is destructive. Two of these (budgets/create,
   // meetings/create) already fell under the detail-page patterns above by

@@ -77,7 +77,7 @@ export async function createCoaAccount(input: {
     return { error: "Failed to create account. Please try again." };
   }
 
-  revalidatePath("/chart-of-accounts");
+  revalidatePath("/settings/chart-of-accounts");
   return { account: data as CoaAccount };
 }
 
@@ -136,7 +136,7 @@ export async function updateCoaAccount(input: {
     console.error("Failed to update CoA account", error);
     return { error: "Failed to update account. Please try again." };
   }
-  revalidatePath("/chart-of-accounts");
+  revalidatePath("/settings/chart-of-accounts");
   return { account: data as CoaAccount };
 }
 
@@ -165,6 +165,6 @@ export async function setCoaAccountActive(
     .eq("id", id);
   if (error) return { error: "Failed to update account." };
 
-  revalidatePath("/chart-of-accounts");
+  revalidatePath("/settings/chart-of-accounts");
   return {};
 }

@@ -46,6 +46,7 @@ import {
   SidebarMenu,
   SidebarMenuButton,
   SidebarMenuItem,
+  useSidebar,
 } from "@/components/ui/sidebar";
 import { Avatar, AvatarImage, AvatarFallback } from "@/components/ui/avatar";
 import { Input } from "@/components/ui/input";
@@ -95,7 +96,6 @@ const managerMainNavGroups = [
       { href: "/ocs", label: "OCs", icon: Building2 },
       { href: "/maintenance", label: "Maintenance", icon: Wrench },
       { href: "/contractors", label: "Contractors", icon: HardHat },
-      { href: "/chart-of-accounts", label: "Chart of Accounts", icon: BookOpen },
     ],
   },
 ];
@@ -546,11 +546,13 @@ function usePinnedOCs(scope: string | null | undefined): {
 function NavUser({
   loaded,
   profile,
+  collapsed,
   onSettings,
   onSignOut,
 }: {
   loaded: boolean;
   profile: SidebarProfile | null;
+  collapsed: boolean;
   onSettings: () => void;
   onSignOut: () => void;
 }) {
@@ -591,8 +593,10 @@ function NavUser({
         type="button"
         onClick={() => setOpen((o) => !o)}
         aria-expanded={open}
+        title={collapsed ? (profile?.companyName ?? "Account") : undefined}
         className={cn(
-          "flex h-14 w-full items-center gap-2 overflow-hidden rounded-lg border p-2 text-left text-sm text-sidebar-foreground transition-colors outline-none",
+          "flex items-center gap-2 overflow-hidden rounded-lg border text-left text-sm text-sidebar-foreground transition-colors outline-none",
+          collapsed ? "size-8 justify-center p-0" : "h-14 w-full p-2",
           // Thin grey outline , visible on the midnight sidebar bg.
           "border-sidebar-foreground/20 hover:bg-sidebar-accent hover:text-sidebar-accent-foreground",
           "focus-visible:ring-2 focus-visible:ring-sidebar-ring",
@@ -601,11 +605,13 @@ function NavUser({
       >
         {!loaded ? (
           <>
-            <Skeleton className="h-8 w-8 rounded-lg shrink-0" />
-            <div className="grid flex-1 text-left text-sm leading-tight">
-              <Skeleton className="h-3.5 w-24" />
-              <Skeleton className="h-3 w-32 mt-1" />
-            </div>
+            <Skeleton className={cn("rounded-lg shrink-0", collapsed ? "size-6" : "h-8 w-8")} />
+            {!collapsed && (
+              <div className="grid flex-1 text-left text-sm leading-tight">
+                <Skeleton className="h-3.5 w-24" />
+                <Skeleton className="h-3 w-32 mt-1" />
+              </div>
+            )}
           </>
         ) : (
           <>
@@ -613,7 +619,7 @@ function NavUser({
                 NEVER falls back to the company logo: a manager's
                 personal profile is a separate identity to the firm's
                 brand mark. */}
-            <Avatar className="h-8 w-8 rounded-lg shrink-0">
+            <Avatar className={cn("rounded-lg shrink-0", collapsed ? "size-6" : "h-8 w-8")}>
               {profile?.userAvatarUrl ? (
                 <AvatarImage src={profile.userAvatarUrl} alt="Avatar" />
               ) : null}
@@ -621,15 +627,19 @@ function NavUser({
                 {profile?.userInitials ?? "?"}
               </AvatarFallback>
             </Avatar>
-            <div className="grid flex-1 text-left text-sm leading-tight min-w-0">
-              <span className="truncate font-medium">
-                {profile?.companyName ?? "My Company"}
-              </span>
-              <span className="text-muted-foreground truncate text-xs">
-                {profile?.userEmail ?? ""}
-              </span>
-            </div>
-            <MoreVertical className="ml-auto size-4 shrink-0" />
+            {!collapsed && (
+              <>
+                <div className="grid flex-1 text-left text-sm leading-tight min-w-0">
+                  <span className="truncate font-medium">
+                    {profile?.companyName ?? "My Company"}
+                  </span>
+                  <span className="text-muted-foreground truncate text-xs">
+                    {profile?.userEmail ?? ""}
+                  </span>
+                </div>
+                <MoreVertical className="ml-auto size-4 shrink-0" />
+              </>
+            )}
           </>
         )}
       </button>
@@ -710,6 +720,12 @@ export function AppSidebar({
   const pathname = usePathname();
   const searchParams = useSearchParams();
   const router = useRouter();
+  // Collapsed is a MODE, not a narrower version of the same nav. The rail is
+  // 48px wide; a two-line switcher, group labels, an indented accordion and a
+  // count badge all overflow it and poke out from under the icons. Collapsed
+  // renders a flat strip of icons instead, with the label in a tooltip.
+  const { state: sidebarState } = useSidebar();
+  const collapsed = sidebarState === "collapsed";
   // Seeded from the server layout so the initial render has no skeleton.
   // The localStorage cache is kept in sync for the dropdown switch (which
   // sometimes runs faster than a server roundtrip for repeat nav across
@@ -768,7 +784,7 @@ export function AppSidebar({
   // than keep showing the previously-visited OC. Visiting the Main dashboard
   // (or the company-wide OCs / Maintenance / Contractors / Chart of Accounts
   // lists) clears the sticky OC. Only /settings and /inbox keep OC context.
-  const COMPANY_CONTEXT_ROUTES = ["/dashboard", "/ocs", "/maintenance", "/contractors", "/chart-of-accounts"];
+  const COMPANY_CONTEXT_ROUTES = ["/dashboard", "/ocs", "/maintenance", "/contractors"];
 
   useEffect(() => {
     if (typeof window === "undefined") return;
@@ -876,12 +892,21 @@ export function AppSidebar({
               trigger={
                 <SidebarMenuButton
                   size="lg"
-                  className="h-16 data-[state=open]:bg-sidebar-accent data-[state=open]:text-sidebar-accent-foreground"
+                  tooltip={collapsed ? (isInOC ? (currentOC?.name ?? "OC") : "Main dashboard") : undefined}
+                  className={cn(
+                    "data-[state=open]:bg-sidebar-accent data-[state=open]:text-sidebar-accent-foreground",
+                    collapsed ? "size-8 justify-center p-0!" : "h-16",
+                  )}
                 >
-                  <div className="flex aspect-square size-9 items-center justify-center rounded-lg bg-card text-primary shrink-0">
+                  <div
+                    className={cn(
+                      "flex aspect-square items-center justify-center rounded-lg bg-card text-primary shrink-0",
+                      collapsed ? "size-8" : "size-9",
+                    )}
+                  >
                     <Building2 className="size-4" />
                   </div>
-                  <div className="grid flex-1 text-left leading-tight">
+                  <div className={cn("grid flex-1 text-left leading-tight", collapsed && "hidden")}>
                     <span className="truncate text-base font-semibold">
                       {isInOC
                         ? (currentOC?.name ?? "OC")
@@ -1024,7 +1049,76 @@ export function AppSidebar({
 
       {/* Navigation , show skeleton until role is known */}
       <SidebarContent>
-        {!loaded ? (
+        {collapsed ? (
+          // Icon rail. Every nav item across every group, flattened and
+          // de-duplicated, one icon each. No group labels, no accordion, no
+          // indent guide, no count pill , all of those are wider than 48px
+          // and would show as fragments beside the icons. The label lives in
+          // the hover tooltip, which is the whole point of an icon rail.
+          <SidebarGroup>
+            <SidebarGroupContent>
+              <SidebarMenu>
+                {(() => {
+                  const seen = new Set<string>();
+                  const flat: Array<{
+                    href: string;
+                    label: string;
+                    icon: LucideIcon;
+                    count: number;
+                  }> = [];
+                  for (const group of navGroups) {
+                    for (const item of group.items) {
+                      if (seen.has(item.href)) continue;
+                      seen.add(item.href);
+                      const badgeKey = "badgeKey" in item ? item.badgeKey : undefined;
+                      flat.push({
+                        href: item.href,
+                        label: item.label,
+                        icon: item.icon,
+                        count:
+                          badgeKey === "unmatched_count"
+                            ? currentOC?.unmatched_count ?? 0
+                            : 0,
+                      });
+                    }
+                  }
+                  // Longest-prefix-wins, same rule as the expanded nav.
+                  let best = "";
+                  for (const it of flat) {
+                    const [path, query] = it.href.split("?");
+                    if (query) continue;
+                    if (
+                      (pathname === it.href || pathname.startsWith(it.href + "/")) &&
+                      path.length > best.length
+                    ) {
+                      best = it.href;
+                    }
+                  }
+                  return flat.map((item) => (
+                    <SidebarMenuItem key={item.href}>
+                      <SidebarMenuButton
+                        isActive={item.href === best}
+                        tooltip={item.label}
+                        render={<Link href={item.href} />}
+                      >
+                        <span className="relative flex items-center justify-center">
+                          <item.icon />
+                          {item.count > 0 && (
+                            <span
+                              className="absolute -top-0.5 -right-0.5 size-1.5 rounded-full bg-sidebar-accent-foreground"
+                              aria-label={`${item.count} unmatched`}
+                            />
+                          )}
+                        </span>
+                        <span>{item.label}</span>
+                      </SidebarMenuButton>
+                    </SidebarMenuItem>
+                  ));
+                })()}
+              </SidebarMenu>
+            </SidebarGroupContent>
+          </SidebarGroup>
+        ) : !loaded ? (
           <SidebarGroup>
             <SidebarGroupContent>
               <SidebarMenu>
@@ -1206,6 +1300,7 @@ export function AppSidebar({
             <NavUser
               loaded={loaded}
               profile={profile}
+              collapsed={collapsed}
               onSettings={() => router.push("/settings")}
               onSignOut={() => { window.location.href = "/logout"; }}
             />

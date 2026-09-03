@@ -1,5 +1,5 @@
 import { redirect } from "next/navigation";
-import { SectionHeader } from "../section-header";
+import { SectionHeader } from "@/components/shared/section-header";
 import { getCurrentProfile } from "@/lib/auth";
 import { NotificationsTab } from "../notifications-tab";
 import { getNotificationSettings } from "../data";

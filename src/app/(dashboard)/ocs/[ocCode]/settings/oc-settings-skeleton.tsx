@@ -2,35 +2,15 @@ import { Pencil, Repeat } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
+import type { OCSettingsSection } from "./nav";
 
-// Mirrors management-card.tsx + settings-content.tsx (General tab).
+// Mirrors settings-content.tsx, one section at a time.
 //
-// Almost nothing on this page is server data. The five tab labels, all three
-// card titles, both Edit affordances, the Transfer button and every single
-// field label are fixed, so they all render for real. Only the VALUES
-// shimmer, which on arrival is the only thing that changes.
+// Almost nothing on this page is server data. Every card title, every Edit
+// affordance and every field LABEL is fixed, so they all render for real.
+// Only the VALUES shimmer, which on arrival is the only thing that changes.
 //
-// The previous version was two generic cards of grey bars with a tab strip
-// styled like the lot-detail one (gold underline, centred, min-width tabs).
-// The real strip is left-aligned h-9 buttons with a primary bottom border,
-// and the General tab is a two-column grid, so the whole frame moved when
-// the data landed.
-//
-// Keep TABS and the field labels in step with settings-content.tsx.
-
-const TABS = ["General", "Financial", "Communications", "Banking", "Automation"];
-
-const GENERAL_FIELDS = [
-  "Name",
-  "Plan number",
-  "Address",
-  "ABN",
-  "TFN",
-  "OC Tier",
-  "Total lots",
-];
-
-const CERTIFICATE_FIELDS = ["Common seal text", "Inspection address"];
+// Keep the field lists in step with settings-content.tsx.
 
 function FieldRow({ label, width }: { label: string; width: string }) {
   return (
@@ -41,7 +21,7 @@ function FieldRow({ label, width }: { label: string; width: string }) {
   );
 }
 
-function CardHeader({ title }: { title: string }) {
+function CardTitleRow({ title }: { title: string }) {
   return (
     <div className="mb-3 flex items-center justify-between">
       <h3 className="text-sm font-semibold text-foreground">{title}</h3>
@@ -53,13 +33,33 @@ function CardHeader({ title }: { title: string }) {
   );
 }
 
-// Varied widths so the column reads as data rather than a grid.
-const GENERAL_WIDTHS = ["w-44", "w-28", "w-56", "w-32", "w-24", "w-16", "w-10"];
+// Varied widths so a column reads as data rather than a grid.
+const WIDTHS = ["w-44", "w-28", "w-56", "w-32", "w-24", "w-16", "w-40", "w-20"];
 
-export function OCSettingsSkeleton() {
+function FieldCard({
+  title,
+  fields,
+  className,
+}: {
+  title: string;
+  fields: string[];
+  className?: string;
+}) {
   return (
-    <div className="space-y-6">
-      {/* Management card , sits above the tabs on the real page. */}
+    <Card className={className}>
+      <CardContent className="pt-5">
+        <CardTitleRow title={title} />
+        {fields.map((label, i) => (
+          <FieldRow key={label} label={label} width={WIDTHS[i % WIDTHS.length]} />
+        ))}
+      </CardContent>
+    </Card>
+  );
+}
+
+export function OCSettingsSkeleton({ section }: { section: OCSettingsSection }) {
+  if (section === "management") {
+    return (
       <Card>
         <CardContent className="pt-5">
           <h3 className="mb-3 text-sm font-semibold text-foreground">Management</h3>
@@ -76,53 +76,82 @@ export function OCSettingsSkeleton() {
           </div>
         </CardContent>
       </Card>
+    );
+  }
 
-      <div className="space-y-6">
-        <div className="flex items-center justify-between border-b border-border">
-          <div className="flex items-center gap-1">
-            {TABS.map((label, i) => (
-              <span
-                key={label}
-                className={`h-9 border-b-2 px-3 text-sm font-medium leading-9 ${
-                  i === 0
-                    ? "border-primary text-foreground"
-                    : "border-transparent text-muted-foreground"
-                }`}
-              >
-                {label}
-              </span>
-            ))}
-          </div>
-        </div>
+  if (section === "financial") {
+    return (
+      <FieldCard
+        title="Financial settings"
+        fields={[
+          "Financial year starts",
+          "Billing cycle",
+          "Levy basis",
+          "Penalty interest",
+          "GST registered",
+        ]}
+      />
+    );
+  }
 
-        <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
-          <Card>
-            <CardContent className="pt-5">
-              <CardHeader title="General details" />
-              {GENERAL_FIELDS.map((label, i) => (
-                <FieldRow key={label} label={label} width={GENERAL_WIDTHS[i]} />
-              ))}
-            </CardContent>
-          </Card>
-
-          <Card>
-            <CardContent className="pt-5">
-              <CardHeader title="Certificate settings" />
-              {CERTIFICATE_FIELDS.map((label, i) => (
-                <FieldRow key={label} label={label} width={i === 0 ? "w-36" : "w-48"} />
-              ))}
-            </CardContent>
-          </Card>
-
-          <Card className="lg:col-span-2">
-            <CardContent className="pt-5">
-              <CardHeader title="Common property description" />
-              <Skeleton className="h-3.5 w-3/4" />
-              <Skeleton className="mt-2 h-3.5 w-1/2" />
-            </CardContent>
-          </Card>
-        </div>
+  if (section === "communications") {
+    return (
+      <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
+        <FieldCard title="Delivery" fields={["Default delivery", "Reply-to address"]} />
+        <FieldCard title="Levy notice content" fields={["Notice footer", "Payment instructions"]} />
       </div>
+    );
+  }
+
+  if (section === "banking") {
+    return (
+      <FieldCard
+        title="Trust account details"
+        fields={["Bank", "Account name", "BSB", "Account number"]}
+      />
+    );
+  }
+
+  if (section === "automation") {
+    return (
+      <Card>
+        <CardContent className="pt-5">
+          <div className="mb-3 flex items-center justify-between">
+            <h3 className="text-sm font-semibold text-foreground">Automations</h3>
+            <Skeleton className="h-8 w-36 rounded-md" />
+          </div>
+          {["Auto-send levies"].map((label) => (
+            <div
+              key={label}
+              className="flex items-center justify-between border-b border-border/50 py-3 last:border-b-0"
+            >
+              <span className="text-sm text-foreground">{label}</span>
+              <Skeleton className="h-5 w-9 rounded-full" />
+            </div>
+          ))}
+        </CardContent>
+      </Card>
+    );
+  }
+
+  // general
+  return (
+    <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
+      <FieldCard
+        title="General details"
+        fields={["Name", "Plan number", "Address", "ABN", "TFN", "OC Tier", "Total lots"]}
+      />
+      <FieldCard
+        title="Certificate settings"
+        fields={["Common seal text", "Inspection address"]}
+      />
+      <Card className="lg:col-span-2">
+        <CardContent className="pt-5">
+          <CardTitleRow title="Common property description" />
+          <Skeleton className="h-3.5 w-3/4" />
+          <Skeleton className="mt-2 h-3.5 w-1/2" />
+        </CardContent>
+      </Card>
     </div>
   );
 }

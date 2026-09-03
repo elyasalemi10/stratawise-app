@@ -178,7 +178,6 @@ const APP_PREFIXES = [
   "/maintenance",
   "/contractors",
   "/inbox",
-  "/chart-of-accounts",
   "/settings",
   "/help",
   "/admin",

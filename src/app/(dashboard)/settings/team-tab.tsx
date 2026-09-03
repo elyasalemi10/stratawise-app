@@ -2,14 +2,22 @@
 
 import { useState } from "react";
 import { toast } from "sonner";
-import { UserMinus, Shield, Eye, Pencil } from "lucide-react";
-import { Card, CardContent } from "@/components/ui/card";
+import { UserMinus, UserPlus } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import {
+  Table, TableBody, TableCell, TableHead, TableHeader, TableRow,
+} from "@/components/ui/table";
 import {
   Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
 } from "@/components/ui/select";
+import {
+  AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent,
+  AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
 import { Badge } from "@/components/ui/badge";
+import { EmptyState } from "@/components/shared/empty-state";
 import { UserAvatar } from "@/components/shared/user-avatar";
+import { InviteTeamDialog } from "@/components/shared/invite-team-dialog";
 import {
   updateMemberRole,
   removeMember,
@@ -18,110 +26,110 @@ import {
 
 type TeamRole = "admin" | "manager" | "viewer";
 
-const ROLE_CONFIG = {
-  admin: { label: "Admin", variant: "info" as const, icon: Shield, description: "Full access. Can manage roles and company settings." },
-  manager: { label: "Manager", variant: "success" as const, icon: Pencil, description: "Can manage OCs, levies, and documents." },
-  viewer: { label: "Viewer", variant: "neutral" as const, icon: Eye, description: "Read-only access to all OCs." },
+const ROLE_LABEL: Record<TeamRole, string> = {
+  admin: "Admin",
+  manager: "Manager",
+  viewer: "Viewer",
 };
 
-const ROLE_OPTIONS = (Object.keys(ROLE_CONFIG) as TeamRole[]).map((value) => ({
+const ROLE_VARIANT = {
+  admin: "info",
+  manager: "success",
+  viewer: "neutral",
+} as const;
+
+const ROLE_OPTIONS = (Object.keys(ROLE_LABEL) as TeamRole[]).map((value) => ({
   value,
-  label: ROLE_CONFIG[value].label,
+  label: ROLE_LABEL[value],
 }));
+
+function memberName(member: TeamMember): string {
+  return member.first_name && member.last_name
+    ? `${member.first_name} ${member.last_name}`
+    : member.email;
+}
 
 function MemberRow({
   member,
   isCurrentUser,
   isAdmin,
   onRoleChanged,
-  onRemoved,
+  onRemove,
 }: {
   member: TeamMember;
   isCurrentUser: boolean;
   isAdmin: boolean;
-  onRoleChanged: (id: string, role: "admin" | "manager" | "viewer") => void;
-  onRemoved: (id: string) => void;
+  onRoleChanged: (id: string, role: TeamRole) => void;
+  onRemove: (member: TeamMember) => void;
 }) {
   const [changingRole, setChangingRole] = useState(false);
-  const [removing, setRemoving] = useState(false);
 
-  const role = member.company_role ?? "manager";
-  const config = ROLE_CONFIG[role];
-  const initials = [member.first_name?.[0], member.last_name?.[0]].filter(Boolean).join("").toUpperCase() || member.email[0].toUpperCase();
+  const role = (member.company_role ?? "manager") as TeamRole;
+  const initials =
+    [member.first_name?.[0], member.last_name?.[0]].filter(Boolean).join("").toUpperCase() ||
+    member.email[0].toUpperCase();
 
-  async function handleRoleChange(newRole: "admin" | "manager" | "viewer") {
+  async function handleRoleChange(newRole: TeamRole) {
     if (newRole === role) return;
     setChangingRole(true);
     const result = await updateMemberRole(member.id, newRole);
     setChangingRole(false);
     if (result.error) {
       toast.error(result.error);
-    } else {
-      toast.success(`Role updated to ${ROLE_CONFIG[newRole].label}`);
-      onRoleChanged(member.id, newRole);
+      return;
     }
-  }
-
-  async function handleRemove() {
-    if (!confirm(`Remove ${member.email} from the team? They will lose access to all ocs.`)) return;
-    setRemoving(true);
-    const result = await removeMember(member.id);
-    setRemoving(false);
-    if (result.error) {
-      toast.error(result.error);
-    } else {
-      toast.success("Member removed");
-      onRemoved(member.id);
-    }
+    toast.success(`Role updated to ${ROLE_LABEL[newRole]}`);
+    onRoleChanged(member.id, newRole);
   }
 
   return (
-    <div className="flex items-center justify-between py-3 border-b border-border/50 last:border-b-0">
-      <div className="flex items-center gap-3">
-        <UserAvatar src={member.avatar_url} initials={initials} />
-        <div>
-          <p className="text-sm font-medium text-foreground">
-            {member.first_name && member.last_name
-              ? `${member.first_name} ${member.last_name}`
-              : member.email}
-            {isCurrentUser && <span className="ml-1 text-xs text-muted-foreground">(you)</span>}
-          </p>
-          <p className="text-xs text-muted-foreground">{member.email}</p>
+    <TableRow>
+      <TableCell>
+        <div className="flex items-center gap-3">
+          <UserAvatar src={member.avatar_url} initials={initials} />
+          <span className="font-medium text-foreground">
+            {memberName(member)}
+            {isCurrentUser && (
+              <span className="ml-1 text-xs font-normal text-muted-foreground">(you)</span>
+            )}
+          </span>
         </div>
-      </div>
-
-      <div className="flex items-center gap-2">
+      </TableCell>
+      <TableCell className="text-muted-foreground">{member.email}</TableCell>
+      <TableCell>
         {isAdmin && !isCurrentUser ? (
-          <>
-            <Select
-              value={role}
-              onValueChange={(v) => handleRoleChange((v ?? "manager") as TeamRole)}
-              disabled={changingRole}
-            >
-              <SelectTrigger className="h-7 w-28 text-xs">
-                <SelectValue>{ROLE_CONFIG[role as TeamRole]?.label}</SelectValue>
-              </SelectTrigger>
-              <SelectContent>
-                {ROLE_OPTIONS.map((o) => (
-                  <SelectItem key={o.value} value={o.value}>{o.label}</SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-            <Button
-              variant="ghost"
-              size="icon"
-              className="h-7 w-7 text-muted-foreground hover:text-destructive"
-              onClick={handleRemove}
-              disabled={removing}
-            >
-              <UserMinus className="h-3.5 w-3.5" />
-            </Button>
-          </>
+          <Select
+            value={role}
+            onValueChange={(v) => handleRoleChange((v ?? "manager") as TeamRole)}
+            disabled={changingRole}
+          >
+            <SelectTrigger className="h-8 w-32 text-sm">
+              <SelectValue>{ROLE_LABEL[role]}</SelectValue>
+            </SelectTrigger>
+            <SelectContent>
+              {ROLE_OPTIONS.map((o) => (
+                <SelectItem key={o.value} value={o.value}>{o.label}</SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
         ) : (
-          <Badge variant={config.variant}>{config.label}</Badge>
+          <Badge variant={ROLE_VARIANT[role]}>{ROLE_LABEL[role]}</Badge>
         )}
-      </div>
-    </div>
+      </TableCell>
+      <TableCell className="text-right">
+        {isAdmin && !isCurrentUser ? (
+          <Button
+            variant="ghost"
+            size="icon"
+            className="size-8 text-muted-foreground hover:text-destructive"
+            onClick={() => onRemove(member)}
+            aria-label={`Remove ${memberName(member)}`}
+          >
+            <UserMinus className="size-4" />
+          </Button>
+        ) : null}
+      </TableCell>
+    </TableRow>
   );
 }
 
@@ -135,62 +143,105 @@ export function TeamTab({
   isAdmin: boolean;
 }) {
   const [members, setMembers] = useState(initialMembers);
+  const [inviting, setInviting] = useState(false);
+  // The member the admin is about to remove, or null. Held here rather than
+  // per row so one AlertDialog serves the whole table.
+  const [pendingRemoval, setPendingRemoval] = useState<TeamMember | null>(null);
+  const [removing, setRemoving] = useState(false);
 
-  function handleRoleChanged(id: string, newRole: "admin" | "manager" | "viewer") {
+  function handleRoleChanged(id: string, newRole: TeamRole) {
     setMembers((prev) =>
-      prev.map((m) => (m.id === id ? { ...m, company_role: newRole } : m))
+      prev.map((m) => (m.id === id ? { ...m, company_role: newRole } : m)),
     );
   }
 
-  function handleRemoved(id: string) {
-    setMembers((prev) => prev.filter((m) => m.id !== id));
+  async function confirmRemove() {
+    if (!pendingRemoval) return;
+    setRemoving(true);
+    const result = await removeMember(pendingRemoval.id);
+    setRemoving(false);
+    if (result.error) {
+      toast.error(result.error);
+      return;
+    }
+    toast.success("Member removed");
+    setMembers((prev) => prev.filter((m) => m.id !== pendingRemoval.id));
+    setPendingRemoval(null);
   }
 
   return (
-    <div className="space-y-6">
-      <Card>
-        <CardContent className="pt-5">
-          <div className="flex items-center justify-between mb-4">
-            <h3 className="text-sm font-semibold text-foreground">Team members</h3>
-            <p className="text-xs text-muted-foreground">{members.length} member{members.length !== 1 ? "s" : ""}</p>
-          </div>
+    <div className="space-y-4">
+      <div className="flex items-center justify-between gap-4">
+        <p className="text-sm text-muted-foreground">
+          {members.length} member{members.length !== 1 ? "s" : ""}
+        </p>
+        {isAdmin && (
+          <Button onClick={() => setInviting(true)}>
+            <UserPlus className="size-4" />
+            Invite team member
+          </Button>
+        )}
+      </div>
 
-          {members.length === 0 ? (
-            <p className="text-sm text-muted-foreground py-4 text-center">No team members found.</p>
-          ) : (
-            members.map((member) => (
-              <MemberRow
-                key={member.id}
-                member={member}
-                isCurrentUser={member.id === currentUserId}
-                isAdmin={isAdmin}
-                onRoleChanged={handleRoleChanged}
-                onRemoved={handleRemoved}
-              />
-            ))
-          )}
-        </CardContent>
-      </Card>
+      {members.length === 0 ? (
+        <EmptyState
+          icon={UserPlus}
+          title="No team members yet"
+          description="Invite a colleague to give them access to your OCs."
+        />
+      ) : (
+        <div className="overflow-x-auto rounded-lg border border-border">
+          <Table variant="striped">
+            <TableHeader>
+              <TableRow>
+                <TableHead>Name</TableHead>
+                <TableHead>Email</TableHead>
+                <TableHead>Role</TableHead>
+                <TableHead className="w-16" />
+              </TableRow>
+            </TableHeader>
+            <TableBody>
+              {members.map((member) => (
+                <MemberRow
+                  key={member.id}
+                  member={member}
+                  isCurrentUser={member.id === currentUserId}
+                  isAdmin={isAdmin}
+                  onRoleChanged={handleRoleChanged}
+                  onRemove={setPendingRemoval}
+                />
+              ))}
+            </TableBody>
+          </Table>
+        </div>
+      )}
 
-      {/* Role descriptions */}
-      <Card>
-        <CardContent className="pt-5">
-          <h3 className="text-sm font-semibold text-foreground mb-3">Roles</h3>
-          <div className="space-y-3">
-            {Object.entries(ROLE_CONFIG).map(([key, config]) => (
-              <div key={key} className="flex items-start gap-3">
-                <div className="flex h-7 w-7 items-center justify-center rounded-md bg-muted shrink-0 mt-0.5">
-                  <config.icon className="h-3.5 w-3.5 text-muted-foreground" />
-                </div>
-                <div>
-                  <p className="text-sm font-medium text-foreground">{config.label}</p>
-                  <p className="text-xs text-muted-foreground">{config.description}</p>
-                </div>
-              </div>
-            ))}
-          </div>
-        </CardContent>
-      </Card>
+      <InviteTeamDialog open={inviting} onClose={() => setInviting(false)} />
+
+      <AlertDialog
+        open={pendingRemoval !== null}
+        onOpenChange={(open) => { if (!open) setPendingRemoval(null); }}
+      >
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Remove team member?</AlertDialogTitle>
+            <AlertDialogDescription>
+              {pendingRemoval ? memberName(pendingRemoval) : "This person"} will lose
+              access to every OC in this company.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancel</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={(e) => { e.preventDefault(); confirmRemove(); }}
+              disabled={removing}
+              loading={removing}
+            >
+              Remove
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   );
 }

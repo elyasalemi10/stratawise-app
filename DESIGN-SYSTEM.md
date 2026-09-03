@@ -119,6 +119,13 @@ still be there.
 - **Drawers dismiss by clicking the overlay.** No Cancel button, no X. The
   footer holds forward actions only. Destructive `AlertDialog`s keep Cancel,
   because there is no overlay to click.
+- **Anything clickable shows the clicking-hand cursor**, and that includes
+  every toggle: `Switch`, `Checkbox`, `RadioGroupItem`. globals.css names
+  `[role="switch"]`, `[role="checkbox"]` and `[role="radio"]` next to
+  `button` because Base UI gives these a role rather than a `<button>` tag,
+  so the button rule misses them, and the caret then stays an arrow over the
+  one control on the page whose entire purpose is being clicked. Disabled
+  controls keep the arrow, which is the point of the distinction.
 
 ---
 
@@ -166,3 +173,24 @@ The standing rule is Zod + react-hook-form + shadcn `Form`. Most of this app
 predates that and hand-manages `useState` per field with a manual
 `problems[]` array, which is why validation feels slightly different on every
 screen. New forms use `Form`. Touched forms should move toward it.
+
+---
+
+## 9. A toggle saves itself
+
+- **A page of switches has no Save button.** Flipping a switch IS the
+  instruction; a Save button asks the user to remember a second step for a
+  change they already expressed, and gives no hint which of eighteen rows is
+  unsaved if they forget. Each switch is an independent preference, so there
+  is nothing to batch.
+- **Persist optimistically, revert on refusal.** Move the switch immediately,
+  send the write, and if the server refuses put the switch BACK and toast the
+  error. Leaving it showing a state the server does not have is the one
+  outcome worse than a slow save.
+- **One save must not freeze the others.** A single `pending` flag wired to
+  every switch's `disabled` greys out the whole page while one row saves.
+  Each control is independent; keep them all live.
+- **Confirm the save.** A toast naming what changed ("Levy issued off for
+  Email"), so the user is not left guessing whether a silent switch stuck.
+- **Bulk actions send only what changed.** "Turn all off" on a column that is
+  already mostly off should write the two rows that differ, not eighteen.

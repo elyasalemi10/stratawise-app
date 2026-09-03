@@ -1,10 +1,12 @@
-import { Bell, Building2, Mail, Repeat, User, Users, type LucideIcon } from "lucide-react";
+import { Bell, BookOpen, Building2, Mail, Repeat, User, Users, type LucideIcon } from "lucide-react";
 
 // The settings rail, in one place, so the layout and every skeleton agree.
 //
-// Two groups because these are two different things. Account follows the
+// Three groups because these are three different things. Account follows the
 // PERSON between firms; Workspace belongs to the firm and changes when they
-// switch. A flat list, or a horizontal strip, flattens that distinction.
+// switch; Financials is the firm's money setup, which is configuration rather
+// than day-to-day work and so does not belong in the working nav. A flat
+// list, or a horizontal strip, flattens those distinctions.
 
 export interface SettingsNavItem {
   href: string;
@@ -27,6 +29,12 @@ export const SETTINGS_NAV: Array<{ label: string; items: SettingsNavItem[] }> = 
       { href: "/settings/company", label: "Company", icon: Building2, managerOnly: true },
       { href: "/settings/team", label: "Team", icon: Users, managerOnly: true },
       { href: "/settings/email", label: "Email", icon: Mail, managerOnly: true },
+    ],
+  },
+  {
+    label: "Financials",
+    items: [
+      { href: "/settings/chart-of-accounts", label: "Chart of accounts", icon: BookOpen, managerOnly: true },
       { href: "/settings/followup", label: "Levy follow-up", icon: Repeat, managerOnly: true },
     ],
   },

@@ -19,7 +19,7 @@ const CHANNELS = [
 
 export default function Loading() {
   return (
-    <div className="max-w-3xl space-y-6">
+    <div className="space-y-6">
       <div className="overflow-x-auto">
         <table className="w-full min-w-[34rem] border-collapse text-sm">
           <thead>

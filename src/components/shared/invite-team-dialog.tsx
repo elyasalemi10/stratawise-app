@@ -84,12 +84,8 @@ export function InviteTeamDialog({ open, onClose }: InviteTeamDialogProps) {
             )}
           </div>
 
-          <p className="text-xs text-muted-foreground">
-            They will receive a link to join your management company and access all its ocs.
-          </p>
-
           <DialogFooter>
-            <Button type="button" variant="ghost" onClick={() => { reset(); onClose(); }}>
+            <Button type="button" variant="secondary" onClick={() => { reset(); onClose(); }}>
               Cancel
             </Button>
             <Button type="submit" disabled={pending} loading={pending}>

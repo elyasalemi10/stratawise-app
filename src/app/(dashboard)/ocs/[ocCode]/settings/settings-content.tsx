@@ -296,23 +296,17 @@ function CardEditHeader({
   );
 }
 
-type SettingsTabKey = "general" | "financial" | "communications" | "banking" | "automation";
-
-const TABS: Array<{ key: SettingsTabKey; label: string }> = [
-  { key: "general", label: "General" },
-  { key: "financial", label: "Financial" },
-  { key: "communications", label: "Communications" },
-  { key: "banking", label: "Banking" },
-  { key: "automation", label: "Automation" },
-];
+import type { OCSettingsSection } from "./nav";
 
 export function SettingsContent({
+  section,
   oc: initial,
   autosend,
   autosendMailboxOptions,
   autosendBudgets,
   autosendPreloadedPeriods,
 }: {
+  section: OCSettingsSection;
   oc: OCData;
   autosend: LevyAutosendSchedule;
   autosendMailboxOptions: Array<{ value: string; label: string }>;
@@ -360,50 +354,13 @@ export function SettingsContent({
     { value: "email", label: "Email by default" },
   ];
 
-  // URL-synced tab state. ?tab=automation deep-links directly to the
-  // auto-send card without the manager having to scroll.
-  const [activeTab, setActiveTab] = useState<SettingsTabKey>(() => {
-    if (typeof window === "undefined") return "general";
-    const fromUrl = new URLSearchParams(window.location.search).get("tab");
-    if (TABS.some((t) => t.key === fromUrl)) return fromUrl as SettingsTabKey;
-    return "general";
-  });
-
-  function switchTab(next: SettingsTabKey) {
-    setActiveTab(next);
-    if (typeof window !== "undefined") {
-      const url = new URL(window.location.href);
-      url.searchParams.set("tab", next);
-      window.history.replaceState(null, "", url.toString());
-    }
-  }
+  // Which section shows is the URL's business, not this component's. Each
+  // card still carries its own Edit/Done toggle so the manager only flips
+  // the section they are tweaking.
+  const activeTab = section;
 
   return (
     <div className="space-y-6">
-      {/* Top row: tabs on the left, edit toggle on the right. */}
-      <div className="flex items-center justify-between border-b border-border">
-        <div className="flex items-center gap-1">
-          {TABS.map((t) => (
-            <button
-              key={t.key}
-              type="button"
-              onClick={() => switchTab(t.key)}
-              className={cn(
-                "h-9 border-b-2 px-3 text-sm font-medium transition-colors cursor-pointer",
-                activeTab === t.key
-                  ? "border-primary text-foreground"
-                  : "border-transparent text-muted-foreground hover:text-foreground",
-              )}
-            >
-              {t.label}
-            </button>
-          ))}
-        </div>
-        {/* No global Edit button anymore. Each card carries its own
-            Edit/Done toggle in its header so the manager only flips
-            the section they're tweaking. */}
-      </div>
-
       {activeTab === "general" && (
         <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
           <Card>

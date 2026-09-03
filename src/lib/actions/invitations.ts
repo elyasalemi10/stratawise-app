@@ -44,7 +44,7 @@ export async function inviteStrataManager(data: { email: string; name: string })
     .single();
 
   if (!anySub) {
-    return { error: "Create at least one oc before inviting team members" };
+    return { error: "Create at least one OC before inviting team members" };
   }
 
   const { data: invitation, error } = await supabase

@@ -252,6 +252,19 @@
     cursor: pointer;
   }
 
+  /* Switches, checkboxes and radios are the same promise as a button: click
+     here and something happens. Base UI gives them a role rather than a
+     <button> tag in some builds, so the rule above misses them and the
+     caret stays an arrow over the one control on the page whose entire
+     purpose is being clicked. Named explicitly, including the label a
+     control is wired to. */
+  [role="switch"]:not([aria-disabled="true"]):not(:disabled),
+  [role="checkbox"]:not([aria-disabled="true"]):not(:disabled),
+  [role="radio"]:not([aria-disabled="true"]):not(:disabled),
+  label:has(> [role="switch"]:not([aria-disabled="true"])) {
+    cursor: pointer;
+  }
+
   /* Chrome / Edge / Safari paint a yellow-ish or blue-ish background on
      autofilled inputs which clashes with the brand palette. The
      transition + huge inset shadow trick effectively masks the native

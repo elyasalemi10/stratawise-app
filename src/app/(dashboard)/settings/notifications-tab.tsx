@@ -16,6 +16,12 @@ import { Switch } from "@/components/ui/switch";
 import type { NotificationPrefRow, AutoOptOutEntry } from "./data";
 
 type Channel = "email" | "in_app";
+
+const CHANNEL_LABEL: Record<Channel, string> = { email: "Email", in_app: "In app" };
+
+const NOTIFICATION_TYPE_LABEL: Record<string, string> = Object.fromEntries(
+  NOTIFICATION_GROUPS.flatMap((g) => g.items.map((i) => [i.type, i.label])),
+);
 type StateMap = Record<string, { email: boolean; in_app: boolean }>;
 
 function formatAutoOptOutDate(iso: string): string {
@@ -33,7 +39,7 @@ export function NotificationsTab({
   currentPreferences: NotificationPrefRow[];
   autoOptOuts: AutoOptOutEntry[];
 }) {
-  const [pending, startTransition] = useTransition();
+  const [, startTransition] = useTransition();
 
   // Build initial state map: default opt-in (true) for any type+channel
   // not represented in currentPreferences.
@@ -66,13 +72,16 @@ export function NotificationsTab({
   function persist(
     updates: Array<{ type: NotificationType; channel: Channel; enabled: boolean }>,
     revert: () => void,
+    message: string,
   ) {
     startTransition(async () => {
       const result = await updateNotificationPreferences({ updates });
       if ("error" in result) {
         revert();
         toast.error(result.error);
+        return;
       }
+      toast.success(message);
     });
   }
 
@@ -81,11 +90,15 @@ export function NotificationsTab({
       ...prev,
       [type]: { ...prev[type], [channel]: enabled },
     }));
-    persist([{ type, channel, enabled }], () =>
-      setState((prev) => ({
-        ...prev,
-        [type]: { ...prev[type], [channel]: !enabled },
-      })),
+    const label = NOTIFICATION_TYPE_LABEL[type] ?? "Preference";
+    persist(
+      [{ type, channel, enabled }],
+      () =>
+        setState((prev) => ({
+          ...prev,
+          [type]: { ...prev[type], [channel]: !enabled },
+        })),
+      `${label} ${enabled ? "on" : "off"} for ${CHANNEL_LABEL[channel]}`,
     );
   }
 
@@ -119,6 +132,7 @@ export function NotificationsTab({
           }
           return back;
         }),
+      `${CHANNEL_LABEL[channel]} turned ${enabled ? "on" : "off"} for ${changed.length} notification${changed.length === 1 ? "" : "s"}`,
     );
   }
 
@@ -139,7 +153,7 @@ export function NotificationsTab({
   ];
 
   return (
-    <div className="max-w-3xl space-y-6">
+    <div className="space-y-6">
       <div className="overflow-x-auto">
         <table className="w-full min-w-[34rem] border-collapse text-sm">
           <thead>
@@ -201,7 +215,7 @@ export function NotificationsTab({
                             <div className="flex flex-col items-center gap-1">
                               <Switch
                                 checked={locked ? true : !!state[item.type]?.[key]}
-                                disabled={locked || pending}
+                                disabled={locked}
                                 onCheckedChange={(v) => setChannel(item.type, key, v === true)}
                                 aria-label={`${item.label} by ${key === "email" ? "email" : "in app"}`}
                               />
