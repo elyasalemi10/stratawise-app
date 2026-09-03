@@ -485,16 +485,12 @@ function EngagementCard({ engagement }: { engagement: LotEngagement }) {
             <Vote className="h-4 w-4 text-[color:var(--brand-gold)]" />
             <h3 className="text-sm font-semibold text-foreground">Engagement</h3>
           </div>
-          <div className="flex flex-col items-center gap-2 py-6 text-center">
-            <Vote className="h-10 w-10 text-muted-foreground/40" />
-            <p className="text-sm font-medium text-foreground">
-              No meeting activity yet
-            </p>
-            <p className="text-xs text-muted-foreground">
-              Once this lot has voted in or attended a meeting, it&apos;ll
-              show up here.
-            </p>
-          </div>
+          <EmptyState
+            card={false}
+            illustration="checklist"
+            title="No meeting activity yet"
+            description="Once this lot has voted in or attended a meeting, it'll show up here."
+          />
         </CardContent>
       </Card>
     );

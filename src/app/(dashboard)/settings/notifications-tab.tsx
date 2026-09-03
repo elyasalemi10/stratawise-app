@@ -172,7 +172,7 @@ export function NotificationsTab({
               {CHANNELS.map(({ key, label, Icon }) => {
                 const allOn = columnAllOn(key);
                 return (
-                  <th key={key} className={cn("w-28 pb-3 align-bottom", key === "email" && "pr-10")}>
+                  <th key={key} className={cn("w-32 pb-3 align-bottom whitespace-nowrap", key === "email" && "pr-14")}>
                     <div className="flex flex-col items-center gap-1">
                       <Icon className="size-4 text-muted-foreground" aria-hidden />
                       <span className="text-sm font-medium text-foreground">{label}</span>
@@ -219,7 +219,7 @@ export function NotificationsTab({
                           (key === "in_app" && isManagerial);
                         const auto = autoOptOutMap.get(`${item.type}:${key}`);
                         return (
-                          <td key={key} className={cn("py-3 text-center align-middle", key === "email" && "pr-10")}>
+                          <td key={key} className={cn("py-3 text-center align-middle", key === "email" && "pr-14")}>
                             <div className="flex flex-col items-center gap-1">
                               <Switch
                                 checked={locked ? true : !!state[item.type]?.[key]}

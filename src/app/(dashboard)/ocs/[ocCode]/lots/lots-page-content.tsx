@@ -11,12 +11,15 @@ import {
   Search,
   Wrench,
   X,
-  ArrowUpDown,
-  Check,
+  SlidersHorizontal,
 } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import {
+  Popover, PopoverContent, PopoverTrigger,
+} from "@/components/ui/popover";
 import {
   Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
 } from "@/components/ui/select";
@@ -31,13 +34,6 @@ import { getLotInvitationStatus } from "../manage/invitation-actions";
 import { SettlementDialog } from "./[lotId]/settlement-dialog";
 import { BulkInviteDialog } from "./bulk-invite-dialog";
 import type { LotWithFinancials } from "@/lib/actions/oc";
-
-type SortKey =
-  | "lot_asc"
-  | "lot_desc"
-  | "balance_desc"
-  | "balance_asc"
-  | "owner_asc";
 
 // The filters a manager actually reaches for on this page: who owes money,
 // who is not on the portal yet, and how the lot is lived in. There was
@@ -65,13 +61,6 @@ const OCCUPANCY_OPTIONS: Array<{ value: OccupancyFilter; label: string }> = [
   { value: "vacant", label: "Vacant" },
 ];
 
-const SORT_OPTIONS: Array<{ value: SortKey; label: string }> = [
-  { value: "lot_asc", label: "Lot number (low → high)" },
-  { value: "lot_desc", label: "Lot number (high → low)" },
-  { value: "balance_desc", label: "Highest balance first" },
-  { value: "balance_asc", label: "Lowest balance first" },
-  { value: "owner_asc", label: "Owner name (A → Z)" },
-];
 
 // Client-side CSV export , pulls straight from the in-memory lots prop so
 // there's no extra round-trip. Sort by lot_number for stable ordering. The
@@ -124,7 +113,6 @@ export function LotsPageContent({
   const [settlementOpen, setSettlementOpen] = useState(false);
   const [bulkInviteOpen, setBulkInviteOpen] = useState(false);
   const [searchText, setSearchText] = useState("");
-  const [sortKey, setSortKey] = useState<SortKey>("lot_asc");
   const [balanceFilter, setBalanceFilter] = useState<BalanceFilter>("all");
   const [portalFilter, setPortalFilter] = useState<PortalFilter>("all");
   const [occupancyFilter, setOccupancyFilter] = useState<OccupancyFilter>("all");
@@ -210,37 +198,22 @@ export function LotsPageContent({
       return haystacks.some((s) => s.toLowerCase().includes(needle));
     });
 
-    // Sort step. Comparators are pure / pre-allocated; sort returns a
-    // new array via spread so the original lots state stays untouched
-    // (LotsTab cares about reference equality for memoised children).
+    // The register reads in lot order, always. Sorting it five other ways
+    // was a dropdown nobody opened.
     const arr = [...filtered];
-    arr.sort((a, b) => {
-      switch (sortKey) {
-        case "lot_asc":
-          return (a.lot_number ?? 0) - (b.lot_number ?? 0);
-        case "lot_desc":
-          return (b.lot_number ?? 0) - (a.lot_number ?? 0);
-        case "balance_desc":
-          return (b.balance ?? 0) - (a.balance ?? 0);
-        case "balance_asc":
-          return (a.balance ?? 0) - (b.balance ?? 0);
-        case "owner_asc":
-          return (a.owner_display_name ?? "~").localeCompare(b.owner_display_name ?? "~");
-        default:
-          return 0;
-      }
-    });
+    arr.sort((a, b) => (a.lot_number ?? 0) - (b.lot_number ?? 0));
     return arr;
-  }, [lots, searchText, sortKey, balanceFilter, portalFilter, occupancyFilter]);
+  }, [lots, searchText, balanceFilter, portalFilter, occupancyFilter]);
 
-  const activeFilters =
-    (searchText.trim() ? 1 : 0) +
+  // The badge counts FILTERS, not the search box , the search box shows its
+  // own state and has its own clear button.
+  const filterCount =
     (balanceFilter !== "all" ? 1 : 0) +
     (portalFilter !== "all" ? 1 : 0) +
     (occupancyFilter !== "all" ? 1 : 0);
+  const activeFilters = filterCount + (searchText.trim() ? 1 : 0);
 
   function clearFilters() {
-    setSearchText("");
     setBalanceFilter("all");
     setPortalFilter("all");
     setOccupancyFilter("all");
@@ -257,9 +230,6 @@ export function LotsPageContent({
     a.click();
     URL.revokeObjectURL(url);
   }
-
-  const sortLabel =
-    SORT_OPTIONS.find((s) => s.value === sortKey)?.label ?? "Sort";
 
   return (
     <div className="space-y-4">
@@ -286,48 +256,42 @@ export function LotsPageContent({
               )}
             </div>
 
-            <FilterSelect
-              value={balanceFilter}
-              onChange={setBalanceFilter}
-              options={BALANCE_OPTIONS}
-              width="w-36"
-            />
-            <FilterSelect
-              value={portalFilter}
-              onChange={setPortalFilter}
-              options={PORTAL_OPTIONS}
-              width="w-40"
-            />
-            <FilterSelect
-              value={occupancyFilter}
-              onChange={setOccupancyFilter}
-              options={OCCUPANCY_OPTIONS}
-              width="w-40"
-            />
-
-            <DropdownMenu>
-              <DropdownMenuTrigger
+            {/* One button, not three dropdowns sitting in the toolbar. Three
+                controls that are "any" most of the time is three pieces of
+                furniture earning nothing; behind a button they cost one
+                click when you want them and no width when you do not. The
+                count on the button is what tells you a filter is on. */}
+            <Popover>
+              <PopoverTrigger
                 render={
                   <Button variant="secondary">
-                    <ArrowUpDown className="mr-2 h-3.5 w-3.5" />
-                    Sort: {sortLabel}
-                    <ChevronDown className="ml-1 h-3.5 w-3.5 opacity-60" />
+                    <SlidersHorizontal className="mr-2 h-3.5 w-3.5" />
+                    Filters
+                    {filterCount > 0 && (
+                      <span className="ml-2 inline-flex h-5 min-w-5 items-center justify-center rounded-full bg-primary px-1.5 text-xs font-medium text-primary-foreground tabular-nums">
+                        {filterCount}
+                      </span>
+                    )}
                   </Button>
                 }
               />
-              <DropdownMenuContent align="end" sideOffset={6} className="min-w-[220px]">
-                {SORT_OPTIONS.map((opt) => (
-                  <DropdownMenuItem
-                    key={opt.value}
-                    onClick={() => setSortKey(opt.value)}
-                    className="justify-between"
-                  >
-                    {opt.label}
-                    {opt.value === sortKey && <Check className="ml-2 h-3.5 w-3.5" />}
-                  </DropdownMenuItem>
-                ))}
-              </DropdownMenuContent>
-            </DropdownMenu>
+              <PopoverContent align="start" className="w-72 space-y-4">
+                <FilterField label="Balance">
+                  <FilterSelect value={balanceFilter} onChange={setBalanceFilter} options={BALANCE_OPTIONS} />
+                </FilterField>
+                <FilterField label="Owner">
+                  <FilterSelect value={portalFilter} onChange={setPortalFilter} options={PORTAL_OPTIONS} />
+                </FilterField>
+                <FilterField label="Occupancy">
+                  <FilterSelect value={occupancyFilter} onChange={setOccupancyFilter} options={OCCUPANCY_OPTIONS} />
+                </FilterField>
+                {filterCount > 0 && (
+                  <Button variant="secondary" className="w-full" onClick={clearFilters}>
+                    Clear filters
+                  </Button>
+                )}
+              </PopoverContent>
+            </Popover>
 
             <DropdownMenu>
               <DropdownMenuTrigger
@@ -407,20 +371,27 @@ export function LotsPageContent({
 
 // One filter dropdown. The trigger always shows a label, so a filter set to
 // "any" still reads as a control you can use rather than an empty box.
+function FilterField({ label, children }: { label: string; children: React.ReactNode }) {
+  return (
+    <div className="space-y-1.5">
+      <Label>{label}</Label>
+      {children}
+    </div>
+  );
+}
+
 function FilterSelect<T extends string>({
   value,
   onChange,
   options,
-  width,
 }: {
   value: T;
   onChange: (next: T) => void;
   options: Array<{ value: T; label: string }>;
-  width: string;
 }) {
   return (
     <Select value={value} onValueChange={(v) => onChange((v ?? options[0].value) as T)}>
-      <SelectTrigger className={width}>
+      <SelectTrigger className="w-full">
         <SelectValue>{options.find((o) => o.value === value)?.label}</SelectValue>
       </SelectTrigger>
       <SelectContent>

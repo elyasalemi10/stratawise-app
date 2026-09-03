@@ -31,7 +31,7 @@ export function NotificationsSkeleton() {
                 Notify me about
               </th>
               {CHANNELS.map(({ label, Icon }) => (
-                <th key={label} className={label === "Email" ? "w-28 pb-3 pr-10 align-bottom" : "w-28 pb-3 align-bottom"}>
+                <th key={label} className={label === "Email" ? "w-32 whitespace-nowrap pb-3 pr-14 align-bottom" : "w-32 whitespace-nowrap pb-3 align-bottom"}>
                   <div className="flex flex-col items-center gap-1">
                     <Icon className="size-4 text-muted-foreground" aria-hidden />
                     <span className="text-sm font-medium text-foreground">{label}</span>
@@ -58,7 +58,7 @@ export function NotificationsSkeleton() {
                       <div className="text-xs text-muted-foreground">{item.description}</div>
                     </td>
                     {CHANNELS.map(({ label }) => (
-                      <td key={label} className={label === "Email" ? "py-3 pr-10 text-center" : "py-3 text-center"}>
+                      <td key={label} className={label === "Email" ? "py-3 pr-14 text-center" : "py-3 text-center"}>
                         <Skeleton className="mx-auto h-5 w-9 rounded-full" />
                       </td>
                     ))}

@@ -312,14 +312,18 @@ export function InboxContent({
             />
           )
         ) : (
-          <Card>
-            <CardContent className="flex h-full min-h-[20rem] flex-col items-center justify-center gap-2 py-12 text-sm text-muted-foreground">
-              <Mail className="size-10 text-muted-foreground/40" />
-              <p>
-                {notifications.length === 0
-                  ? "Replies to mail you send land here, ready to link to a lot."
-                  : "Pick an email from the list to read it."}
-              </p>
+          <Card className="flex h-full min-h-[20rem] items-center justify-center">
+            <CardContent>
+              <EmptyState
+                card={false}
+                illustration="inbox"
+                title={notifications.length === 0 ? "Nothing in your inbox" : "No email selected"}
+                description={
+                  notifications.length === 0
+                    ? "Replies to mail you send land here, ready to link to a lot."
+                    : "Pick an email from the list to read it."
+                }
+              />
             </CardContent>
           </Card>
         )}

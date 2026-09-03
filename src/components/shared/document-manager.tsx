@@ -11,6 +11,7 @@ import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import type { DocumentRecord } from "@/lib/validations/documents";
 import { ALLOWED_EXTENSIONS } from "@/lib/validations/documents";
+import { EmptyState } from "@/components/shared/empty-state";
 
 // Categories used to drive a filter row + upload-tag pill row above the
 // grid. Both UIs are gone; documents always show as a flat list and new
@@ -357,16 +358,17 @@ export function DocumentManager({ ocId, lotId, initialDocuments, readOnly }: Doc
         if (visibleDocs.length === 0 && uploads.length === 0) {
           return (
             <Card>
-              <CardContent className="flex flex-col items-center gap-3 py-16 text-center">
-                <FileText className="h-12 w-12 text-muted-foreground/40" />
-                <p className="text-base font-semibold text-foreground">
-                  No documents yet
-                </p>
-                <p className="text-sm text-muted-foreground">
-                  {readOnly
-                    ? "Documents will appear here once uploaded by your strata manager."
-                    : "Click Upload above, or drag files anywhere on the page."}
-                </p>
+              <CardContent>
+                <EmptyState
+                  card={false}
+                  illustration="documents"
+                  title="No documents yet"
+                  description={
+                    readOnly
+                      ? "Documents will appear here once uploaded by your strata manager."
+                      : "Click Upload above, or drag files anywhere on the page."
+                  }
+                />
               </CardContent>
             </Card>
           );

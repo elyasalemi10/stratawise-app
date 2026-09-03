@@ -1,7 +1,7 @@
 "use client";
 
-import { Clock } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { EmptyState } from "@/components/shared/empty-state";
 
 // Will be replaced with real data from audit_log / communication_log
 const activities: { id: number; action: string; reference: string; date: string }[] = [];
@@ -20,12 +20,12 @@ export function RecentActivity() {
         {hasData ? (
           <div>{/* Table will go here when data exists */}</div>
         ) : (
-          <div className="flex flex-col items-center justify-center py-12 text-center">
-            <Clock className="h-10 w-10 text-muted-foreground/30" />
-            <p className="mt-3 text-sm text-muted-foreground">
-              No activity yet. Actions will appear here as you use the platform.
-            </p>
-          </div>
+          <EmptyState
+            card={false}
+            illustration="checklist"
+            title="No activity yet"
+            description="Actions will appear here as you use the platform."
+          />
         )}
       </CardContent>
     </Card>

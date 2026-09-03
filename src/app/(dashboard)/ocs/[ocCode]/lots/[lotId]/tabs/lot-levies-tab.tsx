@@ -6,6 +6,7 @@ import { Badge } from "@/components/ui/badge";
 import { Wallet, FileText, ArrowDownToLine, Loader2 } from "lucide-react";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { listLotLevies, type LotLevyRow } from "@/lib/actions/lot-levies";
+import { EmptyState } from "@/components/shared/empty-state";
 
 // Levies tab , every levy notice ever issued to this lot, paid or unpaid.
 // One row per notice. Paid/unpaid is read directly from the row's status +
@@ -98,17 +99,11 @@ export function LotLeviesTab({ lotId }: Props) {
 
   if (rows.length === 0) {
     return (
-      <Card>
-        <CardContent className="flex flex-col items-center gap-3 py-12 text-center">
-          <Wallet className="h-10 w-10 text-muted-foreground/40" />
-          <p className="text-base font-semibold text-foreground">
-            No levies issued
-          </p>
-          <p className="text-sm text-muted-foreground">
-            Levy notices issued against this lot will appear here.
-          </p>
-        </CardContent>
-      </Card>
+      <EmptyState
+        illustration="money"
+        title="No levies issued"
+        description="Levy notices issued against this lot will appear here."
+      />
     );
   }
 
