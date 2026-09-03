@@ -13,10 +13,10 @@ import { Skeleton } from "@/components/ui/skeleton";
 export function RulesSkeleton() {
   return (
     <div className="space-y-4">
-      <div className="flex items-center justify-between gap-3">
+      <div className="flex flex-wrap items-center gap-3">
+        <Input disabled placeholder="Search rules" className="w-64" />
         <Skeleton className="h-3 w-48" />
-        <div className="flex items-center gap-2">
-          <Input disabled placeholder="Search rules…" className="max-w-xs" />
+        <div className="ml-auto flex items-center gap-2">
           <Button type="button" size="sm" disabled>
             <Plus className="mr-1.5 h-3.5 w-3.5" />
             Add rule

@@ -7,7 +7,6 @@ import { EmptyState } from "@/components/shared/empty-state";
 import {
   History as HistoryIcon,
   Pencil,
-  ShieldCheck,
   Wallet,
   Mail,
   MessageSquare,
@@ -46,7 +45,6 @@ type Category =
   | "sms"
   | "call"
   | "contact"
-  | "consent"
   | "document"
   | "levy"
   | "generic";
@@ -65,7 +63,6 @@ function classify(row: LotActivityEntry): Category {
   ) {
     return "contact";
   }
-  if (row.entity_type === "consent") return "consent";
   if (row.entity_type === "document") return "document";
   if (row.entity_type === "levy_notice" || row.entity_type === "levy_batch") return "levy";
   return "generic";
@@ -79,7 +76,6 @@ function iconFor(category: Category): React.ElementType {
     case "sms":        return MessageSquare;
     case "call":       return PhoneIcon;
     case "contact":    return Pencil;
-    case "consent":    return ShieldCheck;
     case "document":   return FileText;
     case "levy":       return Wallet;
     case "generic":    return ActivityIcon;
@@ -93,7 +89,6 @@ function titleFor(row: LotActivityEntry, category: Category): string {
     case "call":
       return row.action === "create" ? "Phone call logged" : humanise(`${row.entity_type} ${row.action}`);
     case "settlement": return "Settlement recorded";
-    case "consent":    return "Consent updated";
     case "contact":    return "Owner contact updated";
     case "payment":    return "Payment recorded";
     case "document":

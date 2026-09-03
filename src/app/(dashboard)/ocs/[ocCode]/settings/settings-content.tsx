@@ -1,12 +1,10 @@
 "use client";
 
 import { useState, useEffect, useTransition } from "react";
-import { Pencil, Loader2, Trash2 } from "lucide-react";
+import { Loader2, Trash2 } from "lucide-react";
 import { toast } from "sonner";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
-import { Textarea } from "@/components/ui/textarea";
 import { Label } from "@/components/ui/label";
 import { NumberInput } from "@/components/ui/number-input";
 import { Checkbox } from "@/components/ui/checkbox";
@@ -17,8 +15,6 @@ import {
 import {
   Combobox, ComboboxContent, ComboboxEmpty, ComboboxInput, ComboboxItem, ComboboxList,
 } from "@/components/ui/combobox";
-import { cn } from "@/lib/utils";
-import { updateOCField } from "../manage/actions";
 import {
   upsertLevyAutosendSchedule,
   updateAutosendOverrides,
@@ -84,181 +80,6 @@ interface OCData {
   bank_account_name?: string | null;
 }
 
-// ─── Read-only key/value row ────────────────────────────────
-// Used for every line on every settings card. All edits happen
-// via SettingsEditDrawer (one per card), not inline.
-function ReadonlyField({
-  label, value, options,
-}: {
-  label: string;
-  value: string | number | boolean | null | undefined;
-  options?: { value: string; label: string }[];
-}) {
-  let display: React.ReactNode = "";
-  if (value !== null && value !== undefined && value !== "") {
-    if (options) {
-      display = options.find((o) => String(o.value) === String(value))?.label ?? String(value);
-    } else if (typeof value === "boolean") {
-      display = value ? "Yes" : "No";
-    } else {
-      display = String(value);
-    }
-  }
-  return (
-    <div className="flex justify-between items-start py-2.5 border-b border-border/50 last:border-b-0">
-      <span className="text-sm text-muted-foreground">{label}</span>
-      <span className="text-sm text-foreground text-right max-w-[60%]">{display}</span>
-    </div>
-  );
-}
-
-// ─── Per-card edit drawer ───────────────────────────────────
-// Opens a side sheet with a form for every field on a card.
-// Save writes each changed field through updateOCField and then
-// closes the drawer. Cancel discards the in-flight edits without
-// touching server state.
-type FieldType = "text" | "textarea" | "number" | "select" | "boolean";
-type FieldConfig = {
-  key: string;
-  label: string;
-  type: FieldType;
-  value: string | number | boolean | null | undefined;
-  options?: { value: string; label: string }[];
-};
-
-function SettingsEditDrawer({
-  open, onClose, title, fields, ocId, onSaved,
-}: {
-  open: boolean;
-  onClose: () => void;
-  title: string;
-  fields: FieldConfig[];
-  ocId: string;
-  onSaved: (next: Record<string, string | boolean>) => void;
-}) {
-  // Stable string representation of each field's value. Booleans
-  // go through "yes" / "no" so they map cleanly onto the same
-  // Select primitive as other enum-style fields.
-  const initial = useState(() =>
-    Object.fromEntries(
-      fields.map((f) => {
-        if (f.type === "boolean") return [f.key, f.value ? "yes" : "no"];
-        return [f.key, f.value == null ? "" : String(f.value)];
-      }),
-    ) as Record<string, string>,
-  )[0];
-  const [values, setValues] = useState<Record<string, string>>(initial);
-  const [saving, setSaving] = useState(false);
-
-  // Whenever the drawer re-opens for the same card, snapshot the
-  // latest server values so cancel-then-reopen doesn't show stale
-  // edits.
-  useEffect(() => {
-    if (open) {
-      setValues(
-        Object.fromEntries(
-          fields.map((f) => {
-            if (f.type === "boolean") return [f.key, f.value ? "yes" : "no"];
-            return [f.key, f.value == null ? "" : String(f.value)];
-          }),
-        ) as Record<string, string>,
-      );
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [open]);
-
-  async function save() {
-    setSaving(true);
-    const next: Record<string, string | boolean> = {};
-    for (const f of fields) {
-      const current = values[f.key];
-      const original = f.type === "boolean"
-        ? (f.value ? "yes" : "no")
-        : (f.value == null ? "" : String(f.value));
-      if (current === original) continue;
-      const payload: string | boolean | null = f.type === "boolean"
-        ? current === "yes"
-        : current;
-      const res = await updateOCField(ocId, f.key, payload === "" ? null : payload);
-      if (res.error) {
-        setSaving(false);
-        toast.error(res.error);
-        return;
-      }
-      next[f.key] = payload === "" ? "" : payload;
-    }
-    setSaving(false);
-    onSaved(next);
-    toast.success(`${title} saved`);
-    onClose();
-  }
-
-  return (
-    <Sheet open={open} onOpenChange={(o) => { if (!o && !saving) onClose(); }}>
-      <SheetContent side="right" className="flex w-full flex-col gap-0 sm:max-w-lg">
-        <SheetHeader>
-          <SheetTitle>{title}</SheetTitle>
-          <SheetDescription className="sr-only">Edit {title}</SheetDescription>
-        </SheetHeader>
-        <div className="flex-1 overflow-y-auto p-4 space-y-4">
-          {fields.map((f) => (
-            <div key={f.key} className="space-y-1.5">
-              <Label>{f.label}</Label>
-              {f.type === "text" && (
-                <Input
-                  value={values[f.key] ?? ""}
-                  onChange={(e) => setValues((p) => ({ ...p, [f.key]: e.target.value }))}
-                />
-              )}
-              {f.type === "textarea" && (
-                <Textarea
-                  value={values[f.key] ?? ""}
-                  onChange={(e) => setValues((p) => ({ ...p, [f.key]: e.target.value }))}
-                  rows={4}
-                />
-              )}
-              {f.type === "number" && (
-                <NumberInput
-                  value={values[f.key] ?? ""}
-                  onChange={(v) => setValues((p) => ({ ...p, [f.key]: v }))}
-                  allowDecimal
-                />
-              )}
-              {(f.type === "select" || f.type === "boolean") && (
-                <Select
-                  value={values[f.key] ?? ""}
-                  onValueChange={(v) => setValues((p) => ({ ...p, [f.key]: v ?? "" }))}
-                >
-                  <SelectTrigger>
-                    <SelectValue>
-                      {(f.type === "boolean"
-                        ? (values[f.key] === "yes" ? "Yes" : "No")
-                        : (f.options?.find((o) => o.value === values[f.key])?.label ?? values[f.key])) || ""}
-                    </SelectValue>
-                  </SelectTrigger>
-                  <SelectContent>
-                    {(f.type === "boolean"
-                      ? [{ value: "yes", label: "Yes" }, { value: "no", label: "No" }]
-                      : (f.options ?? [])
-                    ).map((o) => (
-                      <SelectItem key={o.value} value={o.value}>{o.label}</SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              )}
-            </div>
-          ))}
-        </div>
-        <div className="border-t border-border p-4 flex justify-end gap-2">
-          <Button onClick={save} disabled={saving} loading={saving}>
-            Save
-          </Button>
-        </div>
-      </SheetContent>
-    </Sheet>
-  );
-}
-
 // "2026-08-01" -> "first of August 2026" , reads more like prose
 // than ISO. Used in the auto-send "Next run will be on the X" line.
 function formatNiceDate(iso: string): string {
@@ -277,26 +98,8 @@ function formatNiceDate(iso: string): string {
   return `${ord(d)} of ${months[m - 1]} ${y}`;
 }
 
-// Per-card editor header. Renders the section title + an Edit
-// button that opens a side drawer with the form for this card.
-function CardEditHeader({
-  title, onEdit,
-}: {
-  title: string;
-  onEdit: () => void;
-}) {
-  return (
-    <div className="mb-3 flex items-center justify-between">
-      <h3 className="text-sm font-semibold text-foreground">{title}</h3>
-      <Button variant="secondary" size="sm" onClick={onEdit}>
-        <Pencil className="mr-1.5 h-3.5 w-3.5" />
-        Edit
-      </Button>
-    </div>
-  );
-}
-
 import type { OCSettingsSection } from "./nav";
+import { OCField, OCReadonly, type OCFieldProps } from "./oc-field";
 
 export function SettingsContent({
   section,
@@ -314,24 +117,13 @@ export function SettingsContent({
   autosendPreloadedPeriods?: Record<string, PreviewPeriod[]>;
 }) {
   const [oc, setOC] = useState(initial);
-  // Per-card drawer state. Each card has its own key, exactly one
-  // drawer open at a time. null = nothing open.
-  const [openDrawer, setOpenDrawer] = useState<
-    | null
-    | "general"
-    | "certificate"
-    | "commonProperty"
-    | "financial"
-    | "commsDelivery"
-    | "commsNotice"
-    | "banking"
-  >(null);
 
-  function applyDrawerSave(next: Record<string, string | boolean>) {
-    setOC((prev) => ({ ...prev, ...next } as OCData));
+  // A saved field patches the local copy so the page reflects it without a
+  // refetch. Booleans come back as booleans, everything else as a string.
+  function patch(key: string, value: string | boolean) {
+    setOC((prev) => ({ ...prev, [key]: value === "" ? null : value } as OCData));
   }
 
-  const fyMonth = MONTHS[(oc.financial_year_start_month ?? 7) - 1] ?? "July";
   const monthOptions = MONTHS.map((m, i) => ({ value: String(i + 1), label: m }));
   const billingOptions = [
     { value: "monthly", label: "Monthly" },
@@ -354,42 +146,46 @@ export function SettingsContent({
     { value: "email", label: "Email by default" },
   ];
 
-  // Which section shows is the URL's business, not this component's. Each
-  // card still carries its own Edit/Done toggle so the manager only flips
-  // the section they are tweaking.
+  // Which section shows is the URL's business, not this component's.
   const activeTab = section;
+
+  const field = (props: Omit<OCFieldProps, "ocId" | "onSaved">) => (
+    <OCField key={props.fieldKey} ocId={oc.id} onSaved={patch} {...props} />
+  );
 
   return (
     <div className="space-y-6">
       {activeTab === "general" && (
-        <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
+        <div className="space-y-6">
           <Card>
             <CardContent className="pt-5">
-              <CardEditHeader title="General details" onEdit={() => setOpenDrawer("general")} />
-              <ReadonlyField label="Name" value={oc.name} />
-              <ReadonlyField label="Plan number" value={oc.plan_number} />
-              <ReadonlyField label="Address" value={oc.address} />
-              <ReadonlyField label="ABN" value={oc.abn} />
-              <ReadonlyField label="TFN" value={oc.tfn} />
-              <ReadonlyField label="OC Tier" value={oc.oc_tier ? `Tier ${oc.oc_tier}` : null} />
-              <ReadonlyField label="Total lots" value={oc.total_lots} />
+              <h3 className="mb-4 text-sm font-semibold text-foreground">General details</h3>
+              <div className="grid gap-4 sm:grid-cols-2">
+                {field({ fieldKey: "name", label: "Name", type: "text", value: oc.name })}
+                {field({ fieldKey: "plan_number", label: "Plan number", type: "text", value: oc.plan_number })}
+                {field({ fieldKey: "address", label: "Address", type: "text", value: oc.address, wide: true })}
+                {field({ fieldKey: "abn", label: "ABN", type: "text", value: oc.abn })}
+                {field({ fieldKey: "tfn", label: "TFN", type: "text", value: oc.tfn })}
+                <OCReadonly label="OC Tier" value={oc.oc_tier ? `Tier ${oc.oc_tier}` : ""} />
+                <OCReadonly label="Total lots" value={oc.total_lots ?? ""} />
+              </div>
             </CardContent>
           </Card>
 
           <Card>
             <CardContent className="pt-5">
-              <CardEditHeader title="Certificate settings" onEdit={() => setOpenDrawer("certificate")} />
-              <ReadonlyField label="Common seal text" value={oc.common_seal_text} />
-              <ReadonlyField label="Inspection address" value={oc.inspection_address} />
+              <h3 className="mb-4 text-sm font-semibold text-foreground">Certificate settings</h3>
+              <div className="grid gap-4 sm:grid-cols-2">
+                {field({ fieldKey: "common_seal_text", label: "Common seal text", type: "textarea", value: oc.common_seal_text, wide: true })}
+                {field({ fieldKey: "inspection_address", label: "Inspection address", type: "text", value: oc.inspection_address, wide: true })}
+              </div>
             </CardContent>
           </Card>
 
-          <Card className="lg:col-span-2">
+          <Card>
             <CardContent className="pt-5">
-              <CardEditHeader title="Common property description" onEdit={() => setOpenDrawer("commonProperty")} />
-              <p className="text-sm text-foreground whitespace-pre-wrap">
-                {oc.common_property_description || ""}
-              </p>
+              <h3 className="mb-4 text-sm font-semibold text-foreground">Common property description</h3>
+              {field({ fieldKey: "common_property_description", label: "Common property description", type: "textarea", value: oc.common_property_description, wide: true })}
             </CardContent>
           </Card>
         </div>
@@ -398,39 +194,44 @@ export function SettingsContent({
       {activeTab === "financial" && (
         <Card>
           <CardContent className="pt-5">
-            <CardEditHeader title="Financial settings" onEdit={() => setOpenDrawer("financial")} />
-            <ReadonlyField label="Financial year starts" value={fyMonth} />
-            <ReadonlyField label="Billing cycle" value={oc.billing_cycle} options={billingOptions} />
-            <ReadonlyField label="Rules type" value={oc.rules_type} options={rulesOptions} />
-            <ReadonlyField label="Levy calculation basis" value={oc.levy_calculation_basis ?? "lot_liability"} options={levyBasisOptions} />
-            <ReadonlyField label="Early payment incentive (%)" value={oc.early_payment_incentive_percent ?? 0} />
-            <ReadonlyField label="Annual interest rate (%)" value={oc.annual_interest_rate_percent ?? 0} />
-            <ReadonlyField label="Interest-free period (days)" value={oc.interest_free_period_days ?? 28} />
-            <ReadonlyField label="Arrears action threshold (cents)" value={oc.arrears_action_threshold_cents ?? 5000} />
-            <ReadonlyField label="Include arrears on levy notices" value={!!oc.include_arrears_on_notice} />
+            <h3 className="mb-4 text-sm font-semibold text-foreground">Financial settings</h3>
+            <div className="grid gap-4 sm:grid-cols-2">
+              {field({ fieldKey: "financial_year_start_month", label: "Financial year starts", type: "select", value: String(oc.financial_year_start_month ?? 7), options: monthOptions })}
+              {field({ fieldKey: "billing_cycle", label: "Billing cycle", type: "select", value: oc.billing_cycle, options: billingOptions })}
+              {field({ fieldKey: "rules_type", label: "Rules type", type: "select", value: oc.rules_type, options: rulesOptions })}
+              {field({ fieldKey: "levy_calculation_basis", label: "Levy calculation basis", type: "select", value: oc.levy_calculation_basis ?? "lot_liability", options: levyBasisOptions })}
+              {field({ fieldKey: "early_payment_incentive_percent", label: "Early payment incentive", type: "number", value: oc.early_payment_incentive_percent ?? 0, suffix: "%" })}
+              {field({ fieldKey: "annual_interest_rate_percent", label: "Annual interest rate", type: "number", value: oc.annual_interest_rate_percent ?? 0, suffix: "%" })}
+              {field({ fieldKey: "interest_free_period_days", label: "Interest-free period", type: "number", value: oc.interest_free_period_days ?? 28, allowDecimal: false, suffix: "days" })}
+              {field({ fieldKey: "arrears_action_threshold_cents", label: "Arrears action threshold", type: "number", value: oc.arrears_action_threshold_cents ?? 5000, allowDecimal: false, suffix: "cents" })}
+              {field({ fieldKey: "include_arrears_on_notice", label: "Include arrears on levy notices", type: "boolean", value: !!oc.include_arrears_on_notice, wide: true })}
+            </div>
           </CardContent>
         </Card>
       )}
 
       {activeTab === "communications" && (
-        <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
+        <div className="space-y-6">
           <Card>
             <CardContent className="pt-5">
-              <CardEditHeader title="Delivery" onEdit={() => setOpenDrawer("commsDelivery")} />
-              <ReadonlyField label="Default delivery method" value={oc.default_delivery_method ?? "postal"} options={deliveryOptions} />
-              <ReadonlyField label="Meetings postal buffer (days)" value={oc.meetings_postal_buffer_days ?? 14} />
-              <ReadonlyField label="Levies postal buffer (days)" value={oc.levies_postal_buffer_days ?? 14} />
-              <ReadonlyField label="Financial documents postal buffer (days)" value={oc.financial_postal_buffer_days ?? 14} />
+              <h3 className="mb-4 text-sm font-semibold text-foreground">Delivery</h3>
+              <div className="grid gap-4 sm:grid-cols-2">
+                {field({ fieldKey: "default_delivery_method", label: "Default delivery method", type: "select", value: oc.default_delivery_method ?? "postal", options: deliveryOptions })}
+                {field({ fieldKey: "meetings_postal_buffer_days", label: "Meetings postal buffer", type: "number", value: oc.meetings_postal_buffer_days ?? 14, allowDecimal: false, suffix: "days" })}
+                {field({ fieldKey: "levies_postal_buffer_days", label: "Levies postal buffer", type: "number", value: oc.levies_postal_buffer_days ?? 14, allowDecimal: false, suffix: "days" })}
+                {field({ fieldKey: "financial_postal_buffer_days", label: "Financial documents postal buffer", type: "number", value: oc.financial_postal_buffer_days ?? 14, allowDecimal: false, suffix: "days" })}
+              </div>
             </CardContent>
           </Card>
 
           <Card>
             <CardContent className="pt-5">
-              <CardEditHeader title="Levy notice content" onEdit={() => setOpenDrawer("commsNotice")} />
-              <ReadonlyField label="Add note for multi-lot owners" value={!!oc.multilot_note_enabled} />
-              {oc.multilot_note_enabled && (
-                <ReadonlyField label="Multi-lot note text" value={oc.multilot_note_text} />
-              )}
+              <h3 className="mb-4 text-sm font-semibold text-foreground">Levy notice content</h3>
+              <div className="grid gap-4 sm:grid-cols-2">
+                {field({ fieldKey: "multilot_note_enabled", label: "Add note for multi-lot owners", type: "boolean", value: !!oc.multilot_note_enabled, wide: true })}
+                {oc.multilot_note_enabled &&
+                  field({ fieldKey: "multilot_note_text", label: "Multi-lot note text", type: "textarea", value: oc.multilot_note_text, wide: true })}
+              </div>
             </CardContent>
           </Card>
         </div>
@@ -439,105 +240,15 @@ export function SettingsContent({
       {activeTab === "banking" && (
         <Card>
           <CardContent className="pt-5">
-            <CardEditHeader title="Trust account details" onEdit={() => setOpenDrawer("banking")} />
-            <ReadonlyField label="Account name" value={oc.bank_account_name} />
-            <ReadonlyField label="BSB" value={oc.bank_bsb} />
-            <ReadonlyField label="Account number" value={oc.bank_account_number} />
+            <h3 className="mb-4 text-sm font-semibold text-foreground">Trust account details</h3>
+            <div className="grid gap-4 sm:grid-cols-2">
+              {field({ fieldKey: "bank_account_name", label: "Account name", type: "text", value: oc.bank_account_name, wide: true })}
+              {field({ fieldKey: "bank_bsb", label: "BSB", type: "text", value: oc.bank_bsb })}
+              {field({ fieldKey: "bank_account_number", label: "Account number", type: "text", value: oc.bank_account_number })}
+            </div>
           </CardContent>
         </Card>
       )}
-
-      {/* One drawer per card. Mounted at the page root so each
-          drawer renders its own form when opened. */}
-      <SettingsEditDrawer
-        open={openDrawer === "general"}
-        onClose={() => setOpenDrawer(null)}
-        title="General details"
-        ocId={oc.id}
-        onSaved={applyDrawerSave}
-        fields={[
-          { key: "name", label: "Name", type: "text", value: oc.name },
-          { key: "plan_number", label: "Plan number", type: "text", value: oc.plan_number },
-          { key: "address", label: "Address", type: "text", value: oc.address },
-          { key: "abn", label: "ABN", type: "text", value: oc.abn },
-          { key: "tfn", label: "TFN", type: "text", value: oc.tfn },
-        ]}
-      />
-      <SettingsEditDrawer
-        open={openDrawer === "certificate"}
-        onClose={() => setOpenDrawer(null)}
-        title="Certificate settings"
-        ocId={oc.id}
-        onSaved={applyDrawerSave}
-        fields={[
-          { key: "common_seal_text", label: "Common seal text", type: "textarea", value: oc.common_seal_text },
-          { key: "inspection_address", label: "Inspection address", type: "text", value: oc.inspection_address },
-        ]}
-      />
-      <SettingsEditDrawer
-        open={openDrawer === "commonProperty"}
-        onClose={() => setOpenDrawer(null)}
-        title="Common property description"
-        ocId={oc.id}
-        onSaved={applyDrawerSave}
-        fields={[
-          { key: "common_property_description", label: "Common property description", type: "textarea", value: oc.common_property_description },
-        ]}
-      />
-      <SettingsEditDrawer
-        open={openDrawer === "financial"}
-        onClose={() => setOpenDrawer(null)}
-        title="Financial settings"
-        ocId={oc.id}
-        onSaved={applyDrawerSave}
-        fields={[
-          { key: "financial_year_start_month", label: "Financial year starts", type: "select", value: String(oc.financial_year_start_month), options: monthOptions },
-          { key: "billing_cycle", label: "Billing cycle", type: "select", value: oc.billing_cycle, options: billingOptions },
-          { key: "rules_type", label: "Rules type", type: "select", value: oc.rules_type, options: rulesOptions },
-          { key: "levy_calculation_basis", label: "Levy calculation basis", type: "select", value: oc.levy_calculation_basis ?? "lot_liability", options: levyBasisOptions },
-          { key: "early_payment_incentive_percent", label: "Early payment incentive (%)", type: "number", value: oc.early_payment_incentive_percent ?? 0 },
-          { key: "annual_interest_rate_percent", label: "Annual interest rate (%)", type: "number", value: oc.annual_interest_rate_percent ?? 0 },
-          { key: "interest_free_period_days", label: "Interest-free period (days)", type: "number", value: oc.interest_free_period_days ?? 28 },
-          { key: "arrears_action_threshold_cents", label: "Arrears action threshold (cents)", type: "number", value: oc.arrears_action_threshold_cents ?? 5000 },
-          { key: "include_arrears_on_notice", label: "Include arrears on levy notices", type: "boolean", value: !!oc.include_arrears_on_notice },
-        ]}
-      />
-      <SettingsEditDrawer
-        open={openDrawer === "commsDelivery"}
-        onClose={() => setOpenDrawer(null)}
-        title="Delivery"
-        ocId={oc.id}
-        onSaved={applyDrawerSave}
-        fields={[
-          { key: "default_delivery_method", label: "Default delivery method", type: "select", value: oc.default_delivery_method ?? "postal", options: deliveryOptions },
-          { key: "meetings_postal_buffer_days", label: "Meetings postal buffer (days)", type: "number", value: oc.meetings_postal_buffer_days ?? 14 },
-          { key: "levies_postal_buffer_days", label: "Levies postal buffer (days)", type: "number", value: oc.levies_postal_buffer_days ?? 14 },
-          { key: "financial_postal_buffer_days", label: "Financial documents postal buffer (days)", type: "number", value: oc.financial_postal_buffer_days ?? 14 },
-        ]}
-      />
-      <SettingsEditDrawer
-        open={openDrawer === "commsNotice"}
-        onClose={() => setOpenDrawer(null)}
-        title="Levy notice content"
-        ocId={oc.id}
-        onSaved={applyDrawerSave}
-        fields={[
-          { key: "multilot_note_enabled", label: "Add note for multi-lot owners", type: "boolean", value: !!oc.multilot_note_enabled },
-          { key: "multilot_note_text", label: "Multi-lot note text", type: "textarea", value: oc.multilot_note_text },
-        ]}
-      />
-      <SettingsEditDrawer
-        open={openDrawer === "banking"}
-        onClose={() => setOpenDrawer(null)}
-        title="Trust account details"
-        ocId={oc.id}
-        onSaved={applyDrawerSave}
-        fields={[
-          { key: "bank_account_name", label: "Account name", type: "text", value: oc.bank_account_name },
-          { key: "bank_bsb", label: "BSB", type: "text", value: oc.bank_bsb },
-          { key: "bank_account_number", label: "Account number", type: "text", value: oc.bank_account_number },
-        ]}
-      />
 
       {activeTab === "automation" && (
         <AutomationsTab

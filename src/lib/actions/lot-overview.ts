@@ -57,7 +57,7 @@ export interface LotActivityEntry {
 
 // Returns recent audit-log entries scoped to a lot. Scope rules:
 //   1. entity_id = lot_id (direct lot edits , entitlement, unit number, etc.)
-//   2. entity_id IN (lot_owner row ids for this lot) , owner / tenant / consent
+//   2. entity_id IN (ownership ids for this lot) , owner / tenant / occupancy
 //      changes attached to the lot_owners record
 //   3. metadata->>lot_id = lot_id , events that store lot_id in metadata
 //      (levy notices, payments, communications)

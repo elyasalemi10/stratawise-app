@@ -23,7 +23,7 @@ export function ChartOfAccountsSkeleton() {
         <span><strong className="text-foreground">5000s &amp; 6000s</strong> Expenses</span>
       </div>
 
-      <div className="flex flex-wrap items-center justify-end gap-2">
+      <div className="flex flex-wrap items-center gap-2">
         <Input disabled placeholder="Search code or name" className="w-48" />
         <Select disabled>
           <SelectTrigger className="w-40">
@@ -35,6 +35,7 @@ export function ChartOfAccountsSkeleton() {
             <SelectValue placeholder="Active" />
           </SelectTrigger>
         </Select>
+        <div className="ml-auto" />
         <Button variant="secondary" disabled>
           <Download className="size-4" />
           Export CSV
@@ -47,11 +48,11 @@ export function ChartOfAccountsSkeleton() {
 
       <TableSkeleton
         columns={[
-          { label: "Code", cell: "w-12" },
-          { label: "Name", cell: "w-44" },
-          { label: "Type", pill: true },
-          { label: "GST treatment", pill: true },
-          { label: "Status", pill: true },
+          { label: "Code", cell: "w-20" },
+          { label: "Name", cell: "w-full" },
+          { label: "Type", cell: "w-full" },
+          { label: "GST treatment", cell: "w-full" },
+          { label: "Active", pill: true },
         ]}
       />
     </div>

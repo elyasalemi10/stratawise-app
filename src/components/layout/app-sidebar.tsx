@@ -1090,7 +1090,7 @@ export function AppSidebar({
                   isActive={isActive}
                   size="lg"
                   tooltip={item.label}
-                  className="text-base"
+                  className="text-base group-data-[collapsible=icon]:p-2!"
                   render={<Link href={item.href} />}
                 >
                   <item.icon />
@@ -1152,7 +1152,7 @@ export function AppSidebar({
                       <SidebarMenuButton
                         size="lg"
                         tooltip={group.label}
-                        className="text-base"
+                        className="text-base group-data-[collapsible=icon]:p-2!"
                         aria-expanded={isOpen}
                         onClick={() => setOpenGroup(isOpen ? null : group.label)}
                       >

@@ -62,13 +62,15 @@ interface Props {
   value: string;
   onChange: (next: string) => void;
   onFocus?: () => void;
+  /** Fires after the final onChange when focus leaves , save-on-blur hook. */
+  onBlur?: () => void;
   placeholder?: string;
   singleLine?: boolean;
   rows?: number;
 }
 
 export const MergeFieldEditor = forwardRef<MergeFieldEditorHandle, Props>(function MergeFieldEditor(
-  { value, onChange, onFocus, placeholder, singleLine, rows = 6 },
+  { value, onChange, onFocus, onBlur, placeholder, singleLine, rows = 6 },
   ref,
 ) {
   const elRef = useRef<HTMLDivElement>(null);
@@ -126,7 +128,7 @@ export const MergeFieldEditor = forwardRef<MergeFieldEditorHandle, Props>(functi
       aria-multiline={!singleLine}
       data-placeholder={placeholder}
       onInput={emit}
-      onBlur={emit}
+      onBlur={() => { emit(); onBlur?.(); }}
       onFocus={onFocus}
       onKeyDown={(e) => { if (singleLine && e.key === "Enter") e.preventDefault(); }}
       style={singleLine ? undefined : { minHeight: `${rows * 1.5}rem` }}

@@ -282,21 +282,19 @@ export function RulesList({ ocId, ocCode, rules, sourceDocumentName }: Props) {
 
   return (
     <div className="space-y-4">
-      <div className="flex items-center justify-between gap-3">
+      <div className="flex flex-wrap items-center gap-3">
+        <Input
+          placeholder="Search rules"
+          value={query}
+          onChange={(e) => setQuery(e.target.value)}
+          className="w-64"
+        />
         {sourceDocumentName ? (
           <p className="text-xs text-muted-foreground">
             Read from <span className="font-medium text-foreground">{sourceDocumentName}</span>
           </p>
-        ) : (
-          <div />
-        )}
-        <div className="flex items-center gap-2">
-          <Input
-            placeholder="Search rules…"
-            value={query}
-            onChange={(e) => setQuery(e.target.value)}
-            className="max-w-xs"
-          />
+        ) : null}
+        <div className="ml-auto flex items-center gap-2">
           {/* Add rule = dropdown picker so the manager picks Registered or
               Standing up-front. Per the OC Act, registered rules are filed
               with Land Use Victoria; standing rules are committee policies

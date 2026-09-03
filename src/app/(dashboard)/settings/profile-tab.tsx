@@ -7,7 +7,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { AvatarCropDialog } from "@/components/shared/avatar-crop-dialog";
-import { useFieldSave } from "./use-field-save";
+import { useFieldSave } from "@/lib/use-field-save";
 import { revalidateSidebarFromClient } from "@/lib/sidebar-cache";
 import { invalidateCached } from "@/lib/use-cached-data";
 import { updateProfile, updateAvatar } from "./actions";

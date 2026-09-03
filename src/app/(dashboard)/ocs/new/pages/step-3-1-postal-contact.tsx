@@ -15,7 +15,7 @@ import { WizardActions } from "./_components/wizard-actions";
 // Wizard Step 3 sub-step 1 , Service address & contact.
 //
 // "Service address" is the postal address where notices are delivered when
-// the owner hasn't consented to digital comms. Renamed from "Postal" so the
+// notices are posted rather than emailed. Renamed from "Postal" so the
 // legal-service framing is explicit on the label.
 
 function isValidAuPhone(raw: string): boolean {

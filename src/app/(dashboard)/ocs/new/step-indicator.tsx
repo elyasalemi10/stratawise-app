@@ -4,7 +4,7 @@ import { Building2, Settings2, Users, Landmark, type LucideIcon } from "lucide-r
 import { cn } from "@/lib/utils";
 
 // The wizard is FOUR main steps. Sub-steps (e.g. 1.0 upload, 1.1 General,
-// 1.2 Mgmt fee, 3.0 Lots, 3.1 Service, 3.2 Consent, 3.3 Comms) share the
+// 1.2 Mgmt fee, 3.0 Lots, 3.1 Service) share the
 // parent step's circle , internal navigation only.
 //
 // Circles are 12 × 12 (was 10) and the label sits at text-sm (was text-xs)

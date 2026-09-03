@@ -172,7 +172,7 @@ export function NotificationsTab({
                 const allOn = columnAllOn(key);
                 return (
                   <th key={key} className="w-28 pb-3 align-bottom">
-                    <div className="flex flex-col items-center gap-1">
+                    <div className="flex flex-col items-end gap-1">
                       <Icon className="size-4 text-muted-foreground" aria-hidden />
                       <span className="text-sm font-medium text-foreground">{label}</span>
                       <button
@@ -224,8 +224,8 @@ export function NotificationsTab({
                           (key === "in_app" && isManagerial);
                         const auto = autoOptOutMap.get(`${item.type}:${key}`);
                         return (
-                          <td key={key} className="py-3 text-center align-middle">
-                            <div className="flex flex-col items-center gap-1">
+                          <td key={key} className="py-3 text-right align-middle">
+                            <div className="flex flex-col items-end gap-1">
                               <Switch
                                 checked={locked ? true : !!state[item.type]?.[key]}
                                 disabled={locked}

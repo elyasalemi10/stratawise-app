@@ -9,7 +9,6 @@ export type AuditEntityType =
   | "lot"
   | "lot_owner"
   | "tenant"
-  | "consent"
   | "occupancy"
   | "invitation"
   | "invitation_accept"
@@ -36,7 +35,6 @@ export type AuditEntityType =
   | "rule"
   | "settlement"
   | "drn_mapping"
-  | "consent_change"
   | (string & {}); // escape hatch for ad-hoc types , prefer adding to the union
 
 export interface LogAuditArgs {

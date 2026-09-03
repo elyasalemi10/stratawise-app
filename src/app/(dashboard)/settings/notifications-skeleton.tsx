@@ -32,7 +32,7 @@ export function NotificationsSkeleton() {
               </th>
               {CHANNELS.map(({ label, Icon }) => (
                 <th key={label} className="w-28 pb-3 align-bottom">
-                  <div className="flex flex-col items-center gap-1">
+                  <div className="flex flex-col items-end gap-1">
                     <Icon className="size-4 text-muted-foreground" aria-hidden />
                     <span className="text-sm font-medium text-foreground">{label}</span>
                   </div>
@@ -59,8 +59,8 @@ export function NotificationsSkeleton() {
                       <div className="text-xs text-muted-foreground">{item.description}</div>
                     </td>
                     {CHANNELS.map(({ label }) => (
-                      <td key={label} className="py-3 text-center">
-                        <Skeleton className="mx-auto h-5 w-9 rounded-full" />
+                      <td key={label} className="py-3 text-right">
+                        <Skeleton className="ml-auto h-5 w-9 rounded-full" />
                       </td>
                     ))}
                     <td />

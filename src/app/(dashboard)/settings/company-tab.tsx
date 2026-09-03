@@ -11,7 +11,7 @@ import { Label } from "@/components/ui/label";
 import {
   } from "@/components/ui/sheet";
 import { updateCompanyField, uploadCompanySignature } from "./actions";
-import { useFieldSave } from "./use-field-save";
+import { useFieldSave } from "@/lib/use-field-save";
 import { updateCompanyLogo } from "@/lib/actions/company-branding";
 import { MAX_LOGO_BYTES, MAX_LOGO_WIDTH, MAX_LOGO_HEIGHT } from "@/lib/actions/company-branding-constants";
 import { BrandColourPicker } from "@/components/shared/brand-colour-picker";

@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useCallback, useMemo, useState } from "react";
 import { Plus, BookOpen, Download } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -13,10 +13,14 @@ import {
 } from "@/components/ui/select";
 import {
   ACCOUNT_TYPE_LABEL, ACCOUNT_TYPE_OPTIONS, GST_TREATMENT_LABEL,
-  type CoaAccount, type CoaAccountType,
+  GST_TREATMENT_OPTIONS,
+  type CoaAccount, type CoaAccountType, type CoaGstTreatment,
 } from "@/lib/chart-of-accounts";
+import { updateCoaAccount, setCoaAccountActive } from "@/lib/actions/chart-of-accounts";
+import { NumberInput } from "@/components/ui/number-input";
+import { Switch } from "@/components/ui/switch";
+import { toast } from "sonner";
 import { CreateAccountDrawer } from "@/components/chart-of-accounts/create-account-drawer";
-import { AccountDetailDrawer } from "@/components/chart-of-accounts/account-detail-drawer";
 
 const TYPE_BADGE: Record<CoaAccountType, string> = {
   asset: "bg-blue-50 text-blue-700 border-blue-200",
@@ -60,8 +64,16 @@ export function ChartOfAccountsContent({ initialAccounts }: { initialAccounts: C
   const [typeFilter, setTypeFilter] = useState<CoaAccountType | "all">("all");
   const [statusFilter, setStatusFilter] = useState<"all" | "active" | "inactive">("all");
   const [createDrawerOpen, setCreateDrawerOpen] = useState(false);
-  // Account currently shown in the detail drawer (null = closed).
-  const [openAccount, setOpenAccount] = useState<CoaAccount | null>(null);
+
+  // One row changed. Re-sort because the code is editable and the list is
+  // ordered by it.
+  const patchAccount = useCallback((updated: CoaAccount) => {
+    setAccounts((prev) =>
+      prev
+        .map((a) => (a.id === updated.id ? updated : a))
+        .sort((x, y) => x.code.localeCompare(y.code)),
+    );
+  }, []);
 
   const filtered = useMemo(() => {
     const q = query.trim().toLowerCase();
@@ -89,7 +101,7 @@ export function ChartOfAccountsContent({ initialAccounts }: { initialAccounts: C
         <span><strong className="text-foreground">5000s &amp; 6000s</strong> Expenses</span>
       </div>
 
-      <div className="flex flex-wrap items-center justify-end gap-2">
+      <div className="flex flex-wrap items-center gap-2">
         <Input
           value={query}
           onChange={(e) => setQuery(e.target.value)}
@@ -119,6 +131,7 @@ export function ChartOfAccountsContent({ initialAccounts }: { initialAccounts: C
             <SelectItem value="all">All status</SelectItem>
           </SelectContent>
         </Select>
+        <div className="ml-auto" />
         <Button variant="secondary" onClick={() => downloadCsv(filtered)} disabled={filtered.length === 0}>
           <Download className="size-4" />
           Export CSV
@@ -133,49 +146,24 @@ export function ChartOfAccountsContent({ initialAccounts }: { initialAccounts: C
         <EmptyState
           icon={BookOpen}
           title="No accounts match"
-          description={query || typeFilter !== "all" || statusFilter !== "active" ? "Try clearing the filters." : "Add your first account to get started."}
+          description={query || typeFilter !== "all" || statusFilter !== "all" ? "Try clearing the filters." : "Add your first account to get started."}
         />
       ) : (
-        <div className="overflow-hidden rounded-lg border border-border">
+        <div className="overflow-x-auto rounded-lg border border-border">
           <Table variant="striped">
             <TableHeader>
               <TableRow>
-                <TableHead className="w-24">Code</TableHead>
+                <TableHead className="w-28">Code</TableHead>
                 <TableHead>Name</TableHead>
-                <TableHead className="w-28">Type</TableHead>
-                <TableHead className="w-40">GST treatment</TableHead>
-                <TableHead className="w-24">Status</TableHead>
+                <TableHead className="w-44">Type</TableHead>
+                <TableHead className="w-52">GST treatment</TableHead>
+                <TableHead className="w-20 text-right">Active</TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
-              {filtered.map((a) => {
-                const active = !a.archived_at;
-                return (
-                  <TableRow
-                    key={a.id}
-                    onClick={() => setOpenAccount(a)}
-                    className="cursor-pointer"
-                  >
-                    <TableCell className="font-mono text-xs">{a.code}</TableCell>
-                    <TableCell className="text-sm text-foreground">{a.name}</TableCell>
-                    <TableCell>
-                      <span className={`inline-flex rounded-full border px-2 py-0.5 text-xs font-medium ${TYPE_BADGE[a.account_type]}`}>
-                        {ACCOUNT_TYPE_LABEL[a.account_type]}
-                      </span>
-                    </TableCell>
-                    <TableCell className="text-sm text-muted-foreground">
-                      {GST_TREATMENT_LABEL[a.gst_treatment]}
-                    </TableCell>
-                    <TableCell className="text-xs">
-                      {active ? (
-                        <span className="text-emerald-700">Active</span>
-                      ) : (
-                        <span className="text-muted-foreground">Inactive</span>
-                      )}
-                    </TableCell>
-                  </TableRow>
-                );
-              })}
+              {filtered.map((a) => (
+                <AccountRow key={a.id} account={a} onChanged={patchAccount} />
+              ))}
             </TableBody>
           </Table>
         </div>
@@ -187,24 +175,182 @@ export function ChartOfAccountsContent({ initialAccounts }: { initialAccounts: C
         onCreated={(account) => setAccounts((prev) => [...prev, account].sort((a, b) => a.code.localeCompare(b.code)))}
       />
 
-      <AccountDetailDrawer
-        account={openAccount}
-        onOpenChange={(open) => { if (!open) setOpenAccount(null); }}
-        onAccountUpdated={(updated) => {
-          setAccounts((prev) =>
-            prev.map((a) => (a.id === updated.id ? updated : a))
-              .sort((a, b) => a.code.localeCompare(b.code)),
-          );
-        }}
-        onAccountActiveChanged={(id, archivedAt) => {
-          setAccounts((prev) =>
-            prev.map((a) => (a.id === id ? { ...a, archived_at: archivedAt } : a)),
-          );
-          // If the open account got toggled, mirror the change in the drawer
-          // so the Switch stays correct without re-fetching.
-          setOpenAccount((prev) => (prev && prev.id === id ? { ...prev, archived_at: archivedAt } : prev));
-        }}
-      />
     </div>
+  );
+}
+
+// One account, editable in place.
+//
+// Every field on this row is a control, not a label with a pencil beside it.
+// A five-field row does not need a second surface showing the same five
+// fields: the drawer that used to open on row click cost a click to see what
+// was already on screen, and another to get back.
+//
+// Text fields save when you leave them and only if they changed; the two
+// selects and the switch save the moment you pick, because there is no
+// intermediate state to leave. A refusal puts the old value back rather than
+// leaving the row showing something the server declined.
+function AccountRow({
+  account,
+  onChanged,
+}: {
+  account: CoaAccount;
+  onChanged: (next: CoaAccount) => void;
+}) {
+  const [code, setCode] = useState(account.code);
+  const [name, setName] = useState(account.name);
+  const [codeInvalid, setCodeInvalid] = useState(false);
+  const [nameInvalid, setNameInvalid] = useState(false);
+  const [saving, setSaving] = useState(false);
+  const [active, setActive] = useState(!account.archived_at);
+
+  // Fundamental accounts are wired into platform code paths by role, so the
+  // server refuses edits. Showing live controls that always fail would be a
+  // lie; the row reads as text instead.
+  const locked = account.is_fundamental;
+
+  async function save(patch: Partial<Pick<CoaAccount, "code" | "name" | "account_type" | "gst_treatment">>, revert: () => void) {
+    setSaving(true);
+    const res = await updateCoaAccount({
+      id: account.id,
+      code: patch.code ?? code,
+      name: patch.name ?? name,
+      account_type: patch.account_type ?? account.account_type,
+      gst_treatment: patch.gst_treatment ?? account.gst_treatment,
+    });
+    setSaving(false);
+    if (res.error || !res.account) {
+      revert();
+      toast.error(res.error ?? "Could not save changes");
+      return;
+    }
+    onChanged(res.account);
+    toast.success(`${res.account.code} saved`);
+  }
+
+  async function toggleActive(next: boolean) {
+    setActive(next);
+    const res = await setCoaAccountActive(account.id, next);
+    if (res.error) {
+      setActive(!next);
+      toast.error(res.error);
+      return;
+    }
+    onChanged({ ...account, archived_at: next ? null : new Date().toISOString() });
+    toast.success(next ? `${account.code} activated` : `${account.code} deactivated`);
+  }
+
+  if (locked) {
+    return (
+      <TableRow>
+        <TableCell className="font-mono text-xs">{account.code}</TableCell>
+        <TableCell className="text-sm text-foreground">{account.name}</TableCell>
+        <TableCell>
+          <span className={`inline-flex rounded-full border px-2 py-0.5 text-xs font-medium ${TYPE_BADGE[account.account_type]}`}>
+            {ACCOUNT_TYPE_LABEL[account.account_type]}
+          </span>
+        </TableCell>
+        <TableCell className="text-sm text-muted-foreground">
+          {GST_TREATMENT_LABEL[account.gst_treatment]}
+        </TableCell>
+        <TableCell className="text-right">
+          <Switch checked disabled aria-label="Required by the platform" />
+        </TableCell>
+      </TableRow>
+    );
+  }
+
+  return (
+    <TableRow>
+      <TableCell>
+        <NumberInput
+          value={code}
+          onChange={(v) => { setCode(v); if (codeInvalid) setCodeInvalid(false); }}
+          onBlur={() => {
+            const next = code.trim();
+            if (next === account.code) return;
+            if (!/^[0-9]{4}$/.test(next)) {
+              setCodeInvalid(true);
+              toast.error("Code must be exactly 4 digits.");
+              return;
+            }
+            save({ code: next }, () => { setCode(account.code); setCodeInvalid(true); });
+          }}
+          allowDecimal={false}
+          maxLength={4}
+          invalid={codeInvalid}
+          disabled={saving}
+          className="h-8 w-20 font-mono"
+          placeholder="Code"
+        />
+      </TableCell>
+      <TableCell>
+        <Input
+          value={name}
+          onChange={(e) => { setName(e.target.value); if (nameInvalid) setNameInvalid(false); }}
+          onBlur={() => {
+            const next = name.trim();
+            if (next === account.name) return;
+            if (!next) {
+              setNameInvalid(true);
+              toast.error("Name is required.");
+              return;
+            }
+            save({ name: next }, () => { setName(account.name); setNameInvalid(true); });
+          }}
+          aria-invalid={nameInvalid || undefined}
+          disabled={saving}
+          className="h-8"
+          placeholder="Account name"
+        />
+      </TableCell>
+      <TableCell>
+        <Select
+          value={account.account_type}
+          onValueChange={(v) => {
+            const next = (v ?? account.account_type) as CoaAccountType;
+            if (next === account.account_type) return;
+            save({ account_type: next }, () => {});
+          }}
+          disabled={saving}
+        >
+          <SelectTrigger className="h-8 w-full">
+            <SelectValue>{ACCOUNT_TYPE_LABEL[account.account_type]}</SelectValue>
+          </SelectTrigger>
+          <SelectContent>
+            {ACCOUNT_TYPE_OPTIONS.map((o) => (
+              <SelectItem key={o.value} value={o.value}>{o.label}</SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
+      </TableCell>
+      <TableCell>
+        <Select
+          value={account.gst_treatment}
+          onValueChange={(v) => {
+            const next = (v ?? account.gst_treatment) as CoaGstTreatment;
+            if (next === account.gst_treatment) return;
+            save({ gst_treatment: next }, () => {});
+          }}
+          disabled={saving}
+        >
+          <SelectTrigger className="h-8 w-full">
+            <SelectValue>{GST_TREATMENT_LABEL[account.gst_treatment]}</SelectValue>
+          </SelectTrigger>
+          <SelectContent>
+            {GST_TREATMENT_OPTIONS.map((o) => (
+              <SelectItem key={o.value} value={o.value}>{o.label}</SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
+      </TableCell>
+      <TableCell className="text-right">
+        <Switch
+          checked={active}
+          onCheckedChange={(v) => toggleActive(v === true)}
+          aria-label={`${account.name} active`}
+        />
+      </TableCell>
+    </TableRow>
   );
 }
