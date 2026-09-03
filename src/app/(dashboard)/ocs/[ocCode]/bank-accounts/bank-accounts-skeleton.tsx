@@ -42,7 +42,7 @@ export function BankAccountsSkeleton() {
         <div className="grid grid-cols-1 gap-3 border-t border-border pt-4 sm:grid-cols-3">
           {["Fund", "BSB", "Account number"].map((label) => (
             <div key={label}>
-              <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
+              <p className="text-xs font-medium tracking-normal text-muted-foreground">
                 {label}
               </p>
               <Skeleton className="mt-1.5 h-3.5 w-28" />

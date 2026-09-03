@@ -250,7 +250,7 @@ export function InviteStatusPopover({
             {/* Invite history , informational, collapsed below the action. */}
             {!loading && historyRows.length > 0 && (
               <div>
-                <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground mb-2">
+                <p className="text-xs font-medium tracking-normal text-muted-foreground mb-2">
                   Invite history
                 </p>
                 <ol className="space-y-2 max-h-44 overflow-y-auto pr-1">
@@ -333,11 +333,11 @@ function ConfirmInviteBlock({
     <div className="space-y-3">
       <div className="rounded-md border border-border bg-cool-muted px-3 py-2.5 text-sm space-y-1.5">
         <div>
-          <p className="text-xs uppercase tracking-wide text-cool-muted-foreground">Owner</p>
+          <p className="text-xs tracking-normal text-cool-muted-foreground">Owner</p>
           <p className="font-medium text-foreground">{ownerName || ","} · Lot {lotNumber}</p>
         </div>
         <div>
-          <p className="text-xs uppercase tracking-wide text-cool-muted-foreground">Email</p>
+          <p className="text-xs tracking-normal text-cool-muted-foreground">Email</p>
           <p className="inline-flex items-center gap-2 font-medium text-foreground">
             <Mail className="h-3.5 w-3.5 text-muted-foreground" />
             <span className="break-all">{ownerEmail}</span>

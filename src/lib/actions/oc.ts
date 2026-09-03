@@ -253,16 +253,15 @@ export async function getOCStats(ocId: string) {
   await requireOCAccess(ocId);
   const supabase = createServerClient();
 
-  const [lotsResult, membersResult, leviesResult, paymentsResult] = await Promise.all([
+  const [lotsResult, ownersAssigned, leviesResult, paymentsResult] = await Promise.all([
     supabase
       .from("lots")
       .select("id", { count: "exact", head: true })
       .eq("oc_id", ocId),
-    supabase
-      .from("oc_members")
-      .select("id", { count: "exact", head: true })
-      .eq("oc_id", ocId)
-      .is("left_at", null),
+    // Lots with a current owner. This used to count oc_members, which a
+    // CHECK constraint pins to strata_manager , so an OC with 31 owned lots
+    // and one manager reported "1 with an owner on record".
+    countLotsWithOwner(supabase, ocId),
     supabase
       .from("levy_notices")
       .select("amount")
@@ -279,7 +278,7 @@ export async function getOCStats(ocId: string) {
 
   return {
     totalLots: lotsResult.count ?? 0,
-    totalMembers: membersResult.count ?? 0,
+    ownersAssigned,
     totalLevied,
     totalPaid,
     outstanding: totalLevied - totalPaid,

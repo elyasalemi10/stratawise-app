@@ -131,7 +131,7 @@ export function EditPopover<TValue>({
         )}
       >
         <div className="flex flex-col gap-1">
-          <span className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
+          <span className="text-xs font-medium tracking-normal text-muted-foreground">
             Edit
           </span>
           <h3 className="text-sm font-semibold text-foreground">{label}</h3>

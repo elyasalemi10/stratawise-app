@@ -690,7 +690,7 @@ function ReviewForm(props: {
       {/* Outgoing owner banner */}
       {review.currentOwner && (
         <div className="rounded-md border border-border p-3 text-sm">
-          <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">Outgoing owner</p>
+          <p className="text-xs font-medium tracking-normal text-muted-foreground">Outgoing owner</p>
           <p className="mt-1 text-foreground font-medium">{review.currentOwner.name ?? ","}</p>
           <p className="text-xs text-muted-foreground">{review.currentOwner.email ?? ","}</p>
           <p className="mt-2 text-xs text-muted-foreground">

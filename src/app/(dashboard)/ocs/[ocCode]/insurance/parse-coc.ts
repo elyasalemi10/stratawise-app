@@ -94,7 +94,7 @@ export async function uploadAndParseInsuranceCoc(
 
   // Compare the certificate's plan_number against the OC's so we can
   // warn the manager when the wrong CoC was uploaded against the wrong
-  // OC. Strip whitespace + uppercase before comparing so "ps 812345 x"
+  // OC. Strip whitespace +  before comparing so "ps 812345 x"
   // matches "PS812345X".
   const { data: ocRow } = await supabase
     .from("owners_corporations")

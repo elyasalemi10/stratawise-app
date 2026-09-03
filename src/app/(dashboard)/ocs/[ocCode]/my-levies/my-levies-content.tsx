@@ -39,19 +39,19 @@ export function MyLeviesContent({ levies }: { levies: Levy[] }) {
       <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
         <Card>
           <CardContent className="pt-5">
-            <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">Total levied</p>
+            <p className="text-xs font-medium tracking-normal text-muted-foreground">Total levied</p>
             <p className="mt-1 text-xl font-bold tabular-nums">{formatCurrency(totalLevied)}</p>
           </CardContent>
         </Card>
         <Card>
           <CardContent className="pt-5">
-            <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">Total paid</p>
+            <p className="text-xs font-medium tracking-normal text-muted-foreground">Total paid</p>
             <p className="mt-1 text-xl font-bold tabular-nums text-[hsl(160,100%,37%)]">{formatCurrency(totalPaid)}</p>
           </CardContent>
         </Card>
         <Card>
           <CardContent className="pt-5">
-            <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">Outstanding</p>
+            <p className="text-xs font-medium tracking-normal text-muted-foreground">Outstanding</p>
             <p className="mt-1 text-xl font-bold tabular-nums">{formatCurrency(outstanding)}</p>
           </CardContent>
         </Card>
@@ -70,7 +70,7 @@ export function MyLeviesContent({ levies }: { levies: Levy[] }) {
             <div className="overflow-x-auto">
               <table className="w-full text-sm">
                 <thead>
-                  <tr className="bg-muted/50 text-xs font-medium uppercase tracking-wider text-muted-foreground">
+                  <tr className="bg-muted/50 text-xs font-medium tracking-wider text-muted-foreground">
                     <th className="px-4 py-2.5 text-left">Period</th>
                     <th className="px-4 py-2.5 text-left">Reference</th>
                     <th className="px-4 py-2.5 text-left">Due date</th>

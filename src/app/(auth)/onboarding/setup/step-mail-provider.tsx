@@ -1,34 +1,30 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
+import Image from "next/image";
 import { toast } from "sonner";
-import {
-  Mail,
-  ShieldCheck,
-  CheckCircle2,
-  Building2,
-  ArrowRight,
-  ArrowLeft,
-} from "lucide-react";
+import { ArrowLeft, ArrowRight } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { CopyPill } from "@/components/shared/copy-pill";
+import { GMAIL_SCOPES_STRING } from "@/lib/google/gmail-scopes";
 import { cn } from "@/lib/utils";
-import { saveMailProvider } from "./actions";
+import { saveMailProvider, getGmailOauthClientId } from "./actions";
 
-// Step 3 of onboarding. The manager picks where outbound mail comes from:
-//   - stratawise: <username>@stratawise.com.au (default , no setup needed)
-//   - gmail: their firm's Google Workspace mailbox via Domain-Wide Delegation
+// Where the firm's outbound mail comes from.
 //
-// Reading + sending only. We make that explicit in the copy. Customers can
-// change or disconnect from /settings later , disconnecting falls back to
-// stratawise so outbound never breaks silently.
+//   - stratawise: <username>@stratawise.com.au , nothing to set up
+//   - gmail: their own Workspace mailbox via Domain-Wide Delegation
 //
-// Today: stratawise is wired end-to-end. gmail captures the choice +
-// domain; the actual transport flips on once the customer authorises us
-// in their admin console.
+// Two screens, not one. The choice is a choice; the Gmail setup is a job
+// with a Client ID to copy and a scope string to paste, and stacking it
+// under the picker meant the page grew a second half the moment you clicked
+// the right-hand option, with the instructions in a card inside a card
+// inside the step. Picking Gmail advances to its own screen, which is one
+// numbered list and the two things you copy.
 
-type Provider = "stratawise" | "gmail";
+type Screen = "choose" | "gmail";
 
 export function StepMailProvider({
   onNext,
@@ -37,33 +33,107 @@ export function StepMailProvider({
   onNext: () => void;
   onBack: () => void;
 }) {
-  const [choice, setChoice] = useState<"stratawise" | "own" | null>(null);
+  const [screen, setScreen] = useState<Screen>("choose");
   const [domain, setDomain] = useState("");
+  const [domainInvalid, setDomainInvalid] = useState(false);
   const [pending, setPending] = useState(false);
+  const [clientId, setClientId] = useState<string | null>(null);
 
-  async function handleContinue() {
-    if (!choice) {
-      toast.error("Pick how you want to send email.");
-      return;
-    }
-    if (choice === "own" && !domain.trim()) {
+  useEffect(() => {
+    getGmailOauthClientId().then(setClientId);
+  }, []);
+
+  async function save(provider: "stratawise" | "gmail") {
+    if (provider === "gmail" && !domain.trim()) {
+      setDomainInvalid(true);
       toast.error("Enter your firm's email domain.");
       return;
     }
-
     setPending(true);
-    const finalProvider: Provider = choice === "stratawise" ? "stratawise" : "gmail";
     const res = await saveMailProvider({
-      provider: finalProvider,
-      domain: choice === "stratawise" ? null : domain.trim(),
+      provider,
+      domain: provider === "stratawise" ? null : domain.trim(),
     });
-    setPending(false);
-
     if ("error" in res) {
+      setPending(false);
       toast.error(res.error);
       return;
     }
     onNext();
+  }
+
+  if (screen === "gmail") {
+    return (
+      <div className="space-y-6">
+        <div>
+          <h2 className="text-xl font-semibold tracking-tight text-foreground">
+            Connect your Gmail
+          </h2>
+          <p className="mt-1 text-sm text-muted-foreground">
+            One trip to your Google admin console. You can do it later from
+            Settings , email still sends in the meantime.
+          </p>
+        </div>
+
+        <div className="space-y-1.5">
+          <Label htmlFor="mail-domain">
+            Your email domain <span className="text-destructive">*</span>
+          </Label>
+          <Input
+            id="mail-domain"
+            value={domain}
+            onChange={(e) => { setDomain(e.target.value); if (domainInvalid) setDomainInvalid(false); }}
+            aria-invalid={domainInvalid || undefined}
+            placeholder="Email domain"
+          />
+        </div>
+
+        {/* One numbered list, no nested cards. The two things that are
+            actually copied sit inline at the step that needs them, rather
+            than being promised "on the next page". */}
+        <ol className="space-y-4 border-t border-border pt-5 text-sm">
+          <Step n={1}>
+            Sign in to <span className="font-mono">admin.google.com</span> as a
+            super admin.
+          </Step>
+          <Step n={2}>
+            Go to Security → Access and data control → API controls, then
+            Manage Domain Wide Delegation.
+          </Step>
+          <Step n={3}>
+            Click Add new and paste this Client ID:
+            {clientId ? (
+              <CopyPill value={clientId} className="mt-2" />
+            ) : (
+              <p className="mt-2 text-xs text-muted-foreground">
+                Your Client ID will be in Settings → Email once setup finishes.
+              </p>
+            )}
+          </Step>
+          <Step n={4}>
+            Paste these scopes:
+            <CopyPill value={GMAIL_SCOPES_STRING} className="mt-2" />
+          </Step>
+          <Step n={5}>Click Authorise.</Step>
+        </ol>
+
+        <p className="text-xs text-muted-foreground">
+          These scopes let us send as your managers and read replies. We never
+          delete or move anything in a mailbox.
+        </p>
+
+        <div className="flex items-center justify-between">
+          <Button type="button" variant="secondary" onClick={() => setScreen("choose")}>
+            <ArrowLeft className="mr-1.5 h-3.5 w-3.5" />
+            Back
+          </Button>
+          <Button type="button" onClick={() => save("gmail")} disabled={pending} loading={pending}>
+            Finish setup
+            <ArrowRight className="ml-1.5 h-3.5 w-3.5" />
+          </Button>
+        </div>
+      </div>
+    );
   }
 
   return (
@@ -77,170 +147,81 @@ export function StepMailProvider({
         </p>
       </div>
 
-      {/* Two top-level cards */}
       <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-        <button
-          type="button"
-          onClick={() => {
-            setChoice("stratawise");
-            setDomain("");
-          }}
-          className={cn(
-            "flex h-full flex-col items-start gap-3 rounded-lg border-2 bg-card p-5 text-left transition-colors cursor-pointer",
-            choice === "stratawise"
-              ? "border-[color:var(--brand-gold)]"
-              : "border-border hover:border-primary/40",
-          )}
-        >
-          <div className="flex h-10 w-10 items-center justify-center rounded-md bg-primary/10 text-primary">
-            <Mail className="h-5 w-5" />
-          </div>
-          <div className="flex-1">
-            <p className="text-sm font-semibold text-foreground">
-              Use{" "}
-              <span className="font-mono text-xs">
-                yourname@stratawise.com.au
-              </span>
-            </p>
-            <p className="mt-1 text-xs text-muted-foreground">
-              Zero setup. We send + receive on our infrastructure. Replies
-              come back into your StrataWise inbox.
-            </p>
-          </div>
-          {choice === "stratawise" && (
-            <span className="inline-flex items-center gap-1 text-xs font-medium text-[color:var(--brand-gold)]">
-              <CheckCircle2 className="h-3.5 w-3.5" />
-              Selected
-            </span>
-          )}
-        </button>
-
-        <button
-          type="button"
-          onClick={() => setChoice("own")}
-          className={cn(
-            "flex h-full flex-col items-start gap-3 rounded-lg border-2 bg-card p-5 text-left transition-colors cursor-pointer",
-            choice === "own"
-              ? "border-[color:var(--brand-gold)]"
-              : "border-border hover:border-primary/40",
-          )}
-        >
-          <div className="flex h-10 w-10 items-center justify-center rounded-md bg-primary/10 text-primary">
-            <Building2 className="h-5 w-5" />
-          </div>
-          <div className="flex-1">
-            <p className="text-sm font-semibold text-foreground">
-              Connect your own Gmail
-            </p>
-            <p className="mt-1 text-xs text-muted-foreground">
-              Email sends from your real address. We only{" "}
-              <strong className="text-foreground">read and send</strong> ,
-              we never delete or move anything in your mailbox.
-            </p>
-          </div>
-          {choice === "own" && (
-            <span className="inline-flex items-center gap-1 text-xs font-medium text-[color:var(--brand-gold)]">
-              <CheckCircle2 className="h-3.5 w-3.5" />
-              Selected
-            </span>
-          )}
-        </button>
+        <ProviderChoice
+          logo="/stratawise-icon.webp"
+          logoAlt="StrataWise"
+          title="Send from StrataWise"
+          address="yourname@stratawise.com.au"
+          blurb="Nothing to set up. Replies land in your StrataWise inbox."
+          pending={pending}
+          onClick={() => save("stratawise")}
+        />
+        <ProviderChoice
+          logo="/logos/gmail.webp"
+          logoAlt="Gmail"
+          title="Send from your Gmail"
+          address="yourname@yourfirm.com.au"
+          blurb="Mail goes out from your real address. One setup step in your Google admin console."
+          pending={pending}
+          onClick={() => setScreen("gmail")}
+        />
       </div>
 
-      {/* Sub-choice when "own" */}
-      {choice === "own" && (
-        <div className="rounded-lg border border-border bg-cool-muted p-4 space-y-4">
-          <div className="space-y-1.5">
-            <Label htmlFor="mail-domain">
-              Email domain <span className="text-destructive">*</span>
-            </Label>
-            <Input
-              id="mail-domain"
-              value={domain}
-              onChange={(e) => setDomain(e.target.value)}
-              placeholder="acmestrata.com.au"
-            />
-            <p className="text-xs text-muted-foreground">
-              The bit after the <span className="font-mono">@</span> in your
-              firm&apos;s email address. We use this to send from each
-              manager&apos;s own mailbox once you authorise us in your admin
-              console.
-            </p>
-          </div>
-
-          <GmailSetupCallout />
-
-          <ReadWriteDisclosure />
-        </div>
-      )}
-
       <div className="flex items-center justify-between">
-        <Button type="button" variant="secondary" onClick={onBack}>
+        <Button type="button" variant="secondary" onClick={onBack} disabled={pending}>
           <ArrowLeft className="mr-1.5 h-3.5 w-3.5" />
           Back
         </Button>
-        <Button type="button" onClick={handleContinue} disabled={pending} loading={pending}>
-          Finish setup
-          <ArrowRight className="ml-1.5 h-3.5 w-3.5" />
-        </Button>
       </div>
     </div>
   );
 }
 
-function GmailSetupCallout() {
+function ProviderChoice({
+  logo,
+  logoAlt,
+  title,
+  address,
+  blurb,
+  pending,
+  onClick,
+}: {
+  logo: string;
+  logoAlt: string;
+  title: string;
+  address: string;
+  blurb: string;
+  pending: boolean;
+  onClick: () => void;
+}) {
   return (
-    <div className="rounded-md border border-border bg-card p-3 text-xs text-foreground space-y-2">
-      <p className="font-medium uppercase tracking-wide text-muted-foreground">
-        What you&apos;ll do next
-      </p>
-      <ol className="list-decimal pl-4 space-y-1 leading-relaxed">
-        <li>
-          Sign into{" "}
-          <span className="font-mono">admin.google.com</span> as a super admin.
-        </li>
-        <li>
-          Menu → Security → Access and data control → <em>API controls</em>.
-        </li>
-        <li>
-          Click <em>Manage Domain Wide Delegation</em> → <em>Add new</em>.
-        </li>
-        <li>
-          Paste the Client ID we&apos;ll show you on the next page (you can
-          also find it in <em>Settings → Email integration</em> any time).
-        </li>
-        <li>
-          Paste these OAuth scopes:
-          <code className="ml-1 break-all rounded bg-cool-muted px-1.5 py-0.5 font-mono text-[11px]">
-            https://www.googleapis.com/auth/gmail.send,https://www.googleapis.com/auth/gmail.modify
-          </code>
-        </li>
-        <li>Click Authorize.</li>
-      </ol>
-      <p className="text-muted-foreground">
-        Usually works in minutes; Google sometimes takes up to 24 hours to
-        propagate the grant.
-      </p>
-    </div>
+    <button
+      type="button"
+      onClick={onClick}
+      disabled={pending}
+      className={cn(
+        "flex h-full flex-col items-start gap-3 rounded-lg border-2 border-border bg-card p-5 text-left transition-colors cursor-pointer",
+        "hover:border-[color:var(--brand-gold)] disabled:cursor-not-allowed disabled:opacity-60",
+      )}
+    >
+      <Image src={logo} alt={logoAlt} width={32} height={32} className="h-8 w-auto" />
+      <div className="flex-1">
+        <p className="text-sm font-semibold text-foreground">{title}</p>
+        <p className="mt-0.5 font-mono text-xs text-muted-foreground">{address}</p>
+        <p className="mt-2 text-xs text-muted-foreground">{blurb}</p>
+      </div>
+    </button>
   );
 }
 
-function ReadWriteDisclosure() {
+function Step({ n, children }: { n: number; children: React.ReactNode }) {
   return (
-    <div className="flex items-start gap-2 rounded-md border border-border bg-card p-3 text-xs text-foreground">
-      <ShieldCheck className="h-4 w-4 shrink-0 text-[color:var(--brand-gold)]" />
-      <div>
-        <p className="font-medium">We won&apos;t delete anything.</p>
-        <p className="mt-0.5 text-muted-foreground">
-          StrataWise only{" "}
-          <span className="font-medium text-foreground">reads</span> and{" "}
-          <span className="font-medium text-foreground">sends</span> email.
-          We don&apos;t move messages, change labels you set, or empty
-          folders. You can revoke access from your admin console at any
-          time , disconnecting falls back to{" "}
-          <span className="font-mono">yourname@stratawise.com.au</span>.
-        </p>
-      </div>
-    </div>
+    <li className="flex gap-3">
+      <span className="mt-0.5 inline-flex size-5 shrink-0 items-center justify-center rounded-full bg-muted text-xs font-medium text-muted-foreground">
+        {n}
+      </span>
+      <div className="min-w-0 flex-1 text-foreground">{children}</div>
+    </li>
   );
 }

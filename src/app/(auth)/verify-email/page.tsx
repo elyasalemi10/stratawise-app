@@ -7,7 +7,7 @@ import { Loader2, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { OtpInput } from "@/components/shared/otp-input";
 import Image from "next/image";
-import { sendVerificationCode, verifyEmailCode } from "@/lib/actions/email-verification";
+import { sendVerificationCode, verifyEmailCode, abandonUnverifiedSignup } from "@/lib/actions/email-verification";
 import { getSupabaseClient } from "@/lib/supabase";
 
 // Gmail web client deep-link that pre-filters to our sender so the user
@@ -25,6 +25,7 @@ function VerifyEmailContent() {
   const [verifying, setVerifying] = useState(false);
   const [invalid, setInvalid] = useState(false);
   const [resending, setResending] = useState(false);
+  const [changing, setChanging] = useState(false);
   const [userEmail, setUserEmail] = useState<string | null>(null);
   const autoSent = useRef(false);
 
@@ -48,12 +49,19 @@ function VerifyEmailContent() {
     if (autoSent.current) return;
     if (typeof window === "undefined") return;
     autoSent.current = true;
-    if (sessionStorage.getItem("verifyEmail.codeSent") === "1") return;
+    // Keyed by the address, not a bare flag: a bare flag survived a second
+    // sign-up in the same tab, so the page said "we sent you a code" for an
+    // address nothing had been sent to.
+    const cachedEmail = sessionStorage.getItem("verifyEmail.email") ?? "";
+    if (sessionStorage.getItem("verifyEmail.codeSent") === cachedEmail && cachedEmail) return;
     sendVerificationCode().then((r) => {
       if ("error" in r) {
         toast.error(r.error);
       } else {
-        sessionStorage.setItem("verifyEmail.codeSent", "1");
+        sessionStorage.setItem(
+          "verifyEmail.codeSent",
+          sessionStorage.getItem("verifyEmail.email") ?? "",
+        );
         toast.success("Code sent to your email.");
       }
     });
@@ -99,8 +107,29 @@ function VerifyEmailContent() {
     }
     setCode("");
     setInvalid(false);
-    sessionStorage.setItem("verifyEmail.codeSent", "1");
+    sessionStorage.setItem(
+      "verifyEmail.codeSent",
+      sessionStorage.getItem("verifyEmail.email") ?? "",
+    );
     toast.success("New code sent.");
+  }
+
+  // Wrong address typed on the previous screen. Without this the only way
+  // out is signing up again, which reports the email as already registered
+  // , for an account that was never confirmed.
+  async function handleChangeEmail() {
+    setChanging(true);
+    const result = await abandonUnverifiedSignup();
+    if ("error" in result) {
+      setChanging(false);
+      toast.error(result.error);
+      return;
+    }
+    sessionStorage.removeItem("verifyEmail.codeSent");
+    sessionStorage.removeItem("verifyEmail.email");
+    // Hard navigation: the Supabase session is gone, so the client needs to
+    // start clean rather than keep a cookie for a user that no longer exists.
+    window.location.href = `/sign-up?next=${encodeURIComponent(next)}`;
   }
 
   return (
@@ -169,7 +198,18 @@ function VerifyEmailContent() {
         </Button>
       </form>
 
-      <div className="text-center text-sm text-muted-foreground">
+      <div className="space-y-2 text-center text-sm text-muted-foreground">
+        <div>
+          Wrong address?{" "}
+          <button
+            type="button"
+            onClick={handleChangeEmail}
+            disabled={changing}
+            className="cursor-pointer font-medium text-foreground underline-offset-4 hover:underline disabled:opacity-60"
+          >
+            Use a different email
+          </button>
+        </div>
         Didn&apos;t get the code?{" "}
         <button
           type="button"

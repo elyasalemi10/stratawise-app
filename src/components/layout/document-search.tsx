@@ -152,7 +152,7 @@ export function DocumentSearch() {
                 const Icon = TYPE_META[group.type].icon;
                 return (
                   <div key={group.type} className="border-t border-border first:border-t-0">
-                    <p className="px-3 pt-2 pb-1 text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">
+                    <p className="px-3 pt-2 pb-1 text-[10px] font-semibold tracking-normal text-muted-foreground">
                       {TYPE_META[group.type].label}
                     </p>
                     <ul>

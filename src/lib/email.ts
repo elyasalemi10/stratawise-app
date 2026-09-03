@@ -1437,7 +1437,7 @@ export async function sendFinalNoticeEmail(
     penaltyInterestAccrued, ocShortCode, companyLogoUrl,
     pdfBuffer, pdfFilename, ocId,
   } = params;
-  const subject = `FINAL NOTICE , outstanding levy , ${ocName}`;
+  const subject = `Final notice , outstanding levy , ${ocName}`;
 
   const interestLine = penaltyInterestAccrued > 0
     ? `<p style="margin:0 0 4px;font-size:13px;color:#4A5868;">Interest accrued</p><p style="margin:0 0 12px;font-size:14px;font-weight:600;color:#dc2626;">$${penaltyInterestAccrued.toFixed(2)}</p>`
@@ -1451,7 +1451,7 @@ export async function sendFinalNoticeEmail(
   );
 
   const html = brandShell(`
-    <h2 style="margin:0 0 16px;font-size:20px;font-weight:700;color:#b91c1c;">FINAL NOTICE , levy outstanding</h2>
+    <h2 style="margin:0 0 16px;font-size:20px;font-weight:700;color:#b91c1c;">Final notice , levy outstanding</h2>
     <p style="margin:0 0 20px;color:#0E314C;font-size:14px;line-height:1.6;">
       ${greeting(ownerName)} this is a <strong>final notice</strong> for the unpaid levy at <strong>${escapeHtml(ocAddress)}</strong>. The levy is now more than <strong>${daysOverdue} days</strong> overdue.
     </p>

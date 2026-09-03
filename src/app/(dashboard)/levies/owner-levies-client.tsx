@@ -34,7 +34,7 @@ export function OwnerLeviesClient() {
       <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
         <Card>
           <CardContent className="pt-5">
-            <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
+            <p className="text-xs font-medium tracking-normal text-muted-foreground">
               Total levied
             </p>
             <p className="mt-1 text-xl font-bold tabular-nums">
@@ -44,7 +44,7 @@ export function OwnerLeviesClient() {
         </Card>
         <Card>
           <CardContent className="pt-5">
-            <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
+            <p className="text-xs font-medium tracking-normal text-muted-foreground">
               Total paid
             </p>
             <p className="mt-1 text-xl font-bold tabular-nums text-[hsl(160,100%,37%)]">
@@ -54,7 +54,7 @@ export function OwnerLeviesClient() {
         </Card>
         <Card>
           <CardContent className="pt-5">
-            <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
+            <p className="text-xs font-medium tracking-normal text-muted-foreground">
               Outstanding
             </p>
             <p className="mt-1 text-xl font-bold tabular-nums">

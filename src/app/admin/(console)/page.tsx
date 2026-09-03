@@ -21,7 +21,7 @@ function KpiCard({ label, value, icon }: KpiCardProps) {
   return (
     <Card>
       <CardContent className="pt-5 space-y-2">
-        <div className="flex items-center gap-2 text-xs uppercase tracking-wide text-muted-foreground">
+        <div className="flex items-center gap-2 text-xs tracking-normal text-muted-foreground">
           {icon}
           {label}
         </div>

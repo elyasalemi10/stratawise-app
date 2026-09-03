@@ -30,7 +30,7 @@ export async function resolveOCFromCode(
   code: string | undefined,
 ): Promise<ResolvedOC | null> {
   if (!code) return null;
-  // Codes are uppercase A-Z + 2-9. Reject malformed input cheaply before
+  // Codes are  A-Z + 2-9. Reject malformed input cheaply before
   // hitting the DB (avoids a wasted round-trip on URL probing).
   if (!/^[ABCDEFGHJKLMNPQRSTUVWXYZ23456789]{8}$/.test(code)) return null;
 

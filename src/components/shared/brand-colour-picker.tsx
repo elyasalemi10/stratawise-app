@@ -196,7 +196,7 @@ export function BrandColourPicker({ value, onChange, id }: BrandColourPickerProp
                 setDraft(v);
               }}
               className={cn(
-                "h-8 w-full rounded-md border bg-background px-2 font-mono text-xs uppercase tracking-wider outline-none focus:ring-2",
+                "h-8 w-full rounded-md border bg-background px-2 font-mono text-xs tracking-wider outline-none focus:ring-2",
                 !draft || validHex
                   ? "border-border focus:ring-primary/20 focus:border-primary"
                   : "border-destructive focus:ring-destructive/20",

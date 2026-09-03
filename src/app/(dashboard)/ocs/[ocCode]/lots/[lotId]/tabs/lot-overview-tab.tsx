@@ -144,7 +144,7 @@ export function LotOverviewTab({
             />
             {lotDetails.payment_reference && (
               <div className="col-span-2 sm:col-span-4">
-                <dt className="text-xs uppercase tracking-wide text-muted-foreground">
+                <dt className="text-xs tracking-normal text-muted-foreground">
                   Payment reference
                 </dt>
                 <dd className="mt-0.5 font-mono text-sm font-semibold text-foreground">
@@ -257,7 +257,7 @@ function DetailField({
 }) {
   return (
     <div>
-      <dt className="text-xs uppercase tracking-wide text-muted-foreground">
+      <dt className="text-xs tracking-normal text-muted-foreground">
         {label}
       </dt>
       <dd

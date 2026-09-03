@@ -71,11 +71,43 @@ function SignUpContent() {
       },
     });
 
+    const cleanEmail = email.trim().toLowerCase();
+
     if (error) {
+      // An account exists from the moment this form is submitted, before the
+      // address is proved. Someone who mistyped, or closed the tab mid-code,
+      // comes back here and is told their email is already registered , for
+      // an account nobody ever confirmed. If the password matches, that IS
+      // them: sign in and put them back on the code screen.
+      const alreadyRegistered = /already registered|already exists|user already/i.test(
+        error.message,
+      );
+      if (alreadyRegistered) {
+        const { error: signInErr } = await supabase.auth.signInWithPassword({
+          email: cleanEmail,
+          password,
+        });
+        if (!signInErr) {
+          sessionStorage.setItem("verifyEmail.email", cleanEmail);
+          const resumeDest =
+            searchParams.get("next") ??
+            (accountType === "lot_owner" ? "/onboarding/lot-owner" : "/onboarding/setup");
+          router.push(`/verify-email?next=${encodeURIComponent(resumeDest)}`);
+          return;
+        }
+        setPending(false);
+        setInvalid({ email: true });
+        toast.error("That email already has an account. Sign in instead, or use a different email.");
+        return;
+      }
       setPending(false);
       toast.error(error.message);
       return;
     }
+
+    // The code screen shows which address it went to, and uses this to tell
+    // one sign-up attempt from the next in the same tab.
+    sessionStorage.setItem("verifyEmail.email", cleanEmail);
 
     // Go straight to the role-specific onboarding after verification , skip
     // the /onboarding router page (it briefly flashed just the StrataWise

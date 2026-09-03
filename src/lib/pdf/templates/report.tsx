@@ -42,7 +42,7 @@ const s = StyleSheet.create({
   // Info section
   infoSection: { flexDirection: "row", marginBottom: 14, gap: 20 },
   infoBlock: { flex: 1 },
-  infoLabel: { fontSize: 7, color: c.muted, textTransform: "uppercase" as const, letterSpacing: 0.5, marginBottom: 2 },
+  infoLabel: { fontSize: 7, color: c.muted, letterSpacing: 0.5, marginBottom: 2 },
   infoValue: { fontSize: 9, color: c.foreground, marginBottom: 6 },
   // Table
   tableHeader: {
@@ -52,7 +52,7 @@ const s = StyleSheet.create({
     marginHorizontal: -28,
     paddingHorizontal: 36,
   },
-  th: { fontSize: 7, fontWeight: 700, color: c.white, textTransform: "uppercase" as const, letterSpacing: 0.3 },
+  th: { fontSize: 7, fontWeight: 700, color: c.white, letterSpacing: 0.3 },
   row: { flexDirection: "row", paddingVertical: 5, marginHorizontal: -28, paddingHorizontal: 36 },
   rowStriped: { flexDirection: "row", paddingVertical: 5, marginHorizontal: -28, paddingHorizontal: 36, backgroundColor: c.stripe },
   td: { fontSize: 8, color: c.foreground },

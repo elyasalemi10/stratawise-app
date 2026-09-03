@@ -445,7 +445,7 @@ function EmailDetailDialog({
           />
           <HeaderField label="Sent" value={formatShortDate(row.created_at)} />
           <div>
-            <p className="text-xs uppercase tracking-wide text-muted-foreground mb-1">
+            <p className="text-xs tracking-normal text-muted-foreground mb-1">
               Body
             </p>
             <div className="h-80 overflow-y-auto whitespace-pre-wrap break-words rounded-md border border-border bg-card p-3 text-sm leading-relaxed text-foreground">
@@ -454,7 +454,7 @@ function EmailDetailDialog({
           </div>
           {row.attachments.length > 0 && (
             <div>
-              <p className="text-xs uppercase tracking-wide text-muted-foreground mb-1">
+              <p className="text-xs tracking-normal text-muted-foreground mb-1">
                 Attachments ({row.attachments.length})
               </p>
               <ul className="space-y-1.5">
@@ -537,7 +537,7 @@ function SmsDetailDialog({
             <HeaderField label="Logged by" value={row.actor_name} />
           )}
           <div>
-            <p className="text-xs uppercase tracking-wide text-muted-foreground mb-1">
+            <p className="text-xs tracking-normal text-muted-foreground mb-1">
               Message
             </p>
             <div className="max-h-72 overflow-y-auto whitespace-pre-wrap break-words rounded-md border border-border bg-card p-3 text-sm leading-relaxed text-foreground">
@@ -588,7 +588,7 @@ function CallDetailDialog({
           )}
           {row.body_preview && (
             <div>
-              <p className="text-xs uppercase tracking-wide text-muted-foreground mb-1">
+              <p className="text-xs tracking-normal text-muted-foreground mb-1">
                 Notes
               </p>
               <div className="max-h-72 overflow-y-auto whitespace-pre-wrap break-words rounded-md border border-border bg-card p-3 text-sm leading-relaxed text-foreground">
@@ -613,7 +613,7 @@ function HeaderField({
 }) {
   return (
     <div>
-      <p className="text-xs uppercase tracking-wide text-muted-foreground">
+      <p className="text-xs tracking-normal text-muted-foreground">
         {label}
       </p>
       <div
@@ -776,7 +776,7 @@ function SendEmailDrawer({
       }}
     >
       <div className="space-y-1.5">
-        <Label className="text-xs uppercase tracking-wide text-muted-foreground">
+        <Label className="text-xs tracking-normal text-muted-foreground">
           From
         </Label>
         {inboxes.length <= 1 ? (

@@ -111,7 +111,7 @@ export function WelcomeConfetti() {
             : "animate-welcome-out text-center"
         }
       >
-        <p className="text-sm font-medium uppercase tracking-[0.3em] text-primary/80">
+        <p className="text-sm font-medium tracking-[0.3em] text-primary/80">
           Welcome to
         </p>
         <h1 className="mt-2 text-6xl md:text-7xl font-bold tracking-tight text-foreground drop-shadow-sm">

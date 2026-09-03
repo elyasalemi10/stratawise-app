@@ -91,7 +91,73 @@ export async function sendVerificationCode(): Promise<{ ok: true } | { error: st
   });
 
   if ("error" in send) {
-    return { error: send.error };
+    // The row is already in the table, and OUR 30-second gate reads the most
+    // recent unused code , so a failed send would lock the user out of
+    // asking again for a code that never arrived. Take it back out.
+    await admin
+      .from("email_verification_codes")
+      .delete()
+      .eq("profile_id", profile.id)
+      .eq("code", code)
+      .eq("purpose", "email_verify");
+
+    // Never hand the mail provider's own wording to the user. Rate limiting
+    // is the one failure worth distinguishing, because "wait and retry" is
+    // advice they can act on; everything else is ours to fix.
+    const raw = send.error.toLowerCase();
+    const rateLimited =
+      raw.includes("rate") || raw.includes("too many") || raw.includes("429");
+    console.error("[verify] code email failed:", send.error);
+    return {
+      error: rateLimited
+        ? "Too many codes requested. Wait a few minutes and try again."
+        : "We couldn't send the code just now. Please try again in a moment.",
+    };
+  }
+
+  return { ok: true };
+}
+
+/**
+ * Throws away a half-finished sign-up so the email is free again.
+ *
+ * An account exists from the moment someone submits the sign-up form, before
+ * they have proved they own the address. Get the address wrong and you are
+ * stuck: the code goes somewhere you cannot read, and signing up again says
+ * the email is already registered , for an account that was never confirmed.
+ *
+ * Only ever deletes an UNVERIFIED profile belonging to the caller, so it
+ * cannot be turned into a way to remove a real account.
+ */
+export async function abandonUnverifiedSignup(): Promise<{ ok: true } | { error: string }> {
+  const supabase = await createSupabaseServerClient();
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) return { error: "Not authenticated" };
+
+  const admin = createServerClient();
+  const { data: profile } = await admin
+    .from("profiles")
+    .select("id, email_verified, management_company_id")
+    .eq("auth_user_id", user.id)
+    .single();
+
+  if (!profile) return { error: "Profile not found" };
+  if (profile.email_verified) {
+    return { error: "This account is already verified. Sign in instead." };
+  }
+  if (profile.management_company_id) {
+    // Belt and braces: an unverified profile should never have got this far,
+    // and deleting one would take a company with it.
+    return { error: "This account is already set up. Sign in instead." };
+  }
+
+  await admin.from("email_verification_codes").delete().eq("profile_id", profile.id);
+  await admin.from("profiles").delete().eq("id", profile.id);
+
+  const { error: delErr } = await admin.auth.admin.deleteUser(user.id);
+  if (delErr) {
+    console.error("[verify] could not delete unverified auth user:", delErr);
+    return { error: "Something went wrong. Please try again." };
   }
 
   return { ok: true };

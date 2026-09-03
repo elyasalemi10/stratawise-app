@@ -341,7 +341,7 @@ export function BudgetDetailContent({
       {budget.approval_note && !isDraft && (
         <Card>
           <CardContent className="pt-4 pb-4">
-            <p className="text-xs uppercase tracking-wide text-muted-foreground">Approval note</p>
+            <p className="text-xs tracking-normal text-muted-foreground">Approval note</p>
             <p className="mt-1 text-sm text-foreground">{budget.approval_note}</p>
           </CardContent>
         </Card>

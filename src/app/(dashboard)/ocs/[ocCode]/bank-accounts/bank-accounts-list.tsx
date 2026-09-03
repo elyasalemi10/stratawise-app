@@ -289,7 +289,7 @@ function AccountPane({
       </div>
       <div className="grid grid-cols-1 gap-3 sm:grid-cols-3 border-t border-border pt-4">
         <div>
-          <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
+          <p className="text-xs font-medium tracking-normal text-muted-foreground">
             {account.fund_labels.length > 1 ? "Funds" : "Fund"}
           </p>
           <p className="text-sm text-foreground mt-1">
@@ -297,11 +297,11 @@ function AccountPane({
           </p>
         </div>
         <div>
-          <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">BSB</p>
+          <p className="text-xs font-medium tracking-normal text-muted-foreground">BSB</p>
           <p className="text-sm text-foreground mt-1">{account.bsb || ""}</p>
         </div>
         <div>
-          <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">Account number</p>
+          <p className="text-xs font-medium tracking-normal text-muted-foreground">Account number</p>
           <p className="text-sm text-foreground mt-1">{account.account_number || ""}</p>
         </div>
       </div>

@@ -83,7 +83,7 @@ export const typography = {
     size: "0.875rem", // 14px
     weight: "600",
     letterSpacing: "0.05em",
-    className: "text-sm font-semibold uppercase tracking-wide text-foreground",
+    className: "text-sm font-semibold tracking-normal text-foreground",
   },
   body: {
     size: "0.875rem", // 14px
@@ -99,7 +99,7 @@ export const typography = {
     size: "0.75rem", // 12px
     weight: "500",
     letterSpacing: "0.05em",
-    className: "text-xs font-medium uppercase tracking-wide text-muted-foreground",
+    className: "text-xs font-medium tracking-normal text-muted-foreground",
   },
   metric: {
     size: "1.75rem", // 28px
@@ -156,7 +156,7 @@ export const components = {
     info: "bg-foreground/10 text-foreground",
   },
   table: {
-    header: "bg-muted/50 text-xs font-medium uppercase tracking-wider text-muted-foreground h-10",
+    header: "bg-muted/50 text-xs font-medium tracking-wider text-muted-foreground h-10",
     row: "h-12 border-b border-border/50 text-sm hover:bg-muted/30 transition-colors duration-150",
   },
   input: {

@@ -493,7 +493,7 @@ function EngagementCard({ engagement }: { engagement: LotEngagement }) {
 
         {engagement.choices.length > 0 && (
           <div>
-            <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground mb-2">
+            <p className="text-xs font-medium tracking-normal text-muted-foreground mb-2">
               Vote breakdown
             </p>
             <div className="flex flex-wrap gap-1.5">
@@ -514,7 +514,7 @@ function EngagementCard({ engagement }: { engagement: LotEngagement }) {
 
         {engagement.recentMeetings.length > 0 && (
           <div>
-            <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground mb-2">
+            <p className="text-xs font-medium tracking-normal text-muted-foreground mb-2">
               Recent meetings
             </p>
             <ul className="divide-y divide-border">
@@ -561,7 +561,7 @@ function EngagementStat({
 }) {
   return (
     <div className="rounded-md border border-border bg-card px-3 py-2">
-      <p className="text-xs uppercase tracking-wide text-muted-foreground">
+      <p className="text-xs tracking-normal text-muted-foreground">
         {label}
       </p>
       <p className="mt-0.5 text-xl font-bold text-foreground tabular-nums">

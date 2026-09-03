@@ -50,7 +50,7 @@ const labelFor = (map: Record<string, string>, v: string | null | undefined) =>
 function Stat({ label, value }: { label: string; value: string }) {
   return (
     <div>
-      <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
+      <p className="text-xs font-medium tracking-normal text-muted-foreground">
         {label}
       </p>
       <p className="mt-1 text-base font-semibold text-foreground">{value}</p>

@@ -26,7 +26,7 @@ export function MeetingNotice(props: MeetingNoticeProps) {
   const quorumLots = Math.max(1, Math.ceil(ocLotCount / 2));
   const noticeDateLabel = date.toLocaleDateString("en-AU", { day: "numeric", month: "long", year: "numeric" });
   const isAgm = meetingType === "agm";
-  const titleLine = isAgm ? "NOTICE OF ANNUAL GENERAL MEETING" : "NOTICE OF SPECIAL GENERAL MEETING";
+  const titleLine = isAgm ? "Notice of Annual General Meeting" : "Notice of Special General Meeting";
   const formatLabel = format === "online"
     ? `Held electronically via ${onlinePlatformLabel || "an online meeting"}${onlineLink ? ` , ${onlineLink}` : ""}`
     : (location || "To be confirmed");

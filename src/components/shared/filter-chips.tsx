@@ -58,7 +58,7 @@ export function FilterChips<T extends string>({
     >
       <div
         className={cn(
-          "text-xs font-medium uppercase tracking-wide text-muted-foreground",
+          "text-xs font-medium tracking-normal text-muted-foreground",
           hideLabel && "sr-only",
         )}
       >

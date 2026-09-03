@@ -38,7 +38,7 @@ interface EditSheetProps {
   /** Reset internal state (e.g. confirmation step) when the sheet closes. */
   onOpenChange?: (open: boolean) => void;
   /**
-   * The small uppercase caption above the drawer title. Defaults to "Edit"
+   * The small  caption above the drawer title. Defaults to "Edit"
    * for the rename/update use case the component was originally built for.
    * Pass null to hide the caption entirely (e.g. when the drawer carries a
    * non-edit action like "Send" or "Log").
@@ -140,7 +140,7 @@ export function EditSheet({
             non-edit drawers like Send / Log. */}
         <div className="border-b border-border bg-card px-5 pt-5 pb-4">
           {headerKicker && (
-            <p className="text-xs font-medium uppercase tracking-wide text-[color:var(--brand-gold)]">
+            <p className="text-xs font-medium tracking-normal text-[color:var(--brand-gold)]">
               {headerKicker}
             </p>
           )}

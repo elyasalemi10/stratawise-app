@@ -459,7 +459,7 @@ export function GenerateLeviesForm({
       <Card>
         <CardContent className="pt-5 space-y-4">
           <div className="flex items-center justify-between">
-            <span className="text-xs uppercase tracking-wide text-muted-foreground">
+            <span className="text-xs tracking-normal text-muted-foreground">
               Regular levy
             </span>
             <Button variant="secondary" size="sm" onClick={() => setLevyKind(null)} disabled={generating}>

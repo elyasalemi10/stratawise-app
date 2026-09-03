@@ -132,7 +132,7 @@ function SecurityTab() {
     <div className="max-w-lg space-y-6">
       <Card>
         <CardContent className="pt-5">
-          <h3 className="mb-4 text-sm font-semibold uppercase tracking-wide text-foreground">
+          <h3 className="mb-4 text-sm font-semibold tracking-normal text-foreground">
             Change password
           </h3>
           <form onSubmit={onSubmit} autoComplete="off" className="space-y-4">

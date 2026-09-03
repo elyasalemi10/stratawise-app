@@ -29,7 +29,7 @@ export function KpiSkeleton({
       {labels.map((label) => (
         <Card key={label}>
           <CardContent className="pt-5">
-            <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
+            <p className="text-xs font-medium tracking-normal text-muted-foreground">
               {label}
             </p>
             <Skeleton className="mt-1 h-7 w-28" />

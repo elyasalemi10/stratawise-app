@@ -41,7 +41,7 @@ function KPICard({
       <CardContent className="pt-5">
         <div className="flex items-start justify-between">
           <div>
-            <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
+            <p className="text-xs font-medium tracking-normal text-muted-foreground">
               {label}
             </p>
             <p className="mt-2 text-2xl font-bold tabular-nums text-foreground">{value}</p>
@@ -91,7 +91,7 @@ function OwnerOverview({ data, ocCode }: { data: OwnerOverviewData; ocCode: stri
         <Card>
           <CardContent className="pt-5">
             <div className="flex items-center justify-between mb-3">
-              <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
+              <p className="text-xs font-medium tracking-normal text-muted-foreground">
                 Recent levies
               </p>
               <Link
@@ -181,13 +181,17 @@ function ManagerOverview({
         <KPICard
           label="Total lots"
           value={String(stats.totalLots)}
-          description={`${stats.totalMembers} with an owner on record`}
+          description={
+            stats.ownersAssigned === stats.totalLots
+              ? "Every lot has an owner"
+              : `${stats.totalLots - stats.ownersAssigned} with no owner on record`
+          }
           icon={<Building2 className="h-5 w-5" />}
         />
         <KPICard
-          label="Members"
-          value={String(stats.totalMembers)}
-          description="Active lot owners and managers"
+          label="Collected"
+          value={formatCurrency(stats.totalPaid)}
+          description="Payments received"
           icon={<Users className="h-5 w-5" />}
         />
         <KPICard

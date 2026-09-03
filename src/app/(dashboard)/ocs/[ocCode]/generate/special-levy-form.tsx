@@ -344,7 +344,7 @@ export function SpecialLevyForm({
       <Card>
         <CardContent className="pt-5 space-y-4">
           <div className="flex items-center justify-between">
-            <span className="text-xs uppercase tracking-wide text-muted-foreground">Special levy</span>
+            <span className="text-xs tracking-normal text-muted-foreground">Special levy</span>
             <Button variant="secondary" size="sm" onClick={onBack} disabled={creating}>
               Change levy kind
             </Button>

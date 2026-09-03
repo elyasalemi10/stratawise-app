@@ -49,7 +49,7 @@ function KPICard({
       <CardContent className="pt-5">
         <div className="flex items-start justify-between">
           <div>
-            <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
+            <p className="text-xs font-medium tracking-normal text-muted-foreground">
               {label}
             </p>
             <p className="mt-2 text-2xl font-bold tabular-nums text-foreground">{value}</p>

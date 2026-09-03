@@ -62,7 +62,7 @@ const styles = StyleSheet.create({
   },
   bannerSub: { fontSize: 13, fontWeight: 600, color: c.destructive },
   toBlock: { marginBottom: 18 },
-  toLabel: { fontSize: 9, color: c.muted, textTransform: "uppercase", marginBottom: 4 },
+  toLabel: { fontSize: 9, color: c.muted, marginBottom: 4 },
   toValue: { fontSize: 12, color: c.foreground, fontWeight: 600 },
   body: { fontSize: 11, lineHeight: 1.55, marginBottom: 14, color: c.foreground },
   bodyEmphasis: { fontWeight: 700 },
@@ -156,7 +156,7 @@ export function FinalNoticeCover(props: FinalNoticeCoverProps) {
         </View>
 
         <View style={styles.banner}>
-          <Text style={styles.bannerTitle}>FINAL NOTICE</Text>
+          <Text style={styles.bannerTitle}>Final notice</Text>
           <Text style={styles.bannerSub}>VCAT referral pending , immediate action required</Text>
         </View>
 

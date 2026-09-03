@@ -255,7 +255,7 @@ export function CreateFundForm({
                     <Icon className="h-5 w-5 text-primary" />
                     <div className="text-sm font-medium text-foreground">{k.label}</div>
                     <p className="text-xs text-muted-foreground">{k.blurb}</p>
-                    {disabled && <span className="text-[10px] uppercase tracking-wide text-muted-foreground">Already exists</span>}
+                    {disabled && <span className="text-[10px] tracking-normal text-muted-foreground">Already exists</span>}
                   </button>
                 );
               })}

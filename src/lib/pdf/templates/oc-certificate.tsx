@@ -24,7 +24,7 @@ const s = StyleSheet.create({
   infoLabel: { fontSize: 8, color: c.muted, width: 160 },
   infoValue: { fontSize: 8, color: c.foreground, fontWeight: 600, flex: 1 },
   section: { marginTop: 14 },
-  sectionLabel: { fontSize: 8, fontWeight: 700, color: c.foreground, textTransform: "uppercase" as const, letterSpacing: 0.5, marginBottom: 4, paddingBottom: 3, borderBottomWidth: 0.5, borderBottomColor: c.border },
+  sectionLabel: { fontSize: 8, fontWeight: 700, color: c.foreground, letterSpacing: 0.5, marginBottom: 4, paddingBottom: 3, borderBottomWidth: 0.5, borderBottomColor: c.border },
   importantBox: { backgroundColor: "#fef3c7", borderWidth: 1, borderColor: "#fcd34d", borderRadius: 3, padding: 8, marginTop: 10, marginBottom: 10 },
   importantTitle: { fontSize: 9, fontWeight: 700, color: "#92400e", marginBottom: 4 },
   importantText: { fontSize: 8, color: "#92400e", lineHeight: 1.4 },
@@ -43,7 +43,7 @@ const s = StyleSheet.create({
   sealRow: { flexDirection: "row", justifyContent: "space-between", alignItems: "flex-start" },
   sealText: { fontSize: 8, color: c.foreground, lineHeight: 1.5, maxWidth: "60%" },
   sealBox: { borderWidth: 1, borderColor: c.border, padding: 8, textAlign: "center" as const, minWidth: 100 },
-  sealBoxText: { fontSize: 7, color: c.muted, textTransform: "uppercase" as const, letterSpacing: 0.5 },
+  sealBoxText: { fontSize: 7, color: c.muted, letterSpacing: 0.5 },
   // Signature
   sigSection: { marginTop: 20 },
   sigImage: { maxHeight: 40, maxWidth: 150, objectFit: "contain" as const, marginTop: 4, marginBottom: 4 },

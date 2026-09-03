@@ -155,7 +155,6 @@ export function LevyNotice({
       marginBottom: 4,
       fontFamily: FONT_BOLD,
       fontWeight: 600,
-      textTransform: "uppercase" as const,
       letterSpacing: 0.5,
     },
     specialNoteText: { fontSize: 11, color: c.foreground, lineHeight: 1.5 },

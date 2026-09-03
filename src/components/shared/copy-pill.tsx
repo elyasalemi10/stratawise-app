@@ -34,7 +34,7 @@ export function CopyPill({
   return (
     <div className={cn("space-y-1", className)}>
       {label && (
-        <p className="text-[11px] font-medium uppercase tracking-wide text-muted-foreground">
+        <p className="text-[11px] font-medium tracking-normal text-muted-foreground">
           {label}
         </p>
       )}

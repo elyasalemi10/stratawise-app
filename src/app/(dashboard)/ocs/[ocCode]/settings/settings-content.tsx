@@ -771,7 +771,7 @@ function AutoSendCard({
                   <div key={p.monthKey} className="space-y-1.5">
                     <Label className={isPast ? "text-muted-foreground" : undefined}>
                       {ordinalRunLabel(idx)}
-                      {isPast && <span className="ml-2 text-[10px] uppercase tracking-wide">past</span>}
+                      {isPast && <span className="ml-2 text-[10px] tracking-normal">past</span>}
                     </Label>
                     <DatePicker
                       value={p.effectiveDate}

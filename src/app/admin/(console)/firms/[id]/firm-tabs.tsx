@@ -118,19 +118,19 @@ function FirmTabsInner({ firm }: { firm: FirmDetail }) {
           <div className="grid gap-4 lg:grid-cols-3">
             <Card>
               <CardContent className="pt-5 space-y-1">
-                <p className="text-xs uppercase tracking-wide text-muted-foreground">Owners corporations</p>
+                <p className="text-xs tracking-normal text-muted-foreground">Owners corporations</p>
                 <p className="text-3xl font-bold tabular-nums text-foreground">{firm.ocs.length}</p>
               </CardContent>
             </Card>
             <Card>
               <CardContent className="pt-5 space-y-1">
-                <p className="text-xs uppercase tracking-wide text-muted-foreground">Lots managed</p>
+                <p className="text-xs tracking-normal text-muted-foreground">Lots managed</p>
                 <p className="text-3xl font-bold tabular-nums text-foreground">{totalLots}</p>
               </CardContent>
             </Card>
             <Card>
               <CardContent className="pt-5 space-y-1">
-                <p className="text-xs uppercase tracking-wide text-muted-foreground">Managers</p>
+                <p className="text-xs tracking-normal text-muted-foreground">Managers</p>
                 <p className="text-3xl font-bold tabular-nums text-foreground">{firm.managers.length}</p>
               </CardContent>
             </Card>

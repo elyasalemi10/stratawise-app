@@ -9,7 +9,7 @@ function KPICardSkeleton({ label, icon }: { label: string; icon: React.ReactNode
       <CardContent className="pt-5">
         <div className="flex items-start justify-between">
           <div>
-            <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
+            <p className="text-xs font-medium tracking-normal text-muted-foreground">
               {label}
             </p>
             <Skeleton className="mt-2 h-7 w-12" />
