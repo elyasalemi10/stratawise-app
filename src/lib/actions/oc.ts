@@ -3,6 +3,7 @@
 import { unstable_cache, updateTag } from "next/cache";
 import { getCurrentProfile, requireOCAccess } from "@/lib/auth";
 import { createServerClient } from "@/lib/supabase";
+import { getLotBalances, ZERO_BALANCE } from "@/lib/lot-balance";
 import { publicUrlFor } from "@/lib/storage/r2";
 import { countLotsWithOwner, getLotOwners, type LotOwnerStatus } from "@/lib/actions/lot-ownership";
 import { logAudit } from "@/lib/audit";
@@ -313,36 +314,21 @@ export async function getLotsWithFinancials(ocId: string): Promise<LotWithFinanc
 
   const lotIds = lots.map((l) => l.id);
 
-  const [leviesResult, paymentsResult, owners] = await Promise.all([
-    supabase
-      .from("levy_notices")
-      .select("lot_id, amount")
-      .in("lot_id", lotIds)
-      .in("status", ["issued", "partially_paid", "overdue"]),
-    supabase
-      .from("payments")
-      .select("lot_id, amount")
-      .in("lot_id", lotIds),
+  // The opening balances are already in `lots`, so hand them over rather
+  // than making getLotBalances re-select them.
+  const openingByLot = new Map(
+    lots.map((l) => [l.id, Number(l.opening_balance ?? 0)]),
+  );
+
+  const [balances, owners] = await Promise.all([
+    getLotBalances(supabase, lotIds, openingByLot),
     getLotOwners(supabase, lotIds),
   ]);
 
-  const leviesByLot = new Map<string, number>();
-  const paymentsByLot = new Map<string, number>();
-
-  leviesResult.data?.forEach((l) => {
-    leviesByLot.set(l.lot_id, (leviesByLot.get(l.lot_id) ?? 0) + Number(l.amount));
-  });
-  paymentsResult.data?.forEach((p) => {
-    paymentsByLot.set(p.lot_id, (paymentsByLot.get(p.lot_id) ?? 0) + Number(p.amount));
-  });
-
   return lots.map((lot) => {
-    // Opening balance follows the wizard convention: positive = owes (debit),
-    // negative = credit. Plus outstanding levies, minus payments.
-    const opening = Number(lot.opening_balance ?? 0);
-    const totalLevied = leviesByLot.get(lot.id) ?? 0;
-    const totalPaid = paymentsByLot.get(lot.id) ?? 0;
-    const balance = opening + totalLevied - totalPaid;
+    const { opening, levied: totalLevied, paid: totalPaid, balance } =
+      balances.get(lot.id) ?? ZERO_BALANCE;
+    void opening;
     const owner = owners.get(lot.id);
     const isAssigned = owner?.owner_status === "member";
 

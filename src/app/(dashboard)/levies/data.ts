@@ -2,6 +2,7 @@
 
 import { getCurrentProfile } from "@/lib/auth";
 import { createServerClient } from "@/lib/supabase";
+import { getLotBalances, sumBalances } from "@/lib/lot-balance";
 
 export interface OwnerLevyRow {
   id: string;
@@ -110,8 +111,12 @@ export async function getOwnerLeviesPageData(): Promise<OwnerLeviesPageData> {
     ]),
   );
 
-  const totalLevied = levies.reduce((s, l) => s + (l.amount ?? 0), 0);
-  const totalPaid = Array.from(paidByLevy.values()).reduce((s, v) => s + v, 0);
+  // Same definition as everywhere else, opening balance included. The list
+  // above shows paid notices too, so it cannot double as the arrears figure.
+  const balances = await getLotBalances(supabase, lotIds);
+  const totals = sumBalances(balances.values());
+  const totalLevied = totals.opening + totals.levied;
+  const totalPaid = totals.paid;
 
   return {
     levies: levies.map((l) => ({
@@ -123,7 +128,7 @@ export async function getOwnerLeviesPageData(): Promise<OwnerLeviesPageData> {
     })),
     totalLevied,
     totalPaid,
-    outstanding: totalLevied - totalPaid,
+    outstanding: totals.balance,
     hasLots: true,
   };
 }

@@ -3,6 +3,7 @@
 import { getOC, getOCStats } from "@/lib/actions/oc";
 import { requireOCAccess } from "@/lib/auth";
 import { createServerClient } from "@/lib/supabase";
+import { getLotBalances, sumBalances } from "@/lib/lot-balance";
 
 // One aggregate fetch for the OC overview.
 //
@@ -96,23 +97,20 @@ export async function getOCOverviewData(ocId: string): Promise<OCOverviewData> {
     .in("status", ["issued", "partially_paid", "paid", "overdue"])
     .order("due_date", { ascending: false });
 
-  const levyIds = (levies ?? []).map((l) => l.id);
-  const { data: payments } = levyIds.length
-    ? await supabase
-        .from("payments")
-        .select("levy_notice_id, amount")
-        .in("levy_notice_id", levyIds)
-    : { data: [] as Array<{ levy_notice_id: string; amount: number }> };
-
-  const totalLevied = (levies ?? []).reduce((s, l) => s + (l.amount ?? 0), 0);
-  const totalPaid = (payments ?? []).reduce((s, p) => s + (p.amount ?? 0), 0);
+  // The list above is filtered to display statuses (it includes paid ones so
+  // the owner can see their history), so it cannot double as the arrears
+  // figure. getLotBalances is the one definition of what a lot owes, and it
+  // includes the opening balance , which this screen used to leave out while
+  // the manager's view of the same lot included it.
+  const balances = await getLotBalances(supabase, lotIds);
+  const totals = sumBalances(balances.values());
 
   return {
     kind: "owner",
     setupIncomplete: false,
     levies: levies ?? [],
-    totalLevied,
-    outstanding: totalLevied - totalPaid,
+    totalLevied: totals.opening + totals.levied,
+    outstanding: totals.balance,
     hasLots: true,
   };
 }

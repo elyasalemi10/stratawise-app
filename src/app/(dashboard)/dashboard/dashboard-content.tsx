@@ -171,9 +171,13 @@ function OwnerDashboard({ data }: { data: OwnerDashboardData }) {
     );
   }
 
+  // Opening balance included, matching src/lib/lot-balance.ts. Without it
+  // this page showed an owner a smaller debt than their manager was chasing
+  // them for.
+  const totalOpening = lots.reduce((sum, l) => sum + Number(l.opening_balance ?? 0), 0);
   const totalLevied = levies.reduce((sum, l) => sum + Number(l.amount), 0);
   const totalPaid = payments.reduce((sum, p) => sum + Number(p.amount), 0);
-  const totalOwing = totalLevied - totalPaid;
+  const totalOwing = totalOpening + totalLevied - totalPaid;
   const overdueCount = levies.filter((l) => l.status === "overdue").length;
 
   return (
@@ -231,6 +235,7 @@ function OwnerDashboard({ data }: { data: OwnerDashboardData }) {
           const subLevies = levies.filter((l) => subLots.some((sl) => sl.id === l.lot_id));
           const subPayments = payments.filter((p) => subLots.some((sl) => sl.id === p.lot_id));
           const subOwing =
+            subLots.reduce((s, l) => s + Number(l.opening_balance ?? 0), 0) +
             subLevies.reduce((s, l) => s + Number(l.amount), 0) -
             subPayments.reduce((s, p) => s + Number(p.amount), 0);
 

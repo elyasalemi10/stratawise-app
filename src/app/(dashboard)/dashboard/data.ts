@@ -37,7 +37,14 @@ export interface PastSubRow {
 export interface OwnerDashboardData {
   kind: "owner";
   subs: { id: string; short_code: string; name: string; address: string; plan_number: string }[];
-  lots: { id: string; oc_id: string; lot_number: number; unit_number: string | null; lot_entitlement: number | null }[];
+  lots: {
+    id: string; oc_id: string; lot_number: number; unit_number: string | null;
+    lot_entitlement: number | null;
+    /** Owes-positive, carried in at onboarding. Part of what the owner owes,
+     *  and it used to be missing from every figure on this page while the
+     *  manager's view of the same lot included it. */
+    opening_balance: number | null;
+  }[];
   levies: { lot_id: string; amount: number; status: string; due_date: string }[];
   payments: { lot_id: string; amount: number }[];
   hasActiveMemberships: boolean;
@@ -112,7 +119,7 @@ export async function getDashboardPageData(): Promise<DashboardPageData> {
         ? supabase.from("owners_corporations").select("id, short_code, name, address, plan_number").in("id", subIds)
         : Promise.resolve(none),
       lotIds.length
-        ? supabase.from("lots").select("id, oc_id, lot_number, unit_number, lot_entitlement").in("id", lotIds)
+        ? supabase.from("lots").select("id, oc_id, lot_number, unit_number, lot_entitlement, opening_balance").in("id", lotIds)
         : Promise.resolve(none),
       lotIds.length
         ? supabase
