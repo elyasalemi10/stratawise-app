@@ -8,8 +8,9 @@ import {
 } from "lucide-react";
 import { useSetBreadcrumb } from "@/lib/breadcrumb-context";
 import { Card, CardContent } from "@/components/ui/card";
-import { EmptyState } from "@/components/shared/empty-state";
 import { Button } from "@/components/ui/button";
+import { Badge } from "@/components/ui/badge";
+import { cn } from "@/lib/utils";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import {
   DropdownMenu,
@@ -72,7 +73,6 @@ interface LotDetailContentProps {
 const TABS = [
   { value: "overview", label: "Overview" },
   { value: "owner", label: "Owner" },
-  { value: "ledger", label: "Ledger" },
   { value: "levies", label: "Levies" },
   { value: "communications", label: "Communications" },
   { value: "documents", label: "Documents" },
@@ -221,7 +221,39 @@ export function LotDetailContent({
                 {lot.unit_number ? ` · Unit ${lot.unit_number}` : ""}
                 {headerOwnerSuffix}
               </h1>
+              {/* Where this owner stands. It was only discoverable by
+                  opening the Owner tab, so "have they accepted their
+                  invite" , the question a manager chasing one asks , cost
+                  a click from the page that is otherwise about them. */}
+              <div className="mt-2 flex flex-wrap items-center gap-2">
+                {!owner.owner_display_name ? (
+                  <Badge variant="neutral">No owner recorded</Badge>
+                ) : portalActive ? (
+                  <Badge variant="success">On the portal</Badge>
+                ) : owner.invitation_id ? (
+                  <Badge variant="info">Invitation sent</Badge>
+                ) : (
+                  <Badge variant="warning">Not invited</Badge>
+                )}
+                {owner.owner_contact_email && (
+                  <span className="text-sm text-muted-foreground">
+                    {owner.owner_contact_email}
+                  </span>
+                )}
+              </div>
             </div>
+            <div className="flex shrink-0 items-center gap-2">
+            {/* The one thing a manager opens this page to do most often is
+                write to the owner, so it is a button, not the third item in
+                a menu. */}
+            <Button
+              size="sm"
+              onClick={() => openCompose("email")}
+              disabled={!owner.owner_contact_email}
+            >
+              <Mail className="mr-1.5 h-3.5 w-3.5" />
+              Email owner
+            </Button>
             <DropdownMenu>
               <DropdownMenuTrigger
                 render={
@@ -261,6 +293,7 @@ export function LotDetailContent({
                 </DropdownMenuItem>
               </DropdownMenuContent>
             </DropdownMenu>
+            </div>
           </div>
 
           <div className="border-t border-border" />
@@ -271,22 +304,24 @@ export function LotDetailContent({
               labels nudges them as headline data rather than form labels. */}
           <div className="flex flex-wrap items-baseline gap-x-8 gap-y-2 text-base">
             <div className="inline-flex items-baseline gap-2">
-              <span className="text-muted-foreground">Current balance:</span>
+              <span className="text-muted-foreground">
+                {balance > 0 ? "Owes:" : balance < 0 ? "In credit:" : "Balance:"}
+              </span>
               <span
-                className={`text-lg font-semibold tabular-nums ${
+                className={cn(
+                  "text-lg font-semibold tabular-nums",
                   balance > 0
                     ? "text-destructive"
                     : balance < 0
-                      ? "text-[hsl(160,100%,37%)]"
-                      : "text-foreground"
-                }`}
+                      ? "text-success-foreground"
+                      : "text-foreground",
+                )}
               >
-                {balance > 0
-                  ? `-${formatCurrency(balance)}`
-                  : balance < 0
-                    ? `+${formatCurrency(balance)}`
-                    : formatCurrency(0)}
+                {formatCurrency(Math.abs(balance))}
               </span>
+              {balance === 0 && (
+                <span className="text-sm text-muted-foreground">All settled</span>
+              )}
             </div>
             <div className="inline-flex items-baseline gap-2">
               {lastPaymentRelative ? (
@@ -364,10 +399,6 @@ export function LotDetailContent({
           engagement={engagement}
           onTransfer={() => setSettlementOpen(true)}
         />
-      </div>
-
-      <div className={activeTab === "ledger" ? "" : "hidden"}>
-        <ComingSoonTab name="Ledger" />
       </div>
 
       <div className={activeTab === "levies" ? "" : "hidden"}>
@@ -451,12 +482,3 @@ export function LotDetailContent({
 
 // ─── Coming soon ───────────────────────────────────────────────
 
-function ComingSoonTab({ name }: { name: string }) {
-  return (
-    <EmptyState
-      illustration="search"
-      title={`${name} , coming soon`}
-      description="We're still building this tab."
-    />
-  );
-}
