@@ -42,8 +42,6 @@ export interface LotOwnerExtra {
   tenant_name: string | null;
   tenant_email: string | null;
   tenant_phone: string | null;
-  digital_consent_categories: string[];
-  at_portal_signup_categories: string[];
   postal_address: string | null;
 }
 
@@ -124,11 +122,11 @@ export async function getLotDetailPageData(
       .eq("oc_id", ocId)
       .order("lot_number", { ascending: true }),
     // The current ownership backs the header chip (payment_reference,
-    // owner_type, occupancy) and the Tenancy tab (tenant_*, consent).
+    // owner_type, occupancy) and the Tenancy tab.
     supabase
       .from("v_lot_current_owners")
       .select(
-        "id, owner_type, payment_reference, is_occupied_by_owner, occupancy_status, ownership_since, tenant_name, tenant_email, tenant_phone, digital_consent_categories, at_portal_signup_categories, postal_address",
+        "id, owner_type, payment_reference, is_occupied_by_owner, occupancy_status, ownership_since, tenant_name, tenant_email, tenant_phone, postal_address",
       )
       .eq("lot_id", lotId)
       .maybeSingle(),
@@ -213,8 +211,6 @@ export async function getLotDetailPageData(
           tenant_name: e.tenant_name ?? null,
           tenant_email: e.tenant_email ?? null,
           tenant_phone: e.tenant_phone ?? null,
-          digital_consent_categories: (e.digital_consent_categories as string[] | null) ?? [],
-          at_portal_signup_categories: (e.at_portal_signup_categories as string[] | null) ?? [],
           postal_address: e.postal_address ?? null,
         }
       : null,

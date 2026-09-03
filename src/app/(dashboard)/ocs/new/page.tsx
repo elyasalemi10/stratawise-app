@@ -11,7 +11,6 @@ import { Step1ManagementFee } from "./pages/step-1-1-management-fee";
 import { Step2Settings } from "./pages/step-2-settings";
 import { Step3Lots } from "./pages/step-3-lots";
 import { Step3PostalContact } from "./pages/step-3-1-postal-contact";
-import { Step3DigitalConsent } from "./pages/step-3-2-digital-consent";
 import { Step4Banking } from "./pages/step-4-banking";
 import { Step4OpeningBalances } from "./pages/step-4-1-opening-balances";
 import { Button } from "@/components/ui/button";
@@ -36,12 +35,12 @@ type DraftRow = {
 // (step, sub) routing map:
 //   Step 1: 0 Upload chooser, 1 General, 2 Management fee
 //   Step 2: 0 Settings
-//   Step 3: 0 Lots, 1 Service & contact, 2 Digital consent
+//   Step 3: 0 Lots, 1 Service & contact
 //   Step 4: 0 Banking, 1 Opening balances
 // Default delivery method (postal / mixed / email) lives in Settings →
 // Communications now; we default to "mixed" at OC creation.
 function clampStep(n: number) { return Number.isFinite(n) && n >= 1 && n <= 4 ? n : 1; }
-function clampSubstep(n: number) { return Number.isFinite(n) && n >= 0 && n <= 2 ? n : 0; }
+function clampSubstep(n: number) { return Number.isFinite(n) && n >= 0 && n <= 1 ? n : 0; }
 
 function WizardContent() {
   const router = useRouter();
@@ -161,8 +160,7 @@ function WizardContent() {
     if (step === 2 && substep === 0) return goTo(1, 1);
     if (step === 3 && substep === 0) return goTo(2, 0);
     if (step === 3 && substep === 1) return goTo(3, 0);
-    if (step === 3 && substep === 2) return goTo(3, 1);
-    if (step === 4 && substep === 0) return goTo(3, 2);
+    if (step === 4 && substep === 0) return goTo(3, 1);
     if (step === 4 && substep === 1) return goTo(4, 0);
   }
 
@@ -261,14 +259,6 @@ function WizardContent() {
         )}
         {step === 3 && substep === 1 && (
           <Step3PostalContact
-            draftId={draft.id}
-            initialDraft={draft.draft_json}
-            onBack={back}
-            onNext={(patch) => advance(3, 2, patch)}
-          />
-        )}
-        {step === 3 && substep === 2 && (
-          <Step3DigitalConsent
             draftId={draft.id}
             initialDraft={draft.draft_json}
             onBack={back}

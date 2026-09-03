@@ -1,20 +1,15 @@
 import { redirect } from "next/navigation";
 import { SectionHeader } from "@/components/shared/section-header";
 import { getCurrentProfile } from "@/lib/auth";
-import { NotificationsTab } from "../notifications-tab";
-import { getNotificationSettings } from "../data";
+import { NotificationsSection } from "../section-clients";
 
 export default async function Page() {
   const profile = await getCurrentProfile();
   if (!profile) redirect("/sign-in");
-  const { currentPreferences, autoOptOuts } = await getNotificationSettings();
   return (
     <>
       <SectionHeader title="Notifications" />
-    <NotificationsTab
-      currentPreferences={currentPreferences}
-      autoOptOuts={autoOptOuts}
-    />
+      <NotificationsSection />
     </>
   );
 }

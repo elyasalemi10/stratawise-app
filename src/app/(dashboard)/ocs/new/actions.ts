@@ -58,17 +58,6 @@ export type DraftLot = {
    *  final step , same lots, same owners, no need for the manager to scroll
    *  back and forth between two tables. */
   opening_balance?: number;
-  /** Communications-consent state recorded by the manager during the OC
-   *  setup wizard. The manager attests on the owner's behalf , VCAT cares
-   *  more about the eventual signup-flow consent (which writes IP + UA), but
-   *  this gives a starting position so day-one digital notices aren't
-   *  blocked. Empty array = no consent yet, owner gets paper. */
-  digital_consent_categories?: string[];
-  /** Categories the manager wants the owner asked to consent to at portal
-   *  signup. Per-lot (replaces the OC-wide consent_categories_offered). Empty
-   *  array = no signup ask (manager already captured everything via
-   *  digital_consent_categories above). */
-  at_portal_signup_categories?: string[];
   /** Individual or Company , wizard Step 3 captures this in the lot schedule
    *  alongside the owner's name. Defaults to 'individual'. */
   owner_type?: "individual" | "company";
@@ -160,15 +149,7 @@ export type DraftJson = {
   // (set by the wizard if the user doesn't change it).
   notice_address?: string;
 
-  // Page 5 (communications & consent) , OC-level policy. Per-lot consent
-  // lives on each DraftLot. Designed to plumb through to the lot-owner
-  // portal's signup flow without further schema work: when the owner ticks
-  // the checkbox, we write digital_consent_given_at + ip + user_agent +
-  // source='signup_flow' on their lot_owners row using the same
-  // digital_consent_categories array.
   default_delivery_method?: "postal" | "email" | "mixed";
-  collect_consent_on_signup?: boolean;
-  consent_categories_offered?: string[];
   /** Postal transit buffers (days). Only meaningful when at least one
    *  lot owner receives notices of that category by post. Floor 7,
    *  default 14, no upper limit. Adds onto the statutory minimum to
@@ -1207,12 +1188,7 @@ export async function completeWizard(draftId: string) {
       // CoC arrives (typically weeks after handover).
       rules_source: "model",
       rules_uploaded_at: null,
-      // Communications & consent policy , see migration
-      // oc_and_lot_owner_digital_consent. Postal-default + signup-consent-on
-      // matches Victorian regulatory practice.
       default_delivery_method: d.default_delivery_method ?? "mixed",
-      collect_consent_on_signup: d.collect_consent_on_signup ?? true,
-      consent_categories_offered: d.consent_categories_offered ?? ["levies", "agms", "minutes", "breach_notices", "financials"],
       // Buffer config moved to OC settings , save defaults silently
       // here so the wizard doesn't make every manager click through
       // future-proofing.
@@ -1426,12 +1402,6 @@ export async function completeWizard(draftId: string) {
               ? "tenanted"
               : "vacant"
             : "owner_occupied");
-        // Initial digital-comms consent recorded by the manager on Step 3.2
-        // of the wizard. source='manager_initial' (no IP / user-agent)
-        // because the manager is attesting on the owner's behalf , when the
-        // owner later signs up via the portal, that flow overwrites these
-        // with source='portal_signup' + their real IP + UA.
-        const consentCats = l.digital_consent_categories ?? [];
         return {
           lot_id: lotId,
           lot_number: l.lot_number,
@@ -1448,9 +1418,6 @@ export async function completeWizard(draftId: string) {
           tenant_name: occupancyStatus === "tenanted" ? l.tenant_name || null : null,
           tenant_email: occupancyStatus === "tenanted" ? l.tenant_email || null : null,
           tenant_phone: occupancyStatus === "tenanted" ? l.tenant_phone || null : null,
-          consent_categories: consentCats,
-          consent_source: consentCats.length > 0 ? "manager_initial" : null,
-          at_portal_signup_categories: l.at_portal_signup_categories ?? [],
         };
       })
       .filter((x): x is NonNullable<typeof x> => x !== null);
@@ -1472,42 +1439,6 @@ export async function completeWizard(draftId: string) {
           "completeWizard: lots created without a recorded owner:",
           missing.map((r) => r.lot_number).join(", "),
         );
-      }
-
-      // The wizard also captures which categories to ASK about at portal
-      // signup. That is not part of setting an owner, so it goes on in a
-      // single follow-up write rather than widening the RPC further.
-      const signupRows = ownerRows.filter(
-        (r) => r.at_portal_signup_categories.length > 0 && ownershipIdByLotId.has(r.lot_id),
-      );
-      for (const r of signupRows) {
-        await supabase
-          .from("lot_ownerships")
-          .update({ at_portal_signup_categories: r.at_portal_signup_categories })
-          .eq("id", ownershipIdByLotId.get(r.lot_id) as string);
-      }
-
-      // Seed the consent audit log for any owner who arrived with
-      // categories ticked by the manager. before_categories is empty (no
-      // prior state); after carries the manager-attested set. IP / UA are
-      // null because the manager is attesting on the owner's behalf.
-      const consentLogRows = ownerRows
-        .filter((r) => r.consent_categories.length > 0 && ownershipIdByLotId.has(r.lot_id))
-        .map((r) => ({
-          lot_owner_id: ownershipIdByLotId.get(r.lot_id) as string,
-          oc_id: oc.id,
-          before_categories: [],
-          after_categories: r.consent_categories,
-          source: "manager_initial" as const,
-          actor_profile_id: profile.id,
-        }));
-      if (consentLogRows.length > 0) {
-        const { error: consentLogErr } = await supabase
-          .from("lot_owner_consent_log")
-          .insert(consentLogRows);
-        if (consentLogErr) {
-          console.error("lot_owner_consent_log seed failed (non-fatal):", consentLogErr);
-        }
       }
 
       // Per-owner audit entries so the lot history shows "Owner added"

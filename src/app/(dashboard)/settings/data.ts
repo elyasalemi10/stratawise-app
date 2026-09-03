@@ -3,15 +3,17 @@
 import { getCurrentProfile } from "@/lib/auth";
 import { createServerClient } from "@/lib/supabase";
 import { brandDomain } from "@/lib/manager-username";
+import { getTeamMembers } from "@/lib/actions/team";
 
-// Settings is seven routes now, not one page with tabs, so there is no
+// Settings is eight routes now, not one page with tabs, so there is no
 // aggregate fetch any more , each section asks for exactly what it renders.
 // Opening /settings/profile used to pull team members, gmail subscriptions
 // and the whole opt-out audit log before it could show you your own name.
 //
-// What is left here is the two sections whose data needs more than a single
-// call: notifications (preferences plus derived auto-opt-outs) and email
-// (three tables plus an env var).
+// Every one of these is called from a client component through
+// useCachedData, not from the page: a fetch in page.tsx runs once on the
+// server and then again on every arrival, so returning to a section you were
+// on ten seconds ago cost a full round trip and showed a skeleton for it.
 
 export interface NotificationPrefRow {
   notification_type: string;
@@ -121,5 +123,44 @@ export async function getEmailSettings() {
       : `noreply@${brandDomain()}`,
     dwdRevoked,
     mailboxIntegrationError: subRow?.last_error ?? null,
+  };
+}
+
+
+// ─── Per-section fetchers for the client cache ──────────────────────────────
+
+export interface ProfileSettings {
+  id: string;
+  email: string | null;
+  first_name: string | null;
+  last_name: string | null;
+  avatar_url: string | null;
+}
+
+export async function getProfileSettings(): Promise<ProfileSettings> {
+  const profile = await getCurrentProfile();
+  if (!profile) throw new Error("Not authenticated.");
+  return {
+    id: profile.id,
+    email: profile.email ?? null,
+    first_name: profile.first_name ?? null,
+    last_name: profile.last_name ?? null,
+    avatar_url: profile.avatar_url ?? null,
+  };
+}
+
+export interface TeamSettings {
+  members: Awaited<ReturnType<typeof getTeamMembers>>;
+  currentUserId: string;
+  isAdmin: boolean;
+}
+
+export async function getTeamSettings(): Promise<TeamSettings> {
+  const profile = await getCurrentProfile();
+  if (!profile) throw new Error("Not authenticated.");
+  return {
+    members: await getTeamMembers(),
+    currentUserId: profile.id,
+    isAdmin: profile.company_role === "admin",
   };
 }

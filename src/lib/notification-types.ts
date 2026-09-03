@@ -71,7 +71,7 @@ export const NOTIFICATION_GROUPS: Array<{
       { type: "payment_received", label: "Payment received", description: "A payment has been matched against a levy." },
       { type: "overdue_reminder", label: "Overdue reminder", description: "A levy has passed its due date." },
       { type: "second_reminder", label: "Second reminder", description: "A levy is still unpaid after the first reminder." },
-      { type: "levy_final_notice", label: "Final notice", description: "The last step before an unpaid levy goes to VCAT." },
+      { type: "levy_final_notice", label: "Final notice", description: "The last reminder before formal recovery action." },
       { type: "escalation_step", label: "Follow-up step sent", description: "An automated follow-up has gone out to an owner." },
       { type: "levy_csv_reminder", label: "Bank statement reminder", description: "A levy run is due and no recent statement has been imported." },
     ],

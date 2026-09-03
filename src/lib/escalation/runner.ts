@@ -1,8 +1,7 @@
 // Framework-agnostic escalation sweep. Safe to call from the Trigger.dev cron.
 // Creates a follow-up instance per overdue levy notice, then advances due
 // instances one step at a time: sends the manager-authored reminder emails,
-// generates the s.32 final notice on the final email step, and raises a VCAT
-// task on the vcat step.
+// generates the s.32 final notice on the final email step.
 
 import { createServerClient } from "@/lib/supabase";
 import { sendEscalationEmail } from "@/lib/email";
@@ -12,7 +11,7 @@ import { resolveWorkflowForOC, renderTemplate, computeInterest, addDaysIso } fro
 import type { FollowupStep } from "@/lib/validations/escalation";
 
 // In-app notify the OC's managers about a follow-up event (escalation email
-// sent, VCAT ready). Type 'escalation_step' is opt-outable in Settings ,
+// sent). Type 'escalation_step' is opt-outable in Settings ,
 // Notifications, so we honour each manager's preference.
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 export async function notifyOcManagers(supabase: any, ocId: string, title: string, body: string, link?: string) {
@@ -33,12 +32,12 @@ export async function notifyOcManagers(supabase: any, ocId: string, title: strin
 // The manager already gets told an escalation went out. The owner only got
 // an email , and an owner who has the portal open, or who lets that email go
 // to spam, had no way to know a final notice had been issued against their
-// lot. A final notice is the last step before VCAT, so it is precisely the
+// lot. A final notice is the last step before recovery action, so it is precisely the
 // one they must not miss.
 //
 // Type 'levy_final_notice' so it is distinguishable in the inbox and can be
 // opted out of separately from routine reminders , though an owner opting
-// out of being told they are being taken to VCAT is their call, not ours to
+// out of being told recovery action is coming is their call, not ours to
 // prevent.
  
 export async function notifyLotOwnersInApp(
@@ -223,22 +222,8 @@ async function advanceInstance(supabase: any, inst: Record<string, unknown>, tod
 
   const lotLabel = lot ? `Lot ${lot.lot_number}` : "a lot";
 
-  if (step.step_type === "vcat") {
-    // Raise the VCAT signal. We do not assemble the application , that was
-    // 845 lines of PDF and form-building for a step a manager takes a
-    // handful of times a year, and always checks by hand anyway. What has
-    // value is knowing the debt has run out of internal remedies, which is
-    // this notification and vcat_ready_at.
-    await supabase.from("escalation_instances").update({ vcat_ready_at: new Date().toISOString() }).eq("id", instanceId);
-    await notifyOcManagers(
-      supabase,
-      notice.oc_id,
-      `VCAT application ready for ${lotLabel}`,
-      `${vars.oc_name}: levy ${vars.reference} is unpaid past the final notice. It is ready to take to VCAT.`,
-    );
-    result.stepsFired++;
-  } else {
-    // Email step.
+  {
+    // Every step is an email.
     if (owner?.email) {
       let pdfBuffer: Buffer | null = null;
       let pdfFilename: string | null = null;
@@ -324,7 +309,7 @@ async function advanceInstance(supabase: any, inst: Record<string, unknown>, tod
         );
 
         // The owner hears about the final notice in the portal too, not only
-        // by email. It is the last step before VCAT.
+        // by email. It is the last step before recovery action.
         if (isFinal && notice.lot_id) {
           await notifyLotOwnersInApp(
             supabase,

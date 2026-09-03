@@ -121,7 +121,12 @@ export function NotificationsTab({
       }
       return next;
     });
-    if (changed.length === 0) return;
+    // Nothing to write still deserves an answer. Silence after a click reads
+    // as the button being broken, not as "already done".
+    if (changed.length === 0) {
+      toast.success(`${CHANNEL_LABEL[channel]} already ${enabled ? "on" : "off"} everywhere`);
+      return;
+    }
     persist(
       changed.map((type) => ({ type, channel, enabled })),
       () =>
@@ -155,10 +160,10 @@ export function NotificationsTab({
   return (
     <div className="space-y-6">
       <div className="overflow-x-auto">
-        <table className="w-full min-w-[34rem] table-auto border-collapse text-sm">
+        <table className="w-full min-w-[34rem] border-collapse text-sm">
           <thead>
             <tr>
-              <th className="pb-3 text-left align-bottom text-sm font-semibold text-foreground">
+              <th className="w-[28rem] min-w-[18rem] pb-3 text-left align-bottom text-sm font-semibold text-foreground">
                 Notify me about
               </th>
               {CHANNELS.map(({ key, label, Icon }) => {
@@ -179,10 +184,12 @@ export function NotificationsTab({
                   </th>
                 );
               })}
-              {/* Spacer. The table spans the panel; the leftover width lands
-                  here rather than in the label column, so the switches stay
-                  beside the rows they belong to on a wide screen. */}
-              <th className="w-full" />
+              {/* Spacer. The table spans the panel; width past the label
+                  column's reading measure lands here rather than stretching
+                  it, so the switches stay beside the rows they belong to on
+                  a wide screen without the labels being squeezed on a
+                  narrow one. */}
+              <th className="w-auto" />
             </tr>
           </thead>
 

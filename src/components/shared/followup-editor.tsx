@@ -2,7 +2,7 @@
 
 import { useRef, useState, useTransition } from "react";
 import { toast } from "sonner";
-import { Loader2, Gavel, Mail, Upload, FileText, X } from "lucide-react";
+import { Loader2, Mail, Upload, FileText, X } from "lucide-react";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
@@ -92,11 +92,10 @@ export function FollowupEditor({
     });
   }
 
-  const hasEmailStep = steps.some((s) => s.step_type !== "vcat");
 
   return (
     <div className="space-y-4">
-      {hasEmailStep && (
+      {(
         <div className="rounded-md border border-border bg-card px-3 py-2.5">
           <p className="mb-1.5 text-xs font-medium text-muted-foreground">Click a field to drop it into the subject or message you&apos;re editing:</p>
           <div className="flex flex-wrap gap-1.5">
@@ -121,8 +120,8 @@ export function FollowupEditor({
           <CardContent className="space-y-3 pt-5">
             <div className="flex items-center justify-between gap-3">
               <div className="flex items-center gap-2">
-                {s.step_type === "vcat" ? <Gavel className="h-4 w-4 text-primary" /> : <Mail className="h-4 w-4 text-primary" />}
-                <span className="text-sm font-semibold text-foreground">{s.label ?? (s.step_type === "vcat" ? "VCAT application" : "Email step")}</span>
+                <Mail className="h-4 w-4 text-primary" />
+                <span className="text-sm font-semibold text-foreground">{s.label ?? "Email step"}</span>
               </div>
               <div className="flex items-center gap-2">
                 <Switch checked={s.enabled} onCheckedChange={(v) => update(s.id, { enabled: v })} />
@@ -146,56 +145,48 @@ export function FollowupEditor({
               </div>
             </div>
 
-            {s.step_type === "vcat" ? (
-              <p className="text-sm text-muted-foreground">
-                When this step fires, the manager is notified to prepare the VCAT fee-recovery pack (generated from the lot page once the final notice has been served for 28 days).
-              </p>
-            ) : (
-              <>
-                <div className="space-y-1.5">
-                  <Label>Email subject</Label>
-                  <MergeFieldEditor
-                    value={s.subject ?? ""}
-                    onChange={(v) => update(s.id, { subject: v })}
-                    onFocus={() => { lastFocusedKey.current = `${s.id}:subject`; }}
-                    ref={(h) => { editorHandles.current.set(`${s.id}:subject`, h); }}
-                    placeholder="Email subject"
-                    singleLine
-                  />
-                </div>
-                <div className="space-y-1.5">
-                  <Label>Message</Label>
-                  <MergeFieldEditor
-                    value={s.body ?? ""}
-                    onChange={(v) => update(s.id, { body: v })}
-                    onFocus={() => { lastFocusedKey.current = `${s.id}:body`; }}
-                    ref={(h) => { editorHandles.current.set(`${s.id}:body`, h); }}
-                    placeholder="Email message"
-                    rows={7}
-                  />
-                </div>
-                <div className="space-y-1.5">
-                  <Label>Attachment</Label>
-                  {s.attachment_url ? (
-                    <div className="flex items-center justify-between rounded-md border border-border px-3 py-2 text-sm">
-                      <span className="inline-flex items-center gap-1.5 text-foreground"><FileText className="h-4 w-4 text-muted-foreground" /> {s.attachment_name ?? "Attachment"}</span>
-                      <button type="button" onClick={() => update(s.id, { attachment_url: null, attachment_name: null })} className="cursor-pointer text-muted-foreground hover:text-destructive" aria-label="Remove attachment"><X className="h-4 w-4" /></button>
-                    </div>
-                  ) : (
-                    <label className="inline-flex cursor-pointer items-center gap-2 rounded-md border border-border bg-card px-3 py-2 text-sm text-foreground hover:bg-muted">
-                      {uploadingId === s.id ? <Loader2 className="h-4 w-4 animate-spin" /> : <Upload className="h-4 w-4" />}
-                      <span>Attach a file</span>
-                      <input
-                        type="file"
-                        accept="application/pdf,image/png,image/jpeg,application/vnd.openxmlformats-officedocument.wordprocessingml.document"
-                        className="hidden"
-                        onChange={(e) => { const f = e.target.files?.[0]; if (f) onUpload(s.id, f); e.currentTarget.value = ""; }}
-                      />
-                    </label>
-                  )}
-                </div>
-              </>
-            )}
+              <div className="space-y-1.5">
+                <Label>Email subject</Label>
+                <MergeFieldEditor
+                  value={s.subject ?? ""}
+                  onChange={(v) => update(s.id, { subject: v })}
+                  onFocus={() => { lastFocusedKey.current = `${s.id}:subject`; }}
+                  ref={(h) => { editorHandles.current.set(`${s.id}:subject`, h); }}
+                  placeholder="Email subject"
+                  singleLine
+                />
+              </div>
+              <div className="space-y-1.5">
+                <Label>Message</Label>
+                <MergeFieldEditor
+                  value={s.body ?? ""}
+                  onChange={(v) => update(s.id, { body: v })}
+                  onFocus={() => { lastFocusedKey.current = `${s.id}:body`; }}
+                  ref={(h) => { editorHandles.current.set(`${s.id}:body`, h); }}
+                  placeholder="Email message"
+                  rows={7}
+                />
+              </div>
+              <div className="space-y-1.5">
+                <Label>Attachment</Label>
+                {s.attachment_url ? (
+                  <div className="flex items-center justify-between rounded-md border border-border px-3 py-2 text-sm">
+                    <span className="inline-flex items-center gap-1.5 text-foreground"><FileText className="h-4 w-4 text-muted-foreground" /> {s.attachment_name ?? "Attachment"}</span>
+                    <button type="button" onClick={() => update(s.id, { attachment_url: null, attachment_name: null })} className="cursor-pointer text-muted-foreground hover:text-destructive" aria-label="Remove attachment"><X className="h-4 w-4" /></button>
+                  </div>
+                ) : (
+                  <label className="inline-flex cursor-pointer items-center gap-2 rounded-md border border-border bg-card px-3 py-2 text-sm text-foreground hover:bg-muted">
+                    {uploadingId === s.id ? <Loader2 className="h-4 w-4 animate-spin" /> : <Upload className="h-4 w-4" />}
+                    <span>Attach a file</span>
+                    <input
+                      type="file"
+                      accept="application/pdf,image/png,image/jpeg,application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+                      className="hidden"
+                      onChange={(e) => { const f = e.target.files?.[0]; if (f) onUpload(s.id, f); e.currentTarget.value = ""; }}
+                    />
+                  </label>
+                )}
+              </div>
             </div>
           </CardContent>
         </Card>

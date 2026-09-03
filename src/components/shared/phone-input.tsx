@@ -18,6 +18,8 @@ interface PhoneInputProps {
   onChange: (next: string) => void;
   error?: boolean;
   id?: string;
+  /** Fires when focus leaves the field , used by save-on-blur settings. */
+  onBlur?: () => void;
 }
 
 function normaliseToAuDigits(raw: string): string {
@@ -39,7 +41,7 @@ function formatAuDigits(digits: string): string {
   return `${digits.slice(0, 1)} ${digits.slice(1, 5)} ${digits.slice(5)}`;
 }
 
-export function PhoneInput({ value, onChange, error, id }: PhoneInputProps) {
+export function PhoneInput({ value, onChange, error, id, onBlur }: PhoneInputProps) {
   const displayDigits = useMemo(() => normaliseToAuDigits(value), [value]);
   const displayValue = useMemo(() => formatAuDigits(displayDigits), [displayDigits]);
 
@@ -66,6 +68,7 @@ export function PhoneInput({ value, onChange, error, id }: PhoneInputProps) {
         autoComplete="tel-national"
         placeholder="4XX XXX XXX"
         value={displayValue}
+        onBlur={onBlur}
         onChange={(e) => commit(normaliseToAuDigits(e.target.value))}
         onPaste={(e) => {
           e.preventDefault();

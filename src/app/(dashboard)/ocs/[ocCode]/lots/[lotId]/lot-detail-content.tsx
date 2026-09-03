@@ -52,8 +52,6 @@ interface LotOwnerExtra {
   tenant_name: string | null;
   tenant_email: string | null;
   tenant_phone: string | null;
-  digital_consent_categories: string[];
-  at_portal_signup_categories: string[];
   postal_address: string | null;
 }
 
@@ -360,13 +358,11 @@ export function LotDetailContent({
           ownerType={ownerType}
           isOwnerOccupied={isOwnerOccupied}
           ownershipSince={lotOwnerExtra?.ownership_since ?? null}
-          consentCategories={lotOwnerExtra?.digital_consent_categories ?? []}
           portalLastActiveAt={portalActivity.last_active_at}
           nextLevy={nextLevy}
           anyLevyEverIssued={anyLevyEverIssued}
           activity={activity}
           onViewAllActivity={() => onTabChange("history")}
-          onConsentClick={() => onTabChange("owner")}
           lotDetails={{
             id: lot.id,
             lot_number: Number(lot.lot_number),
@@ -390,7 +386,6 @@ export function LotDetailContent({
           postalAddress={lotOwnerExtra?.postal_address ?? null}
           portalActive={portalActive}
           portalInviteAccepted={portalActive}
-          consentCategories={lotOwnerExtra?.digital_consent_categories ?? []}
           engagement={engagement}
           onTransfer={() => setSettlementOpen(true)}
         />

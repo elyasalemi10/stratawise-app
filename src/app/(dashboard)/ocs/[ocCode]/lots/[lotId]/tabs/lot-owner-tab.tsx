@@ -33,21 +33,12 @@ import type { OwnershipHistoryEntry } from "@/lib/validations/settlement";
 import type { LotEngagement } from "@/lib/actions/lot-engagement";
 import {
   updateLotOwnerContact,
-  updateConsentCategories,
 } from "@/lib/actions/lot-edit";
 import { useRouter } from "next/navigation";
 
 // Owner tab (Items 9 + 13). Per the design rule, each card has a SINGLE Edit
 // button that opens a right-side EditSheet (navbar-width drawer) containing
 // every field of that card , no per-row pencil popovers.
-
-const CONSENT_CATEGORIES = [
-  { key: "meetings", label: "Meetings" },
-  { key: "levies", label: "Levies" },
-  { key: "breach", label: "Breach" },
-  { key: "financial_reports", label: "Financial reports" },
-  { key: "general_correspondence", label: "General correspondence" },
-] as const;
 
 function initials(name: string | null | undefined): string {
   if (!name) return "?";
@@ -94,7 +85,6 @@ interface Props {
   postalAddress: string | null;
   portalActive: boolean;
   portalInviteAccepted: boolean;
-  consentCategories: string[];
   engagement: LotEngagement;
   onTransfer: () => void;
 }
@@ -110,7 +100,6 @@ export function LotOwnerTab(props: Props) {
     postalAddress,
     portalActive,
     portalInviteAccepted,
-    consentCategories,
     engagement,
     onTransfer,
   } = props;
@@ -125,7 +114,6 @@ export function LotOwnerTab(props: Props) {
     phone: activeOwner.owner_contact_phone ?? "",
     postal: postalAddress ?? "",
     owner_type: ownerType,
-    consent: consentCategories,
   });
 
   React.useEffect(() => {
@@ -135,7 +123,6 @@ export function LotOwnerTab(props: Props) {
       phone: activeOwner.owner_contact_phone ?? "",
       postal: postalAddress ?? "",
       owner_type: ownerType,
-      consent: consentCategories,
     });
   }, [
     activeOwner.owner_display_name,
@@ -143,7 +130,6 @@ export function LotOwnerTab(props: Props) {
     activeOwner.owner_contact_phone,
     postalAddress,
     ownerType,
-    consentCategories,
   ]);
 
   if (!activeOwner.owner_display_name) {
@@ -192,7 +178,6 @@ export function LotOwnerTab(props: Props) {
                   phone: activeOwner.owner_contact_phone ?? "",
                   postal: postalAddress ?? "",
                   owner_type: ownerType,
-                  consent: consentCategories,
                 })
               }
               onSaved={() => router.refresh()}
@@ -237,43 +222,6 @@ export function LotOwnerTab(props: Props) {
         </CardContent>
       </Card>
 
-      {/* Consent ------------------------------------------------------------ */}
-      <Card>
-        <CardContent className="pt-5 space-y-3">
-          <div className="flex items-start justify-between">
-            <div>
-              <h3 className="text-sm font-semibold text-foreground">Digital consent</h3>
-              <p className="text-xs text-muted-foreground">
-                Categories of communication the owner has agreed to receive digitally.
-              </p>
-            </div>
-            <ConsentEditSheet
-              lotOwnerId={lotOwnerId}
-              initialConsent={view.consent}
-              onPatch={(next) => setView((v) => ({ ...v, consent: next }))}
-              onRollback={() => setView((v) => ({ ...v, consent: consentCategories }))}
-              onSaved={() => router.refresh()}
-            />
-          </div>
-          <div className="flex flex-wrap gap-1.5 pt-1">
-            {view.consent.length === 0 ? (
-              <span className="text-xs text-muted-foreground">No digital consent on file.</span>
-            ) : (
-              CONSENT_CATEGORIES.map((c) =>
-                view.consent.includes(c.key) ? (
-                  <span
-                    key={c.key}
-                    className="inline-flex items-center rounded-full bg-secondary px-2.5 py-0.5 text-xs font-medium text-foreground"
-                  >
-                    {c.label}
-                  </span>
-                ) : null,
-              )
-            )}
-          </div>
-        </CardContent>
-      </Card>
-
       {/* Transfer ownership ------------------------------------------------- */}
       <div className="flex justify-center">
         <Button variant="secondary" onClick={onTransfer}>
@@ -310,7 +258,6 @@ interface OwnerView {
   phone: string;
   postal: string;
   owner_type: "individual" | "company";
-  consent: string[];
 }
 
 function OwnerContactEditSheet({
@@ -433,88 +380,6 @@ function OwnerContactEditSheet({
             </p>
           </>
         )}
-      </div>
-    </EditSheet>
-  );
-}
-
-function ConsentEditSheet({
-  lotOwnerId,
-  initialConsent,
-  onPatch,
-  onRollback,
-  onSaved,
-}: {
-  lotOwnerId: string | null;
-  initialConsent: string[];
-  onPatch: (next: string[]) => void;
-  onRollback: () => void;
-  onSaved: () => void;
-}) {
-  const [draft, setDraft] = React.useState<string[]>(initialConsent);
-  const [reason, setReason] = React.useState("");
-
-  return (
-    <EditSheet
-      label="Digital consent"
-      description="Update on the owner's behalf. A short reason is required for the audit log."
-      onOpenChange={(open) => {
-        if (open) {
-          setDraft(initialConsent);
-          setReason("");
-        }
-      }}
-      onSave={async () => {
-        if (!lotOwnerId) return { ok: false as const, error: "Owner row missing" };
-        if (!reason.trim() || reason.trim().length < 3) {
-          return { ok: false as const, error: "Please add a short reason" };
-        }
-        const res = await updateConsentCategories({
-          lot_owner_id: lotOwnerId,
-          categories: draft,
-          reason: reason.trim(),
-        });
-        if (res.ok) {
-          onPatch(draft);
-          onSaved();
-        } else {
-          onRollback();
-        }
-        return res.ok ? { ok: true as const } : { ok: false as const, error: res.error };
-      }}
-    >
-      <p className="text-xs text-muted-foreground">
-        Tick the categories the owner has consented to. Owners can also update this themselves from
-        the portal , only change it here if they&apos;ve asked you to.
-      </p>
-      <div className="space-y-1.5">
-        {CONSENT_CATEGORIES.map((c) => {
-          const checked = draft.includes(c.key);
-          return (
-            <div key={c.key} className="flex items-center gap-2">
-              <Checkbox
-                checked={checked}
-                onCheckedChange={(next) => {
-                  setDraft((prev) =>
-                    next ? Array.from(new Set([...prev, c.key])) : prev.filter((k) => k !== c.key),
-                  );
-                }}
-              />
-              <span className="text-sm">{c.label}</span>
-            </div>
-          );
-        })}
-      </div>
-      <div className="space-y-1.5 pt-1">
-        <Label>
-          Reason for change <span className="text-destructive">*</span>
-        </Label>
-        <Textarea
-          value={reason}
-          onChange={(e) => setReason(e.target.value)}
-          placeholder="e.g. owner phoned to opt out of breach notices"
-          rows={3}
-        />
       </div>
     </EditSheet>
   );

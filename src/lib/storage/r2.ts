@@ -91,7 +91,6 @@ const CONFIDENTIAL_PREFIXES = [
   "levies/",
   "contractors/",
   "meetings/",
-  "vcat-packs/",
   "followup/",
 ];
 

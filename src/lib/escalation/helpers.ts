@@ -56,7 +56,7 @@ export function renderTemplate(template: string, vars: Record<string, string>): 
 // Simple penalty interest on overdue principal. The OC stores a monthly rate
 // (VIC cap 2.5%/month); we accrue per day on a 30-day-month basis from the due
 // date after any grace period. Returns dollars accrued + the daily figure.
-// This is an estimate for a draft VCAT pack; the manager verifies before filing.
+// This is an estimate; the manager verifies the figure before acting on it.
 export function computeInterest(opts: {
   principal: number;
   dueDate: string;

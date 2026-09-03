@@ -6,6 +6,7 @@ import { Upload, Building2 } from "lucide-react";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { PhoneInput } from "@/components/shared/phone-input";
 import { Label } from "@/components/ui/label";
 import {
   } from "@/components/ui/sheet";
@@ -62,14 +63,24 @@ function CompanyField({
   return (
     <div className="space-y-1.5">
       <Label htmlFor={id}>{label}</Label>
-      <Input
-        id={id}
-        value={f.value}
-        onChange={(e) => f.onChange(e.target.value)}
-        onBlur={f.onBlur}
-        aria-invalid={f.invalid || undefined}
-        placeholder={label}
-      />
+      {field === "phone" ? (
+        <PhoneInput
+          id={id}
+          value={f.value}
+          onChange={f.onChange}
+          onBlur={f.onBlur}
+          error={f.invalid}
+        />
+      ) : (
+        <Input
+          id={id}
+          value={f.value}
+          onChange={(e) => f.onChange(e.target.value)}
+          onBlur={f.onBlur}
+          aria-invalid={f.invalid || undefined}
+          placeholder={label}
+        />
+      )}
     </div>
   );
 }

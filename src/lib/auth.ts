@@ -289,26 +289,6 @@ export async function getOnboardingRedirect(): Promise<string | null> {
       .select("id", { count: "exact", head: true })
       .eq("profile_id", profile.id);
     if (!count || count === 0) return "/onboarding/lot-owner";
-
-    // Per-OC digital consent , consent is per (owner, OC), so any OC
-    // membership without a consent record sends them back through onboarding
-    // (covers an existing-account owner accepting an invite to a new OC).
-    const { data: memberships } = await admin
-      .from("oc_members")
-      .select("oc_id")
-      .eq("profile_id", profile.id)
-      .eq("role", "lot_owner")
-      .is("left_at", null);
-    const ocIds = [...new Set((memberships ?? []).map((m) => m.oc_id))];
-    if (ocIds.length > 0) {
-      const { data: consents } = await admin
-        .from("oc_member_consents")
-        .select("oc_id")
-        .eq("profile_id", profile.id)
-        .in("oc_id", ocIds);
-      const consented = new Set((consents ?? []).map((c) => c.oc_id));
-      if (ocIds.some((id) => !consented.has(id))) return "/onboarding/lot-owner";
-    }
     return null;
   }
 

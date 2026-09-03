@@ -2,7 +2,11 @@ import { z } from "zod";
 
 // ─── Follow-up workflow types ───────────────────────────────────────────────
 
-export const FOLLOWUP_STEP_TYPES = ["email", "vcat"] as const;
+// Every follow-up step is an email. There used to be a 'vcat' type whose
+// only behaviour was to notify the manager that an application pack was
+// ready , a pack the platform no longer assembles, so the step was a dead
+// rung on the ladder.
+export const FOLLOWUP_STEP_TYPES = ["email"] as const;
 export type FollowupStepType = (typeof FOLLOWUP_STEP_TYPES)[number];
 
 export interface FollowupStep {
@@ -46,7 +50,7 @@ export const MERGE_FIELD_COLORS: Record<string, string> = Object.fromEntries(
   MERGE_FIELDS.map((f) => [f.token, f.color]),
 );
 
-// One step in an update payload. vcat steps carry no email body.
+// One step in an update payload.
 export const followupStepInputSchema = z.object({
   id: z.string().uuid(),
   label: z.string().trim().max(120).nullable().optional(),

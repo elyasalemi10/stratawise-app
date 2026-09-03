@@ -1,7 +1,7 @@
 import { redirect } from "next/navigation";
 import { SectionHeader } from "@/components/shared/section-header";
 import { getCurrentProfile } from "@/lib/auth";
-import { ProfileTab } from "../profile-tab";
+import { ProfileSection } from "../section-clients";
 
 export default async function Page() {
   const profile = await getCurrentProfile();
@@ -9,7 +9,7 @@ export default async function Page() {
   return (
     <>
       <SectionHeader title="My Profile" />
-      <ProfileTab profile={profile} />
+      <ProfileSection />
     </>
   );
 }

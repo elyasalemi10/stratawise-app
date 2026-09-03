@@ -25,9 +25,7 @@ import type {
 //   2. Recent activity , last 5 audit-log entries scoped to this lot, with a
 //      "View all activity" link that switches to the History tab
 //   3. Snapshot , owner type, ownership-since (or "Not set"), portal last
-//      active, consent count (clickable → Owner tab)
 
-const TOTAL_CONSENT_CATEGORIES = 5;
 
 const ORDINAL_SUFFIX = (day: number): string => {
   if (day >= 11 && day <= 13) return "th";
@@ -82,7 +80,6 @@ interface Props {
   ownerType: string;
   isOwnerOccupied: boolean;
   ownershipSince: string | null;
-  consentCategories: string[];
   portalLastActiveAt: string | null;
   nextLevy: NextLevyDue | null;
   // True when this lot has had at least one levy notice issued in its
@@ -91,7 +88,6 @@ interface Props {
   anyLevyEverIssued: boolean;
   activity: LotActivityEntry[];
   onViewAllActivity: () => void;
-  onConsentClick: () => void;
   lotDetails: LotDetailsInput;
   onLotDetailsSaved: () => void;
 }
@@ -103,13 +99,11 @@ export function LotOverviewTab({
   ownerType,
   isOwnerOccupied,
   ownershipSince,
-  consentCategories,
   portalLastActiveAt,
   nextLevy,
   anyLevyEverIssued,
   activity,
   onViewAllActivity,
-  onConsentClick,
   lotDetails,
   onLotDetailsSaved,
 }: Props) {
@@ -119,7 +113,6 @@ export function LotOverviewTab({
   const recentActivity = activity.slice(0, 5);
   const ownershipSinceLabel = formatOrdinalDate(ownershipSince) ?? "Not set";
   const portalLabel = formatRelative(portalLastActiveAt);
-  const consentCount = consentCategories.length;
 
   return (
     <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
@@ -211,19 +204,6 @@ export function LotOverviewTab({
             <SnapshotRow label="Owner" value={ownerDisplayName ?? "Unassigned"} sub={ownerType} />
             <SnapshotRow label="Ownership since" value={ownershipSinceLabel} muted={!ownershipSince} />
             <SnapshotRow label="Portal last active" value={portalLabel} muted={!portalLastActiveAt} />
-            <div className="flex items-baseline justify-between gap-2">
-              <dt className="text-muted-foreground">Consent</dt>
-              <dd className="text-right">
-                <button
-                  type="button"
-                  onClick={onConsentClick}
-                  className="inline-flex items-center gap-1 text-sm font-medium text-blue-600 underline-offset-4 hover:underline cursor-pointer"
-                >
-                  {consentCount} of {TOTAL_CONSENT_CATEGORIES} categories
-                  <ChevronRight className="h-3.5 w-3.5" />
-                </button>
-              </dd>
-            </div>
           </dl>
         </CardContent>
       </Card>
@@ -414,7 +394,6 @@ function describeAuditEvent(row: LotActivityEntry): string {
     "create:invitation": "Portal invitation sent",
     "send:invitation": "Portal invitation re-sent",
     "update:lot": "Lot details updated",
-    "update:consent": "Consent updated",
     "update:occupancy": "Occupancy status changed",
     "create:tenant": "Tenant added",
     "update:tenant": "Tenant details updated",

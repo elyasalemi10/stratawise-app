@@ -11,14 +11,14 @@ import { useFieldSave } from "./use-field-save";
 import { revalidateSidebarFromClient } from "@/lib/sidebar-cache";
 import { updateProfile, updateAvatar } from "./actions";
 import { ChangeEmailDialog, ChangePasswordDialog } from "./credential-dialogs";
-import type { Profile } from "@/lib/auth";
+import type { ProfileSettings } from "./data";
 
 // The password box shows a FIXED ten dots. Rendering the real length is a
 // small gift to anyone reading over your shoulder, and there is no reason
 // for the page to know it anyway.
 const MASKED_PASSWORD = "•".repeat(10);
 
-export function ProfileTab({ profile }: { profile: Profile }) {
+export function ProfileTab({ profile }: { profile: ProfileSettings }) {
   const [avatarUrl, setAvatarUrl] = React.useState(profile.avatar_url ?? "");
   // Picking comes first, framing second. "Change image" opens the file
   // picker; the cropper appears only once there is something to crop, so

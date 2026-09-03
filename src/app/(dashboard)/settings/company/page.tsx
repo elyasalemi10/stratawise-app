@@ -1,8 +1,7 @@
 import { redirect } from "next/navigation";
 import { SectionHeader } from "@/components/shared/section-header";
 import { getCurrentProfile } from "@/lib/auth";
-import { CompanyTab } from "../company-tab";
-import { getCompanyData } from "../actions";
+import { CompanySection } from "../section-clients";
 
 export default async function Page() {
   const profile = await getCurrentProfile();
@@ -11,7 +10,7 @@ export default async function Page() {
   return (
     <>
       <SectionHeader title="Company" />
-      <CompanyTab company={await getCompanyData()} />
+      <CompanySection />
     </>
   );
 }

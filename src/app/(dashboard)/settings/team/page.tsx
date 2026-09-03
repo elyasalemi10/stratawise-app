@@ -1,8 +1,7 @@
 import { redirect } from "next/navigation";
 import { SectionHeader } from "@/components/shared/section-header";
 import { getCurrentProfile } from "@/lib/auth";
-import { TeamTab } from "../team-tab";
-import { getTeamMembers } from "@/lib/actions/team";
+import { TeamSection } from "../section-clients";
 
 export default async function Page() {
   const profile = await getCurrentProfile();
@@ -11,11 +10,7 @@ export default async function Page() {
   return (
     <>
       <SectionHeader title="Team" />
-    <TeamTab
-      members={await getTeamMembers()}
-      currentUserId={profile.id}
-      isAdmin={profile.company_role === "admin"}
-    />
+      <TeamSection />
     </>
   );
 }
