@@ -1,21 +1,63 @@
-import { Card, CardContent } from "@/components/ui/card";
+import { Mail, Monitor } from "lucide-react";
 import { Skeleton } from "@/components/ui/skeleton";
+import { NOTIFICATION_GROUPS } from "@/lib/notification-types";
 
-// Only the saved values load; the rows themselves are a fixed list.
+// Every label, description, group heading and channel icon on this page is
+// fixed , the only server data is which boxes are ticked. So the whole table
+// renders for real and only the checkboxes shimmer.
+
 export default function Loading() {
   return (
-    <Card>
-      <CardContent className="pt-5">
-        {Array.from({ length: 6 }).map((_, i) => (
-          <div
-            key={i}
-            className="flex items-center justify-between border-b border-border/50 py-3 last:border-b-0"
-          >
-            <Skeleton className="h-3.5 w-52" />
-            <Skeleton className="h-5 w-10 rounded-full" />
-          </div>
-        ))}
-      </CardContent>
-    </Card>
+    <div className="space-y-6">
+      <div className="overflow-x-auto">
+        <table className="w-full min-w-[34rem] border-collapse text-sm">
+          <thead>
+            <tr>
+              <th className="w-full pb-3 text-left align-bottom text-sm font-semibold text-foreground">
+                Notify me about
+              </th>
+              {[
+                { label: "Email", Icon: Mail },
+                { label: "In app", Icon: Monitor },
+              ].map(({ label, Icon }) => (
+                <th key={label} className="w-32 pb-3 align-bottom">
+                  <div className="flex flex-col items-center gap-1">
+                    <Icon className="size-4 text-muted-foreground" aria-hidden />
+                    <span className="text-sm font-medium text-foreground">{label}</span>
+                  </div>
+                </th>
+              ))}
+            </tr>
+          </thead>
+          <tbody>
+            {NOTIFICATION_GROUPS.map((group) => (
+              <>
+                <tr key={group.label}>
+                  <th
+                    colSpan={3}
+                    className="bg-muted px-3 py-2 text-left text-sm font-medium text-foreground"
+                  >
+                    {group.label}
+                  </th>
+                </tr>
+                {group.items.map((item) => (
+                  <tr key={item.type} className="border-b border-border/60 last:border-b-0">
+                    <td className="py-3 pr-6">
+                      <div className="text-sm font-medium text-foreground">{item.label}</div>
+                      <div className="text-xs text-muted-foreground">{item.description}</div>
+                    </td>
+                    {["email", "in_app"].map((c) => (
+                      <td key={c} className="py-3 text-center">
+                        <Skeleton className="mx-auto size-4 rounded-[4px]" />
+                      </td>
+                    ))}
+                  </tr>
+                ))}
+              </>
+            ))}
+          </tbody>
+        </table>
+      </div>
+    </div>
   );
 }
