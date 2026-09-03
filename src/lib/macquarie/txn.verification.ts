@@ -22,7 +22,7 @@ const results: Result[] = [];
 
 function record(scenario: string, passed: boolean, detail: string) {
   results.push({ scenario, passed, detail });
-  // eslint-disable-next-line no-console
+   
   console.log(`  ${passed ? "PASS" : "FAIL"}  ${scenario}${detail ? " , " + detail : ""}`);
 }
 
@@ -267,6 +267,6 @@ function buildTrailer(opts: {
 
 // ─── Report + exit ────────────────────────────────────────────────────────
 const fails = results.filter((r) => !r.passed);
-// eslint-disable-next-line no-console
+ 
 console.log(`\n  ${results.length - fails.length}/${results.length} passed`);
 if (fails.length > 0) process.exit(1);

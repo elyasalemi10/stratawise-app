@@ -112,7 +112,7 @@ export function OtpInput({
           type="text"
           inputMode="numeric"
           autoComplete={i === 0 ? "one-time-code" : "off"}
-          // eslint-disable-next-line jsx-a11y/no-autofocus
+           
           autoFocus={autoFocus && i === 0}
           disabled={disabled}
           maxLength={1}

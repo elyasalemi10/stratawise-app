@@ -778,6 +778,10 @@ function AutoSendCard({
    *  parent can dismiss the sheet. */
   onClose?: () => void;
 }) {
+  // Captured once. "Has this period already passed?" is a day-level
+  // question, and a clock read during render can answer it differently
+  // for two renders of the same list.
+  const [nowMs] = useState(() => Date.now());
   // Day-of-month input holds a STRING so the manager can clear the
   // field while typing without us forcing 1 back in. The "Last day of
   // month" toggle short-circuits the number; when on we save 31 which
@@ -1094,7 +1098,7 @@ function AutoSendCard({
                 // already or skipped it; either way changing the
                 // date now would be a no-op, so disable.
                 const periodEndMs = new Date(`${lastOfMonth}T23:59:59Z`).getTime();
-                const isPast = periodEndMs < Date.now();
+                const isPast = periodEndMs < nowMs;
                 return (
                   <div key={p.monthKey} className="space-y-1.5">
                     <Label className={isPast ? "text-muted-foreground" : undefined}>

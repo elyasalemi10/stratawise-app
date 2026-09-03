@@ -302,7 +302,7 @@ function SimpleDropdown({
     }
     if (open) document.addEventListener("mousedown", onDocClick);
     return () => document.removeEventListener("mousedown", onDocClick);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+     
   }, [open]);
 
   // Position the panel relative to the trigger via fixed coordinates. The

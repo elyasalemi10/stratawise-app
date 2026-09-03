@@ -40,7 +40,7 @@ export async function notifyOcManagers(supabase: any, ocId: string, title: strin
 // opted out of separately from routine reminders , though an owner opting
 // out of being told they are being taken to VCAT is their call, not ours to
 // prevent.
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
+ 
 export async function notifyLotOwnersInApp(
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   supabase: any,

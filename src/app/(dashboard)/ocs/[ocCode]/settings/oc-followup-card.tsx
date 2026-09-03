@@ -22,7 +22,7 @@ export function OCFollowupCard({ ocId }: { ocId: string }) {
       .catch(() => {})
       .finally(() => setLoading(false));
   }
-  useEffect(() => { load(); /* eslint-disable-next-line react-hooks/exhaustive-deps */ }, [ocId]);
+  useEffect(() => { load();   }, [ocId]);
 
   if (loading) {
     return (

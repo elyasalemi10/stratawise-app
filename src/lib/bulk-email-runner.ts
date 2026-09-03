@@ -23,7 +23,7 @@ interface OwnerRow {
   email: string;
 }
 
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
+ 
 async function resolveOwners(
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   supabase: any,

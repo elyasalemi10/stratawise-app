@@ -171,7 +171,14 @@ function ComboboxInput({
   React.useEffect(() => { ctx.setPlaceholder(placeholder); }, [placeholder, ctx]);
 
   // Measure trigger width so the popover content can match it.
+  //
+  // This is a CALLBACK REF: React invokes it at commit with the mounted node,
+  // never during render, so writing the shared trigger ref here is the
+  // correct place to do it. react-hooks/immutability cannot distinguish a
+  // callback ref from a render-time mutation, and rewriting a correct
+  // callback ref to satisfy it would make the code worse.
   const ref = React.useCallback((node: HTMLButtonElement | null) => {
+    // eslint-disable-next-line react-hooks/immutability
     ctx.triggerRef.current = node;
     if (node) {
       const w = node.getBoundingClientRect().width;

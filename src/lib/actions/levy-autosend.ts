@@ -257,7 +257,7 @@ export async function upsertLevyAutosendSchedule(
   // Periods that ALREADY have a non-cancelled batch are pre-marked
   // "done" with the batch id so the cron skips them and the UI shows
   // the right status badges from save-time.
-  let plannedPeriods: PlannedPeriod[] = [];
+  const plannedPeriods: PlannedPeriod[] = [];
   if (input.enabled && input.budget_id) {
     const { data: budget } = await supabase
       .from("budgets")

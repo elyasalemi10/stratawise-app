@@ -190,7 +190,7 @@ export function SettlementDialog(props: Props) {
     } finally {
       sessionStorage.removeItem(key);
     }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+     
   }, [open, knownLotId]);
 
   const handleClose = useCallback(() => {

@@ -81,6 +81,7 @@ function PolicyDetailDialog({
   const [editStartOpen, setEditStartOpen] = useState(false);
   const [editEndOpen, setEditEndOpen] = useState(false);
   const [uploadingDoc, setUploadingDoc] = useState(false);
+  const [openedAt] = useState(() => Date.now());
   const [uploadDocName, setUploadDocName] = useState("");
 
   async function handleReplaceDocument(file: File) {
@@ -129,8 +130,12 @@ function PolicyDetailDialog({
   }
 
   if (!policy) return null;
-  const isExpired = new Date(policy.end_date) < new Date();
-  const isExpiringSoon = !isExpired && new Date(policy.end_date) < new Date(Date.now() + 30 * 86400000);
+  // Captured once, not read on every render. Expiry is a day-level judgement
+  // and a clock that ticks mid-render can flip the badge between two renders
+  // of the same dialog.
+  const isExpired = new Date(policy.end_date) < new Date(openedAt);
+  const isExpiringSoon =
+    !isExpired && new Date(policy.end_date) < new Date(openedAt + 30 * 86400000);
 
   function startEdit() {
     setEditProvider(policy!.provider);

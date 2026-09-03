@@ -488,7 +488,7 @@ const OCC_SELECT = "id, scheduled_date, status, notes, completed_at";
 // Materialise the next `count` occurrence dates from the recurrence rule into
 // the DB (status 'scheduled'), skipping dates already present. Called once when
 // a job is created and as a top-up when a manager opens an empty schedule.
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
+ 
 export async function seedJobOccurrences(
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   supabase: any,

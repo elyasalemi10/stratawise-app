@@ -85,7 +85,12 @@ export function MeetingNotice(props: MeetingNoticeProps) {
     td: { fontSize: 9.5, color: c.foreground },
   });
 
-  const Header = () => (
+  // A function that returns JSX, deliberately not a component. It closes over
+  // the props and the stylesheet, so hoisting it out would mean threading
+  // both through , and it has no state, so there is nothing for React to
+  // reset. Called as renderHeader(), not rendered as <Header />, so it is not
+  // a component type re-created on every render.
+  const renderHeader = () => (
     <View style={s.headerRow}>
       {managementCompany.logo_url ? <Image src={managementCompany.logo_url} style={s.logo} /> : <View />}
       <View style={s.companyBlock}>
@@ -101,7 +106,7 @@ export function MeetingNotice(props: MeetingNoticeProps) {
     <Document>
       {/* ── Page 1: Notice ── */}
       <Page size="A4" style={s.page}>
-        <Header />
+        {renderHeader()}
         <View style={s.titleBlock}>
           <Text style={s.title}>{titleLine}</Text>
           <View style={s.titleRule} />
@@ -200,7 +205,7 @@ export function MeetingNotice(props: MeetingNoticeProps) {
 
       {/* ── Page 2: Proxy appointment form ── */}
       <Page size="A4" style={s.page}>
-        <Header />
+        {renderHeader()}
         <Text style={s.title}>PROXY APPOINTMENT FORM</Text>
         <View style={s.titleRule} />
         <Text style={s.subtitle}>{meetingTypeLabel} , {dateLabel} , {ocLegalName(oc)}</Text>

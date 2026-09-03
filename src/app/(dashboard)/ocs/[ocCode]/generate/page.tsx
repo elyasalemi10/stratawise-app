@@ -116,7 +116,7 @@ export default async function GenerateLeviesPage({
     .eq("oc_id", ocId)
     .order("lot_number");
   const lotIds = (rawLots ?? []).map((l) => l.id);
-  let ownersByLot = new Map<string, string>();
+  const ownersByLot = new Map<string, string>();
   if (lotIds.length > 0) {
     const { data: ownerRows } = await supabase
       .from("lot_owners")

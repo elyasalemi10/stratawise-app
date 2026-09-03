@@ -23,7 +23,7 @@ export interface NarrationBuild {
   words: NarrationWord[];
 }
 
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
+ 
 type JNode = { type?: string; text?: string; content?: JNode[] };
 
 /** Shared word normaliser , MUST match the player's tokeniser so word

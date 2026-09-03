@@ -190,7 +190,7 @@ export function VicAddressAutocomplete({ value, onChange, id, error }: Props) {
       // `next dev` was started (those bake at build time and require a
       // server restart). Mirror to console.warn so the operator can see it.
       if (typeof window !== "undefined") {
-        // eslint-disable-next-line react-hooks/set-state-in-effect
+         
         console.warn(
           "VicAddressAutocomplete: NEXT_PUBLIC_GOOGLE_MAPS_API_KEY is missing at runtime. "
           + "If it's set in .env.local you need to RESTART `next dev` after editing , "

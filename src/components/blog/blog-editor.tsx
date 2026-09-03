@@ -292,7 +292,7 @@ export function BlogEditor({ post }: { post: BlogPostRow }) {
           <div className="space-y-1.5">
             <Label className="text-xs text-muted-foreground">Cover image {REQ}</Label>
             {coverImage ? (
-              // eslint-disable-next-line @next/next/no-img-element
+               
               <div className="relative overflow-hidden rounded-md border border-border">
                 <img src={coverImage} alt={coverAlt} className="h-32 w-full object-cover" />
                 <button type="button" onClick={() => coverInputRef.current?.click()} className="absolute bottom-2 right-2 rounded-md bg-card/90 px-2 py-1 text-xs font-medium text-foreground hover:bg-card cursor-pointer">Replace</button>

@@ -1,6 +1,6 @@
 "use client";
 
-import { memo, useCallback, useEffect, useRef, useState } from "react";
+import { memo, useCallback, useEffect, useRef, useState, useId } from "react";
 import { Play, Pause } from "lucide-react";
 import { normalizeForNarration } from "@/lib/blog/narrate";
 import type { NarrationWordTiming } from "@/lib/actions/blog-audio";
@@ -138,7 +138,7 @@ const NarrationBody = memo(
       }
       root.setAttribute("data-narration-ready", "true");
       if (process.env.NODE_ENV !== "production") {
-        // eslint-disable-next-line no-console
+         
         console.info(`[NarrationPlayer admin preview] wrapped ${matched} / ${words.length} narration words`);
       }
     }, [html, words]);
@@ -148,7 +148,7 @@ const NarrationBody = memo(
         ref={ref}
         id={containerId}
         className="prose prose-sm max-w-none"
-        // eslint-disable-next-line react/no-danger
+         
         dangerouslySetInnerHTML={{ __html: html }}
       />
     );
@@ -168,13 +168,19 @@ export function NarrationPlayer({
   const audioRef = useRef<HTMLAudioElement>(null);
   const rafRef = useRef<number | null>(null);
   const activeRef = useRef<number>(-1);
-  const containerIdRef = useRef<string>(`narration-${Math.random().toString(36).slice(2, 8)}`);
+  // useId, not Math.random(). A random id generated during render differs
+  // between the server and client renders, which is a hydration mismatch
+  // waiting to happen, and it is impure besides.
+  const containerId = `narration-${useId()}`;
   const [playing, setPlaying] = useState(false);
   const [currentTime, setCurrentTime] = useState(0);
   const [duration, setDuration] = useState(0);
 
   const src = /^https?:\/\//i.test(audioUrl) ? audioUrl : `https://${audioUrl}`;
-  const containerEl = () => document.getElementById(containerIdRef.current);
+  // Memoised on containerId so the callbacks below can keep it as a stable
+  // dependency. useId is stable across renders, so this never re-creates in
+  // practice , it just has to be declared for the compiler to see that.
+  const containerEl = useCallback(() => document.getElementById(containerId), [containerId]);
 
   const applyHighlight = useCallback((idx: number) => {
     const prev = activeRef.current;
@@ -248,7 +254,7 @@ export function NarrationPlayer({
         }
       } catch { /* ignored */ }
     }
-  }, [words]);
+  }, [words, containerEl]);
 
   const clearAllHighlights = useCallback(() => {
     const root = containerEl();
@@ -259,7 +265,7 @@ export function NarrationPlayer({
         el.style.removeProperty("--sw-fill-duration");
       });
     activeRef.current = -1;
-  }, []);
+  }, [containerEl]);
 
   // 200ms forward lookahead so the highlight tracks slightly AHEAD of the
   // voice instead of dragging behind it (audio latency + paint frame +
@@ -373,7 +379,7 @@ export function NarrationPlayer({
         </span>
         <audio ref={audioRef} src={src} className="hidden" preload="metadata" />
       </div>
-      <NarrationBody html={html} words={words} containerId={containerIdRef.current} />
+      <NarrationBody html={html} words={words} containerId={containerId} />
     </div>
   );
 }

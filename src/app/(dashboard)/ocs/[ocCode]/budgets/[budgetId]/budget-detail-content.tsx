@@ -96,8 +96,14 @@ export function BudgetDetailContent({
       excludedLotIds: it.excluded_lot_ids ?? [],
     })),
   []);
-  const savedItemsRef = useRef<DraftItem[]>(buildSnapshot(budget));
-  const [items, setItems] = useState<DraftItem[]>(savedItemsRef.current);
+  // The working copy, and the last saved copy that Cancel restores.
+  //
+  // Both are STATE, not a ref. The saved copy used to live in a ref that was
+  // read during render to seed the working copy, which makes the ref an input
+  // to rendering , the one thing refs are not for, and what the lint was
+  // pointing at.
+  const [items, setItems] = useState<DraftItem[]>(() => buildSnapshot(budget));
+  const [savedItems, setSavedItems] = useState<DraftItem[]>(() => buildSnapshot(budget));
   const [comboOpen, setComboOpen] = useState(false);
   const [excludeIndex, setExcludeIndex] = useState<number | null>(null);
   const [drawerOpen, setDrawerOpen] = useState(false);
@@ -183,7 +189,7 @@ export function BudgetDetailContent({
     toast.success("Budget updated");
     // Promote the just-saved state to the snapshot so a subsequent Cancel
     // restores back to here (not back to the original server load).
-    savedItemsRef.current = items.map((it) => ({ ...it }));
+    setSavedItems(items.map((it) => ({ ...it })));
     setEditing(false);
     router.refresh();
   }
@@ -192,7 +198,7 @@ export function BudgetDetailContent({
     // Restore the last-saved snapshot so the user's in-progress edits don't
     // linger on the page. Deep-clone so the user can edit again without
     // mutating the snapshot.
-    setItems(savedItemsRef.current.map((it) => ({ ...it })));
+    setItems(savedItems.map((it) => ({ ...it })));
     setComboOpen(false);
     setEditing(false);
   }

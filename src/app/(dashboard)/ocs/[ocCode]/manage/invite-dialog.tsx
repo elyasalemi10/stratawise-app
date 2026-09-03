@@ -78,7 +78,7 @@ export function InviteDialog({
   const [serverError, setServerError] = useState<string | null>(null);
   useEffect(() => {
     if (!open) setServerError(null);
-    // eslint-disable-next-line react-hooks/set-state-in-effect
+     
   }, [open]);
 
   return (
