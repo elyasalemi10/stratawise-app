@@ -9,6 +9,7 @@ import { Label } from "@/components/ui/label";
 import { AvatarCropDialog } from "@/components/shared/avatar-crop-dialog";
 import { useFieldSave } from "./use-field-save";
 import { revalidateSidebarFromClient } from "@/lib/sidebar-cache";
+import { invalidateCached } from "@/lib/use-cached-data";
 import { updateProfile, updateAvatar } from "./actions";
 import { ChangeEmailDialog, ChangePasswordDialog } from "./credential-dialogs";
 import type { ProfileSettings } from "./data";
@@ -29,12 +30,18 @@ export function ProfileTab({ profile }: { profile: ProfileSettings }) {
   const [passwordOpen, setPasswordOpen] = React.useState(false);
   const [removing, setRemoving] = React.useState(false);
 
-  const firstName = useFieldSave(profile.first_name ?? "", (v) =>
-    updateProfile({ first_name: v }),
-  );
-  const lastName = useFieldSave(profile.last_name ?? "", (v) =>
-    updateProfile({ last_name: v }),
-  );
+  // Each save drops the cached profile so navigating away and back does not
+  // flash the previous value before the behind-fetch corrects it.
+  const firstName = useFieldSave(profile.first_name ?? "", async (v) => {
+    const res = await updateProfile({ first_name: v });
+    if (!res?.error) invalidateCached("settings:profile");
+    return res ?? {};
+  });
+  const lastName = useFieldSave(profile.last_name ?? "", async (v) => {
+    const res = await updateProfile({ last_name: v });
+    if (!res?.error) invalidateCached("settings:profile");
+    return res ?? {};
+  });
 
   const initial = (profile.first_name?.[0] ?? profile.email?.[0] ?? "?").toUpperCase();
 
@@ -53,6 +60,7 @@ export function ProfileTab({ profile }: { profile: ProfileSettings }) {
       toast.error(saved.error);
       return;
     }
+    invalidateCached("settings:profile");
     // Tell the rest of the chrome. The header and sidebar hold their own
     // copy of the profile, so without this the new picture appears on this
     // page and the old one stays in the corner of every screen until a hard
@@ -84,6 +92,7 @@ export function ProfileTab({ profile }: { profile: ProfileSettings }) {
       return;
     }
     setAvatarUrl("");
+    invalidateCached("settings:profile");
     revalidateSidebarFromClient();
     toast.success("Profile picture removed");
   }

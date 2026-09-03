@@ -15,6 +15,7 @@ import { useFieldSave } from "./use-field-save";
 import { updateCompanyLogo } from "@/lib/actions/company-branding";
 import { MAX_LOGO_BYTES, MAX_LOGO_WIDTH, MAX_LOGO_HEIGHT } from "@/lib/actions/company-branding-constants";
 import { BrandColourPicker } from "@/components/shared/brand-colour-picker";
+import { invalidateCached } from "@/lib/use-cached-data";
 
 interface CompanyData {
   id: string;
@@ -98,8 +99,12 @@ export function CompanyTab({ company }: { company: CompanyData | null }) {
 
   // Each field writes just itself, so the local copy is patched key by key
   // rather than replaced wholesale.
-  const patchCompany = (field: string, value: string) =>
+  const patchCompany = (field: string, value: string) => {
     setLocalCompany((prev) => (prev ? { ...prev, [field]: value || null } : prev));
+    // The tab cache still holds the pre-edit company; drop it so coming back
+    // does not flash the old value before the behind-fetch corrects it.
+    invalidateCached("settings:company");
+  };
 
   async function saveBrandColor(hex: string) {
     if (!company) return;

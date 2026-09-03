@@ -12,6 +12,7 @@ import {
   type NotificationType,
 } from "@/lib/notification-types";
 import { updateNotificationPreferences } from "@/lib/actions/notification-preferences";
+import { invalidateCached } from "@/lib/use-cached-data";
 import { Switch } from "@/components/ui/switch";
 import type { NotificationPrefRow, AutoOptOutEntry } from "./data";
 
@@ -81,6 +82,7 @@ export function NotificationsTab({
         toast.error(result.error);
         return;
       }
+      invalidateCached("settings:notifications");
       toast.success(message);
     });
   }

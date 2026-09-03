@@ -16,6 +16,7 @@ import {
 } from "@/components/ui/alert-dialog";
 import { Badge } from "@/components/ui/badge";
 import { EmptyState } from "@/components/shared/empty-state";
+import { invalidateCached } from "@/lib/use-cached-data";
 import { UserAvatar } from "@/components/shared/user-avatar";
 import { InviteTeamDialog } from "@/components/shared/invite-team-dialog";
 import {
@@ -80,6 +81,7 @@ function MemberRow({
     }
     toast.success(`Role updated to ${ROLE_LABEL[newRole]}`);
     onRoleChanged(member.id, newRole);
+    invalidateCached("settings:team");
   }
 
   return (
@@ -166,6 +168,7 @@ export function TeamTab({
     }
     toast.success("Member removed");
     setMembers((prev) => prev.filter((m) => m.id !== pendingRemoval.id));
+    invalidateCached("settings:team");
     setPendingRemoval(null);
   }
 
