@@ -5,6 +5,7 @@ import { Suspense, useState } from "react";
 import { X } from "lucide-react";
 import { StepCompany } from "./step-company";
 import { StepOperating } from "./step-operating";
+import { StepMailProvider } from "./step-mail-provider";
 import { Button } from "@/components/ui/button";
 import {
   Dialog,
@@ -16,18 +17,25 @@ import {
 } from "@/components/ui/dialog";
 import { cn } from "@/lib/utils";
 
-// Two-step onboarding:
+// Three-step onboarding:
 //   1. Company details (mandatory)
 //   2. Operating account (optional , also editable in Settings)
-// Email/mail-provider setup moved out of onboarding to Settings entirely.
-// After step 2 → /dashboard?welcome=1 (confetti + welcome overlay).
+//   3. Where outbound mail comes from (optional , defaults to StrataWise)
 //
-// Both steps stay MOUNTED (inactive one hidden) so going Back/forward keeps
+// Email is back in onboarding because it decides what every levy notice,
+// meeting notice and reminder the firm sends is FROM. Left to Settings it
+// gets found after the first batch has already gone out under a
+// stratawise.com.au address, and there is no un-sending that.
+//
+// After step 3 → /dashboard?welcome=1 (confetti + welcome overlay).
+//
+// All steps stay MOUNTED (inactive ones hidden) so going Back/forward keeps
 // every field the manager already typed , no re-fetch, no wiped form.
 
 const STEPS = [
   { number: 1, label: "Company" },
   { number: 2, label: "Operating account" },
+  { number: 3, label: "Email" },
 ];
 
 function SetupWizardContent() {
@@ -69,8 +77,14 @@ function SetupWizardContent() {
         </div>
         <div className={cn(step !== 2 && "hidden")}>
           <StepOperating
-            onNext={() => router.push("/dashboard?welcome=1")}
+            onNext={() => goToStep(3)}
             onBack={() => goToStep(1)}
+          />
+        </div>
+        <div className={cn(step !== 3 && "hidden")}>
+          <StepMailProvider
+            onNext={() => router.push("/dashboard?welcome=1")}
+            onBack={() => goToStep(2)}
           />
         </div>
       </div>

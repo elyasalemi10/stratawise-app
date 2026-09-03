@@ -45,12 +45,42 @@ export async function resolveWorkflowForOC(
   return { ...wf, steps: (steps ?? []) as FollowupStep[] };
 }
 
-// Substitute {{tokens}} in a subject/body. Unknown tokens are left intact.
+// Substitute {{tokens}} in a subject/body.
+//
+// An unknown or empty token resolves to NOTHING, not to the raw "{{token}}".
+// Leaving the braces in was the safer-looking choice and the worse one: it
+// puts "{{interest_accrued}}" in front of a lot owner, in an email about
+// money they owe, which reads as a broken system rather than a missing
+// value.
+//
+// Removing a value can leave debris around it , a doubled space, a comma
+// with nothing before it, a paragraph that is now blank , so the tidy-up
+// afterwards is part of the substitution, not an afterthought.
 export function renderTemplate(template: string, vars: Record<string, string>): string {
-  return template.replace(/\{\{\s*([a-z_]+)\s*\}\}/gi, (full, key: string) => {
-    const v = vars[key.toLowerCase()];
-    return v != null ? v : full;
+  const substituted = template.replace(/\{\{\s*([a-z_]+)\s*\}\}/gi, (_full, key: string) => {
+    return vars[key.toLowerCase()] ?? "";
   });
+  return tidy(substituted);
+}
+
+/** Clean up the gaps a removed value leaves behind. */
+function tidy(text: string): string {
+  return text
+    // " ," / " ." / " ;" left by an empty value before punctuation.
+    .replace(/[ \t]+([,.;:!?])/g, "$1")
+    // Doubled punctuation from two adjacent removals.
+    .replace(/([,;:])\s*\1+/g, "$1")
+    // "( )" or "()" from a parenthetical whose contents vanished.
+    .replace(/\([ \t]*\)/g, "")
+    // Runs of spaces inside a line.
+    .replace(/[ \t]{2,}/g, " ")
+    // A line that is now only whitespace, between two blank lines.
+    .replace(/\n[ \t]+\n/g, "\n\n")
+    // Three or more newlines collapse to a paragraph break.
+    .replace(/\n{3,}/g, "\n\n")
+    // Trailing space before a newline.
+    .replace(/[ \t]+\n/g, "\n")
+    .trim();
 }
 
 // Simple penalty interest on overdue principal. The OC stores a monthly rate

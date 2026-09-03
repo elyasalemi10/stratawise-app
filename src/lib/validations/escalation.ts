@@ -44,6 +44,13 @@ export const MERGE_FIELDS: Array<{ token: string; label: string; color: string }
   { token: "{{days_overdue}}", label: "Days overdue", color: "#dc2626" },
   { token: "{{interest_accrued}}", label: "Interest accrued", color: "#db2777" },
   { token: "{{daily_interest}}", label: "Daily interest", color: "#0d9488" },
+  // A whole clause, or nothing. Use this instead of writing a sentence
+  // around the two numbers above: an OC that charges no interest, or a levy
+  // still inside its grace period, has nothing to say, and a hand-written
+  // "with interest of {{interest_accrued}}" becomes "with interest of"
+  // followed by a gap. Every field above resolves to nothing when it has no
+  // value, so a template that reads correctly with them empty is the goal.
+  { token: "{{interest_note}}", label: "Interest note", color: "#9333ea" },
 ];
 
 export const MERGE_FIELD_COLORS: Record<string, string> = Object.fromEntries(

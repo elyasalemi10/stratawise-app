@@ -208,6 +208,17 @@ async function advanceInstance(supabase: any, inst: Record<string, unknown>, tod
   });
   const daysOverdue = Math.max(0, Math.floor((new Date(`${today}T00:00:00Z`).getTime() - new Date(`${(notice.due_date as string).slice(0, 10)}T00:00:00Z`).getTime()) / 86_400_000));
 
+  // An OC that charges no interest, or a levy not yet past its grace
+  // period, has nothing to say about interest , and "with interest of $0.00
+  // accrued so far (accruing at $0.00 per day)" is worse than silence. So
+  // the interest sentence is ONE token that is either a whole clause or
+  // empty, rather than two numbers a template has to build a sentence
+  // around and cannot un-build.
+  const hasInterest = interest.accrued > 0;
+  const interestNote = hasInterest
+    ? `, with interest of ${fmtMoney(interest.accrued)} accrued so far (accruing at ${fmtMoney(interest.dailyRate)} per day)`
+    : "";
+
   const vars: Record<string, string> = {
     owner_name: owner?.name ?? "owner",
     oc_name: oc?.name ?? "your Owners Corporation",
@@ -215,8 +226,9 @@ async function advanceInstance(supabase: any, inst: Record<string, unknown>, tod
     amount_due: fmtMoney(principal),
     due_date: fmtDate(notice.due_date as string),
     days_overdue: String(daysOverdue),
-    interest_accrued: fmtMoney(interest.accrued),
-    daily_interest: fmtMoney(interest.dailyRate),
+    interest_accrued: hasInterest ? fmtMoney(interest.accrued) : "",
+    daily_interest: hasInterest ? fmtMoney(interest.dailyRate) : "",
+    interest_note: interestNote,
   };
 
   const lotLabel = lot ? `Lot ${lot.lot_number}` : "a lot";
