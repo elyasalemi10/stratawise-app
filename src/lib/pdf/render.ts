@@ -181,12 +181,9 @@ async function assembleLevyNoticeProps(
       .eq("levy_notice_id", levy.id)
       .order("sort_order"),
     supabase
-      .from("oc_members")
-      .select("profile_id, profiles!inner(first_name, last_name)")
-      .eq("oc_id", levy.oc_id)
+      .from("v_lot_current_owners")
+      .select("profile_id, name")
       .eq("lot_id", levy.lot_id)
-      .eq("role", "lot_owner")
-      .eq("is_primary_contact", true)
       .maybeSingle(),
     // The owner's permanent billing reference. payment_reference is
     // generated on OC creation ("WHDPE-001" = first-5-of-short_code +
@@ -253,20 +250,12 @@ async function assembleLevyNoticeProps(
     secondary: isHex(secondaryHex) ? secondaryHex : "#CFA753",
   };
 
-  // Owner display name.
-  let ownerName = "Lot Owner";
-  if (memberRow) {
-    const rel = (memberRow as {
-      profiles: { first_name: string | null; last_name: string | null } | { first_name: string | null; last_name: string | null }[] | null;
-    }).profiles;
-    const flat = Array.isArray(rel) ? rel[0] : rel;
-    if (flat) {
-      const f = flat.first_name?.trim() ?? "";
-      const l = flat.last_name?.trim() ?? "";
-      const full = `${f} ${l}`.trim();
-      if (full.length > 0) ownerName = full;
-    }
-  }
+  // Owner display name. The owner's own name, not the profile's , a levy
+  // notice addresses the person the OC has on record, which is the same
+  // name the manager maintains, whether or not they use the portal.
+  const ownerName =
+    ((memberRow as { name: string | null } | null)?.name ?? "").trim() ||
+    "Lot Owner";
 
   const lotLabel = lot
     ? `${lot.lot_number ?? ""}${lot.unit_number ? ` Unit ${lot.unit_number}` : ""}`

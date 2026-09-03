@@ -244,15 +244,20 @@ export const requireOCAccess = cache(async function requireOCAccess(
     return profile;
   }
 
-  const { data: membership } = await supabase
-    .from("oc_members")
+  // A lot owner's access to an OC IS their open ownership of a lot in it.
+  // This used to read oc_members, a separate membership row written next to
+  // the ownership and free to disagree with it , so a lot could change hands
+  // while the old owner kept the OC, or a new owner be locked out of one
+  // they demonstrably own.
+  const { data: ownership } = await supabase
+    .from("v_lot_current_owners")
     .select("id")
     .eq("oc_id", ocId)
     .eq("profile_id", profile.id)
-    .is("left_at", null)
-    .single();
+    .limit(1)
+    .maybeSingle();
 
-  if (!membership) throw new Error("Access denied");
+  if (!ownership) throw new Error("Access denied");
   return profile;
 })
 

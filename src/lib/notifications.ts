@@ -212,12 +212,9 @@ export async function emitPaymentReceivedEmail(
 
   // Step 3: resolve owner via oc_members (active, lot-scoped).
   const { data: memberRow } = await supabase
-    .from("oc_members")
+    .from("v_lot_current_owners")
     .select("profile_id")
-    .eq("oc_id", cr.oc_id)
     .eq("lot_id", cr.lot_id)
-    .eq("role", "lot_owner")
-    .eq("is_primary_contact", true)
     .maybeSingle();
   const ownerProfileId = (memberRow as { profile_id: string } | null)
     ?.profile_id;

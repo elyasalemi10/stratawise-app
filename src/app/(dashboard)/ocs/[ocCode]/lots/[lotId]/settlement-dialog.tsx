@@ -16,6 +16,7 @@ import {
   Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
 } from "@/components/ui/select";
 import { DatePicker } from "@/components/shared/date-picker";
+import { todayIso } from "@/lib/today";
 import { PhoneInput } from "@/components/shared/phone-input";
 import { PlacesAutocomplete } from "@/components/shared/places-autocomplete";
 import {
@@ -788,6 +789,8 @@ function ReviewForm(props: {
               id="settlement-date"
               value={props.settlementDate}
               onChange={props.setSettlementDate}
+              minDate={todayIso()}
+              maxDate={todayIso()}
             />
           </div>
         </div>
@@ -883,6 +886,8 @@ function ManualReviewForm(props: {
               id="manual-settlement-date"
               value={props.settlementDate}
               onChange={props.setSettlementDate}
+              minDate={todayIso()}
+              maxDate={todayIso()}
             />
           </div>
         </div>

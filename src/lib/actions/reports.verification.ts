@@ -126,8 +126,6 @@ async function createFixture(): Promise<FixtureContext> {
     oc_id: ocId,
     profile_id: managerProfileId,
     role: "strata_manager",
-    is_primary_contact: false,
-    is_financial: false,
   });
 
   // Two lots + two owners (lot A in arrears; lot B clean).
@@ -160,13 +158,22 @@ async function createFixture(): Promise<FixtureContext> {
     const lotId = (lot as { id: string }).id;
     lotIds.push(lotId);
 
-    await supabase.from("oc_members").insert({
+    // Owning a lot IS the membership , seed the ownership.
+    const { data: seededOwner } = await supabase
+      .from("owners")
+      .insert({
+        management_company_id: companyId,
+        name: `Owner RP${num}`,
+        email: `${VERIFY_MARKER.toLowerCase()}${runId}_o${num}@rp.test`,
+        profile_id: ownerIds[num - 1],
+      })
+      .select("id")
+      .single();
+    await supabase.from("lot_ownerships").insert({
       oc_id: ocId,
-      profile_id: ownerIds[num - 1],
       lot_id: lotId,
-      role: "lot_owner",
-      is_primary_contact: true,
-      is_financial: true,
+      owner_id: (seededOwner as { id: string }).id,
+      start_date: new Date().toISOString().slice(0, 10),
     });
   }
 

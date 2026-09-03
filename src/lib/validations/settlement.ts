@@ -69,8 +69,6 @@ export interface OwnershipHistoryEntry {
   email: string | null;
   joinedAt: string;
   leftAt: string | null;
-  isPrimaryContact: boolean;
-  isFinancial: boolean;
   settlementDocument: {
     id: string;
     fileName: string;

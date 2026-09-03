@@ -164,17 +164,16 @@ export async function acceptInvitation(rawCode: string) {
   if (invitation.status === "revoked") return { error: "This invitation has been revoked" };
   if (new Date(invitation.expires_at) < new Date()) return { error: "This invitation has expired" };
 
-  // Check lot isn't already claimed (for lot_owner invitations)
+  // Check the lot isn't already claimed. The open ownership is the claim:
+  // if it already points at a profile, someone has accepted for this lot.
   if (invitation.lot_id) {
-    const { data: existingMember } = await supabase
-      .from("oc_members")
-      .select("id")
+    const { data: claimed } = await supabase
+      .from("v_lot_current_owners")
+      .select("profile_id")
       .eq("lot_id", invitation.lot_id)
-      .eq("role", "lot_owner")
-      .is("left_at", null)
-      .single();
+      .maybeSingle();
 
-    if (existingMember) {
+    if (claimed?.profile_id && claimed.profile_id !== profile.id) {
       return { error: "This lot has already been claimed by another owner" };
     }
   }
@@ -207,21 +206,15 @@ export async function acceptInvitation(rawCode: string) {
         .eq("id", profile.id);
     }
   } else {
-    // Lot owner , create oc member
+    // Lot owner. There is no membership row to write: owning a lot IS the
+    // membership. Attaching this profile to the owner below is what gives
+    // them the OC , see requireOCAccess.
     await supabase
       .from("profiles")
       .update({ role: "lot_owner" })
       .eq("id", profile.id);
 
-    await supabase.from("oc_members").insert({
-      oc_id: invitation.oc_id,
-      profile_id: profile.id,
-      lot_id: invitation.lot_id,
-      role: "lot_owner",
-      is_primary_contact: true,
-    });
-
-    // ─── Entity-model link: connect the new profile to the owner row ─
+    // ─── Connect the new profile to the owner row ────────────────────
     //
     // The active lot_ownership for this lot points at an `owners` row
     // (created either via the wizard or applySettlementToLot). On accept,
@@ -278,8 +271,6 @@ export async function acceptInvitation(rawCode: string) {
               owner_id: createdOwner.id,
               oc_id: invitation.oc_id,
               start_date: acceptDate,
-              is_primary_contact: true,
-              is_financial: true,
               invitation_id: invitation.id,
             });
           }

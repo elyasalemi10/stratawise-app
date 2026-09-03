@@ -127,13 +127,27 @@ async function createFixture(): Promise<FixtureContext> {
     .single();
   const lotId = (lot as { id: string }).id;
 
-  await supabase.from("oc_members").insert({
+  // Owning a lot IS the membership , seed the ownership, not a member row.
+  const { data: ocRow } = await supabase
+    .from("owners_corporations")
+    .select("management_company_id")
+    .eq("id", ocId)
+    .single();
+  const { data: seededOwner } = await supabase
+    .from("owners")
+    .insert({
+      management_company_id: (ocRow as { management_company_id: string }).management_company_id,
+      name: `Email Owner ${runId}`,
+      email: `email-owner-${runId}@example.test`,
+      profile_id: ownerProfileId,
+    })
+    .select("id")
+    .single();
+  await supabase.from("lot_ownerships").insert({
     oc_id: ocId,
-    profile_id: ownerProfileId,
     lot_id: lotId,
-    role: "lot_owner",
-    is_primary_contact: true,
-    is_financial: true,
+    owner_id: (seededOwner as { id: string }).id,
+    start_date: new Date().toISOString().slice(0, 10),
   });
 
   const { data: bankAccount } = await supabase

@@ -1233,7 +1233,6 @@ export async function completeWizard(draftId: string) {
       oc_id: oc.id,
       profile_id: profile.id,
       role: "strata_manager",
-      is_primary_contact: true,
     });
 
     // TFN , encrypt and persist via the pgp_sym_encrypt RPC. Done after the

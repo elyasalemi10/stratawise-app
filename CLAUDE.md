@@ -216,15 +216,30 @@ The model is two tables and a view:
   portal invite), and the postal-address verification fields. Editing here
   changes every lot that person owns, which is the point.
 - **`lot_ownerships`** , one person's hold on one lot, time-bounded by
-  `start_date` / `end_date`. Carries everything that is true of THAT ownership
-  and not of the person: `share_fraction`, `is_primary_contact`, `is_financial`,
-  `occupancy_status`, `tenant_*`, `delivery_preference`, `payment_reference`,
-  the digital-consent fields, `at_portal_signup_categories`, `invitation_id`,
+  `start_date` / `end_date`. Carries everything that is true of THAT
+  ownership and not of the person: `occupancy_status`, `tenant_*`,
+  `delivery_preference`, `payment_reference`, `invitation_id`,
   `source_settlement_id`.
 - **`v_lot_current_owners`** , the two joined, filtered to `end_date IS NULL`.
   **Read this for "who owns this lot now".** Its `id` IS the ownership's id,
   and it derives `is_occupied_by_owner` from `occupancy_status` rather than
   storing a second copy that can disagree.
+
+**One owner per lot.** A unique partial index on `lot_ownerships (lot_id)
+WHERE end_date IS NULL` enforces it. Joint ownership is NOT modelled:
+`share_fraction`, `is_primary_contact` and `is_financial` used to exist and
+were removed, because `set_lot_owner` closes every other open ownership, so
+a second owner evicted the first , the columns described something the code
+could not produce, which is worse than not modelling it at all. If joint
+ownership is ever wanted, it is a deliberate piece of work, not a flag.
+
+**`oc_members` is manager membership, and nothing else.** A CHECK constraint
+pins `role` to `strata_manager`. It used to carry `role='lot_owner'` rows
+with a `lot_id`, written next to the ownership and outside the transaction
+that changes hands , a second answer to "who owns this lot" that was free to
+disagree with the first. **A lot owner's access to an OC IS their open
+ownership** (`requireOCAccess` reads the view), and every "which lots do I
+own" / "who owns this lot" query reads the view too.
 
 Rules:
 - **Reads go through `v_lot_current_owners`.** It is `security_invoker` and
@@ -241,6 +256,17 @@ Rules:
 - **Selling a lot is an `end_date`, never a delete.** History survives, and
   `communication_log.lot_owner_id_at_creation` keeps a previous owner's
   correspondence out of the new owner's view.
+- **`set_lot_owner` returns `(owner_id, ownership_id, ended_ownership_id)`**
+  so a caller can link a settlement without a second query, and so a failed
+  transfer is a failed transfer: it closes the old ownership and opens the
+  new one in ONE transaction, or does neither. Do not hand-roll the two
+  halves , that is what left lots ownerless.
+- **A settlement is dated TODAY.** Recorded once it has happened: a future
+  date hands the lot over before it changes hands, a past one silently
+  rewrites whose levies and correspondence belonged to whom over the
+  intervening days. The picker offers only today and `applySettlementToLot`
+  refuses anything else. Correcting a historical transfer is deliberately
+  not self-service.
 - Five tables carry an FK named `lot_owner_id` (or
   `lot_owner_id_at_creation`). They all reference **`lot_ownerships(id)`**.
   The name is historical; the column comments say so.

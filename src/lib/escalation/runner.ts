@@ -51,12 +51,10 @@ export async function notifyLotOwnersInApp(
   link?: string,
 ) {
   const { data: owners } = await supabase
-    .from("oc_members")
+    .from("v_lot_current_owners")
     .select("profile_id")
-    .eq("oc_id", ocId)
     .eq("lot_id", lotId)
-    .eq("role", "lot_owner")
-    .is("left_at", null);
+    .not("profile_id", "is", null);
   if (!owners || owners.length === 0) return;
 
   const rows = [];

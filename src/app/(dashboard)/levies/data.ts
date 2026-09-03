@@ -46,11 +46,9 @@ export async function getOwnerLeviesPageData(): Promise<OwnerLeviesPageData> {
 
   // Every lot this owner holds, across all OCs.
   const { data: memberships } = await supabase
-    .from("oc_members")
+    .from("v_lot_current_owners")
     .select("oc_id, lot_id")
-    .eq("profile_id", profile.id)
-    .eq("role", "lot_owner")
-    .is("left_at", null);
+    .eq("profile_id", profile.id);
 
   const lotIds = (memberships ?? []).map((m) => m.lot_id).filter(Boolean) as string[];
   if (lotIds.length === 0) return EMPTY;

@@ -12,6 +12,7 @@ import { fetchObject } from "@/lib/storage/r2";
 import { parseSettlementPdf, type ParsedSettlement } from "@/lib/parse-settlement";
 
 import { generateInviteCode } from "@/lib/invite-code";
+import { todayIso } from "@/lib/today";
 
 // ─── Settlement PDF parsing ─────────────────────────────────────
 //
@@ -375,6 +376,21 @@ export async function applySettlementToLot(input: ApplySettlementInput) {
   }
   const { documentId, lotId, newOwner, settlementDate } = parsed.data;
 
+  // A settlement is recorded once it has happened, so it is dated today.
+  // A future date would hand the lot over before it changed hands; a past
+  // one would silently rewrite whose levies and correspondence belonged to
+  // whom over the intervening days. The picker offers only today, and this
+  // is the half that a client cannot talk around.
+  const today = todayIso();
+  if (settlementDate !== today) {
+    return {
+      error:
+        settlementDate > today
+          ? "A settlement can only be recorded on the day it happens, not in advance."
+          : "A settlement can only be recorded on the day it happens. Record it today, or contact support to correct a past transfer.",
+    };
+  }
+
   const supabase = createServerClient();
 
   // Two paths: (a) a settlement PDF was uploaded → use it as the source of
@@ -438,38 +454,6 @@ export async function applySettlementToLot(input: ApplySettlementInput) {
   const managementCompanyId = ocRow.management_company_id;
 
   const settlementTimestamp = new Date(`${settlementDate}T00:00:00Z`).toISOString();
-
-  // 1. End the current active member, if any.
-  const { data: activeMember } = await supabase
-    .from("oc_members")
-    .select("id, profile_id, joined_at, role, is_primary_contact, is_financial")
-    .eq("lot_id", lotId)
-    .eq("role", "lot_owner")
-    .is("left_at", null)
-    .maybeSingle();
-
-  if (activeMember) {
-    const { error: updErr } = await supabase
-      .from("oc_members")
-      .update({ left_at: settlementTimestamp })
-      .eq("id", activeMember.id);
-    if (updErr) return { error: `Could not end existing ownership: ${updErr.message}` };
-
-    await supabase.from("audit_log").insert({
-      profile_id: profile.id,
-      oc_id: resolvedOcId,
-      action: "ownership_transfer",
-      entity_type: "oc_member",
-      entity_id: activeMember.id,
-      before_state: { left_at: null },
-      after_state: { left_at: settlementTimestamp },
-      metadata: {
-        settlement_document_id: documentId,
-        side: "outgoing",
-        lot_id: lotId,
-      },
-    });
-  }
 
   // 2. Mark any existing pending invitation as revoked (replaced by this settlement).
   const { data: existingPending } = await supabase
@@ -619,8 +603,20 @@ export async function applySettlementToLot(input: ApplySettlementInput) {
     },
   });
 
-  // 5. Notify the outgoing owner in-app (no email).
-  if (activeMember?.profile_id) {
+  // 5. Notify the outgoing owner in-app (no email). Who that was is on the
+  //    ownership set_lot_owner just closed , there is no separate
+  //    membership row to look it up from any more.
+  const { data: outgoing } = endedLotOwnershipId
+    ? await supabase
+        .from("lot_ownerships")
+        .select("owners!inner(profile_id)")
+        .eq("id", endedLotOwnershipId)
+        .maybeSingle()
+    : { data: null };
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const outgoingProfileId = ((outgoing as any)?.owners?.profile_id ?? null) as string | null;
+
+  if (outgoingProfileId) {
     const { data: oc } = await supabase
       .from("owners_corporations")
       .select("name, address")
@@ -629,7 +625,7 @@ export async function applySettlementToLot(input: ApplySettlementInput) {
 
     const lotLabel = oc?.address ?? oc?.name ?? `Lot ${lot.lot_number}`;
     await supabase.from("notifications").insert({
-      profile_id: activeMember.profile_id,
+      profile_id: outgoingProfileId,
       oc_id: resolvedOcId,
       type: "ownership_ended",
       title: "Ownership transferred",
@@ -646,10 +642,6 @@ export async function applySettlementToLot(input: ApplySettlementInput) {
     success: true,
     invitationId: invitation?.id ?? null,
     invitationCode: invitation?.code ?? null,
-    endedMemberId: activeMember?.id ?? null,
-    // Entity-model surface: tells the caller which new-shape rows were
-    // created. Non-fatal , settlementId / newLotOwnershipId may be null
-    // if the entity-model write failed (legacy flow still succeeded).
     settlementId: settlementRowId,
     newOwnerId,
     newLotOwnershipId,
@@ -685,7 +677,7 @@ async function getLotOwnershipHistoryInner(
   const { data: ownerships } = await supabase
     .from("lot_ownerships")
     .select(
-      "id, start_date, end_date, is_primary_contact, is_financial, source_settlement_id, owners!inner(id, name, email, profile_id)",
+      "id, start_date, end_date, source_settlement_id, owners!inner(id, name, email, profile_id)",
     )
     .eq("lot_id", lotId)
     .order("start_date", { ascending: false });
@@ -725,8 +717,7 @@ async function getLotOwnershipHistoryInner(
         // start_date is non-null in the schema; coerce to T00:00:00Z.
         joinedAt: `${o.start_date}T00:00:00Z`,
         leftAt: o.end_date ? `${o.end_date}T00:00:00Z` : null,
-        isPrimaryContact: o.is_primary_contact,
-        isFinancial: o.is_financial,
+
         // Document is served only through the authenticated /api/documents
         // route (never a public R2 URL) so a copied link is useless to
         // anyone without an authorised session.
@@ -737,71 +728,5 @@ async function getLotOwnershipHistoryInner(
     });
   }
 
-  // ─── Source of truth #2: legacy oc_members + audit_log fallback ─
-  //
-  // Pre-entity-migration OCs have no lot_ownership rows yet. Read the
-  // historical oc_members rows + the audit_log "ownership_transfer"
-  // metadata for the settlement-doc backreference.
-
-  const { data: members, error } = await supabase
-    .from("oc_members")
-    .select(
-      "id, profile_id, joined_at, left_at, is_primary_contact, is_financial, profiles(first_name, last_name, email)",
-    )
-    .eq("lot_id", lotId)
-    .eq("role", "lot_owner")
-    .order("joined_at", { ascending: false });
-
-  if (error) throw new Error(`oc_members query failed: ${error.message}`);
-  if (!members || members.length === 0) return [];
-
-  const memberIds = members.map((m) => m.id);
-  const { data: auditRows } = await supabase
-    .from("audit_log")
-    .select("entity_id, metadata")
-    .eq("entity_type", "oc_member")
-    .eq("action", "ownership_transfer")
-    .in("entity_id", memberIds);
-
-  const docIds = new Set<string>();
-  const docByMember = new Map<string, string>();
-  for (const row of auditRows ?? []) {
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const meta = (row as any).metadata ?? {};
-    if (meta.settlement_document_id && row.entity_id) {
-      docByMember.set(row.entity_id, meta.settlement_document_id);
-      docIds.add(meta.settlement_document_id);
-    }
-  }
-
-  const docMap = new Map<string, { fileName: string; filePath: string }>();
-  if (docIds.size > 0) {
-    const { data: docs } = await supabase
-      .from("documents")
-      .select("id, file_name, file_path")
-      .in("id", Array.from(docIds));
-    for (const d of docs ?? []) {
-      docMap.set(d.id, { fileName: d.file_name, filePath: d.file_path });
-    }
-  }
-
-  return members.map((m) => {
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const p = (m as any).profiles;
-    const docId = docByMember.get(m.id) ?? null;
-    const doc = docId ? docMap.get(docId) ?? null : null;
-    return {
-      id: m.id,
-      profileId: m.profile_id,
-      name: [p?.first_name, p?.last_name].filter(Boolean).join(" ").trim() || null,
-      email: p?.email ?? null,
-      joinedAt: m.joined_at,
-      leftAt: m.left_at,
-      isPrimaryContact: m.is_primary_contact,
-      isFinancial: m.is_financial,
-      settlementDocument: doc
-        ? { id: docId!, fileName: doc.fileName }
-        : null,
-    };
-  });
+  return [];
 }

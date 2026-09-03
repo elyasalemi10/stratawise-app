@@ -52,6 +52,7 @@ export function LotsSkeleton() {
         <Button variant="secondary" disabled>
           <SlidersHorizontal className="mr-2 h-3.5 w-3.5" />
           Filters
+          <ChevronDown className="ml-1 h-3.5 w-3.5 opacity-60" />
         </Button>
 
         <Button variant="secondary" className="ml-auto" disabled>

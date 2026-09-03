@@ -49,7 +49,6 @@ export function OwnershipHistory({ history }: Props) {
                       ) : (
                         <Badge variant="neutral">Past</Badge>
                       )}
-                      {entry.isPrimaryContact && <Badge variant="info">Primary</Badge>}
                     </div>
                     <p className="mt-0.5 text-xs text-muted-foreground truncate">{entry.email ?? ","}</p>
                     <p className="mt-1 text-xs text-muted-foreground">

@@ -28,12 +28,10 @@ export async function getMyLeviesPageData(ocId: string): Promise<MyLeviesPageDat
   const supabase = createServerClient();
 
   const { data: memberships } = await supabase
-    .from("oc_members")
+    .from("v_lot_current_owners")
     .select("lot_id")
     .eq("oc_id", ocId)
-    .eq("profile_id", profile.id)
-    .eq("role", "lot_owner")
-    .is("left_at", null);
+    .eq("profile_id", profile.id);
 
   const lotIds = (memberships ?? []).map((m) => m.lot_id).filter(Boolean) as string[];
   if (lotIds.length === 0) return { levies: [] };

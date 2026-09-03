@@ -14,11 +14,10 @@ async function notifyOcOwnersInApp(
   message: string,
 ) {
   const { data: members } = await supabase
-    .from("oc_members")
+    .from("v_lot_current_owners")
     .select("profile_id")
     .eq("oc_id", ocId)
-    .eq("role", "lot_owner")
-    .is("left_at", null);
+    .not("profile_id", "is", null);
   if (!members || members.length === 0) return;
   await supabase.from("notifications").insert(
     members.map((m: { profile_id: string }) => ({

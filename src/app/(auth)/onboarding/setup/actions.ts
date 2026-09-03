@@ -200,7 +200,6 @@ export async function createOC(formData: {
       oc_id: oc.id,
       profile_id: profile.id,
       role: "strata_manager",
-      is_primary_contact: true,
     });
 
   if (memberError) {

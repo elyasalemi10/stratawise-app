@@ -16,11 +16,6 @@ export interface LotOwnerInfo {
   occupancy_status: "owner_occupied" | "tenanted" | "vacant" | null;
 }
 
-function formatName(first: string | null, last: string | null): string | null {
-  const joined = [first, last].filter(Boolean).join(" ").trim();
-  return joined.length > 0 ? joined : null;
-}
-
 function emptyOwner(lotId: string): LotOwnerInfo {
   return {
     lot_id: lotId,
@@ -35,10 +30,11 @@ function emptyOwner(lotId: string): LotOwnerInfo {
 }
 
 /**
- * Resolve the current owner of each supplied lot, in one round-trip pair of
- * queries. Precedence: active oc_members row wins; otherwise the most
- * recent pending invitation; otherwise "unowned". Use this everywhere the UI
- * or a PDF previously read `lots.owner_*` columns.
+ * Resolve the current owner of each supplied lot.
+ *
+ * One query, one answer: the open lot_ownerships row. A lot with no
+ * ownership but an outstanding invitation counts as awaiting an owner;
+ * anything else is unowned.
  */
 export async function getLotOwners(
   supabase: SupabaseClient,
@@ -77,38 +73,11 @@ export async function getLotOwners(
     });
   }
 
-  // ─── Source of truth #2: legacy oc_members (pre-entity-migration OCs) ─
+  // ─── Source of truth #2: a pending invitation ─────────────────────
   //
-  // Dual-read fallback. Only fill lots that didn't resolve from the new
-  // tables. Once every reader is migrated AND legacy data is backfilled
-  // we drop this block.
-  const lotsStillUnowned = lotIds.filter((id) => result.get(id)?.owner_status === "unowned");
-  if (lotsStillUnowned.length > 0) {
-    const { data: members } = await supabase
-      .from("oc_members")
-      .select("lot_id, profile_id, profiles!inner(id, first_name, last_name, email, phone)")
-      .in("lot_id", lotsStillUnowned)
-      .eq("role", "lot_owner")
-      .is("left_at", null);
-
-    for (const m of members ?? []) {
-      if (!m.lot_id) continue;
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      const profile = (m as any).profiles;
-      result.set(m.lot_id, {
-        lot_id: m.lot_id,
-        owner_status: "member",
-        owner_display_name: formatName(profile?.first_name ?? null, profile?.last_name ?? null),
-        owner_contact_email: profile?.email ?? null,
-        owner_contact_phone: profile?.phone ?? null,
-        profile_id: m.profile_id,
-        invitation_id: null,
-        occupancy_status: null,
-      });
-    }
-  }
-
-  // ─── Source of truth #3: invitations (pre-entity-migration OCs) ──
+  // A lot with no ownership but an outstanding invite is not unowned; it is
+  // waiting on someone. Showing "no owner" there would have the manager
+  // chase a lot they have already actioned.
   const stillUnowned = lotIds.filter((id) => result.get(id)?.owner_status === "unowned");
   if (stillUnowned.length === 0) return result;
 
@@ -146,23 +115,14 @@ export async function getLotOwner(
   return map.get(lotId) ?? emptyOwner(lotId);
 }
 
-/**
- * Count lots in a oc that have an active member row (the canonical
- * "assigned / has an owner" check, replacing the old denormalised column).
- */
+/** How many lots in this OC currently have an owner. */
 export async function countLotsWithOwner(
   supabase: SupabaseClient,
   ocId: string,
 ): Promise<number> {
-  const { data } = await supabase
-    .from("oc_members")
-    .select("lot_id")
-    .eq("oc_id", ocId)
-    .eq("role", "lot_owner")
-    .is("left_at", null)
-    .not("lot_id", "is", null);
-
-  const unique = new Set<string>();
-  for (const row of data ?? []) if (row.lot_id) unique.add(row.lot_id);
-  return unique.size;
+  const { count } = await supabase
+    .from("v_lot_current_owners")
+    .select("lot_id", { count: "exact", head: true })
+    .eq("oc_id", ocId);
+  return count ?? 0;
 }

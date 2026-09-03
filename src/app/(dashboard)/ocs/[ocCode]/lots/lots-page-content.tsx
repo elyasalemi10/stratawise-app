@@ -16,17 +16,17 @@ import {
 
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
-import {
-  Popover, PopoverContent, PopoverTrigger,
-} from "@/components/ui/popover";
-import {
-  Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
-} from "@/components/ui/select";
+import { cn } from "@/lib/utils";
 import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
+  DropdownMenuRadioGroup,
+  DropdownMenuRadioItem,
+  DropdownMenuSeparator,
+  DropdownMenuSub,
+  DropdownMenuSubContent,
+  DropdownMenuSubTrigger,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { LotsTab } from "../manage/lots-tab";
@@ -256,13 +256,15 @@ export function LotsPageContent({
               )}
             </div>
 
-            {/* One button, not three dropdowns sitting in the toolbar. Three
-                controls that are "any" most of the time is three pieces of
-                furniture earning nothing; behind a button they cost one
-                click when you want them and no width when you do not. The
-                count on the button is what tells you a filter is on. */}
-            <Popover>
-              <PopoverTrigger
+            {/* A menu, not a panel. Three facets that are "any" most of the
+                time do not deserve three controls parked in the toolbar,
+                and they do not deserve a form either , each is a
+                one-of-N choice, which is what a radio group in a dropdown
+                is for. Submenus keep the top level to three lines you can
+                read at a glance, and the current value sits next to each
+                so you can see the whole filter state without opening one. */}
+            <DropdownMenu>
+              <DropdownMenuTrigger
                 render={
                   <Button variant="secondary">
                     <SlidersHorizontal className="mr-2 h-3.5 w-3.5" />
@@ -272,26 +274,40 @@ export function LotsPageContent({
                         {filterCount}
                       </span>
                     )}
+                    <ChevronDown className="ml-1 h-3.5 w-3.5 opacity-60" />
                   </Button>
                 }
               />
-              <PopoverContent align="start" className="w-72 space-y-4">
-                <FilterField label="Balance">
-                  <FilterSelect value={balanceFilter} onChange={setBalanceFilter} options={BALANCE_OPTIONS} />
-                </FilterField>
-                <FilterField label="Owner">
-                  <FilterSelect value={portalFilter} onChange={setPortalFilter} options={PORTAL_OPTIONS} />
-                </FilterField>
-                <FilterField label="Occupancy">
-                  <FilterSelect value={occupancyFilter} onChange={setOccupancyFilter} options={OCCUPANCY_OPTIONS} />
-                </FilterField>
+              <DropdownMenuContent align="start" className="min-w-[15rem]">
+                <FilterSubmenu
+                  label="Balance"
+                  value={balanceFilter}
+                  onChange={setBalanceFilter}
+                  options={BALANCE_OPTIONS}
+                />
+                <FilterSubmenu
+                  label="Owner"
+                  value={portalFilter}
+                  onChange={setPortalFilter}
+                  options={PORTAL_OPTIONS}
+                />
+                <FilterSubmenu
+                  label="Occupancy"
+                  value={occupancyFilter}
+                  onChange={setOccupancyFilter}
+                  options={OCCUPANCY_OPTIONS}
+                />
                 {filterCount > 0 && (
-                  <Button variant="secondary" className="w-full" onClick={clearFilters}>
-                    Clear filters
-                  </Button>
+                  <>
+                    <DropdownMenuSeparator />
+                    <DropdownMenuItem onClick={clearFilters}>
+                      <X className="mr-2 h-3.5 w-3.5" />
+                      Clear filters
+                    </DropdownMenuItem>
+                  </>
                 )}
-              </PopoverContent>
-            </Popover>
+              </DropdownMenuContent>
+            </DropdownMenu>
 
             <DropdownMenu>
               <DropdownMenuTrigger
@@ -371,34 +387,48 @@ export function LotsPageContent({
 
 // One filter dropdown. The trigger always shows a label, so a filter set to
 // "any" still reads as a control you can use rather than an empty box.
-function FilterField({ label, children }: { label: string; children: React.ReactNode }) {
-  return (
-    <div className="space-y-1.5">
-      <Label>{label}</Label>
-      {children}
-    </div>
-  );
-}
-
-function FilterSelect<T extends string>({
+// One facet: a labelled submenu whose items are a radio group, with the
+// chosen value shown on the trigger so the menu reads as a summary of the
+// filter state rather than three doors you have to open.
+function FilterSubmenu<T extends string>({
+  label,
   value,
   onChange,
   options,
 }: {
+  label: string;
   value: T;
   onChange: (next: T) => void;
   options: Array<{ value: T; label: string }>;
 }) {
+  const current = options.find((o) => o.value === value);
+  const isDefault = value === options[0].value;
+
   return (
-    <Select value={value} onValueChange={(v) => onChange((v ?? options[0].value) as T)}>
-      <SelectTrigger className="w-full">
-        <SelectValue>{options.find((o) => o.value === value)?.label}</SelectValue>
-      </SelectTrigger>
-      <SelectContent>
-        {options.map((o) => (
-          <SelectItem key={o.value} value={o.value}>{o.label}</SelectItem>
-        ))}
-      </SelectContent>
-    </Select>
+    <DropdownMenuSub>
+      <DropdownMenuSubTrigger>
+        <span>{label}</span>
+        <span
+          className={cn(
+            "ml-auto pl-6 text-xs",
+            isDefault ? "text-muted-foreground" : "font-medium text-foreground",
+          )}
+        >
+          {current?.label}
+        </span>
+      </DropdownMenuSubTrigger>
+      <DropdownMenuSubContent>
+        <DropdownMenuRadioGroup
+          value={value}
+          onValueChange={(v) => onChange((v ?? options[0].value) as T)}
+        >
+          {options.map((o) => (
+            <DropdownMenuRadioItem key={o.value} value={o.value}>
+              {o.label}
+            </DropdownMenuRadioItem>
+          ))}
+        </DropdownMenuRadioGroup>
+      </DropdownMenuSubContent>
+    </DropdownMenuSub>
   );
 }
