@@ -219,7 +219,7 @@ export function Step2Settings({
                     <Tooltip>
                       <TooltipTrigger
                         render={
-                          <button type="button" aria-label="Interest-free period explained" className="text-muted-foreground hover:text-foreground cursor-help">
+                          <button type="button" aria-label="Interest-free period explained" className="text-muted-foreground hover:text-foreground cursor-pointer">
                             <Info className="h-3.5 w-3.5" />
                           </button>
                         }
@@ -251,7 +251,7 @@ export function Step2Settings({
                     <Tooltip>
                       <TooltipTrigger
                         render={
-                          <button type="button" aria-label="Interest rate explained" className="text-muted-foreground hover:text-foreground cursor-help">
+                          <button type="button" aria-label="Interest rate explained" className="text-muted-foreground hover:text-foreground cursor-pointer">
                             <Info className="h-3.5 w-3.5" />
                           </button>
                         }

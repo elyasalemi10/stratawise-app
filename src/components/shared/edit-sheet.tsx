@@ -114,20 +114,22 @@ export function EditSheet({
 
   return (
     <Sheet open={open} onOpenChange={handleOpenChange}>
-      <SheetTrigger
-        render={
-          renderTrigger ? (
-            <span />
-          ) : (
+      {/* No trigger when the caller drives `open` itself. Wrapping a <span>
+          in SheetTrigger told Base UI a non-button was acting as a button,
+          which it warned about , correctly, since nothing was ever going to
+          click it. */}
+      {renderTrigger ? (
+        renderTrigger(open)
+      ) : (
+        <SheetTrigger
+          render={
             <Button variant={triggerVariant} size={triggerSize} disabled={disabled}>
               <Pencil className={cn("h-3.5 w-3.5", triggerSize !== "icon-sm" && "mr-1.5")} />
               {triggerSize !== "icon-sm" && triggerLabel}
             </Button>
-          )
-        }
-      >
-        {renderTrigger ? renderTrigger(open) : null}
-      </SheetTrigger>
+          }
+        />
+      )}
       <SheetContent
         side="right"
         showCloseButton={false}

@@ -233,7 +233,7 @@ export function Step4OpeningBalances({
             <Tooltip>
               <TooltipTrigger
                 render={
-                  <button type="button" aria-label="Debit / Credit explained" className="text-muted-foreground hover:text-foreground cursor-help">
+                  <button type="button" aria-label="Debit / Credit explained" className="text-muted-foreground hover:text-foreground cursor-pointer">
                     <Info className="h-3.5 w-3.5" />
                   </button>
                 }

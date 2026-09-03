@@ -789,7 +789,6 @@ function ReviewForm(props: {
               id="settlement-date"
               value={props.settlementDate}
               onChange={props.setSettlementDate}
-              minDate={todayIso()}
               maxDate={todayIso()}
             />
           </div>
@@ -886,7 +885,6 @@ function ManualReviewForm(props: {
               id="manual-settlement-date"
               value={props.settlementDate}
               onChange={props.setSettlementDate}
-              minDate={todayIso()}
               maxDate={todayIso()}
             />
           </div>

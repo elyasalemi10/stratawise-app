@@ -39,7 +39,7 @@ export function InfoTooltip({
             type="button"
             // Not a <Button>: this sits inline against a <Label> and should
             // read as punctuation, not as an action competing with the form.
-            className="inline-flex size-4 shrink-0 cursor-help items-center justify-center rounded-full text-muted-foreground transition-colors hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/20"
+            className="inline-flex size-4 shrink-0 cursor-pointer items-center justify-center rounded-full text-muted-foreground transition-colors hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/20"
           />
         }
       >

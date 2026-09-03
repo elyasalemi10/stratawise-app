@@ -119,6 +119,7 @@ export function StepCompany({ onNext }: { onNext: () => void }) {
     const abnDigits = abn.replace(/\D/g, "");
     const result = await createCompany({
       name: data.name,
+      registered_name: data.registered_name || undefined,
       trading_as: data.trading_as || undefined,
       abn: abnDigits || undefined,
       address: addressToString(address),

@@ -35,6 +35,11 @@ export function NotificationsSkeleton() {
                   <div className="flex flex-col items-center gap-1">
                     <Icon className="size-4 text-muted-foreground" aria-hidden />
                     <span className="text-sm font-medium text-foreground">{label}</span>
+                    {/* Fixed copy, and the reason the header is three lines
+                        tall. Leaving it out made the skeleton shorter than
+                        the page it stands in for, so everything below it
+                        jumped the moment the data arrived. */}
+                    <span className="text-xs text-muted-foreground">Turn all on</span>
                   </div>
                 </th>
               ))}

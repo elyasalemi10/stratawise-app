@@ -5,6 +5,8 @@ import { createServerClient } from "@/lib/supabase";
 import { companyDisplayName as brandName } from "@/lib/company-name";
 
 export interface SidebarProfile {
+  /** The signed-in person. Headline of the account card. */
+  userName: string | null;
   companyName: string | null;
   companyLogoUrl: string | null;
   userEmail: string | null;
@@ -42,14 +44,18 @@ export async function getSidebarProfile(): Promise<SidebarProfile | null> {
     companyLogoUrl = company?.logo_url ?? null;
   }
 
-  // For lot owners, show their name instead of company name
-  const fullName = [profile.first_name, profile.last_name].filter(Boolean).join(" ");
-  const displayName = companyName || fullName || profile.email?.split("@")[0] || null;
+  const fullName =
+    [profile.first_name, profile.last_name].filter(Boolean).join(" ").trim() || null;
+  const userName = fullName || profile.email?.split("@")[0] || null;
 
-  const initial = displayName?.[0]?.toUpperCase() ?? profile.email?.[0]?.toUpperCase() ?? "?";
+  const initial =
+    fullName?.[0]?.toUpperCase() ?? profile.email?.[0]?.toUpperCase() ?? "?";
 
   return {
-    companyName: displayName,
+    userName,
+    // Null for a lot owner: they do not belong to a firm, so the card shows
+    // their name alone rather than an empty second line.
+    companyName,
     companyLogoUrl,
     userEmail: profile.email,
     userAvatarUrl: profile.avatar_url,

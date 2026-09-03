@@ -399,7 +399,7 @@ function Wizard({
                     <button
                       type="button"
                       aria-label="What is this?"
-                      className="inline-flex items-center justify-center text-muted-foreground hover:text-foreground cursor-help"
+                      className="inline-flex items-center justify-center text-muted-foreground hover:text-foreground cursor-pointer"
                     />
                   }
                 >

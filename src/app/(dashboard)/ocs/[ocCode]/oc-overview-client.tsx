@@ -181,7 +181,7 @@ function ManagerOverview({
         <KPICard
           label="Total lots"
           value={String(stats.totalLots)}
-          description={`${stats.totalMembers} member${stats.totalMembers !== 1 ? "s" : ""} assigned`}
+          description={`${stats.totalMembers} with an owner on record`}
           icon={<Building2 className="h-5 w-5" />}
         />
         <KPICard

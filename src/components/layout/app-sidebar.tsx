@@ -587,7 +587,7 @@ function NavUser({
     <div ref={wrapperRef} className="relative">
       <SidebarMenuButton
         size="lg"
-        tooltip={profile?.companyName ?? "Account"}
+        tooltip={profile?.userName ?? "Account"}
         aria-expanded={open}
         onClick={() => setOpen((o) => !o)}
         className={cn(open && "bg-sidebar-accent text-sidebar-accent-foreground")}
@@ -615,10 +615,10 @@ function NavUser({
             </Avatar>
             <div className="grid flex-1 text-left text-sm leading-tight min-w-0">
               <span className="truncate font-medium">
-                {profile?.companyName ?? "My Company"}
+                {profile?.userName ?? "My account"}
               </span>
               <span className="text-muted-foreground truncate text-xs">
-                {profile?.userEmail ?? ""}
+                {profile?.companyName ?? ""}
               </span>
             </div>
             <MoreVertical className="ml-auto size-4 shrink-0" />
@@ -650,10 +650,10 @@ function NavUser({
             </Avatar>
             <div className="grid flex-1 text-left text-sm leading-tight min-w-0">
               <span className="truncate font-medium text-foreground">
-                {profile?.companyName ?? "My Company"}
+                {profile?.userName ?? "My account"}
               </span>
               <span className="truncate text-xs text-muted-foreground">
-                {profile?.userEmail ?? ""}
+                {profile?.companyName ?? profile?.userEmail ?? ""}
               </span>
             </div>
           </div>

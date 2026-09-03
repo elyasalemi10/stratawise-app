@@ -307,7 +307,6 @@ export function Step3PostalContact({
                     <tr className={band}>
                       <td className="px-3 py-1.5 tabular-nums">
                         {lot.lot_number}
-                        {lot.unit_number ? <span className="text-muted-foreground"> / {lot.unit_number}</span> : null}
                       </td>
                       <td className="px-3 py-1.5 text-muted-foreground truncate" title={lot.owner_name || ""}>
                         {lot.owner_name || ","}
@@ -343,7 +342,7 @@ export function Step3PostalContact({
                           <Tooltip>
                             <TooltipTrigger
                               render={
-                                <button type="button" aria-label="Service address explained" className="text-muted-foreground hover:text-foreground cursor-help">
+                                <button type="button" aria-label="Service address explained" className="text-muted-foreground hover:text-foreground cursor-pointer">
                                   <Info className="h-3 w-3" />
                                 </button>
                               }

@@ -376,19 +376,12 @@ export async function applySettlementToLot(input: ApplySettlementInput) {
   }
   const { documentId, lotId, newOwner, settlementDate } = parsed.data;
 
-  // A settlement is recorded once it has happened, so it is dated today.
-  // A future date would hand the lot over before it changed hands; a past
-  // one would silently rewrite whose levies and correspondence belonged to
-  // whom over the intervening days. The picker offers only today, and this
-  // is the half that a client cannot talk around.
-  const today = todayIso();
-  if (settlementDate !== today) {
-    return {
-      error:
-        settlementDate > today
-          ? "A settlement can only be recorded on the day it happens, not in advance."
-          : "A settlement can only be recorded on the day it happens. Record it today, or contact support to correct a past transfer.",
-    };
+  // A settlement is recorded once it HAS happened, so a future date is
+  // refused: it would hand the lot over before it changed hands, and every
+  // levy and notice in between would go to the wrong person. A past date is
+  // fine and common , a manager often learns of a transfer days later.
+  if (settlementDate > todayIso()) {
+    return { error: "A settlement cannot be dated in the future." };
   }
 
   const supabase = createServerClient();

@@ -96,8 +96,10 @@ export function DatePicker({
           render={<Button variant="secondary" type="button" />}
           className={cn(
             "h-9 w-full justify-between px-3 font-normal",
-            // White field on the grey page, like every other input.
-            "bg-card hover:bg-card",
+            // A field, not a button: white fill with the input border, so it
+            // reads as somewhere you enter something. Secondary's borderless
+            // grey was invisible once the page went white.
+            "border border-input bg-card hover:bg-card",
             hasError && "border-destructive",
             !date && "text-muted-foreground",
           )}

@@ -106,7 +106,7 @@ export function EditPopover<TValue>({
       if (!next) reset();
     }}>
       <PopoverTrigger
-        render={renderTrigger ? <span /> : undefined}
+        render={undefined}
         disabled={disabled}
         className={cn(
           !renderTrigger &&
