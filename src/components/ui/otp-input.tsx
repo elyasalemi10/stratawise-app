@@ -123,7 +123,7 @@ export function OtpInput({
           onFocus={(e) => e.target.select()}
           aria-invalid={invalid || undefined}
           className={cn(
-            "h-12 w-12 rounded-md border border-border bg-card text-center text-lg font-semibold tabular-nums text-foreground transition-colors",
+            "h-12 w-12 rounded-md border border-input bg-card text-center text-lg font-semibold tabular-nums text-foreground transition-colors",
             "focus:border-primary focus:outline-none focus:ring-2 focus:ring-primary/20",
             "aria-invalid:border-destructive aria-invalid:focus:ring-destructive/20",
             "disabled:cursor-not-allowed disabled:opacity-50",

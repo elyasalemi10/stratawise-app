@@ -119,8 +119,11 @@
   --brand-gold-hover: hsl(40, 57%, 47%);
 
   /* Secondary, cool slate-grey (subtle button bg) */
-  --secondary: hsl(220, 13%, 91%);
-  --secondary-hover: hsl(220, 13%, 84%);
+  /* Secondary buttons are GREY now, not white-with-a-border. On a white
+     page a white button is a rumour; grey is the one thing that reads as
+     "pressable" without competing with the navy primary. */
+  --secondary: hsl(220, 14%, 95%);
+  --secondary-hover: hsl(220, 13%, 90%);
   --secondary-foreground: hsl(208, 70%, 18%);
 
   /* Destructive, Red */
@@ -131,19 +134,31 @@
   --warning: hsl(38, 92%, 50%);
   --warning-foreground: hsl(38, 92%, 25%);
 
-  /* Background & Surface, cool soft grey replaces the old warm cream. */
-  --background: hsl(220, 14%, 96%);            /* page bg #F4F5F7 */
+  /* Background & Surface , WHITE page, grey controls.
+     
+     The palette used to be the other way round: a grey page with white
+     cards and white inputs floating on it. That reads as "everything is a
+     panel", and it left nothing for a control to be, since white was
+     already the resting surface , which is why secondary buttons kept
+     needing a border to be visible at all.
+     
+     Inverted, the page is white and stays out of the way, and grey means
+     "this is a control": a secondary button, a hovered row, a disabled
+     field. Cards stop being white-on-grey and become white-on-white,
+     separated by their border, which is the rule this project already had
+     (no shadows, depth from border contrast). */
+  --background: hsl(0, 0%, 100%);              /* paper #FFFFFF */
   --foreground: hsl(208, 70%, 18%);            /* midnight #0E314C */
   --card: hsl(0, 0%, 100%);                    /* paper #FFFFFF */
   --card-foreground: hsl(208, 70%, 18%);
   --popover: hsl(0, 0%, 100%);
   --popover-foreground: hsl(208, 70%, 18%);
 
-  /* Muted, soft surfaces (table stripes, banner backgrounds, hovered
-     menu items, disabled fields). Bumped from 93% → 88% lightness so it
-     actually separates from --background (96%); the old value was so
-     close to the page bg that nothing built on it read as distinct. */
-  --muted: hsl(220, 14%, 88%);
+  /* Muted, the CONTROL surface: secondary buttons, table stripes, hovered
+     rows, disabled fields. Lightened from 88% to 95% now that it sits on
+     white rather than on a 96% grey page , at 88% against white it read as
+     a dark slab rather than a soft control. */
+  --muted: hsl(220, 14%, 95%);
   --muted-foreground: hsl(211, 17%, 35%);      /* slate #4A5868 */
 
   /* Cool-muted, deliberately bluer than --muted so it stands apart from
@@ -155,15 +170,20 @@
   --cool-muted: hsl(210, 25%, 90%);
   --cool-muted-foreground: hsl(208, 30%, 30%);
 
-  /* Accent, kept lighter than --muted (was historically tied at 93%).
-     Now intentionally distinct so dropdown / menu-item hover stays a
-     soft tint while --muted carries the heavier soft-surface role. */
-  --accent: hsl(220, 14%, 93%);
+  /* Accent, one step lighter than --muted so a hovered menu item is a
+     softer tint than a resting control. */
+  --accent: hsl(220, 14%, 97%);
   --accent-foreground: hsl(208, 70%, 18%);
 
-  /* Border / Input / Ring */
-  --border: hsl(220, 13%, 91%);                /* cool stone #E5E7EB */
-  --input: hsl(220, 13%, 91%);
+  /* Border / Input / Ring
+     
+     Borders do the work the grey page used to do. On a white page a 91%
+     border is nearly invisible, so --border darkens to 85% for card and
+     table edges, and --input darker still (78%) because an input has to
+     announce itself as somewhere you type , that is the whole reason the
+     old palette made them white on grey. */
+  --border: hsl(220, 13%, 85%);
+  --input: hsl(214, 15%, 78%);
   --ring: hsl(208, 70%, 18%);                  /* midnight ring on focus */
 
   /* Sidebar, midnight bg + paper text + gold active */

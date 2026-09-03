@@ -10,7 +10,10 @@ import { cn } from "@/lib/utils";
 // / sparse / mostly-empty tables (Settings rows, OC overviews) want
 // bordered, which reads as "key:value list" rather than "data grid".
 //
-//   striped  , odd rows bg-card, even rows bg-muted, hover bg-secondary-hover,
+//   striped  , odd rows bg-card, even rows bg-muted, hover bg-secondary-hover.
+//              The even rows used bg-muted/40 back when --muted was 88% and
+//              the page was grey. --muted is 95% on a white page now, so the
+//              stripe is at full strength or it does not exist.
 //              no per-row border, header underline only.
 //   bordered , every row bg-card, border-b border-border per row, hover
 //              bg-muted (lighter than striped's hover since there's no
@@ -67,7 +70,7 @@ function TableBody({ className, ...props }: React.ComponentProps<"tbody">) {
         // is darker than muted (the stripe), so the cursor row is distinct
         // regardless of whether it landed on white or muted.
         variant === "striped" &&
-          "[&_tr:nth-child(odd)]:bg-card [&_tr:nth-child(even)]:bg-muted/40 [&_tr:hover]:!bg-secondary-hover",
+          "[&_tr:nth-child(odd)]:bg-card [&_tr:nth-child(even)]:bg-muted [&_tr:hover]:!bg-secondary-hover",
         // Bordered , flat white rows + per-row underline; hover bumps to
         // muted (works because there's no stripe to compete with).
         variant === "bordered" &&

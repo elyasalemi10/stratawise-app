@@ -195,7 +195,7 @@ function ComboboxInput({
       ref={ref}
       disabled={ctx.disabled}
       className={cn(
-        "flex h-10 w-full items-center justify-between rounded-md border border-border bg-card px-3 py-2 text-sm",
+        "flex h-10 w-full items-center justify-between rounded-md border border-input bg-card px-3 py-2 text-sm",
         "focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary",
         "disabled:cursor-not-allowed disabled:opacity-50",
         "data-[state=open]:border-primary",
