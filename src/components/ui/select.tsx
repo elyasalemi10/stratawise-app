@@ -4,6 +4,27 @@ import * as React from "react"
 import { Select as SelectPrimitive } from "@base-ui/react/select"
 
 import { cn } from "@/lib/utils"
+
+// Stock shadcn select. Re-pulled from the registry rather than maintained by
+// hand, with exactly four deviations, all of which are project rules already
+// written down in DESIGN-SYSTEM.md:
+//
+//   bg-card            white field on the grey page, like every other input.
+//                      The stock bg-transparent gives grey-on-grey.
+//   h-9                matches Input / DatePicker / NumberInput. Stock is
+//                      h-8, which is visibly short beside them in a row.
+//   navy focus ring    matches Input. Stock uses the neutral --ring.
+//   alignItemWithTrigger=false
+//                      Stock is true: the panel is positioned so the SELECTED
+//                      item lands over the trigger, old macOS style. Where it
+//                      sits then depends on which option is chosen, it
+//                      overlaps the bar, and the arithmetic misbehaves at
+//                      fractional browser zoom. Off, it opens below the
+//                      trigger every time.
+//
+// Plus positionMethod="fixed" on the positioner, noted where it is set.
+//
+// Anything beyond these belongs in the call site, not here.
 import { ChevronDownIcon, CheckIcon, ChevronUpIcon } from "lucide-react"
 
 const Select = SelectPrimitive.Root
@@ -41,7 +62,7 @@ function SelectTrigger({
       data-slot="select-trigger"
       data-size={size}
       className={cn(
-        "flex w-fit items-center justify-between gap-1.5 rounded-lg border border-input bg-card py-2 pr-2 pl-2.5 text-sm whitespace-nowrap transition-colors outline-none select-none focus-visible:border-primary focus-visible:ring-2 focus-visible:ring-primary/20 disabled:cursor-not-allowed disabled:opacity-50 aria-invalid:border-destructive aria-invalid:ring-2 aria-invalid:ring-destructive/20 data-placeholder:text-muted-foreground data-[size=default]:h-9 data-[size=sm]:h-7 data-[size=sm]:rounded-[min(var(--radius-md),10px)] *:data-[slot=select-value]:line-clamp-1 *:data-[slot=select-value]:flex *:data-[slot=select-value]:items-center *:data-[slot=select-value]:gap-1.5 [&_svg]:pointer-events-none [&_svg]:shrink-0 [&_svg:not([class*='size-'])]:size-4",
+        "flex w-fit items-center justify-between gap-1.5 rounded-lg border border-input bg-card py-2 pr-2 pl-2.5 text-sm whitespace-nowrap transition-colors outline-none select-none focus-visible:border-primary focus-visible:ring-2 focus-visible:ring-primary/20 disabled:cursor-not-allowed disabled:opacity-50 aria-invalid:border-destructive aria-invalid:ring-2 aria-invalid:ring-destructive/20 data-placeholder:text-muted-foreground data-[size=default]:h-9 data-[size=sm]:h-7 data-[size=sm]:rounded-[min(var(--radius-md),10px)] *:data-[slot=select-value]:line-clamp-1 *:data-[slot=select-value]:flex *:data-[slot=select-value]:items-center *:data-[slot=select-value]:gap-1.5 dark:bg-input/30 dark:hover:bg-input/50 dark:aria-invalid:border-destructive/50 dark:aria-invalid:ring-destructive/40 [&_svg]:pointer-events-none [&_svg]:shrink-0 [&_svg:not([class*='size-'])]:size-4",
         className
       )}
       {...props}
@@ -60,21 +81,9 @@ function SelectContent({
   className,
   children,
   side = "bottom",
-  // 0, not 4. A gap leaves the trigger visibly separate from the panel, so
-  // it reads as a card that popped out rather than the field opening. Butted
-  // against the bar, with the same width and left edge, it reads as one
-  // control expanding.
-  sideOffset = 0,
-  align = "start",
+  sideOffset = 4,
+  align = "center",
   alignOffset = 0,
-  // false, not Base UI's default of true.
-  //
-  // With it on, the popup is positioned so the SELECTED item lands on top of
-  // the trigger , the old macOS native-select behaviour. The panel ends up
-  // overlapping the bar at an offset that depends on which item is chosen,
-  // which reads as a card that popped out over the field rather than the
-  // field opening downward. Off, it opens below the trigger, aligned to it,
-  // at its width, every time.
   alignItemWithTrigger = false,
   ...props
 }: SelectPrimitive.Popup.Props &
@@ -85,14 +94,9 @@ function SelectContent({
   return (
     <SelectPrimitive.Portal>
       <SelectPrimitive.Positioner
-        // fixed, not the Base UI default of absolute.
-        //
-        // An absolutely-positioned popup is placed in DOCUMENT coordinates,
-        // so one that opens near the bottom of a long page extends the
-        // document's height. The scroll extent changes, the page reflows,
-        // and whatever sits below the trigger visibly jumps , opening a
-        // date picker nudged the next field down. Fixed positions against
-        // the viewport and can never change document size.
+        // Viewport-relative. Absolute positioning (the default) places the
+        // popup in DOCUMENT coordinates, so one opening near the bottom of a
+        // page extends the scroll extent and reflows the content behind it.
         positionMethod="fixed"
         side={side}
         sideOffset={sideOffset}
@@ -104,7 +108,7 @@ function SelectContent({
         <SelectPrimitive.Popup
           data-slot="select-content"
           data-align-trigger={alignItemWithTrigger}
-          className={cn("relative isolate z-50 max-h-(--available-height) w-(--anchor-width) min-w-36 origin-(--transform-origin) overflow-x-hidden overflow-y-auto rounded-lg data-[side=bottom]:rounded-t-none data-[side=top]:rounded-b-none bg-popover text-popover-foreground shadow-md ring-1 ring-foreground/10 duration-100 data-[align-trigger=true]:animate-none data-[side=bottom]:slide-in-from-top-2 data-[side=inline-end]:slide-in-from-left-2 data-[side=inline-start]:slide-in-from-right-2 data-[side=left]:slide-in-from-right-2 data-[side=right]:slide-in-from-left-2 data-[side=top]:slide-in-from-bottom-2 data-open:animate-in data-open:fade-in-0 data-open:zoom-in-95 data-closed:animate-out data-closed:fade-out-0 data-closed:zoom-out-95", className )}
+          className={cn("relative isolate z-50 max-h-(--available-height) w-(--anchor-width) min-w-36 origin-(--transform-origin) overflow-x-hidden overflow-y-auto rounded-lg bg-popover text-popover-foreground shadow-md ring-1 ring-foreground/10 duration-100 data-[align-trigger=true]:animate-none data-[side=bottom]:slide-in-from-top-2 data-[side=inline-end]:slide-in-from-left-2 data-[side=inline-start]:slide-in-from-right-2 data-[side=left]:slide-in-from-right-2 data-[side=right]:slide-in-from-left-2 data-[side=top]:slide-in-from-bottom-2 data-open:animate-in data-open:fade-in-0 data-open:zoom-in-95 data-closed:animate-out data-closed:fade-out-0 data-closed:zoom-out-95", className )}
           {...props}
         >
           <SelectScrollUpButton />

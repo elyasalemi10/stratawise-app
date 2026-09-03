@@ -120,7 +120,10 @@ const CLIENT_CACHED_ROUTES: RegExp[] = [
   /^\/chart-of-accounts$/,
   /^\/maintenance$/,
   /^\/levies$/,
-  /^\/settings$/,
+  // Settings is seven routes now, each fetching only its own section, so
+  // every one of them owns its loading state and none needs revalidating by
+  // the router fallback.
+  /^\/settings(\/[^/]+)?$/,
   // Static , nothing to fetch, so nothing to revalidate either. Listed so
   // the router fallback does not fire a pointless refresh on arrival.
   /^\/meetings$/,

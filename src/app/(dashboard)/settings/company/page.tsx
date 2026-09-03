@@ -1,0 +1,11 @@
+import { redirect } from "next/navigation";
+import { getCurrentProfile } from "@/lib/auth";
+import { CompanyTab } from "../company-tab";
+import { getCompanyData } from "../actions";
+
+export default async function Page() {
+  const profile = await getCurrentProfile();
+  if (!profile) redirect("/sign-in");
+  if (profile.role === "lot_owner") redirect("/settings/profile");
+  return <CompanyTab company={await getCompanyData()} />;
+}

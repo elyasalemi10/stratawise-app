@@ -412,7 +412,11 @@
       hsl(0 0% 100% / 0.7) 50%,
       transparent 100%
     );
+    /* Negative delay set per-instance by the Skeleton component, so a
+       skeleton mounting mid-sweep joins the one already running rather
+       than restarting it. Keep 1s in step with SWEEP_MS there. */
     animation: skeleton-shimmer 1s linear infinite;
+    animation-delay: var(--shimmer-delay, 0ms);
   }
 
   /* Drop the gradient entirely, not just the animation. A frozen gradient

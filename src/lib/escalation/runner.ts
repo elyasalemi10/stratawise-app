@@ -27,6 +27,53 @@ export async function notifyOcManagers(supabase: any, ocId: string, title: strin
   if (rows.length > 0) await supabase.from("notifications").insert(rows);
 }
 
+
+// In-app notify the LOT OWNER when something is served on them.
+//
+// The manager already gets told an escalation went out. The owner only got
+// an email , and an owner who has the portal open, or who lets that email go
+// to spam, had no way to know a final notice had been issued against their
+// lot. A final notice is the last step before VCAT, so it is precisely the
+// one they must not miss.
+//
+// Type 'levy_final_notice' so it is distinguishable in the inbox and can be
+// opted out of separately from routine reminders , though an owner opting
+// out of being told they are being taken to VCAT is their call, not ours to
+// prevent.
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+export async function notifyLotOwnersInApp(
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  supabase: any,
+  ocId: string,
+  lotId: string,
+  title: string,
+  body: string,
+  link?: string,
+) {
+  const { data: owners } = await supabase
+    .from("oc_members")
+    .select("profile_id")
+    .eq("oc_id", ocId)
+    .eq("lot_id", lotId)
+    .eq("role", "lot_owner")
+    .is("left_at", null);
+  if (!owners || owners.length === 0) return;
+
+  const rows = [];
+  for (const o of owners as Array<{ profile_id: string }>) {
+    if (await isNotificationOptedOut(supabase, o.profile_id, "levy_final_notice", "in_app")) continue;
+    rows.push({
+      profile_id: o.profile_id,
+      oc_id: ocId,
+      type: "levy_final_notice",
+      title,
+      body,
+      link: link ?? null,
+    });
+  }
+  if (rows.length > 0) await supabase.from("notifications").insert(rows);
+}
+
 function fmtMoney(n: number): string {
   return `$${n.toLocaleString("en-AU", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
 }
@@ -135,10 +182,14 @@ async function advanceInstance(supabase: any, inst: Record<string, unknown>, tod
   // Context for merge fields + PDFs.
   const { data: oc } = await supabase
     .from("owners_corporations")
-    .select("name, plan_number, abn, address, suburb, state, postcode, interest_rate_monthly, interest_grace_period_days, interest_enabled, management_companies(name, logo_url, brand_color, phone, email, abn)")
+    .select("name, short_code, plan_number, abn, address, suburb, state, postcode, interest_rate_monthly, interest_grace_period_days, interest_enabled, management_companies(name, logo_url, brand_color, phone, email, abn)")
     .eq("id", notice.oc_id)
     .maybeSingle();
   const mc = (oc as { management_companies: Record<string, unknown> | null } | null)?.management_companies ?? null;
+  // Notifications deep-link to the lot / the owner's levies, so they need the
+  // OC's short code. A notification you cannot click through from is a
+  // notification that makes you go and find the thing yourself.
+  const ocShortCode = (oc as { short_code?: string | null } | null)?.short_code ?? null;
   const ocAddress = [oc?.address, oc?.suburb, oc?.state, oc?.postcode].filter(Boolean).join(", ");
 
   const { data: owner } = await supabase
@@ -269,7 +320,23 @@ async function advanceInstance(supabase: any, inst: Record<string, unknown>, tod
           notice.oc_id,
           `${isFinal ? "Final notice" : "Reminder"} sent for ${lotLabel}`,
           `${vars.oc_name}: ${isFinal ? "final notice" : (step.label ?? "reminder")} for levy ${vars.reference} (${vars.amount_due}) was emailed to ${owner.name ?? "the owner"}.`,
+          ocShortCode && notice.lot_id
+            ? `/ocs/${ocShortCode}/lots/${notice.lot_id}?tab=levies`
+            : undefined,
         );
+
+        // The owner hears about the final notice in the portal too, not only
+        // by email. It is the last step before VCAT.
+        if (isFinal && notice.lot_id) {
+          await notifyLotOwnersInApp(
+            supabase,
+            notice.oc_id as string,
+            notice.lot_id as string,
+            `Final notice issued for levy ${vars.reference}`,
+            `${vars.oc_name} has issued a final notice for ${vars.amount_due} on levy ${vars.reference}. Pay or contact your strata manager to avoid further action.`,
+            ocShortCode ? `/ocs/${ocShortCode}/my-levies` : undefined,
+          );
+        }
       }
     }
   }
