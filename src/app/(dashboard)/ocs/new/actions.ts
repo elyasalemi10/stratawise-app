@@ -1535,29 +1535,42 @@ export async function completeWizard(draftId: string) {
         })
         .filter((x): x is NonNullable<typeof x> => x !== null);
 
-      if (ownerEntityRows.length > 0) {
-        const { data: insertedOwnerEntities, error: ownerInsertErr } = await supabase
-          .from("owners")
-          .insert(ownerEntityRows.map((r) => r.owner_payload))
-          .select("id");
-        if (ownerInsertErr) {
-          console.error("owners insert failed (non-fatal):", ownerInsertErr);
-        } else if (insertedOwnerEntities && insertedOwnerEntities.length === ownerEntityRows.length) {
-          const lotOwnershipRows = ownerEntityRows.map((r, i) => ({
-            lot_id: r.lot_id,
-            owner_id: insertedOwnerEntities[i].id,
-            oc_id: oc.id,
-            start_date: startDate,
-            is_primary_contact: true,
-            is_financial: true,
-          }));
-          const { error: lotOwnershipErr } = await supabase
-            .from("lot_ownerships")
-            .insert(lotOwnershipRows);
-          if (lotOwnershipErr) {
-            console.error("lot_ownerships insert failed (non-fatal):", lotOwnershipErr);
-          }
+      // Ownership goes through set_lot_owner, which writes owners,
+      // lot_ownerships AND the lot_owners mirror in ONE transaction.
+      //
+      // This used to be two inserts here, both marked non-fatal: if the
+      // owners insert failed we logged and carried on, and if the count came
+      // back short we skipped every ownership row. A lot could end up in
+      // lot_owners with no ownership at all , invisible to
+      // v_lot_current_owners, and therefore absent from owner lists, levy
+      // distribution and communications, with nothing to indicate it.
+      //
+      // Failures are reported now rather than swallowed. An OC created
+      // without owners is worth telling someone about.
+      const ownershipFailures: number[] = [];
+      for (const r of ownerEntityRows) {
+        const { error: setErr } = await supabase.rpc("set_lot_owner", {
+          p_lot_id: r.lot_id,
+          p_oc_id: oc.id,
+          p_management_company_id: profile.management_company_id,
+          p_name: r.owner_payload.name,
+          p_email: r.owner_payload.email,
+          p_phone: r.owner_payload.phone,
+          p_postal_address: r.owner_payload.postal_address,
+          p_owner_type: r.owner_payload.owner_type,
+          p_start_date: startDate,
+          p_payment_reference: paymentRefFor(r.lot_number),
+        });
+        if (setErr) {
+          console.error(`set_lot_owner failed for lot ${r.lot_number}:`, setErr);
+          ownershipFailures.push(r.lot_number);
         }
+      }
+      if (ownershipFailures.length > 0) {
+        console.error(
+          "completeWizard: lots created without a recorded owner:",
+          ownershipFailures.join(", "),
+        );
       }
 
       // management_agreements: every newly-created OC gets an active
