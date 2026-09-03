@@ -29,14 +29,16 @@ import { Slider } from "@/components/ui/slider";
 const OUTPUT_PX = 512;
 const MIN_ZOOM = 0.2;
 const MAX_ZOOM = 3;
-const MAX_BYTES = 2 * 1024 * 1024;
 
 export function AvatarCropDialog({
-  open,
+  file,
   onOpenChange,
   onCropped,
 }: {
-  open: boolean;
+  /** The image to frame. The dialog is open exactly when this is set, so it
+   *  never renders an empty circle asking you to pick something , that step
+   *  already happened in the file picker. */
+  file: File | null;
   onOpenChange: (o: boolean) => void;
   /** Receives the framed image as a PNG blob, ready to upload. */
   onCropped: (blob: Blob) => Promise<void> | void;
@@ -46,26 +48,14 @@ export function AvatarCropDialog({
   const [offset, setOffset] = React.useState({ x: 0, y: 0 });
   const [saving, setSaving] = React.useState(false);
   const canvasRef = React.useRef<HTMLCanvasElement>(null);
-  const fileRef = React.useRef<HTMLInputElement>(null);
   const drag = React.useRef<{ x: number; y: number } | null>(null);
+  const open = file !== null;
 
-  // Reset whenever the dialog opens, so the last photo's framing does not
-  // carry over to the next one.
+  // Load whatever file was handed in, and reset the framing so the last
+  // photo's zoom does not carry over to the next one.
   React.useEffect(() => {
-    if (open) {
+    if (!file) {
       setImage(null);
-      setZoom(1);
-      setOffset({ x: 0, y: 0 });
-    }
-  }, [open]);
-
-  function loadFile(file: File) {
-    if (!/^image\/(png|jpeg|webp|gif)$/.test(file.type)) {
-      toast.error("Use a PNG, JPG, GIF or WebP.");
-      return;
-    }
-    if (file.size > MAX_BYTES) {
-      toast.error("That image is over 2MB.");
       return;
     }
     const reader = new FileReader();
@@ -81,7 +71,7 @@ export function AvatarCropDialog({
       img.src = reader.result as string;
     };
     reader.readAsDataURL(file);
-  }
+  }, [file]);
 
   // Paint on every change. White first, so any area the image does not cover
   // is white rather than transparent.
@@ -164,15 +154,6 @@ export function AvatarCropDialog({
               onPointerCancel={onPointerUp}
               className={image ? "size-full cursor-grab active:cursor-grabbing touch-none" : "size-full"}
             />
-            {!image && (
-              <button
-                type="button"
-                onClick={() => fileRef.current?.click()}
-                className="absolute inset-0 flex cursor-pointer items-center justify-center text-sm text-muted-foreground"
-              >
-                Choose an image
-              </button>
-            )}
           </div>
 
           <Slider
@@ -186,22 +167,11 @@ export function AvatarCropDialog({
             aria-label="Zoom"
           />
 
-          <input
-            ref={fileRef}
-            type="file"
-            accept="image/png,image/jpeg,image/webp,image/gif"
-            className="hidden"
-            onChange={(e) => {
-              const f = e.target.files?.[0];
-              if (f) loadFile(f);
-              e.currentTarget.value = "";
-            }}
-          />
         </div>
 
         <DialogFooter>
-          <Button variant="secondary" onClick={() => fileRef.current?.click()} disabled={saving}>
-            {image ? "Choose another" : "Choose image"}
+          <Button variant="secondary" onClick={() => onOpenChange(false)} disabled={saving}>
+            Cancel
           </Button>
           <Button onClick={save} disabled={!image} loading={saving}>
             Save

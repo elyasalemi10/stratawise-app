@@ -46,7 +46,11 @@ function useFieldSave(initial: string, save: (v: string) => Promise<{ error?: st
 
 export function ProfileTab({ profile }: { profile: Profile }) {
   const [avatarUrl, setAvatarUrl] = React.useState(profile.avatar_url ?? "");
-  const [cropOpen, setCropOpen] = React.useState(false);
+  // Picking comes first, framing second. "Change image" opens the file
+  // picker; the cropper appears only once there is something to crop, so
+  // there is never a dialog sitting there asking you to choose.
+  const [pendingFile, setPendingFile] = React.useState<File | null>(null);
+  const fileRef = React.useRef<HTMLInputElement>(null);
   const [emailOpen, setEmailOpen] = React.useState(false);
   const [passwordOpen, setPasswordOpen] = React.useState(false);
   const [removing, setRemoving] = React.useState(false);
@@ -78,6 +82,20 @@ export function ProfileTab({ profile }: { profile: Profile }) {
     toast.success("Profile picture updated");
   }
 
+  const MAX_BYTES = 2 * 1024 * 1024;
+
+  function pickFile(file: File) {
+    if (!/^image\/(png|jpeg|webp|gif)$/.test(file.type)) {
+      toast.error("Use a PNG, JPG, GIF or WebP.");
+      return;
+    }
+    if (file.size > MAX_BYTES) {
+      toast.error("That image is over 2MB.");
+      return;
+    }
+    setPendingFile(file);
+  }
+
   async function removeImage() {
     setRemoving(true);
     const res = await updateAvatar("");
@@ -91,7 +109,7 @@ export function ProfileTab({ profile }: { profile: Profile }) {
   }
 
   return (
-    <div className="max-w-2xl space-y-8">
+    <div className="space-y-8">
       {/* Picture, with its actions to the right and the format note beneath
           them , the note explains the buttons, so it belongs under them
           rather than under the avatar. */}
@@ -109,7 +127,7 @@ export function ProfileTab({ profile }: { profile: Profile }) {
 
         <div className="pt-1">
           <div className="flex flex-wrap items-center gap-2">
-            <Button onClick={() => setCropOpen(true)}>
+            <Button onClick={() => fileRef.current?.click()}>
               <Plus className="mr-1.5 size-4" />
               Change image
             </Button>
@@ -151,29 +169,56 @@ export function ProfileTab({ profile }: { profile: Profile }) {
         </div>
       </div>
 
-      <div className="space-y-4">
-        <div className="flex items-end gap-3">
-          <div className="flex-1 space-y-1.5">
-            <Label htmlFor="account-email">Email</Label>
-            <Input id="account-email" value={profile.email ?? ""} readOnly disabled />
-          </div>
-          <Button variant="secondary" onClick={() => setEmailOpen(true)}>
-            Change email
-          </Button>
-        </div>
+      <div>
+        <h3 className="mb-6 border-b border-border pb-3 text-lg font-semibold text-foreground">
+          Account Security
+        </h3>
 
-        <div className="flex items-end gap-3">
-          <div className="flex-1 space-y-1.5">
-            <Label htmlFor="account-password">Password</Label>
-            <Input id="account-password" value={MASKED_PASSWORD} readOnly disabled />
+        {/* These two are read-only, so they do not need the full width the
+            editable fields above take , sizing them to their content and
+            pushing the action to the far edge makes it obvious the box is not
+            where the change happens. Both the same width so the rows line up. */}
+        <div className="space-y-4">
+          <div className="flex items-end gap-3">
+            <div className="w-full max-w-sm space-y-1.5">
+              <Label htmlFor="account-email">Email</Label>
+              <Input id="account-email" value={profile.email ?? ""} readOnly disabled />
+            </div>
+            <Button variant="secondary" className="ml-auto" onClick={() => setEmailOpen(true)}>
+              Change email
+            </Button>
           </div>
-          <Button variant="secondary" onClick={() => setPasswordOpen(true)}>
-            Change password
-          </Button>
+
+          <div className="flex items-end gap-3">
+            <div className="w-full max-w-sm space-y-1.5">
+              <Label htmlFor="account-password">Password</Label>
+              <Input id="account-password" value={MASKED_PASSWORD} readOnly disabled />
+            </div>
+            <Button variant="secondary" className="ml-auto" onClick={() => setPasswordOpen(true)}>
+              Change password
+            </Button>
+          </div>
         </div>
       </div>
 
-      <AvatarCropDialog open={cropOpen} onOpenChange={setCropOpen} onCropped={uploadCropped} />
+      <input
+        ref={fileRef}
+        type="file"
+        accept="image/png,image/jpeg,image/webp,image/gif"
+        className="hidden"
+        onChange={(e) => {
+          const f = e.target.files?.[0];
+          if (f) pickFile(f);
+          // Reset, so re-choosing the SAME file still fires onChange.
+          e.currentTarget.value = "";
+        }}
+      />
+
+      <AvatarCropDialog
+        file={pendingFile}
+        onOpenChange={(o) => { if (!o) setPendingFile(null); }}
+        onCropped={uploadCropped}
+      />
       <ChangeEmailDialog
         open={emailOpen}
         onOpenChange={setEmailOpen}
