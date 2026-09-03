@@ -12,8 +12,7 @@ import {
   type NotificationType,
 } from "@/lib/notification-types";
 import { updateNotificationPreferences } from "@/lib/actions/notification-preferences";
-import { Button } from "@/components/ui/button";
-import { Checkbox } from "@/components/ui/checkbox";
+import { Switch } from "@/components/ui/switch";
 import type { NotificationPrefRow, AutoOptOutEntry } from "./data";
 
 type Channel = "email" | "in_app";
@@ -58,36 +57,36 @@ export function NotificationsTab({
     autoOptOutMap.set(`${a.type}:${a.channel}`, a);
   }
 
+  // Persist immediately, and put the switch back if the server refuses.
+  //
+  // There is no Save button. A page of toggles with a Save button asks you to
+  // remember a second step for a change you already expressed, and gives no
+  // hint which of eighteen rows is unsaved if you forget. Each switch is an
+  // independent preference; there is nothing to batch.
+  function persist(
+    updates: Array<{ type: NotificationType; channel: Channel; enabled: boolean }>,
+    revert: () => void,
+  ) {
+    startTransition(async () => {
+      const result = await updateNotificationPreferences({ updates });
+      if ("error" in result) {
+        revert();
+        toast.error(result.error);
+      }
+    });
+  }
+
   function setChannel(type: NotificationType, channel: Channel, enabled: boolean) {
     setState((prev) => ({
       ...prev,
       [type]: { ...prev[type], [channel]: enabled },
     }));
-  }
-
-  function onSubmit() {
-    const updates: Array<{ type: NotificationType; channel: Channel; enabled: boolean }> = [];
-    for (const type of NOTIFICATION_TYPES) {
-      const isMandatory = MANDATORY_NOTIFICATION_TYPES.has(type);
-      const isManagerial = MANAGERIAL_NOTIFICATION_TYPES.has(type);
-      // Email channel: skip mandatory (server enforces too).
-      if (!isMandatory) {
-        updates.push({ type, channel: "email", enabled: state[type].email });
-      }
-      // In-app channel: skip managerial (always-on; server enforces too).
-      if (!isManagerial) {
-        updates.push({ type, channel: "in_app", enabled: state[type].in_app });
-      }
-    }
-
-    startTransition(async () => {
-      const result = await updateNotificationPreferences({ updates });
-      if ("error" in result) {
-        toast.error(result.error);
-        return;
-      }
-      toast.success("Notification preferences saved");
-    });
+    persist([{ type, channel, enabled }], () =>
+      setState((prev) => ({
+        ...prev,
+        [type]: { ...prev[type], [channel]: !enabled },
+      })),
+    );
   }
 
   // Toggle a whole column at once. A manager who wants "email me nothing"
@@ -95,17 +94,32 @@ export function NotificationsTab({
   // (statutory email, managerial in-app) are skipped rather than shown
   // changing and then snapping back.
   function toggleColumn(channel: Channel, enabled: boolean) {
+    const changed: NotificationType[] = [];
     setState((prev) => {
       const next = { ...prev };
       for (const group of NOTIFICATION_GROUPS) {
         for (const item of group.items) {
           if (channel === "email" && MANDATORY_NOTIFICATION_TYPES.has(item.type)) continue;
           if (channel === "in_app" && MANAGERIAL_NOTIFICATION_TYPES.has(item.type)) continue;
+          if (prev[item.type]?.[channel] === enabled) continue;
+          changed.push(item.type);
           next[item.type] = { ...next[item.type], [channel]: enabled };
         }
       }
       return next;
     });
+    if (changed.length === 0) return;
+    persist(
+      changed.map((type) => ({ type, channel, enabled })),
+      () =>
+        setState((prev) => {
+          const back = { ...prev };
+          for (const type of changed) {
+            back[type] = { ...back[type], [channel]: !enabled };
+          }
+          return back;
+        }),
+    );
   }
 
   /** True when every togglable row in the column is on. */
@@ -125,18 +139,18 @@ export function NotificationsTab({
   ];
 
   return (
-    <div className="space-y-6">
+    <div className="max-w-3xl space-y-6">
       <div className="overflow-x-auto">
         <table className="w-full min-w-[34rem] border-collapse text-sm">
           <thead>
             <tr>
-              <th className="w-full pb-3 text-left align-bottom text-sm font-semibold text-foreground">
+              <th className="pb-3 text-left align-bottom text-sm font-semibold text-foreground">
                 Notify me about
               </th>
               {CHANNELS.map(({ key, label, Icon }) => {
                 const allOn = columnAllOn(key);
                 return (
-                  <th key={key} className="w-32 pb-3 align-bottom">
+                  <th key={key} className="w-28 pb-3 align-bottom">
                     <div className="flex flex-col items-center gap-1">
                       <Icon className="size-4 text-muted-foreground" aria-hidden />
                       <span className="text-sm font-medium text-foreground">{label}</span>
@@ -185,9 +199,9 @@ export function NotificationsTab({
                         return (
                           <td key={key} className="py-3 text-center align-middle">
                             <div className="flex flex-col items-center gap-1">
-                              <Checkbox
+                              <Switch
                                 checked={locked ? true : !!state[item.type]?.[key]}
-                                disabled={locked}
+                                disabled={locked || pending}
                                 onCheckedChange={(v) => setChannel(item.type, key, v === true)}
                                 aria-label={`${item.label} by ${key === "email" ? "email" : "in app"}`}
                               />
@@ -207,12 +221,6 @@ export function NotificationsTab({
             ))}
           </tbody>
         </table>
-      </div>
-
-      <div className="flex justify-end">
-        <Button onClick={onSubmit} loading={pending}>
-          Save preferences
-        </Button>
       </div>
     </div>
   );
