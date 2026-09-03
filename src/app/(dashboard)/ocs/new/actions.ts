@@ -44,23 +44,11 @@ export type DraftLot = {
   owner_email?: string;
   owner_phone?: string;
   owner_postal_address?: string;
-  is_occupied_by_owner?: boolean;
-  /** Item 18 - explicit 3-state occupancy. When set, supersedes the boolean.
-   *  - owner_occupied: lives in the lot themselves (no tenant block)
-   *  - tenanted: rented out (tenant fields required)
-   *  - vacant: no current occupant (tenant fields skipped) */
-  occupancy_status?: "owner_occupied" | "tenanted" | "vacant";
-  tenant_name?: string;
-  tenant_email?: string;
-  tenant_phone?: string;
   /** Opening arrears as at setup date. Positive = arrears, negative = credit.
    *  Captured per-lot directly on page 4 (Lots) rather than on a separate
    *  final step , same lots, same owners, no need for the manager to scroll
    *  back and forth between two tables. */
   opening_balance?: number;
-  /** Individual or Company , wizard Step 3 captures this in the lot schedule
-   *  alongside the owner's name. Defaults to 'individual'. */
-  owner_type?: "individual" | "company";
 };
 
 /** Per-role committee snapshot captured during the wizard. The wizard
@@ -96,7 +84,6 @@ export type DraftJson = {
 
   // Page 3 (basics)
   trading_name?: string;
-  services_only?: boolean;
   financial_year_start_month?: number;       // 1–12
   financial_year_start_day?: number;         // 1–31
   /** monthly | quarterly | half_yearly | annually , drives the levy cron. */
@@ -1165,7 +1152,6 @@ export async function completeWizard(draftId: string) {
       photo_thumbnail_storage_key: draft.photo_thumbnail_storage_key ?? null,
       financial_year_start_month: d.financial_year_start_month ?? 7,
       financial_year_start_day: d.financial_year_start_day ?? 1,
-      services_only: !!d.services_only,
       billing_cycle: d.billing_cycle ?? "quarterly",
       // Notice address always set , wizard defaults to OC address; user can override.
       notice_address_same_as_oc: !d.notice_address || d.notice_address.trim() === d.address.trim(),
@@ -1391,32 +1377,17 @@ export async function completeWizard(draftId: string) {
         if (!name && !email && !phone && !postal) return null;
         const lotId = lotByNumber.get(l.lot_number);
         if (!lotId) return null;
-        // Resolve occupancy. The explicit enum wins; if the manager skipped
-        // tenant info we default to 'vacant'. Otherwise derive from the
-        // wizard's owner-occupied flag + whether a tenant was named.
-        const occupancyStatus: "owner_occupied" | "tenanted" | "vacant" =
-          l.occupancy_status ??
-          (l.is_occupied_by_owner === false
-            ? l.tenant_name?.trim()
-              ? "tenanted"
-              : "vacant"
-            : "owner_occupied");
         return {
           lot_id: lotId,
           lot_number: l.lot_number,
           oc_id: oc.id,
           management_company_id: profile.management_company_id,
           name: name || "Owner",
-          owner_type: l.owner_type ?? "individual",
           email: email || null,
           phone: phone || null,
           postal_address: postal || null,
           start_date: ownerStartDate,
           payment_reference: paymentRefFor(l.lot_number),
-          occupancy_status: occupancyStatus,
-          tenant_name: occupancyStatus === "tenanted" ? l.tenant_name || null : null,
-          tenant_email: occupancyStatus === "tenanted" ? l.tenant_email || null : null,
-          tenant_phone: occupancyStatus === "tenanted" ? l.tenant_phone || null : null,
         };
       })
       .filter((x): x is NonNullable<typeof x> => x !== null);
@@ -1453,7 +1424,6 @@ export async function completeWizard(draftId: string) {
           after_state: {
             name: r.name,
             email: r.email,
-            occupancy_status: r.occupancy_status,
           },
           metadata: { source: "oc_wizard_v2", lot_id: r.lot_id },
         }));

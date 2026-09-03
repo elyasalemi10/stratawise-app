@@ -25,7 +25,6 @@ import { InviteConfirmDialog } from "./invite-confirm-dialog";
 import { LotOverviewTab } from "./tabs/lot-overview-tab";
 import { LotHistoryTab } from "./tabs/lot-history-tab";
 import { LotOwnerTab } from "./tabs/lot-owner-tab";
-import { LotTenancyTab } from "./tabs/lot-tenancy-tab";
 import { LotCommunicationsTab } from "./tabs/lot-communications-tab";
 import type { LotCommunicationRow } from "@/lib/actions/lot-communications";
 import type { LotEngagement } from "@/lib/actions/lot-engagement";
@@ -39,18 +38,11 @@ import type {
 } from "@/lib/actions/lot-overview";
 import { useOCCode } from "@/lib/oc-context";
 
-type OccupancyStatus = "owner_occupied" | "tenanted" | "vacant" | null;
 
 interface LotOwnerExtra {
   lot_owner_id: string | null;
-  owner_type: string | null;
   payment_reference: string | null;
-  is_occupied_by_owner: boolean | null;
-  occupancy_status: OccupancyStatus;
   ownership_since: string | null;
-  tenant_name: string | null;
-  tenant_email: string | null;
-  tenant_phone: string | null;
   postal_address: string | null;
 }
 
@@ -80,7 +72,6 @@ interface LotDetailContentProps {
 const TABS = [
   { value: "overview", label: "Overview" },
   { value: "owner", label: "Owner" },
-  { value: "tenancy", label: "Tenancy" },
   { value: "ledger", label: "Ledger" },
   { value: "levies", label: "Levies" },
   { value: "communications", label: "Communications" },
@@ -202,21 +193,9 @@ export function LotDetailContent({
   const activeHistoryEntry = ownershipHistory.find((h) => !h.leftAt) ?? null;
   const pastHistoryEntries = ownershipHistory.filter((h) => !!h.leftAt);
 
-  const ownerType = lotOwnerExtra?.owner_type === "company" ? "Company" : "Individual";
-  const isOwnerOccupied = lotOwnerExtra?.is_occupied_by_owner !== false;
   void formatLongDate;
   void initials;
   const portalActive = !!owner.profile_id;
-  // Canonical 3-state occupancy. Prefer the enum column; fall back to the
-  // legacy boolean + tenant heuristic for rows that pre-date the migration.
-  const resolvedOccupancy: "owner_occupied" | "tenanted" | "vacant" =
-    lotOwnerExtra?.occupancy_status ??
-    (isOwnerOccupied
-      ? "owner_occupied"
-      : lotOwnerExtra?.tenant_name
-        ? "tenanted"
-        : "vacant");
-
   const lastPaymentRelative = formatRelative(lastPaymentAt);
 
   // Top header line: "Lot 2 · Unit 2 - Owner name" (or no unit, no owner ,
@@ -354,8 +333,6 @@ export function LotDetailContent({
           ownerDisplayName={owner.owner_display_name ?? null}
           ownerEmail={owner.owner_contact_email ?? null}
           ownerPhone={owner.owner_contact_phone ?? null}
-          ownerType={ownerType}
-          isOwnerOccupied={isOwnerOccupied}
           ownershipSince={lotOwnerExtra?.ownership_since ?? null}
           portalLastActiveAt={portalActivity.last_active_at}
           nextLevy={nextLevy}
@@ -380,24 +357,12 @@ export function LotDetailContent({
           activeOwner={owner}
           activeHistoryEntry={activeHistoryEntry}
           pastHistoryEntries={pastHistoryEntries}
-          ownerType={lotOwnerExtra?.owner_type === "company" ? "company" : "individual"}
           paymentReference={lotOwnerExtra?.payment_reference ?? null}
           postalAddress={lotOwnerExtra?.postal_address ?? null}
           portalActive={portalActive}
           portalInviteAccepted={portalActive}
           engagement={engagement}
           onTransfer={() => setSettlementOpen(true)}
-        />
-      </div>
-
-      <div className={activeTab === "tenancy" ? "" : "hidden"}>
-        <LotTenancyTab
-          lotOwnerId={lotOwnerExtra?.lot_owner_id ?? null}
-          occupancyStatus={resolvedOccupancy}
-          tenantName={lotOwnerExtra?.tenant_name ?? null}
-          tenantEmail={lotOwnerExtra?.tenant_email ?? null}
-          tenantPhone={lotOwnerExtra?.tenant_phone ?? null}
-          activity={activity}
         />
       </div>
 

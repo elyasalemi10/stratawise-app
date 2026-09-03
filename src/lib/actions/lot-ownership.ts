@@ -12,8 +12,6 @@ export interface LotOwnerInfo {
   owner_contact_phone: string | null;
   profile_id: string | null;          // populated only when owner_status === "member"
   invitation_id: string | null;       // populated only when owner_status === "pending_invitation"
-  /** How the lot is lived in. Null when nobody owns it. */
-  occupancy_status: "owner_occupied" | "tenanted" | "vacant" | null;
 }
 
 function emptyOwner(lotId: string): LotOwnerInfo {
@@ -25,7 +23,6 @@ function emptyOwner(lotId: string): LotOwnerInfo {
     owner_contact_phone: null,
     profile_id: null,
     invitation_id: null,
-    occupancy_status: null,
   };
 }
 
@@ -56,7 +53,7 @@ export async function getLotOwners(
   // invite (= "member"); otherwise they are a captured owner awaiting one.
   const { data: currentOwners } = await supabase
     .from("v_lot_current_owners")
-    .select("lot_id, name, email, phone, profile_id, occupancy_status")
+    .select("lot_id, name, email, phone, profile_id")
     .in("lot_id", lotIds);
 
   for (const o of currentOwners ?? []) {
@@ -69,7 +66,6 @@ export async function getLotOwners(
       owner_contact_phone: o.phone ?? null,
       profile_id: o.profile_id ?? null,
       invitation_id: null,
-      occupancy_status: (o.occupancy_status as LotOwnerInfo["occupancy_status"]) ?? null,
     });
   }
 
@@ -99,7 +95,6 @@ export async function getLotOwners(
       owner_contact_phone: inv.phone ?? null,
       profile_id: null,
       invitation_id: inv.id,
-      occupancy_status: null,
     });
   }
 

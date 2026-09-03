@@ -506,9 +506,6 @@ export async function applySettlementToLot(input: ApplySettlementInput) {
   //     distribution and communications, with nothing to indicate it. A
   //     half-transferred lot is worse than a failed transfer, so this one is
   //     fatal.
-  const occupancy = parsed.data.occupancyStatus ?? "owner_occupied";
-  const tenanted = occupancy === "tenanted";
-
   const { data: setRows, error: setErr } = await supabase.rpc("set_lot_owner", {
     p_lot_id: lotId,
     p_oc_id: resolvedOcId,
@@ -517,12 +514,7 @@ export async function applySettlementToLot(input: ApplySettlementInput) {
     p_email: newOwner.email || null,
     p_phone: newOwner.phone ?? null,
     p_postal_address: newOwner.postalAddress ?? null,
-    p_owner_type: "individual",
     p_start_date: settlementDate,
-    p_occupancy_status: occupancy,
-    p_tenant_name: tenanted ? parsed.data.tenantName : null,
-    p_tenant_email: tenanted ? parsed.data.tenantEmail : null,
-    p_tenant_phone: tenanted ? parsed.data.tenantPhone : null,
   });
 
   const transfer = (setRows as Array<{

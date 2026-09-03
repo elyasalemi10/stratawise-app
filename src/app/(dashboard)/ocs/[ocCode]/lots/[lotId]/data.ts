@@ -34,14 +34,8 @@ import type { DocumentRecord } from "@/lib/validations/documents";
 
 export interface LotOwnerExtra {
   lot_owner_id: string | null;
-  owner_type: string | null;
   payment_reference: string | null;
-  is_occupied_by_owner: boolean | null;
-  occupancy_status: "owner_occupied" | "tenanted" | "vacant" | null;
   ownership_since: string | null;
-  tenant_name: string | null;
-  tenant_email: string | null;
-  tenant_phone: string | null;
   postal_address: string | null;
 }
 
@@ -121,12 +115,12 @@ export async function getLotDetailPageData(
       .select("id, lot_number, unit_number")
       .eq("oc_id", ocId)
       .order("lot_number", { ascending: true }),
-    // The current ownership backs the header chip (payment_reference,
-    // owner_type, occupancy) and the Tenancy tab.
+    // The current ownership backs the header chip (payment reference,
+    // service address, ownership start).
     supabase
       .from("v_lot_current_owners")
       .select(
-        "id, owner_type, payment_reference, is_occupied_by_owner, occupancy_status, ownership_since, tenant_name, tenant_email, tenant_phone, postal_address",
+        "id, payment_reference, ownership_since, postal_address",
       )
       .eq("lot_id", lotId)
       .maybeSingle(),
@@ -202,15 +196,8 @@ export async function getLotDetailPageData(
     lotOwnerExtra: e
       ? {
           lot_owner_id: e.id ?? null,
-          owner_type: e.owner_type ?? null,
           payment_reference: e.payment_reference ?? null,
-          is_occupied_by_owner: e.is_occupied_by_owner ?? null,
-          occupancy_status:
-            (e.occupancy_status as "owner_occupied" | "tenanted" | "vacant" | null) ?? null,
           ownership_since: (e.ownership_since as string | null) ?? null,
-          tenant_name: e.tenant_name ?? null,
-          tenant_email: e.tenant_email ?? null,
-          tenant_phone: e.tenant_phone ?? null,
           postal_address: e.postal_address ?? null,
         }
       : null,

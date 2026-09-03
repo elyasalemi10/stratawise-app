@@ -38,8 +38,7 @@ function InlineYesNoToggle({ value, onChange }: { value: boolean; onChange: (v: 
   );
 }
 
-function computeAutoTier(lotCount: number, servicesOnly: boolean): { tier: number; description: string } {
-  if (servicesOnly) return { tier: 5, description: "services-only" };
+function computeAutoTier(lotCount: number): { tier: number; description: string } {
   if (lotCount >= 100) return { tier: 1, description: "100+ lots" };
   if (lotCount >= 51) return { tier: 2, description: "51–99 lots" };
   if (lotCount >= 10) return { tier: 3, description: "10–50 lots" };
@@ -52,10 +51,7 @@ function defaultLot(idx: number): DraftLot {
   // blank so the manager has to enter it explicitly (Victorian strata
   // plans don't guarantee unit number == lot number, and the previous
   // auto-fill produced silent bugs where new lots got mislabelled).
-  return {
-    lot_number: idx + 1,
-    owner_type: "individual",
-  };
+  return { lot_number: idx + 1 };
 }
 
 export function Step3Lots({
@@ -74,7 +70,6 @@ export function Step3Lots({
     : Array.from({ length: 2 }, (_, i) => defaultLot(i));
 
   const [lots, setLots] = useState<DraftLot[]>(seedLots);
-  const [servicesOnly, setServicesOnly] = useState<boolean>(initialDraft.services_only ?? false);
   const [tierConfirmed, setTierConfirmed] = useState<boolean>(initialDraft.tier_confirmed ?? false);
   const [tierConfirmedInvalid, setTierConfirmedInvalid] = useState(false);
 
@@ -98,7 +93,7 @@ export function Step3Lots({
     () => lots.reduce((s, l) => s + (Number(l.lot_liability) || 0), 0),
     [lots],
   );
-  const { tier, description: tierDesc } = computeAutoTier(lots.length, servicesOnly);
+  const { tier, description: tierDesc } = computeAutoTier(lots.length);
 
   function applyLotCount(n: number) {
     if (n < 2) return; // OC Act minimum.
@@ -122,7 +117,6 @@ export function Step3Lots({
         const next = [...prev];
         const cur = { ...(next[idx] ?? {}) };
         if ("owner_name" in patch) cur.name = false;
-        if ("owner_type" in patch) cur.type = false;
         if ("lot_number" in patch) cur.lotNumber = false;
         if ("unit_number" in patch) cur.unit = false;
         if ("unit_entitlement" in patch) cur.entitlement = false;
@@ -158,15 +152,6 @@ export function Step3Lots({
     const unitNumberCounts = new Map<string, number[]>();
 
     lots.forEach((l, i) => {
-      // owner_type defaults to "individual" in the UI dropdown, so the
-      // stored undefined-value case should pass validation as if the user
-      // had explicitly picked Individual. The previous check flagged
-      // every default-Individual row red on Continue.
-      const ownerType = l.owner_type ?? "individual";
-      if (ownerType !== "individual" && ownerType !== "company") {
-        problems.push(`Lot ${l.lot_number || i + 1}: type is required.`);
-        nextLotErrors[i].type = true;
-      }
       if (!(l.owner_name ?? "").trim()) {
         problems.push(`Lot ${l.lot_number || i + 1}: name is required.`);
         nextLotErrors[i].name = true;
@@ -197,19 +182,6 @@ export function Step3Lots({
       if (lia == null || Number.isNaN(Number(lia)) || Number(lia) < 0) {
         problems.push(`Lot ${l.lot_number || i + 1}: lot liability is required (0 is allowed).`);
         nextLotErrors[i].liability = true;
-      }
-      // Item 18 , tenant required ONLY when occupancy is "tenanted". Vacant
-      // lots may legitimately have no tenant info yet.
-      const occ =
-        l.occupancy_status ??
-        (l.is_occupied_by_owner === false
-          ? (l.tenant_name ?? "").trim()
-            ? "tenanted"
-            : "vacant"
-          : "owner_occupied");
-      if (occ === "tenanted" && !(l.tenant_name ?? "").trim()) {
-        problems.push(`Lot ${l.lot_number || i + 1}: tenant name is required when the lot is tenanted (or set it to Vacant).`);
-        nextLotErrors[i].tenantName = true;
       }
     });
 
@@ -243,7 +215,6 @@ export function Step3Lots({
     const patch = {
       lots,
       total_lots: lots.length,
-      services_only: servicesOnly,
       tier,
       tier_confirmed: true,
     };
@@ -275,22 +246,7 @@ export function Step3Lots({
             invalid={lotCountInvalid}
             placeholder="Count"
           />
-        </div>
-        {/* Services-only , matches the GST-Registered row on Step 1: label
-            on the left, inline Yes/No toggle on the right, no card.
-            Toggling services-only changes the computed tier, so the
-            tier-confirm checkbox below must be re-ticked to advance. */}
-        <div className="flex h-9 items-center gap-3 self-end">
-          <Label htmlFor="services-only">Services-only OC</Label>
-          <InlineYesNoToggle
-            value={servicesOnly}
-            onChange={(v) => {
-              setServicesOnly(v);
-              if (tierConfirmed) setTierConfirmed(false);
-            }}
-          />
-        </div>
-      </div>
+        </div>      </div>
 
       <div
         className="rounded-md border border-border bg-card overflow-hidden"
@@ -323,47 +279,20 @@ export function Step3Lots({
         <table className="w-full text-sm">
           <thead className="bg-primary text-primary-foreground">
             <tr className="text-xs font-medium">
-              <th className="px-2 py-2 text-left w-32">Type</th>
               <th className="px-2 py-2 text-left">Name</th>
               <th className="px-2 py-2 text-left w-20">Lot</th>
               <th className="px-2 py-2 text-left w-24">Unit</th>
               <th className="px-2 py-2 text-left w-32">Entitlement</th>
               <th className="px-2 py-2 text-left w-32">Liability</th>
-              <th className="px-2 py-2 text-left w-40 whitespace-nowrap">Occupancy</th>
               <th className="w-10" />
             </tr>
           </thead>
           <tbody className="[&_tr:nth-child(odd)]:bg-card [&_tr:nth-child(even)]:bg-muted/20">
             {lots.map((lot, idx) => {
               const errs = lotErrors[idx] ?? {};
-              // Item 18 , resolve canonical occupancy. Either the explicit
-              // enum field or derive from the legacy boolean + tenant data.
-              const occupancyStatus: "owner_occupied" | "tenanted" | "vacant" =
-                lot.occupancy_status ??
-                (lot.is_occupied_by_owner === false
-                  ? (lot.tenant_name ?? "").trim()
-                    ? "tenanted"
-                    : "vacant"
-                  : "owner_occupied");
-              const ownerOccupied = occupancyStatus === "owner_occupied";
-              const isTenanted = occupancyStatus === "tenanted";
               return (
                 <Fragment key={idx}>
                   <tr>
-                    <td className="px-2 py-1.5">
-                      <Select
-                        value={lot.owner_type ?? "individual"}
-                        onValueChange={(v) => updateLot(idx, { owner_type: (v as "individual" | "company") ?? "individual" })}
-                      >
-                        <SelectTrigger className="h-8" aria-invalid={errs.type || undefined}>
-                          <SelectValue>{lot.owner_type === "company" ? "Company" : "Individual"}</SelectValue>
-                        </SelectTrigger>
-                        <SelectContent>
-                          <SelectItem value="individual">Individual</SelectItem>
-                          <SelectItem value="company">Company</SelectItem>
-                        </SelectContent>
-                      </Select>
-                    </td>
                     <td className="px-2 py-1.5" data-cell={`${idx}:0`}>
                       <Input
                         value={lot.owner_name ?? ""}
@@ -406,38 +335,6 @@ export function Step3Lots({
                         className="h-8"
                       />
                     </td>
-                    <td className="px-2 py-1.5">
-                      {/* Item 18 , 3-way occupancy selector; choosing "Vacant"
-                          skips the tenant inputs and is the default when the
-                          manager doesn't yet know the tenant. */}
-                      <Select
-                        value={occupancyStatus}
-                        onValueChange={(v) =>
-                          updateLot(idx, {
-                            occupancy_status: v as "owner_occupied" | "tenanted" | "vacant",
-                            is_occupied_by_owner: v === "owner_occupied",
-                            ...(v !== "tenanted"
-                              ? { tenant_name: undefined, tenant_email: undefined, tenant_phone: undefined }
-                              : {}),
-                          })
-                        }
-                      >
-                        <SelectTrigger className="h-8">
-                          <SelectValue placeholder="Pick occupancy">
-                            {occupancyStatus === "owner_occupied"
-                              ? "Owner-occupied"
-                              : occupancyStatus === "tenanted"
-                                ? "Tenanted"
-                                : "Vacant"}
-                          </SelectValue>
-                        </SelectTrigger>
-                        <SelectContent>
-                          <SelectItem value="owner_occupied">Owner-occupied</SelectItem>
-                          <SelectItem value="tenanted">Tenanted</SelectItem>
-                          <SelectItem value="vacant">Vacant</SelectItem>
-                        </SelectContent>
-                      </Select>
-                    </td>
                     <td className="px-2 py-1.5 text-right">
                       <button
                         type="button"
@@ -450,33 +347,6 @@ export function Step3Lots({
                       </button>
                     </td>
                   </tr>
-                  {isTenanted && (
-                    <tr>
-                      <td className="px-2 py-1.5" />
-                      <td className="px-2 py-1.5" colSpan={7}>
-                        <div className="grid grid-cols-3 gap-2">
-                          <Input
-                            placeholder="Tenant name"
-                            value={lot.tenant_name ?? ""}
-                            onChange={(e) => updateLot(idx, { tenant_name: e.target.value })}
-                            aria-invalid={errs.tenantName || undefined}
-                            className="h-8"
-                          />
-                          <PhoneInput
-                            value={lot.tenant_phone ?? "+61 "}
-                            onChange={(v) => updateLot(idx, { tenant_phone: v })}
-                          />
-                          <Input
-                            placeholder="Tenant email"
-                            type="email"
-                            value={lot.tenant_email ?? ""}
-                            onChange={(e) => updateLot(idx, { tenant_email: e.target.value })}
-                            className="h-8"
-                          />
-                        </div>
-                      </td>
-                    </tr>
-                  )}
                 </Fragment>
               );
             })}
@@ -525,7 +395,6 @@ export function Step3Lots({
         getCurrentPatch={() => ({
           lots,
           total_lots: lots.length,
-          services_only: servicesOnly,
           tier,
         })}
       />

@@ -67,8 +67,8 @@ export async function updateLotDetails(
 }
 
 // ─── updateLotOwnerContact ──────────────────────────────────────────────────
-// Edits the PERSON, not the lot link. Name, email, phone, postal address and
-// owner type live on `owners`, so a manager fixing a typo on one lot fixes it
+// Edits the PERSON, not the lot link. Name, email, phone and postal address
+// live on `owners`, so a manager fixing a typo on one lot fixes it
 // on every lot that person owns , which is the reason the model was split in
 // the first place.
 //
@@ -80,7 +80,6 @@ export async function updateLotDetails(
 const updateLotOwnerContactSchema = z.object({
   // The ownership row's id (what v_lot_current_owners exposes as `id`).
   lot_owner_id: z.string().uuid(),
-  owner_type: z.enum(["individual", "company"]).nullable().optional(),
   name: z.string().trim().min(1).max(120).optional(),
   phone: z.string().trim().max(40).nullable().optional(),
   postal_address: z.string().trim().max(500).nullable().optional(),
@@ -115,7 +114,7 @@ export async function updateLotOwnerContact(
 
   const { data: before, error: ownerErr } = await supabase
     .from("owners")
-    .select("id, owner_type, name, phone, postal_address, email")
+    .select("id, name, phone, postal_address, email")
     .eq("id", ownership.owner_id as string)
     .single();
   if (ownerErr || !before) return { ok: false, error: "Owner not found" };
@@ -137,7 +136,6 @@ export async function updateLotOwnerContact(
   }
 
   const update: Record<string, unknown> = {};
-  if (parsed.data.owner_type !== undefined) update.owner_type = parsed.data.owner_type;
   if (parsed.data.name !== undefined) update.name = parsed.data.name;
   if (parsed.data.phone !== undefined) update.phone = parsed.data.phone;
   if (parsed.data.email !== undefined) update.email = parsed.data.email;

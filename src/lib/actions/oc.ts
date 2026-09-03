@@ -298,7 +298,6 @@ export interface LotWithFinancials {
   owner_status: LotOwnerStatus;
   balance: number;
   financial_status: "up_to_date" | "unassigned" | "behind";
-  occupancy_status: "owner_occupied" | "tenanted" | "vacant" | null;
 }
 
 export async function getLotsWithFinancials(ocId: string): Promise<LotWithFinancials[]> {
@@ -354,7 +353,6 @@ export async function getLotsWithFinancials(ocId: string): Promise<LotWithFinanc
       owner_status: owner?.owner_status ?? "unowned",
       balance,
       financial_status,
-      occupancy_status: owner?.occupancy_status ?? null,
     };
   });
 }

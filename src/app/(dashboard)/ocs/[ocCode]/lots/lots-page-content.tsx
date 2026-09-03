@@ -36,12 +36,11 @@ import { BulkInviteDialog } from "./bulk-invite-dialog";
 import type { LotWithFinancials } from "@/lib/actions/oc";
 
 // The filters a manager actually reaches for on this page: who owes money,
-// who is not on the portal yet, and how the lot is lived in. There was
-// nothing here before but a search box and a sort , both of which answer
-// "find this one lot", not "show me the group I need to act on".
+// and who is not on the portal yet. There was nothing here before but a
+// search box and a sort , both of which answer "find this one lot", not
+// "show me the group I need to act on".
 type BalanceFilter = "all" | "arrears" | "settled";
 type PortalFilter = "all" | "member" | "pending_invitation" | "unowned";
-type OccupancyFilter = "all" | "owner_occupied" | "tenanted" | "vacant";
 
 const BALANCE_OPTIONS: Array<{ value: BalanceFilter; label: string }> = [
   { value: "all", label: "Any balance" },
@@ -53,12 +52,6 @@ const PORTAL_OPTIONS: Array<{ value: PortalFilter; label: string }> = [
   { value: "member", label: "On the portal" },
   { value: "pending_invitation", label: "Invited" },
   { value: "unowned", label: "No owner" },
-];
-const OCCUPANCY_OPTIONS: Array<{ value: OccupancyFilter; label: string }> = [
-  { value: "all", label: "Any occupancy" },
-  { value: "owner_occupied", label: "Owner-occupied" },
-  { value: "tenanted", label: "Tenanted" },
-  { value: "vacant", label: "Vacant" },
 ];
 
 
@@ -115,7 +108,6 @@ export function LotsPageContent({
   const [searchText, setSearchText] = useState("");
   const [balanceFilter, setBalanceFilter] = useState<BalanceFilter>("all");
   const [portalFilter, setPortalFilter] = useState<PortalFilter>("all");
-  const [occupancyFilter, setOccupancyFilter] = useState<OccupancyFilter>("all");
   // Single source of truth for invite-status. Seeded from the
   // server-rendered prop so the lots tab paints with the right pills on
   // first frame , no spinner-then-pop. Re-fetched only after a
@@ -186,7 +178,6 @@ export function LotsPageContent({
       if (balanceFilter === "arrears" && !(lot.balance > 0)) return false;
       if (balanceFilter === "settled" && lot.balance > 0) return false;
       if (portalFilter !== "all" && lot.owner_status !== portalFilter) return false;
-      if (occupancyFilter !== "all" && lot.occupancy_status !== occupancyFilter) return false;
       if (!needle) return true;
       const haystacks = [
         String(lot.lot_number),
@@ -203,20 +194,18 @@ export function LotsPageContent({
     const arr = [...filtered];
     arr.sort((a, b) => (a.lot_number ?? 0) - (b.lot_number ?? 0));
     return arr;
-  }, [lots, searchText, balanceFilter, portalFilter, occupancyFilter]);
+  }, [lots, searchText, balanceFilter, portalFilter]);
 
   // The badge counts FILTERS, not the search box , the search box shows its
   // own state and has its own clear button.
   const filterCount =
     (balanceFilter !== "all" ? 1 : 0) +
-    (portalFilter !== "all" ? 1 : 0) +
-    (occupancyFilter !== "all" ? 1 : 0);
+    (portalFilter !== "all" ? 1 : 0);
   const activeFilters = filterCount + (searchText.trim() ? 1 : 0);
 
   function clearFilters() {
     setBalanceFilter("all");
     setPortalFilter("all");
-    setOccupancyFilter("all");
   }
 
   function exportCsv() {
@@ -290,12 +279,6 @@ export function LotsPageContent({
                   value={portalFilter}
                   onChange={setPortalFilter}
                   options={PORTAL_OPTIONS}
-                />
-                <FilterSubmenu
-                  label="Occupancy"
-                  value={occupancyFilter}
-                  onChange={setOccupancyFilter}
-                  options={OCCUPANCY_OPTIONS}
                 />
                 {filterCount > 0 && (
                   <>

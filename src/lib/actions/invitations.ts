@@ -257,7 +257,6 @@ export async function acceptInvitation(rawCode: string) {
             .from("owners")
             .insert({
               management_company_id: managementCompanyId,
-              owner_type: "individual",
               name: invitation.name || [profile.first_name, profile.last_name].filter(Boolean).join(" ").trim() || invitation.email,
               email: invitation.email ?? profile.email ?? null,
               phone: invitation.phone ?? null,

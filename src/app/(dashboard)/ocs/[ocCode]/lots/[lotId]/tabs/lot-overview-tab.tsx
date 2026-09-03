@@ -75,8 +75,6 @@ interface Props {
   ownerDisplayName: string | null;
   ownerEmail: string | null;
   ownerPhone: string | null;
-  ownerType: string;
-  isOwnerOccupied: boolean;
   ownershipSince: string | null;
   portalLastActiveAt: string | null;
   nextLevy: NextLevyDue | null;
@@ -94,8 +92,6 @@ export function LotOverviewTab({
   ownerDisplayName,
   ownerEmail,
   ownerPhone,
-  ownerType,
-  isOwnerOccupied,
   ownershipSince,
   portalLastActiveAt,
   nextLevy,
@@ -107,7 +103,6 @@ export function LotOverviewTab({
 }: Props) {
   void ownerEmail;
   void ownerPhone;
-  void isOwnerOccupied;
   const recentActivity = activity.slice(0, 5);
   const ownershipSinceLabel = formatOrdinalDate(ownershipSince) ?? "Not set";
   const portalLabel = formatRelative(portalLastActiveAt);
@@ -199,7 +194,7 @@ export function LotOverviewTab({
         <CardContent className="pt-5">
           <h3 className="text-sm font-semibold text-foreground mb-3">Snapshot</h3>
           <dl className="space-y-2.5 text-sm">
-            <SnapshotRow label="Owner" value={ownerDisplayName ?? "Unassigned"} sub={ownerType} />
+            <SnapshotRow label="Owner" value={ownerDisplayName ?? "Unassigned"} />
             <SnapshotRow label="Ownership since" value={ownershipSinceLabel} muted={!ownershipSince} />
             <SnapshotRow label="Portal last active" value={portalLabel} muted={!portalLastActiveAt} />
           </dl>

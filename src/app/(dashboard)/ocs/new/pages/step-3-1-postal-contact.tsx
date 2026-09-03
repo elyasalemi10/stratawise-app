@@ -30,22 +30,16 @@ function isValidEmail(raw: string): boolean {
 
 function lotsToCsv(lots: DraftLot[]): string {
   const header = [
-    "lot_number","unit_number","owner_type",
+    "lot_number","unit_number",
     "owner_name","owner_email","owner_phone","owner_postal_address",
-    "is_occupied_by_owner","tenant_name","tenant_email","tenant_phone",
   ];
   const rows = lots.map((l) => [
     l.lot_number,
     l.unit_number ?? "",
-    l.owner_type ?? "individual",
     l.owner_name ?? "",
     l.owner_email ?? "",
     l.owner_phone ?? "",
     l.owner_postal_address ?? "",
-    l.is_occupied_by_owner === false ? "false" : "true",
-    l.tenant_name ?? "",
-    l.tenant_email ?? "",
-    l.tenant_phone ?? "",
   ]);
   return [header, ...rows].map((r) => r.map((c) => {
     const s = String(c);
@@ -103,24 +97,11 @@ function csvToLots(csv: string, defaults: DraftLot[]): { lots: DraftLot[]; error
     if (email && !isValidEmail(email)) errors.push({ row: i + 1, reason: "Invalid email" });
     const phone = (cols[idx("owner_phone")] ?? "").trim();
     if (phone && !isValidAuPhone(phone)) errors.push({ row: i + 1, reason: "Invalid phone" });
-    const ownerType = (cols[idx("owner_type")] ?? "individual").trim().toLowerCase();
-    const ownerOccupied = ((cols[idx("is_occupied_by_owner")] ?? "true").toLowerCase() !== "false");
     const target = merged.find((l) => l.lot_number === lot_number)!;
-    target.owner_type = ownerType === "company" ? "company" : "individual";
     target.owner_name = (cols[idx("owner_name")] ?? "").trim();
     target.owner_email = email;
     target.owner_phone = phone;
     target.owner_postal_address = (cols[idx("owner_postal_address")] ?? "").trim();
-    target.is_occupied_by_owner = ownerOccupied;
-    if (ownerOccupied) {
-      target.tenant_name = undefined;
-      target.tenant_email = undefined;
-      target.tenant_phone = undefined;
-    } else {
-      target.tenant_name = (cols[idx("tenant_name")] ?? "").trim();
-      target.tenant_email = (cols[idx("tenant_email")] ?? "").trim();
-      target.tenant_phone = (cols[idx("tenant_phone")] ?? "").trim();
-    }
   }
   return { lots: merged, errors };
 }
@@ -138,17 +119,16 @@ export function Step3PostalContact({
 }) {
   const ocSiteAddress = initialDraft.address ?? "";
 
-  // On mount, seed each owner-occupied lot's service address from the OC site
-  // address WHEN it isn't already set (resumed drafts that already have
-  // values are left alone). Non-owner-occupied lots start blank. The unit
-  // number is prepended ("Unit 12, 5 Smith St…") so the seeded address is
-  // already addressed to the lot rather than the building reception.
+  // On mount, seed each lot's service address from the OC site address WHEN
+  // it isn't already set (resumed drafts that already have values are left
+  // alone). The unit number is prepended ("Unit 12, 5 Smith St…") so the
+  // seeded address is already addressed to the lot rather than the building
+  // reception.
   const initialLots = useMemo<DraftLot[]>(() => {
     const seed = initialDraft.lots ?? [];
     return seed.map((l) => {
-      const isOwnerOccupied = l.is_occupied_by_owner !== false;
       const hasPostal = (l.owner_postal_address ?? "").trim().length > 0;
-      if (isOwnerOccupied && !hasPostal && ocSiteAddress) {
+      if (!hasPostal && ocSiteAddress) {
         const unit = (l.unit_number ?? "").toString().trim();
         const prefixed = unit ? `Unit ${unit}, ${ocSiteAddress}` : ocSiteAddress;
         return { ...l, owner_postal_address: prefixed };
@@ -194,9 +174,8 @@ export function Step3PostalContact({
     const firstLine = text.split(/\r?\n/, 1)[0] ?? "";
     const cols = parseCsvLine(firstLine).map((c) => c.trim().toLowerCase());
     const expected = [
-      "lot_number", "unit_number", "owner_type",
+      "lot_number", "unit_number",
       "owner_name", "owner_email", "owner_phone", "owner_postal_address",
-      "is_occupied_by_owner", "tenant_name", "tenant_email", "tenant_phone",
     ];
     if (cols.length !== expected.length) return false;
     return expected.every((k, i) => cols[i] === k);
@@ -310,11 +289,6 @@ export function Step3PostalContact({
                       </td>
                       <td className="px-3 py-1.5 text-muted-foreground truncate" title={lot.owner_name || ""}>
                         {lot.owner_name || ","}
-                        {lot.occupancy_status === "vacant" && (
-                          <span className="ml-2 inline-flex items-center rounded-full bg-cool-muted text-cool-muted-foreground text-[10px] px-1.5 py-0.5 font-medium">
-                            Vacant
-                          </span>
-                        )}
                       </td>
                       <td className="px-3 py-1.5">
                         <Input

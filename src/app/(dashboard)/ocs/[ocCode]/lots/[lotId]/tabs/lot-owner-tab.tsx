@@ -79,7 +79,6 @@ interface Props {
   activeOwner: LotOwnerInfo;
   activeHistoryEntry: OwnershipHistoryEntry | null;
   pastHistoryEntries: OwnershipHistoryEntry[];
-  ownerType: "individual" | "company";
   paymentReference: string | null;
   postalAddress: string | null;
   portalActive: boolean;
@@ -94,7 +93,6 @@ export function LotOwnerTab(props: Props) {
     activeOwner,
     activeHistoryEntry,
     pastHistoryEntries,
-    ownerType,
     paymentReference,
     postalAddress,
     portalActive,
@@ -112,7 +110,6 @@ export function LotOwnerTab(props: Props) {
     email: activeOwner.owner_contact_email ?? "",
     phone: activeOwner.owner_contact_phone ?? "",
     postal: postalAddress ?? "",
-    owner_type: ownerType,
   });
 
   React.useEffect(() => {
@@ -121,14 +118,12 @@ export function LotOwnerTab(props: Props) {
       email: activeOwner.owner_contact_email ?? "",
       phone: activeOwner.owner_contact_phone ?? "",
       postal: postalAddress ?? "",
-      owner_type: ownerType,
     });
   }, [
     activeOwner.owner_display_name,
     activeOwner.owner_contact_email,
     activeOwner.owner_contact_phone,
     postalAddress,
-    ownerType,
   ]);
 
   if (!activeOwner.owner_display_name) {
@@ -159,10 +154,11 @@ export function LotOwnerTab(props: Props) {
               </div>
               <div className="min-w-0">
                 <p className="font-semibold text-foreground truncate">{view.name}</p>
-                <p className="text-xs text-muted-foreground">
-                  {view.owner_type === "company" ? "Company" : "Individual"}
-                  {activeHistoryEntry?.joinedAt && <> · Since {formatLongDate(activeHistoryEntry.joinedAt)}</>}
-                </p>
+                {activeHistoryEntry?.joinedAt && (
+                  <p className="text-xs text-muted-foreground">
+                    Since {formatLongDate(activeHistoryEntry.joinedAt)}
+                  </p>
+                )}
               </div>
             </div>
             <OwnerContactEditSheet
@@ -176,7 +172,6 @@ export function LotOwnerTab(props: Props) {
                   email: activeOwner.owner_contact_email ?? "",
                   phone: activeOwner.owner_contact_phone ?? "",
                   postal: postalAddress ?? "",
-                  owner_type: ownerType,
                 })
               }
               onSaved={() => router.refresh()}
@@ -185,7 +180,6 @@ export function LotOwnerTab(props: Props) {
 
           {/* Read-only field list , no inline edit triggers. */}
           <dl className="divide-y divide-border">
-            <KvRow label="Owner type" value={view.owner_type === "company" ? "Company" : "Individual"} />
             <KvRow label="Email" value={view.email} />
             <KvRow label="Phone" value={view.phone} />
             <KvRow label="Service address" value={view.postal} multiline />
@@ -256,7 +250,6 @@ interface OwnerView {
   email: string;
   phone: string;
   postal: string;
-  owner_type: "individual" | "company";
 }
 
 function OwnerContactEditSheet({
@@ -279,14 +272,12 @@ function OwnerContactEditSheet({
   const [email, setEmail] = React.useState(initial.email);
   const [phone, setPhone] = React.useState(initial.phone);
   const [postal, setPostal] = React.useState(initial.postal);
-  const [ownerType, setOwnerType] = React.useState<"individual" | "company">(initial.owner_type);
 
   function reset() {
     setName(initial.name);
     setEmail(initial.email);
     setPhone(initial.phone);
     setPostal(initial.postal);
-    setOwnerType(initial.owner_type);
   }
 
   return (
@@ -301,7 +292,6 @@ function OwnerContactEditSheet({
         if (!name.trim()) return { ok: false as const, error: "Name is required" };
         const payload = {
           lot_owner_id: lotOwnerId,
-          owner_type: ownerType,
           name: name.trim(),
           phone: phone.trim() || null,
           postal_address: postal.trim() || null,
@@ -313,7 +303,6 @@ function OwnerContactEditSheet({
             name: name.trim(),
             phone,
             postal,
-            owner_type: ownerType,
             ...(portalInviteAccepted ? {} : { email }),
           });
           onSaved();
@@ -323,18 +312,6 @@ function OwnerContactEditSheet({
         return res.ok ? { ok: true as const } : { ok: false as const, error: res.error };
       }}
     >
-      <div className="space-y-1.5">
-        <Label>Owner type</Label>
-        <Select value={ownerType} onValueChange={(v) => setOwnerType(v as "individual" | "company")}>
-          <SelectTrigger>
-            <SelectValue />
-          </SelectTrigger>
-          <SelectContent>
-            <SelectItem value="individual">Individual</SelectItem>
-            <SelectItem value="company">Company</SelectItem>
-          </SelectContent>
-        </Select>
-      </div>
       <div className="space-y-1.5">
         <Label>
           Full name <span className="text-destructive">*</span>
