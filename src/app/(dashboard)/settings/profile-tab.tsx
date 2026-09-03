@@ -7,43 +7,16 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { AvatarCropDialog } from "@/components/shared/avatar-crop-dialog";
+import { useFieldSave } from "./use-field-save";
 import { revalidateSidebarFromClient } from "@/lib/sidebar-cache";
 import { updateProfile, updateAvatar } from "./actions";
 import { ChangeEmailDialog, ChangePasswordDialog } from "./credential-dialogs";
 import type { Profile } from "@/lib/auth";
 
-// Saving happens on blur, not on a Save button.
-//
-// A Save button at the bottom of a settings page makes you remember to press
-// it, and punishes you for not. These are independent single fields , there
-// is nothing to keep consistent between them , so each one writes when you
-// leave it, and only when it actually changed. A toast confirms; nothing
-// else moves.
-//
 // The password box shows a FIXED ten dots. Rendering the real length is a
 // small gift to anyone reading over your shoulder, and there is no reason
 // for the page to know it anyway.
 const MASKED_PASSWORD = "•".repeat(10);
-
-function useFieldSave(initial: string, save: (v: string) => Promise<{ error?: string }>) {
-  const [value, setValue] = React.useState(initial);
-  const committed = React.useRef(initial);
-
-  async function onBlur() {
-    const next = value.trim();
-    if (next === committed.current) return; // untouched, nothing to say
-    const res = await save(next);
-    if (res.error) {
-      toast.error(res.error);
-      setValue(committed.current); // put back what was there
-      return;
-    }
-    committed.current = next;
-    toast.success("Saved");
-  }
-
-  return { value, setValue, onBlur };
-}
 
 export function ProfileTab({ profile }: { profile: Profile }) {
   const [avatarUrl, setAvatarUrl] = React.useState(profile.avatar_url ?? "");
@@ -159,7 +132,7 @@ export function ProfileTab({ profile }: { profile: Profile }) {
           <Input
             id="first-name"
             value={firstName.value}
-            onChange={(e) => firstName.setValue(e.target.value)}
+            onChange={(e) => firstName.onChange(e.target.value)}
             onBlur={firstName.onBlur}
             placeholder="First name"
           />
@@ -169,7 +142,7 @@ export function ProfileTab({ profile }: { profile: Profile }) {
           <Input
             id="last-name"
             value={lastName.value}
-            onChange={(e) => lastName.setValue(e.target.value)}
+            onChange={(e) => lastName.onChange(e.target.value)}
             onBlur={lastName.onBlur}
             placeholder="Last name"
           />

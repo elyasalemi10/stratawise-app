@@ -11,13 +11,11 @@ export default async function Page() {
   return (
     <>
       <SectionHeader title="Team" />
-      (
     <TeamTab
       members={await getTeamMembers()}
       currentUserId={profile.id}
       isAdmin={profile.company_role === "admin"}
     />
-  )
     </>
   );
 }

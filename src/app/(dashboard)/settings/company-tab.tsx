@@ -2,19 +2,18 @@
 
 import { useState, useRef } from "react";
 import { toast } from "sonner";
-import { Upload, Building2, Pencil } from "lucide-react";
+import { Upload, Building2 } from "lucide-react";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import {
-  Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle,
-} from "@/components/ui/sheet";
+  } from "@/components/ui/sheet";
 import { updateCompanyField, uploadCompanySignature } from "./actions";
+import { useFieldSave } from "./use-field-save";
 import { updateCompanyLogo } from "@/lib/actions/company-branding";
 import { MAX_LOGO_BYTES, MAX_LOGO_WIDTH, MAX_LOGO_HEIGHT } from "@/lib/actions/company-branding-constants";
 import { BrandColourPicker } from "@/components/shared/brand-colour-picker";
-import { PhoneInput } from "@/components/shared/phone-input";
 
 interface CompanyData {
   id: string;
@@ -31,130 +30,47 @@ interface CompanyData {
   brand_color_secondary: string | null;
 }
 
-function ReadOnlyRow({ label, value }: { label: string; value: string | null }) {
-  return (
-    <div className="flex items-center justify-between py-3 border-b border-border/50 last:border-b-0">
-      <Label className="text-sm text-muted-foreground w-40 shrink-0">{label}</Label>
-      <span className="text-sm text-foreground text-right truncate max-w-sm">
-        {value || <span className="text-muted-foreground/60">Not set</span>}
-      </span>
-    </div>
-  );
-}
 
-interface CompanyDetailsForEdit {
-  id: string;
-  name: string;
-  trading_as: string | null;
-  registered_name: string | null;
-  abn: string | null;
-  address: string | null;
-  phone: string | null;
-  email: string | null;
-}
 
-function EditCompanyDrawer({
-  open, onOpenChange, company, onSaved,
+// One company field, saved on blur. See use-field-save.ts for why there is
+// no Save button.
+function CompanyField({
+  id,
+  label,
+  field,
+  company,
+  onSaved,
 }: {
-  open: boolean;
-  onOpenChange: (open: boolean) => void;
-  company: CompanyDetailsForEdit;
-  onSaved: (updates: Partial<CompanyDetailsForEdit>) => void;
+  id: string;
+  label: string;
+  field: "name" | "trading_as" | "registered_name" | "abn" | "address" | "phone" | "email";
+  company: CompanyData;
+  onSaved: (field: string, value: string) => void;
 }) {
-  const [draft, setDraft] = useState({
-    name: company.name,
-    trading_as: company.trading_as ?? "",
-    registered_name: company.registered_name ?? "",
-    abn: company.abn ?? "",
-    address: company.address ?? "",
-    phone: company.phone ?? "",
-    email: company.email ?? "",
-  });
-  const [saving, setSaving] = useState(false);
-
-  async function handleSave() {
-    setSaving(true);
-    // Only push fields the user actually changed , no point burning a row
-    // version on identical values.
-    const dirty: Record<string, string | null> = {};
-    if (draft.name !== company.name) dirty.name = draft.name;
-    if (draft.trading_as !== (company.trading_as ?? "")) dirty.trading_as = draft.trading_as || null;
-    if (draft.registered_name !== (company.registered_name ?? "")) dirty.registered_name = draft.registered_name || null;
-    if (draft.abn !== (company.abn ?? "")) dirty.abn = draft.abn || null;
-    if (draft.address !== (company.address ?? "")) dirty.address = draft.address || null;
-    if (draft.phone !== (company.phone ?? "")) dirty.phone = draft.phone || null;
-    if (draft.email !== (company.email ?? "")) dirty.email = draft.email || null;
-
-    for (const [field, value] of Object.entries(dirty)) {
-      const result = await updateCompanyField(company.id, field, value);
-      if (result.error) {
-        setSaving(false);
-        toast.error(result.error);
-        return;
-      }
-    }
-    setSaving(false);
-    if (Object.keys(dirty).length === 0) {
-      toast.success("No changes");
-    } else {
-      toast.success("Company details updated");
-      // Mirror the changes back to the parent (strip nulls back to undefined-or-string).
-      onSaved(Object.fromEntries(
-        Object.entries(dirty).map(([k, v]) => [k, v]),
-      ) as Partial<CompanyDetailsForEdit>);
-    }
-    onOpenChange(false);
-  }
+  const f = useFieldSave(
+    String(company[field] ?? ""),
+    async (value) => {
+      const res = await updateCompanyField(company.id, field, value || null);
+      if (!res?.error) onSaved(field, value);
+      return res ?? {};
+    },
+    // Seven fields on one page all saying "Saved" tells you something
+    // saved, not which.
+    { successMessage: `${label} saved` },
+  );
 
   return (
-    <Sheet open={open} onOpenChange={onOpenChange}>
-      <SheetContent side="right" className="flex w-full flex-col gap-0 sm:max-w-md">
-        <SheetHeader>
-          <SheetTitle>Edit company details</SheetTitle>
-          <SheetDescription className="sr-only">Update company name, ABN, contact details and address.</SheetDescription>
-        </SheetHeader>
-        <div className="flex-1 space-y-4 overflow-y-auto px-4 py-4">
-          <div className="space-y-1.5">
-            <Label htmlFor="ed-name">Company name</Label>
-            <Input id="ed-name" value={draft.name} onChange={(e) => setDraft((p) => ({ ...p, name: e.target.value }))} />
-          </div>
-          <div className="space-y-1.5">
-            <Label htmlFor="ed-trad">Trading name</Label>
-            <Input id="ed-trad" value={draft.trading_as} onChange={(e) => setDraft((p) => ({ ...p, trading_as: e.target.value }))} />
-          </div>
-          <div className="space-y-1.5">
-            <Label htmlFor="ed-reg">Registered name</Label>
-            <Input id="ed-reg" value={draft.registered_name} onChange={(e) => setDraft((p) => ({ ...p, registered_name: e.target.value }))} />
-          </div>
-          <div className="space-y-1.5">
-            <Label htmlFor="ed-abn">ABN</Label>
-            <Input id="ed-abn" value={draft.abn} onChange={(e) => setDraft((p) => ({ ...p, abn: e.target.value }))} />
-          </div>
-          <div className="space-y-1.5">
-            <Label htmlFor="ed-addr">Address</Label>
-            <Input id="ed-addr" value={draft.address} onChange={(e) => setDraft((p) => ({ ...p, address: e.target.value }))} />
-          </div>
-          <div className="space-y-1.5">
-            <Label htmlFor="ed-phone">Phone</Label>
-            <PhoneInput
-              id="ed-phone"
-              value={draft.phone}
-              onChange={(v) => setDraft((p) => ({ ...p, phone: v }))}
-            />
-          </div>
-          <div className="space-y-1.5">
-            <Label htmlFor="ed-email">Email</Label>
-            <Input id="ed-email" type="email" value={draft.email} onChange={(e) => setDraft((p) => ({ ...p, email: e.target.value }))} />
-          </div>
-        </div>
-        <div className="flex justify-end gap-2 border-t border-border p-4">
-          <Button variant="secondary" onClick={() => onOpenChange(false)} disabled={saving}>Cancel</Button>
-          <Button onClick={handleSave} disabled={saving} loading={saving}>
-            Save changes
-          </Button>
-        </div>
-      </SheetContent>
-    </Sheet>
+    <div className="space-y-1.5">
+      <Label htmlFor={id}>{label}</Label>
+      <Input
+        id={id}
+        value={f.value}
+        onChange={(e) => f.onChange(e.target.value)}
+        onBlur={f.onBlur}
+        aria-invalid={f.invalid || undefined}
+        placeholder={label}
+      />
+    </div>
   );
 }
 
@@ -168,7 +84,11 @@ export function CompanyTab({ company }: { company: CompanyData | null }) {
   // Locally tracked overlay of the company fields so the read-only rows
   // re-render immediately after the edit drawer saves.
   const [localCompany, setLocalCompany] = useState(company);
-  const [editOpen, setEditOpen] = useState(false);
+
+  // Each field writes just itself, so the local copy is patched key by key
+  // rather than replaced wholesale.
+  const patchCompany = (field: string, value: string) =>
+    setLocalCompany((prev) => (prev ? { ...prev, [field]: value || null } : prev));
 
   async function saveBrandColor(hex: string) {
     if (!company) return;
@@ -369,52 +289,29 @@ export function CompanyTab({ company }: { company: CompanyData | null }) {
         </CardContent>
       </Card>
 
-      {/* Company details , read-only by default; Edit opens a drawer. */}
+      {/* Company details , edited in place.
+
+          These were read-only rows behind an Edit button that opened a
+          drawer: changing a phone number meant a click to reveal the fields,
+          a click to save, and the current values hidden behind a modal while
+          you typed. They are just fields. Each saves when you leave it. */}
       <Card>
         <CardContent className="pt-5">
-          <div className="mb-3 flex items-center justify-between">
-            <h3 className="text-sm font-semibold text-foreground">Company details</h3>
-            <Button variant="secondary" size="sm" onClick={() => setEditOpen(true)}>
-              <Pencil className="size-3.5" />
-              Edit
-            </Button>
+          <h3 className="mb-4 text-sm font-semibold text-foreground">Company details</h3>
+          <div className="grid gap-4 sm:grid-cols-2">
+            <CompanyField id="co-name" label="Company name" field="name" company={localCompany!} onSaved={patchCompany} />
+            <CompanyField id="co-trad" label="Trading name" field="trading_as" company={localCompany!} onSaved={patchCompany} />
+            <CompanyField id="co-reg" label="Registered name" field="registered_name" company={localCompany!} onSaved={patchCompany} />
+            <CompanyField id="co-abn" label="ABN" field="abn" company={localCompany!} onSaved={patchCompany} />
+            <CompanyField id="co-phone" label="Phone" field="phone" company={localCompany!} onSaved={patchCompany} />
+            <CompanyField id="co-email" label="Email" field="email" company={localCompany!} onSaved={patchCompany} />
+            <div className="sm:col-span-2">
+              <CompanyField id="co-addr" label="Address" field="address" company={localCompany!} onSaved={patchCompany} />
+            </div>
           </div>
-          <ReadOnlyRow label="Company name" value={localCompany!.name} />
-          <ReadOnlyRow label="Trading name" value={localCompany!.trading_as} />
-          <ReadOnlyRow label="Registered name" value={localCompany!.registered_name} />
-          <ReadOnlyRow label="ABN" value={localCompany!.abn} />
-          <ReadOnlyRow label="Address" value={localCompany!.address} />
-          <ReadOnlyRow label="Phone" value={localCompany!.phone} />
-          <ReadOnlyRow label="Email" value={localCompany!.email} />
         </CardContent>
       </Card>
 
-      <EditCompanyDrawer
-        open={editOpen}
-        onOpenChange={setEditOpen}
-        company={{
-          id: localCompany!.id,
-          name: localCompany!.name,
-          trading_as: localCompany!.trading_as,
-          registered_name: localCompany!.registered_name,
-          abn: localCompany!.abn,
-          address: localCompany!.address,
-          phone: localCompany!.phone,
-          email: localCompany!.email,
-        }}
-        onSaved={(updates) => {
-          setLocalCompany((prev) => prev ? ({
-            ...prev,
-            name: typeof updates.name === "string" ? updates.name : prev.name,
-            trading_as: "trading_as" in updates ? (updates.trading_as as string | null) : prev.trading_as,
-            registered_name: "registered_name" in updates ? (updates.registered_name as string | null) : prev.registered_name,
-            abn: "abn" in updates ? (updates.abn as string | null) : prev.abn,
-            address: "address" in updates ? (updates.address as string | null) : prev.address,
-            phone: "phone" in updates ? (updates.phone as string | null) : prev.phone,
-            email: "email" in updates ? (updates.email as string | null) : prev.email,
-          }) : prev);
-        }}
-      />
     </div>
   );
 }

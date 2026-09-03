@@ -11,12 +11,10 @@ export default async function Page() {
   return (
     <>
       <SectionHeader title="Notifications" />
-      (
     <NotificationsTab
       currentPreferences={currentPreferences}
       autoOptOuts={autoOptOuts}
     />
-  )
     </>
   );
 }

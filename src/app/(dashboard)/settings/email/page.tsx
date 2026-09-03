@@ -12,7 +12,6 @@ export default async function Page() {
   return (
     <>
       <SectionHeader title="Email" />
-      (
     <EmailTab
       initial={s.mailProvider}
       oauthClientId={s.gmailOauthClientId}
@@ -21,7 +20,6 @@ export default async function Page() {
       dwdRevoked={s.dwdRevoked}
       mailboxIntegrationError={s.mailboxIntegrationError}
     />
-  )
     </>
   );
 }
