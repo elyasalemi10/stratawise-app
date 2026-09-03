@@ -145,6 +145,17 @@ export function LotsPageContent({
     return () => { cancelled = true; };
   }, [lots, ocId, inviteStatus.size]);
 
+  // The pill flips to "Invited" the moment the send succeeds, then the real
+  // status arrives behind it. The server round trip is ~150ms of a pill
+  // sitting on its old value, which reads as the click not having worked.
+  function markInvited(lotId: string) {
+    setInviteStatus((prev) => {
+      const next = new Map(prev);
+      next.set(lotId, "pending");
+      return next;
+    });
+  }
+
   // Explicit re-fetch after an invite is sent/revoked , bypasses the
   // first-mount guard above so the "not invited" pill flips immediately
   // without a full page reload.
@@ -343,7 +354,7 @@ export function LotsPageContent({
         onLotUpdated={onLotUpdated}
         isLotOwner={isLotOwner}
         inviteStatusMap={inviteStatus}
-        onInviteChanged={refreshInviteStatus}
+        onInviteChanged={(lotId) => { markInvited(lotId); void refreshInviteStatus(); }}
       />
 
       {!isLotOwner && (

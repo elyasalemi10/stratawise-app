@@ -837,3 +837,65 @@ function buildBodyPreview(params: SendPaymentReceivedEmailParams): string {
     300,
   );
 }
+
+// ─── resolveCompanyBrand ────────────────────────────────────────────────────
+//
+// Logo AND colours, in one round trip. An email carrying the firm's logo on
+// a StrataWise-gold button is half-branded, which reads as a template
+// somebody forgot to finish , so anything that shows the logo should take
+// the colours with it.
+//
+// Falls back to the StrataWise palette when a firm has not set one, because
+// a button with no colour is worse than a button in someone else's.
+
+export interface CompanyBrand {
+  logoUrl: string | null;
+  /** Primary , buttons, headings. */
+  color: string;
+  /** Secondary , accents. Falls back to the primary. */
+  colorSecondary: string;
+}
+
+const STRATAWISE_BRAND: CompanyBrand = {
+  logoUrl: null,
+  color: "#0E314C",
+  colorSecondary: "#CFA753",
+};
+
+export async function resolveCompanyBrand(
+  supabase: SupabaseClient,
+  input: { ocId: string } | { managementCompanyId: string },
+): Promise<CompanyBrand> {
+  type BrandRow = {
+    logo_url: string | null;
+    brand_color: string | null;
+    brand_color_secondary: string | null;
+  };
+  const cols = "logo_url, brand_color, brand_color_secondary";
+  let row: BrandRow | null = null;
+
+  if ("managementCompanyId" in input) {
+    const { data } = await supabase
+      .from("management_companies")
+      .select(cols)
+      .eq("id", input.managementCompanyId)
+      .maybeSingle();
+    row = (data as BrandRow | null) ?? null;
+  } else {
+    const { data } = await supabase
+      .from("owners_corporations")
+      .select(`management_companies(${cols})`)
+      .eq("id", input.ocId)
+      .maybeSingle();
+    const rel = (data as { management_companies: unknown } | null)?.management_companies;
+    row = (Array.isArray(rel) ? rel[0] : rel) as BrandRow | null;
+  }
+
+  if (!row) return STRATAWISE_BRAND;
+  const color = row.brand_color?.trim() || STRATAWISE_BRAND.color;
+  return {
+    logoUrl: row.logo_url ?? null,
+    color,
+    colorSecondary: row.brand_color_secondary?.trim() || color,
+  };
+}

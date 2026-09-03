@@ -4,13 +4,10 @@ import { useEffect, useState } from "react";
 import {
   Calendar,
   Check,
-  ExternalLink,
   Mail,
-  MailOpen,
   Pencil,
   X,
 } from "lucide-react";
-import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { toast } from "sonner";
 import {
@@ -23,7 +20,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Badge } from "@/components/ui/badge";
-import { useOCCode } from "@/lib/oc-context";
+import { cn } from "@/lib/utils";
 import {
   getLotInvitationHistory,
   inviteLotOwner,
@@ -48,9 +45,9 @@ interface Props {
   ownerName?: string | null;
   ownerEmail?: string | null;
   ownerPhone?: string | null;
-  /** Called after a successful send so the parent can refresh the
-   *  invite-status pill without a full page reload. */
-  onInviteChanged?: () => void;
+  /** Fires the moment the send succeeds, so the parent can flip the pill
+   *  to "Invited" before the status re-fetch comes back. */
+  onInviteChanged?: (sentTo: string) => void;
 }
 
 interface Invitation {
@@ -72,19 +69,12 @@ function formatDate(iso: string | null): string {
   });
 }
 
-function pillFor(status: Status) {
-  if (status === "accepted") return <Badge variant="success">Accepted</Badge>;
-  if (status === "pending") return <Badge variant="warning">Pending</Badge>;
-  if (status === "noted") return <Badge variant="info">Owner noted</Badge>;
-  return (
-    <Badge
-      variant="neutral"
-      className="bg-card border border-border text-muted-foreground"
-    >
-      Not invited
-    </Badge>
-  );
-}
+const PILL: Record<Status, { variant: "success" | "warning" | "info" | "neutral"; label: string }> = {
+  accepted: { variant: "success", label: "Accepted" },
+  pending: { variant: "warning", label: "Invited" },
+  noted: { variant: "info", label: "Owner noted" },
+  not_invited: { variant: "neutral", label: "Not invited" },
+};
 
 function rowIconFor(status: Invitation["status"]) {
   switch (status) {
@@ -128,7 +118,6 @@ export function InviteStatusPopover({
   ownerPhone,
   onInviteChanged,
 }: Props) {
-  const ocCode = useOCCode();
   const router = useRouter();
   const [open, setOpen] = useState(false);
   const [history, setHistory] = useState<Invitation[] | null>(null);
@@ -154,6 +143,9 @@ export function InviteStatusPopover({
 
   const latest = historyRows[0] ?? null;
   const isAccepted = status === "accepted";
+  // Who this is about. Their name if we have it, otherwise the lot , "Invite
+  // Lot 4 to StrataWise" still says who, which "Invite owner" did not.
+  const inviteeLabel = (ownerName ?? "").trim() || `Lot ${lotNumber}`;
 
   // The InviteForm needs at least name + email to send. Prefer the most
   // recent invitation row (carries name/email/phone), then fall back to
@@ -183,9 +175,17 @@ export function InviteStatusPopover({
           setOpen(true);
         }}
         aria-label="View invite status"
-        className="inline-flex cursor-pointer items-center"
+        className="group/pill relative inline-flex cursor-pointer items-center rounded-full outline-none focus-visible:ring-2 focus-visible:ring-primary/30"
       >
-        {pillFor(status)}
+        <Badge
+          variant={PILL[status].variant}
+          className={cn(
+            "transition-[filter,box-shadow] group-hover/pill:brightness-95 group-hover/pill:ring-1 group-hover/pill:ring-border",
+            status === "not_invited" && "border border-border bg-card text-muted-foreground",
+          )}
+        >
+          {PILL[status].label}
+        </Badge>
       </button>
 
       <Dialog open={open} onOpenChange={setOpen}>
@@ -195,56 +195,30 @@ export function InviteStatusPopover({
         >
           <DialogHeader>
             <DialogTitle className="pr-6">
-              {isAccepted ? "Owner , " : "Invite owner , "}Lot {lotNumber}
+              {isAccepted
+                ? `${inviteeLabel} is on StrataWise`
+                : `Invite ${inviteeLabel} to StrataWise`}
             </DialogTitle>
           </DialogHeader>
 
           <div className="space-y-4">
-            {/* Read-only owner + email confirm. No editable form, no
-                "not invited" pill , the manager just confirms we've got
-                the right address and hits Send. */}
-            {!isAccepted && inviteFormInitial && (
-              <ConfirmInviteBlock
+            {isAccepted ? (
+              <p className="text-sm text-muted-foreground">
+                They accepted their invitation and can sign in to see this lot.
+              </p>
+            ) : (
+              <InviteForm
                 ocId={ocId}
                 lotId={lotId}
-                lotNumber={lotNumber}
-                ownerName={inviteFormInitial.name}
-                ownerEmail={inviteFormInitial.email}
-                ownerPhone={inviteFormInitial.phone}
-                onSent={() => {
+                ownerName={inviteFormInitial?.name ?? ownerName ?? ""}
+                initialEmail={inviteFormInitial?.email ?? ""}
+                ownerPhone={inviteFormInitial?.phone ?? ""}
+                onSent={(email) => {
                   setOpen(false);
-                  // Refresh the parent's pill map if wired; fall back to a
-                  // server refresh for the legacy /manage path.
-                  if (onInviteChanged) onInviteChanged();
-                  else router.refresh();
+                  onInviteChanged?.(email);
+                  if (!onInviteChanged) router.refresh();
                 }}
               />
-            )}
-
-            {/* No email yet → the only thing they can do is open the
-                Owner tab to add one. */}
-            {!isAccepted && !inviteFormInitial && (
-              <div className="space-y-3">
-                <div className="flex items-center gap-2 rounded-md border border-border bg-cool-muted p-3 text-xs text-cool-muted-foreground">
-                  <MailOpen className="h-3.5 w-3.5" />
-                  No email on file for this lot , add one to send an invitation.
-                </div>
-                <Link
-                  href={`/ocs/${ocCode}/lots/${lotId}?tab=owner`}
-                  className="inline-flex items-center text-sm font-medium text-info-foreground underline-offset-4 hover:underline"
-                  onClick={() => setOpen(false)}
-                >
-                  Add email
-                  <ExternalLink className="ml-1 h-3.5 w-3.5" />
-                </Link>
-              </div>
-            )}
-
-            {isAccepted && (
-              <div className="flex items-center gap-2 rounded-md border border-border bg-cool-muted p-3 text-xs text-cool-muted-foreground">
-                <Check className="h-3.5 w-3.5" />
-                This owner has accepted their invitation.
-              </div>
             )}
 
             {/* Invite history , informational, collapsed below the action. */}
@@ -289,33 +263,41 @@ export function InviteStatusPopover({
   );
 }
 
-// Read-only confirm + send. Owner name + lot + email are shown
-// uneditable; the manager just confirms the address and hits Send. To
-// change any detail they use the Owner tab (the lot detail page), not
-// this popover.
-function ConfirmInviteBlock({
+// Confirm the address and send. Editable, because the case where there is
+// no email on file is exactly the case where the manager is holding one ,
+// sending them off to the Owner tab to paste it and come back was two
+// navigations to do one thing.
+function InviteForm({
   ocId,
   lotId,
-  lotNumber,
   ownerName,
-  ownerEmail,
+  initialEmail,
   ownerPhone,
   onSent,
 }: {
   ocId: string;
   lotId: string;
-  lotNumber: number;
   ownerName: string;
-  ownerEmail: string;
+  initialEmail: string;
   ownerPhone: string;
-  onSent: () => void;
+  onSent: (email: string) => void;
 }) {
+  const [email, setEmail] = useState(initialEmail);
+  const [invalid, setInvalid] = useState(false);
   const [sending, setSending] = useState(false);
 
+  const valid = /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email.trim());
+
   async function sendInvite() {
+    if (!valid) {
+      setInvalid(true);
+      toast.error("Enter a valid email address.");
+      return;
+    }
     setSending(true);
+    const clean = email.trim();
     const result = await inviteLotOwner(ocId, lotId, {
-      email: ownerEmail.trim(),
+      email: clean,
       name: ownerName.trim() || "Owner",
       phone: ownerPhone.trim() || undefined,
     });
@@ -324,28 +306,28 @@ function ConfirmInviteBlock({
       toast.error(result.error);
       return;
     }
-    toast.success("Invitation sent", { description: `Sent to ${ownerEmail.trim()}.` });
-    // Keep the spinner on through the parent's close + refresh.
-    onSent();
+    toast.success("Invitation sent", { description: `Sent to ${clean}.` });
+    onSent(clean);
   }
 
   return (
-    <div className="space-y-3">
-      <div className="rounded-md border border-border bg-cool-muted px-3 py-2.5 text-sm space-y-1.5">
-        <div>
-          <p className="text-xs tracking-normal text-cool-muted-foreground">Owner</p>
-          <p className="font-medium text-foreground">{ownerName || ","} · Lot {lotNumber}</p>
-        </div>
-        <div>
-          <p className="text-xs tracking-normal text-cool-muted-foreground">Email</p>
-          <p className="inline-flex items-center gap-2 font-medium text-foreground">
-            <Mail className="h-3.5 w-3.5 text-muted-foreground" />
-            <span className="break-all">{ownerEmail}</span>
-          </p>
-        </div>
+    <div className="space-y-4">
+      <div className="space-y-1.5">
+        <Label htmlFor="invite-email">Email</Label>
+        <Input
+          id="invite-email"
+          type="email"
+          value={email}
+          onChange={(e) => { setEmail(e.target.value); if (invalid) setInvalid(false); }}
+          aria-invalid={invalid || undefined}
+          placeholder="Email address"
+          autoFocus={!initialEmail}
+        />
       </div>
       <div className="flex justify-end">
-        <Button size="sm" onClick={sendInvite} disabled={sending} loading={sending}>
+        {/* Greyed until the address is one we can actually send to , the
+            button says whether this is going to work before it is pressed. */}
+        <Button onClick={sendInvite} disabled={sending || !valid} loading={sending}>
           Send invitation
         </Button>
       </div>

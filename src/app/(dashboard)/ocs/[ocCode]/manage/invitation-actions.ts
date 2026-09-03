@@ -4,7 +4,7 @@ import { requireCompanyRole, requireOCAccess } from "@/lib/auth";
 import { createServerClient } from "@/lib/supabase";
 import { revalidatePath } from "next/cache";
 import { sendInvitationEmail } from "@/lib/email";
-import { resolveCompanyLogo } from "@/lib/notifications";
+import { resolveCompanyBrand } from "@/lib/notifications";
 import { generateInviteCode } from "@/lib/invite-code";
 
 type LotOwnerInput = {
@@ -223,9 +223,7 @@ export async function inviteLotOwner(
   const baseUrl =
     process.env.NEXT_PUBLIC_APP_URL?.trim().replace(/\/$/, "") || "http://localhost:3002";
   const inviteUrl = `${baseUrl}/invite/${invitation.code}`;
-  const companyLogoUrl = await resolveCompanyLogo(supabase, {
-    ocId,
-  });
+  const brand = await resolveCompanyBrand(supabase, { ocId });
   await sendInvitationEmail({
     to: data.email,
     inviteeName: data.name,
@@ -234,7 +232,9 @@ export async function inviteLotOwner(
     ocAddress: sub?.address ?? "",
     lotNumber: lot?.lot_number ?? null,
     inviteUrl,
-    companyLogoUrl,
+    companyLogoUrl: brand.logoUrl,
+    brandColor: brand.color,
+    brandColorSecondary: brand.colorSecondary,
     ocId,
     inviterProfileId: profile.id,
   });

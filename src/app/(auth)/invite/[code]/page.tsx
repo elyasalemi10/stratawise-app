@@ -20,5 +20,5 @@ export default async function InviteAcceptPage({
     );
   }
 
-  return <InviteAcceptContent invitation={invitation} />;
+  return <InviteAcceptContent code={code} invitation={invitation} />;
 }

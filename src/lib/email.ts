@@ -284,6 +284,10 @@ interface SendInvitationEmailParams {
   inviteUrl: string;
   invitedByName?: string;
   companyLogoUrl?: string | null;
+  /** The firm's brand colours. An invitation is the first thing an owner
+   *  ever sees from this manager, so it should look like the manager. */
+  brandColor?: string | null;
+  brandColorSecondary?: string | null;
   // Optional resolved sender (e.g. inviter's "Name - Company <addr>"). When
   // omitted, the OC's primary manager is resolved and used. Final fallback
   // is the brand noreply identity.
@@ -380,9 +384,13 @@ export async function sendInvitationEmail({
   inviteUrl,
   invitedByName,
   companyLogoUrl,
+  brandColor,
+  brandColorSecondary,
   ocId,
   inviterProfileId,
 }: SendInvitationEmailParams) {
+  const brand = brandColor?.trim() || "#0E314C";
+  const accent = brandColorSecondary?.trim() || brand;
   const roleLabel = role === "lot_owner" ? "lot owner" : "strata manager";
   const greeting = inviteeName ? `Hi ${inviteeName},` : "Hi,";
   const lotLine = lotNumber ? `<p style="margin:0 0 8px;color:#4A5868;font-size:14px;">Lot: <strong>${lotNumber}</strong></p>` : "";
@@ -400,16 +408,17 @@ export async function sendInvitationEmail({
     html: `
       <div style="font-family:'Inter',system-ui,sans-serif;max-width:520px;margin:0 auto;padding:32px 0;">
         ${logoImg(companyLogoUrl)}
-        <h2 style="margin:0 0 16px;font-size:20px;font-weight:600;color:#0E314C;">You've been invited</h2>
+        <div style="height:3px;background:${accent};border-radius:2px;margin:0 0 20px;"></div>
+        <h2 style="margin:0 0 16px;font-size:20px;font-weight:600;color:${brand};">You've been invited</h2>
         <p style="margin:0 0 20px;color:#0E314C;font-size:14px;line-height:1.6;">
           ${greeting} you've been invited${invitedByLine} to join as a <strong>${roleLabel}</strong>.
         </p>
-        <div style="background:#FAF7F0;border:1px solid #E5E0D3;border-radius:6px;padding:16px;margin:0 0 24px;">
-          <p style="margin:0 0 4px;font-size:15px;font-weight:600;color:#0E314C;">${ocName}</p>
+        <div style="background:#F7F8FA;border:1px solid #E1E5EA;border-radius:6px;padding:16px;margin:0 0 24px;">
+          <p style="margin:0 0 4px;font-size:15px;font-weight:600;color:${brand};">${ocName}</p>
           <p style="margin:0 0 8px;color:#4A5868;font-size:14px;">${ocAddress}</p>
           ${lotLine}
         </div>
-        <a href="${inviteUrl}" style="display:inline-block;background:#CFA753;color:#ffffff;font-size:14px;font-weight:600;text-decoration:none;padding:10px 24px;border-radius:6px;">
+        <a href="${inviteUrl}" style="display:inline-block;background:${brand};color:#ffffff;font-size:14px;font-weight:600;text-decoration:none;padding:10px 24px;border-radius:6px;">
           Accept invitation
         </a>
         <p style="margin:24px 0 0;color:#4A5868;font-size:12px;line-height:1.5;">

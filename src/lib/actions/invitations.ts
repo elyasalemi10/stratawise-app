@@ -3,7 +3,7 @@
 import { requireCompanyRole, getCurrentProfile } from "@/lib/auth";
 import { createServerClient } from "@/lib/supabase";
 import { sendInvitationEmail } from "@/lib/email";
-import { resolveCompanyLogo } from "@/lib/notifications";
+import { resolveCompanyBrand } from "@/lib/notifications";
 // canonicaliseSender / sweepMappingsForOwnerChange were part of the
 // nuked reconciliation stack; the owner-change sweep was a bank-payer
 // mapping update. New flow will rebuild this if needed.
@@ -74,9 +74,7 @@ export async function inviteStrataManager(data: { email: string; name: string })
   const baseUrl =
     process.env.NEXT_PUBLIC_APP_URL?.trim().replace(/\/$/, "") || "http://localhost:3002";
   const inviteUrl = `${baseUrl}/invite/${invitation.code}`;
-  const companyLogoUrl = await resolveCompanyLogo(supabase, {
-    managementCompanyId: profile.management_company_id,
-  });
+  const brand = await resolveCompanyBrand(supabase, { managementCompanyId: profile.management_company_id });
   await sendInvitationEmail({
     to: data.email,
     inviteeName: data.name,
@@ -84,7 +82,9 @@ export async function inviteStrataManager(data: { email: string; name: string })
     ocName: "Your management company",
     ocAddress: "",
     inviteUrl,
-    companyLogoUrl,
+    companyLogoUrl: brand.logoUrl,
+    brandColor: brand.color,
+    brandColorSecondary: brand.colorSecondary,
     inviterProfileId: profile.id,
   });
 

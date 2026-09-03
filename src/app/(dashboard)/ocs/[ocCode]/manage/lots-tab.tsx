@@ -36,7 +36,7 @@ interface LotsTabProps {
    *  omitted (legacy /manage path), the component fetches itself. */
   inviteStatusMap?: Map<string, string>;
   /** Called after an invite is sent so the parent refreshes the pill map. */
-  onInviteChanged?: () => void;
+  onInviteChanged?: (lotId: string) => void;
 }
 
 function EditableCell({
@@ -233,7 +233,7 @@ export function LotsTab({ lots, ocId, isEditing = false, onLotUpdated, isLotOwne
                         ownerName={lot.owner_display_name ?? null}
                         ownerEmail={lot.owner_contact_email ?? null}
                         ownerPhone={lot.owner_contact_phone ?? null}
-                        onInviteChanged={onInviteChanged}
+                        onInviteChanged={() => onInviteChanged?.(lot.id)}
                       />
                     </TableCell>
                   )}

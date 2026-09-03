@@ -19,10 +19,18 @@ function SignUpContent() {
   const router = useRouter();
   const searchParams = useSearchParams();
 
-  const [accountType, setAccountType] = useState<"strata_manager" | "lot_owner">("strata_manager");
+  // An invitation link carries who this is and what they are, so the form
+  // starts filled in rather than asking an owner to retype the address the
+  // invitation was sent to , and to work out which of the two buttons they
+  // are.
+  const invitedRole = searchParams.get("role");
+  const invitedEmail = searchParams.get("email");
+  const [accountType, setAccountType] = useState<"strata_manager" | "lot_owner">(
+    invitedRole === "lot_owner" ? "lot_owner" : "strata_manager",
+  );
   const [firstName, setFirstName] = useState("");
   const [lastName, setLastName] = useState("");
-  const [email, setEmail] = useState("");
+  const [email, setEmail] = useState(invitedEmail ?? "");
   const [password, setPassword] = useState("");
   const [pending, setPending] = useState(false);
   const [showPassword, setShowPassword] = useState(false);
