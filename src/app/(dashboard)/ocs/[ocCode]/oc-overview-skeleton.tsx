@@ -5,8 +5,11 @@ import { Card, CardContent } from "@/components/ui/card";
 // Loading state for the OC overview.
 //
 // Only the numbers come from the server. The KPI labels, their icons, and
-// two of the four descriptions are fixed strings in page.tsx, so they render
-// for real. The two descriptions that ARE derived ("N members assigned",
+// The cards carry no subheading any more, so neither does this: the
+// fallback shimmer where one used to be made the skeleton a line TALLER
+// than the card it stands in for, and everything below it shifted up when
+// the data landed. (Historic note: two of the four descriptions were fixed
+// strings and two were derived ("N members assigned",
 // and the outstanding-amount wording, which changes on whether the balance
 // is zero) shimmer, because the width genuinely varies.
 //
@@ -40,10 +43,8 @@ function KpiSkeleton({
             {icon}
           </div>
         </div>
-        {description ? (
+        {description && (
           <p className="mt-3 text-xs text-muted-foreground">{description}</p>
-        ) : (
-          <Skeleton className="mt-3 h-3 w-32" />
         )}
       </CardContent>
     </Card>
