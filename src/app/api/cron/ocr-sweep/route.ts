@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createServerClient } from "@/lib/supabase";
 import { ingestDocumentOcr, isOcrable } from "@/lib/ocr/ingest";
+import { needsPdfConversion } from "@/lib/ocr/convert-to-pdf";
 
 // ============================================================================
 // GET /api/cron/ocr-sweep , Vercel Cron
@@ -56,8 +57,13 @@ export async function GET(request: NextRequest) {
     return NextResponse.json({ error: "query_failed" }, { status: 500 });
   }
 
-  const eligible = (data ?? []).filter((row) =>
-    isOcrable(row.mime_type as string | null),
+  // An Office file is not OCR-able as it stands but becomes so once
+  // ingestDocumentOcr has rendered it to PDF, so it is eligible too.
+  // Filtering it out here is what left every .docx pending forever.
+  const eligible = (data ?? []).filter(
+    (row) =>
+      isOcrable(row.mime_type as string | null) ||
+      needsPdfConversion(row.mime_type as string | null),
   );
   if (eligible.length === 0) {
     return NextResponse.json({ ok: true, processed: 0 });

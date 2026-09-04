@@ -4,6 +4,7 @@ import { requireCompanyRole, requireOCAccess } from "@/lib/auth";
 import { ALLOWED_DOCUMENT_TYPES, MAX_DOCUMENT_SIZE } from "@/lib/validations/documents";
 import { uploadObject, publicUrlFor } from "@/lib/storage/r2";
 import { isOcrable } from "@/lib/ocr/ingest";
+import { needsPdfConversion } from "@/lib/ocr/convert-to-pdf";
 
 const UUID_REGEX = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
@@ -93,7 +94,12 @@ export async function POST(request: NextRequest) {
   // belong (insurance_policies, settlements, oc_drafts, etc).
   // ocr_status starts "pending" so the cron sweep can flip it to
   // "complete" once Document AI finishes.
-  const willOcr = isOcrable(file.type);
+  // An Office file is not readable by OCR as it stands, but it will be once
+  // it has been rendered to PDF, so it still belongs in the queue. Marking it
+  // `skipped` here is what used to leave every .docx unsearchable: the sweep
+  // only looks at `pending` rows, so nothing ever came back for it.
+  const willConvert = needsPdfConversion(file.type);
+  const willOcr = isOcrable(file.type) || willConvert;
   const { data: doc, error } = await supabase
     .from("documents")
     .insert({
@@ -110,6 +116,9 @@ export async function POST(request: NextRequest) {
       // parse flips it to complete). Generic docs start pending → the
       // background job moves them to complete.
       ocr_status: willOcr ? "pending" : "skipped",
+      // "skipped" here means no rendition is needed, which is the answer for
+      // a PDF or an image. It is not the same as one that has not run yet.
+      pdf_status: willConvert ? "pending" : "skipped",
     })
     .select()
     .single();

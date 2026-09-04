@@ -2,6 +2,12 @@ import "server-only";
 import { createServerClient } from "@/lib/supabase";
 import { fetchObject } from "@/lib/storage/r2";
 import { runDocumentAiOcr } from "@/lib/google/document-ai";
+import { uploadObject } from "@/lib/storage/r2";
+import {
+  convertToPdf,
+  isConversionConfigured,
+  needsPdfConversion,
+} from "./convert-to-pdf";
 
 // Document OCR pipeline.
 //
@@ -15,6 +21,12 @@ import { runDocumentAiOcr } from "@/lib/google/document-ai";
 //
 // The function never throws , failures land on the row as `failed`. The
 // upload still succeeds even if OCR breaks.
+//
+// Office files take one extra step first. Document AI does not accept a
+// .docx or .pptx, so before this pipeline existed they were marked `skipped`
+// and became invisible to search. They are rendered to PDF (see
+// convert-to-pdf.ts), the PDF is kept in R2 for the viewer, and OCR then runs
+// against the PDF exactly as it would for one the manager uploaded directly.
 
 const OCR_MIME_TYPES = new Set<string>([
   "application/pdf",
@@ -41,7 +53,7 @@ export async function ingestDocumentOcr(documentId: string): Promise<void> {
   const supabase = createServerClient();
   const { data: doc, error: fetchErr } = await supabase
     .from("documents")
-    .select("id, file_path, mime_type, ocr_status")
+    .select("id, file_path, file_name, mime_type, ocr_status, pdf_status, pdf_storage_key")
     .eq("id", documentId)
     .single();
 
@@ -52,9 +64,33 @@ export async function ingestDocumentOcr(documentId: string): Promise<void> {
   if (doc.ocr_status === "complete") {
     return; // idempotent: already done
   }
-  if (!isOcrable(doc.mime_type)) {
-    await supabase.from("documents").update({ ocr_status: "skipped" }).eq("id", documentId);
+  // An Office file has to become a PDF before anything else can read it.
+  // Everything downstream then works on `sourceKey` / `sourceMime`, which
+  // for a converted document point at the rendition rather than the upload.
+  let sourceKey = doc.file_path;
+  let sourceMime = doc.mime_type;
+
+  if (needsPdfConversion(doc.mime_type)) {
+    const rendition = await renderToPdf(documentId, doc);
+    if (!rendition) {
+      // Conversion is off or it failed. renderToPdf has already recorded
+      // why on the row; the document stays download-only rather than
+      // sitting in `pending` forever.
+      await supabase.from("documents").update({ ocr_status: "skipped" }).eq("id", documentId);
+      return;
+    }
+    sourceKey = rendition;
+    sourceMime = "application/pdf";
+  } else if (!isOcrable(doc.mime_type)) {
+    await supabase
+      .from("documents")
+      .update({ ocr_status: "skipped", pdf_status: "skipped" })
+      .eq("id", documentId);
     return;
+  } else {
+    // Already readable as-is. Nothing to render, and saying so is different
+    // from saying a conversion was never considered.
+    await supabase.from("documents").update({ pdf_status: "skipped" }).eq("id", documentId);
   }
 
   await supabase
@@ -64,7 +100,7 @@ export async function ingestDocumentOcr(documentId: string): Promise<void> {
 
   let bytes: Buffer;
   try {
-    bytes = await fetchObject(doc.file_path);
+    bytes = await fetchObject(sourceKey);
   } catch (err) {
     console.error(`ingestDocumentOcr: R2 fetch failed for ${documentId}`, err);
     // Surface the real R2 error code (NoSuchKey, AccessDenied, missing
@@ -83,7 +119,7 @@ export async function ingestDocumentOcr(documentId: string): Promise<void> {
   }
 
   try {
-    const { text, pageCount } = await runDocumentAiOcr(bytes, doc.mime_type!);
+    const { text, pageCount } = await runDocumentAiOcr(bytes, sourceMime!);
     if (pageCount > MAX_OCR_PAGES) {
       await supabase
         .from("documents")
@@ -126,5 +162,77 @@ export async function ingestDocumentOcr(documentId: string): Promise<void> {
         ocr_completed_at: new Date().toISOString(),
       })
       .eq("id", documentId);
+  }
+}
+
+/**
+ * Render an Office document to PDF and store it in R2 beside the original.
+ * Returns the rendition's storage key, or null if there isn't one, having
+ * already written the reason to `pdf_status` / `pdf_error`.
+ *
+ * Never throws. A conversion that fails must not stop the upload from having
+ * succeeded, and must not leave the row stuck in `pending`.
+ */
+async function renderToPdf(
+  documentId: string,
+  doc: { file_path: string; file_name: string; mime_type: string | null; pdf_storage_key: string | null; pdf_status: string },
+): Promise<string | null> {
+  const supabase = createServerClient();
+
+  // Idempotent: a retry after an OCR failure must not pay for the render a
+  // second time.
+  if (doc.pdf_status === "complete" && doc.pdf_storage_key) return doc.pdf_storage_key;
+
+  if (!isConversionConfigured()) {
+    console.error(
+      `renderToPdf: ${documentId} needs conversion but no conversion credentials are configured`,
+    );
+    await supabase
+      .from("documents")
+      .update({
+        pdf_status: "failed",
+        pdf_error: "Converting this file type isn't available on this deployment yet.",
+      })
+      .eq("id", documentId);
+    return null;
+  }
+
+  await supabase
+    .from("documents")
+    .update({ pdf_status: "pending", pdf_error: null })
+    .eq("id", documentId);
+
+  try {
+    const original = await fetchObject(doc.file_path);
+    const pdf = await convertToPdf(original, doc.mime_type!, doc.file_name);
+
+    // Sits next to the original under the same prefix, with a suffix rather
+    // than a separate folder, so the two travel together when an OC's
+    // documents are listed or cleaned up.
+    const key = `${doc.file_path.replace(/\.[^./]+$/, "")}.converted.pdf`;
+    await uploadObject(key, pdf, "application/pdf");
+
+    await supabase
+      .from("documents")
+      .update({
+        pdf_status: "complete",
+        pdf_storage_key: key,
+        pdf_converted_at: new Date().toISOString(),
+        pdf_error: null,
+      })
+      .eq("id", documentId);
+    return key;
+  } catch (err) {
+    console.error(`renderToPdf: conversion failed for ${documentId}`, err);
+    const message = err instanceof Error ? err.message : String(err);
+    await supabase
+      .from("documents")
+      .update({
+        pdf_status: "failed",
+        pdf_error: message.slice(0, 240),
+        pdf_converted_at: new Date().toISOString(),
+      })
+      .eq("id", documentId);
+    return null;
   }
 }

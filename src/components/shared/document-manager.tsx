@@ -246,6 +246,12 @@ export function DocumentManager({ ocId, lotId, initialDocuments, readOnly }: Doc
     return `/api/documents/${doc.id}?view=true`;
   }
 
+  /** A document the preview pane can actually render: a PDF, or an Office
+   *  file whose PDF rendition is ready. */
+  function isPreviewable(doc: DocWithUrl): boolean {
+    return doc.mime_type === "application/pdf" || doc.pdf_status === "complete";
+  }
+
   function viewDocument(doc: DocWithUrl) {
     setPreviewDoc(doc);
   }
@@ -519,12 +525,22 @@ export function DocumentManager({ ocId, lotId, initialDocuments, readOnly }: Doc
                 alt={previewDoc.file_name}
                 className="max-w-full max-h-[65vh] object-contain"
               />
-            ) : previewDoc?.mime_type === "application/pdf" ? (
+            ) : previewDoc && isPreviewable(previewDoc) ? (
+              // Office files preview through their PDF rendition: the route
+              // serves that for ?view=true, so the iframe needs no special
+              // casing here beyond knowing one exists.
               <iframe
                 src={getDocViewUrl(previewDoc)}
                 className="w-full h-[65vh] rounded-md"
                 title={previewDoc.file_name}
               />
+            ) : previewDoc?.pdf_status === "pending" ? (
+              <div className="flex flex-col items-center gap-3 py-12">
+                {getFileIcon(previewDoc?.mime_type ?? null, "lg")}
+                <p className="text-sm text-muted-foreground">
+                  We&apos;re still getting this one ready to read.
+                </p>
+              </div>
             ) : (
               <div className="flex flex-col items-center gap-3 py-12">
                 {getFileIcon(previewDoc?.mime_type ?? null, "lg")}
@@ -539,7 +555,7 @@ export function DocumentManager({ ocId, lotId, initialDocuments, readOnly }: Doc
             )}
           </div>
           <DialogFooter>
-            <Button variant="ghost" onClick={() => setPreviewDoc(null)}>Close</Button>
+            <Button variant="secondary" onClick={() => setPreviewDoc(null)}>Close</Button>
             {previewDoc && (
               <Button
                 variant="secondary"

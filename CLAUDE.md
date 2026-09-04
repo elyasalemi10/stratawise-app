@@ -40,6 +40,25 @@
 - Plan-of-Subdivision and OC Rules are the two exceptions: they ALSO go through Gemini for structured parsing (lot schedules, rule numbering). The raw OCR text from Document AI is STILL stored alongside Gemini's structured output so they're searchable.
 - All other docs (insurance policies, meeting minutes, settlement statements, compliance certs, contractor invoices, etc.) get plain Document AI OCR , no Gemini, no structured extraction.
 - Sanitise OCR output before insert: strip NUL bytes (`\0`), control characters except `\n\r\t`, anything that breaks Postgres TEXT or `to_tsvector`. Raw text only , no HTML, no markdown.
+- **Office files are rendered to PDF first.** Document AI accepts PDFs and
+  images and nothing else, so a `.docx` / `.pptx` / `.xlsx` used to be marked
+  `skipped` on upload: unsearchable, and unpreviewable too, because no browser
+  renders a Word file inline. [convert-to-pdf.ts](src/lib/ocr/convert-to-pdf.ts)
+  buys the render per file from CloudConvert (`CLOUDCONVERT_API_KEY`), the PDF
+  is KEPT in R2 next to the original as `<key>.converted.pdf`, and OCR then
+  runs against it exactly as for a PDF the manager uploaded directly.
+  `?view=true` on the download route serves the rendition; a plain download
+  still hands back the original, which is what they will want to edit.
+  Tracked by `pdf_status` (`none | pending | complete | failed | skipped`),
+  where `skipped` means no rendition was NEEDED, not that one is outstanding.
+- **There is nowhere in this stack to self-host the conversion.** A Cloudflare
+  Worker is a V8 isolate: no native binaries, no processes. A Vercel function
+  has a bundle limit an order of magnitude under a LibreOffice install. Don't
+  re-litigate this without a container somewhere.
+- **Conversion degrades to nothing.** With no key configured the row is marked
+  `skipped` and the document stays download-only. An upload must never fail
+  because conversion is unavailable, and no user-facing string names the
+  provider or the variable.
 - `documents.ocr_text` (TEXT) + `documents.ocr_search` (`tsvector` GENERATED ALWAYS AS `to_tsvector('english', coalesce(ocr_text,'') || ' ' || coalesce(name,''))` STORED) + GIN index on `ocr_search`. Search ranks by `ts_rank_cd` and returns a `ts_headline` snippet.
 - OCR happens async after R2 upload. `documents.ocr_status` enum: `none | pending | complete | failed`. Don't block uploads on OCR.
 

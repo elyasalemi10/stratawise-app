@@ -10,6 +10,12 @@ export const ALLOWED_DOCUMENT_TYPES = [
   "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
   "application/vnd.ms-excel",
   "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+  "application/vnd.ms-powerpoint",
+  "application/vnd.openxmlformats-officedocument.presentationml.presentation",
+  "application/vnd.oasis.opendocument.text",
+  "application/vnd.oasis.opendocument.presentation",
+  "application/vnd.oasis.opendocument.spreadsheet",
+  "application/rtf",
   "image/png",
   "image/jpeg",
   "image/webp",
@@ -18,7 +24,8 @@ export const ALLOWED_DOCUMENT_TYPES = [
 ];
 
 export const ALLOWED_EXTENSIONS = [
-  ".pdf", ".doc", ".docx", ".xls", ".xlsx",
+  ".pdf", ".doc", ".docx", ".xls", ".xlsx", ".ppt", ".pptx",
+  ".odt", ".odp", ".ods", ".rtf",
   ".png", ".jpg", ".jpeg", ".webp",
   ".txt", ".csv",
 ];
@@ -37,4 +44,9 @@ export interface DocumentRecord {
   is_confidential: boolean;
   uploaded_by: string | null;
   created_at: string;
+  /** Office files are rendered to PDF so they can be previewed in the app and
+   *  read by OCR. "skipped" means no rendition was needed (already a PDF or
+   *  an image), which is different from one that has not been made yet. */
+  pdf_status?: "none" | "pending" | "complete" | "failed" | "skipped";
+  pdf_storage_key?: string | null;
 }

@@ -25,7 +25,7 @@ async function loadDocument(id: string) {
   const supabase = createServerClient();
   const { data } = await supabase
     .from("documents")
-    .select("id, oc_id, lot_id, file_path, file_name, mime_type, is_confidential")
+    .select("id, oc_id, lot_id, file_path, file_name, mime_type, is_confidential, pdf_storage_key")
     .eq("id", id)
     .single();
   return data;
@@ -42,6 +42,11 @@ async function loadDocument(id: string) {
 // access to that OC.
 //
 // ?view=true → inline disposition (PDF previews); otherwise attachment.
+//
+// Viewing an Office file serves its PDF rendition instead of the upload. No
+// browser renders a .docx inline, so without this "view" downloaded the file
+// and left the manager to open Word for it. Downloading still hands back what
+// they actually uploaded, which is the thing they will want to edit.
 export async function GET(
   request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
@@ -69,10 +74,12 @@ export async function GET(
   }
 
   const isView = request.nextUrl.searchParams.get("view") === "true";
+  const servePdfRendition = isView && Boolean(doc.pdf_storage_key);
+  const key = servePdfRendition ? doc.pdf_storage_key! : doc.file_path;
 
   let body: Buffer;
   try {
-    body = await fetchObject(doc.file_path);
+    body = await fetchObject(key);
   } catch {
     return NextResponse.json({ error: "File not found in storage" }, { status: 404 });
   }
@@ -83,7 +90,9 @@ export async function GET(
 
   return new NextResponse(new Uint8Array(body), {
     headers: {
-      "Content-Type": doc.mime_type || "application/octet-stream",
+      "Content-Type": servePdfRendition
+        ? "application/pdf"
+        : doc.mime_type || "application/octet-stream",
       "Content-Disposition": disposition,
       // private = never cached by shared proxies/CDN; only the
       // authenticated browser may cache it briefly.
@@ -175,6 +184,12 @@ export async function DELETE(
 
   try {
     await deleteObject(doc.file_path);
+    // The PDF rendition is ours, not the manager's upload, so it goes with
+    // it. Best-effort: an orphaned key costs storage, a failed delete must
+    // not stop the row from going.
+    if (doc.pdf_storage_key) {
+      await deleteObject(doc.pdf_storage_key).catch(() => {});
+    }
   } catch {
     // Continue even if R2 delete fails , DB is source of truth
   }
