@@ -196,22 +196,28 @@ export async function getSidebarOCs(): Promise<SidebarOC[]> {
     return fetchForCompany(companyId);
   }
 
-  // lot_owner , ocs they're a member of, with their lot info
-  const { data: memberships } = await supabase
-    .from("oc_members")
+  // lot_owner , the OCs they own a lot in.
+  //
+  // This used to read oc_members, which a CHECK constraint pins to
+  // strata_manager , so it returned nothing for every lot owner, and an
+  // owner who had just accepted an invitation landed on "No owners
+  // corporations assigned". Owning a lot IS the membership (acceptInvitation
+  // says so, and requireOCAccess reads the same view), so this reads the
+  // ownership.
+  const { data: owned } = await supabase
+    .from("v_lot_current_owners")
     .select("oc_id, lot_id")
-    .eq("profile_id", profile.id)
-    .is("left_at", null);
+    .eq("profile_id", profile.id);
 
-  if (!memberships || memberships.length === 0) return [];
+  if (!owned || owned.length === 0) return [];
 
-  const ids = [...new Set(memberships.map((m) => m.oc_id))];
-  const lotIds = memberships.map((m) => m.lot_id).filter(Boolean) as string[];
+  const ids = [...new Set(owned.map((m) => m.oc_id as string))];
+  const lotIds = owned.map((m) => m.lot_id as string).filter(Boolean);
 
   const [subsResult, lotsResult] = await Promise.all([
     supabase
       .from("owners_corporations")
-      .select("id, short_code, name, address, plan_number, total_lots, status")
+      .select("id, short_code, name, building_name, address, plan_number, total_lots, status")
       .in("id", ids)
       .eq("status", "active")
       .order("name"),
@@ -228,7 +234,17 @@ export async function getSidebarOCs(): Promise<SidebarOC[]> {
   });
 
   return (subsResult.data ?? []).map((s) => ({
-    ...s,
+    id: s.id,
+    short_code: s.short_code,
+    // `name` is the MANAGER's nickname for this OC , "Melia St", whatever
+    // helps them tell theirs apart. An owner has one, and it means nothing
+    // to them: they know their building by its name or its street. Prefer
+    // the building name, fall back to the address, and only then the
+    // nickname.
+    name: (s.building_name as string | null)?.trim() || s.address?.trim() || s.name,
+    plan_number: s.plan_number,
+    total_lots: s.total_lots,
+    status: s.status,
     kind: "active" as const,
     address: s.address ?? "",
     lots: lotsMap.get(s.id) ?? [],

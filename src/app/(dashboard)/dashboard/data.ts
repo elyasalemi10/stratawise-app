@@ -80,22 +80,35 @@ export async function getDashboardPageData(): Promise<DashboardPageData> {
 
   const supabase = createServerClient();
 
+  // Owning a lot IS the membership. This read oc_members, which a CHECK
+  // constraint pins to strata_manager, so an owner who had just accepted an
+  // invitation saw "No Owners Corporations assigned" on a dashboard that
+  // was, as far as the query could tell, correct.
+  //
+  // Current tenure is the open ownership; past tenure is a closed one, which
+  // is also how the lot page and the past-lots grid define it.
   const [activeMembershipsResult, pastMembershipsResult] = await Promise.all([
     supabase
-      .from("oc_members")
+      .from("v_lot_current_owners")
       .select("oc_id, lot_id")
-      .eq("profile_id", profile.id)
-      .is("left_at", null),
+      .eq("profile_id", profile.id),
     supabase
-      .from("oc_members")
-      .select("lot_id, oc_id, joined_at, left_at")
-      .eq("profile_id", profile.id)
-      .not("left_at", "is", null)
-      .order("left_at", { ascending: false }),
+      .from("lot_ownerships")
+      .select("lot_id, oc_id, start_date, end_date, owners!inner(profile_id)")
+      .eq("owners.profile_id", profile.id)
+      .not("end_date", "is", null)
+      .order("end_date", { ascending: false }),
   ]);
 
   const memberships = activeMembershipsResult.data ?? [];
-  const pastMemberships = (pastMembershipsResult.data ?? []) as PastMembershipRow[];
+  // The past-tenure shape still speaks joined_at / left_at; map the
+  // ownership's dates onto it rather than renaming it through six files.
+  const pastMemberships = (pastMembershipsResult.data ?? []).map((r) => ({
+    lot_id: (r as { lot_id: string }).lot_id,
+    oc_id: (r as { oc_id: string }).oc_id,
+    joined_at: (r as { start_date: string }).start_date,
+    left_at: (r as { end_date: string }).end_date,
+  })) as PastMembershipRow[];
 
   const pastLotIds = pastMemberships.map((m) => m.lot_id).filter(Boolean) as string[];
   const pastSubIds = pastMemberships.map((m) => m.oc_id);

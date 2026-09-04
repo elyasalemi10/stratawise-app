@@ -7,6 +7,7 @@ import { Mail, Monitor } from "lucide-react";
 import {
   NOTIFICATION_TYPES,
   NOTIFICATION_GROUPS,
+  notificationGroupsForRole,
   MANDATORY_NOTIFICATION_TYPES,
   MANAGERIAL_NOTIFICATION_TYPES,
   type NotificationType,
@@ -37,10 +38,15 @@ function formatAutoOptOutDate(iso: string): string {
 export function NotificationsTab({
   currentPreferences,
   autoOptOuts,
+  role,
 }: {
   currentPreferences: NotificationPrefRow[];
   autoOptOuts: AutoOptOutEntry[];
+  role: string;
 }) {
+  // An owner is never sent most of these, so offering the switch would be
+  // telling them something untrue about the product.
+  const groups = notificationGroupsForRole(role);
   const [, startTransition] = useTransition();
 
   // Build initial state map: default opt-in (true) for any type+channel
@@ -113,7 +119,7 @@ export function NotificationsTab({
     const changed: NotificationType[] = [];
     setState((prev) => {
       const next = { ...prev };
-      for (const group of NOTIFICATION_GROUPS) {
+      for (const group of groups) {
         for (const item of group.items) {
           if (channel === "email" && MANDATORY_NOTIFICATION_TYPES.has(item.type)) continue;
           if (channel === "in_app" && MANAGERIAL_NOTIFICATION_TYPES.has(item.type)) continue;
@@ -146,7 +152,7 @@ export function NotificationsTab({
 
   /** True when every togglable row in the column is on. */
   function columnAllOn(channel: Channel): boolean {
-    return NOTIFICATION_GROUPS.every((g) =>
+    return groups.every((g) =>
       g.items.every((i) => {
         if (channel === "email" && MANDATORY_NOTIFICATION_TYPES.has(i.type)) return true;
         if (channel === "in_app" && MANAGERIAL_NOTIFICATION_TYPES.has(i.type)) return true;
@@ -191,7 +197,7 @@ export function NotificationsTab({
           </thead>
 
           <tbody>
-            {NOTIFICATION_GROUPS.map((group) => (
+            {groups.map((group) => (
               <React.Fragment key={group.label}>
                 <tr>
                   <th

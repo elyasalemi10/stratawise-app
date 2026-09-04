@@ -30,6 +30,7 @@ export interface AutoOptOutEntry {
 export async function getNotificationSettings(): Promise<{
   currentPreferences: NotificationPrefRow[];
   autoOptOuts: AutoOptOutEntry[];
+  role: string;
 }> {
   const profile = await getCurrentProfile();
   if (!profile) throw new Error("Not authenticated.");
@@ -50,6 +51,7 @@ export async function getNotificationSettings(): Promise<{
 
   // Most-recent-per-(type, channel) dedup. Lifetime auto-opt-outs per profile
   // are bounded by 13 types x 2 channels = 26 rows, so a linear scan is fine.
+  const role = profile.role;
   const seen = new Map<string, AutoOptOutEntry>();
   for (const r of optOutAuditsResult.data ?? []) {
     const meta = (r as { metadata: { notification_type?: string; channel?: string } }).metadata;
@@ -65,6 +67,7 @@ export async function getNotificationSettings(): Promise<{
   return {
     currentPreferences: (prefsResult.data ?? []) as NotificationPrefRow[],
     autoOptOuts: Array.from(seen.values()),
+    role,
   };
 }
 

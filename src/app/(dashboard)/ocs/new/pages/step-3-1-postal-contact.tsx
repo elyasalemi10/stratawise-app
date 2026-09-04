@@ -339,26 +339,41 @@ export function Step3PostalContact({
                         </span>
                       </td>
                       <td className="px-3 pb-3" colSpan={2}>
-                        {/* Collapsed it is one line. Focused, the row grows
-                            into the full address: search-as-you-type, and
-                            street / suburb / postcode underneath for the
-                            addresses Google does not know , a new estate, a
-                            PO box, a unit Google merges into its building.
-                            Growing rather than opening a dialog keeps the
-                            row you are working on where it was. */}
+                        {/* Two stacked grids animating in opposite
+                            directions: the one-liner shrinks to nothing as
+                            the editor grows. Swapping one for the other
+                            instead made the row jump , the collapsed input
+                            unmounted before the editor had any height, so
+                            the row dropped a line and then grew back. */}
                         <div
                           className={cn(
-                            "grid transition-all duration-200 ease-out",
+                            "grid transition-[grid-template-rows] duration-200 ease-out",
+                            addressOpenIdx === idx ? "grid-rows-[0fr]" : "grid-rows-[1fr]",
+                          )}
+                        >
+                          <div className="overflow-hidden">
+                            <Input
+                              value={lot.owner_postal_address ?? ""}
+                              onChange={(e) => updateLot(idx, { owner_postal_address: e.target.value })}
+                              onFocus={() => setAddressOpenIdx(idx)}
+                              aria-invalid={errs.postal || undefined}
+                              placeholder="Street, suburb, state, postcode"
+                              className="h-8"
+                              tabIndex={addressOpenIdx === idx ? -1 : undefined}
+                            />
+                          </div>
+                        </div>
+                        <div
+                          className={cn(
+                            "grid transition-[grid-template-rows] duration-200 ease-out",
                             addressOpenIdx === idx ? "grid-rows-[1fr]" : "grid-rows-[0fr]",
                           )}
                         >
                           <div className="overflow-hidden">
-                            {/* Clicking anywhere outside collapses the row
-                                back to its one-liner. An expanded row that
-                                stays expanded turns a twenty-lot table into
-                                a wall the moment you have touched a few. */}
+                            {/* Focus leaving the block collapses it. A row
+                                left open turns a twenty-lot table into a
+                                wall the moment you have touched a few. */}
                             <div
-                              className="pb-1"
                               onBlur={(e) => {
                                 if (!e.currentTarget.contains(e.relatedTarget as Node | null)) {
                                   setAddressOpenIdx((cur) => (cur === idx ? null : cur));
@@ -379,16 +394,6 @@ export function Step3PostalContact({
                             </div>
                           </div>
                         </div>
-                        {addressOpenIdx !== idx && (
-                          <Input
-                            value={lot.owner_postal_address ?? ""}
-                            onChange={(e) => updateLot(idx, { owner_postal_address: e.target.value })}
-                            onFocus={() => setAddressOpenIdx(idx)}
-                            aria-invalid={errs.postal || undefined}
-                            placeholder="Street, suburb, state, postcode"
-                            className="h-8"
-                          />
-                        )}
                       </td>
                     </tr>
                   </Fragment>

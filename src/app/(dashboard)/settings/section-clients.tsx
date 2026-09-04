@@ -79,6 +79,7 @@ export function NotificationsSection() {
     <NotificationsTab
       currentPreferences={data.currentPreferences}
       autoOptOuts={data.autoOptOuts}
+      role={data.role}
     />
   );
 }

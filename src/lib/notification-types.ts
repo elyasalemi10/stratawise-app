@@ -105,3 +105,40 @@ export const NOTIFICATION_GROUPS: Array<{
     ],
   },
 ];
+
+// ─── What each role can actually be told about ─────────────────────────────
+//
+// A lot owner and a manager get the same eighteen switches today, and most
+// of them are meaningless to an owner: they are never sent "an owner has
+// lodged a claim", "no recent bank statement has been imported", or "the
+// AGM deadline has passed" , those go to whoever runs the OC. Offering the
+// switch implies the notification exists, and an owner who turns one ON and
+// hears nothing has been told something untrue about the product.
+//
+// Owners get the things that happen TO their lot, plus what the whole OC is
+// told: their levies, their meetings, their documents, their requests.
+
+const LOT_OWNER_TYPES: ReadonlySet<string> = new Set([
+  "levy_issued",
+  "payment_received",
+  "overdue_reminder",
+  "second_reminder",
+  "levy_final_notice",
+  "meeting_notice",
+  "meeting_minutes",
+  "document_uploaded",
+  "claim_matched",
+  "claim_rejected",
+  "complaint_update",
+  "announcement",
+]);
+
+/** The groups to show for a role, with empty groups dropped. */
+export function notificationGroupsForRole(
+  role: "lot_owner" | "strata_manager" | "super_admin" | string,
+): typeof NOTIFICATION_GROUPS {
+  if (role !== "lot_owner") return NOTIFICATION_GROUPS;
+  return NOTIFICATION_GROUPS
+    .map((g) => ({ ...g, items: g.items.filter((i) => LOT_OWNER_TYPES.has(i.type)) }))
+    .filter((g) => g.items.length > 0);
+}
