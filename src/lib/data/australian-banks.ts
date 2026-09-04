@@ -33,52 +33,85 @@ export const AUSTRALIAN_BANKS: BankOption[] = [
 // pick one from a list was asking for a fact we hold and one they could get
 // wrong.
 //
-// EXACT THREE-DIGIT PREFIXES ONLY. This used to fall back to the first TWO
-// digits when three did not match, which is unsound: BSBs are allocated at
-// three-digit granularity and several two-digit ranges are split between
-// institutions, so the fallback confidently mislabelled accounts. It also
-// carried entries keyed "63x" and "63y", which contain letters and therefore
-// could never match anything, next to a "63" entry that shadowed the real
-// 633 allocation.
+// GENERATED FROM THE AUSPAYNET BSB DIRECTORY, not from memory. Regenerate
+// with `npm run bsb:refresh` (scripts/refresh-bsb-prefixes.mjs), which pulls
+// the published directory and rewrites the table below. AusPayNet republish
+// on the first business day of each month; new prefixes are rare and an
+// unrecognised one degrades to no badge, so this does not need chasing.
 //
-// That mattered more than a wrong logo, because add-bank-account-drawer
-// STORES this result as bank_accounts.bank_name. A guess became a record.
+// EXACT THREE-DIGIT PREFIXES. In the directory every one of the 280 issued
+// three-digit prefixes maps to exactly one institution, so three digits is
+// always enough and never ambiguous. Two is not: 23 of the 74 two-digit
+// prefixes span more than one institution, which is why the old two-digit
+// fallback was mislabelling accounts.
 //
-// So: no guessing. An unrecognised prefix returns null, the UI shows no
-// badge, and the account works exactly the same. A missing logo is honest;
-// the wrong bank's logo is not. Add a prefix here only when it has been
-// checked against the AusPayNet BSB directory.
+// AGGREGATOR PREFIXES ARE DELIBERATELY ABSENT. Cuscal (702-707) and the
+// credit-union range (800-809) are settlement institutions standing behind
+// hundreds of separate brands, so the prefix identifies who settles the
+// payment and not whose account it is. Teachers Mutual sits inside 802, and
+// badging a member credit union's account as Cuscal would be wrong in a way
+// a missing badge is not.
+//
+// This matters more than a logo: add-bank-account-drawer STORES the result
+// as bank_accounts.bank_name, so a guess becomes a record.
 const BSB_PREFIX_TO_BANK: Record<string, string> = {
-  // ANZ
+  // anz (ANZ)
   "012": "anz", "013": "anz", "014": "anz", "015": "anz", "016": "anz",
-  "017": "anz", "018": "anz", "019": "anz",
-  // Westpac
+  "017": "anz",
+  // westpac (WBC)
   "032": "westpac", "033": "westpac", "034": "westpac", "035": "westpac",
-  "036": "westpac", "037": "westpac", "038": "westpac", "039": "westpac",
+  "036": "westpac", "037": "westpac", "042": "westpac", "043": "westpac",
+  "044": "westpac", "045": "westpac", "046": "westpac", "047": "westpac",
   "732": "westpac", "733": "westpac", "734": "westpac", "735": "westpac",
-  "736": "westpac", "737": "westpac", "738": "westpac",
-  // Commonwealth Bank
+  "736": "westpac", "737": "westpac",
+  // cba (CBA)
   "062": "cba", "063": "cba", "064": "cba", "065": "cba", "066": "cba",
-  "067": "cba", "068": "cba",
-  // NAB
+  "067": "cba", "762": "cba", "763": "cba", "764": "cba", "765": "cba",
+  "766": "cba", "767": "cba",
+  // nab (NAB)
   "082": "nab", "083": "nab", "084": "nab", "085": "nab", "086": "nab",
-  "087": "nab", "088": "nab",
-  // St.George / BankSA / Bank of Melbourne (Westpac group, own prefixes)
-  "112": "stgeorge", "114": "stgeorge",
-  "105": "banksa",
-  "193": "bankofmelb",
-  // Bendigo
+  "087": "nab",
+  // banksa (BSA)
+  "102": "banksa", "103": "banksa", "104": "banksa", "105": "banksa",
+  "106": "banksa",
+  // stgeorge (STG)
+  "112": "stgeorge", "113": "stgeorge", "114": "stgeorge",
+  "115": "stgeorge", "116": "stgeorge", "117": "stgeorge",
+  "118": "stgeorge", "119": "stgeorge",
+  // bankofqld (BQL)
+  "122": "bankofqld", "123": "bankofqld", "124": "bankofqld",
+  "125": "bankofqld", "126": "bankofqld", "127": "bankofqld",
+  // macquarie (MBL)
+  "182": "macquarie", "183": "macquarie", "184": "macquarie",
+  "185": "macquarie", "186": "macquarie", "187": "macquarie",
+  // bankofmelb (BOM)
+  "192": "bankofmelb", "193": "bankofmelb", "194": "bankofmelb",
+  "195": "bankofmelb", "196": "bankofmelb", "197": "bankofmelb",
+  // bankwest (BWA)
+  "302": "bankwest", "303": "bankwest", "304": "bankwest",
+  "305": "bankwest", "306": "bankwest",
+  // hsbc (HBA/HSB)
+  "342": "hsbc", "343": "hsbc", "344": "hsbc", "345": "hsbc",
+  "346": "hsbc", "985": "hsbc",
+  // suncorp (MET)
+  "482": "suncorp", "483": "suncorp", "484": "suncorp",
+  // bendigo (BBL)
   "633": "bendigo",
-  // Macquarie
-  "182": "macquarie", "183": "macquarie",
-  // Others, single allocations
+  // heritage (HBS)
+  "638": "heritage", "880": "heritage",
+  // ubank (YOU)
+  "670": "ubank",
+  // ing (ING)
   "923": "ing",
-  "942": "amp",
+  // amp (AMP)
+  "939": "amp",
+  // me (MEB)
   "944": "me",
 };
 
-/** Resolve the bank from a BSB, if we recognise the exact prefix. Returns
- *  null rather than guessing , see the note above. */
+/** Resolve the bank from a BSB, if the exact three-digit prefix is one we
+ *  recognise. Returns null rather than guessing: the row then shows no badge
+ *  at all, which is honest, where the wrong bank's logo is not. */
 export function bankFromBsb(bsb: string | null | undefined): BankOption | null {
   const digits = (bsb ?? "").replace(/\D/g, "");
   if (digits.length < 3) return null;

@@ -7,7 +7,8 @@
     "build": "next build",
     "start": "next start",
     "lint": "eslint",
-    "seed": "tsx src/lib/seed.ts"
+    "seed": "tsx src/lib/seed.ts",
+    "bsb:refresh": "node scripts/refresh-bsb-prefixes.mjs"
   },
   "dependencies": {
     "@aws-sdk/client-s3": "^3.1011.0",
