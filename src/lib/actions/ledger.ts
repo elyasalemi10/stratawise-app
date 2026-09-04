@@ -1,6 +1,7 @@
 "use server";
 
 import { requireCompanyRole, requireOCAccess } from "@/lib/auth";
+import { logAudit } from "@/lib/audit";
 import { createServerClient } from "@/lib/supabase";
 import { revalidatePath } from "next/cache";
 import {
@@ -132,6 +133,28 @@ export async function recordAdjustment(
 
   if (error) return { error: error.message };
 
+  // A manual adjustment moves what a lot owes, which makes it one of the few
+  // things on a lot's timeline that a manager will later be asked to
+  // justify. metadata.lot_id is what puts it on the lot's History tab: the
+  // feed matches on entity_id or metadata.lot_id, and the entity here is a
+  // ledger entry, not the lot.
+  await logAudit({
+    profileId: profile.id,
+    ocId: parsed.data.oc_id,
+    action: "create",
+    entityType: "ledger_entry",
+    entityId: data as string,
+    after: {
+      lot_id: parsed.data.lot_id,
+      entry_type: parsed.data.entry_type,
+      category: parsed.data.category,
+      amount: parsed.data.amount,
+      entry_date: parsed.data.entry_date,
+      description: parsed.data.description,
+    },
+    metadata: { lot_id: parsed.data.lot_id },
+  });
+
   // Ledger entry adjustments may affect any /levies, /budgets, /reconciliation
   // page in the oc; broad pattern invalidation is the simplest correct.
   revalidatePath("/ocs/[ocCode]/levies", "page");
@@ -155,7 +178,7 @@ export async function voidLedgerEntry(
 
   const { data: entry } = await supabase
     .from("lot_ledger_entries")
-    .select("oc_id")
+    .select("oc_id, lot_id")
     .eq("id", parsed.data.entry_id)
     .single();
 
@@ -169,6 +192,18 @@ export async function voidLedgerEntry(
   });
 
   if (error) return { error: error.message };
+
+  // Reversing an entry is the other half of the same story, and the reason
+  // is the part anyone reading the history later actually needs.
+  await logAudit({
+    profileId: profile.id,
+    ocId: entry.oc_id as string,
+    action: "void",
+    entityType: "ledger_entry",
+    entityId: parsed.data.entry_id,
+    after: { lot_id: entry.lot_id, reason: parsed.data.reason, offset_entry_id: data as string },
+    metadata: { lot_id: entry.lot_id },
+  });
 
   revalidatePath("/ocs/[ocCode]/levies", "page");
   revalidatePath("/ocs/[ocCode]/lots/[lotId]", "page");

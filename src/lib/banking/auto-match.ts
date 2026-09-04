@@ -1,4 +1,5 @@
 import "server-only";
+import { logAudit } from "@/lib/audit";
 import { createServerClient } from "@/lib/supabase";
 
 interface LotDrnRow {
@@ -129,6 +130,7 @@ export async function autoMatchBankTransactions(
       levy: choice.levy,
       method: choice.method,
       performedBy,
+      ocId,
     });
     if (ok) {
       // Reflect the new amount_paid in our in-memory levy cache so the
@@ -203,6 +205,7 @@ interface ApplyArgs {
   levy: OpenLevyRow;
   method: "auto_reference";
   performedBy: string;
+  ocId: string;
 }
 
 async function applyMatch(
@@ -258,6 +261,26 @@ async function applyMatch(
       .eq("id", args.levy.id);
     return false;
   }
+
+  // Money arriving is the most important event on a lot's timeline and it
+  // was the one thing never written to the audit log, so the History tab's
+  // payment branch could not fire. metadata.lot_id is what the lot feed
+  // matches on: the entity here is a levy notice, not the lot.
+  await logAudit({
+    profileId: args.performedBy,
+    ocId: args.ocId,
+    action: "payment_matched",
+    entityType: "payment",
+    entityId: args.txnId,
+    after: {
+      lot_id: args.levy.lot_id,
+      levy_notice_id: args.levy.id,
+      reference_number: args.levy.reference_number,
+      amount: args.allocated,
+      matched_by: args.method,
+    },
+    metadata: { lot_id: args.levy.lot_id },
+  });
 
   return true;
 }

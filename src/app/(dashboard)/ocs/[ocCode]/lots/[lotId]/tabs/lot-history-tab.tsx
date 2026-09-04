@@ -90,12 +90,22 @@ function titleFor(row: LotActivityEntry, category: Category): string {
       return row.action === "create" ? "Phone call logged" : humanise(`${row.entity_type} ${row.action}`);
     case "settlement": return "Settlement recorded";
     case "contact":    return "Owner contact updated";
-    case "payment":    return "Payment recorded";
+    case "payment":
+      if (row.action === "payment_matched") return "Payment received";
+      if (row.action === "void") return "Adjustment reversed";
+      if (row.action === "create") return "Adjustment recorded";
+      return "Payment recorded";
     case "document":
       if (row.action === "rename") return "Document renamed";
       if (row.action === "delete") return "Document removed";
       return "Document uploaded";
-    case "levy":       return row.action === "create" ? "Levy issued" : humanise(`${row.entity_type} ${row.action}`);
+    case "levy":
+      // "issue" is the per-lot row written when a batch is sent; "create" is
+      // the older batch-level shape.
+      if (row.action === "issue" || row.action === "create") return "Levy issued";
+      if (row.action === "cancel") return "Levy cancelled";
+      if (row.action === "recall") return "Levy recalled";
+      return humanise(`${row.entity_type} ${row.action}`);
     default:           return humanise(`${row.entity_type} ${row.action}`);
   }
 }

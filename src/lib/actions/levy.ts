@@ -1191,6 +1191,37 @@ export async function markBatchSent(
     entity_id: batchId,
   });
 
+  // ONE row per lot as well as the batch row above.
+  //
+  // A lot's History reads audit_log by entity_id or metadata.lot_id, and a
+  // batch row carries neither, so the single most consequential thing that
+  // happens to a lot , being charged , never appeared on its own timeline.
+  // The History tab even had a branch ready to render it that could not
+  // fire. Batched into one insert: a hundred-lot OC must not cost a hundred
+  // round trips.
+  const { data: issuedNotices } = await supabase
+    .from("levy_notices")
+    .select("id, lot_id, reference_number, amount, due_date")
+    .eq("batch_id", batchId)
+    .eq("status", "issued");
+  if (issuedNotices && issuedNotices.length > 0) {
+    await supabase.from("audit_log").insert(
+      issuedNotices.map((n) => ({
+        profile_id: profile.id,
+        oc_id: ocId,
+        action: "issue",
+        entity_type: "levy_notice",
+        entity_id: n.id as string,
+        after_state: {
+          reference_number: n.reference_number,
+          amount: n.amount,
+          due_date: n.due_date,
+        },
+        metadata: { lot_id: n.lot_id },
+      })),
+    );
+  }
+
   revalidatePath("/ocs/[ocCode]/levies", "page");
 
   return { success: true };

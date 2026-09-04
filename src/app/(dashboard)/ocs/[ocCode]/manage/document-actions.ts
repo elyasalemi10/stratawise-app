@@ -38,7 +38,7 @@ export async function renameDocument(documentId: string, newName: string) {
 
   const { data: doc } = await supabase
     .from("documents")
-    .select("oc_id, file_name")
+    .select("oc_id, lot_id, file_name")
     .eq("id", documentId)
     .single();
 
@@ -58,6 +58,9 @@ export async function renameDocument(documentId: string, newName: string) {
     oc_id: doc.oc_id,
     action: "update",
     entity_type: "document",
+    // Upload already carried this; rename and delete did not, so a lot's
+    // history showed documents arriving and never changing or leaving.
+    metadata: doc.lot_id ? { lot_id: doc.lot_id } : null,
     entity_id: documentId,
     before_state: { file_name: doc.file_name },
     after_state: { file_name: newName.trim() },
@@ -72,7 +75,7 @@ export async function deleteDocument(documentId: string) {
 
   const { data: doc } = await supabase
     .from("documents")
-    .select("oc_id, file_name, file_path, insurance_policy_id")
+    .select("oc_id, lot_id, file_name, file_path, insurance_policy_id")
     .eq("id", documentId)
     .single();
 
@@ -104,6 +107,7 @@ export async function deleteDocument(documentId: string) {
     oc_id: doc.oc_id,
     action: "delete",
     entity_type: "document",
+    metadata: doc.lot_id ? { lot_id: doc.lot_id } : null,
     entity_id: documentId,
     before_state: { file_name: doc.file_name, file_path: doc.file_path },
     after_state: null,
