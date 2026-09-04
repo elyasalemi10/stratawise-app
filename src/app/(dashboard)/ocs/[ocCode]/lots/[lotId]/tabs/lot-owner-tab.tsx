@@ -2,25 +2,21 @@
 
 import * as React from "react";
 import { Button } from "@/components/ui/button";
+import { InviteStatusPopover } from "../../invite-status-popover";
+import { cn } from "@/lib/utils";
+import { useFieldSave } from "@/lib/use-field-save";
+import { UserAvatar } from "@/components/shared/user-avatar";
 import { Card, CardContent } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
-import { Checkbox } from "@/components/ui/checkbox";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { PhoneInput } from "@/components/shared/phone-input";
 import { EditSheet } from "@/components/shared/edit-sheet";
 import { EmptyState } from "@/components/shared/empty-state";
 import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
 } from "@/components/ui/select";
 import {
   Repeat,
-  ShieldCheck,
-  ShieldOff,
   ExternalLink,
   Mail,
   FileSignature,
@@ -82,6 +78,13 @@ interface Props {
   paymentReference: string | null;
   postalAddress: string | null;
   portalActive: boolean;
+  ocId: string;
+  lotId: string;
+  lotNumber: number;
+  /** Their real profile picture once they are on the portal. */
+  ownerAvatarUrl?: string | null;
+  inviteStatus: "not_invited" | "noted" | "pending" | "accepted";
+  onInviteChanged?: () => void;
   portalInviteAccepted: boolean;
   engagement: LotEngagement;
   onTransfer: () => void;
@@ -95,13 +98,33 @@ export function LotOwnerTab(props: Props) {
     pastHistoryEntries,
     paymentReference,
     postalAddress,
-    portalActive,
+    ocId,
+    lotId,
+    lotNumber,
+    ownerAvatarUrl,
+    inviteStatus,
+    onInviteChanged,
     portalInviteAccepted,
     engagement,
     onTransfer,
   } = props;
 
   const router = useRouter();
+
+  async function saveField(patch: {
+    name?: string;
+    email?: string | null;
+    phone?: string | null;
+    postal_address?: string | null;
+  }): Promise<{ error?: string }> {
+    if (!lotOwnerId) return { error: "No owner on this lot yet." };
+    const res = await updateLotOwnerContact({ lot_owner_id: lotOwnerId, ...patch });
+    if (res.ok) {
+      router.refresh();
+      return {};
+    }
+    return { error: res.error };
+  }
 
   // Canonical view of the owner card. Patched optimistically when the sheet
   // saves; rolled back on failure so the field-level edit feels instant.
@@ -146,85 +169,89 @@ export function LotOwnerTab(props: Props) {
     <div className="space-y-6">
       <Card>
         <CardContent className="pt-5 space-y-4">
-          {/* Header , avatar + name + single Edit button. */}
-          <div className="flex items-start justify-between gap-4">
-            <div className="flex items-start gap-3 min-w-0">
-              <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-primary text-primary-foreground text-sm font-semibold">
-                {initials(view.name)}
-              </div>
-              <div className="min-w-0">
-                <p className="font-semibold text-foreground truncate">{view.name}</p>
-                {activeHistoryEntry?.joinedAt && (
-                  <p className="text-xs text-muted-foreground">
-                    Since {formatLongDate(activeHistoryEntry.joinedAt)}
-                  </p>
-                )}
-              </div>
+          <div className="flex items-start gap-3 min-w-0">
+            {/* Their real picture once they are on the portal , profiles
+                carry an avatar_url from the moment they upload one, and
+                an initial for everyone else. */}
+            <UserAvatar
+              src={ownerAvatarUrl ?? null}
+              initials={initials(view.name)}
+              className="size-11"
+            />
+            <div className="min-w-0 flex-1">
+              <p className="font-semibold text-foreground truncate">{view.name}</p>
+              {activeHistoryEntry?.joinedAt && (
+                <p className="text-xs text-muted-foreground">
+                  Since {formatLongDate(activeHistoryEntry.joinedAt)}
+                </p>
+              )}
             </div>
-            <OwnerContactEditSheet
-              lotOwnerId={lotOwnerId}
-              initial={view}
-              portalInviteAccepted={portalInviteAccepted}
-              onPatch={(p) => setView((v) => ({ ...v, ...p }))}
-              onRollback={() =>
-                setView({
-                  name: activeOwner.owner_display_name ?? "",
-                  email: activeOwner.owner_contact_email ?? "",
-                  phone: activeOwner.owner_contact_phone ?? "",
-                  postal: postalAddress ?? "",
-                })
-              }
-              onSaved={() => router.refresh()}
+            {/* The same pill as the lots table, opening the same dialog ,
+                one place to invite from, one place that knows how many
+                times you already have. */}
+            <InviteStatusPopover
+              ocId={ocId}
+              lotId={lotId}
+              lotNumber={lotNumber}
+              status={inviteStatus}
+              ownerName={view.name}
+              ownerEmail={view.email}
+              ownerPhone={view.phone}
+              onInviteChanged={onInviteChanged}
             />
           </div>
 
-          {/* Read-only field list , no inline edit triggers. */}
-          <dl className="divide-y divide-border">
-            <KvRow label="Email" value={view.email} />
-            <KvRow label="Phone" value={view.phone} />
-            <KvRow label="Service address" value={view.postal} multiline />
-            <KvRow
-              label="Portal access"
-              renderValue={
-                <span className="inline-flex items-center gap-1.5">
-                  {portalActive ? (
-                    <>
-                      <ShieldCheck className="h-3.5 w-3.5 text-[hsl(160,100%,37%)]" />
-                      Active
-                    </>
-                  ) : (
-                    <>
-                      <ShieldOff className="h-3.5 w-3.5 text-muted-foreground" />
-                      Not on the portal yet
-                    </>
-                  )}
-                </span>
-              }
+          {/* Every field edits in place and saves when you leave it , the
+              same rule as settings. The Edit drawer hid the current values
+              behind a click before you could change one. */}
+          <div className="grid gap-4 sm:grid-cols-2">
+            <OwnerField
+              label="Full name"
+              value={view.name}
+              onSaved={(v) => setView((x) => ({ ...x, name: v }))}
+              save={(v) => saveField({ name: v })}
             />
-          </dl>
+            <OwnerField
+              label="Email"
+              value={view.email}
+              type="email"
+              disabled={portalInviteAccepted}
+              hint={portalInviteAccepted ? "They change this from the portal" : undefined}
+              onSaved={(v) => setView((x) => ({ ...x, email: v }))}
+              save={(v) => saveField({ email: v || null })}
+            />
+            <OwnerField
+              label="Phone"
+              value={view.phone}
+              phone
+              onSaved={(v) => setView((x) => ({ ...x, phone: v }))}
+              save={(v) => saveField({ phone: v || null })}
+            />
+            <OwnerReadonly label="Payment reference" value={paymentReference ?? ""} mono />
+            <div className="sm:col-span-2">
+              <OwnerField
+                label="Service address"
+                value={view.postal}
+                onSaved={(v) => setView((x) => ({ ...x, postal: v }))}
+                save={(v) => saveField({ postal_address: v || null })}
+              />
+            </div>
+          </div>
         </CardContent>
       </Card>
 
-      {/* Identifier / payments info ---------------------------------------- */}
-      <Card>
-        <CardContent className="pt-5">
-          <h3 className="text-sm font-semibold text-foreground mb-3">Identifier &amp; payment details</h3>
-          <dl className="divide-y divide-border">
-            <KvRow label="Payment reference" value={paymentReference ?? ""} mono />
-          </dl>
-        </CardContent>
-      </Card>
+      {/* Engagement (meeting attendance + voting history) ------------------- */}
+      <EngagementCard engagement={engagement} />
 
-      {/* Transfer ownership ------------------------------------------------- */}
-      <div className="flex justify-center">
-        <Button variant="secondary" onClick={onTransfer}>
+      {/* Transfer ownership. Last on the page and destructive-coloured,
+          because it ends this owner's tenure , everything above is about
+          the person who holds the lot today. */}
+      <div className="flex justify-center border-t border-border pt-6">
+        <Button variant="destructive" onClick={onTransfer}>
           <Repeat className="mr-2 h-3.5 w-3.5" />
           Transfer ownership
         </Button>
       </div>
-
-      {/* Engagement (meeting attendance + voting history) ------------------- */}
-      <EngagementCard engagement={engagement} />
 
       {/* Previous owners ---------------------------------------------------- */}
       {pastHistoryEntries.length > 0 && (
@@ -568,6 +595,84 @@ function EngagementStat({
         {value}
       </p>
       {sub && <p className="text-[11px] text-muted-foreground">{sub}</p>}
+    </div>
+  );
+}
+
+// One owner field: edits in place, saves when you leave it, and only if it
+// changed. Same hook the settings pages use, so the behaviour , the toast,
+// the revert on refusal , is the same wherever a field saves itself.
+function OwnerField({
+  label,
+  value,
+  onSaved,
+  save,
+  type,
+  phone,
+  disabled,
+  hint,
+}: {
+  label: string;
+  value: string;
+  onSaved: (next: string) => void;
+  save: (next: string) => Promise<{ error?: string }>;
+  type?: string;
+  phone?: boolean;
+  disabled?: boolean;
+  hint?: string;
+}) {
+  const id = `owner-${label.toLowerCase().replace(/\s+/g, "-")}`;
+  const f = useFieldSave(
+    value,
+    async (next) => {
+      const res = await save(next);
+      if (!res.error) onSaved(next);
+      return res;
+    },
+    { successMessage: `${label} saved` },
+  );
+
+  return (
+    <div className="space-y-1.5">
+      <Label htmlFor={id}>{label}</Label>
+      {phone ? (
+        <PhoneInput
+          id={id}
+          value={f.value}
+          onChange={f.onChange}
+          onBlur={f.onBlur}
+          error={f.invalid}
+        />
+      ) : (
+        <Input
+          id={id}
+          type={type}
+          value={f.value}
+          onChange={(e) => f.onChange(e.target.value)}
+          onBlur={f.onBlur}
+          aria-invalid={f.invalid || undefined}
+          disabled={disabled}
+          placeholder={label}
+        />
+      )}
+      {hint && <p className="text-xs text-muted-foreground">{hint}</p>}
+    </div>
+  );
+}
+
+/** A value set elsewhere , shown, not edited. */
+function OwnerReadonly({ label, value, mono }: { label: string; value: string; mono?: boolean }) {
+  return (
+    <div className="space-y-1.5">
+      <Label>{label}</Label>
+      <div
+        className={cn(
+          "flex h-9 items-center rounded-md border border-border bg-cool-muted px-3 text-sm text-cool-muted-foreground",
+          mono && "font-mono",
+        )}
+      >
+        {value}
+      </div>
     </div>
   );
 }

@@ -74,11 +74,13 @@ const DRAWINGS: Record<IllustrationName, React.ReactNode> = {
   ),
   money: (
     <>
-      <rect x="24" y="34" width="72" height="44" rx="5" fill={paper} stroke={line} strokeWidth="2" />
-      <path d="M24 48h72" stroke={line} strokeWidth="2" />
-      <rect x="34" y="60" width="22" height="6" rx="3" fill={ground} />
-      <circle cx="80" cy="24" r="12" fill={gold} />
-      <path d="M80 18v12M77 21.5h5a2.5 2.5 0 010 5h-4a2.5 2.5 0 000 5h5" stroke={paper} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
+      {/* Note first, coin over it. Drawn the other way round the coin sat
+          behind the note's top corner and read as falling off the edge. */}
+      <rect x="30" y="34" width="66" height="42" rx="5" fill={paper} stroke={line} strokeWidth="2" />
+      <path d="M30 48h66" stroke={line} strokeWidth="2" />
+      <rect x="62" y="58" width="24" height="6" rx="3" fill={ground} />
+      <circle cx="40" cy="58" r="16" fill={gold} stroke={paper} strokeWidth="3" />
+      <path d="M40 50v16M36.5 53.5h5.5a3 3 0 010 6h-4a3 3 0 000 6H44" stroke={paper} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
     </>
   ),
   calendar: (

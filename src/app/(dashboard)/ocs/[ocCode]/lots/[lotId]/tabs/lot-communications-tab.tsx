@@ -1169,11 +1169,15 @@ function LogCallDrawer({
       </div>
 
       <div className="space-y-1.5">
-        <Label>Duration (minutes)</Label>
+        <Label>Duration</Label>
+        {/* The unit belongs in the field, like the +61 on a phone , a label
+            that carries "(minutes)" is a label doing the input's job, and
+            the placeholder then has to repeat it. */}
         <NumberInput
           value={durationMinutes}
           onChange={setDurationMinutes}
-          placeholder="Duration in minutes"
+          placeholder="Duration"
+          suffix="minutes"
           allowDecimal
         />
       </div>

@@ -11,6 +11,9 @@ export interface LotOwnerInfo {
   owner_contact_email: string | null;
   owner_contact_phone: string | null;
   profile_id: string | null;          // populated only when owner_status === "member"
+  /** Their real profile picture, once they are on the portal. Null before
+   *  that , an owner we only have on paper has no picture to show. */
+  owner_avatar_url: string | null;
   invitation_id: string | null;       // populated only when owner_status === "pending_invitation"
 }
 
@@ -22,6 +25,7 @@ function emptyOwner(lotId: string): LotOwnerInfo {
     owner_contact_email: null,
     owner_contact_phone: null,
     profile_id: null,
+    owner_avatar_url: null,
     invitation_id: null,
   };
 }
@@ -56,6 +60,19 @@ export async function getLotOwners(
     .select("lot_id, name, email, phone, profile_id")
     .in("lot_id", lotIds);
 
+  // Their picture lives on the profile, which only exists once they have
+  // accepted. One query for the handful that have, rather than a join on
+  // every read.
+  const profileIds = [...new Set((currentOwners ?? []).map((o) => o.profile_id).filter(Boolean))] as string[];
+  const avatarByProfile = new Map<string, string | null>();
+  if (profileIds.length > 0) {
+    const { data: profiles } = await supabase
+      .from("profiles")
+      .select("id, avatar_url")
+      .in("id", profileIds);
+    for (const pr of profiles ?? []) avatarByProfile.set(pr.id as string, (pr.avatar_url as string | null) ?? null);
+  }
+
   for (const o of currentOwners ?? []) {
     if (!o.lot_id) continue;
     result.set(o.lot_id, {
@@ -65,6 +82,7 @@ export async function getLotOwners(
       owner_contact_email: o.email ?? null,
       owner_contact_phone: o.phone ?? null,
       profile_id: o.profile_id ?? null,
+      owner_avatar_url: o.profile_id ? avatarByProfile.get(o.profile_id) ?? null : null,
       invitation_id: null,
     });
   }
@@ -94,6 +112,7 @@ export async function getLotOwners(
       owner_contact_email: inv.email ?? null,
       owner_contact_phone: inv.phone ?? null,
       profile_id: null,
+      owner_avatar_url: null,
       invitation_id: inv.id,
     });
   }

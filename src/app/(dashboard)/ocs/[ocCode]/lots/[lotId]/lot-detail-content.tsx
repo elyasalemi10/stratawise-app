@@ -196,6 +196,10 @@ export function LotDetailContent({
   void formatLongDate;
   void initials;
   const portalActive = !!owner.profile_id;
+  // The same four states the lots table shows, from what this page already
+  // knows, so the pill reads the same in both places.
+  const inviteStatus: "not_invited" | "noted" | "pending" | "accepted" =
+    portalActive ? "accepted" : owner.invitation_id ? "pending" : "not_invited";
   const lastPaymentRelative = formatRelative(lastPaymentAt);
 
   // Top header line: "Lot 2 · Unit 2 - Owner name" (or no unit, no owner ,
@@ -243,17 +247,6 @@ export function LotDetailContent({
               </div>
             </div>
             <div className="flex shrink-0 items-center gap-2">
-            {/* The one thing a manager opens this page to do most often is
-                write to the owner, so it is a button, not the third item in
-                a menu. */}
-            <Button
-              size="sm"
-              onClick={() => openCompose("email")}
-              disabled={!owner.owner_contact_email}
-            >
-              <Mail className="mr-1.5 h-3.5 w-3.5" />
-              Email owner
-            </Button>
             <DropdownMenu>
               <DropdownMenuTrigger
                 render={
@@ -396,6 +389,12 @@ export function LotDetailContent({
           postalAddress={lotOwnerExtra?.postal_address ?? null}
           portalActive={portalActive}
           portalInviteAccepted={portalActive}
+          ocId={ocId}
+          lotId={lot.id}
+          lotNumber={lot.lot_number}
+          ownerAvatarUrl={owner.owner_avatar_url}
+          inviteStatus={inviteStatus}
+          onInviteChanged={() => router.refresh()}
           engagement={engagement}
           onTransfer={() => setSettlementOpen(true)}
         />
