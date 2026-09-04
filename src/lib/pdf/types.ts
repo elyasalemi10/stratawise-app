@@ -102,7 +102,7 @@ export interface BudgetReportItem {
    *  the PDF: when items in `items` carry more than one distinct
    *  `fund_type`, the report renders one section per fund with a
    *  separator rule between them. */
-  fund_type?: "operating" | "maintenance_plan" | null;
+  fund_type?: "operating" | null;
   /** When set, this item belongs to a custom fund. The PDF groups by
    *  fund_id (when present) instead of fund_type, and uses the resolved
    *  custom fund name as the section title. */
@@ -116,7 +116,7 @@ export interface BudgetReportItem {
  *  fund_lot_entitlements so each fund pays only its member lots. The PDF
  *  receives the resolved liability per (fund-key, lot_number) pair. */
 export interface FundLotLiability {
-  fund_key: string; // "operating" | "maintenance_plan" | `custom:${fundId}`
+  fund_key: string; // "operating" | `custom:${fundId}`
   lot_number: number;
   liability: number;
 }

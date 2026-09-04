@@ -34,14 +34,7 @@ export function Step4OpeningBalances({
   const [operating, setOperating] = useState<string>(
     initialDraft.opening_operating_balance != null ? String(initialDraft.opening_operating_balance) : "",
   );
-  const hasMaintenance = initialDraft.has_maintenance_plan_fund ?? false;
-  const [maintenance, setMaintenance] = useState<string>(
-    initialDraft.opening_maintenance_plan_balance != null
-      ? String(initialDraft.opening_maintenance_plan_balance)
-      : "",
-  );
   const [operatingInvalid, setOperatingInvalid] = useState(false);
-  const [maintenanceInvalid, setMaintenanceInvalid] = useState(false);
 
   // Every lot is in the arrears table from the start. Each row has a
   // Debit/Credit switch (Switch OFF = Debit / lot owes the OC; ON = Credit
@@ -104,17 +97,10 @@ export function Step4OpeningBalances({
     }
     const problems: string[] = [];
     const operatingN = parseMoney(operating);
-    const maintN = hasMaintenance ? parseMoney(maintenance) : null;
     if (operatingN === null || Number.isNaN(operatingN)) {
       problems.push("Operating fund balance is required.");
       setOperatingInvalid(true);
     } else { setOperatingInvalid(false); }
-    if (hasMaintenance && (maintN === null || Number.isNaN(maintN))) {
-      problems.push("Maintenance plan fund balance is required.");
-      setMaintenanceInvalid(true);
-    } else {
-      setMaintenanceInvalid(false);
-    }
 
     if (problems.length) {
       toast.error(problems.length === 1 ? problems[0] : "Fix the highlighted fields.");
@@ -131,7 +117,6 @@ export function Step4OpeningBalances({
     const r = await saveStep(draftId, {
       opening_balance_date: managementStart,
       opening_operating_balance: operatingN ?? 0,
-      opening_maintenance_plan_balance: hasMaintenance ? (maintN ?? 0) : undefined,
       lots: updatedLots,
     }, 4, 1);
     if (r.error) {
@@ -189,7 +174,7 @@ export function Step4OpeningBalances({
           </p>
         </div>
 
-        <div className={hasMaintenance ? "grid grid-cols-2 gap-4" : "space-y-3"}>
+        <div className="space-y-3">
           <div className="space-y-1.5">
             <Label htmlFor="op-bal">
               Operating fund balance <span className="text-destructive">*</span>
@@ -205,23 +190,6 @@ export function Step4OpeningBalances({
               placeholder="Balance"
             />
           </div>
-          {hasMaintenance && (
-            <div className="space-y-1.5">
-              <Label htmlFor="maint-bal">
-                Maintenance plan fund balance <span className="text-destructive">*</span>
-              </Label>
-              <NumberInput
-                thousandsSeparator
-                id="maint-bal"
-                allowNegative
-                value={maintenance}
-                onChange={(v) => { setMaintenance(v); if (maintenanceInvalid) setMaintenanceInvalid(false); }}
-                invalid={maintenanceInvalid}
-                prefix="$"
-                placeholder="Balance"
-              />
-            </div>
-          )}
         </div>
 
         {/* Per-lot opening arrears , every lot listed; manager fills in the
@@ -301,12 +269,9 @@ export function Step4OpeningBalances({
           continuePending={pending}
           getCurrentPatch={() => {
             const operatingN = parseFloat(operating);
-            const maintN = parseFloat(maintenance);
             return {
               opening_balance_date: managementStart || undefined,
               opening_operating_balance: Number.isFinite(operatingN) ? operatingN : undefined,
-              opening_maintenance_plan_balance:
-                hasMaintenance && Number.isFinite(maintN) ? maintN : undefined,
             };
           }}
         />

@@ -26,13 +26,12 @@ export const RECURRING_FREQUENCY_OPTIONS = RECURRING_FREQUENCIES.map((value) => 
 }));
 
 // ─── Fund (matches the fund_type DB enum) ────────────────────────────────────
-export const RECURRING_FUND_TYPES = ["operating", "capital_works", "maintenance_plan"] as const;
+export const RECURRING_FUND_TYPES = ["operating", "capital_works"] as const;
 export type RecurringFundType = (typeof RECURRING_FUND_TYPES)[number];
 
 export const RECURRING_FUND_LABELS: Record<RecurringFundType, string> = {
   operating: "Administrative fund",
   capital_works: "Capital works fund",
-  maintenance_plan: "Maintenance plan fund",
 };
 
 export const RECURRING_FUND_OPTIONS = RECURRING_FUND_TYPES.map((value) => ({

@@ -28,7 +28,7 @@ interface CoaOption {
   name: string;
 }
 
-type FundType = "operating" | "maintenance_plan";
+type FundType = "operating";
 
 interface PreviewLot {
   lot_id: string;
@@ -41,7 +41,6 @@ interface PreviewLot {
 
 const FUND_LABEL: Record<FundType, string> = {
   operating: "Admin Fund",
-  maintenance_plan: "Maintenance Plan Fund",
 };
 
 const formatCurrency = (n: number) =>

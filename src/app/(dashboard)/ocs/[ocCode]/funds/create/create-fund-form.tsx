@@ -104,7 +104,6 @@ export function CreateFundForm({
   const existingSet = new Set(existingKinds);
   const kindChoices = ([
     { value: "admin" as FundKind, label: FUND_KIND_LABEL.admin, disabled: existingSet.has("admin") },
-    { value: "maintenance_plan" as FundKind, label: FUND_KIND_LABEL.maintenance_plan, disabled: existingSet.has("maintenance_plan") },
     { value: "custom" as FundKind, label: "Other (custom fund)", disabled: false },
   ] as Array<{ value: FundKind; label: string; disabled: boolean }>).filter((k) => !k.disabled);
 
@@ -234,7 +233,6 @@ export function CreateFundForm({
             <div className="grid gap-3 sm:grid-cols-2">
               {[
                 { value: "admin" as FundKind, label: FUND_KIND_LABEL.admin, icon: Building2, blurb: "Day-to-day OC running costs , insurance, cleaning, admin, manager fees." },
-                { value: "maintenance_plan" as FundKind, label: FUND_KIND_LABEL.maintenance_plan, icon: Wrench, blurb: "Scheduled maintenance plan , recurring upkeep based on a 10-year plan." },
                 { value: "custom" as FundKind, label: "Other (custom fund)", icon: MoreHorizontal, blurb: "A purpose-specific fund , e.g. driveway, pool, lift modernisation." },
               ].map((k) => {
                 const Icon = k.icon;

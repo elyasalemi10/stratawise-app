@@ -2,7 +2,6 @@ import { getOC } from "@/lib/actions/oc";
 import { notFound, redirect } from "next/navigation";
 import { CreateBudgetForm } from "./create-budget-form";
 import { listChartOfAccounts } from "@/lib/actions/chart-of-accounts";
-import { ocHasMaintenanceFund } from "@/lib/actions/budget";
 import { getFunds, getOcLots } from "@/lib/actions/funds";
 
 import { resolveOCFromCode } from "@/lib/oc-resolver";
@@ -16,27 +15,23 @@ export default async function CreateBudgetPage({
   const resolved = await resolveOCFromCode(ocCode);
   if (!resolved) notFound();
   const ocId = resolved.id;
-  const [oc, accounts, ocFunds, hasMaintenanceFund, lots] = await Promise.all([
+  const [oc, accounts, ocFunds, lots] = await Promise.all([
     getOC(ocId),
     listChartOfAccounts(),
     getFunds(ocId),
-    ocHasMaintenanceFund(ocId),
     getOcLots(ocId),
   ]);
 
   if (!oc) redirect("/dashboard");
 
   // Available fund types for the budget picker. The funds table tracks the
-  // FUND kind ('admin' | 'maintenance_plan' | 'custom'), but budgets.fund_type
-  // is the legacy enum ('operating' | 'maintenance_plan'). Map kind → enum
-  // when feeding the form. Operating (admin) is always present after OC
-  // creation (default Admin Fund); maintenance shows only when the OC
-  // opted into a maintenance fund.
+  // FUND kind ('admin' | 'custom'); budgets.fund_type is the DB enum, of
+  // which only 'operating' is offered now that the Maintenance Plan Fund is
+  // gone. Everything else an OC wants is a custom fund, carried on
+  // budgets.fund_id rather than the enum.
   const hasAdminFund = ocFunds.some((f) => f.kind === "admin");
-  const hasMaintenanceFundRow = ocFunds.some((f) => f.kind === "maintenance_plan") || hasMaintenanceFund;
-  const availableSystemFunds: ("operating" | "maintenance_plan")[] = [];
+  const availableSystemFunds: "operating"[] = [];
   if (hasAdminFund || ocFunds.length === 0) availableSystemFunds.push("operating");
-  if (hasMaintenanceFundRow) availableSystemFunds.push("maintenance_plan");
 
   // Custom funds from /funds. Each gets passed to the form so the
   // multi-select shows them alongside system funds. Budget submit

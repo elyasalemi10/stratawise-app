@@ -8,11 +8,14 @@ export interface BudgetCategory {
   id: string;
   code: string;
   name: string;
-  fund_type: "operating" | "maintenance_plan";
+  fund_type: "operating";
   sort_order: number;
 }
 
-export type BudgetFundType = "operating" | "maintenance_plan";
+// Only the admin fund is a "system" fund now. The Maintenance Plan Fund was
+// a tier-1 obligation this platform does not serve; anything else an OC needs
+// is a custom fund, carried on budgets.fund_id rather than this enum.
+export type BudgetFundType = "operating";
 
 export interface BudgetItemData {
   // Either references a legacy budget_categories row (back-compat) or , for
@@ -120,20 +123,6 @@ async function clearBudgetChargeGroups(
   await supabase.from("charge_groups").delete().in("id", groupIds);
 }
 
-// True when the OC has a maintenance-plan fund (a bank_accounts row with
-// fund_type='maintenance_plan'). Drives whether the budget form offers a
-// maintenance budget at all.
-export async function ocHasMaintenanceFund(ocId: string): Promise<boolean> {
-  await requireOCAccess(ocId);
-  const supabase = createServerClient();
-  const { count } = await supabase
-    .from("bank_accounts")
-    .select("id", { count: "exact", head: true })
-    .eq("oc_id", ocId)
-    .eq("fund_type", "maintenance_plan");
-  return (count ?? 0) > 0;
-}
-
 export async function getBudgetCategories(): Promise<BudgetCategory[]> {
   const supabase = createServerClient();
   const { data } = await supabase
@@ -145,7 +134,7 @@ export async function getBudgetCategories(): Promise<BudgetCategory[]> {
 
 export async function createBudgetCategory(
   name: string,
-  fundType: "operating" | "maintenance_plan"
+  fundType: "operating"
 ): Promise<{ id: string; error?: string }> {
   await requireCompanyRole();
   const trimmed = name.trim();

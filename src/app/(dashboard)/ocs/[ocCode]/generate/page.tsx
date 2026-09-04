@@ -89,7 +89,7 @@ export default async function GenerateLeviesPage({
     .map((a) => ({ id: a.id, code: a.code, name: a.name }));
 
   // Which funds does this OC actually have a budget for? Special-levy
-  // wizard hides options the OC can't use (e.g. Maintenance Plan when no
+  // wizard hides options the OC can't use (e.g. a custom fund when no
   // maintenance budget exists). Derived from every budget the OC has,
   // approved or not.
   const fundsSet = new Set<string>();
@@ -102,7 +102,7 @@ export default async function GenerateLeviesPage({
   if (fundsSet.size === 0) {
     fundsSet.add("operating");
   }
-  const availableFunds = Array.from(fundsSet) as Array<"operating" | "maintenance_plan">;
+  const availableFunds = Array.from(fundsSet) as Array<"operating">;
 
   // Pre-load OC lots + liability so the "Calculate per lot levies"
   // button in the special-levy flow is instant , the form does the

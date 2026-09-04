@@ -29,7 +29,6 @@ const formatDate = (iso: string | null) =>
 /** Fund type is a database enum; the user never sees the raw value. */
 const FUND_LABEL: Record<string, string> = {
   operating: "Admin fund",
-  maintenance_plan: "Maintenance plan",
 };
 
 /** Payment method is a database enum; same rule. */

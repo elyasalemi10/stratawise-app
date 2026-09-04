@@ -11,7 +11,7 @@ interface LotDrnRow {
 interface OpenLevyRow {
   id: string;
   lot_id: string;
-  fund_type: "operating" | "maintenance_plan";
+  fund_type: "operating";
   reference_number: string;
   amount: number | string;
   amount_paid: number | string;

@@ -174,7 +174,6 @@ export function Step4Banking({
     void (async () => {
       const save = await saveStep(draftId, {
         banking_deferred: true,
-        has_maintenance_plan_fund: false,
         admin_account_name: undefined,
         admin_bsb: undefined,
         admin_account_number: undefined,
@@ -220,7 +219,6 @@ export function Step4Banking({
     void (async () => {
       const r = await saveStep(draftId, {
         banking_deferred: false,
-        has_maintenance_plan_fund: false,
         admin_account_name: operating.accountName.trim(),
         admin_bsb: operating.bsb,
         admin_account_number: operating.accountNumber,
@@ -311,8 +309,7 @@ export function Step4Banking({
           admin_account_name: operating.accountName.trim() || undefined,
           admin_bsb: operating.bsb || undefined,
           admin_account_number: operating.accountNumber || undefined,
-          has_maintenance_plan_fund: false,
-        })}
+          })}
       />
     </div>
   );

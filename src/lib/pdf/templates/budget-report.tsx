@@ -9,7 +9,7 @@ import "../fonts";
 // document title ("Budget breakdown") sits with the financial-year period
 // in the secondary brand colour. The OC subtitle uses a quote-style
 // rectangle (subtle background + left border in primary brand colour).
-// Each fund (Operating / Maintenance Plan) renders as
+// Each fund (Admin, plus any custom fund) renders as
 // a contained levy-style table , brand-coloured header row, striped body
 // rows, per-fund total. Multi-fund budgets get a grand total. The page
 // closes with the lot contributions table (per-lot share of the annual
@@ -48,7 +48,6 @@ function fmtPeriodLong(financialYear: string): string {
 
 const FUND_SECTION_LABEL: Record<string, string> = {
   operating: "Admin Fund",
-  maintenance_plan: "Maintenance Plan Fund",
 };
 
 const BILLING_PERIODS_PER_YEAR: Record<string, number> = {
@@ -89,10 +88,9 @@ export function BudgetReport({
   // `custom:<fund_id>` so each fund renders its own section with the
   // fund's actual name (e.g. "Driveway Fund") rather than the generic
   // "Admin Fund" placeholder enum used for back-compat in the DB.
-  const fundOrder = ["operating", "maintenance_plan"] as const;
+  const fundOrder = ["operating"] as const;
   const fundLabelByKey = new Map<string, string>();
   fundLabelByKey.set("operating", "Admin Fund");
-  fundLabelByKey.set("maintenance_plan", "Maintenance Plan Fund");
   const grouped = new Map<string, { items: typeof items; total: number }>();
   for (const it of items) {
     const key = it.fund_id ? `custom:${it.fund_id}` : (it.fund_type ?? "_single");

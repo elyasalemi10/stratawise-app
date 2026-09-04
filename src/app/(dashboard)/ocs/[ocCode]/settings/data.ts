@@ -25,7 +25,6 @@ import { createServerClient } from "@/lib/supabase";
 
 const FUND_LABEL_MAP: Record<string, string> = {
   operating: "Admin Fund",
-  maintenance_plan: "Maintenance Plan Fund",
 };
 
 export interface OCSettingsPageData {

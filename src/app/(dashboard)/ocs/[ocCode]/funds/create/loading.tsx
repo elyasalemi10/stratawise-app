@@ -19,11 +19,6 @@ const CHOICES = [
     blurb: "Day-to-day OC running costs , insurance, cleaning, admin, manager fees.",
   },
   {
-    label: FUND_KIND_LABEL.maintenance_plan,
-    icon: Wrench,
-    blurb: "Scheduled maintenance plan , recurring upkeep based on a 10-year plan.",
-  },
-  {
     label: "Other (custom fund)",
     icon: MoreHorizontal,
     blurb: "A purpose-specific fund , e.g. driveway, pool, lift modernisation.",

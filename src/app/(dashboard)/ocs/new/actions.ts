@@ -106,7 +106,6 @@ export type DraftJson = {
   // Page 5 (trust accounts) , per-fund bank arrangement.
   // Whether this OC holds a third "maintenance plan" reserve fund. Tier 1/2
   // is mandatory (the UI forces this on); higher tiers can opt in.
-  has_maintenance_plan_fund?: boolean;
   // If set, the manager opted out of configuring bank accounts during the
   // wizard. completeWizard will skip the bank_accounts insert and the
   // post-creation Settings → Banking page will prompt to finish setup.
@@ -174,7 +173,6 @@ export type DraftJson = {
   opening_operating_balance?: number;
   /** Legacy , kept for in-flight drafts; folded into operating at OC creation. */
   opening_capital_works_balance?: number;
-  opening_maintenance_plan_balance?: number;     // only when has_maintenance_plan_fund
 
   // ─── New wizard (May 2026 redesign) ─────────────────────────────
   //

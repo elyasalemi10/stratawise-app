@@ -10,12 +10,13 @@ import { formatDateLong } from "@/lib/utils";
 const formatCurrency = (n: number) =>
   new Intl.NumberFormat("en-AU", { style: "currency", currency: "AUD" }).format(n);
 
-const KNOWN_FUNDS = new Set(["operating", "maintenance_plan"]);
+// Anything that is not the admin fund is a custom fund, and lands in Other.
+const KNOWN_FUNDS = new Set(["operating"]);
 
 export interface LevyBatchRow {
   id: string;
   financial_year: string;
-  fund_type: "operating" | "maintenance_plan";
+  fund_type: string;
   period_label: string;
   due_date: string;
   total_amount: number;
@@ -25,7 +26,7 @@ export interface LevyBatchRow {
 
 function fundAmount(
   batch: { fund_type: string; total_amount: number },
-  target: "operating" | "maintenance_plan" | "other",
+  target: "operating" | "other",
 ): number | null {
   if (target === "other") {
     return KNOWN_FUNDS.has(batch.fund_type) ? null : batch.total_amount;
@@ -43,7 +44,6 @@ export function LeviesTable({ ocCode, batches }: { ocCode: string; batches: Levy
             <TableHead className="w-24">Type</TableHead>
             <TableHead className="w-40">Financial Year</TableHead>
             <TableHead className="text-right">Operating</TableHead>
-            <TableHead className="text-right">Maintenance</TableHead>
             <TableHead className="text-right">Other</TableHead>
             <TableHead className="w-36">Due date</TableHead>
             <TableHead className="w-36">Status</TableHead>
@@ -52,7 +52,6 @@ export function LeviesTable({ ocCode, batches }: { ocCode: string; batches: Levy
         <TableBody>
           {batches.map((batch) => {
             const operating = fundAmount(batch, "operating");
-            const maintenance = fundAmount(batch, "maintenance_plan");
             const other = fundAmount(batch, "other");
             return (
               <TableRow
@@ -74,9 +73,6 @@ export function LeviesTable({ ocCode, batches }: { ocCode: string; batches: Levy
                 </TableCell>
                 <TableCell className="text-right tabular-nums text-foreground">
                   {operating !== null ? formatCurrency(operating) : ""}
-                </TableCell>
-                <TableCell className="text-right tabular-nums text-foreground">
-                  {maintenance !== null ? formatCurrency(maintenance) : ""}
                 </TableCell>
                 <TableCell className="text-right tabular-nums text-foreground">
                   {other !== null ? formatCurrency(other) : ""}

@@ -15,7 +15,6 @@ import { FundsSkeleton } from "./funds-skeleton";
 
 const KIND_LABEL: Record<string, string> = {
   admin: "Admin",
-  maintenance_plan: "Maintenance Plan",
   custom: "Custom",
 };
 

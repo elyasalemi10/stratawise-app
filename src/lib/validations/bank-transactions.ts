@@ -41,7 +41,7 @@ export type BankAccountUpdateInput = z.input<typeof bankAccountUpdateSchema>;
 export interface BankAccountSummary {
   id: string;
   oc_id: string;
-  fund_type: "operating" | "maintenance_plan";
+  fund_type: "operating";
   account_name: string;
   bsb: string;
   account_number: string;

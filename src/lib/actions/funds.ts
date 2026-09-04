@@ -86,7 +86,7 @@ export async function getExistingFundKinds(ocId: string): Promise<FundKind[]> {
     .from("funds")
     .select("kind")
     .eq("oc_id", ocId)
-    .in("kind", ["operating", "maintenance_plan"]);
+    .in("kind", ["admin"]);
   return ((data ?? []) as Array<{ kind: FundKind }>).map((r) => r.kind);
 }
 
@@ -223,11 +223,11 @@ export async function createFund(
     }
   }
 
-  // bank_accounts.fund_type stays for backward compatibility. Custom
-  // funds map to "operating" because the enum has no "custom"
-  // value yet , the fund_id column is the new source of truth.
-  const legacyFundType: "operating" | "maintenance_plan" =
-    data.kind === "maintenance_plan" ? "maintenance_plan" : "operating";
+  // bank_accounts.fund_type stays for backward compatibility. Every fund
+  // maps to "operating" now: the enum has no "custom" value, and the
+  // Maintenance Plan Fund it used to also cover has been removed. fund_id is
+  // the source of truth.
+  const legacyFundType: "operating" = "operating";
 
   if (data.bank.kind === "new") {
     const { error: bankErr } = await supabase

@@ -29,7 +29,7 @@ import { useOCCode } from "@/lib/oc-context";
 const formatCurrency = (n: number) =>
   new Intl.NumberFormat("en-AU", { style: "currency", currency: "AUD" }).format(n);
 
-type FundType = "operating" | "maintenance_plan";
+type FundType = "operating";
 
 // FundKey is the unified identifier used in component state. System funds
 // are keyed by their enum string; custom funds use the `custom:<uuid>`
@@ -38,10 +38,9 @@ type FundKey = string;
 
 const SYSTEM_FUND_LABELS: Record<FundType, string> = {
   operating: "Admin Fund",
-  maintenance_plan: "Maintenance Plan Fund",
 };
 
-const SYSTEM_FUND_VALUES: FundType[] = ["operating", "maintenance_plan"];
+const SYSTEM_FUND_VALUES: FundType[] = ["operating"];
 
 const isCustomKey = (k: FundKey) => k.startsWith("custom:");
 const customIdOf = (k: FundKey) => k.slice("custom:".length);
@@ -287,7 +286,7 @@ export function CreateBudgetForm({
             <Label>Funds</Label>
             {fundOptionList.length === 0 ? (
               <div className="rounded-md border border-border bg-muted/40 px-4 py-4 text-sm text-foreground">
-                <p>This OC has no funds yet. Create at least one fund (Operating, Maintenance Plan, or a custom one) before you can budget for it.</p>
+                <p>This OC has no funds yet. Create at least one fund (the Admin Fund, or a custom one) before you can budget for it.</p>
                 <a
                   href={`/ocs/${ocCode}/funds/create`}
                   className="mt-2 inline-flex items-center gap-1.5 text-sm font-medium text-primary hover:underline"

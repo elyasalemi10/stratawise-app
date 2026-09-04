@@ -18,15 +18,15 @@ import { useOCCode } from "@/lib/oc-context";
 const formatCurrency = (n: number) =>
   new Intl.NumberFormat("en-AU", { style: "currency", currency: "AUD" }).format(n);
 
-// Sum items into three buckets: Admin (fund_type=operating, no fund_id),
-// Maintenance (fund_type=maintenance_plan, no fund_id), and Other (any
-// custom fund , identified by fund_id being set, OR an unknown fund_type).
+// Sum items into two buckets: Admin (fund_type=operating, no fund_id) and
+// Other (any custom fund , identified by fund_id being set, OR an unknown
+// fund_type). There used to be a Maintenance bucket for the Maintenance Plan
+// Fund, which has been removed.
 function fundSplit(budget: BudgetWithItems): {
   admin: number;
-  maintenance: number;
   other: number;
 } {
-  const out = { admin: 0, maintenance: 0, other: 0 };
+  const out = { admin: 0, other: 0 };
   for (const it of budget.items) {
     const amt = Number(it.amount) || 0;
     if (it.fund_id) {
@@ -35,7 +35,6 @@ function fundSplit(budget: BudgetWithItems): {
     }
     const f = it.fund_type ?? budget.fund_type ?? null;
     if (f === "operating") out.admin += amt;
-    else if (f === "maintenance_plan") out.maintenance += amt;
     else out.other += amt;
   }
   return out;
@@ -153,7 +152,6 @@ function BudgetsListView({
               <TableHead className="w-28">Status</TableHead>
               <TableHead>Description</TableHead>
               <TableHead className="text-right">Admin</TableHead>
-              <TableHead className="text-right">Maintenance</TableHead>
               <TableHead className="text-right">Other</TableHead>
             </TableRow>
           </TableHeader>
@@ -180,9 +178,6 @@ function BudgetsListView({
                     </TableCell>
                     <TableCell className="text-right tabular-nums text-foreground">
                       {split.admin > 0 ? formatCurrency(split.admin) : ""}
-                    </TableCell>
-                    <TableCell className="text-right tabular-nums text-foreground">
-                      {split.maintenance > 0 ? formatCurrency(split.maintenance) : ""}
                     </TableCell>
                     <TableCell className="text-right tabular-nums text-foreground">
                       {split.other > 0 ? formatCurrency(split.other) : ""}

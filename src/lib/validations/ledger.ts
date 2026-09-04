@@ -1,6 +1,8 @@
 import { z } from "zod";
 
-export const FUND_TYPES = ["operating", "maintenance_plan"] as const;
+// The Maintenance Plan Fund is gone; the admin fund is the only system
+// fund, and anything else is a custom fund carried by fund_id.
+export const FUND_TYPES = ["operating"] as const;
 export type FundType = (typeof FUND_TYPES)[number];
 
 export const LEDGER_ENTRY_TYPES = ["debit", "credit"] as const;

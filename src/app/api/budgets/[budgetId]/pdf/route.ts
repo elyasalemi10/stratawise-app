@@ -12,7 +12,6 @@ export const dynamic = "force-dynamic";
 
 const FUND_LABEL: Record<string, string> = {
   operating: "Admin Fund",
-  maintenance_plan: "Maintenance Plan Fund",
 };
 
 // Streams a one-page budget report PDF. Auth: must have OC access. The PDF
@@ -51,7 +50,7 @@ export async function GET(
     description: string | null;
     amount: number;
     sort_order: number;
-    fund_type: "operating" | "maintenance_plan" | null;
+    fund_type: "operating" | null;
     fund_id: string | null;
     budget_categories: { name: string } | null;
     chart_of_accounts: { name: string; code: string } | null;
@@ -144,7 +143,7 @@ export async function GET(
     // Fall back to the budget's legacy single fund_type when a row didn't
     // get tagged (older budgets pre-multi-fund). Lets the PDF group items
     // even when only the parent row carries fund context.
-    fund_type: i.fund_type ?? (budget.fund_type as "operating" | "maintenance_plan" | null) ?? null,
+    fund_type: i.fund_type ?? (budget.fund_type as "operating" | null) ?? null,
     fund_id: i.fund_id,
     fund_name: i.fund_id ? (customFundNameById.get(i.fund_id) ?? null) : null,
   }));

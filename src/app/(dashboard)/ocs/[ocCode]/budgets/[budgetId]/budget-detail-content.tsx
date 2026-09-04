@@ -30,7 +30,6 @@ import { useSetBreadcrumb } from "@/lib/breadcrumb-context";
 
 const FUND_LABEL: Record<string, string> = {
   operating: "Admin Fund",
-  maintenance_plan: "Maintenance Plan Fund",
 };
 
 const formatCurrency = (n: number) =>
@@ -43,7 +42,7 @@ interface DraftItem {
   description: string;
   amount: string;
   /** Which fund this line belongs to. Null on legacy single-fund rows. */
-  fund_type: "operating" | "maintenance_plan" | null;
+  fund_type: "operating" | null;
   /** Lots excluded from paying for this line. Empty = every lot pays. */
   excludedLotIds: string[];
 }

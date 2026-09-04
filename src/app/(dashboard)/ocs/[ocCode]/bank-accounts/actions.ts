@@ -284,7 +284,8 @@ export async function deleteBankAccount(
     childInserts.push({
       oc_id: ocId,
       fund_id: fundId,
-      fund_type: f?.kind === "maintenance_plan" ? "maintenance_plan" : "operating",
+      // Every fund maps to the admin fund now; fund_id carries which one.
+      fund_type: "operating",
       parent_account_id: successor.id,
       account_name: f?.name ?? successor.account_name ?? "Bank account",
     });
