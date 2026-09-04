@@ -77,6 +77,30 @@
 - Match cascade for incoming transactions: (1) DRN exact match → (2) BPAY CRN match against `levy_notices.bpay_crn` → (3) `reference_number` match → (4) `bank_payer_mappings` fuzzy → (5) unmatched queue. Confidence scoring on each.
 - Reconciliation is **go-forward only**. No back-reconciliation of historical statements. Opening balances are set at OC creation and anchor everything.
 
+## Balance accounting , one subtraction, and status is not part of it
+
+**What a lot owes is `opening_balance + everything charged - everything paid`.**
+[lot-balance.ts](src/lib/lot-balance.ts) is the only definition; anything that
+recomputes it inline is a bug waiting to diverge, and four places had.
+
+- **A levy notice's payment status must never enter the arithmetic.**
+  `CHARGED_LEVY_STATUSES` includes `paid` on purpose. Leaving it out was an
+  actual bug: the balance subtracts every payment, so a notice dropping out of
+  the charged set the moment it was paid removed the charge while leaving the
+  payment, and every reconciled lot showed a phantom credit for the full value
+  of everything it had ever paid. Status only excludes what was never owed
+  (`draft`, `cancelled`) or has been forgiven (`written_off`).
+- **`amount_paid` on a notice is for allocation reporting, not for balances.**
+  Reconciliation needs to know which notice a payment hit. Nothing that
+  computes what a lot owes may read it.
+- **A credit is a negative balance and it is real money.** It reduces the next
+  levy notice's payable total (the arrears line feeds "Total amount due"), the
+  line calls itself Credit rather than printing negative arrears, and the
+  total floors at zero rather than billing a negative.
+- **Never write a third formula.** The levy PDF had one and disagreed with
+  both the lot page and the owner portal. If you need a balance, call
+  `getLotBalances`.
+
 ## Levy/Overdue Trigger Policy
 - Levies are **date-driven**, not bank-feed-driven. Issuance cron runs on the OC's billing cadence regardless of whether bank import is current.
 - Overdues use a **draft + manager approval** workflow. Daily cron generates a draft `levy_overdue_batches` row for each OC with newly-overdue notices. Manager has 24h to either click Send or upload a fresh CSV that auto-cancels rows now reconciled. After 24h no-action, the batch auto-sends.

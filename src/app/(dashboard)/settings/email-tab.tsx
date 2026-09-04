@@ -1,7 +1,9 @@
 "use client";
 
 import Image from "next/image";
-import { useMemo, useState } from "react";
+import { EmailLog } from "@/components/shared/email-log";
+import { getMyEmailLog } from "@/lib/actions/email-log";
+import { useCallback, useMemo, useState } from "react";
 import { toast } from "sonner";
 import {
   ShieldCheck,
@@ -46,7 +48,7 @@ export interface MailProviderConfig {
   configured_at: string | null;
 }
 
-export function EmailTab({
+function EmailProviderSetup({
   initial,
   oauthClientId,
   initialMailboxPrefix,
@@ -137,6 +139,39 @@ export function EmailTab({
           : undefined
       }
     />
+  );
+}
+
+// ─── Public component ────────────────────────────────────────────────────
+// The provider setup, then a log of what has actually gone out from this
+// account. Both answer "my email", and the setup flow has three early
+// returns of its own, so the log wraps it rather than being threaded through
+// each branch.
+
+interface EmailTabProps {
+  initial: MailProviderConfig;
+  oauthClientId: string | null;
+  initialMailboxPrefix: string;
+  stratawiseFallbackEmail: string;
+  dwdRevoked: boolean;
+  mailboxIntegrationError: string | null;
+}
+
+export function EmailTab(props: EmailTabProps) {
+  // Stable, or EmailLog re-fetches on every render of this page.
+  const loadMine = useCallback((page: number) => getMyEmailLog(page), []);
+  return (
+    <div className="space-y-6">
+      <EmailProviderSetup {...props} />
+      <div className="space-y-2">
+        <h3 className="text-sm font-semibold text-foreground">Sent from your account</h3>
+        <EmailLog
+          load={loadMine}
+          showOC
+          emptyDescription="Anything you send from StrataWise, across every Owners Corporation you manage, will be listed here with what the provider reported back."
+        />
+      </div>
+    </div>
   );
 }
 

@@ -1,6 +1,8 @@
 "use client";
 
-import { useState, useEffect, useTransition } from "react";
+import { useState, useEffect, useCallback, useTransition } from "react";
+import { EmailLog } from "@/components/shared/email-log";
+import { getOCEmailLog } from "@/lib/actions/email-log";
 import { Loader2, Trash2 } from "lucide-react";
 import { toast } from "sonner";
 import { Card, CardContent } from "@/components/ui/card";
@@ -149,6 +151,13 @@ export function SettingsContent({
   // Which section shows is the URL's business, not this component's.
   const activeTab = section;
 
+  // Stable across renders: EmailLog re-fetches whenever `load` changes, and
+  // an inline arrow would make that every render.
+  const loadOCEmailLog = useCallback(
+    (page: number) => getOCEmailLog(oc.id, page),
+    [oc.id],
+  );
+
   const field = (props: Omit<OCFieldProps, "ocId" | "onSaved">) => (
     <OCField key={props.fieldKey} ocId={oc.id} onSaved={patch} {...props} />
   );
@@ -232,6 +241,20 @@ export function SettingsContent({
                 {oc.multilot_note_enabled &&
                   field({ fieldKey: "multilot_note_text", label: "Multi-lot note text", type: "textarea", value: oc.multilot_note_text, wide: true })}
               </div>
+            </CardContent>
+          </Card>
+
+          {/* Every message this OC has sent. It was all being recorded, and
+              the provider was reporting delivery back through the webhook,
+              but there was nowhere to read any of it: "did the owner get
+              their notice" could only be answered from Resend's dashboard. */}
+          <Card>
+            <CardContent className="pt-5">
+              <h3 className="mb-4 text-sm font-semibold text-foreground">Email log</h3>
+              <EmailLog
+                load={loadOCEmailLog}
+                emptyDescription="Nothing has been emailed for this Owners Corporation yet. Levy notices, meeting notices and reminders will appear here as they go out."
+              />
             </CardContent>
           </Card>
         </div>
