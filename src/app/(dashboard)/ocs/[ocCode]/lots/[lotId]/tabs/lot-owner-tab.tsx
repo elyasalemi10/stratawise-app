@@ -2,6 +2,7 @@
 
 import * as React from "react";
 import { Button } from "@/components/ui/button";
+import { Card, CardContent } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Label } from "@/components/ui/label";
@@ -143,7 +144,8 @@ export function LotOwnerTab(props: Props) {
 
   return (
     <div className="space-y-6">
-      <section className="border-b border-border pb-6 last:border-b-0 last:pb-0  space-y-4">
+      <Card>
+        <CardContent className="pt-5 space-y-4">
           {/* Header , avatar + name + single Edit button. */}
           <div className="flex items-start justify-between gap-4">
             <div className="flex items-start gap-3 min-w-0">
@@ -200,15 +202,18 @@ export function LotOwnerTab(props: Props) {
               }
             />
           </dl>
-        </section>
+        </CardContent>
+      </Card>
 
       {/* Identifier / payments info ---------------------------------------- */}
-      <section className="border-b border-border pb-6 last:border-b-0 last:pb-0">
+      <Card>
+        <CardContent className="pt-5">
           <h3 className="text-sm font-semibold text-foreground mb-3">Identifier &amp; payment details</h3>
           <dl className="divide-y divide-border">
             <KvRow label="Payment reference" value={paymentReference ?? ""} mono />
           </dl>
-        </section>
+        </CardContent>
+      </Card>
 
       {/* Transfer ownership ------------------------------------------------- */}
       <div className="flex justify-center">
@@ -225,11 +230,13 @@ export function LotOwnerTab(props: Props) {
       {pastHistoryEntries.length > 0 && (
         <div>
           <h3 className="text-sm font-semibold text-foreground mb-3">Previous owners</h3>
-          <section className="border-b border-border pb-6 last:border-b-0 last:pb-0  divide-y divide-border">
+          <Card>
+        <CardContent className="pt-5 divide-y divide-border">
               {pastHistoryEntries.map((entry) => (
                 <PastOwnerRow key={entry.id} entry={entry} />
               ))}
-            </section>
+            </CardContent>
+      </Card>
         </div>
       )}
     </div>
@@ -449,7 +456,8 @@ function EngagementCard({ engagement }: { engagement: LotEngagement }) {
 
   if (engagement.meetingsAttended === 0) {
     return (
-      <section className="border-b border-border pb-6 last:border-b-0 last:pb-0">
+      <Card>
+        <CardContent className="pt-5">
           <div className="flex items-center gap-2 mb-3">
             <Vote className="h-4 w-4 text-[color:var(--brand-gold)]" />
             <h3 className="text-sm font-semibold text-foreground">Engagement</h3>
@@ -460,12 +468,14 @@ function EngagementCard({ engagement }: { engagement: LotEngagement }) {
             title="No meeting activity yet"
             description="Once this lot has voted in or attended a meeting, it'll show up here."
           />
-        </section>
+        </CardContent>
+      </Card>
     );
   }
 
   return (
-    <section className="border-b border-border pb-6 last:border-b-0 last:pb-0  space-y-4">
+    <Card>
+        <CardContent className="pt-5 space-y-4">
         <div className="flex items-center gap-2">
           <Vote className="h-4 w-4 text-[color:var(--brand-gold)]" />
           <h3 className="text-sm font-semibold text-foreground">Engagement</h3>
@@ -535,7 +545,8 @@ function EngagementCard({ engagement }: { engagement: LotEngagement }) {
             </ul>
           </div>
         )}
-      </section>
+      </CardContent>
+      </Card>
   );
 }
 

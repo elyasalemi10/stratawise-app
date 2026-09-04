@@ -28,10 +28,15 @@ function SignUpContent() {
   const [accountType, setAccountType] = useState<"strata_manager" | "lot_owner">(
     invitedRole === "lot_owner" ? "lot_owner" : "strata_manager",
   );
-  const [firstName, setFirstName] = useState("");
-  const [lastName, setLastName] = useState("");
-  const [email, setEmail] = useState(invitedEmail ?? "");
-  const [password, setPassword] = useState("");
+  // Held for the round trip to the code screen and back, so "use a
+  // different email" changes the email and nothing else. sessionStorage, not
+  // localStorage: it dies with the tab, and a password should not outlive
+  // the attempt it belongs to.
+  const draft = readSignupDraft();
+  const [firstName, setFirstName] = useState(draft.firstName);
+  const [lastName, setLastName] = useState(draft.lastName);
+  const [email, setEmail] = useState(invitedEmail ?? draft.email);
+  const [password, setPassword] = useState(draft.password);
   const [pending, setPending] = useState(false);
   const [showPassword, setShowPassword] = useState(false);
   const [invalid, setInvalid] = useState<{
@@ -116,6 +121,14 @@ function SignUpContent() {
     // The code screen shows which address it went to, and uses this to tell
     // one sign-up attempt from the next in the same tab.
     sessionStorage.setItem("verifyEmail.email", cleanEmail);
+    // Kept in case they come back to change the address.
+    writeSignupDraft({
+      firstName: firstName.trim(),
+      lastName: lastName.trim(),
+      email: cleanEmail,
+      password,
+      accountType,
+    });
 
     // Go straight to the role-specific onboarding after verification , skip
     // the /onboarding router page (it briefly flashed just the StrataWise
@@ -283,4 +296,49 @@ export function SignUpForm() {
       <SignUpContent />
     </Suspense>
   );
+}
+
+// ─── Sign-up draft, held across the trip to the code screen ────────────────
+//
+// Only for the "wrong email" path: the manager gets sent back here and the
+// form is as they left it, minus the address they are replacing. Cleared on
+// successful verification (see verify-email) and on tab close.
+
+const DRAFT_KEY = "signup.draft";
+
+interface SignupDraft {
+  firstName: string;
+  lastName: string;
+  email: string;
+  password: string;
+  accountType?: "strata_manager" | "lot_owner";
+}
+
+function readSignupDraft(): SignupDraft {
+  const empty: SignupDraft = { firstName: "", lastName: "", email: "", password: "" };
+  if (typeof window === "undefined") return empty;
+  try {
+    const raw = sessionStorage.getItem(DRAFT_KEY);
+    if (!raw) return empty;
+    return { ...empty, ...(JSON.parse(raw) as Partial<SignupDraft>) };
+  } catch {
+    return empty;
+  }
+}
+
+export function writeSignupDraft(draft: SignupDraft): void {
+  if (typeof window === "undefined") return;
+  try {
+    sessionStorage.setItem(DRAFT_KEY, JSON.stringify(draft));
+  } catch {
+    // Private mode, quota, a browser blocking storage , losing the draft
+    // costs a retype, so it is never worth failing the sign-up over.
+  }
+}
+
+export function clearSignupDraft(): void {
+  if (typeof window === "undefined") return;
+  try {
+    sessionStorage.removeItem(DRAFT_KEY);
+  } catch { /* see above */ }
 }

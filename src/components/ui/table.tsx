@@ -11,6 +11,11 @@ import { cn } from "@/lib/utils";
 // bordered, which reads as "key:value list" rather than "data grid".
 //
 //   striped  , odd rows bg-card, even rows bg-muted, hover bg-secondary-hover.
+//
+// A control inside a row can opt the ROW out of its hover by carrying
+// data-row-hover-off. Use it on anything that has its own hover state: two
+// things lighting up at once says neither is the target, and the small one
+// under the cursor is the one being pointed at.
 //              The even rows used bg-muted/40 back when --muted was 88% and
 //              the page was grey. --muted is 95% on a white page now, so the
 //              stripe is at full strength or it does not exist.
@@ -70,11 +75,11 @@ function TableBody({ className, ...props }: React.ComponentProps<"tbody">) {
         // is darker than muted (the stripe), so the cursor row is distinct
         // regardless of whether it landed on white or muted.
         variant === "striped" &&
-          "[&_tr:nth-child(odd)]:bg-card [&_tr:nth-child(even)]:bg-muted [&_tr:hover]:!bg-secondary-hover",
+          "[&_tr:nth-child(odd)]:bg-card [&_tr:nth-child(even)]:bg-muted [&_tr:hover]:!bg-secondary-hover [&_tr:has([data-row-hover-off]:hover)]:!bg-[revert-layer]",
         // Bordered , flat white rows + per-row underline; hover bumps to
         // muted (works because there's no stripe to compete with).
         variant === "bordered" &&
-          "[&_tr]:bg-card [&_tr]:border-b [&_tr]:border-border [&_tr:last-child]:border-0 [&_tr:hover]:bg-muted",
+          "[&_tr]:bg-card [&_tr]:border-b [&_tr]:border-border [&_tr:last-child]:border-0 [&_tr:hover]:bg-muted [&_tr:has([data-row-hover-off]:hover)]:bg-card",
         className,
       )}
       {...props}

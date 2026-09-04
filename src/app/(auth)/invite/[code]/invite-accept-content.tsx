@@ -81,7 +81,7 @@ export function InviteAcceptContent({ code, invitation }: InviteAcceptContentPro
           {invitation.name ? `Hi ${invitation.name},` : "You've been invited"}
         </h1>
         <p className="mt-3 text-base text-muted-foreground leading-relaxed">
-          {dead ?? "You've been invited to see your lot on StrataWise."}
+          {dead ?? "You've been invited to manage your lot on StrataWise."}
         </p>
       </div>
 

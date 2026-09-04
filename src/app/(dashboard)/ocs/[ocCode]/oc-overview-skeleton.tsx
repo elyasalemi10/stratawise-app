@@ -56,9 +56,9 @@ export function OCOverviewSkeleton() {
       <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
         <KpiSkeleton label="Total lots" icon={<Building2 className="h-5 w-5" />} />
         <KpiSkeleton
-          label="Members"
+          label="Collected"
           icon={<Users className="h-5 w-5" />}
-          description="Active lot owners and managers"
+          description="Payments received"
         />
         <KpiSkeleton
           label="Total levied"

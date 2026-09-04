@@ -8,6 +8,7 @@ import {
 } from "lucide-react";
 import { useSetBreadcrumb } from "@/lib/breadcrumb-context";
 import { Button } from "@/components/ui/button";
+import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { cn } from "@/lib/utils";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
@@ -211,7 +212,8 @@ export function LotDetailContent({
           Lot label, primary actions, and the balance / last-payment line.
           Owner snapshot + lot meta strip moved into the Overview tab so
           the header stays focused on identification + cross-tab actions. */}
-      <section className="border-b border-border pb-6  space-y-4">
+      <Card>
+        <CardContent className="pt-5 space-y-4">
           <div className="flex items-start justify-between gap-4">
             <div className="min-w-0">
               <h1 className="text-2xl font-semibold tracking-tight text-foreground">
@@ -336,7 +338,8 @@ export function LotDetailContent({
               )}
             </div>
           </div>
-        </section>
+        </CardContent>
+      </Card>
 
       {/* Tab strip , bare shadcn line tabs. No container card, no border-b:
           the active gold underline is the only visible separator. Tabs

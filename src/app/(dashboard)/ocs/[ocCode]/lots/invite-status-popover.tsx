@@ -146,6 +146,11 @@ export function InviteStatusPopover({
   // Who this is about. Their name if we have it, otherwise the lot , "Invite
   // Lot 4 to StrataWise" still says who, which "Invite owner" did not.
   const inviteeLabel = (ownerName ?? "").trim() || `Lot ${lotNumber}`;
+  // Sends, not history rows: a "contact captured" entry is not an invite.
+  const sendCount = historyRows.filter(
+    (h) => h.status === "pending" || h.status === "accepted" || h.status === "expired" || h.status === "revoked",
+  ).length;
+  const lastSent = historyRows.find((h) => h.status !== "noted") ?? null;
 
   // The InviteForm needs at least name + email to send. Prefer the most
   // recent invitation row (carries name/email/phone), then fall back to
@@ -175,6 +180,7 @@ export function InviteStatusPopover({
           setOpen(true);
         }}
         aria-label="View invite status"
+        data-row-hover-off
         className="group/pill relative inline-flex cursor-pointer items-center rounded-full outline-none focus-visible:ring-2 focus-visible:ring-primary/30"
       >
         <Badge
@@ -202,9 +208,17 @@ export function InviteStatusPopover({
           </DialogHeader>
 
           <div className="space-y-4">
+            {sendCount > 0 && (
+              <p className="text-sm text-muted-foreground">
+                {sendCount === 1 ? "Invited once" : `Invited ${sendCount} times`}
+                {lastSent ? `, last on ${formatDate(lastSent.created_at)}` : ""}
+                {lastSent?.email ? ` to ${lastSent.email}` : ""}.
+              </p>
+            )}
+
             {isAccepted ? (
               <p className="text-sm text-muted-foreground">
-                They accepted their invitation and can sign in to see this lot.
+                They accepted their invitation and can sign in to manage this lot.
               </p>
             ) : (
               <InviteForm
@@ -274,6 +288,7 @@ function InviteForm({
   initialEmail,
   ownerPhone,
   onSent,
+  onFailed,
 }: {
   ocId: string;
   lotId: string;
@@ -281,33 +296,37 @@ function InviteForm({
   initialEmail: string;
   ownerPhone: string;
   onSent: (email: string) => void;
+  onFailed?: () => void;
 }) {
   const [email, setEmail] = useState(initialEmail);
   const [invalid, setInvalid] = useState(false);
-  const [sending, setSending] = useState(false);
 
   const valid = /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email.trim());
 
-  async function sendInvite() {
+  function sendInvite() {
     if (!valid) {
       setInvalid(true);
       toast.error("Enter a valid email address.");
       return;
     }
-    setSending(true);
     const clean = email.trim();
-    const result = await inviteLotOwner(ocId, lotId, {
+    // Optimistic: the pill flips and the dialog closes on the click. Sending
+    // is a queue write and an email, neither of which the manager waits for,
+    // so a spinner here is a delay we are choosing to show them.
+    onSent(clean);
+    toast.success("Invitation sent", { description: `Sent to ${clean}.` });
+    void inviteLotOwner(ocId, lotId, {
       email: clean,
       name: ownerName.trim() || "Owner",
       phone: ownerPhone.trim() || undefined,
+    }).then((result) => {
+      if (result.error) {
+        // The optimistic pill was wrong. Say so plainly , the manager needs
+        // to know this one did not go, not discover it a week later.
+        toast.error(`Invitation to ${clean} failed: ${result.error}`);
+        onFailed?.();
+      }
     });
-    if (result.error) {
-      setSending(false);
-      toast.error(result.error);
-      return;
-    }
-    toast.success("Invitation sent", { description: `Sent to ${clean}.` });
-    onSent(clean);
   }
 
   return (
@@ -327,7 +346,7 @@ function InviteForm({
       <div className="flex justify-end">
         {/* Greyed until the address is one we can actually send to , the
             button says whether this is going to work before it is pressed. */}
-        <Button onClick={sendInvite} disabled={sending || !valid} loading={sending}>
+        <Button onClick={sendInvite} disabled={!valid}>
           Send invitation
         </Button>
       </div>

@@ -9,6 +9,7 @@ import { OtpInput } from "@/components/shared/otp-input";
 import Image from "next/image";
 import { sendVerificationCode, verifyEmailCode, abandonUnverifiedSignup } from "@/lib/actions/email-verification";
 import { getSupabaseClient } from "@/lib/supabase";
+import { clearSignupDraft } from "../_components/sign-up-form";
 
 // Gmail web client deep-link that pre-filters to our sender so the user
 // finds the code instantly. This is the browser-side twin of RESEND_SUFFIX,
@@ -83,6 +84,7 @@ function VerifyEmailContent() {
     // (avoids the brief icon-only flash). Button stays greyed through it.
     sessionStorage.removeItem("verifyEmail.codeSent");
     sessionStorage.removeItem("verifyEmail.email");
+    clearSignupDraft();
     router.push(next);
   }
 
@@ -127,6 +129,8 @@ function VerifyEmailContent() {
     }
     sessionStorage.removeItem("verifyEmail.codeSent");
     sessionStorage.removeItem("verifyEmail.email");
+    // The sign-up draft is deliberately LEFT in place , the form comes back
+    // as they left it and they change only the address.
     // Hard navigation: the Supabase session is gone, so the client needs to
     // start clean rather than keep a cookie for a user that no longer exists.
     window.location.href = `/sign-up?next=${encodeURIComponent(next)}`;
