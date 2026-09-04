@@ -11,7 +11,7 @@ import { DraftCard } from "./_components/draft-card";
 
 type Summary = Awaited<ReturnType<typeof getCompanyOCSummary>>;
 
-export function OCsContent({ summary }: { summary: Summary }) {
+export function OCsContent({ summary, isLotOwner }: { summary: Summary; isLotOwner?: boolean }) {
   const ocs = summary?.ocs ?? [];
   const drafts = summary?.drafts ?? [];
 
@@ -39,12 +39,14 @@ export function OCsContent({ summary }: { summary: Summary }) {
               </>
             )}
           </p>
-          <Link href="/ocs/new">
-            <Button>
-              <Plus className="mr-2 h-4 w-4" />
-              Create OC
-            </Button>
-          </Link>
+          {!isLotOwner && (
+            <Link href="/ocs/new">
+              <Button>
+                <Plus className="mr-2 h-4 w-4" />
+                Create OC
+              </Button>
+            </Link>
+          )}
         </div>
       )}
 
@@ -55,15 +57,21 @@ export function OCsContent({ summary }: { summary: Summary }) {
       {ocs.length === 0 && drafts.length === 0 ? (
         <EmptyState
           illustration="building"
-          title="No OCs yet"
-          description="Create your first OC to start managing lots, levies, and meetings."
+          title={isLotOwner ? "No lots yet" : "No OCs yet"}
+          description={
+            isLotOwner
+              ? "Your strata manager hasn't assigned you to a lot yet. Check your email for an invitation."
+              : "Create your first OC to start managing lots, levies, and meetings."
+          }
           action={
-            <Link href="/ocs/new">
-              <Button>
-                <Plus className="mr-2 h-4 w-4" />
-                Create OC
-              </Button>
-            </Link>
+            isLotOwner ? undefined : (
+              <Link href="/ocs/new">
+                <Button>
+                  <Plus className="mr-2 h-4 w-4" />
+                  Create OC
+                </Button>
+              </Link>
+            )
           }
         />
       ) : (

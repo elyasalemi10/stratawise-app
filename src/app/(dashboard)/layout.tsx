@@ -13,20 +13,27 @@ export default async function DashboardLayout({
 }: {
   children: React.ReactNode;
 }) {
-  const onboardingRedirect = await getOnboardingRedirect();
+  // The onboarding gate used to await on its own line, ahead of everything
+  // else. It is two to three Supabase round trips, and against this project
+  // a round trip measures ~120ms, so every dashboard navigation began with a
+  // third of a second of nothing , sequentially, before the sidebar even
+  // started loading.
+  //
+  // It goes out WITH the sidebar fetches instead. In the case that matters ,
+  // an onboarded user, i.e. every navigation after the first day , nothing
+  // is wasted and the wall-clock is one round trip instead of two. In the
+  // redirect case we throw away work we were about to discard anyway.
+  const [onboardingRedirect, cookieStore, sidebarProfile, sidebarOCs] =
+    await Promise.all([
+      getOnboardingRedirect(),
+      cookies(),
+      getSidebarProfile(),
+      getSidebarOCs(),
+    ]);
+
   if (onboardingRedirect) {
     redirect(onboardingRedirect);
   }
-
-  // Fetch shared sidebar/header data once at the layout level so it's
-  // already in the initial HTML , no client-side useEffect waterfall on
-  // each navigation. Both getters are cached server-side (unstable_cache
-  // on ocs; profile is per-request) and revalidated by mutations.
-  const [cookieStore, sidebarProfile, sidebarOCs] = await Promise.all([
-    cookies(),
-    getSidebarProfile(),
-    getSidebarOCs(),
-  ]);
   const defaultOpen = cookieStore.get("sidebar_state")?.value !== "false";
 
   return (

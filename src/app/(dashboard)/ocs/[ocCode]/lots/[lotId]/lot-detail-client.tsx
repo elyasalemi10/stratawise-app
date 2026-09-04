@@ -36,6 +36,7 @@ export function LotDetailClient({ ocId, lotId }: { ocId: string; lotId: string }
       balance={data.balance}
       documents={data.documents}
       ownershipHistory={data.ownershipHistory}
+      inviteStatus={data.inviteStatus}
       lotOwnerExtra={data.lotOwnerExtra}
       lastPaymentAt={data.lastPaymentAt}
       nextLevy={data.nextLevy}

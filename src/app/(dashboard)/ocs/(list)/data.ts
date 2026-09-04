@@ -11,11 +11,15 @@ import { getCurrentProfile } from "@/lib/auth";
 
 export interface OCsPageData {
   summary: Awaited<ReturnType<typeof getCompanyOCSummary>>;
+  isLotOwner: boolean;
 }
 
 export async function getOCsPageData(): Promise<OCsPageData> {
   const profile = await getCurrentProfile();
   if (!profile) throw new Error("Not authenticated.");
 
-  return { summary: await getCompanyOCSummary() };
+  return {
+    summary: await getCompanyOCSummary(),
+    isLotOwner: profile.role === "lot_owner",
+  };
 }

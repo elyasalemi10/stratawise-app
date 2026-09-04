@@ -33,6 +33,7 @@ import { LotsTab } from "../manage/lots-tab";
 import { getLotInvitationStatus } from "../manage/invitation-actions";
 import { SettlementDialog } from "./[lotId]/settlement-dialog";
 import { BulkInviteDialog } from "./bulk-invite-dialog";
+import { invalidateCached } from "@/lib/use-cached-data";
 import type { LotWithFinancials } from "@/lib/actions/oc";
 
 // The filters a manager actually reaches for on this page: who owes money,
@@ -163,14 +164,23 @@ export function LotsPageContent({
     const lotIds = lots.map((l) => l.id);
     if (lotIds.length === 0) return;
     const statusMap = await getLotInvitationStatus(ocId, lotIds);
-    const map = new Map<string, string>();
+    const fresh = new Map<string, string>();
     if (statusMap instanceof Map) {
-      statusMap.forEach((v, k) => map.set(k, v));
+      statusMap.forEach((v, k) => fresh.set(k, v));
     } else {
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      Object.entries(statusMap as any).forEach(([k, v]) => map.set(k, v as string));
+      Object.entries(statusMap as any).forEach(([k, v]) => fresh.set(k, v as string));
     }
-    setInviteStatus(map);
+    // Merge, never replace: a lot the server has nothing for keeps whatever
+    // is on screen, so a read that overlapped a send cannot undo it.
+    setInviteStatus((prev) => {
+      const next = new Map(prev);
+      fresh.forEach((v, k) => next.set(k, v));
+      return next;
+    });
+    // The page's own cached payload carries inviteStatus, so leaving it
+    // stale means navigating away and back shows the old pill.
+    invalidateCached(`lots:${ocId}`);
   }
 
   function onLotUpdated(lotId: string, field: string, value: string | number | null) {
@@ -354,7 +364,15 @@ export function LotsPageContent({
         onLotUpdated={onLotUpdated}
         isLotOwner={isLotOwner}
         inviteStatusMap={inviteStatus}
-        onInviteChanged={(lotId) => { markInvited(lotId); void refreshInviteStatus(); }}
+        onInviteChanged={(lotId) => {
+          markInvited(lotId);
+          // The write is in flight. Re-reading now returns the PRE-invite
+          // row and puts the pill straight back to "Not invited", which is
+          // exactly what it did , give it a beat, and merge rather than
+          // replace so an optimistic value is never clobbered by a read
+          // that started before it.
+          window.setTimeout(() => { void refreshInviteStatus(); }, 1200);
+        }}
       />
 
       {!isLotOwner && (

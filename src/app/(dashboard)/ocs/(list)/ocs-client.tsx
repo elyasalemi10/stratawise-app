@@ -13,5 +13,5 @@ export function OCsClient() {
 
   if (loading || !data) return <OCsSkeleton />;
 
-  return <OCsContent summary={data.summary} />;
+  return <OCsContent summary={data.summary} isLotOwner={data.isLotOwner} />;
 }

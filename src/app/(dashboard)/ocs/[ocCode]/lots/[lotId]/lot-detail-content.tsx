@@ -55,6 +55,8 @@ interface LotDetailContentProps {
   balance: number;
   documents: DocumentRecord[];
   ownershipHistory: OwnershipHistoryEntry[];
+  /** Real invitation state, from the same query the lots table reads. */
+  inviteStatus: "not_invited" | "noted" | "pending" | "accepted";
   lotOwnerExtra: LotOwnerExtra | null;
   lastPaymentAt: string | null;
   nextLevy: NextLevyDue | null;
@@ -119,6 +121,7 @@ export function LotDetailContent({
   balance,
   documents,
   ownershipHistory,
+  inviteStatus,
   lotOwnerExtra,
   lastPaymentAt,
   nextLevy,
@@ -196,10 +199,6 @@ export function LotDetailContent({
   void formatLongDate;
   void initials;
   const portalActive = !!owner.profile_id;
-  // The same four states the lots table shows, from what this page already
-  // knows, so the pill reads the same in both places.
-  const inviteStatus: "not_invited" | "noted" | "pending" | "accepted" =
-    portalActive ? "accepted" : owner.invitation_id ? "pending" : "not_invited";
   const lastPaymentRelative = formatRelative(lastPaymentAt);
 
   // Top header line: "Lot 2 · Unit 2 - Owner name" (or no unit, no owner ,
@@ -232,10 +231,10 @@ export function LotDetailContent({
               <div className="mt-2 flex flex-wrap items-center gap-2">
                 {!owner.owner_display_name ? (
                   <Badge variant="neutral">No owner recorded</Badge>
-                ) : portalActive ? (
+                ) : inviteStatus === "accepted" ? (
                   <Badge variant="success">On the portal</Badge>
-                ) : owner.invitation_id ? (
-                  <Badge variant="info">Invitation sent</Badge>
+                ) : inviteStatus === "pending" ? (
+                  <Badge variant="info">Invited</Badge>
                 ) : (
                   <Badge variant="warning">Not invited</Badge>
                 )}

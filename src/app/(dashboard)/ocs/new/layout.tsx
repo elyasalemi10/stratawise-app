@@ -9,8 +9,16 @@
 // Document AI OCR on a 50-page plan can run 30–60s. Without this, those
 // actions get truncated mid-flight and the user sees a generic "failed".
 
+import { redirect } from "next/navigation";
+import { getCurrentProfile } from "@/lib/auth";
+
 export const maxDuration = 300;
 
-export default function NewOCLayout({ children }: { children: React.ReactNode }) {
+// Creating an OC is a manager action. The buttons are hidden for owners, but
+// hiding a button is a preference; this is the rule.
+export default async function NewOCLayout({ children }: { children: React.ReactNode }) {
+  const profile = await getCurrentProfile();
+  if (!profile) redirect("/sign-in");
+  if (profile.role === "lot_owner") redirect("/dashboard");
   return children;
 }

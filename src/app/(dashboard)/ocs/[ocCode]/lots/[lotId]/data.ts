@@ -4,6 +4,7 @@ import { requireOCAccess } from "@/lib/auth";
 import { createServerClient } from "@/lib/supabase";
 import { getLotOwner } from "@/lib/actions/lot-ownership";
 import { getLotOwnershipHistory } from "@/lib/actions/settlements";
+import { getLotInvitationStatus } from "../../manage/invitation-actions";
 import {
   getManagerSendAddress,
   getSmsSenderId,
@@ -47,6 +48,7 @@ export interface LotDetailPageData {
   balance: number;
   documents: DocumentRecord[];
   ownershipHistory: Awaited<ReturnType<typeof getLotOwnershipHistory>>;
+  inviteStatus: "not_invited" | "noted" | "pending" | "accepted";
   lotOwnerExtra: LotOwnerExtra | null;
   lastPaymentAt: string | null;
   nextLevy: Awaited<ReturnType<typeof getNextLevyDue>>;
@@ -82,6 +84,7 @@ export async function getLotDetailPageData(
     { data: lastPaymentRow },
     owner,
     ownershipHistory,
+    inviteStatusMap,
     nextLevy,
     anyLevyEver,
     activity,
@@ -135,6 +138,11 @@ export async function getLotDetailPageData(
       .maybeSingle(),
     getLotOwner(supabase, lotId),
     getLotOwnershipHistory(lotId),
+    // The SAME source the lots table reads. Deriving this on the page from
+    // owner.invitation_id looked right and was always "not invited":
+    // getLotOwners hard-codes that field to null on the path every owner
+    // with an ownership actually takes.
+    getLotInvitationStatus(ocId, [lotId]),
     getNextLevyDue(lotId),
     hasAnyLevyEverBeenIssued(lotId),
     getLotActivity(lotId, 50),
@@ -190,6 +198,9 @@ export async function getLotDetailPageData(
   return {
     lot,
     owner,
+    // "accepted" > "pending" > "noted" > nothing sent.
+    inviteStatus: (inviteStatusMap.get(lotId) ?? "not_invited") as
+      | "not_invited" | "noted" | "pending" | "accepted",
     balance: opening + totalLevied - totalPaid,
     documents: (documentsResult.data as DocumentRecord[]) ?? [],
     ownershipHistory,
