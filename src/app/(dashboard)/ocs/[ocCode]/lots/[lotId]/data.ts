@@ -48,7 +48,7 @@ export interface LotDetailPageData {
   balance: number;
   documents: DocumentRecord[];
   ownershipHistory: Awaited<ReturnType<typeof getLotOwnershipHistory>>;
-  inviteStatus: "not_invited" | "noted" | "pending" | "accepted";
+  inviteStatus: "not_invited" | "pending" | "accepted";
   lotOwnerExtra: LotOwnerExtra | null;
   lastPaymentAt: string | null;
   nextLevy: Awaited<ReturnType<typeof getNextLevyDue>>;
@@ -198,9 +198,9 @@ export async function getLotDetailPageData(
   return {
     lot,
     owner,
-    // "accepted" > "pending" > "noted" > nothing sent.
+    // accepted beats pending; nothing at all means never invited.
     inviteStatus: (inviteStatusMap.get(lotId) ?? "not_invited") as
-      | "not_invited" | "noted" | "pending" | "accepted",
+      | "not_invited" | "pending" | "accepted",
     balance: opening + totalLevied - totalPaid,
     documents: (documentsResult.data as DocumentRecord[]) ?? [],
     ownershipHistory,

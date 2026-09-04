@@ -141,11 +141,10 @@ export function LotsTab({ lots, ocId, isEditing = false, onLotUpdated, isLotOwne
   const formatCurrency = (n: number) =>
     new Intl.NumberFormat("en-AU", { style: "currency", currency: "AUD" }).format(Math.abs(n));
 
-  function getInviteStatusForLot(lotId: string): "not_invited" | "noted" | "pending" | "accepted" {
+  function getInviteStatusForLot(lotId: string): "not_invited" | "pending" | "accepted" {
     const status = inviteStatus.get(lotId);
     if (status === "accepted") return "accepted";
     if (status === "pending") return "pending";
-    if (status === "noted") return "noted";
     return "not_invited";
   }
 

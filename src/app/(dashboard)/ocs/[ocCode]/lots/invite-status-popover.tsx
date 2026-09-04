@@ -5,7 +5,6 @@ import {
   Calendar,
   Check,
   Mail,
-  Pencil,
   X,
 } from "lucide-react";
 import { useRouter } from "next/navigation";
@@ -32,7 +31,7 @@ import {
 //   - an inline send-invite form for the most-recent contact
 //   - a quick link to the lot's Owner tab for Add owner / full edits
 
-type Status = "not_invited" | "noted" | "pending" | "accepted";
+type Status = "not_invited" | "pending" | "accepted";
 
 interface Props {
   ocId: string;
@@ -55,7 +54,7 @@ interface Invitation {
   email: string | null;
   name: string | null;
   phone: string | null;
-  status: "noted" | "pending" | "accepted" | "expired" | "revoked";
+  status: "pending" | "accepted" | "expired" | "revoked";
   created_at: string;
   expires_at: string | null;
 }
@@ -72,7 +71,6 @@ function formatDate(iso: string | null): string {
 const PILL: Record<Status, { variant: "success" | "warning" | "info" | "neutral"; label: string }> = {
   accepted: { variant: "success", label: "Accepted" },
   pending: { variant: "warning", label: "Invited" },
-  noted: { variant: "info", label: "Owner noted" },
   not_invited: { variant: "neutral", label: "Not invited" },
 };
 
@@ -85,10 +83,8 @@ function rowIconFor(status: Invitation["status"]) {
     case "expired":
       return <Calendar className="h-3 w-3 text-muted-foreground" />;
     case "revoked":
-      return <X className="h-3 w-3 text-destructive" />;
-    case "noted":
     default:
-      return <Pencil className="h-3 w-3 text-muted-foreground" />;
+      return <X className="h-3 w-3 text-destructive" />;
   }
 }
 
@@ -101,10 +97,8 @@ function rowLabelFor(status: Invitation["status"]): string {
     case "expired":
       return "Invitation expired";
     case "revoked":
-      return "Invitation revoked";
-    case "noted":
     default:
-      return "Contact captured";
+      return "Invitation revoked";
   }
 }
 
@@ -147,10 +141,8 @@ export function InviteStatusPopover({
   // Lot 4 to StrataWise" still says who, which "Invite owner" did not.
   const inviteeLabel = (ownerName ?? "").trim() || `Lot ${lotNumber}`;
   // Sends, not history rows: a "contact captured" entry is not an invite.
-  const sendCount = historyRows.filter(
-    (h) => h.status === "pending" || h.status === "accepted" || h.status === "expired" || h.status === "revoked",
-  ).length;
-  const lastSent = historyRows.find((h) => h.status !== "noted") ?? null;
+  const sendCount = historyRows.length;
+  const lastSent = historyRows[0] ?? null;
 
   // The InviteForm needs at least name + email to send. Prefer the most
   // recent invitation row (carries name/email/phone), then fall back to

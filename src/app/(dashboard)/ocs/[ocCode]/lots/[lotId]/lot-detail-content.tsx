@@ -57,7 +57,7 @@ interface LotDetailContentProps {
   documents: DocumentRecord[];
   ownershipHistory: OwnershipHistoryEntry[];
   /** Real invitation state, from the same query the lots table reads. */
-  inviteStatus: "not_invited" | "noted" | "pending" | "accepted";
+  inviteStatus: "not_invited" | "pending" | "accepted";
   lotOwnerExtra: LotOwnerExtra | null;
   lastPaymentAt: string | null;
   nextLevy: NextLevyDue | null;

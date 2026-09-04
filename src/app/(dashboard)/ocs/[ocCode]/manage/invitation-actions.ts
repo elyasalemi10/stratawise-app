@@ -36,7 +36,7 @@ async function findOpenInvitation(
     .from("invitations")
     .select("id, token, email, status")
     .eq("lot_id", lotId)
-    .in("status", ["pending", "noted"])
+    .eq("status", "pending")
     .order("created_at", { ascending: false })
     .limit(1)
     .maybeSingle();
@@ -47,7 +47,7 @@ async function findOpenInvitation(
  * Save owner contact details for a lot without sending any email. Reuses
  * the existing pending invitation row if one exists; otherwise creates a
  * new pending row with no token consumption (the token still gets minted
- * for forward compatibility but the row stays "noted" until inviteLotOwner
+ * for forward compatibility but the row stays pending until inviteLotOwner
  * is called).
  */
 export async function updateLotOwnerDetails(
@@ -100,7 +100,9 @@ export async function updateLotOwnerDetails(
         name,
         phone,
         role: "lot_owner",
-        status: "noted",
+        // No status: the column defaults to 'pending'. It used to be set to
+        // "noted", which is not a value of the enum, so this insert failed
+        // every time it ran.
         invited_by: profile.id,
       })
       .select("id")
@@ -113,7 +115,7 @@ export async function updateLotOwnerDetails(
       action: "create",
       entity_type: "invitation",
       entity_id: created.id,
-      after_state: { name, email, lot_id: lotId, status: "noted" },
+      after_state: { name, email, lot_id: lotId, status: "pending" },
     });
   }
 
@@ -299,7 +301,7 @@ export async function getLotInvitation(
   email: string | null;
   name: string | null;
   phone: string | null;
-  status: "noted" | "pending" | "accepted" | "expired" | "revoked";
+  status: "pending" | "accepted" | "expired" | "revoked";
   created_at: string;
   expires_at: string | null;
 } | null> {
@@ -338,7 +340,7 @@ export async function getLotInvitationHistory(
   email: string | null;
   name: string | null;
   phone: string | null;
-  status: "noted" | "pending" | "accepted" | "expired" | "revoked";
+  status: "pending" | "accepted" | "expired" | "revoked";
   created_at: string;
   expires_at: string | null;
 }>> {
@@ -373,17 +375,23 @@ export async function getLotInvitationHistory(
 export async function getLotInvitationStatusByOc(ocId: string) {
   const supabase = createServerClient();
 
-  const { data } = await supabase
+  const { data, error } = await supabase
     .from("invitations")
     .select("lot_id, status")
     .eq("oc_id", ocId)
-    .in("status", ["noted", "pending", "accepted"]);
+    .in("status", ["pending", "accepted"]);
 
-  const rank: Record<string, number> = { accepted: 3, pending: 2, noted: 1 };
-  const statusMap = new Map<string, "accepted" | "pending" | "noted">();
+  // Never swallow this. The previous version filtered on a status the enum
+  // does not have, so the query errored on every call, `data` came back
+  // undefined, and every lot silently read "Not invited" , with nothing
+  // anywhere to say why.
+  if (error) console.error("[invitations] status-by-oc query failed:", error);
+
+  const rank: Record<string, number> = { accepted: 3, pending: 2 };
+  const statusMap = new Map<string, "accepted" | "pending">();
   data?.forEach((inv) => {
     if (!inv.lot_id) return;
-    const next = inv.status as "accepted" | "pending" | "noted";
+    const next = inv.status as "accepted" | "pending";
     const current = statusMap.get(inv.lot_id);
     if (!current || rank[next] > rank[current]) statusMap.set(inv.lot_id, next);
   });
@@ -394,19 +402,21 @@ export async function getLotInvitationStatusByOc(ocId: string) {
 export async function getLotInvitationStatus(ocId: string, lotIds: string[]) {
   const supabase = createServerClient();
 
-  const { data } = await supabase
+  const { data, error } = await supabase
     .from("invitations")
     .select("lot_id, status")
     .eq("oc_id", ocId)
     .in("lot_id", lotIds)
-    .in("status", ["noted", "pending", "accepted"]);
+    .in("status", ["pending", "accepted"]);
 
-  // Precedence when a lot has multiple rows: accepted > pending > noted.
-  const rank: Record<string, number> = { accepted: 3, pending: 2, noted: 1 };
-  const statusMap = new Map<string, "accepted" | "pending" | "noted">();
+  if (error) console.error("[invitations] status query failed:", error);
+
+  // Precedence when a lot has several rows: accepted beats pending.
+  const rank: Record<string, number> = { accepted: 3, pending: 2 };
+  const statusMap = new Map<string, "accepted" | "pending">();
   data?.forEach((inv) => {
     if (!inv.lot_id) return;
-    const next = inv.status as "accepted" | "pending" | "noted";
+    const next = inv.status as "accepted" | "pending";
     const current = statusMap.get(inv.lot_id);
     if (!current || rank[next] > rank[current]) statusMap.set(inv.lot_id, next);
   });

@@ -83,7 +83,7 @@ interface Props {
   lotNumber: number;
   /** Their real profile picture once they are on the portal. */
   ownerAvatarUrl?: string | null;
-  inviteStatus: "not_invited" | "noted" | "pending" | "accepted";
+  inviteStatus: "not_invited" | "pending" | "accepted";
   onInviteChanged?: () => void;
   portalInviteAccepted: boolean;
   engagement: LotEngagement;

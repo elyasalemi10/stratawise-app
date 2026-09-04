@@ -95,12 +95,16 @@ export async function getLotOwners(
   const stillUnowned = lotIds.filter((id) => result.get(id)?.owner_status === "unowned");
   if (stillUnowned.length === 0) return result;
 
-  const { data: invites } = await supabase
+  const { data: invites, error: invitesError } = await supabase
     .from("invitations")
     .select("id, lot_id, email, name, phone, created_at")
     .in("lot_id", stillUnowned)
-    .in("status", ["pending", "noted"])
+    // "noted" is not a value of invitation_status, so this filter used to
+    // error the whole query out and this fallback never resolved anybody.
+    .eq("status", "pending")
     .order("created_at", { ascending: false });
+
+  if (invitesError) console.error("[lot-ownership] invitation fallback failed:", invitesError);
 
   for (const inv of invites ?? []) {
     if (!inv.lot_id) continue;
