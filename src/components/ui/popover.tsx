@@ -14,6 +14,34 @@ function PopoverTrigger({ ...props }: PopoverPrimitive.Trigger.Props) {
   return <PopoverPrimitive.Trigger data-slot="popover-trigger" {...props} />
 }
 
+// Its own component so that claiming a place in the scrim stack happens
+// where the scrim actually renders.
+//
+// This used to be a hook call at the top of PopoverContent, which is
+// OUTSIDE the portal. React runs a component function whenever its parent
+// renders the element, so every <PopoverContent> in the tree registered a
+// scrim: closed ones, and ones passing showBackdrop={false} that never paint
+// anything. A page holding a closed date picker or filter popover therefore
+// sat permanently on top of the stack, and every sheet and dialog opened
+// underneath it rendered transparent. That is why the maintenance drawer
+// lost its scrim and why "regenerate levies" had none.
+//
+// Rendered inside the portal and behind the showBackdrop check, it mounts
+// only when there is a scrim to be top OF.
+function PopoverBackdrop() {
+  const isTop = useIsTopScrim();
+  return (
+    <PopoverPrimitive.Backdrop
+      data-slot="popover-backdrop"
+      className={cn(
+        "fixed inset-0 z-40 duration-100 data-open:animate-in data-open:fade-in-0 data-closed:animate-out data-closed:fade-out-0",
+        // Only the topmost scrim paints; see use-scrim-stack.ts.
+        isTop ? "bg-black/45 backdrop-blur-sm" : "bg-transparent",
+      )}
+    />
+  )
+}
+
 function PopoverContent({
   className,
   align = "center",
@@ -27,19 +55,9 @@ function PopoverContent({
     PopoverPrimitive.Positioner.Props,
     "align" | "alignOffset" | "side" | "sideOffset"
   > & { showBackdrop?: boolean }) {
-  const isTopScrim = useIsTopScrim();
   return (
     <PopoverPrimitive.Portal>
-      {showBackdrop && (
-        <PopoverPrimitive.Backdrop
-          data-slot="popover-backdrop"
-          className={cn(
-            "fixed inset-0 z-40 duration-100 data-open:animate-in data-open:fade-in-0 data-closed:animate-out data-closed:fade-out-0",
-            // Only the topmost scrim paints; see use-scrim-stack.ts.
-            isTopScrim ? "bg-black/45 backdrop-blur-sm" : "bg-transparent",
-          )}
-        />
-      )}
+      {showBackdrop && <PopoverBackdrop />}
       <PopoverPrimitive.Positioner
         // fixed, not the Base UI default of absolute.
         //
