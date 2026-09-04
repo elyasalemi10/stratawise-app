@@ -1,7 +1,7 @@
 import "server-only";
 import { createServerClient } from "@/lib/supabase";
 import { fetchObject } from "@/lib/storage/r2";
-import { runDocumentAiOcr } from "@/lib/google/document-ai";
+import { runDocumentAiOcr, sanitiseOcrText } from "@/lib/google/document-ai";
 import { uploadObject } from "@/lib/storage/r2";
 import {
   convertToPdf,
@@ -28,6 +28,12 @@ import {
 // convert-to-pdf.ts), the PDF is kept in R2 for the viewer, and OCR then runs
 // against the PDF exactly as it would for one the manager uploaded directly.
 
+/** Files whose text IS the file. A .txt or .csv needs no OCR and no
+ *  conversion: decoding the bytes is the whole job. They were accepted for
+ *  upload and then marked `skipped`, so a manager could upload a bank export
+ *  or a note and never find it by searching its contents. */
+const PLAIN_TEXT_MIME_TYPES = new Set<string>(["text/plain", "text/csv"]);
+
 const OCR_MIME_TYPES = new Set<string>([
   "application/pdf",
   "image/png",
@@ -49,6 +55,15 @@ export function isOcrable(mimeType: string | null | undefined): boolean {
   return OCR_MIME_TYPES.has(mimeType.toLowerCase());
 }
 
+/** Anything the pipeline can end up with searchable text for, by any route:
+ *  read directly, rendered to PDF first, or sent to Document AI. This is
+ *  what decides whether a row goes into the queue at all. */
+export function isIndexable(mimeType: string | null | undefined): boolean {
+  if (!mimeType) return false;
+  const m = mimeType.toLowerCase();
+  return PLAIN_TEXT_MIME_TYPES.has(m) || OCR_MIME_TYPES.has(m);
+}
+
 export async function ingestDocumentOcr(documentId: string): Promise<void> {
   const supabase = createServerClient();
   const { data: doc, error: fetchErr } = await supabase
@@ -64,6 +79,33 @@ export async function ingestDocumentOcr(documentId: string): Promise<void> {
   if (doc.ocr_status === "complete") {
     return; // idempotent: already done
   }
+  // A plain-text file is already readable. No conversion, no Document AI,
+  // no page count, and no cost.
+  if (PLAIN_TEXT_MIME_TYPES.has((doc.mime_type ?? "").toLowerCase())) {
+    try {
+      const bytes = await fetchObject(doc.file_path);
+      await supabase
+        .from("documents")
+        .update({
+          ocr_status: "complete",
+          ocr_text: sanitiseOcrText(bytes.toString("utf8")),
+          ocr_provider: "plain_text",
+          ocr_completed_at: new Date().toISOString(),
+          ocr_error: null,
+          pdf_status: "skipped",
+        })
+        .eq("id", documentId);
+    } catch (err) {
+      console.error(`ingestDocumentOcr: plain-text read failed for ${documentId}`, err);
+      const message = err instanceof Error ? err.message : String(err);
+      await supabase
+        .from("documents")
+        .update({ ocr_status: "failed", ocr_error: message.slice(0, 240), pdf_status: "skipped" })
+        .eq("id", documentId);
+    }
+    return;
+  }
+
   // An Office file has to become a PDF before anything else can read it.
   // Everything downstream then works on `sourceKey` / `sourceMime`, which
   // for a converted document point at the rendition rather than the upload.

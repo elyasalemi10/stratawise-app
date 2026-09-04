@@ -3,7 +3,7 @@ import { createServerClient } from "@/lib/supabase";
 import { requireCompanyRole, requireOCAccess } from "@/lib/auth";
 import { ALLOWED_DOCUMENT_TYPES, MAX_DOCUMENT_SIZE } from "@/lib/validations/documents";
 import { uploadObject, publicUrlFor } from "@/lib/storage/r2";
-import { ingestDocumentOcr, isOcrable } from "@/lib/ocr/ingest";
+import { ingestDocumentOcr, isIndexable } from "@/lib/ocr/ingest";
 import { needsPdfConversion } from "@/lib/ocr/convert-to-pdf";
 import { downscaleImage } from "@/lib/images/downscale";
 
@@ -108,7 +108,7 @@ export async function POST(request: NextRequest) {
   // `skipped` here is what used to leave every .docx unsearchable: the sweep
   // only looks at `pending` rows, so nothing ever came back for it.
   const willConvert = needsPdfConversion(file.type);
-  const willOcr = isOcrable(file.type) || willConvert;
+  const willOcr = isIndexable(file.type) || willConvert;
   const { data: doc, error } = await supabase
     .from("documents")
     .insert({

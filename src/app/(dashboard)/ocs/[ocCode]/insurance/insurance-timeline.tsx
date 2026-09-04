@@ -464,11 +464,19 @@ function AddPolicyDrawer({
   const [policyNumber, setPolicyNumber] = useState("");
   const [sumInsured, setSumInsured] = useState("");
   const [premium, setPremium] = useState("");
+  const [paymentFrequency, setPaymentFrequency] = useState<PaymentFrequency>("annual");
   const [startDate, setStartDate] = useState<string>("");
   const [endDate, setEndDate] = useState<string>("");
   const [documentUrl, setDocumentUrl] = useState<string | undefined>(undefined);
   const [documentId, setDocumentId] = useState<string | undefined>(undefined);
   const [pending, setPending] = useState(false);
+  // Per-field invalid flags. Set only on submit, cleared on change, so
+  // nothing turns red while the manager is still typing.
+  const [providerInvalid, setProviderInvalid] = useState(false);
+  const [startInvalid, setStartInvalid] = useState(false);
+  const [endInvalid, setEndInvalid] = useState(false);
+  const [customTypeInvalid, setCustomTypeInvalid] = useState(false);
+  const [certificateInvalid, setCertificateInvalid] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   function reset() {
@@ -546,16 +554,33 @@ function AddPolicyDrawer({
   async function handleSubmit() {
     const resolvedType =
       policyType === "other" ? (policyTypeCustom.trim() || "other") : policyType;
-    if (!provider || !startDate || !endDate) {
-      toast.error("Provider and coverage dates are required.");
-      return;
-    }
+    // Collect every problem before saying anything, so the manager fixes
+    // the form once rather than being told about one field at a time.
+    const problems: string[] = [];
+    if (!provider.trim()) problems.push("Insurer is required.");
+    if (!startDate) problems.push("Start date is required.");
+    if (!endDate) problems.push("End date is required.");
     if (policyType === "other" && !policyTypeCustom.trim()) {
-      toast.error("Name the custom policy type.");
-      return;
+      problems.push("Name the custom policy type.");
     }
-    if (endDate <= startDate) {
-      toast.error("End date must be after start date.");
+    if (startDate && endDate && endDate <= startDate) {
+      problems.push("End date must be after start date.");
+    }
+    // The certificate of currency is the whole point of the record. It is
+    // what an owner, a lender or a conveyancer asks for, and a policy on
+    // file without one cannot answer the question it exists to answer, so
+    // it is required whether the manager uploaded it up front or skipped
+    // ahead to type the details.
+    if (!documentId && !documentUrl) {
+      problems.push("A certificate of currency is required.");
+    }
+    setProviderInvalid(!provider.trim());
+    setStartInvalid(!startDate || (!!endDate && endDate <= startDate));
+    setEndInvalid(!endDate || (!!startDate && endDate <= startDate));
+    setCustomTypeInvalid(policyType === "other" && !policyTypeCustom.trim());
+    setCertificateInvalid(!documentId && !documentUrl);
+    if (problems.length) {
+      toast.error(problems.length === 1 ? problems[0] : "Fix the highlighted fields.");
       return;
     }
     setPending(true);
@@ -565,9 +590,11 @@ function AddPolicyDrawer({
       policy_number: policyNumber || undefined,
       sum_insured: sumInsured ? Number(sumInsured) : undefined,
       premium: premium ? Number(premium) : undefined,
+      payment_frequency: paymentFrequency,
       start_date: startDate,
       end_date: endDate,
       document_url: documentUrl,
+      certificate_of_currency_document_id: documentId,
     });
     if (result.error) {
       setPending(false);
@@ -594,7 +621,7 @@ function AddPolicyDrawer({
         <SheetHeader>
           <SheetTitle>Add insurance policy</SheetTitle>
           <SheetDescription className="sr-only">
-            Upload a certificate of currency to prefill, or enter the policy details manually.
+            Upload the certificate of currency to prefill the policy details, or enter them manually.
           </SheetDescription>
         </SheetHeader>
 
@@ -656,6 +683,40 @@ function AddPolicyDrawer({
 
           {step === "form" && (
             <div className={`space-y-4 ${pending ? "pointer-events-none opacity-90" : ""}`}>
+              {/* The certificate is required, so it belongs in the form as a
+                  field rather than only as the step the manager may have
+                  skipped past. Attached: say so. Not attached: it is the
+                  field the submit-time error points at. */}
+              <div className="space-y-1.5">
+                <Label>
+                  Certificate of currency <span className="text-destructive">*</span>
+                </Label>
+                {documentId || documentUrl ? (
+                  <div className="flex items-center gap-2 rounded-md border border-border bg-card px-3 py-2">
+                    <CheckCircle2 className="h-4 w-4 shrink-0 text-success" />
+                    <span className="min-w-0 flex-1 truncate text-sm text-foreground">
+                      {uploadName ?? "Certificate attached"}
+                    </span>
+                    <Button variant="secondary" size="sm" onClick={() => setStep("coc")}>
+                      Replace
+                    </Button>
+                  </div>
+                ) : (
+                  <button
+                    type="button"
+                    onClick={() => setStep("coc")}
+                    className={cn(
+                      "flex w-full cursor-pointer items-center justify-center gap-2 rounded-md border-2 border-dashed px-3 py-4 text-sm transition-colors",
+                      certificateInvalid
+                        ? "border-destructive text-destructive"
+                        : "border-border text-muted-foreground hover:border-primary/40 hover:bg-muted/40",
+                    )}
+                  >
+                    <Plus className="h-3.5 w-3.5" />
+                    Upload the certificate of currency
+                  </button>
+                )}
+              </div>
               <div className="space-y-1.5">
                 <Label>Policy type</Label>
                 <Select value={policyType} onValueChange={(v) => setPolicyType(v ?? "building")}>
@@ -680,14 +741,20 @@ function AddPolicyDrawer({
                   <Label>Custom policy type <span className="text-destructive">*</span></Label>
                   <Input
                     value={policyTypeCustom}
-                    onChange={(e) => setPolicyTypeCustom(e.target.value)}
+                    onChange={(e) => { setPolicyTypeCustom(e.target.value); if (customTypeInvalid) setCustomTypeInvalid(false); }}
+                    aria-invalid={customTypeInvalid || undefined}
                     placeholder="Policy type"
                   />
                 </div>
               )}
               <div className="space-y-1.5">
-                <Label>Provider <span className="text-destructive">*</span></Label>
-                <Input value={provider} onChange={(e) => setProvider(e.target.value)} placeholder="Insurer name" />
+                <Label>Insurer <span className="text-destructive">*</span></Label>
+                <Input
+                  value={provider}
+                  onChange={(e) => { setProvider(e.target.value); if (providerInvalid) setProviderInvalid(false); }}
+                  aria-invalid={providerInvalid || undefined}
+                  placeholder="Insurer name"
+                />
               </div>
               <div className="space-y-1.5">
                 <Label>Policy number</Label>
@@ -696,22 +763,59 @@ function AddPolicyDrawer({
               <div className="grid grid-cols-2 gap-3">
                 <div className="space-y-1.5">
                   <Label>Start date <span className="text-destructive">*</span></Label>
-                  <DatePicker value={startDate} onChange={setStartDate} />
+                  <DatePicker
+                    value={startDate}
+                    onChange={(v) => { setStartDate(v); if (startInvalid) setStartInvalid(false); }}
+                    invalid={startInvalid}
+                  />
                 </div>
                 <div className="space-y-1.5">
                   <Label>End date <span className="text-destructive">*</span></Label>
-                  <DatePicker value={endDate} onChange={setEndDate} minDate={startDate || undefined} />
+                  <DatePicker
+                    value={endDate}
+                    onChange={(v) => { setEndDate(v); if (endInvalid) setEndInvalid(false); }}
+                    invalid={endInvalid}
+                    minDate={startDate || undefined}
+                  />
                 </div>
               </div>
               <div className="grid grid-cols-2 gap-3">
                 <div className="space-y-1.5">
                   <Label>Sum insured</Label>
-                  <AmountInput value={sumInsured} onChange={setSumInsured} placeholder="0.00" />
+                  <AmountInput value={sumInsured} onChange={setSumInsured} placeholder="Sum insured" />
                 </div>
                 <div className="space-y-1.5">
-                  <Label>Premium</Label>
-                  <AmountInput value={premium} onChange={setPremium} placeholder="0.00" />
+                  <Label>Premium paid</Label>
+                  <Select
+                    value={paymentFrequency}
+                    onValueChange={(v) => setPaymentFrequency((v as PaymentFrequency) ?? "annual")}
+                  >
+                    <SelectTrigger className="w-full">
+                      <SelectValue>{PAYMENT_FREQUENCY_LABEL[paymentFrequency]}</SelectValue>
+                    </SelectTrigger>
+                    <SelectContent alignItemWithTrigger={false}>
+                      {PAYMENT_FREQUENCY_OPTIONS.map((o) => (
+                        <SelectItem key={o.value} value={o.value}>{o.label}</SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
                 </div>
+              </div>
+              <div className="space-y-1.5">
+                {/* The label carries the period, so the number is never
+                    ambiguous: "Premium" alone next to a monthly policy is
+                    the kind of field that gets budgeted twelve times too
+                    small. */}
+                <Label>
+                  {paymentFrequency === "annual"
+                    ? "Premium a year"
+                    : paymentFrequency === "semi_annual"
+                      ? "Premium every six months"
+                      : paymentFrequency === "quarterly"
+                        ? "Premium a quarter"
+                        : "Premium a month"}
+                </Label>
+                <AmountInput value={premium} onChange={setPremium} placeholder="Premium" />
               </div>
             </div>
           )}
@@ -720,7 +824,7 @@ function AddPolicyDrawer({
         <div className="border-t border-border p-4 flex justify-end gap-2">
           {step === "coc" && (
             <Button variant="secondary" onClick={() => setStep("form")} disabled={parsing}>
-              Skip and enter manually
+              Enter details manually
             </Button>
           )}
           {step === "psMismatch" && (
@@ -738,7 +842,11 @@ function AddPolicyDrawer({
               <Button variant="secondary" onClick={() => setStep("coc")} disabled={pending}>
                 Back
               </Button>
-              <Button onClick={handleSubmit} disabled={pending || !provider || !startDate || !endDate} loading={pending}>
+              <Button
+                onClick={handleSubmit}
+                disabled={pending || !provider || !startDate || !endDate || (!documentId && !documentUrl)}
+                loading={pending}
+              >
                 Add policy
               </Button>
             </>

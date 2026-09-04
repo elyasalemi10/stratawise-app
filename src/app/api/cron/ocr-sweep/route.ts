@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createServerClient } from "@/lib/supabase";
-import { ingestDocumentOcr, isOcrable } from "@/lib/ocr/ingest";
+import { ingestDocumentOcr, isIndexable } from "@/lib/ocr/ingest";
 import { needsPdfConversion } from "@/lib/ocr/convert-to-pdf";
 
 // ============================================================================
@@ -62,7 +62,7 @@ export async function GET(request: NextRequest) {
   // Filtering it out here is what left every .docx pending forever.
   const eligible = (data ?? []).filter(
     (row) =>
-      isOcrable(row.mime_type as string | null) ||
+      isIndexable(row.mime_type as string | null) ||
       needsPdfConversion(row.mime_type as string | null),
   );
   if (eligible.length === 0) {

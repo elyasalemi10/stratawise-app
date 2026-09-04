@@ -1,6 +1,8 @@
 "use client";
 
 import { useState, useRef, useCallback, useEffect } from "react";
+import { cn } from "@/lib/utils";
+import { Checkbox } from "@/components/ui/checkbox";
 import {
   FileText, Upload, Download, Pencil, Trash2, X, ExternalLink,
   FileSpreadsheet, FileImage, File, Loader2,
@@ -89,6 +91,11 @@ export function DocumentManager({ ocId, lotId, initialDocuments, readOnly }: Doc
   const filterCategory = "all";
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [exporting, setExporting] = useState(false);
+  // Selection lives here rather than on each card so "select all" and the
+  // toolbar have one thing to read.
+  const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
+  const [bulkDeleteOpen, setBulkDeleteOpen] = useState(false);
+  const [bulkDeleting, setBulkDeleting] = useState(false);
 
   const uploadFile = useCallback((file: File) => {
     const uploadId = crypto.randomUUID();
@@ -238,6 +245,82 @@ export function DocumentManager({ ocId, lotId, initialDocuments, readOnly }: Doc
     }
   }
 
+  function toggleSelected(id: string) {
+    setSelectedIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  }
+
+  function clearSelection() {
+    setSelectedIds(new Set());
+  }
+
+  function selectAllVisible() {
+    setSelectedIds(new Set(documents.map((d) => d.id)));
+  }
+
+  /** Zip whatever is selected. The export route already builds a zip for an
+   *  OC; passing ids narrows it to the selection, which is what a manager
+   *  asked for by selecting. */
+  async function downloadSelected() {
+    if (selectedIds.size === 0) return;
+    setExporting(true);
+    try {
+      const res = await fetch(`/api/documents/export?oc_id=${ocId}`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ ids: [...selectedIds] }),
+      });
+      if (!res.ok) {
+        toast.error("Couldn't prepare that download.");
+        return;
+      }
+      const blob = await res.blob();
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = `documents-${new Date().toISOString().slice(0, 10)}.zip`;
+      a.click();
+      URL.revokeObjectURL(url);
+    } catch {
+      toast.error("Couldn't prepare that download.");
+    } finally {
+      setExporting(false);
+    }
+  }
+
+  async function deleteSelected() {
+    setBulkDeleting(true);
+    const ids = [...selectedIds];
+    const results = await Promise.all(
+      ids.map((id) =>
+        fetch(`/api/documents/${id}`, { method: "DELETE" })
+          .then((r) => (r.ok ? id : null))
+          .catch(() => null),
+      ),
+    );
+    const removed = results.filter((r): r is string => r !== null);
+    setBulkDeleting(false);
+    setBulkDeleteOpen(false);
+    if (removed.length > 0) {
+      const gone = new Set(removed);
+      setDocuments((prev) => prev.filter((d) => !gone.has(d.id)));
+      clearSelection();
+    }
+    if (removed.length === ids.length) {
+      toast.success(`${removed.length} ${removed.length === 1 ? "document" : "documents"} deleted`);
+    } else {
+      // Partial failure is worth naming: the manager needs to know the
+      // rest are still there rather than assuming the whole batch went.
+      toast.error(
+        `Deleted ${removed.length} of ${ids.length}. The rest are still here, try again.`,
+      );
+    }
+  }
+
   function getDocDownloadUrl(doc: DocWithUrl): string {
     return `/api/documents/${doc.id}`;
   }
@@ -274,64 +357,66 @@ export function DocumentManager({ ocId, lotId, initialDocuments, readOnly }: Doc
 
   return (
     <div className="space-y-4">
-      {/* Top toolbar , Upload + Export ZIP pushed to the RIGHT so the
-          left side stays empty for a future filter / search bar without
-          re-flowing the buttons. Category filter pills and the "New
-          uploads tagged as" row are gone; categories are still attached
-          to each document automatically (see selectedCategory state
-          which defaults to "other") and surface on the per-row chip. */}
-      <div className="flex items-center justify-end gap-2">
-        {!readOnly && (
-          <>
-            <Button size="sm" onClick={() => fileInputRef.current?.click()}>
-              <Upload className="mr-2 h-3.5 w-3.5" />
-              Upload
+      {/* No Upload button and no Export ZIP.
+          Uploading is the first tile in the grid, where the thing being
+          created belongs, and exporting everything was a guess about what
+          the manager wanted: they nearly always want SOME of it. Selecting
+          documents and acting on the selection covers both, and it is the
+          only way to delete more than one at a time.
+
+          The toolbar replaces nothing when empty: it is absent, so the grid
+          starts at the top and does not shift when a selection begins. */}
+      {!readOnly && selectedIds.size > 0 && (
+        <div className="flex flex-wrap items-center gap-2 rounded-md border border-border bg-card px-3 py-2">
+          <span className="text-sm font-medium text-foreground tabular-nums">
+            {selectedIds.size} selected
+          </span>
+          <div className="ml-auto flex flex-wrap items-center gap-2">
+            <Button variant="secondary" size="sm" onClick={selectAllVisible}>
+              Select all
+            </Button>
+            <Button variant="secondary" size="sm" onClick={clearSelection}>
+              Clear
             </Button>
             <Button
-              variant="outline"
+              variant="secondary"
               size="sm"
-              disabled={exporting || documents.length === 0}
-              onClick={async () => {
-                setExporting(true);
-                try {
-                  const res = await fetch(`/api/documents/export?oc_id=${ocId}`);
-                  if (!res.ok) {
-                    toast.error("Couldn't generate the export.");
-                    return;
-                  }
-                  const blob = await res.blob();
-                  const url = URL.createObjectURL(blob);
-                  const a = document.createElement("a");
-                  a.href = url;
-                  a.download = `oc-documents-${new Date().toISOString().slice(0, 10)}.zip`;
-                  a.click();
-                  URL.revokeObjectURL(url);
-                } finally {
-                  setExporting(false);
-                }
-              }}
+              disabled={exporting}
+              loading={exporting}
+              onClick={downloadSelected}
             >
               <Download className="mr-2 h-3.5 w-3.5" />
-              {exporting ? "Preparing…" : "Export ZIP"}
+              Download as ZIP
             </Button>
-            <input
-              ref={fileInputRef}
-              type="file"
-              multiple
-              accept={ACCEPT_STRING}
-              className="hidden"
-              onChange={(e) => {
-                if (e.target.files) handleFiles(e.target.files);
-                e.target.value = "";
-              }}
-            />
-          </>
-        )}
-      </div>
+            <Button
+              variant="secondary"
+              size="sm"
+              className="text-destructive"
+              onClick={() => setBulkDeleteOpen(true)}
+            >
+              <Trash2 className="mr-2 h-3.5 w-3.5" />
+              Delete
+            </Button>
+          </div>
+        </div>
+      )}
 
-      {/* Floating drag overlay , appears when the user drags files anywhere on
-          the page. Click-through disabled so the underlying page handles the
-          drop (handled by the window listener in the effect above). */}
+      <input
+        ref={fileInputRef}
+        type="file"
+        multiple
+        accept={ACCEPT_STRING}
+        className="hidden"
+        onChange={(e) => {
+          if (e.target.files) handleFiles(e.target.files);
+          e.target.value = "";
+        }}
+      />
+
+      {/* Dropping anywhere on the page still works. The tile in the grid is
+          the discoverable target; this is the one that catches a file
+          dragged at the page in general, which is what people actually do
+          once they know uploading is possible. */}
       {!readOnly && dragging && (
         <div className="fixed inset-0 z-[60] pointer-events-none flex items-center justify-center bg-white/50">
           <div
@@ -342,8 +427,7 @@ export function DocumentManager({ ocId, lotId, initialDocuments, readOnly }: Doc
             <Upload className="h-10 w-10 text-primary" />
             <p className="text-base font-semibold text-foreground">Drop files to upload</p>
             <p className="text-xs text-muted-foreground">
-              They&apos;ll be tagged as <span className="font-medium">{selectedCategory === "other" ? "General" : selectedCategory}</span>.
-              PDF, DOC, XLS, images, CSV. Max 25MB per file.
+              PDF, Word, Excel, PowerPoint, images and CSV. Up to 25MB each.
             </p>
           </div>
         </div>
@@ -361,7 +445,7 @@ export function DocumentManager({ ocId, lotId, initialDocuments, readOnly }: Doc
               if (filterCategory === "general") return cat === "other" || cat === "general";
               return cat === filterCategory;
             });
-        if (visibleDocs.length === 0 && uploads.length === 0) {
+        if (visibleDocs.length === 0 && uploads.length === 0 && readOnly) {
           return (
             <Card>
               <CardContent>
@@ -369,11 +453,7 @@ export function DocumentManager({ ocId, lotId, initialDocuments, readOnly }: Doc
                   card={false}
                   illustration="documents"
                   title="No documents yet"
-                  description={
-                    readOnly
-                      ? "Documents will appear here once uploaded by your strata manager."
-                      : "Click Upload above, or drag files anywhere on the page."
-                  }
+                  description="Documents will appear here once uploaded by your strata manager."
                 />
               </CardContent>
             </Card>
@@ -381,6 +461,27 @@ export function DocumentManager({ ocId, lotId, initialDocuments, readOnly }: Doc
         }
         return (
         <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
+          {/* Uploading is the first tile, not a button somewhere above.
+              The thing you are making appears where it will live, the drop
+              target is the size of a document rather than the size of a
+              button, and the grid reads as "here are your documents, and
+              here is where the next one goes". */}
+          {!readOnly && (
+            <button
+              type="button"
+              onClick={() => fileInputRef.current?.click()}
+              onDragOver={(e) => e.preventDefault()}
+              onDrop={(e) => {
+                e.preventDefault();
+                if (e.dataTransfer.files?.length) handleFiles(e.dataTransfer.files);
+              }}
+              className="flex min-h-[11.5rem] cursor-pointer flex-col items-center justify-center gap-2 rounded-lg border-2 border-dashed border-border bg-card p-3 text-center transition-colors hover:border-primary/50 hover:bg-muted"
+            >
+              <Upload className="h-7 w-7 text-muted-foreground" />
+              <span className="text-sm font-medium text-foreground">Add a document</span>
+              <span className="text-xs text-muted-foreground">Drop it here, or click to choose</span>
+            </button>
+          )}
           {uploads.map((upload) => (
             <Card key={upload.id} className="relative">
               <CardContent className="p-3">
@@ -424,10 +525,34 @@ export function DocumentManager({ ocId, lotId, initialDocuments, readOnly }: Doc
             return (
               <Card
                 key={doc.id}
-                className="group cursor-pointer transition-colors hover:border-primary/30"
+                className={cn(
+                  "group relative cursor-pointer transition-colors",
+                  selectedIds.has(doc.id)
+                    ? "border-primary ring-1 ring-primary"
+                    : "hover:border-primary/30",
+                )}
                 onClick={() => viewDocument(doc)}
               >
                 <CardContent className="p-3">
+                  {/* Selection. Visible once anything is selected, so the
+                      grid is not covered in checkboxes before the manager
+                      has shown any interest in bulk actions, and always
+                      visible for the ones already picked. */}
+                  {!readOnly && (
+                    <div
+                      className={cn(
+                        "absolute left-4 top-4 z-10 transition-opacity",
+                        selectedIds.has(doc.id) ? "opacity-100" : "opacity-0 group-hover:opacity-100",
+                      )}
+                      onClick={(e) => e.stopPropagation()}
+                    >
+                      <Checkbox
+                        checked={selectedIds.has(doc.id)}
+                        onCheckedChange={() => toggleSelected(doc.id)}
+                        aria-label={`Select ${doc.file_name}`}
+                      />
+                    </div>
+                  )}
                   {/* Preview area */}
                   <div className="flex items-center justify-center h-24 rounded-md bg-muted/50 mb-3 overflow-hidden">
                     {isImage ? (
@@ -621,9 +746,30 @@ export function DocumentManager({ ocId, lotId, initialDocuments, readOnly }: Doc
             Are you sure you want to delete &ldquo;{deleteDoc?.file_name}&rdquo;? This cannot be undone.
           </p>
           <DialogFooter>
-            <Button variant="ghost" onClick={() => setDeleteDoc(null)}>Cancel</Button>
-            <Button variant="destructive" onClick={handleDelete} disabled={deleting}>
-              {deleting ? "Deleting..." : "Delete"}
+            <Button variant="secondary" onClick={() => setDeleteDoc(null)}>Cancel</Button>
+            <Button variant="destructive" onClick={handleDelete} disabled={deleting} loading={deleting}>
+              Delete
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={bulkDeleteOpen} onOpenChange={(o) => { if (!o && !bulkDeleting) setBulkDeleteOpen(false); }}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>
+              Delete {selectedIds.size} {selectedIds.size === 1 ? "document" : "documents"}
+            </DialogTitle>
+          </DialogHeader>
+          <p className="text-sm text-muted-foreground">
+            This cannot be undone.
+          </p>
+          <DialogFooter>
+            <Button variant="secondary" onClick={() => setBulkDeleteOpen(false)} disabled={bulkDeleting}>
+              Cancel
+            </Button>
+            <Button variant="destructive" onClick={deleteSelected} disabled={bulkDeleting} loading={bulkDeleting}>
+              Delete
             </Button>
           </DialogFooter>
         </DialogContent>

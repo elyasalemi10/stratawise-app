@@ -40,7 +40,32 @@ function uniqueName(used: Set<string>, name: string): string {
   return `${stem}-${crypto.randomUUID()}${ext}`;
 }
 
+/**
+ * POST with `{ ids: string[] }` zips just those documents; GET with no body
+ * zips the whole OC.
+ *
+ * The ids still have to belong to the OC named in the query, so the same
+ * access check covers both and a caller cannot reach into another OC by
+ * passing its ids.
+ */
+export async function POST(request: NextRequest) {
+  let ids: string[] = [];
+  try {
+    const body = (await request.json()) as { ids?: unknown };
+    if (Array.isArray(body.ids)) {
+      ids = body.ids.filter((v): v is string => typeof v === "string" && UUID_REGEX.test(v));
+    }
+  } catch {
+    // No body, or not JSON. Falls through to the whole-OC export.
+  }
+  return buildZip(request, ids);
+}
+
 export async function GET(request: NextRequest) {
+  return buildZip(request, []);
+}
+
+async function buildZip(request: NextRequest, onlyIds: string[]) {
   const ocId = request.nextUrl.searchParams.get("oc_id");
   if (!ocId || !UUID_REGEX.test(ocId)) {
     return NextResponse.json({ error: "Valid oc_id is required" }, { status: 400 });
@@ -53,10 +78,13 @@ export async function GET(request: NextRequest) {
   }
 
   const supabase = createServerClient();
-  const { data: docs, error } = await supabase
+  let query = supabase
     .from("documents")
     .select("id, file_name, file_path, category, mime_type")
     .eq("oc_id", ocId);
+  // Scoped by oc_id first, so an id from another OC simply matches nothing.
+  if (onlyIds.length > 0) query = query.in("id", onlyIds);
+  const { data: docs, error } = await query;
 
   if (error) {
     return NextResponse.json({ error: "Failed to load documents" }, { status: 500 });
