@@ -1,8 +1,7 @@
 "use client";
 
-import { useState, useRef } from "react";
-import { useRouter } from "next/navigation";
-import { Plus, Download, CalendarIcon, Loader2, Pencil, Trash2 } from "lucide-react";
+import { useMemo, useRef, useState } from "react";
+import { AlertTriangle, CalendarIcon, CheckCircle2, Download, FileCheck, Loader2, Pencil, Plus, ShieldCheck, Trash2, Wallet } from "lucide-react";
 import { format } from "date-fns";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
@@ -16,6 +15,10 @@ import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { DatePicker } from "@/components/shared/date-picker";
 import { EmptyState } from "@/components/shared/empty-state";
+import { Card, CardContent } from "@/components/ui/card";
+import {
+  Table, TableBody, TableCell, TableHead, TableHeader, TableRow,
+} from "@/components/ui/table";
 import { formatDateLong, cn } from "@/lib/utils";
 import { uploadAndParseInsuranceCoc, attachDocumentToPolicy } from "./parse-coc";
 import {
@@ -930,6 +933,209 @@ function InsuranceGantt({
   );
 }
 
+// ─── Cover summary ─────────────────────────────────────────
+// What a manager opens this page to find out, in the order they ask it:
+// are we covered, when does that stop, and what is it costing. The gantt
+// answered none of those , it plots WHEN, which is the fourth question.
+
+interface CoverSummary {
+  active: InsurancePolicy[];
+  expiringSoon: InsurancePolicy[];
+  expired: InsurancePolicy[];
+  nextRenewal: InsurancePolicy | null;
+  annualPremium: number;
+  certificatesMissing: number;
+}
+
+/** Annualised so policies on different billing cycles can be added up. A
+ *  monthly premium next to an annual one is not a total. */
+const PERIODS_PER_YEAR: Record<PaymentFrequency, number> = {
+  annual: 1,
+  semi_annual: 2,
+  quarterly: 4,
+  monthly: 12,
+};
+
+function summarise(policies: InsurancePolicy[], now: number): CoverSummary {
+  const soon = now + 30 * 86400000;
+  const active: InsurancePolicy[] = [];
+  const expiringSoon: InsurancePolicy[] = [];
+  const expired: InsurancePolicy[] = [];
+  let annualPremium = 0;
+  let certificatesMissing = 0;
+
+  for (const p of policies) {
+    const end = new Date(p.end_date + "T00:00:00").getTime();
+    if (end < now) expired.push(p);
+    else if (end < soon) expiringSoon.push(p);
+    else active.push(p);
+
+    if (end >= now && p.premium) {
+      annualPremium += Number(p.premium) * PERIODS_PER_YEAR[p.payment_frequency ?? "annual"];
+    }
+    if (end >= now && !p.certificate_of_currency_document_id && !p.document_url) {
+      certificatesMissing += 1;
+    }
+  }
+
+  const live = [...active, ...expiringSoon].sort(
+    (a, b) => new Date(a.end_date).getTime() - new Date(b.end_date).getTime(),
+  );
+  return {
+    active,
+    expiringSoon,
+    expired,
+    nextRenewal: live[0] ?? null,
+    annualPremium,
+    certificatesMissing,
+  };
+}
+
+function daysUntil(dateIso: string, now: number): number {
+  return Math.ceil((new Date(dateIso + "T00:00:00").getTime() - now) / 86400000);
+}
+
+function SummaryCard({
+  label,
+  value,
+  icon,
+  tone = "default",
+  detail,
+}: {
+  label: string;
+  value: string;
+  icon: React.ReactNode;
+  tone?: "default" | "warning" | "destructive" | "success";
+  detail?: string;
+}) {
+  const toneClass =
+    tone === "destructive"
+      ? "bg-destructive/10 text-destructive"
+      : tone === "warning"
+        ? "bg-warning/10 text-warning"
+        : tone === "success"
+          ? "bg-success/10 text-success"
+          : "bg-primary/10 text-primary";
+  return (
+    <Card>
+      <CardContent className="pt-5">
+        <div className="flex items-start justify-between gap-3">
+          <div className="min-w-0">
+            <p className="text-xs font-medium text-muted-foreground">{label}</p>
+            <p className="mt-2 truncate text-2xl font-bold tabular-nums text-foreground">{value}</p>
+            {detail && <p className="mt-1 truncate text-xs text-muted-foreground">{detail}</p>}
+          </div>
+          <div className={cn("flex h-9 w-9 shrink-0 items-center justify-center rounded-md", toneClass)}>
+            {icon}
+          </div>
+        </div>
+      </CardContent>
+    </Card>
+  );
+}
+
+// ─── Policy table ──────────────────────────────────────────
+// The facts, in a table, because that is what they are. The gantt stays
+// below for spotting a gap between one policy ending and the next starting,
+// which a table genuinely cannot show.
+
+function PolicyTable({
+  policies,
+  now,
+  onSelect,
+}: {
+  policies: InsurancePolicy[];
+  now: number;
+  onSelect: (p: InsurancePolicy) => void;
+}) {
+  const sorted = [...policies].sort(
+    (a, b) => new Date(a.end_date).getTime() - new Date(b.end_date).getTime(),
+  );
+  return (
+    <div className="overflow-hidden rounded-md border border-border bg-card">
+      <div className="overflow-x-auto">
+        <Table variant="striped">
+          <TableHeader>
+            <TableRow>
+              <TableHead>Cover</TableHead>
+              <TableHead>Insurer</TableHead>
+              <TableHead className="text-right">Sum insured</TableHead>
+              <TableHead className="text-right">Premium</TableHead>
+              <TableHead>Expires</TableHead>
+              <TableHead>Certificate</TableHead>
+              <TableHead className="w-28">Status</TableHead>
+            </TableRow>
+          </TableHeader>
+          <TableBody>
+            {sorted.map((p) => {
+              const days = daysUntil(p.end_date, now);
+              const hasCert = Boolean(p.certificate_of_currency_document_id || p.document_url);
+              return (
+                <TableRow
+                  key={p.id}
+                  className="cursor-pointer"
+                  onClick={() => onSelect(p)}
+                >
+                  <TableCell className="font-medium text-foreground">
+                    {POLICY_LABELS[p.policy_type] ?? p.policy_type}
+                  </TableCell>
+                  <TableCell className="text-foreground">
+                    {p.provider}
+                    {p.broker && (
+                      <span className="block text-xs text-muted-foreground">via {p.broker}</span>
+                    )}
+                  </TableCell>
+                  <TableCell className="text-right tabular-nums text-foreground">
+                    {p.sum_insured ? formatCurrency(Number(p.sum_insured)) : ""}
+                  </TableCell>
+                  <TableCell className="text-right tabular-nums text-foreground">
+                    {p.premium ? (
+                      <>
+                        {formatCurrency(Number(p.premium))}
+                        <span className="block text-xs text-muted-foreground">
+                          {PAYMENT_FREQUENCY_LABEL[p.payment_frequency ?? "annual"]}
+                        </span>
+                      </>
+                    ) : ""}
+                  </TableCell>
+                  <TableCell className="text-foreground">
+                    {formatDateLong(p.end_date)}
+                    {days >= 0 && days <= 60 && (
+                      <span className="block text-xs text-muted-foreground">
+                        in {days} {days === 1 ? "day" : "days"}
+                      </span>
+                    )}
+                  </TableCell>
+                  <TableCell>
+                    {hasCert ? (
+                      <span className="inline-flex items-center gap-1.5 text-sm text-foreground">
+                        <CheckCircle2 className="h-3.5 w-3.5 text-success" />
+                        On file
+                      </span>
+                    ) : (
+                      <span className="inline-flex items-center gap-1.5 text-sm text-muted-foreground">
+                        <AlertTriangle className="h-3.5 w-3.5 text-warning" />
+                        Missing
+                      </span>
+                    )}
+                  </TableCell>
+                  <TableCell>
+                    <Badge
+                      variant={days < 0 ? "destructive" : days <= 30 ? "warning" : "success"}
+                    >
+                      {days < 0 ? "Expired" : days <= 30 ? "Expiring soon" : "Active"}
+                    </Badge>
+                  </TableCell>
+                </TableRow>
+              );
+            })}
+          </TableBody>
+        </Table>
+      </div>
+    </div>
+  );
+}
+
 // ─── Main Component ────────────────────────────────────────
 
 export function InsuranceTimeline({
@@ -950,18 +1156,107 @@ export function InsuranceTimeline({
    *  positions on the gantt's time axis. */
   fyStartMonth?: number;
 }) {
-  const router = useRouter();
   const [policies, setPolicies] = useState(initialPolicies);
   const [showAdd, setShowAdd] = useState(false);
   const [selectedPolicy, setSelectedPolicy] = useState<InsurancePolicy | null>(null);
 
+  // Captured once. Expiry is a day-level judgement and a clock read on every
+  // render can flip a badge between two renders of the same page.
+  const [now] = useState(() => Date.now());
+  const summary = useMemo(() => summarise(policies, now), [policies, now]);
+
+  async function reload() {
+    setPolicies(await getInsurancePolicies(ocId));
+  }
+
+  // Nothing at all: one empty state with the action in it, rather than an
+  // empty gantt with an "Add policy" button floating above it.
+  if (policies.length === 0) {
+    return (
+      <>
+        <EmptyState
+          illustration="checklist"
+          title="No insurance on record"
+          description={
+            readOnly
+              ? "The manager has not added any policies for this Owners Corporation yet."
+              : "Add the building policy to track its renewal, premium and certificate of currency."
+          }
+          action={
+            readOnly ? undefined : (
+              <Button onClick={() => setShowAdd(true)}>
+                <Plus className="mr-2 h-3.5 w-3.5" />
+                Add policy
+              </Button>
+            )
+          }
+        />
+        {showAdd && (
+          <AddPolicyDrawer
+            open={showAdd}
+            onClose={() => setShowAdd(false)}
+            ocId={ocId}
+            onCreated={reload}
+          />
+        )}
+      </>
+    );
+  }
+
+  const lapsed = summary.expired.length;
+  const coverTone = lapsed > 0 ? "destructive" : summary.expiringSoon.length > 0 ? "warning" : "success";
+  const coverValue =
+    lapsed > 0
+      ? `${lapsed} lapsed`
+      : summary.expiringSoon.length > 0
+        ? `${summary.expiringSoon.length} expiring`
+        : "Covered";
+  const renewalDays = summary.nextRenewal ? daysUntil(summary.nextRenewal.end_date, now) : null;
+
   return (
-    <div className="space-y-4">
-      {/* Top action bar , title on the left, "Add policy" on the
-          right. Always rendered (when not readOnly) so the manager
-          can add a policy whether or not the gantt has data. */}
+    <div className="space-y-6">
+      <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+        <SummaryCard
+          label="Cover"
+          value={coverValue}
+          tone={coverTone}
+          icon={<ShieldCheck className="h-4 w-4" />}
+          detail={`${summary.active.length + summary.expiringSoon.length} of ${policies.length} in force`}
+        />
+        <SummaryCard
+          label="Next renewal"
+          value={summary.nextRenewal ? formatDateLong(summary.nextRenewal.end_date) : ""}
+          tone={renewalDays !== null && renewalDays <= 30 ? "warning" : "default"}
+          icon={<CalendarIcon className="h-4 w-4" />}
+          detail={
+            summary.nextRenewal
+              ? `${POLICY_LABELS[summary.nextRenewal.policy_type] ?? summary.nextRenewal.policy_type}${
+                  renewalDays !== null ? ` , in ${renewalDays} days` : ""
+                }`
+              : undefined
+          }
+        />
+        <SummaryCard
+          label="Premium a year"
+          value={summary.annualPremium ? formatCurrency(summary.annualPremium) : ""}
+          icon={<Wallet className="h-4 w-4" />}
+          detail="Across policies in force"
+        />
+        <SummaryCard
+          label="Certificates"
+          value={
+            summary.certificatesMissing === 0
+              ? "All on file"
+              : `${summary.certificatesMissing} missing`
+          }
+          tone={summary.certificatesMissing === 0 ? "success" : "warning"}
+          icon={<FileCheck className="h-4 w-4" />}
+          detail="What owners and lenders ask for"
+        />
+      </div>
+
       {!readOnly && (
-        <div className="flex items-center justify-end gap-3">
+        <div className="flex items-center justify-end">
           <Button onClick={() => setShowAdd(true)}>
             <Plus className="mr-2 h-3.5 w-3.5" />
             Add policy
@@ -969,30 +1264,28 @@ export function InsuranceTimeline({
         </div>
       )}
 
-      {policies.length === 0 && readOnly ? (
-        <EmptyState
-          illustration="checklist"
-          title="No insurance policies"
-          description="No insurance policies have been added yet."
-        />
-      ) : (
+      <PolicyTable policies={policies} now={now} onSelect={setSelectedPolicy} />
+
+      <div className="space-y-2">
+        <h2 className="text-sm font-semibold text-foreground">Cover timeline</h2>
+        {/* Kept, demoted. A table cannot show a GAP between one policy
+            ending and the next starting, which is the one thing worth
+            seeing at a glance and the one thing that gets an OC in
+            trouble. It is no longer the whole page. */}
         <InsuranceGantt
           policies={policies}
           managementStartDate={managementStartDate ?? null}
           fyStartMonth={fyStartMonth}
           onPolicyClick={setSelectedPolicy}
         />
-      )}
+      </div>
 
       {showAdd && (
         <AddPolicyDrawer
           open={showAdd}
           onClose={() => setShowAdd(false)}
           ocId={ocId}
-          onCreated={async () => {
-            const updated = await getInsurancePolicies(ocId);
-            setPolicies(updated);
-          }}
+          onCreated={reload}
         />
       )}
 
@@ -1002,10 +1295,7 @@ export function InsuranceTimeline({
         onClose={() => setSelectedPolicy(null)}
         readOnly={readOnly}
         ocId={ocId}
-        onUpdated={async () => {
-          const updated = await getInsurancePolicies(ocId);
-          setPolicies(updated);
-        }}
+        onUpdated={reload}
       />
     </div>
   );
