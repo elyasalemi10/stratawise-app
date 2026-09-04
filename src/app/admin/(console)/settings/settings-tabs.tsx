@@ -12,6 +12,7 @@ import { AvatarUpload } from "@/components/shared/avatar-upload";
 import {
   updateAdminProfile, updateAdminAvatar, changeAdminPassword,
 } from "./actions";
+import { replaceUrlIfOn } from "@/lib/replace-url";
 
 export interface AdminSettingsProfile {
   firstName: string;
@@ -192,7 +193,7 @@ function SettingsTabsInner({ profile }: { profile: AdminSettingsProfile }) {
 
   function onTabChange(value: string) {
     setActiveTab(value);
-    window.history.replaceState(null, "", `/admin/settings?tab=${value}`);
+    replaceUrlIfOn("/admin/settings", `/admin/settings?tab=${value}`);
   }
 
   return (

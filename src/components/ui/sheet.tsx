@@ -27,6 +27,7 @@ function SheetOverlay({ className, ...props }: SheetPrimitive.Backdrop.Props) {
   return (
     <SheetPrimitive.Backdrop
       data-slot="sheet-overlay"
+      data-scrim=""
       className={cn(
         // White wash, no blur. 220ms fade with smooth ease-out , slow enough
         // that the eye reads it as an animation, not an instant flash, but

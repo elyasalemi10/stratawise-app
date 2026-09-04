@@ -15,6 +15,7 @@ import { Step4OpeningBalances } from "./pages/step-4-1-opening-balances";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Upload, X } from "lucide-react";
+import { replaceUrlIfOn } from "@/lib/replace-url";
 import { createDraftAndLoad, createDraftFromDetectedOc, getDraft, type DraftJson } from "./actions";
 import { revalidateSidebarFromClient } from "@/lib/sidebar-cache";
 
@@ -87,7 +88,7 @@ function WizardContent() {
       if (!draftId) {
         const next = new URLSearchParams(searchParams.toString());
         next.set("draft", d.id);
-        window.history.replaceState(null, "", `/ocs/new?${next.toString()}`);
+        replaceUrlIfOn("/ocs/new", `/ocs/new?${next.toString()}`);
       }
     })();
   }, [searchParams, router]);
@@ -99,7 +100,7 @@ function WizardContent() {
     if (draft) next.set("draft", draft.id);
     next.set("step", String(nextStep));
     next.set("sub", String(nextSub));
-    window.history.replaceState(null, "", `/ocs/new?${next.toString()}`);
+    replaceUrlIfOn("/ocs/new", `/ocs/new?${next.toString()}`);
     if (typeof window !== "undefined") {
       // Instant jump rather than smooth , smooth scroll happens AFTER
       // the new step renders, so the manager briefly sees the bottom of

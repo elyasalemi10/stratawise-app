@@ -25,6 +25,10 @@ import { OCOverviewSkeleton } from "./oc-overview-skeleton";
 const formatCurrency = (n: number) =>
   new Intl.NumberFormat("en-AU", { style: "currency", currency: "AUD" }).format(n);
 
+// Label, number, icon. The subheading under each was restating what the
+// number already said ("All issued levies" under Total levied) or adding a
+// second figure the card is not about, and four of them turned a row of
+// numbers into a paragraph.
 function KPICard({
   label,
   value,
@@ -33,7 +37,8 @@ function KPICard({
 }: {
   label: string;
   value: string;
-  description: string;
+  /** Only where it says something the number does not. */
+  description?: string;
   icon: React.ReactNode;
 }) {
   return (
@@ -50,7 +55,9 @@ function KPICard({
             {icon}
           </div>
         </div>
-        <p className="mt-3 text-xs text-muted-foreground">{description}</p>
+        {description && (
+          <p className="mt-3 text-xs text-muted-foreground">{description}</p>
+        )}
       </CardContent>
     </Card>
   );
@@ -181,31 +188,21 @@ function ManagerOverview({
         <KPICard
           label="Total lots"
           value={String(stats.totalLots)}
-          description={
-            stats.ownersAssigned === stats.totalLots
-              ? "Every lot has an owner"
-              : `${stats.totalLots - stats.ownersAssigned} with no owner on record`
-          }
           icon={<Building2 className="h-5 w-5" />}
         />
         <KPICard
           label="Collected"
           value={formatCurrency(stats.totalPaid)}
-          description="Payments received"
           icon={<Users className="h-5 w-5" />}
         />
         <KPICard
           label="Total levied"
           value={formatCurrency(stats.totalLevied)}
-          description="All issued levies"
           icon={<DollarSign className="h-5 w-5" />}
         />
         <KPICard
           label="Outstanding"
           value={formatCurrency(stats.outstanding)}
-          description={
-            stats.outstanding > 0 ? "Amount pending collection" : "No outstanding amounts"
-          }
           icon={<AlertTriangle className="h-5 w-5" />}
         />
       </div>

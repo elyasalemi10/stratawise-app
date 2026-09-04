@@ -58,12 +58,10 @@ export function OCOverviewSkeleton() {
         <KpiSkeleton
           label="Collected"
           icon={<Users className="h-5 w-5" />}
-          description="Payments received"
         />
         <KpiSkeleton
           label="Total levied"
           icon={<DollarSign className="h-5 w-5" />}
-          description="All issued levies"
         />
         <KpiSkeleton label="Outstanding" icon={<AlertTriangle className="h-5 w-5" />} />
       </div>

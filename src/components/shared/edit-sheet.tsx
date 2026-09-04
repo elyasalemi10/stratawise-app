@@ -76,7 +76,28 @@ export function EditSheet({
 }: EditSheetProps) {
   const [uncontrolledOpen, setUncontrolledOpen] = React.useState(false);
   const isControlled = controlledOpen !== undefined;
-  const open = isControlled ? controlledOpen : uncontrolledOpen;
+  const requestedOpen = isControlled ? controlledOpen : uncontrolledOpen;
+
+  // Several callers mount the drawer only while it is open , `{open === "call"
+  // && <LogCallDrawer />}` , so the Sheet's first render already has
+  // open=true. A CSS entry transition needs a closed frame to start from, so
+  // in that case there was no slide at all: the panel simply appeared, and
+  // vanished again on unmount.
+  //
+  // Hold the first frame closed and open on the next one. Mounting stays the
+  // caller's business (it is how their local state resets between uses) and
+  // the animation stops depending on how they chose to mount it.
+  const [mountedOpen, setMountedOpen] = React.useState(false);
+  React.useEffect(() => {
+    if (!requestedOpen) {
+      setMountedOpen(false);
+      return;
+    }
+    const id = requestAnimationFrame(() => setMountedOpen(true));
+    return () => cancelAnimationFrame(id);
+  }, [requestedOpen]);
+
+  const open = mountedOpen;
   const [pending, setPending] = React.useState(false);
   const [confirming, setConfirming] = React.useState(false);
   const [error, setError] = React.useState<string | null>(null);

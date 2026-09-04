@@ -270,6 +270,20 @@
     display: none;                    /* Chrome / Safari / WebKit */
   }
 
+  /* Two overlays open at once painted two 45% scrims over each other, so
+     the page behind a drawer-on-a-drawer went almost black , which reads as
+     a different, heavier kind of modal rather than one more panel.
+     
+     Every scrim carries data-scrim, and they are siblings in the portal
+     root, so "a scrim with another scrim after it" is exactly the ones that
+     are underneath. Those go transparent and only the topmost paints. The
+     blur goes with them for the same reason: stacking two blurs turns the
+     page to soup. */
+  [data-scrim]:has(~ [data-scrim]) {
+    background-color: transparent;
+    backdrop-filter: none;
+  }
+
   /* Every interactive button/link/role=button shows the clicking-hand
      cursor on hover. Tailwind v4 dropped the legacy button cursor reset,
      so we restore it project-wide here. Disabled buttons keep the default

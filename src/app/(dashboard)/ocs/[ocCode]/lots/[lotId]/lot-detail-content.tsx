@@ -11,6 +11,7 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { invalidateCached } from "@/lib/use-cached-data";
+import { replaceUrlIfOn } from "@/lib/replace-url";
 import { cn } from "@/lib/utils";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import {
@@ -180,16 +181,18 @@ export function LotDetailContent({
     },
   ]);
 
+  const ownPath = `/ocs/${ocCode}/lots/${lot.id}`;
+
   useEffect(() => {
     if (rawTab === "payments" || rawTab === "general") {
-      window.history.replaceState(null, "", `/ocs/${ocCode}/lots/${lot.id}?tab=${normalisedTab}`);
+      replaceUrlIfOn(ownPath, `${ownPath}?tab=${normalisedTab}`);
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   function onTabChange(value: string) {
     setActiveTab(value as TabValue);
-    window.history.replaceState(null, "", `/ocs/${ocCode}/lots/${lot.id}?tab=${value}`);
+    replaceUrlIfOn(ownPath, `${ownPath}?tab=${value}`);
   }
 
   // Split history into "currently active" and "ended". The active entry is

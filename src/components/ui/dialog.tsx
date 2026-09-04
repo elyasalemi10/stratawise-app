@@ -30,6 +30,7 @@ function DialogOverlay({
   return (
     <DialogPrimitive.Backdrop
       data-slot="dialog-overlay"
+      data-scrim=""
       className={cn(
         // White wash, no blur. Dims the underlying surface so the dialog
         // reads as the focused layer while page text behind stays legible.

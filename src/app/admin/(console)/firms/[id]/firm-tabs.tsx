@@ -11,6 +11,7 @@ import {
   Table, TableBody, TableCell, TableHead, TableHeader, TableRow,
 } from "@/components/ui/table";
 import { EmptyState } from "@/components/shared/empty-state";
+import { replaceUrlIfOn } from "@/lib/replace-url";
 
 type SubscriptionStatus = "active" | "suspended" | "cancelled";
 type OcStatus = "active" | "archived" | "suspended";
@@ -99,7 +100,7 @@ function FirmTabsInner({ firm }: { firm: FirmDetail }) {
 
   function onTabChange(value: string) {
     setActiveTab(value);
-    window.history.replaceState(null, "", `/admin/firms/${firm.id}?tab=${value}`);
+    replaceUrlIfOn(`/admin/firms/${firm.id}`, `/admin/firms/${firm.id}?tab=${value}`);
   }
 
   return (

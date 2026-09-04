@@ -31,6 +31,7 @@ function PopoverContent({
       {showBackdrop && (
         <PopoverPrimitive.Backdrop
           data-slot="popover-backdrop"
+          data-scrim=""
           className="fixed inset-0 z-40 bg-black/45 backdrop-blur-sm duration-100 data-open:animate-in data-open:fade-in-0 data-closed:animate-out data-closed:fade-out-0"
         />
       )}

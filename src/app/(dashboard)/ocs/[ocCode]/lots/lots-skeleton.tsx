@@ -36,6 +36,12 @@ import {
 
 const ROWS = 8;
 
+// A column of identical bars reads as a placeholder grid; real data has
+// ragged edges. These cycle so the shape looks like a lot register.
+const NAME_WIDTHS = ["w-36", "w-44", "w-28", "w-40", "w-32"];
+const EMAIL_WIDTHS = ["w-48", "w-40", "w-52", "w-36", "w-44"];
+const BALANCE_WIDTHS = ["w-16", "w-20", "w-14", "w-16", "w-20"];
+
 export function LotsSkeleton() {
   return (
     <div className="space-y-4">
@@ -88,13 +94,31 @@ export function LotsSkeleton() {
             <TableBody>
               {Array.from({ length: ROWS }).map((_, i) => (
                 <TableRow key={i}>
-                  <TableCell><Skeleton className="h-3.5 w-8" /></TableCell>
-                  <TableCell><Skeleton className="h-3.5 w-10" /></TableCell>
-                  <TableCell><Skeleton className="h-3.5 w-40" /></TableCell>
-                  <TableCell><Skeleton className="h-3.5 w-full max-w-[13rem]" /></TableCell>
-                  <TableCell><Skeleton className="h-3.5 w-12" /></TableCell>
-                  <TableCell><Skeleton className="h-5 w-24 rounded-full" /></TableCell>
-                  <TableCell className="text-right"><Skeleton className="ml-auto h-3.5 w-16" /></TableCell>
+                  {/* Widths track what the real cells hold: a lot number is
+                      one or two digits, an entitlement three, a balance a
+                      short currency string. Varied per row so the column
+                      reads as data rather than a grid. */}
+                  <TableCell className="tabular-nums whitespace-nowrap">
+                    <Skeleton className="h-3.5 w-6" />
+                  </TableCell>
+                  <TableCell className="tabular-nums whitespace-nowrap">
+                    <Skeleton className="h-3.5 w-8" />
+                  </TableCell>
+                  <TableCell className="truncate">
+                    <Skeleton className={`h-3.5 ${NAME_WIDTHS[i % NAME_WIDTHS.length]}`} />
+                  </TableCell>
+                  <TableCell className="truncate">
+                    <Skeleton className={`h-3.5 ${EMAIL_WIDTHS[i % EMAIL_WIDTHS.length]}`} />
+                  </TableCell>
+                  <TableCell>
+                    <Skeleton className="h-3.5 w-10" />
+                  </TableCell>
+                  <TableCell className="whitespace-nowrap">
+                    <Skeleton className="h-5 w-20 rounded-full" />
+                  </TableCell>
+                  <TableCell className="text-right tabular-nums whitespace-nowrap">
+                    <Skeleton className={`ml-auto h-3.5 ${BALANCE_WIDTHS[i % BALANCE_WIDTHS.length]}`} />
+                  </TableCell>
                 </TableRow>
               ))}
             </TableBody>

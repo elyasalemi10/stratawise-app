@@ -15,6 +15,7 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { cn } from "@/lib/utils";
+import { replaceUrlIfOn } from "@/lib/replace-url";
 
 // Two-step onboarding:
 //   1. Company details (mandatory)
@@ -49,7 +50,7 @@ function SetupWizardContent() {
     setStep(n);
     const params = new URLSearchParams(searchParams.toString());
     params.set("step", String(n));
-    window.history.replaceState(null, "", `/onboarding/setup?${params.toString()}`);
+    replaceUrlIfOn("/onboarding/setup", `/onboarding/setup?${params.toString()}`);
   }
 
   return (
