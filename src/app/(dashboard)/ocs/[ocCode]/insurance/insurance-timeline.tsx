@@ -13,19 +13,20 @@ import { Badge } from "@/components/ui/badge";
 import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle } from "@/components/ui/sheet";
 import { Calendar } from "@/components/ui/calendar";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
-import {
-  Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
-} from "@/components/ui/select";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { DatePicker } from "@/components/shared/date-picker";
 import { EmptyState } from "@/components/shared/empty-state";
-import { uploadAndParseInsuranceCoc, attachDocumentToPolicy } from "./parse-coc";
 import { formatDateLong, cn } from "@/lib/utils";
+import { uploadAndParseInsuranceCoc, attachDocumentToPolicy } from "./parse-coc";
 import {
+  PAYMENT_FREQUENCY_LABEL,
+  PAYMENT_FREQUENCY_OPTIONS,
   createInsurancePolicy,
-  updateInsurancePolicy,
   deleteInsurancePolicy,
   getInsurancePolicies,
+  updateInsurancePolicy,
   type InsurancePolicy,
+  type PaymentFrequency,
 } from "@/lib/actions/insurance";
 
 const formatCurrency = (n: number) =>
@@ -75,6 +76,10 @@ function PolicyDetailDialog({
   const [editPolicyNum, setEditPolicyNum] = useState("");
   const [editSumInsured, setEditSumInsured] = useState("");
   const [editPremium, setEditPremium] = useState("");
+  const [editBroker, setEditBroker] = useState("");
+  const [editExcess, setEditExcess] = useState("");
+  const [editFrequency, setEditFrequency] = useState<PaymentFrequency>("annual");
+  const [editCocExpiry, setEditCocExpiry] = useState("");
   const [saving, setSaving] = useState(false);
   const [editStartDate, setEditStartDate] = useState<Date | undefined>(undefined);
   const [editEndDate, setEditEndDate] = useState<Date | undefined>(undefined);
@@ -140,8 +145,12 @@ function PolicyDetailDialog({
   function startEdit() {
     setEditProvider(policy!.provider);
     setEditPolicyNum(policy!.policy_number ?? "");
+    setEditBroker(policy!.broker ?? "");
     setEditSumInsured(policy!.sum_insured ? String(policy!.sum_insured) : "");
     setEditPremium(policy!.premium ? String(policy!.premium) : "");
+    setEditExcess(policy!.excess ? String(policy!.excess) : "");
+    setEditFrequency(policy!.payment_frequency ?? "annual");
+    setEditCocExpiry(policy!.certificate_of_currency_expiry ?? "");
     setEditStartDate(new Date(policy!.start_date + "T00:00:00"));
     setEditEndDate(new Date(policy!.end_date + "T00:00:00"));
     setEditing(true);
@@ -156,8 +165,12 @@ function PolicyDetailDialog({
     const result = await updateInsurancePolicy(ocId, policy!.id, {
       provider: editProvider,
       policy_number: editPolicyNum,
+      broker: editBroker,
       sum_insured: editSumInsured ? Number(editSumInsured) : undefined,
       premium: editPremium ? Number(editPremium) : undefined,
+      excess: editExcess ? Number(editExcess) : undefined,
+      payment_frequency: editFrequency,
+      certificate_of_currency_expiry: editCocExpiry || null,
       ...(editStartDate ? { start_date: format(editStartDate, "yyyy-MM-dd") } : {}),
       ...(editEndDate ? { end_date: format(editEndDate, "yyyy-MM-dd") } : {}),
     });
@@ -223,11 +236,43 @@ function PolicyDetailDialog({
             <div className="grid grid-cols-2 gap-3">
               <div className="space-y-1.5">
                 <Label className="text-xs">Sum insured</Label>
-                <AmountInput value={editSumInsured} onChange={setEditSumInsured} placeholder="0.00" />
+                <AmountInput value={editSumInsured} onChange={setEditSumInsured} placeholder="Sum insured" />
               </div>
               <div className="space-y-1.5">
                 <Label className="text-xs">Premium</Label>
-                <AmountInput value={editPremium} onChange={setEditPremium} placeholder="0.00" />
+                <AmountInput value={editPremium} onChange={setEditPremium} placeholder="Premium" />
+              </div>
+            </div>
+            <div className="grid grid-cols-2 gap-3">
+              <div className="space-y-1.5">
+                <Label className="text-xs">Excess</Label>
+                <AmountInput value={editExcess} onChange={setEditExcess} placeholder="Excess" />
+              </div>
+              <div className="space-y-1.5">
+                <Label className="text-xs">Premium paid</Label>
+                <Select
+                  value={editFrequency}
+                  onValueChange={(v) => setEditFrequency(v as PaymentFrequency)}
+                >
+                  <SelectTrigger className="w-full">
+                    <SelectValue>{PAYMENT_FREQUENCY_LABEL[editFrequency]}</SelectValue>
+                  </SelectTrigger>
+                  <SelectContent>
+                    {PAYMENT_FREQUENCY_OPTIONS.map((o) => (
+                      <SelectItem key={o.value} value={o.value}>{o.label}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+            </div>
+            <div className="grid grid-cols-2 gap-3">
+              <div className="space-y-1.5">
+                <Label className="text-xs">Broker</Label>
+                <Input value={editBroker} onChange={(e) => setEditBroker(e.target.value)} placeholder="Broker" />
+              </div>
+              <div className="space-y-1.5">
+                <Label className="text-xs">Certificate expires</Label>
+                <DatePicker value={editCocExpiry} onChange={setEditCocExpiry} placeholder="Certificate expiry" />
               </div>
             </div>
             <div className="flex justify-end gap-2 pt-2">
@@ -269,7 +314,32 @@ function PolicyDetailDialog({
               {policy.premium && (
                 <div className="flex justify-between">
                   <span className="text-sm text-muted-foreground">Premium</span>
-                  <span className="text-sm text-foreground">{formatCurrency(Number(policy.premium))}</span>
+                  <span className="text-sm text-foreground">
+                    {formatCurrency(Number(policy.premium))}
+                    <span className="text-muted-foreground">
+                      {" "}{PAYMENT_FREQUENCY_LABEL[policy.payment_frequency ?? "annual"].toLowerCase()}
+                    </span>
+                  </span>
+                </div>
+              )}
+              {policy.excess ? (
+                <div className="flex justify-between">
+                  <span className="text-sm text-muted-foreground">Excess</span>
+                  <span className="text-sm text-foreground">{formatCurrency(Number(policy.excess))}</span>
+                </div>
+              ) : null}
+              {policy.broker && (
+                <div className="flex justify-between">
+                  <span className="text-sm text-muted-foreground">Broker</span>
+                  <span className="text-sm text-foreground">{policy.broker}</span>
+                </div>
+              )}
+              {policy.certificate_of_currency_expiry && (
+                <div className="flex justify-between">
+                  <span className="text-sm text-muted-foreground">Certificate expires</span>
+                  <span className="text-sm text-foreground">
+                    {formatDateLong(policy.certificate_of_currency_expiry)}
+                  </span>
                 </div>
               )}
             </div>

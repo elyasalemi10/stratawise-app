@@ -4,17 +4,43 @@ import { requireCompanyRole, requireOCAccess } from "@/lib/auth";
 import { createServerClient } from "@/lib/supabase";
 import { revalidatePath } from "next/cache";
 
+export type PaymentFrequency = "annual" | "semi_annual" | "quarterly" | "monthly";
+
+/** Never render the raw value: these are stored keys. */
+export const PAYMENT_FREQUENCY_LABEL: Record<PaymentFrequency, string> = {
+  annual: "Annually",
+  semi_annual: "Every six months",
+  quarterly: "Quarterly",
+  monthly: "Monthly",
+};
+
+export const PAYMENT_FREQUENCY_OPTIONS = (
+  Object.keys(PAYMENT_FREQUENCY_LABEL) as PaymentFrequency[]
+).map((value) => ({ value, label: PAYMENT_FREQUENCY_LABEL[value] }));
+
 export interface InsurancePolicy {
   id: string;
   oc_id: string;
   policy_type: string;
   provider: string;
+  /** The broker who placed it, when one did. Usually who the manager
+   *  actually rings, and not the same as the underwriter. */
+  broker: string | null;
   policy_number: string | null;
   sum_insured: number | null;
   premium: number | null;
+  excess: number | null;
+  /** Annual or by instalment. Changes what the OC budgets each period, and
+   *  a missed instalment can void cover. */
+  payment_frequency: PaymentFrequency;
   start_date: string;
   end_date: string;
   document_url: string | null;
+  /** The certificate of currency: the document owners, lenders and
+   *  conveyancers actually ask for. Separate from the policy schedule
+   *  because it is reissued on its own cycle. */
+  certificate_of_currency_document_id: string | null;
+  certificate_of_currency_expiry: string | null;
   status: string;
   created_at: string;
 }
@@ -33,6 +59,8 @@ export async function getInsurancePolicies(ocId: string): Promise<InsurancePolic
     ...p,
     sum_insured: p.sum_insured ? Number(p.sum_insured) : null,
     premium: p.premium ? Number(p.premium) : null,
+    excess: p.excess ? Number(p.excess) : null,
+    payment_frequency: (p.payment_frequency ?? "annual") as PaymentFrequency,
   }));
 }
 
@@ -42,11 +70,16 @@ export async function createInsurancePolicy(
     policy_type: string;
     provider: string;
     policy_number?: string;
+    broker?: string;
     sum_insured?: number;
     premium?: number;
+    excess?: number;
+    payment_frequency?: PaymentFrequency;
     start_date: string;
     end_date: string;
     document_url?: string;
+    certificate_of_currency_document_id?: string;
+    certificate_of_currency_expiry?: string;
   }
 ) {
   const profile = await requireCompanyRole();
@@ -59,10 +92,15 @@ export async function createInsurancePolicy(
     policy_type: data.policy_type,
     provider: data.provider,
     policy_number: data.policy_number || null,
+    broker: data.broker || null,
     sum_insured: data.sum_insured || null,
     premium: data.premium || null,
+    excess: data.excess || null,
+    payment_frequency: data.payment_frequency ?? "annual",
     start_date: data.start_date,
     end_date: data.end_date,
+    certificate_of_currency_document_id: data.certificate_of_currency_document_id || null,
+    certificate_of_currency_expiry: data.certificate_of_currency_expiry || null,
     status: new Date(data.end_date) < new Date() ? "expired" : "active",
   };
   if (data.document_url) insertData.document_url = data.document_url;
@@ -96,8 +134,13 @@ export async function updateInsurancePolicy(
     policy_type?: string;
     provider?: string;
     policy_number?: string;
+    broker?: string;
     sum_insured?: number;
     premium?: number;
+    excess?: number;
+    payment_frequency?: PaymentFrequency;
+    certificate_of_currency_document_id?: string | null;
+    certificate_of_currency_expiry?: string | null;
     start_date?: string;
     end_date?: string;
     document_url?: string;
@@ -114,6 +157,15 @@ export async function updateInsurancePolicy(
   if (data.policy_number !== undefined) updateData.policy_number = data.policy_number || null;
   if (data.sum_insured !== undefined) updateData.sum_insured = data.sum_insured || null;
   if (data.premium !== undefined) updateData.premium = data.premium || null;
+  if (data.broker !== undefined) updateData.broker = data.broker || null;
+  if (data.excess !== undefined) updateData.excess = data.excess || null;
+  if (data.payment_frequency !== undefined) updateData.payment_frequency = data.payment_frequency;
+  if (data.certificate_of_currency_document_id !== undefined) {
+    updateData.certificate_of_currency_document_id = data.certificate_of_currency_document_id || null;
+  }
+  if (data.certificate_of_currency_expiry !== undefined) {
+    updateData.certificate_of_currency_expiry = data.certificate_of_currency_expiry || null;
+  }
   if (data.start_date !== undefined) updateData.start_date = data.start_date;
   if (data.end_date !== undefined) {
     updateData.end_date = data.end_date;
