@@ -1,4 +1,4 @@
-import { redirect } from "next/navigation";
+import { notFound } from "next/navigation";
 import { resolveOCFromCode } from "@/lib/oc-resolver";
 import { OCOverviewClient } from "./oc-overview-client";
 
@@ -15,7 +15,7 @@ export default async function OCOverviewPage({
 }) {
   const { ocCode } = await params;
   const resolved = await resolveOCFromCode(ocCode);
-  if (!resolved) redirect("/dashboard");
+  if (!resolved) notFound();
 
   return <OCOverviewClient ocId={resolved.id} ocCode={ocCode} />;
 }

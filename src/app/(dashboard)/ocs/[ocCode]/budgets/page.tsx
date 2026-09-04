@@ -1,4 +1,4 @@
-import { redirect } from "next/navigation";
+import { notFound } from "next/navigation";
 import { resolveOCFromCode } from "@/lib/oc-resolver";
 import { BudgetsClient } from "./budgets-client";
 
@@ -11,7 +11,7 @@ export default async function BudgetsPage({
 }) {
   const { ocCode } = await params;
   const resolved = await resolveOCFromCode(ocCode);
-  if (!resolved) redirect("/dashboard");
+  if (!resolved) notFound();
 
   return <BudgetsClient ocId={resolved.id} />;
 }

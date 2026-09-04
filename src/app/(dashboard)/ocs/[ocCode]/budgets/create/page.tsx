@@ -1,5 +1,5 @@
 import { getOC } from "@/lib/actions/oc";
-import { redirect } from "next/navigation";
+import { notFound, redirect } from "next/navigation";
 import { CreateBudgetForm } from "./create-budget-form";
 import { listChartOfAccounts } from "@/lib/actions/chart-of-accounts";
 import { ocHasMaintenanceFund } from "@/lib/actions/budget";
@@ -14,7 +14,7 @@ export default async function CreateBudgetPage({
 }) {
   const { ocCode } = await params;
   const resolved = await resolveOCFromCode(ocCode);
-  if (!resolved) redirect("/dashboard");
+  if (!resolved) notFound();
   const ocId = resolved.id;
   const [oc, accounts, ocFunds, hasMaintenanceFund, lots] = await Promise.all([
     getOC(ocId),

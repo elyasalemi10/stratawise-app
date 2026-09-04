@@ -1,4 +1,4 @@
-import { redirect } from "next/navigation";
+import { notFound } from "next/navigation";
 import { resolveOCFromCode } from "@/lib/oc-resolver";
 import { LotDetailClient } from "./lot-detail-client";
 
@@ -10,7 +10,7 @@ export default async function LotDetailPage({
 }) {
   const { ocCode, lotId } = await params;
   const resolved = await resolveOCFromCode(ocCode);
-  if (!resolved) redirect("/dashboard");
+  if (!resolved) notFound();
 
   return <LotDetailClient ocId={resolved.id} lotId={lotId} />;
 }

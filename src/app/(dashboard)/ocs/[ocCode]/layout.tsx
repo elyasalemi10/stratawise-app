@@ -1,4 +1,4 @@
-import { redirect } from "next/navigation";
+import { notFound, redirect } from "next/navigation";
 import { requireOCAccess } from "@/lib/auth";
 import { getOC } from "@/lib/actions/oc";
 import { resolveOCFromCode } from "@/lib/oc-resolver";
@@ -16,7 +16,7 @@ export default async function OCLayout({
   // Resolve short_code → UUID once at the page boundary. Server actions
   // continue to consume the UUID directly (no API change).
   const resolved = await resolveOCFromCode(ocCode);
-  if (!resolved) redirect("/dashboard");
+  if (!resolved) notFound();
   const ocId = resolved.id;
 
   // Validate access

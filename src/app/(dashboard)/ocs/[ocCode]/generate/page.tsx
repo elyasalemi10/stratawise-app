@@ -3,7 +3,7 @@ import { getOCBudgets } from "@/lib/actions/budget";
 import { getAvailablePeriods, type AvailablePeriod } from "@/lib/actions/levy";
 import { listChartOfAccounts } from "@/lib/actions/chart-of-accounts";
 import { createServerClient } from "@/lib/supabase";
-import { redirect } from "next/navigation";
+import { notFound, redirect } from "next/navigation";
 import Link from "next/link";
 import { Landmark } from "lucide-react";
 import { EmptyState } from "@/components/shared/empty-state";
@@ -26,7 +26,7 @@ export default async function GenerateLeviesPage({
 }) {
   const { ocCode } = await params;
   const resolved = await resolveOCFromCode(ocCode);
-  if (!resolved) redirect("/dashboard");
+  if (!resolved) notFound();
   const ocId = resolved.id;
   const supabaseEarly = createServerClient();
   const [oc, budgets, coaAccounts, { data: operatingAccount }] = await Promise.all([

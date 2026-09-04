@@ -155,6 +155,11 @@ export function LotsPageContent({
       next.set(lotId, "pending");
       return next;
     });
+    // The cached page payload carries inviteStatus, so leaving it alone
+    // means navigating away and back re-seeds the pill from the snapshot
+    // taken before the invite existed.
+    invalidateCached(`lots:${ocId}`);
+    invalidateCached(`lot:${lotId}`);
   }
 
   // Explicit re-fetch after an invite is sent/revoked , bypasses the

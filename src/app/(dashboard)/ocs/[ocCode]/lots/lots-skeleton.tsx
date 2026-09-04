@@ -94,7 +94,7 @@ export function LotsSkeleton() {
                   <TableCell><Skeleton className="h-3.5 w-full max-w-[13rem]" /></TableCell>
                   <TableCell><Skeleton className="h-3.5 w-12" /></TableCell>
                   <TableCell><Skeleton className="h-5 w-24 rounded-full" /></TableCell>
-                  <TableCell className="flex justify-end"><Skeleton className="h-3.5 w-16" /></TableCell>
+                  <TableCell className="text-right"><Skeleton className="ml-auto h-3.5 w-16" /></TableCell>
                 </TableRow>
               ))}
             </TableBody>

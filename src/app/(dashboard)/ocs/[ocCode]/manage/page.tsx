@@ -1,4 +1,4 @@
-import { redirect } from "next/navigation";
+import { notFound, redirect } from "next/navigation";
 
 import { resolveOCFromCode } from "@/lib/oc-resolver";
 
@@ -10,6 +10,6 @@ export default async function ManageOCPage({
 }) {
   const { ocCode } = await params;
   const resolved = await resolveOCFromCode(ocCode);
-  if (!resolved) redirect("/dashboard");
+  if (!resolved) notFound();
   redirect(`/ocs/${ocCode}/lots`);
 }

@@ -1,4 +1,4 @@
-import { redirect } from "next/navigation";
+import { notFound } from "next/navigation";
 import { resolveOCFromCode } from "@/lib/oc-resolver";
 import { requireOCAccess } from "@/lib/auth";
 import { createServerClient } from "@/lib/supabase";
@@ -11,7 +11,7 @@ export default async function CreateMeetingPage({
 }) {
   const { ocCode } = await params;
   const resolved = await resolveOCFromCode(ocCode);
-  if (!resolved) redirect("/dashboard");
+  if (!resolved) notFound();
   const profile = await requireOCAccess(resolved.id);
 
   // Sensible defaults for the notice step. The manager chairing their own

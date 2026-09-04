@@ -1,4 +1,4 @@
-import { redirect } from "next/navigation";
+import { notFound } from "next/navigation";
 import { resolveOCFromCode } from "@/lib/oc-resolver";
 import { InsuranceClient } from "./insurance-client";
 
@@ -9,7 +9,7 @@ export default async function InsurancePage({
 }) {
   const { ocCode } = await params;
   const resolved = await resolveOCFromCode(ocCode);
-  if (!resolved) redirect("/dashboard");
+  if (!resolved) notFound();
 
   return <InsuranceClient ocId={resolved.id} />;
 }

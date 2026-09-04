@@ -10,6 +10,7 @@ import { useSetBreadcrumb } from "@/lib/breadcrumb-context";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
+import { invalidateCached } from "@/lib/use-cached-data";
 import { cn } from "@/lib/utils";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import {
@@ -393,7 +394,13 @@ export function LotDetailContent({
           lotNumber={lot.lot_number}
           ownerAvatarUrl={owner.owner_avatar_url}
           inviteStatus={inviteStatus}
-          onInviteChanged={() => router.refresh()}
+          onInviteChanged={() => {
+            // Drop the cached payload so the pill is re-read rather than
+            // restored from the snapshot taken before the invite existed.
+            invalidateCached(`lot:${lot.id}`);
+            invalidateCached(`lots:${ocId}`);
+            router.refresh();
+          }}
           engagement={engagement}
           onTransfer={() => setSettlementOpen(true)}
         />

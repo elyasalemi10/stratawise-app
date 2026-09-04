@@ -1,4 +1,4 @@
-import { redirect } from "next/navigation";
+import { notFound, redirect } from "next/navigation";
 import { resolveOCFromCode } from "@/lib/oc-resolver";
 import { getCurrentProfile } from "@/lib/auth";
 import { MyLeviesClient } from "./my-levies-client";
@@ -10,7 +10,7 @@ export default async function MyLeviesPage({
 }) {
   const { ocCode } = await params;
   const resolved = await resolveOCFromCode(ocCode);
-  if (!resolved) redirect("/dashboard");
+  if (!resolved) notFound();
 
   const profile = await getCurrentProfile();
   if (!profile) redirect("/sign-in");

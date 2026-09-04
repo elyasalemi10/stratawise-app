@@ -1,4 +1,4 @@
-import { redirect } from "next/navigation";
+import { notFound } from "next/navigation";
 import { resolveOCFromCode } from "@/lib/oc-resolver";
 import { OCSettingsClient } from "../oc-settings-client";
 import { SectionHeader } from "@/components/shared/section-header";
@@ -12,7 +12,7 @@ export default async function Page({
 }) {
   const { ocCode } = await params;
   const resolved = await resolveOCFromCode(ocCode);
-  if (!resolved) redirect("/dashboard");
+  if (!resolved) notFound();
 
   return (
     <>

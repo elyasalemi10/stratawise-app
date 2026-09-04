@@ -1,4 +1,4 @@
-import { redirect } from "next/navigation";
+import { notFound } from "next/navigation";
 import { resolveOCFromCode } from "@/lib/oc-resolver";
 import { OCSettingsRail } from "./oc-settings-rail";
 
@@ -13,7 +13,7 @@ export default async function OCSettingsLayout({
 }) {
   const { ocCode } = await params;
   const resolved = await resolveOCFromCode(ocCode);
-  if (!resolved) redirect("/dashboard");
+  if (!resolved) notFound();
 
   return (
     <div className="flex flex-col gap-6 lg:flex-row lg:gap-8">
