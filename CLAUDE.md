@@ -170,7 +170,7 @@ lots/page.tsx        server shell: resolveOCFromCode + redirect, renders <LotsCl
 lots/data.ts         "use server" aggregate fetch, ONE round trip, auth check at the top
 lots/lots-client.tsx "use client": useCachedData(`lots:${ocId}`, fetcher, { pathname })
                      loading -> <LotsLoading />, otherwise the real content
-lots/loading.tsx     still required, covers the server shell itself
+lots/loading.tsx     still required, and it renders <LotsClient />, NOT a skeleton
 ```
 
 - **Auth moves into `data.ts`, not `page.tsx`.** Once the client drives every fetch after the first, a check left in the page component runs once and is skipped on every refresh after. Call `requireOCAccess(ocId)` / `requireCompanyRole()` at the top of the aggregate action. It throws, which the hook surfaces as `error` rather than blanking the page.
@@ -186,6 +186,45 @@ lots/loading.tsx     still required, covers the server shell itself
 ### Where it does NOT apply
 - Auth and public pages: sign-in, sign-up, forgot / reset password, verify-email, onboarding, invite acceptance, legal. Nothing to cache and nothing to refresh. The allowlist lives in `APP_PREFIXES` in [refresh-bar.tsx](src/components/layout/refresh-bar.tsx) and is an allowlist on purpose, so a new auth route is never silently opted in.
 - Multi-step wizards, creation forms and long-form editors (`/ocs/new`, `/ocs/[ocCode]/generate`, `*/create`, `/admin/blog/[id]`) own their state client-side; a refresh under them throws work away.
+
+### loading.tsx renders the CLIENT, not the skeleton
+
+A `loading.tsx` is the only thing on screen while the server shell resolves,
+and for a cached page that is precisely the wrong moment to shimmer: the tab
+already holds the data, and the client would paint it on its first frame. A
+skeleton at the boundary covers content we have, for the length of a round
+trip, and then hands over to the same content anyway. That flash is what
+"the skeleton plays for a tiny bit and then shows the cached stuff" is.
+
+So the boundary renders **the same client component the page renders**. The
+component already knows how to choose: cache hit paints content, cache miss
+paints its own skeleton. The boundary does not need to guess, and it stops
+being able to contradict the page.
+
+```tsx
+// lots/loading.tsx
+"use client";
+export default function Loading() {
+  const oc = useRouteOC();
+  if (!oc) return <LotsSkeleton />;   // first visit to this OC in this tab
+  return <LotsClient ocId={oc.id} />; // paints from the tab cache
+}
+```
+
+- **The one thing the boundary cannot do is resolve `ocCode` to `ocId`** ,
+  that was the server shell's whole job. [oc-id-map.ts](src/lib/oc-id-map.ts)
+  closes the gap: the sidebar is handed every OC the user can open, `id` and
+  `short_code` together, and puts the pairs in module scope. `useRouteOC()`
+  reads them back. A miss is a first visit, which is exactly when there is no
+  cached page data either, so the skeleton is right there.
+- **Route params other than the OC are free** , `lotId`, `batchId`,
+  `budgetId` and `ocCode` all come off `useParams()`.
+- **The page now mounts twice per navigation**, once at the boundary and once
+  for real. `useCachedData` shares in-flight requests in module scope so the
+  second mount joins the first one's fetch rather than firing its own. Do not
+  put a write, a log or an analytics call in a page client's mount effect.
+- **Pages that are NOT client-cached keep their skeleton boundary.** Wizards,
+  creation forms and long-form editors have nothing cached to show.
 
 ### Registering a route , the one step people forget
 Converting a page is not finished until its route is in `CLIENT_CACHED_ROUTES` in [use-cached-data.ts](src/lib/use-cached-data.ts). That list is what stops the router-based fallback in [refresh-bar.tsx](src/components/layout/refresh-bar.tsx) from ALSO firing `router.refresh()` on arrival, which would refetch the page a second time and wipe the Router Cache for every other route. Leave it out and the page still works, just twice as expensively and with the bar outliving the data.

@@ -76,6 +76,21 @@ function writeCache<T>(key: string, value: T): void {
   }
 }
 
+/** Fetches in flight, keyed the same way as the cache.
+ *
+ *  Shared across hook instances rather than held per-instance, because a
+ *  page is now mounted TWICE in quick succession on every navigation: once
+ *  by the route's loading.tsx (which renders the real component so it can
+ *  paint from the cache) and once for real when the server shell lands.
+ *  Per-instance de-duplication cannot see across that handover, so both
+ *  mounts fired the same request. Joining the promise means the second
+ *  mount rides the first one's round trip.
+ *
+ *  The leader writes the cache whether or not it is still mounted, so a
+ *  fetch started by the boundary is not thrown away when the boundary is
+ *  replaced. */
+const inFlight = new Map<string, Promise<unknown>>();
+
 /**
  * Drop every entry whose key starts with `prefix`. Call after a mutation
  * that invalidates more than the page you are on, e.g. after creating a lot:
@@ -91,6 +106,7 @@ export function invalidateCached(prefix: string): void {
  *  one's data sitting in a tab-lifetime cache. */
 export function clearCachedData(): void {
   cache.clear();
+  inFlight.clear();
 }
 
 /** Routes the router-based fallback must NOT refresh on arrival.
@@ -227,12 +243,26 @@ export function useCachedData<T>(
       inFlightRef.current = true;
       const forKey = keyRef.current;
       if (mode === "arrival") setIsEntering(true);
+
+      // Join a request already out for this key rather than starting a
+      // second one. Only the instance that STARTED it clears the entry.
+      let promise = inFlight.get(forKey) as Promise<T> | undefined;
+      const isLeader = promise === undefined;
+      if (promise === undefined) {
+        promise = fetcherRef.current();
+        inFlight.set(forKey, promise);
+      }
+
       try {
-        const next = await fetcherRef.current();
+        const next = await promise;
+        // The leader caches unconditionally: it may have been unmounted by
+        // the boundary handover, and dropping the result would waste the
+        // round trip the next mount is about to repeat.
+        if (isLeader && pendingWritesRef.current === 0) writeCache(forKey, next);
         // Discard if a write started while we were out, or the key moved on.
         if (pendingWritesRef.current > 0) return;
         if (!mountedRef.current || keyRef.current !== forKey) return;
-        writeCache(forKey, next);
+        if (!isLeader) writeCache(forKey, next);
         setDataState(next);
         setError(null);
       } catch (err) {
@@ -241,6 +271,7 @@ export function useCachedData<T>(
           setError(err instanceof Error ? err.message : "Couldn't refresh this page.");
         }
       } finally {
+        if (isLeader) inFlight.delete(forKey);
         inFlightRef.current = false;
         if (mountedRef.current) {
           setLoading(false);

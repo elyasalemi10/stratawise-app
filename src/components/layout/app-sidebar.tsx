@@ -56,6 +56,7 @@ import {
   getSidebarOCs,
   type SidebarOC,
 } from "@/lib/actions/oc";
+import { rememberOCIds } from "@/lib/oc-id-map";
 import {
   setCachedProfile,
   setCachedOCs,
@@ -713,6 +714,10 @@ export function AppSidebar({
   // tabs) and as a fallback for the refresh-event handler.
   const [profile, setProfile] = useState<SidebarProfile | null>(initialProfile);
   const [ocs, setOCs] = useState<SidebarOC[]>(initialOCs);
+  // Hand the code→id pairs to the module-scope map so a loading.tsx under
+  // /ocs/[ocCode] can resolve the id itself and render the real page from
+  // the tab cache instead of a skeleton. Idempotent, hence safe in render.
+  rememberOCIds(ocs);
   const loaded = true;
   // Pin state for the OC swapper. Scoped by userEmail so two users sharing
   // a browser don't trample each other's pins; falls back to "anon" before

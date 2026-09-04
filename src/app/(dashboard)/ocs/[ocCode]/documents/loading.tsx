@@ -1,16 +1,26 @@
+"use client";
+
+import { useRouteOC } from "@/lib/oc-id-map";
+import { DocumentsClient } from "./documents-client";
 import { DocumentsSkeleton } from "./documents-skeleton";
 
-// Renders the SAME skeleton the client renders.
+// Renders the REAL page, not a skeleton, whenever this tab already knows the
+// OC.
 //
-// This covers the gap while the server shell streams. Returning null here
-// instead left a blank grey page for the length of that round trip, then the
-// skeleton appeared once the client mounted, which is a worse first frame
-// than a shimmer that is already correct.
+// A loading.tsx is the only thing on screen while the server shell resolves
+// the OC code, and a skeleton here overwrites content the tab already has:
+// DocumentsClient reads the client cache and paints the data you were looking at a
+// moment ago, but it never got the chance, because this boundary shimmered
+// over the top of it first and then handed over.
 //
-// Rendering it in both places used to cause a visible double-flash, but only
-// because <Skeleton> waited 200ms before showing and that delay restarted on
-// the second mount. Skeleton now paints immediately, so the handover from
-// this boundary to DocumentsClient is continuous.
-export default function DocumentsLoading() {
-  return <DocumentsSkeleton />;
+// The one thing the boundary could not do for itself was turn the code in
+// the URL into an id. The sidebar knows every OC the user can open, so it
+// hands the pairs to a module-scope map and this reads them back. A miss
+// means the first visit to that OC in this tab, which is exactly when there
+// is no cached page data either, so the skeleton is the right answer. The
+// two mounts share one request (see use-cached-data).
+export default function Loading() {
+  const oc = useRouteOC();
+  if (!oc) return <DocumentsSkeleton />;
+  return <DocumentsClient ocId={oc.id} />;
 }
