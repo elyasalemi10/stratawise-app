@@ -1,6 +1,12 @@
 import type { NextConfig } from "next";
 
 const nextConfig: NextConfig = {
+  // Client stack traces name the component instead of a one-letter minified
+  // symbol. Turned on while chasing an intermittent hook-order crash on
+  // /settings that is unreadable without it: "at L (5e7be368.js:1:215435)"
+  // identifies nothing. Costs build time and ships the maps, so turn it back
+  // off once that is closed out.
+  productionBrowserSourceMaps: true,
   experimental: {
     serverActions: {
       // OC creation wizard accepts Plan-of-Subdivision PDFs up to 50MB.
