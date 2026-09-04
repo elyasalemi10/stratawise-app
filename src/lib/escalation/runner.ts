@@ -4,6 +4,7 @@
 // generates the s.32 final notice on the final email step.
 
 import { createServerClient } from "@/lib/supabase";
+import { getOCArrears } from "@/lib/lot-balance";
 import { sendEscalationEmail } from "@/lib/email";
 import { isNotificationOptedOut } from "@/lib/notifications";
 import { generateAndUploadFinalNotice } from "@/lib/final-notice-pdf";
@@ -85,43 +86,70 @@ export async function runEscalationSweep(today: string): Promise<SweepResult> {
   const supabase = createServerClient();
   const result: SweepResult = { instancesCreated: 0, stepsFired: 0, errors: 0 };
 
-  // ── 1. Create instances for overdue notices that don't have an active one ──
-  const { data: overdue } = await supabase
-    .from("levy_notices")
-    .select("id, oc_id, lot_id, reference_number, amount, amount_paid, due_date, status, owners_corporations(management_company_id)")
-    .in("status", ["issued", "partially_paid", "overdue"])
-    .lt("due_date", today)
-    .limit(500);
+  // ── 1. Create one instance per LOT that is behind ──
+  //
+  // Keyed to the lot and driven by its balance, not to a levy notice and its
+  // status. Under balance accounting a payment does not have to land on any
+  // particular notice, so a notice's status cannot say whether the owner
+  // still owes anything: an owner who paid a lump sum kept being chased
+  // because the old notice was still `issued`, and a lot in arrears from an
+  // opening balance was never chased because it had no overdue notice at all.
+  //
+  // Aging is oldest-charge-first, which is ordinary receivables aging. The
+  // oldest charge still uncovered by payments is both how far behind the lot
+  // is and what a reminder should quote.
+  const { data: ocRows } = await supabase
+    .from("owners_corporations")
+    .select("id, management_company_id")
+    .eq("status", "active");
 
-  for (const n of (overdue ?? []) as Array<Record<string, unknown>>) {
-    const noticeId = n.id as string;
-    const { data: existing } = await supabase
-      .from("escalation_instances")
-      .select("id")
-      .eq("levy_notice_id", noticeId)
-      .eq("status", "active")
-      .maybeSingle();
-    if (existing) continue;
-
-    const ocId = n.oc_id as string;
-    const companyId = (n as { owners_corporations: { management_company_id?: string } | null }).owners_corporations?.management_company_id ?? null;
-    const wf = await resolveWorkflowForOC(supabase, ocId, companyId);
+  for (const oc of (ocRows ?? []) as Array<{ id: string; management_company_id: string | null }>) {
+    const arrears = await getOCArrears(supabase, oc.id, today);
+    const wf = await resolveWorkflowForOC(supabase, oc.id, oc.management_company_id);
     if (!wf) continue;
     const firstStep = wf.steps.filter((s) => s.enabled).sort((a, b) => a.step_number - b.step_number)[0];
     if (!firstStep) continue;
 
-    const { data: refRow } = await supabase.rpc("next_reference_number", { p_prefix: "ESC" });
-    await supabase.from("escalation_instances").insert({
-      levy_notice_id: noticeId,
-      workflow_id: wf.id,
-      oc_id: ocId,
-      lot_id: n.lot_id as string,
-      reference_number: typeof refRow === "string" ? refRow : null,
-      current_step: firstStep.step_number,
-      status: "active",
-      next_action_at: addDaysIso(n.due_date as string, firstStep.days_after_overdue),
-    });
-    result.instancesCreated++;
+    for (const [lotId, a] of arrears) {
+      // Nothing owed, or owed but not yet late enough for step one.
+      if (a.balance <= 0 || a.daysOverdue === null) continue;
+      if (a.daysOverdue < firstStep.days_after_overdue) continue;
+
+      const { data: existing } = await supabase
+        .from("escalation_instances")
+        .select("id")
+        .eq("lot_id", lotId)
+        .eq("status", "active")
+        .maybeSingle();
+      if (existing) continue;
+
+      const { data: refRow } = await supabase.rpc("next_reference_number", { p_prefix: "ESC" });
+      const { error: insertErr } = await supabase.from("escalation_instances").insert({
+        // Reference only, so the reminder has something to quote. Null when
+        // the arrears are an opening balance with no notice behind them.
+        levy_notice_id: a.oldestUnpaidNoticeId,
+        workflow_id: wf.id,
+        oc_id: oc.id,
+        lot_id: lotId,
+        reference_number: typeof refRow === "string" ? refRow : null,
+        current_step: firstStep.step_number,
+        status: "active",
+        // Already past the threshold, so the first step is due now. Dating it
+        // from the charge would schedule it in the past and fire immediately
+        // anyway; saying "today" is the honest version of the same thing.
+        next_action_at: today,
+      });
+      // The unique partial index is the real guard against duplicates; the
+      // check above just avoids the round trip in the common case.
+      if (insertErr) {
+        if (insertErr.code !== "23505") {
+          console.error("escalation: could not open a follow-up for lot", lotId, insertErr);
+          result.errors++;
+        }
+        continue;
+      }
+      result.instancesCreated++;
+    }
   }
 
   // ── 2. Advance due instances (one step per run) ──
@@ -147,19 +175,61 @@ export async function runEscalationSweep(today: string): Promise<SweepResult> {
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 async function advanceInstance(supabase: any, inst: Record<string, unknown>, today: string, result: SweepResult) {
   const instanceId = inst.id as string;
-  const noticeId = inst.levy_notice_id as string;
+  const lotId = inst.lot_id as string;
+  const ocId = inst.oc_id as string;
 
-  const { data: notice } = await supabase
-    .from("levy_notices")
-    .select("id, oc_id, lot_id, reference_number, amount, amount_paid, due_date, status, pdf_url")
-    .eq("id", noticeId)
-    .maybeSingle();
-  if (!notice) return;
-
-  // Paid off , resolve the follow-up.
-  if (notice.status === "paid") {
-    await supabase.from("escalation_instances").update({ status: "resolved", resolved_at: new Date().toISOString(), resolved_reason: "paid" }).eq("id", instanceId);
+  // Does this lot still owe anything? That is the only question, and a
+  // notice's status is not it: a payment does not have to be allocated to a
+  // particular notice, so an owner who cleared their balance used to keep
+  // being chased because the notice we happened to key on was still
+  // `issued`. A credit closes the follow-up here too, for free.
+  const arrears = await getOCArrears(supabase, ocId, today);
+  const owed = arrears.get(lotId);
+  if (!owed || owed.balance <= 0) {
+    await supabase
+      .from("escalation_instances")
+      .update({
+        status: "resolved",
+        resolved_at: new Date().toISOString(),
+        resolved_reason: "paid",
+      })
+      .eq("id", instanceId);
     return;
+  }
+
+  // The oldest charge still uncovered. This is what the reminder quotes and
+  // what the final notice names, and it moves forward as older charges get
+  // covered, so a lot that has paid off its first quarter is chased about
+  // the second rather than one we have already been paid for.
+  const noticeId = owed.oldestUnpaidNoticeId;
+  const { data: notice } = noticeId
+    ? await supabase
+        .from("levy_notices")
+        .select("id, oc_id, lot_id, reference_number, amount, amount_paid, due_date, status, pdf_url")
+        .eq("id", noticeId)
+        .maybeSingle()
+    : { data: null };
+
+  // Arrears carried in at onboarding have no notice behind them. The chase
+  // still runs; it just has no reference to quote.
+  const charge = (notice ?? {
+    id: null,
+    oc_id: ocId,
+    lot_id: lotId,
+    reference_number: null,
+    amount: owed.balance,
+    amount_paid: 0,
+    due_date: owed.oldestUnpaidDueDate ?? today,
+    status: "issued",
+    pdf_url: null,
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  }) as any;
+
+  if (noticeId && noticeId !== inst.levy_notice_id) {
+    await supabase
+      .from("escalation_instances")
+      .update({ levy_notice_id: noticeId })
+      .eq("id", instanceId);
   }
 
   const { data: steps } = await supabase
@@ -181,7 +251,7 @@ async function advanceInstance(supabase: any, inst: Record<string, unknown>, tod
   const { data: oc } = await supabase
     .from("owners_corporations")
     .select("name, short_code, plan_number, abn, address, suburb, state, postcode, interest_rate_monthly, interest_grace_period_days, interest_enabled, management_companies(name, trading_as, registered_name, logo_url, brand_color, phone, email, abn)")
-    .eq("id", notice.oc_id)
+    .eq("id", charge.oc_id)
     .maybeSingle();
   const mc = (oc as { management_companies: Record<string, unknown> | null } | null)?.management_companies ?? null;
   // Notifications deep-link to the lot / the owner's levies, so they need the
@@ -193,20 +263,25 @@ async function advanceInstance(supabase: any, inst: Record<string, unknown>, tod
   const { data: owner } = await supabase
     .from("v_lot_current_owners")
     .select("name, email, postal_address")
-    .eq("lot_id", notice.lot_id)
+    .eq("lot_id", charge.lot_id)
     .maybeSingle();
-  const { data: lot } = await supabase.from("lots").select("lot_number, unit_number").eq("id", notice.lot_id).maybeSingle();
+  const { data: lot } = await supabase.from("lots").select("lot_number, unit_number").eq("id", charge.lot_id).maybeSingle();
 
-  const principal = Number(notice.amount) - Number(notice.amount_paid ?? 0);
+  // What the LOT owes, not what is left on one notice. Chasing a single
+  // notice's remainder understated the debt whenever a lot was behind on
+  // more than one period, which is exactly when chasing matters.
+  const principal = owed.balance;
   const ratePct = oc?.interest_enabled ? Number(oc?.interest_rate_monthly ?? 0) : 0;
   const interest = computeInterest({
     principal,
-    dueDate: notice.due_date as string,
+    dueDate: charge.due_date as string,
     asOf: today,
     monthlyRatePct: ratePct,
     graceDays: Number(oc?.interest_grace_period_days ?? 0),
   });
-  const daysOverdue = Math.max(0, Math.floor((new Date(`${today}T00:00:00Z`).getTime() - new Date(`${(notice.due_date as string).slice(0, 10)}T00:00:00Z`).getTime()) / 86_400_000));
+  // Aged from the oldest charge still uncovered, which is how long the money
+  // has actually been outstanding, not how old one document is.
+  const daysOverdue = Math.max(0, owed.daysOverdue ?? 0);
 
   // An OC that charges no interest, or a levy not yet past its grace
   // period, has nothing to say about interest , and "with interest of $0.00
@@ -222,9 +297,9 @@ async function advanceInstance(supabase: any, inst: Record<string, unknown>, tod
   const vars: Record<string, string> = {
     owner_name: owner?.name ?? "owner",
     oc_name: oc?.name ?? "your Owners Corporation",
-    reference: notice.reference_number ?? "",
+    reference: charge.reference_number ?? "",
     amount_due: fmtMoney(principal),
-    due_date: fmtDate(notice.due_date as string),
+    due_date: fmtDate(charge.due_date as string),
     days_overdue: String(daysOverdue),
     interest_accrued: hasInterest ? fmtMoney(interest.accrued) : "",
     daily_interest: hasInterest ? fmtMoney(interest.dailyRate) : "",
@@ -246,23 +321,23 @@ async function advanceInstance(supabase: any, inst: Record<string, unknown>, tod
             managementCompany: { name: companyLegalName(mc ?? {}) || "StrataWise", logo_url: (mc?.logo_url as string) ?? null, phone: (mc?.phone as string) ?? null, email: (mc?.email as string) ?? null, abn: (mc?.abn as string) ?? null },
             oc: { name: oc?.name ?? "Owners Corporation", address: ocAddress, abn: oc?.abn ?? null, plan_number: oc?.plan_number ?? "", oc_number: oc?.oc_number ?? null },
             documentTitle: "Final Fee Notice",
-            referenceNumber: notice.reference_number ?? "",
+            referenceNumber: charge.reference_number ?? "",
             date: new Date(),
             lotOwner: { name: owner?.name ?? "", lot_number: String(lot?.lot_number ?? ""), address: owner?.postal_address ?? ocAddress },
-            levyReference: notice.reference_number ?? "",
-            levyDueDate: notice.due_date as string,
+            levyReference: charge.reference_number ?? "",
+            levyDueDate: charge.due_date as string,
             amountOutstanding: principal,
             interestAccrued: interest.accrued,
             dailyInterest: interest.dailyRate,
             interestRateMonthly: ratePct,
             brandColors: { primary: brand, secondary: brand },
           },
-          notice.oc_id,
-          notice.reference_number ?? instanceId,
+          charge.oc_id,
+          charge.reference_number ?? instanceId,
         );
         const { fetchObject } = await import("@/lib/storage/r2");
         pdfBuffer = await fetchObject(key);
-        pdfFilename = `Final-notice-${notice.reference_number ?? ""}.pdf`;
+        pdfFilename = `Final-notice-${charge.reference_number ?? ""}.pdf`;
         await supabase.from("escalation_instances").update({ final_notice_pdf_url: key, final_notice_served_at: new Date().toISOString() }).eq("id", instanceId);
       }
 
@@ -300,15 +375,15 @@ async function advanceInstance(supabase: any, inst: Record<string, unknown>, tod
         subject,
         bodyText: body,
         companyLogoUrl: (mc?.logo_url as string) ?? null,
-        ocId: notice.oc_id,
+        ocId: charge.oc_id,
         pdfBuffer,
         pdfFilename,
         extraAttachments,
       });
       const sent = "success" in res;
       await supabase.from("communication_log").insert({
-        oc_id: notice.oc_id,
-        lot_id: notice.lot_id,
+        oc_id: charge.oc_id,
+        lot_id: charge.lot_id,
         recipient_email: owner.email,
         channel: "email",
         type: isFinal ? "levy_final_notice" : (step.label ?? "levy_followup"),
@@ -325,21 +400,21 @@ async function advanceInstance(supabase: any, inst: Record<string, unknown>, tod
         result.stepsFired++;
         await notifyOcManagers(
           supabase,
-          notice.oc_id,
+          charge.oc_id,
           `${isFinal ? "Final notice" : "Reminder"} sent for ${lotLabel}`,
           `${vars.oc_name}: ${isFinal ? "final notice" : (step.label ?? "reminder")} for levy ${vars.reference} (${vars.amount_due}) was emailed to ${owner.name ?? "the owner"}.`,
-          ocShortCode && notice.lot_id
-            ? `/ocs/${ocShortCode}/lots/${notice.lot_id}?tab=levies`
+          ocShortCode && charge.lot_id
+            ? `/ocs/${ocShortCode}/lots/${charge.lot_id}?tab=levies`
             : undefined,
         );
 
         // The owner hears about the final notice in the portal too, not only
         // by email. It is the last step before recovery action.
-        if (isFinal && notice.lot_id) {
+        if (isFinal && charge.lot_id) {
           await notifyLotOwnersInApp(
             supabase,
-            notice.oc_id as string,
-            notice.lot_id as string,
+            charge.oc_id as string,
+            charge.lot_id as string,
             `Final notice issued for levy ${vars.reference}`,
             `${vars.oc_name} has issued a final notice for ${vars.amount_due} on levy ${vars.reference}. Pay or contact your strata manager to avoid further action.`,
             ocShortCode ? `/ocs/${ocShortCode}/my-levies` : undefined,
@@ -354,7 +429,7 @@ async function advanceInstance(supabase: any, inst: Record<string, unknown>, tod
   if (nextStep) {
     await supabase.from("escalation_instances").update({
       current_step: nextStep.step_number,
-      next_action_at: addDaysIso(notice.due_date as string, nextStep.days_after_overdue),
+      next_action_at: addDaysIso(charge.due_date as string, nextStep.days_after_overdue),
     }).eq("id", instanceId);
   } else {
     await supabase.from("escalation_instances").update({ status: "completed" }).eq("id", instanceId);
