@@ -1,12 +1,17 @@
 "use client";
 
 import { useState, useRef, useCallback, useEffect } from "react";
-import { cn } from "@/lib/utils";
-import { Checkbox } from "@/components/ui/checkbox";
+import { Input } from "@/components/ui/input";
+import { DocumentCard } from "@/components/shared/document-card";
+import { DocumentLightbox } from "@/components/shared/document-lightbox";
+import type { DocumentTag, TagColour } from "@/lib/document-tags-shared";
 import {
-  FileText, Upload, Download, Pencil, Trash2, X, ExternalLink,
-  FileSpreadsheet, FileImage, File, Loader2,
-} from "lucide-react";
+  createDocumentTag,
+  listDocumentTags,
+  setDocumentDescription,
+  setDocumentTags,
+} from "@/lib/actions/document-tags";
+import { FileText, Upload, Download, Trash2, Loader2, X, Search } from "lucide-react";
 import { toast } from "sonner";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -39,37 +44,8 @@ interface DocumentManagerProps {
   readOnly?: boolean;
 }
 
-function getFileIcon(mimeType: string | null, size: "sm" | "lg" = "sm") {
-  const cls = size === "lg" ? "h-8 w-8" : "h-4 w-4";
-  if (!mimeType) return <File className={`${cls} text-muted-foreground`} />;
-  if (mimeType.includes("pdf")) return <FileText className={`${cls} text-destructive`} />;
-  if (mimeType.includes("spreadsheet") || mimeType.includes("excel") || mimeType.includes("csv"))
-    return <FileSpreadsheet className={`${cls} text-success-foreground`} />;
-  if (mimeType.startsWith("image/")) return <FileImage className={`${cls} text-info-foreground`} />;
-  if (mimeType.includes("word")) return <FileText className={`${cls} text-info-foreground`} />;
-  return <File className={`${cls} text-muted-foreground`} />;
-}
 
-function formatFileSize(bytes: number | null): string {
-  if (!bytes) return ",";
-  if (bytes < 1024) return `${bytes} B`;
-  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
-  return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
-}
 
-function formatDate(dateStr: string): string {
-  const d = new Date(dateStr);
-  const now = new Date();
-  const diffMs = now.getTime() - d.getTime();
-  const diffMin = Math.floor(diffMs / 60000);
-  if (diffMin < 1) return "Just now";
-  if (diffMin < 60) return `${diffMin}m ago`;
-  const diffHours = Math.floor(diffMin / 60);
-  if (diffHours < 24) return `${diffHours}h ago`;
-  const diffDays = Math.floor(diffHours / 24);
-  if (diffDays < 7) return `${diffDays}d ago`;
-  return d.toLocaleDateString("en-AU", { day: "numeric", month: "short", year: "numeric" });
-}
 
 // Build accept string for file input
 const ACCEPT_STRING = ALLOWED_EXTENSIONS.join(",");
@@ -96,6 +72,17 @@ export function DocumentManager({ ocId, lotId, initialDocuments, readOnly }: Doc
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const [bulkDeleteOpen, setBulkDeleteOpen] = useState(false);
   const [bulkDeleting, setBulkDeleting] = useState(false);
+  const [tags, setTags] = useState<DocumentTag[]>([]);
+  const [search, setSearch] = useState("");
+
+  // The firm's tag vocabulary, fetched once. Seeding happens server-side on
+  // first read, so a new company opens this page with something in the list.
+  useEffect(() => {
+    if (readOnly) return;
+    listDocumentTags()
+      .then(setTags)
+      .catch((err) => console.error("[documents] could not load tags:", err));
+  }, [readOnly]);
 
   const uploadFile = useCallback((file: File) => {
     const uploadId = crypto.randomUUID();
@@ -245,6 +232,49 @@ export function DocumentManager({ ocId, lotId, initialDocuments, readOnly }: Doc
     }
   }
 
+  /** Write through locally first: the manager has already typed it, and a
+   *  round trip before the words appear is the thing that makes a text box
+   *  feel broken. */
+  async function saveDescription(documentId: string, value: string) {
+    setDocuments((prev) =>
+      prev.map((d) => (d.id === documentId ? { ...d, description: value } : d)),
+    );
+    const res = await setDocumentDescription(ocId, documentId, value);
+    if (res.error) toast.error(res.error);
+  }
+
+  async function toggleDocTag(documentId: string, tagId: string) {
+    const doc = documents.find((d) => d.id === documentId);
+    if (!doc) return;
+    const current = doc.tags ?? [];
+    const has = current.some((t) => t.id === tagId);
+    const nextTags = has
+      ? current.filter((t) => t.id !== tagId)
+      : [...current, tags.find((t) => t.id === tagId)!].filter(Boolean);
+
+    setDocuments((prev) =>
+      prev.map((d) => (d.id === documentId ? { ...d, tags: nextTags } : d)),
+    );
+    const res = await setDocumentTags(ocId, documentId, nextTags.map((t) => t.id));
+    if (res.error) {
+      toast.error(res.error);
+      // Put it back: the screen must not claim a filing that did not happen.
+      setDocuments((prev) =>
+        prev.map((d) => (d.id === documentId ? { ...d, tags: current } : d)),
+      );
+    }
+  }
+
+  async function createTag(name: string, colour: TagColour): Promise<DocumentTag | null> {
+    const res = await createDocumentTag(name, colour);
+    if (res.error || !res.tag) {
+      toast.error(res.error ?? "Couldn't add that tag.");
+      return null;
+    }
+    setTags((prev) => [...prev, res.tag!].sort((a, b) => a.name.localeCompare(b.name)));
+    return res.tag;
+  }
+
   function toggleSelected(id: string) {
     setSelectedIds((prev) => {
       const next = new Set(prev);
@@ -321,9 +351,6 @@ export function DocumentManager({ ocId, lotId, initialDocuments, readOnly }: Doc
     }
   }
 
-  function getDocDownloadUrl(doc: DocWithUrl): string {
-    return `/api/documents/${doc.id}`;
-  }
 
   function getDocViewUrl(doc: DocWithUrl): string {
     return `/api/documents/${doc.id}?view=true`;
@@ -331,32 +358,29 @@ export function DocumentManager({ ocId, lotId, initialDocuments, readOnly }: Doc
 
   /** A document the preview pane can actually render: a PDF, or an Office
    *  file whose PDF rendition is ready. */
-  function isPreviewable(doc: DocWithUrl): boolean {
-    return doc.mime_type === "application/pdf" || doc.pdf_status === "complete";
-  }
 
   function viewDocument(doc: DocWithUrl) {
     setPreviewDoc(doc);
   }
 
-  async function downloadDocument(doc: DocWithUrl) {
-    try {
-      const url = getDocDownloadUrl(doc);
-      const res = await fetch(url);
-      const blob = await res.blob();
-      const blobUrl = URL.createObjectURL(blob);
-      const a = document.createElement("a");
-      a.href = blobUrl;
-      a.download = doc.file_name;
-      a.click();
-      URL.revokeObjectURL(blobUrl);
-    } catch {
-      toast.error("Failed to download file");
-    }
-  }
 
   return (
     <div className="space-y-4">
+      {/* Search. Matches the manager's description and tags as well as the
+          filename, which is the point of having them: "scan_0043.pdf" is
+          not what anyone types when looking for the insurance certificate.
+          The server already indexes the CONTENTS of every document; this is
+          the client-side filter over what is on the page. */}
+      <div className="relative">
+        <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+        <Input
+          value={search}
+          onChange={(e) => setSearch(e.target.value)}
+          placeholder="Search documents"
+          className="pl-9"
+        />
+      </div>
+
       {/* No Upload button and no Export ZIP.
           Uploading is the first tile in the grid, where the thing being
           created belongs, and exporting everything was a guess about what
@@ -438,13 +462,32 @@ export function DocumentManager({ ocId, lotId, initialDocuments, readOnly }: Doc
           would normally sit, so the user sees one consistent surface
           instead of a separate progress strip above the grid. */}
       {(() => {
+        const q = search.trim().toLowerCase();
+        const searched = q
+          ? documents.filter(
+              (d) =>
+                d.file_name.toLowerCase().includes(q) ||
+                (d.description ?? "").toLowerCase().includes(q) ||
+                (d.tags ?? []).some((t) => t.name.toLowerCase().includes(q)),
+            )
+          : documents;
         const visibleDocs = filterCategory === "all"
-          ? documents
-          : documents.filter((d) => {
+          ? searched
+          : searched.filter((d) => {
               const cat = (d.category ?? "other").toLowerCase();
               if (filterCategory === "general") return cat === "other" || cat === "general";
               return cat === filterCategory;
             });
+        if (visibleDocs.length === 0 && uploads.length === 0 && q) {
+          return (
+            <EmptyState
+              card
+              illustration="search"
+              title="No documents match"
+              description={`Nothing here matches "${search.trim()}".`}
+            />
+          );
+        }
         if (visibleDocs.length === 0 && uploads.length === 0 && readOnly) {
           return (
             <Card>
@@ -460,7 +503,7 @@ export function DocumentManager({ ocId, lotId, initialDocuments, readOnly }: Doc
           );
         }
         return (
-        <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
+        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
           {/* Uploading is the first tile, not a button somewhere above.
               The thing you are making appears where it will live, the drop
               target is the size of a document rather than the size of a
@@ -475,7 +518,7 @@ export function DocumentManager({ ocId, lotId, initialDocuments, readOnly }: Doc
                 e.preventDefault();
                 if (e.dataTransfer.files?.length) handleFiles(e.dataTransfer.files);
               }}
-              className="flex min-h-[11.5rem] cursor-pointer flex-col items-center justify-center gap-2 rounded-lg border-2 border-dashed border-border bg-card p-3 text-center transition-colors hover:border-primary/50 hover:bg-muted"
+              className="flex min-h-[22rem] cursor-pointer flex-col items-center justify-center gap-2 rounded-lg border-2 border-dashed border-border bg-card p-4 text-center transition-colors hover:border-primary/50 hover:bg-muted"
             >
               <Upload className="h-7 w-7 text-muted-foreground" />
               <span className="text-sm font-medium text-foreground">Add a document</span>
@@ -520,190 +563,35 @@ export function DocumentManager({ ocId, lotId, initialDocuments, readOnly }: Doc
               </CardContent>
             </Card>
           ))}
-          {visibleDocs.map((doc) => {
-            const isImage = doc.mime_type?.startsWith("image/");
-            return (
-              <Card
-                key={doc.id}
-                className={cn(
-                  "group relative cursor-pointer transition-colors",
-                  selectedIds.has(doc.id)
-                    ? "border-primary ring-1 ring-primary"
-                    : "hover:border-primary/30",
-                )}
-                onClick={() => viewDocument(doc)}
-              >
-                <CardContent className="p-3">
-                  {/* Selection. Visible once anything is selected, so the
-                      grid is not covered in checkboxes before the manager
-                      has shown any interest in bulk actions, and always
-                      visible for the ones already picked. */}
-                  {!readOnly && (
-                    <div
-                      className={cn(
-                        "absolute left-4 top-4 z-10 transition-opacity",
-                        selectedIds.has(doc.id) ? "opacity-100" : "opacity-0 group-hover:opacity-100",
-                      )}
-                      onClick={(e) => e.stopPropagation()}
-                    >
-                      <Checkbox
-                        checked={selectedIds.has(doc.id)}
-                        onCheckedChange={() => toggleSelected(doc.id)}
-                        aria-label={`Select ${doc.file_name}`}
-                      />
-                    </div>
-                  )}
-                  {/* Preview area */}
-                  <div className="flex items-center justify-center h-24 rounded-md bg-muted/50 mb-3 overflow-hidden">
-                    {isImage ? (
-                      // eslint-disable-next-line @next/next/no-img-element
-                      <img
-                        src={getDocViewUrl(doc)}
-                        alt={doc.file_name}
-                        className="h-full w-full object-cover rounded-md"
-                      />
-                    ) : (
-                      getFileIcon(doc.mime_type, "lg")
-                    )}
-                  </div>
-
-                  {/* File info */}
-                  <div className="flex items-center gap-1.5">
-                    <p className="text-sm font-medium text-foreground truncate flex-1" title={doc.file_name}>
-                      {doc.file_name}
-                    </p>
-                    {doc.category && doc.category !== "other" && (
-                      <span className="shrink-0 px-1.5 py-0.5 rounded-full text-[10px] font-medium bg-primary/10 text-primary">
-                        {doc.category.charAt(0).toUpperCase() + doc.category.slice(1)}
-                      </span>
-                    )}
-                  </div>
-                  <p className="text-xs text-muted-foreground mt-0.5">
-                    {formatFileSize(doc.file_size)} · {formatDate(doc.created_at)}
-                  </p>
-
-                  {/* Actions */}
-                  <div className="flex items-center gap-1 mt-2 opacity-0 group-hover:opacity-100 transition-opacity" onClick={(e) => e.stopPropagation()}>
-                    <a
-                      href={getDocViewUrl(doc)}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      className="flex h-7 w-7 items-center justify-center rounded-md text-muted-foreground hover:bg-muted hover:text-foreground"
-                      title="Open in new tab"
-                    >
-                      <ExternalLink className="h-3.5 w-3.5" />
-                    </a>
-                    <button
-                      type="button"
-                      onClick={() => downloadDocument(doc)}
-                      className="flex h-7 w-7 items-center justify-center rounded-md text-muted-foreground hover:bg-muted hover:text-foreground"
-                      title="Download"
-                    >
-                      <Download className="h-3.5 w-3.5" />
-                    </button>
-                    {!readOnly && (
-                      <>
-                        <button
-                          type="button"
-                          onClick={() => {
-                            setRenameDoc(doc);
-                            // Only the stem goes into the input; the
-                            // extension is rendered as a locked suffix
-                            // (see the rename Dialog below).
-                            setRenameName(splitFilename(doc.file_name).stem);
-                          }}
-                          className="flex h-7 w-7 items-center justify-center rounded-md text-muted-foreground hover:bg-muted hover:text-foreground"
-                          title="Rename"
-                        >
-                          <Pencil className="h-3.5 w-3.5" />
-                        </button>
-                        <button
-                          type="button"
-                          onClick={() => setDeleteDoc(doc)}
-                          className="flex h-7 w-7 items-center justify-center rounded-md text-muted-foreground hover:bg-muted hover:text-destructive"
-                          title="Delete"
-                        >
-                          <Trash2 className="h-3.5 w-3.5" />
-                        </button>
-                      </>
-                    )}
-                  </div>
-                </CardContent>
-              </Card>
-            );
-          })}
+          {visibleDocs.map((doc) => (
+            <DocumentCard
+              key={doc.id}
+              doc={doc}
+              viewUrl={getDocViewUrl(doc)}
+              selected={selectedIds.has(doc.id)}
+              selectionActive={selectedIds.size > 0}
+              readOnly={readOnly}
+              allTags={tags}
+              onOpen={() => viewDocument(doc)}
+              onToggleSelect={() => toggleSelected(doc.id)}
+              onDelete={() => setDeleteDoc(doc)}
+              onDescriptionCommit={(value) => saveDescription(doc.id, value)}
+              onToggleTag={(tagId) => toggleDocTag(doc.id, tagId)}
+              onCreateTag={createTag}
+            />
+          ))}
         </div>
         );
       })()}
 
-      {/* Preview dialog */}
-      <Dialog open={!!previewDoc} onOpenChange={() => setPreviewDoc(null)}>
-        <DialogContent className="max-w-3xl">
-          <DialogHeader>
-            <DialogTitle className="truncate">{previewDoc?.file_name}</DialogTitle>
-          </DialogHeader>
-          <div className="flex items-center justify-center min-h-[300px] max-h-[70vh] overflow-auto rounded-md bg-muted/30">
-            {previewDoc?.mime_type?.startsWith("image/") ? (
-              // eslint-disable-next-line @next/next/no-img-element
-              <img
-                src={getDocViewUrl(previewDoc)}
-                alt={previewDoc.file_name}
-                className="max-w-full max-h-[65vh] object-contain"
-              />
-            ) : previewDoc && isPreviewable(previewDoc) ? (
-              // Office files preview through their PDF rendition: the route
-              // serves that for ?view=true, so the iframe needs no special
-              // casing here beyond knowing one exists.
-              <iframe
-                src={getDocViewUrl(previewDoc)}
-                className="w-full h-[65vh] rounded-md"
-                title={previewDoc.file_name}
-              />
-            ) : previewDoc?.pdf_status === "pending" ? (
-              <div className="flex flex-col items-center gap-3 py-12">
-                {getFileIcon(previewDoc?.mime_type ?? null, "lg")}
-                <p className="text-sm text-muted-foreground">
-                  We&apos;re still getting this one ready to read.
-                </p>
-              </div>
-            ) : (
-              <div className="flex flex-col items-center gap-3 py-12">
-                {getFileIcon(previewDoc?.mime_type ?? null, "lg")}
-                <p className="text-sm text-muted-foreground">
-                  Preview not available for this file type
-                </p>
-                <Button variant="secondary" size="sm" onClick={() => previewDoc && downloadDocument(previewDoc)}>
-                  <Download className="mr-2 h-3.5 w-3.5" />
-                  Download to view
-                </Button>
-              </div>
-            )}
-          </div>
-          <DialogFooter>
-            <Button variant="secondary" onClick={() => setPreviewDoc(null)}>Close</Button>
-            {previewDoc && (
-              <Button
-                variant="secondary"
-                onClick={() =>
-                  window.open(getDocViewUrl(previewDoc), "_blank", "noopener,noreferrer")
-                }
-              >
-                <ExternalLink className="mr-2 h-3.5 w-3.5" />
-                Open in new tab
-              </Button>
-            )}
-            <Button onClick={() => previewDoc && downloadDocument(previewDoc)}>
-              <Download className="mr-2 h-3.5 w-3.5" />
-              Download
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
+      <DocumentLightbox
+        open={!!previewDoc}
+        url={previewDoc ? getDocViewUrl(previewDoc) : null}
+        mimeType={previewDoc?.mime_type ?? null}
+        pdfReady={previewDoc?.pdf_status === "complete"}
+        onClose={() => setPreviewDoc(null)}
+      />
 
-      {/* Rename dialog , extension is locked as a non-editable suffix
-          (same pattern as the +61 prefix on PhoneInput). The textbox only
-          carries the filename stem; the extension comes from the original
-          upload and rides along on save. */}
       <Dialog open={!!renameDoc} onOpenChange={() => setRenameDoc(null)}>
         <DialogContent>
           <DialogHeader>

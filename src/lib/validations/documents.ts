@@ -1,4 +1,5 @@
 import { z } from "zod";
+import type { TagColour } from "@/lib/document-tags-shared";
 
 export const renameDocumentSchema = z.object({
   name: z.string().min(1, "Name is required").max(255, "Name too long"),
@@ -49,4 +50,10 @@ export interface DocumentRecord {
    *  an image), which is different from one that has not been made yet. */
   pdf_status?: "none" | "pending" | "complete" | "failed" | "skipped";
   pdf_storage_key?: string | null;
+  /** What the manager says this document is, in their words. The uploaded
+   *  filename stays on original_filename: "scan_0043.pdf" identifies
+   *  nothing, and the description is what makes it findable later. */
+  description?: string | null;
+  /** Resolved on the documents page fetch, not stored on the row. */
+  tags?: Array<{ id: string; name: string; colour: TagColour }>;
 }

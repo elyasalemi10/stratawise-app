@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback } from "react";
+import { OCPageTitle } from "@/components/shared/page-title";
 import { useCachedData } from "@/lib/use-cached-data";
 import { InsuranceTimeline } from "./insurance-timeline";
 import { getInsurancePageData, type InsurancePageData } from "./data";
@@ -13,12 +14,15 @@ export function InsuranceClient({ ocId }: { ocId: string }) {
   if (loading || !data) return <InsuranceSkeleton />;
 
   return (
-    <InsuranceTimeline
-      ocId={ocId}
-      policies={data.policies}
-      readOnly={data.readOnly}
-      managementStartDate={data.managementStartDate}
-      fyStartMonth={data.fyStartMonth}
-    />
+    <div className="space-y-6">
+      <OCPageTitle page="Insurance" />
+      <InsuranceTimeline
+        ocId={ocId}
+        policies={data.policies}
+        readOnly={data.readOnly}
+        managementStartDate={data.managementStartDate}
+        fyStartMonth={data.fyStartMonth}
+      />
+    </div>
   );
 }

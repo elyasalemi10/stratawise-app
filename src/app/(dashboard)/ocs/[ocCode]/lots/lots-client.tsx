@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback } from "react";
+import { OCPageTitle } from "@/components/shared/page-title";
 import { useCachedData } from "@/lib/use-cached-data";
 import { LotsPageContent } from "./lots-page-content";
 import { getLotsPageData, type LotsPageData } from "./data";
@@ -25,12 +26,15 @@ export function LotsClient({ ocId }: { ocId: string }) {
   if (loading || !data) return <LotsSkeleton />;
 
   return (
-    <LotsPageContent
-      lots={data.lots}
-      ocId={ocId}
-      ocName={data.ocName}
-      isLotOwner={data.isLotOwner}
-      initialInviteStatus={data.inviteStatus}
-    />
+    <div className="space-y-6">
+      <OCPageTitle page="Lots" />
+      <LotsPageContent
+        lots={data.lots}
+        ocId={ocId}
+        ocName={data.ocName}
+        isLotOwner={data.isLotOwner}
+        initialInviteStatus={data.inviteStatus}
+      />
+    </div>
   );
 }

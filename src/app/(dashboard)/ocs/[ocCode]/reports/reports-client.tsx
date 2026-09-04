@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback } from "react";
+import { OCPageTitle } from "@/components/shared/page-title";
 import { useCachedData } from "@/lib/use-cached-data";
 import { ReportsContent } from "./reports-content";
 import { getReportsPageData, type ReportsPageData } from "./data";
@@ -19,14 +20,17 @@ export function ReportsClient({ ocId }: { ocId: string }) {
   if (loading || !data) return <ReportsSkeleton />;
 
   return (
-    <ReportsContent
-      ocId={ocId}
-      ocName={data.ocName}
-      ocAddress={data.ocAddress}
-      ocPlanNumber={data.ocPlanNumber}
-      logoUrl={data.logoUrl}
-      isLotOwner={data.isLotOwner}
-      lots={data.lots}
-    />
+    <div className="space-y-6">
+      <OCPageTitle page="Reports" />
+      <ReportsContent
+        ocId={ocId}
+        ocName={data.ocName}
+        ocAddress={data.ocAddress}
+        ocPlanNumber={data.ocPlanNumber}
+        logoUrl={data.logoUrl}
+        isLotOwner={data.isLotOwner}
+        lots={data.lots}
+      />
+    </div>
   );
 }

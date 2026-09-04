@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback } from "react";
+import { OCPageTitle } from "@/components/shared/page-title";
 import { useCachedData } from "@/lib/use-cached-data";
 import { MyLeviesContent } from "./my-levies-content";
 import { getMyLeviesPageData, type MyLeviesPageData } from "./data";
@@ -12,5 +13,10 @@ export function MyLeviesClient({ ocId }: { ocId: string }) {
 
   if (loading || !data) return <MyLeviesSkeleton />;
 
-  return <MyLeviesContent levies={data.levies} />;
+  return (
+    <div className="space-y-6">
+      <OCPageTitle page="Levies" />
+      <MyLeviesContent levies={data.levies} />
+    </div>
+  );
 }

@@ -1,4 +1,7 @@
+"use client";
+
 import { Plus } from "lucide-react";
+import { OCPageTitle } from "@/components/shared/page-title";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import {
@@ -28,6 +31,7 @@ const ROWS = 5;
 export function MeetingsSkeleton() {
   return (
     <div className="space-y-6">
+      <OCPageTitle page="Meetings" />
       <div className="flex items-center justify-between">
         <Skeleton className="h-4 w-20" />
         <Button size="sm" disabled>

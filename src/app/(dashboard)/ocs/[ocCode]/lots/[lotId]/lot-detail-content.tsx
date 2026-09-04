@@ -1,14 +1,13 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
-import { useSearchParams, useRouter } from "next/navigation";
+import { useSearchParams } from "next/navigation";
 import {
   FileSignature, UserPlus,
   MoreVertical, Mail, MessageSquare,
 } from "lucide-react";
 import { useSetBreadcrumb } from "@/lib/breadcrumb-context";
 import { Button } from "@/components/ui/button";
-import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { invalidateCached, refetchCached } from "@/lib/use-cached-data";
 import { replaceUrlIfOn } from "@/lib/replace-url";
@@ -139,7 +138,6 @@ export function LotDetailContent({
 }: LotDetailContentProps) {
   const ocCode = useOCCode();
   const searchParams = useSearchParams();
-  const router = useRouter();
   // The lot page reads from the client cache, so router.refresh() updated
   // nothing here: it re-runs the server component while this page renders
   // from the cache, so the change only appeared when the 30s poll came
@@ -229,8 +227,12 @@ export function LotDetailContent({
           Lot label, primary actions, and the balance / last-payment line.
           Owner snapshot + lot meta strip moved into the Overview tab so
           the header stays focused on identification + cross-tab actions. */}
-      <Card>
-        <CardContent className="pt-5 space-y-4">
+      {/* Not a card. This is the page's identity line, not one panel among
+          several, and boxing it made it compete with the real content
+          underneath. The internal divider stays: it is what separates the
+          label from the balance strip, and it was doing the work the
+          outline was getting credit for. */}
+      <div className="space-y-4">
           <div className="flex items-start justify-between gap-4">
             <div className="min-w-0">
               <h1 className="text-2xl font-semibold tracking-tight text-foreground">
@@ -344,8 +346,7 @@ export function LotDetailContent({
               )}
             </div>
           </div>
-        </CardContent>
-      </Card>
+      </div>
 
       {/* Tab strip , bare shadcn line tabs. No container card, no border-b:
           the active gold underline is the only visible separator. Tabs

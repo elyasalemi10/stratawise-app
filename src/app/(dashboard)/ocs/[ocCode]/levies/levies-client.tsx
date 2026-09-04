@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback } from "react";
+import { OCPageTitle } from "@/components/shared/page-title";
 import Link from "next/link";
 import { Plus } from "lucide-react";
 import { useCachedData } from "@/lib/use-cached-data";
@@ -20,6 +21,7 @@ export function LeviesClient({ ocId, ocCode }: { ocId: string; ocCode: string })
 
   return (
     <div className="space-y-4">
+      <OCPageTitle page="Levies" />
       {batches.length > 0 && (
         <div className="flex justify-end">
           <Link href={`/ocs/${ocCode}/generate`}>

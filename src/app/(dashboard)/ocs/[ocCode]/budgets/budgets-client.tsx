@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback } from "react";
+import { OCPageTitle } from "@/components/shared/page-title";
 import { useCachedData } from "@/lib/use-cached-data";
 import { BudgetPageContent } from "./budget-page-content";
 import { getBudgetsPageData, type BudgetsPageData } from "./data";
@@ -13,9 +14,12 @@ export function BudgetsClient({ ocId }: { ocId: string }) {
   if (loading || !data) return <BudgetsSkeleton />;
 
   return (
-    <BudgetPageContent
-      budgets={data.budgets}
-      financialYearStartMonth={data.financialYearStartMonth}
-    />
+    <div className="space-y-6">
+      <OCPageTitle page="Budgets" />
+      <BudgetPageContent
+        budgets={data.budgets}
+        financialYearStartMonth={data.financialYearStartMonth}
+      />
+    </div>
   );
 }

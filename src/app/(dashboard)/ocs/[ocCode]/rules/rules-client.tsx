@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback } from "react";
+import { OCPageTitle } from "@/components/shared/page-title";
 import { Scale } from "lucide-react";
 import { useCachedData } from "@/lib/use-cached-data";
 import { EmptyState } from "@/components/shared/empty-state";
@@ -31,11 +32,14 @@ export function RulesClient({ ocId, ocCode }: { ocId: string; ocCode: string }) 
   }
 
   return (
-    <RulesList
-      ocId={ocId}
-      ocCode={ocCode}
-      rules={data.rules}
-      sourceDocumentName={data.sourceDocumentName}
-    />
+    <div className="space-y-6">
+      <OCPageTitle page="Rules" />
+      <RulesList
+        ocId={ocId}
+        ocCode={ocCode}
+        rules={data.rules}
+        sourceDocumentName={data.sourceDocumentName}
+      />
+    </div>
   );
 }

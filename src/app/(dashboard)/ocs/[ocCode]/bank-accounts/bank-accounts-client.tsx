@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback } from "react";
+import { OCPageTitle } from "@/components/shared/page-title";
 import { useCachedData } from "@/lib/use-cached-data";
 import { BankAccountsList } from "./bank-accounts-list";
 import { NoBankAccountsEmpty } from "./empty-state";
@@ -16,7 +17,14 @@ export function BankAccountsClient({ ocId }: { ocId: string }) {
 
   if (loading || !data) return <BankAccountsSkeleton />;
 
-  if (data.accounts.length === 0) return <NoBankAccountsEmpty ocId={ocId} />;
-
-  return <BankAccountsList ocId={ocId} accounts={data.accounts} />;
+  return (
+    <div className="space-y-6">
+      <OCPageTitle page="Bank accounts" />
+      {data.accounts.length === 0 ? (
+        <NoBankAccountsEmpty ocId={ocId} />
+      ) : (
+        <BankAccountsList ocId={ocId} accounts={data.accounts} />
+      )}
+    </div>
+  );
 }

@@ -1,4 +1,7 @@
+"use client";
+
 import { ChevronDown, Plus } from "lucide-react";
+import { OCPageTitle } from "@/components/shared/page-title";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
@@ -13,6 +16,7 @@ import { Skeleton } from "@/components/ui/skeleton";
 export function RulesSkeleton() {
   return (
     <div className="space-y-4">
+      <OCPageTitle page="Rules" />
       <div className="flex flex-wrap items-center gap-3">
         <Input disabled placeholder="Search rules" className="w-64" />
         <Skeleton className="h-3 w-48" />

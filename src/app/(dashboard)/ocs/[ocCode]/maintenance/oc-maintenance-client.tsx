@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback } from "react";
+import { OCPageTitle } from "@/components/shared/page-title";
 import { useCachedData } from "@/lib/use-cached-data";
 import { MaintenanceContent } from "../../../maintenance/maintenance-content";
 import { getOCMaintenancePageData, type OCMaintenancePageData } from "./data";
@@ -24,11 +25,14 @@ export function OCMaintenanceClient({
   if (loading || !data) return <OCMaintenanceSkeleton />;
 
   return (
-    <MaintenanceContent
-      jobs={data.jobs}
-      ocs={[{ id: ocId, name: ocName, short_code: ocCode }]}
-      contractors={data.contractors}
-      fixedOcId={ocId}
-    />
+    <div className="space-y-6">
+      <OCPageTitle page="Maintenance" />
+      <MaintenanceContent
+        jobs={data.jobs}
+        ocs={[{ id: ocId, name: ocName, short_code: ocCode }]}
+        contractors={data.contractors}
+        fixedOcId={ocId}
+      />
+    </div>
   );
 }

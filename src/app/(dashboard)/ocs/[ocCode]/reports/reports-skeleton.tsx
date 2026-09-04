@@ -1,4 +1,7 @@
+"use client";
+
 import { Button } from "@/components/ui/button";
+import { OCPageTitle } from "@/components/shared/page-title";
 import { Card, CardContent } from "@/components/ui/card";
 import { Label } from "@/components/ui/label";
 import { Select, SelectTrigger, SelectValue } from "@/components/ui/select";
@@ -21,6 +24,7 @@ import { Select, SelectTrigger, SelectValue } from "@/components/ui/select";
 export function ReportsSkeleton() {
   return (
     <div className="space-y-6">
+      <OCPageTitle page="Reports" />
       <h1 className="text-lg font-semibold text-foreground">Reports</h1>
 
       <Card>

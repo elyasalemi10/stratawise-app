@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback } from "react";
+import { OCPageTitle } from "@/components/shared/page-title";
 import Link from "next/link";
 import { Plus } from "lucide-react";
 import { useCachedData } from "@/lib/use-cached-data";
@@ -31,6 +32,7 @@ export function FundsClient({ ocId, ocCode }: { ocId: string; ocCode: string }) 
 
   return (
     <div className="space-y-4">
+      <OCPageTitle page="Funds" />
       <div className="flex justify-end">
         <Link href={`/ocs/${ocCode}/funds/create`}>
           <Button size="sm">

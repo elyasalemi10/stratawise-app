@@ -1,4 +1,7 @@
+"use client";
+
 import { Plus, Search } from "lucide-react";
+import { OCPageTitle } from "@/components/shared/page-title";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { TableSkeleton } from "@/components/shared/table-skeleton";
@@ -15,6 +18,7 @@ const FILTERS = ["all", "approved", "draft"] as const;
 export function BudgetsSkeleton() {
   return (
     <div className="space-y-4">
+      <OCPageTitle page="Budgets" />
       <div className="flex flex-wrap items-center gap-3">
         <div className="relative flex-1 min-w-[16rem]">
           <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-muted-foreground" />

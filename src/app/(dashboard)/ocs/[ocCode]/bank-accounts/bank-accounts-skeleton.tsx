@@ -1,4 +1,7 @@
+"use client";
+
 import { ChevronLeft, ChevronRight, Landmark, Upload } from "lucide-react";
+import { OCPageTitle } from "@/components/shared/page-title";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import { TableSkeleton } from "@/components/shared/table-skeleton";
@@ -18,6 +21,7 @@ import { TableSkeleton } from "@/components/shared/table-skeleton";
 export function BankAccountsSkeleton() {
   return (
     <div className="space-y-4">
+      <OCPageTitle page="Bank accounts" />
       {/* Account tab strip. One tab is a reasonable guess for the common
           case; a second OC account slides in without moving anything else. */}
       <div className="flex w-full flex-wrap justify-start gap-0 border-b border-border">

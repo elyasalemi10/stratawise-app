@@ -2,6 +2,7 @@
 
 import { useState, useEffect, useCallback, useTransition } from "react";
 import { EmailLog } from "@/components/shared/email-log";
+import { TagSettings } from "@/components/shared/tag-settings";
 import { getOCEmailLog } from "@/lib/actions/email-log";
 import { Loader2, Trash2 } from "lucide-react";
 import { toast } from "sonner";
@@ -248,6 +249,18 @@ export function SettingsContent({
               the provider was reporting delivery back through the webhook,
               but there was nowhere to read any of it: "did the owner get
               their notice" could only be answered from Resend's dashboard. */}
+          {/* Tags are the firm's filing vocabulary, so they live with the
+              firm's other settings rather than per OC. Managers can also
+              create one from a document card, which is where filing
+              actually happens; this is for seeing the whole list and
+              clearing out duplicates. */}
+          <Card>
+            <CardContent className="pt-5">
+              <h3 className="mb-4 text-sm font-semibold text-foreground">Document tags</h3>
+              <TagSettings />
+            </CardContent>
+          </Card>
+
           <Card>
             <CardContent className="pt-5">
               <h3 className="mb-4 text-sm font-semibold text-foreground">Email log</h3>

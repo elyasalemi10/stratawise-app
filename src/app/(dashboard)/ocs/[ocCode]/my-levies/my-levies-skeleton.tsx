@@ -1,9 +1,13 @@
+"use client";
+
 import { Skeleton } from "@/components/ui/skeleton";
+import { OCPageTitle } from "@/components/shared/page-title";
 import { Card, CardContent } from "@/components/ui/card";
 
 export function MyLeviesSkeleton() {
   return (
     <div className="space-y-6">
+      <OCPageTitle page="Levies" />
       <h1 className="text-lg font-semibold text-foreground">My levies</h1>
       <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
         {["Total levied", "Total paid", "Outstanding"].map((label) => (

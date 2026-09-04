@@ -1,4 +1,7 @@
+"use client";
+
 import { Plus, Search } from "lucide-react";
+import { OCPageTitle } from "@/components/shared/page-title";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -13,6 +16,7 @@ import { TableSkeleton } from "@/components/shared/table-skeleton";
 export function OCMaintenanceSkeleton() {
   return (
     <div className="space-y-6">
+      <OCPageTitle page="Maintenance" />
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div className="flex items-center gap-3">
           <Skeleton className="h-3.5 w-28" />

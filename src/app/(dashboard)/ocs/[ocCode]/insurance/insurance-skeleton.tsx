@@ -1,4 +1,7 @@
+"use client";
+
 import { Plus, ShieldCheck, CalendarIcon, Wallet, FileCheck } from "lucide-react";
+import { OCPageTitle } from "@/components/shared/page-title";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -44,6 +47,7 @@ const BARS = [
 export function InsuranceSkeleton() {
   return (
     <div className="space-y-6">
+      <OCPageTitle page="Insurance" />
       <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
         {SUMMARY.map(({ label, icon: Icon }) => (
           <Card key={label}>

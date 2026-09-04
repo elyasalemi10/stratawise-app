@@ -5,6 +5,7 @@ import { useCachedData } from "@/lib/use-cached-data";
 import { DocumentManager } from "@/components/shared/document-manager";
 import { getDocumentsPageData, type DocumentsPageData } from "./data";
 import { DocumentsSkeleton } from "./documents-skeleton";
+import { OCPageTitle } from "@/components/shared/page-title";
 
 // Client half of the documents library. Returning to this page paints the
 // previous document list, INCLUDING an empty one, straight out of the tab
@@ -20,6 +21,7 @@ export function DocumentsClient({ ocId }: { ocId: string }) {
 
   return (
     <div className="space-y-6">
+      <OCPageTitle page="Documents" />
       <DocumentManager
         ocId={ocId}
         initialDocuments={data.documents as never}

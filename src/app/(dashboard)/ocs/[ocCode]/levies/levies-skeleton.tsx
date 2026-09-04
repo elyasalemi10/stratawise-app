@@ -1,4 +1,7 @@
+"use client";
+
 import { Plus } from "lucide-react";
+import { OCPageTitle } from "@/components/shared/page-title";
 import { Button } from "@/components/ui/button";
 import { TableSkeleton } from "@/components/shared/table-skeleton";
 
@@ -8,6 +11,7 @@ import { TableSkeleton } from "@/components/shared/table-skeleton";
 export function LeviesSkeleton() {
   return (
     <div className="space-y-4">
+      <OCPageTitle page="Levies" />
       <div className="flex justify-end">
         <Button size="sm" disabled>
           <Plus className="mr-2 h-3.5 w-3.5" />
