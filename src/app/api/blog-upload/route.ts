@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { requireRole } from "@/lib/auth";
 import { uploadObject } from "@/lib/storage/r2";
+import { downscaleImage } from "@/lib/images/downscale";
 
 // Blog image upload (super-admin only). Stores under the PUBLIC bucket's
 // blog/ prefix so the marketing site can render the image by URL. Returns
@@ -27,8 +28,10 @@ export async function POST(request: NextRequest) {
 
   const ext = (file.name.split(".").pop() ?? "png").toLowerCase().replace(/[^a-z0-9]/g, "");
   const key = `blog/${crypto.randomUUID()}.${ext}`;
-  const buffer = Buffer.from(await file.arrayBuffer());
-  const { publicUrl } = await uploadObject(key, buffer, file.type);
+  // Article images are rendered at content width and are the heaviest
+  // thing on a public page, where the download is a first-visit cost.
+  const shrunk = await downscaleImage(Buffer.from(await file.arrayBuffer()), file.type);
+  const { publicUrl } = await uploadObject(key, shrunk.bytes, shrunk.contentType);
 
   return NextResponse.json({ url: publicUrl });
 }

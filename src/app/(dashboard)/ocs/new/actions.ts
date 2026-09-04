@@ -8,6 +8,7 @@ import { parsePlanPdf, type ParsedPlan } from "@/lib/parse-plan";
 import { parseRulesPdf, type ParsedRulesDocument } from "@/lib/parse-rules";
 import { parseInsurancePdf, type ParsedInsurancePolicy } from "@/lib/parse-insurance";
 import { uploadObject, fetchObject, deleteObject, publicUrlFor } from "@/lib/storage/r2";
+import { downscaleImage } from "@/lib/images/downscale";
 
 // ─── Types stored on draft_json ─────────────────────────────────
 //
@@ -475,10 +476,16 @@ export async function uploadOcPhoto(draftId: string, formData: FormData) {
     const key = `${baseKey}${ext}`;
     // Thumbnail is always JPEG (compressed from canvas client-side).
     const thumbKey = `${baseKey}-thumb.jpg`;
-    const buf = Buffer.from(await file.arrayBuffer());
+    const uploaded = Buffer.from(await file.arrayBuffer());
+    // The full-size photo is what the OC page shows at card width. A phone
+    // camera hands us four to eight megabytes for that; shrink it before
+    // every viewer pays to download it. The client-made thumbnail is
+    // separate and already small.
+    const shrunk = await downscaleImage(uploaded, file.type);
+    const buf = shrunk.bytes;
 
     try {
-      await uploadObject(key, buf, file.type);
+      await uploadObject(key, buf, shrunk.contentType);
     } catch (err) {
       console.error("uploadOcPhoto: R2 upload failed", err);
       return { error: "Couldn't save your photo , please try again." };

@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getAuthUserId } from "@/lib/auth";import { uploadObject } from "@/lib/storage/r2";
+import { downscaleImage } from "@/lib/images/downscale";
 
 const MAX_SIZE = 2 * 1024 * 1024; // 2MB
 const ALLOWED_TYPES = ["image/png", "image/jpeg", "image/svg+xml", "image/webp"];
@@ -34,8 +35,11 @@ export async function POST(request: NextRequest) {
   const ext = file.name.split(".").pop() ?? "png";
   const key = `logos/${userId}-${Date.now()}.${ext}`;
 
-  const buffer = Buffer.from(await file.arrayBuffer());
-  const { publicUrl } = await uploadObject(key, buffer, file.type);
+  // Logos and signatures come straight off a designer's export or a phone
+  // photo and are rendered at a couple of hundred pixels. SVGs pass through
+  // untouched, being vector.
+  const shrunk = await downscaleImage(Buffer.from(await file.arrayBuffer()), file.type);
+  const { publicUrl } = await uploadObject(key, shrunk.bytes, shrunk.contentType);
 
   return NextResponse.json({ url: publicUrl });
 }

@@ -5,6 +5,7 @@ import { ALLOWED_DOCUMENT_TYPES, MAX_DOCUMENT_SIZE } from "@/lib/validations/doc
 import { uploadObject, publicUrlFor } from "@/lib/storage/r2";
 import { isOcrable } from "@/lib/ocr/ingest";
 import { needsPdfConversion } from "@/lib/ocr/convert-to-pdf";
+import { downscaleImage } from "@/lib/images/downscale";
 
 const UUID_REGEX = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
@@ -78,8 +79,16 @@ export async function POST(request: NextRequest) {
   const uuid = crypto.randomUUID();
   const folder = lotId || "oc";
   const key = `documents/${ocId}/${folder}/${uuid}-${safeName}`;
-  const buffer = Buffer.from(await file.arrayBuffer());
-  await uploadObject(key, buffer, file.type);
+  const original = Buffer.from(await file.arrayBuffer());
+
+  // A phone photo is twelve megapixels and several megabytes, and nothing in
+  // this app renders an image wider than about a thousand pixels. Shrink it
+  // before it costs every viewer the download. Degrades to the original on
+  // any failure, so an upload never fails over a resize.
+  const image = await downscaleImage(original, file.type);
+  const buffer = image.bytes;
+  const storedType = image.contentType;
+  await uploadObject(key, buffer, storedType);
 
   // The "self-OCR" categories (settlement parse, insurance parse,
   // plan-of-subdivision + OC-rules + certificate_of_currency) used to
@@ -108,8 +117,11 @@ export async function POST(request: NextRequest) {
       category,
       file_name: safeName,
       file_path: key,
-      file_size: file.size,
-      mime_type: file.type,
+      // The size and type we STORED, not what was handed to us: a
+      // downscaled photo is a different length and can be a different
+      // format, and the download route reads both back.
+      file_size: buffer.byteLength,
+      mime_type: storedType,
       is_confidential: false,
       uploaded_by: profile.id,
       // Self-OCR categories carry their own status lifecycle (the inline

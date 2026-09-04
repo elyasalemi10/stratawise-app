@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { requireCompanyRole } from "@/lib/auth";
 import { uploadObject } from "@/lib/storage/r2";
+import { downscaleImage } from "@/lib/images/downscale";
 
 // Uploads a contractor's public-liability certificate (or other doc) to R2
 // under the firm's confidential prefix and returns the object KEY. The key is
@@ -40,8 +41,10 @@ export async function POST(request: NextRequest) {
 
   const safeName = sanitiseFileName(file.name);
   const key = `contractors/${profile.management_company_id}/${crypto.randomUUID()}-${safeName}`;
-  const buffer = Buffer.from(await file.arrayBuffer());
-  await uploadObject(key, buffer, file.type);
+  // A photographed certificate or invoice is a phone photo; shrink it
+  // before it costs everyone who opens the contractor the download.
+  const shrunk = await downscaleImage(Buffer.from(await file.arrayBuffer()), file.type);
+  await uploadObject(key, shrunk.bytes, shrunk.contentType);
 
   return NextResponse.json({ key, file_name: safeName });
 }
