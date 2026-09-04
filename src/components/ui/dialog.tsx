@@ -28,9 +28,10 @@ function DialogOverlay({
   className,
   ...props
 }: DialogPrimitive.Backdrop.Props) {
-  const isTop = useIsTopScrim();
+  const { isTop, ref: scrimRef } = useIsTopScrim();
   return (
     <DialogPrimitive.Backdrop
+      ref={scrimRef}
       data-slot="dialog-overlay"
       className={cn(
         // White wash, no blur. Dims the underlying surface so the dialog

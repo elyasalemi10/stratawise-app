@@ -49,7 +49,6 @@ export function BudgetsSkeleton() {
           { label: "Status", pill: true },
           { label: "Description", cell: "w-56" },
           { label: "Admin", cell: "w-16", align: "right" },
-          { label: "Maintenance", cell: "w-16", align: "right" },
           { label: "Other", cell: "w-16", align: "right" },
         ]}
       />

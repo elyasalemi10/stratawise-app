@@ -29,43 +29,60 @@ export const AUSTRALIAN_BANKS: BankOption[] = [
   { id: "heritage", name: "Heritage Bank", logo: "/bank-logos/heritage.webp" },
 ];
 
-// A BSB already says which bank the account is at , the first two digits are
-// the institution. So asking a manager to pick the bank from a list was
-// asking for a fact we hold, and one they could get wrong.
+// A BSB already says which bank the account is at, so asking a manager to
+// pick one from a list was asking for a fact we hold and one they could get
+// wrong.
 //
-// The mapping is by BSB prefix as published by AusPayNet. Only the banks we
-// carry a logo for are listed; anything else resolves to null and the UI
-// falls back to a generic account icon, which is fine , the account still
-// works, it just has no badge.
+// EXACT THREE-DIGIT PREFIXES ONLY. This used to fall back to the first TWO
+// digits when three did not match, which is unsound: BSBs are allocated at
+// three-digit granularity and several two-digit ranges are split between
+// institutions, so the fallback confidently mislabelled accounts. It also
+// carried entries keyed "63x" and "63y", which contain letters and therefore
+// could never match anything, next to a "63" entry that shadowed the real
+// 633 allocation.
+//
+// That mattered more than a wrong logo, because add-bank-account-drawer
+// STORES this result as bank_accounts.bank_name. A guess became a record.
+//
+// So: no guessing. An unrecognised prefix returns null, the UI shows no
+// badge, and the account works exactly the same. A missing logo is honest;
+// the wrong bank's logo is not. Add a prefix here only when it has been
+// checked against the AusPayNet BSB directory.
 const BSB_PREFIX_TO_BANK: Record<string, string> = {
-  "01": "anz",
-  "03": "westpac",
-  "06": "cba",
-  "08": "nab",
-  "11": "stgeorge",
-  "12": "bankwest",
-  "18": "macquarie",
-  "19": "bankofmelb",
-  "63": "bankofmelb",
-  "73": "westpac",
-  "76": "banksa",
-  "63x": "bankofmelb",
-  "92": "suncorp",
-  "93": "bankofqld",
-  "63y": "bendigo",
+  // ANZ
+  "012": "anz", "013": "anz", "014": "anz", "015": "anz", "016": "anz",
+  "017": "anz", "018": "anz", "019": "anz",
+  // Westpac
+  "032": "westpac", "033": "westpac", "034": "westpac", "035": "westpac",
+  "036": "westpac", "037": "westpac", "038": "westpac", "039": "westpac",
+  "732": "westpac", "733": "westpac", "734": "westpac", "735": "westpac",
+  "736": "westpac", "737": "westpac", "738": "westpac",
+  // Commonwealth Bank
+  "062": "cba", "063": "cba", "064": "cba", "065": "cba", "066": "cba",
+  "067": "cba", "068": "cba",
+  // NAB
+  "082": "nab", "083": "nab", "084": "nab", "085": "nab", "086": "nab",
+  "087": "nab", "088": "nab",
+  // St.George / BankSA / Bank of Melbourne (Westpac group, own prefixes)
+  "112": "stgeorge", "114": "stgeorge",
+  "105": "banksa",
+  "193": "bankofmelb",
+  // Bendigo
   "633": "bendigo",
+  // Macquarie
+  "182": "macquarie", "183": "macquarie",
+  // Others, single allocations
   "923": "ing",
   "942": "amp",
   "944": "me",
-  "512": "hsbc",
 };
 
-/** Resolve the bank from a BSB, if we recognise it. */
+/** Resolve the bank from a BSB, if we recognise the exact prefix. Returns
+ *  null rather than guessing , see the note above. */
 export function bankFromBsb(bsb: string | null | undefined): BankOption | null {
   const digits = (bsb ?? "").replace(/\D/g, "");
-  if (digits.length < 2) return null;
-  const id =
-    BSB_PREFIX_TO_BANK[digits.slice(0, 3)] ?? BSB_PREFIX_TO_BANK[digits.slice(0, 2)];
+  if (digits.length < 3) return null;
+  const id = BSB_PREFIX_TO_BANK[digits.slice(0, 3)];
   if (!id) return null;
   return AUSTRALIAN_BANKS.find((b) => b.id === id) ?? null;
 }

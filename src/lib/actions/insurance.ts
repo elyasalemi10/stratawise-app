@@ -2,48 +2,13 @@
 
 import { requireCompanyRole, requireOCAccess } from "@/lib/auth";
 import { createServerClient } from "@/lib/supabase";
+import type { InsurancePolicy, PaymentFrequency } from "@/lib/insurance-shared";
+
+// Re-exported as TYPES only. A "use server" file may export nothing but
+// async functions, and a value export here is a runtime error on first
+// render. The values live in insurance-shared.ts.
+export type { InsurancePolicy, PaymentFrequency };
 import { revalidatePath } from "next/cache";
-
-export type PaymentFrequency = "annual" | "semi_annual" | "quarterly" | "monthly";
-
-/** Never render the raw value: these are stored keys. */
-export const PAYMENT_FREQUENCY_LABEL: Record<PaymentFrequency, string> = {
-  annual: "Annually",
-  semi_annual: "Every six months",
-  quarterly: "Quarterly",
-  monthly: "Monthly",
-};
-
-export const PAYMENT_FREQUENCY_OPTIONS = (
-  Object.keys(PAYMENT_FREQUENCY_LABEL) as PaymentFrequency[]
-).map((value) => ({ value, label: PAYMENT_FREQUENCY_LABEL[value] }));
-
-export interface InsurancePolicy {
-  id: string;
-  oc_id: string;
-  policy_type: string;
-  provider: string;
-  /** The broker who placed it, when one did. Usually who the manager
-   *  actually rings, and not the same as the underwriter. */
-  broker: string | null;
-  policy_number: string | null;
-  sum_insured: number | null;
-  premium: number | null;
-  excess: number | null;
-  /** Annual or by instalment. Changes what the OC budgets each period, and
-   *  a missed instalment can void cover. */
-  payment_frequency: PaymentFrequency;
-  start_date: string;
-  end_date: string;
-  document_url: string | null;
-  /** The certificate of currency: the document owners, lenders and
-   *  conveyancers actually ask for. Separate from the policy schedule
-   *  because it is reissued on its own cycle. */
-  certificate_of_currency_document_id: string | null;
-  certificate_of_currency_expiry: string | null;
-  status: string;
-  created_at: string;
-}
 
 export async function getInsurancePolicies(ocId: string): Promise<InsurancePolicy[]> {
   await requireOCAccess(ocId);

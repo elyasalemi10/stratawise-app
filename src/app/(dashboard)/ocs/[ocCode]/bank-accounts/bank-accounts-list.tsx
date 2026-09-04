@@ -145,11 +145,12 @@ export function BankAccountsList({
                   value={a.id}
                   className="relative h-11 min-w-[6.5rem] rounded-none border-0 px-4 text-sm font-medium text-muted-foreground bg-transparent transition-colors hover:text-foreground hover:bg-transparent data-active:bg-transparent data-active:text-foreground data-active:after:bg-[color:var(--brand-gold)] data-active:after:rounded-full inline-flex items-center gap-2"
                 >
-                  {logo ? (
+                  {/* No badge when the BSB is not one we recognise. A
+                      placeholder that looks like a bank logo, on a row where
+                      we do not know the bank, is worse than nothing. */}
+                  {logo && (
                     // eslint-disable-next-line @next/next/no-img-element
                     <img src={logo} alt="" width={18} height={18} className="rounded shrink-0" />
-                  ) : (
-                    <Landmark className="h-4 w-4 text-muted-foreground shrink-0" />
                   )}
                   {a.account_name || a.bank_name || "Bank account"}
                 </TabsTrigger>

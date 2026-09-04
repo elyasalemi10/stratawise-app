@@ -25,9 +25,10 @@ function SheetPortal({ ...props }: SheetPrimitive.Portal.Props) {
 }
 
 function SheetOverlay({ className, ...props }: SheetPrimitive.Backdrop.Props) {
-  const isTop = useIsTopScrim();
+  const { isTop, ref: scrimRef } = useIsTopScrim();
   return (
     <SheetPrimitive.Backdrop
+      ref={scrimRef}
       data-slot="sheet-overlay"
       className={cn(
         // White wash, no blur. 220ms fade with smooth ease-out , slow enough

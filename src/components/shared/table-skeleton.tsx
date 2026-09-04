@@ -60,7 +60,7 @@ export function TableSkeleton({
                 // <td> takes it out of the table layout algorithm, so a run
                 // of right-aligned columns stops claiming its own width and
                 // the shimmers pile up in the first one. Three money columns
-                // in a row (Operating / Maintenance / Other) rendered as
+                // in a row (Operating / Other / total) rendered as
                 // three pills stacked in Operating.
                 <TableCell
                   key={c.label}

@@ -21,7 +21,6 @@ export function LeviesSkeleton() {
           { label: "Type", cell: "w-16" },
           { label: "Financial Year", cell: "w-28" },
           { label: "Operating", cell: "w-16", align: "right" },
-          { label: "Maintenance", cell: "w-16", align: "right" },
           { label: "Other", cell: "w-12", align: "right" },
           { label: "Due date", cell: "w-24" },
           { label: "Status", pill: true },

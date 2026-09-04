@@ -1,4 +1,4 @@
-import { ChevronLeft, ChevronRight, Landmark, Trash2, Upload } from "lucide-react";
+import { ChevronLeft, ChevronRight, Landmark, Upload } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import { TableSkeleton } from "@/components/shared/table-skeleton";
@@ -29,10 +29,6 @@ export function BankAccountsSkeleton() {
 
       <div className="space-y-5 rounded-md border border-border bg-card p-5">
         <div className="flex items-center justify-end gap-2">
-          <Button variant="secondary" disabled className="text-destructive">
-            <Trash2 className="mr-1.5 h-3.5 w-3.5" />
-            Delete account
-          </Button>
           <Button disabled>
             <Upload className="mr-1.5 h-3.5 w-3.5" />
             Import CSV

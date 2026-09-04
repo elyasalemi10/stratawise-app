@@ -21,12 +21,14 @@ import { uploadAndParseInsuranceCoc, attachDocumentToPolicy } from "./parse-coc"
 import {
   PAYMENT_FREQUENCY_LABEL,
   PAYMENT_FREQUENCY_OPTIONS,
+  type InsurancePolicy,
+  type PaymentFrequency,
+} from "@/lib/insurance-shared";
+import {
   createInsurancePolicy,
   deleteInsurancePolicy,
   getInsurancePolicies,
   updateInsurancePolicy,
-  type InsurancePolicy,
-  type PaymentFrequency,
 } from "@/lib/actions/insurance";
 
 const formatCurrency = (n: number) =>

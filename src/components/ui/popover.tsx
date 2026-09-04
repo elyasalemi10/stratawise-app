@@ -29,9 +29,10 @@ function PopoverTrigger({ ...props }: PopoverPrimitive.Trigger.Props) {
 // Rendered inside the portal and behind the showBackdrop check, it mounts
 // only when there is a scrim to be top OF.
 function PopoverBackdrop() {
-  const isTop = useIsTopScrim();
+  const { isTop, ref: scrimRef } = useIsTopScrim();
   return (
     <PopoverPrimitive.Backdrop
+      ref={scrimRef}
       data-slot="popover-backdrop"
       className={cn(
         "fixed inset-0 z-40 duration-100 data-open:animate-in data-open:fade-in-0 data-closed:animate-out data-closed:fade-out-0",
