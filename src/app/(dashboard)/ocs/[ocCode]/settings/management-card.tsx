@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { refetchCached } from "@/lib/use-cached-data";
 import { useRouter } from "next/navigation";
 import { Loader2, Repeat, Building2 } from "lucide-react";
 import { toast } from "sonner";
@@ -90,7 +91,7 @@ export function ManagementCard({
     }
     toast.success("Management transferred.");
     setOpen(false);
-    router.refresh();
+    refetchCached("oc-settings:");
   }
 
   return (

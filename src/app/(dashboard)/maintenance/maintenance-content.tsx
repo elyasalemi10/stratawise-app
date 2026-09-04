@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useState, useTransition } from "react";
-import { useRouter } from "next/navigation";
+import { refetchCached } from "@/lib/use-cached-data";
 import { toast } from "sonner";
 import {
   Loader2, Plus, Search, Trash2, Upload, FileText,
@@ -81,7 +81,6 @@ export function MaintenanceContent({
   // OC combobox is hidden.
   fixedOcId?: string;
 }) {
-  const router = useRouter();
   const [query, setQuery] = useState("");
   const [drawerOpen, setDrawerOpen] = useState(false);
   const [editing, setEditing] = useState<RecurringJobRecord | null>(null);
@@ -215,7 +214,7 @@ export function MaintenanceContent({
         selectContractorId={selectContractorId}
         onContractorSelected={() => setSelectContractorId(null)}
         onRequestCreateContractor={openContractorDrawer}
-        onSaved={() => { setDrawerOpen(false); router.refresh(); }}
+        onSaved={() => { setDrawerOpen(false); refetchCached("maintenance:"); }}
       />
 
       {/* Lifted to the page level so it stacks above the job drawer and its

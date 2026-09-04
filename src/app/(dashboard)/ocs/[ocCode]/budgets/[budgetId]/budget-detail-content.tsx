@@ -21,6 +21,7 @@ import { AccountPicker } from "@/components/shared/account-picker";
 import {
   Table, TableBody, TableCell, TableFooter, TableHead, TableHeader, TableRow,
 } from "@/components/ui/table";
+import { invalidateCached } from "@/lib/use-cached-data";
 import { approveBudget, deleteBudget, updateBudgetItems, type BudgetWithItems } from "@/lib/actions/budget";
 import type { CoaAccount } from "@/lib/chart-of-accounts";
 import type { LotForFund } from "@/lib/actions/funds";
@@ -48,7 +49,7 @@ interface DraftItem {
 }
 
 export function BudgetDetailContent({
-  ocCode, ocId, budget, accounts, lots,
+  ocCode, ocId, budget, accounts, lots, onBudgetChange, mutate,
 }: {
   ocCode: string;
   ocId: string;
@@ -56,6 +57,13 @@ export function BudgetDetailContent({
   accounts: CoaAccount[];
   /** Every lot in the OC, for the per-line "Exclude lots" picker. */
   lots: LotForFund[];
+  /** Write a change straight through the client cache, so the screen
+   *  updates on the frame the server confirms it rather than waiting on a
+   *  refresh that this page does not even read. */
+  onBudgetChange: (patch: Partial<BudgetWithItems>) => void;
+  /** Suppresses revalidation while a write is in flight, so an overlapping
+   *  poll cannot put the pre-write value back. */
+  mutate: <R>(write: () => Promise<R>) => Promise<R>;
 }) {
   const router = useRouter();
   const isDraft = budget.status === "draft";
@@ -179,7 +187,7 @@ export function BudgetDetailContent({
       toast.error("Add at least one item with an amount.");
       return;
     }
-    const res = await updateBudgetItems(budget.id, payload);
+    const res = await mutate(() => updateBudgetItems(budget.id, payload));
     setSavePending(false);
     if (res.error) {
       toast.error(res.error);
@@ -190,7 +198,12 @@ export function BudgetDetailContent({
     // restores back to here (not back to the original server load).
     setSavedItems(items.map((it) => ({ ...it })));
     setEditing(false);
-    router.refresh();
+    // The total is on the budgets list and in this page's header, and both
+    // read the cache, so write the new one through rather than refreshing.
+    onBudgetChange({
+      total_amount: items.reduce((sum, it) => sum + (parseFloat(it.amount) || 0), 0),
+    });
+    invalidateCached(`budgets:${ocId}`);
   }
 
   function handleCancelEdit() {
@@ -204,15 +217,26 @@ export function BudgetDetailContent({
 
   async function handleApprove() {
     setApproving(true);
-    const res = await approveBudget(budget.oc_id, budget.id, approveNote);
+    const res = await mutate(() => approveBudget(budget.oc_id, budget.id, approveNote));
     if (res.error) {
       setApproving(false);
       toast.error(res.error);
       return;
     }
+    // The screen changes here, not after a round trip. Everything approving
+    // touches is known locally: the status, the timestamp, and the note the
+    // manager just typed.
+    onBudgetChange({
+      status: "approved",
+      approved_at: new Date().toISOString(),
+      approval_note: approveNote || null,
+    });
+    // The budgets list sorts approved first and badges the status, so it is
+    // wrong the moment this succeeds.
+    invalidateCached(`budgets:${ocId}`);
+    setApproving(false);
     toast.success("Budget approved");
     setApproveOpen(false);
-    router.refresh();
   }
 
   async function handleDelete() {

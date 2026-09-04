@@ -1,6 +1,7 @@
 "use client";
 
-import { useState, useTransition } from "react";
+import { useCallback, useState, useTransition } from "react";
+import { invalidateCached, refetchCached } from "@/lib/use-cached-data";
 import { useRouter } from "next/navigation";
 import { toast } from "sonner";
 import {
@@ -58,6 +59,13 @@ export function MeetingDetailContent({
   readOnly: boolean;
 }) {
   const router = useRouter();
+  // See the note in lot-detail-content: router.refresh() does not update a
+  // page that renders from the client cache.
+  const refreshMeeting = useCallback(() => {
+    refetchCached("meeting:");
+    invalidateCached("meetings:");
+  }, []);
+
   const [sendOpen, setSendOpen] = useState(false);
   const [cancelOpen, setCancelOpen] = useState(false);
   const isOnline = meeting.meeting_format === "online";
@@ -164,7 +172,7 @@ export function MeetingDetailContent({
         onClose={() => setSendOpen(false)}
         meetingId={meeting.id}
         owners={owners}
-        onSent={() => { setSendOpen(false); router.refresh(); }}
+        onSent={() => { setSendOpen(false); refreshMeeting(); }}
       />
 
       <AlertDialog open={cancelOpen} onOpenChange={setCancelOpen}>
@@ -177,7 +185,7 @@ export function MeetingDetailContent({
           </AlertDialogHeader>
           <AlertDialogFooter>
             <AlertDialogCancel>Keep meeting</AlertDialogCancel>
-            <CancelConfirm meetingId={meeting.id} onDone={() => { setCancelOpen(false); router.refresh(); }} />
+            <CancelConfirm meetingId={meeting.id} onDone={() => { setCancelOpen(false); refreshMeeting(); }} />
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>

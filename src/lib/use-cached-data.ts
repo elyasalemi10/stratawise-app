@@ -109,6 +109,63 @@ export function clearCachedData(): void {
   inFlight.clear();
 }
 
+// ─── Refetching from outside the component that owns the data ─────────
+
+/** The live fetcher for each mounted key, so a caller that is nowhere near
+ *  the page can re-run it. */
+const fetchers = new Map<string, () => Promise<unknown>>();
+/** Mounted hook instances, so a write from elsewhere reaches their state and
+ *  not just the Map behind them. */
+const watchers = new Map<string, Set<(value: unknown) => void>>();
+
+function notifyKey(key: string, value: unknown): void {
+  const set = watchers.get(key);
+  if (!set) return;
+  for (const fn of set) fn(value);
+}
+
+/**
+ * Re-fetch every cached key starting with `prefix` and push the result into
+ * whatever is on screen.
+ *
+ * This is the answer to `router.refresh()` after a mutation. On a page served
+ * by this hook a router refresh does nothing visible at all: it re-runs the
+ * server component, but the page renders from this cache, so the old value
+ * stays up until the 30s poll comes round. It also drops the Router Cache for
+ * every other route on the way past. Approving a budget was doing exactly
+ * that, which is why the badge kept saying Draft.
+ *
+ * Prefer writing the change through with `setData` when you already know the
+ * new value: that lands on the next frame with no round trip at all. Reach
+ * for this when the server computed something you cannot derive locally
+ * (totals, statuses, generated references), or when the mutation changes a
+ * page other than the one you are on.
+ *
+ * Silent by design: nobody asked for a bar, they asked for their change to
+ * show up.
+ */
+export function refetchCached(prefix: string): void {
+  for (const key of [...cache.keys()]) {
+    if (!key.startsWith(prefix)) continue;
+    const fetcher = fetchers.get(key);
+    if (!fetcher) {
+      // Nothing mounted can re-run it, so the honest thing is to drop it and
+      // let the next visit fetch rather than leave a stale value in place.
+      cache.delete(key);
+      continue;
+    }
+    void (async () => {
+      try {
+        const next = await fetcher();
+        writeCache(key, next);
+        notifyKey(key, next);
+      } catch (err) {
+        console.error(`[useCachedData] refetch of "${key}" failed:`, err);
+      }
+    })();
+  }
+}
+
 /** Routes the router-based fallback must NOT refresh on arrival.
  *
  *  Two kinds qualify, and both want the same treatment:
@@ -228,6 +285,27 @@ export function useCachedData<T>(
     fetcherRef.current = fetcher;
     keyRef.current = key;
   });
+
+  // Publish this key's fetcher, and listen for writes made by refetchCached
+  // from somewhere else in the tree. Without the listener a refetch would
+  // update the Map and leave the screen showing the old value, which is the
+  // bug it exists to fix.
+  useEffect(() => {
+    fetchers.set(key, () => fetcherRef.current());
+    const onExternal = (value: unknown) => {
+      if (mountedRef.current) setDataState(value as T);
+    };
+    const set = watchers.get(key) ?? new Set();
+    set.add(onExternal);
+    watchers.set(key, set);
+    return () => {
+      set.delete(onExternal);
+      if (set.size === 0) {
+        watchers.delete(key);
+        fetchers.delete(key);
+      }
+    };
+  }, [key]);
 
   useEffect(() => {
     mountedRef.current = true;

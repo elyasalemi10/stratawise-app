@@ -1,6 +1,7 @@
 "use client";
 
 import * as React from "react";
+import { refetchCached } from "@/lib/use-cached-data";
 import { useRouter } from "next/navigation";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -172,7 +173,7 @@ export function LotCommunicationsTab(props: Props) {
           ownerName={ownerName}
           initialSenderAddress={initialSenderEmailAddress ?? null}
           onClose={() => setOpen(null)}
-          onSaved={() => router.refresh()}
+          onSaved={() => refetchCached("lot:")}
         />
       )}
       {open === "sms" && (
@@ -182,7 +183,7 @@ export function LotCommunicationsTab(props: Props) {
           ownerPhone={ownerPhone}
           initialSenderId={initialSmsSenderId ?? null}
           onClose={() => setOpen(null)}
-          onSaved={() => router.refresh()}
+          onSaved={() => refetchCached("lot:")}
         />
       )}
       {open === "call" && (
@@ -191,7 +192,7 @@ export function LotCommunicationsTab(props: Props) {
           lotId={lotId}
           ownerPhone={ownerPhone}
           onClose={() => setOpen(null)}
-          onSaved={() => router.refresh()}
+          onSaved={() => refetchCached("lot:")}
         />
       )}
 

@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import { refetchCached } from "@/lib/use-cached-data";
 import { useRouter } from "next/navigation";
 import { toast } from "sonner";
 import { ChevronDown, ExternalLink, FileText, Loader2, Pencil, Plus, Scale, Trash2, X } from "lucide-react";
@@ -222,7 +223,7 @@ export function RulesList({ ocId, ocCode, rules, sourceDocumentName }: Props) {
     }
     toast.success("Rule added.");
     setCreateOpen(false);
-    router.refresh();
+    refetchCached("rules:");
   }
 
   function openEdit(rule: OCRule, e?: React.MouseEvent) {
@@ -255,7 +256,7 @@ export function RulesList({ ocId, ocCode, rules, sourceDocumentName }: Props) {
     }
     toast.success("Rule updated.");
     setEditRule(null);
-    router.refresh();
+    refetchCached("rules:");
   }
 
   function openDelete(rule: OCRule, e?: React.MouseEvent) {
@@ -274,7 +275,7 @@ export function RulesList({ ocId, ocCode, rules, sourceDocumentName }: Props) {
     }
     toast.success("Rule removed.");
     setDeleteRule(null);
-    router.refresh();
+    refetchCached("rules:");
   }
 
   const viewerOpen = activeRuleId != null && viewerPage != null;

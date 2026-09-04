@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useTransition } from "react";
+import { refetchCached } from "@/lib/use-cached-data";
 import { useRouter } from "next/navigation";
 import {
   CheckCircle2, ChevronDown, Download, ExternalLink, Mail, Trash2, FolderDown,
@@ -132,7 +133,7 @@ export function BatchDetailContent({
       toast.success("Batch regenerated with new due date");
       setShowRegenerate(false);
       setShowRegenConfirm(false);
-      router.refresh();
+      refetchCached("batch:");
     }
   }
 

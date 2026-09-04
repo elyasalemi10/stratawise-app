@@ -33,7 +33,7 @@ import { LotsTab } from "../manage/lots-tab";
 import { getLotInvitationStatus } from "../manage/invitation-actions";
 import { SettlementDialog } from "./[lotId]/settlement-dialog";
 import { BulkInviteDialog } from "./bulk-invite-dialog";
-import { invalidateCached } from "@/lib/use-cached-data";
+import { invalidateCached, refetchCached } from "@/lib/use-cached-data";
 import type { LotWithFinancials } from "@/lib/actions/oc";
 
 // The filters a manager actually reaches for on this page: who owes money,
@@ -387,7 +387,7 @@ export function LotsPageContent({
             onClose={() => setSettlementOpen(false)}
             ocId={ocId}
             lots={lots.map((l) => ({ id: l.id, lotNumber: Number(l.lot_number), unitNumber: l.unit_number }))}
-            onApplied={() => router.refresh()}
+            onApplied={() => refetchCached("lots:")}
           />
           <BulkInviteDialog
             open={bulkInviteOpen}

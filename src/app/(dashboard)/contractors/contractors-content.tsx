@@ -1,7 +1,7 @@
 "use client";
 
 import { useMemo, useState, useTransition } from "react";
-import { useRouter } from "next/navigation";
+import { refetchCached } from "@/lib/use-cached-data";
 import { toast } from "sonner";
 import { Loader2, Plus, Search, Upload, FileText, Power } from "lucide-react";
 import { Button } from "@/components/ui/button";
@@ -42,7 +42,6 @@ function expiryBadge(expiry: string | null): { variant: "success" | "warning" | 
 }
 
 export function ContractorsContent({ contractors }: { contractors: ContractorRecord[] }) {
-  const router = useRouter();
   const [query, setQuery] = useState("");
   const [drawerOpen, setDrawerOpen] = useState(false);
   const [editing, setEditing] = useState<ContractorRecord | null>(null);
@@ -164,7 +163,7 @@ export function ContractorsContent({ contractors }: { contractors: ContractorRec
         open={drawerOpen}
         onOpenChange={setDrawerOpen}
         editing={editing}
-        onSaved={() => { setDrawerOpen(false); router.refresh(); }}
+        onSaved={() => { setDrawerOpen(false); refetchCached("contractors:"); }}
       />
     </div>
   );

@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { useSearchParams, useRouter } from "next/navigation";
 import {
   FileSignature, UserPlus,
@@ -10,7 +10,7 @@ import { useSetBreadcrumb } from "@/lib/breadcrumb-context";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
-import { invalidateCached } from "@/lib/use-cached-data";
+import { invalidateCached, refetchCached } from "@/lib/use-cached-data";
 import { replaceUrlIfOn } from "@/lib/replace-url";
 import { cn } from "@/lib/utils";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
@@ -140,6 +140,16 @@ export function LotDetailContent({
   const ocCode = useOCCode();
   const searchParams = useSearchParams();
   const router = useRouter();
+  // The lot page reads from the client cache, so router.refresh() updated
+  // nothing here: it re-runs the server component while this page renders
+  // from the cache, so the change only appeared when the 30s poll came
+  // round. It also dropped the Router Cache for every other route. Re-fetch
+  // this lot's key and drop the lists whose rows just changed.
+  const refreshLot = useCallback(() => {
+    refetchCached("lot:");
+    invalidateCached("lots:");
+  }, []);
+
   const rawTab = searchParams.get("tab") ?? "overview";
   // Migrate legacy ?tab=general / ?tab=payments URLs to the new values.
   const normalisedTab =
@@ -378,7 +388,7 @@ export function LotDetailContent({
             lot_liability: lot.lot_liability ?? null,
             payment_reference: lotOwnerExtra?.payment_reference ?? null,
           }}
-          onLotDetailsSaved={() => router.refresh()}
+          onLotDetailsSaved={() => refreshLot()}
         />
       </div>
 
@@ -402,7 +412,7 @@ export function LotDetailContent({
             // restored from the snapshot taken before the invite existed.
             invalidateCached(`lot:${lot.id}`);
             invalidateCached(`lots:${ocId}`);
-            router.refresh();
+            refreshLot();
           }}
           engagement={engagement}
           onTransfer={() => setSettlementOpen(true)}
@@ -444,12 +454,12 @@ export function LotDetailContent({
         lotNumber={Number(lot.lot_number)}
         lotAddress={lotAddress}
         lots={ocLots}
-        onApplied={() => router.refresh()}
+        onApplied={() => refreshLot()}
       />
 
       <InviteDialog
         open={addOwnerOpen}
-        onClose={() => { setAddOwnerOpen(false); router.refresh(); }}
+        onClose={() => { setAddOwnerOpen(false); refreshLot(); }}
         ocId={ocId}
         lotId={lot.id}
         lotNumber={Number(lot.lot_number)}
@@ -468,7 +478,7 @@ export function LotDetailContent({
         ownerEmail={owner.owner_contact_email ?? null}
         ownerPhone={owner.owner_contact_phone ?? null}
         onEditDetails={() => setAddOwnerOpen(true)}
-        onSent={() => router.refresh()}
+        onSent={() => refreshLot()}
       />
     </div>
   );

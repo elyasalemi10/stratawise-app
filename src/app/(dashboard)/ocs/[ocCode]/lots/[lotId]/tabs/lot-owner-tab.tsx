@@ -1,6 +1,7 @@
 "use client";
 
 import * as React from "react";
+import { refetchCached } from "@/lib/use-cached-data";
 import { Button } from "@/components/ui/button";
 import { InviteStatusPopover } from "../../invite-status-popover";
 import { cn } from "@/lib/utils";
@@ -120,7 +121,7 @@ export function LotOwnerTab(props: Props) {
     if (!lotOwnerId) return { error: "No owner on this lot yet." };
     const res = await updateLotOwnerContact({ lot_owner_id: lotOwnerId, ...patch });
     if (res.ok) {
-      router.refresh();
+      refetchCached("lot:");
       return {};
     }
     return { error: res.error };

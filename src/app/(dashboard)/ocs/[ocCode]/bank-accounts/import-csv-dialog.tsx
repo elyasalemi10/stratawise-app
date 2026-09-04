@@ -13,6 +13,7 @@ import {
 import {
   Table, TableBody, TableCell, TableHead, TableHeader, TableRow,
 } from "@/components/ui/table";
+import { cn } from "@/lib/utils";
 import { importBankTransactions } from "./actions";
 
 interface Account {
@@ -178,6 +179,7 @@ export function ImportCsvDialog({
   const [mapping, setMapping] = useState<Record<number, ColumnRole>>({});
   const [pending, startTransition] = useTransition();
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const [dragging, setDragging] = useState(false);
 
   const accountLabel = useMemo(
     () => account.account_name || account.bank_name || "Bank account",
@@ -246,11 +248,44 @@ export function ImportCsvDialog({
             <DialogTitle>Import CSV</DialogTitle>
             <DialogDescription>{accountLabel}</DialogDescription>
           </DialogHeader>
-          <div className="flex flex-col items-center gap-3 py-6">
-            <Button size="lg" onClick={() => fileInputRef.current?.click()}>
-              <Upload className="mr-2 h-4 w-4" />
-              Upload CSV
-            </Button>
+          {/* A drop zone, not a button. The file is already in front of the
+              manager in their downloads folder, and dragging it here is one
+              gesture where the button was three (click, find, open). The
+              zone is still clickable, so the file dialog remains available
+              for anyone who prefers it. */}
+          <div
+            role="button"
+            tabIndex={0}
+            onClick={() => fileInputRef.current?.click()}
+            onKeyDown={(e) => {
+              if (e.key === "Enter" || e.key === " ") {
+                e.preventDefault();
+                fileInputRef.current?.click();
+              }
+            }}
+            onDragEnter={(e) => { e.preventDefault(); setDragging(true); }}
+            onDragOver={(e) => { e.preventDefault(); setDragging(true); }}
+            onDragLeave={(e) => {
+              // Only when the pointer has actually left the zone, not when
+              // it crosses onto a child element.
+              if (!e.currentTarget.contains(e.relatedTarget as Node | null)) setDragging(false);
+            }}
+            onDrop={(e) => {
+              e.preventDefault();
+              setDragging(false);
+              const f = e.dataTransfer.files?.[0];
+              if (f) void handleFile(f);
+            }}
+            className={cn(
+              "flex cursor-pointer flex-col items-center justify-center gap-2 rounded-lg border-2 border-dashed px-6 py-12 text-center transition-colors",
+              dragging
+                ? "border-primary bg-primary/5"
+                : "border-border bg-card hover:border-primary/50 hover:bg-muted",
+            )}
+          >
+            <Upload className={cn("h-8 w-8", dragging ? "text-primary" : "text-muted-foreground")} />
+            <p className="text-sm font-medium text-foreground">Drop your CSV here</p>
+            <p className="text-xs text-muted-foreground">or click to choose a file</p>
             <input
               ref={fileInputRef}
               type="file"

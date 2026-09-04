@@ -1,7 +1,7 @@
 "use client";
 
 import { useMemo, useState } from "react";
-import { useRouter } from "next/navigation";
+import { refetchCached } from "@/lib/use-cached-data";
 import {
   Upload, Plus, Landmark, ChevronLeft, ChevronRight, Trash2,
   AlertTriangle, Loader2,
@@ -95,7 +95,6 @@ export function BankAccountsList({
   ocId: string;
   accounts: BankAccountRow[];
 }) {
-  const router = useRouter();
   const [importTarget, setImportTarget] = useState<BankAccountRow | null>(null);
   const [activeTab, setActiveTab] = useState<string>(accounts[0]?.id ?? "");
   const [addOpen, setAddOpen] = useState(false);
@@ -127,7 +126,7 @@ export function BankAccountsList({
     setDeleteTarget(null);
     setDeleting(false);
     toast.success("Bank account deleted");
-    router.refresh();
+    refetchCached("bank-accounts:");
   }
 
   return (
@@ -215,7 +214,7 @@ export function BankAccountsList({
           onOpenChange={(o) => {
             if (!o) {
               setImportTarget(null);
-              router.refresh();
+              refetchCached("bank-accounts:");
             }
           }}
         />
@@ -227,7 +226,7 @@ export function BankAccountsList({
         onOpenChange={setAddOpen}
         onCreated={() => {
           setAddOpen(false);
-          router.refresh();
+          refetchCached("bank-accounts:");
         }}
       />
     </div>

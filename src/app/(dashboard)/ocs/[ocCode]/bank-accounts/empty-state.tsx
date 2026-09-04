@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { useRouter } from "next/navigation";
+import { refetchCached } from "@/lib/use-cached-data";
 import { Plus } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { EmptyState } from "@/components/shared/empty-state";
@@ -13,7 +13,6 @@ import { AddBankAccountDrawer } from "./add-bank-account-drawer";
 // and the server action links it to the OC's existing operating fund if one
 // is present.
 export function NoBankAccountsEmpty({ ocId }: { ocId: string }) {
-  const router = useRouter();
   const [open, setOpen] = useState(false);
 
   return (
@@ -35,7 +34,7 @@ export function NoBankAccountsEmpty({ ocId }: { ocId: string }) {
         onOpenChange={setOpen}
         onCreated={() => {
           setOpen(false);
-          router.refresh();
+          refetchCached("bank-accounts:");
         }}
       />
     </>
