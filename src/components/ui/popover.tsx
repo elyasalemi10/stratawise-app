@@ -4,6 +4,7 @@ import * as React from "react"
 import { Popover as PopoverPrimitive } from "@base-ui/react/popover"
 
 import { cn } from "@/lib/utils"
+import { useIsTopScrim } from "./use-scrim-stack"
 
 function Popover({ ...props }: PopoverPrimitive.Root.Props) {
   return <PopoverPrimitive.Root data-slot="popover" {...props} />
@@ -26,13 +27,17 @@ function PopoverContent({
     PopoverPrimitive.Positioner.Props,
     "align" | "alignOffset" | "side" | "sideOffset"
   > & { showBackdrop?: boolean }) {
+  const isTopScrim = useIsTopScrim();
   return (
     <PopoverPrimitive.Portal>
       {showBackdrop && (
         <PopoverPrimitive.Backdrop
           data-slot="popover-backdrop"
-          data-scrim=""
-          className="fixed inset-0 z-40 bg-black/45 backdrop-blur-sm duration-100 data-open:animate-in data-open:fade-in-0 data-closed:animate-out data-closed:fade-out-0"
+          className={cn(
+            "fixed inset-0 z-40 duration-100 data-open:animate-in data-open:fade-in-0 data-closed:animate-out data-closed:fade-out-0",
+            // Only the topmost scrim paints; see use-scrim-stack.ts.
+            isTopScrim ? "bg-black/45 backdrop-blur-sm" : "bg-transparent",
+          )}
         />
       )}
       <PopoverPrimitive.Positioner

@@ -4,6 +4,7 @@ import * as React from "react"
 import { Dialog as SheetPrimitive } from "@base-ui/react/dialog"
 
 import { cn } from "@/lib/utils"
+import { useIsTopScrim } from "./use-scrim-stack"
 import { Button } from "@/components/ui/button"
 import { XIcon } from "lucide-react"
 
@@ -24,10 +25,10 @@ function SheetPortal({ ...props }: SheetPrimitive.Portal.Props) {
 }
 
 function SheetOverlay({ className, ...props }: SheetPrimitive.Backdrop.Props) {
+  const isTop = useIsTopScrim();
   return (
     <SheetPrimitive.Backdrop
       data-slot="sheet-overlay"
-      data-scrim=""
       className={cn(
         // White wash, no blur. 220ms fade with smooth ease-out , slow enough
         // that the eye reads it as an animation, not an instant flash, but
@@ -38,6 +39,8 @@ function SheetOverlay({ className, ...props }: SheetPrimitive.Backdrop.Props) {
         // what stops the text behind staying legible enough to keep reading,
         // which is the difference between "backgrounded" and "dimmed".
         "fixed inset-0 z-50 bg-black/45 backdrop-blur-sm transition-opacity duration-[220ms] ease-[cubic-bezier(0.22,1,0.36,1)] data-ending-style:opacity-0 data-starting-style:opacity-0",
+        // Only the topmost scrim paints; see use-scrim-stack.ts.
+        !isTop && "bg-transparent backdrop-blur-none",
         className
       )}
       {...props}

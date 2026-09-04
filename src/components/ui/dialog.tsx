@@ -4,6 +4,7 @@ import * as React from "react"
 import { Dialog as DialogPrimitive } from "@base-ui/react/dialog"
 
 import { cn } from "@/lib/utils"
+import { useIsTopScrim } from "./use-scrim-stack"
 import { Button } from "@/components/ui/button"
 import { XIcon } from "lucide-react"
 
@@ -27,10 +28,10 @@ function DialogOverlay({
   className,
   ...props
 }: DialogPrimitive.Backdrop.Props) {
+  const isTop = useIsTopScrim();
   return (
     <DialogPrimitive.Backdrop
       data-slot="dialog-overlay"
-      data-scrim=""
       className={cn(
         // White wash, no blur. Dims the underlying surface so the dialog
         // reads as the focused layer while page text behind stays legible.
@@ -39,6 +40,8 @@ function DialogOverlay({
         // backdrop fades in and out smoothly via transition-opacity.
         // Matches the Sheet scrim. See the note there.
         "fixed inset-0 isolate z-50 bg-black/45 backdrop-blur-sm transition-opacity duration-[220ms] ease-[cubic-bezier(0.22,1,0.36,1)] data-starting-style:opacity-0 data-ending-style:opacity-0",
+        // Only the topmost scrim paints; see use-scrim-stack.ts.
+        !isTop && "bg-transparent backdrop-blur-none",
         className
       )}
       {...props}
