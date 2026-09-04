@@ -236,7 +236,9 @@ function SendNoticeDialog({
       notify_lot_owner_ids: scope === "specific" ? Array.from(selected) : [],
     });
     if (res.error) { setPending(false); toast.error(res.error); return; }
-    toast.success("Notice sending in the background");
+    // "Sending in the background" describes our plumbing, not their outcome.
+    // From where the manager sits they pressed send and it went.
+    toast.success("Notice sent");
     onSent();
   }
 

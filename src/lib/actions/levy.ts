@@ -35,7 +35,7 @@ export interface LevyPreviewLot {
 export interface LevyPreviewData {
   budget_id: string;
   financial_year: string;
-  fund_type: "operating" | "maintenance_plan";
+  fund_type: "operating";
   period_label: string;
   period_start: string;
   period_end: string;
@@ -49,7 +49,7 @@ export interface LevyPreviewData {
 export interface LevyBatchSummary {
   id: string;
   financial_year: string;
-  fund_type: "operating" | "maintenance_plan";
+  fund_type: "operating";
   period_label: string;
   period_start: string;
   period_end: string;
@@ -720,7 +720,7 @@ export async function createLevyBatch(
     /** Required for regular budget-driven batches; null for special levies. */
     budget_id: string | null;
     financial_year: string;
-    fund_type: "operating" | "maintenance_plan";
+    fund_type: "operating";
     period_label: string;
     period_start: string;
     period_end: string;
@@ -1613,7 +1613,7 @@ export async function sendBatchEmailsCustom(
 
   const { data: levies } = await supabase
     .from("levy_notices")
-    .select("id, reference_number, amount, due_date, period_start, lot_id")
+    .select("id, reference_number, amount, due_date, period_start, lot_id, lots!inner(lot_number, unit_number)")
     .eq("batch_id", batchId)
     .eq("status", "draft");
   if (!levies?.length) return { error: "No draft levies to send" };
@@ -1633,6 +1633,8 @@ export async function sendBatchEmailsCustom(
 
   let sentCount = 0;
   for (const levy of levies) {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const lot = (levy as any).lots;
     const owner = owners.get(levy.lot_id);
     const overrideEmail = options.emailOverrides?.[levy.id]?.trim() || null;
     const email = overrideEmail || owner?.owner_contact_email || null;
@@ -1659,6 +1661,8 @@ export async function sendBatchEmailsCustom(
       await sendLevyEmail({
         to: email,
         ownerName: owner?.owner_display_name ?? null,
+        lotNumber: lot?.lot_number ?? null,
+        unitNumber: lot?.unit_number ?? null,
         ocName: oc?.name ?? "",
         ocAddress: oc?.address ?? "",
         companyLogoUrl: managementCompanyLogoUrl,
@@ -1765,7 +1769,7 @@ export async function resendBatchEmailsCustom(
 
   const { data: levies } = await supabase
     .from("levy_notices")
-    .select("id, reference_number, amount, due_date, period_start, lot_id")
+    .select("id, reference_number, amount, due_date, period_start, lot_id, lots!inner(lot_number, unit_number)")
     .eq("batch_id", batchId);
   if (!levies?.length) return { error: "No levies to resend" };
 
@@ -1781,6 +1785,8 @@ export async function resendBatchEmailsCustom(
 
   let sentCount = 0;
   for (const levy of levies) {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const lot = (levy as any).lots;
     const owner = owners.get(levy.lot_id);
     const overrideEmail = options.emailOverrides?.[levy.id]?.trim() || null;
     const email = overrideEmail || owner?.owner_contact_email || null;
@@ -1795,6 +1801,8 @@ export async function resendBatchEmailsCustom(
       await sendLevyEmail({
         to: email,
         ownerName: owner?.owner_display_name ?? null,
+        lotNumber: lot?.lot_number ?? null,
+        unitNumber: lot?.unit_number ?? null,
         ocName: oc?.name ?? "",
         ocAddress: oc?.address ?? "",
         companyLogoUrl: logoUrl,
@@ -1975,6 +1983,8 @@ export async function sendBatchEmails(ocId: string, batchId: string) {
       await sendLevyEmail({
         to: email,
         ownerName: owner?.owner_display_name ?? null,
+        lotNumber: lot?.lot_number ?? null,
+        unitNumber: lot?.unit_number ?? null,
         ocName: oc?.name ?? "",
         ocAddress: oc?.address ?? "",
         companyLogoUrl: managementCompany.logo_url,
@@ -2116,6 +2126,8 @@ export async function resendBatchEmails(ocId: string, batchId: string) {
       await sendLevyEmail({
         to: email,
         ownerName: owner?.owner_display_name ?? null,
+        lotNumber: lot?.lot_number ?? null,
+        unitNumber: lot?.unit_number ?? null,
         ocName: oc?.name ?? "",
         ocAddress: oc?.address ?? "",
         companyLogoUrl: managementCompany.logo_url,

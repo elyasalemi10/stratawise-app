@@ -124,8 +124,10 @@ export function SendEmailsDialog({
         toast.error(result.error);
         return;
       }
+      // "Sending in the background" describes our plumbing, not their
+      // outcome. From where the manager sits they pressed send and it went.
       toast.success(
-        `${levies.length} levy ${levies.length === 1 ? "email" : "emails"} ${mode === "resend" ? "resending" : "sending"} in the background`,
+        `${levies.length} levy ${levies.length === 1 ? "email" : "emails"} ${mode === "resend" ? "resent" : "sent"}`,
       );
       onSent(levies.length);
       onOpenChange(false);

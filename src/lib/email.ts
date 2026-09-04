@@ -1,5 +1,12 @@
 import { Resend } from "resend";
 import { createServerClient } from "@/lib/supabase";
+import {
+  brandForOC,
+  brandedShell,
+  noAutoLink,
+  STRATAWISE_BRAND,
+  type EmailBrand,
+} from "@/lib/email-brand";
 import { managerEmailFrom, brandDomain, formatFrom } from "@/lib/manager-username";
 import { sendViaGmail, isGmailConfigured } from "@/lib/google/gmail-client";
 import { companyDisplayName as brandName } from "@/lib/company-name";
@@ -459,6 +466,11 @@ interface SendLevyEmailParams {
   /** Optional explicit sender address (e.g. picked by the manager in the
    *  send dialog). When set, overrides the OC-resolved default sender. */
   fromOverride?: string | null;
+  /** The lot this notice is for. A lot has no address of its own: it is the
+   *  OC's address plus the unit, so both come in and the subject line is
+   *  composed here rather than by four separate callers. */
+  lotNumber?: number | null;
+  unitNumber?: string | null;
 }
 
 export async function sendLevyEmail({
@@ -476,9 +488,13 @@ export async function sendLevyEmail({
   extraAttachments,
   ocId,
   fromOverride,
+  lotNumber,
+  unitNumber,
 }: SendLevyEmailParams) {
   const greeting = ownerName ? `Hi ${ownerName},` : "Hi,";
-  const logoHtml = logoImg(companyLogoUrl);
+  const brand = await brandForOC(ocId ?? null);
+  if (companyLogoUrl) brand.logoUrl = companyLogoUrl;
+  const lotAddress = lotAddressLine(lotNumber, unitNumber, ocAddress);
 
   // Manager-picked override wins over the OC-resolved default. The
   // override is already a bare email so wrap it with the firm display
@@ -491,25 +507,22 @@ export async function sendLevyEmail({
   const { error } = await transportSend({
     ocId: ocId ?? null,
     to,
-    subject: `Levy Notice , ${ocName} , ${periodLabel}`,
-    html: `
-      <div style="font-family:'Inter',system-ui,sans-serif;max-width:520px;margin:0 auto;padding:32px 0;">
-        ${logoHtml}
-        <h2 style="margin:0 0 16px;font-size:20px;font-weight:600;color:#0E314C;">Levy Notice</h2>
+    subject: levySubject(lotAddress, ownerName, ocName),
+    html: brandShell(`
+        <h2 style="margin:0 0 16px;font-size:20px;font-weight:600;color:${brand.primary};">Levy Notice</h2>
         <p style="margin:0 0 20px;color:#0E314C;font-size:14px;line-height:1.6;">
-          ${greeting} a new levy notice has been issued for <strong>${ocAddress}</strong>.
+          ${greeting} a new levy notice has been issued for ${noAutoLink(`<strong>${lotAddress}</strong>`)}.
         </p>
-        <div style="background:#FAF7F0;border:1px solid #E5E0D3;border-radius:6px;padding:16px;margin:0 0 24px;">
+        <div style="background:#F7F8FA;border:1px solid #E1E5EA;border-radius:6px;padding:16px;margin:0 0 24px;">
           <p style="margin:0 0 4px;font-size:13px;color:#4A5868;">Levy number</p>
-          <p style="margin:0 0 12px;font-size:15px;font-weight:600;color:#0E314C;">${referenceNumber}</p>
+          <p style="margin:0 0 12px;font-size:15px;font-weight:600;color:${brand.primary};">${referenceNumber}</p>
           <p style="margin:0 0 4px;font-size:13px;color:#4A5868;">Due date</p>
-          <p style="margin:0;font-size:14px;font-weight:600;color:#0E314C;">${dueDate}</p>
+          <p style="margin:0;font-size:14px;font-weight:600;color:#0E314C;">${noAutoLink(dueDate)}</p>
         </div>
         <p style="margin:0;color:#0E314C;font-size:14px;">
           Your levy notice is attached as a PDF. Please open it for the full breakdown, including any arrears or adjustments, and payment details.
         </p>
-      </div>
-    `,
+    `, brand),
     attachments: [
       {
         filename: pdfFilename,
@@ -698,6 +711,47 @@ interface SharedSenderHeader {
   ocId?: string | null;
 }
 
+/**
+ * How a lot is named in correspondence. A lot has no address of its own: the
+ * OC holds the street address and the lot holds the unit, so "the address of
+ * the lot" is the two put together.
+ *
+ * Degrades a step at a time rather than all at once, so a missing unit or a
+ * missing OC address still leaves something an owner recognises.
+ */
+function lotAddressLine(
+  lotNumber: number | null | undefined,
+  unitNumber: string | null | undefined,
+  ocAddress: string | null | undefined,
+): string {
+  const unit = unitNumber?.trim();
+  const address = ocAddress?.trim();
+  if (unit && address) return `${unit}/${address}`;
+  if (address && lotNumber != null) return `Lot ${lotNumber}, ${address}`;
+  if (address) return address;
+  if (unit) return `Unit ${unit}`;
+  if (lotNumber != null) return `Lot ${lotNumber}`;
+  return "";
+}
+
+/**
+ * "Levy Notice - 3/12 Example Street, Jane Smith".
+ *
+ * Every part is optional in the data, and a subject line that reads
+ * "Levy Notice - , " is worse than a shorter one, so each missing piece drops
+ * its punctuation with it. The last resort still says what the email is.
+ */
+function levySubject(
+  lotAddress: string,
+  ownerName: string | null,
+  ocName: string | null,
+): string {
+  const parts = [lotAddress.trim(), (ownerName ?? "").trim()].filter(Boolean);
+  if (parts.length > 0) return `Levy Notice - ${parts.join(", ")}`;
+  const oc = (ocName ?? "").trim();
+  return oc ? `Levy Notice - ${oc}` : "Levy Notice";
+}
+
 function greeting(ownerName: string | null): string {
   return ownerName ? `Hi ${ownerName},` : "Hi,";
 }
@@ -711,13 +765,11 @@ function logoImg(url: string | null | undefined): string {
     : "";
 }
 
-function brandShell(innerHtml: string, logoUrl?: string | null): string {
-  return `
-    <div style="font-family:'Inter',system-ui,sans-serif;max-width:520px;margin:0 auto;padding:32px 0;">
-      ${logoImg(logoUrl)}
-      ${innerHtml}
-    </div>
-  `;
+// Every manager-facing template goes through here, which is what makes the
+// firm's colours (and the no-auto-link head) apply everywhere at once rather
+// than template by template. See email-brand.ts.
+function brandShell(innerHtml: string, brand: EmailBrand): string {
+  return brandedShell(innerHtml, brand);
 }
 
 // ─── sendPaymentReceivedEmail ──────────────────────────────────────────
@@ -743,6 +795,11 @@ export async function sendPaymentReceivedEmail(
     ? `<p style="margin:0 0 4px;font-size:13px;color:#4A5868;">Reference</p><p style="margin:0 0 12px;font-size:14px;color:#0E314C;">${escapeHtml(reference)}</p>`
     : "";
 
+  // The firm's palette, not ours. Falls back to StrataWise colours when
+  // the firm has not chosen any. See email-brand.ts.
+  const brand = await brandForOC(ocId ?? null);
+  if (companyLogoUrl) brand.logoUrl = companyLogoUrl;
+
   const ctaBlock = buildCtaBlock(
     ocShortCode,
     "my-payments",
@@ -751,7 +808,7 @@ export async function sendPaymentReceivedEmail(
   );
 
   const html = brandShell(`
-    <h2 style="margin:0 0 16px;font-size:20px;font-weight:600;color:#0E314C;">Payment received</h2>
+    <h2 style="margin:0 0 16px;font-size:20px;font-weight:600;color:${brand.primary};">Payment received</h2>
     <p style="margin:0 0 20px;color:#0E314C;font-size:14px;line-height:1.6;">
       ${greeting(ownerName)} we've recorded a payment against your account at <strong>${escapeHtml(ocAddress)}</strong>.
     </p>
@@ -766,7 +823,7 @@ export async function sendPaymentReceivedEmail(
       ${description ? `<p style="margin:0 0 4px;font-size:13px;color:#4A5868;">Description</p><p style="margin:0;font-size:14px;color:#0E314C;">${escapeHtml(description)}</p>` : ""}
     </div>
     ${ctaBlock}
-  `, companyLogoUrl);
+  `, brand);
 
   const { data, error } = await transportSend({
     ocId: ocId ?? null,
@@ -812,11 +869,16 @@ export async function sendOverdueReminderEmail(
   // plain text when NEXT_PUBLIC_APP_URL is unset (avoids rendering a broken
   // anchor with a relative href).
   const appBaseUrl = process.env.NEXT_PUBLIC_APP_URL?.replace(/\/$/, "") ?? "";
+  // The firm's palette, not ours. Falls back to StrataWise colours when
+  // the firm has not chosen any. See email-brand.ts.
+  const brand = await brandForOC(ocId ?? null);
+  if (companyLogoUrl) brand.logoUrl = companyLogoUrl;
+
   const ctaBlock = appBaseUrl
     ? `<p style="margin:0 0 16px;color:#0E314C;font-size:14px;line-height:1.6;">
         Click below to see your arrears, payment options, and full ledger.
       </p>
-      <a href="${appBaseUrl}/ocs/${escapeHtml(ocShortCode)}/my-arrears" style="display:inline-block;background:#CFA753;color:#ffffff;font-size:14px;font-weight:600;text-decoration:none;padding:10px 24px;border-radius:6px;margin:0 0 24px;">
+      <a href="${appBaseUrl}/ocs/${escapeHtml(ocShortCode)}/my-arrears" style="display:inline-block;background:${brand.primary};color:#ffffff;font-size:14px;font-weight:600;text-decoration:none;padding:10px 24px;border-radius:6px;margin:0 0 24px;">
         View outstanding balance
       </a>`
     : `<p style="margin:0 0 24px;color:#0E314C;font-size:14px;">
@@ -824,7 +886,7 @@ export async function sendOverdueReminderEmail(
       </p>`;
 
   const html = brandShell(`
-    <h2 style="margin:0 0 16px;font-size:20px;font-weight:600;color:#0E314C;">Levy overdue , friendly reminder</h2>
+    <h2 style="margin:0 0 16px;font-size:20px;font-weight:600;color:${brand.primary};">Levy overdue , friendly reminder</h2>
     <p style="margin:0 0 20px;color:#0E314C;font-size:14px;line-height:1.6;">
       ${greeting(ownerName)} our records show a levy at <strong>${escapeHtml(ocAddress)}</strong> is now <strong>${daysOverdue} days</strong> past its due date. If you've already paid, you can disregard this notice , it may take a day or two to reflect on our system.
     </p>
@@ -841,7 +903,7 @@ export async function sendOverdueReminderEmail(
     <p style="margin:0;color:#4A5868;font-size:12px;line-height:1.5;">
       Continued non-payment may result in further reminders and late fees in line with your strata rules.
     </p>
-  `, companyLogoUrl);
+  `, brand);
 
   const from = await resolveOcSenderFromHeader(ocId ?? null);
 
@@ -886,6 +948,11 @@ export async function sendClaimMatchedEmail(
 
   const from = await resolveOcSenderFromHeader(ocId ?? null);
 
+  // The firm's palette, not ours. Falls back to StrataWise colours when
+  // the firm has not chosen any. See email-brand.ts.
+  const brand = await brandForOC(ocId ?? null);
+  if (companyLogoUrl) brand.logoUrl = companyLogoUrl;
+
   const ctaBlock = buildCtaBlock(
     ocShortCode,
     "my-payments",
@@ -894,7 +961,7 @@ export async function sendClaimMatchedEmail(
   );
 
   const html = brandShell(`
-    <h2 style="margin:0 0 16px;font-size:20px;font-weight:600;color:#0E314C;">Payment confirmed</h2>
+    <h2 style="margin:0 0 16px;font-size:20px;font-weight:600;color:${brand.primary};">Payment confirmed</h2>
     <p style="margin:0 0 20px;color:#0E314C;font-size:14px;line-height:1.6;">
       ${greeting(ownerName)} the payment claim you submitted for <strong>${escapeHtml(ocAddress)}</strong> has been matched and applied to your account.
     </p>
@@ -909,7 +976,7 @@ export async function sendClaimMatchedEmail(
       <p style="margin:0;font-size:14px;color:#0E314C;">${escapeHtml(paymentMethod)}</p>
     </div>
     ${ctaBlock}
-  `, companyLogoUrl);
+  `, brand);
 
   const { data, error } = await transportSend({
     ocId: ocId ?? null,
@@ -943,6 +1010,11 @@ export async function sendClaimRejectedEmail(
 
   const from = await resolveOcSenderFromHeader(ocId ?? null);
 
+  // The firm's palette, not ours. Falls back to StrataWise colours when
+  // the firm has not chosen any. See email-brand.ts.
+  const brand = await brandForOC(ocId ?? null);
+  if (companyLogoUrl) brand.logoUrl = companyLogoUrl;
+
   const ctaBlock = buildCtaBlock(
     ocShortCode,
     "my-arrears",
@@ -951,7 +1023,7 @@ export async function sendClaimRejectedEmail(
   );
 
   const html = brandShell(`
-    <h2 style="margin:0 0 16px;font-size:20px;font-weight:600;color:#0E314C;">Update on your payment claim</h2>
+    <h2 style="margin:0 0 16px;font-size:20px;font-weight:600;color:${brand.primary};">Update on your payment claim</h2>
     <p style="margin:0 0 20px;color:#0E314C;font-size:14px;line-height:1.6;">
       ${greeting(ownerName)} after review, the payment claim you submitted for <strong>${escapeHtml(ocAddress)}</strong> has not been matched. The details and the manager's note are below.
     </p>
@@ -968,7 +1040,7 @@ export async function sendClaimRejectedEmail(
       <p style="margin:0;font-size:14px;line-height:1.5;color:#0E314C;">${escapeHtml(rejectionReason)}</p>
     </div>
     ${ctaBlock}
-  `, companyLogoUrl);
+  `, brand);
 
   const { data, error } = await transportSend({
     ocId: ocId ?? null,
@@ -1016,6 +1088,11 @@ export async function sendNewClaimSubmittedEmail(
     ? `<p style="margin:0 0 4px;font-size:13px;color:#4A5868;">Owner notes</p><p style="margin:0;font-size:14px;line-height:1.5;color:#0E314C;">${escapeHtml(notes)}</p>`
     : "";
 
+  // The firm's palette, not ours. Falls back to StrataWise colours when
+  // the firm has not chosen any. See email-brand.ts.
+  const brand = await brandForOC(ocId ?? null);
+  if (companyLogoUrl) brand.logoUrl = companyLogoUrl;
+
   const ctaBlock = buildCtaBlock(
     ocShortCode,
     "bank-accounts",
@@ -1024,7 +1101,7 @@ export async function sendNewClaimSubmittedEmail(
   );
 
   const html = brandShell(`
-    <h2 style="margin:0 0 16px;font-size:20px;font-weight:600;color:#0E314C;">New payment claim</h2>
+    <h2 style="margin:0 0 16px;font-size:20px;font-weight:600;color:${brand.primary};">New payment claim</h2>
     <p style="margin:0 0 20px;color:#0E314C;font-size:14px;line-height:1.6;">
       ${greetingLine} ${escapeHtml(ownerLabel)} has submitted a payment claim for <strong>${escapeHtml(ocName)}</strong> that needs your review.
     </p>
@@ -1043,7 +1120,7 @@ export async function sendNewClaimSubmittedEmail(
     <p style="margin:24px 0 0;color:#4A5868;font-size:12px;line-height:1.5;">
       You're receiving this because you're a strata manager for ${escapeHtml(ocName)}.
     </p>
-  `, companyLogoUrl);
+  `, brand);
 
   // Goes to managers within the same firm. Falls back to the brand noreply
   // identity when no OC scope is supplied , but with ocId we route via the
@@ -1089,6 +1166,11 @@ export async function sendLevyCsvReminderEmail(
   const subject = `Bank CSV due before the next levy run , ${ocName}`;
 
   const greetingLine = managerName ? `Hi ${managerName},` : "Hi,";
+  // The firm's palette, not ours. Falls back to StrataWise colours when
+  // the firm has not chosen any. See email-brand.ts.
+  const brand = await brandForOC(ocId ?? null);
+  if (companyLogoUrl) brand.logoUrl = companyLogoUrl;
+
   const ctaBlock = buildCtaBlock(
     ocShortCode,
     "bank-accounts",
@@ -1097,7 +1179,7 @@ export async function sendLevyCsvReminderEmail(
   );
 
   const html = brandShell(`
-    <h2 style="margin:0 0 16px;font-size:20px;font-weight:600;color:#0E314C;">Upload a bank CSV before the next levy run</h2>
+    <h2 style="margin:0 0 16px;font-size:20px;font-weight:600;color:${brand.primary};">Upload a bank CSV before the next levy run</h2>
     <p style="margin:0 0 20px;color:#0E314C;font-size:14px;line-height:1.6;">
       ${greetingLine} the next levy run for <strong>${escapeHtml(ocName)}</strong> is scheduled for <strong>${escapeHtml(nextSendDate)}</strong>, but we haven't seen a fresh bank CSV recently. Importing one now keeps arrears accurate on the notices.
     </p>
@@ -1111,7 +1193,7 @@ export async function sendLevyCsvReminderEmail(
     <p style="margin:24px 0 0;color:#4A5868;font-size:12px;line-height:1.5;">
       You can turn these reminders off in Settings , Notifications.
     </p>
-  `, companyLogoUrl);
+  `, brand);
 
   const resendFrom = ocId ? await resolveOcSenderFromHeader(ocId) : systemFrom();
   const { data, error } = await transportSend({ ocId: ocId ?? null, to, subject, html, resendFrom });
@@ -1144,12 +1226,17 @@ export async function sendComplianceReminderEmail(
   const cta = ctaShortCode && ctaPath
     ? buildCtaBlock(ctaShortCode, ctaPath, ctaLabel ?? "Open StrataWise", body)
     : "";
+  // The firm's palette, not ours. Falls back to StrataWise colours when
+  // the firm has not chosen any. See email-brand.ts.
+  const brand = await brandForOC(ocId ?? null);
+  if (companyLogoUrl) brand.logoUrl = companyLogoUrl;
+
   const html = brandShell(`
-    <h2 style="margin:0 0 16px;font-size:20px;font-weight:600;color:#0E314C;">${escapeHtml(heading)}</h2>
+    <h2 style="margin:0 0 16px;font-size:20px;font-weight:600;color:${brand.primary};">${escapeHtml(heading)}</h2>
     <p style="margin:0 0 20px;color:#0E314C;font-size:14px;line-height:1.6;">${greetingLine} ${escapeHtml(body)}</p>
     ${cta}
     <p style="margin:24px 0 0;color:#4A5868;font-size:12px;line-height:1.5;">You can turn these reminders off in Settings , Notifications.</p>
-  `, companyLogoUrl);
+  `, brand);
   const resendFrom = ocId ? await resolveOcSenderFromHeader(ocId) : systemFrom();
   const { data, error } = await transportSend({ ocId: ocId ?? null, to, subject: heading, html, resendFrom });
   if (error) { console.error("Failed to send compliance_reminder email:", error); return { error: error.message }; }
@@ -1190,8 +1277,13 @@ export async function sendMeetingNoticeEmail(
        </div>`
     : "";
 
+  // The firm's palette, not ours. Falls back to StrataWise colours when
+  // the firm has not chosen any. See email-brand.ts.
+  const brand = await brandForOC(ocId ?? null);
+  if (companyLogoUrl) brand.logoUrl = companyLogoUrl;
+
   const html = brandShell(`
-    <h2 style="margin:0 0 16px;font-size:20px;font-weight:600;color:#0E314C;">${escapeHtml(meetingTypeLabel)}</h2>
+    <h2 style="margin:0 0 16px;font-size:20px;font-weight:600;color:${brand.primary};">${escapeHtml(meetingTypeLabel)}</h2>
     <p style="margin:0 0 20px;color:#0E314C;font-size:14px;line-height:1.6;">
       ${greetingLine} you're invited to the following meeting for <strong>${escapeHtml(ocName)}</strong>. The full notice is attached.
     </p>
@@ -1204,7 +1296,7 @@ export async function sendMeetingNoticeEmail(
       ${onlineLink ? `<p style="margin:0 0 4px;font-size:13px;color:#4A5868;">Online</p><p style="margin:0;font-size:14px;color:#0E314C;"><a href="${escapeHtml(onlineLink)}" style="color:#0E314C;">${escapeHtml(onlineLink)}</a></p>` : ""}
     </div>
     ${agendaBlock}
-  `, companyLogoUrl);
+  `, brand);
 
   const resendFrom = ocId ? await resolveOcSenderFromHeader(ocId) : systemFrom();
   const { data, error } = await transportSend({
@@ -1243,8 +1335,13 @@ export async function sendMaintenanceReminderEmail(
   const subject = `Upcoming maintenance , ${jobTitle} at ${ocName}`;
 
   const greetingLine = ownerName ? `Hi ${escapeHtml(ownerName)},` : "Hi,";
+  // The firm's palette, not ours. Falls back to StrataWise colours when
+  // the firm has not chosen any. See email-brand.ts.
+  const brand = await brandForOC(ocId ?? null);
+  if (companyLogoUrl) brand.logoUrl = companyLogoUrl;
+
   const html = brandShell(`
-    <h2 style="margin:0 0 16px;font-size:20px;font-weight:600;color:#0E314C;">Upcoming maintenance</h2>
+    <h2 style="margin:0 0 16px;font-size:20px;font-weight:600;color:${brand.primary};">Upcoming maintenance</h2>
     <p style="margin:0 0 20px;color:#0E314C;font-size:14px;line-height:1.6;">
       ${greetingLine} scheduled maintenance is coming up at <strong>${escapeHtml(ocName)}</strong>.
     </p>
@@ -1256,7 +1353,7 @@ export async function sendMaintenanceReminderEmail(
       ${contractorName ? `<p style="margin:0 0 4px;font-size:13px;color:#4A5868;">Contractor</p><p style="margin:0 0 12px;font-size:14px;color:#0E314C;">${escapeHtml(contractorName)}</p>` : ""}
       ${scope ? `<p style="margin:0 0 4px;font-size:13px;color:#4A5868;">Details</p><p style="margin:0;font-size:14px;color:#0E314C;line-height:1.5;">${escapeHtml(scope)}</p>` : ""}
     </div>
-  `, companyLogoUrl);
+  `, brand);
 
   const resendFrom = ocId ? await resolveOcSenderFromHeader(ocId) : systemFrom();
   const { data, error } = await transportSend({ ocId: ocId ?? null, to, subject, html, resendFrom });
@@ -1292,7 +1389,12 @@ export async function sendEscalationEmail(
     .split(/\n{2,}/)
     .map((p) => `<p style="margin:0 0 14px;color:#0E314C;font-size:14px;line-height:1.6;">${escapeHtml(p).replace(/\n/g, "<br/>")}</p>`)
     .join("");
-  const html = brandShell(paragraphs, companyLogoUrl);
+  // The firm's palette, not ours. Falls back to StrataWise colours when
+  // the firm has not chosen any. See email-brand.ts.
+  const brand = await brandForOC(ocId ?? null);
+  if (companyLogoUrl) brand.logoUrl = companyLogoUrl;
+
+  const html = brandShell(paragraphs, brand);
 
   const resendFrom = ocId ? await resolveOcSenderFromHeader(ocId) : systemFrom();
   const attachments = [
@@ -1329,12 +1431,13 @@ function buildCtaBlock(
   path: string,
   ctaLabel: string,
   fallbackText: string,
+  brand: EmailBrand = STRATAWISE_BRAND,
 ): string {
   const appBaseUrl = process.env.NEXT_PUBLIC_APP_URL?.replace(/\/$/, "") ?? "";
   if (!appBaseUrl) {
     return `<p style="margin:0 0 24px;color:#0E314C;font-size:14px;">${escapeHtml(fallbackText)}</p>`;
   }
-  return `<a href="${appBaseUrl}/ocs/${escapeHtml(ocShortCode)}/${path}" style="display:inline-block;background:#CFA753;color:#ffffff;font-size:14px;font-weight:600;text-decoration:none;padding:10px 24px;border-radius:6px;margin:0 0 24px;">
+  return `<a href="${appBaseUrl}/ocs/${escapeHtml(ocShortCode)}/${path}" style="display:inline-block;background:${brand.primary};color:#ffffff;font-size:14px;font-weight:600;text-decoration:none;padding:10px 24px;border-radius:6px;margin:0 0 24px;">
     ${escapeHtml(ctaLabel)}
   </a>`;
 }
@@ -1371,6 +1474,11 @@ export async function sendSecondReminderEmail(
     ? `<p style="margin:0 0 4px;font-size:13px;color:#4A5868;">Interest accrued</p><p style="margin:0 0 12px;font-size:14px;font-weight:600;color:#dc2626;">$${penaltyInterestAccrued.toFixed(2)}</p>`
     : "";
 
+  // The firm's palette, not ours. Falls back to StrataWise colours when
+  // the firm has not chosen any. See email-brand.ts.
+  const brand = await brandForOC(ocId ?? null);
+  if (companyLogoUrl) brand.logoUrl = companyLogoUrl;
+
   const ctaBlock = buildCtaBlock(
     ocShortCode,
     "my-arrears",
@@ -1396,7 +1504,7 @@ export async function sendSecondReminderEmail(
     <p style="margin:0;color:#4A5868;font-size:12px;line-height:1.5;">
       If payment is not received, the matter may proceed to a final notice and further recovery action under your strata rules.
     </p>
-  `, companyLogoUrl);
+  `, brand);
 
   const from = await resolveOcSenderFromHeader(ocId ?? null);
 
@@ -1452,6 +1560,11 @@ export async function sendFinalNoticeEmail(
     ? `<p style="margin:0 0 4px;font-size:13px;color:#4A5868;">Interest accrued</p><p style="margin:0 0 12px;font-size:14px;font-weight:600;color:#dc2626;">$${penaltyInterestAccrued.toFixed(2)}</p>`
     : "";
 
+  // The firm's palette, not ours. Falls back to StrataWise colours when
+  // the firm has not chosen any. See email-brand.ts.
+  const brand = await brandForOC(ocId ?? null);
+  if (companyLogoUrl) brand.logoUrl = companyLogoUrl;
+
   const ctaBlock = buildCtaBlock(
     ocShortCode,
     "my-arrears",
@@ -1480,7 +1593,7 @@ export async function sendFinalNoticeEmail(
     <p style="margin:0;color:#4A5868;font-size:12px;line-height:1.5;">
       This notice is sent as a statutory communication and cannot be opted out of.
     </p>
-  `, companyLogoUrl);
+  `, brand);
 
   const from = await resolveOcSenderFromHeader(ocId ?? null);
 
