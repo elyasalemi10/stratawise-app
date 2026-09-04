@@ -1,9 +1,9 @@
-import { NextRequest, NextResponse } from "next/server";
+import { NextRequest, NextResponse, after } from "next/server";
 import { createServerClient } from "@/lib/supabase";
 import { requireCompanyRole, requireOCAccess } from "@/lib/auth";
 import { ALLOWED_DOCUMENT_TYPES, MAX_DOCUMENT_SIZE } from "@/lib/validations/documents";
 import { uploadObject, publicUrlFor } from "@/lib/storage/r2";
-import { isOcrable } from "@/lib/ocr/ingest";
+import { ingestDocumentOcr, isOcrable } from "@/lib/ocr/ingest";
 import { needsPdfConversion } from "@/lib/ocr/convert-to-pdf";
 import { downscaleImage } from "@/lib/images/downscale";
 
@@ -151,10 +151,29 @@ export async function POST(request: NextRequest) {
     metadata: lotId ? { lot_id: lotId } : null,
   });
 
-  // OCR is never run in the request path , it costs seconds and the user
-  // is waiting. The row is left at ocr_status='pending' and the cron sweep
-  // (/api/cron/ocr-sweep) picks it up within 10 minutes and fills in
-  // ocr_text. Search just doesn't match the file's contents until then.
+  // Reading the document starts NOW, not in up to ten minutes.
+  //
+  // OCR still never runs in the request path: after() hands the response to
+  // the manager first and then keeps the function alive to do the work. What
+  // it replaces is waiting for the cron. A manager who uploads the minutes
+  // as a .docx and clicks preview was looking at "we're still getting this
+  // one ready" for up to ten minutes, because the render that makes it
+  // previewable only happened on the sweep.
+  //
+  // The sweep stays as the backstop: it picks up anything still `pending`,
+  // which covers a cold start that dropped the after() work, a conversion
+  // that timed out, and every document uploaded before this existed.
+  if (willOcr) {
+    after(async () => {
+      try {
+        await ingestDocumentOcr(doc.id as string);
+      } catch (err) {
+        // Never throws in practice, but an unhandled rejection here would
+        // be invisible and the row would sit pending until the sweep.
+        console.error("[documents] post-upload ingest failed:", err);
+      }
+    });
+  }
 
   return NextResponse.json({
     ...doc,
