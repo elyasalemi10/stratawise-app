@@ -1,6 +1,7 @@
 "use server";
 
 import { unstable_cache, updateTag } from "next/cache";
+import { CHARGED_LEVY_STATUSES } from "@/lib/lot-balance";
 import { getCurrentProfile, requireOCAccess } from "@/lib/auth";
 import { createServerClient } from "@/lib/supabase";
 import { getLotBalances, ZERO_BALANCE } from "@/lib/lot-balance";
@@ -282,7 +283,10 @@ export async function getOCStats(ocId: string) {
       .from("levy_notices")
       .select("amount")
       .eq("oc_id", ocId)
-      .in("status", ["issued", "partially_paid", "overdue"]),
+      // Paid notices included on purpose: every payment is subtracted
+      // below, so dropping a paid notice here credits the lot twice. See
+      // CHARGED_LEVY_STATUSES in lot-balance.ts.
+      .in("status", CHARGED_LEVY_STATUSES as unknown as string[]),
     supabase
       .from("payments")
       .select("amount")

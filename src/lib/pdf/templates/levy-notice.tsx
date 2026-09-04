@@ -332,16 +332,27 @@ export function LevyNotice({
               <Text style={s.totalValue}>{fmt(gst)}</Text>
             </View>
             {priorArrears ? (
+              // The same figure can be arrears or a credit depending on its
+              // sign, and calling a credit "Arrears: -$240.00" reads as a
+              // mistake. The label follows the sign and the value is shown
+              // unsigned; either way it feeds the total below, so a credit
+              // reduces what is payable on this notice.
               <View style={s.totalRow}>
-                <Text style={s.totalLabel}>Arrears (as of {priorArrears.asOf})</Text>
+                <Text style={s.totalLabel}>
+                  {priorArrears.amount < 0 ? "Credit" : "Arrears"} (as of {priorArrears.asOf})
+                </Text>
                 <Text style={[s.totalValue, priorArrears.amount > 0 ? { color: c.destructive } : {}]}>
-                  {fmt(priorArrears.amount)}
+                  {priorArrears.amount < 0 ? `(${fmt(Math.abs(priorArrears.amount))})` : fmt(priorArrears.amount)}
                 </Text>
               </View>
             ) : null}
             <View style={s.totalDueRow}>
               <Text style={s.totalDueLabel}>Total amount due</Text>
-              <Text style={s.totalDueValue}>{fmt(subtotal + gst + (priorArrears?.amount ?? 0))}</Text>
+              {/* Never bill a negative: a credit larger than this period's
+                  levy leaves nothing to pay now and the rest carries. */}
+              <Text style={s.totalDueValue}>
+                {fmt(Math.max(0, subtotal + gst + (priorArrears?.amount ?? 0)))}
+              </Text>
             </View>
           </View>
         </View>

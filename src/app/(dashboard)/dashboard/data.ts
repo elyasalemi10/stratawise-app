@@ -1,6 +1,7 @@
 "use server";
 
 import { getCurrentProfile } from "@/lib/auth";
+import { CHARGED_LEVY_STATUSES } from "@/lib/lot-balance";
 import { getCompanyOCSummary } from "@/lib/actions/oc";
 import { createServerClient } from "@/lib/supabase";
 
@@ -139,7 +140,10 @@ export async function getDashboardPageData(): Promise<DashboardPageData> {
             .from("levy_notices")
             .select("lot_id, amount, status, due_date")
             .in("lot_id", lotIds)
-            .in("status", ["issued", "partially_paid", "overdue"])
+            // Paid notices included on purpose: every payment is subtracted
+            // below, so dropping a paid notice here credits the lot twice. See
+            // CHARGED_LEVY_STATUSES in lot-balance.ts.
+            .in("status", CHARGED_LEVY_STATUSES as unknown as string[])
         : Promise.resolve(none),
       lotIds.length
         ? supabase.from("payments").select("lot_id, amount").in("lot_id", lotIds)

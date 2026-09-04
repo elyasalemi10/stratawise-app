@@ -19,6 +19,7 @@
 // ============================================================================
 
 import type { SupabaseClient } from "@supabase/supabase-js";
+import { CHARGED_LEVY_STATUSES } from "@/lib/lot-balance";
 import type { LevyNoticeProps } from "@/lib/pdf/types";
 import { generateAndUploadLevyPDF, generateLevyPDFBuffer } from "@/lib/levy-pdf";
 import { fetchObject, keyFromPublicUrl } from "@/lib/storage/r2";
@@ -271,27 +272,46 @@ async function assembleLevyNoticeProps(
   // owner knows how fresh the balance is.
   let priorArrears: { amount: number; asOf: string } | null = null;
   if (sub.include_arrears_on_notice) {
-    // ALL prior unpaid notices on this lot count as arrears , regular,
-    // special AND penalty_interest. Status filter includes 'issued',
-    // 'partially_paid', 'overdue', 'draft' (latest soft-cancel work
-    // means drafts are real notices, not just placeholders). Drafts
-    // count too if the manager has issued them via "Mark as sent"
-    // since that's the moment the owner owes the money.
-    const { data: priorRows } = await supabase
-      .from("levy_notices")
-      .select("amount, amount_paid")
-      .eq("lot_id", levy.lot_id)
-      .lt("period_start", levy.period_start)
-      .in("status", ["issued", "partially_paid", "overdue"])
-      .neq("id", levy.id);
-    const outstanding = (priorRows ?? []).reduce((sum, r) => {
-      return sum + Math.max(0, Number(r.amount ?? 0) - Number(r.amount_paid ?? 0));
-    }, 0);
-    // Show the row even when outstanding rounds to $0.00 , the
-    // manager turned the toggle on, they expect to see SOME line
-    // confirming the system did the check.
+    // What the lot owed BEFORE this notice: the same balance the lot page
+    // and the owner portal show, cut off at this notice's period start.
+    //
+    // This used to sum max(0, amount - amount_paid) per prior notice, which
+    // was a third formula for the same money and disagreed with both of the
+    // others. It also ignored the opening balance, so a lot onboarded in
+    // arrears showed none, and the per-notice max(0, ...) floored a credit
+    // to zero, so an owner in credit was told they owed nothing rather than
+    // being shown the credit.
+    const [priorRows, paymentRows, lotRow] = await Promise.all([
+      supabase
+        .from("levy_notices")
+        .select("amount")
+        .eq("lot_id", levy.lot_id)
+        .lt("period_start", levy.period_start)
+        .in("status", CHARGED_LEVY_STATUSES as unknown as string[])
+        .neq("id", levy.id),
+      supabase.from("payments").select("amount").eq("lot_id", levy.lot_id),
+      supabase.from("lots").select("opening_balance").eq("id", levy.lot_id).maybeSingle(),
+    ]);
+
+    const charged = (priorRows.data ?? []).reduce(
+      (sum, r) => sum + Number((r as { amount: number | null }).amount ?? 0),
+      0,
+    );
+    const paid = (paymentRows.data ?? []).reduce(
+      (sum, r) => sum + Number((r as { amount: number | null }).amount ?? 0),
+      0,
+    );
+    const opening = Number(
+      (lotRow.data as { opening_balance: number | null } | null)?.opening_balance ?? 0,
+    );
+    // Negative is a real answer: it means the lot is in credit, and saying
+    // so is the point of printing the line.
+    const balance = opening + charged - paid;
+
+    // Show the row even when it rounds to $0.00 , the manager turned the
+    // toggle on, they expect to see SOME line confirming the check ran.
     priorArrears = {
-      amount: Math.round(outstanding * 100) / 100,
+      amount: Math.round(balance * 100) / 100,
       asOf: formatDateLong(new Date().toISOString().slice(0, 10)),
     };
   }

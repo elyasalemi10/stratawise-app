@@ -16,9 +16,16 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 //                    set during the wizard, and the reason a brand-new OC can
 //                    have arrears on day one. Sign convention is
 //                    owes-positive, matching the wizard, so it adds directly.
-//   + outstanding    levy notices in issued / partially_paid / overdue. Draft
-//                    notices are not owed yet; paid and written_off are done.
+//   + charged        every levy notice the lot has been issued, at FACE
+//                    value, including ones already paid. Excluded: drafts
+//                    (not owed yet), cancelled (never owed) and written_off
+//                    (deliberately forgiven).
 //   - payments       everything received against the lot.
+//
+// A notice's payment status is deliberately absent from that. This is a
+// balance, not a ledger of paid-versus-unpaid documents: money charged in,
+// money received out, one subtraction. The moment status entered the
+// arithmetic it could disagree with the payments table, and it did.
 //
 // NOT lot_ledger_state. That table exists, has a row per lot, and is
 // maintained by recompute_lot_ledger_state() off lot_ledger_entries , but
@@ -27,17 +34,41 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 // $0 on 31 lots. It is either wired up properly or dropped; until then this
 // arithmetic is the only thing telling the truth.
 
-/** Levy statuses that represent money still owed. */
-export const OUTSTANDING_LEVY_STATUSES = [
+/**
+ * Levy statuses that count toward what a lot has been CHARGED.
+ *
+ * This list used to be issued / partially_paid / overdue, and leaving out
+ * `paid` was an arithmetic bug, not a simplification. The balance subtracts
+ * every payment the lot has made, so a notice dropping out of this set the
+ * moment it was paid removed the charge while leaving the payment in place:
+ *
+ *   $500 levy issued            levied 500, paid   0  ->  owes 500   correct
+ *   owner pays $500             levied   0, paid 500  ->  owes -500  wrong
+ *
+ * Every reconciled lot would have shown a phantom credit for the full value
+ * of everything it had ever paid. It had not bitten yet only because no
+ * notice had reached `paid` in live data.
+ *
+ * The fix is the one the whole model is built on: a notice's PAYMENT status
+ * must not enter the arithmetic at all. What is charged is charged; what is
+ * paid is subtracted once, from the payments table. Status now only excludes
+ * things that were never owed (a draft, a cancelled notice) or that have been
+ * deliberately forgiven (a write-off).
+ */
+export const CHARGED_LEVY_STATUSES = [
   "issued",
   "partially_paid",
   "overdue",
+  "paid",
 ] as const;
+
 
 export interface LotBalance {
   /** Opening balance carried in at onboarding. Owes-positive. */
   opening: number;
-  /** Sum of outstanding levy notices. */
+  /** Sum of every levy notice charged to the lot, at face value, whether or
+   *  not it has been paid. Paid ones are cancelled out by `paid`, not by
+   *  being left out of here. */
   levied: number;
   /** Sum of payments received. */
   paid: number;
@@ -69,7 +100,7 @@ export async function getLotBalances(
       .from("levy_notices")
       .select("lot_id, amount")
       .in("lot_id", lotIds)
-      .in("status", OUTSTANDING_LEVY_STATUSES as unknown as string[]),
+      .in("status", CHARGED_LEVY_STATUSES as unknown as string[]),
     supabase.from("payments").select("lot_id, amount").in("lot_id", lotIds),
     openingByLot
       ? Promise.resolve({ data: null })

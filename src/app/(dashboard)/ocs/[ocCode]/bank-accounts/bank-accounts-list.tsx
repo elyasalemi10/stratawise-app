@@ -3,7 +3,7 @@
 import { useMemo, useState } from "react";
 import { refetchCached } from "@/lib/use-cached-data";
 import {
-  Upload, Plus, Landmark, ChevronLeft, ChevronRight, Trash2,
+  Upload, Plus, ChevronLeft, ChevronRight, Trash2,
   AlertTriangle, Loader2,
 } from "lucide-react";
 import { toast } from "sonner";

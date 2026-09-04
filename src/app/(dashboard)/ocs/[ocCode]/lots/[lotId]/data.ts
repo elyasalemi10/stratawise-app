@@ -1,6 +1,7 @@
 "use server";
 
 import { requireOCAccess } from "@/lib/auth";
+import { CHARGED_LEVY_STATUSES } from "@/lib/lot-balance";
 import { createServerClient } from "@/lib/supabase";
 import { getLotOwner } from "@/lib/actions/lot-ownership";
 import { getLotOwnershipHistory } from "@/lib/actions/settlements";
@@ -104,7 +105,10 @@ export async function getLotDetailPageData(
       .from("levy_notices")
       .select("amount")
       .eq("lot_id", lotId)
-      .in("status", ["issued", "partially_paid", "overdue"]),
+      // Every notice CHARGED, paid ones included: the payments below are
+      // subtracted in full, so leaving a paid notice out here would credit
+      // the lot for it twice. See CHARGED_LEVY_STATUSES in lot-balance.ts.
+      .in("status", CHARGED_LEVY_STATUSES as unknown as string[]),
     supabase.from("payments").select("amount").eq("lot_id", lotId),
     supabase
       .from("documents")
