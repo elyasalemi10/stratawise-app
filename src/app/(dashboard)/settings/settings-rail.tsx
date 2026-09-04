@@ -30,6 +30,22 @@ export function SettingsRail({ isManager }: { isManager: boolean }) {
               {group.label}
             </p>
             <div className="space-y-0.5">
+              {/* Every tab is prefetched, not left to the default
+                  hover-only prefetch. Next's useActionQueue ends with
+                  `isThenable(state) ? use(state) : state`, and `use` takes a
+                  hook slot, so Router renders a different number of hooks
+                  depending on whether the router state is a promise. Next's
+                  own comment says that happens "when navigating to a
+                  non-prefetched route", which is exactly a settings tab
+                  clicked without hovering first, and when it interleaves
+                  with another render you get "Rendered more hooks than
+                  during the previous render" thrown from inside Router.
+
+                  That is a framework bug we cannot fix from here, but a
+                  route already in the cache never puts the state in that
+                  shape. These are seven small sibling pages a manager moves
+                  between constantly, so prefetching them is what we would
+                  want regardless. */}
               {items.map((item) => {
                 const Icon = item.icon;
                 const isActive = pathname === item.href;
@@ -37,6 +53,7 @@ export function SettingsRail({ isManager }: { isManager: boolean }) {
                   <Link
                     key={item.href}
                     href={item.href}
+                    prefetch
                     className={cn(
                       "flex w-full items-center gap-2.5 rounded-md px-2 py-1.5 text-sm transition-colors",
                       isActive

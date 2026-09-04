@@ -279,12 +279,13 @@ function SimpleDropdown({
   // animation ends at 120ms and the panel snaps back to fully visible until
   // this timer removes it, so any delay to the timer, e.g. a route change
   // occupying the main thread, reads as: fades out, reappears, vanishes.
+  // Opening is immediate and derivable, so it is done during render rather
+  // than in an effect: setting it in an effect meant every open cost a
+  // second render pass. Only the CLOSE needs a timer, because it is waiting
+  // out an animation.
+  if (open && !mounted) setMounted(true);
   useEffect(() => {
-    if (open) {
-      setMounted(true);
-      return;
-    }
-    if (!mounted) return;
+    if (open || !mounted) return;
     const t = window.setTimeout(() => setMounted(false), 120);
     return () => window.clearTimeout(t);
   }, [open, mounted]);
@@ -494,24 +495,40 @@ const OC_PINS_KEY_PREFIX = "stratawise:oc-pins:";
 function ocPinsKey(scope: string | null | undefined): string {
   return `${OC_PINS_KEY_PREFIX}${scope ?? "anon"}`;
 }
+/** Pins for one user, straight out of storage. Returns [] for anything
+ *  unreadable: corrupt JSON, a private window, or the server. */
+function readPins(scope: string | null | undefined): string[] {
+  if (typeof window === "undefined") return [];
+  try {
+    const raw = window.localStorage.getItem(ocPinsKey(scope));
+    if (!raw) return [];
+    const parsed = JSON.parse(raw);
+    return Array.isArray(parsed) ? parsed.filter((s): s is string => typeof s === "string") : [];
+  } catch {
+    return [];
+  }
+}
+
 function usePinnedOCs(scope: string | null | undefined): {
   pins: string[];
   togglePin: (shortCode: string) => void;
   isPinned: (shortCode: string) => boolean;
 } {
-  const [pins, setPins] = useState<string[]>([]);
-  useEffect(() => {
-    if (typeof window === "undefined") return;
-    try {
-      const raw = window.localStorage.getItem(ocPinsKey(scope));
-      if (raw) {
-        const parsed = JSON.parse(raw);
-        if (Array.isArray(parsed)) setPins(parsed.filter((s) => typeof s === "string"));
-      }
-    } catch {
-      /* corrupted storage , silently reset */
-    }
-  }, [scope]);
+  // Read at initialisation, not in an effect. The effect version set state
+  // on mount, so every sidebar render was followed by a second one, and the
+  // sidebar renders on every dashboard page. A lazy useState initialiser
+  // runs once and never on the server, which is the same guard the
+  // typeof-window check was doing.
+  const [pins, setPins] = useState<string[]>(() => readPins(scope));
+
+  // Re-key when the signed-in user changes, compared during render rather
+  // than synced from an effect: the pins for a different user are wrong
+  // immediately, not one paint later.
+  const [pinScope, setPinScope] = useState(scope);
+  if (pinScope !== scope) {
+    setPinScope(scope);
+    setPins(readPins(scope));
+  }
   function persist(next: string[]) {
     setPins(next);
     if (typeof window !== "undefined") {

@@ -439,6 +439,30 @@ reasoning behind each. The headlines, all enforceable by reading a diff:
 - **No horizontal scrollbars, anywhere.** Page-level horizontal scroll is forbidden , it signals the layout is wrong, not that the content needs more room. If a row of items doesn't fit (step indicators, filter chips, breadcrumb segments), wrap it (`flex-wrap`) or truncate it (`truncate` + `min-w-0`), never let the parent overflow. Tables that genuinely need horizontal scroll (wide data tables) must be wrapped in their OWN scroll container with `overflow-x-auto` , that container scrolls, the page doesn't. Same rule applies to dropdowns / popovers / dialogs.
 - **Cancel / Back / "secondary action" buttons use `variant="secondary"`, NOT `variant="ghost"`.** The secondary variant has `bg-card` (white) + `border-border`, so the button reads as a button against both the grey page bg AND a white dialog/popover bg. Ghost buttons (transparent, no border) disappear into white dialog surfaces , managers see them as text and miss them. Applies to: dialog Cancel buttons, wizard Back buttons, "Keep going" / "Finish for now" / "Cancel , wrong cert" / "Discard" buttons, dropdown menu Cancel, sheet Cancel. Ghost stays valid for icon-only buttons (close icons, chevrons, row actions).
 
+## Overlays and the scrim , ONE element, not one per overlay
+
+The page is dimmed by a single `<ScrimLayer />` mounted once in the root
+layout ([use-scrim-stack.tsx](src/components/ui/use-scrim-stack.tsx)). Each
+overlay's own backdrop is **transparent** and exists only to catch the
+click-outside that dismisses it.
+
+Three attempts got this wrong before it landed, all the same mistake, so:
+
+- **Never give an overlay backdrop a background colour.** Two open at once
+  composited to about 70% black and a drawer opened from a drawer looked like
+  a heavier kind of modal.
+- **A CSS sibling selector cannot reach between overlays.** Base UI portals
+  every one into its own container appended to `<body>`, so they are cousins.
+  A `:has(~ ...)` rule silently matches nothing.
+- **Do not move the scrim between overlays.** Letting them elect a "top" and
+  having the rest go transparent means the closing one either holds the spot
+  through its exit animation (light flash) or hands it over early (a frame
+  with no scrim at all). The scrim is a property of "is anything open", so it
+  belongs to nothing in particular. Opening a second overlay changes it not at
+  all; only none-to-one and one-to-none fade it.
+- `ScrimLayer` sits at `z-40`. Sidebar (`z-10`) and header (`z-30`) dim; the
+  refresh bar (`z-60`) and toasts (`z-100`) stay above, which is correct.
+
 ## Colour Palette
 ```
 --primary: hsl(208, 70%, 18%)         /* midnight #0E314C , main button colour */

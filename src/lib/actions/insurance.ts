@@ -2,12 +2,12 @@
 
 import { requireCompanyRole, requireOCAccess } from "@/lib/auth";
 import { createServerClient } from "@/lib/supabase";
+// Types only, and deliberately NOT re-exported. The "use server" transform
+// enumerates named exports and emits a runtime registerServerReference for
+// each one, including `export type {...}` that TypeScript has already
+// erased, which throws "InsurancePolicy is not defined" when the module is
+// evaluated. Import the types from insurance-shared.ts directly.
 import type { InsurancePolicy, PaymentFrequency } from "@/lib/insurance-shared";
-
-// Re-exported as TYPES only. A "use server" file may export nothing but
-// async functions, and a value export here is a runtime error on first
-// render. The values live in insurance-shared.ts.
-export type { InsurancePolicy, PaymentFrequency };
 import { revalidatePath } from "next/cache";
 
 export async function getInsurancePolicies(ocId: string): Promise<InsurancePolicy[]> {

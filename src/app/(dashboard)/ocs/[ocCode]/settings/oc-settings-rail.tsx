@@ -15,9 +15,12 @@ export function OCSettingsRail({ ocCode }: { ocCode: string }) {
         {OC_SETTINGS_NAV.map((item) => {
           const href = `${base}/${item.section}`;
           const Icon = item.icon;
+          // Prefetched for the same reason as the account settings rail:
+          // see the note there about Next's conditional use() in Router.
           const isActive = pathname === href;
           return (
             <Link
+              prefetch
               key={item.section}
               href={href}
               className={cn(

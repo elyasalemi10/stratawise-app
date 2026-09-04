@@ -3,6 +3,7 @@ import { Geist } from "next/font/google";
 import { Toaster } from "sonner";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { RefreshBar } from "@/components/layout/refresh-bar";
+import { ScrimLayer } from "@/components/ui/use-scrim-stack";
 import "./globals.css";
 
 const geist = Geist({
@@ -32,6 +33,8 @@ export default function RootLayout({
     <html lang="en">
       <body className={`${geist.variable} font-sans antialiased`}>
         <RefreshBar />
+        {/* One scrim for however many overlays are open. See use-scrim-stack. */}
+        <ScrimLayer />
         <TooltipProvider>
           {children}
         </TooltipProvider>

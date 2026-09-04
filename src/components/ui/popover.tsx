@@ -4,7 +4,7 @@ import * as React from "react"
 import { Popover as PopoverPrimitive } from "@base-ui/react/popover"
 
 import { cn } from "@/lib/utils"
-import { useIsTopScrim } from "./use-scrim-stack"
+import { useScrimSlot } from "./use-scrim-stack"
 
 function Popover({ ...props }: PopoverPrimitive.Root.Props) {
   return <PopoverPrimitive.Root data-slot="popover" {...props} />
@@ -29,15 +29,15 @@ function PopoverTrigger({ ...props }: PopoverPrimitive.Trigger.Props) {
 // Rendered inside the portal and behind the showBackdrop check, it mounts
 // only when there is a scrim to be top OF.
 function PopoverBackdrop() {
-  const { isTop, ref: scrimRef } = useIsTopScrim();
+  useScrimSlot();
   return (
     <PopoverPrimitive.Backdrop
-      ref={scrimRef}
       data-slot="popover-backdrop"
       className={cn(
-        "fixed inset-0 z-40 duration-100 data-open:animate-in data-open:fade-in-0 data-closed:animate-out data-closed:fade-out-0",
-        // Only the topmost scrim paints; see use-scrim-stack.ts.
-        isTop ? "bg-black/45 backdrop-blur-sm" : "bg-transparent",
+        // Transparent: the page is dimmed by the single ScrimLayer near the
+        // root, not by each overlay. This element exists to catch the click
+        // that dismisses. See use-scrim-stack.
+        "fixed inset-0 z-40",
       )}
     />
   )
