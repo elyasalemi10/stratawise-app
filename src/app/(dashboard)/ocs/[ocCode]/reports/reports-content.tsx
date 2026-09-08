@@ -1,10 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { Download, CalendarIcon } from "lucide-react";
-import { format } from "date-fns";
-import { Calendar } from "@/components/ui/calendar";
-import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
+import { Download, Plus, X } from "lucide-react";
 import { toast } from "sonner";
 import { pdf } from "@react-pdf/renderer";
 import { createElement } from "react";
@@ -13,6 +10,8 @@ import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
 import { Input } from "@/components/ui/input";
 import { NumberInput } from "@/components/ui/number-input";
+import { Textarea } from "@/components/ui/textarea";
+import { Switch } from "@/components/ui/switch";
 import { DatePicker } from "@/components/shared/date-picker";
 import {
   Select,
@@ -65,6 +64,18 @@ const lotLabel = (lot: LotOption) =>
   `Lot ${lot.lot_number}${lot.owner_display_name ? ` , ${lot.owner_display_name}` : ""}`;
 
 /** Billing cycle is stored snake_case; the user never sees the raw value. */
+// Item 4 of the certificate names the fund in a conveyancer's words. Same
+// three funds the ledger knows, never the raw fund_type.
+const CERT_FUND_OPTIONS = ["Admin Fund", "Capital Works Fund", "Maintenance Plan Fund"];
+
+interface CertLevyRow {
+  fund: string;
+  amount: string;
+  period_start: string;
+  period_end: string;
+  due_date: string;
+}
+
 const BILLING_CYCLE_LABEL: Record<string, string> = {
   monthly: "Monthly",
   quarterly: "Quarterly",
@@ -117,9 +128,11 @@ export function ReportsContent({
   const [certLotId, setCertLotId] = useState("");
   const [certApplicant, setCertApplicant] = useState("");
   const [certEmail, setCertEmail] = useState("");
-  const [certAppDate, setCertAppDate] = useState<Date>(new Date());
-  const [certAppDateOpen, setCertAppDateOpen] = useState(false);
-  // Editable certificate text fields
+  const [certAppDate, setCertAppDate] = useState<string>(new Date().toISOString().slice(0, 10));
+  // Every numbered item on the certificate is editable. The server prefills
+  // what it can derive on lot select; the manager owns the final wording,
+  // because they are the one signing it.
+  const [certDate, setCertDate] = useState<string>(new Date().toISOString().slice(0, 10));
   const [certRepairs, setCertRepairs] = useState("n/a");
   const [certFunds, setCertFunds] = useState("n/a");
   const [certLiabilities, setCertLiabilities] = useState("n/a");
@@ -127,13 +140,21 @@ export function ReportsContent({
   const [certServices, setCertServices] = useState("n/a");
   const [certNotices, setCertNotices] = useState("n/a");
   const [certLegal, setCertLegal] = useState("n/a");
-  // Editable fee fields (prefilled from server on lot select)
   const [certCurrentFees, setCertCurrentFees] = useState("n/a");
+  const [certCurrentFeesNote, setCertCurrentFeesNote] = useState("");
   const [certBillingCycle, setCertBillingCycle] = useState("quarterly");
-  const [certFeesPaidUpTo, setCertFeesPaidUpTo] = useState("n/a");
+  const [certFeesPaidUpTo, setCertFeesPaidUpTo] = useState("");
   const [certUnpaidFees, setCertUnpaidFees] = useState("0.00");
-  const [certLastAgm, setCertLastAgm] = useState<Date | undefined>(undefined);
-  const [certLastAgmOpen, setCertLastAgmOpen] = useState(false);
+  const [certLevies, setCertLevies] = useState<CertLevyRow[]>([]);
+  const [certInsurance, setCertInsurance] = useState("n/a");
+  const [certInsuranceNote, setCertInsuranceNote] = useState("");
+  const [certOwnInsurance, setCertOwnInsurance] = useState("n/a");
+  const [certManagerAppointed, setCertManagerAppointed] = useState(true);
+  const [certAdminAppointed, setCertAdminAppointed] = useState(false);
+  const [certLastAgm, setCertLastAgm] = useState<string>("");
+  const [certAttachments, setCertAttachments] = useState("");
+  const [certInspectionAddress, setCertInspectionAddress] = useState("");
+  const [certSealText, setCertSealText] = useState("");
   const [prefilling, setPrefilling] = useState(false);
   const [generating, setGenerating] = useState(false);
   const [pdfUrl, setPdfUrl] = useState<string | null>(null);
@@ -159,14 +180,31 @@ export function ReportsContent({
         if (cancelled || !data) return;
         setCertCurrentFees(data.currentFees);
         setCertBillingCycle(data.billingCycle);
-        setCertFeesPaidUpTo(data.feesPaidUpTo);
+        // "n/a" is the template's own word for an empty date, not a date.
+        setCertFeesPaidUpTo(data.feesPaidUpTo === "n/a" ? "" : data.feesPaidUpTo);
         setCertUnpaidFees(Number(data.unpaidFeesTotal).toFixed(2));
-        setCertLastAgm(data.lastAgmDate ? new Date(data.lastAgmDate) : undefined);
+        setCertLastAgm(data.lastAgmDate || "");
+        setCertLevies(data.levies.map((l) => ({
+          fund: l.fund,
+          amount: Number(l.amount).toFixed(2),
+          period_start: l.period_start ?? "",
+          period_end: l.period_end ?? "",
+          due_date: l.due_date ?? "",
+        })));
+        setCertInsurance(data.insuranceCover);
+        setCertManagerAppointed(data.managerAppointed);
+        setCertAdminAppointed(data.administratorAppointed);
+        setCertInspectionAddress(data.inspectionAddress);
+        setCertSealText(data.commonSealText);
       })
       .finally(() => { if (!cancelled) setPrefilling(false); });
     return () => { cancelled = true; };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [certLotId, reportType, ocId]);
+
+  function updateCertLevy(index: number, patch: Partial<CertLevyRow>) {
+    setCertLevies((rows) => rows.map((r, i) => (i === index ? { ...r, ...patch } : r)));
+  }
 
   const availableReports = REPORTS.filter((r) => !r.managerOnly || !isLotOwner);
 
@@ -245,19 +283,40 @@ export function ReportsContent({
           const certData = await getOCCertificateData(ocId, certLotId, certApplicant, certEmail);
           if (!certData) { toast.error("Failed to load certificate data"); setGenerating(false); return; }
           // Override with form values
-          certData.applicationDate = format(certAppDate, "yyyy-MM-dd");
+          certData.applicationDate = certAppDate;
+          certData.certificateDate = certDate;
           certData.currentFees = certCurrentFees;
+          certData.currentFeesNote = certCurrentFeesNote;
           certData.billingCycle = certBillingCycle;
-          certData.feesPaidUpTo = certFeesPaidUpTo;
+          certData.feesPaidUpTo = certFeesPaidUpTo || "n/a";
           certData.unpaidFeesTotal = Number(certUnpaidFees) || 0;
+          certData.levies = certLevies.map((l) => ({
+            fund: l.fund,
+            amount: Number(l.amount) || 0,
+            period_start: l.period_start,
+            period_end: l.period_end,
+            due_date: l.due_date,
+          }));
           certData.repairsInfo = certRepairs;
+          certData.insuranceCover = certInsurance;
+          certData.insuranceNote = certInsuranceNote;
+          certData.ownInsuranceResolution = certOwnInsurance;
           certData.totalFundsHeld = certFunds;
           certData.liabilities = certLiabilities;
           certData.currentContracts = certContracts;
           certData.serviceAgreements = certServices;
           certData.noticesOrders = certNotices;
           certData.legalProceedings = certLegal;
-          certData.lastAgmDate = certLastAgm ? format(certLastAgm, "yyyy-MM-dd") : "";
+          certData.managerAppointed = certManagerAppointed;
+          certData.administratorAppointed = certAdminAppointed;
+          certData.lastAgmDate = certLastAgm;
+          // One attachment per line, blank lines dropped.
+          certData.additionalAttachments = certAttachments
+            .split("\n")
+            .map((line) => line.trim())
+            .filter(Boolean);
+          certData.inspectionAddress = certInspectionAddress;
+          certData.commonSealText = certSealText;
           // Proxy logo and signature for client-side PDF
           const certLogo = certData.logoUrl ? await getLogoDataUrl() : null;
           let certSig: string | null = null;
@@ -516,20 +575,16 @@ export function ReportsContent({
                 </div>
                 <div className="space-y-1.5 min-w-[150px]">
                   <Label>Application received</Label>
-                  <Popover open={certAppDateOpen} onOpenChange={setCertAppDateOpen}>
-                    <PopoverTrigger className="flex h-9 w-full items-center gap-2 rounded-md border border-border bg-background px-3 text-sm cursor-pointer">
-                      <CalendarIcon className="h-3.5 w-3.5 text-muted-foreground" />
-                      {format(certAppDate, "d MMM yyyy")}
-                    </PopoverTrigger>
-                    <PopoverContent className="w-auto p-2" align="start">
-                      <Calendar mode="single" selected={certAppDate} onSelect={(d) => { if (d) setCertAppDate(d); setCertAppDateOpen(false); }} />
-                    </PopoverContent>
-                  </Popover>
+                  <DatePicker value={certAppDate} onChange={setCertAppDate} />
+                </div>
+                <div className="space-y-1.5 min-w-[150px]">
+                  <Label>Certificate date</Label>
+                  <DatePicker value={certDate} onChange={setCertDate} />
                 </div>
               </>
             )}
 
-            {/* OC Certificate detail fields */}
+            {/* OC Certificate detail fields , every numbered item is editable */}
             {reportType === "oc_certificate" && certLotId && (
               <div className="w-full border-t border-border pt-4 mt-2 grid grid-cols-1 sm:grid-cols-2 gap-3">
                 <div className="space-y-1.5">
@@ -551,17 +606,85 @@ export function ReportsContent({
                     </SelectContent>
                   </Select>
                 </div>
+                <div className="space-y-1.5 sm:col-span-2">
+                  <Label className="text-xs">Note under current fees</Label>
+                  <Input value={certCurrentFeesNote} onChange={(e) => setCertCurrentFeesNote(e.target.value)} placeholder="Anything further about the fees for this lot" className="h-8 text-sm" />
+                </div>
                 <div className="space-y-1.5">
                   <Label className="text-xs">2. Fees paid up to</Label>
-                  <Input value={certFeesPaidUpTo} onChange={(e) => setCertFeesPaidUpTo(e.target.value)} placeholder="YYYY-MM-DD or n/a" className="h-8 text-sm" />
+                  <DatePicker value={certFeesPaidUpTo} onChange={setCertFeesPaidUpTo} placeholder="Leave blank for n/a" className="h-8 text-sm" />
                 </div>
                 <div className="space-y-1.5">
                   <Label className="text-xs">3. Unpaid fees total</Label>
                   <NumberInput value={certUnpaidFees} onChange={setCertUnpaidFees} thousandsSeparator prefix="$" allowDecimal placeholder="Unpaid fees total" className="h-8 text-sm" />
                 </div>
-                <div className="space-y-1.5">
-                  <Label className="text-xs">5. Repairs / maintenance</Label>
-                  <Input value={certRepairs} onChange={(e) => setCertRepairs(e.target.value)} className="h-8 text-sm" />
+
+                <div className="space-y-1.5 sm:col-span-2">
+                  <Label className="text-xs">4. Fees and levies struck</Label>
+                  {certLevies.length > 0 && (
+                    <div className="hidden sm:grid grid-cols-[minmax(0,1.2fr)_minmax(0,1fr)_minmax(0,1fr)_minmax(0,1fr)_minmax(0,1fr)_auto] gap-2">
+                      <Label className="text-xs">Fund</Label>
+                      <Label className="text-xs">Amount</Label>
+                      <Label className="text-xs">Period start</Label>
+                      <Label className="text-xs">Period end</Label>
+                      <Label className="text-xs">Due date</Label>
+                      <span className="w-8" />
+                    </div>
+                  )}
+                  {certLevies.map((row, i) => (
+                    <div key={i} className="grid grid-cols-1 sm:grid-cols-[minmax(0,1.2fr)_minmax(0,1fr)_minmax(0,1fr)_minmax(0,1fr)_minmax(0,1fr)_auto] gap-2">
+                      <Select value={row.fund} onValueChange={(v) => updateCertLevy(i, { fund: v ?? row.fund })}>
+                        <SelectTrigger className="h-8 w-full text-sm">
+                          <SelectValue placeholder="Fund">{row.fund}</SelectValue>
+                        </SelectTrigger>
+                        <SelectContent>
+                          {CERT_FUND_OPTIONS.map((f) => (
+                            <SelectItem key={f} value={f}>{f}</SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                      <NumberInput value={row.amount} onChange={(v) => updateCertLevy(i, { amount: v })} thousandsSeparator prefix="$" allowDecimal placeholder="Amount" className="h-8 text-sm" />
+                      <DatePicker value={row.period_start} onChange={(v) => updateCertLevy(i, { period_start: v })} placeholder="Period start" className="h-8 text-sm" />
+                      <DatePicker value={row.period_end} onChange={(v) => updateCertLevy(i, { period_end: v })} minDate={row.period_start || undefined} placeholder="Period end" className="h-8 text-sm" />
+                      <DatePicker value={row.due_date} onChange={(v) => updateCertLevy(i, { due_date: v })} placeholder="Due date" className="h-8 text-sm" />
+                      <Button
+                        type="button"
+                        variant="ghost"
+                        size="icon"
+                        className="h-8 w-8 shrink-0"
+                        aria-label="Remove levy"
+                        onClick={() => setCertLevies((rows) => rows.filter((_, r) => r !== i))}
+                      >
+                        <X className="h-3.5 w-3.5" />
+                      </Button>
+                    </div>
+                  ))}
+                  <Button
+                    type="button"
+                    variant="secondary"
+                    className="h-8 text-sm"
+                    onClick={() => setCertLevies((rows) => [...rows, { fund: CERT_FUND_OPTIONS[0], amount: "", period_start: "", period_end: "", due_date: "" }])}
+                  >
+                    <Plus className="h-3.5 w-3.5" />
+                    Add levy
+                  </Button>
+                </div>
+
+                <div className="space-y-1.5 sm:col-span-2">
+                  <Label className="text-xs">5. Repairs, maintenance or other work</Label>
+                  <Textarea value={certRepairs} onChange={(e) => setCertRepairs(e.target.value)} className="min-h-16 text-sm" />
+                </div>
+                <div className="space-y-1.5 sm:col-span-2">
+                  <Label className="text-xs">6. Insurance cover</Label>
+                  <Textarea value={certInsurance} onChange={(e) => setCertInsurance(e.target.value)} className="min-h-16 text-sm" />
+                </div>
+                <div className="space-y-1.5 sm:col-span-2">
+                  <Label className="text-xs">Note under insurance cover</Label>
+                  <Input value={certInsuranceNote} onChange={(e) => setCertInsuranceNote(e.target.value)} placeholder="Anything further about the cover" className="h-8 text-sm" />
+                </div>
+                <div className="space-y-1.5 sm:col-span-2">
+                  <Label className="text-xs">7. Resolution on own insurance (Section 63)</Label>
+                  <Textarea value={certOwnInsurance} onChange={(e) => setCertOwnInsurance(e.target.value)} className="min-h-16 text-sm" />
                 </div>
                 <div className="space-y-1.5">
                   <Label className="text-xs">8. Total funds held</Label>
@@ -571,44 +694,45 @@ export function ReportsContent({
                   <Label className="text-xs">9. Liabilities</Label>
                   <Input value={certLiabilities} onChange={(e) => setCertLiabilities(e.target.value)} placeholder="e.g. Nil" className="h-8 text-sm" />
                 </div>
-                <div className="space-y-1.5">
-                  <Label className="text-xs">10. Contracts / leases</Label>
-                  <Input value={certContracts} onChange={(e) => setCertContracts(e.target.value)} placeholder="e.g. Cleaning contract..." className="h-8 text-sm" />
+                <div className="space-y-1.5 sm:col-span-2">
+                  <Label className="text-xs">10. Contracts, leases, licences or agreements</Label>
+                  <Textarea value={certContracts} onChange={(e) => setCertContracts(e.target.value)} className="min-h-16 text-sm" />
                 </div>
-                <div className="space-y-1.5">
+                <div className="space-y-1.5 sm:col-span-2">
                   <Label className="text-xs">11. Service agreements</Label>
-                  <Input value={certServices} onChange={(e) => setCertServices(e.target.value)} className="h-8 text-sm" />
+                  <Textarea value={certServices} onChange={(e) => setCertServices(e.target.value)} className="min-h-16 text-sm" />
                 </div>
-                <div className="space-y-1.5">
-                  <Label className="text-xs">12. Notices / orders (12 months)</Label>
-                  <Input value={certNotices} onChange={(e) => setCertNotices(e.target.value)} className="h-8 text-sm" />
+                <div className="space-y-1.5 sm:col-span-2">
+                  <Label className="text-xs">12. Notices or orders (last 12 months)</Label>
+                  <Textarea value={certNotices} onChange={(e) => setCertNotices(e.target.value)} className="min-h-16 text-sm" />
                 </div>
                 <div className="space-y-1.5 sm:col-span-2">
                   <Label className="text-xs">13. Legal proceedings</Label>
-                  <Input value={certLegal} onChange={(e) => setCertLegal(e.target.value)} className="h-8 text-sm" />
+                  <Textarea value={certLegal} onChange={(e) => setCertLegal(e.target.value)} className="min-h-16 text-sm" />
+                </div>
+                <div className="flex items-center justify-between gap-3 rounded-md border border-border bg-card px-3 h-9">
+                  <Label className="text-xs">14. Manager appointed</Label>
+                  <Switch checked={certManagerAppointed} onCheckedChange={setCertManagerAppointed} />
+                </div>
+                <div className="flex items-center justify-between gap-3 rounded-md border border-border bg-card px-3 h-9">
+                  <Label className="text-xs">15. Administrator appointed</Label>
+                  <Switch checked={certAdminAppointed} onCheckedChange={setCertAdminAppointed} />
                 </div>
                 <div className="space-y-1.5">
                   <Label className="text-xs">16. Last AGM date</Label>
-                  <Popover open={certLastAgmOpen} onOpenChange={setCertLastAgmOpen}>
-                    <PopoverTrigger className="flex h-8 w-full items-center gap-2 rounded-md border border-border bg-background px-3 text-sm cursor-pointer">
-                      <CalendarIcon className="h-3.5 w-3.5 text-muted-foreground" />
-                      {certLastAgm ? format(certLastAgm, "d MMM yyyy") : <span className="text-muted-foreground">Select date or leave blank</span>}
-                    </PopoverTrigger>
-                    <PopoverContent className="w-auto p-2" align="start">
-                      <Calendar mode="single" selected={certLastAgm} onSelect={(d) => { setCertLastAgm(d); setCertLastAgmOpen(false); }} />
-                      {certLastAgm && (
-                        <div className="border-t border-border pt-2 mt-2">
-                          <button
-                            type="button"
-                            onClick={() => { setCertLastAgm(undefined); setCertLastAgmOpen(false); }}
-                            className="w-full text-xs text-muted-foreground hover:text-foreground cursor-pointer"
-                          >
-                            Clear date
-                          </button>
-                        </div>
-                      )}
-                    </PopoverContent>
-                  </Popover>
+                  <DatePicker value={certLastAgm} onChange={setCertLastAgm} placeholder="Leave blank for n/a" className="h-8 text-sm" />
+                </div>
+                <div className="space-y-1.5 sm:col-span-2">
+                  <Label className="text-xs">17. Further documents attached, one per line</Label>
+                  <Textarea value={certAttachments} onChange={(e) => setCertAttachments(e.target.value)} className="min-h-16 text-sm" />
+                </div>
+                <div className="space-y-1.5 sm:col-span-2">
+                  <Label className="text-xs">18. Register inspection address</Label>
+                  <Textarea value={certInspectionAddress} onChange={(e) => setCertInspectionAddress(e.target.value)} className="min-h-16 text-sm" />
+                </div>
+                <div className="space-y-1.5 sm:col-span-2">
+                  <Label className="text-xs">Common seal wording</Label>
+                  <Textarea value={certSealText} onChange={(e) => setCertSealText(e.target.value)} className="min-h-16 text-sm" />
                 </div>
               </div>
             )}

@@ -192,6 +192,14 @@ const BILLING_PERIODS: Record<string, number> = {
   annually: 1,
 };
 
+// The certificate names funds in the words a purchaser's conveyancer expects,
+// not the fund_type enum. See the enum-label rule in CLAUDE.md.
+const CERT_FUND_LABEL: Record<string, string> = {
+  operating: "Admin Fund",
+  capital_works: "Capital Works Fund",
+  maintenance_plan: "Maintenance Plan Fund",
+};
+
 export async function getOCCertificateData(ocId: string, lotId: string, applicantName: string, applicantEmail: string) {
   await requireOCAccess(ocId);
   const supabase = createServerClient();
@@ -282,7 +290,7 @@ export async function getOCCertificateData(ocId: string, lotId: string, applican
     feesPaidUpTo: feesPaidUpTo ?? "n/a",
     unpaidFeesTotal: Math.max(0, unpaidTotal),
     levies: (levies ?? []).map((l) => ({
-      fund: "Admin Fund",
+      fund: CERT_FUND_LABEL[l.fund_type as string] ?? "Admin Fund",
       amount: Number(l.amount),
       period_start: l.period_start,
       period_end: l.period_end,
@@ -290,6 +298,10 @@ export async function getOCCertificateData(ocId: string, lotId: string, applican
     })),
     repairsInfo: "n/a",
     insuranceCover: insuranceSummary,
+    insuranceNote: "",
+    ownInsuranceResolution: "n/a",
+    currentFeesNote: "",
+    additionalAttachments: [] as string[],
     totalFundsHeld: "n/a",
     liabilities: "n/a",
     currentContracts: "n/a",

@@ -97,6 +97,7 @@ export interface OCCertificateProps {
   repairsInfo: string;
   insuranceCover: string;
   insuranceNote?: string;
+  ownInsuranceResolution?: string;
   totalFundsHeld: string;
   liabilities: string;
   currentContracts: string;
@@ -122,7 +123,7 @@ export function OCCertificate(props: OCCertificateProps) {
     logoUrl, signatureUrl, planNumber, ocAddress, lotNumber, lotUnitNumber,
     applicantName, applicantEmail, applicationDate, certificateDate,
     currentFees, currentFeesTable, currentFeesNote, billingCycle, feesPaidUpTo, unpaidFeesTotal, levies,
-    repairsInfo, insuranceCover, insuranceNote, totalFundsHeld, liabilities, currentContracts,
+    repairsInfo, insuranceCover, insuranceNote, ownInsuranceResolution, totalFundsHeld, liabilities, currentContracts,
     serviceAgreements, noticesOrders, legalProceedings, managerAppointed,
     administratorAppointed, lastAgmDate, additionalAttachments, companyName, registeredName,
     companyAddress, commonSealText, inspectionAddress,
@@ -262,7 +263,11 @@ export function OCCertificate(props: OCCertificateProps) {
 
           <View style={s.item}>
             <Text style={s.itemNumber}>7. Resolution on own insurance (Section 63)</Text>
-            <Text style={s.itemMuted}>n/a</Text>
+            {ownInsuranceResolution && ownInsuranceResolution.trim() && ownInsuranceResolution !== "n/a" ? (
+              <Text style={s.itemText}>{ownInsuranceResolution}</Text>
+            ) : (
+              <Text style={s.itemMuted}>n/a</Text>
+            )}
           </View>
 
           <View style={s.item}>
