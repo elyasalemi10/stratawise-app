@@ -2,13 +2,25 @@
 
 import * as React from "react";
 import { Card, CardContent } from "@/components/ui/card";
-import { Badge } from "@/components/ui/badge";
+
 import { Wallet, FileText, ArrowDownToLine, Loader2 } from "lucide-react";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { listLotLevies, type LotLevyRow } from "@/lib/actions/lot-levies";
 import { EmptyState } from "@/components/shared/empty-state";
 
 // Levies tab , every levy notice ever issued to this lot, paid or unpaid.
+// One row per notice, and deliberately no status column.
+//
+// Every notice on this list is one that was issued, so the column read
+// "Issued" on every row, and before that it read "Unpaid" / "Partly paid" /
+// "Overdue", which is the paid/unpaid model in the one place a manager looks
+// to see whether an owner is behind. Whether money is owed is a property of
+// the LOT and it is on the header of this page.
+//
+// "Allocated" is what amount_paid actually means: how much of a payment
+// reconciliation attached to THIS notice. It is reporting, not a balance,
+// and the column name now says so.
+//
 // One row per notice. Paid/unpaid is read directly from the row's status +
 // amount_paid (no balance arithmetic , see the per-levy assignment design
 // note in the project context). Clicking a row opens the underlying PDF in
@@ -34,29 +46,6 @@ function fmtDate(iso: string | null): string {
     month: "short",
     year: "numeric",
   });
-}
-
-// A notice's LIFECYCLE, which is all a notice has.
-//
-// This used to render "Unpaid" for `issued`, "Partly paid", "Overdue" and
-// "Paid": the paid/unpaid model, per document. Under balance accounting
-// whether money is owed is a property of the LOT, not of any one notice, and
-// it is already on the header of this page. A notice can only be a draft, a
-// thing that was issued, or a thing that was cancelled or forgiven.
-//
-// It also mixed its own HSL values instead of the status tokens, which is
-// how "paid" ended up with a different green from everywhere else.
-function lifecycleBadge(row: LotLevyRow): React.ReactNode {
-  switch (row.status) {
-    case "draft":
-      return <Badge variant="neutral">Draft</Badge>;
-    case "cancelled":
-      return <Badge variant="neutral">Cancelled</Badge>;
-    case "written_off":
-      return <Badge variant="neutral">Written off</Badge>;
-    default:
-      return <Badge variant="info">Issued</Badge>;
-  }
 }
 
 export function LotLeviesTab({ lotId }: Props) {
@@ -119,8 +108,7 @@ export function LotLeviesTab({ lotId }: Props) {
                 <TableHead>Period</TableHead>
                 <TableHead>Due</TableHead>
                 <TableHead className="text-right">Amount</TableHead>
-                <TableHead className="text-right">Paid</TableHead>
-                <TableHead>Status</TableHead>
+                <TableHead className="text-right">Allocated</TableHead>
                 <TableHead className="w-8" />
               </TableRow>
             </TableHeader>
@@ -143,7 +131,6 @@ export function LotLeviesTab({ lotId }: Props) {
                     <TableCell className="text-right tabular-nums">
                       {fmtCurrency(Number(row.amount_paid))}
                     </TableCell>
-                    <TableCell>{lifecycleBadge(row)}</TableCell>
                     <TableCell>
                       {row.pdf_url ? (
                         <a

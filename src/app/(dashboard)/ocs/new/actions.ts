@@ -1,6 +1,7 @@
 "use server";
 
 import { revalidatePath, updateTag } from "next/cache";
+import { defaultDocumentNote } from "@/lib/documents/default-note";
 import { requireCompanyRole } from "@/lib/auth";
 import { createServerClient } from "@/lib/supabase";
 import { insertOCWithCode } from "@/lib/oc-code";
@@ -1547,6 +1548,7 @@ export async function completeWizard(draftId: string) {
         oc_id: oc.id,
         lot_id: null,
         category: "plan_of_subdivision",
+        description: defaultDocumentNote("plan_of_subdivision", { planNumber: draft.plan_number }),
         file_name: friendlyDocName("plan_of_subdivision", { planNumber: d.plan_number, ocName: d.oc_name }),
         original_filename: draft.plan_filename,
         file_path: draft.plan_storage_key,
@@ -1567,6 +1569,7 @@ export async function completeWizard(draftId: string) {
         oc_id: oc.id,
         lot_id: null,
         category: "oc_rules",
+        description: defaultDocumentNote("oc_rules"),
         file_name: friendlyDocName("oc_rules", { planNumber: d.plan_number, ocName: d.oc_name }),
         original_filename: draft.rules_filename,
         file_path: draft.rules_storage_key,
@@ -1693,6 +1696,10 @@ export async function completeWizard(draftId: string) {
             oc_id: oc.id,
             lot_id: null,
             category: "insurance_policy",
+            // The certificate has not been parsed at this point in the
+            // wizard; the OC's plan number is what we do know, and it is
+            // enough to tell one card from another.
+            description: defaultDocumentNote("insurance_policy", { planNumber: d.plan_number }),
             file_name: friendly,
             original_filename: coc.filename,
             file_path: coc.storage_key,
@@ -1714,6 +1721,7 @@ export async function completeWizard(draftId: string) {
           oc_id: oc.id,
           lot_id: null,
           category: "insurance_policy",
+          description: defaultDocumentNote("insurance_policy", { planNumber: d.plan_number }),
           file_name: friendlyDocName("insurance_policy", { planNumber: d.plan_number, ocName: d.oc_name }),
           original_filename: draft.insurance_doc_filename,
           file_path: draft.insurance_doc_storage_key,

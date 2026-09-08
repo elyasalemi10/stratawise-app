@@ -56,6 +56,9 @@ export function TagPicker({
   onCreate,
   disabled,
   compact,
+  open,
+  onOpenChange,
+  trigger,
 }: {
   allTags: DocumentTag[];
   selectedIds: string[];
@@ -65,6 +68,14 @@ export function TagPicker({
   /** Icon only. Once a card is already showing tags the word is redundant
    *  and the strip needs the width. */
   compact?: boolean;
+  /** Controlled, so ticking a tag does not close the list. Filing usually
+   *  means two or three tags at once, and a popup that shuts after each one
+   *  makes you re-open and re-find your place every time. */
+  open?: boolean;
+  onOpenChange?: (open: boolean) => void;
+  /** Replaces the default button entirely, so the whole tag field can be
+   *  the trigger. */
+  trigger?: React.ReactNode;
 }) {
   const [query, setQuery] = React.useState("");
   const [creating, setCreating] = React.useState(false);
@@ -88,9 +99,12 @@ export function TagPicker({
   }
 
   return (
-    <Popover>
-      {/* Outlined, so it reads as a control rather than a caption. It sits
-          next to a bordered note box and looked like stray text without one. */}
+    <Popover open={open} onOpenChange={onOpenChange}>
+      {trigger ? (
+        <PopoverTrigger disabled={disabled} render={trigger as React.ReactElement} />
+      ) : (
+      /* Outlined, so it reads as a control rather than a caption. It sits
+         next to a bordered note box and looked like stray text without one. */
       <PopoverTrigger
         disabled={disabled}
         className={cn(
@@ -103,6 +117,7 @@ export function TagPicker({
         <TagIcon className="h-3.5 w-3.5 shrink-0" />
         {!compact && "Add tags"}
       </PopoverTrigger>
+      )}
       <PopoverContent
         className="w-64 p-0"
         align="start"
@@ -181,5 +196,73 @@ export function TagPicker({
         )}
       </PopoverContent>
     </Popover>
+  );
+}
+
+/**
+ * The tags on one document, as a field.
+ *
+ * They used to be loose pills in a flex row. Adding one grew the card and
+ * shifted every card after it in the grid, and a row of pills next to a
+ * bordered note box read as debris rather than a control.
+ *
+ * Now they live in a bordered strip that looks like the note box above it,
+ * scrolls sideways when it runs out of room, and is itself the button that
+ * opens the picker. The picker is controlled, so ticking two tags in a row
+ * does not shut it between them.
+ */
+export function TagField({
+  tags,
+  allTags,
+  readOnly,
+  onToggle,
+  onCreate,
+}: {
+  tags: DocumentTag[];
+  allTags: DocumentTag[];
+  readOnly?: boolean;
+  onToggle: (tagId: string) => void;
+  onCreate: (name: string, colour: TagColour) => Promise<DocumentTag | null>;
+}) {
+  const [open, setOpen] = React.useState(false);
+
+  const field = (
+    <div
+      role={readOnly ? undefined : "button"}
+      tabIndex={readOnly ? undefined : 0}
+      className={cn(
+        "flex h-9 w-full items-center gap-1.5 overflow-hidden rounded-md border border-border bg-card px-2.5",
+        !readOnly && "cursor-pointer transition-colors hover:border-primary/40",
+      )}
+    >
+      <TagIcon className="h-3.5 w-3.5 shrink-0 text-muted-foreground" />
+      {tags.length === 0 ? (
+        <span className="text-sm text-muted-foreground">Add tags</span>
+      ) : (
+        // Scrolls out of sight to the right rather than wrapping. The card
+        // is a fixed height and the grid depends on it staying that way.
+        <div className="flex min-w-0 flex-1 items-center gap-1 overflow-x-auto [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
+          {tags.map((t) => (
+            <span key={t.id} className="shrink-0">
+              <TagChip tag={t} />
+            </span>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+
+  if (readOnly) return field;
+
+  return (
+    <TagPicker
+      allTags={allTags}
+      selectedIds={tags.map((t) => t.id)}
+      onToggle={onToggle}
+      onCreate={onCreate}
+      open={open}
+      onOpenChange={setOpen}
+      trigger={field}
+    />
   );
 }

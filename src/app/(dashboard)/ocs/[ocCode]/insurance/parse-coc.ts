@@ -1,6 +1,7 @@
 "use server";
 
 import { requireCompanyRole, requireOCAccess } from "@/lib/auth";
+import { defaultDocumentNote } from "@/lib/documents/default-note";
 import { uploadObject, deleteObject } from "@/lib/storage/r2";
 import { parseInsurancePdf, type ParsedInsurancePolicy } from "@/lib/parse-insurance";
 import { createServerClient } from "@/lib/supabase";
@@ -85,6 +86,13 @@ export async function uploadAndParseInsuranceCoc(
       file_size: file.size,
       mime_type: "application/pdf",
       category: "certificate_of_currency",
+      // The first policy on the certificate. A cert usually lists several
+      // sections under one policy number, and the number is what anyone
+      // looking for this document actually has to hand.
+      description: defaultDocumentNote("certificate_of_currency", {
+        policyNumber: parsed.policies?.[0]?.policy_number ?? null,
+        provider: parsed.policies?.[0]?.provider ?? null,
+      }),
       is_confidential: true,
       ocr_status: "complete",
     })

@@ -4,26 +4,26 @@ import * as React from "react";
 import { cn } from "@/lib/utils";
 
 /**
- * One row that grows as you type and snaps back when you leave.
+ * A note box that shows what it holds and grows only when it has to.
  *
- * The collapsed state is deliberately one line: a grid of cards each holding
- * a four-line box is mostly empty boxes. It grows to fit while focused, up to
- * a ceiling, then scrolls, so one long description cannot push a card to
- * twice the height of its neighbours and break the grid.
+ * Two things it must not do, both of which it did:
  *
- * The scrollbar is hidden rather than styled. At this size a visible bar is
- * most of the width of the control, and the content scrolling is the
- * affordance.
+ * It must not change size when clicked. It was sized in rows and re-measured
+ * on focus, so a short note produced a scrollHeight under the resting height
+ * and the box shrank away from the cursor. The resting height is now fixed at
+ * two lines and focus does not shrink below it.
+ *
+ * It must not un-wrap. The collapsed state was one nowrap line with an
+ * ellipsis, so a two-line note looked like a one-line note until you clicked
+ * it and the text reflowed. It now wraps at rest and clips, showing a second
+ * line partly cut off, which is what tells you there is more.
  */
-/** The resting height, matching min-h-9 plus the border. */
-const MIN_HEIGHT = 36;
-
 export function AutoGrowTextarea({
   value,
   onChange,
   onCommit,
   placeholder,
-  maxHeight = 120,
+  maxHeight = 132,
   className,
   ...props
 }: {
@@ -39,21 +39,23 @@ export function AutoGrowTextarea({
   const [focused, setFocused] = React.useState(false);
   const committed = React.useRef(value);
 
-  // Height is measured, not counted: wrapping depends on the rendered width
-  // and the font, so scrollHeight is the only thing that knows.
+  // Resting height: two 20px lines plus padding and borders. Fixed, so the
+  // control is exactly the same size before and after a click.
+  const REST_HEIGHT = 54;
+
   const resize = React.useCallback(() => {
     const el = ref.current;
     if (!el) return;
     if (!focused) {
-      el.style.height = "";
+      // At rest it is always the resting height. Content taller than that is
+      // clipped mid-line, which is the signal that there is more to read.
+      el.style.height = `${REST_HEIGHT}px`;
       el.style.overflowY = "hidden";
       return;
     }
     el.style.height = "auto";
-    // Never below the collapsed height. Without the floor a short note
-    // measured smaller than the resting box and the control shrank the
-    // moment it was clicked.
-    const next = Math.min(Math.max(el.scrollHeight, MIN_HEIGHT), maxHeight);
+    // Never below the resting height, so focusing can only ever grow it.
+    const next = Math.min(Math.max(el.scrollHeight, REST_HEIGHT), maxHeight);
     el.style.height = `${next}px`;
     el.style.overflowY = el.scrollHeight > maxHeight ? "auto" : "hidden";
   }, [focused, maxHeight]);
@@ -66,7 +68,6 @@ export function AutoGrowTextarea({
     <textarea
       {...props}
       ref={ref}
-      rows={1}
       value={value}
       placeholder={placeholder}
       onFocus={(e) => {
@@ -83,20 +84,17 @@ export function AutoGrowTextarea({
       }}
       onChange={(e) => onChange(e.target.value)}
       className={cn(
-        // min-h, not a row count. Sizing by rows let the box SHRINK on focus
-        // when the resize measured a scrollHeight under one line, which read
-        // as the control flinching away from the click.
-        "block min-h-9 w-full resize-none rounded-md border bg-card px-2.5 py-1.5 text-sm leading-6 text-foreground",
+        "block w-full resize-none rounded-md border bg-card px-2.5 py-1.5 text-sm leading-5 text-foreground",
         "placeholder:text-muted-foreground focus-visible:outline-none",
         // Gold while focused, against the same grey border everything else
-        // has. It is the one control on the card you type into, and it
-        // should look like it once you are in it.
+        // has. It is the one control on the card you type into.
         focused
           ? "border-[color:var(--brand-gold)] ring-1 ring-[color:var(--brand-gold)]/30"
           : "border-border",
-        "transition-[height,border-color,box-shadow] duration-150 ease-out",
+        // Only the border transitions. Height is set imperatively and
+        // animating it fought the measurement.
+        "transition-[border-color,box-shadow] duration-150 ease-out",
         "[scrollbar-width:none] [&::-webkit-scrollbar]:hidden",
-        !focused && "overflow-hidden whitespace-nowrap text-ellipsis",
         className,
       )}
     />

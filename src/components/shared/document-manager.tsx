@@ -1,6 +1,7 @@
 "use client";
 
-import { useState, useRef, useCallback, useEffect } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { cn } from "@/lib/utils";
 import { Input } from "@/components/ui/input";
 import { DocumentCard, DocumentUploadCard } from "@/components/shared/document-card";
 import { DocumentLightbox } from "@/components/shared/document-lightbox";
@@ -11,7 +12,7 @@ import {
   setDocumentDescription,
   setDocumentTags,
 } from "@/lib/actions/document-tags";
-import { FileText, Upload, Download, Trash2, Loader2, X, Search } from "lucide-react";
+import { Upload, Download, Trash2, Search } from "lucide-react";
 import { toast } from "sonner";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -285,6 +286,40 @@ export function DocumentManager({ ocId, lotId, initialDocuments, readOnly }: Doc
     return res.tag;
   }
 
+  // What is actually on screen. Computed here rather than inside the grid's
+  // render so the lightbox can walk the SAME list: arrowing through
+  // documents while a search is on should move between the results, not the
+  // whole library.
+  const visibleDocs = useMemo(() => {
+    const q = search.trim().toLowerCase();
+    const searched = q
+      ? documents.filter(
+          (d) =>
+            d.file_name.toLowerCase().includes(q) ||
+            (d.description ?? "").toLowerCase().includes(q) ||
+            (d.tags ?? []).some((t) => t.name.toLowerCase().includes(q)),
+        )
+      : documents;
+    if (filterCategory === "all") return searched;
+    return searched.filter((d) => {
+      const cat = (d.category ?? "other").toLowerCase();
+      if (filterCategory === "general") return cat === "other" || cat === "general";
+      return cat === filterCategory;
+    });
+  }, [documents, search, filterCategory]);
+
+  const lightboxItems = useMemo(
+    () =>
+      visibleDocs.map((d) => ({
+        id: d.id,
+        // The viewer gets the real file, not the grid's thumbnail.
+        url: `/api/documents/${d.id}?view=true`,
+        mimeType: d.mime_type,
+        pdfReady: d.pdf_status === "complete",
+      })),
+    [visibleDocs],
+  );
+
   function toggleSelected(id: string) {
     setSelectedIds((prev) => {
       const next = new Set(prev);
@@ -362,9 +397,6 @@ export function DocumentManager({ ocId, lotId, initialDocuments, readOnly }: Doc
   }
 
 
-  function getDocViewUrl(doc: DocWithUrl): string {
-    return `/api/documents/${doc.id}?view=true`;
-  }
 
   /** A document the preview pane can actually render: a PDF, or an Office
    *  file whose PDF rendition is ready. */
@@ -400,37 +432,55 @@ export function DocumentManager({ ocId, lotId, initialDocuments, readOnly }: Doc
 
           The toolbar replaces nothing when empty: it is absent, so the grid
           starts at the top and does not shift when a selection begins. */}
-      {!readOnly && selectedIds.size > 0 && (
-        <div className="flex flex-wrap items-center gap-2 rounded-md border border-border bg-card px-3 py-2">
-          <span className="text-sm font-medium text-foreground tabular-nums">
-            {selectedIds.size} selected
-          </span>
-          <div className="ml-auto flex flex-wrap items-center gap-2">
-            <Button variant="secondary" size="sm" onClick={selectAllVisible}>
-              Select all
-            </Button>
-            <Button variant="secondary" size="sm" onClick={clearSelection}>
-              Clear
-            </Button>
-            <Button
-              variant="secondary"
-              size="sm"
-              disabled={exporting}
-              loading={exporting}
-              onClick={downloadSelected}
-            >
-              <Download className="mr-2 h-3.5 w-3.5" />
-              Download as ZIP
-            </Button>
-            <Button
-              variant="secondary"
-              size="sm"
-              className="text-destructive"
-              onClick={() => setBulkDeleteOpen(true)}
-            >
-              <Trash2 className="mr-2 h-3.5 w-3.5" />
-              Delete
-            </Button>
+      {/* The bar slides down rather than appearing. A control that pops into
+          existence under the cursor reads as a mis-click; one that arrives
+          reads as a response to what you just did.
+
+          Grid-rows is what makes it animate from nothing: height cannot be
+          transitioned from auto, so the wrapper animates a 0fr -> 1fr row
+          and the content inside is simply clipped. */}
+      {!readOnly && (
+        <div
+          className={cn(
+            "grid transition-[grid-template-rows,opacity] duration-200 ease-out",
+            selectedIds.size > 0 ? "grid-rows-[1fr] opacity-100" : "grid-rows-[0fr] opacity-0",
+          )}
+        >
+          <div className="overflow-hidden">
+            <div className="flex flex-wrap items-center gap-2 rounded-md border border-border bg-card px-3 py-2">
+              <span className="text-sm font-medium text-foreground tabular-nums">
+                {selectedIds.size} selected
+              </span>
+              <div className="ml-auto flex flex-wrap items-center gap-2">
+                {/* Each action carries its own colour. A row of identical grey
+                    buttons makes the manager read all three before finding
+                    the one they want, and puts Delete at the same weight as
+                    Select all. */}
+                <Button variant="secondary" size="sm" onClick={selectAllVisible}>
+                  Select all
+                </Button>
+                <Button variant="secondary" size="sm" onClick={clearSelection}>
+                  Clear
+                </Button>
+                <Button
+                  size="sm"
+                  disabled={exporting}
+                  loading={exporting}
+                  onClick={downloadSelected}
+                >
+                  <Download className="mr-2 h-3.5 w-3.5" />
+                  Download as ZIP
+                </Button>
+                <Button
+                  variant="destructive"
+                  size="sm"
+                  onClick={() => setBulkDeleteOpen(true)}
+                >
+                  <Trash2 className="mr-2 h-3.5 w-3.5" />
+                  Delete
+                </Button>
+              </div>
+            </div>
           </div>
         </div>
       )}
@@ -473,21 +523,6 @@ export function DocumentManager({ ocId, lotId, initialDocuments, readOnly }: Doc
           instead of a separate progress strip above the grid. */}
       {(() => {
         const q = search.trim().toLowerCase();
-        const searched = q
-          ? documents.filter(
-              (d) =>
-                d.file_name.toLowerCase().includes(q) ||
-                (d.description ?? "").toLowerCase().includes(q) ||
-                (d.tags ?? []).some((t) => t.name.toLowerCase().includes(q)),
-            )
-          : documents;
-        const visibleDocs = filterCategory === "all"
-          ? searched
-          : searched.filter((d) => {
-              const cat = (d.category ?? "other").toLowerCase();
-              if (filterCategory === "general") return cat === "other" || cat === "general";
-              return cat === filterCategory;
-            });
         if (visibleDocs.length === 0 && uploads.length === 0 && q) {
           return (
             <EmptyState
@@ -555,7 +590,7 @@ export function DocumentManager({ ocId, lotId, initialDocuments, readOnly }: Doc
             <DocumentCard
               key={doc.id}
               doc={doc}
-              viewUrl={`/api/documents/${doc.id}?view=true&thumb=true`}
+              thumbnailUrl={`/api/documents/${doc.id}?view=true&thumb=true`}
               downloadUrl={`/api/documents/${doc.id}`}
               selected={selectedIds.has(doc.id)}
               selectionActive={selectedIds.size > 0}
@@ -573,11 +608,16 @@ export function DocumentManager({ ocId, lotId, initialDocuments, readOnly }: Doc
         );
       })()}
 
+      {/* Everything currently visible, so the arrows walk the same list the
+          manager is looking at rather than the whole library. */}
       <DocumentLightbox
         open={!!previewDoc}
-        url={previewDoc ? getDocViewUrl(previewDoc) : null}
-        mimeType={previewDoc?.mime_type ?? null}
-        pdfReady={previewDoc?.pdf_status === "complete"}
+        items={lightboxItems}
+        index={Math.max(0, lightboxItems.findIndex((i) => i.id === previewDoc?.id))}
+        onIndexChange={(next) => {
+          const target = lightboxItems[next];
+          if (target) setPreviewDoc(documents.find((d) => d.id === target.id) ?? null);
+        }}
         onClose={() => setPreviewDoc(null)}
       />
 

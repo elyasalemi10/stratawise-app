@@ -7,6 +7,14 @@ const nextConfig: NextConfig = {
   // identifies nothing. Costs build time and ships the maps, so turn it back
   // off once that is closed out.
   productionBrowserSourceMaps: true,
+  // Native and non-ESM packages the bundler must not try to inline.
+  //
+  // @napi-rs/canvas ships a .node binary, which Turbopack cannot place in an
+  // ESM chunk ("asset is not placeable"); sharp is the same shape. pdfjs-dist
+  // is here because its legacy server build is what renders a PDF's first
+  // page, and bundling it drags the browser build's assumptions in with it.
+  // These stay as real requires at runtime, which is what they need.
+  serverExternalPackages: ["@napi-rs/canvas", "sharp", "pdfjs-dist"],
   experimental: {
     serverActions: {
       // OC creation wizard accepts Plan-of-Subdivision PDFs up to 50MB.

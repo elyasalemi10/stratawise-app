@@ -50,6 +50,9 @@ export interface DocumentRecord {
    *  an image), which is different from one that has not been made yet. */
   pdf_status?: "none" | "pending" | "complete" | "failed" | "skipped";
   pdf_storage_key?: string | null;
+  /** Small WebP for the grid. Null when the file has no page or image to
+   *  make one from. */
+  thumbnail_storage_key?: string | null;
   /** What the manager says this document is, in their words. The uploaded
    *  filename stays on original_filename: "scan_0043.pdf" identifies
    *  nothing, and the description is what makes it findable later. */

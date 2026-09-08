@@ -3,6 +3,7 @@ import { createServerClient } from "@/lib/supabase";
 import { fetchObject } from "@/lib/storage/r2";
 import { runDocumentAiOcr, sanitiseOcrText } from "@/lib/google/document-ai";
 import { uploadObject } from "@/lib/storage/r2";
+import { renderPdfFirstPage } from "@/lib/images/pdf-thumbnail";
 import {
   convertToPdf,
   isConversionConfigured,
@@ -254,6 +255,16 @@ async function renderToPdf(
     const key = `${doc.file_path.replace(/\.[^./]+$/, "")}.converted.pdf`;
     await uploadObject(key, pdf, "application/pdf");
 
+    // The card can show a real page now that one exists. An Office file has
+    // no image of its own until this point, so this is the only chance to
+    // make its thumbnail.
+    let thumbnailKey: string | null = null;
+    const pageOne = await renderPdfFirstPage(pdf);
+    if (pageOne) {
+      thumbnailKey = `${doc.file_path.replace(/\.[^./]+$/, "")}.thumb.webp`;
+      await uploadObject(thumbnailKey, pageOne, "image/webp");
+    }
+
     await supabase
       .from("documents")
       .update({
@@ -261,6 +272,7 @@ async function renderToPdf(
         pdf_storage_key: key,
         pdf_converted_at: new Date().toISOString(),
         pdf_error: null,
+        ...(thumbnailKey ? { thumbnail_storage_key: thumbnailKey } : {}),
       })
       .eq("id", documentId);
     return key;

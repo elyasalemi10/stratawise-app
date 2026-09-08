@@ -6,6 +6,7 @@ import { uploadObject, publicUrlFor } from "@/lib/storage/r2";
 import { ingestDocumentOcr, isIndexable } from "@/lib/ocr/ingest";
 import { needsPdfConversion } from "@/lib/ocr/convert-to-pdf";
 import { downscaleImage, makeThumbnail } from "@/lib/images/downscale";
+import { renderPdfFirstPage } from "@/lib/images/pdf-thumbnail";
 
 const UUID_REGEX = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
@@ -92,7 +93,14 @@ export async function POST(request: NextRequest) {
   // The grid renders at ~300 CSS pixels. Handing it the 2400px file means
   // the browser decodes about 17MB of bitmap per card, so a page of twelve
   // is roughly 200MB of image for pictures shown at an eighth of that size.
-  const thumbnail = await makeThumbnail(buffer, storedType);
+  // Images shrink; PDFs get their first page rendered. Without the second
+  // one the card embedded the whole PDF in an <object>, which hands it to
+  // the browser's built-in viewer: a grey plate with its own chrome, and a
+  // full document downloaded to show one page.
+  const thumbnail =
+    storedType === "application/pdf"
+      ? await renderPdfFirstPage(buffer)
+      : await makeThumbnail(buffer, storedType);
   const thumbnailKey = thumbnail ? `${key.replace(/\.[^./]+$/, "")}.thumb.webp` : null;
 
   await Promise.all([
