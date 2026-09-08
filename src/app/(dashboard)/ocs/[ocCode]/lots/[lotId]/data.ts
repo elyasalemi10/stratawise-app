@@ -15,7 +15,6 @@ import {
   getNextLevyDue,
   getLotActivity,
   getPortalActivity,
-  hasAnyLevyEverBeenIssued,
 } from "@/lib/actions/lot-overview";
 import { listLotCommunications } from "@/lib/actions/lot-communications";
 import { getLotEngagement } from "@/lib/actions/lot-engagement";
@@ -54,7 +53,6 @@ export interface LotDetailPageData {
   lotOwnerExtra: LotOwnerExtra | null;
   lastPaymentAt: string | null;
   nextLevy: Awaited<ReturnType<typeof getNextLevyDue>>;
-  anyLevyEverIssued: boolean;
   lotAddress: string | null;
   activity: Awaited<ReturnType<typeof getLotActivity>>;
   portalActivity: Awaited<ReturnType<typeof getPortalActivity>>;
@@ -96,7 +94,6 @@ export async function getLotDetailPageData(
     ownershipHistory,
     inviteStatusMap,
     nextLevy,
-    anyLevyEver,
     activity,
     portalActivity,
     communications,
@@ -157,7 +154,6 @@ export async function getLotDetailPageData(
     // with an ownership actually takes.
     getLotInvitationStatus(ocId, [lotId]),
     getNextLevyDue(lotId),
-    hasAnyLevyEverBeenIssued(lotId),
     getLotActivity(lotId, 50),
     getPortalActivity(lotId),
     listLotCommunications(lotId),
@@ -178,7 +174,6 @@ export async function getLotDetailPageData(
       lotOwnerExtra: null,
       lastPaymentAt: null,
       nextLevy: null,
-      anyLevyEverIssued: false,
       lotAddress: null,
       activity: [],
       portalActivity: [],
@@ -227,7 +222,6 @@ export async function getLotDetailPageData(
       : null,
     lastPaymentAt: lastPaymentRow?.payment_date ?? null,
     nextLevy,
-    anyLevyEverIssued: anyLevyEver,
     lotAddress: oc?.address
       ? `${lot.unit_number ? `Unit ${lot.unit_number} / ` : ""}${oc.address}`
       : null,

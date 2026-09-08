@@ -95,7 +95,7 @@ export function InviteConfirmDialog({
           <div className="rounded-md border border-border bg-cool-muted px-3 py-2.5 text-sm space-y-1.5">
             <div>
               <p className="text-xs tracking-normal text-cool-muted-foreground">Owner</p>
-              <p className="font-medium text-foreground">{ownerName ?? ","} · Lot {lotNumber}</p>
+              <p className="font-medium text-foreground">{ownerName ?? ""} · Lot {lotNumber}</p>
             </div>
             <div>
               <p className="text-xs tracking-normal text-cool-muted-foreground">Email</p>

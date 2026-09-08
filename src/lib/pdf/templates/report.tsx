@@ -307,10 +307,10 @@ export function LotRegisterReport({ data, title, subtitle, address, logoUrl, sho
             <View key={i} style={i % 2 === 0 ? s.rowStriped : s.row} wrap={false}>
               <Text style={[s.td, { width: showContact ? "8%" : "15%" }]}>Lot {lot.lot_number}{lot.unit_number ? ` (${lot.unit_number})` : ""}</Text>
               <Text style={[s.td, { width: showContact ? "18%" : "40%" }]}>{ownerLabel}</Text>
-              {showContact && <Text style={[s.tdMuted, { width: "22%" }]}>{lot.owner_contact_email ?? ","}</Text>}
-              {showContact && <Text style={[s.td, { width: "14%" }]}>{lot.owner_contact_phone ?? ","}</Text>}
-              <Text style={[s.tdRight, { width: showContact ? "11%" : "22%" }]}>{lot.lot_entitlement || ","}</Text>
-              <Text style={[s.tdRight, { width: showContact ? "11%" : "23%" }]}>{lot.lot_liability || ","}</Text>
+              {showContact && <Text style={[s.tdMuted, { width: "22%" }]}>{lot.owner_contact_email ?? ""}</Text>}
+              {showContact && <Text style={[s.td, { width: "14%" }]}>{lot.owner_contact_phone ?? ""}</Text>}
+              <Text style={[s.tdRight, { width: showContact ? "11%" : "22%" }]}>{lot.lot_entitlement || ""}</Text>
+              <Text style={[s.tdRight, { width: showContact ? "11%" : "23%" }]}>{lot.lot_liability || ""}</Text>
               {showContact && <Text style={[s.td, { width: "16%" }]}>{statusLabel}</Text>}
             </View>
           );
@@ -473,7 +473,7 @@ export function OutstandingArrearsReport({
         {data.map((r, i) => (
           <View key={i} style={i % 2 === 0 ? s.rowStriped : s.row} wrap={false}>
             <Text style={[s.td, { width: "8%" }]}>{r.lot_number}{r.unit_number ? ` / ${r.unit_number}` : ""}</Text>
-            <Text style={[s.td, { width: "22%" }]}>{r.owner_display_name ?? ","}</Text>
+            <Text style={[s.td, { width: "22%" }]}>{r.owner_display_name ?? ""}</Text>
             <Text style={[s.tdMuted, { width: "14%" }]}>{r.oldest_due_date ? fmtDate(r.oldest_due_date) : ","}</Text>
             <Text style={[s.tdRight, { width: "10%" }]}>{r.days_overdue}</Text>
             <Text style={[s.tdRight, { width: "14%" }]}>{fmt(r.principal_outstanding)}</Text>
@@ -574,8 +574,8 @@ export function OwnerStatementReportPdf({
             <View key={i} style={i % 2 === 0 ? s.rowStriped : s.row} wrap={false}>
               <Text style={[s.tdMuted, { width: "12%" }]}>{fmtDate(e.entry_date)}</Text>
               <Text style={[s.td, { width: "16%" }]}>{capitalize(e.category)}</Text>
-              <Text style={[s.td, { width: "30%" }]}>{e.description ?? ","}</Text>
-              <Text style={[s.tdMuted, { width: "12%" }]}>{e.reference ?? ","}</Text>
+              <Text style={[s.td, { width: "30%" }]}>{e.description ?? ""}</Text>
+              <Text style={[s.tdMuted, { width: "12%" }]}>{e.reference ?? ""}</Text>
               <Text style={[s.tdRight, { width: "10%" }]}>{e.debit > 0 ? fmt(e.debit) : ""}</Text>
               <Text style={[s.tdGreen, { width: "10%" }]}>{e.credit > 0 ? fmt(e.credit) : ""}</Text>
               <Text style={[s.tdRight, { width: "10%", fontWeight: 600 }]}>{fmt(e.balance_after)}</Text>

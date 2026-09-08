@@ -496,9 +496,9 @@ export function SettlementDialog(props: Props) {
                 <p className="text-sm font-semibold text-foreground">This document is for a different plan</p>
                 <p className="mt-1 text-sm text-muted-foreground">
                   The document references plan{" "}
-                  <span className="font-medium text-foreground">{review.parsed.planNumber ?? ","}</span>,
+                  <span className="font-medium text-foreground">{review.parsed.planNumber ?? ""}</span>,
                   but this OC is plan{" "}
-                  <span className="font-medium text-foreground">{review.expected.planNumber ?? ","}</span>.
+                  <span className="font-medium text-foreground">{review.expected.planNumber ?? ""}</span>.
                   Are you sure this is the right document?
                 </p>
               </div>
@@ -533,9 +533,9 @@ export function SettlementDialog(props: Props) {
                 <p className="text-sm font-semibold text-foreground">This document is for a different lot</p>
                 <p className="mt-1 text-sm text-muted-foreground">
                   The document references{" "}
-                  <span className="font-medium text-foreground">Lot {review.parsed.lotNumber ?? ","}</span>,
+                  <span className="font-medium text-foreground">Lot {review.parsed.lotNumber ?? ""}</span>,
                   but you&apos;re applying it to{" "}
-                  <span className="font-medium text-foreground">Lot {targetLotNumber ?? ","}</span>.
+                  <span className="font-medium text-foreground">Lot {targetLotNumber ?? ""}</span>.
                   What would you like to do?
                 </p>
               </div>
@@ -691,8 +691,8 @@ function ReviewForm(props: {
       {review.currentOwner && (
         <div className="rounded-md border border-border p-3 text-sm">
           <p className="text-xs font-medium tracking-normal text-muted-foreground">Outgoing owner</p>
-          <p className="mt-1 text-foreground font-medium">{review.currentOwner.name ?? ","}</p>
-          <p className="text-xs text-muted-foreground">{review.currentOwner.email ?? ","}</p>
+          <p className="mt-1 text-foreground font-medium">{review.currentOwner.name ?? ""}</p>
+          <p className="text-xs text-muted-foreground">{review.currentOwner.email ?? ""}</p>
           <p className="mt-2 text-xs text-muted-foreground">
             Their access ends on the settlement date. Their payment history and communications stay
             available to them under <span className="font-medium">Past lots</span>.

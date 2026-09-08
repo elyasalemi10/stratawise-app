@@ -50,7 +50,7 @@ export function OwnershipHistory({ history }: Props) {
                         <Badge variant="neutral">Past</Badge>
                       )}
                     </div>
-                    <p className="mt-0.5 text-xs text-muted-foreground truncate">{entry.email ?? ","}</p>
+                    <p className="mt-0.5 text-xs text-muted-foreground truncate">{entry.email ?? ""}</p>
                     <p className="mt-1 text-xs text-muted-foreground">
                       {formatDate(entry.joinedAt)} → {entry.leftAt ? formatDate(entry.leftAt) : "Current"}
                     </p>

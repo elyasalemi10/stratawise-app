@@ -1,66 +1,28 @@
 "use client";
 
 import { useState } from "react";
-import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { EditSheet } from "@/components/shared/edit-sheet";
-import { EmptyState } from "@/components/shared/empty-state";
-import {
-  Calendar,
-  Activity,
-  ChevronRight,
-  Hash,
-  } from "lucide-react";
-import type {
-  NextLevyDue,
-  LotActivityEntry,
-} from "@/lib/actions/lot-overview";
+import { Hash } from "lucide-react";
+import type { LotActivityEntry } from "@/lib/actions/lot-overview";
+import { LotActivityLog } from "./lot-activity-log";
 
-// Overview tab (Item 12). Replaces the old "General" tab. Renders three cards:
-//   1. Next levy due , formatted "17th March 2026" with reference + amount
-//   2. Recent activity , last 5 audit-log entries scoped to this lot, with a
-//      "View all activity" link that switches to the History tab
-//   3. Snapshot , owner type, ownership-since (or "Not set"), portal last
-
-
-const ORDINAL_SUFFIX = (day: number): string => {
-  if (day >= 11 && day <= 13) return "th";
-  switch (day % 10) {
-    case 1: return "st";
-    case 2: return "nd";
-    case 3: return "rd";
-    default: return "th";
-  }
-};
-
-function formatOrdinalDate(iso: string | null | undefined): string | null {
-  if (!iso) return null;
-  const d = new Date(iso);
-  if (Number.isNaN(d.getTime())) return null;
-  const day = d.getDate();
-  const month = d.toLocaleDateString("en-AU", { month: "long" });
-  return `${day}${ORDINAL_SUFFIX(day)} ${month} ${d.getFullYear()}`;
-}
-
-function formatRelative(iso: string | null | undefined): string {
-  if (!iso) return "Never";
-  const then = new Date(iso).getTime();
-  if (Number.isNaN(then)) return "Never";
-  const diff = Date.now() - then;
-  const days = Math.floor(diff / (1000 * 60 * 60 * 24));
-  if (days === 0) return "today";
-  if (days === 1) return "yesterday";
-  if (days < 7) return `${days} days ago`;
-  if (days < 30) return `${Math.floor(days / 7)} weeks ago`;
-  if (days < 365) return `${Math.floor(days / 30)} months ago`;
-  return `${Math.floor(days / 365)} years ago`;
-}
-
-function formatCurrency(n: number): string {
-  return new Intl.NumberFormat("en-AU", { style: "currency", currency: "AUD" }).format(n);
-}
+// Overview: what is true of the LOT, and everything that has happened to it.
+//
+// It used to carry four cards, and three of them were saying something the
+// page had already said. "Snapshot" listed the owner's name, which is in the
+// page heading; the date they took the lot, which is on the Owner tab under
+// their name; and when they last opened the portal, which now sits there
+// too, beside the same date. "Next levy due" was a whole card for one date,
+// next to a header strip that already carried the balance, so it moved into
+// the strip with it. "Recent activity" showed the newest five rows of the
+// audit log above a History tab that showed all of them, paginated, with
+// better labels , two surfaces reading one table, and the good one was the
+// one behind an extra click.
+//
+// So: the lot's own fields, then its history in full, and one tab fewer.
 
 interface LotDetailsInput {
   id: string;
@@ -68,49 +30,23 @@ interface LotDetailsInput {
   unit_number: string | null;
   lot_entitlement: number | null;
   lot_liability: number | null;
-  payment_reference: string | null;
 }
 
 interface Props {
-  ownerDisplayName: string | null;
-  ownerEmail: string | null;
-  ownerPhone: string | null;
-  ownershipSince: string | null;
-  portalLastActiveAt: string | null;
-  nextLevy: NextLevyDue | null;
-  // True when this lot has had at least one levy notice issued in its
-  // lifetime. Drives the empty state copy: "No levies issued" vs "All
-  // levies paid".
-  anyLevyEverIssued: boolean;
   activity: LotActivityEntry[];
-  onViewAllActivity: () => void;
   lotDetails: LotDetailsInput;
   onLotDetailsSaved: () => void;
 }
 
 export function LotOverviewTab({
-  ownerDisplayName,
-  ownerEmail,
-  ownerPhone,
-  ownershipSince,
-  portalLastActiveAt,
-  nextLevy,
-  anyLevyEverIssued,
   activity,
-  onViewAllActivity,
   lotDetails,
   onLotDetailsSaved,
 }: Props) {
-  void ownerEmail;
-  void ownerPhone;
-  const recentActivity = activity.slice(0, 5);
-  const ownershipSinceLabel = formatOrdinalDate(ownershipSince) ?? "Not set";
-  const portalLabel = formatRelative(portalLastActiveAt);
-
   return (
-    <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
+    <div className="space-y-6">
       {/* Lot details ------------------------------------------------------ */}
-      <Card className="lg:col-span-2">
+      <Card>
         <CardContent className="pt-5">
           <div className="flex items-start justify-between gap-3 mb-3">
             <div className="flex items-center gap-2">
@@ -121,11 +57,7 @@ export function LotOverviewTab({
           </div>
           <dl className="grid grid-cols-2 gap-x-6 gap-y-2 text-sm sm:grid-cols-4">
             <DetailField label="Lot number" value={String(lotDetails.lot_number)} mono />
-            <DetailField
-              label="Unit number"
-              value={lotDetails.unit_number || ""}
-              mono
-            />
+            <DetailField label="Unit number" value={lotDetails.unit_number || ""} mono />
             <DetailField
               label="Entitlement"
               value={
@@ -142,106 +74,11 @@ export function LotOverviewTab({
                   : ""
               }
             />
-            {lotDetails.payment_reference && (
-              <div className="col-span-2 sm:col-span-4">
-                <dt className="text-xs tracking-normal text-muted-foreground">
-                  Payment reference
-                </dt>
-                <dd className="mt-0.5 font-mono text-sm font-semibold text-foreground">
-                  {lotDetails.payment_reference}
-                </dd>
-              </div>
-            )}
           </dl>
         </CardContent>
       </Card>
 
-      {/* Next levy due ---------------------------------------------------- */}
-      <Card>
-        <CardContent className="pt-5">
-          <div className="flex items-center gap-2 mb-2">
-            <Calendar className="h-4 w-4 text-[color:var(--brand-gold)]" />
-            <h3 className="text-sm font-semibold text-foreground">Next levy due</h3>
-          </div>
-          {nextLevy ? (
-            <>
-              <p className="text-2xl font-bold tracking-tight text-foreground tabular-nums">
-                {formatOrdinalDate(nextLevy.due_date)}
-              </p>
-              <p className="mt-1 text-sm text-muted-foreground">
-                {formatCurrency(nextLevy.amount)}
-                <span className="mx-2">·</span>
-                <span className="font-mono text-xs">{nextLevy.reference_number}</span>
-              </p>
-            </>
-          ) : (
-            <EmptyState
-              illustration="calendar"
-              title={anyLevyEverIssued ? "All levies paid" : "No levies issued"}
-              description={
-                anyLevyEverIssued
-                  ? "Nothing outstanding on this lot."
-                  : "No levy notice has been issued for this lot yet."
-              }
-              card={false}
-            />
-          )}
-        </CardContent>
-      </Card>
-
-      {/* Snapshot --------------------------------------------------------- */}
-      <Card>
-        <CardContent className="pt-5">
-          <h3 className="text-sm font-semibold text-foreground mb-3">Snapshot</h3>
-          <dl className="space-y-2.5 text-sm">
-            <SnapshotRow label="Owner" value={ownerDisplayName ?? "Unassigned"} />
-            <SnapshotRow label="Ownership since" value={ownershipSinceLabel} muted={!ownershipSince} />
-            <SnapshotRow label="Portal last active" value={portalLabel} muted={!portalLastActiveAt} />
-          </dl>
-        </CardContent>
-      </Card>
-
-      {/* Recent activity -------------------------------------------------- */}
-      <Card className="lg:col-span-2">
-        <CardContent className="pt-5">
-          <div className="flex items-center justify-between mb-3">
-            <div className="flex items-center gap-2">
-              <Activity className="h-4 w-4 text-[color:var(--brand-gold)]" />
-              <h3 className="text-sm font-semibold text-foreground">Recent activity</h3>
-            </div>
-            <Button variant="ghost" size="sm" onClick={onViewAllActivity}>
-              See all
-              <ChevronRight className="ml-1 h-3.5 w-3.5" />
-            </Button>
-          </div>
-          {recentActivity.length === 0 ? (
-            <EmptyState
-              illustration="documents"
-              title="No activity yet"
-              description="Owner updates, levies and payments will show up here as they happen."
-              card={false}
-            />
-          ) : (
-            <ol className="divide-y divide-border">
-              {recentActivity.map((row) => (
-                <li key={row.id} className="flex items-start justify-between gap-3 py-2.5 first:pt-0 last:pb-0">
-                  <div className="min-w-0">
-                    <p className="text-sm font-medium text-foreground">
-                      {describeAuditEvent(row)}
-                    </p>
-                    {row.actor_name && (
-                      <p className="mt-0.5 text-xs text-muted-foreground">by {row.actor_name}</p>
-                    )}
-                  </div>
-                  <span className="text-xs text-muted-foreground shrink-0">
-                    {formatRelative(row.created_at)}
-                  </span>
-                </li>
-              ))}
-            </ol>
-          )}
-        </CardContent>
-      </Card>
+      <LotActivityLog activity={activity} />
     </div>
   );
 }
@@ -265,7 +102,7 @@ function DetailField({
           mono ? "font-mono" : ""
         }`}
       >
-        {value || ","}
+        {value}
       </dd>
     </div>
   );
@@ -352,56 +189,4 @@ function LotDetailsEditSheet({
       </div>
     </EditSheet>
   );
-}
-
-function SnapshotRow({
-  label,
-  value,
-  sub,
-  muted,
-}: {
-  label: string;
-  value: string;
-  sub?: string;
-  muted?: boolean;
-}) {
-  return (
-    <div className="flex items-baseline justify-between gap-2">
-      <dt className="text-muted-foreground">{label}</dt>
-      <dd className={`text-right font-medium ${muted ? "text-muted-foreground" : "text-foreground"}`}>
-        {value}
-        {sub && <span className="ml-1.5 text-xs font-normal text-muted-foreground">({sub})</span>}
-      </dd>
-    </div>
-  );
-}
-
-// Best-effort human label for an audit row. We keep this dictionary lean
-// (action+entity_type pairs we expect) and fall back to a generic phrase for
-// anything we haven't catalogued yet.
-function describeAuditEvent(row: LotActivityEntry): string {
-  const map: Record<string, string> = {
-    "create:lot_owner": "Owner contact captured",
-    "update:lot_owner": "Owner contact updated",
-    "accept:invitation": "Owner accepted portal invitation",
-    "create:invitation": "Portal invitation sent",
-    "send:invitation": "Portal invitation re-sent",
-    "update:lot": "Lot details updated",
-    "update:occupancy": "Occupancy status changed",
-    "create:tenant": "Tenant added",
-    "update:tenant": "Tenant details updated",
-    "delete:tenant": "Tenant removed",
-    "create:settlement": "Settlement recorded",
-    "create:levy_notice": "Levy notice issued",
-    "create:payment": "Payment recorded",
-    "send:sms": "SMS sent",
-    "send:email": "Email sent",
-    "create:phone_call": "Phone call logged",
-    "create:document": "Document uploaded",
-    "upload:document": "Document uploaded",
-    "rename:document": "Document renamed",
-    "delete:document": "Document removed",
-  };
-  const key = `${row.action}:${row.entity_type}`;
-  return map[key] ?? `${row.entity_type.replace(/_/g, " ")} ${row.action}`;
 }

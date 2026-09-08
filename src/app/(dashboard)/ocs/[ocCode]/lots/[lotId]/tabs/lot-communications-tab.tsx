@@ -41,7 +41,6 @@ import {
   Send,
   ChevronDown,
   } from "lucide-react";
-import { cn } from "@/lib/utils";
 import { Checkbox } from "@/components/ui/checkbox";
 import {
   Tooltip,
@@ -437,8 +436,8 @@ function EmailDetailDialog({
         </DialogHeader>
 
         <div className="space-y-3 text-sm overflow-hidden">
-          <HeaderField label="From" value={row.actor_name ?? ","} />
-          <HeaderField label="To" value={row.recipient_email ?? ","} />
+          <HeaderField label="From" value={row.actor_name ?? ""} />
+          <HeaderField label="To" value={row.recipient_email ?? ""} />
           <HeaderField
             label="Subject"
             value={row.subject ?? "(no subject)"}
@@ -531,8 +530,8 @@ function SmsDetailDialog({
         </DialogHeader>
 
         <div className="space-y-3 text-sm overflow-hidden">
-          <HeaderField label="From" value={senderId ?? ","} />
-          <HeaderField label="To" value={row.recipient_phone ?? ","} />
+          <HeaderField label="From" value={senderId ?? ""} />
+          <HeaderField label="To" value={row.recipient_phone ?? ""} />
           <HeaderField label="Sent" value={formatShortDate(row.created_at)} />
           {row.actor_name && (
             <HeaderField label="Logged by" value={row.actor_name} />
@@ -571,8 +570,8 @@ function CallDetailDialog({
         </DialogHeader>
 
         <div className="space-y-3 text-sm overflow-hidden">
-          <HeaderField label="Logged by" value={row.actor_name ?? ","} />
-          <HeaderField label="Number" value={row.recipient_phone ?? ","} />
+          <HeaderField label="Logged by" value={row.actor_name ?? ""} />
+          <HeaderField label="Number" value={row.recipient_phone ?? ""} />
           <HeaderField
             label="Call date"
             value={formatDateOnly(row.sent_at ?? row.created_at)}

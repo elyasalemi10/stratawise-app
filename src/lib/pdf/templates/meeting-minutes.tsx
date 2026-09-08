@@ -244,7 +244,7 @@ export function MeetingMinutes({
                       {action.assigned_to}
                     </Text>
                     <Text style={[baseStyles.tableCell, { flex: 1 }]}>
-                      {action.due_date ?? ","}
+                      {action.due_date ?? ""}
                     </Text>
                   </View>
                 ))}

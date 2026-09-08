@@ -301,7 +301,7 @@ export function Step3PostalContact({
                         {lot.lot_number}
                       </td>
                       <td className="px-3 py-1.5 text-muted-foreground truncate" title={lot.owner_name || ""}>
-                        {lot.owner_name || ","}
+                        {lot.owner_name || ""}
                       </td>
                       <td className="px-3 py-1.5">
                         <Input

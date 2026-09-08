@@ -3,7 +3,6 @@
 import { useCallback } from "react";
 import { useCachedData } from "@/lib/use-cached-data";
 import { EmptyState } from "@/components/shared/empty-state";
-import { Home } from "lucide-react";
 import { LotDetailContent } from "./lot-detail-content";
 import { getLotDetailPageData, type LotDetailPageData } from "./data";
 import { LotDetailSkeleton } from "./lot-detail-skeleton";
@@ -40,7 +39,6 @@ export function LotDetailClient({ ocId, lotId }: { ocId: string; lotId: string }
       lotOwnerExtra={data.lotOwnerExtra}
       lastPaymentAt={data.lastPaymentAt}
       nextLevy={data.nextLevy}
-      anyLevyEverIssued={data.anyLevyEverIssued}
       lotAddress={data.lotAddress}
       activity={data.activity}
       portalActivity={data.portalActivity}

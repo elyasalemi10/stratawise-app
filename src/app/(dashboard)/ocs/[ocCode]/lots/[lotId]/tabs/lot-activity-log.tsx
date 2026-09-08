@@ -17,7 +17,7 @@ import {
 } from "lucide-react";
 import type { LotActivityEntry } from "@/lib/actions/lot-overview";
 
-// History tab , read-only audit trail for this lot. One-line rows, no
+// The lot activity log, read-only. One-line rows, no
 // per-row detail dialog (the row IS the disclosure). Paginated client-side.
 
 const HISTORY_PAGE_SIZE = 20;
@@ -110,7 +110,7 @@ function titleFor(row: LotActivityEntry, category: Category): string {
   }
 }
 
-export function LotHistoryTab({ activity }: { activity: LotActivityEntry[] }) {
+export function LotActivityLog({ activity }: { activity: LotActivityEntry[] }) {
   const [page, setPage] = React.useState(0);
 
   const totalPages = Math.max(1, Math.ceil(activity.length / HISTORY_PAGE_SIZE));

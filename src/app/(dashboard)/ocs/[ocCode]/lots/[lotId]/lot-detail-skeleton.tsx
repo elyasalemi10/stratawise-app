@@ -1,4 +1,4 @@
-import { MoreVertical } from "lucide-react";
+import { Hash, History as HistoryIcon, MoreVertical } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -15,7 +15,7 @@ import { Skeleton } from "@/components/ui/skeleton";
 // captions. Those are fixed strings, not server values, and shimmering them
 // would be pretending we do not know our own page.
 
-const TABS = ["Overview", "Owner", "Levies", "Communications", "Documents", "History"];
+const TABS = ["Overview", "Owner", "Levies", "Communications", "Documents"];
 
 export function LotDetailSkeleton() {
   return (
@@ -71,21 +71,49 @@ export function LotDetailSkeleton() {
         ))}
       </div>
 
-      {/* Overview body: two columns of key/value cards. */}
-      <div className="grid gap-4 lg:grid-cols-2">
-        {[0, 1].map((col) => (
-          <Card key={col}>
-            <CardContent className="space-y-3 pt-5">
-              <Skeleton className="h-4 w-32" />
-              {[0, 1, 2, 3].map((row) => (
-                <div key={row} className="flex items-center justify-between gap-4">
-                  <Skeleton className="h-3 w-28" />
-                  <Skeleton className="h-3 w-24" />
+      {/* Overview body: the lot's own fields, then its activity log. Both
+          headings and all four field labels are ours, so they render. */}
+      <div className="space-y-6">
+        <Card>
+          <CardContent className="pt-5">
+            <div className="mb-3 flex items-center gap-2">
+              <Hash className="h-4 w-4 text-[color:var(--brand-gold)]" />
+              <h3 className="text-sm font-semibold text-foreground">Lot details</h3>
+            </div>
+            <dl className="grid grid-cols-2 gap-x-6 gap-y-2 text-sm sm:grid-cols-4">
+              {["Lot number", "Unit number", "Entitlement", "Liability"].map((label) => (
+                <div key={label}>
+                  <dt className="text-xs tracking-normal text-muted-foreground">
+                    {label}
+                  </dt>
+                  <dd className="mt-1">
+                    <Skeleton className="h-3.5 w-16" />
+                  </dd>
                 </div>
               ))}
-            </CardContent>
-          </Card>
-        ))}
+            </dl>
+          </CardContent>
+        </Card>
+
+        <Card>
+          <CardContent className="space-y-3 pt-5">
+            <div className="flex items-center gap-2">
+              <HistoryIcon className="h-4 w-4 text-[color:var(--brand-gold)]" />
+              <h3 className="text-sm font-semibold text-foreground">Activity log</h3>
+            </div>
+            <ol className="divide-y divide-border">
+              {[0, 1, 2, 3, 4, 5].map((row) => (
+                <li key={row} className="flex items-center justify-between gap-3 py-3">
+                  <div className="flex min-w-0 items-center gap-3">
+                    <Skeleton className="h-4 w-4 shrink-0 rounded" />
+                    <Skeleton className="h-3.5 w-48" />
+                  </div>
+                  <Skeleton className="h-3 w-28 shrink-0" />
+                </li>
+              ))}
+            </ol>
+          </CardContent>
+        </Card>
       </div>
     </div>
   );

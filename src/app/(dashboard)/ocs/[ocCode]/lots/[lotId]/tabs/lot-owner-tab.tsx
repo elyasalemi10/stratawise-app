@@ -10,9 +10,7 @@ import { UserAvatar } from "@/components/shared/user-avatar";
 import { Card, CardContent } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { Textarea } from "@/components/ui/textarea";
 import { PhoneInput } from "@/components/shared/phone-input";
-import { EditSheet } from "@/components/shared/edit-sheet";
 import { EmptyState } from "@/components/shared/empty-state";
 import {
 } from "@/components/ui/select";
@@ -30,10 +28,9 @@ import type { LotEngagement } from "@/lib/actions/lot-engagement";
 import {
   updateLotOwnerContact,
 } from "@/lib/actions/lot-edit";
-import { useRouter } from "next/navigation";
 
 // Owner tab (Items 9 + 13). Per the design rule, each card has a SINGLE Edit
-// button that opens a right-side EditSheet (navbar-width drawer) containing
+// button that opens a right-side drawer containing
 // every field of that card , no per-row pencil popovers.
 
 function initials(name: string | null | undefined): string {
@@ -55,6 +52,18 @@ function formatLongDate(iso: string | null | undefined): string | null {
 function formatMonthYear(iso: string | null | undefined): string | null {
   if (!iso) return null;
   return new Date(iso).toLocaleDateString("en-AU", { month: "short", year: "numeric" });
+}
+
+function formatRelativeDay(iso: string): string {
+  const then = new Date(iso).getTime();
+  if (Number.isNaN(then)) return "";
+  const days = Math.floor((Date.now() - then) / 86_400_000);
+  if (days <= 0) return "today";
+  if (days === 1) return "yesterday";
+  if (days < 7) return `${days} days ago`;
+  if (days < 30) return `${Math.floor(days / 7)} weeks ago`;
+  if (days < 365) return `${Math.floor(days / 30)} months ago`;
+  return `${Math.floor(days / 365)} years ago`;
 }
 
 function durationLabel(from: string | null, to: string | null): string {
@@ -79,6 +88,8 @@ interface Props {
   paymentReference: string | null;
   postalAddress: string | null;
   portalActive: boolean;
+  /** Last time they opened the portal, or null if they never have. */
+  portalLastActiveAt: string | null;
   ocId: string;
   lotId: string;
   lotNumber: number;
@@ -99,6 +110,7 @@ export function LotOwnerTab(props: Props) {
     pastHistoryEntries,
     paymentReference,
     postalAddress,
+    portalLastActiveAt,
     ocId,
     lotId,
     lotNumber,
@@ -109,8 +121,6 @@ export function LotOwnerTab(props: Props) {
     engagement,
     onTransfer,
   } = props;
-
-  const router = useRouter();
 
   async function saveField(patch: {
     name?: string;
@@ -181,9 +191,19 @@ export function LotOwnerTab(props: Props) {
             />
             <div className="min-w-0 flex-1">
               <p className="font-semibold text-foreground truncate">{view.name}</p>
-              {activeHistoryEntry?.joinedAt && (
+              {/* When they took the lot, and when they were last on the
+                  portal. The second half was a row on the Overview tab's
+                  Snapshot card, a tab away from the person it describes and
+                  from the invite pill that now sits on the same line. */}
+              {(activeHistoryEntry?.joinedAt || portalLastActiveAt) && (
                 <p className="text-xs text-muted-foreground">
-                  Since {formatLongDate(activeHistoryEntry.joinedAt)}
+                  {activeHistoryEntry?.joinedAt &&
+                    `Since ${formatLongDate(activeHistoryEntry.joinedAt)}`}
+                  {activeHistoryEntry?.joinedAt && portalLastActiveAt && (
+                    <span className="mx-1.5">·</span>
+                  )}
+                  {portalLastActiveAt &&
+                    `Last on the portal ${formatRelativeDay(portalLastActiveAt)}`}
                 </p>
               )}
             </div>
@@ -267,156 +287,6 @@ export function LotOwnerTab(props: Props) {
       </Card>
         </div>
       )}
-    </div>
-  );
-}
-
-// ─── Edit sheets ────────────────────────────────────────────────────────────
-
-interface OwnerView {
-  name: string;
-  email: string;
-  phone: string;
-  postal: string;
-}
-
-function OwnerContactEditSheet({
-  lotOwnerId,
-  initial,
-  portalInviteAccepted,
-  onPatch,
-  onRollback,
-  onSaved,
-}: {
-  lotOwnerId: string | null;
-  initial: OwnerView;
-  portalInviteAccepted: boolean;
-  onPatch: (next: Partial<OwnerView>) => void;
-  onRollback: () => void;
-  onSaved: () => void;
-}) {
-  // Local form state , initialised from view each time the sheet opens.
-  const [name, setName] = React.useState(initial.name);
-  const [email, setEmail] = React.useState(initial.email);
-  const [phone, setPhone] = React.useState(initial.phone);
-  const [postal, setPostal] = React.useState(initial.postal);
-
-  function reset() {
-    setName(initial.name);
-    setEmail(initial.email);
-    setPhone(initial.phone);
-    setPostal(initial.postal);
-  }
-
-  return (
-    <EditSheet
-      label="Owner contact"
-      description="Update the owner's contact details. Changes are logged to the activity history."
-      onOpenChange={(open) => {
-        if (open) reset();
-      }}
-      onSave={async () => {
-        if (!lotOwnerId) return { ok: false as const, error: "Owner row missing" };
-        if (!name.trim()) return { ok: false as const, error: "Name is required" };
-        const payload = {
-          lot_owner_id: lotOwnerId,
-          name: name.trim(),
-          phone: phone.trim() || null,
-          postal_address: postal.trim() || null,
-          ...(portalInviteAccepted ? {} : { email: email.trim() || null }),
-        };
-        const res = await updateLotOwnerContact(payload);
-        if (res.ok) {
-          onPatch({
-            name: name.trim(),
-            phone,
-            postal,
-            ...(portalInviteAccepted ? {} : { email }),
-          });
-          onSaved();
-        } else {
-          onRollback();
-        }
-        return res.ok ? { ok: true as const } : { ok: false as const, error: res.error };
-      }}
-    >
-      <div className="space-y-1.5">
-        <Label>
-          Full name <span className="text-destructive">*</span>
-        </Label>
-        <Input value={name} onChange={(e) => setName(e.target.value)} placeholder="Owner name" />
-      </div>
-      <div className="space-y-1.5">
-        <Label>Phone</Label>
-        <PhoneInput value={phone} onChange={setPhone} />
-      </div>
-      <div className="space-y-1.5">
-        <Label>Service address</Label>
-        <Textarea
-          value={postal}
-          onChange={(e) => setPostal(e.target.value)}
-          placeholder="Service address"
-          rows={3}
-        />
-        <p className="text-xs text-muted-foreground">
-          We verify the address with our delivery provider when you save.
-        </p>
-      </div>
-      <div className="space-y-1.5">
-        <Label>Email</Label>
-        {portalInviteAccepted ? (
-          <>
-            <Input value={email} disabled />
-            <p className="text-xs text-muted-foreground">
-              Owner has joined the portal , they can change their email themselves.
-            </p>
-          </>
-        ) : (
-          <>
-            <Input
-              type="email"
-              value={email}
-              onChange={(e) => setEmail(e.target.value)}
-              placeholder="Owner email"
-            />
-            <p className="text-xs text-muted-foreground">
-              Used for invoices and notices. Separate from the owner&apos;s portal login email.
-            </p>
-          </>
-        )}
-      </div>
-    </EditSheet>
-  );
-}
-
-// ─── Read-only row primitives ───────────────────────────────────────────────
-
-function KvRow({
-  label,
-  value,
-  renderValue,
-  mono,
-  hint,
-  multiline,
-}: {
-  label: string;
-  value?: string;
-  renderValue?: React.ReactNode;
-  mono?: boolean;
-  hint?: string;
-  multiline?: boolean;
-}) {
-  const display = renderValue ?? (value && value.length > 0 ? value : null);
-  return (
-    <div className={`flex ${multiline ? "items-start" : "items-baseline"} justify-between gap-2 py-2.5`}>
-      <dt className="text-sm text-muted-foreground">{label}</dt>
-      <dd
-        className={`text-sm font-medium text-foreground text-right max-w-[60%] ${
-          mono ? "font-mono text-xs" : ""
-        } ${multiline ? "whitespace-pre-line" : "truncate"}`}
-      >
-        {display ?? <span className="text-muted-foreground italic">{hint ?? ","}</span>}
-      </dd>
     </div>
   );
 }

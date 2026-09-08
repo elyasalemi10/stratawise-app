@@ -26,7 +26,6 @@ import { SettlementDialog } from "./settlement-dialog";
 import { InviteDialog } from "../../manage/invite-dialog";
 import { InviteConfirmDialog } from "./invite-confirm-dialog";
 import { LotOverviewTab } from "./tabs/lot-overview-tab";
-import { LotHistoryTab } from "./tabs/lot-history-tab";
 import { LotOwnerTab } from "./tabs/lot-owner-tab";
 import { LotCommunicationsTab } from "./tabs/lot-communications-tab";
 import type { LotCommunicationRow } from "@/lib/actions/lot-communications";
@@ -62,7 +61,6 @@ interface LotDetailContentProps {
   lotOwnerExtra: LotOwnerExtra | null;
   lastPaymentAt: string | null;
   nextLevy: NextLevyDue | null;
-  anyLevyEverIssued: boolean;
   lotAddress: string | null;
   activity: LotActivityEntry[];
   portalActivity: PortalActivity;
@@ -80,7 +78,6 @@ const TABS = [
   { value: "levies", label: "Levies" },
   { value: "communications", label: "Communications" },
   { value: "documents", label: "Documents" },
-  { value: "history", label: "History" },
 ] as const;
 
 type TabValue = typeof TABS[number]["value"];
@@ -88,11 +85,21 @@ type TabValue = typeof TABS[number]["value"];
 const formatCurrency = (n: number) =>
   new Intl.NumberFormat("en-AU", { style: "currency", currency: "AUD" }).format(Math.abs(n));
 
-function formatLongDate(iso: string | null | undefined): string | null {
+const ORDINAL_SUFFIX = (day: number): string => {
+  if (day >= 11 && day <= 13) return "th";
+  switch (day % 10) {
+    case 1: return "st";
+    case 2: return "nd";
+    case 3: return "rd";
+    default: return "th";
+  }
+};
+
+function formatOrdinalDate(iso: string | null | undefined): string | null {
   if (!iso) return null;
-  return new Date(iso).toLocaleDateString("en-AU", {
-    day: "numeric", month: "long", year: "numeric",
-  });
+  const d = new Date(iso);
+  if (Number.isNaN(d.getTime())) return null;
+  return `${d.getDate()}${ORDINAL_SUFFIX(d.getDate())} ${d.toLocaleDateString("en-AU", { month: "long" })} ${d.getFullYear()}`;
 }
 
 function formatRelative(iso: string | null | undefined): string | null {
@@ -109,13 +116,6 @@ function formatRelative(iso: string | null | undefined): string | null {
   return `${Math.floor(days / 365)} years ago`;
 }
 
-function initials(name: string | null | undefined): string {
-  if (!name) return "?";
-  const parts = name.trim().split(/\s+/);
-  if (parts.length === 1) return parts[0][0]?.toUpperCase() ?? "?";
-  return `${parts[0][0] ?? ""}${parts[parts.length - 1][0] ?? ""}`.toUpperCase();
-}
-
 export function LotDetailContent({
   lot: initialLot,
   owner,
@@ -127,7 +127,6 @@ export function LotDetailContent({
   lotOwnerExtra,
   lastPaymentAt,
   nextLevy,
-  anyLevyEverIssued,
   lotAddress,
   activity,
   portalActivity,
@@ -150,13 +149,17 @@ export function LotDetailContent({
   }, []);
 
   const rawTab = searchParams.get("tab") ?? "overview";
-  // Migrate legacy ?tab=general / ?tab=payments URLs to the new values.
-  const normalisedTab =
-    rawTab === "payments" ? "ledger" : rawTab === "general" ? "overview" : rawTab;
+  // Migrate legacy URLs. "general" was Overview's old name, "payments" the
+  // Levies tab's, and "history" is now the bottom half of Overview.
+  const LEGACY_TABS: Record<string, TabValue> = {
+    general: "overview",
+    history: "overview",
+    payments: "levies",
+  };
+  const normalisedTab = LEGACY_TABS[rawTab] ?? rawTab;
   const initialTab = normalisedTab as TabValue;
   const [activeTab, setActiveTab] = useState<TabValue>(initialTab);
-  const [lot, setLot] = useState(initialLot);
-  void setLot;
+  const lot = initialLot;
   // Auto-open the settlement drawer when the URL says so. Used by the
   // wrong-lot-number jump in the settlement dialog , the source page
   // pops `?settlement=open` here and the prefill payload is read by
@@ -195,7 +198,7 @@ export function LotDetailContent({
   const ownPath = `/ocs/${ocCode}/lots/${urlSegment(lot)}`;
 
   useEffect(() => {
-    if (rawTab === "payments" || rawTab === "general") {
+    if (rawTab in LEGACY_TABS) {
       replaceUrlIfOn(ownPath, `${ownPath}?tab=${normalisedTab}`);
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -211,30 +214,23 @@ export function LotDetailContent({
   const activeHistoryEntry = ownershipHistory.find((h) => !h.leftAt) ?? null;
   const pastHistoryEntries = ownershipHistory.filter((h) => !!h.leftAt);
 
-  void formatLongDate;
-  void initials;
   const portalActive = !!owner.profile_id;
   const lastPaymentRelative = formatRelative(lastPaymentAt);
 
-  // Top header line: "Lot 2 · Unit 2 - Owner name" (or no unit, no owner ,
-  // pieces drop off gracefully). The lot details (entitlement / liability /
-  // edit) now live in a card inside the Overview tab, so this header is just
-  // identity + the cross-tab Actions menu + the financial line.
+  // "Lot 2 · Unit 2 - Owner name", with each piece dropping off when there
+  // is nothing to put in it.
   const headerOwnerSuffix = owner.owner_display_name
     ? ` - ${owner.owner_display_name}`
     : "";
 
   return (
     <div className="space-y-6">
-      {/* ─── Identity header ────────────────────────────────────────
-          Lot label, primary actions, and the balance / last-payment line.
-          Owner snapshot + lot meta strip moved into the Overview tab so
-          the header stays focused on identification + cross-tab actions. */}
-      {/* Not a card. This is the page's identity line, not one panel among
-          several, and boxing it made it compete with the real content
-          underneath. The internal divider stays: it is what separates the
-          label from the balance strip, and it was doing the work the
-          outline was getting credit for. */}
+      {/* Which lot, who owns it, what they owe, and the actions that reach
+          across every tab. Not a card: this is the page's identity line, not
+          one panel among several, and boxing it made it compete with the
+          real content underneath. The divider stays, because separating the
+          label from the money is the work the outline was getting credit
+          for. */}
       <div className="space-y-4">
           <div className="flex items-start justify-between gap-4">
             <div className="min-w-0">
@@ -309,10 +305,10 @@ export function LotDetailContent({
 
           <div className="border-t border-border" />
 
-          {/* Financial facts at-a-glance. Sized up vs. the previous label/value
-              line so the manager can read balance + last-payment without
-              squinting. Gold underline on "Current balance" / "Last payment"
-              labels nudges them as headline data rather than form labels. */}
+          {/* The three money questions, answered before any tab is opened:
+              what they owe, when they last paid, what is coming. Set larger
+              than a label/value line so they read as the page's headline
+              figures rather than as form fields. */}
           <div className="flex flex-wrap items-baseline gap-x-8 gap-y-2 text-base">
             <div className="inline-flex items-baseline gap-2">
               <span className="text-muted-foreground">
@@ -348,6 +344,21 @@ export function LotDetailContent({
                 </span>
               )}
             </div>
+            {/* One date and one figure. It had a card of its own on the
+                Overview tab, a click away from the balance it belongs next
+                to, and said nothing when there was no levy , which is a
+                card's worth of page for a sentence saying nothing. */}
+            {nextLevy && (
+              <div className="inline-flex items-baseline gap-2">
+                <span className="text-muted-foreground">Next levy:</span>
+                <span className="text-lg font-semibold tabular-nums text-foreground">
+                  {formatCurrency(nextLevy.amount)}
+                </span>
+                <span className="text-sm text-muted-foreground">
+                  due {formatOrdinalDate(nextLevy.due_date)}
+                </span>
+              </div>
+            )}
           </div>
       </div>
 
@@ -375,22 +386,13 @@ export function LotDetailContent({
           ones so per-tab state (ledger filters, etc.) survives switching. */}
       <div className={activeTab === "overview" ? "" : "hidden"}>
         <LotOverviewTab
-          ownerDisplayName={owner.owner_display_name ?? null}
-          ownerEmail={owner.owner_contact_email ?? null}
-          ownerPhone={owner.owner_contact_phone ?? null}
-          ownershipSince={lotOwnerExtra?.ownership_since ?? null}
-          portalLastActiveAt={portalActivity.last_active_at}
-          nextLevy={nextLevy}
-          anyLevyEverIssued={anyLevyEverIssued}
           activity={activity}
-          onViewAllActivity={() => onTabChange("history")}
           lotDetails={{
             id: lot.id,
             lot_number: Number(lot.lot_number),
             unit_number: lot.unit_number ?? null,
             lot_entitlement: lot.lot_entitlement ?? null,
             lot_liability: lot.lot_liability ?? null,
-            payment_reference: lotOwnerExtra?.payment_reference ?? null,
           }}
           onLotDetailsSaved={() => refreshLot()}
         />
@@ -403,6 +405,7 @@ export function LotDetailContent({
           activeHistoryEntry={activeHistoryEntry}
           pastHistoryEntries={pastHistoryEntries}
           paymentReference={lotOwnerExtra?.payment_reference ?? null}
+          portalLastActiveAt={portalActivity.last_active_at}
           postalAddress={lotOwnerExtra?.postal_address ?? null}
           portalActive={portalActive}
           portalInviteAccepted={portalActive}
@@ -446,10 +449,6 @@ export function LotDetailContent({
         <DocumentManager ocId={ocId} lotId={lot.id} initialDocuments={documents} />
       </div>
 
-      <div className={activeTab === "history" ? "" : "hidden"}>
-        <LotHistoryTab activity={activity} />
-      </div>
-
       <SettlementDialog
         open={settlementOpen}
         onClose={() => setSettlementOpen(false)}
@@ -487,20 +486,3 @@ export function LotDetailContent({
     </div>
   );
 }
-
-// LotDetailsEditPopover relocated into LotOverviewTab , it now lives next
-// to the new "Lot details" card on the Overview tab. See lot-overview-tab.tsx.
-
-// Old GeneralTab / OwnerTab / TenancyTab removed , replaced by LotOverviewTab,
-// LotOwnerTab, and LotTenancyTab in ./tabs/. The legacy KvRow / PastOwnerRow
-// helpers moved into LotOwnerTab; durationLabel / formatMonthYear / initials
-// live there too.
-
-// ─── History tab ───────────────────────────────────────────────
-
-// Old ownership-timeline HistoryTab removed , History tab now renders the
-// LotHistoryTab (audit log). Ownership timeline lives in the Owner tab via
-// the PastOwnerRow list (Item 17).
-
-// ─── Coming soon ───────────────────────────────────────────────
-
