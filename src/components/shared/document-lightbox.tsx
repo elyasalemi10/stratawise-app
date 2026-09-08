@@ -121,9 +121,10 @@ export function DocumentLightbox({
   pdfReady?: boolean;
   onClose: () => void;
 }) {
-  // Holds a slot in the scrim stack so the page dims exactly as it does for
-  // any other overlay, and so opening one from a drawer does not stack two.
-  useScrimSlot();
+  // Only while actually open. This component is rendered unconditionally by
+  // the documents page and decides for itself whether to show, so an
+  // unconditional slot dimmed the entire page from the moment you arrived.
+  useScrimSlot(open);
 
   React.useEffect(() => {
     if (!open) return;

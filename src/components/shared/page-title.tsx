@@ -1,35 +1,12 @@
 "use client";
 
-import { useRouteOC } from "@/lib/oc-id-map";
-
-// The page's own heading, naming the OC it belongs to.
+// The page's own heading.
 //
-// The breadcrumb says "Documents". It does not say WHOSE, and a manager with
-// eleven buildings open across tabs is answering that question constantly.
-// "Parkinson's Documents" is a different sentence from "Documents", so this
-// is not the duplicate H1 the design rules warn about: it carries the
-// entity-specific context the breadcrumb cannot.
-//
-// The nickname comes from the module-scope OC map the sidebar populates, so
-// this costs no fetch and renders on the first frame, including inside a
-// loading boundary.
-
-/** "Parkinson's" / "Jones'". A name already ending in s takes the bare
- *  apostrophe, because "Jones's Documents" is the kind of thing people
- *  notice and nobody enjoys. */
-export function possessive(name: string): string {
-  const trimmed = name.trim();
-  if (!trimmed) return "";
-  return /s$/i.test(trimmed) ? `${trimmed}'` : `${trimmed}'s`;
-}
-
-export function ocPageTitle(ocName: string | null | undefined, page: string): string {
-  const nickname = (ocName ?? "").trim();
-  // "OC" is the placeholder the id map falls back to when it has no name,
-  // so it is not a nickname and must not be possessed.
-  if (!nickname || nickname === "OC") return `OC ${page}`;
-  return `${possessive(nickname)} ${page}`;
-}
+// It was briefly "Parkinson's Documents", naming the OC on every page. That
+// reads as a label the app invented rather than the name of the thing you are
+// looking at, and the OC is already established by the swapper, the
+// breadcrumb and the URL, so the possessive was paying for context nobody was
+// missing. "Documents" is what the page is.
 
 export function PageTitle({ children }: { children: React.ReactNode }) {
   return (
@@ -37,9 +14,13 @@ export function PageTitle({ children }: { children: React.ReactNode }) {
   );
 }
 
-/** Heading for a page inside an OC. Falls back to "OC <page>" when this tab
- *  has not seen the OC yet, which is the same moment its data is uncached. */
+/**
+ * Heading for a page inside an OC.
+ *
+ * Still its own component rather than a bare <h1> at each call site, because
+ * the page and its skeleton both render it and they have to agree: a skeleton
+ * without the heading followed by a page with one is a layout shift.
+ */
 export function OCPageTitle({ page }: { page: string }) {
-  const oc = useRouteOC();
-  return <PageTitle>{ocPageTitle(oc?.name, page)}</PageTitle>;
+  return <PageTitle>{page}</PageTitle>;
 }

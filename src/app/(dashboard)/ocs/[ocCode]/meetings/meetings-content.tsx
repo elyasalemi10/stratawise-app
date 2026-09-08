@@ -56,9 +56,16 @@ export function MeetingsContent({
   return (
     <div className="space-y-6">
       <div className="flex items-center justify-between">
-        <p className="text-sm text-muted-foreground">
-          {meetings.length} meeting{meetings.length === 1 ? "" : "s"}
-        </p>
+        {/* Only when there is something to count. "0 meetings" over "No
+            meetings yet" says the same thing twice, and the empty state
+            says it better. */}
+        {meetings.length > 0 ? (
+          <p className="text-sm text-muted-foreground">
+            {meetings.length} meeting{meetings.length === 1 ? "" : "s"}
+          </p>
+        ) : (
+          <span />
+        )}
         {meetings.length > 0 && !readOnly && (
           <Link href={createHref} className={cn(buttonVariants({ size: "sm" }), "cursor-pointer")}>
             <Plus className="mr-2 h-3.5 w-3.5" />

@@ -1,7 +1,7 @@
 "use client";
 
 import { useMemo, useRef, useState, useTransition } from "react";
-import { Upload, X } from "lucide-react";
+import { AlertTriangle, Upload, X } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import {
@@ -31,22 +31,43 @@ const formatDate = (iso: string | null): string => {
 };
 
 function parseCsvCells(text: string): string[][] {
-  const lines = text.split(/\r?\n/).filter((l) => l.trim().length > 0);
-  const parseLine = (line: string): string[] => {
-    const cells: string[] = [];
-    let cur = "";
-    let inQuote = false;
-    for (let i = 0; i < line.length; i++) {
-      const ch = line[i];
-      if (ch === '"' && line[i + 1] === '"') { cur += '"'; i++; continue; }
-      if (ch === '"') { inQuote = !inQuote; continue; }
-      if (ch === "," && !inQuote) { cells.push(cur); cur = ""; continue; }
+  // One pass over the whole file, not line-by-line.
+  //
+  // Splitting on newlines first and parsing quotes per line cannot work: a
+  // quoted description containing a line break is one field, and the old
+  // version tore it into two rows, shifting every column after it. Bank
+  // exports do this often enough that it was a matter of time.
+  const rows: string[][] = [];
+  let row: string[] = [];
+  let cur = "";
+  let inQuote = false;
+
+  for (let i = 0; i < text.length; i++) {
+    const ch = text[i];
+    if (inQuote) {
+      if (ch === '"') {
+        if (text[i + 1] === '"') { cur += '"'; i++; continue; }
+        inQuote = false;
+        continue;
+      }
       cur += ch;
+      continue;
     }
-    cells.push(cur);
-    return cells.map((c) => c.trim());
-  };
-  return lines.map(parseLine);
+    if (ch === '"') { inQuote = true; continue; }
+    if (ch === ",") { row.push(cur); cur = ""; continue; }
+    if (ch === "\r") continue;
+    if (ch === "\n") {
+      row.push(cur);
+      cur = "";
+      if (row.some((c) => c.trim().length > 0)) rows.push(row.map((c) => c.trim()));
+      row = [];
+      continue;
+    }
+    cur += ch;
+  }
+  row.push(cur);
+  if (row.some((c) => c.trim().length > 0)) rows.push(row.map((c) => c.trim()));
+  return rows;
 }
 
 function detectHeader(firstRow: string[]): boolean {
@@ -61,6 +82,28 @@ function detectHeader(firstRow: string[]): boolean {
 }
 
 type ColumnRole = "date" | "description" | "amount" | "balance" | "credit" | "debit" | "reference" | "ignore";
+
+/** The trigger showed the raw key, because <SelectValue> with no children
+ *  falls back to the value. A manager mapping a column was reading
+ *  "description" and "ignore" as if they were our column names. */
+const COLUMN_ROLE_LABEL: Record<ColumnRole, string> = {
+  date: "Date",
+  description: "Description",
+  amount: "Amount",
+  credit: "Money in",
+  debit: "Money out",
+  balance: "Balance",
+  // Not "Reference / DRN". A DRN is Macquarie's own identifier and arrives
+  // through the DEFT file, never in a CSV a manager exports, so offering it
+  // here was naming a concept that cannot appear in this column.
+  reference: "Reference",
+  ignore: "Ignore",
+};
+
+const COLUMN_ROLE_OPTIONS = (Object.keys(COLUMN_ROLE_LABEL) as ColumnRole[]).map((value) => ({
+  value,
+  label: COLUMN_ROLE_LABEL[value],
+}));
 
 function autoDetect(headerCells: string[] | null, dataRow: string[]): Record<number, ColumnRole> {
   const map: Record<number, ColumnRole> = {};
@@ -113,27 +156,98 @@ interface ParsedTxn {
 }
 
 function num(s: string): number | null {
-  const cleaned = (s ?? "").replace(/[, $]/g, "").trim();
+  let cleaned = (s ?? "").replace(/[, $]/g, "").trim();
+  if (!cleaned) return null;
+
+  // Accounting negatives: "(123.45)" is minus one hundred and twenty three
+  // dollars forty five, and Number() makes it NaN, so the amount silently
+  // came through as nothing.
+  let negative = false;
+  if (/^\(.*\)$/.test(cleaned)) {
+    negative = true;
+    cleaned = cleaned.slice(1, -1);
+  }
+  // Some exports suffix the direction instead of signing the number.
+  const suffix = cleaned.match(/(CR|DR)$/i);
+  if (suffix) {
+    if (suffix[1].toUpperCase() === "DR") negative = true;
+    cleaned = cleaned.slice(0, -2).trim();
+  }
+  if (cleaned.startsWith("-")) { negative = true; cleaned = cleaned.slice(1); }
+  if (cleaned.startsWith("+")) cleaned = cleaned.slice(1);
+
   if (!cleaned) return null;
   const n = Number(cleaned);
-  return Number.isFinite(n) ? n : null;
+  if (!Number.isFinite(n)) return null;
+  return negative ? -Math.abs(n) : n;
 }
 
-function isoDate(raw: string): string | null {
-  const parts = (raw ?? "").split(/[\/\-.]/).map((p) => p.trim());
-  if (parts.length !== 3) return null;
-  let y: string, m: string, d: string;
-  if (parts[0].length === 4) {
-    [y, m, d] = parts;
-  } else {
-    [d, m, y] = parts;
-    if (y.length === 2) y = `20${y}`;
+type DateOrder = "auto" | "dmy" | "mdy" | "ymd";
+
+export const DATE_ORDER_LABEL: Record<DateOrder, string> = {
+  auto: "Work it out",
+  dmy: "Day first (31/12/2026)",
+  mdy: "Month first (12/31/2026)",
+  ymd: "Year first (2026-12-31)",
+};
+
+/**
+ * Which way round a column of dates is.
+ *
+ * Only ever certain when some value has a first part above 12, which cannot
+ * be a month. A whole file of days under 13 is genuinely ambiguous, and
+ * guessing there is how 03/04 becomes 3 April in a file that meant 4 March,
+ * with nothing to show it went wrong. That case is what the manual override
+ * exists for; we default to day-first because this is Australia, and say so.
+ */
+function sniffDateOrder(samples: string[]): { order: Exclude<DateOrder, "auto">; certain: boolean } {
+  let sawFirstOver12 = false;
+  let sawSecondOver12 = false;
+  for (const raw of samples) {
+    const parts = (raw ?? "").split(/[/\-.]/).map((x) => x.trim());
+    if (parts.length !== 3) continue;
+    if (parts[0].length === 4) return { order: "ymd", certain: true };
+    const a = Number(parts[0]);
+    const b = Number(parts[1]);
+    if (Number.isFinite(a) && a > 12) sawFirstOver12 = true;
+    if (Number.isFinite(b) && b > 12) sawSecondOver12 = true;
   }
-  const iso = `${y}-${m.padStart(2, "0")}-${d.padStart(2, "0")}`;
-  return /^\d{4}-\d{2}-\d{2}$/.test(iso) ? iso : null;
+  if (sawFirstOver12 && !sawSecondOver12) return { order: "dmy", certain: true };
+  if (sawSecondOver12 && !sawFirstOver12) return { order: "mdy", certain: true };
+  return { order: "dmy", certain: false };
 }
 
-function mapRows(dataRows: string[][], mapping: Record<number, ColumnRole>): ParsedTxn[] {
+function isoDate(raw: string, order: Exclude<DateOrder, "auto">): string | null {
+  const parts = (raw ?? "").split(/[/\-.]/).map((p) => p.trim());
+  if (parts.length !== 3) return null;
+
+  let y: string, m: string, d: string;
+  if (parts[0].length === 4) [y, m, d] = parts;
+  else if (order === "mdy") [m, d, y] = parts;
+  else [d, m, y] = parts;
+  if (y.length === 2) y = `20${y}`;
+
+  const yn = Number(y), mn = Number(m), dn = Number(d);
+  if (!Number.isFinite(yn) || !Number.isFinite(mn) || !Number.isFinite(dn)) return null;
+  // Shape alone is not enough: the old version happily produced
+  // "2026-13-45", which matches the regex and is not a date. Round-tripping
+  // through Date is what catches a month of 13, a day of 45, and 31 February.
+  const probe = new Date(Date.UTC(yn, mn - 1, dn));
+  if (
+    probe.getUTCFullYear() !== yn ||
+    probe.getUTCMonth() !== mn - 1 ||
+    probe.getUTCDate() !== dn
+  ) {
+    return null;
+  }
+  return `${String(yn).padStart(4, "0")}-${String(mn).padStart(2, "0")}-${String(dn).padStart(2, "0")}`;
+}
+
+function mapRows(
+  dataRows: string[][],
+  mapping: Record<number, ColumnRole>,
+  dateOrder: Exclude<DateOrder, "auto">,
+): ParsedTxn[] {
   const findIdx = (role: ColumnRole) =>
     Object.entries(mapping).find(([, r]) => r === role)?.[0];
   const dateI = findIdx("date");
@@ -150,11 +264,15 @@ function mapRows(dataRows: string[][], mapping: Record<number, ColumnRole>): Par
     else if (creditI !== undefined || debitI !== undefined) {
       const c = creditI !== undefined ? (num(r[Number(creditI)] ?? "") ?? 0) : 0;
       const d = debitI !== undefined ? (num(r[Number(debitI)] ?? "") ?? 0) : 0;
-      amount = c - d;
+      // Some banks write the debit column already negative. Subtracting a
+      // negative flipped the sign, so a payment out became money in.
+      // Magnitude is the only thing a debit column reliably carries; the
+      // column itself is the direction.
+      amount = c - Math.abs(d);
     }
     const rawRef = refI !== undefined ? (r[Number(refI)] ?? "").trim() : "";
     return {
-      date: dateI !== undefined ? isoDate(r[Number(dateI)] ?? "") : null,
+      date: dateI !== undefined ? isoDate(r[Number(dateI)] ?? "", dateOrder) : null,
       description: descI !== undefined ? (r[Number(descI)] ?? "") : "",
       amount,
       balance: balanceI !== undefined ? num(r[Number(balanceI)] ?? "") : null,
@@ -177,6 +295,7 @@ export function ImportCsvDialog({
   const [rows, setRows] = useState<string[][] | null>(null);
   const [headerCells, setHeaderCells] = useState<string[] | null>(null);
   const [mapping, setMapping] = useState<Record<number, ColumnRole>>({});
+  const [dateOrder, setDateOrder] = useState<DateOrder>("auto");
   const [pending, startTransition] = useTransition();
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [dragging, setDragging] = useState(false);
@@ -186,9 +305,19 @@ export function ImportCsvDialog({
     [account.account_name, account.bank_name],
   );
 
+  // What "Work it out" resolves to, and whether the file actually said so.
+  const sniffed = useMemo(() => {
+    if (!rows) return { order: "dmy" as const, certain: false };
+    const dateI = Object.entries(mapping).find(([, r]) => r === "date")?.[0];
+    if (dateI === undefined) return { order: "dmy" as const, certain: false };
+    return sniffDateOrder(rows.map((r) => r[Number(dateI)] ?? ""));
+  }, [rows, mapping]);
+
+  const effectiveDateOrder = dateOrder === "auto" ? sniffed.order : dateOrder;
+
   const txns: ParsedTxn[] = useMemo(
-    () => (rows ? mapRows(rows, mapping) : []),
-    [rows, mapping],
+    () => (rows ? mapRows(rows, mapping, effectiveDateOrder) : []),
+    [rows, mapping, effectiveDateOrder],
   );
 
   // Item 6: confirm is allowed only when Date + Description are mapped
@@ -204,6 +333,21 @@ export function ImportCsvDialog({
     (hasAmount && !hasCredit && !hasDebit) ||
     (!hasAmount && hasCredit && hasDebit);
   const canConfirm = !!rows && rows.length > 0 && hasDate && hasDesc && amountConfigValid;
+
+  const unreadable = txns.filter((t) => t.date === null || t.amount === null).length;
+
+  // Why Confirm is off. It used to just be disabled, which leaves the
+  // manager comparing their columns against a button that will not tell
+  // them anything.
+  const blocker = !hasDate
+    ? "Point one column at the date."
+    : !hasDesc
+      ? "Point one column at the description."
+      : !amountConfigValid
+        ? hasAmount && (hasCredit || hasDebit)
+          ? "Use either a single Amount column, or a Money in and Money out pair, not both."
+          : "Point one column at the amount, or map both Money in and Money out."
+        : null;
 
   async function handleFile(file: File) {
     const text = await file.text();
@@ -233,7 +377,16 @@ export function ImportCsvDialog({
         toast.error(res.error);
         return;
       }
-      toast.success(`Imported ${res.inserted ?? 0} transaction${res.inserted === 1 ? "" : "s"}`);
+      // Say what was skipped as well as what landed. A silent "Imported 0"
+      // after uploading a file full of transactions is the manager's
+      // problem to work out; naming duplicates and unreadable rows tells
+      // them nothing is wrong, or exactly what is.
+      const parts = [
+        `Imported ${res.inserted ?? 0} transaction${res.inserted === 1 ? "" : "s"}`,
+      ];
+      if (res.duplicates) parts.push(`${res.duplicates} already here`);
+      if (res.unreadable) parts.push(`${res.unreadable} couldn't be read`);
+      toast.success(parts.join(" · "));
       onOpenChange(false);
     });
   }
@@ -246,7 +399,13 @@ export function ImportCsvDialog({
         <DialogContent className="sm:max-w-md">
           <DialogHeader>
             <DialogTitle>Import CSV</DialogTitle>
-            <DialogDescription>{accountLabel}</DialogDescription>
+            {/* sr-only: the dialog needs a description for screen readers,
+                but printing the account name back at the manager who just
+                clicked Import on it is noise, and account names are often
+                the plan number and the company, which reads as debris. */}
+            <DialogDescription className="sr-only">
+              Upload a CSV of transactions for {accountLabel}.
+            </DialogDescription>
           </DialogHeader>
           {/* A drop zone, not a button. The file is already in front of the
               manager in their downloads folder, and dragging it here is one
@@ -322,8 +481,41 @@ export function ImportCsvDialog({
 
       <div className="flex-1 overflow-auto px-6 pt-12 pb-6">
         <div className="max-w-5xl mx-auto space-y-4">
-          <div className="text-sm text-foreground">
-            <span className="text-muted-foreground">{rows.length} transaction{rows.length === 1 ? "" : "s"} parsed</span>
+          <div className="flex flex-wrap items-center justify-between gap-3">
+            <span className="text-sm text-muted-foreground">
+              {rows.length} transaction{rows.length === 1 ? "" : "s"} read
+            </span>
+            {/* Only when a date column is mapped, and only worth showing at
+                all because 03/04/2026 is a different day depending on who
+                exported the file. We work it out when some value has a
+                first part above 12, which cannot be a month; when every
+                value is under 13 the file genuinely does not say, and this
+                is the manager's chance to tell us rather than us guessing
+                and being quietly wrong. */}
+            {Object.values(mapping).includes("date") && (
+              <div className="flex items-center gap-2">
+                <span className="text-xs text-muted-foreground">Dates are</span>
+                <Select
+                  value={dateOrder}
+                  onValueChange={(v) => setDateOrder((v as DateOrder) ?? "auto")}
+                >
+                  <SelectTrigger className="h-8 w-56 text-xs">
+                    <SelectValue>{DATE_ORDER_LABEL[dateOrder]}</SelectValue>
+                  </SelectTrigger>
+                  <SelectContent alignItemWithTrigger={false}>
+                    {(Object.keys(DATE_ORDER_LABEL) as DateOrder[]).map((k) => (
+                      <SelectItem key={k} value={k}>{DATE_ORDER_LABEL[k]}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+                {dateOrder === "auto" && !sniffed.certain && (
+                  <span className="inline-flex items-center gap-1 text-xs text-warning">
+                    <AlertTriangle className="h-3.5 w-3.5" />
+                    Reading as day first
+                  </span>
+                )}
+              </div>
+            )}
           </div>
 
           {/* Column mapper. One dropdown per CSV column. Sample rows below
@@ -344,17 +536,12 @@ export function ImportCsvDialog({
                           onValueChange={(v) => setMapping((prev) => ({ ...prev, [i]: v as ColumnRole }))}
                         >
                           <SelectTrigger className="h-8 text-xs">
-                            <SelectValue />
+                            <SelectValue>{COLUMN_ROLE_LABEL[mapping[i] ?? "ignore"]}</SelectValue>
                           </SelectTrigger>
-                          <SelectContent>
-                            <SelectItem value="date">Date</SelectItem>
-                            <SelectItem value="description">Description</SelectItem>
-                            <SelectItem value="amount">Amount</SelectItem>
-                            <SelectItem value="credit">Credit</SelectItem>
-                            <SelectItem value="debit">Debit</SelectItem>
-                            <SelectItem value="balance">Balance</SelectItem>
-                            <SelectItem value="reference">Reference / DRN</SelectItem>
-                            <SelectItem value="ignore">Ignore</SelectItem>
+                          <SelectContent alignItemWithTrigger={false}>
+                            {COLUMN_ROLE_OPTIONS.map((o) => (
+                              <SelectItem key={o.value} value={o.value}>{o.label}</SelectItem>
+                            ))}
                           </SelectContent>
                         </Select>
                         {headerCells && (
@@ -409,7 +596,20 @@ export function ImportCsvDialog({
         </div>
       </div>
 
-      <div className="border-t border-border px-6 py-3 flex justify-end">
+      <div className="flex flex-wrap items-center justify-end gap-3 border-t border-border px-6 py-3">
+        {blocker && (
+          <p className="mr-auto text-sm text-muted-foreground">{blocker}</p>
+        )}
+        {!blocker && unreadable > 0 && (
+          // Almost always the date order. Saying so here, next to the
+          // control that fixes it, beats finding out from a toast after
+          // the import that most of the file was dropped.
+          <p className="mr-auto inline-flex items-center gap-1.5 text-sm text-warning">
+            <AlertTriangle className="h-4 w-4" />
+            {unreadable} of {txns.length} rows have no readable date or amount.
+            {" "}Check the date format above.
+          </p>
+        )}
         <Button onClick={handleConfirm} disabled={pending || !canConfirm} loading={pending}>
           Confirm import
         </Button>

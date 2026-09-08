@@ -48,18 +48,26 @@ const getSnapshot = () => openCount > 0;
 const getServerSnapshot = () => false;
 
 /**
- * Hold a slot for as long as this overlay is mounted. Call it from a
- * backdrop; the backdrop itself paints nothing.
+ * Hold a slot while this overlay is showing. Call it from a backdrop; the
+ * backdrop itself paints nothing.
+ *
+ * `active` exists because "mounted" and "showing" are not the same thing.
+ * Base UI portals a Sheet or Dialog backdrop only while it is open, so those
+ * can pass nothing. A component that renders itself all the time and decides
+ * internally whether to show, like the document viewer, is mounted on every
+ * visit to the page and dimmed the whole screen the moment it was added to
+ * one. Anything holding the slot must be able to say when.
  */
-export function useScrimSlot(): void {
+export function useScrimSlot(active: boolean = true): void {
   React.useEffect(() => {
+    if (!active) return;
     openCount += 1;
     emit();
     return () => {
       openCount = Math.max(0, openCount - 1);
       emit();
     };
-  }, []);
+  }, [active]);
 }
 
 /**

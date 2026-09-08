@@ -73,9 +73,11 @@ export function ContractorsContent({ contractors }: { contractors: ContractorRec
     <div className="space-y-6">
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div className="flex items-center gap-3">
-          <p className="text-sm text-muted-foreground">
-            {contractors.length} contractor{contractors.length === 1 ? "" : "s"}
-          </p>
+          {contractors.length > 0 && (
+            <p className="text-sm text-muted-foreground">
+              {contractors.length} contractor{contractors.length === 1 ? "" : "s"}
+            </p>
+          )}
           {contractors.length > 0 && (
             <div className="relative">
               <Search className="pointer-events-none absolute left-2.5 top-1/2 size-3.5 -translate-y-1/2 text-muted-foreground" />

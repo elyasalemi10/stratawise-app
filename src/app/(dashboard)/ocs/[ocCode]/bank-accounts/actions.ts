@@ -23,7 +23,7 @@ export async function importBankTransactions(
     balance: number | null;
     reference: string | null;
   }>,
-): Promise<{ inserted?: number; auto_matched?: number; error?: string }> {
+): Promise<{ inserted?: number; auto_matched?: number; duplicates?: number; unreadable?: number; error?: string }> {
   const profile = await requireCompanyRole();
   await requireOCAccess(ocId);
   const supabase = createServerClient();
@@ -36,16 +36,74 @@ export async function importBankTransactions(
     .maybeSingle();
   if (!account) return { error: "Bank account not found." };
 
-  const inserts = rows.map((r) => ({
-    oc_id: ocId,
-    bank_account_id: accountId,
-    source: "csv_import" as const,
-    transaction_date: r.date,
-    description: (r.description ?? "").slice(0, 1000),
-    amount: r.amount,
-    balance: r.balance,
-    imported_by: profile.id,
-  }));
+  // A row we could not read a date or an amount out of is not a
+  // transaction. They used to be inserted anyway, which put rows with no
+  // date and no amount into the ledger where nothing could match them and
+  // nothing would ever clean them up.
+  const usable = rows.filter((r) => r.date !== null && r.amount !== null);
+  const unreadable = rows.length - usable.length;
+
+  // What is already here, so re-uploading a statement does not double it.
+  //
+  // Managers export overlapping windows constantly: last month again with
+  // this month, or the same file twice because the first upload was not
+  // obviously finished. There is no import id to compare against, so the
+  // key is what a duplicate actually looks like: same account, same day,
+  // same amount, same description.
+  const dates = [...new Set(usable.map((r) => r.date!))].sort();
+  const { data: existingRows } = dates.length
+    ? await supabase
+        .from("bank_transactions")
+        .select("transaction_date, amount, description")
+        .eq("bank_account_id", accountId)
+        .gte("transaction_date", dates[0])
+        .lte("transaction_date", dates[dates.length - 1])
+    : { data: [] };
+
+  const fingerprint = (d: string, a: number, desc: string) =>
+    `${d}|${a.toFixed(2)}|${desc.trim().toLowerCase()}`;
+  const seen = new Set(
+    ((existingRows ?? []) as Array<{ transaction_date: string; amount: number; description: string | null }>).map(
+      (r) => fingerprint(r.transaction_date, Number(r.amount), r.description ?? ""),
+    ),
+  );
+
+  const inserts: Array<Record<string, unknown>> = [];
+  let duplicates = 0;
+  for (const r of usable) {
+    // The reference column the manager mapped has nowhere of its own to
+    // live yet, and the matcher searches the description, so a reference
+    // kept anywhere else is a reference nothing can match on. Appended
+    // only when the description does not already contain it, so a file
+    // that repeats it does not say it twice.
+    const rawDesc = (r.description ?? "").trim();
+    const ref = (r.reference ?? "").trim();
+    const description = (
+      ref && !rawDesc.toUpperCase().includes(ref.toUpperCase())
+        ? `${rawDesc} ${ref}`.trim()
+        : rawDesc
+    ).slice(0, 1000);
+
+    const key = fingerprint(r.date!, r.amount!, description);
+    // Guards against duplicates already in the table AND against the same
+    // line appearing twice inside one file.
+    if (seen.has(key)) {
+      duplicates++;
+      continue;
+    }
+    seen.add(key);
+
+    inserts.push({
+      oc_id: ocId,
+      bank_account_id: accountId,
+      source: "csv_import" as const,
+      transaction_date: r.date,
+      description,
+      amount: r.amount,
+      balance: r.balance,
+      imported_by: profile.id,
+    });
+  }
 
   let insertedIds: string[] = [];
   if (inserts.length > 0) {
@@ -53,7 +111,13 @@ export async function importBankTransactions(
       .from("bank_transactions")
       .insert(inserts)
       .select("id");
-    if (error) return { error: error.message };
+    if (error) {
+      // The raw Postgres message names columns and constraints. The
+      // operator gets it in the logs; the manager gets something they can
+      // act on.
+      console.error("[bank-import] insert failed:", error);
+      return { error: "Couldn't import those transactions, please try again." };
+    }
     insertedIds = (data ?? []).map((r) => r.id as string);
   }
 
@@ -87,7 +151,7 @@ export async function importBankTransactions(
   });
 
   revalidatePath("/ocs/[ocCode]/bank-accounts", "page");
-  return { inserted: inserts.length, auto_matched: autoMatched };
+  return { inserted: inserts.length, auto_matched: autoMatched, duplicates, unreadable };
 }
 
 /**

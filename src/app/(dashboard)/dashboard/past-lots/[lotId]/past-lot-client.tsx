@@ -183,7 +183,7 @@ export function PastLotClient({ lotId }: { lotId: string }) {
           <div className="flex items-center justify-between mb-3">
             <h2 className="text-sm font-semibold text-foreground">Your payments</h2>
             <span className="text-xs text-muted-foreground">
-              {payments.length} payment{payments.length !== 1 ? "s" : ""}
+              {payments.length > 0 ? `${payments.length} payment${payments.length === 1 ? "" : "s"}` : ""}
             </span>
           </div>
           {payments.length === 0 ? (
@@ -228,7 +228,7 @@ export function PastLotClient({ lotId }: { lotId: string }) {
               Communications you received
             </h2>
             <span className="text-xs text-muted-foreground">
-              {comms.length} item{comms.length !== 1 ? "s" : ""}
+              {comms.length > 0 ? `${comms.length} item${comms.length === 1 ? "" : "s"}` : ""}
             </span>
           </div>
           {comms.length === 0 ? (
