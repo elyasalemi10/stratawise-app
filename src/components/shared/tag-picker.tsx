@@ -228,15 +228,8 @@ export function TagField({
 }) {
   const [open, setOpen] = React.useState(false);
 
-  const field = (
-    <div
-      role={readOnly ? undefined : "button"}
-      tabIndex={readOnly ? undefined : 0}
-      className={cn(
-        "flex h-9 w-full items-center gap-1.5 overflow-hidden rounded-md border border-border bg-card px-2.5",
-        !readOnly && "cursor-pointer transition-colors hover:border-primary/40",
-      )}
-    >
+  const contents = (
+    <>
       <TagIcon className="h-3.5 w-3.5 shrink-0 text-muted-foreground" />
       {tags.length === 0 ? (
         <span className="text-sm text-muted-foreground">Add tags</span>
@@ -251,10 +244,28 @@ export function TagField({
           ))}
         </div>
       )}
-    </div>
+    </>
   );
 
-  if (readOnly) return field;
+  const shell =
+    "flex h-9 w-full items-center gap-1.5 overflow-hidden rounded-md border border-border bg-card px-2.5 text-left";
+
+  // Read-only is not a control, so it is not a button: nothing happens when
+  // you press it and announcing it as pressable is a lie to a screen reader.
+  if (readOnly) return <div className={shell}>{contents}</div>;
+
+  // A real <button>, not a div with role="button". Base UI's PopoverTrigger
+  // defaults nativeButton to true and warns otherwise, and it is right to:
+  // the div had no Enter/Space handling, no form semantics and no disabled
+  // behaviour, so the role was claiming something it did not implement.
+  const field = (
+    <button
+      type="button"
+      className={cn(shell, "cursor-pointer transition-colors hover:border-primary/40")}
+    >
+      {contents}
+    </button>
+  );
 
   return (
     <TagPicker
