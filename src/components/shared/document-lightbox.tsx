@@ -103,6 +103,7 @@ function PdfPages({ url }: { url: string }) {
       )}
       <div
         ref={hostRef}
+        onClick={(e) => e.stopPropagation()}
         className={`flex w-full flex-col items-center gap-4 ${status === "ready" ? "" : "hidden"}`}
       />
     </>
@@ -122,6 +123,7 @@ function ImagePage({ url }: { url: string }) {
         decoding="async"
         onLoad={() => setReady(true)}
         onError={() => setReady(true)}
+        onClick={(e) => e.stopPropagation()}
         className={`mx-auto max-h-[85vh] w-auto rounded-sm object-contain shadow-lg ${ready ? "" : "hidden"}`}
       />
     </>
@@ -216,23 +218,35 @@ export function DocumentLightbox({
           and lets a long one scroll from its top, which is what you want for
           a PDF: page one, at the top, not the middle of the document. */}
       <div className="flex min-h-full w-full items-center justify-center p-4 sm:p-8">
-        <div onClick={(e) => e.stopPropagation()} className="w-full max-w-4xl">
+        {/* The column is NOT a click shield. It spans the full width, so
+            stopping propagation here meant the empty space either side of a
+            portrait page swallowed the click and the viewer would not
+            close. Only the document itself does, further down. */}
+        <div className="w-full max-w-4xl">
           {count > 1 && (
             <p className="mb-3 text-center text-sm font-medium text-white/80 tabular-nums">
               {index + 1} of {count}
             </p>
           )}
+          {/* Keyed on the document, so moving between them fades rather
+              than cutting. 120ms: long enough to read as a transition,
+              short enough that arrowing through a folder is not a wait. */}
+          <div key={current.id} className="animate-in fade-in duration-150">
           {isImage ? (
             <ImagePage url={current.url} />
           ) : isPdf ? (
             <PdfPages url={current.url} />
           ) : (
-            <div className="mx-auto max-w-sm rounded-lg bg-card p-8 text-center">
+            <div
+              onClick={(e) => e.stopPropagation()}
+              className="mx-auto max-w-sm rounded-lg bg-card p-8 text-center"
+            >
               <p className="text-sm text-muted-foreground">
                 There&apos;s no preview for this file type. Download it to open it.
               </p>
             </div>
           )}
+          </div>
         </div>
       </div>
     </div>,

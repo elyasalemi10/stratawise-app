@@ -17,10 +17,16 @@ import sharp from "sharp";
 
 const THUMB_EDGE = 480;
 
-/** Height as a multiple of width, matching the card's preview box. Anything
- *  below the fold of this crop is not shown, so the page is rendered at full
- *  width and simply cut. */
-const CARD_ASPECT = 264 / 300;
+/** Height as a multiple of width.
+ *
+ *  The card's preview box is much wider than it is tall (roughly 500 by 256),
+ *  so a thumbnail cut at the page's own proportions is far taller than the
+ *  box and the browser has to crop it again on the way in. object-cover
+ *  centres that crop, which took the slice off the TOP: the letterhead, the
+ *  title and the policy number, the only part worth showing. Cutting closer
+ *  to the box's shape here leaves the browser almost nothing to remove, and
+ *  the card pins what is left to the top. */
+const CARD_ASPECT = 0.62;
 
 export async function renderPdfFirstPage(bytes: Buffer): Promise<Buffer | null> {
   try {

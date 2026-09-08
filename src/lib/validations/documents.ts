@@ -22,6 +22,19 @@ export const ALLOWED_DOCUMENT_TYPES = [
   "image/webp",
   "text/plain",
   "text/csv",
+  // Media. A manager photographs and films defects constantly, and a voice
+  // note from a site visit is evidence like any other. None of these are
+  // convertible or readable, so they store, download and play, and the card
+  // shows their extension.
+  "video/mp4",
+  "video/webm",
+  "video/quicktime",
+  "audio/mpeg",
+  "audio/mp4",
+  "audio/wav",
+  "audio/webm",
+  "image/heic",
+  "image/heif",
 ];
 
 export const ALLOWED_EXTENSIONS = [
@@ -29,6 +42,7 @@ export const ALLOWED_EXTENSIONS = [
   ".odt", ".odp", ".ods", ".rtf",
   ".png", ".jpg", ".jpeg", ".webp",
   ".txt", ".csv",
+  ".mp4", ".webm", ".mov", ".mp3", ".m4a", ".wav", ".heic", ".heif",
 ];
 
 export const MAX_DOCUMENT_SIZE = 25 * 1024 * 1024; // 25MB
@@ -50,9 +64,11 @@ export interface DocumentRecord {
    *  an image), which is different from one that has not been made yet. */
   pdf_status?: "none" | "pending" | "complete" | "failed" | "skipped";
   pdf_storage_key?: string | null;
-  /** Small WebP for the grid. Null when the file has no page or image to
-   *  make one from. */
+  /** Small WebP for the grid. Null until one has been made, which for an
+   *  Office file is after its PDF conversion lands, and never for a file
+   *  with no page or image to render. */
   thumbnail_storage_key?: string | null;
+  ocr_status?: string;
   /** What the manager says this document is, in their words. The uploaded
    *  filename stays on original_filename: "scan_0043.pdf" identifies
    *  nothing, and the description is what makes it findable later. */

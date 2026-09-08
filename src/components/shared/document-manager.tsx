@@ -8,6 +8,7 @@ import { DocumentLightbox } from "@/components/shared/document-lightbox";
 import type { DocumentTag, TagColour } from "@/lib/document-tags-shared";
 import {
   createDocumentTag,
+  getDocumentPreviewStatus,
   listDocumentTags,
   setDocumentDescription,
   setDocumentTags,
@@ -53,6 +54,11 @@ interface DocumentManagerProps {
  *  to cover what a manager opens in a sitting, not the whole library. */
 const PREFETCH_LIMIT = 12;
 
+/** How often to ask whether a document being converted has a preview yet.
+ *  Conversion is seconds to a minute, so this is frequent enough to feel
+ *  like it appeared on its own and rare enough to be nothing. */
+const PREVIEW_POLL_MS = 4000;
+
 const ACCEPT_STRING = ALLOWED_EXTENSIONS.join(",");
 
 export function DocumentManager({ ocId, lotId, initialDocuments, readOnly }: DocumentManagerProps) {
@@ -89,6 +95,21 @@ export function DocumentManager({ ocId, lotId, initialDocuments, readOnly }: Doc
       .catch((err) => console.error("[documents] could not load tags:", err));
   }, [readOnly]);
 
+  // A batch of uploads finishing within a second of each other is one
+  // event, not twelve. The timer restarts on each arrival and reports the
+  // total once they stop coming.
+  const uploadedCountRef = useRef(0);
+  const uploadToastRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const noteUploaded = useCallback(() => {
+    uploadedCountRef.current += 1;
+    if (uploadToastRef.current) clearTimeout(uploadToastRef.current);
+    uploadToastRef.current = setTimeout(() => {
+      const n = uploadedCountRef.current;
+      uploadedCountRef.current = 0;
+      toast.success(n === 1 ? "Document uploaded" : `${n} documents uploaded`);
+    }, 600);
+  }, []);
+
   const uploadFile = useCallback((file: File) => {
     const uploadId = crypto.randomUUID();
     setUploads((prev) => [...prev, { id: uploadId, fileName: file.name, progress: 0 }]);
@@ -114,6 +135,9 @@ export function DocumentManager({ ocId, lotId, initialDocuments, readOnly }: Doc
         const doc = JSON.parse(xhr.responseText);
         setDocuments((prev) => [doc, ...prev]);
         setUploads((prev) => prev.filter((u) => u.id !== uploadId));
+        // Counted rather than one toast per file: dropping twelve documents
+        // should not stack twelve notifications.
+        noteUploaded();
       } else {
         let errMsg = "Upload failed";
         try { errMsg = JSON.parse(xhr.responseText).error || errMsg; } catch { /* ignore */ }
@@ -133,7 +157,7 @@ export function DocumentManager({ ocId, lotId, initialDocuments, readOnly }: Doc
 
     xhr.open("POST", "/api/documents");
     xhr.send(formData);
-  }, [ocId, lotId, selectedCategory]);
+  }, [ocId, lotId, selectedCategory, noteUploaded]);
 
   function handleFiles(files: FileList | File[]) {
     Array.from(files).forEach(uploadFile);
@@ -154,6 +178,9 @@ export function DocumentManager({ ocId, lotId, initialDocuments, readOnly }: Doc
   const dragDepthRef = useRef(0);
   useEffect(() => {
     if (readOnly) return;
+    // Not while the viewer is open: dragging the image you are looking at
+    // is a normal thing to do and must not arm an upload target.
+    if (previewDoc) return;
     function isFileDrag(e: DragEvent): boolean {
       const types = e.dataTransfer?.types;
       if (!types) return false;
@@ -192,7 +219,7 @@ export function DocumentManager({ ocId, lotId, initialDocuments, readOnly }: Doc
       window.removeEventListener("drop", onDrop);
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [readOnly]);
+  }, [readOnly, previewDoc]);
 
   // Split the filename into its display stem + locked .ext suffix. We only
   // ever ask the user to rename the stem; the extension follows the binary
@@ -323,6 +350,48 @@ export function DocumentManager({ ocId, lotId, initialDocuments, readOnly }: Doc
       return cat === filterCategory;
     });
   }, [documents, search, filterCategory]);
+
+  // Keep checking anything still being prepared.
+  //
+  // A .docx has no preview until CloudConvert has rendered it and we have
+  // screenshotted page one, which is seconds to a minute after the upload
+  // returns. Without this the card said "Getting this one ready" until the
+  // manager happened to reload the page, which is how they ended up
+  // clicking a document that could not be opened yet.
+  //
+  // Polls only while something is actually pending, and stops the moment
+  // nothing is, so an idle documents page makes no requests at all.
+  const pendingIds = useMemo(
+    () =>
+      documents
+        .filter((d) => !d.thumbnail_storage_key && (d.pdf_status === "pending" || d.ocr_status === "pending"))
+        .map((d) => d.id),
+    [documents],
+  );
+
+  useEffect(() => {
+    if (pendingIds.length === 0) return;
+    let cancelled = false;
+    const id = setInterval(async () => {
+      try {
+        const fresh = await getDocumentPreviewStatus(ocId, pendingIds);
+        if (cancelled || fresh.length === 0) return;
+        const byId = new Map(fresh.map((d) => [d.id, d]));
+        setDocuments((prev) =>
+          prev.map((d) => {
+            const update = byId.get(d.id);
+            return update ? ({ ...d, ...update } as DocWithUrl) : d;
+          }),
+        );
+      } catch (err) {
+        console.error("[documents] preview poll failed:", err);
+      }
+    }, PREVIEW_POLL_MS);
+    return () => {
+      cancelled = true;
+      clearInterval(id);
+    };
+  }, [pendingIds, ocId]);
 
   // Warm the full-size files behind the grid.
   //
@@ -546,7 +615,11 @@ export function DocumentManager({ ocId, lotId, initialDocuments, readOnly }: Doc
           the discoverable target; this is the one that catches a file
           dragged at the page in general, which is what people actually do
           once they know uploading is possible. */}
-      {!readOnly && dragging && (
+      {/* Not while the viewer is open. Dragging an image inside the
+          lightbox, which is the natural thing to do with a picture on
+          screen, threw up the full-page "drop files to upload" target over
+          the document being read. */}
+      {!readOnly && dragging && !previewDoc && (
         <div className="fixed inset-0 z-[60] pointer-events-none flex items-center justify-center bg-white/50">
           <div
             onDragOver={(e) => e.preventDefault()}

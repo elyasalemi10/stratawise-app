@@ -23,6 +23,11 @@ import type { DocumentTag, TagColour } from "@/lib/document-tags-shared";
 // still on the row as original_filename. What replaces it is the manager's
 // note and their tags, which are the things that make a document findable.
 
+/** Every card is this tall, loaded or uploading, so a batch of uploads does
+ *  not produce a ragged grid. The preview takes whatever the chrome strip and
+ *  the footer leave. */
+const CARD_HEIGHT = "h-[24.5rem]";
+
 export interface DocumentCardDoc {
   id: string;
   file_name: string;
@@ -30,6 +35,7 @@ export interface DocumentCardDoc {
   created_at: string;
   description?: string | null;
   pdf_status?: string;
+  ocr_status?: string;
   thumbnail_storage_key?: string | null;
   tags?: DocumentTag[];
 }
@@ -76,7 +82,8 @@ export function DocumentCard({
   // the page no longer downloads twelve whole documents to show twelve
   // pictures.
   const hasThumbnail = Boolean(doc.thumbnail_storage_key);
-  const stillPreparing = !hasThumbnail && doc.pdf_status === "pending";
+  const stillPreparing =
+    !hasThumbnail && (doc.pdf_status === "pending" || doc.ocr_status === "pending");
   const tags = doc.tags ?? [];
   const extension =
     doc.file_name.includes(".") ? doc.file_name.split(".").pop()!.toUpperCase() : "FILE";
@@ -84,6 +91,10 @@ export function DocumentCard({
   return (
     <div
       className={cn(
+        // A fixed height, shared with the uploading state below. The two
+        // used to be built differently and landed 2rem apart, so a batch of
+        // uploads was a grid of short cards next to tall ones.
+        CARD_HEIGHT,
         "group flex flex-col overflow-hidden rounded-lg border bg-card transition-colors",
         selected ? "border-primary ring-1 ring-primary" : "border-border hover:border-primary/40",
       )}
@@ -150,7 +161,7 @@ export function DocumentCard({
       <button
         type="button"
         onClick={selectionActive && !readOnly ? onToggleSelect : onOpen}
-        className="relative block h-64 w-full cursor-pointer overflow-hidden bg-muted"
+        className="relative block w-full flex-1 cursor-pointer overflow-hidden bg-muted"
         aria-label={
           selectionActive && !readOnly
             ? `${selected ? "Deselect" : "Select"} ${doc.file_name}`
@@ -169,20 +180,27 @@ export function DocumentCard({
               onLoad={() => setPreviewReady(true)}
               onError={() => setPreviewReady(true)}
               className={cn(
-                "h-full w-full object-cover transition-opacity duration-200",
+                // object-top, not the default centre. The interesting part
+                // of a document is its top, and centring the crop cut it off.
+                "h-full w-full object-cover object-top transition-opacity duration-200",
                 previewReady ? "opacity-100" : "opacity-0",
               )}
             />
           </>
-        ) : stillPreparing ? (
-          // An Office file whose PDF has not been rendered yet. It will have
-          // a page to show shortly, and a pulsing mark says so where the
-          // extension plate would say nothing is coming.
-          <BrandLoader className="absolute inset-0" />
         ) : (
-          <div className="flex h-full w-full items-center justify-center">
+          // No thumbnail. Say what the file is and whether one is coming.
+          //
+          // This used to pulse the brand mark while an Office file was being
+          // converted, which promised a preview that was not there yet: the
+          // card looked like it was loading, and clicking it opened a viewer
+          // with nothing to show. The extension is true immediately, and the
+          // second line is the only part that changes.
+          <div className="flex h-full w-full flex-col items-center justify-center gap-2">
             <span className="rounded-md bg-cool-muted px-3 py-1.5 text-sm font-semibold text-cool-muted-foreground">
               {extension}
+            </span>
+            <span className="text-xs text-muted-foreground">
+              {stillPreparing ? "Getting this one ready" : "No preview"}
             </span>
           </div>
         )}
@@ -223,7 +241,7 @@ export function DocumentUploadCard({
   onDismiss?: () => void;
 }) {
   return (
-    <div className="relative flex h-[22rem] flex-col overflow-hidden rounded-lg border border-border bg-card">
+    <div className={cn(CARD_HEIGHT, "relative flex flex-col overflow-hidden rounded-lg border border-border bg-card")}>
       {/* The same strip a finished card has, carrying today's date. The
           card is about to become one, and a blank white band that fills in
           a second later is a layout the eye has to re-read. */}

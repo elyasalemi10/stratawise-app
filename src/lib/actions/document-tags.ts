@@ -165,3 +165,35 @@ export async function setDocumentDescription(
   }
   return {};
 }
+
+/**
+ * Preview state for documents still being prepared.
+ *
+ * The grid polls this while a .docx or .pptx is being converted, so the card
+ * swaps from "Getting this one ready" to the real page without the manager
+ * reloading. Deliberately narrow: three columns, only the ids asked for, and
+ * scoped to an OC they can already see.
+ */
+export async function getDocumentPreviewStatus(
+  ocId: string,
+  documentIds: string[],
+): Promise<Array<{ id: string; thumbnail_storage_key: string | null; pdf_status: string; ocr_status: string }>> {
+  if (documentIds.length === 0) return [];
+  await requireOCAccess(ocId);
+  const supabase = createServerClient();
+  const { data, error } = await supabase
+    .from("documents")
+    .select("id, thumbnail_storage_key, pdf_status, ocr_status")
+    .eq("oc_id", ocId)
+    .in("id", documentIds);
+  if (error) {
+    console.error("[documents] preview status query failed:", error);
+    return [];
+  }
+  return (data ?? []) as Array<{
+    id: string;
+    thumbnail_storage_key: string | null;
+    pdf_status: string;
+    ocr_status: string;
+  }>;
+}

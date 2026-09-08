@@ -94,9 +94,19 @@ export async function ingestDocumentOcr(documentId: string): Promise<void> {
           ocr_provider: "plain_text",
           ocr_completed_at: new Date().toISOString(),
           ocr_error: null,
-          pdf_status: "skipped",
+          // NOT skipped. The text is read, but the grid still wants a page
+          // to show, and a CSV rendered to PDF gives it one. Left pending so
+          // renderToPdf below fills it in.
+          pdf_status: isConversionConfigured() ? "pending" : "skipped",
         })
         .eq("id", documentId);
+
+      // A preview, separately from the text. Failure is fine: the document
+      // is already searchable and simply keeps its extension plate.
+      if (isConversionConfigured()) {
+        const rendition = await renderToPdf(documentId, doc);
+        if (rendition) await backfillThumbnail(documentId);
+      }
     } catch (err) {
       console.error(`ingestDocumentOcr: plain-text read failed for ${documentId}`, err);
       const message = err instanceof Error ? err.message : String(err);

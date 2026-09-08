@@ -43,7 +43,13 @@ export function AutoGrowTextarea({
   // visibly cut mid-second-line, which is what says there is more, without
   // a grid of cards each holding two mostly-empty lines. Fixed, so the
   // control is exactly the same size before and after a click.
-  const REST_HEIGHT = 44;
+  // One line, plus just enough of the next to show the dot of an i.
+  //
+  // leading-5 is a 20px line, py-1.5 is 6px each side, and the border is 1px
+  // each side, so exactly one line occupies 34px. Five more is a sliver of
+  // the second line: enough to say "there is more" and not enough to be a
+  // second line of its own.
+  const REST_HEIGHT = 39;
 
   const resize = React.useCallback(() => {
     const el = ref.current;
@@ -90,12 +96,14 @@ export function AutoGrowTextarea({
         "placeholder:text-muted-foreground focus-visible:outline-none",
         // Gold while focused, against the same grey border everything else
         // has. It is the one control on the card you type into.
-        focused
-          ? "border-[color:var(--brand-gold)] ring-1 ring-[color:var(--brand-gold)]/30"
-          : "border-border",
+        // Border colour only, no ring. A ring is drawn OUTSIDE the border,
+        // so the box visibly grew by a pixel on each side the moment it was
+        // clicked, which is the "it expands a tiny bit" with no content in
+        // it: the height never changed, the ring did.
+        focused ? "border-[color:var(--brand-gold)]" : "border-border",
         // Only the border transitions. Height is set imperatively and
         // animating it fought the measurement.
-        "transition-[border-color,box-shadow] duration-150 ease-out",
+        "transition-[border-color] duration-150 ease-out",
         "[scrollbar-width:none] [&::-webkit-scrollbar]:hidden",
         className,
       )}

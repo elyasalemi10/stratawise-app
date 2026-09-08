@@ -58,7 +58,8 @@ export function TagPicker({
   compact,
   open,
   onOpenChange,
-  trigger,
+  triggerClassName,
+  triggerChildren,
 }: {
   allTags: DocumentTag[];
   selectedIds: string[];
@@ -73,9 +74,10 @@ export function TagPicker({
    *  makes you re-open and re-find your place every time. */
   open?: boolean;
   onOpenChange?: (open: boolean) => void;
-  /** Replaces the default button entirely, so the whole tag field can be
-   *  the trigger. */
-  trigger?: React.ReactNode;
+  /** Styling for the trigger, when a caller wants the whole field to be it. */
+  triggerClassName?: string;
+  /** Contents of the trigger, replacing the default icon and label. */
+  triggerChildren?: React.ReactNode;
 }) {
   const [query, setQuery] = React.useState("");
   const [creating, setCreating] = React.useState(false);
@@ -100,28 +102,37 @@ export function TagPicker({
 
   return (
     <Popover open={open} onOpenChange={onOpenChange}>
-      {trigger ? (
-        <PopoverTrigger disabled={disabled} render={trigger as React.ReactElement} />
-      ) : (
-      /* Outlined, so it reads as a control rather than a caption. It sits
-         next to a bordered note box and looked like stray text without one. */
+      {/* ONE trigger, and it is Base UI's own element.
+          A caller used to be able to hand in a whole element through
+          `render`, and Base UI could not get its ref onto it, so useButton
+          saw a non-BUTTON tag and logged an accessibility error on every
+          card. Styling and children go in as props instead, which means the
+          rendered element is always the native <button> Base UI expects. */}
       <PopoverTrigger
         disabled={disabled}
         className={cn(
-          "inline-flex h-8 cursor-pointer items-center gap-1.5 rounded-md border border-border bg-card font-medium text-muted-foreground transition-colors",
+          "cursor-pointer items-center gap-1.5 rounded-md border border-border bg-card font-medium text-muted-foreground transition-colors",
           "hover:border-primary/40 hover:text-foreground disabled:cursor-default disabled:opacity-50",
-          compact ? "w-8 justify-center" : "w-full justify-start px-2.5 text-sm",
+          triggerClassName ??
+            cn(
+              "inline-flex h-8 text-sm",
+              compact ? "w-8 justify-center" : "w-full justify-start px-2.5",
+            ),
         )}
         aria-label="Add tags"
       >
-        <TagIcon className="h-3.5 w-3.5 shrink-0" />
-        {!compact && "Add tags"}
+        {triggerChildren ?? (
+          <>
+            <TagIcon className="h-3.5 w-3.5 shrink-0" />
+            {!compact && "Add tags"}
+          </>
+        )}
       </PopoverTrigger>
-      )}
       <PopoverContent
         // As wide as the control it opened from. A 256px popup under a
         // full-width field looks like it belongs to something else.
-        className="w-[var(--anchor-width)] min-w-56 p-0"
+        matchTriggerWidth
+        className="w-full min-w-56 p-0"
         align="start"
         showBackdrop={false}
         onClick={(e) => e.stopPropagation()}
@@ -236,36 +247,25 @@ export function TagField({
       ) : (
         // Scrolls out of sight to the right rather than wrapping. The card
         // is a fixed height and the grid depends on it staying that way.
-        <div className="flex min-w-0 flex-1 items-center gap-1 overflow-x-auto [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
+        <span className="flex min-w-0 flex-1 items-center gap-1 overflow-x-auto [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
           {tags.map((t) => (
             <span key={t.id} className="shrink-0">
               <TagChip tag={t} />
             </span>
           ))}
-        </div>
+        </span>
       )}
     </>
   );
 
   const shell =
-    "flex h-9 w-full items-center gap-1.5 overflow-hidden rounded-md border border-border bg-card px-2.5 text-left";
+    "flex h-9 w-full items-center gap-1.5 overflow-hidden rounded-md px-2.5 text-left";
 
   // Read-only is not a control, so it is not a button: nothing happens when
   // you press it and announcing it as pressable is a lie to a screen reader.
-  if (readOnly) return <div className={shell}>{contents}</div>;
-
-  // A real <button>, not a div with role="button". Base UI's PopoverTrigger
-  // defaults nativeButton to true and warns otherwise, and it is right to:
-  // the div had no Enter/Space handling, no form semantics and no disabled
-  // behaviour, so the role was claiming something it did not implement.
-  const field = (
-    <button
-      type="button"
-      className={cn(shell, "cursor-pointer transition-colors hover:border-primary/40")}
-    >
-      {contents}
-    </button>
-  );
+  if (readOnly) {
+    return <div className={cn(shell, "border border-border bg-card")}>{contents}</div>;
+  }
 
   return (
     <TagPicker
@@ -275,7 +275,8 @@ export function TagField({
       onCreate={onCreate}
       open={open}
       onOpenChange={setOpen}
-      trigger={field}
+      triggerClassName={shell}
+      triggerChildren={contents}
     />
   );
 }

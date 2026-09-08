@@ -147,3 +147,68 @@ export async function attachDocumentToPolicy(
   if (error) return { error: error.message };
   return {};
 }
+
+
+/**
+ * Store a certificate WITHOUT reading it.
+ *
+ * The manual path is the manager saying "I will type the details myself",
+ * and it was still sending the file to be read: they got
+ * "That didn't look like a certificate of currency" and no upload, for a
+ * document they had already decided to describe by hand. Nothing here calls
+ * the model, so nothing here can reject the file for not looking like what
+ * it expected.
+ */
+export async function uploadInsuranceDocument(
+  ocId: string,
+  formData: FormData,
+): Promise<{ storage_key?: string; public_url?: string; document_id?: string; error?: string }> {
+  await requireOCAccess(ocId);
+
+  const file = formData.get("file");
+  if (!(file instanceof File)) return { error: "No file uploaded." };
+  if (file.type !== "application/pdf" && !file.name.toLowerCase().endsWith(".pdf")) {
+    return { error: "Only PDF files are accepted." };
+  }
+  if (file.size > 25 * 1024 * 1024) return { error: "Certificate exceeds 25 MB." };
+
+  const key = `insurance/${ocId}/${crypto.randomUUID()}.pdf`;
+  const buf = Buffer.from(await file.arrayBuffer());
+  try {
+    await uploadObject(key, buf, "application/pdf");
+  } catch (err) {
+    console.error("uploadInsuranceDocument: R2 upload failed", err);
+    return { error: "Couldn't save your file, please try again." };
+  }
+
+  const supabase = createServerClient();
+  const { data: docRow, error } = await supabase
+    .from("documents")
+    .insert({
+      oc_id: ocId,
+      file_name: file.name,
+      file_path: key,
+      file_size: file.size,
+      mime_type: "application/pdf",
+      category: "certificate_of_currency",
+      description: defaultDocumentNote("certificate_of_currency", {}),
+      is_confidential: false,
+      // Straight to the queue: the text is still worth indexing and the
+      // page still wants a thumbnail, neither of which needs the model.
+      ocr_status: "pending",
+      pdf_status: "skipped",
+    })
+    .select("id")
+    .single();
+
+  if (error) {
+    console.error("uploadInsuranceDocument: document row failed", error);
+    return { error: "Couldn't save your file, please try again." };
+  }
+
+  return {
+    storage_key: key,
+    public_url: `/api/insurance-doc?key=${encodeURIComponent(key)}`,
+    document_id: docRow?.id as string | undefined,
+  };
+}

@@ -42,6 +42,12 @@ const CONVERTIBLE: Record<string, string> = {
   "application/vnd.ms-excel": "xls",
   "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet": "xlsx",
   "application/vnd.oasis.opendocument.spreadsheet": "ods",
+  // Text and CSV convert too. Their TEXT is read directly (free, and better
+  // than anything a renderer would give us), but a spreadsheet export with
+  // no preview is a grey plate in the grid like everything else, and the
+  // manager cannot tell one bank export from another without opening it.
+  "text/csv": "csv",
+  "text/plain": "txt",
 };
 
 const API_BASE = "https://api.cloudconvert.com/v2";

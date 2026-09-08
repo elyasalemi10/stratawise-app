@@ -50,12 +50,13 @@ function PopoverContent({
   side = "bottom",
   sideOffset = 4,
   showBackdrop = true,
+  matchTriggerWidth = false,
   ...props
 }: PopoverPrimitive.Popup.Props &
   Pick<
     PopoverPrimitive.Positioner.Props,
     "align" | "alignOffset" | "side" | "sideOffset"
-  > & { showBackdrop?: boolean }) {
+  > & { showBackdrop?: boolean; matchTriggerWidth?: boolean }) {
   return (
     <PopoverPrimitive.Portal>
       {showBackdrop && <PopoverBackdrop />}
@@ -73,7 +74,10 @@ function PopoverContent({
         alignOffset={alignOffset}
         side={side}
         sideOffset={sideOffset}
-        className="isolate z-50"
+        // --anchor-width is set by Base UI on the POSITIONER, not the popup,
+        // so a width on the popup was sizing against nothing. Putting it here
+        // is what actually makes the panel match the control it opened from.
+        className={cn("isolate z-50", matchTriggerWidth && "w-[var(--anchor-width)]")}
       >
         <PopoverPrimitive.Popup
           data-slot="popover-content"

@@ -20,7 +20,7 @@ import {
   Table, TableBody, TableCell, TableHead, TableHeader, TableRow,
 } from "@/components/ui/table";
 import { formatDateLong, cn } from "@/lib/utils";
-import { uploadAndParseInsuranceCoc, attachDocumentToPolicy } from "./parse-coc";
+import { uploadAndParseInsuranceCoc, uploadInsuranceDocument, attachDocumentToPolicy } from "./parse-coc";
 import {
   PAYMENT_FREQUENCY_LABEL,
   PAYMENT_FREQUENCY_OPTIONS,
@@ -478,6 +478,7 @@ function AddPolicyDrawer({
   const [customTypeInvalid, setCustomTypeInvalid] = useState(false);
   const [certificateInvalid, setCertificateInvalid] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const manualInputRef = useRef<HTMLInputElement>(null);
 
   function reset() {
     setStep("coc");
@@ -496,9 +497,33 @@ function AddPolicyDrawer({
     setDocumentId(undefined);
   }
 
-  async function handleCocUpload(file: File) {
+  /**
+   * @param read whether to have the certificate read for us. False on the
+   *   manual path: the manager has said they will type the details, and
+   *   running it through the reader anyway is how they got
+   *   "That didn't look like a certificate of currency" and no upload.
+   */
+  async function handleCocUpload(file: File, read = true) {
     setUploadName(file.name);
     setParsing(true);
+
+    if (!read) {
+      const fdPlain = new FormData();
+      fdPlain.append("file", file);
+      const plain = await uploadInsuranceDocument(ocId, fdPlain);
+      setParsing(false);
+      if (plain.error) {
+        toast.error(plain.error);
+        setUploadName(null);
+        return;
+      }
+      setDocumentUrl(plain.public_url);
+      setDocumentId(plain.document_id);
+      setCertificateInvalid(false);
+      toast.success("Certificate attached");
+      return;
+    }
+
     const fd = new FormData();
     fd.append("file", file);
     const res = await uploadAndParseInsuranceCoc(ocId, fd);
@@ -636,7 +661,20 @@ function AddPolicyDrawer({
           hidden
           onChange={(e) => {
             const f = e.target.files?.[0];
-            if (f) handleCocUpload(f);
+            if (f) handleCocUpload(f, true);
+            e.target.value = "";
+          }}
+        />
+        {/* Separate input for the manual path, so one control cannot end up
+            wired to the other's behaviour. */}
+        <input
+          ref={manualInputRef}
+          type="file"
+          accept=".pdf,application/pdf"
+          hidden
+          onChange={(e) => {
+            const f = e.target.files?.[0];
+            if (f) handleCocUpload(f, false);
             e.target.value = "";
           }}
         />
@@ -647,8 +685,15 @@ function AddPolicyDrawer({
               <p className="text-sm text-foreground">
                 Drop your Certificate of Currency PDF here. We&apos;ll read the provider, policy number, sum insured, premium, and coverage dates and pre-fill the next page.
               </p>
-              <label
-                className={`flex cursor-pointer flex-col items-center justify-center rounded-md border-2 border-dashed border-border bg-card px-4 py-12 text-center transition-colors hover:border-primary/40 hover:bg-muted/40 ${parsing ? "pointer-events-none opacity-70" : ""}`}
+              {/* A button, not a <label>. It was a label wrapping the file
+                  input, and when the input moved out to the drawer root so
+                  the manual path could share it, the label was left pointing
+                  at nothing: clicking did nothing at all. */}
+              <button
+                type="button"
+                disabled={parsing}
+                onClick={() => fileInputRef.current?.click()}
+                className={`flex w-full cursor-pointer flex-col items-center justify-center rounded-md border-2 border-dashed border-border bg-card px-4 py-12 text-center transition-colors hover:border-primary/40 hover:bg-muted/40 ${parsing ? "pointer-events-none opacity-70" : ""}`}
                 onDragOver={(e) => e.preventDefault()}
                 onDrop={(e) => {
                   e.preventDefault();
@@ -668,7 +713,7 @@ function AddPolicyDrawer({
                     <span className="mt-1 text-xs text-muted-foreground">PDF, up to 25 MB</span>
                   </>
                 )}
-              </label>
+              </button>
             </div>
           )}
 
@@ -705,7 +750,9 @@ function AddPolicyDrawer({
                     <Button
                       variant="secondary"
                       size="sm"
-                      onClick={() => fileInputRef.current?.click()}
+                      disabled={parsing}
+                      loading={parsing}
+                      onClick={() => manualInputRef.current?.click()}
                     >
                       Replace
                     </Button>
@@ -716,12 +763,12 @@ function AddPolicyDrawer({
                     // Opens the file picker. It used to call setStep("coc"),
                     // which threw the manager back into the read-it-for-me
                     // flow they had deliberately stepped out of.
-                    onClick={() => fileInputRef.current?.click()}
+                    onClick={() => manualInputRef.current?.click()}
                     onDragOver={(e) => e.preventDefault()}
                     onDrop={(e) => {
                       e.preventDefault();
                       const f = e.dataTransfer.files?.[0];
-                      if (f) void handleCocUpload(f);
+                      if (f) void handleCocUpload(f, false);
                     }}
                     className={cn(
                       "flex w-full cursor-pointer items-center justify-center gap-2 rounded-md border-2 border-dashed px-3 py-4 text-sm transition-colors",
@@ -730,8 +777,17 @@ function AddPolicyDrawer({
                         : "border-border text-muted-foreground hover:border-primary/40 hover:bg-muted/40",
                     )}
                   >
-                    <Plus className="h-3.5 w-3.5" />
-                    Drop the certificate here, or click to choose
+                    {parsing ? (
+                      <>
+                        <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                        Uploading {uploadName}
+                      </>
+                    ) : (
+                      <>
+                        <Plus className="h-3.5 w-3.5" />
+                        Drop the certificate here, or click to choose
+                      </>
+                    )}
                   </button>
                 )}
               </div>
