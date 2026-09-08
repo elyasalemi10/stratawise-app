@@ -1,6 +1,7 @@
 "use server";
 
 import { getOC } from "@/lib/actions/oc";
+import { resolveId } from "@/lib/short-code";
 import { getLevyBatchDetail } from "@/lib/actions/levy";
 import { requireOCAccess } from "@/lib/auth";
 import { createServerClient } from "@/lib/supabase";
@@ -21,6 +22,14 @@ export async function getBatchDetailPageData(
   ocId: string,
   batchId: string,
 ): Promise<BatchDetailPageData> {
+  // The URL carries a short code; everything below joins on the UUID.
+  // Resolved HERE rather than in the page shell so the loading
+  // boundary, which only has the raw segment, can render the real
+  // client and paint from cache exactly as the page does.
+  const resolvedBatchId = await resolveId("levy_batches", batchId);
+  if (!resolvedBatchId) throw new Error("Not found");
+  batchId = resolvedBatchId;
+
   await requireOCAccess(ocId);
 
   const supabase = createServerClient();

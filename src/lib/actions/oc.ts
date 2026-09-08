@@ -307,6 +307,8 @@ export async function getOCStats(ocId: string) {
 
 export interface LotWithFinancials {
   id: string;
+  /** The URL handle. Links use this; the UUID stays the key. */
+  short_code: string;
   lot_number: number;
   lot_entitlement: number;
   lot_liability: number;
@@ -325,7 +327,7 @@ export async function getLotsWithFinancials(ocId: string): Promise<LotWithFinanc
 
   const { data: lots } = await supabase
     .from("lots")
-    .select("id, lot_number, unit_number, lot_entitlement, lot_liability, opening_balance")
+    .select("id, short_code, lot_number, unit_number, lot_entitlement, lot_liability, opening_balance")
     .eq("oc_id", ocId)
     .order("lot_number");
 
@@ -362,6 +364,7 @@ export async function getLotsWithFinancials(ocId: string): Promise<LotWithFinanc
 
     return {
       id: lot.id,
+      short_code: lot.short_code as string,
       lot_number: lot.lot_number,
       lot_entitlement: Number(lot.lot_entitlement),
       lot_liability: Number(lot.lot_liability),

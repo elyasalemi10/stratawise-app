@@ -485,37 +485,6 @@ export function ImportCsvDialog({
             <span className="text-sm text-muted-foreground">
               {rows.length} transaction{rows.length === 1 ? "" : "s"} read
             </span>
-            {/* Only when a date column is mapped, and only worth showing at
-                all because 03/04/2026 is a different day depending on who
-                exported the file. We work it out when some value has a
-                first part above 12, which cannot be a month; when every
-                value is under 13 the file genuinely does not say, and this
-                is the manager's chance to tell us rather than us guessing
-                and being quietly wrong. */}
-            {Object.values(mapping).includes("date") && (
-              <div className="flex items-center gap-2">
-                <span className="text-xs text-muted-foreground">Dates are</span>
-                <Select
-                  value={dateOrder}
-                  onValueChange={(v) => setDateOrder((v as DateOrder) ?? "auto")}
-                >
-                  <SelectTrigger className="h-8 w-56 text-xs">
-                    <SelectValue>{DATE_ORDER_LABEL[dateOrder]}</SelectValue>
-                  </SelectTrigger>
-                  <SelectContent alignItemWithTrigger={false}>
-                    {(Object.keys(DATE_ORDER_LABEL) as DateOrder[]).map((k) => (
-                      <SelectItem key={k} value={k}>{DATE_ORDER_LABEL[k]}</SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-                {dateOrder === "auto" && !sniffed.certain && (
-                  <span className="inline-flex items-center gap-1 text-xs text-warning">
-                    <AlertTriangle className="h-3.5 w-3.5" />
-                    Reading as day first
-                  </span>
-                )}
-              </div>
-            )}
           </div>
 
           {/* Column mapper. One dropdown per CSV column. Sample rows below
@@ -544,6 +513,43 @@ export function ImportCsvDialog({
                             ))}
                           </SelectContent>
                         </Select>
+                        {/* The date format lives in the DATE column, under
+                            the control that made it a date column. It used
+                            to sit in the page header, away from the thing it
+                            describes and visible even when no date was
+                            mapped: 03/04/2026 is a different day depending
+                            on who exported the file, and the place to say
+                            which is the column it is in. */}
+                        {mapping[i] === "date" && (
+                          <div className="mt-1.5 space-y-1">
+                            <Select
+                              value={dateOrder}
+                              onValueChange={(v) => setDateOrder((v as DateOrder) ?? "auto")}
+                            >
+                              <SelectTrigger className="h-7 w-full text-[11px]">
+                                <SelectValue>{DATE_ORDER_LABEL[dateOrder]}</SelectValue>
+                              </SelectTrigger>
+                              <SelectContent alignItemWithTrigger={false}>
+                                {(Object.keys(DATE_ORDER_LABEL) as DateOrder[]).map((k) => (
+                                  <SelectItem key={k} value={k}>{DATE_ORDER_LABEL[k]}</SelectItem>
+                                ))}
+                              </SelectContent>
+                            </Select>
+                            {dateOrder === "auto" && (
+                              <span
+                                className={cn(
+                                  "flex items-center gap-1 text-[11px]",
+                                  sniffed.certain ? "text-muted-foreground" : "text-warning",
+                                )}
+                              >
+                                {!sniffed.certain && <AlertTriangle className="h-3 w-3 shrink-0" />}
+                                {sniffed.certain
+                                  ? DATE_ORDER_LABEL[sniffed.order]
+                                  : `Reading as ${sniffed.order === "mdy" ? "month" : "day"} first`}
+                              </span>
+                            )}
+                          </div>
+                        )}
                         {headerCells && (
                           <p className="mt-1 truncate text-muted-foreground" title={headerCells[i] ?? ""}>{headerCells[i]}</p>
                         )}

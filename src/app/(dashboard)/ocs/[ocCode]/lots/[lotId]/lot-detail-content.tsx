@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
+import { urlSegment } from "@/lib/short-code-shared";
 import { useSearchParams } from "next/navigation";
 import {
   FileSignature, UserPlus,
@@ -189,7 +190,9 @@ export function LotDetailContent({
     },
   ]);
 
-  const ownPath = `/ocs/${ocCode}/lots/${lot.id}`;
+  // The code, so the tab-sync rewrite does not replace a short URL with a
+  // UUID one the moment the manager touches a tab.
+  const ownPath = `/ocs/${ocCode}/lots/${urlSegment(lot)}`;
 
   useEffect(() => {
     if (rawTab === "payments" || rawTab === "general") {

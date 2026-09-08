@@ -1,6 +1,7 @@
 "use client";
 
 import { useRouter } from "next/navigation";
+import { urlSegment } from "@/lib/short-code-shared";
 import { Badge } from "@/components/ui/badge";
 import {
   Table, TableBody, TableCell, TableHead, TableHeader, TableRow,
@@ -15,6 +16,8 @@ const KNOWN_FUNDS = new Set(["operating"]);
 
 export interface LevyBatchRow {
   id: string;
+  /** URL handle. Links use this; the UUID stays the key. */
+  short_code?: string | null;
   financial_year: string;
   fund_type: string;
   period_label: string;
@@ -59,7 +62,7 @@ export function LeviesTable({ ocCode, batches }: { ocCode: string; batches: Levy
                 className="cursor-pointer"
                 onClick={(e) => {
                   if (e.metaKey || e.ctrlKey) return;
-                  router.push(`/ocs/${ocCode}/levies/${batch.id}`);
+                  router.push(`/ocs/${ocCode}/levies/${urlSegment(batch)}`);
                 }}
               >
                 <TableCell className="text-foreground">

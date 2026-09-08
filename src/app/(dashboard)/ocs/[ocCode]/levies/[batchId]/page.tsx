@@ -11,5 +11,6 @@ export default async function BatchDetailPage({
   const resolved = await resolveOCFromCode(ocCode);
   if (!resolved) notFound();
 
+
   return <BatchDetailClient ocId={resolved.id} batchId={batchId} />;
 }

@@ -1,6 +1,7 @@
 "use client";
 
 import Link from "next/link";
+import { urlSegment } from "@/lib/short-code-shared";
 import { useRouter } from "next/navigation";
 import { Plus } from "lucide-react";
 import { buttonVariants } from "@/components/ui/button";
@@ -107,7 +108,7 @@ export function MeetingsContent({
                 <TableRow
                   key={m.id}
                   className="cursor-pointer"
-                  onClick={() => router.push(`/ocs/${ocCode}/meetings/${m.id}`)}
+                  onClick={() => router.push(`/ocs/${ocCode}/meetings/${urlSegment(m)}`)}
                 >
                   <TableCell className="font-medium tabular-nums text-foreground">{m.reference_number}</TableCell>
                   <TableCell>{MEETING_TYPE_LABELS[m.meeting_type as MeetingType]}</TableCell>

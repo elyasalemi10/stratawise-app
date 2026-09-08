@@ -11,5 +11,6 @@ export default async function BudgetDetailPage({
   const resolved = await resolveOCFromCode(ocCode);
   if (!resolved) notFound();
 
+
   return <BudgetDetailClient ocId={resolved.id} ocCode={ocCode} budgetId={budgetId} />;
 }

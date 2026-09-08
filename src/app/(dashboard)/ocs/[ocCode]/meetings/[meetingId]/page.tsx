@@ -11,5 +11,6 @@ export default async function MeetingDetailPage({
   const resolved = await resolveOCFromCode(ocCode);
   if (!resolved) notFound();
 
+
   return <MeetingDetailClient ocId={resolved.id} ocCode={ocCode} meetingId={meetingId} />;
 }

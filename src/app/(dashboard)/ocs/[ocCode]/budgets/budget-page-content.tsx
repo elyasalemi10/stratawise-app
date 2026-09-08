@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import { urlSegment } from "@/lib/short-code-shared";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { Plus, Search } from "lucide-react";
@@ -166,7 +167,7 @@ function BudgetsListView({
               filtered.map((b) => {
                 const split = fundSplit(b);
                 return (
-                  <ClickableRow key={b.id} href={`/ocs/${ocCode}/budgets/${b.id}`}>
+                  <ClickableRow key={b.id} href={`/ocs/${ocCode}/budgets/${urlSegment(b)}`}>
                     <TableCell>{b.financial_year}</TableCell>
                     <TableCell>
                       <Badge variant={b.status === "approved" ? "success" : "neutral"}>

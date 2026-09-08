@@ -12,5 +12,6 @@ export default async function LotDetailPage({
   const resolved = await resolveOCFromCode(ocCode);
   if (!resolved) notFound();
 
+
   return <LotDetailClient ocId={resolved.id} lotId={lotId} />;
 }

@@ -1,6 +1,7 @@
 "use server";
 
 import { requireOCAccess } from "@/lib/auth";
+import { resolveId } from "@/lib/short-code";
 import { CHARGED_LEVY_STATUSES } from "@/lib/lot-balance";
 import { createServerClient } from "@/lib/supabase";
 import { getLotOwner } from "@/lib/actions/lot-ownership";
@@ -68,6 +69,14 @@ export async function getLotDetailPageData(
   ocId: string,
   lotId: string,
 ): Promise<LotDetailPageData> {
+  // The URL carries a short code; everything below joins on the UUID.
+  // Resolved HERE rather than in the page shell so the loading
+  // boundary, which only has the raw segment, can render the real
+  // client and paint from cache exactly as the page does.
+  const resolvedLotId = await resolveId("lots", lotId);
+  if (!resolvedLotId) throw new Error("Not found");
+  lotId = resolvedLotId;
+
   const profile = await requireOCAccess(ocId);
   // Lot owners cannot view other lot owners' detail pages.
   if (profile.role === "lot_owner") throw new Error("Access denied.");

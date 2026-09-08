@@ -159,7 +159,7 @@ export async function listMeetings(ocId: string): Promise<MeetingRecord[]> {
   const { data, error } = await supabase
     .from("meetings")
     .select(
-      "id, oc_id, reference_number, meeting_type, title, date_time, location, virtual_meeting_link, meeting_format, online_platform, status, notice_sent_at, notice_pdf_url, created_at",
+      "id, short_code, oc_id, reference_number, meeting_type, title, date_time, location, virtual_meeting_link, meeting_format, online_platform, status, notice_sent_at, notice_pdf_url, created_at",
     )
     .eq("oc_id", ocId)
     .order("date_time", { ascending: false });

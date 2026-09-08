@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useCallback, useEffect } from "react";
+import { urlSegment } from "@/lib/short-code-shared";
 import { useRouter } from "next/navigation";
 import { toast } from "sonner";
 import { Input } from "@/components/ui/input";
@@ -187,7 +188,7 @@ export function LotsTab({ lots, ocId, isEditing = false, onLotUpdated, isLotOwne
               return (
                 <TableRow
                   key={lot.id}
-                  onClick={!isEditing && !isLotOwner ? () => router.push(`/ocs/${ocCode}/lots/${lot.id}`) : undefined}
+                  onClick={!isEditing && !isLotOwner ? () => router.push(`/ocs/${ocCode}/lots/${urlSegment(lot)}`) : undefined}
                   className={!isEditing && !isLotOwner ? "cursor-pointer" : ""}
                 >
                   <TableCell className="font-medium text-foreground tabular-nums whitespace-nowrap">{lot.lot_number}</TableCell>
