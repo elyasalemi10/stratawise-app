@@ -1,8 +1,8 @@
 import { notFound } from "next/navigation";
 import { resolveOCFromCode } from "@/lib/oc-resolver";
-import { FundsClient } from "./funds-client";
+import { LeviesClient } from "../levies-client";
 
-export default async function FundsPage({
+export default async function LeviesPage({
   params,
 }: {
   params: Promise<{ ocCode: string }>;
@@ -11,5 +11,5 @@ export default async function FundsPage({
   const resolved = await resolveOCFromCode(ocCode);
   if (!resolved) notFound();
 
-  return <FundsClient ocId={resolved.id} ocCode={ocCode} />;
+  return <LeviesClient ocId={resolved.id} ocCode={ocCode} />;
 }

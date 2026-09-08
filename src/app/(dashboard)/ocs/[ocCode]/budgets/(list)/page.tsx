@@ -1,8 +1,10 @@
 import { notFound } from "next/navigation";
 import { resolveOCFromCode } from "@/lib/oc-resolver";
-import { LeviesClient } from "./levies-client";
+import { BudgetsClient } from "../budgets-client";
 
-export default async function LeviesPage({
+// Shell only: resolve the OC code (a bad code has to redirect before
+// anything renders) and hand off. Data and auth live in data.ts.
+export default async function BudgetsPage({
   params,
 }: {
   params: Promise<{ ocCode: string }>;
@@ -11,5 +13,5 @@ export default async function LeviesPage({
   const resolved = await resolveOCFromCode(ocCode);
   if (!resolved) notFound();
 
-  return <LeviesClient ocId={resolved.id} ocCode={ocCode} />;
+  return <BudgetsClient ocId={resolved.id} />;
 }

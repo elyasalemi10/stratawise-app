@@ -2,15 +2,15 @@
 
 import { useParams } from "next/navigation";
 import { useRouteOC } from "@/lib/oc-id-map";
-import { LeviesClient } from "./levies-client";
-import { LeviesSkeleton } from "./levies-skeleton";
+import { MeetingsClient } from "../meetings-client";
+import { MeetingsSkeleton } from "../meetings-skeleton";
 
 // Renders the REAL page, not a skeleton, whenever this tab already knows the
 // OC.
 //
 // A loading.tsx is the only thing on screen while the server shell resolves
 // the OC code, and a skeleton here overwrites content the tab already has:
-// LeviesClient reads the client cache and paints the data you were looking at a
+// MeetingsClient reads the client cache and paints the data you were looking at a
 // moment ago, but it never got the chance, because this boundary shimmered
 // over the top of it first and then handed over.
 //
@@ -23,6 +23,6 @@ import { LeviesSkeleton } from "./levies-skeleton";
 export default function Loading() {
   const oc = useRouteOC();
   const { ocCode } = useParams<{ ocCode: string }>();
-  if (!oc) return <LeviesSkeleton />;
-  return <LeviesClient ocId={oc.id} ocCode={ocCode} />;
+  if (!oc) return <MeetingsSkeleton />;
+  return <MeetingsClient ocId={oc.id} ocCode={ocCode} />;
 }

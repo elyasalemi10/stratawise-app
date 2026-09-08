@@ -1,16 +1,15 @@
 "use client";
 
-import { useParams } from "next/navigation";
 import { useRouteOC } from "@/lib/oc-id-map";
-import { MeetingsClient } from "./meetings-client";
-import { MeetingsSkeleton } from "./meetings-skeleton";
+import { LotsClient } from "../lots-client";
+import { LotsSkeleton } from "../lots-skeleton";
 
 // Renders the REAL page, not a skeleton, whenever this tab already knows the
 // OC.
 //
 // A loading.tsx is the only thing on screen while the server shell resolves
 // the OC code, and a skeleton here overwrites content the tab already has:
-// MeetingsClient reads the client cache and paints the data you were looking at a
+// LotsClient reads the client cache and paints the data you were looking at a
 // moment ago, but it never got the chance, because this boundary shimmered
 // over the top of it first and then handed over.
 //
@@ -22,7 +21,6 @@ import { MeetingsSkeleton } from "./meetings-skeleton";
 // two mounts share one request (see use-cached-data).
 export default function Loading() {
   const oc = useRouteOC();
-  const { ocCode } = useParams<{ ocCode: string }>();
-  if (!oc) return <MeetingsSkeleton />;
-  return <MeetingsClient ocId={oc.id} ocCode={ocCode} />;
+  if (!oc) return <LotsSkeleton />;
+  return <LotsClient ocId={oc.id} />;
 }

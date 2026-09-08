@@ -36,40 +36,27 @@ function fmtDate(iso: string | null): string {
   });
 }
 
-function paidBadge(row: LotLevyRow): React.ReactNode {
-  if (row.status === "paid") {
-    return (
-      <Badge className="rounded-full bg-[hsl(160,60%,92%)] text-[hsl(160,100%,28%)] hover:bg-[hsl(160,60%,92%)]">
-        Paid
-      </Badge>
-    );
+// A notice's LIFECYCLE, which is all a notice has.
+//
+// This used to render "Unpaid" for `issued`, "Partly paid", "Overdue" and
+// "Paid": the paid/unpaid model, per document. Under balance accounting
+// whether money is owed is a property of the LOT, not of any one notice, and
+// it is already on the header of this page. A notice can only be a draft, a
+// thing that was issued, or a thing that was cancelled or forgiven.
+//
+// It also mixed its own HSL values instead of the status tokens, which is
+// how "paid" ended up with a different green from everywhere else.
+function lifecycleBadge(row: LotLevyRow): React.ReactNode {
+  switch (row.status) {
+    case "draft":
+      return <Badge variant="neutral">Draft</Badge>;
+    case "cancelled":
+      return <Badge variant="neutral">Cancelled</Badge>;
+    case "written_off":
+      return <Badge variant="neutral">Written off</Badge>;
+    default:
+      return <Badge variant="info">Issued</Badge>;
   }
-  if (row.status === "partially_paid") {
-    return (
-      <Badge className="rounded-full bg-[color:var(--brand-gold)]/15 text-[color:var(--brand-gold)] hover:bg-[color:var(--brand-gold)]/15">
-        Partly paid
-      </Badge>
-    );
-  }
-  if (row.status === "overdue") {
-    return (
-      <Badge className="rounded-full bg-destructive/10 text-destructive hover:bg-destructive/10">
-        Overdue
-      </Badge>
-    );
-  }
-  if (row.status === "issued") {
-    return (
-      <Badge className="rounded-full bg-cool-muted text-cool-muted-foreground hover:bg-cool-muted">
-        Unpaid
-      </Badge>
-    );
-  }
-  return (
-    <Badge variant="neutral" className="rounded-full">
-      {row.status}
-    </Badge>
-  );
 }
 
 export function LotLeviesTab({ lotId }: Props) {
@@ -156,7 +143,7 @@ export function LotLeviesTab({ lotId }: Props) {
                     <TableCell className="text-right tabular-nums">
                       {fmtCurrency(Number(row.amount_paid))}
                     </TableCell>
-                    <TableCell>{paidBadge(row)}</TableCell>
+                    <TableCell>{lifecycleBadge(row)}</TableCell>
                     <TableCell>
                       {row.pdf_url ? (
                         <a

@@ -1,8 +1,8 @@
 import { notFound } from "next/navigation";
 import { resolveOCFromCode } from "@/lib/oc-resolver";
-import { MeetingsClient } from "./meetings-client";
+import { FundsClient } from "../funds-client";
 
-export default async function MeetingsPage({
+export default async function FundsPage({
   params,
 }: {
   params: Promise<{ ocCode: string }>;
@@ -11,5 +11,5 @@ export default async function MeetingsPage({
   const resolved = await resolveOCFromCode(ocCode);
   if (!resolved) notFound();
 
-  return <MeetingsClient ocId={resolved.id} ocCode={ocCode} />;
+  return <FundsClient ocId={resolved.id} ocCode={ocCode} />;
 }

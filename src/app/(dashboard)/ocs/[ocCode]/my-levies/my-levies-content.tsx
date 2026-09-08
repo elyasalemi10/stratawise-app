@@ -168,12 +168,18 @@ export function MyLeviesContent({ levies }: { levies: Levy[] }) {
                 {/* Amount */}
                 <div className="text-center py-2">
                   <p className="text-3xl font-bold tabular-nums text-foreground">{formatCurrency(selectedLevy.amount)}</p>
-                  {isPaid ? (
-                    <p className="text-sm font-medium text-[hsl(160,100%,37%)] mt-1">Paid in full</p>
-                  ) : selectedLevy.amount_paid > 0 ? (
-                    <p className="text-sm text-destructive mt-1">{formatCurrency(remaining)} remaining</p>
-                  ) : (
-                    <p className="text-sm text-muted-foreground mt-1">Unpaid</p>
+                  {/* What was allocated against THIS notice, which is
+                      reporting, not the owner's balance. Saying "Unpaid"
+                      here told an owner who had paid a lump sum that they
+                      had not, because the money landed on another notice.
+                      Their actual balance is on the page above. */}
+                  {selectedLevy.amount_paid > 0 && !isPaid && (
+                    <p className="text-sm text-muted-foreground mt-1">
+                      {formatCurrency(selectedLevy.amount_paid)} of this notice allocated
+                    </p>
+                  )}
+                  {isPaid && (
+                    <p className="text-sm font-medium text-success mt-1">Fully allocated</p>
                   )}
                 </div>
 

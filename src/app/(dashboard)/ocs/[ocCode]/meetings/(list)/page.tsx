@@ -1,10 +1,8 @@
 import { notFound } from "next/navigation";
 import { resolveOCFromCode } from "@/lib/oc-resolver";
-import { BudgetsClient } from "./budgets-client";
+import { MeetingsClient } from "../meetings-client";
 
-// Shell only: resolve the OC code (a bad code has to redirect before
-// anything renders) and hand off. Data and auth live in data.ts.
-export default async function BudgetsPage({
+export default async function MeetingsPage({
   params,
 }: {
   params: Promise<{ ocCode: string }>;
@@ -13,5 +11,5 @@ export default async function BudgetsPage({
   const resolved = await resolveOCFromCode(ocCode);
   if (!resolved) notFound();
 
-  return <BudgetsClient ocId={resolved.id} />;
+  return <MeetingsClient ocId={resolved.id} ocCode={ocCode} />;
 }

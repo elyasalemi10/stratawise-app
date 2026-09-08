@@ -1,6 +1,6 @@
 import { notFound } from "next/navigation";
 import { resolveOCFromCode } from "@/lib/oc-resolver";
-import { OCOverviewClient } from "./oc-overview-client";
+import { OCOverviewClient } from "../oc-overview-client";
 
 // Shell only: resolve the OC code and hand off. Data and auth live in data.ts.
 //

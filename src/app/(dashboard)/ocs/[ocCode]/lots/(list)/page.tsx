@@ -1,6 +1,6 @@
 import { notFound } from "next/navigation";
 import { resolveOCFromCode } from "@/lib/oc-resolver";
-import { LotsClient } from "./lots-client";
+import { LotsClient } from "../lots-client";
 
 // Shell only. Resolving the OC code needs the server (and a bad code has to
 // redirect before anything renders), but no page data is fetched here: that

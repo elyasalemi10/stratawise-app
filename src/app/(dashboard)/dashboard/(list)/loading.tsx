@@ -1,4 +1,4 @@
-import { DashboardClient } from "./dashboard-client";
+import { DashboardClient } from "../dashboard-client";
 
 // Renders the REAL page component, not a skeleton.
 //
