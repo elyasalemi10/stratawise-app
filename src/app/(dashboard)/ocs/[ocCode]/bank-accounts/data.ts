@@ -30,6 +30,8 @@ interface RawTxnRow {
   description: string;
   amount: number | string | null;
   balance: number | string | null;
+  match_status: string;
+  is_voided: boolean;
 }
 
 export interface BankAccountRowView {
@@ -45,6 +47,9 @@ export interface BankAccountRowView {
     description: string;
     amount: number | null;
     balance: number | null;
+    /** unmatched | auto_matched | manually_matched | excluded. */
+    matchStatus: string;
+    voided: boolean;
   }>;
 }
 
@@ -71,7 +76,9 @@ export async function getBankAccountsPageData(
       .eq("oc_id", ocId),
     supabase
       .from("bank_transactions")
-      .select("id, bank_account_id, transaction_date, description, amount, balance")
+      .select(
+        "id, bank_account_id, transaction_date, description, amount, balance, match_status, is_voided",
+      )
       .eq("oc_id", ocId)
       .order("transaction_date", { ascending: false, nullsFirst: false })
       .order("id", { ascending: false }),
@@ -123,6 +130,8 @@ export async function getBankAccountsPageData(
       description: t.description,
       amount: t.amount !== null ? Number(t.amount) : null,
       balance: t.balance !== null ? Number(t.balance) : null,
+      matchStatus: t.match_status,
+      voided: t.is_voided,
     }));
     return {
       id: primary.id,
