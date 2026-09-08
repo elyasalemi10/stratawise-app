@@ -110,3 +110,34 @@ export async function downscaleImage(
     return unchanged;
   }
 }
+
+/** Longest edge for a grid thumbnail. The card renders at roughly 300 CSS
+ *  pixels, so this is retina-sharp with a little room and still about two
+ *  percent of the decoded size of the 2400px original. */
+const THUMB_EDGE = 480;
+
+/**
+ * A small WebP for the documents grid.
+ *
+ * Returns null when there is nothing to make one from. Never throws: a
+ * missing thumbnail falls back to the full image, which is the behaviour
+ * that existed before thumbnails did.
+ */
+export async function makeThumbnail(
+  bytes: Buffer,
+  mimeType: string | null | undefined,
+): Promise<Buffer | null> {
+  if (!isDownscalableImage(mimeType)) return null;
+  try {
+    return await sharp(bytes, { failOn: "none" })
+      .rotate()
+      .resize({ width: THUMB_EDGE, height: THUMB_EDGE, fit: "inside", withoutEnlargement: true })
+      // WebP rather than JPEG: markedly smaller at this size, and every
+      // browser that can run this app can read it.
+      .webp({ quality: 72 })
+      .toBuffer();
+  } catch (err) {
+    console.error("[thumbnail] generation failed, the grid will use the full image:", err);
+    return null;
+  }
+}

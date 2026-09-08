@@ -18,32 +18,50 @@ export async function listDocumentTags(): Promise<DocumentTag[]> {
   if (!companyId) return [];
   const supabase = createServerClient();
 
-  const { data: existing } = await supabase
-    .from("document_tags")
-    .select("id, name, colour")
-    .eq("management_company_id", companyId)
-    .order("name");
+  const [tagsRes, companyRes] = await Promise.all([
+    supabase
+      .from("document_tags")
+      .select("id, name, colour")
+      .eq("management_company_id", companyId)
+      .order("name"),
+    supabase
+      .from("management_companies")
+      .select("document_tags_seeded_at")
+      .eq("id", companyId)
+      .maybeSingle(),
+  ]);
 
-  if (existing && existing.length > 0) return existing as DocumentTag[];
+  const tags = (tagsRes.data ?? []) as DocumentTag[];
+  const seeded = Boolean(
+    (companyRes.data as { document_tags_seeded_at?: string | null } | null)
+      ?.document_tags_seeded_at,
+  );
+  if (seeded) return tags;
 
-  // Never seeded. Insert the defaults and return them. ON CONFLICT DO
-  // NOTHING via upsert, so two tabs racing this cannot duplicate.
-  const { data: seeded } = await supabase
-    .from("document_tags")
-    .upsert(
-      DEFAULT_TAGS.map((t) => ({
-        management_company_id: companyId,
-        name: t.name,
-        colour: t.colour,
-      })),
-      { onConflict: "management_company_id,name", ignoreDuplicates: true },
-    )
-    .select("id, name, colour");
+  // Never seeded. This used to be inferred from the list being empty, which
+  // is a different question: a manager who created one tag of their own
+  // before ever opening the list made the seed think it had already run, so
+  // they got their one tag and none of the defaults. It also meant a firm
+  // that deliberately cleared the defaults had them handed back on the next
+  // page load. The marker records the fact instead of guessing at it.
+  const { error: seedErr } = await supabase.from("document_tags").upsert(
+    DEFAULT_TAGS.map((t) => ({
+      management_company_id: companyId,
+      name: t.name,
+      colour: t.colour,
+    })),
+    { onConflict: "management_company_id,name", ignoreDuplicates: true },
+  );
+  if (seedErr) {
+    console.error("[document-tags] seeding failed:", seedErr);
+    return tags;
+  }
+  // Stamped even if some rows collided: the defaults have now been offered.
+  await supabase
+    .from("management_companies")
+    .update({ document_tags_seeded_at: new Date().toISOString() })
+    .eq("id", companyId);
 
-  if (seeded && seeded.length > 0) return seeded as DocumentTag[];
-
-  // The upsert ignored everything, which means another request seeded them
-  // between our read and our write. Read again.
   const { data: after } = await supabase
     .from("document_tags")
     .select("id, name, colour")

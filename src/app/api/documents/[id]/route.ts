@@ -1,3 +1,4 @@
+import { createHash } from "node:crypto";
 import { NextRequest, NextResponse } from "next/server";
 import { createServerClient } from "@/lib/supabase";
 import { getCurrentProfile, requireCompanyRole, requireOCAccess } from "@/lib/auth";
@@ -25,7 +26,7 @@ async function loadDocument(id: string) {
   const supabase = createServerClient();
   const { data } = await supabase
     .from("documents")
-    .select("id, oc_id, lot_id, file_path, file_name, mime_type, is_confidential, pdf_storage_key")
+    .select("id, oc_id, lot_id, file_path, file_name, mime_type, is_confidential, pdf_storage_key, thumbnail_storage_key")
     .eq("id", id)
     .single();
   return data;
@@ -74,8 +75,18 @@ export async function GET(
   }
 
   const isView = request.nextUrl.searchParams.get("view") === "true";
-  const servePdfRendition = isView && Boolean(doc.pdf_storage_key);
-  const key = servePdfRendition ? doc.pdf_storage_key! : doc.file_path;
+  // ?thumb=true is the grid. It serves the small WebP rendition, falling
+  // back to the full image when there is not one, so a document uploaded
+  // before thumbnails existed still shows.
+  const wantsThumb = request.nextUrl.searchParams.get("thumb") === "true";
+  const serveThumb = wantsThumb && Boolean(doc.thumbnail_storage_key);
+  const servePdfRendition = !serveThumb && isView && Boolean(doc.pdf_storage_key);
+
+  const key = serveThumb
+    ? doc.thumbnail_storage_key!
+    : servePdfRendition
+      ? doc.pdf_storage_key!
+      : doc.file_path;
 
   let body: Buffer;
   try {
@@ -84,22 +95,42 @@ export async function GET(
     return NextResponse.json({ error: "File not found in storage" }, { status: 404 });
   }
 
-  const disposition = isView
+  // Strong ETag over the exact bytes being served. Every one of these
+  // routes was no-store, so a grid of twelve documents re-downloaded every
+  // file on every visit and the viewer re-fetched the whole PDF each time
+  // it opened. The objects are immutable once written (a replacement is a
+  // new row with a new key), so a revalidating cache is safe: the browser
+  // asks, and gets a 304 with no body when nothing has changed.
+  const etag = `"${createHash("sha1").update(new Uint8Array(body)).digest("base64url")}"`;
+  if (request.headers.get("if-none-match") === etag) {
+    return new NextResponse(null, {
+      status: 304,
+      headers: { ETag: etag, "Cache-Control": CACHE_CONTROL },
+    });
+  }
+
+  const disposition = isView || serveThumb
     ? "inline"
     : `attachment; filename="${encodeURIComponent(doc.file_name)}"`;
 
   return new NextResponse(new Uint8Array(body), {
     headers: {
-      "Content-Type": servePdfRendition
-        ? "application/pdf"
-        : doc.mime_type || "application/octet-stream",
+      "Content-Type": serveThumb
+        ? "image/webp"
+        : servePdfRendition
+          ? "application/pdf"
+          : doc.mime_type || "application/octet-stream",
       "Content-Disposition": disposition,
-      // private = never cached by shared proxies/CDN; only the
-      // authenticated browser may cache it briefly.
-      "Cache-Control": "private, max-age=0, no-store",
+      ETag: etag,
+      "Cache-Control": CACHE_CONTROL,
     },
   });
 }
+
+// private, so a shared proxy or CDN never holds an owner's document; the
+// authenticated browser may. Five minutes fresh, then revalidate against the
+// ETag, which costs a request and no body.
+const CACHE_CONTROL = "private, max-age=300, must-revalidate";
 
 // PATCH , rename document (DB only, R2 key unchanged)
 export async function PATCH(
@@ -189,6 +220,9 @@ export async function DELETE(
     // not stop the row from going.
     if (doc.pdf_storage_key) {
       await deleteObject(doc.pdf_storage_key).catch(() => {});
+    }
+    if (doc.thumbnail_storage_key) {
+      await deleteObject(doc.thumbnail_storage_key).catch(() => {});
     }
   } catch {
     // Continue even if R2 delete fails , DB is source of truth

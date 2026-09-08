@@ -55,12 +55,16 @@ export function TagPicker({
   onToggle,
   onCreate,
   disabled,
+  compact,
 }: {
   allTags: DocumentTag[];
   selectedIds: string[];
   onToggle: (tagId: string) => void;
   onCreate: (name: string, colour: TagColour) => Promise<DocumentTag | null>;
   disabled?: boolean;
+  /** Icon only. Once a card is already showing tags the word is redundant
+   *  and the strip needs the width. */
+  compact?: boolean;
 }) {
   const [query, setQuery] = React.useState("");
   const [creating, setCreating] = React.useState(false);
@@ -85,12 +89,19 @@ export function TagPicker({
 
   return (
     <Popover>
+      {/* Outlined, so it reads as a control rather than a caption. It sits
+          next to a bordered note box and looked like stray text without one. */}
       <PopoverTrigger
         disabled={disabled}
-        className="inline-flex cursor-pointer items-center gap-1.5 rounded-md px-1.5 py-1 text-xs font-medium text-muted-foreground transition-colors hover:bg-muted hover:text-foreground disabled:cursor-default disabled:opacity-50"
+        className={cn(
+          "inline-flex h-8 cursor-pointer items-center gap-1.5 rounded-md border border-border bg-card font-medium text-muted-foreground transition-colors",
+          "hover:border-primary/40 hover:text-foreground disabled:cursor-default disabled:opacity-50",
+          compact ? "w-8 justify-center" : "w-full justify-start px-2.5 text-sm",
+        )}
+        aria-label="Add tags"
       >
-        <TagIcon className="h-3.5 w-3.5" />
-        Add tags
+        <TagIcon className="h-3.5 w-3.5 shrink-0" />
+        {!compact && "Add tags"}
       </PopoverTrigger>
       <PopoverContent
         className="w-64 p-0"
@@ -118,17 +129,25 @@ export function TagPicker({
           {filtered.map((tag) => {
             const on = selectedIds.includes(tag.id);
             return (
+              // A checkbox, not a row that might be selected. Tags are
+              // multi-select, and a tick that only appears once chosen does
+              // not say so until after you have guessed.
               <button
                 key={tag.id}
                 type="button"
                 onClick={() => onToggle(tag.id)}
-                className="flex w-full cursor-pointer items-center gap-2 rounded-md px-2 py-1.5 text-left hover:bg-muted"
+                className="flex w-full cursor-pointer items-center gap-2.5 rounded-md px-2 py-1.5 text-left hover:bg-muted"
               >
                 <span
-                  className={cn("h-2.5 w-2.5 shrink-0 rounded-full", TAG_COLOUR_DOT[tag.colour] ?? TAG_COLOUR_DOT.slate)}
-                />
-                <span className="min-w-0 flex-1 truncate text-sm text-foreground">{tag.name}</span>
-                {on && <Check className="h-3.5 w-3.5 shrink-0 text-primary" />}
+                  aria-hidden
+                  className={cn(
+                    "flex h-4 w-4 shrink-0 items-center justify-center rounded-[4px] border transition-colors",
+                    on ? "border-primary bg-primary text-primary-foreground" : "border-border bg-card",
+                  )}
+                >
+                  {on && <Check className="h-3 w-3" strokeWidth={3} />}
+                </span>
+                <TagChip tag={tag} />
               </button>
             );
           })}

@@ -15,6 +15,9 @@ import { cn } from "@/lib/utils";
  * most of the width of the control, and the content scrolling is the
  * affordance.
  */
+/** The resting height, matching min-h-9 plus the border. */
+const MIN_HEIGHT = 36;
+
 export function AutoGrowTextarea({
   value,
   onChange,
@@ -47,7 +50,10 @@ export function AutoGrowTextarea({
       return;
     }
     el.style.height = "auto";
-    const next = Math.min(el.scrollHeight, maxHeight);
+    // Never below the collapsed height. Without the floor a short note
+    // measured smaller than the resting box and the control shrank the
+    // moment it was clicked.
+    const next = Math.min(Math.max(el.scrollHeight, MIN_HEIGHT), maxHeight);
     el.style.height = `${next}px`;
     el.style.overflowY = el.scrollHeight > maxHeight ? "auto" : "hidden";
   }, [focused, maxHeight]);
@@ -77,11 +83,18 @@ export function AutoGrowTextarea({
       }}
       onChange={(e) => onChange(e.target.value)}
       className={cn(
-        "w-full resize-none rounded-md border border-border bg-card px-2.5 py-1.5 text-sm text-foreground",
-        "placeholder:text-muted-foreground focus-visible:border-primary focus-visible:outline-none",
-        // The collapsed state is exactly one line, and the transition is on
-        // height so growing reads as the box opening rather than jumping.
-        "transition-[height] duration-150 ease-out",
+        // min-h, not a row count. Sizing by rows let the box SHRINK on focus
+        // when the resize measured a scrollHeight under one line, which read
+        // as the control flinching away from the click.
+        "block min-h-9 w-full resize-none rounded-md border bg-card px-2.5 py-1.5 text-sm leading-6 text-foreground",
+        "placeholder:text-muted-foreground focus-visible:outline-none",
+        // Gold while focused, against the same grey border everything else
+        // has. It is the one control on the card you type into, and it
+        // should look like it once you are in it.
+        focused
+          ? "border-[color:var(--brand-gold)] ring-1 ring-[color:var(--brand-gold)]/30"
+          : "border-border",
+        "transition-[height,border-color,box-shadow] duration-150 ease-out",
         "[scrollbar-width:none] [&::-webkit-scrollbar]:hidden",
         !focused && "overflow-hidden whitespace-nowrap text-ellipsis",
         className,

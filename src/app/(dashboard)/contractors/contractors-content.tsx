@@ -71,6 +71,11 @@ export function ContractorsContent({ contractors }: { contractors: ContractorRec
 
   return (
     <div className="space-y-6">
+      {/* The whole row goes when it would be empty. Hiding the count and
+          the button separately left a bare flex row holding open a gap
+          above the empty state, which reads as a missing element rather
+          than an absent one. */}
+      {contractors.length > 0 && (
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div className="flex items-center gap-3">
           {contractors.length > 0 && (
@@ -97,6 +102,7 @@ export function ContractorsContent({ contractors }: { contractors: ContractorRec
           </Button>
         )}
       </div>
+      )}
 
       {contractors.length === 0 ? (
         <EmptyState

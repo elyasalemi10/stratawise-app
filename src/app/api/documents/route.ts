@@ -5,7 +5,7 @@ import { ALLOWED_DOCUMENT_TYPES, MAX_DOCUMENT_SIZE } from "@/lib/validations/doc
 import { uploadObject, publicUrlFor } from "@/lib/storage/r2";
 import { ingestDocumentOcr, isIndexable } from "@/lib/ocr/ingest";
 import { needsPdfConversion } from "@/lib/ocr/convert-to-pdf";
-import { downscaleImage } from "@/lib/images/downscale";
+import { downscaleImage, makeThumbnail } from "@/lib/images/downscale";
 
 const UUID_REGEX = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
@@ -88,7 +88,19 @@ export async function POST(request: NextRequest) {
   const image = await downscaleImage(original, file.type);
   const buffer = image.bytes;
   const storedType = image.contentType;
-  await uploadObject(key, buffer, storedType);
+
+  // The grid renders at ~300 CSS pixels. Handing it the 2400px file means
+  // the browser decodes about 17MB of bitmap per card, so a page of twelve
+  // is roughly 200MB of image for pictures shown at an eighth of that size.
+  const thumbnail = await makeThumbnail(buffer, storedType);
+  const thumbnailKey = thumbnail ? `${key.replace(/\.[^./]+$/, "")}.thumb.webp` : null;
+
+  await Promise.all([
+    uploadObject(key, buffer, storedType),
+    thumbnail && thumbnailKey
+      ? uploadObject(thumbnailKey, thumbnail, "image/webp")
+      : Promise.resolve(),
+  ]);
 
   // The "self-OCR" categories (settlement parse, insurance parse,
   // plan-of-subdivision + OC-rules + certificate_of_currency) used to
@@ -122,6 +134,7 @@ export async function POST(request: NextRequest) {
       // format, and the download route reads both back.
       file_size: buffer.byteLength,
       mime_type: storedType,
+      thumbnail_storage_key: thumbnailKey,
       is_confidential: false,
       uploaded_by: profile.id,
       // Self-OCR categories carry their own status lifecycle (the inline

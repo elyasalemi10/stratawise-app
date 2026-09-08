@@ -2,7 +2,7 @@
 
 import { useState, useRef, useCallback, useEffect } from "react";
 import { Input } from "@/components/ui/input";
-import { DocumentCard } from "@/components/shared/document-card";
+import { DocumentCard, DocumentUploadCard } from "@/components/shared/document-card";
 import { DocumentLightbox } from "@/components/shared/document-lightbox";
 import type { DocumentTag, TagColour } from "@/lib/document-tags-shared";
 import {
@@ -240,7 +240,13 @@ export function DocumentManager({ ocId, lotId, initialDocuments, readOnly }: Doc
       prev.map((d) => (d.id === documentId ? { ...d, description: value } : d)),
     );
     const res = await setDocumentDescription(ocId, documentId, value);
-    if (res.error) toast.error(res.error);
+    if (res.error) {
+      toast.error(res.error);
+      return;
+    }
+    // A note saves on blur, which is invisible. Say so, or the manager
+    // clicks away and has no idea whether it took.
+    toast.success(value.trim() ? "Note saved" : "Note cleared");
   }
 
   async function toggleDocTag(documentId: string, tagId: string) {
@@ -256,6 +262,10 @@ export function DocumentManager({ ocId, lotId, initialDocuments, readOnly }: Doc
       prev.map((d) => (d.id === documentId ? { ...d, tags: nextTags } : d)),
     );
     const res = await setDocumentTags(ocId, documentId, nextTags.map((t) => t.id));
+    if (!res.error) {
+      const tag = tags.find((t) => t.id === tagId);
+      toast.success(has ? `Removed ${tag?.name ?? "tag"}` : `Tagged ${tag?.name ?? ""}`.trim());
+    }
     if (res.error) {
       toast.error(res.error);
       // Put it back: the screen must not claim a filing that did not happen.
@@ -525,49 +535,28 @@ export function DocumentManager({ ocId, lotId, initialDocuments, readOnly }: Doc
               <span className="text-xs text-muted-foreground">Drop it here, or click to choose</span>
             </button>
           )}
+          {/* A file mid-upload is a square with the mark pulsing in it, and
+              nothing else. The filename was the only thing we knew, and it
+              is the one thing the finished card deliberately does not show,
+              so printing it here just to remove it a second later made the
+              grid jump. */}
           {uploads.map((upload) => (
-            <Card key={upload.id} className="relative">
-              <CardContent className="p-3">
-                <div className="flex h-24 items-center justify-center rounded-md bg-muted/50 mb-3 overflow-hidden">
-                  {upload.error ? (
-                    <FileText className="h-8 w-8 text-destructive/60" />
-                  ) : (
-                    <Loader2 className="h-7 w-7 animate-spin text-[color:var(--brand-gold)]" />
-                  )}
-                </div>
-                <p
-                  className="truncate text-sm font-medium text-foreground"
-                  title={upload.fileName}
-                >
-                  {upload.fileName}
-                </p>
-                {upload.error && (
-                  <p className="mt-0.5 text-xs text-destructive">
-                    {upload.error}
-                  </p>
-                )}
-                {upload.error && (
-                  <button
-                    type="button"
-                    onClick={() =>
-                      setUploads((prev) =>
-                        prev.filter((u) => u.id !== upload.id),
-                      )
-                    }
-                    className="absolute right-2 top-2 rounded-md p-1 text-muted-foreground hover:text-foreground"
-                    aria-label="Dismiss failed upload"
-                  >
-                    <X className="h-3.5 w-3.5" />
-                  </button>
-                )}
-              </CardContent>
-            </Card>
+            <DocumentUploadCard
+              key={upload.id}
+              failed={!!upload.error}
+              onDismiss={
+                upload.error
+                  ? () => setUploads((prev) => prev.filter((u) => u.id !== upload.id))
+                  : undefined
+              }
+            />
           ))}
           {visibleDocs.map((doc) => (
             <DocumentCard
               key={doc.id}
               doc={doc}
-              viewUrl={getDocViewUrl(doc)}
+              viewUrl={`/api/documents/${doc.id}?view=true&thumb=true`}
+              downloadUrl={`/api/documents/${doc.id}`}
               selected={selectedIds.has(doc.id)}
               selectionActive={selectedIds.size > 0}
               readOnly={readOnly}

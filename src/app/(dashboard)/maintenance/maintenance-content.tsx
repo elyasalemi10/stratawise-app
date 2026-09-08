@@ -121,6 +121,11 @@ export function MaintenanceContent({
 
   return (
     <div className="space-y-6">
+      {/* The whole row goes when it would be empty. Hiding the count and
+          the button separately left a bare flex row holding open a gap
+          above the empty state, which reads as a missing element rather
+          than an absent one. */}
+      {jobs.length > 0 && (
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div className="flex items-center gap-3">
           {jobs.length > 0 && (
@@ -147,6 +152,7 @@ export function MaintenanceContent({
           </Button>
         )}
       </div>
+      )}
 
       {jobs.length === 0 ? (
         <EmptyState

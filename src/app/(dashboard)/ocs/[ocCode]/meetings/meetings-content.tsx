@@ -55,10 +55,11 @@ export function MeetingsContent({
 
   return (
     <div className="space-y-6">
+      {/* The whole row goes when it would be empty. Hiding just the count
+          left a bare flex row holding open a gap above the empty state,
+          which reads as a missing element rather than an absent one. */}
+      {(meetings.length > 0 || !readOnly) && (
       <div className="flex items-center justify-between">
-        {/* Only when there is something to count. "0 meetings" over "No
-            meetings yet" says the same thing twice, and the empty state
-            says it better. */}
         {meetings.length > 0 ? (
           <p className="text-sm text-muted-foreground">
             {meetings.length} meeting{meetings.length === 1 ? "" : "s"}
@@ -73,6 +74,7 @@ export function MeetingsContent({
           </Link>
         )}
       </div>
+      )}
 
       {meetings.length === 0 ? (
         <EmptyState
