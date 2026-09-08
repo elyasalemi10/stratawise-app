@@ -8,6 +8,13 @@ import { needsPdfConversion } from "@/lib/ocr/convert-to-pdf";
 import { downscaleImage, makeThumbnail } from "@/lib/images/downscale";
 import { renderPdfFirstPage } from "@/lib/images/pdf-thumbnail";
 
+// The response goes out immediately, but after() keeps the function alive to
+// convert and read the document, and a CloudConvert job can take a couple of
+// minutes. On the default duration that work was killed part-way through,
+// which is invisible: the upload succeeded, the preview simply never arrived
+// until the ten-minute sweep picked the row back up.
+export const maxDuration = 300;
+
 const UUID_REGEX = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 function sanitiseFileName(name: string): string {

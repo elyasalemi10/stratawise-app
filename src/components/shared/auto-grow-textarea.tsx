@@ -4,26 +4,28 @@ import * as React from "react";
 import { cn } from "@/lib/utils";
 
 /**
- * A note box that shows what it holds and grows only when it has to.
+ * A fixed-height note box.
  *
- * Two things it must not do, both of which it did:
+ * It does not resize. Not on focus, not while typing, not on blur.
  *
- * It must not change size when clicked. It was sized in rows and re-measured
- * on focus, so a short note produced a scrollHeight under the resting height
- * and the box shrank away from the cursor. The resting height is now fixed at
- * two lines and focus does not shrink below it.
+ * Three attempts at growing it all produced the same complaint, and the
+ * reason is that a textarea cannot be measured and resized without changing
+ * size: `scrollHeight` is read with `height: auto`, which reflows the element
+ * before the new height is applied, and the browser paints that intermediate
+ * frame. Even when the arithmetic lands on the same number it started from,
+ * the element has been through a different height to get there. The only way
+ * for a box not to change size is for nothing to set its size.
  *
- * It must not un-wrap. The collapsed state was one nowrap line with an
- * ellipsis, so a two-line note looked like a one-line note until you clicked
- * it and the text reflowed. It now wraps at rest and clips, showing a second
- * line partly cut off, which is what tells you there is more.
+ * So it is one height always, tall enough to show a line and the top of the
+ * next, and long notes scroll inside it. The scrollbar is hidden because at
+ * this width a visible one is most of the control; the content moving is the
+ * affordance.
  */
 export function AutoGrowTextarea({
   value,
   onChange,
   onCommit,
   placeholder,
-  maxHeight = 132,
   className,
   ...props
 }: {
@@ -32,50 +34,15 @@ export function AutoGrowTextarea({
   /** Fired on blur, and only when the value actually changed. */
   onCommit?: (value: string) => void;
   placeholder?: string;
-  maxHeight?: number;
   className?: string;
 } & Omit<React.ComponentProps<"textarea">, "value" | "onChange" | "className">) {
-  const ref = React.useRef<HTMLTextAreaElement>(null);
   const [focused, setFocused] = React.useState(false);
   const committed = React.useRef(value);
-
-  // Resting height: one line and a bit. Enough that a wrapped note is
-  // visibly cut mid-second-line, which is what says there is more, without
-  // a grid of cards each holding two mostly-empty lines. Fixed, so the
-  // control is exactly the same size before and after a click.
-  // One line, plus just enough of the next to show the dot of an i.
-  //
-  // leading-5 is a 20px line, py-1.5 is 6px each side, and the border is 1px
-  // each side, so exactly one line occupies 34px. Five more is a sliver of
-  // the second line: enough to say "there is more" and not enough to be a
-  // second line of its own.
-  const REST_HEIGHT = 39;
-
-  const resize = React.useCallback(() => {
-    const el = ref.current;
-    if (!el) return;
-    if (!focused) {
-      // At rest it is always the resting height. Content taller than that is
-      // clipped mid-line, which is the signal that there is more to read.
-      el.style.height = `${REST_HEIGHT}px`;
-      el.style.overflowY = "hidden";
-      return;
-    }
-    el.style.height = "auto";
-    // Never below the resting height, so focusing can only ever grow it.
-    const next = Math.min(Math.max(el.scrollHeight, REST_HEIGHT), maxHeight);
-    el.style.height = `${next}px`;
-    el.style.overflowY = el.scrollHeight > maxHeight ? "auto" : "hidden";
-  }, [focused, maxHeight]);
-
-  React.useEffect(() => {
-    resize();
-  }, [resize, value]);
 
   return (
     <textarea
       {...props}
-      ref={ref}
+      rows={1}
       value={value}
       placeholder={placeholder}
       onFocus={(e) => {
@@ -92,17 +59,16 @@ export function AutoGrowTextarea({
       }}
       onChange={(e) => onChange(e.target.value)}
       className={cn(
-        "block w-full resize-none rounded-md border bg-card px-2.5 py-1.5 text-sm leading-5 text-foreground",
-        "placeholder:text-muted-foreground focus-visible:outline-none",
-        // Gold while focused, against the same grey border everything else
-        // has. It is the one control on the card you type into.
-        // Border colour only, no ring. A ring is drawn OUTSIDE the border,
-        // so the box visibly grew by a pixel on each side the moment it was
-        // clicked, which is the "it expands a tiny bit" with no content in
-        // it: the height never changed, the ring did.
+        // h-[38px] is one 20px line plus 6px padding each side plus 1px
+        // border each side, and then some: enough of the second line to
+        // show the tops of its letters, so a wrapped note is visibly
+        // continuing rather than ending.
+        "block h-[38px] w-full resize-none overflow-y-auto rounded-md border bg-card px-2.5 py-1.5",
+        "text-sm leading-5 text-foreground placeholder:text-muted-foreground focus-visible:outline-none",
+        // Border colour only. A ring is drawn OUTSIDE the border and made
+        // the box look a pixel bigger on every side the moment it was
+        // clicked, which is what "it expands" was.
         focused ? "border-[color:var(--brand-gold)]" : "border-border",
-        // Only the border transitions. Height is set imperatively and
-        // animating it fought the measurement.
         "transition-[border-color] duration-150 ease-out",
         "[scrollbar-width:none] [&::-webkit-scrollbar]:hidden",
         className,

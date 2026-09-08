@@ -5,6 +5,7 @@ import { createPortal } from "react-dom";
 import { ChevronLeft, ChevronRight } from "lucide-react";
 import { useScrimSlot } from "@/components/ui/use-scrim-stack";
 import { BrandLoader } from "@/components/shared/brand-mark";
+import { FileTypeIllustration } from "@/components/shared/file-type-illustration";
 
 // Full-screen document viewer.
 //
@@ -181,6 +182,8 @@ export function DocumentLightbox({
   if (!open || !current || typeof document === "undefined") return null;
 
   const isImage = current.mimeType?.startsWith("image/");
+  const isVideo = current.mimeType?.startsWith("video/");
+  const isAudio = current.mimeType?.startsWith("audio/");
   const isPdf = current.mimeType === "application/pdf" || current.pdfReady;
 
   return createPortal(
@@ -234,6 +237,27 @@ export function DocumentLightbox({
           <div key={current.id} className="animate-in fade-in duration-150">
           {isImage ? (
             <ImagePage url={current.url} />
+          ) : isVideo ? (
+            // Native controls on purpose. A custom transport would be a
+            // scrubber, a volume slider and a fullscreen button to build and
+            // then keep working on every browser, for a defect clip someone
+            // watches once.
+            <video
+              key={current.id}
+              src={current.url}
+              controls
+              autoPlay
+              onClick={(e) => e.stopPropagation()}
+              className="mx-auto max-h-[85vh] w-full rounded-sm bg-black shadow-lg"
+            />
+          ) : isAudio ? (
+            <div
+              onClick={(e) => e.stopPropagation()}
+              className="mx-auto flex max-w-lg flex-col items-center gap-4 rounded-lg bg-card p-8"
+            >
+              <FileTypeIllustration kind="audio" className="h-24 w-24" />
+              <audio key={current.id} src={current.url} controls autoPlay className="w-full" />
+            </div>
           ) : isPdf ? (
             <PdfPages url={current.url} />
           ) : (

@@ -4,6 +4,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { cn } from "@/lib/utils";
 import { Input } from "@/components/ui/input";
 import { DocumentCard, DocumentUploadCard } from "@/components/shared/document-card";
+import { captureVideoPoster } from "@/lib/video-poster";
 import { DocumentLightbox } from "@/components/shared/document-lightbox";
 import type { DocumentTag, TagColour } from "@/lib/document-tags-shared";
 import {
@@ -110,13 +111,20 @@ export function DocumentManager({ ocId, lotId, initialDocuments, readOnly }: Doc
     }, 600);
   }, []);
 
-  const uploadFile = useCallback((file: File) => {
+  const uploadFile = useCallback(async (file: File) => {
     const uploadId = crypto.randomUUID();
     setUploads((prev) => [...prev, { id: uploadId, fileName: file.name, progress: 0 }]);
+
+    // A still from the video, taken here because there is nowhere in this
+    // stack to run ffmpeg. Null for anything that is not a video, or that
+    // the browser cannot decode, and the card falls back to its film
+    // illustration.
+    const poster = await captureVideoPoster(file);
 
     const xhr = new XMLHttpRequest();
     const formData = new FormData();
     formData.append("file", file);
+    if (poster) formData.append("poster", poster, "poster.webp");
     formData.append("oc_id", ocId);
     formData.append("category", selectedCategory);
     if (lotId) formData.append("lot_id", lotId);

@@ -5,6 +5,7 @@ import { Download, Loader2, Trash2, X } from "lucide-react";
 import { Checkbox } from "@/components/ui/checkbox";
 import { AutoGrowTextarea } from "@/components/shared/auto-grow-textarea";
 import { BrandLoader } from "@/components/shared/brand-mark";
+import { FileTypeIllustration, fileKindFor } from "@/components/shared/file-type-illustration";
 import { TagField } from "@/components/shared/tag-picker";
 import { relativeDate } from "@/lib/relative-date";
 import { cn } from "@/lib/utils";
@@ -23,10 +24,14 @@ import type { DocumentTag, TagColour } from "@/lib/document-tags-shared";
 // still on the row as original_filename. What replaces it is the manager's
 // note and their tags, which are the things that make a document findable.
 
-/** Every card is this tall, loaded or uploading, so a batch of uploads does
- *  not produce a ragged grid. The preview takes whatever the chrome strip and
- *  the footer leave. */
-const CARD_HEIGHT = "h-[24.5rem]";
+/** The preview is square, and the card is however tall that makes it.
+ *
+ *  A fixed card height was wrong: the grid's columns are fluid, so at a
+ *  narrower window three columns gave 273px-wide cards against a 392px
+ *  height, and every preview was a tall rectangle. An aspect ratio holds
+ *  the shape at any width, and since every column is the same width every
+ *  card is still exactly as tall as its neighbours. */
+const PREVIEW_SHAPE = "aspect-square";
 
 export interface DocumentCardDoc {
   id: string;
@@ -82,19 +87,11 @@ export function DocumentCard({
   // the page no longer downloads twelve whole documents to show twelve
   // pictures.
   const hasThumbnail = Boolean(doc.thumbnail_storage_key);
-  const stillPreparing =
-    !hasThumbnail && (doc.pdf_status === "pending" || doc.ocr_status === "pending");
   const tags = doc.tags ?? [];
-  const extension =
-    doc.file_name.includes(".") ? doc.file_name.split(".").pop()!.toUpperCase() : "FILE";
 
   return (
     <div
       className={cn(
-        // A fixed height, shared with the uploading state below. The two
-        // used to be built differently and landed 2rem apart, so a batch of
-        // uploads was a grid of short cards next to tall ones.
-        CARD_HEIGHT,
         "group flex flex-col overflow-hidden rounded-lg border bg-card transition-colors",
         selected ? "border-primary ring-1 ring-primary" : "border-border hover:border-primary/40",
       )}
@@ -161,7 +158,7 @@ export function DocumentCard({
       <button
         type="button"
         onClick={selectionActive && !readOnly ? onToggleSelect : onOpen}
-        className="relative block w-full flex-1 cursor-pointer overflow-hidden bg-muted"
+        className={cn(PREVIEW_SHAPE, "relative block w-full cursor-pointer overflow-hidden bg-muted")}
         aria-label={
           selectionActive && !readOnly
             ? `${selected ? "Deselect" : "Select"} ${doc.file_name}`
@@ -188,20 +185,21 @@ export function DocumentCard({
             />
           </>
         ) : (
-          // No thumbnail. Say what the file is and whether one is coming.
+          // No page to show. A drawing of what the file IS, not a grey
+          // plate reading "DOCX": an extension tells you what opens a file,
+          // not what it is, and a grid of them reads as a list of errors.
           //
-          // This used to pulse the brand mark while an Office file was being
-          // converted, which promised a preview that was not there yet: the
-          // card looked like it was loading, and clicking it opened a viewer
-          // with nothing to show. The extension is true immediately, and the
-          // second line is the only part that changes.
-          <div className="flex h-full w-full flex-col items-center justify-center gap-2">
-            <span className="rounded-md bg-cool-muted px-3 py-1.5 text-sm font-semibold text-cool-muted-foreground">
-              {extension}
-            </span>
-            <span className="text-xs text-muted-foreground">
-              {stillPreparing ? "Getting this one ready" : "No preview"}
-            </span>
+          // And no promise. This used to say "Getting this one ready" while
+          // a conversion was pending, which is hope, not information: if it
+          // failed the card kept saying it, and clicking through opened a
+          // viewer with nothing in it. Either there is a preview or there
+          // is not.
+          <div className="flex h-full w-full flex-col items-center justify-center gap-1.5">
+            <FileTypeIllustration
+              kind={fileKindFor(doc.mime_type, doc.file_name)}
+              className="h-20 w-20"
+            />
+            <span className="text-xs text-muted-foreground">No preview</span>
           </div>
         )}
       </button>
@@ -241,14 +239,14 @@ export function DocumentUploadCard({
   onDismiss?: () => void;
 }) {
   return (
-    <div className={cn(CARD_HEIGHT, "relative flex flex-col overflow-hidden rounded-lg border border-border bg-card")}>
+    <div className="relative flex flex-col overflow-hidden rounded-lg border border-border bg-card">
       {/* The same strip a finished card has, carrying today's date. The
           card is about to become one, and a blank white band that fills in
           a second later is a layout the eye has to re-read. */}
       <div className="flex h-9 shrink-0 items-center justify-end px-2">
         <span className="text-xs font-medium text-muted-foreground">Just now</span>
       </div>
-      <div className="flex flex-1 flex-col items-center justify-center gap-2 bg-muted px-4 text-center">
+      <div className={cn(PREVIEW_SHAPE, "flex flex-col items-center justify-center gap-2 bg-muted px-4 text-center")}>
         {failed ? (
           <>
             <span className="text-sm font-medium text-destructive">Upload failed</span>
@@ -260,6 +258,17 @@ export function DocumentUploadCard({
           // description of an upload in flight.
           <Loader2 className="h-7 w-7 animate-spin text-muted-foreground" />
         )}
+      </div>
+      {/* The footer a finished card has, empty. Without it this card is
+          shorter than its neighbours by the height of a note box and a tag
+          row, and the grid goes ragged mid-upload, which is the thing the
+          shared shape exists to prevent. */}
+      <div
+        aria-hidden
+        className="flex flex-col gap-1.5 border-t border-border p-2.5"
+      >
+        <div className="h-[38px] rounded-md border border-border bg-muted/40" />
+        <div className="h-9 rounded-md border border-border bg-muted/40" />
       </div>
       {failed && onDismiss && (
         <button
