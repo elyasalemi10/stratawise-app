@@ -85,7 +85,6 @@ export interface OCCertificateProps {
   // Financials
   currentFees: string;
   currentFeesTable?: { label: string; amount: number }[];
-  showSpecialLevyNote?: boolean;
   currentFeesNote?: string;
   billingCycle: string;
   feesPaidUpTo: string;
@@ -122,7 +121,7 @@ export function OCCertificate(props: OCCertificateProps) {
   const {
     logoUrl, signatureUrl, planNumber, ocAddress, lotNumber, lotUnitNumber,
     applicantName, applicantEmail, applicationDate, certificateDate,
-    currentFees, currentFeesTable, showSpecialLevyNote, currentFeesNote, billingCycle, feesPaidUpTo, unpaidFeesTotal, levies,
+    currentFees, currentFeesTable, currentFeesNote, billingCycle, feesPaidUpTo, unpaidFeesTotal, levies,
     repairsInfo, insuranceCover, insuranceNote, totalFundsHeld, liabilities, currentContracts,
     serviceAgreements, noticesOrders, legalProceedings, managerAppointed,
     administratorAppointed, lastAgmDate, additionalAttachments, companyName, registeredName,
@@ -210,9 +209,6 @@ export function OCCertificate(props: OCCertificateProps) {
             ) : (
               <Text style={s.itemText}>The current fees for {lotLabel} are: {currentFees} payable {billingCycle}.</Text>
             )}
-            {showSpecialLevyNote !== false ? (
-              <Text style={[s.itemText, { marginTop: 2 }]}>A special levy 1 quarter prior to the expiry of the current insurance will be struck to cover insurance costs for the next year.</Text>
-            ) : null}
             {currentFeesNote ? (
               <Text style={[s.itemText, { marginTop: 4 }]}>{currentFeesNote}</Text>
             ) : null}
