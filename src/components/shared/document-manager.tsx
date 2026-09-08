@@ -49,6 +49,10 @@ interface DocumentManagerProps {
 
 
 // Build accept string for file input
+/** How many full-size documents to pull into cache behind the grid. Enough
+ *  to cover what a manager opens in a sitting, not the whole library. */
+const PREFETCH_LIMIT = 12;
+
 const ACCEPT_STRING = ALLOWED_EXTENSIONS.join(",");
 
 export function DocumentManager({ ocId, lotId, initialDocuments, readOnly }: DocumentManagerProps) {
@@ -221,16 +225,28 @@ export function DocumentManager({ ocId, lotId, initialDocuments, readOnly }: Doc
   }
 
   async function handleDelete() {
-    if (!deleteDoc) return;
-    setDeleting(true);
-    const res = await fetch(`/api/documents/${deleteDoc.id}`, { method: "DELETE" });
-    setDeleting(false);
+    const doc = deleteDoc;
+    if (!doc) return;
+    // Optimistic. The manager chose this and the server can only agree or
+    // fail, so making them watch a spinner on a decision already made is
+    // the round trip showing through the UI.
+    setDeleteDoc(null);
+    setDocuments((prev) => prev.filter((d) => d.id !== doc.id));
+
+    const res = await fetch(`/api/documents/${doc.id}`, { method: "DELETE" });
     if (res.ok) {
-      setDocuments((prev) => prev.filter((d) => d.id !== deleteDoc.id));
-      setDeleteDoc(null);
-    } else {
-      toast.error("Failed to delete");
+      toast.success("Document deleted");
+      return;
     }
+    // Put it back in its place rather than at the top: the grid is ordered
+    // by upload date, and a restored row appearing somewhere new reads as a
+    // second document.
+    setDocuments((prev) =>
+      [...prev, doc].sort(
+        (a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime(),
+      ),
+    );
+    toast.error("Couldn't delete that document, please try again.");
   }
 
   /** Write through locally first: the manager has already typed it, and a
@@ -307,6 +323,35 @@ export function DocumentManager({ ocId, lotId, initialDocuments, readOnly }: Doc
       return cat === filterCategory;
     });
   }, [documents, search, filterCategory]);
+
+  // Warm the full-size files behind the grid.
+  //
+  // The card shows a thumbnail, so opening a document still had to fetch the
+  // real thing and the viewer sat on a pulsing mark while it did. Fetching
+  // them once the page is idle makes opening instant, and since the response
+  // carries an ETag with a five-minute freshness window the viewer's own
+  // request is served from cache rather than made twice.
+  //
+  // requestIdleCallback, so this never competes with the thumbnails the
+  // manager is actually looking at, and bounded, because a library of two
+  // hundred documents is not something to pull down in the background.
+  useEffect(() => {
+    if (visibleDocs.length === 0) return;
+    const idle =
+      (window as unknown as { requestIdleCallback?: (cb: () => void) => number })
+        .requestIdleCallback ?? ((cb: () => void) => window.setTimeout(cb, 1200));
+    const controller = new AbortController();
+    idle(() => {
+      for (const d of visibleDocs.slice(0, PREFETCH_LIMIT)) {
+        void fetch(`/api/documents/${d.id}?view=true`, {
+          signal: controller.signal,
+        }).catch(() => {
+          /* a warm cache is a nicety, never an error worth showing */
+        });
+      }
+    });
+    return () => controller.abort();
+  }, [visibleDocs]);
 
   const lightboxItems = useMemo(
     () =>

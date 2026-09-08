@@ -39,9 +39,11 @@ export function AutoGrowTextarea({
   const [focused, setFocused] = React.useState(false);
   const committed = React.useRef(value);
 
-  // Resting height: two 20px lines plus padding and borders. Fixed, so the
+  // Resting height: one line and a bit. Enough that a wrapped note is
+  // visibly cut mid-second-line, which is what says there is more, without
+  // a grid of cards each holding two mostly-empty lines. Fixed, so the
   // control is exactly the same size before and after a click.
-  const REST_HEIGHT = 54;
+  const REST_HEIGHT = 44;
 
   const resize = React.useCallback(() => {
     const el = ref.current;

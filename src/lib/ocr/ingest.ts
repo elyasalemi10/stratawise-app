@@ -4,6 +4,7 @@ import { fetchObject } from "@/lib/storage/r2";
 import { runDocumentAiOcr, sanitiseOcrText } from "@/lib/google/document-ai";
 import { uploadObject } from "@/lib/storage/r2";
 import { renderPdfFirstPage } from "@/lib/images/pdf-thumbnail";
+import { isDownscalableImage, makeThumbnail } from "@/lib/images/downscale";
 import {
   convertToPdf,
   isConversionConfigured,
@@ -288,5 +289,51 @@ async function renderToPdf(
       })
       .eq("id", documentId);
     return null;
+  }
+}
+
+/**
+ * Give a document a thumbnail if it is missing one.
+ *
+ * Documents uploaded before thumbnails existed show an extension plate
+ * ("PDF", "PNG") in the grid instead of the page. Rather than a one-off
+ * script, the sweep does this too, so the grid heals itself and a
+ * conversion that produced a PDF after the fact also gets its page.
+ *
+ * Never throws. A file we cannot render keeps its plate, which is what it
+ * has now.
+ */
+export async function backfillThumbnail(documentId: string): Promise<boolean> {
+  const supabase = createServerClient();
+  const { data: doc } = await supabase
+    .from("documents")
+    .select("id, file_path, mime_type, thumbnail_storage_key, pdf_storage_key")
+    .eq("id", documentId)
+    .maybeSingle();
+  if (!doc || doc.thumbnail_storage_key) return false;
+
+  const mime = (doc.mime_type ?? "").toLowerCase();
+  // An Office file has no page of its own; its rendition does.
+  const sourceKey = mime === "application/pdf" ? doc.file_path : (doc.pdf_storage_key ?? doc.file_path);
+  const sourceIsPdf = mime === "application/pdf" || Boolean(doc.pdf_storage_key);
+  if (!sourceIsPdf && !isDownscalableImage(mime)) return false;
+
+  try {
+    const bytes = await fetchObject(sourceKey);
+    const thumb = sourceIsPdf
+      ? await renderPdfFirstPage(bytes)
+      : await makeThumbnail(bytes, mime);
+    if (!thumb) return false;
+
+    const key = `${doc.file_path.replace(/\.[^./]+$/, "")}.thumb.webp`;
+    await uploadObject(key, thumb, "image/webp");
+    await supabase
+      .from("documents")
+      .update({ thumbnail_storage_key: key })
+      .eq("id", documentId);
+    return true;
+  } catch (err) {
+    console.error(`backfillThumbnail: failed for ${documentId}`, err);
+    return false;
   }
 }

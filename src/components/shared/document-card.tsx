@@ -1,7 +1,7 @@
 "use client";
 
 import * as React from "react";
-import { Download, Trash2, X } from "lucide-react";
+import { Download, Loader2, Trash2, X } from "lucide-react";
 import { Checkbox } from "@/components/ui/checkbox";
 import { AutoGrowTextarea } from "@/components/shared/auto-grow-textarea";
 import { BrandLoader } from "@/components/shared/brand-mark";
@@ -89,7 +89,10 @@ export function DocumentCard({
       )}
     >
       {/* Chrome strip. Fixed height so hover does not resize the card. */}
-      <div className="relative flex h-9 shrink-0 items-center justify-between px-2">
+      <div
+        className="relative flex h-9 shrink-0 items-center justify-between px-2"
+        onClick={selectionActive && !readOnly ? onToggleSelect : undefined}
+      >
         {!readOnly ? (
           <div
             className={cn(
@@ -138,11 +141,21 @@ export function DocumentCard({
         )}
       </div>
 
+      {/* Once ANYTHING is selected the whole preview toggles selection
+          instead of opening. Picking out six documents to zip meant six
+          trips to a 16px checkbox, and hitting the card by mistake threw
+          you into the viewer and lost your place. The note box, the tag
+          field and the two action buttons keep their own behaviour, so
+          nothing you can reach is ambiguous. */}
       <button
         type="button"
-        onClick={onOpen}
+        onClick={selectionActive && !readOnly ? onToggleSelect : onOpen}
         className="relative block h-64 w-full cursor-pointer overflow-hidden bg-muted"
-        aria-label={`Open ${doc.file_name}`}
+        aria-label={
+          selectionActive && !readOnly
+            ? `${selected ? "Deselect" : "Select"} ${doc.file_name}`
+            : `Open ${doc.file_name}`
+        }
       >
         {hasThumbnail ? (
           <>
@@ -202,19 +215,32 @@ export function DocumentCard({
  *  known yet, so nothing else is shown. */
 export function DocumentUploadCard({
   failed,
+  error,
   onDismiss,
 }: {
   failed?: boolean;
+  error?: string;
   onDismiss?: () => void;
 }) {
   return (
     <div className="relative flex h-[22rem] flex-col overflow-hidden rounded-lg border border-border bg-card">
-      <div className="h-9 shrink-0" />
-      <div className="flex flex-1 items-center justify-center bg-muted">
+      {/* The same strip a finished card has, carrying today's date. The
+          card is about to become one, and a blank white band that fills in
+          a second later is a layout the eye has to re-read. */}
+      <div className="flex h-9 shrink-0 items-center justify-end px-2">
+        <span className="text-xs font-medium text-muted-foreground">Just now</span>
+      </div>
+      <div className="flex flex-1 flex-col items-center justify-center gap-2 bg-muted px-4 text-center">
         {failed ? (
-          <span className="text-sm text-destructive">Upload failed</span>
+          <>
+            <span className="text-sm font-medium text-destructive">Upload failed</span>
+            {error && <span className="text-xs text-muted-foreground">{error}</span>}
+          </>
         ) : (
-          <BrandLoader />
+          // A wheel, not the brand mark. The mark means "your document is
+          // coming"; a spinner means "this is working", which is the honest
+          // description of an upload in flight.
+          <Loader2 className="h-7 w-7 animate-spin text-muted-foreground" />
         )}
       </div>
       {failed && onDismiss && (

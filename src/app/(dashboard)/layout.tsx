@@ -49,7 +49,13 @@ export default async function DashboardLayout({
             <Header initialOCs={sidebarOCs} />
           </header>
           <main className="flex-1 min-h-0 min-w-0 overflow-y-auto overflow-x-hidden bg-background py-4 md:py-6 px-4 lg:px-6">
-            <div className="min-w-0">{children}</div>
+            {/* Centred in the space the sidebar leaves, not stretched across
+                it. Without a ceiling, a three-column grid on a wide monitor
+                spreads until the cards are enormous and the content hugs
+                both edges, which reads as off-centre even though it is
+                technically full width. The cap is generous enough that
+                laptops and ordinary desktops are unaffected. */}
+            <div className="mx-auto w-full min-w-0 max-w-[1600px]">{children}</div>
           </main>
         </SidebarInset>
       </SidebarProvider>

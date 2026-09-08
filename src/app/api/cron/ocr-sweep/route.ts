@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createServerClient } from "@/lib/supabase";
-import { ingestDocumentOcr, isIndexable } from "@/lib/ocr/ingest";
+import { backfillThumbnail, ingestDocumentOcr, isIndexable } from "@/lib/ocr/ingest";
 import { needsPdfConversion } from "@/lib/ocr/convert-to-pdf";
 
 // ============================================================================
@@ -78,5 +78,21 @@ export async function GET(request: NextRequest) {
     processed++;
   }
 
-  return NextResponse.json({ ok: true, processed });
+  // Anything still without a thumbnail, whichever pass should have made one.
+  // Documents uploaded before thumbnails existed show an extension plate in
+  // the grid; this heals them without a one-off script, and picks up a
+  // render that failed the first time.
+  const { data: needThumbs } = await supabase
+    .from("documents")
+    .select("id")
+    .is("thumbnail_storage_key", null)
+    .order("created_at", { ascending: false })
+    .limit(BATCH_SIZE);
+
+  let thumbnails = 0;
+  for (const row of (needThumbs ?? []) as Array<{ id: string }>) {
+    if (await backfillThumbnail(row.id)) thumbnails++;
+  }
+
+  return NextResponse.json({ ok: true, processed, thumbnails });
 }

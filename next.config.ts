@@ -16,6 +16,13 @@ const nextConfig: NextConfig = {
   // These stay as real requires at runtime, which is what they need.
   serverExternalPackages: ["@napi-rs/canvas", "sharp", "pdfjs-dist"],
   experimental: {
+    // Request bodies reaching a ROUTE HANDLER, which serverActions.bodySizeLimit
+    // does not cover. Next 16 caps these at 10MB, and /api/documents accepts
+    // 25MB, so every upload over 10MB died in the framework before our code
+    // ran: "Failed to parse body as FormData", surfaced to the manager as a
+    // bare "Upload failed". Matches MAX_DOCUMENT_SIZE with room for the
+    // multipart envelope.
+    proxyClientMaxBodySize: "30mb",
     serverActions: {
       // OC creation wizard accepts Plan-of-Subdivision PDFs up to 50MB.
       bodySizeLimit: "50mb",

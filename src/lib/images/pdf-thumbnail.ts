@@ -17,6 +17,11 @@ import sharp from "sharp";
 
 const THUMB_EDGE = 480;
 
+/** Height as a multiple of width, matching the card's preview box. Anything
+ *  below the fold of this crop is not shown, so the page is rendered at full
+ *  width and simply cut. */
+const CARD_ASPECT = 264 / 300;
+
 export async function renderPdfFirstPage(bytes: Buffer): Promise<Buffer | null> {
   try {
     // The legacy build is the one that runs outside a browser: the modern
@@ -37,10 +42,19 @@ export async function renderPdfFirstPage(bytes: Buffer): Promise<Buffer | null> 
 
     const page = await doc.getPage(1);
     const base = page.getViewport({ scale: 1 });
-    const scale = THUMB_EDGE / Math.max(base.width, base.height);
+    // Scale to WIDTH, then crop to the card's aspect from the TOP.
+    //
+    // Fitting the whole page inside the box shrank an A4 sheet until its
+    // heading was a few pixels tall, which is unreadable and makes every
+    // document look the same. The top of the first page is where the letter
+    // head, the title and the policy number are, so that is what the card
+    // shows: the same crop you would get if you photographed the top of the
+    // page.
+    const scale = THUMB_EDGE / base.width;
     const viewport = page.getViewport({ scale });
+    const cropHeight = Math.min(Math.ceil(viewport.height), Math.round(THUMB_EDGE * CARD_ASPECT));
 
-    const canvas = createCanvas(Math.ceil(viewport.width), Math.ceil(viewport.height));
+    const canvas = createCanvas(Math.ceil(viewport.width), cropHeight);
     const ctx = canvas.getContext("2d");
     // A PDF page is transparent where it is blank, which composites to black
     // in a WebP. Paint the paper first.

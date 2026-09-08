@@ -625,6 +625,22 @@ function AddPolicyDrawer({
           </SheetDescription>
         </SheetHeader>
 
+        {/* One file input for the whole drawer. It used to live inside the
+            upload STEP, so the form step had nothing to click and its
+            certificate button could only send the manager back to the AI
+            screen. Both surfaces share it now. */}
+        <input
+          ref={fileInputRef}
+          type="file"
+          accept=".pdf,application/pdf"
+          hidden
+          onChange={(e) => {
+            const f = e.target.files?.[0];
+            if (f) handleCocUpload(f);
+            e.target.value = "";
+          }}
+        />
+
         <div className="flex-1 overflow-y-auto p-4">
           {step === "coc" && (
             <div className="space-y-4">
@@ -652,17 +668,6 @@ function AddPolicyDrawer({
                     <span className="mt-1 text-xs text-muted-foreground">PDF, up to 25 MB</span>
                   </>
                 )}
-                <input
-                  ref={fileInputRef}
-                  type="file"
-                  accept=".pdf,application/pdf"
-                  hidden
-                  onChange={(e) => {
-                    const f = e.target.files?.[0];
-                    if (f) handleCocUpload(f);
-                    e.target.value = "";
-                  }}
-                />
               </label>
             </div>
           )}
@@ -697,14 +702,27 @@ function AddPolicyDrawer({
                     <span className="min-w-0 flex-1 truncate text-sm text-foreground">
                       {uploadName ?? "Certificate attached"}
                     </span>
-                    <Button variant="secondary" size="sm" onClick={() => setStep("coc")}>
+                    <Button
+                      variant="secondary"
+                      size="sm"
+                      onClick={() => fileInputRef.current?.click()}
+                    >
                       Replace
                     </Button>
                   </div>
                 ) : (
                   <button
                     type="button"
-                    onClick={() => setStep("coc")}
+                    // Opens the file picker. It used to call setStep("coc"),
+                    // which threw the manager back into the read-it-for-me
+                    // flow they had deliberately stepped out of.
+                    onClick={() => fileInputRef.current?.click()}
+                    onDragOver={(e) => e.preventDefault()}
+                    onDrop={(e) => {
+                      e.preventDefault();
+                      const f = e.dataTransfer.files?.[0];
+                      if (f) void handleCocUpload(f);
+                    }}
                     className={cn(
                       "flex w-full cursor-pointer items-center justify-center gap-2 rounded-md border-2 border-dashed px-3 py-4 text-sm transition-colors",
                       certificateInvalid
@@ -713,7 +731,7 @@ function AddPolicyDrawer({
                     )}
                   >
                     <Plus className="h-3.5 w-3.5" />
-                    Upload the certificate of currency
+                    Drop the certificate here, or click to choose
                   </button>
                 )}
               </div>
