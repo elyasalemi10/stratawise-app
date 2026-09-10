@@ -130,16 +130,18 @@ export function LotActivityLog({ activity }: { activity: LotActivityEntry[] }) {
 
   return (
     <>
-      <Card>
-        <CardContent className="pt-5 space-y-3">
-          <div className="flex items-center gap-2">
-            <HistoryIcon className="h-4 w-4 text-[color:var(--brand-gold)]" />
-            <h3 className="text-sm font-semibold text-foreground">Activity log</h3>
-            <span className="ml-1 text-xs text-muted-foreground">
-              ({activity.length} {activity.length === 1 ? "entry" : "entries"})
-            </span>
-          </div>
-
+      {/* Heading outside the card, like Communication history above it. The
+          card holds the log; what the log is called is not part of it. */}
+      <div className="space-y-3">
+        <div className="flex items-center gap-2">
+          <HistoryIcon className="h-4 w-4 text-[color:var(--brand-gold)]" />
+          <h3 className="text-sm font-semibold text-foreground">Activity log</h3>
+          <span className="ml-1 text-xs text-muted-foreground">
+            ({activity.length} {activity.length === 1 ? "entry" : "entries"})
+          </span>
+        </div>
+        <Card>
+          <CardContent className="space-y-3 pt-5">
           <ol className="divide-y divide-border">
             {visible.map((row) => {
               const category = classify(row);
@@ -199,9 +201,9 @@ export function LotActivityLog({ activity }: { activity: LotActivityEntry[] }) {
               </div>
             </div>
           )}
-        </CardContent>
-      </Card>
-
+          </CardContent>
+        </Card>
+      </div>
     </>
   );
 }

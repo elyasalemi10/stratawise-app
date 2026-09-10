@@ -129,45 +129,49 @@ export function LotCommunicationsTab(props: Props) {
   return (
     <TooltipProvider delay={120}>
     <div className="space-y-6">
-      {/* Communication history , Actions dropdown lives in the header row of
-          this single card. The standalone "Reach out" tile is gone. */}
-      <Card>
-        <CardContent className="pt-5 space-y-4">
-          <div className="flex items-center justify-between gap-3">
-            <h3 className="text-sm font-semibold text-foreground">
-              Communication history
-            </h3>
-            <DropdownMenu>
-              <DropdownMenuTrigger
-                render={
-                  <Button size="sm">
-                    Actions
-                    <ChevronDown className="ml-1.5 h-3.5 w-3.5" />
-                  </Button>
-                }
-              />
-              <DropdownMenuContent align="end" sideOffset={6}>
-                <DropdownMenuItem onClick={() => setOpen("email")}>
-                  <Mail className="mr-2 h-4 w-4 text-[color:var(--brand-gold)]" />
-                  Send email
-                </DropdownMenuItem>
-                <DropdownMenuItem onClick={() => setOpen("sms")}>
-                  <Send className="mr-2 h-4 w-4 text-[color:var(--brand-gold)]" />
-                  Send SMS
-                </DropdownMenuItem>
-                <DropdownMenuItem onClick={() => setOpen("call")}>
-                  <PhoneCall className="mr-2 h-4 w-4 text-[color:var(--brand-gold)]" />
-                  Log phone call
-                </DropdownMenuItem>
-              </DropdownMenuContent>
-            </DropdownMenu>
-          </div>
-          <CommunicationHistoryList
-            rows={rows}
-            onRowClick={(row) => setDetail(row)}
-          />
-        </CardContent>
-      </Card>
+      {/* The heading and the actions sit ABOVE the card, not inside it. A
+          card is the thing being shown; its name and the controls that act
+          on it are not part of the thing, and boxing them in with it made
+          the first row of every card read as content. */}
+      <div className="space-y-3">
+        <div className="flex items-center justify-between gap-3">
+          <h3 className="text-sm font-semibold text-foreground">
+            Communication history
+          </h3>
+          <DropdownMenu>
+            <DropdownMenuTrigger
+              render={
+                <Button size="sm">
+                  Actions
+                  <ChevronDown className="ml-1.5 h-3.5 w-3.5" />
+                </Button>
+              }
+            />
+            <DropdownMenuContent align="end" sideOffset={6}>
+              <DropdownMenuItem onClick={() => setOpen("email")}>
+                <Mail className="mr-2 h-4 w-4 text-[color:var(--brand-gold)]" />
+                Send email
+              </DropdownMenuItem>
+              <DropdownMenuItem onClick={() => setOpen("sms")}>
+                <Send className="mr-2 h-4 w-4 text-[color:var(--brand-gold)]" />
+                Send SMS
+              </DropdownMenuItem>
+              <DropdownMenuItem onClick={() => setOpen("call")}>
+                <PhoneCall className="mr-2 h-4 w-4 text-[color:var(--brand-gold)]" />
+                Log phone call
+              </DropdownMenuItem>
+            </DropdownMenuContent>
+          </DropdownMenu>
+        </div>
+        <Card>
+          <CardContent className="pt-5">
+            <CommunicationHistoryList
+              rows={rows}
+              onRowClick={(row) => setDetail(row)}
+            />
+          </CardContent>
+        </Card>
+      </div>
 
       <LotActivityLog activity={activity} />
 
