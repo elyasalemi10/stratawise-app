@@ -570,18 +570,26 @@ export function DocumentManager({ ocId, lotId, initialDocuments, readOnly }: Doc
           under the cursor reads as a mis-click. */}
       {!readOnly && (
         <div className="flex h-9 items-center gap-3">
+          {/* Ticking with a partial selection takes ALL of them, not none.
+              Clearing three chosen documents is not what a half-ticked box
+              offers; it offers the rest. To end up with nothing selected you
+              tick it, which takes everything, and tick it again. */}
           <label className="flex cursor-pointer items-center gap-2 text-sm text-muted-foreground">
             <Checkbox
               checked={allVisibleSelected}
               indeterminate={someVisibleSelected}
               onCheckedChange={() =>
-                allVisibleSelected || someVisibleSelected
-                  ? clearSelection()
-                  : selectAllVisible()
+                allVisibleSelected ? clearSelection() : selectAllVisible()
               }
-              aria-label="Select all documents"
+              aria-label={allVisibleSelected ? "Clear selection" : "Select all documents"}
             />
-            Select all
+            {selectedIds.size > 0 ? (
+              <span className="tabular-nums text-foreground">
+                {selectedIds.size} selected
+              </span>
+            ) : (
+              "Select all"
+            )}
           </label>
 
           <div
@@ -599,7 +607,7 @@ export function DocumentManager({ ocId, lotId, initialDocuments, readOnly }: Doc
                   onClick={downloadSelected}
                 >
                   <Download className="mr-2 h-3.5 w-3.5" />
-                  Download as ZIP
+                  Download
                 </Button>
                 <Button
                   variant="destructive"

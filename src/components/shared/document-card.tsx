@@ -1,7 +1,7 @@
 "use client";
 
 import * as React from "react";
-import { Download, Loader2, Trash2, X } from "lucide-react";
+import { Download, Loader2, Tag as TagIcon, Trash2, X } from "lucide-react";
 import { Checkbox } from "@/components/ui/checkbox";
 import { AutoGrowTextarea } from "@/components/shared/auto-grow-textarea";
 import { BrandLoader } from "@/components/shared/brand-mark";
@@ -273,17 +273,22 @@ export function DocumentUploadCard({
           <Loader2 className="h-7 w-7 animate-spin text-muted-foreground" />
         )}
       </div>
-      {/* The footer a finished card has, as empty outlines of the two
-          controls that will be there. They used to be filled muted grey,
-          which read as two disabled inputs rather than as the shape of what
-          is coming, and against the muted preview above them the whole
-          bottom of the card turned into one grey block. */}
+      {/* The footer a finished card has, with the two controls drawn as they
+          will look. Two empty outlines, one a thin strip and one a box with
+          nothing in it, read as a card that had failed to render; the same
+          two boxes saying "Add a note" and "Add tags" read as a card that is
+          simply not filled in yet, which is what it is. */}
       <div
         aria-hidden
         className="flex shrink-0 flex-col gap-1.5 border-t border-border p-2.5"
       >
-        <div className="h-[38px] rounded-md border border-border bg-card" />
-        <div className="h-9 rounded-md border border-border bg-card" />
+        <div className="flex h-[38px] items-center rounded-md border border-border bg-card px-2.5 text-sm text-muted-foreground">
+          Add a note
+        </div>
+        <div className="flex h-9 items-center gap-1.5 rounded-md border border-border bg-card px-2.5">
+          <TagIcon className="h-3.5 w-3.5 shrink-0 text-muted-foreground" />
+          <span className="text-sm text-muted-foreground">Add tags</span>
+        </div>
       </div>
       {failed && onDismiss && (
         <button

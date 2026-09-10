@@ -13,7 +13,7 @@ import { FileTypeIllustration } from "@/components/shared/file-type-illustration
 import { cn } from "@/lib/utils";
 
 /**
- * Our transport, over a plain <video> or <audio>.
+ * Our transport, over a plain <video> or <audio>. One control, two media.
  *
  * The native controls were the honest choice while a clip was something
  * someone watched once. They are the wrong choice now that they are the only
@@ -58,9 +58,29 @@ export function MediaPlayer({
   const [muted, setMuted] = React.useState(false);
   const [fullscreen, setFullscreen] = React.useState(false);
   // While the handle is held, the bar follows the pointer and the element's
-  // own timeupdate is ignored: seeking is not instant, and letting it win
-  // makes the handle jump backwards under the finger dragging it.
+  // own clock is ignored: seeking is not instant, and letting it win makes
+  // the handle jump backwards under the finger dragging it.
   const [scrubbing, setScrubbing] = React.useState(false);
+
+  // The bar is driven by the frame loop, not by `timeupdate`.
+  //
+  // That event fires about four times a second, and the browser is free to
+  // fire it less often than that. On a three-minute track the bar therefore
+  // advanced in visible steps: it did not look like playback, it looked like
+  // a progress bar for a download. A frame loop asks the element where it
+  // actually is, sixty times a second, and costs nothing while paused
+  // because it is not running.
+  React.useEffect(() => {
+    if (!playing || scrubbing) return;
+    let frame = 0;
+    const tick = () => {
+      const el = mediaRef.current;
+      if (el) setCurrent(el.currentTime);
+      frame = requestAnimationFrame(tick);
+    };
+    frame = requestAnimationFrame(tick);
+    return () => cancelAnimationFrame(frame);
+  }, [playing, scrubbing]);
 
   const progress = duration > 0 ? (current / duration) * 100 : 0;
 
@@ -118,9 +138,14 @@ export function MediaPlayer({
         }
       }}
       tabIndex={0}
+      // The same shell for both. The video used to sit in a black box with a
+      // black control bar and a white-on-black seek line you could not see
+      // against the film; audio sat on a card. They are one control with one
+      // job, so the frame around the picture is the card, the transport
+      // beneath it is ours, and only the area the video itself occupies is
+      // black, because a letterboxed frame has to be.
       className={cn(
-        "mx-auto w-full overflow-hidden rounded-lg outline-none",
-        isVideo ? "bg-black" : "bg-card",
+        "mx-auto w-full overflow-hidden rounded-lg border border-border bg-card outline-none",
         className,
       )}
     >
@@ -135,12 +160,14 @@ export function MediaPlayer({
           onPause={() => setPlaying(false)}
           onLoadedMetadata={(e) => setDuration(e.currentTarget.duration)}
           onDurationChange={(e) => setDuration(e.currentTarget.duration)}
+          // Only useful while paused: a seek, or the first frame after load.
+          // The frame loop owns it during playback.
           onTimeUpdate={(e) => {
-            if (!scrubbing) setCurrent(e.currentTarget.currentTime);
+            if (!scrubbing && e.currentTarget.paused) setCurrent(e.currentTarget.currentTime);
           }}
           onEnded={() => setPlaying(false)}
           className={cn(
-            "block w-full cursor-pointer",
+            "block w-full cursor-pointer bg-black",
             fullscreen ? "h-[calc(100vh-3.5rem)] object-contain" : "max-h-[75vh]",
           )}
         />
@@ -155,7 +182,7 @@ export function MediaPlayer({
             onLoadedMetadata={(e) => setDuration(e.currentTarget.duration)}
             onDurationChange={(e) => setDuration(e.currentTarget.duration)}
             onTimeUpdate={(e) => {
-              if (!scrubbing) setCurrent(e.currentTarget.currentTime);
+              if (!scrubbing && e.currentTarget.paused) setCurrent(e.currentTarget.currentTime);
             }}
             onEnded={() => setPlaying(false)}
             className="hidden"
@@ -169,25 +196,17 @@ export function MediaPlayer({
         </>
       )}
 
-      <div
-        className={cn(
-          "flex h-14 items-center gap-3 px-3",
-          isVideo ? "bg-black/85 text-white" : "border-t border-border bg-card text-foreground",
-        )}
-      >
+      <div className="flex h-14 items-center gap-3 border-t border-border bg-card px-3 text-foreground">
         <button
           type="button"
           onClick={toggle}
           aria-label={playing ? "Pause" : "Play"}
-          className={cn(
-            "flex h-9 w-9 shrink-0 cursor-pointer items-center justify-center rounded-full transition-colors",
-            isVideo ? "hover:bg-white/15" : "hover:bg-muted",
-          )}
+          className="flex h-9 w-9 shrink-0 cursor-pointer items-center justify-center rounded-full transition-colors hover:bg-muted"
         >
           {playing ? <Pause className="h-4 w-4" /> : <Play className="h-4 w-4" />}
         </button>
 
-        <span className="shrink-0 text-xs tabular-nums opacity-80">
+        <span className="shrink-0 text-xs tabular-nums text-muted-foreground">
           {formatTime(current)}
         </span>
 
@@ -214,24 +233,23 @@ export function MediaPlayer({
           }}
           className="group/seek flex h-6 min-w-0 flex-1 cursor-pointer items-center"
         >
-          <div
-            className={cn(
-              "relative h-1 w-full rounded-full",
-              isVideo ? "bg-white/25" : "bg-muted",
-            )}
-          >
+          <div className="relative h-1 w-full rounded-full bg-muted">
             <div
               className="absolute inset-y-0 left-0 rounded-full bg-[color:var(--brand-gold)]"
               style={{ width: `${progress}%` }}
             />
+            {/* Always visible, not hover-only. It is the thing that says
+                where in the track you are; hiding it until the pointer
+                arrives means the bar reads as a static rule the rest of the
+                time. */}
             <span
-              className="absolute top-1/2 h-3 w-3 -translate-x-1/2 -translate-y-1/2 rounded-full bg-[color:var(--brand-gold)] opacity-0 transition-opacity group-hover/seek:opacity-100"
+              className="absolute top-1/2 h-3 w-3 -translate-x-1/2 -translate-y-1/2 rounded-full bg-[color:var(--brand-gold)] ring-2 ring-card"
               style={{ left: `${progress}%` }}
             />
           </div>
         </div>
 
-        <span className="shrink-0 text-xs tabular-nums opacity-80">
+        <span className="shrink-0 text-xs tabular-nums text-muted-foreground">
           {formatTime(duration)}
         </span>
 
@@ -245,10 +263,7 @@ export function MediaPlayer({
               setMuted(el.muted);
             }}
             aria-label={muted ? "Unmute" : "Mute"}
-            className={cn(
-              "flex h-9 w-9 cursor-pointer items-center justify-center rounded-full transition-colors",
-              isVideo ? "hover:bg-white/15" : "hover:bg-muted",
-            )}
+            className="flex h-9 w-9 cursor-pointer items-center justify-center rounded-full transition-colors hover:bg-muted"
           >
             {muted || volume === 0 ? (
               <VolumeX className="h-4 w-4" />
@@ -283,7 +298,7 @@ export function MediaPlayer({
               "[&::-webkit-slider-thumb]:rounded-full [&::-webkit-slider-thumb]:bg-[color:var(--brand-gold)]",
               "[&::-moz-range-thumb]:h-3 [&::-moz-range-thumb]:w-3 [&::-moz-range-thumb]:border-0",
               "[&::-moz-range-thumb]:rounded-full [&::-moz-range-thumb]:bg-[color:var(--brand-gold)]",
-              isVideo ? "bg-white/25" : "bg-muted",
+              "bg-muted",
             )}
           />
           {isVideo && (
@@ -291,7 +306,7 @@ export function MediaPlayer({
               type="button"
               onClick={toggleFullscreen}
               aria-label={fullscreen ? "Exit full screen" : "Full screen"}
-              className="flex h-9 w-9 cursor-pointer items-center justify-center rounded-full transition-colors hover:bg-white/15"
+              className="flex h-9 w-9 cursor-pointer items-center justify-center rounded-full transition-colors hover:bg-muted"
             >
               {fullscreen ? <Minimize className="h-4 w-4" /> : <Maximize className="h-4 w-4" />}
             </button>
