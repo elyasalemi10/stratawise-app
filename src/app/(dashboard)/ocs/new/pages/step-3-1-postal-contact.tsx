@@ -11,6 +11,7 @@ import { PhoneInput } from "@/components/shared/phone-input";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import { saveStep, type DraftJson, type DraftLot } from "../actions";
 import { VicAddressAutocomplete, type ParsedAddress } from "@/components/shared/vic-address-autocomplete";
+import { joinAddress, splitAddress } from "@/lib/address-parts";
 import { cn } from "@/lib/utils";
 import { WizardActions } from "./_components/wizard-actions";
 
@@ -441,39 +442,4 @@ export function Step3PostalContact({
       </div>
     </TooltipProvider>
   );
-}
-
-// Best-effort split of a stored address back into parts, so opening the
-// editor on an address typed earlier does not start from blank. Anything it
-// cannot place stays in the street line, which is the field the manager is
-// most likely to correct anyway.
-function splitAddress(stored: string): ParsedAddress {
-  const empty: ParsedAddress = {
-    street_number: "", street_name: "", suburb: "", state: "VIC", postcode: "",
-    formatted: stored,
-  };
-  const text = stored.trim();
-  if (!text) return { ...empty, formatted: "" };
-
-  const parts = text.split(",").map((p) => p.trim()).filter(Boolean);
-  const street = parts[0] ?? "";
-  const tail = parts.slice(1).join(" ");
-  const postcode = tail.match(/\b(\d{4})\b/)?.[1] ?? "";
-  const suburb = tail.replace(/\bVIC\b/i, "").replace(/\b\d{4}\b/, "").trim();
-  const streetMatch = street.match(/^(\S+)\s+(.*)$/);
-
-  return {
-    street_number: streetMatch?.[1] ?? "",
-    street_name: streetMatch?.[2] ?? street,
-    suburb,
-    state: "VIC",
-    postcode,
-    formatted: text,
-  };
-}
-
-function joinAddress(p: ParsedAddress): string {
-  const street = `${p.street_number} ${p.street_name}`.replace(/\s+/g, " ").trim();
-  const tail = `${p.suburb} ${p.postcode}`.replace(/\s+/g, " ").trim();
-  return [street, tail].filter(Boolean).join(", ");
 }

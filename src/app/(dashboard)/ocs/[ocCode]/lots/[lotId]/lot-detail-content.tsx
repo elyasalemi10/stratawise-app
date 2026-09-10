@@ -9,7 +9,6 @@ import {
 } from "lucide-react";
 import { useSetBreadcrumb } from "@/lib/breadcrumb-context";
 import { Button } from "@/components/ui/button";
-import { Badge } from "@/components/ui/badge";
 import { invalidateCached, refetchCached } from "@/lib/use-cached-data";
 import { replaceUrlIfOn } from "@/lib/replace-url";
 import { cn } from "@/lib/utils";
@@ -24,7 +23,7 @@ import { LotLeviesTab } from "./tabs/lot-levies-tab";
 import { DocumentManager } from "@/components/shared/document-manager";
 import { SettlementDialog } from "./settlement-dialog";
 import { InviteDialog } from "../../manage/invite-dialog";
-import { InviteConfirmDialog } from "./invite-confirm-dialog";
+import { InviteStatusPopover } from "../invite-status-popover";
 import { LotOverviewTab } from "./tabs/lot-overview-tab";
 import { LotOwnerTab } from "./tabs/lot-owner-tab";
 import { LotCommunicationsTab } from "./tabs/lot-communications-tab";
@@ -34,7 +33,6 @@ import type { DocumentRecord } from "@/lib/validations/documents";
 import type { OwnershipHistoryEntry } from "@/lib/validations/settlement";
 import type { LotOwnerInfo } from "@/lib/actions/lot-ownership";
 import type {
-  NextLevyDue,
   LotActivityEntry,
   PortalActivity,
 } from "@/lib/actions/lot-overview";
@@ -60,7 +58,6 @@ interface LotDetailContentProps {
   inviteStatus: "not_invited" | "pending" | "accepted";
   lotOwnerExtra: LotOwnerExtra | null;
   lastPaymentAt: string | null;
-  nextLevy: NextLevyDue | null;
   lotAddress: string | null;
   activity: LotActivityEntry[];
   portalActivity: PortalActivity;
@@ -84,23 +81,6 @@ type TabValue = typeof TABS[number]["value"];
 
 const formatCurrency = (n: number) =>
   new Intl.NumberFormat("en-AU", { style: "currency", currency: "AUD" }).format(Math.abs(n));
-
-const ORDINAL_SUFFIX = (day: number): string => {
-  if (day >= 11 && day <= 13) return "th";
-  switch (day % 10) {
-    case 1: return "st";
-    case 2: return "nd";
-    case 3: return "rd";
-    default: return "th";
-  }
-};
-
-function formatOrdinalDate(iso: string | null | undefined): string | null {
-  if (!iso) return null;
-  const d = new Date(iso);
-  if (Number.isNaN(d.getTime())) return null;
-  return `${d.getDate()}${ORDINAL_SUFFIX(d.getDate())} ${d.toLocaleDateString("en-AU", { month: "long" })} ${d.getFullYear()}`;
-}
 
 function formatRelative(iso: string | null | undefined): string | null {
   if (!iso) return null;
@@ -126,7 +106,6 @@ export function LotDetailContent({
   inviteStatus,
   lotOwnerExtra,
   lastPaymentAt,
-  nextLevy,
   lotAddress,
   activity,
   portalActivity,
@@ -168,10 +147,11 @@ export function LotDetailContent({
     searchParams.get("settlement") === "open",
   );
   const [addOwnerOpen, setAddOwnerOpen] = useState(false);
-  // Separate state for the "Invite owner" confirm , the owner already
-  // exists, we're just confirming the email and firing the invite.
-  // "Edit owner details" inside the confirm flips us to addOwnerOpen.
-  const [inviteConfirmOpen, setInviteConfirmOpen] = useState(false);
+  // "Invite owner" in More actions opens the SAME dialog the status pill on
+  // the Owner tab opens, driven from here. There used to be a second,
+  // older confirm dialog for this one entry point, so the app had two
+  // invite screens that could disagree about what it had already sent.
+  const [inviteOpen, setInviteOpen] = useState(false);
   // When the manager picks "Send email" / "Send SMS" from More actions on
   // any tab, we jump to Communications and tell that tab to auto-open
   // the corresponding compose drawer. The tab clears this back to null
@@ -239,26 +219,6 @@ export function LotDetailContent({
                 {lot.unit_number ? ` · Unit ${lot.unit_number}` : ""}
                 {headerOwnerSuffix}
               </h1>
-              {/* Where this owner stands. It was only discoverable by
-                  opening the Owner tab, so "have they accepted their
-                  invite" , the question a manager chasing one asks , cost
-                  a click from the page that is otherwise about them. */}
-              <div className="mt-2 flex flex-wrap items-center gap-2">
-                {!owner.owner_display_name ? (
-                  <Badge variant="neutral">No owner recorded</Badge>
-                ) : inviteStatus === "accepted" ? (
-                  <Badge variant="success">On the portal</Badge>
-                ) : inviteStatus === "pending" ? (
-                  <Badge variant="info">Invited</Badge>
-                ) : (
-                  <Badge variant="warning">Not invited</Badge>
-                )}
-                {owner.owner_contact_email && (
-                  <span className="text-sm text-muted-foreground">
-                    {owner.owner_contact_email}
-                  </span>
-                )}
-              </div>
             </div>
             <div className="flex shrink-0 items-center gap-2">
             <DropdownMenu>
@@ -288,7 +248,7 @@ export function LotDetailContent({
                   // Owner exists but no portal account yet (or even if they
                   // do , resending an invite is idempotent server-side).
                   !portalActive && (
-                    <DropdownMenuItem onClick={() => setInviteConfirmOpen(true)}>
+                    <DropdownMenuItem onClick={() => setInviteOpen(true)}>
                       <UserPlus className="mr-2 h-4 w-4" />
                       Invite owner
                     </DropdownMenuItem>
@@ -330,32 +290,14 @@ export function LotDetailContent({
                 <span className="text-sm text-muted-foreground">All settled</span>
               )}
             </div>
-            <div className="inline-flex items-baseline gap-2">
-              {lastPaymentRelative ? (
-                <>
-                  <span className="text-muted-foreground">Last payment:</span>
-                  <span className="text-lg font-semibold text-foreground">
-                    {lastPaymentRelative}
-                  </span>
-                </>
-              ) : (
-                <span className="text-lg font-semibold text-muted-foreground">
-                  No payments yet
-                </span>
-              )}
-            </div>
-            {/* One date and one figure. It had a card of its own on the
-                Overview tab, a click away from the balance it belongs next
-                to, and said nothing when there was no levy , which is a
-                card's worth of page for a sentence saying nothing. */}
-            {nextLevy && (
+            {/* Only when there has been one. "No payments yet" was a whole
+                headline figure spent saying nothing, next to a balance that
+                already says the lot owes everything it has been charged. */}
+            {lastPaymentRelative && (
               <div className="inline-flex items-baseline gap-2">
-                <span className="text-muted-foreground">Next levy:</span>
-                <span className="text-lg font-semibold tabular-nums text-foreground">
-                  {formatCurrency(nextLevy.amount)}
-                </span>
-                <span className="text-sm text-muted-foreground">
-                  due {formatOrdinalDate(nextLevy.due_date)}
+                <span className="text-muted-foreground">Last payment:</span>
+                <span className="text-lg font-semibold text-foreground">
+                  {lastPaymentRelative}
                 </span>
               </div>
             )}
@@ -374,7 +316,7 @@ export function LotDetailContent({
             <TabsTrigger
               key={tab.value}
               value={tab.value}
-              className="relative h-11 min-w-[6.5rem] rounded-none border-0 px-4 text-sm font-medium text-muted-foreground bg-transparent transition-colors hover:text-foreground hover:bg-transparent data-active:bg-transparent data-active:text-foreground group-data-horizontal/tabs:after:inset-x-2 group-data-horizontal/tabs:after:bottom-0 group-data-horizontal/tabs:after:h-0.5 data-active:after:bg-[color:var(--brand-gold)] data-active:after:rounded-full"
+              className="relative h-11 min-w-[6.5rem] rounded-none border-0 px-4 text-sm font-medium text-muted-foreground bg-transparent transition-colors hover:text-foreground hover:bg-transparent data-active:bg-transparent data-active:text-foreground group-data-horizontal/tabs:after:inset-x-0 group-data-horizontal/tabs:after:bottom-0 group-data-horizontal/tabs:after:h-0.5 data-active:after:bg-[color:var(--brand-gold)]"
             >
               {tab.label}
             </TabsTrigger>
@@ -386,7 +328,6 @@ export function LotDetailContent({
           ones so per-tab state (ledger filters, etc.) survives switching. */}
       <div className={activeTab === "overview" ? "" : "hidden"}>
         <LotOverviewTab
-          activity={activity}
           lotDetails={{
             id: lot.id,
             lot_number: Number(lot.lot_number),
@@ -442,6 +383,7 @@ export function LotDetailContent({
           onPendingActionHandled={() => setPendingCommAction(null)}
           initialSenderEmailAddress={initialSenderEmailAddress ?? null}
           initialSmsSenderId={initialSmsSenderId ?? null}
+          activity={activity}
         />
       </div>
 
@@ -471,17 +413,22 @@ export function LotDetailContent({
         prefillPhone={owner.owner_contact_phone ?? undefined}
       />
 
-      <InviteConfirmDialog
-        open={inviteConfirmOpen}
-        onClose={() => setInviteConfirmOpen(false)}
+      <InviteStatusPopover
+        showPill={false}
+        open={inviteOpen}
+        onOpenChange={setInviteOpen}
         ocId={ocId}
         lotId={lot.id}
         lotNumber={Number(lot.lot_number)}
+        status={inviteStatus}
         ownerName={owner.owner_display_name ?? null}
         ownerEmail={owner.owner_contact_email ?? null}
         ownerPhone={owner.owner_contact_phone ?? null}
-        onEditDetails={() => setAddOwnerOpen(true)}
-        onSent={() => refreshLot()}
+        onInviteChanged={() => {
+          invalidateCached(`lot:${lot.id}`);
+          invalidateCached(`lots:${ocId}`);
+          refreshLot();
+        }}
       />
     </div>
   );

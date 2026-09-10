@@ -1,6 +1,7 @@
 "use client";
 
 import * as React from "react";
+import { toast } from "sonner";
 import { refetchCached } from "@/lib/use-cached-data";
 import { Button } from "@/components/ui/button";
 import { InviteStatusPopover } from "../../invite-status-popover";
@@ -12,6 +13,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { PhoneInput } from "@/components/shared/phone-input";
 import { EmptyState } from "@/components/shared/empty-state";
+import { AddressField } from "@/components/shared/address-field";
 import {
 } from "@/components/ui/select";
 import {
@@ -249,12 +251,21 @@ export function LotOwnerTab(props: Props) {
               save={(v) => saveField({ phone: v || null })}
             />
             <OwnerReadonly label="Payment reference" value={paymentReference ?? ""} mono />
+            {/* The one field that is five fields. A single free-text box
+                is impossible to check: a suburb typed into the street line
+                still looks like an address and nothing downstream can tell.
+                Touching it opens the parts, the same bargain the OC
+                creation wizard makes on its owner table. */}
             <div className="sm:col-span-2">
-              <OwnerField
+              <AddressField
                 label="Service address"
                 value={view.postal}
-                onSaved={(v) => setView((x) => ({ ...x, postal: v }))}
-                save={(v) => saveField({ postal_address: v || null })}
+                onChange={(v) => setView((x) => ({ ...x, postal: v }))}
+                onCommit={async (v) => {
+                  const res = await saveField({ postal_address: v || null });
+                  if (res.error) toast.error(res.error);
+                  else toast.success("Service address saved");
+                }}
               />
             </div>
           </div>

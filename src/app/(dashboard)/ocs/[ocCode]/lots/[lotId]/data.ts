@@ -12,7 +12,6 @@ import {
   getSmsSenderId,
 } from "@/lib/actions/manager-username";
 import {
-  getNextLevyDue,
   getLotActivity,
   getPortalActivity,
 } from "@/lib/actions/lot-overview";
@@ -52,7 +51,6 @@ export interface LotDetailPageData {
   inviteStatus: "not_invited" | "pending" | "accepted";
   lotOwnerExtra: LotOwnerExtra | null;
   lastPaymentAt: string | null;
-  nextLevy: Awaited<ReturnType<typeof getNextLevyDue>>;
   lotAddress: string | null;
   activity: Awaited<ReturnType<typeof getLotActivity>>;
   portalActivity: Awaited<ReturnType<typeof getPortalActivity>>;
@@ -93,7 +91,6 @@ export async function getLotDetailPageData(
     owner,
     ownershipHistory,
     inviteStatusMap,
-    nextLevy,
     activity,
     portalActivity,
     communications,
@@ -153,7 +150,6 @@ export async function getLotDetailPageData(
     // getLotOwners hard-codes that field to null on the path every owner
     // with an ownership actually takes.
     getLotInvitationStatus(ocId, [lotId]),
-    getNextLevyDue(lotId),
     getLotActivity(lotId, 50),
     getPortalActivity(lotId),
     listLotCommunications(lotId),
@@ -173,7 +169,6 @@ export async function getLotDetailPageData(
       ownershipHistory: [],
       lotOwnerExtra: null,
       lastPaymentAt: null,
-      nextLevy: null,
       lotAddress: null,
       activity: [],
       portalActivity: [],
@@ -221,7 +216,6 @@ export async function getLotDetailPageData(
         }
       : null,
     lastPaymentAt: lastPaymentRow?.payment_date ?? null,
-    nextLevy,
     lotAddress: oc?.address
       ? `${lot.unit_number ? `Unit ${lot.unit_number} / ` : ""}${oc.address}`
       : null,

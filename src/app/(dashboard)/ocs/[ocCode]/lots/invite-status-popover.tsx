@@ -47,6 +47,13 @@ interface Props {
   /** Fires the moment the send succeeds, so the parent can flip the pill
    *  to "Invited" before the status re-fetch comes back. */
   onInviteChanged?: (sentTo: string) => void;
+  /** Drive it from somewhere else, e.g. a More-actions menu item. The lot
+   *  page used to have a second, older invite dialog for exactly that, which
+   *  meant two invite screens that could drift apart and did. */
+  open?: boolean;
+  onOpenChange?: (open: boolean) => void;
+  /** Render the status pill. Off when the caller supplies its own way in. */
+  showPill?: boolean;
 }
 
 interface Invitation {
@@ -111,9 +118,14 @@ export function InviteStatusPopover({
   ownerEmail,
   ownerPhone,
   onInviteChanged,
+  open: controlledOpen,
+  onOpenChange,
+  showPill = true,
 }: Props) {
   const router = useRouter();
-  const [open, setOpen] = useState(false);
+  const [uncontrolledOpen, setUncontrolledOpen] = useState(false);
+  const open = controlledOpen ?? uncontrolledOpen;
+  const setOpen = onOpenChange ?? setUncontrolledOpen;
   const [history, setHistory] = useState<Invitation[] | null>(null);
 
   // Kick off the history fetch in the background as soon as the
@@ -165,6 +177,7 @@ export function InviteStatusPopover({
 
   return (
     <>
+      {showPill && (
       <button
         type="button"
         onClick={(e) => {
@@ -185,6 +198,7 @@ export function InviteStatusPopover({
           {PILL[status].label}
         </Badge>
       </button>
+      )}
 
       <Dialog open={open} onOpenChange={setOpen}>
         <DialogContent

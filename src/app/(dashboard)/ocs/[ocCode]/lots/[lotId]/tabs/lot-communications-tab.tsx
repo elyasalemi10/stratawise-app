@@ -56,6 +56,8 @@ import {
   sendLotEmail,
   type LotCommunicationRow,
 } from "@/lib/actions/lot-communications";
+import type { LotActivityEntry } from "@/lib/actions/lot-overview";
+import { LotActivityLog } from "./lot-activity-log";
 import {
   getManagerSendAddress,
   getSmsSenderId,
@@ -84,6 +86,10 @@ interface Props {
   // instead of doing their own client-side fetch.
   initialSenderEmailAddress?: string | null;
   initialSmsSenderId?: string | null;
+  /** The lot's audit log, under the correspondence. Both are records of
+   *  what happened to this lot; kept on separate tabs you had to put them
+   *  back in order by timestamp yourself. */
+  activity: LotActivityEntry[];
 }
 
 type DrawerName = null | "email" | "sms" | "call";
@@ -101,6 +107,7 @@ export function LotCommunicationsTab(props: Props) {
     onPendingActionHandled,
     initialSenderEmailAddress,
     initialSmsSenderId,
+    activity,
   } = props;
   const [open, setOpen] = React.useState<DrawerName>(null);
 
@@ -161,6 +168,8 @@ export function LotCommunicationsTab(props: Props) {
           />
         </CardContent>
       </Card>
+
+      <LotActivityLog activity={activity} />
 
       {/* Drawers , only the open one mounts. Mount/unmount on `open` so each
           drawer's local state resets between uses. */}

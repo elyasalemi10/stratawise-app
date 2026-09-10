@@ -6,10 +6,8 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { EditSheet } from "@/components/shared/edit-sheet";
 import { Hash } from "lucide-react";
-import type { LotActivityEntry } from "@/lib/actions/lot-overview";
-import { LotActivityLog } from "./lot-activity-log";
 
-// Overview: what is true of the LOT, and everything that has happened to it.
+// Overview: what is true of the LOT.
 //
 // It used to carry four cards, and three of them were saying something the
 // page had already said. "Snapshot" listed the owner's name, which is in the
@@ -22,7 +20,10 @@ import { LotActivityLog } from "./lot-activity-log";
 // better labels , two surfaces reading one table, and the good one was the
 // one behind an extra click.
 //
-// So: the lot's own fields, then its history in full, and one tab fewer.
+// The history moved on again, to Communications. Everything on that tab is
+// already a record of what happened to this lot and who was told; the audit
+// log is the same story with the manager's own edits in it, and reading them
+// as two lists a tab apart meant reconstructing the order by timestamp.
 
 interface LotDetailsInput {
   id: string;
@@ -33,19 +34,13 @@ interface LotDetailsInput {
 }
 
 interface Props {
-  activity: LotActivityEntry[];
   lotDetails: LotDetailsInput;
   onLotDetailsSaved: () => void;
 }
 
-export function LotOverviewTab({
-  activity,
-  lotDetails,
-  onLotDetailsSaved,
-}: Props) {
+export function LotOverviewTab({ lotDetails, onLotDetailsSaved }: Props) {
   return (
     <div className="space-y-6">
-      {/* Lot details ------------------------------------------------------ */}
       <Card>
         <CardContent className="pt-5">
           <div className="flex items-start justify-between gap-3 mb-3">
@@ -77,8 +72,6 @@ export function LotOverviewTab({
           </dl>
         </CardContent>
       </Card>
-
-      <LotActivityLog activity={activity} />
     </div>
   );
 }

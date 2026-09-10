@@ -29,7 +29,13 @@ const tabsListVariants = cva(
     variants: {
       variant: {
         default: "bg-muted",
-        line: "gap-1 bg-transparent",
+        // A navy rule the full width of the strip, with the active tab's
+        // gold marker sitting on top of it. Without the rule the tabs
+        // floated: nothing said where the strip ended and the page began,
+        // and the gold underline read as a stray mark rather than as the
+        // lit segment of a bar.
+        line:
+          "relative gap-1 bg-transparent after:absolute after:inset-x-0 after:bottom-0 after:h-0.5 after:bg-primary",
       },
     },
     defaultVariants: {
