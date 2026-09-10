@@ -6,6 +6,7 @@ import { useRender } from "@base-ui/react/use-render"
 import { cva, type VariantProps } from "class-variance-authority"
 
 import { useIsMobile } from "@/hooks/use-mobile"
+import { useHydrated } from "@/lib/use-hydrated"
 import { cn } from "@/lib/utils"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -511,19 +512,26 @@ function SidebarMenuButton({
   } & VariantProps<typeof sidebarMenuButtonVariants>) {
   const { isMobile, state } = useSidebar()
 
-  // A tooltip only exists when the rail is collapsed to icons. It used to be
-  // mounted on every row regardless and simply told to stay hidden, which
-  // cost a Base UI Tooltip per sidebar item on every page, and each of those
-  // calls useId to wire aria-describedby. Those ids are derived from the
-  // position in the React tree, so any difference between the server render
-  // and the client one shows up as a hydration mismatch on every row at
-  // once, which is exactly what it was doing.
+  // A tooltip only exists when the rail is collapsed to icons, and never
+  // before hydration has finished.
   //
-  // `state` comes from a cookie read on the server and handed to the
-  // provider, and isMobile is false on both first renders, so this condition
-  // agrees across hydration. Collapsing the rail afterwards mounts the
-  // tooltips client-side, where there is nothing to mismatch against.
-  const wantsTooltip = Boolean(tooltip) && state === "collapsed" && !isMobile
+  // Two separate problems, one gate. It used to mount a Base UI Tooltip on
+  // every row of every page and simply tell it to stay hidden, and each of
+  // those calls useId to wire aria-describedby. Those ids come from the
+  // element's position in the React tree, so the smallest disagreement
+  // between the server render and the client one surfaced as a hydration
+  // mismatch on every row at once.
+  //
+  // Gating on `state` alone was not enough: it is only as reliable as the
+  // cookie the server read agreeing with what the provider holds a moment
+  // later, and when they disagreed the server rendered no trigger and the
+  // client rendered one, which is the same warning wearing a different hat.
+  // `useHydrated` is false on the server AND for the whole of hydration, so
+  // both sides render the same thing by construction. The tooltips arrive a
+  // frame later, which is invisible for something that only shows on hover.
+  const hydrated = useHydrated()
+  const wantsTooltip =
+    Boolean(tooltip) && hydrated && state === "collapsed" && !isMobile
 
   const comp = useRender({
     defaultTagName: "button",
