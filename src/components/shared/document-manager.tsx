@@ -142,6 +142,27 @@ export function DocumentManager({ ocId, lotId, initialDocuments, readOnly }: Doc
   const tagsRef = useRef(tags);
   tagsRef.current = tags;
 
+  // What has been ticked and unticked on each document since its picker
+  // opened, flushed to one toast when it closes.
+  const pendingTagToast = useRef<Map<string, { added: string[]; removed: string[] }>>(
+    new Map(),
+  );
+
+  const flushTagToast = useCallback((documentId: string) => {
+    const bucket = pendingTagToast.current.get(documentId);
+    if (!bucket) return;
+    pendingTagToast.current.delete(documentId);
+    const { added, removed } = bucket;
+    if (added.length === 0 && removed.length === 0) return;
+    if (added.length === 1 && removed.length === 0) {
+      toast.success(`Tagged ${added[0]}`);
+    } else if (removed.length === 1 && added.length === 0) {
+      toast.success(`Removed ${removed[0]}`);
+    } else {
+      toast.success("Tags updated");
+    }
+  }, []);
+
   // The firm's tag vocabulary, fetched once. Seeding happens server-side on
   // first read, so a new company opens this page with something in the list.
   useEffect(() => {
@@ -379,8 +400,14 @@ export function DocumentManager({ ocId, lotId, initialDocuments, readOnly }: Doc
     );
     const res = await setDocumentTags(ocId, documentId, nextTags.map((t) => t.id));
     if (!res.error) {
+      // Banked, not announced. Reported once when the picker closes, because
+      // filing a document is usually two or three tags in a row and three
+      // toasts stacking up while you are still ticking is noise about
+      // something you can already see happening on the card.
       const tag = tagsRef.current.find((t) => t.id === tagId);
-      toast.success(has ? `Removed ${tag?.name ?? "tag"}` : `Tagged ${tag?.name ?? ""}`.trim());
+      const bucket = pendingTagToast.current.get(documentId) ?? { added: [], removed: [] };
+      (has ? bucket.removed : bucket.added).push(tag?.name ?? "tag");
+      pendingTagToast.current.set(documentId, bucket);
     }
     if (res.error) {
       toast.error(res.error);
@@ -836,6 +863,7 @@ export function DocumentManager({ ocId, lotId, initialDocuments, readOnly }: Doc
               onDescriptionCommit={saveDescription}
               onToggleTag={toggleDocTag}
               onCreateTag={createTag}
+              onTagsClosed={flushTagToast}
             />
           ))}
         </div>

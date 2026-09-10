@@ -240,12 +240,17 @@ export function TagField({
   readOnly,
   onToggle,
   onCreate,
+  onClosed,
 }: {
   tags: DocumentTag[];
   allTags: DocumentTag[];
   readOnly?: boolean;
   onToggle: (tagId: string) => void;
   onCreate: (name: string, colour: TagColour) => Promise<DocumentTag | null>;
+  /** Fired when the picker shuts. Filing a document usually means two or
+   *  three tags at once, and a toast per tick is three toasts for one act;
+   *  the caller reports the whole thing here instead. */
+  onClosed?: () => void;
 }) {
   const [open, setOpen] = React.useState(false);
 
@@ -285,7 +290,10 @@ export function TagField({
       onToggle={onToggle}
       onCreate={onCreate}
       open={open}
-      onOpenChange={setOpen}
+      onOpenChange={(next) => {
+        setOpen(next);
+        if (!next) onClosed?.();
+      }}
       triggerClassName={shell}
       triggerChildren={contents}
     />

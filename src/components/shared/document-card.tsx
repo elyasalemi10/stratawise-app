@@ -11,6 +11,10 @@ import {
   fileTypeLabel,
 } from "@/components/shared/file-type-illustration";
 import { TAG_FIELD_SHELL, TagField } from "@/components/shared/tag-picker";
+import {
+  CARD_CHROME,
+  CARD_FOOTER,
+} from "@/components/shared/document-card-skeleton";
 import { relativeDate } from "@/lib/relative-date";
 import { cn } from "@/lib/utils";
 import type { DocumentTag, TagColour } from "@/lib/document-tags-shared";
@@ -73,6 +77,7 @@ function DocumentCardInner({
   onDescriptionCommit,
   onToggleTag,
   onCreateTag,
+  onTagsClosed,
 }: {
   doc: DocumentCardDoc;
   thumbnailUrl: string;
@@ -92,6 +97,8 @@ function DocumentCardInner({
   onDescriptionCommit: (id: string, value: string) => void;
   onToggleTag: (id: string, tagId: string) => void;
   onCreateTag: (name: string, colour: TagColour) => Promise<DocumentTag | null>;
+  /** The tag picker has shut. Whatever was ticked gets reported once. */
+  onTagsClosed: (id: string) => void;
 }) {
   const [description, setDescription] = React.useState(doc.description ?? "");
   // The preview is hidden until it has fully decoded. A photo that paints
@@ -116,10 +123,10 @@ function DocumentCardInner({
         selected ? "border-primary ring-1 ring-primary" : "border-border hover:border-primary/40",
       )}
     >
-      {/* Chrome strip. No bottom padding: the preview sits directly under
-          it, and the strip's own height is what separates them. */}
+      {/* Chrome strip, at a fixed height so nothing inside it can decide
+          how tall the card's top is. */}
       <div
-        className="relative flex shrink-0 items-center justify-between px-2 pt-2"
+        className={cn(CARD_CHROME, "justify-between")}
         onClick={selectionActive && !readOnly ? () => onToggleSelect(doc.id) : undefined}
       >
         {!readOnly ? (
@@ -234,7 +241,7 @@ function DocumentCardInner({
       {/* flex-1 is load-bearing: it is what takes up the slack when the grid
           stretches this card to match a taller neighbour, so the tag row is
           flush with the bottom on every card in the row. */}
-      <div className="flex flex-1 flex-col gap-2 border-t border-border p-2">
+      <div className={CARD_FOOTER}>
         <AutoGrowTextarea
           value={description}
           onChange={setDescription}
@@ -250,6 +257,7 @@ function DocumentCardInner({
           allTags={allTags}
           readOnly={readOnly}
           onToggle={(tagId) => onToggleTag(doc.id, tagId)}
+          onClosed={() => onTagsClosed(doc.id)}
           onCreate={onCreateTag}
         />
       </div>
@@ -273,7 +281,7 @@ export function DocumentUploadCard({
       {/* The same strip a finished card has, carrying today's date. The
           card is about to become one, and a blank white band that fills in
           a second later is a layout the eye has to re-read. */}
-      <div className="flex shrink-0 items-center justify-end px-2 pt-2">
+      <div className={cn(CARD_CHROME, "justify-end")}>
         <span className="text-[11px] font-medium text-muted-foreground">Just now</span>
       </div>
       <div className={cn(PREVIEW_SHAPE, "bg-muted/40")}>
@@ -297,10 +305,7 @@ export function DocumentUploadCard({
           copy: the note box came out a couple of pixels off, which is what
           made a finished upload nudge its whole grid row down. A real
           textarea and the real tag strip cannot be a couple of pixels off. */}
-      <div
-        aria-hidden
-        className="flex flex-1 flex-col gap-2 border-t border-border p-2"
-      >
+      <div aria-hidden className={CARD_FOOTER}>
         <AutoGrowTextarea
           value=""
           onChange={() => {}}
