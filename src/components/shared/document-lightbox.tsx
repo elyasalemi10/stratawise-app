@@ -2,10 +2,15 @@
 
 import * as React from "react";
 import { createPortal } from "react-dom";
-import { ChevronLeft, ChevronRight } from "lucide-react";
+import { ChevronLeft, ChevronRight, Download } from "lucide-react";
 import { useScrimSlot } from "@/components/ui/use-scrim-stack";
 import { BrandLoader } from "@/components/shared/brand-mark";
-import { FileTypeIllustration } from "@/components/shared/file-type-illustration";
+import {
+  FileTypeIllustration,
+  fileKindFor,
+  fileTypeLabel,
+} from "@/components/shared/file-type-illustration";
+import { MediaPlayer } from "@/components/shared/media-player";
 
 // Full-screen document viewer.
 //
@@ -22,11 +27,14 @@ import { FileTypeIllustration } from "@/components/shared/file-type-illustration
 export interface LightboxItem {
   id: string;
   url: string;
+  /** Hands back the original file. The view URL serves a rendition. */
+  downloadUrl: string;
+  fileName: string;
   mimeType: string | null;
   pdfReady?: boolean;
 }
 
-function PdfPages({ url }: { url: string }) {
+function PdfPages({ url, onFailed }: { url: string; onFailed: React.ReactNode }) {
   const hostRef = React.useRef<HTMLDivElement>(null);
   const [status, setStatus] = React.useState<"loading" | "ready" | "failed">("loading");
 
@@ -97,17 +105,46 @@ function PdfPages({ url }: { url: string }) {
   return (
     <>
       {status === "loading" && <BrandLoader className="py-24" size="h-12 w-12" />}
-      {status === "failed" && (
-        <p className="py-24 text-center text-sm text-white/70">
-          This one can&apos;t be shown here. Download it to open it.
-        </p>
-      )}
+      {status === "failed" && onFailed}
       <div
         ref={hostRef}
         onClick={(e) => e.stopPropagation()}
         className={`flex w-full flex-col items-center gap-4 ${status === "ready" ? "" : "hidden"}`}
       />
     </>
+  );
+}
+
+/** Nothing to render, so: what it is, and the one thing you can do with it.
+ *
+ *  It used to be a sentence, "There's no preview for this file type,
+ *  download it to open it", which named the app's limitation and then told
+ *  the reader to go and find the control themselves. The control is here. */
+function NoPreview({ item }: { item: LightboxItem }) {
+  const label = fileTypeLabel(item.mimeType, item.fileName);
+  return (
+    <div
+      onClick={(e) => e.stopPropagation()}
+      className="mx-auto flex max-w-sm flex-col items-center gap-4 rounded-lg bg-card p-8 text-center"
+    >
+      <FileTypeIllustration
+        kind={fileKindFor(item.mimeType, item.fileName)}
+        className="h-24 w-24"
+      />
+      {label && (
+        <span className="text-sm font-medium tracking-wide text-muted-foreground">
+          {label}
+        </span>
+      )}
+      <a
+        href={item.downloadUrl}
+        download
+        className="inline-flex h-9 cursor-pointer items-center justify-center gap-2 rounded-md bg-primary px-4 text-sm font-medium text-primary-foreground transition-colors hover:bg-primary/90"
+      >
+        <Download className="h-3.5 w-3.5" />
+        Download
+      </a>
+    </div>
   );
 }
 
@@ -237,38 +274,18 @@ export function DocumentLightbox({
           <div key={current.id} className="animate-in fade-in duration-150">
           {isImage ? (
             <ImagePage url={current.url} />
-          ) : isVideo ? (
-            // Native controls on purpose. A custom transport would be a
-            // scrubber, a volume slider and a fullscreen button to build and
-            // then keep working on every browser, for a defect clip someone
-            // watches once.
-            <video
+          ) : isVideo || isAudio ? (
+            <MediaPlayer
               key={current.id}
               src={current.url}
-              controls
+              kind={isVideo ? "video" : "audio"}
               autoPlay
-              onClick={(e) => e.stopPropagation()}
-              className="mx-auto max-h-[85vh] w-full rounded-sm bg-black shadow-lg"
+              className={isAudio ? "max-w-lg shadow-lg" : "shadow-lg"}
             />
-          ) : isAudio ? (
-            <div
-              onClick={(e) => e.stopPropagation()}
-              className="mx-auto flex max-w-lg flex-col items-center gap-4 rounded-lg bg-card p-8"
-            >
-              <FileTypeIllustration kind="audio" className="h-24 w-24" />
-              <audio key={current.id} src={current.url} controls autoPlay className="w-full" />
-            </div>
           ) : isPdf ? (
-            <PdfPages url={current.url} />
+            <PdfPages url={current.url} onFailed={<NoPreview item={current} />} />
           ) : (
-            <div
-              onClick={(e) => e.stopPropagation()}
-              className="mx-auto max-w-sm rounded-lg bg-card p-8 text-center"
-            >
-              <p className="text-sm text-muted-foreground">
-                There&apos;s no preview for this file type. Download it to open it.
-              </p>
-            </div>
+            <NoPreview item={current} />
           )}
           </div>
         </div>

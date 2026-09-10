@@ -129,10 +129,11 @@ export function TagPicker({
         )}
       </PopoverTrigger>
       <PopoverContent
-        // As wide as the control it opened from. A 256px popup under a
-        // full-width field looks like it belongs to something else.
+        // As wide as the control it opened from, to the pixel. A 224px popup
+        // under a 348px field looks like it belongs to something else, and a
+        // min-width would put the floor back.
         matchTriggerWidth
-        className="w-full min-w-56 p-0"
+        className="p-0"
         align="start"
         showBackdrop={false}
         onClick={(e) => e.stopPropagation()}

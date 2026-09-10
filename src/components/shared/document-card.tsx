@@ -5,7 +5,11 @@ import { Download, Loader2, Trash2, X } from "lucide-react";
 import { Checkbox } from "@/components/ui/checkbox";
 import { AutoGrowTextarea } from "@/components/shared/auto-grow-textarea";
 import { BrandLoader } from "@/components/shared/brand-mark";
-import { FileTypeIllustration, fileKindFor } from "@/components/shared/file-type-illustration";
+import {
+  FileTypeIllustration,
+  fileKindFor,
+  fileTypeLabel,
+} from "@/components/shared/file-type-illustration";
 import { TagField } from "@/components/shared/tag-picker";
 import { relativeDate } from "@/lib/relative-date";
 import { cn } from "@/lib/utils";
@@ -24,14 +28,17 @@ import type { DocumentTag, TagColour } from "@/lib/document-tags-shared";
 // still on the row as original_filename. What replaces it is the manager's
 // note and their tags, which are the things that make a document findable.
 
-/** The preview is square, and the card is however tall that makes it.
+/** The CARD is square, not the preview inside it.
  *
- *  A fixed card height was wrong: the grid's columns are fluid, so at a
- *  narrower window three columns gave 273px-wide cards against a 392px
- *  height, and every preview was a tall rectangle. An aspect ratio holds
- *  the shape at any width, and since every column is the same width every
- *  card is still exactly as tall as its neighbours. */
-const PREVIEW_SHAPE = "aspect-square";
+ *  Making the preview square left the card a tall rectangle: the chrome
+ *  strip and the two-control footer are another 130-odd pixels on top of a
+ *  full card's width. So the square is the outside, and the preview takes
+ *  whatever height is left over, which is also what makes a growing note
+ *  box safe: it eats into the preview instead of the card.
+ *
+ *  Every column is the same width, so every card is exactly as tall as its
+ *  neighbours at any window size. */
+const CARD_SHAPE = "aspect-square";
 
 export interface DocumentCardDoc {
   id: string;
@@ -87,11 +94,13 @@ export function DocumentCard({
   // the page no longer downloads twelve whole documents to show twelve
   // pictures.
   const hasThumbnail = Boolean(doc.thumbnail_storage_key);
+  const typeLabel = fileTypeLabel(doc.mime_type, doc.file_name);
   const tags = doc.tags ?? [];
 
   return (
     <div
       className={cn(
+        CARD_SHAPE,
         "group flex flex-col overflow-hidden rounded-lg border bg-card transition-colors",
         selected ? "border-primary ring-1 ring-primary" : "border-border hover:border-primary/40",
       )}
@@ -158,7 +167,7 @@ export function DocumentCard({
       <button
         type="button"
         onClick={selectionActive && !readOnly ? onToggleSelect : onOpen}
-        className={cn(PREVIEW_SHAPE, "relative block w-full cursor-pointer overflow-hidden bg-muted")}
+        className="relative block min-h-0 w-full flex-1 cursor-pointer overflow-hidden bg-muted"
         aria-label={
           selectionActive && !readOnly
             ? `${selected ? "Deselect" : "Select"} ${doc.file_name}`
@@ -185,26 +194,31 @@ export function DocumentCard({
             />
           </>
         ) : (
-          // No page to show. A drawing of what the file IS, not a grey
-          // plate reading "DOCX": an extension tells you what opens a file,
-          // not what it is, and a grid of them reads as a list of errors.
+          // No page to show. The drawing says what kind of thing it is at a
+          // glance; the caption says WHICH one, because "spreadsheet" does
+          // not distinguish the CSV bank export from the XLSX budget and the
+          // manager thinks of them by exactly that difference.
           //
-          // And no promise. This used to say "Getting this one ready" while
-          // a conversion was pending, which is hope, not information: if it
-          // failed the card kept saying it, and clicking through opened a
-          // viewer with nothing in it. Either there is a preview or there
-          // is not.
-          <div className="flex h-full w-full flex-col items-center justify-center gap-1.5">
+          // It does not say "No preview". That is a sentence about what the
+          // app failed to do, printed on every card that will never have one,
+          // and it told the manager nothing they could act on. And no
+          // promises either: this used to say "Getting this one ready" while
+          // a conversion was pending, which is hope, not information.
+          <div className="flex h-full w-full flex-col items-center justify-center gap-1">
             <FileTypeIllustration
               kind={fileKindFor(doc.mime_type, doc.file_name)}
-              className="h-20 w-20"
+              className="h-14 w-14"
             />
-            <span className="text-xs text-muted-foreground">No preview</span>
+            {typeLabel && (
+              <span className="text-xs font-medium tracking-wide text-muted-foreground">
+                {typeLabel}
+              </span>
+            )}
           </div>
         )}
       </button>
 
-      <div className="flex flex-col gap-1.5 border-t border-border p-2.5">
+      <div className="flex shrink-0 flex-col gap-1.5 border-t border-border p-2.5">
         <AutoGrowTextarea
           value={description}
           onChange={setDescription}
@@ -239,14 +253,14 @@ export function DocumentUploadCard({
   onDismiss?: () => void;
 }) {
   return (
-    <div className="relative flex flex-col overflow-hidden rounded-lg border border-border bg-card">
+    <div className={cn(CARD_SHAPE, "relative flex flex-col overflow-hidden rounded-lg border border-border bg-card")}>
       {/* The same strip a finished card has, carrying today's date. The
           card is about to become one, and a blank white band that fills in
           a second later is a layout the eye has to re-read. */}
       <div className="flex h-9 shrink-0 items-center justify-end px-2">
         <span className="text-xs font-medium text-muted-foreground">Just now</span>
       </div>
-      <div className={cn(PREVIEW_SHAPE, "flex flex-col items-center justify-center gap-2 bg-muted px-4 text-center")}>
+      <div className="flex min-h-0 flex-1 flex-col items-center justify-center gap-2 bg-muted px-4 text-center">
         {failed ? (
           <>
             <span className="text-sm font-medium text-destructive">Upload failed</span>
@@ -259,16 +273,17 @@ export function DocumentUploadCard({
           <Loader2 className="h-7 w-7 animate-spin text-muted-foreground" />
         )}
       </div>
-      {/* The footer a finished card has, empty. Without it this card is
-          shorter than its neighbours by the height of a note box and a tag
-          row, and the grid goes ragged mid-upload, which is the thing the
-          shared shape exists to prevent. */}
+      {/* The footer a finished card has, as empty outlines of the two
+          controls that will be there. They used to be filled muted grey,
+          which read as two disabled inputs rather than as the shape of what
+          is coming, and against the muted preview above them the whole
+          bottom of the card turned into one grey block. */}
       <div
         aria-hidden
-        className="flex flex-col gap-1.5 border-t border-border p-2.5"
+        className="flex shrink-0 flex-col gap-1.5 border-t border-border p-2.5"
       >
-        <div className="h-[38px] rounded-md border border-border bg-muted/40" />
-        <div className="h-9 rounded-md border border-border bg-muted/40" />
+        <div className="h-[38px] rounded-md border border-border bg-card" />
+        <div className="h-9 rounded-md border border-border bg-card" />
       </div>
       {failed && onDismiss && (
         <button

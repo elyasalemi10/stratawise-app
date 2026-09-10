@@ -133,3 +133,39 @@ export function FileTypeIllustration({
     </svg>
   );
 }
+
+/**
+ * The short name for a file's type, for the caption under a drawing.
+ *
+ * The extension, uppercased, because that is what the manager called the
+ * file when they saved it: they know which one is the XLSX. Where the
+ * filename has no extension the mime type is asked instead, and where
+ * neither says anything useful the caption is left off rather than filled
+ * with "FILE".
+ */
+export function fileTypeLabel(
+  mimeType: string | null | undefined,
+  fileName: string,
+): string | null {
+  const ext = fileName.includes(".") ? fileName.split(".").pop()!.trim() : "";
+  if (ext && ext.length <= 5 && /^[a-z0-9]+$/i.test(ext)) return ext.toUpperCase();
+
+  const m = (mimeType ?? "").toLowerCase();
+  const FROM_MIME: Record<string, string> = {
+    "application/pdf": "PDF",
+    "application/msword": "DOC",
+    "application/vnd.openxmlformats-officedocument.wordprocessingml.document": "DOCX",
+    "application/vnd.ms-excel": "XLS",
+    "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet": "XLSX",
+    "application/vnd.ms-powerpoint": "PPT",
+    "application/vnd.openxmlformats-officedocument.presentationml.presentation": "PPTX",
+    "text/csv": "CSV",
+    "text/plain": "TXT",
+    "application/zip": "ZIP",
+  };
+  if (FROM_MIME[m]) return FROM_MIME[m];
+
+  const sub = m.split("/")[1];
+  if (sub && sub.length <= 5 && /^[a-z0-9]+$/.test(sub)) return sub.toUpperCase();
+  return null;
+}

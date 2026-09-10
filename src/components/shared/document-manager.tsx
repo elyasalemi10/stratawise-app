@@ -18,6 +18,7 @@ import { Upload, Download, Trash2, Search } from "lucide-react";
 import { toast } from "sonner";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
+import { Checkbox } from "@/components/ui/checkbox";
 import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import type { DocumentRecord } from "@/lib/validations/documents";
 import { ALLOWED_EXTENSIONS } from "@/lib/validations/documents";
@@ -436,6 +437,10 @@ export function DocumentManager({ ocId, lotId, initialDocuments, readOnly }: Doc
         id: d.id,
         // The viewer gets the real file, not the grid's thumbnail.
         url: `/api/documents/${d.id}?view=true`,
+        // Without ?view the route hands back the original, which is what
+        // someone downloading a spreadsheet wants to open, not its PDF.
+        downloadUrl: `/api/documents/${d.id}`,
+        fileName: d.file_name,
         mimeType: d.mime_type,
         pdfReady: d.pdf_status === "complete",
       })),
@@ -450,6 +455,10 @@ export function DocumentManager({ ocId, lotId, initialDocuments, readOnly }: Doc
       return next;
     });
   }
+
+  const allVisibleSelected =
+    visibleDocs.length > 0 && visibleDocs.every((d) => selectedIds.has(d.id));
+  const someVisibleSelected = !allVisibleSelected && selectedIds.size > 0;
 
   function clearSelection() {
     setSelectedIds(new Set());
@@ -545,45 +554,44 @@ export function DocumentManager({ ocId, lotId, initialDocuments, readOnly }: Doc
         />
       </div>
 
-      {/* No Upload button and no Export ZIP.
-          Uploading is the first tile in the grid, where the thing being
-          created belongs, and exporting everything was a guess about what
-          the manager wanted: they nearly always want SOME of it. Selecting
-          documents and acting on the selection covers both, and it is the
-          only way to delete more than one at a time.
+      {/* One row: the box that selects everything, and the two things you
+          can do with a selection.
 
-          The toolbar replaces nothing when empty: it is absent, so the grid
-          starts at the top and does not shift when a selection begins. */}
-      {/* The bar slides down rather than appearing. A control that pops into
-          existence under the cursor reads as a mis-click; one that arrives
-          reads as a response to what you just did.
+          There is no card around it and no count beside it. The count was
+          "3 selected" next to three ticked cards, and Select all and Clear
+          were two buttons doing what the box next to them already does: a
+          half-ticked box says some are chosen, clicking it takes all, and
+          clicking it again takes none. What is left is the state and the
+          actions.
 
-          Grid-rows is what makes it animate from nothing: height cannot be
-          transitioned from auto, so the wrapper animates a 0fr -> 1fr row
-          and the content inside is simply clipped. */}
+          The row is always here, so the grid does not shift when a
+          selection begins. Only the two actions arrive, and they slide in
+          rather than appearing, because a button that pops into existence
+          under the cursor reads as a mis-click. */}
       {!readOnly && (
-        <div
-          className={cn(
-            "grid transition-[grid-template-rows,opacity] duration-200 ease-out",
-            selectedIds.size > 0 ? "grid-rows-[1fr] opacity-100" : "grid-rows-[0fr] opacity-0",
-          )}
-        >
-          <div className="overflow-hidden">
-            <div className="flex flex-wrap items-center gap-2 rounded-md border border-border bg-card px-3 py-2">
-              <span className="text-sm font-medium text-foreground tabular-nums">
-                {selectedIds.size} selected
-              </span>
-              <div className="ml-auto flex flex-wrap items-center gap-2">
-                {/* Each action carries its own colour. A row of identical grey
-                    buttons makes the manager read all three before finding
-                    the one they want, and puts Delete at the same weight as
-                    Select all. */}
-                <Button variant="secondary" size="sm" onClick={selectAllVisible}>
-                  Select all
-                </Button>
-                <Button variant="secondary" size="sm" onClick={clearSelection}>
-                  Clear
-                </Button>
+        <div className="flex h-9 items-center gap-3">
+          <label className="flex cursor-pointer items-center gap-2 text-sm text-muted-foreground">
+            <Checkbox
+              checked={allVisibleSelected}
+              indeterminate={someVisibleSelected}
+              onCheckedChange={() =>
+                allVisibleSelected || someVisibleSelected
+                  ? clearSelection()
+                  : selectAllVisible()
+              }
+              aria-label="Select all documents"
+            />
+            Select all
+          </label>
+
+          <div
+            className={cn(
+              "ml-auto grid transition-[grid-template-columns,opacity] duration-200 ease-out",
+              selectedIds.size > 0 ? "grid-cols-[1fr] opacity-100" : "grid-cols-[0fr] opacity-0",
+            )}
+          >
+            <div className="overflow-hidden">
+              <div className="flex items-center gap-2 whitespace-nowrap">
                 <Button
                   size="sm"
                   disabled={exporting}
@@ -689,7 +697,10 @@ export function DocumentManager({ ocId, lotId, initialDocuments, readOnly }: Doc
                 e.preventDefault();
                 if (e.dataTransfer.files?.length) handleFiles(e.dataTransfer.files);
               }}
-              className="flex min-h-[22rem] cursor-pointer flex-col items-center justify-center gap-2 rounded-lg border-2 border-dashed border-border bg-card p-4 text-center transition-colors hover:border-primary/50 hover:bg-muted"
+              // aspect-square, like the cards. A hard-coded 22rem was a
+              // guess at their height and stopped being right the moment the
+              // card became a square.
+              className="flex aspect-square cursor-pointer flex-col items-center justify-center gap-2 rounded-lg border-2 border-dashed border-border bg-card p-4 text-center transition-colors hover:border-primary/50 hover:bg-muted"
             >
               <Upload className="h-7 w-7 text-muted-foreground" />
               <span className="text-sm font-medium text-foreground">Add a document</span>

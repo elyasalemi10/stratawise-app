@@ -6,12 +6,62 @@ import { Popover as PopoverPrimitive } from "@base-ui/react/popover"
 import { cn } from "@/lib/utils"
 import { useScrimSlot } from "./use-scrim-stack"
 
+// The trigger element, so a popup that wants to be as wide as its control
+// can measure it.
+//
+// Base UI publishes --anchor-width for this, and the wiring for it read
+// correctly and did not work: the variable lands on whichever element the
+// positioning treats as "floating", the popup is inside that element, and a
+// width sourced from a variable that may or may not be set yet resolves to
+// `auto` on the frames where it is not. Three attempts at the CSS route all
+// produced a panel narrower than the field it opened from. A number we took
+// ourselves cannot be undefined at the wrong moment.
+const PopoverAnchorContext = React.createContext<{
+  element: HTMLElement | null
+  setElement: (el: HTMLElement | null) => void
+} | null>(null)
+
 function Popover({ ...props }: PopoverPrimitive.Root.Props) {
-  return <PopoverPrimitive.Root data-slot="popover" {...props} />
+  const [element, setElement] = React.useState<HTMLElement | null>(null)
+  const value = React.useMemo(() => ({ element, setElement }), [element])
+  return (
+    <PopoverAnchorContext.Provider value={value}>
+      <PopoverPrimitive.Root data-slot="popover" {...props} />
+    </PopoverAnchorContext.Provider>
+  )
 }
 
-function PopoverTrigger({ ...props }: PopoverPrimitive.Trigger.Props) {
-  return <PopoverPrimitive.Trigger data-slot="popover-trigger" {...props} />
+function PopoverTrigger({ ref, ...props }: PopoverPrimitive.Trigger.Props) {
+  const anchor = React.useContext(PopoverAnchorContext)
+  const setRef = React.useCallback(
+    (node: HTMLButtonElement | null) => {
+      anchor?.setElement(node)
+      if (typeof ref === "function") ref(node)
+      else if (ref) (ref as React.RefObject<HTMLButtonElement | null>).current = node
+    },
+    [anchor, ref],
+  )
+  return <PopoverPrimitive.Trigger data-slot="popover-trigger" ref={setRef} {...props} />
+}
+
+/** The trigger's current width, measured at mount so the first painted frame
+ *  is already right, then kept in step with it. */
+function useAnchorWidth(enabled: boolean): number | undefined {
+  const anchor = React.useContext(PopoverAnchorContext)
+  const element = anchor?.element ?? null
+  const [width, setWidth] = React.useState<number | undefined>(() =>
+    enabled && element ? element.getBoundingClientRect().width : undefined,
+  )
+  React.useEffect(() => {
+    if (!enabled || !element) return
+    const observer = new ResizeObserver((entries) => {
+      const box = entries[0]?.borderBoxSize?.[0]
+      setWidth(box ? box.inlineSize : element.getBoundingClientRect().width)
+    })
+    observer.observe(element)
+    return () => observer.disconnect()
+  }, [enabled, element])
+  return enabled ? width : undefined
 }
 
 // Its own component so that claiming a place in the scrim stack happens
@@ -51,12 +101,14 @@ function PopoverContent({
   sideOffset = 4,
   showBackdrop = true,
   matchTriggerWidth = false,
+  style,
   ...props
 }: PopoverPrimitive.Popup.Props &
   Pick<
     PopoverPrimitive.Positioner.Props,
     "align" | "alignOffset" | "side" | "sideOffset"
   > & { showBackdrop?: boolean; matchTriggerWidth?: boolean }) {
+  const anchorWidth = useAnchorWidth(matchTriggerWidth)
   return (
     <PopoverPrimitive.Portal>
       {showBackdrop && <PopoverBackdrop />}
@@ -74,13 +126,17 @@ function PopoverContent({
         alignOffset={alignOffset}
         side={side}
         sideOffset={sideOffset}
-        // --anchor-width is set by Base UI on the POSITIONER, not the popup,
-        // so a width on the popup was sizing against nothing. Putting it here
-        // is what actually makes the panel match the control it opened from.
-        className={cn("isolate z-50", matchTriggerWidth && "w-[var(--anchor-width)]")}
+        className="isolate z-50"
       >
         <PopoverPrimitive.Popup
           data-slot="popover-content"
+          // Inline, so it beats every width class the caller or the base
+          // could bring, and there is nothing left to lose a merge against.
+          style={
+            anchorWidth !== undefined
+              ? { width: anchorWidth, maxWidth: "none", ...style }
+              : style
+          }
           className={cn(
             "z-50 flex w-72 origin-(--transform-origin) flex-col gap-2.5 rounded-lg bg-popover p-2.5 text-sm text-popover-foreground shadow-md ring-1 ring-foreground/10 outline-hidden duration-100 data-[side=bottom]:slide-in-from-top-2 data-[side=inline-end]:slide-in-from-left-2 data-[side=inline-start]:slide-in-from-right-2 data-[side=left]:slide-in-from-right-2 data-[side=right]:slide-in-from-left-2 data-[side=top]:slide-in-from-bottom-2 data-open:animate-in data-open:fade-in-0 data-open:zoom-in-95 data-closed:animate-out data-closed:fade-out-0 data-closed:zoom-out-95",
             className
