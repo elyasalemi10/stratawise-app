@@ -6,6 +6,10 @@ import { Input } from "@/components/ui/input";
 import { DocumentCard, DocumentUploadCard } from "@/components/shared/document-card";
 import { captureVideoPoster } from "@/lib/video-poster";
 import { searchDocumentContents } from "@/lib/actions/document-search";
+import {
+  DOCUMENT_GRID,
+  DocumentCardSkeleton,
+} from "@/components/shared/document-card-skeleton";
 import { DocumentLightbox } from "@/components/shared/document-lightbox";
 import type { DocumentTag, TagColour } from "@/lib/document-tags-shared";
 import {
@@ -66,6 +70,11 @@ const ACCEPT_STRING = ALLOWED_EXTENSIONS.join(",");
 
 export function DocumentManager({ ocId, lotId, initialDocuments, readOnly }: DocumentManagerProps) {
   const [documents, setDocuments] = useState<DocWithUrl[]>(initialDocuments);
+  // The current list, readable from a callback that must not change identity
+  // when the list does. Every card gets the same function reference, which
+  // is the whole point of memoising them.
+  const documentsRef = useRef(documents);
+  documentsRef.current = documents;
   const [uploads, setUploads] = useState<UploadProgress[]>([]);
   const [dragging, setDragging] = useState(false);
   const [renameDoc, setRenameDoc] = useState<DocWithUrl | null>(null);
@@ -93,6 +102,11 @@ export function DocumentManager({ ocId, lotId, initialDocuments, readOnly }: Doc
   // already here, and matches from inside a scan land a moment behind it
   // rather than making the whole search wait on a round trip.
   const [contentMatches, setContentMatches] = useState<Set<string>>(new Set());
+  // True from the moment a search is worth running until Postgres answers.
+  // Without it the page rendered "Nothing here matches" for the half second
+  // the contents query was in flight, and then filled with results: an
+  // answer, retracted.
+  const [searchingContents, setSearchingContents] = useState(false);
 
   // Ask Postgres what the words are inside, once the typing stops. 250ms is
   // long enough that a query per keystroke never goes out and short enough
@@ -101,21 +115,30 @@ export function DocumentManager({ ocId, lotId, initialDocuments, readOnly }: Doc
     const q = search.trim();
     if (q.length < 2) {
       setContentMatches((prev) => (prev.size === 0 ? prev : new Set()));
+      setSearchingContents(false);
       return;
     }
     let cancelled = false;
+    setSearchingContents(true);
     const timer = setTimeout(() => {
       searchDocumentContents(ocId, q)
         .then((ids) => {
-          if (!cancelled) setContentMatches(new Set(ids));
+          if (cancelled) return;
+          setContentMatches(new Set(ids));
         })
-        .catch(() => {});
+        .catch(() => {})
+        .finally(() => {
+          if (!cancelled) setSearchingContents(false);
+        });
     }, 250);
     return () => {
       cancelled = true;
       clearTimeout(timer);
     };
   }, [ocId, search]);
+
+  const tagsRef = useRef(tags);
+  tagsRef.current = tags;
 
   // The firm's tag vocabulary, fetched once. Seeding happens server-side on
   // first read, so a new company opens this page with something in the list.
@@ -317,7 +340,16 @@ export function DocumentManager({ ocId, lotId, initialDocuments, readOnly }: Doc
   /** Write through locally first: the manager has already typed it, and a
    *  round trip before the words appear is the thing that makes a text box
    *  feel broken. */
-  async function saveDescription(documentId: string, value: string) {
+  const handleOpen = useCallback(
+    (id: string) => setPreviewDoc(documentsRef.current.find((d) => d.id === id) ?? null),
+    [],
+  );
+  const askToDelete = useCallback(
+    (id: string) => setDeleteDoc(documentsRef.current.find((d) => d.id === id) ?? null),
+    [],
+  );
+
+  const saveDescription = useCallback(async (documentId: string, value: string) => {
     setDocuments((prev) =>
       prev.map((d) => (d.id === documentId ? { ...d, description: value } : d)),
     );
@@ -329,23 +361,23 @@ export function DocumentManager({ ocId, lotId, initialDocuments, readOnly }: Doc
     // A note saves on blur, which is invisible. Say so, or the manager
     // clicks away and has no idea whether it took.
     toast.success(value.trim() ? "Note saved" : "Note cleared");
-  }
+  }, [ocId]);
 
-  async function toggleDocTag(documentId: string, tagId: string) {
-    const doc = documents.find((d) => d.id === documentId);
+  const toggleDocTag = useCallback(async (documentId: string, tagId: string) => {
+    const doc = documentsRef.current.find((d) => d.id === documentId);
     if (!doc) return;
     const current = doc.tags ?? [];
     const has = current.some((t) => t.id === tagId);
     const nextTags = has
       ? current.filter((t) => t.id !== tagId)
-      : [...current, tags.find((t) => t.id === tagId)!].filter(Boolean);
+      : [...current, tagsRef.current.find((t) => t.id === tagId)!].filter(Boolean);
 
     setDocuments((prev) =>
       prev.map((d) => (d.id === documentId ? { ...d, tags: nextTags } : d)),
     );
     const res = await setDocumentTags(ocId, documentId, nextTags.map((t) => t.id));
     if (!res.error) {
-      const tag = tags.find((t) => t.id === tagId);
+      const tag = tagsRef.current.find((t) => t.id === tagId);
       toast.success(has ? `Removed ${tag?.name ?? "tag"}` : `Tagged ${tag?.name ?? ""}`.trim());
     }
     if (res.error) {
@@ -355,9 +387,12 @@ export function DocumentManager({ ocId, lotId, initialDocuments, readOnly }: Doc
         prev.map((d) => (d.id === documentId ? { ...d, tags: current } : d)),
       );
     }
-  }
+  }, [ocId]);
 
-  async function createTag(name: string, colour: TagColour): Promise<DocumentTag | null> {
+  const createTag = useCallback(async (
+    name: string,
+    colour: TagColour,
+  ): Promise<DocumentTag | null> => {
     const res = await createDocumentTag(name, colour);
     if (res.error || !res.tag) {
       toast.error(res.error ?? "Couldn't add that tag.");
@@ -368,7 +403,7 @@ export function DocumentManager({ ocId, lotId, initialDocuments, readOnly }: Doc
     // not just this one, and nothing on screen says so.
     toast.success(`Tag "${res.tag.name}" created`);
     return res.tag;
-  }
+  }, []);
 
   // What is actually on screen. Computed here rather than inside the grid's
   // render so the lightbox can walk the SAME list: arrowing through
@@ -483,14 +518,14 @@ export function DocumentManager({ ocId, lotId, initialDocuments, readOnly }: Doc
     [visibleDocs],
   );
 
-  function toggleSelected(id: string) {
+  const toggleSelected = useCallback((id: string) => {
     setSelectedIds((prev) => {
       const next = new Set(prev);
       if (next.has(id)) next.delete(id);
       else next.add(id);
       return next;
     });
-  }
+  }, []);
 
   const allVisibleSelected =
     visibleDocs.length > 0 && visibleDocs.every((d) => selectedIds.has(d.id));
@@ -576,11 +611,6 @@ export function DocumentManager({ ocId, lotId, initialDocuments, readOnly }: Doc
 
   /** A document the preview pane can actually render: a PDF, or an Office
    *  file whose PDF rendition is ready. */
-
-  function viewDocument(doc: DocWithUrl) {
-    setPreviewDoc(doc);
-  }
-
 
   return (
     <div className="space-y-4">
@@ -705,6 +735,19 @@ export function DocumentManager({ ocId, lotId, initialDocuments, readOnly }: Doc
           instead of a separate progress strip above the grid. */}
       {(() => {
         const q = search.trim().toLowerCase();
+        // Still reading the documents themselves. Shimmer, do not declare
+        // an answer: the name and tag matches are already in, and what is
+        // outstanding is exactly the half that finds things the manager
+        // could not have found any other way.
+        if (searchingContents && visibleDocs.length === 0 && uploads.length === 0) {
+          return (
+            <div className={DOCUMENT_GRID}>
+              {Array.from({ length: 3 }).map((_, i) => (
+                <DocumentCardSkeleton key={i} />
+              ))}
+            </div>
+          );
+        }
         if (visibleDocs.length === 0 && uploads.length === 0 && q) {
           return (
             <EmptyState
@@ -730,7 +773,7 @@ export function DocumentManager({ ocId, lotId, initialDocuments, readOnly }: Doc
           );
         }
         return (
-        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
+        <div className={DOCUMENT_GRID}>
           {/* Uploading is the first tile, not a button somewhere above.
               The thing you are making appears where it will live, the drop
               target is the size of a document rather than the size of a
@@ -745,10 +788,9 @@ export function DocumentManager({ ocId, lotId, initialDocuments, readOnly }: Doc
                 e.preventDefault();
                 if (e.dataTransfer.files?.length) handleFiles(e.dataTransfer.files);
               }}
-              // aspect-square, like the cards. A hard-coded 22rem was a
-              // guess at their height and stopped being right the moment the
-              // card became a square.
-              className="flex aspect-square cursor-pointer flex-col items-center justify-center gap-2 rounded-lg border-2 border-dashed border-border bg-card p-4 text-center transition-colors hover:border-primary/50 hover:bg-muted"
+              // No height of its own: it stretches with the row like every
+              // card does, so it never leaves a gap under itself.
+              className="flex cursor-pointer flex-col items-center justify-center gap-2 rounded-lg border-2 border-dashed border-border bg-card p-4 text-center transition-colors hover:border-primary/50 hover:bg-muted"
             >
               <Upload className="h-7 w-7 text-muted-foreground" />
               <span className="text-sm font-medium text-foreground">Add a document</span>
@@ -781,11 +823,11 @@ export function DocumentManager({ ocId, lotId, initialDocuments, readOnly }: Doc
               selectionActive={selectedIds.size > 0}
               readOnly={readOnly}
               allTags={tags}
-              onOpen={() => viewDocument(doc)}
-              onToggleSelect={() => toggleSelected(doc.id)}
-              onDelete={() => setDeleteDoc(doc)}
-              onDescriptionCommit={(value) => saveDescription(doc.id, value)}
-              onToggleTag={(tagId) => toggleDocTag(doc.id, tagId)}
+              onOpen={handleOpen}
+              onToggleSelect={toggleSelected}
+              onDelete={askToDelete}
+              onDescriptionCommit={saveDescription}
+              onToggleTag={toggleDocTag}
               onCreateTag={createTag}
             />
           ))}

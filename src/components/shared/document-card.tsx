@@ -28,16 +28,19 @@ import type { DocumentTag, TagColour } from "@/lib/document-tags-shared";
 // still on the row as original_filename. What replaces it is the manager's
 // note and their tags, which are the things that make a document findable.
 
-/** The PREVIEW is square, and the card is as tall as that plus its chrome.
+/** 4:3, on every branch, never overridden per branch.
  *
- *  Squaring the card instead put the squeeze on the picture: opening a note
- *  shrank the thing you were writing the note about, which is the wrong
- *  half to give up. The document keeps its shape and the card grows at the
- *  bottom when the note does.
+ *  Square was the wrong box and everything after it was a fight with the
+ *  consequences: squaring the CARD squeezed the picture, and squaring the
+ *  preview left the card a tall rectangle. A landscape tile is the shape a
+ *  page cropped to its top actually wants.
  *
- *  Cards in a row still match: grid items stretch to the tallest in the
- *  row, so one expanded note lifts its whole row and the grid stays even. */
-const PREVIEW_SHAPE = "aspect-square";
+ *  The card itself has no height. It is a flex column of strip, preview and
+ *  footer, and the footer carries flex-1 so it absorbs whatever slack the
+ *  grid gives it: rows stretch to their tallest card, so a card next to an
+ *  expanded note still puts its tag row flush at the bottom. Do not set a
+ *  height on the card to "fix" the alignment; it is already handled. */
+const PREVIEW_SHAPE = "aspect-[4/3]";
 
 export interface DocumentCardDoc {
   id: string;
@@ -51,7 +54,7 @@ export interface DocumentCardDoc {
   tags?: DocumentTag[];
 }
 
-export function DocumentCard({
+function DocumentCardInner({
   doc,
   thumbnailUrl,
   downloadUrl,
@@ -73,11 +76,16 @@ export function DocumentCard({
   selectionActive: boolean;
   readOnly?: boolean;
   allTags: DocumentTag[];
-  onOpen: () => void;
-  onToggleSelect: () => void;
-  onDelete: () => void;
-  onDescriptionCommit: (value: string) => void;
-  onToggleTag: (tagId: string) => void;
+  // Every callback takes the document id rather than closing over it, so
+  // the parent can hand all sixty cards the same function reference. Without
+  // that, memo below buys nothing: a new closure per card per render makes
+  // every prop compare unequal, and one keystroke in one note re-renders the
+  // whole grid.
+  onOpen: (id: string) => void;
+  onToggleSelect: (id: string) => void;
+  onDelete: (id: string) => void;
+  onDescriptionCommit: (id: string, value: string) => void;
+  onToggleTag: (id: string, tagId: string) => void;
   onCreateTag: (name: string, colour: TagColour) => Promise<DocumentTag | null>;
 }) {
   const [description, setDescription] = React.useState(doc.description ?? "");
@@ -99,14 +107,15 @@ export function DocumentCard({
   return (
     <div
       className={cn(
-        "group flex flex-col overflow-hidden rounded-lg border bg-card transition-colors",
+        "group relative flex flex-col overflow-hidden rounded-lg border bg-card transition-colors",
         selected ? "border-primary ring-1 ring-primary" : "border-border hover:border-primary/40",
       )}
     >
-      {/* Chrome strip. Fixed height so hover does not resize the card. */}
+      {/* Chrome strip. No bottom padding: the preview sits directly under
+          it, and the strip's own height is what separates them. */}
       <div
-        className="relative flex h-9 shrink-0 items-center justify-between px-2"
-        onClick={selectionActive && !readOnly ? onToggleSelect : undefined}
+        className="relative flex shrink-0 items-center justify-between px-2 pt-2"
+        onClick={selectionActive && !readOnly ? () => onToggleSelect(doc.id) : undefined}
       >
         {!readOnly ? (
           <div
@@ -119,7 +128,7 @@ export function DocumentCard({
           >
             <Checkbox
               checked={selected}
-              onCheckedChange={onToggleSelect}
+              onCheckedChange={() => onToggleSelect(doc.id)}
               aria-label={`Select ${doc.file_name}`}
             />
           </div>
@@ -127,7 +136,7 @@ export function DocumentCard({
           <span />
         )}
 
-        <span className="text-xs font-medium text-muted-foreground transition-opacity group-hover:opacity-0">
+        <span className="shrink-0 text-[11px] font-medium text-muted-foreground transition-opacity group-hover:opacity-0">
           {relativeDate(doc.created_at)}
         </span>
 
@@ -146,7 +155,7 @@ export function DocumentCard({
             </a>
             <button
               type="button"
-              onClick={(e) => { e.stopPropagation(); onDelete(); }}
+              onClick={(e) => { e.stopPropagation(); onDelete(doc.id); }}
               aria-label={`Delete ${doc.file_name}`}
               className="flex h-6 w-6 cursor-pointer items-center justify-center rounded text-muted-foreground transition-colors hover:bg-card hover:text-destructive"
             >
@@ -164,8 +173,11 @@ export function DocumentCard({
           nothing you can reach is ambiguous. */}
       <button
         type="button"
-        onClick={selectionActive && !readOnly ? onToggleSelect : onOpen}
-        className={cn(PREVIEW_SHAPE, "relative block w-full shrink-0 cursor-pointer overflow-hidden bg-muted")}
+        onClick={() => (selectionActive && !readOnly ? onToggleSelect(doc.id) : onOpen(doc.id))}
+        className={cn(
+          PREVIEW_SHAPE,
+          "relative flex w-full shrink-0 cursor-pointer items-center justify-center overflow-hidden bg-muted/40",
+        )}
         aria-label={
           selectionActive && !readOnly
             ? `${selected ? "Deselect" : "Select"} ${doc.file_name}`
@@ -202,13 +214,13 @@ export function DocumentCard({
           // and it told the manager nothing they could act on. And no
           // promises either: this used to say "Getting this one ready" while
           // a conversion was pending, which is hope, not information.
-          <div className="flex h-full w-full flex-col items-center justify-center gap-1">
+          <div className="flex h-full w-full flex-col items-center justify-center gap-2">
             <FileTypeIllustration
               kind={fileKindFor(doc.mime_type, doc.file_name)}
-              className="h-14 w-14"
+              className="size-10"
             />
             {typeLabel && (
-              <span className="text-xs font-medium tracking-wide text-muted-foreground">
+              <span className="text-[11px] font-medium tracking-wide text-muted-foreground">
                 {typeLabel}
               </span>
             )}
@@ -216,11 +228,14 @@ export function DocumentCard({
         )}
       </button>
 
-      <div className="flex shrink-0 flex-col gap-1.5 border-t border-border p-2.5">
+      {/* flex-1 is load-bearing: it is what takes up the slack when the grid
+          stretches this card to match a taller neighbour, so the tag row is
+          flush with the bottom on every card in the row. */}
+      <div className="flex flex-1 flex-col gap-2 border-t border-border p-2">
         <AutoGrowTextarea
           value={description}
           onChange={setDescription}
-          onCommit={onDescriptionCommit}
+          onCommit={(value) => onDescriptionCommit(doc.id, value)}
           placeholder="Add a note"
           disabled={readOnly}
         />
@@ -231,7 +246,7 @@ export function DocumentCard({
           tags={tags}
           allTags={allTags}
           readOnly={readOnly}
-          onToggle={onToggleTag}
+          onToggle={(tagId) => onToggleTag(doc.id, tagId)}
           onCreate={onCreateTag}
         />
       </div>
@@ -255,10 +270,10 @@ export function DocumentUploadCard({
       {/* The same strip a finished card has, carrying today's date. The
           card is about to become one, and a blank white band that fills in
           a second later is a layout the eye has to re-read. */}
-      <div className="flex h-9 shrink-0 items-center justify-end px-2">
-        <span className="text-xs font-medium text-muted-foreground">Just now</span>
+      <div className="flex shrink-0 items-center justify-end px-2 pt-2">
+        <span className="text-[11px] font-medium text-muted-foreground">Just now</span>
       </div>
-      <div className={cn(PREVIEW_SHAPE, "flex flex-col items-center justify-center gap-2 bg-muted px-4 text-center")}>
+      <div className={cn(PREVIEW_SHAPE, "flex flex-col items-center justify-center gap-2 bg-muted/40 px-4 text-center")}>
         {failed ? (
           <>
             <span className="text-sm font-medium text-destructive">Upload failed</span>
@@ -278,14 +293,14 @@ export function DocumentUploadCard({
           yet, which is what it is. */}
       <div
         aria-hidden
-        className="flex shrink-0 flex-col gap-1.5 border-t border-border p-2.5"
+        className="flex flex-1 flex-col gap-2 border-t border-border p-2"
       >
-        <div className="flex h-[38px] w-full items-center rounded-md border border-border bg-muted/40 px-2.5 text-sm text-muted-foreground/60">
+        <div className="w-full rounded-md border border-border bg-muted/40 px-2.5 py-1.5 text-xs leading-snug text-muted-foreground/60">
           Add a note
         </div>
-        <div className="flex h-9 w-full items-center gap-1.5 rounded-md border border-border bg-muted/40 px-2.5">
+        <div className="flex min-h-8 w-full items-center gap-1.5 rounded-md border border-border bg-muted/40 px-2 py-1.5">
           <TagIcon className="h-3.5 w-3.5 shrink-0 text-muted-foreground/60" />
-          <span className="text-sm text-muted-foreground/60">Add tags</span>
+          <span className="text-xs text-muted-foreground/60">Add tags</span>
         </div>
       </div>
       {failed && onDismiss && (
@@ -301,3 +316,8 @@ export function DocumentUploadCard({
     </div>
   );
 }
+
+/** Memoised, because a documents page is sixty of these and a note is typed
+ *  one character at a time. The parent's callbacks are stable (see the prop
+ *  types above), so a card only re-renders when its own row changes. */
+export const DocumentCard = React.memo(DocumentCardInner);

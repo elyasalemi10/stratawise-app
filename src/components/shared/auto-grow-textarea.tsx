@@ -4,51 +4,39 @@ import * as React from "react";
 import { cn } from "@/lib/utils";
 
 /**
- * A note box that is one line until you are in it.
+ * One line at rest, as tall as it needs while you are in it.
  *
- * Three earlier attempts grew it with JavaScript and all three produced the
- * same complaint, that it changes size when you click it. They did, and they
- * could not not: `scrollHeight` can only be read with `height: auto`, which
- * reflows the element to its content height before the new height is
- * applied, and the browser paints that frame. Even landing on the number it
- * started from, the box has been through a different size to get there.
+ * Earlier attempts measured the textarea and every one of them bounced, and
+ * I concluded a textarea could not be measured without being seen to resize.
+ * That was wrong, and the three details below are why:
  *
- * So nothing measures anything. The textarea and an invisible copy of its
- * own text share one grid cell; the copy is a normal block that wraps
- * normally, so the cell is exactly as tall as the text needs, and the
- * textarea is stretched to fill it. What the box does on focus is raise a
- * cap, not measure anything, so there is still nothing that can paint an
- * intermediate height.
+ *  1. **Add the border back.** box-sizing is border-box and `scrollHeight`
+ *     excludes the border, so a height taken from scrollHeight alone lands
+ *     two pixels short. The box shrinks, then grows to fit. That is the
+ *     bounce, and it happened on every single focus.
  *
- * The two have to agree on every property that affects wrapping, so the font,
- * the padding, the border and the line height are declared once and used by
- * both.
+ *  2. **Turn the transition off around the measurement.** Reading
+ *     scrollHeight after setting height to 0 forces a style flush, so 0
+ *     becomes the transition's starting point and the box animates open from
+ *     nothing. Off, restore the old height, force a reflow, back on, then
+ *     set the real height. It must only ever move once.
  *
- * It is one line at REST, whatever it holds. A card is a thing you scan
- * twelve of, and a long note rendered in full turns its card into a wall of
- * text with the tags pushed off the bottom. So the cap is one line until the
- * box has focus and four lines after that, which is enough to read a note
- * while editing it and few enough that the preview above still has room.
+ *  3. **Clear the height rather than setting the base.** Only ever assign an
+ *     inline height when the content genuinely needs more than one line.
+ *     Clicking into a short note should do nothing at all, and deleting back
+ *     down to one line should snap rather than ease.
  *
- * The cap is on the SIZER, not the wrapper. Clipping the wrapper would leave
- * a textarea stretched to the full height of its content and simply cut off,
- * so the part below the fold would be unreachable: capping the thing that
- * sets the row height means the textarea is exactly the visible height and
- * scrolls inside it.
+ * Past `maxHeight` it scrolls, with no visible scrollbar: a bar appearing
+ * inside the box takes width from the text and rewraps every line, which
+ * reads as a flash.
  */
-
-/** Everything that decides where a line breaks. Shared, or the mirror lies. */
-const SHARED =
-  "w-full min-w-0 rounded-md border px-2.5 py-2 text-sm leading-5 font-normal tracking-normal " +
-  "whitespace-pre-wrap break-words";
-
 export function AutoGrowTextarea({
   value,
   onChange,
   onCommit,
   placeholder,
   className,
-  maxLines = 4,
+  maxHeight = 160,
   ...props
 }: {
   value: string;
@@ -57,69 +45,83 @@ export function AutoGrowTextarea({
   onCommit?: (value: string) => void;
   placeholder?: string;
   className?: string;
-  /** Beyond this it scrolls instead of growing. */
-  maxLines?: number;
+  /** Past this it scrolls instead of growing. */
+  maxHeight?: number;
 } & Omit<React.ComponentProps<"textarea">, "value" | "onChange" | "className">) {
+  const ref = React.useRef<HTMLTextAreaElement>(null);
+  /** The one-line height and the border, measured once while at rest. */
+  const metrics = React.useRef<{ base: number; border: number } | null>(null);
   const [focused, setFocused] = React.useState(false);
   const committed = React.useRef(value);
 
-  // 20px per line + 8px padding each side + 1px border each side.
-  const lineBox = (lines: number) => lines * 20 + 18;
-  const capped = focused ? lineBox(maxLines) : lineBox(1);
+  const grow = React.useCallback(() => {
+    const el = ref.current;
+    if (!el) return;
+
+    if (!metrics.current) {
+      const style = getComputedStyle(el);
+      metrics.current = {
+        base: el.offsetHeight,
+        border:
+          (parseFloat(style.borderTopWidth) || 0) +
+          (parseFloat(style.borderBottomWidth) || 0),
+      };
+    }
+    const { base, border } = metrics.current;
+
+    const saved = el.style.height;
+    el.style.transition = "none";
+    el.style.height = "0px";
+    const needed = el.scrollHeight + border;
+    el.style.height = saved;
+    // Force the restored height to land before transitions come back on, or
+    // the browser coalesces the whole sequence and animates from zero.
+    void el.offsetHeight;
+    el.style.transition = "";
+
+    el.style.height = needed <= base ? "" : `${Math.min(needed, maxHeight)}px`;
+  }, [maxHeight]);
 
   return (
-    <div className="grid w-full">
-      <textarea
-        {...props}
-        rows={1}
-        value={value}
-        placeholder={placeholder}
-        onFocus={(e) => {
-          setFocused(true);
-          props.onFocus?.(e);
-        }}
-        onBlur={(e) => {
-          setFocused(false);
-          if (committed.current !== value) {
-            committed.current = value;
-            onCommit?.(value);
-          }
-          props.onBlur?.(e);
-        }}
-        onChange={(e) => onChange(e.target.value)}
-        className={cn(
-          SHARED,
-          "col-start-1 row-start-1 resize-none bg-card text-foreground",
-          // Scrollable only while being edited. At rest the box is one line
-          // and a scrollbar on it invites a scroll that reveals one line at
-          // a time.
-          focused ? "overflow-y-auto" : "overflow-hidden",
-          "placeholder:text-muted-foreground focus-visible:outline-none",
-          // Border colour only. A ring is drawn OUTSIDE the border and made
-          // the box look a pixel bigger on every side the moment it was
-          // clicked, which is what "it expands" was.
-          focused ? "border-[color:var(--brand-gold)]" : "border-border",
-          "transition-[border-color] duration-150 ease-out",
-          "[scrollbar-width:none] [&::-webkit-scrollbar]:hidden",
-          className,
-        )}
-      />
-      {/* The sizer. Not rendered to anyone: invisible, untouchable, and out
-          of the accessibility tree. The trailing space is what keeps a
-          newline at the very end from being collapsed away, which would let
-          the box shrink out from under a cursor sitting on the new line. */}
-      <div
-        aria-hidden
-        style={{ maxHeight: capped }}
-        className={cn(
-          SHARED,
-          "pointer-events-none invisible col-start-1 row-start-1 overflow-hidden border-transparent",
-          "transition-[max-height] duration-150 ease-out",
-          className,
-        )}
-      >
-        {value + " "}
-      </div>
-    </div>
+    <textarea
+      {...props}
+      ref={ref}
+      rows={1}
+      value={value}
+      // The whole note on hover, since the box shows one line of it.
+      title={value || undefined}
+      placeholder={placeholder}
+      onFocus={(e) => {
+        setFocused(true);
+        grow();
+        props.onFocus?.(e);
+      }}
+      onBlur={(e) => {
+        setFocused(false);
+        // Back to one line. A grid of cards each holding four lines of
+        // someone else's note is not a grid anyone can scan.
+        e.currentTarget.style.height = "";
+        if (committed.current !== value) {
+          committed.current = value;
+          onCommit?.(value);
+        }
+        props.onBlur?.(e);
+      }}
+      onChange={(e) => {
+        onChange(e.target.value);
+        grow();
+      }}
+      className={cn(
+        "block min-h-0 w-full resize-none overflow-y-auto rounded-md border bg-card px-2.5 py-1.5",
+        "text-xs leading-snug text-foreground placeholder:text-muted-foreground focus-visible:outline-none",
+        // Border colour only. A ring is drawn OUTSIDE the border and made
+        // the box look a pixel bigger on every side the moment it was
+        // clicked, which is what "it expands" was.
+        focused ? "border-[color:var(--brand-gold)]" : "border-border",
+        "transition-[height,border-color] duration-200 ease-out",
+        "[scrollbar-width:none] [&::-webkit-scrollbar]:hidden",
+        className,
+      )}
+    />
   );
 }

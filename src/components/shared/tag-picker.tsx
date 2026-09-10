@@ -244,23 +244,25 @@ export function TagField({
     <>
       <TagIcon className="h-3.5 w-3.5 shrink-0 text-muted-foreground" />
       {tags.length === 0 ? (
-        <span className="text-sm text-muted-foreground">Add tags</span>
+        <span className="text-xs text-muted-foreground">Add tags</span>
       ) : (
-        // Scrolls out of sight to the right rather than wrapping. The card
-        // is a fixed height and the grid depends on it staying that way.
-        <span className="flex min-w-0 flex-1 items-center gap-1 overflow-x-auto [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
+        // Wraps. It used to scroll sideways because the card was a fixed
+        // height and a second row would have broken the grid; the card is
+        // content-driven now, so a document with five tags can show five
+        // tags instead of hiding four of them off the right edge.
+        <span className="flex min-w-0 flex-1 flex-wrap items-center gap-1">
           {tags.map((t) => (
-            <span key={t.id} className="shrink-0">
-              <TagChip tag={t} />
-            </span>
+            <TagChip key={t.id} tag={t} />
           ))}
         </span>
       )}
     </>
   );
 
+  // min-h, not h: it grows with a second row of tags rather than clipping
+  // one. text-left because a <button> centres its contents by default.
   const shell =
-    "flex h-9 w-full items-center gap-1.5 overflow-hidden rounded-md px-2.5 text-left";
+    "flex min-h-8 w-full flex-wrap items-center gap-1 rounded-md px-2 py-1.5 text-left text-xs";
 
   // Read-only is not a control, so it is not a button: nothing happens when
   // you press it and announcing it as pressable is a lie to a screen reader.
