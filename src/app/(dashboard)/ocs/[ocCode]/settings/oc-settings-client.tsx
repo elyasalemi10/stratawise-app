@@ -41,9 +41,6 @@ export function OCSettingsClient({
       section={section}
       oc={data.oc}
       autosend={data.autosend}
-      autosendMailboxOptions={data.mailboxOptions}
-      autosendBudgets={data.approvedBudgets}
-      autosendPreloadedPeriods={data.preloadedPeriods}
     />
   );
 }

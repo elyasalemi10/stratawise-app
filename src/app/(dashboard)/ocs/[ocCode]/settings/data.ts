@@ -3,13 +3,7 @@
 import { getOC } from "@/lib/actions/oc";
 import { requireOCAccess } from "@/lib/auth";
 import { getActiveManagementAgreement } from "@/lib/actions/management-transfer";
-import {
-  getLevyAutosendSchedule,
-  getBudgetPlannedPeriods,
-  type PreviewPeriod,
-} from "@/lib/actions/levy-autosend";
-import { getOCBudgets } from "@/lib/actions/budget";
-import { createServerClient } from "@/lib/supabase";
+import { getLevyAutosendSchedule } from "@/lib/actions/levy-autosend";
 
 // One aggregate fetch for the OC settings page.
 //
@@ -23,98 +17,33 @@ import { createServerClient } from "@/lib/supabase";
 // initial shell request, so a check left up there would be skipped on every
 // refresh the client drives afterwards.
 
-const FUND_LABEL_MAP: Record<string, string> = {
-  operating: "Admin Fund",
-};
-
 export interface OCSettingsPageData {
   ocMgmtCompanyId: string;
   agreement: Awaited<ReturnType<typeof getActiveManagementAgreement>>;
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   oc: any;
   autosend: Awaited<ReturnType<typeof getLevyAutosendSchedule>>;
-  mailboxOptions: Array<{ value: string; label: string }>;
-  approvedBudgets: Array<{ id: string; label: string }>;
-  preloadedPeriods: Record<string, PreviewPeriod[]>;
 }
 
 export async function getOCSettingsPageData(ocId: string): Promise<OCSettingsPageData> {
   const profile = await requireOCAccess(ocId);
   if (profile.role === "lot_owner") throw new Error("Access denied.");
 
-  const supabase = createServerClient();
-
-  const [oc, autosend, budgets, agreement, { data: primaryManagerRow }] =
+  const [oc, autosend, agreement] =
     await Promise.all([
       getOC(ocId),
+      // Read-only here: the page reports whether levies are scheduled and
+      // links to where that is decided. The editor, its budget list and its
+      // per-budget period walk (one round trip per approved budget, on every
+      // settings load) all moved to the Levies page with it.
       getLevyAutosendSchedule(ocId),
-      getOCBudgets(ocId),
       // The active agreement row is the source of truth for "who manages this
       // OC?" , owners_corporations.management_company_id is still maintained
       // as a legacy pointer but the agreement record carries the audit trail.
       getActiveManagementAgreement(ocId),
-      // Mailbox options for the auto-send schedule. Same resolution as the
-      // batch detail page so the manager sees real addresses, never provider
-      // names.
-      supabase
-        .from("oc_members")
-        .select("profile_id, profiles!inner(email, email_username)")
-        .eq("oc_id", ocId)
-        .eq("role", "strata_manager")
-        .is("left_at", null)
-        .order("joined_at", { ascending: true })
-        .limit(1)
-        .maybeSingle(),
     ]);
 
   if (!oc) throw new Error("Owners Corporation not found.");
-
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const primaryProf = (primaryManagerRow as any)?.profiles as
-    | { email: string | null; email_username: string | null }
-    | null;
-  const mailboxOptions: Array<{ value: string; label: string }> = [];
-  if (primaryProf?.email) {
-    mailboxOptions.push({ value: primaryProf.email, label: primaryProf.email });
-  }
-  if (primaryProf?.email_username) {
-    const alias = `${primaryProf.email_username}@stratawise.com.au`;
-    if (!mailboxOptions.some((o) => o.value.toLowerCase() === alias.toLowerCase())) {
-      mailboxOptions.push({ value: alias, label: alias });
-    }
-  }
-  if (mailboxOptions.length === 0) {
-    mailboxOptions.push({
-      value: "noreply@stratawise.com.au",
-      label: "noreply@stratawise.com.au",
-    });
-  }
-
-  const approvedBudgets = budgets
-    .filter((b) => b.status === "approved")
-    .map((b) => {
-      const funds = b.fund_types?.length ? b.fund_types : b.fund_type ? [b.fund_type] : [];
-      const fundLabel = funds.length
-        ? funds.map((f) => FUND_LABEL_MAP[f] ?? f).join(" + ")
-        : "Budget";
-      return { id: b.id, label: `${fundLabel} , ${b.financial_year}` };
-    });
-
-  // Pre-load the FY-aligned periods + done flags for every approved budget so
-  // the auto-send drawer's schedule step renders instantly when the manager
-  // picks a budget. Uses the schedule's saved send_day_of_month; falls back to
-  // 1 for un-configured automations. The drawer still refreshes on send_day
-  // changes via its own effect.
-  const preloadDay =
-    autosend.send_day_of_month && autosend.send_day_of_month >= 1
-      ? autosend.send_day_of_month
-      : 1;
-  const preloadedPairs = await Promise.all(
-    approvedBudgets.map(async (b) => {
-      const res = await getBudgetPlannedPeriods(ocId, b.id, preloadDay);
-      return [b.id, res.periods] as const;
-    }),
-  );
 
   return {
     ocMgmtCompanyId: (oc as unknown as { management_company_id: string })
@@ -156,8 +85,5 @@ export async function getOCSettingsPageData(ocId: string): Promise<OCSettingsPag
         bank_account_name: (oc as unknown as { bank_account_name?: string | null }).bank_account_name ?? null,
     },
     autosend,
-    mailboxOptions,
-    approvedBudgets,
-    preloadedPeriods: Object.fromEntries(preloadedPairs),
   };
 }

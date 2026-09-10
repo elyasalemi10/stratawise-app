@@ -1,42 +1,17 @@
 "use client";
 
-import { useState, useEffect, useCallback, useTransition } from "react";
+import { useState, useCallback } from "react";
 import { EmailLog } from "@/components/shared/email-log";
 import { TagSettings } from "@/components/shared/tag-settings";
 import { getOCEmailLog } from "@/lib/actions/email-log";
-import { Loader2, Trash2 } from "lucide-react";
-import { toast } from "sonner";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { Label } from "@/components/ui/label";
-import { NumberInput } from "@/components/ui/number-input";
-import { Checkbox } from "@/components/ui/checkbox";
-import { Skeleton } from "@/components/ui/skeleton";
-import {
-  Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
-} from "@/components/ui/select";
-import {
-  Combobox, ComboboxContent, ComboboxEmpty, ComboboxInput, ComboboxItem, ComboboxList,
-} from "@/components/ui/combobox";
-import {
-  upsertLevyAutosendSchedule,
-  updateAutosendOverrides,
-  deleteLevyAutosendSchedule,
-  getBudgetPlannedPeriods,
-  type LevyAutosendSchedule,
-  type PreviewPeriod,
-} from "@/lib/actions/levy-autosend";
-import { ordinalRunLabel } from "@/lib/levy-autosend-helpers";
-import {
-  Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle,
-} from "@/components/ui/sheet";
-import {
-  Table as ListTable, TableBody as ListTBody, TableCell as ListTd, TableHead as ListTh, TableHeader as ListTHead, TableRow as ListTr,
-} from "@/components/ui/table";
+import type { LevyAutosendSchedule } from "@/lib/actions/levy-autosend";
 import { Badge } from "@/components/ui/badge";
-import { Plus as PlusIcon } from "lucide-react";
-import { DatePicker } from "@/components/shared/date-picker";
 import { OCFollowupCard } from "./oc-followup-card";
+import Link from "next/link";
+import { useOCCode } from "@/lib/oc-context";
+import { formatDateLong } from "@/lib/utils";
 
 const MONTHS = [
   "January", "February", "March", "April", "May", "June",
@@ -85,22 +60,6 @@ interface OCData {
 
 // "2026-08-01" -> "first of August 2026" , reads more like prose
 // than ISO. Used in the auto-send "Next run will be on the X" line.
-function formatNiceDate(iso: string): string {
-  if (!iso) return iso;
-  const [y, m, d] = iso.split("-").map(Number);
-  if (!y || !m || !d) return iso;
-  const months = ["January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December"];
-  const ord = (n: number) => {
-    if (n >= 11 && n <= 13) return `${n}th`;
-    const last = n % 10;
-    if (last === 1) return `${n}st`;
-    if (last === 2) return `${n}nd`;
-    if (last === 3) return `${n}rd`;
-    return `${n}th`;
-  };
-  return `${ord(d)} of ${months[m - 1]} ${y}`;
-}
-
 import type { OCSettingsSection } from "./nav";
 import { OCField, OCReadonly, type OCFieldProps } from "./oc-field";
 
@@ -108,16 +67,10 @@ export function SettingsContent({
   section,
   oc: initial,
   autosend,
-  autosendMailboxOptions,
-  autosendBudgets,
-  autosendPreloadedPeriods,
 }: {
   section: OCSettingsSection;
   oc: OCData;
   autosend: LevyAutosendSchedule;
-  autosendMailboxOptions: Array<{ value: string; label: string }>;
-  autosendBudgets: Array<{ id: string; label: string }>;
-  autosendPreloadedPeriods?: Record<string, PreviewPeriod[]>;
 }) {
   const [oc, setOC] = useState(initial);
 
@@ -287,619 +240,61 @@ export function SettingsContent({
       )}
 
       {activeTab === "automation" && (
-        <AutomationsTab
-          ocId={oc.id}
-          billingCycle={oc.billing_cycle}
-          fyStartMonth={oc.financial_year_start_month}
-          autosend={autosend}
-          mailboxOptions={autosendMailboxOptions}
-          budgets={autosendBudgets}
-          preloadedPeriods={autosendPreloadedPeriods ?? {}}
-        />
+        <AutomationsTab ocId={oc.id} autosend={autosend} />
       )}
     </div>
   );
 }
 
-// ─── Auto-send levies card ──────────────────────────────────
-// Lives on the Automation tab. Reads/writes
-// levy_autosend_schedules. Manager toggles enabled, picks a budget,
-// chooses a day of month, picks a mailbox. The daily cron fires the
-// generation + send on next_send_date and advances the date by the
-// OC's billing cycle (monthly / quarterly / half-yearly / annually).
-// ─── Automation tab , table of automations + add-side-drawer ───────
-// Today there's exactly one kind of automation (auto-send levies).
-// Adding more later just means inserting another row + a different
-// drawer variant. Empty state renders the table with no rows + an
-// "Add automation" button.
+// ─── Automation tab ────────────────────────────────────────────────
+// The levy schedule used to be edited here, in a table with exactly one row
+// and a generic label. It is not a setting: it decides when levy notices go
+// out and from which budget, and the Levies page is the record of that
+// having happened, so it is edited there, directly above the batches it
+// produces. What stays here is the answer to "is it on?", which is a
+// reasonable thing to ask of a settings page without it being the place you
+// turn it on.
 function AutomationsTab({
   ocId,
-  billingCycle,
-  fyStartMonth,
   autosend,
-  mailboxOptions,
-  budgets,
-  preloadedPeriods,
 }: {
   ocId: string;
-  billingCycle: string;
-  fyStartMonth: number;
   autosend: LevyAutosendSchedule;
-  mailboxOptions: Array<{ value: string; label: string }>;
-  budgets: Array<{ id: string; label: string }>;
-  preloadedPeriods: Record<string, PreviewPeriod[]>;
 }) {
-  // Drawer state. "edit" carries the row being edited (or "new" for
-  // the Add Automation flow). null = closed.
-  const [drawerMode, setDrawerMode] = useState<null | "edit-autosend" | "new">(null);
-
-  // Today the rows array is just the auto-send row (if it exists).
-  // When more automation types ship, push them here.
-  const rows: Array<{
-    key: string;
-    type: string;
-    nextRun: string | null;
-    lastRun: string | null;
-    status: "on" | "off" | "error";
-    raw?: LevyAutosendSchedule;
-  }> = [];
-  if (autosend.id || autosend.enabled) {
-    rows.push({
-      key: autosend.id ?? "autosend",
-      type: "Auto-send levies",
-      nextRun: autosend.next_send_date,
-      lastRun: autosend.last_sent_on,
-      status: autosend.last_error ? "error" : autosend.enabled ? "on" : "off",
-      raw: autosend,
-    });
-  }
+  const ocCode = useOCCode();
+  const on = autosend.enabled && !!autosend.next_send_date;
 
   return (
     <div className="space-y-4">
-      <div className="flex justify-end">
-        {/* Add automation is always visible. Today there's one
-            schedule per OC; clicking "Add" when a schedule already
-            exists opens the same drawer pre-loaded with the existing
-            row , equivalent to clicking the row. When more automation
-            types ship, this turns into a multi-option menu. */}
-        <Button
-          size="sm"
-          onClick={() => setDrawerMode(rows.length > 0 ? "edit-autosend" : "new")}
-        >
-          <PlusIcon className="mr-1.5 h-3.5 w-3.5" />
-          Add automation
-        </Button>
-      </div>
-
-      <div className="overflow-hidden rounded-md border border-border bg-card">
-        <ListTable variant="striped">
-          <ListTHead>
-            <ListTr>
-              <ListTh>Type</ListTh>
-              <ListTh>Next run</ListTh>
-              <ListTh>Last run</ListTh>
-              <ListTh>Status</ListTh>
-            </ListTr>
-          </ListTHead>
-          <ListTBody>
-            {rows.length === 0 ? (
-              <ListTr>
-                <ListTd colSpan={4} className="text-center py-10 text-sm text-muted-foreground">
-                  No automations yet. Click &quot;Add automation&quot; to get started.
-                </ListTd>
-              </ListTr>
-            ) : (
-              rows.map((r) => (
-                <ListTr key={r.key} className="cursor-pointer" onClick={() => setDrawerMode("edit-autosend")}>
-                  <ListTd className="text-foreground">{r.type}</ListTd>
-                  <ListTd className="text-foreground text-sm">{r.nextRun ?? ""}</ListTd>
-                  <ListTd className="text-foreground text-sm">{r.lastRun ?? ""}</ListTd>
-                  <ListTd>
-                    <Badge
-                      variant={
-                        r.status === "on" ? "success"
-                        : r.status === "error" ? "destructive"
-                        : "neutral"
-                      }
-                    >
-                      {r.status === "on" ? "On" : r.status === "error" ? "Error" : "Off"}
-                    </Badge>
-                  </ListTd>
-                </ListTr>
-              ))
-            )}
-          </ListTBody>
-        </ListTable>
-      </div>
+      <Card>
+        <CardContent className="flex flex-wrap items-center justify-between gap-3 pt-5">
+          <div className="min-w-0">
+            <p className="text-sm font-medium text-foreground">Levy schedule</p>
+            <p className="mt-0.5 text-sm text-muted-foreground">
+              {autosend.last_error
+                ? "The last scheduled run did not go out."
+                : on
+                  ? `Next run ${formatDateLong(autosend.next_send_date!)}.`
+                  : "Levies are not on a schedule."}
+            </p>
+          </div>
+          <div className="flex shrink-0 items-center gap-3">
+            <Badge
+              variant={autosend.last_error ? "destructive" : on ? "success" : "neutral"}
+            >
+              {autosend.last_error ? "Error" : on ? "On" : "Off"}
+            </Badge>
+            <Link href={`/ocs/${ocCode}/levies`}>
+              <Button variant="secondary" size="sm">
+                Open Levies
+              </Button>
+            </Link>
+          </div>
+        </CardContent>
+      </Card>
 
       {/* Per-OC levy follow-up: inherits the company default unless overridden. */}
       <OCFollowupCard ocId={ocId} />
-
-      {/* Side drawer , holds the auto-send config (today the only
-          automation). For Add-Automation we surface the same form
-          since auto-send is the only option, plus a placeholder
-          message saying more types are coming. */}
-      <Sheet open={drawerMode !== null} onOpenChange={(o) => { if (!o) setDrawerMode(null); }}>
-        <SheetContent side="right" className="flex w-full flex-col gap-0 sm:max-w-lg">
-          <SheetHeader>
-            <SheetTitle>
-              {drawerMode === "new" ? "Add automation" : "Auto-send levies"}
-            </SheetTitle>
-            <SheetDescription className="sr-only">
-              Configure how this automation runs.
-            </SheetDescription>
-          </SheetHeader>
-          <div className="flex-1 overflow-y-auto p-4">
-            <AutoSendCard
-              ocId={ocId}
-              billingCycle={billingCycle}
-              fyStartMonth={fyStartMonth}
-              // For "new" we hand the drawer a blank schedule so the
-              // Delete-automation button stays hidden (there's nothing
-              // to delete yet) and no fields are pre-populated from a
-              // stray pre-existing row.
-              initial={drawerMode === "new"
-                ? { id: null, oc_id: ocId, enabled: false, budget_id: null, send_day_of_month: 1, from_address: null, last_sent_on: null, next_send_date: null, last_error: null, date_overrides: {}, planned_periods: [] }
-                : autosend}
-              mailboxOptions={mailboxOptions}
-              budgets={budgets}
-              preloadedPeriods={preloadedPeriods}
-              embedded
-              onClose={() => setDrawerMode(null)}
-            />
-          </div>
-        </SheetContent>
-      </Sheet>
     </div>
-  );
-}
-
-function AutoSendCard({
-  ocId,
-  billingCycle,
-  fyStartMonth,
-  initial,
-  mailboxOptions,
-  budgets,
-  preloadedPeriods,
-  embedded = false,
-  onClose,
-}: {
-  ocId: string;
-  billingCycle: string;
-  fyStartMonth: number;
-  initial: LevyAutosendSchedule;
-  mailboxOptions: Array<{ value: string; label: string }>;
-  budgets: Array<{ id: string; label: string }>;
-  /** Server-pre-loaded period maps so the schedule step renders
-   *  without a network round-trip when the cache hits. */
-  preloadedPeriods?: Record<string, PreviewPeriod[]>;
-  /** When true, render the form's contents directly , no surrounding
-   *  Card or duplicate header , so it sits cleanly inside the
-   *  Automations side drawer. */
-  embedded?: boolean;
-  /** Drawer close handler. Called after a successful save so the
-   *  parent can dismiss the sheet. */
-  onClose?: () => void;
-}) {
-  // Captured once. "Has this period already passed?" is a day-level
-  // question, and a clock read during render can answer it differently
-  // for two renders of the same list.
-  const [nowMs] = useState(() => Date.now());
-  // Day-of-month input holds a STRING so the manager can clear the
-  // field while typing without us forcing 1 back in. The "Last day of
-  // month" toggle short-circuits the number; when on we save 31 which
-  // the cron clamps to the actual last day per month.
-  // Active toggle removed , an automation either exists (saved row =
-  // enabled) or it's deleted. draft.enabled is hardcoded true at save
-  // time so the cron picks it up. To turn it OFF the manager hits
-  // "Delete automation".
-  // Mailbox default: prefer the connected Gmail mailbox over
-  // the StrataWise alias when both are present. mailboxOptions is
-  // already ordered "connected first" by the server, so [0] is the
-  // right default for new schedules.
-  const [draft, setDraft] = useState({
-    budget_id: initial.budget_id ?? "",
-    send_day_of_month: String(initial.send_day_of_month === 31 ? "" : initial.send_day_of_month),
-    last_day_of_month: initial.send_day_of_month === 31,
-    from_address: initial.from_address ?? mailboxOptions[0]?.value ?? "",
-  });
-  const [dayInvalid, setDayInvalid] = useState(false);
-  const [pending, startTransition] = useTransition();
-  const [savedAt, setSavedAt] = useState<string | null>(initial.last_sent_on);
-  const [nextDate, setNextDate] = useState<string | null>(initial.next_send_date);
-
-  const [overrides, setOverrides] = useState<Record<string, string>>(initial.date_overrides ?? {});
-
-  const cycleLabel: Record<string, string> = {
-    monthly: "Monthly",
-    quarterly: "Every 3 months",
-    half_yearly: "Every 6 months",
-    annually: "Yearly",
-  };
-
-  /** Validate the form values. Returns the resolved day-of-month (1..31)
-   *  on success, or null when invalid , in which case dayInvalid is set
-   *  and a toast is shown. */
-  function validateForm(): number | null {
-    let resolvedDay: number | null = null;
-    if (draft.last_day_of_month) {
-      resolvedDay = 31;
-    } else {
-      const parsed = parseInt(draft.send_day_of_month, 10);
-      if (Number.isFinite(parsed) && parsed >= 1 && parsed <= 28) {
-        resolvedDay = parsed;
-      }
-    }
-    if (resolvedDay === null) {
-      setDayInvalid(true);
-      toast.error("Pick a day between 1 and 28, or turn on 'Last day of month'.");
-      return null;
-    }
-    setDayInvalid(false);
-    return resolvedDay;
-  }
-
-  function save() {
-    const resolvedDay = validateForm();
-    if (resolvedDay === null) return;
-
-    startTransition(async () => {
-      const res = await upsertLevyAutosendSchedule(ocId, {
-        enabled: true,
-        budget_id: draft.budget_id || null,
-        send_day_of_month: resolvedDay,
-        from_address: draft.from_address || null,
-      });
-      if (res.error) {
-        toast.error(res.error);
-        return;
-      }
-      if (Object.keys(overrides).length > 0) {
-        const ovRes = await updateAutosendOverrides(ocId, overrides);
-        if (ovRes.error) {
-          toast.error(ovRes.error);
-          return;
-        }
-      }
-      toast.success("Automation saved");
-      setSavedAt(res.schedule?.last_sent_on ?? null);
-      setNextDate(res.schedule?.next_send_date ?? null);
-      onClose?.();
-    });
-  }
-
-  function handleDelete() {
-    startTransition(async () => {
-      const res = await deleteLevyAutosendSchedule(ocId);
-      if (res.error) {
-        toast.error(res.error);
-        return;
-      }
-      toast.success("Automation deleted");
-      onClose?.();
-    });
-  }
-
-  // Schedule preview reads the resolved day (1..28 or 31 for "last day").
-  // Falls back to 1 while the manager is mid-edit so the popup always
-  // has something to render without crashing.
-  const previewDay = draft.last_day_of_month
-    ? 31
-    : (parseInt(draft.send_day_of_month, 10) || 1);
-
-  // Server-resolved budget periods: walks the full FY period set for
-  // the selected budget, marking ones that already have a batch as
-  // done. Refreshed whenever the budget OR the send day changes (the
-  // day clamps differently per month so the planned date shifts).
-  // `periodsLoading` drives a shimmer skeleton on the schedule step so
-  // the manager never sees "no periods" before the fetch resolves.
-  const [budgetPeriods, setBudgetPeriods] = useState<PreviewPeriod[]>(() => {
-    if (initial.budget_id && preloadedPeriods?.[initial.budget_id]) {
-      return preloadedPeriods[initial.budget_id];
-    }
-    return [];
-  });
-  const [doneCount, setDoneCount] = useState<number>(() => {
-    if (initial.budget_id && preloadedPeriods?.[initial.budget_id]) {
-      return preloadedPeriods[initial.budget_id].filter((p) => p.done).length;
-    }
-    return 0;
-  });
-  const [periodsLoading, setPeriodsLoading] = useState(false);
-  useEffect(() => {
-    let cancelled = false;
-    if (!draft.budget_id) {
-      setBudgetPeriods([]);
-      setDoneCount(0);
-      setPeriodsLoading(false);
-      return;
-    }
-    // Cache hit: paint instantly. Schedule a silent refresh in case
-    // the cached send-day differs from the manager's current draft.
-    const cached = preloadedPeriods?.[draft.budget_id];
-    if (cached) {
-      setBudgetPeriods(cached);
-      setDoneCount(cached.filter((p) => p.done).length);
-      setPeriodsLoading(false);
-    } else {
-      setPeriodsLoading(true);
-    }
-    getBudgetPlannedPeriods(ocId, draft.budget_id, previewDay).then((res) => {
-      if (cancelled) return;
-      setBudgetPeriods(res.periods);
-      setDoneCount(res.doneCount);
-      setPeriodsLoading(false);
-    });
-    return () => { cancelled = true; };
-  }, [draft.budget_id, ocId, previewDay, preloadedPeriods]);
-
-  // Only the pending periods need a date picker , done ones are
-  // skipped by the cron, no point showing them.
-  const planned = budgetPeriods
-    .filter((p) => !p.done)
-    .map((p) => ({
-      monthKey: p.monthKey,
-      defaultDate: p.plannedDate,
-      effectiveDate: overrides[p.monthKey] ?? p.plannedDate,
-      isOverridden: overrides[p.monthKey] && overrides[p.monthKey] !== p.plannedDate ? true : false,
-    }));
-  // suppress unused-var noise from removed-but-imported FY helpers
-  void fyStartMonth;
-
-  // ── Two-step flow when embedded ─────────────────────────────
-  // Step "form": all the inputs + Next button.
-  // Step "schedule": planned-runs preview + Confirm/Back buttons.
-  // Outside the drawer (standalone card) we skip the multi-step UX
-  // and use the old single-page form.
-  // For EXISTING automations the schedule sits inline on the same
-  // page as the form , no Next button, no second step. For NEW
-  // automations we still use the two-step flow so the manager
-  // confirms the schedule before saving.
-  const isExisting = !!initial.id;
-  const [embeddedStep, setEmbeddedStep] = useState<"form" | "schedule">(
-    isExisting ? "schedule" : "form",
-  );
-  // When editing, render BOTH sections at once. We reuse the
-  // "schedule" branch's rendering by treating the form as always-on
-  // and showing schedule inline below it.
-  const showFormSection = embeddedStep === "form" || isExisting;
-  const showScheduleSection = embeddedStep === "schedule" || isExisting;
-
-  // Body of the card. Single vertical column so it fits the narrow
-  // drawer without anything being cramped.
-  const body = (
-    <div className={embedded ? "space-y-4" : ""}>
-      {showFormSection && (
-        <>
-          {/* Budget picker , LOCKED on existing automations. Changing
-              the budget mid-flight would invalidate the planned
-              periods + cron history, so we only allow it at creation
-              time. Same applies to day-of-month: the schedule is
-              already in flight against this day. Manager who wants to
-              switch budgets deletes + recreates. */}
-          <div className="space-y-1.5">
-            <Label>Budget</Label>
-            {isExisting ? (
-              <div className="h-9 rounded-md border border-border bg-cool-muted px-3 flex items-center text-sm text-cool-muted-foreground">
-                {budgets.find((b) => b.id === draft.budget_id)?.label ?? "(none)"}
-              </div>
-            ) : (
-              <Combobox
-                items={budgets}
-                value={draft.budget_id}
-                onValueChange={(v) => setDraft((p) => ({ ...p, budget_id: v ?? "" }))}
-              >
-                <ComboboxInput placeholder="Pick a budget" />
-                <ComboboxContent>
-                  <ComboboxEmpty>No approved budgets.</ComboboxEmpty>
-                  <ComboboxList>
-                    {(b: { id: string; label: string }) => (
-                      <ComboboxItem key={b.id} value={b.id} keywords={[b.label]}>
-                        {b.label}
-                      </ComboboxItem>
-                    )}
-                  </ComboboxList>
-                </ComboboxContent>
-              </Combobox>
-            )}
-          </div>
-
-          <div className="space-y-1.5">
-            <Label>Send mailbox</Label>
-            <Select
-              value={draft.from_address}
-              onValueChange={(v) => setDraft((p) => ({ ...p, from_address: v ?? "" }))}
-            >
-              <SelectTrigger>
-                <SelectValue placeholder="Pick a mailbox">
-                  {mailboxOptions.find((o) => o.value === draft.from_address)?.label ?? null}
-                </SelectValue>
-              </SelectTrigger>
-              <SelectContent>
-                {mailboxOptions.map((o) => (
-                  <SelectItem key={o.value} value={o.value}>{o.label}</SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-          </div>
-
-          <div className="space-y-1.5">
-            <Label>Day of month</Label>
-            {isExisting ? (
-              <div className="h-9 rounded-md border border-border bg-cool-muted px-3 flex items-center text-sm text-cool-muted-foreground">
-                {draft.last_day_of_month ? "Last day of month" : draft.send_day_of_month || "(none)"}
-              </div>
-            ) : (
-              <>
-                <NumberInput
-                  value={draft.send_day_of_month}
-                  onChange={(v) => {
-                    setDraft((p) => ({ ...p, send_day_of_month: v, last_day_of_month: false }));
-                    setDayInvalid(false);
-                  }}
-                  allowDecimal={false}
-                  disabled={draft.last_day_of_month}
-                  invalid={dayInvalid}
-                  placeholder="1-28"
-                />
-                <div className="flex items-center gap-2 text-xs text-muted-foreground">
-                  <Checkbox
-                    checked={draft.last_day_of_month}
-                    onCheckedChange={(v) => {
-                      const checked = v === true;
-                      setDraft((p) => ({ ...p, last_day_of_month: checked, send_day_of_month: checked ? "" : p.send_day_of_month }));
-                      setDayInvalid(false);
-                }}
-              />
-                  <span>Last day of month</span>
-                </div>
-              </>
-            )}
-          </div>
-
-          <div className="space-y-1.5">
-            <Label>Cadence</Label>
-            <div className="h-10 rounded-md border border-border bg-cool-muted px-3 flex items-center text-sm text-cool-muted-foreground">
-              {cycleLabel[billingCycle] ?? billingCycle}
-            </div>
-          </div>
-        </>
-      )}
-
-      {showScheduleSection && (
-        <div className="space-y-3 max-h-[28rem] overflow-y-auto pr-1">
-          {periodsLoading ? (
-            // Skeleton shimmer , 3 stacked rows that look like the
-            // real First/Second/Third run blocks. No reflow when the
-            // server resolves.
-            <div className="space-y-3">
-              {[0, 1, 2].map((i) => (
-                <div key={i} className="space-y-1.5">
-                  <Skeleton className="h-4 w-20" />
-                  <Skeleton className="h-9 w-full" />
-                </div>
-              ))}
-            </div>
-          ) : planned.length === 0 ? (
-            <div className="rounded-md border border-border bg-muted/40 px-3 py-4 text-sm text-muted-foreground">
-              Every period for this budget has already been generated. Pick a different budget, or delete the automation.
-            </div>
-          ) : (
-            <>
-              {doneCount > 0 && (
-                <p className="text-xs text-muted-foreground">
-                  {doneCount} period{doneCount === 1 ? "" : "s"} already generated for this budget , skipped. The dates below cover what&apos;s left.
-                </p>
-              )}
-              {planned.map((p, idx) => {
-                const [yy, mm] = p.monthKey.split("-");
-                const firstOfMonth = `${p.monthKey}-01`;
-                const lastDay = new Date(Date.UTC(Number(yy), Number(mm), 0)).getUTCDate();
-                const lastOfMonth = `${p.monthKey}-${lastDay.toString().padStart(2, "0")}`;
-                // A quarter is "in the past" when its month-end is
-                // before today's date. The cron either fired it
-                // already or skipped it; either way changing the
-                // date now would be a no-op, so disable.
-                const periodEndMs = new Date(`${lastOfMonth}T23:59:59Z`).getTime();
-                const isPast = periodEndMs < nowMs;
-                return (
-                  <div key={p.monthKey} className="space-y-1.5">
-                    <Label className={isPast ? "text-muted-foreground" : undefined}>
-                      {ordinalRunLabel(idx)}
-                      {isPast && <span className="ml-2 text-[10px] tracking-normal">past</span>}
-                    </Label>
-                    <DatePicker
-                      value={p.effectiveDate}
-                      onChange={(v) => {
-                        setOverrides((o) => {
-                          const next = { ...o };
-                          if (v === p.defaultDate) delete next[p.monthKey];
-                          else next[p.monthKey] = v;
-                          return next;
-                        });
-                      }}
-                      minDate={firstOfMonth}
-                      maxDate={lastOfMonth}
-                      disabled={isPast}
-                    />
-                  </div>
-                );
-              })}
-            </>
-          )}
-        </div>
-      )}
-
-        {/* Next-run line only shows on the standalone (non-embedded)
-            card. Inside the drawer the schedule step already lays out
-            every run date, so repeating "Next run" up top is noise. */}
-        {!embedded && savedAt && (
-          <div className="rounded-md border border-border bg-muted/40 px-3 py-2 text-xs text-muted-foreground">
-            Last sent: <span className="font-medium text-foreground">{savedAt}</span>
-          </div>
-        )}
-
-      <div className="flex justify-between gap-2 pt-2">
-        {/* Delete is destructive-styled (red) and only shown when
-            editing an existing automation. New automations have
-            nothing to delete yet. */}
-        <div>
-          {embedded && isExisting && (
-            <Button
-              variant="secondary"
-              onClick={handleDelete}
-              disabled={pending}
-              className="!text-destructive hover:!bg-destructive/10"
-            >
-              <Trash2 className="mr-1.5 h-3.5 w-3.5" />
-              Delete automation
-            </Button>
-          )}
-        </div>
-        <div className="flex gap-2">
-          {embedded && isExisting && (
-            <Button onClick={save} disabled={pending} loading={pending}>
-              Save changes
-            </Button>
-          )}
-          {embedded && !isExisting && embeddedStep === "form" && (
-            <Button
-              onClick={() => {
-                if (validateForm() === null) return;
-                setEmbeddedStep("schedule");
-              }}
-              disabled={pending}
-            >
-              {pending && <Loader2 className="size-4 animate-spin" />}
-              Next
-            </Button>
-          )}
-          {embedded && !isExisting && embeddedStep === "schedule" && (
-            <>
-              <Button variant="secondary" onClick={() => setEmbeddedStep("form")} disabled={pending}>
-                Back
-              </Button>
-              {planned.length > 0 && (
-                <Button onClick={save} disabled={pending} loading={pending}>
-                  Confirm
-                </Button>
-              )}
-            </>
-          )}
-          {!embedded && (
-            <Button onClick={save} disabled={pending} loading={pending}>
-              Save auto-send
-            </Button>
-          )}
-        </div>
-      </div>
-    </div>
-  );
-
-  return embedded ? body : (
-    <Card>
-      <CardContent className="pt-5">{body}</CardContent>
-    </Card>
   );
 }
