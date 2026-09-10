@@ -477,8 +477,7 @@ function AddPolicyDrawer({
   const [endInvalid, setEndInvalid] = useState(false);
   const [customTypeInvalid, setCustomTypeInvalid] = useState(false);
   const [certificateInvalid, setCertificateInvalid] = useState(false);
-  const fileInputRef = useRef<HTMLInputElement>(null);
-  const manualInputRef = useRef<HTMLInputElement>(null);
+  const [policyNumberInvalid, setPolicyNumberInvalid] = useState(false);
 
   function reset() {
     setStep("coc");
@@ -583,6 +582,10 @@ function AddPolicyDrawer({
     // the form once rather than being told about one field at a time.
     const problems: string[] = [];
     if (!provider.trim()) problems.push("Insurer is required.");
+    // The policy number is how a claim, a broker and a lender all refer to
+    // this cover. A record without one names an insurer and a date range and
+    // cannot be used to do anything.
+    if (!policyNumber.trim()) problems.push("Policy number is required.");
     if (!startDate) problems.push("Start date is required.");
     if (!endDate) problems.push("End date is required.");
     if (policyType === "other" && !policyTypeCustom.trim()) {
@@ -600,6 +603,7 @@ function AddPolicyDrawer({
       problems.push("A certificate of currency is required.");
     }
     setProviderInvalid(!provider.trim());
+    setPolicyNumberInvalid(!policyNumber.trim());
     setStartInvalid(!startDate || (!!endDate && endDate <= startDate));
     setEndInvalid(!endDate || (!!startDate && endDate <= startDate));
     setCustomTypeInvalid(policyType === "other" && !policyTypeCustom.trim());
@@ -612,7 +616,7 @@ function AddPolicyDrawer({
     const result = await createInsurancePolicy(ocId, {
       policy_type: resolvedType,
       provider,
-      policy_number: policyNumber || undefined,
+      policy_number: policyNumber.trim(),
       sum_insured: sumInsured ? Number(sumInsured) : undefined,
       premium: premium ? Number(premium) : undefined,
       payment_frequency: paymentFrequency,
@@ -650,49 +654,20 @@ function AddPolicyDrawer({
           </SheetDescription>
         </SheetHeader>
 
-        {/* One file input for the whole drawer. It used to live inside the
-            upload STEP, so the form step had nothing to click and its
-            certificate button could only send the manager back to the AI
-            screen. Both surfaces share it now. */}
-        <input
-          ref={fileInputRef}
-          type="file"
-          accept=".pdf,application/pdf"
-          hidden
-          onChange={(e) => {
-            const f = e.target.files?.[0];
-            if (f) handleCocUpload(f, true);
-            e.target.value = "";
-          }}
-        />
-        {/* Separate input for the manual path, so one control cannot end up
-            wired to the other's behaviour. */}
-        <input
-          ref={manualInputRef}
-          type="file"
-          accept=".pdf,application/pdf"
-          hidden
-          onChange={(e) => {
-            const f = e.target.files?.[0];
-            if (f) handleCocUpload(f, false);
-            e.target.value = "";
-          }}
-        />
-
         <div className="flex-1 overflow-y-auto p-4">
           {step === "coc" && (
             <div className="space-y-4">
               <p className="text-sm text-foreground">
                 Drop your Certificate of Currency PDF here. We&apos;ll read the provider, policy number, sum insured, premium, and coverage dates and pre-fill the next page.
               </p>
-              {/* A button, not a <label>. It was a label wrapping the file
-                  input, and when the input moved out to the drawer root so
-                  the manual path could share it, the label was left pointing
-                  at nothing: clicking did nothing at all. */}
-              <button
-                type="button"
-                disabled={parsing}
-                onClick={() => fileInputRef.current?.click()}
+              {/* A <label> with the input inside it, not a button that
+                  reaches for a ref. The input lived at the drawer root so
+                  two zones could share it, and reaching across a portal
+                  boundary for a hidden element is a thing that either works
+                  or silently does not, with no way to tell from the call
+                  site which. A label needs no ref and no click handler: the
+                  browser opens the picker because the input is inside it. */}
+              <label
                 className={`flex w-full cursor-pointer flex-col items-center justify-center rounded-md border-2 border-dashed border-border bg-card px-4 py-12 text-center transition-colors hover:border-primary/40 hover:bg-muted/40 ${parsing ? "pointer-events-none opacity-70" : ""}`}
                 onDragOver={(e) => e.preventDefault()}
                 onDrop={(e) => {
@@ -701,6 +676,17 @@ function AddPolicyDrawer({
                   if (f) handleCocUpload(f);
                 }}
               >
+                <input
+                  type="file"
+                  accept=".pdf,application/pdf"
+                  className="sr-only"
+                  disabled={parsing}
+                  onChange={(e) => {
+                    const f = e.target.files?.[0];
+                    if (f) handleCocUpload(f, true);
+                    e.target.value = "";
+                  }}
+                />
                 {parsing ? (
                   <>
                     <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
@@ -713,7 +699,7 @@ function AddPolicyDrawer({
                     <span className="mt-1 text-xs text-muted-foreground">PDF, up to 25 MB</span>
                   </>
                 )}
-              </button>
+              </label>
             </div>
           )}
 
@@ -747,23 +733,23 @@ function AddPolicyDrawer({
                     <span className="min-w-0 flex-1 truncate text-sm text-foreground">
                       {uploadName ?? "Certificate attached"}
                     </span>
-                    <Button
-                      variant="secondary"
-                      size="sm"
-                      disabled={parsing}
-                      loading={parsing}
-                      onClick={() => manualInputRef.current?.click()}
-                    >
-                      Replace
-                    </Button>
+                    <label className="inline-flex h-8 cursor-pointer items-center justify-center rounded-md bg-secondary px-3 text-xs font-medium text-secondary-foreground transition-colors hover:bg-secondary-hover">
+                      <input
+                        type="file"
+                        accept=".pdf,application/pdf"
+                        className="sr-only"
+                        disabled={parsing}
+                        onChange={(e) => {
+                          const f = e.target.files?.[0];
+                          if (f) void handleCocUpload(f, false);
+                          e.target.value = "";
+                        }}
+                      />
+                      {parsing ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : "Replace"}
+                    </label>
                   </div>
                 ) : (
-                  <button
-                    type="button"
-                    // Opens the file picker. It used to call setStep("coc"),
-                    // which threw the manager back into the read-it-for-me
-                    // flow they had deliberately stepped out of.
-                    onClick={() => manualInputRef.current?.click()}
+                  <label
                     onDragOver={(e) => e.preventDefault()}
                     onDrop={(e) => {
                       e.preventDefault();
@@ -777,6 +763,19 @@ function AddPolicyDrawer({
                         : "border-border text-muted-foreground hover:border-primary/40 hover:bg-muted/40",
                     )}
                   >
+                    {/* The manual path never runs the reader: the manager
+                        has said they will type the details. */}
+                    <input
+                      type="file"
+                      accept=".pdf,application/pdf"
+                      className="sr-only"
+                      disabled={parsing}
+                      onChange={(e) => {
+                        const f = e.target.files?.[0];
+                        if (f) void handleCocUpload(f, false);
+                        e.target.value = "";
+                      }}
+                    />
                     {parsing ? (
                       <>
                         <Loader2 className="h-3.5 w-3.5 animate-spin" />
@@ -788,7 +787,7 @@ function AddPolicyDrawer({
                         Drop the certificate here, or click to choose
                       </>
                     )}
-                  </button>
+                  </label>
                 )}
               </div>
               <div className="space-y-1.5">
@@ -831,8 +830,18 @@ function AddPolicyDrawer({
                 />
               </div>
               <div className="space-y-1.5">
-                <Label>Policy number</Label>
-                <Input value={policyNumber} onChange={(e) => setPolicyNumber(e.target.value)} placeholder="Policy number" />
+                <Label>
+                  Policy number <span className="text-destructive">*</span>
+                </Label>
+                <Input
+                  value={policyNumber}
+                  onChange={(e) => {
+                    setPolicyNumber(e.target.value);
+                    setPolicyNumberInvalid(false);
+                  }}
+                  aria-invalid={policyNumberInvalid || undefined}
+                  placeholder="Policy number"
+                />
               </div>
               <div className="grid grid-cols-2 gap-3">
                 <div className="space-y-1.5">

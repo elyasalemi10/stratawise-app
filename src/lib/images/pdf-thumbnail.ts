@@ -85,3 +85,31 @@ export async function renderPdfFirstPage(bytes: Buffer): Promise<Buffer | null> 
     return null;
   }
 }
+
+/**
+ * How many pages a PDF has, without rendering any of them.
+ *
+ * Document AI's synchronous endpoint refuses anything past its page limit
+ * with a bare INVALID_ARGUMENT, which we were turning into "Document AI
+ * rejected this file (too large or unsupported)" , a message that names the
+ * provider, says two possible causes and helps with neither. Counting first
+ * means a long document is recognised as long before the call is made and
+ * paid for.
+ *
+ * Returns null when the bytes cannot be opened at all; the caller should
+ * carry on rather than treat that as a page count of zero.
+ */
+export async function pdfPageCount(bytes: Buffer): Promise<number | null> {
+  try {
+    const pdfjs = await import("pdfjs-dist/legacy/build/pdf.mjs");
+    const doc = await pdfjs.getDocument({
+      data: new Uint8Array(bytes),
+      disableWorker: true,
+      isEvalSupported: false,
+    } as Parameters<typeof pdfjs.getDocument>[0]).promise;
+    return doc.numPages;
+  } catch (err) {
+    console.error("pdfPageCount: could not open the PDF", err);
+    return null;
+  }
+}

@@ -9,6 +9,7 @@ import { createServerClient } from "@/lib/supabase";
 // evaluated. Import the types from insurance-shared.ts directly.
 import type { InsurancePolicy, PaymentFrequency } from "@/lib/insurance-shared";
 import { revalidatePath } from "next/cache";
+import { defaultDocumentNote } from "@/lib/documents/default-note";
 
 export async function getInsurancePolicies(ocId: string): Promise<InsurancePolicy[]> {
   await requireOCAccess(ocId);
@@ -79,6 +80,32 @@ export async function createInsurancePolicy(
   if (error) return { error: error.message };
 
   const policyId = (inserted as { id: string } | null)?.id;
+
+  // Name the certificate now that the policy number is known.
+  //
+  // On the manual path the document is uploaded before any of the details
+  // are typed, so it was filed as a bare "Certificate of currency" and every
+  // one of them in the library looked identical. The number is the thing
+  // anyone searching for a certificate actually has to hand.
+  if (data.certificate_of_currency_document_id) {
+    const { error: nameErr } = await supabase
+      .from("documents")
+      .update({
+        description: defaultDocumentNote("certificate_of_currency", {
+          policyNumber: data.policy_number ?? null,
+          provider: data.provider ?? null,
+        }),
+        insurance_policy_id: policyId ?? null,
+      })
+      .eq("id", data.certificate_of_currency_document_id)
+      .eq("oc_id", ocId);
+    if (nameErr) {
+      // The policy is saved and correct; a document filed under a duller
+      // name is not worth failing the create over.
+      console.error("createInsurancePolicy: could not name the certificate", nameErr);
+    }
+  }
+
   await supabase.from("audit_log").insert({
     profile_id: profile.id,
     oc_id: ocId,

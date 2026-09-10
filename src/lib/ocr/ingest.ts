@@ -3,7 +3,7 @@ import { createServerClient } from "@/lib/supabase";
 import { fetchObject } from "@/lib/storage/r2";
 import { runDocumentAiOcr, sanitiseOcrText } from "@/lib/google/document-ai";
 import { uploadObject } from "@/lib/storage/r2";
-import { renderPdfFirstPage } from "@/lib/images/pdf-thumbnail";
+import { pdfPageCount, renderPdfFirstPage } from "@/lib/images/pdf-thumbnail";
 import { isDownscalableImage, makeThumbnail } from "@/lib/images/downscale";
 import {
   convertToPdf,
@@ -172,21 +172,29 @@ export async function ingestDocumentOcr(documentId: string): Promise<void> {
     return;
   }
 
-  try {
-    const { text, pageCount } = await runDocumentAiOcr(bytes, sourceMime!);
-    if (pageCount > MAX_OCR_PAGES) {
+  // Count first, then decide. The cap used to be checked on the way back,
+  // which meant a long document was sent, refused by the provider with a
+  // bare INVALID_ARGUMENT, and recorded as "rejected (too large or
+  // unsupported)": a message naming two possible causes and helping with
+  // neither, after paying for the call.
+  if (sourceMime === "application/pdf") {
+    const pages = await pdfPageCount(bytes);
+    if (pages !== null && pages > MAX_OCR_PAGES) {
       await supabase
         .from("documents")
         .update({
-          ocr_status: "failed",
-          ocr_error: `Document is ${pageCount} pages , auto-OCR is capped at ${MAX_OCR_PAGES}. Indexed by filename only.`,
-          ocr_page_count: pageCount,
-          ocr_provider: "document_ai",
+          ocr_status: "skipped",
+          ocr_error: `${pages} pages, over the ${MAX_OCR_PAGES}-page limit for reading a document automatically. Searchable by name, note and tags.`,
+          ocr_page_count: pages,
           ocr_completed_at: new Date().toISOString(),
         })
         .eq("id", documentId);
       return;
     }
+  }
+
+  try {
+    const { text, pageCount } = await runDocumentAiOcr(bytes, sourceMime!);
     await supabase
       .from("documents")
       .update({

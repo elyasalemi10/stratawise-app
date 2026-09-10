@@ -22,12 +22,15 @@ export function defaultDocumentNote(
 ): string | null {
   const trim = (v: string | null | undefined) => (v ?? "").trim();
   const suffix = (v: string | null | undefined) => (trim(v) ? ` , ${trim(v)}` : "");
+  /** " - value", or nothing at all when there is no value to name. */
+  const dash = (v: string | null | undefined) => (trim(v) ? ` - ${trim(v)}` : "");
 
   switch (category) {
     case "certificate_of_currency":
       // The policy number is what anyone looking for a certificate actually
-      // has in front of them.
-      return `Certificate of Currency${suffix(context?.policyNumber ?? context?.provider)}`;
+      // has in front of them: a broker, a lender and a conveyancer all quote
+      // it, and none of them quote the insurer's name on its own.
+      return `Certificate of currency${dash(context?.policyNumber ?? context?.provider)}`;
     case "insurance_policy":
       return `Insurance policy${suffix(context?.provider ?? context?.policyNumber ?? context?.planNumber)}`;
     case "plan_of_subdivision":
