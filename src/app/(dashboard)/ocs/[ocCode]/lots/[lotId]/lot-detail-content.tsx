@@ -275,20 +275,14 @@ export function LotDetailContent({
           </div>
       </div>
 
-      {/* Tab strip , bare shadcn line tabs. No container card, no border-b:
-          the active gold underline is the only visible separator. Tabs
-          wrap onto a second row on narrow viewports. */}
+      {/* The shared line tabs, styled by the primitive. Every class this
+          used to carry was re-describing the variant, and the one that was
+          not, a marker pulled to bottom-0 while the base sat it at -5px, is
+          exactly why the gold bar never lined up with the rule. */}
       <Tabs value={activeTab} onValueChange={onTabChange}>
-        <TabsList
-          variant="line"
-          className="h-auto w-full flex-wrap justify-start gap-0 bg-transparent p-0"
-        >
+        <TabsList variant="line" className="w-full flex-wrap justify-start">
           {TABS.map((tab) => (
-            <TabsTrigger
-              key={tab.value}
-              value={tab.value}
-              className="relative h-11 min-w-[6.5rem] rounded-none border-0 px-4 text-sm font-medium text-muted-foreground bg-transparent transition-colors hover:text-foreground hover:bg-transparent data-active:bg-transparent data-active:text-foreground group-data-horizontal/tabs:after:inset-x-0 group-data-horizontal/tabs:after:bottom-0 group-data-horizontal/tabs:after:h-0.5 data-active:after:bg-[color:var(--brand-gold)]"
-            >
+            <TabsTrigger key={tab.value} value={tab.value} className="h-11 min-w-[6.5rem] px-4">
               {tab.label}
             </TabsTrigger>
           ))}
@@ -308,18 +302,7 @@ export function LotDetailContent({
           postalAddress={lotOwnerExtra?.postal_address ?? null}
           portalActive={portalActive}
           portalInviteAccepted={portalActive}
-          ocId={ocId}
-          lotId={lot.id}
-          lotNumber={lot.lot_number}
           ownerAvatarUrl={owner.owner_avatar_url}
-          inviteStatus={inviteStatus}
-          onInviteChanged={() => {
-            // Drop the cached payload so the pill is re-read rather than
-            // restored from the snapshot taken before the invite existed.
-            invalidateCached(`lot:${lot.id}`);
-            invalidateCached(`lots:${ocId}`);
-            refreshLot();
-          }}
           engagement={engagement}
           onTransfer={() => setSettlementOpen(true)}
           lotDetails={{

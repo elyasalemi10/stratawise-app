@@ -24,8 +24,8 @@ export function BankAccountsSkeleton() {
       {/* One tab is the common case; a second OC account slides in without
           moving anything else. */}
       <div className="space-y-4">
-        <div className="flex w-full flex-wrap justify-start gap-0 border-b-2 border-primary">
-          <span className="relative flex h-11 min-w-[6.5rem] items-center gap-2 px-4 text-sm font-medium text-foreground after:absolute after:inset-x-2 after:bottom-0 after:h-0.5 after:rounded-full after:bg-[color:var(--brand-gold)]">
+        <div className="flex w-full flex-wrap justify-start gap-0 border-b border-border">
+          <span className="relative flex h-11 min-w-[6.5rem] items-center gap-2 px-4 text-sm font-medium text-foreground after:absolute after:inset-x-0 after:-bottom-[1px] after:h-0.5 after:bg-[color:var(--brand-gold)]">
             <Landmark className="h-4 w-4 shrink-0 text-muted-foreground" />
             <Skeleton className="h-3.5 w-24" />
           </span>

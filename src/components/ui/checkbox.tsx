@@ -3,7 +3,7 @@
 import { Checkbox as CheckboxPrimitive } from "@base-ui/react/checkbox"
 
 import { cn } from "@/lib/utils"
-import { CheckIcon, MinusIcon } from "lucide-react"
+import { CheckIcon } from "lucide-react"
 
 function Checkbox({ className, indeterminate, ...props }: CheckboxPrimitive.Root.Props) {
   return (
@@ -24,10 +24,11 @@ function Checkbox({ className, indeterminate, ...props }: CheckboxPrimitive.Root
         data-slot="checkbox-indicator"
         className="grid place-content-center text-current transition-none [&>svg]:size-3.5"
       >
-        {/* A dash, not a tick, when only some of what this box stands for is
-            selected. A ticked box over a partial selection is a lie, and an
-            empty one loses the fact that anything is selected at all. */}
-        {indeterminate ? <MinusIcon /> : <CheckIcon />}
+        {/* Filled but empty when only some of what this box stands for is
+            selected. A tick over a partial selection is a lie, and a dash
+            inside a 16px box is a smudge: the fill alone already separates
+            "some" from "none", and the tick separates it from "all". */}
+        {indeterminate ? null : <CheckIcon />}
       </CheckboxPrimitive.Indicator>
     </CheckboxPrimitive.Root>
   )

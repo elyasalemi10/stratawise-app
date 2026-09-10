@@ -51,14 +51,14 @@ export function LotDetailSkeleton() {
 
       {/* Tab strip, rendered for real. The labels never depend on the lot,
           and neither does the navy rule they sit on. */}
-      <div className="relative flex w-full flex-wrap items-center gap-0 border-b-2 border-primary">
+      <div className="relative flex w-full flex-wrap items-center gap-0 border-b border-border">
         {TABS.map((label, i) => (
           <span
             key={label}
             className={
               "relative flex h-11 min-w-[6.5rem] items-center justify-center px-4 text-sm font-medium " +
               (i === 0
-                ? "z-10 text-foreground after:absolute after:inset-x-0 after:bottom-0 after:h-0.5 after:bg-[color:var(--brand-gold)]"
+                ? "text-foreground after:absolute after:inset-x-0 after:-bottom-[1px] after:h-0.5 after:bg-[color:var(--brand-gold)]"
                 : "text-muted-foreground")
             }
           >

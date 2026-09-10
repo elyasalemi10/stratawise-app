@@ -4,7 +4,6 @@ import * as React from "react";
 import { toast } from "sonner";
 import { refetchCached } from "@/lib/use-cached-data";
 import { Button } from "@/components/ui/button";
-import { InviteStatusPopover } from "../../invite-status-popover";
 import { cn } from "@/lib/utils";
 import { useFieldSave } from "@/lib/use-field-save";
 import { UserAvatar } from "@/components/shared/user-avatar";
@@ -94,13 +93,8 @@ interface Props {
   portalActive: boolean;
   /** Last time they opened the portal, or null if they never have. */
   portalLastActiveAt: string | null;
-  ocId: string;
-  lotId: string;
-  lotNumber: number;
   /** Their real profile picture once they are on the portal. */
   ownerAvatarUrl?: string | null;
-  inviteStatus: "not_invited" | "pending" | "accepted";
-  onInviteChanged?: () => void;
   portalInviteAccepted: boolean;
   engagement: LotEngagement;
   onTransfer: () => void;
@@ -119,12 +113,7 @@ export function LotOwnerTab(props: Props) {
     paymentReference,
     postalAddress,
     portalLastActiveAt,
-    ocId,
-    lotId,
-    lotNumber,
     ownerAvatarUrl,
-    inviteStatus,
-    onInviteChanged,
     portalInviteAccepted,
     engagement,
     onTransfer,
@@ -217,19 +206,6 @@ export function LotOwnerTab(props: Props) {
                 </p>
               )}
             </div>
-            {/* The same pill as the lots table, opening the same dialog ,
-                one place to invite from, one place that knows how many
-                times you already have. */}
-            <InviteStatusPopover
-              ocId={ocId}
-              lotId={lotId}
-              lotNumber={lotNumber}
-              status={inviteStatus}
-              ownerName={view.name}
-              ownerEmail={view.email}
-              ownerPhone={view.phone}
-              onInviteChanged={onInviteChanged}
-            />
           </div>
 
           {/* Every field edits in place and saves when you leave it , the

@@ -88,24 +88,21 @@ export function BankAccountsList({
     <div className="space-y-6">
       <Tabs value={activeTab} onValueChange={switchTab}>
         <div className="flex items-center justify-between">
-          <TabsList
-            variant="line"
-            className="h-auto flex-wrap justify-start gap-2 bg-transparent p-0"
-          >
+          <TabsList variant="line" className="flex-wrap justify-start">
             {accounts.map((a) => {
               const logo = logoFor(a.bsb, a.bank_name);
               return (
                 <TabsTrigger
                   key={a.id}
                   value={a.id}
-                  className="relative h-11 min-w-[6.5rem] rounded-none border-0 px-4 text-sm font-medium text-muted-foreground bg-transparent transition-colors hover:text-foreground hover:bg-transparent data-active:bg-transparent data-active:text-foreground data-active:after:inset-x-0 data-active:after:bottom-0 data-active:after:h-0.5 data-active:after:bg-[color:var(--brand-gold)] inline-flex items-center gap-2"
+                  className="h-11 min-w-[6.5rem] gap-2 px-4"
                 >
                   {/* No badge when the BSB is not one we recognise. A
                       placeholder that looks like a bank logo, on a row where
                       we do not know the bank, is worse than nothing. */}
                   {logo && (
                     // eslint-disable-next-line @next/next/no-img-element
-                    <img src={logo} alt="" width={18} height={18} className="rounded shrink-0" />
+                    <img src={logo} alt="" width={18} height={18} className="shrink-0 rounded" />
                   )}
                   {a.account_name || a.bank_name || "Bank account"}
                 </TabsTrigger>

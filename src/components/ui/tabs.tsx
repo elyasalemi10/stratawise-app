@@ -29,17 +29,16 @@ const tabsListVariants = cva(
     variants: {
       variant: {
         default: "bg-muted",
-        // A navy rule the full width of the strip, with the active tab's
-        // gold marker sitting on top of it. Without the rule the tabs
-        // floated: nothing said where the strip ended and the page began,
-        // and the gold underline read as a stray mark rather than as the
-        // lit segment of a bar.
+        // A rule the full width of the strip, with the active tab's gold
+        // marker sitting ON it rather than floating below it.
         //
-        // A real border, not a pseudo-element. Callers style these strips
-        // heavily and a rule made of `after:` is invisible to anyone reading
-        // the call site, so the first person to add `p-0` or a wrapper with
-        // `overflow-hidden` removes it without knowing they have.
-        line: "relative gap-1 border-b-2 border-primary bg-transparent",
+        // The marker is the primitive's own `after:` bar, and the base puts
+        // it at bottom-[-5px], five pixels clear of the tab. That gap is why
+        // the two lines never lined up: the strip's rule is at the strip's
+        // bottom edge and the gold bar was somewhere under it. The line
+        // variant pulls the bar back onto the rule (see TabsTrigger) and
+        // paints it gold.
+        line: "gap-0 rounded-none border-b border-border bg-transparent p-0",
       },
     },
     defaultVariants: {
@@ -72,6 +71,14 @@ function TabsTrigger({ className, ...props }: TabsPrimitive.Tab.Props) {
         "group-data-[variant=line]/tabs-list:bg-transparent group-data-[variant=line]/tabs-list:data-active:bg-transparent dark:group-data-[variant=line]/tabs-list:data-active:border-transparent dark:group-data-[variant=line]/tabs-list:data-active:bg-transparent",
         "data-active:bg-background data-active:text-foreground dark:data-active:border-input dark:data-active:bg-input/30 dark:data-active:text-foreground",
         "after:absolute after:bg-foreground after:opacity-0 after:transition-opacity group-data-horizontal/tabs:after:inset-x-0 group-data-horizontal/tabs:after:bottom-[-5px] group-data-horizontal/tabs:after:h-0.5 group-data-vertical/tabs:after:inset-y-0 group-data-vertical/tabs:after:-right-1 group-data-vertical/tabs:after:w-0.5 group-data-[variant=line]/tabs-list:data-active:after:opacity-100",
+        // Line variant: sit the marker ON the strip's rule instead of five
+        // pixels below it, make it gold, and give an inactive tab a grey
+        // preview of it on hover so the strip reads as a row of switches.
+        "group-data-[variant=line]/tabs-list:border-0",
+        "group-data-[variant=line]/tabs-list:group-data-horizontal/tabs:after:-bottom-[1px]",
+        "group-data-[variant=line]/tabs-list:data-active:after:bg-[color:var(--brand-gold)]",
+        "group-data-[variant=line]/tabs-list:not-data-active:hover:after:bg-muted-foreground/30",
+        "group-data-[variant=line]/tabs-list:not-data-active:hover:after:opacity-100",
         className
       )}
       {...props}
