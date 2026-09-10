@@ -47,13 +47,11 @@ interface Props {
   /** Fires the moment the send succeeds, so the parent can flip the pill
    *  to "Invited" before the status re-fetch comes back. */
   onInviteChanged?: (sentTo: string) => void;
-  /** Drive it from somewhere else, e.g. a More-actions menu item. The lot
-   *  page used to have a second, older invite dialog for exactly that, which
-   *  meant two invite screens that could drift apart and did. */
-  open?: boolean;
-  onOpenChange?: (open: boolean) => void;
-  /** Render the status pill. Off when the caller supplies its own way in. */
-  showPill?: boolean;
+}
+
+interface DialogProps extends Props {
+  open: boolean;
+  onOpenChange: (open: boolean) => void;
 }
 
 interface Invitation {
@@ -109,7 +107,49 @@ function rowLabelFor(status: Invitation["status"]): string {
   }
 }
 
-export function InviteStatusPopover({
+/**
+ * The pill, which opens the dialog.
+ *
+ * The two used to be one component with a `showPill` flag, so a caller that
+ * wanted only the dialog asked for a pill and then asked for it not to be
+ * drawn. That is a component being told to do half its job, and the half it
+ * was told to skip kept turning up at the bottom of the lot page. There is
+ * nothing to suppress now: a caller that wants the dialog imports the
+ * dialog.
+ */
+export function InviteStatusPopover(props: Props) {
+  const [open, setOpen] = useState(false);
+  const { status } = props;
+
+  return (
+    <>
+      <button
+        type="button"
+        onClick={(e) => {
+          e.stopPropagation();
+          setOpen(true);
+        }}
+        aria-label="View invite status"
+        data-row-hover-off
+        className="group/pill relative inline-flex cursor-pointer items-center rounded-full outline-none focus-visible:ring-2 focus-visible:ring-primary/30"
+      >
+        <Badge
+          variant={PILL[status].variant}
+          className={cn(
+            "transition-[filter,box-shadow] group-hover/pill:brightness-95 group-hover/pill:ring-1 group-hover/pill:ring-border",
+            status === "not_invited" && "border border-border bg-card text-muted-foreground",
+          )}
+        >
+          {PILL[status].label}
+        </Badge>
+      </button>
+      <LotInviteDialog {...props} open={open} onOpenChange={setOpen} />
+    </>
+  );
+}
+
+/** The invite screen itself: the history, and the form that sends one. */
+export function LotInviteDialog({
   ocId,
   lotId,
   lotNumber,
@@ -118,14 +158,10 @@ export function InviteStatusPopover({
   ownerEmail,
   ownerPhone,
   onInviteChanged,
-  open: controlledOpen,
-  onOpenChange,
-  showPill = true,
-}: Props) {
+  open,
+  onOpenChange: setOpen,
+}: DialogProps) {
   const router = useRouter();
-  const [uncontrolledOpen, setUncontrolledOpen] = useState(false);
-  const open = controlledOpen ?? uncontrolledOpen;
-  const setOpen = onOpenChange ?? setUncontrolledOpen;
   const [history, setHistory] = useState<Invitation[] | null>(null);
 
   // Kick off the history fetch in the background as soon as the
@@ -176,30 +212,6 @@ export function InviteStatusPopover({
         : null;
 
   return (
-    <>
-      {showPill && (
-      <button
-        type="button"
-        onClick={(e) => {
-          e.stopPropagation();
-          setOpen(true);
-        }}
-        aria-label="View invite status"
-        data-row-hover-off
-        className="group/pill relative inline-flex cursor-pointer items-center rounded-full outline-none focus-visible:ring-2 focus-visible:ring-primary/30"
-      >
-        <Badge
-          variant={PILL[status].variant}
-          className={cn(
-            "transition-[filter,box-shadow] group-hover/pill:brightness-95 group-hover/pill:ring-1 group-hover/pill:ring-border",
-            status === "not_invited" && "border border-border bg-card text-muted-foreground",
-          )}
-        >
-          {PILL[status].label}
-        </Badge>
-      </button>
-      )}
-
       <Dialog open={open} onOpenChange={setOpen}>
         <DialogContent
           className="sm:max-w-md"
@@ -279,7 +291,6 @@ export function InviteStatusPopover({
           </div>
         </DialogContent>
       </Dialog>
-    </>
   );
 }
 

@@ -190,12 +190,13 @@ function LedgerRow({
           // and nothing else competing for it.
           "text-right text-sm font-bold tabular-nums",
           inactive && "line-through opacity-55",
-          // --success, not --success-foreground: the foreground token is a
-          // 20%-lightness green meant for text on a tinted badge, and at
-          // this weight on white it read as black.
-          amount !== null && amount < 0
-            ? "text-destructive"
-            : "text-[color:var(--success)]",
+          // text-success, the token utility. --success-foreground is a
+          // 20%-lightness green meant for text on a tinted badge and read as
+          // black at this weight; an arbitrary text-[color:var(--success)]
+          // then failed to beat the cell's own colour on some rows. The
+          // named utility is in the same conflict group as text-destructive,
+          // so the merge resolves it either way.
+          amount !== null && amount < 0 ? "text-destructive" : "text-success",
         )}
       >
         {amount !== null ? currency.format(amount) : ""}
@@ -221,7 +222,6 @@ function EntityPill({
 }) {
   const [open, setOpen] = useState(false);
   const [query, setQuery] = useState("");
-  const [saving, setSaving] = useState(false);
 
   // One flat list, ordered lots then contractors then jobs. It was grouped
   // under headings, and with one heading showing (most OCs have no
@@ -250,9 +250,10 @@ function EntityPill({
     // before it changes reads as the click not having landed.
     onAssign(txnId, next);
     setOpen(false);
-    setSaving(true);
+    // No pending state on the pill. It already shows the answer, and dimming
+    // it afterwards turns one click into grey-then-coloured, which reads as
+    // the click having been rejected and then reconsidered.
     const res = await assignTransactionEntity(ocId, txnId, next);
-    setSaving(false);
     if (res.error) {
       onAssign(txnId, previous);
       toast.error(res.error);
@@ -284,7 +285,6 @@ function EntityPill({
           current
             ? "bg-secondary text-foreground ring-border hover:bg-secondary-hover"
             : "bg-card text-muted-foreground ring-border hover:bg-muted hover:text-foreground",
-          saving && "opacity-60",
         )}
       >
         {current ? (

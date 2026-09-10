@@ -49,17 +49,17 @@ export function LotDetailSkeleton() {
         </div>
       </div>
 
-      {/* Tab strip, rendered for real. The labels never depend on the lot,
-          and neither does the navy rule they sit on. */}
-      <div className="relative flex w-full flex-wrap items-center gap-0 border-b border-border">
+      {/* Tab strip, rendered for real: the labels never depend on the lot.
+          No rule under it and no gold marker. Both are chrome that says a
+          particular tab is open, and while the page is still arriving there
+          is nothing behind that claim. */}
+      <div className="relative flex w-full flex-wrap items-center gap-0">
         {TABS.map((label, i) => (
           <span
             key={label}
             className={
               "relative flex h-11 min-w-[6.5rem] items-center justify-center px-4 text-sm font-medium " +
-              (i === 0
-                ? "text-foreground after:absolute after:inset-x-0 after:-bottom-[1px] after:h-0.5 after:bg-[color:var(--brand-gold)]"
-                : "text-muted-foreground")
+              (i === 0 ? "text-foreground" : "text-muted-foreground")
             }
           >
             {label}

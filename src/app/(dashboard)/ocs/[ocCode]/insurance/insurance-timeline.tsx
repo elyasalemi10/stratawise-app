@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useRef, useState } from "react";
+import { useMemo, useState } from "react";
 import { AlertTriangle, CalendarIcon, CheckCircle2, Download, FileCheck, Loader2, Pencil, Plus, ShieldCheck, Trash2, Wallet } from "lucide-react";
 import { format } from "date-fns";
 import { toast } from "sonner";
@@ -54,7 +54,17 @@ const POLICY_LABELS: Record<string, string> = Object.fromEntries(POLICY_TYPES.ma
 // gets the consistent "$" prefix + thousands separators per the
 // CLAUDE.md amount-input rule.
 
-function AmountInput({ value, onChange, placeholder }: { value: string; onChange: (v: string) => void; placeholder?: string }) {
+function AmountInput({
+  value,
+  onChange,
+  placeholder,
+  invalid,
+}: {
+  value: string;
+  onChange: (v: string) => void;
+  placeholder?: string;
+  invalid?: boolean;
+}) {
   return (
     <NumberInput
       value={value}
@@ -63,6 +73,7 @@ function AmountInput({ value, onChange, placeholder }: { value: string; onChange
       prefix="$"
       placeholder={placeholder}
       allowDecimal
+      invalid={invalid}
     />
   );
 }
@@ -478,6 +489,7 @@ function AddPolicyDrawer({
   const [customTypeInvalid, setCustomTypeInvalid] = useState(false);
   const [certificateInvalid, setCertificateInvalid] = useState(false);
   const [policyNumberInvalid, setPolicyNumberInvalid] = useState(false);
+  const [sumInsuredInvalid, setSumInsuredInvalid] = useState(false);
 
   function reset() {
     setStep("coc");
@@ -586,6 +598,13 @@ function AddPolicyDrawer({
     // this cover. A record without one names an insurer and a date range and
     // cannot be used to do anything.
     if (!policyNumber.trim()) problems.push("Policy number is required.");
+    // The figure the whole policy is about. A record that says who the
+    // insurer is and when the cover runs, without saying how much it covers,
+    // cannot answer whether the building is adequately insured, which is the
+    // question the committee has to answer every year.
+    if (!sumInsured.trim() || !(Number(sumInsured) > 0)) {
+      problems.push("Sum insured is required.");
+    }
     if (!startDate) problems.push("Start date is required.");
     if (!endDate) problems.push("End date is required.");
     if (policyType === "other" && !policyTypeCustom.trim()) {
@@ -604,6 +623,7 @@ function AddPolicyDrawer({
     }
     setProviderInvalid(!provider.trim());
     setPolicyNumberInvalid(!policyNumber.trim());
+    setSumInsuredInvalid(!sumInsured.trim() || !(Number(sumInsured) > 0));
     setStartInvalid(!startDate || (!!endDate && endDate <= startDate));
     setEndInvalid(!endDate || (!!startDate && endDate <= startDate));
     setCustomTypeInvalid(policyType === "other" && !policyTypeCustom.trim());
@@ -617,7 +637,7 @@ function AddPolicyDrawer({
       policy_type: resolvedType,
       provider,
       policy_number: policyNumber.trim(),
-      sum_insured: sumInsured ? Number(sumInsured) : undefined,
+      sum_insured: Number(sumInsured),
       premium: premium ? Number(premium) : undefined,
       payment_frequency: paymentFrequency,
       start_date: startDate,
@@ -864,8 +884,18 @@ function AddPolicyDrawer({
               </div>
               <div className="grid grid-cols-2 gap-3">
                 <div className="space-y-1.5">
-                  <Label>Sum insured</Label>
-                  <AmountInput value={sumInsured} onChange={setSumInsured} placeholder="Sum insured" />
+                  <Label>
+                    Sum insured <span className="text-destructive">*</span>
+                  </Label>
+                  <AmountInput
+                    value={sumInsured}
+                    onChange={(v) => {
+                      setSumInsured(v);
+                      setSumInsuredInvalid(false);
+                    }}
+                    placeholder="Sum insured"
+                    invalid={sumInsuredInvalid}
+                  />
                 </div>
                 <div className="space-y-1.5">
                   <Label>Premium paid</Label>

@@ -23,7 +23,7 @@ import { LotLeviesTab } from "./tabs/lot-levies-tab";
 import { DocumentManager } from "@/components/shared/document-manager";
 import { SettlementDialog } from "./settlement-dialog";
 import { InviteDialog } from "../../manage/invite-dialog";
-import { InviteStatusPopover } from "../invite-status-popover";
+import { LotInviteDialog } from "../invite-status-popover";
 import { LotOwnerTab } from "./tabs/lot-owner-tab";
 import { LotCommunicationsTab } from "./tabs/lot-communications-tab";
 import type { LotCommunicationRow } from "@/lib/actions/lot-communications";
@@ -362,8 +362,7 @@ export function LotDetailContent({
         prefillPhone={owner.owner_contact_phone ?? undefined}
       />
 
-      <InviteStatusPopover
-        showPill={false}
+      <LotInviteDialog
         open={inviteOpen}
         onOpenChange={setInviteOpen}
         ocId={ocId}
