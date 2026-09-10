@@ -68,7 +68,7 @@ export function AutoGrowTextarea({
   const capped = focused ? lineBox(maxLines) : lineBox(1);
 
   return (
-    <div className="grid">
+    <div className="grid w-full">
       <textarea
         {...props}
         rows={1}

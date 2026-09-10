@@ -1,14 +1,7 @@
 "use client";
 
 import * as React from "react";
-import {
-  Maximize,
-  Minimize,
-  Pause,
-  Play,
-  Volume2,
-  VolumeX,
-} from "lucide-react";
+import { Pause, Play, Volume2, VolumeX } from "lucide-react";
 import { FileTypeIllustration } from "@/components/shared/file-type-illustration";
 import { cn } from "@/lib/utils";
 
@@ -50,13 +43,11 @@ export function MediaPlayer({
   className?: string;
 }) {
   const mediaRef = React.useRef<HTMLVideoElement | HTMLAudioElement | null>(null);
-  const shellRef = React.useRef<HTMLDivElement | null>(null);
   const [playing, setPlaying] = React.useState(false);
   const [current, setCurrent] = React.useState(0);
   const [duration, setDuration] = React.useState(0);
   const [volume, setVolume] = React.useState(1);
   const [muted, setMuted] = React.useState(false);
-  const [fullscreen, setFullscreen] = React.useState(false);
   // While the handle is held, the bar follows the pointer and the element's
   // own clock is ignored: seeking is not instant, and letting it win makes
   // the handle jump backwards under the finger dragging it.
@@ -104,26 +95,10 @@ export function MediaPlayer({
     return rect.width === 0 ? 0 : (e.clientX - rect.left) / rect.width;
   }
 
-  async function toggleFullscreen() {
-    const shell = shellRef.current;
-    if (!shell) return;
-    if (document.fullscreenElement) await document.exitFullscreen().catch(() => {});
-    else await shell.requestFullscreen().catch(() => {});
-  }
-
-  React.useEffect(() => {
-    function onChange() {
-      setFullscreen(document.fullscreenElement === shellRef.current);
-    }
-    document.addEventListener("fullscreenchange", onChange);
-    return () => document.removeEventListener("fullscreenchange", onChange);
-  }, []);
-
   const isVideo = kind === "video";
 
   return (
     <div
-      ref={shellRef}
       onClick={(e) => e.stopPropagation()}
       onKeyDown={(e) => {
         if (e.key === " " || e.key === "k") {
@@ -144,6 +119,10 @@ export function MediaPlayer({
       // job, so the frame around the picture is the card, the transport
       // beneath it is ours, and only the area the video itself occupies is
       // black, because a letterboxed frame has to be.
+      //
+      // No full-screen button. The viewer this sits in is already the whole
+      // window with the page dimmed behind it, so the control offered to do
+      // a second time what opening the document had just done.
       className={cn(
         "mx-auto w-full overflow-hidden rounded-lg border border-border bg-card outline-none",
         className,
@@ -166,10 +145,7 @@ export function MediaPlayer({
             if (!scrubbing && e.currentTarget.paused) setCurrent(e.currentTarget.currentTime);
           }}
           onEnded={() => setPlaying(false)}
-          className={cn(
-            "block w-full cursor-pointer bg-black",
-            fullscreen ? "h-[calc(100vh-3.5rem)] object-contain" : "max-h-[75vh]",
-          )}
+          className="block max-h-[75vh] w-full cursor-pointer bg-black"
         />
       ) : (
         <>
@@ -301,16 +277,6 @@ export function MediaPlayer({
               "bg-muted",
             )}
           />
-          {isVideo && (
-            <button
-              type="button"
-              onClick={toggleFullscreen}
-              aria-label={fullscreen ? "Exit full screen" : "Full screen"}
-              className="flex h-9 w-9 cursor-pointer items-center justify-center rounded-full transition-colors hover:bg-muted"
-            >
-              {fullscreen ? <Minimize className="h-4 w-4" /> : <Maximize className="h-4 w-4" />}
-            </button>
-          )}
         </div>
       </div>
     </div>

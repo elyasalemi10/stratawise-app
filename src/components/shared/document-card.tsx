@@ -28,17 +28,16 @@ import type { DocumentTag, TagColour } from "@/lib/document-tags-shared";
 // still on the row as original_filename. What replaces it is the manager's
 // note and their tags, which are the things that make a document findable.
 
-/** The CARD is square, not the preview inside it.
+/** The PREVIEW is square, and the card is as tall as that plus its chrome.
  *
- *  Making the preview square left the card a tall rectangle: the chrome
- *  strip and the two-control footer are another 130-odd pixels on top of a
- *  full card's width. So the square is the outside, and the preview takes
- *  whatever height is left over, which is also what makes a growing note
- *  box safe: it eats into the preview instead of the card.
+ *  Squaring the card instead put the squeeze on the picture: opening a note
+ *  shrank the thing you were writing the note about, which is the wrong
+ *  half to give up. The document keeps its shape and the card grows at the
+ *  bottom when the note does.
  *
- *  Every column is the same width, so every card is exactly as tall as its
- *  neighbours at any window size. */
-const CARD_SHAPE = "aspect-square";
+ *  Cards in a row still match: grid items stretch to the tallest in the
+ *  row, so one expanded note lifts its whole row and the grid stays even. */
+const PREVIEW_SHAPE = "aspect-square";
 
 export interface DocumentCardDoc {
   id: string;
@@ -100,7 +99,6 @@ export function DocumentCard({
   return (
     <div
       className={cn(
-        CARD_SHAPE,
         "group flex flex-col overflow-hidden rounded-lg border bg-card transition-colors",
         selected ? "border-primary ring-1 ring-primary" : "border-border hover:border-primary/40",
       )}
@@ -167,7 +165,7 @@ export function DocumentCard({
       <button
         type="button"
         onClick={selectionActive && !readOnly ? onToggleSelect : onOpen}
-        className="relative block min-h-0 w-full flex-1 cursor-pointer overflow-hidden bg-muted"
+        className={cn(PREVIEW_SHAPE, "relative block w-full shrink-0 cursor-pointer overflow-hidden bg-muted")}
         aria-label={
           selectionActive && !readOnly
             ? `${selected ? "Deselect" : "Select"} ${doc.file_name}`
@@ -253,14 +251,14 @@ export function DocumentUploadCard({
   onDismiss?: () => void;
 }) {
   return (
-    <div className={cn(CARD_SHAPE, "relative flex flex-col overflow-hidden rounded-lg border border-border bg-card")}>
+    <div className="relative flex flex-col overflow-hidden rounded-lg border border-border bg-card">
       {/* The same strip a finished card has, carrying today's date. The
           card is about to become one, and a blank white band that fills in
           a second later is a layout the eye has to re-read. */}
       <div className="flex h-9 shrink-0 items-center justify-end px-2">
         <span className="text-xs font-medium text-muted-foreground">Just now</span>
       </div>
-      <div className="flex min-h-0 flex-1 flex-col items-center justify-center gap-2 bg-muted px-4 text-center">
+      <div className={cn(PREVIEW_SHAPE, "flex flex-col items-center justify-center gap-2 bg-muted px-4 text-center")}>
         {failed ? (
           <>
             <span className="text-sm font-medium text-destructive">Upload failed</span>
@@ -273,21 +271,21 @@ export function DocumentUploadCard({
           <Loader2 className="h-7 w-7 animate-spin text-muted-foreground" />
         )}
       </div>
-      {/* The footer a finished card has, with the two controls drawn as they
-          will look. Two empty outlines, one a thin strip and one a box with
-          nothing in it, read as a card that had failed to render; the same
-          two boxes saying "Add a note" and "Add tags" read as a card that is
-          simply not filled in yet, which is what it is. */}
+      {/* The footer a finished card has, with both controls drawn as they
+          will look and dimmed, because they are not usable yet. Two empty
+          outlines read as a card that had failed to render; the same two
+          boxes with their own labels read as a card that is not filled in
+          yet, which is what it is. */}
       <div
         aria-hidden
         className="flex shrink-0 flex-col gap-1.5 border-t border-border p-2.5"
       >
-        <div className="flex h-[38px] items-center rounded-md border border-border bg-card px-2.5 text-sm text-muted-foreground">
+        <div className="flex h-[38px] w-full items-center rounded-md border border-border bg-muted/40 px-2.5 text-sm text-muted-foreground/60">
           Add a note
         </div>
-        <div className="flex h-9 items-center gap-1.5 rounded-md border border-border bg-card px-2.5">
-          <TagIcon className="h-3.5 w-3.5 shrink-0 text-muted-foreground" />
-          <span className="text-sm text-muted-foreground">Add tags</span>
+        <div className="flex h-9 w-full items-center gap-1.5 rounded-md border border-border bg-muted/40 px-2.5">
+          <TagIcon className="h-3.5 w-3.5 shrink-0 text-muted-foreground/60" />
+          <span className="text-sm text-muted-foreground/60">Add tags</span>
         </div>
       </div>
       {failed && onDismiss && (

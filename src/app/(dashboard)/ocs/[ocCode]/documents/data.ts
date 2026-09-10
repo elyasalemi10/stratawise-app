@@ -20,9 +20,14 @@ export async function getDocumentsPageData(ocId: string): Promise<DocumentsPageD
   // Documents and their tag links in one wave: the links table is tiny and
   // joining it per document would be a round trip per card.
   const [docsRes, linksRes] = await Promise.all([
+    // Everything except ocr_text. A scanned twenty-page report carries tens
+    // of kilobytes of it, and the grid shows none of it: the search that
+    // needs it runs in Postgres against the tsvector index instead.
     supabase
       .from("documents")
-      .select("*")
+      .select(
+        "id, oc_id, lot_id, category, file_name, file_path, file_size, mime_type, is_confidential, uploaded_by, created_at, ocr_status, ocr_page_count, ocr_provider, description, original_filename, insurance_policy_id, recurring_job_id, pdf_storage_key, pdf_status, pdf_page_count, thumbnail_storage_key",
+      )
       .eq("oc_id", ocId)
       .order("created_at", { ascending: false }),
     // Scoped through the join rather than by collecting ids first, so this

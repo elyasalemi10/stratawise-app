@@ -5,6 +5,7 @@ import { cn } from "@/lib/utils";
 import { Input } from "@/components/ui/input";
 import { DocumentCard, DocumentUploadCard } from "@/components/shared/document-card";
 import { captureVideoPoster } from "@/lib/video-poster";
+import { searchDocumentContents } from "@/lib/actions/document-search";
 import { DocumentLightbox } from "@/components/shared/document-lightbox";
 import type { DocumentTag, TagColour } from "@/lib/document-tags-shared";
 import {
@@ -87,6 +88,34 @@ export function DocumentManager({ ocId, lotId, initialDocuments, readOnly }: Doc
   const [bulkDeleting, setBulkDeleting] = useState(false);
   const [tags, setTags] = useState<DocumentTag[]>([]);
   const [search, setSearch] = useState("");
+  // Ids whose CONTENTS match, from Postgres. Separate from the search box
+  // because they arrive later: the name/note/tag filter is instant off data
+  // already here, and matches from inside a scan land a moment behind it
+  // rather than making the whole search wait on a round trip.
+  const [contentMatches, setContentMatches] = useState<Set<string>>(new Set());
+
+  // Ask Postgres what the words are inside, once the typing stops. 250ms is
+  // long enough that a query per keystroke never goes out and short enough
+  // that the extra results feel like part of the same search.
+  useEffect(() => {
+    const q = search.trim();
+    if (q.length < 2) {
+      setContentMatches((prev) => (prev.size === 0 ? prev : new Set()));
+      return;
+    }
+    let cancelled = false;
+    const timer = setTimeout(() => {
+      searchDocumentContents(ocId, q)
+        .then((ids) => {
+          if (!cancelled) setContentMatches(new Set(ids));
+        })
+        .catch(() => {});
+    }, 250);
+    return () => {
+      cancelled = true;
+      clearTimeout(timer);
+    };
+  }, [ocId, search]);
 
   // The firm's tag vocabulary, fetched once. Seeding happens server-side on
   // first read, so a new company opens this page with something in the list.
@@ -335,6 +364,9 @@ export function DocumentManager({ ocId, lotId, initialDocuments, readOnly }: Doc
       return null;
     }
     setTags((prev) => [...prev, res.tag!].sort((a, b) => a.name.localeCompare(b.name)));
+    // A new tag joins the firm's vocabulary for every document from now on,
+    // not just this one, and nothing on screen says so.
+    toast.success(`Tag "${res.tag.name}" created`);
     return res.tag;
   }
 
@@ -349,7 +381,11 @@ export function DocumentManager({ ocId, lotId, initialDocuments, readOnly }: Doc
           (d) =>
             d.file_name.toLowerCase().includes(q) ||
             (d.description ?? "").toLowerCase().includes(q) ||
-            (d.tags ?? []).some((t) => t.name.toLowerCase().includes(q)),
+            (d.tags ?? []).some((t) => t.name.toLowerCase().includes(q)) ||
+            // What the document SAYS, which is the point of reading every
+            // upload: "scan_0043.pdf" is not what anyone types when looking
+            // for the certificate that names their insurer.
+            contentMatches.has(d.id),
         )
       : documents;
     if (filterCategory === "all") return searched;
@@ -358,7 +394,7 @@ export function DocumentManager({ ocId, lotId, initialDocuments, readOnly }: Doc
       if (filterCategory === "general") return cat === "other" || cat === "general";
       return cat === filterCategory;
     });
-  }, [documents, search, filterCategory]);
+  }, [documents, search, filterCategory, contentMatches]);
 
   // Keep checking anything still being prepared.
   //
@@ -473,7 +509,15 @@ export function DocumentManager({ ocId, lotId, initialDocuments, readOnly }: Doc
    *  asked for by selecting. */
   async function downloadSelected() {
     if (selectedIds.size === 0) return;
+    const count = selectedIds.size;
     setExporting(true);
+    // A toast, not a spinner in the button. Zipping twelve documents takes
+    // long enough that the manager looks away, and a spinner inside a
+    // control they are no longer looking at tells them nothing; a toast
+    // follows them up the page and says when it is done.
+    const id = toast.loading(
+      `Preparing ${count} document${count === 1 ? "" : "s"}...`,
+    );
     try {
       const res = await fetch(`/api/documents/export?oc_id=${ocId}`, {
         method: "POST",
@@ -481,7 +525,7 @@ export function DocumentManager({ ocId, lotId, initialDocuments, readOnly }: Doc
         body: JSON.stringify({ ids: [...selectedIds] }),
       });
       if (!res.ok) {
-        toast.error("Couldn't prepare that download.");
+        toast.error("Couldn't prepare that download.", { id });
         return;
       }
       const blob = await res.blob();
@@ -491,8 +535,9 @@ export function DocumentManager({ ocId, lotId, initialDocuments, readOnly }: Doc
       a.download = `documents-${new Date().toISOString().slice(0, 10)}.zip`;
       a.click();
       URL.revokeObjectURL(url);
+      toast.success(`${count} document${count === 1 ? "" : "s"} downloaded`, { id });
     } catch {
-      toast.error("Couldn't prepare that download.");
+      toast.error("Couldn't prepare that download.", { id });
     } finally {
       setExporting(false);
     }
@@ -600,12 +645,7 @@ export function DocumentManager({ ocId, lotId, initialDocuments, readOnly }: Doc
           >
             <div className="overflow-hidden">
               <div className="flex items-center gap-2 whitespace-nowrap">
-                <Button
-                  size="sm"
-                  disabled={exporting}
-                  loading={exporting}
-                  onClick={downloadSelected}
-                >
+                <Button size="sm" disabled={exporting} onClick={downloadSelected}>
                   <Download className="mr-2 h-3.5 w-3.5" />
                   Download
                 </Button>
