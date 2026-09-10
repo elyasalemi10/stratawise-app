@@ -6,6 +6,7 @@ import {
   DOCUMENT_DROP_TILE,
   DOCUMENT_GRID,
   DocumentCardSkeleton,
+  DocumentDropTileInner,
 } from "@/components/shared/document-card-skeleton";
 import { OCPageTitle } from "@/components/shared/page-title";
 
@@ -37,9 +38,13 @@ export function DocumentsSkeleton() {
 
       <div className={DOCUMENT_GRID}>
         <div className={DOCUMENT_DROP_TILE}>
-          <Upload className="h-7 w-7 text-muted-foreground" />
-          <span className="text-sm font-medium text-foreground">Add a document</span>
-          <span className="text-xs text-muted-foreground">Drop it here, or click to choose</span>
+          <DocumentDropTileInner>
+            <Upload className="h-7 w-7 text-muted-foreground" />
+            <span className="text-sm font-medium text-foreground">Add a document</span>
+            <span className="text-xs text-muted-foreground">
+              Drop it here, or click to choose
+            </span>
+          </DocumentDropTileInner>
         </div>
 
         {Array.from({ length: TILES }).map((_, i) => (

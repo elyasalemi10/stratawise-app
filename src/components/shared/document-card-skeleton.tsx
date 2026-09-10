@@ -1,5 +1,7 @@
 import { Tag as TagIcon } from "lucide-react";
 import { Skeleton } from "@/components/ui/skeleton";
+import { TAG_FIELD_SHELL } from "@/components/shared/tag-picker";
+import { cn } from "@/lib/utils";
 
 /**
  * A card's shape, with nothing in it.
@@ -24,9 +26,10 @@ export function DocumentCardSkeleton() {
       <div className="flex flex-1 flex-col gap-2 border-t border-border p-2">
         {/* Both are bordered boxes of a known height, so they render as
             boxes. Only what goes in them is unknown, and most cards have
-            nothing in them anyway. */}
-        <div className="h-7 w-full rounded-md border border-border bg-card" />
-        <div className="flex min-h-8 w-full items-center gap-1.5 rounded-md border border-border bg-card px-2 py-1.5">
+            nothing in them anyway. The note's height is the one-line
+            textarea's: 12px of padding, a 16.5px line and 2px of border. */}
+        <div className="h-[30px] w-full rounded-md border border-border bg-card" />
+        <div className={cn(TAG_FIELD_SHELL, "border border-border bg-card")}>
           <TagIcon className="h-3.5 w-3.5 shrink-0 text-muted-foreground/60" />
           <Skeleton className="h-4 w-16 rounded-full" />
         </div>
@@ -39,8 +42,30 @@ export function DocumentCardSkeleton() {
  *  itself cannot drift on column count or gap. */
 export const DOCUMENT_GRID = "grid grid-cols-2 gap-3 sm:grid-cols-3";
 
-/** The upload tile's shape, so the page skeleton and the real grid agree.
- *  It has no preview and no footer, so without a floor it collapses to the
- *  height of its own label on any row it happens to be alone in. */
+/** The upload tile's outer box. */
 export const DOCUMENT_DROP_TILE =
-  "flex min-h-[13rem] cursor-pointer flex-col items-center justify-center gap-2 rounded-lg border-2 border-dashed border-border bg-card p-4 text-center transition-colors";
+  "flex cursor-pointer flex-col overflow-hidden rounded-lg border-2 border-dashed border-border bg-card text-center transition-colors";
+
+/**
+ * What goes inside it, so the tile is exactly a card tall.
+ *
+ * A min-height was a guess at that, and a guess is only right in the rows
+ * where a real card happens to be stretching it anyway: on a lot with no
+ * documents the tile was alone in its row and came out visibly shorter than
+ * the same tile on the library page. Building it out of the card's own three
+ * parts, a strip, a 4:3 box and a footer, makes it the right height with
+ * nothing to keep in step.
+ */
+export function DocumentDropTileInner({ children }: { children: React.ReactNode }) {
+  return (
+    <>
+      <div className="h-[27px] shrink-0" />
+      <div className="relative block aspect-[4/3] w-full min-h-0 shrink-0">
+        <span className="absolute inset-0 flex flex-col items-center justify-center gap-2 px-4">
+          {children}
+        </span>
+      </div>
+      <div className="h-[86px] flex-1 shrink-0" />
+    </>
+  );
+}

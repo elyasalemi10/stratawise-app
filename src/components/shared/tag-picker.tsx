@@ -225,6 +225,15 @@ export function TagPicker({
  * opens the picker. The picker is controlled, so ticking two tags in a row
  * does not shut it between them.
  */
+/** The strip's own box, exported so an uploading card can reserve exactly
+ *  the same space and the grid does not shift when the real one arrives.
+ *
+ *  h-8, not min-h-8: one row always. The contents scroll sideways instead of
+ *  wrapping, so a heavily tagged document cannot make its whole grid row
+ *  taller. */
+export const TAG_FIELD_SHELL =
+  "flex h-8 w-full items-center gap-1.5 overflow-hidden rounded-md px-2 text-left text-xs";
+
 export function TagField({
   tags,
   allTags,
@@ -246,23 +255,22 @@ export function TagField({
       {tags.length === 0 ? (
         <span className="text-xs text-muted-foreground">Add tags</span>
       ) : (
-        // Wraps. It used to scroll sideways because the card was a fixed
-        // height and a second row would have broken the grid; the card is
-        // content-driven now, so a document with five tags can show five
-        // tags instead of hiding four of them off the right edge.
-        <span className="flex min-w-0 flex-1 flex-wrap items-center gap-1">
+        // One row, running off to the right. Wrapping was worse: a document
+        // with four tags grew its card, which grew its whole grid row, so a
+        // single well-filed document made three others taller for no reason
+        // anyone looking at them could see.
+        <span className="flex min-w-0 flex-1 items-center gap-1 overflow-x-auto [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
           {tags.map((t) => (
-            <TagChip key={t.id} tag={t} />
+            <span key={t.id} className="shrink-0">
+              <TagChip tag={t} />
+            </span>
           ))}
         </span>
       )}
     </>
   );
 
-  // min-h, not h: it grows with a second row of tags rather than clipping
-  // one. text-left because a <button> centres its contents by default.
-  const shell =
-    "flex min-h-8 w-full flex-wrap items-center gap-1 rounded-md px-2 py-1.5 text-left text-xs";
+  const shell = TAG_FIELD_SHELL;
 
   // Read-only is not a control, so it is not a button: nothing happens when
   // you press it and announcing it as pressable is a lie to a screen reader.

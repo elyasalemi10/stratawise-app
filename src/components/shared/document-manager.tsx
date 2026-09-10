@@ -10,6 +10,7 @@ import {
   DOCUMENT_DROP_TILE,
   DOCUMENT_GRID,
   DocumentCardSkeleton,
+  DocumentDropTileInner,
 } from "@/components/shared/document-card-skeleton";
 import { DocumentLightbox } from "@/components/shared/document-lightbox";
 import type { DocumentTag, TagColour } from "@/lib/document-tags-shared";
@@ -530,7 +531,6 @@ export function DocumentManager({ ocId, lotId, initialDocuments, readOnly }: Doc
 
   const allVisibleSelected =
     visibleDocs.length > 0 && visibleDocs.every((d) => selectedIds.has(d.id));
-  const someVisibleSelected = !allVisibleSelected && selectedIds.size > 0;
 
   function clearSelection() {
     setSelectedIds(new Set());
@@ -651,9 +651,13 @@ export function DocumentManager({ ocId, lotId, initialDocuments, readOnly }: Doc
               offers; it offers the rest. To end up with nothing selected you
               tick it, which takes everything, and tick it again. */}
           <label className="flex cursor-pointer items-center gap-2 text-sm text-muted-foreground">
+            {/* Ticked only when it really is all of them. A part-selection
+                used to fill the box, which said "everything" while three of
+                twelve were chosen; the count beside it is what reports the
+                part, and this reports whether one more click adds the rest
+                or takes them all away. */}
             <Checkbox
               checked={allVisibleSelected}
-              indeterminate={someVisibleSelected}
               onCheckedChange={() =>
                 allVisibleSelected ? clearSelection() : selectAllVisible()
               }
@@ -791,9 +795,13 @@ export function DocumentManager({ ocId, lotId, initialDocuments, readOnly }: Doc
               }}
               className={cn(DOCUMENT_DROP_TILE, "hover:border-primary/50 hover:bg-muted")}
             >
-              <Upload className="h-7 w-7 text-muted-foreground" />
-              <span className="text-sm font-medium text-foreground">Add a document</span>
-              <span className="text-xs text-muted-foreground">Drop it here, or click to choose</span>
+              <DocumentDropTileInner>
+                <Upload className="h-7 w-7 text-muted-foreground" />
+                <span className="text-sm font-medium text-foreground">Add a document</span>
+                <span className="text-xs text-muted-foreground">
+                  Drop it here, or click to choose
+                </span>
+              </DocumentDropTileInner>
             </button>
           )}
           {/* A file mid-upload is a square with the mark pulsing in it, and

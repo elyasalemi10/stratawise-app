@@ -10,7 +10,7 @@ import {
   fileKindFor,
   fileTypeLabel,
 } from "@/components/shared/file-type-illustration";
-import { TagField } from "@/components/shared/tag-picker";
+import { TAG_FIELD_SHELL, TagField } from "@/components/shared/tag-picker";
 import { relativeDate } from "@/lib/relative-date";
 import { cn } from "@/lib/utils";
 import type { DocumentTag, TagColour } from "@/lib/document-tags-shared";
@@ -291,21 +291,32 @@ export function DocumentUploadCard({
         )}
         </span>
       </div>
-      {/* The footer a finished card has, with both controls drawn as they
-          will look and dimmed, because they are not usable yet. Two empty
-          outlines read as a card that had failed to render; the same two
-          boxes with their own labels read as a card that is not filled in
-          yet, which is what it is. */}
+      {/* The footer a finished card has, as the same two controls, disabled.
+          They were hand-drawn look-alikes before, and a look-alike is only
+          ever as accurate as whoever last changed the real one remembered to
+          copy: the note box came out a couple of pixels off, which is what
+          made a finished upload nudge its whole grid row down. A real
+          textarea and the real tag strip cannot be a couple of pixels off. */}
       <div
         aria-hidden
         className="flex flex-1 flex-col gap-2 border-t border-border p-2"
       >
-        <div className="w-full rounded-md border border-border bg-muted/40 px-2.5 py-1.5 text-xs leading-snug text-muted-foreground/60">
-          Add a note
-        </div>
-        <div className="flex min-h-8 w-full items-center gap-1.5 rounded-md border border-border bg-muted/40 px-2 py-1.5">
-          <TagIcon className="h-3.5 w-3.5 shrink-0 text-muted-foreground/60" />
-          <span className="text-xs text-muted-foreground/60">Add tags</span>
+        <AutoGrowTextarea
+          value=""
+          onChange={() => {}}
+          placeholder="Add a note"
+          disabled
+          tabIndex={-1}
+          className="bg-muted/40 placeholder:text-muted-foreground/60"
+        />
+        <div
+          className={cn(
+            TAG_FIELD_SHELL,
+            "border border-border bg-muted/40 text-muted-foreground/60",
+          )}
+        >
+          <TagIcon className="h-3.5 w-3.5 shrink-0" />
+          <span>Add tags</span>
         </div>
       </div>
       {failed && onDismiss && (
