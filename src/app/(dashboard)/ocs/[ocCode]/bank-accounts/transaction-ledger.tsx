@@ -1,22 +1,27 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { Check, Plus, Search } from "lucide-react";
+import { toast } from "sonner";
+import { Input } from "@/components/ui/input";
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { EmptyState } from "@/components/shared/empty-state";
 import { cn } from "@/lib/utils";
+import { assignTransactionEntity } from "./actions";
+import type { EntityKind, EntityOption } from "./data";
 
-// One continuous statement, not a month at a time.
+// One statement, one table, from the newest line to the oldest.
 //
-// The month stepper this replaces made the manager click to reach data that
-// was already on the client, and it broke the one thing a statement is for:
-// a payment made on the 31st and the invoice it settles on the 1st are one
-// event, and paging between them puts a click in the middle of it. Months
-// are still the unit people think in, so they stay, as sticky breakers
-// carrying that month's totals rather than as a wall between two screens.
+// No month sections and no balance column. A statement is read by running
+// down it, and every heading in the middle is a place the eye has to stop
+// and re-acquire the columns. What a manager is actually doing here is
+// answering "what was that one for", which is a fourth column, not a fifth
+// heading.
 //
-// It is not a <Table>. The primitive wraps itself in an overflow-x-auto
-// container, and a container with overflow on one axis is a scrollport on
-// both, so a sticky month header inside one sticks to a box exactly as tall
-// as its own contents, which is to say it does not stick at all.
+// Entity is that column. It is the one thing on the page that is ours rather
+// than the bank's: the bank knows the date, the description and the amount,
+// and nobody but the manager knows that the $1,840 on the 14th was the
+// plumber. Until it is said out loud it lives in one person's memory.
 
 export interface LedgerTxn {
   id: string;
@@ -26,19 +31,17 @@ export interface LedgerTxn {
   balance: number | null;
   matchStatus: string;
   voided: boolean;
+  entity: { kind: EntityKind; id: string } | null;
 }
 
 const currency = new Intl.NumberFormat("en-AU", {
   style: "currency",
   currency: "AUD",
 });
-const monthLabelFmt = new Intl.DateTimeFormat("en-AU", {
-  month: "long",
-  year: "numeric",
-});
 const dayFmt = new Intl.DateTimeFormat("en-AU", {
-  day: "numeric",
+  day: "2-digit",
   month: "short",
+  year: "numeric",
 });
 
 function formatDay(iso: string | null): string {
@@ -46,121 +49,40 @@ function formatDay(iso: string | null): string {
   return dayFmt.format(new Date(`${iso}T00:00:00`));
 }
 
-function labelForMonthKey(key: string): string {
-  const [y, m] = key.split("-").map(Number);
-  return monthLabelFmt.format(new Date(y, m - 1, 1));
-}
+const KIND_LABEL: Record<EntityKind, string> = {
+  lot: "Lots",
+  contractor: "Contractors",
+  maintenance_request: "Maintenance",
+};
 
-/**
- * A row that needs someone to do something.
- *
- * Deliberately narrower than "match_status is unmatched". Auto-matching
- * attributes incoming receipts to levy notices; it has nothing to say about
- * money going out, so every expense the OC has ever paid is unmatched and
- * always will be. Flagging those would put an amber bar on most of the page
- * and the flag would stop meaning anything. Money ARRIVING with nobody
- * attached to it is the actionable case: someone paid, and until it is
- * matched their lot still reads as owing it.
- */
-function needsAttention(t: LedgerTxn): boolean {
-  return !t.voided && t.matchStatus === "unmatched" && (t.amount ?? 0) > 0;
-}
-
-/**
- * Fill the balance column where the file did not supply one.
- *
- * Most statements carry a running balance and we keep whatever the bank
- * said, because it is the bank's own record and ours is an inference. Where
- * a row has none, the neighbours plus the amounts give it: forwards adds the
- * row's own amount, backwards subtracts the next row's. Two passes cover
- * every gap regardless of where the known values sit.
- *
- * With no known balance anywhere the column stays empty. A running total
- * from an invented zero is a number the bank never said, printed in the
- * column where the bank's number goes.
- */
-function fillBalances(ascending: LedgerTxn[]): Map<string, number> {
-  const out: Array<number | null> = ascending.map((t) => t.balance);
-  for (let i = 1; i < out.length; i++) {
-    if (out[i] === null && out[i - 1] !== null) {
-      out[i] = out[i - 1]! + (ascending[i].amount ?? 0);
-    }
-  }
-  for (let i = out.length - 2; i >= 0; i--) {
-    if (out[i] === null && out[i + 1] !== null) {
-      out[i] = out[i + 1]! - (ascending[i + 1].amount ?? 0);
-    }
-  }
-  const map = new Map<string, number>();
-  ascending.forEach((t, i) => {
-    if (out[i] !== null) map.set(t.id, out[i]!);
-  });
-  return map;
-}
-
-type Item =
-  | { kind: "month"; key: string; label: string; inflow: number; outflow: number }
-  | { kind: "row"; txn: LedgerTxn; balance: number | null };
+const KIND_ORDER: EntityKind[] = ["lot", "contractor", "maintenance_request"];
 
 /** How many rows are on screen before scrolling asks for more. */
-const PAGE = 60;
+const PAGE = 80;
 
 export function TransactionLedger({
+  ocId,
   transactions,
+  entityOptions,
+  onAssign,
 }: {
+  ocId: string;
   /** Newest first, as the server returns them. */
   transactions: LedgerTxn[];
+  entityOptions: EntityOption[];
+  /** Writes the assignment into the page's cached data, so the pill changes
+   *  on click rather than after the next poll. */
+  onAssign: (txnId: string, entity: { kind: EntityKind; id: string } | null) => void;
 }) {
-  const [flaggedOnly, setFlaggedOnly] = useState(false);
   const [visible, setVisible] = useState(PAGE);
 
-  const flaggedCount = useMemo(
-    () => transactions.filter(needsAttention).length,
-    [transactions],
+  const optionByKey = useMemo(
+    () => new Map(entityOptions.map((o) => [`${o.kind}:${o.id}`, o])),
+    [entityOptions],
   );
 
-  const balances = useMemo(() => {
-    // Chronological is the reverse of what the server sent, which keeps
-    // whatever order it used inside a single day rather than inventing one.
-    const dated = transactions.filter((t) => t.date);
-    return fillBalances([...dated].reverse());
-  }, [transactions]);
-
-  const items = useMemo<Item[]>(() => {
-    const rows = flaggedOnly ? transactions.filter(needsAttention) : transactions;
-    const groups: Array<{ key: string; rows: LedgerTxn[] }> = [];
-    for (const t of rows) {
-      const key = t.date ? t.date.slice(0, 7) : "undated";
-      const last = groups[groups.length - 1];
-      if (last && last.key === key) last.rows.push(t);
-      else groups.push({ key, rows: [t] });
-    }
-    const flat: Item[] = [];
-    for (const g of groups) {
-      let inflow = 0;
-      let outflow = 0;
-      for (const t of g.rows) {
-        if (t.voided) continue;
-        const a = t.amount ?? 0;
-        if (a > 0) inflow += a;
-        else outflow -= a;
-      }
-      flat.push({
-        kind: "month",
-        key: g.key,
-        label: g.key === "undated" ? "No date" : labelForMonthKey(g.key),
-        inflow,
-        outflow,
-      });
-      for (const t of g.rows) {
-        flat.push({ kind: "row", txn: t, balance: balances.get(t.id) ?? null });
-      }
-    }
-    return flat;
-  }, [transactions, flaggedOnly, balances]);
-
-  const shown = items.slice(0, visible);
-  const hasMore = items.length > visible;
+  const shown = transactions.slice(0, visible);
+  const hasMore = transactions.length > visible;
 
   const sentinel = useRef<HTMLDivElement | null>(null);
   const grow = useCallback(() => setVisible((v) => v + PAGE), []);
@@ -191,113 +113,206 @@ export function TransactionLedger({
   }
 
   return (
-    <div className="space-y-3">
-      {flaggedCount > 0 && (
-        <div className="flex justify-end">
-          <button
-            type="button"
-            onClick={() => {
-              setFlaggedOnly((v) => !v);
-              // Back to one screen. Otherwise filtering down to eight rows
-              // and back leaves the full list already fully expanded.
-              setVisible(PAGE);
-            }}
-            aria-pressed={flaggedOnly}
-            className={cn(
-              "inline-flex h-8 items-center gap-2 rounded-md border px-3 text-xs font-medium transition-colors cursor-pointer",
-              flaggedOnly
-                ? "border-[color:var(--warning)] bg-warning-muted text-warning-foreground"
-                : "border-border bg-card text-muted-foreground hover:text-foreground",
-            )}
-          >
-            <span className="h-1.5 w-1.5 rounded-full bg-[color:var(--warning)]" />
-            {flaggedCount} unmatched receipt{flaggedCount === 1 ? "" : "s"}
-          </button>
-        </div>
-      )}
-
-      <div className="rounded-md border border-border bg-card">
-        {shown.map((item) =>
-          item.kind === "month" ? (
-            <div
-              key={`m-${item.key}`}
-              className="sticky top-0 z-10 grid grid-cols-[minmax(0,1fr)_auto] items-baseline gap-3 border-b border-border bg-muted px-4 py-2 sm:grid-cols-[minmax(0,1fr)_16rem]"
-            >
-              <span className="text-sm font-semibold text-foreground">
-                {item.label}
-              </span>
-              <span className="flex justify-end gap-4 text-xs tabular-nums sm:gap-6">
-                <span className="text-muted-foreground">
-                  In{" "}
-                  <span className="font-medium text-foreground">
-                    {currency.format(item.inflow)}
-                  </span>
-                </span>
-                <span className="text-muted-foreground">
-                  Out{" "}
-                  <span className="font-medium text-foreground">
-                    {currency.format(item.outflow)}
-                  </span>
-                </span>
-              </span>
-            </div>
-          ) : (
-            <LedgerRow key={item.txn.id} txn={item.txn} balance={item.balance} />
-          ),
-        )}
-        {hasMore && <div ref={sentinel} className="h-10" />}
+    <div className="overflow-hidden rounded-md border border-border bg-card">
+      <div className="grid grid-cols-[6.5rem_minmax(0,1fr)_10rem_7.5rem] items-center gap-3 border-b border-border bg-primary px-4 py-2.5 text-sm font-medium text-primary-foreground">
+        <span>Date</span>
+        <span>Description</span>
+        <span>Entity</span>
+        <span className="text-right">Amount</span>
       </div>
+      {shown.map((txn) => (
+        <LedgerRow
+          key={txn.id}
+          ocId={ocId}
+          txn={txn}
+          entityOptions={entityOptions}
+          current={txn.entity ? optionByKey.get(`${txn.entity.kind}:${txn.entity.id}`) ?? null : null}
+          onAssign={onAssign}
+        />
+      ))}
+      {hasMore && <div ref={sentinel} className="h-10" />}
     </div>
   );
 }
 
 function LedgerRow({
+  ocId,
   txn,
-  balance,
+  entityOptions,
+  current,
+  onAssign,
 }: {
+  ocId: string;
   txn: LedgerTxn;
-  balance: number | null;
+  entityOptions: EntityOption[];
+  current: EntityOption | null;
+  onAssign: (txnId: string, entity: { kind: EntityKind; id: string } | null) => void;
 }) {
-  const flagged = needsAttention(txn);
-  const inactive = txn.voided || txn.matchStatus === "excluded";
   const amount = txn.amount;
+  const inactive = txn.voided || txn.matchStatus === "excluded";
 
   return (
-    <div
-      className={cn(
-        "grid grid-cols-[minmax(0,1fr)_7rem] items-center gap-3 border-b border-l-2 border-border px-4 py-2.5 last:border-b-0",
-        "sm:grid-cols-[4.5rem_minmax(0,1fr)_8rem_8rem]",
-        // Every row carries the left rule so a flagged one colours in place
-        // instead of shunting its text two pixels sideways.
-        flagged
-          ? "border-l-[color:var(--warning)] bg-warning-muted"
-          : "border-l-transparent",
-        inactive && "opacity-55",
-      )}
-    >
-      <span className="hidden text-xs tabular-nums text-muted-foreground sm:block">
+    <div className="grid grid-cols-[6.5rem_minmax(0,1fr)_10rem_7.5rem] items-center gap-3 border-b border-border px-4 py-2 last:border-b-0">
+      <span className="text-xs tabular-nums text-muted-foreground">
         {formatDay(txn.date)}
       </span>
-      <span className="min-w-0">
-        <span className="block truncate text-sm text-foreground">
-          {txn.description}
-        </span>
-        <span className="mt-0.5 flex items-center gap-2 text-xs text-muted-foreground sm:hidden">
-          {formatDay(txn.date)}
-        </span>
-      </span>
+      <span className="min-w-0 truncate text-sm text-foreground">{txn.description}</span>
+      <EntityPill
+        ocId={ocId}
+        txnId={txn.id}
+        current={current}
+        assigned={txn.entity}
+        options={entityOptions}
+        onAssign={onAssign}
+      />
       <span
         className={cn(
-          "text-right text-sm tabular-nums",
-          inactive && "line-through",
-          amount !== null && amount < 0 ? "text-destructive" : "text-foreground",
+          // The only colour on the row. Everything else is one shade, so a
+          // column of green and red is the whole scan: money in, money out,
+          // and nothing else competing for it.
+          "text-right text-sm font-bold tabular-nums",
+          inactive && "line-through opacity-55",
+          amount !== null && amount < 0
+            ? "text-destructive"
+            : "text-[color:var(--success-foreground)]",
         )}
       >
         {amount !== null ? currency.format(amount) : ""}
       </span>
-      <span className="hidden text-right text-sm tabular-nums text-muted-foreground sm:block">
-        {balance !== null ? currency.format(balance) : ""}
-      </span>
     </div>
+  );
+}
+
+function EntityPill({
+  ocId,
+  txnId,
+  current,
+  assigned,
+  options,
+  onAssign,
+}: {
+  ocId: string;
+  txnId: string;
+  current: EntityOption | null;
+  assigned: { kind: EntityKind; id: string } | null;
+  options: EntityOption[];
+  onAssign: (txnId: string, entity: { kind: EntityKind; id: string } | null) => void;
+}) {
+  const [open, setOpen] = useState(false);
+  const [query, setQuery] = useState("");
+  const [saving, setSaving] = useState(false);
+
+  const groups = useMemo(() => {
+    const q = query.trim().toLowerCase();
+    const matches = q
+      ? options.filter(
+          (o) =>
+            o.label.toLowerCase().includes(q) ||
+            (o.detail ?? "").toLowerCase().includes(q),
+        )
+      : options;
+    return KIND_ORDER.map((kind) => ({
+      kind,
+      rows: matches.filter((o) => o.kind === kind),
+    })).filter((g) => g.rows.length > 0);
+  }, [options, query]);
+
+  async function pick(next: { kind: EntityKind; id: string } | null) {
+    const previous = assigned;
+    // Optimistic. The pill is the whole point of the click and a round trip
+    // before it changes reads as the click not having landed.
+    onAssign(txnId, next);
+    setOpen(false);
+    setSaving(true);
+    const res = await assignTransactionEntity(ocId, txnId, next);
+    setSaving(false);
+    if (res.error) {
+      onAssign(txnId, previous);
+      toast.error(res.error);
+    }
+  }
+
+  return (
+    <Popover open={open} onOpenChange={setOpen}>
+      <PopoverTrigger
+        className={cn(
+          "inline-flex h-6 max-w-full cursor-pointer items-center gap-1 rounded-full px-2 text-xs font-medium transition-colors",
+          current
+            ? "bg-secondary text-foreground ring-1 ring-inset ring-border hover:bg-secondary-hover"
+            : "text-muted-foreground hover:bg-muted hover:text-foreground",
+          saving && "opacity-60",
+        )}
+      >
+        {current ? (
+          <span className="truncate">{current.label}</span>
+        ) : (
+          <>
+            <Plus className="h-3 w-3 shrink-0" />
+            Assign
+          </>
+        )}
+      </PopoverTrigger>
+      <PopoverContent className="w-72 p-0" align="start" showBackdrop={false}>
+        <div className="relative border-b border-border p-2">
+          <Search className="pointer-events-none absolute left-4 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-muted-foreground" />
+          <Input
+            autoFocus
+            value={query}
+            onChange={(e) => setQuery(e.target.value)}
+            placeholder="Find a lot, contractor or job"
+            className="h-8 pl-8"
+          />
+        </div>
+        <div className="max-h-64 overflow-y-auto p-1">
+          {groups.length === 0 ? (
+            <p className="px-2 py-3 text-center text-sm text-muted-foreground">
+              Nothing matches.
+            </p>
+          ) : (
+            groups.map((g) => (
+              <div key={g.kind}>
+                <p className="px-2 pb-1 pt-2 text-xs font-medium text-muted-foreground">
+                  {KIND_LABEL[g.kind]}
+                </p>
+                {g.rows.map((o) => {
+                  const on = assigned?.kind === o.kind && assigned.id === o.id;
+                  return (
+                    <button
+                      key={`${o.kind}:${o.id}`}
+                      type="button"
+                      onClick={() => pick(on ? null : { kind: o.kind, id: o.id })}
+                      className="flex w-full cursor-pointer items-center gap-2 rounded-md px-2 py-1.5 text-left hover:bg-muted"
+                    >
+                      <span className="min-w-0 flex-1">
+                        <span className="block truncate text-sm text-foreground">
+                          {o.label}
+                        </span>
+                        {o.detail && (
+                          <span className="block truncate text-xs text-muted-foreground">
+                            {o.detail}
+                          </span>
+                        )}
+                      </span>
+                      {on && <Check className="h-3.5 w-3.5 shrink-0 text-primary" strokeWidth={3} />}
+                    </button>
+                  );
+                })}
+              </div>
+            ))
+          )}
+        </div>
+        {current && (
+          <div className="border-t border-border p-1">
+            <button
+              type="button"
+              onClick={() => pick(null)}
+              className="w-full cursor-pointer rounded-md px-2 py-1.5 text-left text-sm text-destructive hover:bg-destructive/5"
+            >
+              Clear
+            </button>
+          </div>
+        )}
+      </PopoverContent>
+    </Popover>
   );
 }

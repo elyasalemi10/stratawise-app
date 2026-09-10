@@ -413,3 +413,58 @@ export async function deleteBankAccount(
   revalidatePath("/ocs/[ocCode]/funds", "page");
   return { promotedAccountId: successor.id };
 }
+
+/**
+ * Say what a transaction was for.
+ *
+ * Separate from reconciliation on purpose. Matching allocates an incoming
+ * payment against a levy notice and balances a lot; this is the label on the
+ * line, and most of the lines it matters for are money going OUT, where
+ * there is no notice to match and never will be. Assigning the plumber to a
+ * payment does not move a cent.
+ *
+ * Pass a null kind to clear it.
+ */
+export async function assignTransactionEntity(
+  ocId: string,
+  transactionId: string,
+  entity: { kind: "lot" | "contractor" | "maintenance_request"; id: string } | null,
+): Promise<{ error?: string }> {
+  const profile = await requireCompanyRole();
+  await requireOCAccess(ocId);
+  const supabase = createServerClient();
+
+  // The target has to belong to this OC, or a manager could label a payment
+  // with another company's contractor by id.
+  if (entity) {
+    const table =
+      entity.kind === "lot" ? "lots"
+      : entity.kind === "contractor" ? "contractors"
+      : "maintenance_requests";
+    const { data: owner } = await supabase
+      .from(table)
+      .select("id")
+      .eq("id", entity.id)
+      .eq("oc_id", ocId)
+      .maybeSingle();
+    if (!owner) return { error: "That is not something on this Owners Corporation." };
+  }
+
+  const { error } = await supabase
+    .from("bank_transactions")
+    .update({
+      entity_kind: entity?.kind ?? null,
+      entity_id: entity?.id ?? null,
+      entity_assigned_at: entity ? new Date().toISOString() : null,
+      entity_assigned_by: entity ? profile.id : null,
+    })
+    .eq("id", transactionId)
+    .eq("oc_id", ocId);
+
+  if (error) {
+    console.error("assignTransactionEntity failed", error);
+    return { error: "Couldn't save that. Try again." };
+  }
+  revalidatePath(`/ocs/${ocId}/bank-accounts`);
+  return {};
+}

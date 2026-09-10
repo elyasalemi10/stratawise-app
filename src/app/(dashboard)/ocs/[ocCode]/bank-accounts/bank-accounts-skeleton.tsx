@@ -7,11 +7,11 @@ import { Skeleton } from "@/components/ui/skeleton";
 
 // Mirrors bank-accounts-list.tsx: a tab strip of accounts, a card holding
 // the Fund / BSB / Account number block alongside the actions, then the
-// statement itself, which is one continuous list broken by month.
+// statement, which is one table from the newest line to the oldest.
 //
-// Everything fixed renders for real: the page title, the Import button, all
-// three field labels, the month header's In and Out captions. Only the
-// account name, the field values, the month name and the rows shimmer.
+// Everything fixed renders for real: the page title, the Import button, the
+// three field labels and all four column headings. Only the account name,
+// the field values and the lines shimmer.
 
 export function BankAccountsSkeleton() {
   return (
@@ -45,27 +45,24 @@ export function BankAccountsSkeleton() {
           </Button>
         </div>
 
-        <div className="rounded-md border border-border bg-card">
-          <div className="grid grid-cols-[minmax(0,1fr)_auto] items-baseline gap-3 border-b border-border bg-muted px-4 py-2 sm:grid-cols-[minmax(0,1fr)_16rem]">
-            <Skeleton className="h-4 w-32" />
-            <span className="flex justify-end gap-4 text-xs text-muted-foreground sm:gap-6">
-              <span className="flex items-baseline gap-1.5">
-                In <Skeleton className="h-3 w-16" />
-              </span>
-              <span className="flex items-baseline gap-1.5">
-                Out <Skeleton className="h-3 w-16" />
-              </span>
-            </span>
+        {/* The statement. Column headings are ours, so they render; only
+            the lines shimmer. */}
+        <div className="overflow-hidden rounded-md border border-border bg-card">
+          <div className="grid grid-cols-[6.5rem_minmax(0,1fr)_10rem_7.5rem] items-center gap-3 border-b border-border bg-primary px-4 py-2.5 text-sm font-medium text-primary-foreground">
+            <span>Date</span>
+            <span>Description</span>
+            <span>Entity</span>
+            <span className="text-right">Amount</span>
           </div>
-          {Array.from({ length: 8 }).map((_, i) => (
+          {Array.from({ length: 10 }).map((_, i) => (
             <div
               key={i}
-              className="grid grid-cols-[minmax(0,1fr)_7rem] items-center gap-3 border-b border-l-2 border-l-transparent border-border px-4 py-2.5 last:border-b-0 sm:grid-cols-[4.5rem_minmax(0,1fr)_8rem_8rem]"
+              className="grid grid-cols-[6.5rem_minmax(0,1fr)_10rem_7.5rem] items-center gap-3 border-b border-border px-4 py-2 last:border-b-0"
             >
-              <Skeleton className="hidden h-3 w-12 sm:block" />
+              <Skeleton className="h-3 w-20" />
               <Skeleton className="h-3.5 w-56 max-w-full" />
+              <Skeleton className="h-4 w-20 rounded-full" />
               <Skeleton className="ml-auto h-3.5 w-16" />
-              <Skeleton className="ml-auto hidden h-3.5 w-20 sm:block" />
             </div>
           ))}
         </div>

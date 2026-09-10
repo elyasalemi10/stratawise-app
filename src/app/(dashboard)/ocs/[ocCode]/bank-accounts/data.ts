@@ -32,6 +32,8 @@ interface RawTxnRow {
   balance: number | string | null;
   match_status: string;
   is_voided: boolean;
+  entity_kind: string | null;
+  entity_id: string | null;
 }
 
 export interface BankAccountRowView {
@@ -50,11 +52,28 @@ export interface BankAccountRowView {
     /** unmatched | auto_matched | manually_matched | excluded. */
     matchStatus: string;
     voided: boolean;
+    /** What the manager said this line was for, if anyone has. */
+    entity: { kind: EntityKind; id: string } | null;
   }>;
+}
+
+/** The things a transaction can be about. */
+export type EntityKind = "lot" | "contractor" | "maintenance_request";
+
+export interface EntityOption {
+  kind: EntityKind;
+  id: string;
+  label: string;
+  /** Second line in the picker: the owner's name, the trade, the location. */
+  detail?: string | null;
 }
 
 export interface BankAccountsPageData {
   accounts: BankAccountRowView[];
+  /** Everything a line can be assigned to, fetched once for the page rather
+   *  than per popover: the list is small and opening a picker should not
+   *  cost a round trip. */
+  entityOptions: EntityOption[];
 }
 
 export async function getBankAccountsPageData(
@@ -63,7 +82,15 @@ export async function getBankAccountsPageData(
   await requireOCAccess(ocId);
 
   const supabase = createServerClient();
-  const [{ data: accounts }, { data: funds }, { data: txns }] = await Promise.all([
+  const [
+    { data: accounts },
+    { data: funds },
+    { data: txns },
+    { data: lots },
+    { data: contractors },
+    { data: jobs },
+    { data: lotOwners },
+  ] = await Promise.all([
     supabase
       .from("bank_accounts")
       .select(
@@ -77,11 +104,32 @@ export async function getBankAccountsPageData(
     supabase
       .from("bank_transactions")
       .select(
-        "id, bank_account_id, transaction_date, description, amount, balance, match_status, is_voided",
+        "id, bank_account_id, transaction_date, description, amount, balance, match_status, is_voided, entity_kind, entity_id",
       )
       .eq("oc_id", ocId)
       .order("transaction_date", { ascending: false, nullsFirst: false })
       .order("id", { ascending: false }),
+    // The three things a line can be about. All in the same wave: they are
+    // tiny, and the picker has to open instantly or nobody labels anything.
+    supabase
+      .from("lots")
+      .select("id, lot_number, unit_number")
+      .eq("oc_id", ocId)
+      .order("lot_number", { ascending: true }),
+    supabase
+      .from("contractors")
+      .select("id, name, business_name, company, trade")
+      .eq("oc_id", ocId)
+      .order("name", { ascending: true }),
+    supabase
+      .from("maintenance_requests")
+      .select("id, reference_number, title, location")
+      .eq("oc_id", ocId)
+      .order("created_at", { ascending: false }),
+    supabase
+      .from("v_lot_current_owners")
+      .select("lot_id, name")
+      .eq("oc_id", ocId),
   ]);
 
   const allRows = (accounts ?? []) as RawAccountRow[];
@@ -132,6 +180,10 @@ export async function getBankAccountsPageData(
       balance: t.balance !== null ? Number(t.balance) : null,
       matchStatus: t.match_status,
       voided: t.is_voided,
+      entity:
+        t.entity_kind && t.entity_id
+          ? { kind: t.entity_kind as EntityKind, id: t.entity_id }
+          : null,
     }));
     return {
       id: primary.id,
@@ -144,5 +196,39 @@ export async function getBankAccountsPageData(
     };
   });
 
-  return { accounts: rows };
+  // One flat list, tagged by kind. The picker groups it; the ledger looks a
+  // row up in it by id, so a label never needs its own query.
+  const ownerByLot = new Map(
+    ((lotOwners ?? []) as Array<{ lot_id: string; name: string | null }>).map(
+      (o) => [o.lot_id, o.name],
+    ),
+  );
+  const entityOptions: EntityOption[] = [
+    ...((lots ?? []) as Array<{ id: string; lot_number: number; unit_number: string | null }>)
+      .map((l) => ({
+        kind: "lot" as const,
+        id: l.id,
+        label: `Lot ${l.lot_number}${l.unit_number ? ` · Unit ${l.unit_number}` : ""}`,
+        detail: ownerByLot.get(l.id) ?? null,
+      })),
+    ...((contractors ?? []) as Array<{
+      id: string; name: string | null; business_name: string | null;
+      company: string | null; trade: string | null;
+    }>).map((c) => ({
+      kind: "contractor" as const,
+      id: c.id,
+      label: c.business_name || c.company || c.name || "Contractor",
+      detail: c.trade,
+    })),
+    ...((jobs ?? []) as Array<{
+      id: string; reference_number: string | null; title: string | null; location: string | null;
+    }>).map((j) => ({
+      kind: "maintenance_request" as const,
+      id: j.id,
+      label: j.title || j.reference_number || "Maintenance job",
+      detail: j.location,
+    })),
+  ];
+
+  return { accounts: rows, entityOptions };
 }

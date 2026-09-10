@@ -13,6 +13,7 @@ import {
 import { AUSTRALIAN_BANKS, bankFromBsb } from "@/lib/data/australian-banks";
 import { ImportCsvDialog } from "./import-csv-dialog";
 import { TransactionLedger, type LedgerTxn } from "./transaction-ledger";
+import type { EntityKind, EntityOption } from "./data";
 import { AddBankAccountDrawer } from "./add-bank-account-drawer";
 import { deleteBankAccount } from "./actions";
 
@@ -41,9 +42,13 @@ function logoFor(bsb: string | null | undefined, bankName: string | null | undef
 export function BankAccountsList({
   ocId,
   accounts,
+  entityOptions,
+  onAssign,
 }: {
   ocId: string;
   accounts: BankAccountRow[];
+  entityOptions: EntityOption[];
+  onAssign: (txnId: string, entity: { kind: EntityKind; id: string } | null) => void;
 }) {
   const [importTarget, setImportTarget] = useState<BankAccountRow | null>(null);
   const [activeTab, setActiveTab] = useState<string>(accounts[0]?.id ?? "");
@@ -93,7 +98,7 @@ export function BankAccountsList({
                 <TabsTrigger
                   key={a.id}
                   value={a.id}
-                  className="relative h-11 min-w-[6.5rem] rounded-none border-0 px-4 text-sm font-medium text-muted-foreground bg-transparent transition-colors hover:text-foreground hover:bg-transparent data-active:bg-transparent data-active:text-foreground data-active:after:bg-[color:var(--brand-gold)] data-active:after:rounded-full inline-flex items-center gap-2"
+                  className="relative h-11 min-w-[6.5rem] rounded-none border-0 px-4 text-sm font-medium text-muted-foreground bg-transparent transition-colors hover:text-foreground hover:bg-transparent data-active:bg-transparent data-active:text-foreground data-active:after:inset-x-0 data-active:after:bottom-0 data-active:after:h-0.5 data-active:after:bg-[color:var(--brand-gold)] inline-flex items-center gap-2"
                 >
                   {/* No badge when the BSB is not one we recognise. A
                       placeholder that looks like a bank logo, on a row where
@@ -120,7 +125,10 @@ export function BankAccountsList({
         {accounts.map((a) => (
           <TabsContent key={a.id} value={a.id} className="mt-4">
             <AccountPane
+              ocId={ocId}
               account={a}
+              entityOptions={entityOptions}
+              onAssign={onAssign}
               onImport={() => setImportTarget(a)}
               // An OC must keep one account , levies have to name somewhere
               // to be paid. With only one left there's nothing to delete to.
@@ -185,11 +193,17 @@ export function BankAccountsList({
 }
 
 function AccountPane({
+  ocId,
   account,
+  entityOptions,
+  onAssign,
   onImport,
   onDelete,
 }: {
+  ocId: string;
   account: BankAccountRow;
+  entityOptions: EntityOption[];
+  onAssign: (txnId: string, entity: { kind: EntityKind; id: string } | null) => void;
   onImport: () => void;
   /** Omitted when this is the OC's last account , nothing to fall back to. */
   onDelete?: () => void;
@@ -235,7 +249,12 @@ function AccountPane({
         </div>
       </div>
 
-      <TransactionLedger transactions={account.transactions} />
+      <TransactionLedger
+        ocId={ocId}
+        transactions={account.transactions}
+        entityOptions={entityOptions}
+        onAssign={onAssign}
+      />
     </div>
   );
 }
